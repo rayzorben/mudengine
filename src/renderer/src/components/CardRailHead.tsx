@@ -25,9 +25,9 @@ export interface CardRailHeadProps {
  * without the row taking any height it did not already have — unless nothing
  * is put away, when the row is the mark's alone.
  *
- * The version sits beside it while the rail is wide enough and wraps out of
- * sight when it is not (`.app-mark` clips to one line); the tooltip carries it
- * either way, from the same `package.json` main reports (`appVersion`).
+ * The mark sits at the far right with the version to its left; the tooltip
+ * carries both either way, from the same `package.json` main reports
+ * (`appVersion`).
  */
 export default function CardRailHead({ away, showLogo, ...picker }: CardRailHeadProps) {
   if (away.length === 0 && !showLogo) return null;
@@ -37,8 +37,8 @@ export default function CardRailHead({ away, showLogo, ...picker }: CardRailHead
       <CardPicker cards={away} {...picker} />
       {showLogo && (
         <span className="app-mark" title={t('app.markTooltip', { name, version })}>
-          <span aria-hidden="true" className="app-mark-glyph" />
           <span className="app-mark-version">{t('app.markVersion', { version })}</span>
+          <span aria-hidden="true" className="app-mark-glyph" />
         </span>
       )}
     </div>

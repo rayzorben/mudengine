@@ -275,6 +275,22 @@ export function swingsPerRound(
   // Unarmed too: the sheet prints the bare-handed round, which no formula here has.
   const said = sheet.stated?.swings;
   if (said !== undefined) return { value: said, from: 'stated' };
+  const energy = energyPerSwing(sheet, weapon, family);
+  if (energy === null) return null;
+  return { value: swingsFor(energy.value), from: energy.from };
+}
+
+/** Blows a round of 1,000 energy buys, rounded to three decimals as the sheet prints them. */
+function swingsFor(energy: number): number {
+  return Math.round((1000 / energy) * 1000) / 1000;
+}
+
+/** `CalcEnergyUsedWithEncum`, the body of `swingsPerRound` above. */
+function energyPerSwing(
+  sheet: ProwessSheet,
+  weapon: ProwessWeapon | null,
+  family: RealmFamily | null
+): Reckoning<number> | null {
   if (family !== 'greatermud') return null;
   const speed = weapon?.speed;
   if (speed === undefined || speed <= 0) return null;
@@ -293,10 +309,7 @@ export function swingsPerRound(
   const encum = Math.trunc(enc ?? 100);
   energy = Math.trunc((energy * (Math.trunc(encum / 2) + 75)) / 100);
   if (energy <= 0) return null;
-  return {
-    value: Math.round((1000 / energy) * 1000) / 1000,
-    from: enc === null ? 'bound' : 'source'
-  };
+  return { value: energy, from: enc === null ? 'bound' : 'source' };
 }
 
 /**
@@ -305,6 +318,53 @@ export function swingsPerRound(
  * average use `Swings > 6 ? 6 : Swings` (`PlayerAttackType.cs:654`).
  */
 export const MAX_SWINGS = 6;
+
+/**
+ * The three ways of swinging a weapon, by the server's `CombatRound` classes.
+ * A punch or a kick swings no weapon, and a backstab is one blow, not a round.
+ */
+export const SWING_METHODS = ['attack', 'bash', 'smash'] as const;
+
+export type SwingMethod = (typeof SWING_METHODS)[number];
+
+/**
+ * What each method does to the round (`AttackTypes/*CombatRound.cs`): the
+ * pre-roll multiplier on the weapon's range, the damage multiplier rolled
+ * between its two ends, and the energy one blow costs. A bash is two blows'
+ * energy at 2.5–3× a 1.1× range; a smash spends the whole round on one blow at
+ * 5× a 1.2× range.
+ */
+const METHOD: Readonly<
+  Record<SwingMethod, { preRoll: number; multiplier: number; energy(perSwing: number): number }>
+> = {
+  attack: { preRoll: 1, multiplier: 1, energy: (perSwing) => perSwing },
+  bash: { preRoll: 1.1, multiplier: 2.75, energy: (perSwing) => perSwing * 2 },
+  smash: { preRoll: 1.2, multiplier: 5, energy: () => 1000 }
+};
+
+/**
+ * What a weapon does in a round swung this way, before the target's armour,
+ * its dodge and a miss: blows a round (capped at `MAX_SWINGS`) times the mean
+ * blow. The figure a slot's quick view ranks weapons by.
+ *
+ * A candidate weapon is not the one in hand, so what `stat all` said about the
+ * round is not read here. Always a `bound`: the character's own damage bonus
+ * and a critical are not counted, and neither changes which weapon is better.
+ */
+export function roundDamage(
+  sheet: ProwessSheet,
+  weapon: ProwessWeapon,
+  method: SwingMethod,
+  family: RealmFamily | null
+): Reckoning<number> | null {
+  const perSwing = energyPerSwing(sheet, weapon, family);
+  if (perSwing === null || weapon.max < weapon.min) return null;
+  const how = METHOD[method];
+  const low = Math.floor(weapon.min * how.preRoll);
+  const high = Math.floor(weapon.max * how.preRoll);
+  const blows = Math.min(MAX_SWINGS, swingsFor(how.energy(perSwing.value)));
+  return { value: (blows * (low + high) * how.multiplier) / 2, from: 'bound' };
+}
 
 /** What a swing is expected to do to one target, and how long the target lasts. */
 export interface Swing {

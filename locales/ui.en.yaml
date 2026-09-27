@@ -1834,6 +1834,9 @@ cards:
     equipTooltip: Equip {item}
     findPlaceholder: Find in inventory
     blocked:
+      byAlignment: 'Not for a {alignment} character'
+      byArmour: 'This class wears {heaviest} at most; this is {material}'
+      byWeapon: 'This class may not wield a {weaponType} weapon'
       byClass: 'Only {classList} may use this'
       byClassUnnamed: This character's class may not use this
       byLevel: 'Needs level {needed}; this character is {have}'
@@ -1865,12 +1868,47 @@ cards:
     badgeFoldedCount: '{roomCount} · {droppedCount} dropped'
     badgeRoomCount: '{roomCount} rooms'
     badgeTooltipDropped: Rooms the grid could not place
-    emptyNoLocation: Location not known yet.
+    emptyNoLocation: Room unknown. Find a room above to look at the map.
     emptyNoWorldData: The world data has nothing for here.
+    roomUnknown: Room unknown
+    roomUnknownTooltip: The client does not know which room this character is in.
+    # The finder over the map: a start, a destination, and the button back
+    # to the character's room.
+    finder:
+      fromAria: Route from
+      fromHere: 'From: your room'
+      fromUnknown: 'From: find a room'
+      toAria: Find a room or route to it
+      toPlaceholder: Find a room, or 12/1075
+      locate: Center on my room
+    # A route between the two rooms, shown a page at a time. The route is
+    # cut where the map cannot draw the next step flat (up, down, a typed
+    # exit, a portal or another map, or the line running off the map), and
+    # short parts are gathered onto one page, floor above floor.
+    preview:
+      noStart: Your room is unknown. Pick a room to route from.
+      noRoute: No route between these rooms.
+      planning: Planning the route…
+      legOf: 'Page {leg} of {count}'
+      steps:
+        one: '{count} step'
+        many: '{count} steps'
+      then: 'then {command} to {roomName}'
+      arrives: 'arriving at {roomName}'
+      continues: 'to {roomName}, continued on the next page'
+      previous: Previous page
+      next: Next page
+      close: Close the route
+    sheet:
+      ariaLabel: 'The route on one page, {count} parts'
+      join: '{command} to {roomName}'
+      onward: 'Carries on at {roomName}'
     away:
       down: 'Look down, at {roomName}'
       teleport: '{command}: add the teleport to {roomName}'
       up: 'Look up, at {roomName}'
+    back: Back
+    backTo: Back to {roomName}
     buildAction: Build a loop or route
     centreFallback: the center
     legendBank: bank
@@ -1888,7 +1926,6 @@ cards:
     legendAgain: passed again
     legendThrough: on the way
     legendTrap: trap
-    legendVertical: up/down
     legendYou: you
     svgAriaLabel: '{roomCount} rooms around {roomName}'
     svgAriaLabelDestination: '{roomCount} rooms around the destination, {roomName}'
@@ -2453,6 +2490,35 @@ cards:
     walkHereTooltip: Walk the planned route only as far as this room
     walkToButton: Plan route
     walkToTooltip: Plan the way here. Nothing is walked until you check the steps and confirm.
+  slotPeek:
+    ariaLabel: What this character can wear in {slot}
+    columnAc: AC
+    columnDamage: Dmg
+    columnDr: DR
+    columnItem: Item
+    columnLevel: Lvl
+    columnPerRound: Dmg/round
+    columnSpeed: Speed
+    empty: Nothing in the world database for this slot that this character can use.
+    findPlaceholder: Find an item
+    method:
+      attack: attack
+      bash: bash
+      smash: smash
+    failed: Couldn't look this slot up.
+    noWorld: No world database is loaded for this character's realm.
+    pending: Looking up this slot…
+    perRoundTooltip: Average damage a round before the target's armour and misses. Your own damage bonus and criticals are not counted.
+    rankArmour: Best first by AC, then DR.
+    rankBlow: Best first by average damage a blow. Damage a round can't be worked out on this realm yet.
+    rankWeapon: Best first by damage a round with {method}.
+    refused:
+      one: "1 item for this slot is left out: this character can't use it."
+      many: "{count} items for this slot are left out: this character can't use them."
+    slotTooltip: What this character can wear here, best first
+    tableCaption: Items for {slot}
+    unread: "This character's class, race, level or alignment isn't known yet, so some of these may be refused."
+    wornChip: worn
   route:
     alreadyHere: You are already here.
     destination:
@@ -5098,8 +5164,6 @@ automation:
     reasonRefused: the game refused {command}
     reasonUnlocking: unlocking the {barrier} to {stepName} with the key you are carrying
     reasonLever: '"{phrase}" to open the hidden way to {stepName}'
-    reasonWalkingThroughFight: Auto-combat is not fighting this, so the route keeps walking through
-      the fight instead of waiting for it to end, which is also how it ends.
     reasonRereading: reading the room again for the hidden way to {stepName}
     reasonSearching: searching for the hidden way to {stepName}
     searchHolding: The world data says the way to {stepName} is hidden here. Searching for it, and

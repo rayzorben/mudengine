@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { countedLabel, countedList, countedName, itemHitProcs, itemInvocation } from '../items';
+import {
+  countedLabel,
+  countedList,
+  countedName,
+  itemHitProcs,
+  itemInvocation,
+  WEAPON_WORN,
+  wornOfWord
+} from '../items';
 
 /*
  * Every listing this server prints counts, and until 2026-09-06 two of the
@@ -209,5 +217,14 @@ describe('the chance-on-hit an item carries', () => {
         ]
       })
     ).toEqual([]);
+  });
+});
+
+describe('a printed slot word, back to its Worn code', () => {
+  it('reads the server’s words and MajorMUD’s Two handed, and nothing else', () => {
+    expect(wornOfWord('Head')).toBe(2);
+    expect(wornOfWord('off-hand')).toBe(12);
+    expect(wornOfWord('Two handed')).toBe(WEAPON_WORN);
+    expect(wornOfWord('Resting')).toBeNull();
   });
 });

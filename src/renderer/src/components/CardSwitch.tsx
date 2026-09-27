@@ -113,8 +113,9 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
         />
       );
     case 'map':
-      // A map of nowhere states nothing.
-      return character.room.map === null ? null : (
+      // Always drawn, connected or not: the finder works on the world
+      // database alone, and a room not known is said on the card.
+      return (
         <MapCard
           {...chrome}
           character={character}
@@ -122,6 +123,8 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           // character searched is marked here too.
           finds={view.finds}
           load={ctx.loadMap}
+          routeBetween={ctx.routeBetween}
+          search={ctx.searchRooms}
           // This character's own route and lap, drawn over its own
           // neighbourhood — a pinned float belongs to somebody else.
           loop={view.loop}

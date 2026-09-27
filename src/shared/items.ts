@@ -116,6 +116,9 @@ export const WORN_SLOT: Readonly<Record<number, string>> = {
  */
 export const WEAPON_HAND = 'Weapon Hand';
 
+/** Its `Items.Worn` code: the one slot ranked by what it does rather than what it stops. */
+export const WEAPON_WORN = 1;
+
 /**
  * `Worn` code 12 — the other hand, which a two-handed weapon takes with it.
  *
@@ -124,6 +127,31 @@ export const WEAPON_HAND = 'Weapon Hand';
  * two-hander goes on, and the server refuses the `wear` otherwise.
  */
 export const OFF_HAND = 'Off-Hand';
+
+/**
+ * The words the listing prints for a slot that `WORN_SLOT` does not: MajorMUD
+ * prints a two-handed weapon as `demonic pitchfork (Two handed)`
+ * (`captures/060-mudinfo-ancient-sand-dragon-grimoire-bbs.txt`), and it sits in
+ * the weapon hand.
+ */
+const WORN_ALIASES: Readonly<Record<string, number>> = { 'two handed': WEAPON_WORN };
+
+/** The `Items.Worn` code a printed slot word names, or null for a word that names none. */
+export function wornOfWord(word: string): number | null {
+  const key = word.trim().toLowerCase();
+  const alias = WORN_ALIASES[key];
+  if (alias !== undefined) return alias;
+  for (const [code, slot] of Object.entries(WORN_SLOT)) {
+    if (slot.toLowerCase() === key) return Number(code);
+  }
+  return null;
+}
+
+/** Every word the listing prints for a slot, lower-cased: what the console makes a control. */
+export const SLOT_WORDS: ReadonlySet<string> = new Set([
+  ...Object.values(WORN_SLOT).map((slot) => slot.toLowerCase()),
+  ...Object.keys(WORN_ALIASES)
+]);
 
 /**
  * `Items.WeaponType`: **handedness × damage kind**, which is two axes and not

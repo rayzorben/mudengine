@@ -80,6 +80,8 @@ export interface PlayerFlyoutProps {
    * file is rebuilt. The realm's answer is one click away and always current.
    */
   inspect?(name: string, anchor: HTMLElement): void;
+  /** A slot word clicked: what the reading character can wear there, replacing this panel. */
+  onSelectSlot?(slot: string, anchor: HTMLElement): void;
   /**
    * Their gang's name clicked: the Gang flyout on it, replacing this panel.
    *
@@ -169,7 +171,8 @@ export default function PlayerFlyout({
   onAsk,
   onDismiss,
   returnFocus,
-  inspect
+  inspect,
+  onSelectSlot
 }: PlayerFlyoutProps) {
   const [face, setFace] = useState<Face>('player');
   const copy = useCopyMenu();
@@ -299,7 +302,12 @@ export default function PlayerFlyout({
             {onAsk && <PlayerAsks name={record.name} onAsk={onAsk} />}
           </>
         ) : face === 'equipment' ? (
-          <PlayerEquipment inspect={inspect} now={now} record={record} />
+          <PlayerEquipment
+            inspect={inspect}
+            now={now}
+            onSelectSlot={onSelectSlot}
+            record={record}
+          />
         ) : (
           <PlayerAccess
             gang={ownGang(character) ?? null}
@@ -617,11 +625,13 @@ function PlayerDetail({
 function PlayerEquipment({
   record,
   now,
-  inspect
+  inspect,
+  onSelectSlot
 }: {
   record: PlayerRecord;
   now: number;
   inspect?: (name: string, anchor: HTMLElement) => void;
+  onSelectSlot?: (slot: string, anchor: HTMLElement) => void;
 }) {
   if (record.equipment === null) {
     return <p className="empty">{t('cards.player.equipmentNeverLooked', { name: record.name })}</p>;
@@ -647,7 +657,21 @@ function PlayerEquipment({
       <dl className="readout player-equipment">
         {record.equipment.map((worn) => (
           <Fragment key={`${worn.slot}:${worn.name}`}>
-            <dt>{worn.slot}</dt>
+            <dt>
+              {onSelectSlot === undefined ? (
+                worn.slot
+              ) : (
+                <button
+                  className="lookup"
+                  onClick={(event) => onSelectSlot(worn.slot, event.currentTarget)}
+                  onMouseDown={keepFocus}
+                  title={t('cards.slotPeek.slotTooltip')}
+                  type="button"
+                >
+                  {worn.slot}
+                </button>
+              )}
+            </dt>
             <dd>
               {inspect === undefined ? (
                 worn.name

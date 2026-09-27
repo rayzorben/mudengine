@@ -26,6 +26,8 @@ export interface SessionTerminalProps {
   onInspect?(name: string, at: PopoverAnchor): void;
   onSelectPlayer?(session: SessionId, name: string, at: PopoverAnchor): void;
   onSelectGang?(session: SessionId, name: string, at: PopoverAnchor): void;
+  /** A slot word in a listing clicked: the slot's quick view, for this character. */
+  onSelectSlot?(session: SessionId, slot: string, at: PopoverAnchor): void;
   /** A room's name clicked in the console: the route panel, on that room. */
   onChooseRoom?(name: string): void;
   /** A console button main runs — `Deposit All`. See `TerminalIntentAction`. */
@@ -103,6 +105,7 @@ function SessionTerminal({
   onInspect,
   onSelectPlayer,
   onSelectGang,
+  onSelectSlot,
   onChooseRoom,
   run,
   walk,
@@ -254,6 +257,11 @@ function SessionTerminal({
     (name: string, at: PopoverAnchor) => onSelectGang?.(session, name, at),
     [onSelectGang, session]
   );
+  // And a slot: what this character can wear there, whoever's listing named it.
+  const selectSlot = useCallback(
+    (slot: string, at: PopoverAnchor) => onSelectSlot?.(session, slot, at),
+    [onSelectSlot, session]
+  );
   // And the same for a console button: the counter it is asked at belongs to
   // this terminal's character, never to whichever pane has the keyboard.
   const act = useCallback(
@@ -284,6 +292,7 @@ function SessionTerminal({
         onInspect={onInspect}
         onSelectPlayer={selectPlayer}
         onSelectGang={selectGang}
+        onSelectSlot={selectSlot}
         onChooseRoom={onChooseRoom}
         onAct={act}
         onReady={handleReady}

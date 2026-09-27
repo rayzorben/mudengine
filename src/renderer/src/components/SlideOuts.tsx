@@ -1,10 +1,10 @@
 /**
  * The panels that hang off a name, drawn from the one slot `useSlideOuts`
  * keeps: at most one of the realm's answer about a name, the room quick view,
- * the Player flyout and the Gang flyout.
+ * the Player flyout, the Gang flyout and the slot quick view.
  *
- * Out of `App` (todo 732). The flyouts are addressed at the character whose
- * listing was clicked, the other two at the character on screen. See
+ * Out of `App` (todo 732). The flyouts and the slot quick view are addressed at
+ * the character whose listing was clicked, the other two at the one on screen. See
  * `mudengine-ui` › *A listing and the detail chosen from it: two cards, and a
  * flyout*.
  */
@@ -15,6 +15,7 @@ import { ownAlignment } from './LairList';
 import PlayerFlyout from './PlayerFlyout';
 import ReferencePopover, { type ReferencePopoverProps } from './ReferencePopover';
 import RoomQuickView, { type RoomQuickViewProps } from './RoomQuickView';
+import SlotQuickView from './SlotQuickView';
 import { EMPTY_VIEW, type SessionView } from '../hooks/useSessionViews';
 import type { SlideOutSlot } from '../hooks/useSlideOuts';
 import { t } from '../lib/i18n';
@@ -37,7 +38,7 @@ export interface SlideOutsProps {
   chooseOnMap(map: number, room: number): void;
   /** One character's resolved `automation.remotes`. */
   remotesFor(session: SessionId): RemotesConfig;
-  api: Pick<IpcApi, 'askRemote' | 'setRemoteGrant'>;
+  api: Pick<IpcApi, 'askRemote' | 'setRemoteGrant' | 'slotGear'>;
   /** A sentence into one character's console. */
   say(session: SessionId, message: string): void;
   returnFocus(): void;
@@ -56,7 +57,7 @@ export default function SlideOuts({
   say,
   returnFocus
 }: SlideOutsProps) {
-  const { asked, flyout, gangFlyout, peek, dismissAsked } = slot;
+  const { asked, flyout, gangFlyout, peek, slotAsked, dismissAsked } = slot;
 
   /**
    * One of the three questions put to a player, from the flyout hanging off
@@ -141,6 +142,7 @@ export default function SlideOuts({
           character={(views[flyout.session] ?? EMPTY_VIEW).character}
           players={(views[flyout.session] ?? EMPTY_VIEW).players}
           inspect={slot.inspect}
+          onSelectSlot={(worn, anchor) => slot.selectSlot(flyout.session, worn, anchor)}
           onAsk={askPlayer}
           onDismiss={slot.dismissFlyout}
           onGrant={(name, grant) => void api.setRemoteGrant(flyout.session, name, grant)}
@@ -162,6 +164,21 @@ export default function SlideOuts({
           players={(views[gangFlyout.session] ?? EMPTY_VIEW).players}
           onDismiss={slot.dismissGangFlyout}
           onSelectPlayer={slot.selectPlayer}
+          returnFocus={returnFocus}
+        />
+      )}
+
+      {/*
+        What one slot takes that the clicked character can use, best first.
+        Every name in it opens the realm's answer, as a name anywhere does.
+      */}
+      {slotAsked !== null && (
+        <SlotQuickView
+          asked={slotAsked}
+          character={(views[slotAsked.session] ?? EMPTY_VIEW).character}
+          inspect={slot.inspect}
+          load={api.slotGear}
+          onDismiss={slot.dismissSlot}
           returnFocus={returnFocus}
         />
       )}

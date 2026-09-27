@@ -72,6 +72,10 @@ export interface CardContext {
   inspect(name: string, anchor: HTMLElement): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
+  /** Rooms by name or `map/room`, on this character's realm. */
+  searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
+  /** The Map card's preview route between two rooms, priced for this character. */
+  routeBetween(from: RoomId, to: RoomId): ReturnType<IpcApi['routeBetween']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
@@ -190,6 +194,10 @@ export interface AddressedActions {
   gear(action: GearAction, item?: string): void;
   loadWearer(): ReturnType<IpcApi['wearer']>;
   loadMap(map: number, room: number, radius?: number): ReturnType<IpcApi['localMap']>;
+  /** Rooms by name or `map/room`, on this character's realm. */
+  searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
+  /** The Map card's preview route between two rooms, priced for this character. */
+  routeBetween(from: RoomId, to: RoomId): ReturnType<IpcApi['routeBetween']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
@@ -223,6 +231,8 @@ export type CardApi = Pick<
   | 'gear'
   | 'wearer'
   | 'localMap'
+  | 'searchRooms'
+  | 'routeBetween'
   | 'lookup'
   | 'questBook'
   | 'questErrand'
@@ -395,6 +405,8 @@ export function useCardContext({
         gear: (action, item) => void api.gear(sid, action, item),
         loadWearer: () => api.wearer(sid),
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
+        searchRooms: (query) => api.searchRooms(sid, query),
+        routeBetween: (from, to) => api.routeBetween(sid, from, to),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
         loadErrand: (block) => api.questErrand(sid, block),
@@ -512,6 +524,8 @@ export function useCardContext({
         gear: bound.gear,
         loadWearer: shown ? loadWearer : bound.loadWearer,
         loadMap: shown ? loadMap : bound.loadMap,
+        searchRooms: bound.searchRooms,
+        routeBetween: bound.routeBetween,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
         peekRoom: shown ? peekRoom : null,

@@ -6,6 +6,7 @@ import Icon from './Icon';
 import { commandsOf, runsOf, stepSignature } from '../lib/route';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
+import { useRoomSearch } from '../hooks/useRoomSearch';
 import { t } from '../lib/i18n';
 import { type LocalMap } from '@shared/map';
 import { errorMessage } from '@shared/values';
@@ -321,7 +322,6 @@ export default function RoutePanel({
   onPeekEnd
 }: RoutePanelProps) {
   const [query, setQuery] = useState('');
-  const [matches, setMatches] = useState<WorldRoom[]>([]);
   const [route, setRoute] = useState<Route | null>(null);
   const [target, setTarget] = useState<WorldRoom | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
@@ -582,34 +582,15 @@ export default function RoutePanel({
   /* One element for as long as the reason holds, so the view's memo holds too. */
   const empty = useMemo(() => <div className="empty">{t('cards.map.emptyNoWorldData')}</div>, []);
 
+  /*
+   * Debounced: the realm has 55,806 rooms and a two-letter query matches a lot
+   * of them. The same search as the palette's, so the two answer typing at
+   * one speed. A search that died says why, and leaves no stale matches.
+   */
+  const { matches, failed } = useRoomSearch(onSearch, query);
   useEffect(() => {
-    if (query.trim().length < tuning().roomSearchMinChars) {
-      setMatches([]);
-      return;
-    }
-    let live = true;
-    // Debounced: the realm has 55,806 rooms and a two-letter query matches a
-    // lot of them. The figures come out of `internal.yaml`, shared with the
-    // palette, which searches the same index — two surfaces answering the same
-    // typing at different speeds is two behaviours to explain.
-    const timer = window.setTimeout(() => {
-      void onSearch(query)
-        .then((found) => {
-          if (live) setMatches(found);
-        })
-        .catch((error) => {
-          // A search that died must not leave the previous query's matches
-          // standing as though they were the answer.
-          if (!live) return;
-          setMatches([]);
-          setRefused(errorMessage(error));
-        });
-    }, tuning().roomSearchDebounceMs);
-    return () => {
-      live = false;
-      window.clearTimeout(timer);
-    };
-  }, [query, onSearch]);
+    if (failed !== null) setRefused(failed);
+  }, [failed]);
 
   /*
    * A room chosen from the list, planned. Stamped with the request it belongs

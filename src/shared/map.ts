@@ -184,9 +184,7 @@ export interface MapNode {
   kind: RoomKind;
   /** True for the room the character is standing in. */
   here: boolean;
-  /** Which way this room also leads, which a plane cannot show. */
-  vertical: Vertical;
-  /** The off-plane ways out, for a picture that lets a reader take one. */
+  /** The off-plane ways out, drawn as controls beside the room. */
   away?: MapAway[];
 }
 
@@ -291,7 +289,6 @@ export function layoutMap(map: LocalMap): MapDrawing {
       ...at(cell),
       kind: kindOf(cell, here),
       here,
-      vertical: cell.vertical,
       ...(cell.away && cell.away.length > 0 ? { away: cell.away } : {})
     };
   });
@@ -374,7 +371,7 @@ export function trailOf(
   bands = 1
 ): MapTrail {
   const shown = new Set(drawing.nodes.map((node) => node.id));
-  const corridors = new Map(drawing.links.map((link) => [pairKey(link.from, link.to), link]));
+  const corridors = corridorsOf(drawing);
 
   const legs: MapTrail['legs'] = [];
   /*
@@ -406,7 +403,7 @@ export function trailOf(
     const from = path[index - 1]!;
     const to = path[index]!;
     const key = pairKey(from, to);
-    const link = corridors.get(key);
+    const link = corridorBetween(corridors, from, to);
     if (link === undefined) continue;
 
     const again = walked.has(key);
@@ -432,6 +429,24 @@ export function trailOf(
     rooms: new Set(path.slice(1).filter((room) => shown.has(room))),
     stops: new Set(stops.filter((room) => shown.has(room)))
   };
+}
+
+/**
+ * The corridors a drawing joins, looked up by `corridorBetween`. The one
+ * answer to whether the map draws a step as a line: the trail reads it, and
+ * so does the route preview's paging (`pagesOf`).
+ */
+export function corridorsOf(drawing: MapDrawing): ReadonlyMap<string, MapLink> {
+  return new Map(drawing.links.map((link) => [pairKey(link.from, link.to), link]));
+}
+
+/** The corridor between two rooms, whichever end it is named from, if drawn. */
+export function corridorBetween(
+  corridors: ReadonlyMap<string, MapLink>,
+  from: RoomId,
+  to: RoomId
+): MapLink | undefined {
+  return corridors.get(pairKey(from, to));
 }
 
 /** One key for a corridor whichever end it is named from. */

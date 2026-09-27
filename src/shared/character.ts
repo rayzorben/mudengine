@@ -1769,7 +1769,7 @@ export function joinedTheParty(state: CharacterState, name: string | null): bool
  * hang-up watch and the roster notices — and two of them had grown their own
  * copy of these four lines.
  */
-export function ownAlignment(state: CharacterState): Alignment | null {
+export function ownAlignment(state: Pick<CharacterState, 'name' | 'online'>): Alignment | null {
   if (state.name === null) return null;
   const mine = state.name.toLowerCase();
   return state.online.find((entry) => entry.name.toLowerCase() === mine)?.alignment ?? null;

@@ -14,10 +14,19 @@
  * second copy of "which of these can be worn" would have the card offering a
  * button main then refuses.
  */
+import { alignmentBand, type Alignment } from './alignment';
 import type { CarriedItem } from './character';
 import type { ItemEntity } from './entities';
 import type { UiLookup } from './i18n';
-import { OFF_HAND, sameItem, WEAPON_HAND } from './items';
+import {
+  ARMOUR_TYPE,
+  OFF_HAND,
+  sameItem,
+  WEAPON_CLASS,
+  WEAPON_HAND,
+  WEAPON_TYPE,
+  type ItemKind
+} from './items';
 
 /**
  * The five things a gear button can ask for.
@@ -251,8 +260,17 @@ export interface EquipRestrictions {
   races?: readonly number[];
   /** The level the realm requires. */
   minLevel?: number;
-  /** A weapon's `StrReq`, the one requirement stated as a plain column. */
-  weapon?: { strength?: number };
+  /** What it is: only armour is ruled by armour kind, only a weapon by weapon kind. */
+  kind?: ItemKind;
+  /**
+   * A weapon's `StrReq`, the one requirement stated as a plain column, and its
+   * `WeaponType` code.
+   */
+  weapon?: { strength?: number; kind?: number };
+  /** Armour's `ArmourType` code. */
+  armour?: { kind?: number };
+  /** The realm's `Abil-n` pairs: `ClassOk` and the alignment gates are read from them. */
+  abilities?: ReadonlyArray<readonly [number, number]>;
 }
 
 /**
@@ -265,9 +283,12 @@ export interface EquipRestrictions {
  * server already gives for free.
  */
 export type EquipBlock =
+  | { kind: 'alignment'; has: Alignment }
   | { kind: 'class'; allowed: readonly number[] }
   | { kind: 'race'; allowed: readonly number[] }
   | { kind: 'level'; needs: number; has: number }
+  | { kind: 'armour'; heaviest: number; is: number }
+  | { kind: 'weapon'; is: number }
   | { kind: 'strength'; needs: number; has: number };
 
 /**
@@ -289,6 +310,11 @@ export interface Wearer {
   raceId: number | null;
   level: number | null;
   strength: number | null;
+  /** The roster's word for this character (`ownAlignment`); the sheet prints none. */
+  alignment: Alignment | null;
+  /** The class row's `WeaponType` and `ArmourType` codes (format 48). */
+  weaponType: number | null;
+  armourType: number | null;
   /**
    * The realm's class and race tables as `{ id: name }`, so a refusal can be
    * read.
@@ -317,9 +343,92 @@ export const UNKNOWN_WEARER: Wearer = {
   raceId: null,
   level: null,
   strength: null,
+  alignment: null,
+  weaponType: null,
+  armourType: null,
   classNames: {},
   raceNames: {}
 };
+
+/** `GMUDAbilityType.ClassOK`: a class the item is allowed to beside its `ClassRest` list. */
+const CLASS_OK = 59;
+
+/**
+ * The item gates on evil points, `ItemType.CanPlayerUseItem` (`ItemType.cs:280`):
+ * each refuses the points it names. `Good` and `Evil` take their threshold from
+ * the row's value where it states one (`golden braided belt` `Good -51`,
+ * `hellblade` `Evil 250`), the most extreme value winning as the server's loop
+ * has it; `-50` and `40` otherwise.
+ */
+const ALIGNMENT_GATES: Readonly<
+  Record<number, (values: readonly number[]) => (low: number, high: number) => boolean>
+> = {
+  // Good: refused above the threshold.
+  97: (values) => {
+    const most = Math.min(0, ...values.filter((value) => value !== 0));
+    const threshold = most === 0 ? -50 : most;
+    return (low) => low >= threshold;
+  },
+  // Evil: refused below the threshold.
+  98: (values) => {
+    const most = Math.max(0, ...values.filter((value) => value !== 0));
+    const threshold = most === 0 ? 40 : most;
+    return (_low, high) => high <= threshold;
+  },
+  // NotGood, NotEvil, Neutral, NotNeutral.
+  110: () => (_low, high) => high <= -50,
+  111: () => (low) => low >= 40,
+  112: () => (low, high) => high <= -50 || low >= 40,
+  113: () => (low, high) => low >= -50 && high <= 40
+};
+
+/**
+ * Whether an alignment gate on the item refuses every character of this word.
+ *
+ * The word is a band of points, so a gate refuses only where it refuses the
+ * whole band (`alignmentBand`'s open interval); a band a threshold runs through
+ * is unknown, and unknown never refuses.
+ */
+function alignmentRefuses(
+  abilities: ReadonlyArray<readonly [number, number]>,
+  alignment: Alignment
+): boolean {
+  const band = alignmentBand(alignment);
+  if (band === null) return false;
+  const [low, high] = band;
+  const values = new Map<number, number[]>();
+  for (const [id, value] of abilities) {
+    if (ALIGNMENT_GATES[id] === undefined) continue;
+    values.set(id, [...(values.get(id) ?? []), value]);
+  }
+  return [...values].some(([id, stated]) => ALIGNMENT_GATES[id]!(stated)(low, high));
+}
+
+/**
+ * Whether a class's `WeaponType` rules out a weapon's (`ItemType.cs:440`):
+ * 4 takes one-handed weapons, 7 blunt ones, 9 none the item does not name the
+ * class for, and 8 anything. A code the switch does not name rules out nothing.
+ */
+function weaponRuledOut(classWeapon: number, weaponKind: number): boolean {
+  const held = WEAPON_CLASS[weaponKind];
+  if (held === undefined) return false;
+  switch (classWeapon) {
+    case 4:
+      return held.hands === 2;
+    case 7:
+      return held.damage === 'sharp';
+    case 9:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** Whether a list names this id: null where the id is unknown and the list names somebody. */
+function names(list: readonly number[], id: number | null): boolean | null {
+  if (list.length === 0) return false;
+  return id === null ? null : list.includes(id);
+}
 
 /**
  * What the realm says stops this character wearing this item — or `null`.
@@ -344,24 +453,65 @@ export const UNKNOWN_WEARER: Wearer = {
  */
 export function equipBlock(item: EquipRestrictions, wearer: Wearer): EquipBlock | null {
   /*
+   * The server's own order: an alignment gate refuses before anything names
+   * the class or race, whatever they allow.
+   */
+  const abilities = item.abilities ?? [];
+  if (wearer.alignment !== null && alignmentRefuses(abilities, wearer.alignment)) {
+    return { kind: 'alignment', has: wearer.alignment };
+  }
+
+  /*
    * An allow-list, not a deny-list. Measured 2026-08-31 against
    * `gmud20230902`: `golden battleaxe` names `Warrior` and nothing else, and
    * `silver holy amulet` names the four holy classes — which is why a Mystic
    * wearing it earned `You may not wear that item!`. Read the other way round
-   * this would refuse every item to everyone but the classes named.
+   * this would refuse every item to everyone but the classes named. `ClassOk`
+   * pairs extend the list (`knife` names the Mage and the Mystic that way).
    */
   const classes = item.classes ?? [];
-  if (classes.length > 0 && wearer.classId !== null && !classes.includes(wearer.classId)) {
+  const classOk = abilities.filter(([id]) => id === CLASS_OK).map(([, value]) => value);
+  const classNamed = names([...classes, ...classOk], wearer.classId);
+  if (classes.length > 0 && classNamed === false) {
     return { kind: 'class', allowed: classes };
   }
 
   const races = item.races ?? [];
-  if (races.length > 0 && wearer.raceId !== null && !races.includes(wearer.raceId)) {
+  const raceNamed = names(races, wearer.raceId);
+  if (races.length > 0 && raceNamed === false) {
     return { kind: 'race', allowed: races };
   }
 
   if (item.minLevel !== undefined && wearer.level !== null && wearer.level < item.minLevel) {
     return { kind: 'level', needs: item.minLevel, has: wearer.level };
+  }
+
+  /*
+   * The class's own limits, which an item naming the class (or, for armour, the
+   * race) lifts. Only when neither half could have named it: an unknown class
+   * may be the one the item names.
+   */
+  const armourKind = item.armour?.kind;
+  if (
+    item.kind === 'armour' &&
+    armourKind !== undefined &&
+    armourKind > 0 &&
+    wearer.armourType !== null &&
+    armourKind > wearer.armourType &&
+    classNamed === false &&
+    raceNamed === false
+  ) {
+    return { kind: 'armour', heaviest: wearer.armourType, is: armourKind };
+  }
+  const weaponKind = item.weapon?.kind;
+  if (
+    item.kind === 'weapon' &&
+    weaponKind !== undefined &&
+    wearer.weaponType !== null &&
+    classNamed === false &&
+    weaponRuledOut(wearer.weaponType, weaponKind)
+  ) {
+    return { kind: 'weapon', is: weaponKind };
   }
 
   /*
@@ -406,6 +556,8 @@ export function blockReason(
   t: UiLookup
 ): string {
   switch (blocked.kind) {
+    case 'alignment':
+      return t('cards.inventory.blocked.byAlignment', { alignment: blocked.has });
     case 'class': {
       const named = blocked.allowed
         .map((id) => classNames[id])
@@ -422,6 +574,15 @@ export function blockReason(
     }
     case 'level':
       return t('cards.inventory.blocked.byLevel', { needed: blocked.needs, have: blocked.has });
+    case 'armour':
+      return t('cards.inventory.blocked.byArmour', {
+        heaviest: ARMOUR_TYPE[blocked.heaviest] ?? String(blocked.heaviest),
+        material: ARMOUR_TYPE[blocked.is] ?? String(blocked.is)
+      });
+    case 'weapon':
+      return t('cards.inventory.blocked.byWeapon', {
+        weaponType: WEAPON_TYPE[blocked.is] ?? String(blocked.is)
+      });
     case 'strength':
       return t('cards.inventory.blocked.byStrength', { needed: blocked.needs, have: blocked.has });
   }
@@ -459,7 +620,10 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
     ...(item.classes === undefined ? {} : { classes: item.classes }),
     ...(item.races === undefined ? {} : { races: item.races }),
     ...(item.minLevel === undefined ? {} : { minLevel: item.minLevel }),
-    ...(item.weapon === undefined ? {} : { weapon: item.weapon })
+    ...(item.kind === undefined ? {} : { kind: item.kind }),
+    ...(item.weapon === undefined ? {} : { weapon: item.weapon }),
+    ...(item.armour === undefined ? {} : { armour: item.armour }),
+    ...(item.abilities === undefined ? {} : { abilities: item.abilities })
   };
   // A realm row with no slot is not kit; a row the realm lacks keeps its
   // control, which is the refuse-rather-than-guess rule pointing the other way.

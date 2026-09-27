@@ -17,6 +17,7 @@
 import type { AutomationSnapshot } from './automation';
 import type { Block } from './blocks';
 import type { LocalMap } from './map';
+import type { RoutePages } from './routeLegs';
 import type { Discovery } from './memory';
 import type { Find } from './finds';
 import type { CharacterIdentity, ResetSignal } from './reset';
@@ -24,6 +25,7 @@ import type { CharacterState } from './character';
 import type { PlayerRegistry } from './players';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
+import type { SlotGear } from './slotGear';
 import type {
   Quest,
   QuestErrand,
@@ -624,6 +626,12 @@ export const Invoke = {
   getCharacter: 'session:get-character',
   /** A* route from where the character is to a chosen room. */
   routeTo: 'world:route',
+  /**
+   * A* route between two rooms named by the reader, neither of them where the
+   * character stands. The Map card's preview: read, never walked, so it asks
+   * for no alternatives.
+   */
+  routeBetween: 'world:route-between',
   /** Walk a planned route. Returns why it could not start, or null. */
   walkRoute: 'walk:start',
   /**
@@ -888,6 +896,8 @@ export const Invoke = {
   localMap: 'world:map',
   /** Everything the realm knows about one room, for a room nobody is in. */
   roomBrief: 'world:room',
+  /** Every item one slot takes that this character can use, best first. */
+  slotGear: 'world:slot',
   wearer: 'world:wearer',
   /**
    * Everything the realm knows about a name — monster, item or spell — for
@@ -1107,6 +1117,11 @@ export interface IpcApi {
   saveDebug(session: SessionId): Promise<{ path: string } | { error: string }>;
   getCharacter(session: SessionId): Promise<CharacterState>;
   routeTo(session: SessionId, map: number, room: number): Promise<Route>;
+  /**
+   * A preview route between two rooms, priced for this character, with the
+   * pages the Map card shows it in. See `Invoke.routeBetween`.
+   */
+  routeBetween(session: SessionId, from: RoomId, to: RoomId): Promise<RoutePages>;
   /**
    * Walks the plan the panel is showing.
    *
@@ -1344,6 +1359,12 @@ export interface IpcApi {
    * fifty-seven thousand of them. Null for a room the realm does not hold.
    */
   roomBrief(session: SessionId, map: number, room: number): Promise<RoomBrief | null>;
+  /**
+   * The slot a printed word names (`Head`, `Weapon Hand`), with every item the
+   * realm puts there that this character can use, best first. Null for a word
+   * that names no slot, or a realm with nothing loaded.
+   */
+  slotGear(session: SessionId, slot: string): Promise<SlotGear | null>;
   /**
    * Where this character should hunt: every lair the exits reach from where
    * it stands, priced by the realm's own respawn clock and the same

@@ -102,7 +102,7 @@ describe('laying out a map', () => {
   it('keeps a staircase findable even when it is drawn in the plane', () => {
     const map = cells(['1/1', 0, 0, []], ['1/2', 1, 0, []]);
     map.cells[1]!.vertical = 'up';
-    expect(node(map, '1/2')!.vertical).toBe('up');
+    expect(node(map, '1/2')!.kind).toBe('stairs');
   });
 
   it('carries the room name, so the card can say what it is', () => {
@@ -165,16 +165,6 @@ describe('laying out a map', () => {
   it('leaves an open corridor unmarked', () => {
     const map = cells(['1/1', 0, 0, ['e']], ['1/2', 1, 0, ['w']]);
     expect(layoutMap(map).links[0]?.obstacle).toBeUndefined();
-  });
-
-  it('says which way a room leaves the plane, not merely that it does', () => {
-    // A room with only a way down was drawn with an arrow pointing up, which is
-    // a map stating the opposite of the truth.
-    const map = cells(['1/1', 0, 0, []], ['1/2', 1, 0, []], ['1/3', 2, 0, []]);
-    map.cells[0]!.vertical = 'down';
-    map.cells[1]!.vertical = 'up';
-    map.cells[2]!.vertical = 'both';
-    expect(layoutMap(map).nodes.map((n) => n.vertical)).toEqual(['down', 'up', 'both']);
   });
 });
 

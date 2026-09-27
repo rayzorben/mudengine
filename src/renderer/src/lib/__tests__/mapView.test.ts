@@ -4,6 +4,7 @@ import {
   densityFor,
   dragged,
   extentOf,
+  fittedTo,
   radiusForView,
   viewBoxFor,
   wheelFactor,
@@ -189,5 +190,31 @@ describe('the density the zoom means', () => {
     expect(densityFor(50, 40, 10)).toBe(0);
     expect(densityFor(5, 40, 10)).toBe(1);
     expect(densityFor(23.3, 40, 10)).toBe(0.56);
+  });
+});
+
+describe('fittedTo', () => {
+  const cells = [
+    { id: '1/1', gx: 0, gy: 0 },
+    { id: '1/2', gx: 3, gy: 0 },
+    { id: '1/3', gx: 3, gy: -1 },
+    { id: '1/9', gx: -60, gy: 0 }
+  ];
+  const bounds = { min: 10, max: 40 };
+
+  it('centres on the rooms asked for and zooms to hold them', () => {
+    const view = fittedTo(cells, new Set(['1/1', '1/2', '1/3']), box, bounds);
+    // Four cells across in 400px and two down in 200px: 100 each, clamped to 40.
+    expect(view).toEqual({ perRoom: 40, pan: { x: 1.5 * MAP_CELL, y: -0.5 * MAP_CELL } });
+  });
+
+  it('stops at the widest zoom the map allows', () => {
+    const view = fittedTo(cells, new Set(['1/9', '1/2']), box, bounds);
+    expect(view?.perRoom).toBe(bounds.min);
+  });
+
+  it('answers nothing when no room asked for is placed, or the box is unmeasured', () => {
+    expect(fittedTo(cells, new Set(['2/2']), box, bounds)).toBeNull();
+    expect(fittedTo(cells, new Set(['1/1']), { width: 0, height: 0 }, bounds)).toBeNull();
   });
 });

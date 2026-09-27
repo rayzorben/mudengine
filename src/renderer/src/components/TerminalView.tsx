@@ -86,6 +86,12 @@ export interface TerminalViewProps {
    */
   onSelectGang?(name: string, at: PopoverAnchor): void;
   /**
+   * A slot word in a listing's parenthesis clicked, `(Head)`: the slot's quick
+   * view, paired with the mount for the reason a person's flyout is — it is a
+   * table to read and click through, and the next line printed must not close it.
+   */
+  onSelectSlot?(slot: string, at: PopoverAnchor): void;
+  /**
    * A room's name clicked in the console: the route panel, on that room.
    *
    * A separate handler rather than a kind the reference panel answers,
@@ -143,6 +149,7 @@ export default function TerminalView({
   onInspect,
   onSelectPlayer,
   onSelectGang,
+  onSelectSlot,
   onChooseRoom,
   onAct,
   reportSize = true,
@@ -214,6 +221,7 @@ export default function TerminalView({
     onInspect,
     onSelectPlayer,
     onSelectGang,
+    onSelectSlot,
     onChooseRoom,
     onAct
   });
@@ -225,6 +233,7 @@ export default function TerminalView({
     onInspect,
     onSelectPlayer,
     onSelectGang,
+    onSelectSlot,
     onChooseRoom,
     onAct
   };
@@ -471,37 +480,53 @@ export default function TerminalView({
          * has, rather than a second vocabulary.
          */
         const open = (hit: SpanHit, at: PopoverAnchor): void => {
-          if (hit.kind === 'player') {
-            /*
-             * Paired with the mount, not the screen. The realm's answer about
-             * a word closes when the console scrolls, because the word moved;
-             * a person's flyout carries the Access face, which writes to the
-             * options file, and a gate that closes on the next line the game
-             * prints is unusable in a busy room — the reason a popover was
-             * once ruled out for it. The mount is the viewport's parent and
-             * never scrolls, so the panel stays where the name was clicked,
-             * like a right-click menu, until Escape or a click elsewhere.
-             */
-            handlers.current.onSelectPlayer?.(hit.text, { box: anchorRect(at), within: mount });
-          } else if (hit.kind === 'gang') {
-            /*
-             * A gang, paired with the mount for the same reason a person is:
-             * the panel is read and clicked through — a member's name opens
-             * the flyout on *them* — and one that closed on the next line the
-             * game printed would be unusable in a busy room.
-             */
-            handlers.current.onSelectGang?.(hit.text, { box: anchorRect(at), within: mount });
-          } else if (hit.kind === 'room') {
-            /*
-             * A room is the one kind whose answer is not a readout. The realm
-             * knows where it is, and what a person wants from a place they are
-             * not standing in is the way there — so this opens the route panel
-             * the map and the Route face already open, rather than a card
-             * restating a name they just read.
-             */
-            handlers.current.onChooseRoom?.(hit.text);
-          } else {
-            handlers.current.onInspect?.(hit.text, at);
+          switch (hit.kind) {
+            case 'player':
+              /*
+               * Paired with the mount, not the screen. The realm's answer about
+               * a word closes when the console scrolls, because the word moved;
+               * a person's flyout carries the Access face, which writes to the
+               * options file, and a gate that closes on the next line the game
+               * prints is unusable in a busy room — the reason a popover was
+               * once ruled out for it. The mount is the viewport's parent and
+               * never scrolls, so the panel stays where the name was clicked,
+               * like a right-click menu, until Escape or a click elsewhere.
+               */
+              handlers.current.onSelectPlayer?.(hit.text, { box: anchorRect(at), within: mount });
+              return;
+            case 'gang':
+              /*
+               * A gang, paired with the mount for the same reason a person is:
+               * the panel is read and clicked through — a member's name opens
+               * the flyout on *them* — and one that closed on the next line the
+               * game printed would be unusable in a busy room.
+               */
+              handlers.current.onSelectGang?.(hit.text, { box: anchorRect(at), within: mount });
+              return;
+            case 'slot':
+              handlers.current.onSelectSlot?.(hit.text, { box: anchorRect(at), within: mount });
+              return;
+            case 'room':
+              /*
+               * A room is the one kind whose answer is not a readout. The realm
+               * knows where it is, and what a person wants from a place they are
+               * not standing in is the way there — so this opens the route panel
+               * the map and the Route face already open, rather than a card
+               * restating a name they just read.
+               */
+              handlers.current.onChooseRoom?.(hit.text);
+              return;
+            case 'item':
+            case 'mob':
+            case 'spell':
+            case 'race':
+            case 'class':
+              handlers.current.onInspect?.(hit.text, at);
+              return;
+            default: {
+              const unhandled: never = hit.kind;
+              throw new Error(`no panel opens for a ${String(unhandled)}`);
+            }
           }
         };
         const link = (hit: SpanHit, own: Segment, other?: Segment): ILink => {

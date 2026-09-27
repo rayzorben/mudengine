@@ -723,7 +723,7 @@ describe('the real realm data', () => {
    * `Class: Paladin` to row 3 are all in the file.
    */
   it.runIf(available)("walks a class-gated maze by the character's own class", () => {
-    const paladin = graph!.classId('Paladin');
+    const paladin = graph!.classNamed('Paladin')?.id ?? null;
     expect(paladin).toBe(3);
 
     // The two doors the report names, as the realm states them.
@@ -2377,7 +2377,8 @@ describe('reading an item kind back off disk', () => {
         speed: 1200,
         strength: 30,
         type: 'two-handed blunt',
-        hands: 2
+        hands: 2,
+        kind: 1
       }
     });
   });
@@ -2391,7 +2392,7 @@ describe('reading an item kind back off disk', () => {
       worn: 5,
       // Class 1 is the whole cloth category — padded, cotton, silk, robes —
       // and neither `padded` nor MMUD-Explorer's `Silk` was true of it.
-      armour: { ac: 10, dr: 1, material: 'cloth' }
+      armour: { ac: 10, dr: 1, material: 'cloth', kind: 1 }
     });
   });
 

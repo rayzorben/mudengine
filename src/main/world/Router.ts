@@ -15,7 +15,7 @@ import { describeObstacle, leverOpening } from './obstacle';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
-import { equipBlock, type Wearer } from '../../shared/gear';
+import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
 import {
   abilityGatesMet,
   blockItem,
@@ -3586,16 +3586,16 @@ function useGateShut(
 ): 'class' | 'race' | 'level' | null {
   if (requirement.usableBy === undefined) return null;
   const wearer: Wearer = {
+    ...UNKNOWN_WEARER,
     classId: traveller.classId ?? null,
     raceId: traveller.raceId ?? null,
-    level: traveller.level ?? null,
-    strength: null,
-    classNames: {},
-    raceNames: {}
+    level: traveller.level ?? null
   };
   const shut = equipBlock(requirement.usableBy, wearer);
-  // Strength is a weapon's, and a use gate carries none.
-  return shut === null || shut.kind === 'strength' ? null : shut.kind;
+  // A use gate names classes, races and a level; the rest are kit's.
+  return shut?.kind === 'class' || shut?.kind === 'race' || shut?.kind === 'level'
+    ? shut.kind
+    : null;
 }
 
 /** A block's identity across two explanations of one refusal: the edge. */

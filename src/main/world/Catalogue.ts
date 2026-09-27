@@ -359,6 +359,14 @@ export class Catalogue {
   }
 
   /**
+   * Every item row the realm puts in one `Items.Worn` slot, in header order:
+   * what a slot's quick view ranks (`slotGear.ts`).
+   */
+  itemsWornIn(worn: number): WorldItem[] {
+    return [...this.items.values()].filter((item) => item.worn === worn);
+  }
+
+  /**
    * The items the realm says would serve a condition — the picker's list
    * (todo 19).
    *
@@ -1551,6 +1559,13 @@ export class Catalogue {
         const value = Number(record[key]);
         if (Number.isFinite(value) && value > 0) entryOut[key] = value;
       }
+      // What it may wield and wear — format 48. Zero is a code, so only absent is dropped.
+      const weaponType = record['wpn'];
+      if (typeof weaponType === 'number' && Number.isInteger(weaponType))
+        entryOut.weaponType = weaponType;
+      const armourType = record['arm'];
+      if (typeof armourType === 'number' && Number.isInteger(armourType))
+        entryOut.armourType = armourType;
       // Negative is a real price here; see `loadRaces`.
       const exp = Number(record['expTable']);
       if (Number.isFinite(exp) && exp !== 0) entryOut.expTable = exp;
@@ -1605,10 +1620,6 @@ export class Catalogue {
    */
   raceId(name: string): number | null {
     return idNamed(this.races, name);
-  }
-
-  classId(name: string): number | null {
-    return idNamed(this.classes, name);
   }
 
   /**
@@ -2204,6 +2215,7 @@ function readItemKind(record: Record<string, unknown>, item: WorldItem): void {
     // a two-handed weapon leaves no off-hand slot.
     const held = Number.isInteger(weaponType) ? WEAPON_CLASS[weaponType] : undefined;
     if (held !== undefined) weapon.hands = held.hands;
+    if (Number.isInteger(weaponType)) weapon.kind = weaponType;
     item.weapon = weapon;
   }
 
@@ -2218,6 +2230,7 @@ function readItemKind(record: Record<string, unknown>, item: WorldItem): void {
     const armourType = Number(raw['kind']);
     const material = Number.isInteger(armourType) ? ARMOUR_TYPE[armourType] : undefined;
     if (material !== undefined) armour.material = material;
+    if (Number.isInteger(armourType)) armour.kind = armourType;
     item.armour = armour;
   }
 }

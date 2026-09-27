@@ -1,7 +1,9 @@
+import { SLOT_WORDS } from '@shared/items';
 import type { WorldNames } from '@shared/world';
 import { tuning } from './tuning';
 
-export type NameKind = 'item' | 'mob' | 'spell' | 'player' | 'gang' | 'race' | 'class' | 'room';
+export type NameKind =
+  'item' | 'mob' | 'spell' | 'player' | 'gang' | 'race' | 'class' | 'room' | 'slot';
 
 /** A recognised name in a row of console text, by character column. */
 export interface NameHit {
@@ -214,7 +216,7 @@ export class NameIndex {
         const first = words[at]!;
         const last = words[at + span - 1]!;
         const candidate = row.slice(first.start, last.end).toLowerCase();
-        const kind = this.kindOf(candidate);
+        const kind = slotAt(row, first.start, last.end, candidate) ?? this.kindOf(candidate);
         if (kind === undefined) continue;
         hits.push({ name: candidate, kind, start: first.start, end: last.end });
         taken = span;
@@ -381,6 +383,16 @@ function tokenize(row: string): Word[] {
     words.push({ start: match.index, end: match.index + match[0].length });
   }
   return words;
+}
+
+/**
+ * A slot word where the listing prints one: in the parenthesis after a worn
+ * item, `(Head)`, or before a count of charges, `(Readied/79)`. `Head`, `Back`
+ * and `Worn` are ordinary words anywhere else, so nowhere else is a slot.
+ */
+function slotAt(row: string, start: number, end: number, candidate: string): 'slot' | undefined {
+  if (row[start - 1] !== '(' || !SLOT_WORDS.has(candidate)) return undefined;
+  return row[end] === ')' || row[end] === '/' ? 'slot' : undefined;
 }
 
 /**

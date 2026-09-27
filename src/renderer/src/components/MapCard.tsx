@@ -1,7 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import MapRouteFinder from './MapRouteFinder';
 import MapView from './MapView';
+import RouteSheetView from './RouteSheetView';
+import { useRoutePreview } from '../hooks/useRoutePreview';
 import { t } from '../lib/i18n';
 import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
@@ -9,7 +12,8 @@ import { DEFAULT_MAP_DENSITY, EMPTY_MAP, roomPixelsFor, type LocalMap } from '@s
 import type { CharacterState } from '@shared/character';
 import type { LoopProgress } from '@shared/loops';
 import type { WalkProgress } from '@shared/walk';
-import { roomId, type RoomId } from '@shared/world';
+import type { RoutePages } from '@shared/routeLegs';
+import { roomId, type RoomId, type WorldRoom } from '@shared/world';
 import { roomsWithFinds, type Find } from '@shared/finds';
 
 export interface MapCardProps extends CardChrome {
@@ -23,6 +27,10 @@ export interface MapCardProps extends CardChrome {
    * same rooms larger.
    */
   load(map: number, room: number, radius: number): Promise<LocalMap>;
+  /** Rooms by name or `map/room`, for the finder. */
+  search(query: string): Promise<WorldRoom[]>;
+  /** The preview route between two rooms. See `useRoutePreview`. */
+  routeBetween(from: RoomId, to: RoomId): Promise<RoutePages>;
   /**
    * Where this character is headed, so the map can draw it.
    *
@@ -86,6 +94,8 @@ function MapCard({
   onBuild,
   onPeek,
   onPeekEnd,
+  routeBetween,
+  search,
   walk,
   ...chrome
 }: MapCardProps) {
@@ -163,28 +173,69 @@ function MapCard({
     setZoom(roomPixelsFor(density, sparse, dense));
   }, [density, sparse, dense]);
 
+  /*
+   * The route preview, and where it puts the eye: the leg on screen, else
+   * the room picked in either field, else the character. The preview has a
+   * zoom of its own, fitted to each leg, so paging through a route never
+   * writes the card's density.
+   */
+  const preview = useRoutePreview(routeBetween, here);
+  const leg = preview.legs[preview.leg] ?? null;
+  const [legZoom, setLegZoom] = useState(zoom);
+  const fit = useMemo(() => (leg === null ? null : new Set(leg.rooms)), [leg]);
+  const legEnd = useMemo(() => (leg === null ? [] : leg.rooms.slice(-1)), [leg]);
+  const centre = leg?.rooms[0] ?? preview.to?.id ?? preview.from?.id ?? here;
+  const [home, setHome] = useState(0);
+  const { clear } = preview;
+  const locate = useCallback((): void => {
+    clear();
+    setHome((count) => count + 1);
+  }, [clear]);
+
   /* One element for as long as the reason holds, so the view's memo holds too. */
   const empty = useMemo(
     () => (
       <div className="empty">
-        {area === null ? t('cards.map.emptyNoLocation') : t('cards.map.emptyNoWorldData')}
+        {centre === null ? t('cards.map.emptyNoLocation') : t('cards.map.emptyNoWorldData')}
       </div>
     ),
-    [area]
+    [centre]
   );
 
-  const badge =
-    map.dropped > 0 ? (
+  /*
+   * A sheet's floors are cropped, so it folds nothing and counts what it
+   * draws, once each: a line cut at a map's edge shows its room on both floors.
+   */
+  const shown = useMemo(() => {
+    if (!leg?.sheet) return map;
+    const cells = new Map(
+      leg.sheet.floors.flatMap((floor) => floor.map.cells).map((cell) => [cell.id, cell])
+    );
+    return { ...EMPTY_MAP, cells: [...cells.values()] };
+  }, [leg, map]);
+  const count =
+    shown.dropped > 0 ? (
       <span className="chip warn" title={t('cards.map.badgeTooltipDropped')}>
         {t('cards.map.badgeFoldedCount', {
-          roomCount: map.cells.length,
-          droppedCount: map.dropped
+          roomCount: shown.cells.length,
+          droppedCount: shown.dropped
         })}
       </span>
     ) : (
       <span className="chip off">
-        {t('cards.map.badgeRoomCount', { roomCount: map.cells.length })}
+        {t('cards.map.badgeRoomCount', { roomCount: shown.cells.length })}
       </span>
+    );
+  const badge =
+    here === null ? (
+      <>
+        <span className="chip warn map-unknown" title={t('cards.map.roomUnknownTooltip')}>
+          {t('cards.map.roomUnknown')}
+        </span>
+        {count}
+      </>
+    ) : (
+      count
     );
 
   return (
@@ -213,20 +264,46 @@ function MapCard({
        * separate, deliberate action — a bare map click is the easiest possible
        * way to send a character somewhere by accident.
        */}
-      <MapView
-        centre={here}
-        empty={empty}
-        load={load}
-        name="map"
-        onLoaded={setMap}
-        onPeek={onPeek ?? undefined}
-        onPeekEnd={onPeekEnd ?? undefined}
-        onZoom={onZoom}
-        finds={foundRooms}
-        path={walk.path}
-        stops={loop.remainingStops}
-        zoom={zoom}
+      <MapRouteFinder
+        onDone={chrome.returnFocus}
+        onLocate={here === null ? null : locate}
+        placed={here !== null}
+        preview={preview}
+        search={search}
       />
+      {leg?.sheet ? (
+        <RouteSheetView
+          finds={foundRooms}
+          onPeek={onPeek ?? undefined}
+          onPeekEnd={onPeekEnd ?? undefined}
+          sheet={leg.sheet}
+          stops={legEnd}
+          you={here}
+        />
+      ) : (
+        <MapView
+          centre={centre}
+          empty={empty}
+          finds={foundRooms}
+          fit={fit}
+          home={home}
+          load={load}
+          name="map"
+          onLoaded={setMap}
+          onPeek={onPeek ?? undefined}
+          onPeekEnd={onPeekEnd ?? undefined}
+          onZoom={leg === null ? onZoom : setLegZoom}
+          {...(leg === null
+            ? { path: walk.path, stops: loop.remainingStops, zoom }
+            : {
+                path: leg.rooms,
+                stops: legEnd,
+                zoom: legZoom,
+                focus: 'centre' as const,
+                you: here
+              })}
+        />
+      )}
     </BentoCard>
   );
 }

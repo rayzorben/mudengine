@@ -551,8 +551,8 @@ export class WorldGraph {
     return this.catalogue.raceId(name);
   }
 
-  classId(name: string): number | null {
-    return this.catalogue.classId(name);
+  itemsWornIn(worn: number): WorldItem[] {
+    return this.catalogue.itemsWornIn(worn);
   }
 
   raceAbilities(name: string): Array<[number, number]> | null {

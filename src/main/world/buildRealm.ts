@@ -96,8 +96,9 @@ import {
  * | 45 | **`checkspell` is what the waterskin does to the desert, on the data that spells it that way.** Format 43 followed a `checkspell <spell> <block>` gate and deliberately declined to read it as *this spell stops the room*, on the ground that the two GreaterMUD builds answer the verb opposite ways. `TextBlockPart.cs:479` returns `Failed` unconditionally and runs the block only for a character the spell is **not** on, and `ExecuteOnMatch` breaks the line on `Failed`, so the block is the whole of what the room does and it is `failspell`'s shape exactly. Live, Festus took *You suffer in the desert heat…* 24 times, typed `drink water` — spell 711 — and crossed 26 more desert rooms without it printing once. The two shipped worlds spell the desert's own gate differently: Paradigm and GreaterMUD write `failspell 711 2654` and already named the ward, MajorMUD's v1.11p data writes `checkspell 711 2654` and named none — so stock goes from **0 warded room spells to 3** (946 rooms, 945 of them desert) and Paradigm from 2 to 4 (+57 rooms). No hazard loses a figure, since the block was already followed. Bumped for the **cache**, like 19, 26 and 27 — todo 02 |
  * | 46 | **A gate on level says *which* character, and the router is planning for one.** Format 43 follows `minlevel` / `maxlevel` at full weight — what stands behind a gate happens to *somebody* — and then flattened it, so the desert's sandstorm (`86:maxlevel 19:cast 713`, a one-in-a-hundred teleport) was priced as *it moves you somewhere else* on all 979 of Paradigm's desert rooms, for a level 21 character it cannot touch. Reported as *it is set to maxlevel 19 so in this case festus is level 21 so it wont execute and can be ignored*. `BuiltSpellHazard.lv` carries the band each of `d`, `tp` and `sm` was recorded under — a gate governs the rest of its own line, so the band is taken back at the end of each — and `hazardFor` (`src/shared/world.ts`) narrows a hazard to the character's level at `WorldGraph.hazardOf`, the one join. **An unstated level keeps the whole hazard**, and an effect recorded both inside a gate and outside one is ungated: the reassuring answer here is *it cannot happen to you* — todo 01 |
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
+ * | 48 | **What a class may wield and wear.** `Classes.WeaponType` and `ArmourType` were in every class row and read by nothing, so the client could not say that a Mage wears cloth (1) and a Priest swings a staff (9): `ItemType.CanPlayerUseItem` refuses armour heavier than the class's `Armour` and a weapon kind the class's `Weapon` rules out (4 one-handed, 7 blunt, 9 none but what the item names the class for), and a slot's quick view listed plate first for a Mage. `BuiltClass.wpn` and `arm` carry the codes |
  */
-export const REALM_FORMAT = 47;
+export const REALM_FORMAT = 48;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -561,6 +562,10 @@ export interface BuiltClass {
   magery?: number;
   /** How well it fights, on the realm's own 1–7 scale. */
   combat?: number;
+  /** `WeaponType`: which weapon kinds it may wield (4, 7, 8, 9). Format 48. */
+  wpn?: number;
+  /** `ArmourType`: the heaviest armour kind it may wear, `ARMOUR_TYPE`'s code. Format 48. */
+  arm?: number;
   /**
    * `Abil-n` / `AbilVal-n` — format 14, and the same pairs an item carries.
    *
@@ -1978,6 +1983,11 @@ export function indexClasses(source: RealmSource): BuiltClass[] {
     if (magery !== null && magery > 0) entry.magery = magery;
     const combat = number(row['CombatLVL']);
     if (combat !== null && combat > 0) entry.combat = combat;
+    // Zero is a real code for both (no armour, any weapon), so only absent is dropped.
+    const weapon = number(row['WeaponType']);
+    if (weapon !== null) entry.wpn = weapon;
+    const armour = number(row['ArmourType']);
+    if (armour !== null) entry.arm = armour;
     const ab = abilityPairs(row);
     if (ab.length > 0) entry.ab = ab;
     built.push(entry);
