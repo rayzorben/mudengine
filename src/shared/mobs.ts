@@ -23,6 +23,7 @@
  * Dependency-free: the build script derives it, the tracker applies it, the
  * renderer draws it and the arbiter acts on it.
  */
+import { alignmentBand } from './alignment';
 import type { Alignment } from './character';
 
 /**
@@ -186,45 +187,6 @@ export function worstDisposition(all: Iterable<MobDisposition>): MobDisposition 
 }
 
 /**
- * Where the realm's alignment words sit on the scale the server compares.
- *
- * `GMUDServer.GetAlignmentTitle` turns a float into one of eight words at fixed
- * boundaries, and `ShouldMobAttackTarget` compares the *float*. Going back the
- * other way — word to number — only recovers a range, so this carries the range
- * and the two questions below are answered from it rather than from a midpoint
- * somebody picked.
- *
- * `Seedy` is the one band a boundary runs through: it spans 30 up to 40, and a
- * `LawfulEvil` monster attacks at `<= 30`. So a Seedy character is attacked by
- * one only at the exact bottom of their own band, which nothing on screen
- * distinguishes — and that is reported as *unknown* rather than resolved.
- *
- * **`Lawful` is MajorMUD's word for `Saint`'s band** (2026-09-17), which is
- * why it has one at all: it was deliberately absent here on the grounds that
- * `GetAlignmentTitle` does not produce it, and the exemption said it would go
- * when the capture arrived. It has. Bearfather's MajorMUD 1.11p prints a
- * roster of `Lawful`, `Good`, `Neutral` and `Criminal` and never `Saint`, and
- * `Saint` appears nowhere in the 218-capture corpus while `Lawful` appears in
- * two — eight rungs on each ladder, seven words shared, one word in each that
- * the other does not have. The cost of the absence was a route: every
- * `hates-evil` guardsman in Godfrey answered *nobody can say* against a
- * `Lawful` character, a pass was priced as a fight a level-1 mystic cannot
- * survive, and the walk to Newhaven went 46 steps round a town square it
- * could have crossed. See `decisions.md`.
- */
-const ALIGNMENT_RANGE: Partial<Record<Alignment, [number, number]>> = {
-  Saint: [-1000, -200],
-  Lawful: [-1000, -200],
-  Good: [-200, -50],
-  Neutral: [-50, 30],
-  Seedy: [30, 40],
-  Outlaw: [40, 80],
-  Criminal: [80, 120],
-  Villain: [120, 210],
-  FIEND: [210, 1000]
-};
-
-/**
  * Whether a monster will open the fight, given how the realm ranks you.
  *
  * Three answers, not two. `null` is *nobody can say*, and it is the honest one
@@ -245,8 +207,8 @@ export function attacksOnSight(
   if (disposition === 'passive') return false;
   if (mine === null) return null;
 
-  const band = ALIGNMENT_RANGE[mine];
-  if (band === undefined) return null;
+  const band = alignmentBand(mine);
+  if (band === null) return null;
   const [low, high] = band;
   if (disposition === 'hates-good') {
     // `tempPlayer.Alignment <= 30.0f` — attacked while neutral or better.

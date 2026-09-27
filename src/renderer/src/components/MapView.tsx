@@ -56,6 +56,12 @@
  * - **A new centre is a new view.** Every pick, every step the character
  *   takes and every room found recentre the picture and drop the pan, because
  *   the centre changing is the card saying *look here*. The zoom stays.
+ * - **Up and down are a way of looking** (2026-09-27). The chevrons beside a
+ *   room recentre the picture on the room the stairs land in, keyed on the
+ *   centre the surface handed in, so the character's next step brings the
+ *   eye home the way any new centre does, and *Back to* brings it home
+ *   sooner. A surface whose centre is its own state (the builder) passes its
+ *   own `onLook`.
  *
  * The wheel is claimed with a native, non-passive listener, because React's
  * own is passive and `preventDefault` there is a warning rather than a
@@ -78,9 +84,11 @@ import {
 
 import MapPlan, { MapLegend, type MapPlanProps } from './MapPlan';
 import { keepFocus } from '../lib/focus';
+import { t } from '../lib/i18n';
 import {
   dragged,
   extentOf,
+  fittedTo,
   NO_PAN,
   radiusForView,
   wheelFactor,
@@ -91,11 +99,11 @@ import {
   type MapView as View
 } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
-import { EMPTY_MAP, type LocalMap } from '@shared/map';
+import { EMPTY_MAP, type LocalMap, type MapAway } from '@shared/map';
 import { errorMessage } from '@shared/values';
 import { asRoomReference, type RoomId } from '@shared/world';
 
-export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport'> {
+export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport' | 'onLook'> {
   /** The room the neighbourhood is fetched around. Null draws `empty`. */
   centre: RoomId | null;
   load(map: number, room: number, radius: number): Promise<LocalMap>;
@@ -112,25 +120,104 @@ export interface MapViewProps extends Omit<MapPlanProps, 'map' | 'viewport'> {
   empty: ReactNode;
   /** Which map this is, for the console line a failed fetch writes. */
   name: string;
+  /**
+   * A way up or down was pressed, on a surface whose centre is its own
+   * state. Absent, this view recentres itself; see the header.
+   */
+  onLook?: (away: MapAway) => void;
+  /**
+   * Rooms the window takes itself out to hold, panned to their middle: the
+   * route preview's leg. Refitted as a wider fetch places more of them, only
+   * ever further out, until the wheel or a drag takes the view over. Keyed
+   * on identity, so a new set is a new fit.
+   */
+  fit?: ReadonlySet<RoomId> | null;
+  /**
+   * Bumped to bring the eye back to the centre when the centre itself has
+   * not changed: the Map card's locate button, after a pan or a look.
+   */
+  home?: number;
+}
+
+/** The fit in progress: which rooms, and the zoom it has reached. */
+interface Fitting {
+  rooms: ReadonlySet<RoomId> | null;
+  perRoom: number;
+}
+
+/**
+ * Where the eye went by a way up or down, and the centre it left: a looked-at
+ * room counts only while the surface still hands in `from`, so a new centre
+ * drops it without an effect noticing a frame late.
+ */
+interface Looked {
+  from: RoomId | null;
+  /** The surface's `home` when the look began; a new one drops it. */
+  home: number;
+  at: RoomId;
+  /** The room *Back to* names: the surface's centre, as the first look found it. */
+  homeName: string | null;
 }
 
 const NO_BOX: Box = { width: 0, height: 0 };
 
-function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture }: MapViewProps) {
+function MapView({
+  centre: handed,
+  load,
+  zoom,
+  onZoom,
+  onLoaded,
+  empty,
+  name,
+  onLook,
+  fit = null,
+  home = 0,
+  ...picture
+}: MapViewProps) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Box>(NO_BOX);
   const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
+  const [looked, setLooked] = useState<Looked | null>(null);
+  // A look left behind is dropped once the surface moves on, so walking out
+  // of the room and back in does not bring it back.
+  if (looked !== null && (looked.from !== handed || looked.home !== home)) setLooked(null);
+  const looking = looked !== null && looked.from === handed && looked.home === home;
+  /* The room the picture is drawn around: the surface's, or where the eye went. */
+  const centre = looking ? looked.at : handed;
+  const look = useCallback(
+    (away: MapAway): void =>
+      setLooked((current) =>
+        // Stairs back down to where the eye started are the way home.
+        away.to === handed
+          ? null
+          : {
+              from: handed,
+              home,
+              at: away.to,
+              homeName:
+                current !== null && current.from === handed
+                  ? current.homeName
+                  : (map.cells.find((cell) => cell.id === handed)?.name ?? null)
+            }
+      ),
+    [handed, home, map]
+  );
+  const goHome = useCallback((): void => setLooked(null), []);
   /*
    * The pan, keyed on the centre it was made from: a new centre reads as no
    * pan without an effect having to notice and reset it a frame late, which
    * would draw one frame of the new neighbourhood through the old eye.
    */
-  const [panned, setPanned] = useState<{ centre: RoomId | null; pan: View['pan'] }>({
+  const [panned, setPanned] = useState<{ centre: RoomId | null; home: number; pan: View['pan'] }>({
     centre,
+    home,
     pan: NO_PAN
   });
-  const pan = panned.centre === centre ? panned.pan : NO_PAN;
-  const setPan = useCallback((next: View['pan']) => setPanned({ centre, pan: next }), [centre]);
+  const pan = panned.centre === centre && panned.home === home ? panned.pan : NO_PAN;
+  const setPan = useCallback(
+    (next: View['pan']) => setPanned({ centre, home, pan: next }),
+    [centre, home]
+  );
   const extent = useMemo(() => extentOf(map.cells), [map]);
   const { mapRadiusMin, mapRadiusMax, mapRoomPixelsDense, mapRoomPixelsSparse } = tuning();
   const bounds = useMemo(
@@ -169,7 +256,37 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
     return () => observer.disconnect();
   }, []);
 
-  const radius = radiusForView(view, size, mapRadiusMin, mapRadiusMax);
+  /*
+   * A fit the hand has not taken over fetches at the widest radius, the one
+   * main paged the route by (`pagesOf`), so the first answer places the
+   * whole page exactly as the paging saw it.
+   */
+  const [touchedFit, setTouchedFit] = useState<ReadonlySet<RoomId> | null>(null);
+  const fitting = fit !== null && touchedFit !== fit;
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  const touch = useCallback((): void => setTouchedFit(fitRef.current), []);
+  const radius = Math.max(
+    radiusForView(view, size, mapRadiusMin, mapRadiusMax),
+    fitting ? mapRadiusMax : 0
+  );
+
+  /*
+   * The fit, stated from the neighbourhood drawn around this centre only: a
+   * map still around the last centre has every room somewhere else.
+   */
+  const fitted = useRef<Fitting>({ rooms: null, perRoom: Infinity });
+  useEffect(() => {
+    if (!fitting || map.centre !== centre) return;
+    if (fitted.current.rooms !== fit) fitted.current = { rooms: fit, perRoom: Infinity };
+    const state = fitted.current;
+    const next = fittedTo(map.cells, fit, size, bounds);
+    // A narrower fetch places fewer of the rooms; the wider fit stands.
+    if (next === null || next.perRoom > state.perRoom) return;
+    state.perRoom = next.perRoom;
+    setPan(next.pan);
+    onZoom(next.perRoom);
+  }, [fitting, fit, map, centre, size, bounds, setPan, onZoom]);
 
   /* The latest of what the fetch reports to, read from inside its promise. */
   const loaded = useRef(onLoaded);
@@ -220,8 +337,8 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
    * moves under it.
    */
   const drawn = map.cells.length > 0;
-  const latest = useRef({ view, bounds, extent, drawn, onZoom, setPan });
-  latest.current = { view, bounds, extent, drawn, onZoom, setPan };
+  const latest = useRef({ view, bounds, extent, drawn, onZoom, setPan, touch });
+  latest.current = { view, bounds, extent, drawn, onZoom, setPan, touch };
   useEffect(() => {
     const node = box.current;
     if (node === null) return;
@@ -238,6 +355,7 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
         current.bounds
       );
       if (next === current.view) return;
+      current.touch();
       const kept = within(next, current.extent);
       // Both in one event, so React commits them together: the pan alone at
       // the old zoom would draw one frame with the pointer's room elsewhere.
@@ -260,7 +378,7 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0 || !drawn) return;
     const target = event.target as Element;
-    if (target.closest('.map-room, .map-away') !== null) return;
+    if (target.closest('.map-room, .map-away, .map-back') !== null) return;
     // The caret stays in the console. Cancelling the press stops the
     // selection a drag would otherwise sweep; `keepFocus` on the mouse event
     // below stops the focus move, whichever of the two the browser hangs it
@@ -291,6 +409,7 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
       const slop = tuning().dragSlop;
       if (Math.abs(dx) <= slop && Math.abs(dy) <= slop) return;
       at.live = true;
+      touch();
       setPanning(true);
     }
     setPan(within(dragged(at.from, dx, dy), extent).pan);
@@ -323,7 +442,32 @@ function MapView({ centre, load, zoom, onZoom, onLoaded, empty, name, ...picture
         onPointerUp={onPointerEnd}
         ref={box}
       >
-        {drawn ? <MapPlan {...picture} map={map} viewport={viewport} /> : empty}
+        {drawn ? (
+          <MapPlan
+            {...picture}
+            /* Away from the surface's centre, its loud ring stays on the room
+               it marked: the character, or the route's destination. */
+            focus={looking ? 'centre' : picture.focus}
+            map={map}
+            onLook={onLook ?? look}
+            viewport={viewport}
+            you={looking && picture.focus !== 'centre' ? handed : picture.you}
+          />
+        ) : (
+          empty
+        )}
+        {looking && (
+          <button
+            className="chip pick map-back"
+            onClick={goHome}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {looked.homeName === null
+              ? t('cards.map.back')
+              : t('cards.map.backTo', { roomName: looked.homeName })}
+          </button>
+        )}
       </div>
       {/* The builder's own keys where the builder's own marks are, which is
           the one thing the legend asks of the surface — and it asks the

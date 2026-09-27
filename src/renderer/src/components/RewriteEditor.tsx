@@ -701,6 +701,9 @@ const SAMPLE_WEARER: Wearer = {
   raceId: 1,
   level: 12,
   strength: 60,
+  alignment: null,
+  weaponType: null,
+  armourType: null,
   classNames: { 1: 'Warrior', 2: 'Mystic' },
   raceNames: { 1: 'Human' }
 };

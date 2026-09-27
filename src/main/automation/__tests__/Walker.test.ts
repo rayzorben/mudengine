@@ -3714,7 +3714,6 @@ describe('a fight on the way', () => {
       walk.configure({ ...fights, combat: { ...fights.combat, enabled: false } });
       await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
 
-      expect(notices).toContain(t('automation.walk.reasonWalkingThroughFight'));
       /*
        * The hold is **let go and the step goes out**, which is the assertion
        * that matters: `status` is `walking` for a held walk too, so asserting
@@ -3758,11 +3757,10 @@ describe('a fight on the way', () => {
       await vi.advanceTimersByTimeAsync(50);
       walk.onCharacter(fighting(1, 1));
       expect(walk.progress.hold).toBe('fight');
-      expect(notices).not.toContain(t('automation.walk.reasonWalkingThroughFight'));
       // The escape settles and nothing is fighting it: walked through then.
       escaping = false;
       await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
-      expect(notices).toContain(t('automation.walk.reasonWalkingThroughFight'));
+      expect(walk.progress.hold).toBeNull();
       walk.dispose();
     });
 
@@ -3775,23 +3773,6 @@ describe('a fight on the way', () => {
       await vi.advanceTimersByTimeAsync(50);
       walk.noteEscaped();
       expect(walk.progress.hold).toBe('fight');
-      walk.dispose();
-    });
-
-    /* A follower swinging in every room is one decision, and one line. */
-    it('says it walks through once a walk, not once a room', async () => {
-      const walk = new Walker(config, queue, {
-        notice: (message) => notices.push(message),
-        stateNow: () => fighting(1, 1)
-      });
-      walk.start(ROUTE, at(1, 1));
-      await vi.advanceTimersByTimeAsync(50);
-      walk.onCharacter(fighting(1, 1));
-      walk.onCharacter(fighting(1, 2));
-      walk.onCharacter(fighting(1, 2));
-      expect(
-        notices.filter((line) => line === t('automation.walk.reasonWalkingThroughFight'))
-      ).toHaveLength(1);
       walk.dispose();
     });
 
@@ -3809,12 +3790,14 @@ describe('a fight on the way', () => {
       walk.start(ROUTE, at(1, 1));
       await vi.advanceTimersByTimeAsync(50);
       sent.length = 0;
+      notices.length = 0;
       walk.onCharacter(fighting(1, 1));
       await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
       // No hold: the step already on the wire is still what it waits for.
       expect(walk.progress.hold).toBeNull();
       expect(walk.walking).toBe(true);
-      expect(notices).toContain(t('automation.walk.reasonWalkingThroughFight'));
+      // The player set the switches and sees the fight: nothing is said.
+      expect(notices).toEqual([]);
       walk.dispose();
     });
   });

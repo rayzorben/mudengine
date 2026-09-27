@@ -262,6 +262,9 @@ describe('who the realm lets wear a thing', () => {
     raceId: 4,
     level: 28,
     strength: 40,
+    alignment: null,
+    weaponType: null,
+    armourType: null,
     classNames: { 3: 'Paladin', 4: 'Cleric', 5: 'Priest', 6: 'Missionary', 15: 'Mystic' },
     raceNames: { 4: 'Halfling', 5: 'Elf' }
   };
@@ -509,5 +512,72 @@ describe('using an item between rounds', () => {
   it('sends nothing for an item the pack does not hold, or with nothing to aim at', () => {
     expect(offRoundPlan('nexus spear', 'big sandworm', [], hands)).toEqual([]);
     expect(offRoundPlan('nexus spear', '', [worn('nexus spear', WEAPON_HAND)], hands)).toEqual([]);
+  });
+});
+
+/**
+ * The rest of `ItemType.CanPlayerUseItem` (`ItemType.cs:250–470`): the
+ * alignment gates first, `ClassOk` beside `ClassRest`, and the class's own
+ * armour and weapon kinds, lifted where the item names the class or race.
+ */
+describe('what else the server checks before an item goes on', () => {
+  const mage: Wearer = {
+    ...UNKNOWN_WEARER,
+    classId: 12,
+    raceId: 1,
+    level: 20,
+    alignment: 'Neutral',
+    weaponType: 9,
+    armourType: 1
+  };
+
+  it('refuses a good-only item to a neutral character, and allows it to a good one', () => {
+    const halo: EquipRestrictions = { slot: 'Head', abilities: [[97, 0]] };
+    expect(equipBlock(halo, mage)).toEqual({ kind: 'alignment', has: 'Neutral' });
+    expect(equipBlock(halo, { ...mage, alignment: 'Good' })).toBeNull();
+  });
+
+  it('reads an evil threshold off the row, and leaves a band it runs through unknown', () => {
+    // `hellblade`: Evil 250. Criminal (80–120) is refused; Villain (120–210) is below it too.
+    const blade: EquipRestrictions = { slot: 'Weapon Hand', abilities: [[98, 250]] };
+    expect(equipBlock(blade, { ...mage, alignment: 'Criminal' })?.kind).toBe('alignment');
+    // FIEND's band (210–1000) straddles 250: unknown, so not refused.
+    expect(equipBlock(blade, { ...mage, alignment: 'FIEND' })).toBeNull();
+  });
+
+  it('refuses nothing on alignment while the roster has not said', () => {
+    expect(equipBlock({ abilities: [[97, 0]] }, { ...mage, alignment: null })).toBeNull();
+  });
+
+  it('lets ClassOk name a class the ClassRest list leaves out', () => {
+    const knife: EquipRestrictions = { classes: [1], abilities: [[59, 12]] };
+    expect(equipBlock(knife, mage)).toBeNull();
+    expect(equipBlock(knife, { ...mage, classId: 8 })?.kind).toBe('class');
+  });
+
+  it('refuses armour heavier than the class wears, unless the item names the class or race', () => {
+    const plate: EquipRestrictions = { kind: 'armour', armour: { kind: 9 } };
+    expect(equipBlock(plate, mage)).toEqual({ kind: 'armour', heaviest: 1, is: 9 });
+    expect(equipBlock({ ...plate, races: [1] }, mage)).toBeNull();
+    expect(equipBlock({ ...plate, classes: [12] }, mage)).toBeNull();
+    // Cloth is what a Mage wears.
+    expect(equipBlock({ kind: 'armour', armour: { kind: 1 } }, mage)).toBeNull();
+  });
+
+  it('reads the class weapon codes: 4 one-handed, 7 blunt, 9 none unnamed', () => {
+    const weapon = (kind: number): EquipRestrictions => ({ kind: 'weapon', weapon: { kind } });
+    const as = (weaponType: number): Wearer => ({ ...mage, weaponType });
+    expect(equipBlock(weapon(3), as(4))).toEqual({ kind: 'weapon', is: 3 });
+    expect(equipBlock(weapon(2), as(4))).toBeNull();
+    expect(equipBlock(weapon(2), as(7))?.kind).toBe('weapon');
+    expect(equipBlock(weapon(1), as(7))).toBeNull();
+    expect(equipBlock(weapon(0), as(9))?.kind).toBe('weapon');
+    expect(equipBlock({ ...weapon(0), classes: [12] }, as(9))).toBeNull();
+    expect(equipBlock(weapon(3), as(8))).toBeNull();
+  });
+
+  it('refuses no kind to a class nothing has read', () => {
+    const plate: EquipRestrictions = { kind: 'armour', armour: { kind: 9 } };
+    expect(equipBlock(plate, UNKNOWN_WEARER)).toBeNull();
   });
 });

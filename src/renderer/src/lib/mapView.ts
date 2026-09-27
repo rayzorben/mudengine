@@ -247,3 +247,36 @@ export function densityFor(perRoom: number, sparse: number, dense: number): numb
   const at = (perRoom - sparse) / (dense - sparse);
   return Math.max(0, Math.min(1, Math.round(at * 100) / 100));
 }
+
+/**
+ * The view that shows every placed room of `rooms` at once: the pan on the
+ * middle of their box and the largest zoom that holds it, with half a cell
+ * round the edge so a room at the rim is drawn whole. Clamped to `bounds`,
+ * so a leg wider than the widest fetch is shown as far out as the map goes.
+ * Null when the box is not measured or none of the rooms is placed.
+ */
+export function fittedTo(
+  cells: ReadonlyArray<{ id: string; gx: number; gy: number }>,
+  rooms: ReadonlySet<string>,
+  box: Box,
+  bounds: { min: number; max: number }
+): MapView | null {
+  if (!measured(box)) return null;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const cell of cells) {
+    if (!rooms.has(cell.id)) continue;
+    minX = Math.min(minX, cell.gx);
+    maxX = Math.max(maxX, cell.gx);
+    minY = Math.min(minY, cell.gy);
+    maxY = Math.max(maxY, cell.gy);
+  }
+  if (minX === Infinity) return null;
+  const across = Math.min(box.width / (maxX - minX + 1), box.height / (maxY - minY + 1));
+  return {
+    perRoom: Math.max(bounds.min, Math.min(bounds.max, across)),
+    pan: { x: ((minX + maxX) / 2) * MAP_CELL, y: ((minY + maxY) / 2) * MAP_CELL }
+  };
+}

@@ -20,6 +20,8 @@ import { memo, type ReactNode } from 'react';
  * at 14px in a menu and at 18px on a button without being redrawn.
  */
 export type IconName =
+  | 'previous'
+  | 'next'
   | 'settings'
   | 'server'
   | 'play'
@@ -291,6 +293,9 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   close: <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
+  /* A pager's two ways: one page back, one page on. */
+  previous: <path d="M14.5 5.5 8 12l6.5 6.5" />,
+  next: <path d="M9.5 5.5 16 12l-6.5 6.5" />,
   /*
    * The clear inside a find field: the same cross as `close`, ringed.
    *

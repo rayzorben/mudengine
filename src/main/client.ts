@@ -28,6 +28,7 @@ import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
 import { homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
+import { wearerOf } from './world/wearer';
 import { RealmLibrary } from './world/RealmLibrary';
 import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
@@ -39,7 +40,7 @@ import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
-import { bareName } from '../shared/items';
+import { bareName, wornOfWord } from '../shared/items';
 import { nameAnswersTo } from '../shared/world';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import {
@@ -53,7 +54,8 @@ import {
   unequip,
   type GearAction,
   type GearPlan,
-  type Wearer
+  type Wearer,
+  UNKNOWN_WEARER
 } from '../shared/gear';
 import { Belongings, peekSpellbook } from './session/Belongings';
 import type { BelongingsSink } from '../shared/belongings';
@@ -78,6 +80,7 @@ import type { MovementStart, WalkStart } from '../shared/movement';
 import type { FightSummary } from '../shared/fights';
 import { localMap } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
+import { slotGear } from './world/slotGear';
 import type { HuntingAdvice } from '../shared/hunting';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
@@ -115,8 +118,8 @@ import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
 import { IDLE_QUEST_RUN } from '../shared/quests';
-import { EMPTY_ROOM_VERDICT } from '../shared/verdict';
-import { EMPTY_MAP } from '../shared/map';
+import { EMPTY_ROOM_VERDICT, prowessSheetOf } from '../shared/verdict';
+import { EMPTY_MAP, type LocalMap } from '../shared/map';
 import {
   asRoomIds,
   asRoomReference,
@@ -125,9 +128,12 @@ import {
   EMPTY_LOOP_DRAFT,
   roomId,
   type MobPlaces,
+  type RoomId,
+  type Route,
   type ShopPlace
 } from '../shared/world';
 import { LoopDraftCache } from './world/loopDraft';
+import { pagesOf, type RoutePages } from '../shared/routeLegs';
 import { errorMessage } from '../shared/values';
 import { formatDebugReport } from '../shared/debug';
 import { fileSlug } from '../shared/files';
@@ -673,15 +679,7 @@ function wearableIn(session: SessionId, name: string): boolean {
  */
 function wearerIn(session: SessionId): Wearer {
   const state = host?.get(session)?.manager.character;
-  const world = worldFor(session);
-  return {
-    classId: world && state?.className ? world.classId(state.className) : null,
-    raceId: world && state?.race ? world.raceId(state.race) : null,
-    level: state?.progress.level ?? null,
-    strength: state?.progress.strength ?? null,
-    classNames: world?.namedClasses() ?? {},
-    raceNames: world?.namedRaces() ?? {}
-  };
+  return state ? wearerOf(state, worldFor(session) ?? null) : UNKNOWN_WEARER;
 }
 
 /** Where session logs go: the configured directory, or the per-user data dir. */
@@ -1613,18 +1611,19 @@ function registerIpc(): void {
    */
   const drafts = new Map<SessionId, LoopDraftCache>();
 
+  /** A route refused before any search, in the reader's words. */
+  const unrouted = (reason: string): Route => ({ steps: [], cost: 0, blocked: true, reason });
+
   handle(Invoke.routeTo, async (_caller, session: SessionId, map: number, room: number) => {
     // This character's realm, not the client's: routing against the wrong one
     // sends somebody to a room that does not exist.
     const world = worldFor(session);
-    if (!world || world.size === 0) {
-      return { steps: [], cost: 0, blocked: true, reason: t('app.route.noRealmData') };
-    }
+    if (!world || world.size === 0) return unrouted(t('app.route.noRealmData'));
     const manager = (await placedFirst(session))?.manager;
     const here = manager?.character.room;
     if (!here || here.map === null || here.number === null) {
       // Routing from an unknown position would be a guess dressed as a plan.
-      return { steps: [], cost: 0, blocked: true, reason: t('app.route.unknownRoom') };
+      return unrouted(t('app.route.unknownRoom'));
     }
     // With the alternatives a reader chooses between: this is the one route
     // planned to be read rather than walked.
@@ -1635,6 +1634,34 @@ function registerIpc(): void {
       { alternatives: true }
     );
   });
+
+  /*
+   * The Map card's preview between two rooms the reader named. Needs no
+   * session in the realm, so it answers while disconnected; priced as the
+   * route panel prices, without the alternatives, since nothing walks it.
+   */
+  handle(
+    Invoke.routeBetween,
+    (_caller, session: SessionId, from: unknown, to: unknown): RoutePages => {
+      const world = worldFor(session);
+      if (!world || world.size === 0) {
+        return { route: unrouted(t('app.route.noRealmData')), legs: [] };
+      }
+      const [start, goal] = asRoomIds([from, to], 2) ?? [];
+      if (start === undefined || goal === undefined) {
+        return { route: unrouted(t('app.route.invalidPayload')), legs: [] };
+      }
+      const route = world.route(start, goal, travellerOf(session, 'route'));
+      /* Paged by the widest map the card can fetch, so every page draws whole. */
+      const radius = tuning().view.mapRadiusMax;
+      const draw = (centre: RoomId): LocalMap => localMap(world, centre, radius);
+      const packing = {
+        stretches: tuning().world.routePageStretches,
+        steps: tuning().world.routePageSteps
+      };
+      return { route, legs: pagesOf(route, start, draw, packing) };
+    }
+  );
 
   /*
    * A loop being built by hand, planned. Parsed rather than trusted: every
@@ -2299,6 +2326,25 @@ function registerIpc(): void {
    * printed — and null is *unknown*, which the equip check never refuses on.
    */
   handle(Invoke.wearer, (_caller, session: SessionId): Wearer => wearerIn(session));
+
+  /*
+   * A slot's quick view: the realm's items for the slot a clicked word names,
+   * checked against this character and ranked by how it swings. See `slotGear`.
+   */
+  handle(Invoke.slotGear, (_caller, session: SessionId, slot: unknown) => {
+    const world = worldFor(session);
+    const manager = host?.get(session)?.manager;
+    if (!world || !manager || typeof slot !== 'string') return null;
+    const worn = wornOfWord(slot);
+    if (worn === null) return null;
+    const { combat, magery, family } = manager.realmClass;
+    return slotGear(worn, world, {
+      wearer: wearerIn(session),
+      sheet: prowessSheetOf(manager.character, { combat, magery }),
+      family,
+      attack: configFor(session).automation.combat.attack
+    });
+  });
 
   /**
    * Everything the realm knows about a name — monster, item or spell.

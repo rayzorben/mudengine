@@ -122,3 +122,53 @@ export function asAlignment(word: string): Alignment | null {
   if (key.length === 0) return null;
   return ALIGNMENTS.find((entry) => entry.toLowerCase() === key) ?? null;
 }
+
+/**
+ * Where the realm's alignment words sit on the scale the server compares.
+ *
+ * `GMUDServer.GetAlignmentTitle` turns a float into one of eight words at fixed
+ * boundaries, and `ShouldMobAttackTarget` compares the *float*. Going back the
+ * other way — word to number — only recovers a range, so this carries the range
+ * and every question is answered from it rather than from a midpoint somebody
+ * picked: whether a monster attacks on sight (`mobs.ts`), and whether an
+ * alignment gate on an item refuses the character (`gear.ts`).
+ *
+ * `Seedy` is the one band a boundary runs through: it spans 30 up to 40, and a
+ * `LawfulEvil` monster attacks at `<= 30`. So a Seedy character is attacked by
+ * one only at the exact bottom of their own band, which nothing on screen
+ * distinguishes — and that is reported as *unknown* rather than resolved.
+ *
+ * **`Lawful` is MajorMUD's word for `Saint`'s band** (2026-09-17), which is
+ * why it has one at all: it was deliberately absent here on the grounds that
+ * `GetAlignmentTitle` does not produce it, and the exemption said it would go
+ * when the capture arrived. It has. Bearfather's MajorMUD 1.11p prints a
+ * roster of `Lawful`, `Good`, `Neutral` and `Criminal` and never `Saint`, and
+ * `Saint` appears nowhere in the 218-capture corpus while `Lawful` appears in
+ * two — eight rungs on each ladder, seven words shared, one word in each that
+ * the other does not have. The cost of the absence was a route: every
+ * `hates-evil` guardsman in Godfrey answered *nobody can say* against a
+ * `Lawful` character, a pass was priced as a fight a level-1 mystic cannot
+ * survive, and the walk to Newhaven went 46 steps round a town square it
+ * could have crossed. See `decisions.md`.
+ */
+const ALIGNMENT_RANGE: Partial<Record<Alignment, [number, number]>> = {
+  Saint: [-1000, -200],
+  Lawful: [-1000, -200],
+  Good: [-200, -50],
+  Neutral: [-50, 30],
+  Seedy: [30, 40],
+  Outlaw: [40, 80],
+  Criminal: [80, 120],
+  Villain: [120, 210],
+  FIEND: [210, 1000]
+};
+
+/**
+ * The span of evil points a word covers, or null for a word with no band.
+ *
+ * Neighbouring bands share an end, and the word does not say which side of it
+ * the character is on, so a reader decides on the open interval between the two.
+ */
+export function alignmentBand(word: Alignment): readonly [number, number] | null {
+  return ALIGNMENT_RANGE[word] ?? null;
+}

@@ -53,6 +53,7 @@ import Icon from './Icon';
 import { type BuilderMarks } from './MapPlan';
 import MapView from './MapView';
 import { useListNavigation } from '../hooks/useListNavigation';
+import { useRoomSearch } from '../hooks/useRoomSearch';
 import { loopFor, notableSteps, pickRoom, shapeOf, stopParts, suggestedName } from '../lib/builder';
 import { keepFocus } from '../lib/focus';
 import {
@@ -162,7 +163,6 @@ function LoopBuilderCard({
   const [plan, setPlan] = useState<LoopDraft>(EMPTY_LOOP_DRAFT);
   const [planFailed, setPlanFailed] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [matches, setMatches] = useState<WorldRoom[]>([]);
   const [typedName, setTypedName] = useState<string | null>(null);
   const [destination, setDestination] = useState<BuilderDestination>('profile');
   /*
@@ -229,33 +229,13 @@ function LoopBuilderCard({
   }, [draft, picks]);
 
   /* The finder, debounced like the route panel's and searching the same index. */
-  useEffect(() => {
-    if (query.trim().length < tuning().roomSearchMinChars) {
-      setMatches([]);
-      return;
-    }
-    let live = true;
-    const timer = window.setTimeout(() => {
-      void search(query)
-        .then((found) => {
-          if (live) setMatches(found);
-        })
-        .catch(() => {
-          if (live) setMatches([]);
-        });
-    }, tuning().roomSearchDebounceMs);
-    return () => {
-      live = false;
-      window.clearTimeout(timer);
-    };
-  }, [query, search]);
+  const { matches } = useRoomSearch(search, query);
 
   /** Moves the picture to a found room. It picks nothing — see the header. */
   const centreOn = useCallback(
     (room: WorldRoom): void => {
       setCentre(roomId(room.map, room.room));
       setQuery('');
-      setMatches([]);
       chrome.returnFocus?.();
     },
     [chrome]
@@ -266,7 +246,6 @@ function LoopBuilderCard({
     onChoose: centreOn,
     onCancel: () => {
       setQuery('');
-      setMatches([]);
       chrome.returnFocus?.();
     }
   });
@@ -301,27 +280,30 @@ function LoopBuilderCard({
   );
 
   /*
-   * A way out that leaves the plane. Up or down takes the eye there and
-   * picks nothing — the header says why — and says so under the foot, so the
-   * level changing under the pointer is not read as the picture breaking. A
-   * teleport is a pick: the room it leaves from is picked first if it is not
-   * the last pick already, so the leg planned is exactly that step —
+   * Up or down takes the eye there and picks nothing (the header says why),
+   * and says so under the foot, so the level changing under the pointer is
+   * not read as the picture breaking. The builder passes its own `onLook`:
+   * its centre is its own state, and a pick afterwards recentres from there.
+   */
+  const look = useCallback((away: MapAway): void => {
+    setCentre(away.to);
+    setStatus({
+      text:
+        away.kind === 'down'
+          ? t('cards.builder.lookingDown', { roomName: away.name })
+          : t('cards.builder.lookingUp', { roomName: away.name }),
+      failed: false
+    });
+  }, []);
+
+  /*
+   * A teleport is a pick: the room it leaves from is picked first if it is
+   * not the last pick already, so the leg planned is exactly that step —
    * otherwise the planner would route to the landing room from wherever the
    * last pick was, by whatever way it liked.
    */
-  const takeAway = useCallback(
+  const teleport = useCallback(
     (away: MapAway, from: RoomId): void => {
-      if (away.kind !== 'teleport') {
-        setCentre(away.to);
-        setStatus({
-          text:
-            away.kind === 'up'
-              ? t('cards.builder.lookingUp', { roomName: away.name })
-              : t('cards.builder.lookingDown', { roomName: away.name }),
-          failed: false
-        });
-        return;
-      }
       if (full()) return;
       const viaFrom = picks[picks.length - 1] === from ? picks : (pickRoom(picks, from) ?? picks);
       const next = pickRoom(viaFrom, away.to);
@@ -555,7 +537,8 @@ function LoopBuilderCard({
           load={loadMap}
           marks={marks}
           name="builder"
-          onAway={takeAway}
+          onLook={look}
+          onTeleport={teleport}
           onChoose={choose}
           onLoaded={setMap}
           onPeek={onPeek ?? undefined}

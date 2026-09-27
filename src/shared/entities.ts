@@ -48,6 +48,7 @@ import type {
   Requirement,
   RoomCommand,
   WorldClass,
+  WorldItem,
   WorldLair,
   WorldRace,
   WorldShop,
@@ -174,16 +175,8 @@ export interface ItemEntity {
    * card must never print it under a heading that looks like the server's.
    */
   realmSlot?: string;
-  weapon?: {
-    min: number;
-    max: number;
-    speed?: number;
-    strength?: number;
-    accuracy?: number;
-    type?: string;
-    hands?: 1 | 2;
-  };
-  armour?: { ac?: number; dr?: number; material?: string };
+  weapon?: WorldItem['weapon'];
+  armour?: WorldItem['armour'];
   /** Maximum uses the realm records, against `charges` observed. */
   uses?: number;
   abilities?: Array<[number, number]>;

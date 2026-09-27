@@ -179,8 +179,6 @@ export class Holds {
    */
   private escaped = false;
   private escapedAt = 0;
-  /** The walk-through notice has been said on this walk. See `answerFight`. */
-  private saidWalkingThrough = false;
 
   constructor(
     private config: AutomationConfig,
@@ -242,7 +240,6 @@ export class Holds {
     // An escape belongs to the walk that ran away. A fresh route is the player
     // asking again, from here, with that already taken into account.
     this.escaped = false;
-    this.saidWalkingThrough = false;
     this.holdWhenHurt = holdWhenHurt;
     this.resumeAfterFight = resumeAfterFight;
     this.leavingAFight = fighting && (!this.resumeAfterFight || !this.canEndAFight());
@@ -259,7 +256,6 @@ export class Holds {
     this.onsetAnsweredStep = null;
     this.floorHeld = false;
     this.escaped = false;
-    this.saidWalkingThrough = false;
     this.holdWhenHurt = true;
     this.resumeAfterFight = true;
     // One more of the same group: `begin` writes it unconditionally, but
@@ -404,15 +400,8 @@ export class Holds {
        * room is a fight nobody asked about and holds as usual.
        */
       this.leavingAFight = true;
-      // `resumeAfterFight` is false for a loop's leg, so this branch is a
-      // player's route by construction; `quiet` is still read, because it is
-      // the player's own answer for their own walk.
-      // Once a walk: a follower swinging in every room of a corridor is one
-      // decision, not a line per step.
-      if (!this.walk.quiet() && !this.saidWalkingThrough) {
-        this.events.notice?.(t('automation.walk.reasonWalkingThroughFight'));
-      }
-      this.saidWalkingThrough = true;
+      // Nothing is said: the player set the switches and sees the fight and
+      // the steps in the terminal (2026-09-27, the user).
       return false;
     }
     if (this.holdForFight()) return true;

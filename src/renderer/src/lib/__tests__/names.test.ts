@@ -32,6 +32,7 @@ describe('finding realm names in a row of console text', () => {
   it('finds a name whole, by column', () => {
     expect(index.find('You are carrying padded boots (Feet), quarterstaff.')).toEqual([
       { name: 'padded boots', kind: 'item', start: 17, end: 29 },
+      { name: 'feet', kind: 'slot', start: 31, end: 35 },
       { name: 'quarterstaff', kind: 'item', start: 38, end: 50 }
     ]);
   });
@@ -75,6 +76,13 @@ describe('finding a name folded across two rows', () => {
         text: 'padded boots',
         start: { line: 0, col: 29 },
         end: { line: 1, col: 5 }
+      },
+      {
+        name: 'feet',
+        kind: 'slot',
+        text: 'Feet',
+        start: { line: 1, col: 7 },
+        end: { line: 1, col: 11 }
       },
       {
         name: 'quarterstaff',
@@ -145,6 +153,7 @@ describe('finding a name folded across two rows', () => {
       'You have no keys.'
     );
     expect(pearls.findAcross(rows).map((hit) => [hit.name, hit.start, hit.end])).toEqual([
+      ['finger', { line: 0, col: 31 }, { line: 0, col: 37 }],
       ['glass jug', { line: 0, col: 60 }, { line: 0, col: 69 }],
       ['glowing pearl', { line: 0, col: 71 }, { line: 1, col: 5 }]
     ]);
@@ -363,5 +372,30 @@ describe('the gangs a console recognises', () => {
     const before = versioned.version;
     versioned.setGangs(['Valor']);
     expect(versioned.version).toBeGreaterThan(before);
+  });
+});
+
+describe('a slot word where a listing prints one', () => {
+  it('is a slot inside the parenthesis after a worn item', () => {
+    const row = 'gilded robes                   (Torso)';
+    const hits = index.find(row);
+    expect(hits).toEqual([{ name: 'torso', kind: 'slot', start: 32, end: 37 }]);
+  });
+
+  it('takes the two-word slots and the charges form', () => {
+    expect(index.find('mandible (Weapon Hand)')[0]).toMatchObject({
+      kind: 'slot',
+      name: 'weapon hand'
+    });
+    expect(index.find('torch (Readied/79)')[0]).toMatchObject({ kind: 'slot', name: 'readied' });
+    expect(index.find('pitchfork (Two handed)')[0]).toMatchObject({
+      kind: 'slot',
+      name: 'two handed'
+    });
+  });
+
+  it('is an ordinary word anywhere else', () => {
+    expect(index.find('You scratch your head and wear it on your back.')).toEqual([]);
+    expect(index.find('(Resting)')).toEqual([]);
   });
 });

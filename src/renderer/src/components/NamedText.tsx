@@ -46,7 +46,8 @@ export default function NamedText({ text, index, self, inspect, onSelect }: Name
   return (
     <>
       {runs.map((run, at) => {
-        if (run.hit === null) return run.text;
+        // A slot's panel hangs off the console and the pack; a quoted sentence keeps the word.
+        if (run.hit === null || run.hit.kind === 'slot') return run.text;
         if (run.hit.kind === 'player') {
           return (
             <PlayerName

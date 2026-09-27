@@ -360,7 +360,7 @@ option {
   --card-h: 208px;
 }
 .rail > .map-card {
-  --card-h: 300px;
+  --card-h: 380px;
 }
 /* Two faces, and the taller is the loop's: a transport row, the loop's name, the
    stop bar and four figures. Declared rather than left to the fallback, per the
@@ -2607,12 +2607,144 @@ kbd {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  position: relative;
   touch-action: none;
   user-select: none;
 }
 
+/* The way home after looking up or down: over the picture's corner, where
+   the picture never puts anything the reader needs. */
+.map-back {
+  background: var(--glass-fill-strong);
+  left: calc(var(--gap) / 2);
+  position: absolute;
+  top: calc(var(--gap) / 2);
+}
+
 .map-view[data-panning] {
   cursor: grabbing;
+}
+
+/*
+ * The Map card's finder (`MapRouteFinder`): two room fields and the locate
+ * button in one row, the leg pager under it. Both panes hold still over the
+ * picture, which takes what they leave.
+ */
+.map-finder {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.map-finder-fields,
+.map-legs-row {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.map-legs-row > .map-leg-steps {
+  color: var(--text-lo);
+  flex: 1 1 auto;
+  font-size: var(--font-micro);
+}
+
+.room-field {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+}
+
+/* The matches open over the picture, so the card below them does not move. */
+.room-field-matches {
+  background: var(--glass-fill-strong);
+  border-radius: var(--r-chip);
+  left: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 3;
+}
+
+.map-leg-count {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+}
+
+/* One line, cut short; the whole sentence is its tooltip. */
+.map-leg-text {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-finder-note {
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+/*
+ * A route preview page of several stretches (`RouteSheetView`): fitted, so
+ * there is nothing to drag. Each floor is a tonal plane under its rooms, and
+ * a floor above paints over the one below.
+ */
+.map-sheet {
+  cursor: default;
+}
+
+.map-floor-plane {
+  fill: color-mix(in srgb, var(--text-lo) 7%, transparent);
+  stroke: color-mix(in srgb, var(--text-lo) 22%, transparent);
+  stroke-width: 0.4;
+}
+
+/*
+ * How one stretch leads to the next. A way up or down is a solid line with
+ * its arrow; any other jump is dashed, since the two ends are not joined on
+ * any map. The badge carries the glyph, the label the command typed.
+ */
+.map-join line {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-width: 0.9;
+}
+
+.map-join[data-kind='jump'] line,
+.map-join[data-kind='onward'] line {
+  stroke-dasharray: 1.6 1.8;
+}
+
+.map-join-arrow {
+  fill: var(--accent);
+}
+
+.map-join-badge {
+  fill: var(--glass-fill-strong);
+  stroke: var(--accent);
+  stroke-width: 0.5;
+}
+
+.map-join-glyph,
+.map-join-label {
+  fill: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 3.4px;
+  pointer-events: none;
+}
+
+.map-join-glyph {
+  font-size: 4.2px;
+}
+
+.map-join-label {
+  fill: var(--text-lo);
 }
 
 .map-view > .map-plan {
@@ -2884,19 +3016,6 @@ kbd {
 .map-you {
   fill: none;
   stroke: var(--accent);
-}
-
-/* Leads up or down, which the plane cannot show. */
-.map-vertical {
-  fill: none;
-  stroke: var(--marker);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 0.7;
-}
-
-.map-room[data-kind='here'] .map-vertical {
-  stroke: var(--on-accent);
 }
 
 .map-room:hover > .map-shape {
@@ -8486,18 +8605,14 @@ button.lookup:focus-visible {
 }
 
 /*
- * The mark and its version, clipped to one line: the version wraps onto a
- * second line when the rail is too narrow for both, and that line is cut off.
- * So "if it fits" is decided by the browser's own measurement rather than a
- * breakpoint; the tooltip carries the version either way.
+ * The client's mark at the upper right with its version to the left:
+ * clipped to one line, the tooltip carries the version either way.
  */
 .app-mark {
-  align-content: flex-start;
   align-items: center;
   color: var(--text-lo);
   display: flex;
   flex: 0 1 auto;
-  flex-wrap: wrap;
   font-size: var(--font-micro);
   font-variant-numeric: tabular-nums;
   gap: 0 6px;

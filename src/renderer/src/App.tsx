@@ -574,8 +574,7 @@ export default function App() {
 
   /** The panels that hang off a name, one at a time. */
   const slideOuts = useSlideOuts(session, chooseOnMap);
-  const { asked, flyout, inspect, selectPlayer, selectGang, peekRoom, peekPlanned, endPeek } =
-    slideOuts;
+  const { asked, flyout, inspect, selectPlayer, peekRoom, peekPlanned, endPeek } = slideOuts;
 
   const { browsing, close: closeBrowser, reveal } = useHomeBrowser(returnFocus);
 
@@ -1434,7 +1433,8 @@ export default function App() {
                   onAct={actInConsole}
                   onResize={handleResize}
                   onSelectPlayer={selectPlayer}
-                  onSelectGang={selectGang}
+                  onSelectGang={slideOuts.selectGang}
+                  onSelectSlot={slideOuts.selectSlot}
                   onSearchResult={setSearchResult}
                   onSnapshot={applySnapshot}
                   // A character with no pane parks in the focused one, hidden:

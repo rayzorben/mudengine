@@ -5,6 +5,7 @@ import {
   castOdds,
   dodge,
   regeneration,
+  roundDamage,
   REGEN_TICK_SECONDS,
   swing,
   swingsPerRound,
@@ -349,5 +350,40 @@ describe('what the server stated', () => {
     const partial: ProwessSheet = { ...SHEET, stated: { health: 6, resting: 18 } };
     expect(accuracy(partial, SWORD, 'greatermud')).toEqual({ value: 57, from: 'bound' });
     expect(regeneration(partial, null, 'greatermud')?.health.from).toBe('stated');
+  });
+});
+
+describe('damage a round, by how the weapon is swung', () => {
+  const blade = { min: 10, max: 20, speed: 1500 };
+
+  it('is blows a round times the mean blow for an attack', () => {
+    const swings = swingsPerRound({ ...SHEET, stated: null }, blade, 'greatermud');
+    const round = roundDamage(SHEET, blade, 'attack', 'greatermud');
+    expect(swings).not.toBeNull();
+    expect(round?.value).toBeCloseTo(Math.min(6, swings!.value) * 15, 6);
+    expect(round?.from).toBe('bound');
+  });
+
+  it('prices a smash as one blow at five times a 1.2× range', () => {
+    // floor(12) + floor(24) = 36, halved, times five.
+    expect(roundDamage(SHEET, blade, 'smash', 'greatermud')?.value).toBeCloseTo(90, 6);
+  });
+
+  it('prices a bash as half the blows at 2.75 times a 1.1× range', () => {
+    const attack = roundDamage(SHEET, blade, 'attack', 'greatermud')!.value;
+    const bash = roundDamage(SHEET, blade, 'bash', 'greatermud')!.value;
+    // Half the swings, 2.75 × (11 + 22) / 2 a blow against 15.
+    expect(bash / attack).toBeCloseTo((0.5 * 2.75 * 16.5) / 15, 1);
+  });
+
+  it('ignores what stat all said about the weapon in hand', () => {
+    const stated = { ...SHEET, stated: { swings: 5, damage: { min: 1, max: 2 } } };
+    expect(roundDamage(stated, blade, 'attack', 'greatermud')).toEqual(
+      roundDamage(SHEET, blade, 'attack', 'greatermud')
+    );
+  });
+
+  it('answers nothing outside GreaterMUD', () => {
+    expect(roundDamage(SHEET, blade, 'attack', 'majormud')).toBeNull();
   });
 });

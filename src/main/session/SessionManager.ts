@@ -89,7 +89,8 @@ import {
 import { wireItem } from '../../shared/entities';
 import type { Traveller, WorldGraph } from '../world/WorldGraph';
 import type { Wearer } from '../../shared/gear';
-import { Errands } from './Errands';
+import { wearerOf } from '../world/wearer';
+import { Errands, type RealmClass } from './Errands';
 import { Claims } from './Claims';
 import { Locating } from './Locating';
 import { Marks } from './Marks';
@@ -2093,6 +2094,11 @@ export class SessionManager {
     return this.tracker.current.progress.level;
   }
 
+  /** The class row's combat and magery and the wire's family, read once. See `Errands.realmClass`. */
+  get realmClass(): RealmClass {
+    return this.errands.realmClass();
+  }
+
   /** What this character has learned about the realm the data does not have. See `Records`. */
   get learned(): Discovery[] {
     return this.records.learned;
@@ -3547,23 +3553,9 @@ export class SessionManager {
   /** The glyph and the buttons beside a room's name. See `Marks`. */
   private readonly marks: Marks;
 
-  /**
-   * Who this character is, in the realm's own row ids — the join `wearerIn`
-   * in `client.ts` makes for the pack card, made here for the console's
-   * rewritten listing, through the same `WorldGraph` lookups so a Paladin
-   * cannot be one class to the card and another to the console.
-   */
+  /** Who this character is, for the console's rewritten listing. See `wearerOf`. */
   private wearerNow(): Wearer {
-    const state = this.tracker.current;
-    const world = this.world;
-    return {
-      classId: world && state.className ? world.classId(state.className) : null,
-      raceId: world && state.race ? world.raceId(state.race) : null,
-      level: state.progress.level,
-      strength: state.progress.strength,
-      classNames: world?.namedClasses() ?? {},
-      raceNames: world?.namedRaces() ?? {}
-    };
+    return wearerOf(this.tracker.current, this.world ?? null);
   }
 
   /**

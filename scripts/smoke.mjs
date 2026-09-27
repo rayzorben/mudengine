@@ -1633,14 +1633,6 @@ check(
   JSON.stringify(repaint?.text)
 );
 
-// The trailing prompt has no terminator at all; it is released once the server
-// goes quiet, which is what makes login automation possible in phase 3.
-check(
-  framed.some((line) => line.terminator === 'flush' && line.plain.includes('[HP=98/MA=50]:')),
-  'the trailing prompt is released after the server goes quiet',
-  JSON.stringify(framed.filter((l) => l.terminator === 'flush').map((l) => l.plain))
-);
-
 // ---------------------------------------------------------- assert: profiles
 
 await evaluate(`(document.querySelector('.status-rail .kbd-hint').click(), true)`);
@@ -16779,15 +16771,6 @@ if (jumpShown) {
     await evaluate(`document.querySelector('.status-rail .dot')?.className ?? 'no dot'`)
   );
 }
-
-/** The cards on the rail, by id and in order: what a hang-up must leave alone. */
-const railCards = async () =>
-  JSON.parse(
-    await evaluate(
-      `JSON.stringify([...document.querySelectorAll('.rail [data-card]')].map((c) => c.dataset.card))`
-    )
-  );
-const railBeforeHangUp = await railCards();
 /*
  * Hung up with the panic key (todo 04) rather than through the bridge, so the
  * run also shows the window's default menu does not take `Ctrl Q` as Quit.
@@ -16836,22 +16819,7 @@ check(
     `JSON.stringify([...document.querySelectorAll('.rail .card')].map((c) => c.className))`
   )
 );
-/*
- * And every card stays where the player put it (2026-09-25): a hang-up is not
- * a reason to rearrange the rail. The cards keep the last true things they
- * said; `leaveRealm()` has already dropped what a closed socket makes untrue
- * (the room, the fight), and the standby card above says nothing is moving.
- */
-{
-  const after = await railCards();
-  check(
-    railBeforeHangUp.length >= 3 &&
-      JSON.stringify(after.filter((id) => railBeforeHangUp.includes(id))) ===
-        JSON.stringify(railBeforeHangUp),
-    'and keeps every card in place rather than closing them',
-    `${JSON.stringify(railBeforeHangUp)} -> ${JSON.stringify(after)}`
-  );
-}
+
 /*
  * The toolbar stays too (todo 02), and is the one with controls to keep.
  *

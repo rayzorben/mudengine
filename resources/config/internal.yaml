@@ -1352,6 +1352,14 @@ tuning:
     # Ceiling on placed rooms, so a dense area cannot produce a vast grid.
     mapCells: 200
 
+    # How the Map card's route preview gathers stretches onto one page: up to
+    # `routePageStretches` of them, while they walk `routePageSteps` flat
+    # steps or fewer between them. A way down five times, or a few rooms
+    # either side of a manhole, then reads as one page, drawn floor above
+    # floor. A stretch longer than the budget has a page to itself.
+    routePageStretches: 6
+    routePageSteps: 12
+
     # What a barrier the character cannot force costs to route through.
     #
     # Priced as a wall that can still be walked through when there is no other

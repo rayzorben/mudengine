@@ -140,7 +140,10 @@ const AWAY = { over: 2.4, size: 1.5, stroke: 0.6, hit: 1.2 } as const;
  * The midpoint, not the end: an arrowhead at the end of a leg lands on the room
  * marker and fights with it, and every leg's end is another leg's start.
  */
-function arrowAt(leg: { x1: number; y1: number; x2: number; y2: number }, scale?: number): string {
+export function arrowAt(
+  leg: { x1: number; y1: number; x2: number; y2: number },
+  scale?: number
+): string {
   // The legend's keys are drawn in a 12-unit box rather than in map units, so
   // they hand in their own size — the same thing the trap's key does.
   const size = scale ?? tuning().mapRoomRadius / 1.5;
@@ -225,30 +228,6 @@ function trapPoints(x: number, y: number, scale = 1): string {
   return `${x},${y - up} ${x + w},${y + down} ${x - w},${y + down}`;
 }
 
-/**
- * Which way a room leaves the plane, drawn as the way it actually goes.
- *
- * A chevron pointing up on a room whose only other exit is *down* is a map
- * stating the opposite of the truth, and plenty of rooms have both. Up points
- * up, down points down, both shows both.
- */
-function Vertical({ which, x, y }: { which: 'up' | 'down' | 'both'; x: number; y: number }) {
-  const up = `M ${x - 1.4} ${y + 0.5} L ${x} ${y - 0.9} L ${x + 1.4} ${y + 0.5}`;
-  const down = `M ${x - 1.4} ${y - 0.5} L ${x} ${y + 0.9} L ${x + 1.4} ${y - 0.5}`;
-  const bothUp = `M ${x - 1.4} ${y - 0.3} L ${x} ${y - 1.7} L ${x + 1.4} ${y - 0.3}`;
-  const bothDown = `M ${x - 1.4} ${y + 0.3} L ${x} ${y + 1.7} L ${x + 1.4} ${y + 0.3}`;
-
-  if (which === 'both') {
-    return (
-      <>
-        <path className="map-vertical" d={bothUp} />
-        <path className="map-vertical" d={bothDown} />
-      </>
-    );
-  }
-  return <path className="map-vertical" d={which === 'up' ? up : down} />;
-}
-
 export interface MapPlanProps {
   map: LocalMap;
   /**
@@ -294,15 +273,19 @@ export interface MapPlanProps {
    */
   marks?: BuilderMarks;
   /**
-   * Take a way out that leaves the plane — up, down, or a teleport — from a
-   * room. Present only on the builder's map, and only then are the ways
-   * drawn as controls beside the room, in place of the chevrons the room
-   * wears everywhere else: two glyphs saying *up* five units apart, one a
-   * mark and one a control, was the map the reader could not tell apart.
-   * Everywhere else the chevrons stay a mark, because a control bound to
-   * nowhere is worse than none.
+   * A way up or down was pressed: look at the room it leads to. Every map
+   * draws the ways up and down as controls beside the room, because the plane
+   * cannot show the level above and a mark with nowhere to go left the reader
+   * guessing where the stairs lead (2026-09-27). `MapView` answers it by
+   * recentring on the landing room unless the surface looks for itself.
    */
-  onAway?: (away: MapAway, from: RoomId) => void;
+  onLook: (away: MapAway) => void;
+  /**
+   * Take a teleport from a room. Present only on the builder's map, where a
+   * teleport is a pick, and only then are teleports drawn: a portal on the
+   * Map card has nothing a press could do that the quick view does not.
+   */
+  onTeleport?: (away: MapAway, from: RoomId) => void;
   /**
    * The rooms the walk in progress has still to travel through, opening with
    * the one the character is standing in — `WalkProgress.path`.
@@ -370,7 +353,8 @@ function MapPlan({
   you = null,
   onChoose,
   marks,
-  onAway,
+  onLook,
+  onTeleport,
   onPeek,
   onPeekEnd,
   path = NO_ROOMS,
@@ -438,7 +422,8 @@ function MapPlan({
         drawing={drawing}
         focus={focus}
         marks={marks}
-        onAway={onAway}
+        onLook={onLook}
+        onTeleport={onTeleport}
         found={found}
         onChoose={onChoose}
         onPeek={onPeek}
@@ -455,12 +440,13 @@ function MapPlan({
  * that panning and zooming — which change only where the window is — never
  * reconcile two hundred rooms and their corridors.
  */
-const Picture = memo(function Picture({
+export const Picture = memo(function Picture({
   drawing,
   focus,
   found,
   marks,
-  onAway,
+  onLook,
+  onTeleport,
   onChoose,
   onPeek,
   onPeekEnd,
@@ -472,7 +458,9 @@ const Picture = memo(function Picture({
   /** Rooms the realm's find log names. A `Set`, asked once per drawn room. */
   found: ReadonlySet<RoomId>;
   marks: BuilderMarks | undefined;
-  onAway: ((away: MapAway, from: RoomId) => void) | undefined;
+  /** Absent where nothing answers a way off the plane; none is then drawn. */
+  onLook: ((away: MapAway) => void) | undefined;
+  onTeleport: ((away: MapAway, from: RoomId) => void) | undefined;
   onChoose: ((map: number, room: number) => void) | undefined;
   onPeek: ((room: RoomId, at: SVGGElement, settled: boolean) => void) | undefined;
   onPeekEnd: (() => void) | undefined;
@@ -803,39 +791,32 @@ const Picture = memo(function Picture({
               />
             )}
             {shape(node)}
-            {/*
-             * A room that also leads up or down. The plane cannot show it —
-             * placing what is up there would draw two rooms in one square
-             * and call it a floor plan — so the room carries a mark instead.
-             * Not on a builder's map, where the way is a control beside the
-             * room and a second chevron inside it was the one the reader
-             * clicked, expecting to go up.
-             */}
-            {onAway === undefined && node.vertical !== null && (
-              <Vertical which={node.vertical} x={node.x} y={node.y} />
-            )}
           </g>
         );
       })}
 
       {/*
        * The ways out that leave the plane, as controls, beside the rooms that
-       * have them — only where there is something to send the click to. Each
-       * one names where it goes, because *up* is not an answer and *up to
-       * Rocky Ledge* is. Drawn after every room so a control is never under
-       * a neighbour's shape.
+       * have them. The plane cannot place what is up there (that would draw
+       * two rooms in one square and call it a floor plan), so the way is a
+       * control that takes the eye there. Each one names where it goes,
+       * because *up* is not an answer and *up to Rocky Ledge* is. Drawn after
+       * every room so a control is never under a neighbour's shape.
        */}
-      {onAway !== undefined &&
+      {onLook !== undefined &&
         drawing.nodes.flatMap((node) =>
-          (node.away ?? []).map((away, index) => (
-            <AwayControl
-              away={away}
-              index={index}
-              key={`${node.id}:${away.kind}:${away.to}`}
-              node={node}
-              onAway={onAway}
-            />
-          ))
+          (node.away ?? []).map((away, index) =>
+            away.kind === 'teleport' && onTeleport === undefined ? null : (
+              <AwayControl
+                away={away}
+                index={index}
+                key={`${node.id}:${away.kind}:${away.to}`}
+                node={node}
+                onLook={onLook}
+                onTeleport={onTeleport}
+              />
+            )
+          )
         )}
     </>
   );
@@ -850,21 +831,23 @@ const Picture = memo(function Picture({
  * a ring-with-a-dot for a teleport, which is the mark the legend keys. A
  * press keeps the caret in the game like every other click on a map.
  *
- * What a press *does* is the builder's to say: the chevrons take the eye to
- * the level they lead to, the teleport adds itself to the way. The title
- * says which, because a control that looks like its neighbour and does
- * something else has to say so before it is pressed.
+ * The chevrons take the eye to the level they lead to; the teleport, drawn
+ * only on the builder's map, adds itself to the way. The title says which,
+ * because a control that looks like its neighbour and does something else
+ * has to say so before it is pressed.
  */
 function AwayControl({
   away,
   index,
   node,
-  onAway
+  onLook,
+  onTeleport
 }: {
   away: MapAway;
   index: number;
   node: MapNode;
-  onAway: (away: MapAway, from: RoomId) => void;
+  onLook: (away: MapAway) => void;
+  onTeleport: ((away: MapAway, from: RoomId) => void) | undefined;
 }) {
   const r = tuning().mapRoomRadius;
   const dx = away.kind === 'teleport' ? -(r + AWAY.over) : r + AWAY.over;
@@ -881,14 +864,17 @@ function AwayControl({
   // The price the realm stated, beside the way: a door on the way up is
   // said here, where the corridor's bar would say it on the plane.
   const label = away.obstacle === undefined ? where : `${where} — ${away.obstacle.detail}`;
-  const take = (): void => onAway(away, node.id);
+  const take = (): void => {
+    if (away.kind === 'teleport') onTeleport?.(away, node.id);
+    else onLook(away);
+  };
   return (
     <g
       className="map-away"
       data-gated={away.obstacle === undefined ? undefined : away.obstacle.kind}
       data-kind={away.kind}
       onClick={(event) => {
-        // The room underneath is a control too; a way out is not a pick.
+        // The room underneath is a control too; a way out is not a click on it.
         event.stopPropagation();
         take();
       }}
@@ -1042,32 +1028,30 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
         {t('cards.map.legendLair')}
       </span>
       {/*
-        A way up or down: the chevrons the room wears, or — on the builder's
-        map, where they are controls beside the room — the chevrons where the
-        controls sit, keyed with what a press does. The same glyph in the same
-        place as on the picture, so the key looks like the thing it names.
+        A way up or down: the chevrons where the controls sit beside the room,
+        keyed with what a press does. The same glyph in the same place as on
+        the picture, so the key looks like the thing it names.
       */}
-      {builder ? (
-        <span data-kind="look">
-          <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-            <rect className="map-shape" height="6" rx="1.1" width="6" x="-5" y="-3" />
-            <g className="map-away">
-              <path className="map-away-glyph" d="M 2 -1.2 L 3.6 -3 L 5.2 -1.2" strokeWidth="0.8" />
-              <path className="map-away-glyph" d="M 2 1.2 L 3.6 3 L 5.2 1.2" strokeWidth="0.8" />
-            </g>
-          </svg>
-          {t('cards.map.legendLook')}
-        </span>
-      ) : (
-        <span>
-          <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-            <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
-            <path className="map-vertical" d="M -1.4 -0.3 L 0 -1.7 L 1.4 -0.3" />
-            <path className="map-vertical" d="M -1.4 0.3 L 0 1.7 L 1.4 0.3" />
-          </svg>
-          {t('cards.map.legendVertical')}
-        </span>
-      )}
+      <span data-kind="look">
+        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+          <rect className="map-shape" height="6" rx="1.1" width="6" x="-5" y="-3" />
+          <g className="map-away">
+            <path className="map-away-glyph" d="M 2 -1.2 L 3.6 -3 L 5.2 -1.2" strokeWidth="0.8" />
+            <path className="map-away-glyph" d="M 2 1.2 L 3.6 3 L 5.2 1.2" strokeWidth="0.8" />
+          </g>
+        </svg>
+        {t('cards.map.legendLook')}
+      </span>
+      {/* A way out with something in it — listed always, like the door. */}
+      <span data-kind="gated">
+        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+          <g className="map-away" data-gated="door">
+            <path className="map-away-glyph" d="M -3.4 1.7 L 0 -2.4 L 3.4 1.7" strokeWidth="0.8" />
+            <GatedBar size={3.4} x={0} y={1.2} />
+          </g>
+        </svg>
+        {t('cards.map.legendGated')}
+      </span>
       {/*
         Always, even where nothing is shut. A key that appears and
         disappears as you walk changes the card's height with it, and the
@@ -1159,20 +1143,6 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
               </g>
             </svg>
             {t('cards.map.legendTeleport')}
-          </span>
-          {/* A way out with something in it — listed always, like the door. */}
-          <span data-kind="gated">
-            <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-              <g className="map-away" data-gated="door">
-                <path
-                  className="map-away-glyph"
-                  d="M -3.4 1.7 L 0 -2.4 L 3.4 1.7"
-                  strokeWidth="0.8"
-                />
-                <GatedBar size={3.4} x={0} y={1.2} />
-              </g>
-            </svg>
-            {t('cards.map.legendGated')}
           </span>
         </>
       )}

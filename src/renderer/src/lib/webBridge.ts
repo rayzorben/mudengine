@@ -174,6 +174,7 @@ export function createWebBridge(): IpcApi {
     saveDebug: (session) => invoke(Invoke.saveDebug, session),
     getCharacter: (session) => invoke(Invoke.getCharacter, session),
     routeTo: (session, map, room) => invoke(Invoke.routeTo, session, map, room),
+    routeBetween: (session, from, to) => invoke(Invoke.routeBetween, session, from, to),
     walkRoute: (session, route, run) => invoke(Invoke.walkRoute, session, route, run),
     startMoving: (session, loop, confirmed) => invoke(Invoke.startMoving, session, loop, confirmed),
     collectThenWalk: (session, items, route, run) =>
@@ -270,6 +271,7 @@ export function createWebBridge(): IpcApi {
     questStop: (session) => invoke(Invoke.questStop, session),
     localMap: (session, map, room, radius) => invoke(Invoke.localMap, session, map, room, radius),
     roomBrief: (session, map, room) => invoke(Invoke.roomBrief, session, map, room),
+    slotGear: (session, slot) => invoke(Invoke.slotGear, session, slot),
     huntingGrounds: (session, measure) => invoke(Invoke.huntingGrounds, session, measure),
     trainers: (session) => invoke(Invoke.trainers, session),
     banks: (session) => invoke(Invoke.banks, session),

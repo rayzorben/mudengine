@@ -139,7 +139,6 @@ export type ErrandsWorld = Pick<
   | 'buyingPlaces'
   | 'byId'
   | 'cashPlaces'
-  | 'classId'
   | 'classNamed'
   | 'droppingPlaces'
   | 'errand'
@@ -449,12 +448,12 @@ export class Errands implements SessionModule {
        * The join between the sheet's word and the realm's row id, made here
        * for the reason every other figure on this object is: one statement,
        * read by the loop's leg, the pick-up after a fight, the way home and
-       * main's route panel alike. `wearerIn` in `main/index.ts` makes the same
-       * join for what a character may *wear*; both go through
-       * `WorldGraph.classId` so a Paladin cannot be one class to a helm and
-       * another to a corridor.
+       * main's route panel alike. `wearerOf` makes the same join for what a
+       * character may *wear*; both go through `WorldGraph.classNamed` so a
+       * Paladin cannot be one class to a helm and another to a corridor.
        */
-      classId: this.world && state.className ? this.world.classId(state.className) : null,
+      classId:
+        this.world && state.className ? (this.world.classNamed(state.className)?.id ?? null) : null,
       // The same join one column across, for a race-gated exit.
       raceId: this.world && state.race ? this.world.raceId(state.race) : null,
       /*
@@ -716,7 +715,7 @@ export class Errands implements SessionModule {
     const world = this.world;
     const level = state.progress.level;
     if (world === null || world === undefined || level === null) return [];
-    const classId = state.className ? world.classId(state.className) : null;
+    const classId = state.className ? (world.classNamed(state.className)?.id ?? null) : null;
     return world.trainersTaking(level, classId).map((found) => ({
       shop: found.trainer.id,
       name: found.trainer.name,

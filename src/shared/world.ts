@@ -821,6 +821,8 @@ export interface WorldItem {
      * named them as one — see `WEAPON_CLASS`.
      */
     hands?: 1 | 2;
+    /** `Items.WeaponType`'s own code, which a class's `weaponType` is ruled against. */
+    kind?: number;
   };
   /** Only for armour: what it stops. */
   armour?: {
@@ -830,6 +832,8 @@ export interface WorldItem {
     dr?: number;
     /** What it is made of, as a word (`shared/items.ts`). */
     material?: string;
+    /** `Items.ArmourType`'s own code, which a class's `armourType` is ruled against. */
+    kind?: number;
   };
   /** How many times it can be used before it is gone: scrolls, potions, food. */
   uses?: number;
@@ -1598,6 +1602,10 @@ export interface WorldClass {
   magery?: number;
   /** How well it fights, on the realm's own 1-7 scale. */
   combat?: number;
+  /** `Classes.WeaponType`: which weapon kinds it may wield. Format 48; see `equipBlock`. */
+  weaponType?: number;
+  /** `Classes.ArmourType`: the heaviest `ARMOUR_TYPE` code it may wear. Format 48. */
+  armourType?: number;
   /**
    * What the class grants, from `Classes.Abil-n` — format 14.
    *

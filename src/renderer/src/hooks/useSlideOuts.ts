@@ -1,7 +1,7 @@
 /**
  * The panels that hang off a name, one at a time: the realm's answer about a
- * name, the Player flyout, the Gang flyout and the room quick view, with the
- * quick view's dwell and linger.
+ * name, the Player flyout, the Gang flyout, the room quick view with its dwell
+ * and linger, and the slot quick view.
  *
  * Out of `App` (todo 732) with the state it owns; `SlideOuts` draws them. Each
  * panel hands the caret back itself. See `mudengine-ui` › *A listing and the
@@ -13,6 +13,7 @@ import type { GangAsked } from '../components/GangFlyout';
 import type { PlayerAsked } from '../components/PlayerFlyout';
 import type { Asked } from '../components/ReferencePopover';
 import type { RoomAsked } from '../components/RoomQuickView';
+import type { SlotAsked } from '../components/SlotQuickView';
 import { t } from '../lib/i18n';
 import type { PopoverAnchor } from '../lib/popover';
 import { tuning } from '../lib/tuning';
@@ -30,6 +31,8 @@ export interface SlideOutSlot {
   gangFlyout: GangAsked | null;
   /** The room quick view: which room, where it hangs, whether a click nailed it. */
   peek: RoomAsked | null;
+  /** The slot quick view: which character asked, about which slot word, and where. */
+  slotAsked: SlotAsked | null;
   /** A name clicked, on a card or in the console, asking what the realm knows. */
   inspect(name: string, anchor: PopoverAnchor): void;
   dismissAsked(): void;
@@ -37,6 +40,8 @@ export interface SlideOutSlot {
   dismissFlyout(): void;
   selectGang(session: SessionId, name: string, anchor: PopoverAnchor): void;
   dismissGangFlyout(): void;
+  selectSlot(session: SessionId, slot: string, anchor: PopoverAnchor): void;
+  dismissSlot(): void;
   /** A room on a map pointed at or clicked. */
   peekRoom(room: RoomId, at: SVGGElement, settled: boolean): void;
   /** A room on a plan pointed at or clicked, with the plan's own *walk here*. */
@@ -104,6 +109,11 @@ export function useSlideOuts(
    * dismissed like any other.
    */
   const [peek, setPeek] = useState<RoomAsked | null>(null);
+  /*
+   * The fifth, a slot word clicked: addressed at the character whose listing
+   * it was, like a flyout, because what may be worn there is that character's.
+   */
+  const [slotAsked, setSlotAsked] = useState<SlotAsked | null>(null);
   /** The linger: the pointer has left, and the panel goes unless it comes back. */
   const linger = useRef<number | undefined>(undefined);
 
@@ -138,6 +148,7 @@ export function useSlideOuts(
     (name: string, anchor: PopoverAnchor) => {
       setFlyout(null);
       setGangFlyout(null);
+      setSlotAsked(null);
       dismissPeek();
       setAsked({ name, anchor });
     },
@@ -160,6 +171,7 @@ export function useSlideOuts(
     (sid: SessionId, name: string, anchor: PopoverAnchor) => {
       setAsked(null);
       setGangFlyout(null);
+      setSlotAsked(null);
       dismissPeek();
       setFlyout({ session: sid, name, anchor });
     },
@@ -180,12 +192,26 @@ export function useSlideOuts(
     (sid: SessionId, name: string, anchor: PopoverAnchor) => {
       setAsked(null);
       setFlyout(null);
+      setSlotAsked(null);
       dismissPeek();
       setGangFlyout({ session: sid, name, anchor });
     },
     [dismissPeek]
   );
   const dismissGangFlyout = useCallback(() => setGangFlyout(null), []);
+
+  /** A slot word clicked, in the console or on a pack or a person's equipment. */
+  const selectSlot = useCallback(
+    (sid: SessionId, slot: string, anchor: PopoverAnchor) => {
+      setAsked(null);
+      setFlyout(null);
+      setGangFlyout(null);
+      dismissPeek();
+      setSlotAsked({ session: sid, slot, anchor });
+    },
+    [dismissPeek]
+  );
+  const dismissSlot = useCallback(() => setSlotAsked(null), []);
 
   /*
    * The map's one action on a room: plan the way there, which is what a
@@ -222,6 +248,7 @@ export function useSlideOuts(
     setAsked(null);
     setFlyout(null);
     setGangFlyout(null);
+    setSlotAsked(null);
     setPeek(next);
   }, []);
   /*
@@ -310,12 +337,15 @@ export function useSlideOuts(
     flyout,
     gangFlyout,
     peek,
+    slotAsked,
     inspect,
     dismissAsked,
     selectPlayer,
     dismissFlyout,
     selectGang,
     dismissGangFlyout,
+    selectSlot,
+    dismissSlot,
     peekRoom,
     peekPlanned,
     holdPeek,
