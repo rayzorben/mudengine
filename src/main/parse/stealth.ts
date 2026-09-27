@@ -3,13 +3,15 @@
  * and the sentences and sends that settle the published `stealth`.
  *
  * Out of `CharacterTracker` (todo 724; `mudengine-wire` › `parts/tracker.md`).
- * Its one memory, the receipt, is written by the sneak, the breaks and the
- * send path and spent by the room (`RoomSources.stealthAfterMove`);
- * `Expectations` never reads it. Why the wire is read this way round:
+ * Its memory, the receipt (and a follower's relayed one), is written by the
+ * sneak, the follow, the breaks and the send path and spent by the room
+ * (`RoomSources.stealthAfterMove`); `Expectations` never reads it. Why the
+ * wire is read this way round:
  * `mudengine-wire` › *Stealth is read off the command that breaks it*; its
  * readers: `mudengine-automation` › `parts/combat.md` (the opener) and
  * `parts/walking.md` › *The sneak is asked immediately before the step*.
  */
+import { tuning } from '../app/tuning';
 import type { CharacterState, Stealth } from '../../shared/character';
 import { breaksStealth, type CommandName } from '../../shared/commands';
 
@@ -39,39 +41,58 @@ export class StealthReceipt {
   /**
    * Whether `Sneaking...` has been printed since the last move was committed.
    *
-   * **This is the only thing on this realm that says a character is still
-   * unseen**, and it is a fact about the *move*, not about the `sn` that asked
-   * for it. `MoveCommand` prints the line on a successful move if and only if
-   * the character is sneaking (`goodToGo && plyr.BoundTo.Sneaking`), so its
-   * presence confirms stealth held and its absence says it broke.
+   * `MoveCommand.PreExecute` prints it when a move is accepted and the
+   * character is sneaking (`goodToGo && Sneaking`, `MoveCommand.cs:81-84`),
+   * **before** the stealth roll in `Exits.cs:141-160`. So it proves stealth
+   * was on when the move started, not that it held: a failed roll that nobody
+   * perceived prints it and then the room, like a sneak that worked. The one
+   * word for a failed roll is `You make a sound as you enter the room!`, sent
+   * only when someone's perception succeeds (`Player.cs:708`), which `broke`
+   * reads. Taking the receipt at its word otherwise is the user's decision
+   * (todo 758, 2026-09-26): `mudengine-wire` › `parts/tracker.md`.
    *
-   * Reading it that way round is not a preference — it is the only reading
-   * available. `Player.BreakStealth()` is called from about thirty places
-   * (every door opened, bashed or picked, a trap, a hidden exit, `rest`,
-   * `meditate`, equipping, buying, sharing, casting, walking into a wall) and
-   * **it prints nothing at all**. The one sentence that announces stealth
-   * ending, `You are no longer sneaking.`, comes from the `break` command
-   * alone. So a client that waits to be told will wait for ever, which is
-   * exactly what this one did: `stealth` went to `sneaking` on the first
-   * `Sneaking...` and stayed there for the rest of the session, and
-   * `Walker.sneakFirst` — which stands down while the character is already
-   * sneaking — therefore never sent another `sn` after the first.
+   * A move without the line is the server saying this character was visible,
+   * which is what `afterMove` reads, and why `Walker.sneakFirst` sends `sn`
+   * again. `Player.BreakStealth()` has about thirty callers and prints
+   * nothing; `You are no longer sneaking.` is the `break` command's alone.
    *
-   * The `sn` reply cannot serve instead, and this is the part that is easy to
-   * get wrong: `SneakCommand` prints `Attempting to sneak...` on success **and
-   * on the failure branch whose perception roll also fails**. The two are
-   * byte-identical, so the reply is not evidence either way.
+   * The `sn` reply cannot serve instead: `SneakCommand` prints `Attempting to
+   * sneak...` on success and on the failure whose perception roll also fails.
    */
   private sneakedThisMove = false;
 
   /**
-   * `Sneaking...`, printed by `MoveCommand` on a successful move and only
-   * while the character actually is sneaking — so it is both the fact and the
-   * receipt for the move it precedes, which `afterMove` spends.
+   * A `Sneaking...` sent while no move of this character's was in flight: the
+   * leader's move, relayed to a sneaking follower (`MoveCommand.cs:86-95`).
+   * The server relays it without asking `goodToGo`, so a leader who walks into
+   * a wall or is too heavy to move leaves one behind for a move that never
+   * happened. It becomes the receipt only when `-- Following your Party
+   * leader <dir> --` says the follower was walked (`followed`), within
+   * `tuning.parse.staleMoveMs`: a leader's later move relays nothing to a
+   * follower who stopped sneaking in between, so an old relay must not stand
+   * in for it. When it was printed, or null.
    */
-  sneaked(s: CharacterState): CharacterState | null {
-    this.sneakedThisMove = true;
+  private relayedAt: number | null = null;
+
+  /**
+   * `Sneaking...`. The server sends it only to a character that is sneaking,
+   * so it is the fact at once; whether it is also the receipt for a move
+   * depends on whose move it was (`ownMove`: a command of this character's
+   * may be moving it, `Expectations.mayBeMoving`).
+   */
+  sneaked(s: CharacterState, ownMove: boolean, at: number): CharacterState | null {
+    if (ownMove) this.sneakedThisMove = true;
+    this.relayedAt = ownMove ? null : at;
     return s.stealth === 'sneaking' ? null : { ...s, stealth: 'sneaking' };
+  }
+
+  /** The leader's move walked this follower too, so a fresh relayed line is the receipt. */
+  followed(at: number): void {
+    const relayedAt = this.relayedAt;
+    this.relayedAt = null;
+    if (relayedAt !== null && at - relayedAt < tuning().parse.staleMoveMs) {
+      this.sneakedThisMove = true;
+    }
   }
 
   /**
@@ -93,7 +114,7 @@ export class StealthReceipt {
    */
   afterMove(): Stealth {
     const settled: Stealth = this.sneakedThisMove ? 'sneaking' : 'seen';
-    this.sneakedThisMove = false;
+    this.forget();
     return settled;
   }
 
@@ -106,7 +127,7 @@ export class StealthReceipt {
    * and left standing it would be spent on the move after it.
    */
   broke(s: CharacterState): CharacterState | null {
-    this.sneakedThisMove = false;
+    this.forget();
     return seen(s);
   }
 
@@ -116,6 +137,7 @@ export class StealthReceipt {
    */
   forget(): void {
     this.sneakedThisMove = false;
+    this.relayedAt = null;
   }
 
   /**

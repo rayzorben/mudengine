@@ -1938,9 +1938,9 @@ export class CharacterTracker {
        * to believe a character is hidden while it is walking into a lair in
        * plain sight. Only `Sneaking...` says so.
        */
-      /* The fact and the receipt for the move it precedes: `StealthReceipt`. */
+      /* The fact, and the receipt for our own move it precedes: `StealthReceipt`. */
       case 'user-sneaking':
-        return this.stealth.sneaked(s);
+        return this.stealth.sneaked(s, this.expect.mayBeMoving, block.at);
 
       // Heard on the way in (`Exits.cs:150-160`): the receipt goes too (todo 750).
       case 'user-not-sneaking':
@@ -2446,13 +2446,13 @@ export class CharacterTracker {
         return coinsDropped(s, figure(g['count']), g['coin']);
 
       /*
-       * The server walked this character after its leader. A room is about to
-       * arrive that no typed command asked for, and it is a room reached by a
-       * *move* — so the same expectation a typed direction pushes is pushed
-       * here, and the resolver gets to use the strongest signal it has.
+       * The server walked this character after its leader: a room reached by a
+       * *move* no typed command asked for, so a typed direction's expectation
+       * is pushed, and a relayed `Sneaking...` becomes this move's receipt.
        */
       case 'party-follows': {
         const direction = MOVE_COMMANDS[g['direction']?.trim().toLowerCase() ?? ''];
+        this.stealth.followed(block.at);
         if (!direction) return null;
         this.expect.pushMove(direction);
         return null;
