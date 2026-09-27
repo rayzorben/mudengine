@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CHARACTER, type CharacterState, type Stealth } from '../../../shared/character';
 import { blockOf } from '../../../shared/__tests__/blocks';
 import { CharacterTracker } from '../CharacterTracker';
+import { tuning } from '../../app/tuning';
 import { seen, StealthReceipt } from '../stealth';
 
 /*
@@ -24,7 +25,7 @@ function standing(stealth: Stealth): CharacterState {
 /** A receipt the move it precedes has not yet spent. */
 function printed(): StealthReceipt {
   const receipt = new StealthReceipt();
-  receipt.sneaked(standing('unknown'));
+  receipt.sneaked(standing('unknown'), true, T);
   return receipt;
 }
 
@@ -63,6 +64,42 @@ describe('the order the receipt is spent in', () => {
     expect(receipt.afterMove()).toBe('sneaking');
   });
 
+  it('is a receipt when relayed only once the follow is announced, and soon', () => {
+    const relayed = new StealthReceipt();
+    expect(relayed.sneaked(standing('unknown'), false, T)?.stealth).toBe('sneaking');
+    expect(relayed.afterMove()).toBe('seen');
+
+    const followed = new StealthReceipt();
+    followed.sneaked(standing('unknown'), false, T);
+    followed.followed(T + 1);
+    expect(followed.afterMove()).toBe('sneaking');
+    expect(followed.afterMove()).toBe('seen');
+
+    // A relay left by a leader at a wall, and a follow long after it.
+    const stale = new StealthReceipt();
+    stale.sneaked(standing('unknown'), false, T);
+    stale.followed(T + tuning().parse.staleMoveMs);
+    expect(stale.afterMove()).toBe('seen');
+
+    const none = new StealthReceipt();
+    none.followed(T);
+    expect(none.afterMove()).toBe('seen');
+  });
+
+  it('drops a relay with the receipt: a break, a leave, a move', () => {
+    for (const spend of [
+      (receipt: StealthReceipt): void => void receipt.broke(standing('sneaking')),
+      (receipt: StealthReceipt): void => receipt.forget(),
+      (receipt: StealthReceipt): void => void receipt.afterMove()
+    ]) {
+      const receipt = new StealthReceipt();
+      receipt.sneaked(standing('unknown'), false, T);
+      spend(receipt);
+      receipt.followed(T + 1);
+      expect(receipt.afterMove()).toBe('seen');
+    }
+  });
+
   it('asks for the shadows back only from seen, after any break the send made', () => {
     const receipt = new StealthReceipt();
     expect(receipt.sent(standing('seen'), 'sn', 'Sneak').stealth).toBe('unknown');
@@ -73,29 +110,65 @@ describe('the order the receipt is spent in', () => {
 });
 
 describe('what a tracker does with the receipt', () => {
-  /** Sneaking in a room with a way east, and `Sneaking...` printed. */
-  const sneaking = (): CharacterTracker => {
+  /** On the shore, with a way east. */
+  const ashore = (): CharacterTracker => {
     const tracker = new CharacterTracker();
     tracker.reset();
     tracker.apply(blockOf('status-line', '[HP=10/20]:', {}, T));
     tracker.apply(blockOf('room-name', 'Shore', { name: 'Shore' }, T + 1));
     tracker.apply(blockOf('room-exits', 'Obvious exits: east', { exits: 'east' }, T + 2));
-    tracker.apply(blockOf('user-sneaking', 'Sneaking...', {}, T + 3));
     return tracker;
   };
-  /** A step east, answered by its room: what the move left the character as. */
-  const step = (tracker: CharacterTracker, at: number): Stealth => {
-    tracker.observeCommand('e');
+  /** East Beach arriving: what the move left the character as. */
+  const arrive = (tracker: CharacterTracker, at: number): Stealth => {
     tracker.apply(blockOf('room-name', 'East Beach', { name: 'East Beach' }, at));
     tracker.apply(blockOf('room-exits', 'Obvious exits: west', { exits: 'west' }, at + 1));
     return tracker.current.stealth;
+  };
+  /** A step east, answered by its room, with no `Sneaking...` before it. */
+  const step = (tracker: CharacterTracker, at: number): Stealth => {
+    tracker.observeCommand('e');
+    return arrive(tracker, at);
+  };
+  /** Sneaking east: `e` sent and `Sneaking...` printed, its room still to come. */
+  const sneaking = (): CharacterTracker => {
+    const tracker = ashore();
+    tracker.observeCommand('e');
+    tracker.apply(blockOf('user-sneaking', 'Sneaking...', {}, T + 3));
+    return tracker;
   };
 
   it('spends it on the move it was printed for', () => {
     const tracker = sneaking();
     expect(tracker.current.stealth).toBe('sneaking');
-    expect(step(tracker, T + 10)).toBe('sneaking');
+    expect(arrive(tracker, T + 10)).toBe('sneaking');
     expect(step(tracker, T + 20)).toBe('seen');
+  });
+
+  /*
+   * A leader's move relays `Sneaking...` to each sneaking follower before the
+   * server knows the move will go (`MoveCommand.cs:86-95`). Walked, the
+   * follower reads `-- Following your Party leader <dir> --` and the room; the
+   * leader at a wall or too heavy, nothing follows it (todo 758).
+   */
+  it('spends a relayed one only on the follow it announces', () => {
+    const followed = ashore();
+    followed.apply(blockOf('user-sneaking', 'Sneaking...', {}, T + 3));
+    expect(followed.current.stealth).toBe('sneaking');
+    const follows = '-- Following your Party leader east --';
+    followed.apply(blockOf('party-follows', follows, { direction: 'east' }, T + 4));
+    expect(arrive(followed, T + 10)).toBe('sneaking');
+
+    // A text exit no realm data names is still this character's own move.
+    const ownWay = ashore();
+    ownWay.observeCommand('go manhole');
+    ownWay.apply(blockOf('user-sneaking', 'Sneaking...', {}, T + 3));
+    expect(arrive(ownWay, T + 10)).toBe('sneaking');
+
+    const leftBehind = ashore();
+    leftBehind.apply(blockOf('user-sneaking', 'Sneaking...', {}, T + 3));
+    expect(leftBehind.current.stealth).toBe('sneaking');
+    expect(step(leftBehind, T + 10)).toBe('seen');
   });
 
   /*
@@ -132,7 +205,7 @@ describe('what a tracker does with the receipt', () => {
     const failed = "Attempting to sneak...You don't think you're sneaking.";
     tracker.apply(blockOf('user-sneak-failed', failed, {}, T + 5));
     expect(tracker.current.stealth).toBe('seen');
-    expect(step(tracker, T + 10)).toBe('sneaking');
+    expect(arrive(tracker, T + 10)).toBe('sneaking');
   });
 
   /*
@@ -147,12 +220,11 @@ describe('what a tracker does with the receipt', () => {
       blockOf('user-not-sneaking', 'You make a sound as you enter the room!', {}, T + 5)
     );
     expect(tracker.current.stealth).toBe('seen');
-    expect(step(tracker, T + 10)).toBe('seen');
+    expect(arrive(tracker, T + 10)).toBe('seen');
   });
 
   it('is spent by a refused step, so the next move is read on its own', () => {
     const tracker = sneaking();
-    tracker.observeCommand('n');
     tracker.apply(blockOf('direction-failed', 'There is no exit in that direction!', {}, T + 5));
     expect(tracker.current.stealth).toBe('seen');
     expect(step(tracker, T + 10)).toBe('seen');

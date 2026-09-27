@@ -685,6 +685,15 @@ export class Expectations {
   }
 
   /**
+   * Whether a command of this character's may be moving it: a counted move,
+   * or a command nothing here models (`go manhole` with no realm to read the
+   * text exit from), which may be one.
+   */
+  get mayBeMoving(): boolean {
+    return this.moves > 0 || this.unmodelled !== null;
+  }
+
+  /**
    * Gives up on claims nothing has answered, and says which.
    *
    * **The bound belongs here, where the claim is made**, because six things
