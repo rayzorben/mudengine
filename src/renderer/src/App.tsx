@@ -1084,7 +1084,7 @@ export default function App() {
      * game. It is a chord, so a text field in the chrome keeps its own keys.
      */
     { key: 'l', mod: true, run: toggleLoops },
-    { key: 'Enter', mod: true, run: toggleConnection },
+    // Ctrl/Cmd Enter, Alt H and Ctrl/Cmd Q are `useConnectionKeys`, bound by `useConnection`.
     { key: 'd', mod: true, shift: true, run: toggleRail },
     { key: 'l', mod: true, shift: true, run: () => activeTerminal()?.jumpToLatest() },
     { key: '<', mod: true, shift: true, run: cycle },
