@@ -487,13 +487,14 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
  * order is the precedence and `GEAR_WHENS.indexOf` is what ranks two sets that
  * both match.
  *
- * Three, because three is what the client can answer without guessing:
+ * Four, because four is what the client can answer without guessing:
  * `always` is the kit a character is in when nothing else is happening,
- * `moving` is a walk or a lap under way, `fighting` is `fightIsRunning`. A
- * fourth band for *resting* was left out — a rest is broken by the `wear` that
- * would start it, so a set for it could never take effect.
+ * `moving` is a walk or a lap under way, `backstab` is between fights when the
+ * next one opens with a backstab (MegaMUD's `BsWeapon`), `fighting` is
+ * `fightIsRunning`. A band for *resting* was left out: a rest is broken by the
+ * `wear` that would start it, so a set for it could never take effect.
  */
-export const GEAR_WHENS = ['always', 'moving', 'fighting'] as const;
+export const GEAR_WHENS = ['always', 'moving', 'backstab', 'fighting'] as const;
 
 export type GearWhen = (typeof GEAR_WHENS)[number];
 
@@ -531,6 +532,8 @@ export interface GearSituation {
   moving: boolean;
   /** Anything is swinging — `fightIsRunning`. */
   fighting: boolean;
+  /** The next fight opens with a backstab (`AutoCombat.opensWithBackstab`). */
+  backstab: boolean;
   /** The monster being fought, or null. */
   target: string | null;
 }
@@ -540,21 +543,36 @@ export interface GearSituation {
  *
  * **Most specific wins, and the tie is the list's own order**, so a player who
  * writes two sets for the same situation gets the first one rather than an
- * answer that depends on how the file was sorted. Specificity is: a fighting
- * set naming this monster, then any fighting set, then a moving set. A
- * fighting character that is also walking is *fighting* — the fight is the
- * thing that decides what the next round costs.
+ * answer that depends on how the file was sorted. Specificity is a fighting
+ * set naming this monster, then `GEAR_WHENS`' order. A fighting character that
+ * is also walking is *fighting*: the fight is the thing that decides what the
+ * next round costs. A backstab set applies only while nothing is swinging, so
+ * the fighting set takes over once the backstab has opened the fight.
  */
 export function overlayFor(sets: readonly GearSet[], now: GearSituation): GearSet | null {
   const matches = (set: GearSet): boolean => {
-    if (set.when === 'always') return false;
-    if (set.when === 'moving') return now.moving;
-    if (!now.fighting) return false;
-    const mob = set.mob.trim();
-    return mob.length === 0 || (now.target !== null && sameItem(now.target, mob));
+    switch (set.when) {
+      case 'always':
+        return false;
+      case 'moving':
+        return now.moving;
+      case 'backstab':
+        return now.backstab && !now.fighting;
+      case 'fighting': {
+        if (!now.fighting) return false;
+        const mob = set.mob.trim();
+        return mob.length === 0 || (now.target !== null && sameItem(now.target, mob));
+      }
+      default: {
+        const unreachable: never = set.when;
+        return unreachable;
+      }
+    }
   };
   const rank = (set: GearSet): number =>
-    set.when === 'fighting' ? (set.mob.trim().length > 0 ? 3 : 2) : 1;
+    set.when === 'fighting' && set.mob.trim().length > 0
+      ? GEAR_WHENS.length
+      : GEAR_WHENS.indexOf(set.when);
 
   let best: GearSet | null = null;
   for (const set of sets) {
@@ -594,7 +612,11 @@ export function kitFor(
     }
   };
   lay(baseSet(sets));
-  lay(overlayFor(sets, now));
+  const overlay = overlayFor(sets, now);
+  // A backstab set holds the weapon for the opening blow, so it is laid over
+  // the moving set and the walking boots stay on.
+  if (overlay?.when === 'backstab') lay(overlayFor(sets, { ...now, backstab: false }));
+  lay(overlay);
   return kit;
 }
 

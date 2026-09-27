@@ -1410,11 +1410,18 @@ automation:
   # overlaid by whichever other set applies, so `Moving` is one line about boots
   # rather than a second copy of everything the character owns.
   #
-  # `when` is `always`, `moving` (a route or a lap under way) or `fighting`
-  # (anything swinging). A fighting set may add `mob:` to apply against one
-  # monster only -- the lap fought with throwing hammers and the one boss that
-  # wants the magic weapon. Most specific wins, and two sets that match equally
-  # are decided by the order they are written in.
+  # `when` is `always`, `moving` (a route or a lap under way), `backstab` or
+  # `fighting` (anything swinging). A fighting set may add `mob:` to apply
+  # against one monster only -- the lap fought with throwing hammers and the one
+  # boss that wants the magic weapon. Most specific wins, and two sets that
+  # match equally are decided by the order they are written in.
+  #
+  # A `backstab` set is MegaMUD's backstab weapon as a set: worn between
+  # fights while your opener is `bs`, and swapped for the fighting set once the
+  # backstab has started the fight. It goes on before the step's `sn`, because
+  # wearing anything breaks sneaking, and it is laid over the moving set, so it
+  # only needs the weapon. A weapon the game will not backstab with is not put
+  # on again that session.
   #
   # The off-hand comes off before a two-handed weapon goes on, and the weapon
   # hand is sent before the rest, so coming back the other way frees the hand
@@ -1428,6 +1435,9 @@ automation:
   #     - name: Moving
   #       when: moving
   #       wear: [brown leather boots]
+  #     - name: Backstab
+  #       when: backstab
+  #       wear: [ice crystal falchion]
   #     - name: Boss
   #       when: fighting
   #       mob: nasty sandworm

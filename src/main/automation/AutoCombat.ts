@@ -102,7 +102,7 @@ import {
   type MobStance
 } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
-import { WEAPON_HAND } from '../../shared/items';
+import { sameItem, WEAPON_HAND } from '../../shared/items';
 import { guardsFirst, inTheFight, protects } from '../../shared/guards';
 import { protectionOf, weighRoom, type HazardKind, type Menace } from '../../shared/menace';
 import {
@@ -342,6 +342,12 @@ export class AutoCombat implements SessionModule {
    * screen to say why.
    */
   private readonly refused = new Map<string, Refusal>();
+  /**
+   * Every weapon the server refused a backstab with this session, kept after
+   * the refusal itself is given back: the backstab gear set would otherwise
+   * put the same weapon on before every fight to be refused again (todo 02).
+   */
+  private readonly cannotBackstabWith = new Set<string>();
   /**
    * Rounds counted **since the last look**, for `refreshRounds`.
    *
@@ -628,6 +634,7 @@ export class AutoCombat implements SessionModule {
     this.questing = false;
     this.moveOnly = false;
     this.refused.clear();
+    this.cannotBackstabWith.clear();
     this.spell.reset();
     this.sentAttack = null;
     this.offBy = null;
@@ -1060,6 +1067,9 @@ export class AutoCombat implements SessionModule {
             ? { blames: 'character' }
             : { blames: 'weapon', weapon: this.state === null ? null : weaponInHand(this.state) };
         this.refused.set(skill, blamed);
+        if (blamed.blames === 'weapon' && blamed.weapon !== null) {
+          this.cannotBackstabWith.add(blamed.weapon);
+        }
         // The longest spelling, which is the one a person recognises.
         const verb = words.at(-1) ?? skill;
         /*
@@ -2245,7 +2255,7 @@ export class AutoCombat implements SessionModule {
        * the server refuses is, because the answer will not change until the
        * player edits the setting.
        */
-      if (this.events.canHide?.() === false) {
+      if (this.classCannotHide()) {
         this.sayOpenerNeedsClass(opener);
         return { held: 'other' };
       }
@@ -2293,11 +2303,40 @@ export class AutoCombat implements SessionModule {
     return this.isRefused(this.config.opener);
   }
 
-  /** Whether a configured word is one of the spellings of a refused verb. */
-  private isRefused(word: string): boolean {
+  /**
+   * Whether the next fight opens with a backstab made with `weapons` in hand:
+   * auto-combat is fighting, the opener is a backstab, the class can hide, the
+   * server has not refused it for the character, and has not refused it with
+   * one of `weapons`. A refusal blamed on some other weapon still answers yes,
+   * because changing the weapon is what the backstab gear set does
+   * (`EquipmentManager`), and the refusal is given back when the hand changes.
+   */
+  opensWithBackstab(weapons: readonly string[]): boolean {
+    const opener = this.config.opener;
+    if (!this.acting || !answersTo('backstab', opener) || this.classCannotHide()) return false;
+    for (const refused of this.cannotBackstabWith) {
+      if (weapons.some((weapon) => sameItem(weapon, refused))) return false;
+    }
+    return !this.isRefused(opener, 'character');
+  }
+
+  /** The realm's class row says this character never hides (todo 28); unknown is not never. */
+  private classCannotHide(): boolean {
+    return this.events.canHide?.() === false;
+  }
+
+  /**
+   * Whether a configured word is one of the spellings of a refused verb, or
+   * of one refused for what `blames` names when it is given.
+   */
+  private isRefused(word: string, blames?: Refusal['blames']): boolean {
     const spelled = word.trim().toLowerCase();
     if (spelled.length === 0) return false;
-    for (const skill of this.refused.keys()) if (answersTo(skill, spelled)) return true;
+    for (const [skill, refusal] of this.refused) {
+      if ((blames === undefined || refusal.blames === blames) && answersTo(skill, spelled)) {
+        return true;
+      }
+    }
     return false;
   }
 
