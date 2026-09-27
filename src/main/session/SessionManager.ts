@@ -881,8 +881,11 @@ export class SessionManager {
       // question is answered here where the world graph is and not in the
       // walker, which holds a route and a queue and nothing else.
       lightSource: (state) => this.errands.lightSource(state),
-      // And the light itself, ahead of the step. See `AutoLight`.
-      beforeStep: (ahead, state) => this.light.beforeStep(ahead, state),
+      // The backstab gear set (a `wear` breaks stealth), then the light, ahead of the step.
+      beforeStep: (ahead, state) => {
+        this.gear.beforeStep(state);
+        this.light.beforeStep(ahead, state);
+      },
       // And the ward the room ahead wants, off the pack (todo 105).
       wardFor: (to, state) => this.wards.beforeStep(to, state),
       // Whether a fight here is one auto-combat will fight: the walk waits out
@@ -1575,7 +1578,8 @@ export class SessionManager {
       this.queue,
       {
         slotOf: (name) => this.errands.gearSlotOf(name),
-        handsOf: (name) => this.errands.gearHandsOf(name)
+        handsOf: (name) => this.errands.gearHandsOf(name),
+        opensWithBackstab: (weapons) => this.combat.opensWithBackstab(weapons)
       },
       { notice: (message) => this.sink.notice(message) }
     );
@@ -3350,13 +3354,9 @@ export class SessionManager {
         if (this.supplies.current === null) this.deposit.onCharacter(state);
       }
       /*
-       * And the kit, which is not under the escape guard above.
-       *
-       * Running away is a direction and dressing is not a command spent on the
-       * way out of a room: a swap proposed while an escape is in flight is
-       * queued behind it in a lower band and answered in the room it lands
-       * in, where the situation is asked again. What it must not cross is a
-       * move of this client's own, which is the guard it does have.
+       * And the kit, outside the escape guard: a swap proposed during an escape
+       * queues behind it in a lower band and is asked again where it lands.
+       * What it must not cross is a move of this client's own.
        */
       if (this.tracker.pendingMoves === 0) {
         this.gear.onCharacter(

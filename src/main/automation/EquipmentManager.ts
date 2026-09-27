@@ -24,6 +24,7 @@ import {
   offRoundPlan,
   overlayFor,
   swapPlan,
+  type GearSet,
   type GearSituation,
   type GearPlan
 } from '../../shared/gear';
@@ -34,6 +35,8 @@ export interface EquipmentSources {
   slotOf(name: string): string | null;
   /** One hand or two, off `Items.WeaponType`, or null where the realm cannot say. */
   handsOf(name: string): 1 | 2 | null;
+  /** Whether the next fight opens with a backstab with these in hand (`AutoCombat`). */
+  opensWithBackstab(weapons: readonly string[]): boolean;
 }
 
 export interface EquipmentEvents {
@@ -102,6 +105,7 @@ export class EquipmentManager implements SessionModule {
     const now: GearSituation = {
       moving,
       fighting: state.inCombat || state.combat.attackers.length > 0,
+      backstab: this.opensWithBackstab(),
       target: state.combat.target
     };
     const set = overlayFor(this.config.sets, now);
@@ -124,7 +128,23 @@ export class EquipmentManager implements SessionModule {
     const plan = swapPlan(kit, state.inventory.items, tuning().spending.maxGear, (item) =>
       this.sources.handsOf(item)
     );
-    this.send(plan, now.fighting ? 'combat' : 'probe', set);
+    this.send(plan, bandFor(now, set), set);
+  }
+
+  /** Whether a backstab set is written and the next fight opens with its weapon. */
+  private opensWithBackstab(): boolean {
+    const set = this.config.sets.find((each) => each.when === 'backstab');
+    return set !== undefined && this.sources.opensWithBackstab(set.wear);
+  }
+
+  /**
+   * The walker's next step is about to go. Dressed again here because a
+   * `wear` breaks stealth (`EquipCommand.cs:138,165`): the backstab set has
+   * to reach the wire before the `sn` that `Walker.sneakFirst` sends next,
+   * in the same band, and the queue keeps a band's order.
+   */
+  beforeStep(state: CharacterState): void {
+    this.onCharacter(state, true);
   }
 
   /**
@@ -182,10 +202,11 @@ export class EquipmentManager implements SessionModule {
   /** One plan, enqueued, with what it could not do said out loud. */
   private send(plan: GearPlan, priority: Priority, set: { name: string } | null): void {
     const at = this.now();
+    let asked = 0;
     for (const command of plan.commands) {
-      const asked = this.askedAt.get(command) ?? 0;
-      if (at - asked < tuning().spells.blessRetryMs) continue;
+      if (at - (this.askedAt.get(command) ?? 0) < tuning().spells.blessRetryMs) continue;
       this.askedAt.set(command, at);
+      asked += 1;
       this.queue.enqueue({
         command,
         priority,
@@ -193,7 +214,8 @@ export class EquipmentManager implements SessionModule {
         expiresAt: at + tuning().spells.buffExpiresMs
       });
     }
-    if (plan.commands.length > 0 && set !== null) {
+    // Said when something went, so the walker asking before each step does not repeat it.
+    if (asked > 0 && set !== null) {
       this.events.notice?.(t('automation.gear.wearing', { set: set.name }));
     }
     for (const item of plan.missing) {
@@ -207,4 +229,14 @@ export class EquipmentManager implements SessionModule {
       );
     }
   }
+}
+
+/**
+ * The band a swap goes out in. A fight's in `combat`; the backstab set's in
+ * `movement`, the walker's own, so it is ahead of the next `sn` rather than
+ * behind the step; anything else waits in `probe`.
+ */
+function bandFor(now: GearSituation, set: GearSet | null): Priority {
+  if (now.fighting) return 'combat';
+  return set?.when === 'backstab' ? 'movement' : 'probe';
 }

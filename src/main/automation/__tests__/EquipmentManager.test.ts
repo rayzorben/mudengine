@@ -71,6 +71,7 @@ let clock: number;
 const sources = (over: Partial<EquipmentSources> = {}): EquipmentSources => ({
   slotOf: (name) => SLOTS[name] ?? null,
   handsOf: (name) => (name === 'nexus spear' ? 2 : 1),
+  opensWithBackstab: () => false,
   ...over
 });
 
@@ -185,6 +186,49 @@ describe('which kit to be in', () => {
     manager.onCharacter(state, false);
     manager.onCharacter(state, false);
     expect(notices.filter((line) => line.includes('plate boots'))).toHaveLength(1);
+  });
+});
+
+/*
+ * MegaMUD's backstab weapon as a set (todo 02). A `wear` breaks stealth
+ * (`EquipCommand.cs:138,165`), so the set goes out in the walker's band, where
+ * the queue keeps it ahead of the `sn` the step asks for next.
+ */
+describe('the backstab set', () => {
+  const withStab = gear({
+    sets: [...SETS, { name: 'Backstab', when: 'backstab', mob: '', wear: ['nexus spear'] }]
+  });
+  const armed = [worn('plate boots', 'Feet'), worn('lifestealer', WEAPON_HAND)];
+
+  it('is worn between fights while the opener is a backstab, ahead of the step', () => {
+    const offered = vi.spyOn(queue, 'enqueue');
+    const pack = [...armed, carried('nexus spear')];
+    make(withStab).onCharacter(standing(pack), false);
+    expect(sent).toEqual([]);
+    make(withStab, { opensWithBackstab: () => true }).beforeStep(standing(pack));
+    expect(sent).toEqual(['wear nexus spear']);
+    expect(offered.mock.calls.map(([intent]) => intent.priority)).toEqual(['movement']);
+  });
+
+  it('asks with the set’s own weapons, and walks in the moving set on a no', () => {
+    const asked: (readonly string[])[] = [];
+    const opens = (weapons: readonly string[]): boolean => {
+      asked.push(weapons);
+      return false;
+    };
+    const pack = [...armed, carried('nexus spear'), carried('brown leather boots')];
+    make(withStab, { opensWithBackstab: opens }).beforeStep(standing(pack));
+    expect(asked).toEqual([['nexus spear']]);
+    expect(sent).toEqual(['wear brown leather boots']);
+  });
+
+  it('gives way to the fighting kit once the backstab has started the fight', () => {
+    const manager = make(withStab, { opensWithBackstab: () => true });
+    const stabbing = [worn('plate boots', 'Feet'), worn('nexus spear', WEAPON_HAND)];
+    manager.onCharacter(standing([...stabbing, carried('lifestealer')]), false);
+    expect(sent).toEqual([]);
+    manager.onCharacter(fighting('big sandworm', [...stabbing, carried('lifestealer')]), false);
+    expect(sent).toEqual(['wear lifestealer']);
   });
 });
 

@@ -1615,6 +1615,32 @@ describe('a verb the realm refuses', () => {
       expect(sent).toEqual(['bs giant rat']);
     });
 
+    /*
+     * What the backstab gear set asks (todo 02): a weapon's refusal is what the
+     * set exists to change, so it still answers yes; the character's does not.
+     */
+    it('still opens with a backstab after the weapon was refused, not the character', () => {
+      const falchion = ['ice crystal falchion'];
+      expect(make(combat({ opener: 'ju' })).opensWithBackstab(falchion)).toBe(false);
+      expect(make(combat({ opener: 'bs' }), false).opensWithBackstab(falchion)).toBe(false);
+      const weapon = make(combat({ opener: 'bs' }));
+      expect(weapon.opensWithBackstab(falchion)).toBe(true);
+      weapon.onCharacter(holding('golden pike'));
+      weapon.onBlock(block('attack-refused', { skill: 'backstab', weapon: 'this weapon' }));
+      expect(weapon.opensWithBackstab(falchion)).toBe(true);
+      // The set's own weapon refused: kept after the hand changes, or every
+      // fight would wear it to be refused again.
+      expect(weapon.opensWithBackstab(['golden pike'])).toBe(false);
+      weapon.onCharacter(holding('ice crystal falchion'));
+      expect(weapon.opensWithBackstab(['golden pike'])).toBe(false);
+
+      const character = make(combat({ opener: 'bs' }));
+      character.onBlock(block('attack-refused', { skill: 'backstab' }));
+      expect(character.opensWithBackstab(falchion)).toBe(false);
+      const mage = make(combat({ opener: 'bs' }), true, undefined, undefined, () => false);
+      expect(mage.opensWithBackstab(falchion)).toBe(false);
+    });
+
     /* And a class refusal is not released by a weapon change. */
     it('does not release a refusal the realm blamed on the character', () => {
       const auto = make(combat({ opener: 'bash' }));

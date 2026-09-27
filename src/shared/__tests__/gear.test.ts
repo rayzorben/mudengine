@@ -369,18 +369,18 @@ describe('choosing a kit for the situation', () => {
     'golden chalice': OFF_HAND
   };
   const slotOf = (name: string): string | null => SLOTS[name] ?? null;
-  const still: GearSituation = { moving: false, fighting: false, target: null };
+  const still: GearSituation = { moving: false, fighting: false, backstab: false, target: null };
 
   it('takes the most specific set, and the first of two that match equally', () => {
     expect(overlayFor(sets, still)).toBeNull();
     expect(overlayFor(sets, { ...still, moving: true })?.name).toBe('Moving');
     expect(overlayFor(sets, { ...still, fighting: true })?.name).toBe('Fighting');
     // The monster narrows it; another monster does not reach the boss row.
-    const boss = { moving: false, fighting: true, target: 'nasty sandworm' };
+    const boss = { ...still, fighting: true, target: 'nasty sandworm' };
     expect(overlayFor(sets, boss)?.name).toBe('Boss');
     expect(overlayFor(sets, { ...boss, target: 'big sandworm' })?.name).toBe('Fighting');
     // A fight outranks a walk: the fight decides what the next round costs.
-    expect(overlayFor(sets, { moving: true, fighting: true, target: null })?.name).toBe('Fighting');
+    expect(overlayFor(sets, { ...still, moving: true, fighting: true })?.name).toBe('Fighting');
   });
 
   it('lays the set over the base rather than replacing it', () => {
@@ -397,6 +397,32 @@ describe('choosing a kit for the situation', () => {
   });
 
   /*
+   * MegaMUD's `BsWeapon` as a set (todo 02): the weapon to open with, worn
+   * between fights while the opener is a backstab, and the fighting set once
+   * the fight is on. Laid over the moving set, so a walk keeps its boots.
+   */
+  it('wears the backstab set between fights, and the fighting set once one starts', () => {
+    const withStab: GearSet[] = [
+      ...sets,
+      { name: 'Backstab', when: 'backstab', mob: '', wear: ['nexus spear'] }
+    ];
+    const ready = { ...still, backstab: true };
+    expect(overlayFor(sets, ready)).toBeNull();
+    expect(overlayFor(withStab, still)).toBeNull();
+    expect(overlayFor(withStab, ready)?.name).toBe('Backstab');
+    expect(overlayFor(withStab, { ...ready, moving: true })?.name).toBe('Backstab');
+    expect(overlayFor(withStab, { ...ready, fighting: true })?.name).toBe('Fighting');
+    expect([...kitFor(withStab, { ...ready, moving: true }, slotOf)]).toEqual([
+      ['feet', 'brown leather boots'],
+      ['weapon hand', 'nexus spear']
+    ]);
+    expect([...kitFor(withStab, ready, slotOf)]).toEqual([
+      ['feet', 'plate boots'],
+      ['weapon hand', 'nexus spear']
+    ]);
+  });
+
+  /*
    * The ordering rule, which is the whole reason this is a plan rather than a
    * list of `wear`s: `UseCommand`'s own refusal is about the hand, and the
    * server will not put a two-hander on over a held shield.
@@ -408,7 +434,7 @@ describe('choosing a kit for the situation', () => {
       worn('lifestealer', WEAPON_HAND),
       carried({ name: 'nexus spear' })
     ];
-    const kit = kitFor(sets, { moving: false, fighting: true, target: 'nasty sandworm' }, slotOf);
+    const kit = kitFor(sets, { ...still, fighting: true, target: 'nasty sandworm' }, slotOf);
     expect(swapPlan(kit, pack, 10, hands).commands).toEqual([
       'remove golden chalice',
       'wear nexus spear'

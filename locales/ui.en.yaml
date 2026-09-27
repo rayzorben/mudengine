@@ -3788,6 +3788,7 @@ settings:
     itemRemoveAria: Remove item {item} from set {number}
     whenAlways: always
     whenMoving: while moving
+    whenBackstab: when backstabbing
     whenFighting: while fighting
     offRoundLegend: Between rounds
     offRoundNote: Using an item on what you are fighting, between attacks. The game will not use a
