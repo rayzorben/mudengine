@@ -328,6 +328,21 @@ export function createElectronHost(layout: Layout): Host {
       return result.canceled ? null : (result.filePaths[0] ?? null);
     },
 
+    chooseSaveFile: async (caller, choice) => {
+      const owner = BrowserWindow.fromId(caller.windowId);
+      const options: Electron.SaveDialogOptions = {
+        title: choice.title,
+        defaultPath: path.join(app.getPath('documents'), choice.defaultName),
+        filters: [{ name: choice.extensionsLabel, extensions: [...choice.extensions] }]
+      };
+      const result = owner
+        ? await dialog.showSaveDialog(owner, options)
+        : await dialog.showSaveDialog(options);
+      return result.canceled || result.filePath === undefined || result.filePath.length === 0
+        ? null
+        : result.filePath;
+    },
+
     clipboard: {
       read: () => clipboard.readText(),
       write: (text) => clipboard.writeText(text)

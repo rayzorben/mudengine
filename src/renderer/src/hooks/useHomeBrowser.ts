@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 
-import { registerRealmPicker } from '../lib/pickers';
+import { registerHomePicker } from '../lib/pickers';
 import type { Revealed } from '@shared/ipc';
 
 export interface HomeBrowsing {
@@ -72,8 +72,8 @@ export function useHomeBrowser(returnFocus: () => void): HomeBrowserState {
   );
 
   useEffect(() => {
-    registerRealmPicker(() => new Promise((resolve) => openBrowser(null, resolve)));
-    return () => registerRealmPicker(null);
+    registerHomePicker(() => new Promise((resolve) => openBrowser(null, resolve)));
+    return () => registerHomePicker(null);
   }, [openBrowser]);
 
   return { browsing, close, reveal };

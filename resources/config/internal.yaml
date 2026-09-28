@@ -1592,6 +1592,13 @@ tuning:
     # Collapses the burst of writes an editor emits into a single reload.
     debounceMs: 80
 
+  # Exporting and importing a character.
+  transfer:
+    # The most a character file may be, and unpack to, on import. The largest
+    # character here was 73 MB unpacked (2026-09-28); past this it is not a
+    # file the client wrote.
+    maxImportBytes: 524288000
+
   # Serving the window over HTTP (MUDENGINE_WEB=1).
   web:
     # The largest message a browser tab may send on the socket. A settings

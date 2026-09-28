@@ -153,6 +153,19 @@ export type HostKind = 'electron' | 'web';
  */
 export type Revealed = { how: 'opened' } | { how: 'listed'; path: string };
 
+/**
+ * What exporting a character did. `file` is where it was written: the path the
+ * player chose on the desktop, or `exports/` under the home in a browser tab,
+ * which has no save dialog on the machine the files are on.
+ */
+export type CharacterExport =
+  { kind: 'written'; file: string } | { kind: 'dismissed' } | { kind: 'refused'; error: string };
+
+/** What importing one did, and what the player should know about it. */
+export type CharacterImport =
+  | { kind: 'imported'; id: string; name: string; notes: string[] }
+  | { kind: 'refused'; error: string };
+
 /** One row of a directory under the client's home. */
 export interface DirectoryEntry {
   name: string;
@@ -869,6 +882,12 @@ export const Invoke = {
    * path, or null if the dialog was dismissed.
    */
   chooseRealm: 'settings:choose-realm',
+  /** One character, its realm and its records, written to one file (todo 000). */
+  exportCharacter: 'settings:export-character',
+  /** A native picker for a file `exportCharacter` wrote. */
+  chooseCharacterFile: 'settings:choose-character-file',
+  /** That file, read back in as a new character. Never overwrites anything. */
+  importCharacter: 'settings:import-character',
   /** Where to hunt from here: the lairs within reach, priced for this character. */
   huntingGrounds: 'world:hunt',
   trainers: 'world:trainers',
@@ -1299,6 +1318,11 @@ export interface IpcApi {
   addLoop(scope: LoopScope, owner: string | null, loop: Loop): Promise<string | null>;
   settingsSnapshot(): Promise<SettingsSnapshot>;
   chooseRealm(): Promise<string | null>;
+  /** `password` keeps the account password in the file; without it the file holds none. */
+  exportCharacter(id: string, password: boolean): Promise<CharacterExport>;
+  /** A file to import, from the client's disk. Null when dismissed. */
+  chooseCharacterFile(): Promise<string | null>;
+  importCharacter(file: string): Promise<CharacterImport>;
   /*
    * Addressed, like every push: with a realm per character, an unaddressed
    * query would answer from whichever realm happened to be the client's — and a

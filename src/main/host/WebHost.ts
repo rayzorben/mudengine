@@ -27,6 +27,7 @@
  * socket refused before any channel is served. Cleartext unless something
  * terminates TLS in front, and the banner says so every start.
  */
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -158,6 +159,25 @@ function banner(
   return lines.join('\n');
 }
 
+/**
+ * `dir/name`, or `stem-2.ext`, `stem-3.ext`… when that is taken. Created empty
+ * here (`wx`), so two saves at once cannot be handed the same name.
+ */
+async function claimFileIn(dir: string, name: string): Promise<string> {
+  const dot = name.indexOf('.');
+  const stem = dot === -1 ? name : name.slice(0, dot);
+  const extension = dot === -1 ? '' : name.slice(dot);
+  for (let n = 1; ; n += 1) {
+    const file = path.join(dir, n === 1 ? name : `${stem}-${n}${extension}`);
+    try {
+      await fs.promises.writeFile(file, '', { flag: 'wx' });
+      return file;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+  }
+}
+
 export function createWebHost(layout: Layout): Host {
   const handlers = new Map<string, Handler>();
   const listeners = new Map<string, Handler>();
@@ -166,6 +186,8 @@ export function createWebHost(layout: Layout): Host {
   let server: WebServer | null = null;
   let sweep: NodeJS.Timeout | null = null;
   let closing = false;
+  /** Where a file the tab asks to save is written, known once the client opens. */
+  let exportsDir: string | null = null;
 
   const transport: Transport = {
     handle: (channel, handler) => handlers.set(channel, handler),
@@ -306,6 +328,7 @@ export function createWebHost(layout: Layout): Host {
     claimInstance: () => true,
 
     open: (hooks) => {
+      exportsDir = hooks.home.state('exports');
       let access: AccessPassword;
       try {
         access = resolveAccessPassword(process.env, hooks.home.root);
@@ -362,6 +385,16 @@ export function createWebHost(layout: Layout): Host {
     chooseFile: () => {
       console.warn('web: asked for a native file picker; there is none here.');
       return Promise.resolve(null);
+    },
+    /*
+     * No dialog on the machine the files are on, so the file goes to
+     * `exports/` under the home, under the suggested name or the next free
+     * one. The tab is told the path, and the home listing shows it.
+     */
+    chooseSaveFile: async (_caller, choice) => {
+      if (exportsDir === null) return null;
+      await fs.promises.mkdir(exportsDir, { recursive: true });
+      return claimFileIn(exportsDir, choice.defaultName);
     },
     clipboard: null,
 

@@ -22,7 +22,10 @@
 /** Longest a generated name may be, so a path stays inside a filesystem's limit. */
 const MAX = 64;
 
-export function fileSlug(name: string, taken: ReadonlySet<string> = new Set()): string {
+export function fileSlug(
+  name: string,
+  taken: Pick<ReadonlySet<string>, 'has'> = new Set()
+): string {
   const base =
     name
       .toLowerCase()
@@ -35,4 +38,12 @@ export function fileSlug(name: string, taken: ReadonlySet<string> = new Set()): 
     const candidate = `${base}-${n}`;
     if (!taken.has(candidate)) return candidate;
   }
+}
+
+/**
+ * Whether a file in a `loops/` directory is a loop: YAML, and not hidden.
+ * A dot-file is an editor's backup or a temporary, never a loop.
+ */
+export function isLoopFileName(name: string): boolean {
+  return !name.startsWith('.') && /\.ya?ml$/i.test(name);
 }

@@ -6,6 +6,7 @@ import CharacterForm, { CHARACTER_NAV } from './CharacterForm';
 import ServerForm from './ServerForm';
 import FormActions from './FormActions';
 import GlobalSettings from './GlobalSettings';
+import SettingsPaths from './SettingsPaths';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -1236,22 +1237,16 @@ export default function SettingsScreen({
         <footer className="settings-foot">
           {problem !== null && <span className="settings-problem">{problem}</span>}
           {problem === null && saved !== null && <span className="settings-saved">{saved}</span>}
-          {/* Everything this screen does not cover is one click away, and
-              saying so is what keeps the screen from having to grow into a
-              YAML editor. */}
-          <span className="settings-paths">
-            <button className="quiet" onClick={revealConfig} onMouseDown={keepFocus} type="button">
-              {t('settings.footer.openConfig')}
-            </button>
-            <button
-              className="quiet"
-              onClick={revealProfiles}
-              onMouseDown={keepFocus}
-              type="button"
-            >
-              {t('settings.footer.openProfiles')}
-            </button>
-          </span>
+          <SettingsPaths
+            character={editingCharacter ? selected : null}
+            onImported={(id) => refresh().then(() => choose(id))}
+            report={(failed, done) => {
+              setProblem(failed);
+              setSaved(done);
+            }}
+            revealConfig={revealConfig}
+            revealProfiles={revealProfiles}
+          />
         </footer>
 
         {/*

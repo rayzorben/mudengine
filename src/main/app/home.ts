@@ -63,6 +63,32 @@ export interface Home {
   profile(id: string): Scope;
   /** A record the client keeps: `memory`, `fights`, `realms`, `logs`. */
   state(...names: string[]): string;
+  /** One character's own record of one kind: see {@link CHARACTER_RECORDS}. */
+  record(kind: CharacterRecord, id: string): string;
+}
+
+/**
+ * The files a character owns outside its directory, each named after its id:
+ * the directory under the root and the file's suffix. The client's stores and
+ * the character export both read this, so a new record travels with the
+ * character by being listed here.
+ */
+export const CHARACTER_RECORDS = {
+  memory: { dir: 'memory', suffix: '.json' },
+  belongings: { dir: 'belongings', suffix: '.json' },
+  fights: { dir: 'fights', suffix: '.jsonl.gz' },
+  talk: { dir: 'talk', suffix: '.jsonl' },
+  backscroll: { dir: 'backscroll', suffix: '.log' }
+} as const;
+
+export type CharacterRecord = keyof typeof CHARACTER_RECORDS;
+
+/** Every kind, in the order above. */
+export const CHARACTER_RECORD_KINDS = Object.keys(CHARACTER_RECORDS) as CharacterRecord[];
+
+/** Where one record sits under the root, with `/` between the parts. */
+export function recordPath(kind: CharacterRecord, id: string): string {
+  return `${CHARACTER_RECORDS[kind].dir}/${id}${CHARACTER_RECORDS[kind].suffix}`;
 }
 
 /** A directory that holds one thing's own file and its own loops. */
@@ -102,7 +128,8 @@ export function homeAt(root: string): Home {
     internal: path.join(root, 'internal.yaml'),
     server: (id) => scope(path.join(serversDir, id), SERVER_FILE),
     profile: (id) => scope(path.join(profilesDir, id), PROFILE_FILE),
-    state: (...names) => path.join(root, ...names)
+    state: (...names) => path.join(root, ...names),
+    record: (kind, id) => path.join(root, recordPath(kind, id))
   };
 }
 
