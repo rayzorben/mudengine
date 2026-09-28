@@ -689,9 +689,9 @@ export function withRank(
 /**
  * `<player> stops to rest.` / `kneels to meditate`: the flag between listings,
  * for a member — the sentence is said about anybody in the room. **Nothing
- * says a rest has ended**, on the wire or in 214 captures, so only a listing
- * clears it: the safe direction, since a member believed to be resting is one
- * this client will not assume has answered.
+ * says a rest has ended**, on the wire or in 214 captures, so a listing clears
+ * it, and so does the member being seen doing what the server stands them up
+ * for (`upFromRest`).
  */
 export function withResting(
   s: CharacterState,
@@ -708,6 +708,30 @@ export function withResting(
       ...s.party,
       members: s.party.members.map((entry) =>
         entry.name === player ? { ...entry, activity } : entry
+      )
+    }
+  };
+}
+
+/**
+ * Members seen swinging, being swung at, casting or walking out are no longer
+ * resting or meditating: the server stands a player up for each (`Player.cs`
+ * 6181, `Mob.cs` 1372, `Spell.cs` 2006, `Exits.cs` 78) and says nothing. The
+ * flag becomes unknown until the next listing. The same state when nobody
+ * named was sitting.
+ */
+export function upFromRest(s: CharacterState, names: readonly string[]): CharacterState {
+  const up = new Set(names.map((name) => name.toLowerCase()));
+  const sitting = (entry: PartyMember): boolean =>
+    up.has(entry.name.toLowerCase()) &&
+    (entry.activity?.state === 'resting' || entry.activity?.state === 'meditating');
+  if (!s.party.members.some(sitting)) return s;
+  return {
+    ...s,
+    party: {
+      ...s.party,
+      members: s.party.members.map((entry) =>
+        sitting(entry) ? { ...entry, activity: null } : entry
       )
     }
   };

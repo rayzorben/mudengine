@@ -2,6 +2,7 @@ import { memo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import {
+  ratio,
   vitalLevel,
   type CharacterState,
   type PartyActivity,
@@ -144,7 +145,10 @@ function PartyCard({
   ask,
   ...chrome
 }: PartyCardProps) {
-  const { party } = character;
+  const party = {
+    ...character.party,
+    members: character.party.members.map((m) => ownRow(character, m))
+  };
   const hurt = party.members.filter(
     (member) => vitalLevel(member.health, 1, thresholds.hp) === 'critical'
   ).length;
@@ -321,6 +325,32 @@ function PartyCard({
       )}
     </BentoCard>
   );
+}
+
+/**
+ * This character's own row, from its prompt: the prompt repaints every few
+ * hundred milliseconds and the party list is only as fresh as the last `par`.
+ * Health and mana need the stat sheet's maxima to be a fraction, so each keeps
+ * the party list's figure until one is known; resting is the prompt's once a
+ * prompt has been read.
+ */
+function ownRow(character: CharacterState, member: PartyMember): PartyMember {
+  if (!isSelf(character, member.name)) return member;
+  const { hp, hpMax, mana, manaMax, resting, meditating } = character.vitals;
+  const health = ratio(hp, hpMax);
+  const magic = ratio(mana, manaMax);
+  const activity: PartyActivity | null = resting
+    ? { state: 'resting' }
+    : meditating
+      ? { state: 'meditating' }
+      : null;
+  return {
+    ...member,
+    health: health ?? member.health,
+    mana: magic ?? member.mana,
+    activity: character.lastStatusAt === null ? member.activity : activity,
+    vitals: hp === null || hpMax === null ? member.vitals : { hp, hpMax, mana, manaMax }
+  };
 }
 
 /** What a member was last seen fighting, as the chip says it, or null once the sighting is stale. */
