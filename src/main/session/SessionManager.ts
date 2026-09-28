@@ -117,13 +117,7 @@ import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
-import type {
-  QuestErrand,
-  QuestPlan,
-  QuestRunProgress,
-  QuestWatched,
-  RoomAsk
-} from '../../shared/quests';
+import type { QuestErrand, QuestPlan, QuestRunProgress, QuestWatched } from '../../shared/quests';
 import { identityOf, resetSignals } from '../../shared/reset';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
 import type { RealmFamily } from '../../shared/realm';
@@ -134,6 +128,7 @@ import { answeringAfter } from '../parse/echo';
 import { TerminalFeed } from './TerminalFeed';
 import { Paint } from './Paint';
 import { Appraisal } from './Appraisal';
+import { fightBook, type OddsBook } from './OddsBook';
 import { Publisher } from './Publisher';
 import { Rewriter } from './Rewriter';
 import {
@@ -155,7 +150,6 @@ import type {
   TerminalSize
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
-import type { RoomVerdict, Verdict } from '../../shared/verdict';
 import type { HuntingAdvice } from '../../shared/hunting';
 import type { SessionSink } from './SessionSink';
 
@@ -409,8 +403,10 @@ export class SessionManager {
   readonly combat: AutoCombat;
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
-  /** The room weighed against the character. See `Appraisal`. */
-  private readonly appraisal: Appraisal;
+  /** The room weighed against the character; the client reads it. See `Appraisal`. */
+  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise'>;
+  /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
+  readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'reset' | 'dispose'>;
   private automationConfig: AutomationConfig;
   private readonly login: LoginAutomator;
   private readonly recovery: Recovery;
@@ -547,6 +543,7 @@ export class SessionManager {
         config: () => this.automationConfig,
         family: () => this.vocabulary.family,
         watched: () => this.questWatch.watched,
+        lairOdds: (room) => this.odds.lair(room),
         askAbilities: (state) => this.routines.askAbilities(state),
         notice: (message) => this.sink.notice(message)
       }
@@ -1773,8 +1770,13 @@ export class SessionManager {
     });
     this.rules.load(automation.rules, automation.combat.mobRules);
 
-    this.appraisal = new Appraisal(
+    const book = fightBook(
       { tracker: this.tracker, world, errands: this.errands },
+      { config: () => this.automationConfig, ran: () => this.publisher.publishVerdict() }
+    );
+    this.odds = book.odds;
+    this.appraisal = new Appraisal(
+      { tracker: this.tracker, world, errands: this.errands, ...book },
       { config: () => this.automationConfig, watched: () => this.questWatch.watched }
     );
     this.publisher = new Publisher(
@@ -1855,6 +1857,7 @@ export class SessionManager {
       },
       { module: this.itemErrand },
       { module: this.questWatch },
+      { module: this.odds },
       {
         module: this.questRunner,
         configure: (a) => this.questRunner.configure(a.quests, a.enabled)
@@ -3743,6 +3746,7 @@ export class SessionManager {
    * told between the two, where it always has been, and the reset watch last.
    */
   private publishCharacter(): void {
+    this.odds.refresh(this.tracker.current);
     this.publisher.character();
     this.combatLease.onCharacter(this.tracker.current, this.walker.walking);
     this.publisher.publishAsks();
@@ -3809,21 +3813,6 @@ export class SessionManager {
     this.publishCharacter();
     this.sink.notice(t('session.reset.forgotten'));
     return true;
-  }
-
-  /** What this room's occupants answer to, for this character. See `Appraisal.asks`. */
-  get asks(): readonly RoomAsk[] {
-    return this.appraisal.asks;
-  }
-
-  /** The room appraised against the character as it stands. See `Appraisal.verdict`. */
-  get verdict(): RoomVerdict {
-    return this.appraisal.verdict;
-  }
-
-  /** One monster each, by name, for the Reference card. See `Appraisal.appraise`. */
-  appraise(names: readonly string[]): Record<string, Verdict> {
-    return this.appraisal.appraise(names);
   }
 }
 

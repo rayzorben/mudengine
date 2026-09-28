@@ -29,6 +29,7 @@ import type { StandDown } from '../../automation/LoginAutomator';
 import { NO_REALM_PLAYERS, type PlayerRegistry } from '../../../shared/players';
 import type { Find, RealmFinds, Sighting } from '../../../shared/finds';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
+import type { HuntingAdvice } from '../../../shared/hunting';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
@@ -7125,8 +7126,8 @@ describe('stepping back the way the character came', () => {
  * cannot: damage a round, against the monster's health.
  */
 describe('the hunting survey prices a kill off the fight record', () => {
-  /** A town and two lairs in a line, from a realm that names no family. */
-  const lairs = (): WorldGraph => {
+  /** A town and two lairs in a line, from a realm that names no family; a dragon's third. */
+  const lairs = (dragon = false): WorldGraph => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-hunt-'));
     const file = path.join(dir, 'rooms.jsonl.gz');
     const rooms = [
@@ -7139,7 +7140,17 @@ describe('the hunting survey prices a kill off the fight record', () => {
         lair: '(Max 1): 7,',
         dl: 2
       },
-      { m: 1, r: 3, n: 'Orc Pit', x: { w: { m: 1, r: 2 } }, lair: '(Max 1): 8,', dl: 2 }
+      {
+        m: 1,
+        r: 3,
+        n: 'Orc Pit',
+        x: { w: { m: 1, r: 2 }, ...(dragon ? { e: { m: 1, r: 4 } } : {}) },
+        lair: '(Max 1): 8,',
+        dl: 2
+      },
+      ...(dragon
+        ? [{ m: 1, r: 4, n: 'Dragon Lair', x: { w: { m: 1, r: 3 } }, lair: '(Max 1): 9,', dl: 2 }]
+        : [])
     ];
     const mob = (n: string, id: number, hp: number, xp: number, dr = 0) => ({
       n,
@@ -7156,7 +7167,18 @@ describe('the hunting survey prices a kill off the fight record', () => {
       source: 'test',
       rooms: rooms.length,
       generatedAt: 'x',
-      mobs: [mob('goblin', 7, 200, 300), mob('orc', 8, 300, 400, 300)]
+      mobs: [
+        mob('goblin', 7, 200, 300),
+        mob('orc', 8, 300, 400, 300),
+        ...(dragon
+          ? [
+              {
+                ...mob('dragon', 9, 5000, 9000),
+                pf: [{ a: [[1, 1, 400, 200, 300, 1000, 0]], c: [] }]
+              }
+            ]
+          : [])
+      ]
     };
     fs.writeFileSync(
       file,
@@ -7168,6 +7190,26 @@ describe('the hunting survey prices a kill off the fight record', () => {
     fs.rmSync(dir, { recursive: true, force: true });
     return world;
   };
+
+  /** `stat all` as GreaterMUD prints it: the tell of the family, and the blow it states. */
+  const STATED_SHEET = [
+    'Name: Festus                                     Illu:           25',
+    'HP Regen:   6/18       AC vs Evil:  68           Cold Resist:     0',
+    'MA Regen:   3/3        Shadow:       0           Water Resist:    0',
+    'Attacks:',
+    'Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd(+xtra)',
+    'Attack       3.584    105     8    25     0(3)            65(67)  '
+  ];
+
+  /** The survey once every lair's fight has been run (`OddsBook`), asked until it has. */
+  async function settled(): Promise<HuntingAdvice> {
+    let advice = manager!.huntingGrounds(null);
+    await until(() => {
+      advice = manager!.huntingGrounds(null);
+      return advice.excluded.unsimulated === 0;
+    });
+    return advice;
+  }
 
   /** A record that measured fifty a round, and what it was asked with. */
   function record(): { fights: FightSink; asked: Array<{ level: number; ask: MeasureAsk }> } {
@@ -7184,10 +7226,14 @@ describe('the hunting survey prices a kill off the fight record', () => {
     };
   }
 
-  async function surveyed(fights: FightSink | undefined, sheet: string[] = []): Promise<void> {
+  async function surveyed(
+    fights: FightSink | undefined,
+    sheet: string[] = [],
+    dragon = false
+  ): Promise<void> {
     const { sink } = collect();
     manager = build(sink, {
-      world: lairs(),
+      world: lairs(dragon),
       automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
       fights
     });
@@ -7215,7 +7261,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
   it('prices the rounds as the monster’s health over the measured round', async () => {
     const { fights, asked } = record();
     await surveyed(fights);
-    const advice = manager!.huntingGrounds(null);
+    const advice = await settled();
 
     expect(asked.at(-1)).toEqual({
       level: 10,
@@ -7238,7 +7284,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
       hunting: { ...DEFAULT_INTERNAL.tuning.hunting, maxSpots: 1 }
     });
     await surveyed(record().fights);
-    const advice = manager!.huntingGrounds(null);
+    const advice = await settled();
     expect(advice.spots).toHaveLength(1);
     expect(advice.unmeasured).toHaveLength(1);
 
@@ -7257,15 +7303,8 @@ describe('the hunting survey prices a kill off the fight record', () => {
    */
   it('lets a refusal stand where the arithmetic priced the fight and found no way to win', async () => {
     const { fights, asked } = record();
-    await surveyed(fights, [
-      'Name: Festus                                     Illu:           25',
-      'HP Regen:   6/18       AC vs Evil:  68           Cold Resist:     0',
-      'MA Regen:   3/3        Shadow:       0           Water Resist:    0',
-      'Attacks:',
-      'Type        Swings   Accy   Min   Max   QnD(Total)   Avg/Rnd(+xtra)',
-      'Attack       3.584    105     8    25     0(3)            65(67)  '
-    ]);
-    const advice = manager!.huntingGrounds(null);
+    await surveyed(fights, STATED_SHEET);
+    const advice = await settled();
     const rows = [...advice.spots, ...advice.unmeasured];
     // Positive control: the swing priced the goblin itself.
     expect(rows.find((spot) => spot.mobs[0]?.name === 'goblin')?.mobs[0]?.rounds).not.toBeNull();
@@ -7275,9 +7314,24 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(asked).toHaveLength(0);
   });
 
+  /*
+   * Todo 03: a lair whose fight, run at full health, is not survivable is not
+   * a hunting ground, and one whose fight has not been run yet is not known
+   * to be one. The dragon swings 200 to 300 at a character with 148 hp.
+   */
+  it('leaves out a lair it is not survivable to hunt, and says so', async () => {
+    await surveyed(record().fights, STATED_SHEET, true);
+    const advice = await settled();
+    const rows = [...advice.spots, ...advice.unmeasured];
+    // Positive control: the goblin's fight was run and kept.
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'goblin')).toBeDefined();
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'dragon')).toBeUndefined();
+    expect(advice.excluded.unsurvivable).toBe(1);
+  });
+
   it('leaves the rounds unknown, and says nothing measured, with no record to ask', async () => {
     await surveyed(undefined);
-    const advice = manager!.huntingGrounds(null);
+    const advice = await settled();
     const rows = [...advice.spots, ...advice.unmeasured];
     // Positive control: both lairs were reached and kept.
     expect(rows).toHaveLength(2);

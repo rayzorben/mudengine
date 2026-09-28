@@ -133,6 +133,24 @@ describe('laying out a local map', () => {
     expect(at(map, '1/1')).toMatchObject({ shop: true, name: 'Shop' });
     expect(at(map, '1/2')).toMatchObject({ lair: true });
   });
+
+  /* Todo 03: a lair drawn by how its fight goes, and only a lair asked. */
+  it('carries a lair’s level where its fight has been run, and none where not', () => {
+    const graph = worldOf([
+      { m: 1, r: 1, n: 'Road', x: { e: { m: 1, r: 2 }, w: { m: 1, r: 3 } } },
+      { m: 1, r: 2, n: 'Den', x: { w: { m: 1, r: 1 } }, lair: '(Max 2): 781,' },
+      { m: 1, r: 3, n: 'Pit', x: { e: { m: 1, r: 1 } }, lair: '(Max 1): 782,' }
+    ]);
+    const asked: string[] = [];
+    const map = localMap(graph, '1/1', undefined, (room) => {
+      asked.push(room.name);
+      return room.name === 'Den' ? 'deadly' : null;
+    });
+    expect(at(map, '1/2')).toMatchObject({ lair: true, lairOdds: 'deadly' });
+    expect(at(map, '1/3')?.lairOdds).toBeUndefined();
+    expect(asked.sort()).toEqual(['Den', 'Pit']);
+    expect(layoutMap(map).nodes.find((node) => node.id === '1/2')?.odds).toBe('deadly');
+  });
 });
 
 describe('against the shipped realm data', () => {

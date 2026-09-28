@@ -2880,9 +2880,10 @@ kbd {
  * A place the lap still owes, as a dashed ring — solid is the `you` ring, and
  * shape has to carry the difference rather than hue alone (§6).
  *
- * `--ok` because it is the one hue on this map spent on nothing else: amber is
- * a shop, red is a lair, gold is a bank, purple is a way out of the plane and
- * the accent is this character and its route.
+ * `--ok` because on this map it is otherwise only a survivable lair's, a
+ * filled diamond, which the dashed ring cannot be read as: amber is a shop or
+ * a risky lair, red a lair not survivable, gold a bank, purple a way out of
+ * the plane and the accent is this character and its route.
  */
 .map-stop {
   fill: none;
@@ -2934,7 +2935,7 @@ kbd {
  * A trap is not an obstacle you open; it is one you regret. A bar says *shut*
  * and a trap is not shut — the route walks straight through it and takes the
  * hit — so it is its own shape, the hazard triangle, upright whichever way the
- * corridor runs (`MapPlan`). The lair's red at the lair's tone, because both
+ * corridor runs (`MapPlan`). The red of a lair not survivable, because both
  * are where the damage is, and the shape says which (§6): it was a bar in a
  * second hue for as long as the map existed, with no entry in the legend.
  */
@@ -2986,7 +2987,27 @@ kbd {
   stroke: var(--pending);
 }
 
-.map-room[data-kind='lair'] > .map-shape {
+.map-room[data-kind='lair'] > .map-shape,
+.map-legend [data-kind='lair'] .key .map-shape {
+  fill: color-mix(in srgb, var(--text-lo) 40%, transparent);
+  stroke: var(--text-lo);
+}
+
+/* A lair by how its fight goes for this character (todo 03): the meter's hues. */
+.map-room[data-kind='lair'][data-odds='safe'] > .map-shape,
+.map-legend [data-kind='lair'][data-odds='safe'] .key .map-shape {
+  fill: color-mix(in srgb, var(--ok) 55%, transparent);
+  stroke: var(--ok);
+}
+
+.map-room[data-kind='lair'][data-odds='risky'] > .map-shape,
+.map-legend [data-kind='lair'][data-odds='risky'] .key .map-shape {
+  fill: color-mix(in srgb, var(--pending) 55%, transparent);
+  stroke: var(--pending);
+}
+
+.map-room[data-kind='lair'][data-odds='deadly'] > .map-shape,
+.map-legend [data-kind='lair'][data-odds='deadly'] .key .map-shape {
   fill: color-mix(in srgb, var(--danger) 55%, transparent);
   stroke: var(--danger);
 }
@@ -3073,11 +3094,6 @@ kbd {
 .map-legend [data-kind='shop'] .key .map-shape {
   fill: color-mix(in srgb, var(--pending) 55%, transparent);
   stroke: var(--pending);
-}
-
-.map-legend [data-kind='lair'] .key .map-shape {
-  fill: color-mix(in srgb, var(--danger) 55%, transparent);
-  stroke: var(--danger);
 }
 
 .map-legend [data-kind='bank'] .key .map-shape {

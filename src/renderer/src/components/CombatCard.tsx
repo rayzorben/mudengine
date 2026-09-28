@@ -1,6 +1,7 @@
 import { memo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import FightOutlook from './FightOutlook';
 import RowPeaceChip from './RowPeaceChip';
 import type { CharacterState, TargetHealth } from '@shared/character';
 import type { PlayerRegistry } from '@shared/players';
@@ -296,7 +297,10 @@ function CombatCard({
             answers is asked on the way in, and only where the room holds
             something the realm could weigh. */}
         {verdict.monsters.length > 0 && (
-          <SurvivalMeter hp={character.vitals.hp} verdict={verdict} />
+          <>
+            <SurvivalMeter hp={character.vitals.hp} verdict={verdict} />
+            <FightOutlook verdict={verdict} />
+          </>
         )}
         {!combat.engaged && combat.attackers.length === 0 ? (
           <div className="empty">{t('cards.combat.empty')}</div>

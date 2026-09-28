@@ -1764,6 +1764,15 @@ export function parseLair(descriptor: string): { max: number | null; ids: number
 }
 
 /**
+ * What a lair spawns, as one key: its cap and its rows. Two rooms with the
+ * same key hold the same fight.
+ */
+export function lairKey(descriptor: string): string {
+  const lair = parseLair(descriptor);
+  return `${lair.max ?? 1}:${[...lair.ids].sort((a, b) => a - b).join(',')}`;
+}
+
+/**
  * Where the realm puts a monster, by the name of the room it puts it in.
  *
  * Grouped by *name* because that is the answer to the question being asked.

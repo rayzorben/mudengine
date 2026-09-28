@@ -146,20 +146,26 @@ export interface Menace {
 }
 
 /*
- * The server's own constants, read out of it rather than tuned:
- * `Mob.DoCombat` grants 1,000 energy a round and stops at `MAX_NUM_ATTACKS`
- * (50); `TimedEventManager` ticks spell effects every 3 seconds and combat
- * every 5; `Spell.GetMagicResModifierVsTarget` clamps resistance to 150 and
- * pivots at 50; `GetSpellResistType` reads a `TypeOfResists` of 2 as a spell
- * anybody can resist.
+ * The constants, from the server where MMUD Explorer agrees with it and from
+ * MMUD Explorer's monster attack sim (`clsMonsterAttackSim`) where the two
+ * compete, since todo 03 (2026-09-27) made MME the tiebreak: 1,000 energy a
+ * round, at most six attempts at a swing a round (MME; the server's loop
+ * allows fifty), effect ticks every 3 seconds and rounds every 5, magic
+ * resistance clamped to 150 and pivoting at 50, and a `TypeOfResists` of 2
+ * as a spell anybody can resist.
  */
-const ROUND_ENERGY = 1000;
-const MAX_SWINGS = 50;
+export const ROUND_ENERGY = 1000;
+export const MOB_ATTEMPTS = 6;
 export const EFFECT_TICK_SECONDS = 3;
 export const ROUND_SECONDS = 5;
 const MAGIC_RES_CEILING = 150;
 const MAGIC_RES_PIVOT = 50;
 const RESISTED_BY_ANYONE = 2;
+/** MME's `IsSpellResisted` clamps the resistance it halves at 196. */
+const RESIST_ROLL_CEILING = 196;
+/** MME's `GMUD_HIT_MIN` and `GMUD_HIT_CAP`: no blow is ever certain to miss. */
+const HIT_FLOOR = 2;
+const HIT_CEILING = 100;
 
 /*
  * `Spells.Targets` as a *monster's* cast reads it — `Mob.InvokeBetweenRoundSpell`,
@@ -172,26 +178,40 @@ const RESISTED_BY_ANYONE = 2;
 const REACHES_THE_ROOM = new Set([6, 11, 12]);
 const LANDS_ON_THE_CASTER = new Set([1, 2, 13]);
 
+/** Whether a monster's cast of this spell lands on the monster itself. */
+export function landsOnCaster(spell: WorldSpell): boolean {
+  return LANDS_ON_THE_CASTER.has(spell.targets ?? 0);
+}
+
 /**
- * The chance a blow of this accuracy lands on a character with this armour
+ * The chance a blow of this accuracy lands on a defender with this armour
  * class, as a fraction — `Mob.DoCombat`:
  *
  *     fixedDefense = (AC + secondary) / 10
  *     tempacc = 100 - (fixedDefense² / max((Acc² / 14) / 10, 1))
  *
- * in integer arithmetic throughout, floored at zero. The sheet's figure *is*
- * `AC / 10`, so it goes in whole; the party-rank and protection bonuses are
- * taken as none. An unread armour class is taken as none, which is the
- * answer that makes every blow land.
+ * in integer arithmetic throughout, then held between MME's 2% and 100%
+ * (`GetHitMin`, `GetHitCap`), which it applies to both sides' blows. The
+ * sheet's figure *is* `AC / 10`, so it goes in whole; the party-rank and
+ * protection bonuses are taken as none. An unread armour class is taken as
+ * none, which is the answer that makes every blow land.
  */
 export function hitChance(accuracy: number, armourClass: number | null): number {
   const fixed = Math.max(0, Math.trunc(armourClass ?? 0));
   const reach = Math.max(Math.trunc(Math.trunc((accuracy * accuracy) / 14) / 10), 1);
-  return Math.max(0, 100 - Math.trunc((fixed * fixed) / reach)) / 100;
+  const percent = 100 - Math.trunc((fixed * fixed) / reach);
+  return Math.min(HIT_CEILING, Math.max(HIT_FLOOR, percent)) / 100;
 }
 
-/** `GMUDServer.SPECIAL_DODGE_POINT`: where a dodge percentage starts to taper. */
-const SPECIAL_DODGE_POINT = 45;
+/**
+ * Where a dodge percentage starts to taper and where it stops: MME's
+ * `GMUD_DODGE_SOFTCAP` and `GMUD_DODGE_CAP`, which it moved from the server's
+ * 45 on 2025-09-24.
+ */
+const DODGE_SOFT_POINT = 55;
+const DODGE_CEILING = 98;
+/** MME rolls no dodge against a blow of accuracy below this. */
+const DODGE_LEAST_ACCURACY = 8;
 
 /** `TGSGlobals.diminishing_returns` — a triangular-number taper, transcribed. */
 function diminishingReturns(value: number, scale: number): number {
@@ -203,26 +223,25 @@ function diminishingReturns(value: number, scale: number): number {
 /**
  * How much of a swing a defender's dodge turns away, as a fraction —
  * `PlayerAttackType.GetDodgePercentAgainstDefense`, and `Mob.DoCombat`'s own
- * copy for a blow at a player.
+ * copy for a blow at a player, as MME's sim rolls it after the hit.
  *
  *     dodge% = dodge² / max((acc² / 14) / 10, 1)
  *
- * with the same denominator the hit roll uses, and above `SPECIAL_DODGE_POINT`
- * the excess is tapered through `diminishing_returns(excess, 4)`. A defender
- * whose dodge is not known dodges nothing, which is the answer that makes the
- * most swings land. The server tapers ten points later for a Mystic or Ninja
- * *defending*; not read, so theirs is a floor.
+ * with the same denominator the hit roll uses, the excess above
+ * `DODGE_SOFT_POINT` tapered through `diminishing_returns(excess, 4)`, held
+ * under `DODGE_CEILING`, and nothing dodged below `DODGE_LEAST_ACCURACY`. A
+ * defender whose dodge is not known dodges nothing, which is the answer that
+ * makes the most swings land.
  */
 export function dodgedFraction(dodgeValue: number | null, accuracyValue: number): number {
   const held = Math.max(0, Math.trunc(dodgeValue ?? 0));
-  if (held === 0) return 0;
+  if (held === 0 || accuracyValue < DODGE_LEAST_ACCURACY) return 0;
   const reach = Math.max(Math.trunc(Math.trunc((accuracyValue * accuracyValue) / 14) / 10), 1);
   let percent = Math.trunc((held * held) / reach);
-  if (percent > SPECIAL_DODGE_POINT) {
-    percent =
-      SPECIAL_DODGE_POINT + Math.trunc(diminishingReturns(percent - SPECIAL_DODGE_POINT, 4));
+  if (percent > DODGE_SOFT_POINT) {
+    percent = DODGE_SOFT_POINT + Math.trunc(diminishingReturns(percent - DODGE_SOFT_POINT, 4));
   }
-  return Math.min(1, Math.max(0, percent) / 100);
+  return Math.min(DODGE_CEILING, Math.max(0, percent)) / 100;
 }
 
 /**
@@ -322,10 +341,18 @@ export function expectedBlow(
 /**
  * A spell's power at a cast level — `Spell.RollAndApplySpellAbilities`:
  * the level is capped at `Cap`, and each end grows by `Inc` per `IncLVLs`
- * levels, truncated as the server truncates.
+ * levels, truncated as the server truncates. A monster's cast at a stated
+ * level is not capped (`caster: 'mob'`), as MME's `GetSpellMinDamage` reads
+ * it for a monster.
  */
-export function scaledPower(spell: WorldSpell, level: number): [number, number] {
-  const capped = spell.cap !== undefined && spell.cap > 0 ? Math.min(level, spell.cap) : level;
+export function scaledPower(
+  spell: WorldSpell,
+  level: number,
+  caster: 'player' | 'mob' = 'player'
+): [number, number] {
+  const uncapped = caster === 'mob' && level > 0;
+  const capped =
+    !uncapped && spell.cap !== undefined && spell.cap > 0 ? Math.min(level, spell.cap) : level;
   const [minBase, maxBase] = spell.power ?? [0, 0];
   const grow = (pair: [number, number] | undefined): number =>
     pair === undefined || pair[0] === 0 ? 0 : Math.trunc((capped / pair[0]) * pair[1]);
@@ -333,16 +360,18 @@ export function scaledPower(spell: WorldSpell, level: number): [number, number] 
 }
 
 /**
- * How much of a cast this character's magic resistance turns away —
- * `Spell.GetMagicResModifierVsTarget` and the resist roll beneath it.
+ * How much of a cast the target's magic resistance turns away, as MME's
+ * `CalcResistedDamage` and `IsSpellResisted` read it where they differ from
+ * `Spell.GetMagicResModifierVsTarget`.
  *
- * `factor` scales a resistable magnitude: `1 - (MR - 50) / 100`, with the
- * resistance clamped to 0–150, so a character *below* 50 takes more than the
- * spell states. `resist` is the chance the whole cast is refused, which the
- * server rolls only for a spell the realm marks as resistable by anyone. A
- * spell carrying `NonMagicalSpell` — every bite and breath — is exempt from
- * both. An unread resistance is taken as none, the figure that lets the most
- * through.
+ * `factor` scales a resistable magnitude, the resistance clamped to 0–150:
+ * `1 - (MR - 50) / 200` above the pivot and `1 - (MR - 50) / 100` below it, so
+ * a target *below* 50 takes more than the spell states. `resist` is the chance
+ * the whole cast is refused, `MR / 2` percent with the resistance clamped at
+ * 196, rolled only for a spell the realm marks as resistable by anyone. A
+ * spell carrying `NonMagicalSpell` (every bite and breath) is exempt from
+ * both, as the server reads it. An unread resistance is taken as none, the
+ * figure that lets the most through.
  */
 export function magicResistance(
   spell: WorldSpell,
@@ -350,10 +379,89 @@ export function magicResistance(
 ): { factor: number; resist: number } {
   const nonMagical = (spell.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.nonMagical);
   if (nonMagical) return { factor: 1, resist: 0 };
-  const held = Math.min(MAGIC_RES_CEILING, Math.max(0, magicRes ?? 0));
-  const factor = 1 - (held - MAGIC_RES_PIVOT) / 100;
-  const resist = spell.resist === RESISTED_BY_ANYONE ? Math.max(0, 1 - factor) : 0;
+  const read = Math.max(0, magicRes ?? 0);
+  const held = Math.min(MAGIC_RES_CEILING, read);
+  const factor = 1 - (held - MAGIC_RES_PIVOT) / (held >= MAGIC_RES_PIVOT ? 200 : 100);
+  const resist =
+    spell.resist === RESISTED_BY_ANYONE ? Math.min(RESIST_ROLL_CEILING, read) / 2 / 100 : 0;
   return { factor, resist };
+}
+
+/**
+ * A spell's duration at a cast level, in three-second effect ticks: `Dur`
+ * grown by `DurInc` per `DurIncLVLs` levels, uncapped for a monster's cast as
+ * MME's `GetSpellDuration` reads it, capped at `Cap` for a player's.
+ */
+export function scaledDuration(
+  spell: WorldSpell,
+  level: number,
+  caster: 'player' | 'mob' = 'player'
+): number {
+  const base = Math.max(0, spell.duration ?? 0);
+  const growth = spell.durationGrowth;
+  if (growth === undefined || growth[0] === 0 || level <= 0) return base;
+  const capped =
+    caster === 'player' && spell.cap !== undefined && spell.cap > 0
+      ? Math.min(level, spell.cap)
+      : level;
+  return base + Math.trunc((capped / growth[0]) * growth[1]);
+}
+
+/** Rounds of a lasting effect: its ticks in five-second rounds, at least one. */
+export function roundsOf(ticks: number): number {
+  return Math.max(1, (ticks * EFFECT_TICK_SECONDS) / ROUND_SECONDS);
+}
+
+/** Whole rounds a monster's cast of this spell holds the character; 0 where it holds nothing. */
+export function heldRoundsOf(spell: WorldSpell, level: number): number {
+  if (landsOnCaster(spell)) return 0;
+  const holds = (spell.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.holdPerson);
+  return holds ? Math.ceil(roundsOf(scaledDuration(spell, level, 'mob'))) : 0;
+}
+
+/**
+ * What one application of a spell takes off the character's health, low and
+ * high, magic resistance's thinning applied where the ability is the one it
+ * thins (`damageWithMr`). Null where it lands on the caster or harms nothing.
+ *
+ * The damage, drain and poison abilities and a negative heal (`damnation`
+ * states `Heal -2` over ten ticks) all wound; each states its own figure or
+ * takes the spell's rolled power (`abil.Sum == 0 ? modifiedValue :
+ * abil.Sum`), and several on one spell add. `menace` prices the mean and
+ * `mobRound` rolls the range, so both read this.
+ */
+export interface Wound {
+  low: number;
+  high: number;
+  kinds: Array<'damage' | 'drain' | 'poison'>;
+}
+
+export function woundOf(
+  spell: WorldSpell,
+  level: number,
+  player: Pick<MenacePlayer, 'magicRes'>
+): Wound | null {
+  if (landsOnCaster(spell)) return null;
+  const [powerLow, powerHigh] = scaledPower(spell, level, 'mob');
+  const { factor } = magicResistance(spell, player.magicRes);
+  let low = 0;
+  let high = 0;
+  const kinds = new Set<Wound['kinds'][number]>();
+  const add = (kind: Wound['kinds'][number], value: number, scale: number): void => {
+    const [a, b] = value !== 0 ? [Math.abs(value), Math.abs(value)] : [powerLow, powerHigh];
+    if (Math.max(a, b) <= 0) return;
+    low += Math.min(a, b) * scale;
+    high += Math.max(a, b) * scale;
+    kinds.add(kind);
+  };
+  for (const [id, value] of spell.abilities ?? []) {
+    if (id === HAZARD_ABILITY.damage) add('damage', value, 1);
+    else if (id === HAZARD_ABILITY.damageWithMr) add('damage', value, factor);
+    else if (id === HAZARD_ABILITY.drain) add('drain', value, 1);
+    else if (id === HAZARD_ABILITY.poison) add('poison', value, 1);
+    else if (id === HAZARD_ABILITY.heal && value < 0) add('damage', value, 1);
+  }
+  return kinds.size === 0 ? null : { low, high, kinds: [...kinds] };
 }
 
 interface Hazard {
@@ -387,13 +495,13 @@ function hazardOf(
   if (spell === undefined) return NOTHING;
   const targets = spell.targets ?? 0;
   const wide = REACHES_THE_ROOM.has(targets);
-  const onItself = LANDS_ON_THE_CASTER.has(targets);
-  const [low, high] = scaledPower(spell, level);
+  const onItself = landsOnCaster(spell);
+  const [low, high] = scaledPower(spell, level, 'mob');
   const mean = (low + high) / 2;
-  const ticks = Math.max(0, spell.duration ?? 0);
-  const rounds = Math.max(1, (ticks * EFFECT_TICK_SECONDS) / ROUND_SECONDS);
+  const ticks = scaledDuration(spell, level, 'mob');
+  const rounds = roundsOf(ticks);
   const applications = 1 + Math.min(ticks, Math.max(0, weights.lastingTicks));
-  const { factor, resist } = magicResistance(spell, player.magicRes);
+  const { resist } = magicResistance(spell, player.magicRes);
   // A percentage the ability states, else the spell's own power.
   const chance = (value: number): number =>
     Math.min(1, Math.max(0, (value !== 0 ? value : mean) / 100));
@@ -405,29 +513,13 @@ function hazardOf(
     harm += amount;
     kinds.add(kind);
   };
+  const wound = woundOf(spell, level, player);
+  if (wound !== null) {
+    harm += ((wound.low + wound.high) / 2) * applications;
+    for (const kind of wound.kinds) kinds.add(kind);
+  }
   for (const [id, value] of spell.abilities ?? []) {
-    // `abil.Sum == 0 ? modifiedValue : abil.Sum`: the ability's own figure
-    // where it states one, otherwise the spell's rolled power.
-    const magnitude = value !== 0 ? Math.abs(value) : mean;
     switch (id) {
-      case HAZARD_ABILITY.damage:
-        if (!onItself) add('damage', magnitude * applications);
-        break;
-      case HAZARD_ABILITY.damageWithMr:
-        if (!onItself) add('damage', magnitude * factor * applications);
-        break;
-      case HAZARD_ABILITY.drain:
-        if (!onItself) add('drain', magnitude * applications);
-        break;
-      case HAZARD_ABILITY.poison:
-        if (!onItself) add('poison', magnitude * applications);
-        break;
-      case HAZARD_ABILITY.heal:
-        // A negative heal is a wound on every tick — `damnation` states
-        // `Heal -2` over ten ticks — and a positive one is the monster
-        // mending itself, which costs the character nothing per round.
-        if (!onItself && value < 0) add('damage', magnitude * applications);
-        break;
       case HAZARD_ABILITY.holdPerson:
         if (!onItself) add('held', weights.held * unit * rounds);
         break;
@@ -487,7 +579,7 @@ export function afflictionsOf(mob: MenaceSubject): MobAffliction[] {
   const note = (id: number | undefined): void => {
     if (id === undefined) return;
     const spell = spells[id];
-    if (spell === undefined || LANDS_ON_THE_CASTER.has(spell.targets ?? 0)) return;
+    if (spell === undefined || landsOnCaster(spell)) return;
     const ticks = spell.duration ?? 0;
     const seconds = ticks > 0 ? ticks * EFFECT_TICK_SECONDS : null;
     for (const [ability] of spell.abilities ?? []) {
@@ -516,15 +608,18 @@ export function afflictionsOf(mob: MenaceSubject): MobAffliction[] {
 }
 
 /**
- * How many blows a round holds — `Mob.DoCombat` grants 1,000 energy a round
- * and swings until it is spent or fifty swings are in, so the count is the
- * grant over the energy an average swing costs. A profile whose swings cost
- * nothing swings the fifty.
+ * How many blows a round holds, in expectation — `Mob.DoCombat` grants 1,000
+ * energy a round and swings until it is spent, at most `MOB_ATTEMPTS` times,
+ * so the count is the grant over the energy an average swing costs. A profile
+ * whose swings cost nothing swings every attempt. `mobRound.ts` rolls the
+ * same round swing by swing.
  */
-export function mobSwingsPerRound(attacks: readonly MobAttack[]): number {
+export function mobSwingsPerRound(
+  attacks: ReadonlyArray<Pick<MobAttack, 'chance' | 'energy'>>
+): number {
   const perSwing = attacks.reduce((sum, attack) => sum + attack.chance * attack.energy, 0);
-  if (perSwing <= 0) return attacks.length > 0 ? MAX_SWINGS : 0;
-  return Math.min(MAX_SWINGS, ROUND_ENERGY / perSwing);
+  if (perSwing <= 0) return attacks.length > 0 ? MOB_ATTEMPTS : 0;
+  return Math.min(MOB_ATTEMPTS, ROUND_ENERGY / perSwing);
 }
 
 /** Plain blows only: what the room's `unit` is made from. */

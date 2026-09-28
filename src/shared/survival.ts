@@ -2,24 +2,26 @@
  * Survivability: the whole room's fight, *run* rather than added up.
  *
  * `verdict.ts` answers what one monster costs in expectation. A player
- * entering a room asks a different question — *will I walk out of this?* —
- * and expectation cannot answer it: a fight is lost on the tail, on the round
- * where three blows land at once and the heal comes a round late. So this runs
- * the fight, many times, with the same arithmetic the verdict is priced on
- * (`prowess.swing`, `menace.hitChance`), and reports how often the character
- * walked out. See mudengine-automation › *The verdict is also run as a fight*.
+ * entering a room asks a different question, *will I walk out of this?*, and
+ * expectation cannot answer it: a fight is lost on the tail, on the round
+ * where three spears land at once and the heal comes a round late. So this
+ * runs the fight many times, the character's blows by `prowess.swing` and
+ * every monster's round rolled by `mobRound.ts` (MME's attack sim), and
+ * reports how often the character walked out and what it cost on the way.
+ * See mudengine-automation › *The verdict is also run as a fight*.
  */
+import { between, mulberry32, sampledCount } from './dice';
 import { guardsFirst, type GuardSubject } from './guards';
+import { weighRoom, type MenacePlayer, type MenaceSubject, type MenaceWeights } from './menace';
 import {
-  expectedBlow,
-  facing,
-  landsOn,
-  mobSwingsPerRound,
-  weighRoom,
-  type MenacePlayer,
-  type MenaceSubject,
-  type MenaceWeights
-} from './menace';
+  expectedHarm,
+  freshMobState,
+  mobModel,
+  rollMobRound,
+  spellEffect,
+  type MobModel,
+  type MobState
+} from './mobRound';
 import {
   MAX_SWINGS,
   swing,
@@ -29,7 +31,6 @@ import {
 } from './prowess';
 import type { RealmFamily } from './realm';
 import { rankByVerdict, targetOf, verdictFor, type TargetEntity } from './verdict';
-import type { MobAttack, MobProfile } from './world';
 
 /** One thing in the room that will fight, as the realm knows it. */
 export interface SurvivalFoe {
@@ -50,6 +51,12 @@ export interface SurvivalHeal {
   minMana: number;
 }
 
+/** What counts as safe and as merely risky: shares of fights survived that must be *exceeded*. */
+export interface SurvivalLevels {
+  safeAbove: number;
+  riskyAbove: number;
+}
+
 export interface SurvivalInput {
   hp: number;
   hpMax: number;
@@ -60,7 +67,16 @@ export interface SurvivalInput {
   weapon: ProwessWeapon | null;
   family: RealmFamily | null;
   weights: MenaceWeights;
+  /**
+   * The room's foes, every one of them in every fight; or, with `draw`, the
+   * pool a lair spawns from.
+   */
   foes: SurvivalFoe[];
+  /**
+   * A lair: each fight meets this many foes drawn from `foes`, each one any
+   * of them alike, as `RegenSlot` fills a lair's slot from its rows.
+   */
+  draw?: number;
   /**
    * A caster's blow where the swing says nothing, by foe: expected damage a
    * round and the mana a round of it costs. Null where the swing answers.
@@ -71,15 +87,30 @@ export interface SurvivalInput {
   regenPerRound: number;
   /** Blessings that lapse during the fight: the round each lapses and what the recast costs. */
   recasts: Array<{ round: number; cost: number }>;
-  /** What counts as safe and as merely risky, as a share of fights survived. */
-  levels: { safeAbove: number; riskyAbove: number };
+  levels: SurvivalLevels;
   trials: number;
   roundCap: number;
+  /** Rounds at which the fight is read part way (`Survival.horizons`); empty reads none. */
+  horizons?: readonly number[];
   /** Fixed by default, so the same room and the same character always read the same. */
   seed?: number;
 }
 
 export type SurvivalLevel = 'safe' | 'risky' | 'deadly';
+
+/** The rounds a fight is read at part way (todo 03): the first, then doubling out to 24. */
+export const SURVIVAL_HORIZONS = [1, 3, 6, 12, 24] as const;
+
+/** The fights read at one round. A fight already over is read as it ended. */
+export interface SurvivalHorizon {
+  rounds: number;
+  /** The share of fights the character was still standing in. */
+  standing: number;
+  /** The share of fights already won: every foe down. */
+  won: number;
+  /** Health lost by this round, before any heal gave it back: least, mean, most. */
+  lost: { least: number; mean: number; most: number };
+}
 
 export interface Survival {
   /** The share of fights the character walked out of, 0..1. */
@@ -91,13 +122,44 @@ export interface Survival {
   hpLeft: number | null;
   /** Heals cast a fight, on average. */
   heals: number;
+  /** The most health lost in any one round of any fight. */
+  worstRound: number;
+  horizons: SurvivalHorizon[];
   trials: number;
 }
 
 /**
- * Runs the room. Null when the fight cannot be run honestly: a foe the realm
- * cannot weigh, or a character with no way to hurt any of them — an unknown
- * is never the reassuring answer and never the alarming one.
+ * A fight the odds book holds: waiting for the character's own figures to be
+ * read, queued to be run, one `simulateFight` cannot run (it answered null),
+ * or the run.
+ */
+export type Odds =
+  | { kind: 'unread' }
+  | { kind: 'pending' }
+  | { kind: 'unrun' }
+  | { kind: 'run'; survival: Survival };
+
+/** The level a share of fights survived reads as. */
+export function survivalLevel(survives: number, levels: SurvivalLevels): SurvivalLevel {
+  if (survives > levels.safeAbove) return 'safe';
+  if (survives > levels.riskyAbove) return 'risky';
+  return 'deadly';
+}
+
+/** One foe as the fight meets it, compiled once for every trial. */
+interface FoeSide {
+  hp: number;
+  model: MobModel;
+  attack: NonNullable<ReturnType<typeof swing>> | null;
+  cast: { perRound: number; manaPerRound: number } | null;
+  resist: number;
+  death: ReturnType<typeof spellEffect>;
+}
+
+/**
+ * Runs the room. Null for a foe the realm cannot weigh, or a character with
+ * no way to hurt any of them: an unknown is never the reassuring answer and
+ * never the alarming one.
  */
 export function simulateFight(input: SurvivalInput): Survival | null {
   const { foes, hpMax } = input;
@@ -107,37 +169,23 @@ export function simulateFight(input: SurvivalInput): Survival | null {
   }
 
   /*
-   * Two weighings of the same room. The engine's, for the order the character
-   * takes them in — the same `rankByVerdict` auto-combat swings by, so the
-   * fight run here is the fight the engine would fight. And one with every
-   * non-hit-point hazard priced at nothing, because a round held or afraid is
-   * a cost to the *order* and not a wound: only damage, drain and poison take
-   * health off, and health is what this counts.
+   * The order the character takes them in is the engine's: `rankByVerdict`
+   * on the room's weighing, a guard before what it protects (`guards.ts`).
+   * For a lair it is the pool's order, and each fight takes what it drew in
+   * that order.
    */
   const subjects = foes.map((foe) => foe.subject);
   const ranked = weighRoom(subjects, input.player, input.weights);
-  const wounds = weighRoom(subjects, input.player, {
-    ...input.weights,
-    held: 0,
-    confused: 0,
-    blinded: 0,
-    slowed: 0,
-    afraid: 0,
-    summon: 0,
-    teleported: 0
-  });
   const verdicts = subjects.map((subject, index) =>
     verdictFor(ranked[index] ?? null, targetOf(subject), input.sheet, input.weapon, input.family)
   );
-  // A guard before what it protects, as the engine swings (`guards.ts`).
   const order = guardsFirst(
     rankByVerdict(verdicts),
     foes.map((foe) => ({ name: foe.name, mob: foe.subject }))
   );
+  const position = new Map(order.map((index, at) => [index, at]));
 
-  const foeSides = subjects.map((subject, index) => {
-    const wound = wounds[index] ?? null;
-    const menaceHp = wound?.hp ?? subject.hp ?? null;
+  const sides: FoeSide[] = subjects.map((subject, index) => {
     const target = targetOf(subject);
     const blow = swing(
       input.sheet,
@@ -146,34 +194,33 @@ export function simulateFight(input: SurvivalInput): Survival | null {
         armourClass: target.armourClass ?? null,
         damageResist: target.damageResist ?? null,
         dodge: target.dodge ?? null,
-        health: menaceHp
+        health: subject.hp ?? null
       },
       input.family
     );
-    const attack = blow !== null && blow.rounds !== null ? blow : null;
-    const cast = input.casting[index] ?? null;
-    // Its blows meet the protection that applies to it (`menace.facing`).
-    const against = facing(input.player, subject);
     return {
-      hp: menaceHp !== null && menaceHp > 0 ? menaceHp : 1,
-      against,
-      profile: worstProfile(subject.profiles ?? [], against),
-      // The expected harm of everything that is not a blow: hit spells, casts,
-      // lasting damage. Sampled nowhere, since the variance that kills is the
-      // blows'.
-      spellHarm: wound === null ? 0 : Math.max(0, wound.perRound - wound.blows),
-      onDeath: wound?.onDeath ?? 0,
-      attack,
-      cast
+      hp: subject.hp !== undefined && subject.hp > 0 ? subject.hp : 1,
+      model: worstModel(subject, input.player),
+      attack: blow !== null && blow.rounds !== null ? blow : null,
+      cast: input.casting[index] ?? null,
+      resist: Math.max(0, Math.trunc(target.damageResist ?? 0)),
+      death:
+        subject.deathSpell === undefined
+          ? null
+          : spellEffect(subject.spells?.[subject.deathSpell], 0, input.player)
     };
   });
   // A fight the character cannot win is not one this can price.
-  if (foeSides.every((side) => side.attack === null && side.cast === null)) return null;
+  if (sides.every((side) => side.attack === null && side.cast === null)) return null;
 
   const random = mulberry32(input.seed ?? 0x9e3779b9);
   const trials = Math.max(1, Math.trunc(input.trials));
   const roundCap = Math.max(1, Math.trunc(input.roundCap));
-  const heal = input.heal;
+  const horizons = [...new Set(input.horizons ?? [])]
+    .filter((rounds) => rounds > 0)
+    .sort((a, b) => a - b);
+  const reads = horizons.map(() => ({ standing: 0, won: 0, lost: [] as number[] }));
+  const count = input.draw === undefined ? null : Math.max(1, Math.trunc(input.draw));
   // The sheet's own range where `stat all` still states it: `prowess.swing`'s rule.
   const stated = input.sheet.stated?.damage;
   const weaponLow = stated?.min ?? input.weapon?.min;
@@ -182,72 +229,71 @@ export function simulateFight(input: SurvivalInput): Survival | null {
   let survived = 0;
   let roundsTotal = 0;
   let healsTotal = 0;
+  let worstRound = 0;
   const leftovers: number[] = [];
 
   for (let trial = 0; trial < trials; trial += 1) {
+    const met =
+      count === null
+        ? order
+        : Array.from({ length: count }, () => Math.floor(random() * sides.length)).sort(
+            (a, b) => position.get(a)! - position.get(b)!
+          );
+    const alive = met.map((index) => sides[index]!.hp);
+    const states: MobState[] = met.map(() => freshMobState());
     let hp = input.hp;
     let mana = input.mana;
-    const alive = foeSides.map((side) => side.hp);
     let healing = false;
     let heals = 0;
     let regenCarry = 0;
+    let held = 0;
+    let lost = 0;
     let round = 0;
     let dead = false;
+    let next = 0;
+
+    const read = (upTo: number, won: boolean): void => {
+      while (next < horizons.length && horizons[next]! <= upTo) {
+        const at = reads[next]!;
+        if (!dead) at.standing += 1;
+        if (won) at.won += 1;
+        at.lost.push(lost);
+        next += 1;
+      }
+    };
 
     while (round < roundCap) {
+      const target = alive.findIndex((health) => health > 0);
+      if (target === -1) break;
       round += 1;
-      const targetIndex = order.find((index) => alive[index]! > 0);
-      if (targetIndex === undefined) break;
 
-      // The character's turn: a heal at the threshold, else a blow.
-      let cast = false;
-      if (heal !== null && mana !== null) {
-        const fraction = hp / hpMax;
-        const wants: boolean =
-          fraction < heal.below || (heal.to > 0 && healing && fraction < heal.to);
-        healing = wants;
-        if (wants) {
-          const floor =
-            heal.minMana <= 0
-              ? true
-              : input.manaMax !== null && input.manaMax > 0 && mana / input.manaMax >= heal.minMana;
-          if (floor && mana >= heal.cost) {
-            hp = Math.min(hpMax, hp + between(random, heal.restores[0], heal.restores[1]));
-            mana -= heal.cost;
-            heals += 1;
-            cast = true;
-          }
+      if (held > 0) {
+        held -= 1;
+      } else if (!healed()) {
+        const side = sides[met[target]!]!;
+        const dealt = strike(side);
+        alive[target] = alive[target]! - dealt;
+        if (alive[target]! <= 0 && side.death !== null) {
+          const harm = side.death.high > 0 ? between(random, side.death.low, side.death.high) : 0;
+          hp -= harm;
+          lost += harm;
         }
-      }
-      if (!cast) {
-        const side = foeSides[targetIndex]!;
-        const target = targetOf(subjects[targetIndex]);
-        let dealt = 0;
-        if (side.attack !== null) {
-          const swings = sampledCount(random, Math.min(MAX_SWINGS, side.attack.swings?.value ?? 1));
-          const resist = Math.max(0, Math.trunc(target.damageResist ?? 0));
-          for (let n = 0; n < swings; n += 1) {
-            if (random() >= side.attack.lands.value) continue;
-            dealt +=
-              weaponLow !== undefined && weaponHigh !== undefined
-                ? Math.max(0, between(random, weaponLow, weaponHigh) - resist)
-                : side.attack.damage.value;
-          }
-        } else if (side.cast !== null) {
-          if (mana === null || mana >= side.cast.manaPerRound) {
-            dealt = side.cast.perRound;
-            if (mana !== null) mana -= side.cast.manaPerRound;
-          }
-        }
-        alive[targetIndex] = alive[targetIndex]! - dealt;
-        if (alive[targetIndex]! <= 0) hp -= side.onDeath;
       }
 
       // Every foe still standing takes its round.
-      for (const [index, side] of foeSides.entries()) {
-        if (alive[index]! <= 0) continue;
-        hp -= side.spellHarm + meleeRound(random, side.profile, side.against);
+      let roundHarm = 0;
+      for (const [slot, index] of met.entries()) {
+        if (alive[slot]! <= 0) continue;
+        const outcome = rollMobRound(random, sides[index]!.model, states[slot]!);
+        roundHarm += outcome.harm;
+        held = Math.max(held, outcome.held);
+        if (outcome.mended > 0) {
+          alive[slot] = Math.min(sides[index]!.hp, alive[slot]! + outcome.mended);
+        }
       }
+      hp -= roundHarm;
+      lost += roundHarm;
+      worstRound = Math.max(worstRound, roundHarm);
       if (hp <= 0) {
         dead = true;
         break;
@@ -264,7 +310,9 @@ export function simulateFight(input: SurvivalInput): Survival | null {
           if (recast.round === round && mana >= recast.cost) mana -= recast.cost;
         }
       }
+      read(round, false);
     }
+    read(Number.POSITIVE_INFINITY, !dead && alive.every((health) => health <= 0));
 
     roundsTotal += round;
     healsTotal += heals;
@@ -272,100 +320,87 @@ export function simulateFight(input: SurvivalInput): Survival | null {
       survived += 1;
       leftovers.push(Math.max(0, hp));
     }
+
+    /** The character's turn spent on the heal `AutoHeal` would cast, if it would. */
+    function healed(): boolean {
+      const heal = input.heal;
+      if (heal === null || mana === null) return false;
+      const fraction = hp / hpMax;
+      const wants = fraction < heal.below || (heal.to > 0 && healing && fraction < heal.to);
+      healing = wants;
+      if (!wants) return false;
+      const floor =
+        heal.minMana <= 0 ||
+        (input.manaMax !== null && input.manaMax > 0 && mana / input.manaMax >= heal.minMana);
+      if (!floor || mana < heal.cost) return false;
+      hp = Math.min(hpMax, hp + between(random, heal.restores[0], heal.restores[1]));
+      mana -= heal.cost;
+      heals += 1;
+      return true;
+    }
+
+    /** The character's blows at one foe this round. */
+    function strike(side: FoeSide): number {
+      if (side.attack !== null) {
+        const swings = sampledCount(random, Math.min(MAX_SWINGS, side.attack.swings?.value ?? 1));
+        let dealt = 0;
+        for (let n = 0; n < swings; n += 1) {
+          if (random() >= side.attack.lands.value) continue;
+          dealt +=
+            weaponLow !== undefined && weaponHigh !== undefined
+              ? Math.max(0, between(random, weaponLow, weaponHigh) - side.resist)
+              : side.attack.damage.value;
+        }
+        return dealt;
+      }
+      if (side.cast !== null && (mana === null || mana >= side.cast.manaPerRound)) {
+        if (mana !== null) mana -= side.cast.manaPerRound;
+        return side.cast.perRound;
+      }
+      return 0;
+    }
   }
 
   const survives = survived / trials;
   leftovers.sort((a, b) => a - b);
   return {
     survives,
-    level:
-      survives >= input.levels.safeAbove
-        ? 'safe'
-        : survives >= input.levels.riskyAbove
-          ? 'risky'
-          : 'deadly',
+    level: survivalLevel(survives, input.levels),
     rounds: { value: roundsTotal / trials, from: 'measured' },
     hpLeft: leftovers.length === 0 ? null : leftovers[Math.floor(leftovers.length / 2)]!,
     heals: healsTotal / trials,
+    worstRound,
+    horizons: horizons.map((rounds, at) => {
+      const { standing, won, lost } = reads[at]!;
+      return {
+        rounds,
+        standing: standing / trials,
+        won: won / trials,
+        lost: {
+          least: lost.length === 0 ? 0 : Math.min(...lost),
+          mean: lost.length === 0 ? 0 : lost.reduce((sum, each) => sum + each, 0) / lost.length,
+          most: lost.length === 0 ? 0 : Math.max(...lost)
+        }
+      };
+    }),
     trials
   };
 }
 
 /**
- * The profile that lands the most, in expectation — `weighRoom` prices a
- * monster by its worst row, and the fight is run against the same one.
+ * The row that harms the most, in expectation as the draw deals it
+ * (`expectedHarm`): a name holding several rows is met as its worst.
  */
-function worstProfile(profiles: readonly MobProfile[], player: MenacePlayer): MobProfile {
-  let best = profiles[0]!;
+function worstModel(subject: MenaceSubject, player: MenacePlayer): MobModel {
+  let worst: MobModel | null = null;
   let most = -1;
-  for (const profile of profiles) {
-    const swings = mobSwingsPerRound(profile.attacks);
-    let perSwing = 0;
-    for (const attack of profile.attacks) {
-      if (attack.kind !== 'melee') continue;
-      const { damage } = expectedBlow(attack.min, attack.max, player.damageResist);
-      perSwing += attack.chance * landsOn(attack.accuracy, player) * damage;
-    }
-    if (swings * perSwing > most) {
-      most = swings * perSwing;
-      best = profile;
+  for (const profile of subject.profiles ?? []) {
+    const model = mobModel(subject, profile, player);
+    const harm = expectedHarm(model);
+    if (harm > most) {
+      most = harm;
+      worst = model;
     }
   }
-  return best;
-}
-
-/**
- * One round of a monster's blows, rolled the way `rowPerRound` expects them:
- * so many swings a round, each choosing an attack by its chance, each landing
- * by accuracy against armour class and dodge, each doing its range less
- * resistance.
- */
-function meleeRound(random: () => number, profile: MobProfile, player: MenacePlayer): number {
-  const swings = sampledCount(random, mobSwingsPerRound(profile.attacks));
-  const resist = Math.max(0, Math.trunc(player.damageResist ?? 0));
-  let harm = 0;
-  for (let n = 0; n < swings; n += 1) {
-    const attack = pickAttack(random, profile.attacks);
-    if (attack === null || attack.kind !== 'melee') continue;
-    if (random() >= landsOn(attack.accuracy, player)) continue;
-    harm += Math.max(0, between(random, attack.min, attack.max) - resist);
-  }
-  return harm;
-}
-
-/** An attack by its chance; null when the chances leave the swing empty. */
-function pickAttack(random: () => number, attacks: readonly MobAttack[]): MobAttack | null {
-  const total = attacks.reduce((sum, attack) => sum + Math.max(0, attack.chance), 0);
-  if (total <= 0) return null;
-  let roll = random() * Math.max(1, total);
-  for (const attack of attacks) {
-    roll -= Math.max(0, attack.chance);
-    if (roll < 0) return attack;
-  }
-  return null;
-}
-
-/** A fractional expectation as a whole count: the floor, and one more with the fraction's chance. */
-function sampledCount(random: () => number, expected: number): number {
-  const whole = Math.floor(expected);
-  return whole + (random() < expected - whole ? 1 : 0);
-}
-
-/** A whole number in `[low, high]`, either way round. */
-function between(random: () => number, low: number, high: number): number {
-  const a = Math.min(low, high);
-  const b = Math.max(low, high);
-  return a + Math.floor(random() * (b - a + 1));
-}
-
-/** Mulberry32: a small, seedable generator, so a room reads the same every time it is weighed. */
-function mulberry32(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+  return worst!;
 }

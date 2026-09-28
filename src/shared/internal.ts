@@ -565,16 +565,22 @@ const TUNING_DEFAULTS = {
      */
     deathOverRounds: 5,
     /**
-     * The room's fight, run (`simulateFight`): how many times, how long a
-     * fight may run before it is called, and the shares of fights survived
-     * that read as safe and as merely risky — under `riskyAbove` is deadly.
-     * Three hundred runs of a long fight are a millisecond or two on the
-     * socket's thread; the figures move by a point or two between seeds.
+     * The fight, run (`simulateFight`): how many times, how long a fight may
+     * run before it is called, and the shares of fights survived that must be
+     * exceeded to read as safe (green) and as merely risky (yellow); the rest
+     * is deadly (red). Todo 03 set them: over 60% is green, 25% or less is
+     * almost certainly not survivable. Three hundred runs are 3 to 6ms; the
+     * figures move a point or two between seeds.
      */
     survivalTrials: 300,
     survivalRoundCap: 120,
-    survivalSafeAbove: 0.95,
-    survivalRiskyAbove: 0.6
+    survivalSafeAbove: 0.6,
+    survivalRiskyAbove: 0.25,
+    /**
+     * How long the odds book (`OddsBook`) runs fights for before it hands the
+     * socket's thread back. One fight is 3 to 6ms, so a slice holds one or two.
+     */
+    survivalSliceMs: 8
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {

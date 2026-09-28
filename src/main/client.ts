@@ -78,7 +78,7 @@ import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { MobLoreEntry } from '../shared/lore';
 import type { MovementStart, WalkStart } from '../shared/movement';
 import type { FightSummary } from '../shared/fights';
-import { localMap } from './world/localMap';
+import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
 import { slotGear } from './world/slotGear';
 import type { HuntingAdvice } from '../shared/hunting';
@@ -1578,6 +1578,13 @@ function registerIpc(): void {
    * the builder cannot happen. A character nobody has read the sheet of is
    * priced as one that can force nothing, which is `edgePenalty`'s own rule.
    */
+  /** A lair's level for the session's character, off its odds book (todo 03). */
+  const lairLevelOf =
+    (session: SessionId): LairLevel =>
+    (room) => {
+      const odds = host?.get(session)?.manager?.odds.lair(room);
+      return odds?.kind === 'run' ? odds.survival.level : null;
+    };
   const travellerOf = (session: SessionId, walking: 'route' | 'lap'): Traveller => {
     const manager = host?.get(session)?.manager;
     // The session's own statement of what its character costs to move — the
@@ -1654,7 +1661,8 @@ function registerIpc(): void {
       const route = world.route(start, goal, travellerOf(session, 'route'));
       /* Paged by the widest map the card can fetch, so every page draws whole. */
       const radius = tuning().view.mapRadiusMax;
-      const draw = (centre: RoomId): LocalMap => localMap(world, centre, radius);
+      const draw = (centre: RoomId): LocalMap =>
+        localMap(world, centre, radius, lairLevelOf(session));
       const packing = {
         stretches: tuning().world.routePageStretches,
         steps: tuning().world.routePageSteps
@@ -2019,8 +2027,8 @@ function registerIpc(): void {
       walk: manager?.walker.progress ?? IDLE_WALK,
       loop: manager?.loops.progress ?? NO_LOOP,
       automation: manager?.automation ?? EMPTY_AUTOMATION,
-      verdict: manager?.verdict ?? EMPTY_ROOM_VERDICT,
-      asks: [...(manager?.asks ?? [])],
+      verdict: manager?.appraisal.verdict ?? EMPTY_ROOM_VERDICT,
+      asks: [...(manager?.appraisal.asks ?? [])],
       telnet: manager?.log ?? [],
       learned: manager?.learned ?? [],
       finds: manager?.foundHere ?? [],
@@ -2217,7 +2225,7 @@ function registerIpc(): void {
         typeof radius === 'number' && Number.isInteger(radius)
           ? Math.max(mapRadiusMin, Math.min(mapRadiusMax, radius))
           : undefined;
-      return localMap(world, roomId(map, room), asked);
+      return localMap(world, roomId(map, room), asked, lairLevelOf(session));
     }
   );
   handle(Invoke.huntingGrounds, async (_caller, session: SessionId, measure: unknown) => {
@@ -2229,7 +2237,7 @@ function registerIpc(): void {
         swept: 0,
         spots: [],
         unmeasured: [],
-        excluded: { dangerous: 0, beneath: 0 },
+        excluded: { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 },
         assumptions: {
           family: null,
           hpMax: null,
@@ -2422,7 +2430,8 @@ function registerIpc(): void {
      * so the card reads exactly what auto-combat ranks on. A session with no
      * manager (a stale id) has no character to weigh against and gets none.
      */
-    const verdicts = host?.get(session)?.manager.appraise(found.mobs.map((mob) => mob.name)) ?? {};
+    const verdicts =
+      host?.get(session)?.manager.appraisal.appraise(found.mobs.map((mob) => mob.name)) ?? {};
     // And the character's own row where it says one does not attack first,
     // for the card to show beside the realm's temper (todo 818).
     const rules = configFor(session).automation.combat.mobRules;

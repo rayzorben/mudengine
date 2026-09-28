@@ -298,7 +298,7 @@ export class Publisher {
    * character, on change. The key keeps a status line that moves no drawn
    * figure from costing a push.
    */
-  private publishVerdict(): void {
+  publishVerdict(): void {
     const appraisal = this.appraisal.verdict;
     const key = roomVerdictKey(appraisal);
     if (key === this.lastVerdictKey) return;

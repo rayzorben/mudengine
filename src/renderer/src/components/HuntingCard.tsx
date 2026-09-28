@@ -272,12 +272,22 @@ function HuntingCard({
   );
 
   const leftOut =
-    advice !== null && advice.excluded.dangerous + advice.excluded.beneath > 0
-      ? t('cards.hunting.excluded', {
-          dangerous: advice.excluded.dangerous,
-          beneath: advice.excluded.beneath
-        })
-      : '';
+    advice === null
+      ? ''
+      : [
+          advice.excluded.dangerous + advice.excluded.beneath + advice.excluded.unsurvivable > 0
+            ? t('cards.hunting.excluded', {
+                dangerous: advice.excluded.dangerous,
+                unsurvivable: advice.excluded.unsurvivable,
+                beneath: advice.excluded.beneath
+              })
+            : '',
+          advice.excluded.unsimulated > 0
+            ? t('cards.hunting.unsimulated', { count: advice.excluded.unsimulated })
+            : ''
+        ]
+          .filter((part) => part.length > 0)
+          .join(' ');
   /*
    * A fight nobody could price is listed nearest first rather than by what it
    * pays, and the head says so — on a realm whose kill arithmetic is not this

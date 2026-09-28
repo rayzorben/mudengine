@@ -50,6 +50,7 @@ import {
   type MapNode,
   type MapTrail
 } from '@shared/map';
+import type { SurvivalLevel } from '@shared/survival';
 import type { RoomId } from '@shared/world';
 import { tuning } from '../lib/tuning';
 
@@ -684,6 +685,7 @@ export const Picture = memo(function Picture({
             aria-label={choose === undefined ? undefined : node.name}
             className="map-room"
             data-kind={node.kind}
+            data-odds={node.kind === 'lair' ? node.odds : undefined}
             data-room={node.id}
             key={node.id}
             {...control}
@@ -949,6 +951,12 @@ function TeleportGlyph({ size, x, y }: { size: number; x: number; y: number }) {
  * under the pointer — which is the whole reason the map card is a fixed box.
  */
 export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
+  const lairKeys: Array<{ odds: SurvivalLevel | undefined; label: string }> = [
+    { odds: 'safe', label: t('cards.map.legendLairSafe') },
+    { odds: 'risky', label: t('cards.map.legendLairRisky') },
+    { odds: 'deadly', label: t('cards.map.legendLairDeadly') },
+    { odds: undefined, label: t('cards.map.legendLair') }
+  ];
   return (
     <div className="map-legend">
       <span data-kind="here">
@@ -1021,12 +1029,15 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
         </svg>
         {t('cards.map.legendBank')}
       </span>
-      <span data-kind="lair">
-        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
-          <polygon className="map-shape" points="0,-3.6 3.6,0 0,3.6 -3.6,0" />
-        </svg>
-        {t('cards.map.legendLair')}
-      </span>
+      {/* A lair by how its fight goes for this character (todo 03); grey is not yet run. */}
+      {lairKeys.map(({ odds, label }) => (
+        <span data-kind="lair" data-odds={odds} key={label}>
+          <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+            <polygon className="map-shape" points="0,-3.6 3.6,0 0,3.6 -3.6,0" />
+          </svg>
+          {label}
+        </span>
+      ))}
       {/*
         A way up or down: the chevrons where the controls sit beside the room,
         keyed with what a press does. The same glyph in the same place as on
