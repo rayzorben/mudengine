@@ -12,8 +12,8 @@ import MobRuleList from './MobRuleList';
 import GearSetList from './GearSetList';
 import PotionList from './PotionList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
-import SpellField, { castableOn, refusesTarget } from './SpellPicker';
-import { castsOnOthers, castsOnSelf } from '@shared/spellcraft';
+import SpellField from './SpellPicker';
+import HealFields from './HealFields';
 import CarrySections from './CarrySections';
 import Icon from './Icon';
 import { CheckField, NumberField, SelectField, TextField } from './FormField';
@@ -270,17 +270,6 @@ export default function GlobalSettings({
    */
   const [section, setSection] = useState<Section>(() => SECTIONS[scope][0]!);
   const shown = SECTIONS[scope].includes(section) ? section : SECTIONS[scope][0]!;
-
-  /*
-   * The two heal fields offer different halves of the realm's spells: the
-   * realm marks `way of the swan` castable on the caster alone, so offering it
-   * for the party heal would arm `c swan <name>` once a round for a refusal
-   * the server prints in the room. `castsOnSelf` / `castsOnOthers` both say
-   * yes to a spell whose targeting this build cannot read, so a derivative
-   * realm loses no options.
-   */
-  const selfHeals = useMemo(() => castableOn(realmSpells, castsOnSelf), [realmSpells]);
-  const partyHeals = useMemo(() => castableOn(realmSpells, castsOnOthers), [realmSpells]);
 
   /**
    * One block at a time, merged onto the draft.
@@ -1353,64 +1342,28 @@ export default function GlobalSettings({
             </div>
             <fieldset className="settings-menus" data-fieldset="spells-heal">
               <legend>{t('settings.spells.healLegend')}</legend>
-              <div className="settings-inline">
-                <SpellField
-                  hint={t('settings.spells.healHint')}
-                  label={t('settings.spells.healLabel')}
-                  name="global-heal"
-                  onChange={(value) =>
-                    automation({ spells: { ...draft.automation.spells, heal: value } })
-                  }
-                  spells={selfHeals}
-                  value={draft.automation.spells.heal}
-                  warning={
-                    refusesTarget(realmSpells, castsOnSelf, draft.automation.spells.heal)
-                      ? t('settings.spells.healNoSelfCast')
-                      : undefined
-                  }
-                />
-                <NumberField
-                  label={t('settings.spells.healBelowLabel')}
-                  name="global-heal-below"
-                  onChange={(value) =>
-                    automation({
-                      spells: { ...draft.automation.spells, healBelow: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.spells.healBelow)}
-                  value={percent(draft.automation.spells.healBelow)}
-                />
-                <NumberField
-                  hint={t('settings.spells.healBelowInCombatHint')}
-                  label={t('settings.spells.healBelowInCombatLabel')}
-                  name="global-heal-below-combat"
-                  onChange={(value) =>
-                    automation({
-                      spells: { ...draft.automation.spells, healBelowInCombat: fraction(value) }
-                    })
-                  }
-                  bar={barOfHealth(draft.automation.spells.healBelowInCombat)}
-                  value={percent(draft.automation.spells.healBelowInCombat)}
-                />
-                <NumberField
-                  hint={t('settings.spells.healToHint')}
-                  label={t('settings.spells.healToLabel')}
-                  name="global-heal-to"
-                  onChange={(value) =>
-                    automation({ spells: { ...draft.automation.spells, healTo: fraction(value) } })
-                  }
-                  bar={barOfHealth(draft.automation.spells.healTo)}
-                  value={percent(draft.automation.spells.healTo)}
-                />
-              </div>
-              <CheckField
-                checked={draft.automation.spells.healParty}
-                hint={t('settings.spells.healPartyHint')}
-                label={t('settings.spells.healParty')}
-                name="global-healparty"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, healParty: value } })
+              <HealFields
+                bands={draft.ui.vitals.hp}
+                namePrefix="global-"
+                onChange={(field, value) =>
+                  automation({
+                    spells: {
+                      ...draft.automation.spells,
+                      [field]:
+                        field === 'heal' || field === 'healPartyWith' ? value : fraction(value)
+                    }
+                  })
                 }
+                onToggle={(field, value) =>
+                  automation({ spells: { ...draft.automation.spells, [field]: value } })
+                }
+                spells={realmSpells}
+                values={{
+                  ...draft.automation.spells,
+                  healBelow: percent(draft.automation.spells.healBelow),
+                  healBelowInCombat: percent(draft.automation.spells.healBelowInCombat),
+                  healTo: percent(draft.automation.spells.healTo)
+                }}
               />
               <CheckField
                 checked={draft.automation.spells.invokeItems}
@@ -1419,21 +1372,6 @@ export default function GlobalSettings({
                 name="global-invoke-items"
                 onChange={(value) =>
                   automation({ spells: { ...draft.automation.spells, invokeItems: value } })
-                }
-              />
-              <SpellField
-                hint={t('settings.spells.healPartyWithHint')}
-                label={t('settings.spells.healPartyWithLabel')}
-                name="global-heal-party-with"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, healPartyWith: value } })
-                }
-                spells={partyHeals}
-                value={draft.automation.spells.healPartyWith}
-                warning={
-                  refusesTarget(realmSpells, castsOnOthers, draft.automation.spells.healPartyWith)
-                    ? t('settings.spells.healNoPartyCast')
-                    : undefined
                 }
               />
             </fieldset>

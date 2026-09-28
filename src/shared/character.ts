@@ -1791,7 +1791,7 @@ export function membersBelow(state: CharacterState, share: number): string[] {
 }
 
 /** Everybody besides this character who has joined its party: an invitation is not membership. */
-function joinedMembers(state: CharacterState): PartyMember[] {
+export function joinedMembers(state: CharacterState): PartyMember[] {
   const self = state.name?.toLowerCase() ?? null;
   return state.party.members.filter(
     (member) => !member.invited && member.name.toLowerCase() !== self

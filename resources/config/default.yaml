@@ -1583,6 +1583,20 @@ automation:
     healTo: 0
     healParty: false
 
+    # Auto Choose Best Heal. On, the heal is picked each cast from your
+    # spellbook and the realm's figures instead of from `heal` and
+    # `healPartyWith`: the cheapest spell expected to cover what is missing,
+    # else the one that mends most. With more than one person hurt, a
+    # party-wide heal such as `healing rain` is weighed against one heal on
+    # the worst of them. Hit points mended low on the bar count for more than
+    # those mended near the top, so three people at 68%, 71% and 35% get a
+    # major heal on the one at 35% unless the rain does nearly as much for
+    # them. The choice is printed when it changes, and where it cannot be
+    # made (a member whose client never answered @health, a book not yet
+    # read) the spell in the box is cast. Off by default because it casts
+    # spells you did not type.
+    autoChooseHeal: false
+
     # Ask a carried item for the blessing it casts, when that blessing is not
     # up -- the half of MegaMUD's AutoBless this client had no answer to: a
     # *weapon* that blesses.

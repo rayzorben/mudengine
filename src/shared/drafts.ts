@@ -267,6 +267,8 @@ export interface GlobalDraft {
       healBelowInCombat: number;
       healTo: number;
       healParty: boolean;
+      /** Derive the heal, single or party-wide, from the book. See `SpellsConfig`. */
+      autoChooseHeal: boolean;
       minMana: number;
       cures: CuresDraft;
       blessings: BlessingDraft[];
@@ -573,6 +575,8 @@ export interface ProfileDraft {
     healBelowInCombat: number;
     healTo: number;
     healParty: boolean;
+    /** Derive the heal, single or party-wide, from the book. See `SpellsConfig`. */
+    autoChooseHeal: boolean;
     minMana: number;
     cures: CuresDraft;
     blessings: BlessingDraft[];
@@ -1102,6 +1106,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       healBelowInCombat: unit(spells['healBelowInCombat']),
       healTo: unit(spells['healTo']),
       healParty: spells['healParty'] === true,
+      autoChooseHeal: spells['autoChooseHeal'] === true,
       minMana: unit(spells['minMana']),
       cures: asCures(spells['cures']),
       blessings: asBlessings(spells['blessings']),
@@ -1304,6 +1309,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         healBelowInCombat: unit(spells['healBelowInCombat']),
         healTo: unit(spells['healTo']),
         healParty: spells['healParty'] === true,
+        autoChooseHeal: spells['autoChooseHeal'] === true,
         minMana: unit(spells['minMana']),
         cures: asCures(spells['cures']),
         blessings: asBlessings(spells['blessings']),

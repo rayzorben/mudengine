@@ -38,7 +38,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // lowered by its login rows, shared with the realm's form (811), and by the
   // rest and meditate fields, shared with the options page (825), and the
   // party's (831).
-  'src/renderer/src/components/CharacterForm.tsx': 1837
+  'src/renderer/src/components/CharacterForm.tsx': 1777
 };
 
 /**

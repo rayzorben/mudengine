@@ -601,6 +601,18 @@ const TUNING_DEFAULTS = {
      * client asks again if it is still low.
      */
     healRequestMs: 10_000,
+    /**
+     * How steeply a low bar outweighs a high one when a party-wide heal is
+     * weighed against a single heal (`planHeal`, todo 05): a point mended is
+     * worth `(1 - share) ^ healUrgency`. At 2, a point mended at 35% is worth
+     * about ten mended at 80%.
+     */
+    healUrgency: 2,
+    /**
+     * A heal whose weighted worth is within this share of the best is as
+     * good, and the cheapest of those is cast.
+     */
+    healNearEnough: 0.05,
     /** How long a cure proposal stays worth sending. */
     cureExpiresMs: 3000,
     /** How often the blessing maintainer looks at what has lapsed. */
