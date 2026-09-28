@@ -206,6 +206,37 @@ export class Holds {
     return this.leavingAFight;
   }
 
+  /** Whether the walk is standing still for health or mana (`holdForHealth`). */
+  private get standingForVitals(): boolean {
+    return this.hold === 'health' || this.hold === 'mana';
+  }
+
+  /**
+   * Whether the walk goes on through the fight around it: the one it was
+   * asked for in, or one nothing will end (`answerFight`). `fighting` is the
+   * caller's `fightIsRunning`.
+   */
+  private walksThrough(fighting: boolean): boolean {
+    return fighting && (this.leavingAFight || this.nothingEndsIt);
+  }
+
+  /** A route that resumes after a fight, in one nothing will end (`canEndAFight`). */
+  private get nothingEndsIt(): boolean {
+    return this.resumeAfterFight && !this.canEndAFight();
+  }
+
+  /**
+   * A fight the walk goes on through, found while it stands still for health
+   * or mana: the step goes now, since standing still until the hold's next
+   * beat takes the blows (`holdForHealth`). True when it went.
+   */
+  stepOutOfFight(state: CharacterState): boolean {
+    if (!this.standingForVitals || !this.walksThrough(true)) return false;
+    if ((this.events.pendingMoves?.() ?? 0) > 0) return false;
+    this.walk.carryOn(state);
+    return true;
+  }
+
   /**
    * The slot taken for the two reasons `Barriers` owns — standing at a door,
    * searching for a hidden exit — or let go with `null`. Every other hold is
@@ -383,7 +414,7 @@ export class Holds {
     if (this.resumeAfterFight && this.events.escaping?.() === true && this.holdForFight()) {
       return true;
     }
-    if (this.resumeAfterFight && !this.canEndAFight()) {
+    if (this.nothingEndsIt) {
       /*
        * **`leavingAFight`, and it has to be**: returning false alone left
        * `hold` set to `fight`, so the caller took the resume path, cleared it,
@@ -667,10 +698,12 @@ export class Holds {
    * Published and not printed: `mudengine-automation` › *A route stands still
    * while too hurt to travel*.
    */
-  holdForHealth(state: CharacterState): boolean {
+  holdForHealth(state: CharacterState, fighting: boolean): boolean {
     // Mana holds a walk on the same terms, from `meditateBelow` to `meditateTo` (todo 825).
-    const wanted = this.wantsVitalHold(state);
-    const mine = this.hold === 'health' || this.hold === 'mana';
+    // Never in a fight the walk goes on through: resting heals nothing while
+    // something swings.
+    const wanted = this.walksThrough(fighting) ? null : this.wantsVitalHold(state);
+    const mine = this.standingForVitals;
     if (wanted === null) {
       // Only its own hold: a walk standing still blind is not one whose health
       // has come back.

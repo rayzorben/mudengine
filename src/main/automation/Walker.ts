@@ -996,10 +996,10 @@ export class Walker implements SessionModule {
        * the answer is what the walk needs the moment the fight is over.
        */
       this.askWhereAfterDraw(state);
-      // Under a timed spell a fight is walked out of, never waited out: the
-      // spell is the deadline, and standing still for a round is drowning.
+      // Under a timed spell a fight is walked out of: the spell is the deadline.
       if (!this.holds.leaving && this.events.moveOnly?.(state) !== true && this.holds.answerFight())
         return;
+      if (this.holds.stepOutOfFight(state)) return;
     } else {
       this.holds.nothingFighting();
     }
@@ -1316,7 +1316,7 @@ export class Walker implements SessionModule {
      */
     if (this.holds.holdForRest(state) || this.holds.holdForFloor(state)) return true;
     // Health, and outside the beat's budget — see `Holds.holdForHealth`.
-    if (this.holds.holdForHealth(state)) return true;
+    if (this.holds.holdForHealth(state, fightIsRunning(state))) return true;
     // Then a condition the server has stated, on the same terms.
     if (this.holds.holdForAffliction(state)) return true;
     // Then the trap the step ahead fires, on the same terms again.
