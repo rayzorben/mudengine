@@ -516,6 +516,9 @@ notices:
         is on: {fileList}'
       one: 'Auto Choose Best Heal was added to {fileList}, turned on where Auto Choose Best Spell is
         on.'
+    autoJoin:
+      many: 'Join When Invited was added, off, to {count} files: {fileList}'
+      one: 'Join When Invited was added, off, to {fileList}'
     meditateCeiling:
       many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
       one: 'Keep Meditating To Mana % was added, off, to {fileList}'
@@ -3740,6 +3743,9 @@ settings:
       both show the same gang. Until the who list has shown both, the gang grants nobody anything."
     gangpathHint: 'A gangpath answer goes to the whole gang: "gb @exp" is answered with "gb
       {Made…}", and every member sees both.'
+    autoJoinHint: Joins a party as soon as its leader invites this character, without waiting for
+      @join. Only a leader allowed @join is joined.
+    autoJoinLabel: Join When Invited
     gangpathLabel: Allow Remotes on Gangpath
     legend: Answering Other Players
     playerLegend: Permissions for {name}
@@ -5038,6 +5044,10 @@ automation:
     followerReady: '{from} is ready.'
     followerWait: '{from} asked the party to wait.'
     ignoredParty: 'Not running @party from {from}: Ignore @party If Following is on.'
+    autoJoinInParty: '{from} invited this character; not joining, because it is already in a party.'
+    autoJoinDenied: '{from} invited this character; not joining, because @join is denied to {from} by name.'
+    autoJoinNotGranted: '{from} invited this character; not joining, because {from} has not been granted
+      @join.{unresolvedClause}'
     ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
     dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
     dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
@@ -5072,6 +5082,7 @@ automation:
     reasonGetAll: '@get-all from {from}'
     reasonInvite: '@invite from {from}'
     reasonJoin: '@join from {from}'
+    reasonAutoJoin: 'invited by {from}'
     reasonParty: '@party from {from}'
     refusal:
       hangup: a disconnect costs part of your maximum health and can kill at low health; walking out

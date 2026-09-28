@@ -4707,6 +4707,7 @@ describe('a follower pacing the loop', () => {
         remotes: {
           enabled: true,
           gangpath: false,
+          autoJoin: false,
           gang: [],
           // Named rather than left to the shipped party list: this case is about
           // the pacing pair reaching the loop, not about who was granted it.

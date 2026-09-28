@@ -247,6 +247,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheMeditateCeiling(home, note, options.template);
   statedThePartyPacing(home, note, options.template);
   statedTheHealChoice(home, note, options.template);
+  statedTheAutoJoin(home, note);
 }
 
 /**
@@ -2710,6 +2711,7 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
 const HEALTH_BLOCK = ['automation', 'health'] as const;
 const PARTY_BLOCK = ['automation', 'party'] as const;
 const SPELLS_BLOCK = ['automation', 'spells'] as const;
+const REMOTES_BLOCK = ['automation', 'remotes'] as const;
 
 function stateIn(
   home: Home,
@@ -2812,6 +2814,29 @@ function statedTheHealChoice(
     stated.length === 1
       ? t('notices.migration.healChoice.one', params)
       : t('notices.migration.healChoice.many', params)
+  );
+}
+
+/**
+ * `automation.remotes.autoJoin` into every file that states `remotes:` without
+ * it, off, after `gangpath` (todo 07, 2026-09-27). Its explanation is in the
+ * template's block comment above `remotes:`, so the key carries none.
+ */
+function statedTheAutoJoin(home: Home, note: (message: string) => void): void {
+  const stated = stateIn(
+    home,
+    REMOTES_BLOCK,
+    'autoJoin',
+    DEFAULT_CONFIG.automation.remotes.autoJoin,
+    'gangpath',
+    undefined
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.autoJoin.one', params)
+      : t('notices.migration.autoJoin.many', params)
   );
 }
 

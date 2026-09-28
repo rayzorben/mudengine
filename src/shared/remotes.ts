@@ -1002,7 +1002,7 @@ export function formatVersion(client: string, version: string): string {
  * files across 15 gangs, and the two agree where both appear. Both land on
  * the realm roster (`Adventurer.gang`), and **this character's own row is on
  * that roster too**, which is what makes a comparison possible without a
- * self-`look`. `Remotes.evidenceAbout` compares the two rows.
+ * self-`look`. `evidenceAbout` (`RemoteEvidence.ts`) compares the two rows.
  *
  * The gang list therefore grants only when both rows have named the same gang,
  * and evaluates to *unresolved* while either is unknown — never to a grant. The
@@ -1081,7 +1081,7 @@ export interface RemoteAccess {
  * `inGang` is `null` rather than `false` for the reason the whole codebase
  * distinguishes null from zero — an unknown membership is *absence*, and a
  * `false` here is the client claiming to know somebody is not in its gang.
- * `Remotes.evidenceAbout` produces `false` only when both this character's row
+ * `evidenceAbout` (`RemoteEvidence.ts`) produces `false` only when both this character's row
  * and the asker's were written in full by a listing and name different gangs
  * (or none); anything less said is `null`.
  */

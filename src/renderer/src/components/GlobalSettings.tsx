@@ -18,6 +18,7 @@ import CarrySections from './CarrySections';
 import Icon from './Icon';
 import { CheckField, NumberField, SelectField, TextField } from './FormField';
 import RemoteList from './RemoteList';
+import RemoteSwitches from './RemoteSwitches';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
 import RewritesDesigner from './RewriteDesigner';
@@ -2078,45 +2079,20 @@ export default function GlobalSettings({
           */}
             {draft.automation.remotes.enabled && (
               <>
-                <CheckField
-                  checked={draft.automation.remotes.gangpath}
-                  hint={t('settings.remotes.gangpathHint')}
-                  label={t('settings.remotes.gangpathLabel')}
-                  name="global-remotes-gangpath"
-                  onChange={(value) =>
+                <RemoteSwitches
+                  autoJoin={draft.automation.remotes.autoJoin}
+                  gang={draft.automation.remotes.gang}
+                  gangpath={draft.automation.remotes.gangpath}
+                  name="global-remotes"
+                  onAutoJoin={(value) =>
+                    automation({ remotes: { ...draft.automation.remotes, autoJoin: value } })
+                  }
+                  onGang={(value) =>
+                    automation({ remotes: { ...draft.automation.remotes, gang: value } })
+                  }
+                  onGangpath={(value) =>
                     automation({ remotes: { ...draft.automation.remotes, gangpath: value } })
                   }
-                />
-                <p className="settings-warn">{t('settings.remotes.gangWarning')}</p>
-                <h4 className="settings-subhead">{t('settings.remotes.gangLegend')}</h4>
-                {/*
-                The same grid the Gang card draws, through the same component:
-                a permission that read one way on a card and another in Settings
-                is one somebody sets in whichever place happens to be wrong.
-              */}
-                <RemoteList
-                  allow={draft.automation.remotes.gang}
-                  mode="gang"
-                  onSet={(remote, stance) =>
-                    automation({
-                      remotes: {
-                        ...draft.automation.remotes,
-                        gang:
-                          stance === 'allow'
-                            ? [...draft.automation.remotes.gang, remote]
-                            : draft.automation.remotes.gang.filter((entry) => entry !== remote)
-                      }
-                    })
-                  }
-                  onSetAll={(stance) =>
-                    automation({
-                      remotes: {
-                        ...draft.automation.remotes,
-                        gang: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                      }
-                    })
-                  }
-                  subject={t('settings.remotes.gangLegend')}
                 />
               </>
             )}

@@ -648,12 +648,26 @@ export interface StatlineDraft {
 export interface RemotesDraft {
   enabled: boolean;
   gangpath: boolean;
+  /** Join a party when a leader allowed `@join` invites this character. */
+  autoJoin: boolean;
   /** What anybody in this character's gang may ask for. Validated against `REMOTE_NAMES`. */
   gang: RemoteName[];
   /** What anybody who has joined this character's party may ask for. */
   party: RemoteName[];
   /** Per-player grants, carried through untouched. See above. */
   players: Record<string, RemoteGrant>;
+}
+
+/** The `automation.remotes` block as the forms draft it, from whatever the window sent. */
+function remotesDraft(remotes: Record<string, unknown>): RemotesDraft {
+  return {
+    enabled: remotes['enabled'] === true,
+    gangpath: remotes['gangpath'] === true,
+    autoJoin: remotes['autoJoin'] === true,
+    gang: remoteNames(remotes['gang']),
+    party: remoteNames(remotes['party']),
+    players: playerGrants(remotes['players'])
+  };
 }
 
 function text(value: unknown): string {
@@ -1157,13 +1171,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       afterMinutes: Math.max(1, Math.min(1440, Math.round(Number(afk['afterMinutes']) || 5))),
       reply: typeof afk['reply'] === 'string' ? afk['reply'].trim().slice(0, 120) : ''
     },
-    remotes: {
-      enabled: remotes['enabled'] === true,
-      gangpath: remotes['gangpath'] === true,
-      gang: remoteNames(remotes['gang']),
-      party: remoteNames(remotes['party']),
-      players: playerGrants(remotes['players'])
-    },
+    remotes: remotesDraft(remotes),
     talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true },
     statline: { control: isRecord(value['statline']) && value['statline']['control'] === true },
     rewrites: normalizeRewrites(value['rewrites'])
@@ -1322,13 +1330,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       drop: asIf.drop,
       search: asIf.search,
       banking: asIf.banking,
-      remotes: {
-        enabled: remotes['enabled'] === true,
-        gangpath: remotes['gangpath'] === true,
-        gang: remoteNames(remotes['gang']),
-        party: remoteNames(remotes['party']),
-        players: playerGrants(remotes['players'])
-      },
+      remotes: remotesDraft(remotes),
       talk: {
         lookAtPlayers: isRecord(automation['talk']) && automation['talk']['lookAtPlayers'] === true
       },
