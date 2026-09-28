@@ -29,8 +29,8 @@ import RestFields from './RestFields';
 import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
-import SpellField, { castableOn, refusesTarget } from './SpellPicker';
-import { castsOnOthers, castsOnSelf } from '@shared/spellcraft';
+import SpellField from './SpellPicker';
+import HealFields from './HealFields';
 import LoopSection, { type LoopShelf } from './LoopSection';
 import PlayerGrants from './PlayerGrants';
 import RemoteList from './RemoteList';
@@ -49,6 +49,8 @@ import {
 } from '../lib/form';
 import {
   CHARACTER_SECTIONS,
+  HEAL_KEYS,
+  healValuesOf,
   walksAnotherWorld,
   type CharacterFields,
   type CharacterSection
@@ -269,17 +271,7 @@ export default function CharacterForm({
     return {
       spells,
       unread: (shown?.spellbook ?? null) === null,
-      gates: shown?.cureGates ?? null,
-      /*
-       * The two heal fields offer different halves of the book, because the
-       * realm marks who each spell may be cast on: `way of the swan` reaches
-       * the caster alone, so offering it for the party heal would arm
-       * `c swan <name>` once a round for a refusal printed in the room. Both
-       * predicates say yes to a spell whose targeting this build cannot read,
-       * so a derivative realm loses no options.
-       */
-      selfHeals: castableOn(spells, castsOnSelf),
-      partyHeals: castableOn(spells, castsOnOthers)
+      gates: shown?.cureGates ?? null
     };
   }, [shown]);
   /*
@@ -1020,66 +1012,14 @@ export default function CharacterForm({
 
           <fieldset className="settings-menus" data-fieldset="spells-heal">
             <legend>{t('settings.spells.healLegend')}</legend>
-            <div className="settings-inline">
-              <SpellField
-                hint={t('settings.spells.healHint')}
-                label={t('settings.spells.healLabel')}
-                name="heal"
-                onChange={(value) => patch({ spellHeal: value })}
-                spells={shownBook.selfHeals}
-                value={form.spellHeal}
-                warning={
-                  refusesTarget(shownBook.spells, castsOnSelf, form.spellHeal)
-                    ? t('settings.spells.healNoSelfCast')
-                    : undefined
-                }
-              />
-              <NumberField
-                label={t('settings.spells.healBelowLabel')}
-                name="heal-below"
-                onChange={(value) => patch({ spellHealBelow: value })}
-                bar={barOfHealth(form.spellHealBelow)}
-                figure={ofHealth(form.spellHealBelow)}
-                value={form.spellHealBelow}
-              />
-              <NumberField
-                hint={t('settings.spells.healBelowInCombatHint')}
-                label={t('settings.spells.healBelowInCombatLabel')}
-                name="heal-below-combat"
-                onChange={(value) => patch({ spellHealBelowInCombat: value })}
-                bar={barOfHealth(form.spellHealBelowInCombat)}
-                figure={ofHealth(form.spellHealBelowInCombat)}
-                value={form.spellHealBelowInCombat}
-              />
-              <NumberField
-                hint={t('settings.spells.healToHint')}
-                label={t('settings.spells.healToLabel')}
-                name="heal-to"
-                onChange={(value) => patch({ spellHealTo: value })}
-                bar={barOfHealth(form.spellHealTo)}
-                figure={ofHealth(form.spellHealTo)}
-                value={form.spellHealTo}
-              />
-            </div>
-            <CheckField
-              checked={form.spellHealParty}
-              hint={t('settings.spells.healPartyHint')}
-              label={t('settings.spells.healParty')}
-              name="heal-party"
-              onChange={(value) => patch({ spellHealParty: value })}
-            />
-            <SpellField
-              hint={t('settings.spells.healPartyWithHint')}
-              label={t('settings.spells.healPartyWithLabel')}
-              name="heal-party-with"
-              onChange={(value) => patch({ spellHealPartyWith: value })}
-              spells={shownBook.partyHeals}
-              value={form.spellHealPartyWith}
-              warning={
-                refusesTarget(shownBook.spells, castsOnOthers, form.spellHealPartyWith)
-                  ? t('settings.spells.healNoPartyCast')
-                  : undefined
-              }
+            <HealFields
+              bands={bands.hp}
+              hpMax={maxima.hpMax}
+              namePrefix=""
+              onChange={(field, value) => patch({ [HEAL_KEYS[field]]: value })}
+              onToggle={(field, value) => patch({ [HEAL_KEYS[field]]: value })}
+              spells={shownBook.spells}
+              values={healValuesOf(form)}
             />
           </fieldset>
 

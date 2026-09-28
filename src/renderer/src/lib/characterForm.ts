@@ -40,6 +40,7 @@ import type { StreamEncoding } from '@shared/types';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import type { RemoteGrant, RemoteName } from '@shared/remotes';
 import { fractionOf, percentOf } from './form';
+import type { HealField, HealFieldsProps, HealSwitch } from '../components/HealFields';
 import { sameJson } from './history';
 
 /**
@@ -192,6 +193,8 @@ export interface CharacterFields {
   spellAreaAttack: string;
   /** Derive the round spell and the cures from the book. */
   spellAutoChoose: boolean;
+  /** Derive the heal, single or party-wide, from the book. */
+  spellAutoChooseHeal: boolean;
   spellAreaMinMobs: string;
   spellAreaMinMana: string;
   /** The fallback once the round spell has no effect, and the per-target cast caps (0 is no limit). */
@@ -320,6 +323,25 @@ export interface CharacterFields {
   remotePlayers: Record<string, RemoteGrant>;
 }
 
+/** Where each of `HealFields`' values lives on this form. */
+export const HEAL_KEYS = {
+  heal: 'spellHeal',
+  healPartyWith: 'spellHealPartyWith',
+  healBelow: 'spellHealBelow',
+  healBelowInCombat: 'spellHealBelowInCombat',
+  healTo: 'spellHealTo',
+  autoChooseHeal: 'spellAutoChooseHeal',
+  healParty: 'spellHealParty'
+} as const satisfies Record<HealField | HealSwitch, keyof CharacterFields>;
+
+/** The form's heal, in the shape `HealFields` draws. */
+export function healValuesOf(form: CharacterFields): HealFieldsProps['values'] {
+  // Complete by construction: `HEAL_KEYS` satisfies a record over every field.
+  return Object.fromEntries(
+    Object.entries(HEAL_KEYS).map(([field, key]) => [field, form[key]])
+  ) as HealFieldsProps['values'];
+}
+
 export function formOf(entry: ProfileEditable): CharacterFields {
   return {
     id: entry.id,
@@ -397,6 +419,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     spellHealBelowInCombat: percent(entry.spells.healBelowInCombat),
     spellHealTo: percent(entry.spells.healTo),
     spellHealParty: entry.spells.healParty,
+    spellAutoChooseHeal: entry.spells.autoChooseHeal,
     spellMinMana: percent(entry.spells.minMana),
     spellCures: { ...entry.spells.cures },
     spellBlessings: entry.spells.blessings.map((blessing) => ({ ...blessing })),
@@ -566,6 +589,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       healBelowInCombat: fractionOf(form.spellHealBelowInCombat),
       healTo: fractionOf(form.spellHealTo),
       healParty: form.spellHealParty,
+      autoChooseHeal: form.spellAutoChooseHeal,
       minMana: fractionOf(form.spellMinMana),
       cures: {
         blindness: form.spellCures.blindness.trim(),
@@ -856,6 +880,7 @@ export function emptyForm(
     spellHealBelowInCombat: percent(spells.healBelowInCombat),
     spellHealTo: percent(spells.healTo),
     spellHealParty: spells.healParty,
+    spellAutoChooseHeal: spells.autoChooseHeal,
     spellMinMana: percent(spells.minMana),
     spellCures: { ...spells.cures },
     spellBlessings: spells.blessings.map((blessing) => ({ ...blessing })),

@@ -523,6 +523,16 @@ tuning:
     # healCooldownMs, so a request arriving just after a heal still gets its own.
     healRequestMs: 10000
 
+    # How steeply a low bar outweighs a high one when a party-wide heal is
+    # weighed against a single heal: a point mended is worth
+    # (1 - share) ^ healUrgency. At 2, a point mended at 35% is worth about
+    # ten mended at 80%.
+    healUrgency: 2
+
+    # A heal within this share of the best one's worth is as good, and the
+    # cheapest of those is cast.
+    healNearEnough: 0.05
+
     # How long a cure proposal stays worth sending.
     cureExpiresMs: 3000
 

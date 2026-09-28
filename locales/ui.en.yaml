@@ -510,6 +510,12 @@ notices:
       many: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {count}
         files: {fileList}"
       one: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {fileList}"
+    healChoice:
+      many:
+        'Auto Choose Best Heal was added to {count} files, turned on where Auto Choose Best Spell
+        is on: {fileList}'
+      one: 'Auto Choose Best Heal was added to {fileList}, turned on where Auto Choose Best Spell is
+        on.'
     meditateCeiling:
       many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
       one: 'Keep Meditating To Mana % was added, off, to {fileList}'
@@ -3963,10 +3969,13 @@ settings:
     castLabel: Attack Spell
     autoChoose: Auto Choose Best Spell
     autoChooseHint: 'Picks the attack spell each round from your spellbook and the world data: never
-      one the monster resists, the cheapest one that would kill it, otherwise the strongest. Heals
-      are chosen the same way against the health you are actually missing, so a scratch does not get
-      a major heal, and cures are picked where their fields are blank. The spells below are cast
-      when this is off, and when it is on but the spellbook cannot answer.'
+      one the monster resists, the cheapest one that would kill it, otherwise the strongest. Cures
+      are picked where their fields are blank. The spells below are cast when this is off, and when
+      it is on but the spellbook cannot answer.'
+    autoChooseHeal: Auto Choose Best Heal
+    autoChooseHealHint: 'Picks each heal from your spellbook and the world data against the health
+      actually missing, and casts a party heal like healing rain when it does more than one heal on
+      the worst hurt. The healing spells below are cast when this is off, or when it cannot choose.'
     fallbackCastHint: Cast instead for the rest of the fight once the game says the attack spell has
       no effect on the target. Blank leaves the fight to your regular attacks.
     fallbackCastLabel: Fallback Spell
@@ -4863,6 +4872,12 @@ automation:
       cover the {deficit} hp missing.'
     choseMost: 'Healing with {spell} ({min}-{max}, about {expected} a cast, {cost} mana): the most
       one cast heals, and {deficit} hp are missing.'
+    choseArea:
+      many: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): {count} are hurt,
+        and one heal on the worst does no better for the mana.'
+      one: 'Healing the party with {spell} ({min}-{max} each, {cost} mana): it does at least as
+        much as one heal for the mana.'
+    reasonArea: 'heal: {count} in the party are hurt'
     noChoice: 'No heal in the spellbook fits, so {spell} is cast as configured.'
     noChoiceNoSpell: No heal in the spellbook fits, and none is configured, so nothing is cast.
     noFiguresSelf: Healing with the configured spell, because this character's maximum health is not

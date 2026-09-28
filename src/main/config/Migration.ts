@@ -246,6 +246,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheFreedomCure(home, note);
   statedTheMeditateCeiling(home, note, options.template);
   statedThePartyPacing(home, note, options.template);
+  statedTheHealChoice(home, note, options.template);
 }
 
 /**
@@ -2708,6 +2709,7 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
  */
 const HEALTH_BLOCK = ['automation', 'health'] as const;
 const PARTY_BLOCK = ['automation', 'party'] as const;
+const SPELLS_BLOCK = ['automation', 'spells'] as const;
 
 function stateIn(
   home: Home,
@@ -2717,13 +2719,25 @@ function stateIn(
   after: string,
   comment: string | undefined
 ): string[] {
+  return stateInFrom(home, block, key, () => value, after, comment);
+}
+
+/** `stateIn`, with the value read from the block it is written into. */
+function stateInFrom(
+  home: Home,
+  block: readonly string[],
+  key: string,
+  valueOf: (map: YAMLMap) => unknown,
+  after: string,
+  comment: string | undefined
+): string[] {
   const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
   const stated: string[] = [];
   for (const file of files) {
     edit(file, (document) => {
       const map = document.getIn([...block], true);
       if (!isMap(map) || map.has(key)) return false;
-      const pair = document.createPair(key, value) as Pair;
+      const pair = document.createPair(key, valueOf(map)) as Pair;
       if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
       const at = map.items.findIndex((item) => keyText(item) === after);
       if (at === -1) map.items.push(pair);
@@ -2769,6 +2783,35 @@ function statedThePartyPacing(
     stated.size === 1
       ? t('notices.migration.partyPacing.one', params)
       : t('notices.migration.partyPacing.many', params)
+  );
+}
+
+/**
+ * `automation.spells.autoChooseHeal` into every file that states `spells:`
+ * without it, after `healParty` and with the template's comment (todo 05,
+ * 2026-09-27). The heal was chosen under `autoChoose` until it had its own
+ * switch, so each file's new key takes that file's `autoChoose`: a player who
+ * had the heals chosen still has them chosen.
+ */
+function statedTheHealChoice(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateInFrom(
+    home,
+    SPELLS_BLOCK,
+    'autoChooseHeal',
+    (spells) => spells.get('autoChoose') === true,
+    'healParty',
+    templateComments(template, 'automation').get('automation.spells.autoChooseHeal')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.healChoice.one', params)
+      : t('notices.migration.healChoice.many', params)
   );
 }
 

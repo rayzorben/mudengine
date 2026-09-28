@@ -274,8 +274,8 @@ describe('healing in a fight', () => {
  * Choosing the heal — todo 01, 2026-09-13, in the player's own figures.
  *
  * A 150-point bar: five points missing wants the minor heal, sixty wants the
- * major one. The switch is `automation.spells.autoChoose`, the same one the
- * round spell is derived by.
+ * major one. The switch is `automation.spells.autoChooseHeal`, its own since
+ * todo 05.
  */
 const HEAL_ROWS: Record<string, WorldSpell> = {
   'minor healing': {
@@ -321,26 +321,26 @@ describe('choosing the heal from the spellbook', () => {
   });
 
   it('mends a scratch with the cheapest spell that covers it', () => {
-    chooser(spells({ autoChoose: true, heal: '', healBelow: 1 })).onCharacter(bar(145));
+    chooser(spells({ autoChooseHeal: true, heal: '', healBelow: 1 })).onCharacter(bar(145));
     drain();
     expect(sent).toEqual(['mihe']);
   });
 
   it('mends a real wound with the most any one cast mends', () => {
-    chooser(spells({ autoChoose: true, heal: '', healBelow: 0.7 })).onCharacter(bar(90));
+    chooser(spells({ autoChooseHeal: true, heal: '', healBelow: 0.7 })).onCharacter(bar(90));
     drain();
     expect(sent).toEqual(['mahe']);
   });
 
   /* The whole complaint: one configured spell is wrong at one end of the bar. */
   it('outranks the configured spell, which is what is cast with the switch off', () => {
-    chooser(spells({ autoChoose: true, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
+    chooser(spells({ autoChooseHeal: true, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
       bar(90)
     );
     drain();
     expect(sent).toEqual(['mahe']);
     sent.length = 0;
-    chooser(spells({ autoChoose: false, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
+    chooser(spells({ autoChooseHeal: false, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
       bar(90)
     );
     drain();
@@ -354,7 +354,7 @@ describe('choosing the heal from the spellbook', () => {
   it('falls back to the configured spell where the book cannot answer, and says so once', () => {
     const unread = bar(90);
     unread.spellbook = null;
-    const healer = chooser(spells({ autoChoose: true, heal: 'minor healing', healBelow: 0.7 }));
+    const healer = chooser(spells({ autoChooseHeal: true, heal: 'minor healing', healBelow: 0.7 }));
     healer.onCharacter(unread);
     drain();
     // The realm names the short word even where this character's book is unread.
@@ -368,14 +368,14 @@ describe('choosing the heal from the spellbook', () => {
   it('casts nothing where neither the book nor the box can answer', () => {
     const unread = bar(90);
     unread.spellbook = null;
-    chooser(spells({ autoChoose: true, heal: '', healBelow: 0.7 })).onCharacter(unread);
+    chooser(spells({ autoChooseHeal: true, heal: '', healBelow: 0.7 })).onCharacter(unread);
     drain();
     expect(sent).toEqual([]);
     expect(said).toHaveLength(1);
   });
 
   it('says the choice when it changes, and not on every status line', () => {
-    const healer = chooser(spells({ autoChoose: true, heal: '', healBelow: 1, healTo: 1 }));
+    const healer = chooser(spells({ autoChooseHeal: true, heal: '', healBelow: 1, healTo: 1 }));
     healer.onCharacter(bar(145));
     drain();
     expect(said).toHaveLength(1);
@@ -397,7 +397,7 @@ describe('choosing the heal from the spellbook', () => {
     const stated = member('Yang', 0.2);
     stated.vitals = { hp: 30, hpMax: 150, mana: null, manaMax: null };
     chooser(
-      spells({ autoChoose: true, heal: '', healParty: true, healPartyWith: '', healBelow: 0.5 })
+      spells({ autoChooseHeal: true, heal: '', healParty: true, healPartyWith: '', healBelow: 0.5 })
     ).onCharacter(bar(150, [vague, stated]));
     drain();
     expect(sent).toEqual(['mahe Yang']);
@@ -409,7 +409,7 @@ describe('choosing the heal from the spellbook', () => {
    */
   it('heals a member with the configured spell until their own client says the figures', () => {
     const config = spells({
-      autoChoose: true,
+      autoChooseHeal: true,
       heal: '',
       healParty: true,
       healPartyWith: 'minor healing',
@@ -619,5 +619,114 @@ describe('a member asking for a heal', () => {
     drain();
     expect(sent).toEqual([]);
     expect(said[0]).toBe(t('automation.heal.requestNotMember', { from: 'Rend' }));
+  });
+});
+
+/*
+ * A party heal weighed against one heal (todo 05): the todo's own 68%, 71%
+ * and 35%, and two members under the floor.
+ */
+describe('choosing between one heal and a party heal', () => {
+  const RAIN: WorldSpell = {
+    id: 32,
+    name: 'healing rain',
+    short: 'rain',
+    level: 10,
+    mana: 5,
+    targets: 13,
+    power: [12, 22],
+    abilities: [[18, 0]]
+  };
+  const rows = (name: string): WorldSpell | null =>
+    name === 'healing rain' ? RAIN : (HEAL_ROWS[name] ?? null);
+  let said: string[];
+  const healer = () =>
+    new AutoHeal(
+      spells({
+        autoChooseHeal: true,
+        heal: '',
+        healParty: true,
+        healPartyWith: 'minor healing',
+        healBelow: 0.5,
+        healTo: 0.9
+      }),
+      true,
+      queue,
+      undefined,
+      rows,
+      { notice: (message) => said.push(message) }
+    );
+  const hurt = (name: string, hp: number | null, share = hp === null ? 0.3 : hp / 150) => {
+    const row = member(name, share);
+    row.vitals = hp === null ? null : { hp, hpMax: 150, mana: null, manaMax: null };
+    return row;
+  };
+  const party = (members: PartyMember[], hp = 150): CharacterState => {
+    const at = state({ hp, hpMax: 150, mana: 100, manaMax: 100 }, members);
+    at.spellbook = [...HEAL_BOOK, { name: 'healing rain', short: 'rain', level: 10, cost: 5 }];
+    at.progress = { ...at.progress, level: 20 };
+    return at;
+  };
+  beforeEach(() => {
+    said = [];
+  });
+
+  it('heals the one at 35% alone when the others are above the floor', () => {
+    healer().onCharacter(party([hurt('Ann', 102), hurt('Bo', 107), hurt('Cy', 53)]));
+    drain();
+    expect(sent).toEqual(['mahe Cy']);
+  });
+
+  /* This book's major heal mends 40-60, so it takes three hurt for the rain to be worth more. */
+  it('casts the rain bare when three are under the floor, and says why', () => {
+    healer().onCharacter(party([hurt('Ann', 68), hurt('Bo', 70), hurt('Cy', 60)]));
+    drain();
+    expect(sent).toEqual(['rain']);
+    expect(said.at(-1)).toBe(
+      t('automation.heal.choseArea.many', {
+        spell: 'healing rain',
+        min: 12,
+        max: 22,
+        cost: 5,
+        count: 3
+      })
+    );
+  });
+
+  it('heals the worst of two with the major heal that outdoes the rain for them', () => {
+    healer().onCharacter(party([hurt('Ann', 68), hurt('Cy', 60)]));
+    drain();
+    expect(sent).toEqual(['mahe Cy']);
+  });
+
+  /* A rain spends everybody's cooldown, so no heal lands again on a bar not yet redrawn. */
+  it('casts nothing more on the same bars after a rain', () => {
+    const auto = healer();
+    const bars = party([hurt('Ann', 68), hurt('Bo', 70), hurt('Cy', 60)]);
+    auto.onCharacter(bars);
+    drain();
+    expect(sent).toEqual(['rain']);
+    auto.onCharacter(bars);
+    drain();
+    expect(sent).toEqual(['rain']);
+    vi.advanceTimersByTime(tuning().spells.healCooldownMs);
+    auto.onCharacter(bars);
+    drain();
+    expect(sent).toEqual(['rain', 'rain']);
+  });
+
+  it('never heals an invitation nobody accepted', () => {
+    const invited = hurt('Cy', 30);
+    invited.invited = true;
+    healer().onCharacter(party([invited]));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  /* Unknown is the unsafe case: the lowest bar first, figures or none. */
+  it('heals a lower member with no figures first, with the configured spell', () => {
+    healer().onCharacter(party([hurt('Ann', 68), hurt('Cy', null, 0.2)]));
+    drain();
+    expect(sent).toEqual(['mihe Cy']);
   });
 });

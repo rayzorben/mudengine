@@ -12,7 +12,13 @@ import { HAZARD_ABILITY } from './abilities';
 import { magicResistance, scaledPower } from './menace';
 import { castOdds, type ProwessSheet } from './prowess';
 import type { RealmFamily } from './realm';
-import { castsOnOthers, castsOnSelf, spellTargeting, type CastableSpell } from './spellcraft';
+import {
+  castsOnOthers,
+  castsOnSelf,
+  spellTargeting,
+  type CastableSpell,
+  type SpellTargeting
+} from './spellcraft';
 import type { WorldSpell } from './world';
 
 /** `Spell.GetMagicResModifierByValue`'s pivot: the resistance at which a cast lands as stated. */
@@ -260,6 +266,39 @@ export interface HealChoice {
   refusal: HealChoiceRefusal | null;
 }
 
+/** What the book, the level and the pool allow of the heals a targeting accepts. */
+export type HealCastInput = Omit<HealChoiceInput, 'deficit' | 'aim'>;
+
+/**
+ * Every heal in the book whose targeting `accepts`, priced at this level:
+ * what a cast mends, the cast's own odds folded in, and what it costs. `heals`
+ * counts those the realm marks as heals before the level and the pool filter
+ * them, which is how *no heal spells* is told from *none affordable*.
+ */
+export function healCasts(
+  input: HealCastInput,
+  accepts: (aim: SpellTargeting) => boolean
+): { heals: number; casts: Omit<HealCandidate, 'covers'>[] } {
+  const casts: Omit<HealCandidate, 'covers'>[] = [];
+  let heals = 0;
+  for (const spell of input.book) {
+    const realm = input.realm(spell.name);
+    if (realm === null) continue;
+    if (!accepts(spellTargeting(realm.targets))) continue;
+    const required = spell.level ?? realm.level ?? null;
+    const power = healPower(realm, input.level ?? required ?? 1);
+    if (power === null) continue;
+    heals += 1;
+    if (input.level !== null && required !== null && required > input.level) continue;
+    const cost = spell.cost ?? realm.mana ?? null;
+    if (input.mana !== null && cost !== null && cost > input.mana) continue;
+    const [min, max] = power;
+    const odds = castOdds(realm, input.sheet, input.family)?.chance.value ?? 1;
+    casts.push({ spell, realm, min, max, expected: ((min + max) / 2) * odds, cost });
+  }
+  return { heals, casts };
+}
+
 /**
  * Which heal to cast, now: **the cheapest whose cast is expected to reach the
  * ceiling, else the one that mends most** (todo 01, 2026-09-13).
@@ -288,25 +327,17 @@ export function chooseHealSpell(input: HealChoiceInput | { book: null }): HealCh
   if (input.book.length === 0)
     return { chosen: null, why: null, considered: [], refusal: 'empty-book' };
 
-  const candidates: HealCandidate[] = [];
-  let heals = 0;
-  for (const spell of input.book) {
-    const realm = input.realm(spell.name);
-    if (realm === null) continue;
-    const aim = spellTargeting(realm.targets);
-    if (!(input.aim === 'self' ? castsOnSelf(aim) : castsOnOthers(aim))) continue;
-    const required = spell.level ?? realm.level ?? null;
-    const power = healPower(realm, input.level ?? required ?? 1);
-    if (power === null) continue;
-    heals += 1;
-    if (input.level !== null && required !== null && required > input.level) continue;
-    const cost = spell.cost ?? realm.mana ?? null;
-    if (input.mana !== null && cost !== null && cost > input.mana) continue;
-    const [min, max] = power;
-    const odds = castOdds(realm, input.sheet, input.family)?.chance.value ?? 1;
-    const expected = ((min + max) / 2) * odds;
-    candidates.push({ spell, realm, min, max, expected, cost, covers: expected >= input.deficit });
-  }
+  /*
+   * A party-wide heal is never one target's heal: it reaches everybody, and
+   * whether that is worth its price is `planHeal`'s question, asked of the
+   * whole party at once.
+   */
+  const accepts =
+    input.aim === 'self'
+      ? (aim: SpellTargeting) => castsOnSelf(aim) && aim !== 'party'
+      : (aim: SpellTargeting) => castsOnOthers(aim) && aim !== 'party';
+  const { heals, casts } = healCasts(input, accepts);
+  const candidates = casts.map((cast) => ({ ...cast, covers: cast.expected >= input.deficit }));
 
   if (heals === 0) return { chosen: null, why: null, considered: [], refusal: 'no-heal-spells' };
   if (candidates.length === 0)
