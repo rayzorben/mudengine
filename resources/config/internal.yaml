@@ -490,17 +490,22 @@ tuning:
     # outweighing every round of blows before it.
     deathOverRounds: 5
 
-    # The room's fight, run: how many times, how long a fight may run before
-    # it is called, and the shares of fights survived that read as safe and as
-    # merely risky — under riskyAbove is deadly. Three hundred runs of a long
-    # fight are a millisecond or two; the figures move a point between seeds.
+    # The fight, run: how many times, how long a fight may run before it is
+    # called, and the shares of fights survived that must be exceeded to read
+    # as safe (green) and as risky (yellow); the rest is deadly (red). Over 60%
+    # is green, and 25% or less is almost certainly not survivable. The lair
+    # colours on the map and the hunting grounds read the same levels.
     survivalTrials: 300
 
     survivalRoundCap: 120
 
-    survivalSafeAbove: 0.95
+    survivalSafeAbove: 0.6
 
-    survivalRiskyAbove: 0.6
+    survivalRiskyAbove: 0.25
+
+    # How long the background run of every monster and lair holds the thread
+    # before handing it back, in milliseconds. One fight is 3 to 6ms.
+    survivalSliceMs: 8
 
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:

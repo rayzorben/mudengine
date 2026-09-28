@@ -1308,7 +1308,10 @@ cards:
     loading: Rating every lair within reach…
     refresh: Check again
     from: '{count} lairs rated across {swept} rooms from {room}.'
-    excluded: 'Left out: {dangerous} too dangerous, {beneath} below this level.'
+    excluded: 'Left out: {dangerous} too dangerous, {unsurvivable} not survivable, {beneath} below this level.'
+    # Lairs whose fight is still being simulated in the background; they are
+    # left out until it has been run.
+    unsimulated: '{count} more not yet simulated.'
     # The fight itself unpriced -- the rounds to kill, or the blows, unknown --
     # so the row is ordered by distance and never by what it pays.
     unpricedOne: The fight in one of them could not be rated, so it is listed by distance.
@@ -1738,6 +1741,20 @@ cards:
       roundsOnly: 'about {rounds} rounds'
       trials: the room's fight, simulated {count} times as you are now
       unknown: the fight cannot be simulated
+    # The room's fight read part way, beneath the survival meter: at each
+    # round, the share of fights still alive and already won, and the health
+    # lost by then; the worst single round; each monster fought on its own.
+    outlook:
+      byRound: 'By round {rounds}'
+      standing: '{standing}% alive, {won}% won'
+      lost: '{mean} hp lost, {most} at most'
+      worstLabel: Worst round
+      worstFigure: '{hp} hp'
+      aloneLabel: Alone
+      alone: '{name} {percent}%'
+      alonePending: '{name} being simulated'
+      aloneUnread: '{name} waits for your stats'
+      aloneUnrun: '{name} cannot be rated'
     title: Combat
   copyMenu:
     copy: Copy
@@ -1913,7 +1930,13 @@ cards:
     centreFallback: the center
     legendBank: bank
     legendGated: gated
-    legendLair: lair
+    # A lair whose fight for this character has not been run yet.
+    legendLair: lair, not rated
+    # A lair by the share of its fights this character survives: over 60%,
+    # over 25%, and 25% or less.
+    legendLairSafe: lair, survivable
+    legendLairRisky: lair, risky
+    legendLairDeadly: lair, not survivable
     legendLook: look up/down
     legendPick: clicked
     legendRoute: route

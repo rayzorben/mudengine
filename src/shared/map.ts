@@ -12,6 +12,7 @@
  * into `src/main` to build one would be crossing a boundary the project keeps
  * on purpose.
  */
+import type { SurvivalLevel } from './survival';
 import { OPPOSITE, type Direction, type MapObstacle, type RoomId, type ShopKind } from './world';
 
 export type { MapObstacle };
@@ -83,6 +84,12 @@ export interface MapCell {
    */
   place?: ShopKind;
   lair: boolean;
+  /**
+   * A lair's fight for this character rested, as its level (todo 03): green
+   * safe, yellow risky, red almost certainly not survivable. Absent while it
+   * has not been run, or cannot be.
+   */
+  lairOdds?: SurvivalLevel;
 }
 
 export interface LocalMap {
@@ -186,6 +193,8 @@ export interface MapNode {
   here: boolean;
   /** The off-plane ways out, drawn as controls beside the room. */
   away?: MapAway[];
+  /** A lair's level, carried from `MapCell.lairOdds`. */
+  odds?: SurvivalLevel;
 }
 
 /** A corridor between two rooms the map is showing. */
@@ -289,7 +298,8 @@ export function layoutMap(map: LocalMap): MapDrawing {
       ...at(cell),
       kind: kindOf(cell, here),
       here,
-      ...(cell.away && cell.away.length > 0 ? { away: cell.away } : {})
+      ...(cell.away && cell.away.length > 0 ? { away: cell.away } : {}),
+      ...(cell.lairOdds === undefined ? {} : { odds: cell.lairOdds })
     };
   });
 

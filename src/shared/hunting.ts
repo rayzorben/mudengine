@@ -987,8 +987,12 @@ export interface HuntingAdvice {
    * the answer is the realm; never walked unasked.
    */
   unmeasured: HuntingSpot[];
-  /** What was left out before the ranking, and why. */
-  excluded: { dangerous: number; beneath: number };
+  /**
+   * What was left out before the ranking, and why. `unsurvivable` is a lair
+   * whose fight at full health is survived no more often than the safe level
+   * (`OddsBook`, todo 03); `unsimulated` one whose fight has not been run yet.
+   */
+  excluded: { dangerous: number; beneath: number; unsurvivable: number; unsimulated: number };
   assumptions: HuntingAssumptions;
   /** Why there is no answer, said out loud. */
   refusal: string | null;

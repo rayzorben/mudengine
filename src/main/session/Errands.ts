@@ -45,6 +45,7 @@ import {
   type SpotInput,
   type SpotMob
 } from '../../shared/hunting';
+import type { Odds } from '../../shared/survival';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { attacksOnSight } from '../../shared/mobs';
@@ -84,6 +85,7 @@ import {
   asDirection,
   hazardAvoided,
   nameAnswersTo,
+  lairKey,
   parseLair,
   roomAddress,
   roomId,
@@ -183,6 +185,8 @@ export interface ErrandsSession {
   family(): RealmFamily | null;
   /** The rank each quest has been seen to reach this session. */
   watched(): QuestWatched;
+  /** A lair's fight for this character rested (`OddsBook`). */
+  lairOdds(room: WorldRoom): Odds;
   /** The one `abil` of the session (`Routines.askAbilities`). */
   askAbilities(state: CharacterState): void;
   notice(message: string): void;
@@ -630,7 +634,7 @@ export class Errands implements SessionModule {
    * server's family and what `stat all` still states; not the pack, the purse
    * nor the health itself, which move every room and change no blow.
    */
-  private fitness(state: CharacterState): string {
+  fitness(state: CharacterState): string {
     // Asked once per lair a search expands; a state is never edited in place.
     if (this.fitted?.state === state) return this.fitted.key;
     const { progress } = state;
@@ -1260,7 +1264,7 @@ export class Errands implements SessionModule {
       swept: 0,
       spots: [],
       unmeasured: [],
-      excluded: { dangerous: 0, beneath: 0 },
+      excluded: { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 },
       assumptions,
       refusal
     });
@@ -1297,12 +1301,11 @@ export class Errands implements SessionModule {
       let via: 'lair' | 'resident';
       let spawns: number | null = null;
       if (room.lair) {
-        const lair = parseLair(room.lair);
         // The clock is part of what spawns: two rooms naming the same rows on
         // different delays are two hunting grounds, and a price is cached by key.
-        key = `lair:${lair.max ?? 1}:${[...lair.ids].sort((a, b) => a - b).join(',')}:${room.delay ?? ''}`;
+        key = `lair:${lairKey(room.lair)}:${room.delay ?? ''}`;
         via = 'lair';
-        spawns = lair.max;
+        spawns = parseLair(room.lair).max;
       } else if (room.npcId !== undefined) {
         key = `resident:${room.npcId}`;
         via = 'resident';
@@ -1414,7 +1417,7 @@ export class Errands implements SessionModule {
       return { mobs, clock, respawn };
     };
     const priced = new Map<string, HuntPriced>();
-    const excluded = { dangerous: 0, beneath: 0 };
+    const excluded = { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 };
     const survey: HuntingSpot[] = [];
     for (const [key, group] of groups) {
       let known = remembered.get(key);
@@ -1449,6 +1452,21 @@ export class Errands implements SessionModule {
         },
         c
       );
+      /*
+       * A lair whose fight, run at full health, is not safe is not a place to
+       * hunt (todo 03), and one not yet run, or waiting on the character's own
+       * figures, is not known to be: both are left out and counted. A fight
+       * `simulateFight` cannot run is left to the estimate.
+       */
+      const odds = group.via === 'lair' ? this.session.lairOdds(group.sample) : null;
+      if (odds?.kind === 'pending' || odds?.kind === 'unread') {
+        excluded.unsimulated += 1;
+        continue;
+      }
+      if (odds?.kind === 'run' && odds.survival.level !== 'safe') {
+        excluded.unsurvivable += 1;
+        continue;
+      }
       if (estimate.deadly || estimate.costly) {
         excluded.dangerous += 1;
         continue;

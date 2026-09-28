@@ -116,12 +116,12 @@ describe('what a defender’s dodge turns away', () => {
     expect(dodgedFraction(14, 57)).toBeCloseTo(0.08, 5);
   });
 
-  it('tapers above the special dodge point', () => {
+  it('tapers above MME’s soft point, under its ceiling', () => {
     const raw = dodgedFraction(60, 57);
-    // 3600/23 = 156, far above 45, so the excess is taken through the
-    // triangular taper rather than counted whole.
-    expect(raw).toBeGreaterThan(0.45);
-    expect(raw).toBeLessThan(0.75);
+    // 3600/23 = 156, far above 55, so the excess is taken through the
+    // triangular taper rather than counted whole: 55 + 26.
+    expect(raw).toBeCloseTo(0.81, 5);
+    expect(dodgedFraction(400, 57)).toBeLessThanOrEqual(0.98);
   });
 
   it('has an unknown dodge turning nothing away', () => {

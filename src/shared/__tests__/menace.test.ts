@@ -84,10 +84,10 @@ describe('whether a blow lands', () => {
     expect(hitChance(80, 30)).toBe(0.8);
   });
 
-  it('cannot go below never', () => {
+  it('never goes below MME’s floor', () => {
     // A rat’s accuracy of 10 reaches nothing: (100 / 14) / 10 = 0, floored to 1,
-    // and 400 / 1 is far past 100.
-    expect(hitChance(10, 20)).toBe(0);
+    // and 400 / 1 is far past 100; MME's `GMUD_HIT_MIN` still lands 2 in 100.
+    expect(hitChance(10, 20)).toBe(0.02);
   });
 
   /* Unknown is never the reassuring answer: a sheet nobody has read makes
@@ -211,20 +211,23 @@ describe('a spell’s power at a cast level', () => {
 });
 
 /*
- * `Spell.GetMagicResModifierVsTarget`: the modifier is 1 − (MR − 50) / 100 with
- * the resistance clamped to 0–150, and the resist roll is the complement of
- * it, rolled only for a spell the realm marks resistable by anyone.
+ * MME's `CalcResistedDamage` and `IsSpellResisted`, which win over
+ * `Spell.GetMagicResModifierVsTarget` (todo 03): the modifier is
+ * 1 − (MR − 50) / 200 above the pivot and 1 − (MR − 50) / 100 below it, the
+ * resistance clamped to 0–150, and the resist roll is MR / 2 percent, rolled
+ * only for a spell the realm marks resistable by anyone.
  */
 describe('what magic resistance turns away', () => {
   it('thins a resistable cast and gives it a chance of being refused outright', () => {
+    // MME: 1 − (65 − 50) / 200 above the pivot, and refused on MR / 2 percent.
     expect(magicResistance({ id: 1, name: 'x', resist: 2 }, 65)).toEqual({
-      factor: 0.85,
-      resist: expect.closeTo(0.15, 6) as number
+      factor: 0.925,
+      resist: expect.closeTo(0.325, 6) as number
     });
   });
 
   it('thins a cast nothing can refuse, and refuses none of it', () => {
-    expect(magicResistance({ id: 1, name: 'x' }, 65)).toEqual({ factor: 0.85, resist: 0 });
+    expect(magicResistance({ id: 1, name: 'x' }, 65)).toEqual({ factor: 0.925, resist: 0 });
   });
 
   it('is exempt for a bite or a breath the realm marks non-magical', () => {
@@ -241,8 +244,12 @@ describe('what magic resistance turns away', () => {
     expect(magicResistance({ id: 1, name: 'x' }, null)).toEqual({ factor: 1.5, resist: 0 });
   });
 
-  it('clamps at the ceiling', () => {
-    expect(magicResistance({ id: 1, name: 'x', resist: 2 }, 200)).toEqual({ factor: 0, resist: 1 });
+  it('clamps at the ceilings', () => {
+    // The thinning stops at 150, the refusal at 196.
+    expect(magicResistance({ id: 1, name: 'x', resist: 2 }, 200)).toEqual({
+      factor: 0.5,
+      resist: 0.98
+    });
   });
 });
 
@@ -401,7 +408,7 @@ describe('weighing a room', () => {
       { armourClass: null, damageResist: null, magicRes: 65 },
       weights
     );
-    expect(magical?.perRound).toBeCloseTo(20 * 0.85 * 0.85, 6);
+    expect(magical?.perRound).toBeCloseTo(20 * 0.925 * 0.675, 6);
     expect(mundane?.perRound).toBe(20);
   });
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { simulateFight, type SurvivalInput } from '../survival';
 import type { MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
-import type { MobProfile } from '../world';
+import type { MobProfile, WorldSpell } from '../world';
 
 /*
  * The room's fight, run (todo 02, 2026-09-17). These pin the shape of the
@@ -217,5 +217,121 @@ describe('the blow the sheet states', () => {
       })
     )!;
     expect(stated.rounds.value).toBeLessThan(armed.rounds.value / 3);
+  });
+});
+
+/*
+ * Todo 03 (2026-09-27): Festus (Paladin 24, 306 hp, AC 63, DR 13, MR 47) was
+ * told a room of skeletal acolytes was 100% survivable, and the acolyte's
+ * spear of dark energy (spell 5103, cast at level 28: 36 to 89) took 84, 78
+ * and 74 off him in three rounds. The spear was added as its average across
+ * every round; it is rolled now, and three acolytes spearing together is the
+ * round that kills. The rows are the realm's, from the GreaterMUD world file.
+ */
+describe('a monster whose blow is a spell', () => {
+  const spells: Record<number, WorldSpell> = {
+    5103: {
+      id: 5103,
+      name: 'spear of dark energy',
+      targets: 8,
+      abilities: [[17, 0]],
+      power: [27, 61],
+      minGrowth: [3, 1],
+      maxGrowth: [2, 2]
+    },
+    17: {
+      id: 17,
+      name: 'major healing',
+      targets: 2,
+      abilities: [[18, 0]],
+      power: [6, 10],
+      cap: 30,
+      minGrowth: [3, 1],
+      maxGrowth: [1, 1]
+    },
+    66: { id: 66, name: 'hold person', duration: 4, targets: 8, resist: 2, abilities: [[74, 0]] }
+  };
+  const acolyte = {
+    hp: 260,
+    armourClass: 50,
+    damageResist: 4,
+    magicResist: 90,
+    spells,
+    profiles: [
+      {
+        attacks: [
+          { kind: 'melee' as const, chance: 0.75, accuracy: 105, min: 11, max: 26, energy: 500 },
+          {
+            kind: 'spell' as const,
+            chance: 0.25,
+            spell: 5103,
+            castChance: 1,
+            level: 28,
+            energy: 1000
+          }
+        ],
+        casts: [
+          { spell: 66, chance: 0.1, level: 25 },
+          { spell: 17, chance: 0.1, level: 25 }
+        ]
+      }
+    ]
+  };
+  const festus = (count: number): SurvivalInput =>
+    fight({
+      hp: 306,
+      hpMax: 306,
+      mana: 69,
+      manaMax: 69,
+      player: { armourClass: 63, damageResist: 13, magicRes: 47 },
+      sheet: {
+        ...SHEET,
+        level: 24,
+        agility: 80,
+        intellect: 40,
+        charm: 50,
+        health: 70,
+        strength: 112,
+        spellcasting: 88,
+        combatLevel: 3,
+        mageryLevel: 2,
+        encumbrancePercent: 63
+      },
+      weapon: { min: 10, max: 40, speed: 1400, strength: 60 },
+      foes: Array.from({ length: count }, (_, n) => ({ name: `acolyte ${n}`, subject: acolyte })),
+      casting: Array.from({ length: count }, () => null),
+      heal: { below: 0.5, to: 0.8, restores: [14, 38], cost: 6, minMana: 0 },
+      levels: { safeAbove: 0.6, riskyAbove: 0.25 },
+      horizons: [1, 3, 6, 12, 24]
+    });
+
+  it('lands a spear whole, so one round can take a third of the bar', () => {
+    const one = simulateFight(festus(1))!;
+    // One spear through MR 47 is at least 36 × 1.03; the worst round holds one and a blow.
+    expect(one.worstRound).toBeGreaterThanOrEqual(70);
+    expect(one.horizons[0]!.lost.most).toBeGreaterThanOrEqual(70);
+  });
+
+  it('reads a room of three as not survivable', () => {
+    const three = simulateFight(festus(3))!;
+    expect(three.level).toBe('deadly');
+    expect(three.survives).toBeLessThanOrEqual(0.25);
+    expect(three.worstRound).toBeGreaterThan(150);
+  });
+
+  it('reads the fight part way, the rounds in order', () => {
+    const three = simulateFight(festus(3))!;
+    expect(three.horizons.map((at) => at.rounds)).toEqual([1, 3, 6, 12, 24]);
+    const standing = three.horizons.map((at) => at.standing);
+    expect([...standing].sort((a, b) => b - a)).toEqual(standing);
+    const lost = three.horizons.map((at) => at.lost.mean);
+    expect([...lost].sort((a, b) => a - b)).toEqual(lost);
+  });
+
+  it('draws a lair’s spawns to its cap', () => {
+    const pool = simulateFight({ ...festus(1), draw: 3 })!;
+    const three = simulateFight(festus(3))!;
+    expect(pool.survives).toBeLessThanOrEqual(0.25);
+    expect(Math.abs(pool.survives - three.survives)).toBeLessThan(0.1);
   });
 });
