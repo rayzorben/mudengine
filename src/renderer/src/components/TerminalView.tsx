@@ -15,6 +15,8 @@ import { measurePitch } from '../lib/fonts';
 import type { TerminalConfig } from '@shared/config';
 import type { TerminalPalette } from '@shared/themes';
 import type {
+  EnterPlace,
+  LostEnter,
   StreamChunk,
   TerminalAction,
   TerminalActionName,
@@ -54,11 +56,20 @@ export interface TerminalHandle {
   search(query: string, direction: 'next' | 'previous'): void;
 }
 
+/** How the lost-Enter notice names each place other than a control. */
+const ENTER_WHERE: Record<Exclude<EnterPlace, 'control'>, () => string> = {
+  console: () => t('terminal.enterWhere.console'),
+  elsewhere: () => t('terminal.enterWhere.elsewhere'),
+  nowhere: () => t('terminal.enterWhere.nowhere')
+};
+
 export interface TerminalViewProps {
   /** Called with each keystroke or pasted run the user produces. */
   onInput(data: string): void;
   /** Called whenever the measured grid changes, for Telnet NAWS. */
   onResize(size: TerminalSize): void;
+  /** A plain Enter this console never sent, for the capture (todo 00). */
+  onLostEnter(report: LostEnter): void;
   /** Registers the handle the parent uses to push output in. */
   onReady(handle: TerminalHandle): void;
   /** Reports match counts as the query changes. */
@@ -143,6 +154,7 @@ export interface TerminalViewProps {
 export default function TerminalView({
   onInput,
   onResize,
+  onLostEnter,
   onReady,
   onSearchResult,
   index,
@@ -216,6 +228,7 @@ export default function TerminalView({
   const handlers = useRef({
     onInput,
     onResize,
+    onLostEnter,
     onReady,
     onSearchResult,
     onInspect,
@@ -228,6 +241,7 @@ export default function TerminalView({
   handlers.current = {
     onInput,
     onResize,
+    onLostEnter,
     onReady,
     onSearchResult,
     onInspect,
@@ -707,15 +721,17 @@ export default function TerminalView({
       if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (target !== null && !mount.contains(target) && ownsItsEnter(target)) return;
-      const where =
+      const place: EnterPlace =
         target === null || target === document.body
-          ? t('terminal.enterWhere.nowhere')
+          ? 'nowhere'
           : mount.contains(target)
-            ? t('terminal.enterWhere.console')
+            ? 'console'
             : // Another character's cell; this console's own controls name themselves.
               target.closest('.terminal-cell')?.contains(mount) === false
-              ? t('terminal.enterWhere.elsewhere')
-              : describeElement(target);
+              ? 'elsewhere'
+              : 'control';
+      const control = place === 'control' && target !== null ? describeElement(target) : null;
+      const where = control ?? (place === 'control' ? '' : ENTER_WHERE[place]());
       const code = event.keyCode;
       enterTaken = false;
       if (enterTimer !== null) clearTimeout(enterTimer);
@@ -726,6 +742,8 @@ export default function TerminalView({
           const atLineStart = term.buffer.active.cursorX === 0;
           term.write(noticeSequence(t('terminal.enterNotTaken', { where, code }), atLineStart));
         });
+        // The notice is paint only; the capture is what lines it up with the wire.
+        handlers.current.onLostEnter({ place, control, code });
       }, tuning().enterTakenMs);
     };
     window.addEventListener('keydown', watchEnter, { capture: true });

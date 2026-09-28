@@ -9,7 +9,7 @@ import type { AttachSnapshot, SessionId } from '@shared/ipc';
 import type { TerminalConfig } from '@shared/config';
 import type { QuestRunProgress } from '@shared/quests';
 import type { WalkProgress } from '@shared/walk';
-import type { TerminalActionName, TerminalSize } from '@shared/types';
+import type { LostEnter, TerminalActionName, TerminalSize } from '@shared/types';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
 import type { TerminalPalette } from '@shared/themes';
@@ -234,6 +234,11 @@ function SessionTerminal({
 
   const input = useCallback((data: string) => onInput(session, data), [onInput, session]);
   const resize = useCallback((size: TerminalSize) => onResize(session, size), [onResize, session]);
+  // Sent straight to the bridge, as `App` does; nothing between here and main acts on it.
+  const lostEnter = useCallback(
+    (report: LostEnter) => api.lostEnter(session, report),
+    [api, session]
+  );
 
   /*
    * Placed by grid coordinate rather than by document order, which is what lets
@@ -297,6 +302,7 @@ function SessionTerminal({
         onAct={act}
         onReady={handleReady}
         onResize={resize}
+        onLostEnter={lostEnter}
         // Search belongs to the terminal being read, so only the focused pane
         // reports counts into the search bar. One shared no-op for the rest:
         // an arrow written here was a fresh function per render, which made

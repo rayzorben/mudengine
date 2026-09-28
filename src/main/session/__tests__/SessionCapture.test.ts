@@ -115,6 +115,16 @@ describe('what a capture keeps', () => {
     ]);
   });
 
+  /* Todo 00: the lost-Enter notice is paint only, so the capture is where it lines up with the wire. */
+  it('records an Enter the console never sent, where the keyboard was, and its key code', async () => {
+    const capture = open();
+    capture.lostEnter({ place: 'control', control: 'the Stop button', code: 13 });
+    const lost = (await entries(capture)).filter((entry) => entry['k'] === 'lost-enter');
+    expect(lost).toEqual([
+      expect.objectContaining({ place: 'control', control: 'the Stop button', code: 13 })
+    ]);
+  });
+
   it('stamps every entry with when it happened, relative to the start', async () => {
     const capture = open();
     capture.text('one');

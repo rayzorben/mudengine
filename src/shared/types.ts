@@ -308,6 +308,40 @@ export interface TelnetEvent {
   summary: string;
 }
 
+/**
+ * Where the keyboard was when a plain Enter produced no line (todo 00): this
+ * console, another character's console, nothing, or a named control.
+ */
+export type EnterPlace = 'console' | 'elsewhere' | 'nowhere' | 'control';
+
+/** Every `EnterPlace`, the union's runtime half. */
+export const ENTER_PLACES: readonly EnterPlace[] = ['console', 'elsewhere', 'nowhere', 'control'];
+
+/** A plain Enter the window saw and the console never sent, for the capture. */
+export interface LostEnter {
+  place: EnterPlace;
+  /** The control's own description, when `place` is `control`. */
+  control: string | null;
+  /** The key code the browser reported: 13 for Enter, 229 while an input method holds it. */
+  code: number;
+}
+
+/** The longest control description a capture keeps; a longer one is cut to this length. */
+export const LOST_ENTER_CONTROL_MAX = 200;
+
+/** Narrows a `LostEnter` that crossed the bridge, or rejects it. */
+export function asLostEnter(value: unknown): LostEnter | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const candidate = value as Partial<LostEnter>;
+  if (!ENTER_PLACES.includes(candidate.place as EnterPlace)) return null;
+  if (typeof candidate.code !== 'number' || !Number.isInteger(candidate.code)) return null;
+  const control =
+    typeof candidate.control === 'string'
+      ? candidate.control.slice(0, LOST_ENTER_CONTROL_MAX)
+      : null;
+  return { place: candidate.place as EnterPlace, control, code: candidate.code };
+}
+
 export interface TerminalSize {
   cols: number;
   rows: number;

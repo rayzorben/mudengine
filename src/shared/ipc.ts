@@ -92,6 +92,7 @@ import type { Visited } from './destinations';
 import type {
   ConnectionState,
   ConnectionTarget,
+  LostEnter,
   StreamChunk,
   StreamLine,
   TelnetEvent,
@@ -578,6 +579,8 @@ export const Send = {
   dropMacro: 'session:macro:drop',
   /** Terminal geometry changed; drives Telnet NAWS. */
   resize: 'session:resize',
+  /** A plain Enter this console never sent, written into the capture (todo 00). */
+  lostEnter: 'session:lost-enter',
   /**
    * Whether this window is showing the diagnostics line feed.
    *
@@ -1094,6 +1097,8 @@ export interface IpcApi {
   /** Drop what is still waiting of the talk box's lines. */
   dropMacro(session: SessionId): void;
   resize(session: SessionId, size: TerminalSize): void;
+  /** A plain Enter this console never sent, for the capture (todo 00). */
+  lostEnter(session: SessionId, report: LostEnter): void;
   /** This window started or stopped showing the diagnostics line feed. */
   diagnostics(on: boolean): void;
   /** This window started or stopped showing the debug view. */

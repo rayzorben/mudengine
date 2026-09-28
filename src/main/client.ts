@@ -148,6 +148,7 @@ import { fileSlug } from '../shared/files';
 import { version as APP_VERSION } from '../../package.json';
 import {
   asConnectionTarget,
+  asLostEnter,
   TERMINAL_ACTIONS,
   type ConnectionTarget,
   type TerminalActionName,
@@ -1441,6 +1442,11 @@ function registerIpc(): void {
 
   on(Send.resize, (_caller, session: SessionId, size: TerminalSize) => {
     host?.get(session)?.manager.resize(size);
+  });
+
+  on(Send.lostEnter, (_caller, session: SessionId, report: unknown) => {
+    const lost = asLostEnter(report);
+    if (lost !== null) host?.get(session)?.capture?.lostEnter(lost);
   });
 
   // Whether this window is showing the per-line diagnostics feed. Per window,
