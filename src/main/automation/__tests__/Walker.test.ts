@@ -3800,6 +3800,76 @@ describe('a fight on the way', () => {
       expect(notices).toEqual([]);
       walk.dispose();
     });
+
+    /*
+     * Nor does the health hold stand the walk in one (todo 00, 2026-09-27):
+     * festus stepped in at 58% under `restBelow: 0.7` with five saracens
+     * behind it and auto-combat off, and stood in their blows until the
+     * retreat pulled it back. Resting heals nothing while something swings.
+     */
+    describe('too hurt to travel', () => {
+      const hurtConfig: AutomationConfig = {
+        ...config,
+        health: { ...config.health, restBelow: 0.7 }
+      };
+      const hurtAt = (room: number, inCombat: boolean): CharacterState =>
+        at(1, room, { inCombat, vitals: { ...EMPTY_CHARACTER.vitals, hp: 58, hpMax: 100 } });
+
+      it('steps on from a room where a fight nothing fights is running', async () => {
+        let now = at(1, 1);
+        const walk = new Walker(hurtConfig, queue, { stateNow: () => now });
+        walk.start(ROUTE, now);
+        await vi.advanceTimersByTimeAsync(50);
+        expect(moves(sent)).toEqual(['e']);
+        sent.length = 0;
+
+        now = hurtAt(2, true);
+        walk.onCharacter(now);
+        await vi.advanceTimersByTimeAsync(50);
+
+        expect(walk.progress.hold).toBeNull();
+        expect(moves(sent)).toEqual(['e']);
+        walk.dispose();
+      });
+
+      it('steps the moment that fight starts, not on the next beat', async () => {
+        let now = hurtAt(1, false);
+        const walk = new Walker(hurtConfig, queue, { stateNow: () => now });
+        walk.start(ROUTE, now);
+        await vi.advanceTimersByTimeAsync(50);
+        // Nothing swinging yet: the health hold stands, as it should.
+        expect(walk.progress.hold).toBe('health');
+        expect(moves(sent)).toEqual([]);
+
+        now = hurtAt(1, true);
+        walk.onCharacter(now);
+        await vi.advanceTimersByTimeAsync(50);
+
+        expect(walk.progress.hold).toBeNull();
+        expect(moves(sent)).toEqual(['e']);
+        walk.dispose();
+      });
+
+      // The positive control: a fight auto-combat is fighting is waited out.
+      it('still stands still where auto-combat will fight', async () => {
+        let now = hurtAt(1, false);
+        const walk = new Walker(hurtConfig, queue, {
+          stateNow: () => now,
+          willFight: () => true
+        });
+        walk.start(ROUTE, now);
+        await vi.advanceTimersByTimeAsync(50);
+        expect(walk.progress.hold).toBe('health');
+
+        now = hurtAt(1, true);
+        walk.onCharacter(now);
+        await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+
+        expect(walk.progress.hold).not.toBeNull();
+        expect(moves(sent)).toEqual([]);
+        walk.dispose();
+      });
+    });
   });
 
   it('holds the route rather than ending it, and says nothing about it', async () => {
