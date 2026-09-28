@@ -104,6 +104,7 @@ import { commandOf, type RereadClaim } from '../../shared/commands';
 import { wireItem, type ItemEntity } from '../../shared/entities';
 import { Company } from './company';
 import { claimedBy, engagedBy, swingingAtMe, threatenedBy, vouchedFor } from './engagements';
+import { keepPartyCurrent } from './partyUpkeep';
 import { trackTally } from './tally';
 import { NO_TALLY, settleClocks, type CombatTally } from '../../shared/tally';
 import {
@@ -853,6 +854,8 @@ export class CharacterTracker {
     if (next !== null && moved && Object.keys(next.combat.claimed).length > 0) {
       next = { ...next, combat: { ...next.combat, claimed: {} } };
     }
+    const party = keepPartyCurrent(before, next ?? this.state, block, moved);
+    if (party !== (next ?? this.state)) next = party;
     /*
      * **A room the character could read is proof it can see** — the second
      * half of todo 02, asked for as *"if you get a room you know you can see,
@@ -871,11 +874,7 @@ export class CharacterTracker {
      * session for every character nobody has ever blinded — a state change per
      * character per session for a fact nothing reads differently (`unknown`
      * already holds no walk). The rule that only the wire moves a flag is
-     * unbroken; this *is* the wire.
-     *
-     * Decided here rather than in the `room-exits` case for the reason the
-     * shop quotation above is: one place, so no path through that case's
-     * fifteen returns can forget it.
+     * unbroken; this *is* the wire. Decided here once, as the quotation is.
      */
     if (block.type === 'room-exits') {
       const sighted = next ?? this.state;

@@ -242,3 +242,46 @@ export function threatenedBy(
     }
   };
 }
+
+/**
+ * Drops a member's fight once its monster is gone from the room. Nothing on the
+ * wire says a member's fight has ended, but the monster dying
+ * (`FightTracker.died`, `diedNamed`) or walking out takes it off
+ * `room.occupants`, and `AutoCombat` already treats a monster missing from the
+ * room as no fight. A monster `Also here:` never named is kept, since somebody
+ * walking in says nothing about it; a move ends every fight, since a monster
+ * in the new room says nothing about the one left behind under the same name.
+ * An area attack lasts while any monster is in the room, and two monsters
+ * under one name keep the entry until neither is, since the sentence never
+ * said which. The same state when nothing ended.
+ */
+export function fightsStillHere(
+  before: CharacterState,
+  s: CharacterState,
+  moved: boolean
+): CharacterState {
+  const was = listedMobs(before);
+  const now = listedMobs(s);
+  const over = (key: string | null): boolean =>
+    moved || (key === null ? now.size === 0 && was.size > 0 : !now.has(key) && was.has(key));
+  const engaged = kept(
+    s.party.engaged,
+    (fight) => !over(fight.kind === 'room' ? null : mobKey(fight.target))
+  );
+  const threatened = kept(s.party.threatened, (seen) => !over(mobKey(seen.target)));
+  if (engaged === s.party.engaged && threatened === s.party.threatened) return s;
+  return { ...s, party: { ...s.party, engaged, threatened } };
+}
+
+function listedMobs(s: CharacterState): Set<string> {
+  return new Set(
+    s.room.occupants.filter((there) => there.kind === 'mob').map((there) => mobKey(there.name))
+  );
+}
+
+/** `record` without the entries `keep` refuses; the same object when it refuses none. */
+function kept<T>(record: Record<string, T>, keep: (entry: T) => boolean): Record<string, T> {
+  const entries = Object.entries(record);
+  const left = entries.filter(([, entry]) => keep(entry));
+  return left.length === entries.length ? record : Object.fromEntries(left);
+}
