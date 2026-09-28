@@ -34,6 +34,7 @@ import HealFields from './HealFields';
 import LoopSection, { type LoopShelf } from './LoopSection';
 import PlayerGrants from './PlayerGrants';
 import RemoteList from './RemoteList';
+import RemoteSwitches from './RemoteSwitches';
 import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
@@ -1331,39 +1332,14 @@ export default function CharacterForm({
           */}
           {form.answerRemotes && (
             <>
-              <CheckField
-                checked={form.remoteGangpath}
-                hint={t('settings.remotes.gangpathHint')}
-                label={t('settings.remotes.gangpathLabel')}
-                name="remotes-gangpath"
-                onChange={(value) => patch({ remoteGangpath: value })}
-              />
-              {/*
-                Nothing on the wire establishes who shares a gang
-                on its own: a gangpath does not prove it, and this
-                character's own outgoing one comes back naming
-                itself. Said where the grant is made, not only when
-                it silently fails to allow somebody.
-              */}
-              <p className="settings-warn">{t('settings.remotes.gangWarning')}</p>
-              <h4 className="settings-subhead">{t('settings.remotes.gangLegend')}</h4>
-              <RemoteList
-                allow={form.remoteGang}
-                mode="gang"
-                onSet={(remote, stance) =>
-                  patch({
-                    remoteGang:
-                      stance === 'allow'
-                        ? [...form.remoteGang, remote]
-                        : form.remoteGang.filter((entry) => entry !== remote)
-                  })
-                }
-                onSetAll={(stance) =>
-                  patch({
-                    remoteGang: stance === 'allow' ? [...ACTIONABLE_REMOTES] : []
-                  })
-                }
-                subject={t('settings.remotes.gangLegend')}
+              <RemoteSwitches
+                autoJoin={form.remoteAutoJoin}
+                gang={form.remoteGang}
+                gangpath={form.remoteGangpath}
+                name="remotes"
+                onAutoJoin={(value) => patch({ remoteAutoJoin: value })}
+                onGang={(value) => patch({ remoteGang: value })}
+                onGangpath={(value) => patch({ remoteGangpath: value })}
               />
 
               {/*

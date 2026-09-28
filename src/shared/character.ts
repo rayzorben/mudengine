@@ -1695,7 +1695,7 @@ export function vitalLevel(
  * and the standing rule is that unknown is never the reassuring answer.
  *
  * Here rather than in `remotes.ts` because it is a fact about the roster, and
- * three readers want it: the permission gate in `Remotes.evidenceAbout`, the
+ * three readers want it: the permission gate in `evidenceAbout` (`RemoteEvidence.ts`), the
  * Gang card, and the flyout that says why somebody is getting through.
  */
 export function gangOnRoster(
@@ -1724,7 +1724,7 @@ export function ownGang(state: CharacterState): string | null | undefined {
  * Has this name **joined** this character's party?
  *
  * Here rather than in either caller because it is the party half of one
- * permission gate, and the gate has two readers: `Remotes.evidenceAbout`, which
+ * permission gate, and the gate has two readers: `evidenceAbout` (`RemoteEvidence.ts`), which
  * answers the `@` command, and the Player flyout's Access face, which tells the
  * player whether it will be answered. `AutoCombat.quarry`'s lesson is that two
  * halves of one gate in two files agree exactly until one of them is edited.

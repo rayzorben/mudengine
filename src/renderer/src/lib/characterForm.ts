@@ -308,6 +308,8 @@ export interface CharacterFields {
   rewrites: RewritesUiConfig;
   /** Whether the gang's own channel is one of the channels it answers on. */
   remoteGangpath: boolean;
+  /** Whether an invitation from a leader allowed `@join` is joined at once. */
+  remoteAutoJoin: boolean;
   /** What anybody in this character's gang may ask for. */
   remoteGang: RemoteName[];
   /** Remotes anybody who has joined this character's party may ask for. */
@@ -470,6 +472,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     afkReply: entry.afk.reply,
     answerRemotes: entry.remotes.enabled,
     remoteGangpath: entry.remotes.gangpath,
+    remoteAutoJoin: entry.remotes.autoJoin,
     remoteGang: [...entry.remotes.gang],
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
@@ -674,6 +677,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     remotes: {
       enabled: form.answerRemotes,
       gangpath: form.remoteGangpath,
+      autoJoin: form.remoteAutoJoin,
       gang: form.remoteGang,
       party: form.remoteParty,
       players: form.remotePlayers
@@ -928,6 +932,7 @@ export function emptyForm(
     afkReply: afk.reply,
     answerRemotes: remotes.enabled,
     remoteGangpath: remotes.gangpath,
+    remoteAutoJoin: remotes.autoJoin,
     remoteGang: [...remotes.gang],
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,

@@ -52,6 +52,7 @@ const config: AutomationConfig = {
   remotes: {
     enabled: true,
     gangpath: true,
+    autoJoin: false,
     gang: [],
     // Empty, so nothing here is granted by a party listing arriving: these
     // cases are about the answer, and the gate has its own block below.
@@ -421,6 +422,122 @@ describe('answering the imperative ones', () => {
     listening.onBlock(said('conversation-telepath', 'Soul', '@bless-expired'), who());
     drain();
     expect(expired).toEqual([]);
+  });
+});
+
+/*
+ * Todo 07: an invitation is the ask, so `join` goes out without the `@join`
+ * the leader would telepath next (captures/112: `Swampfox has invited you to
+ * follow him.`, `Swampfox telepaths: @join`, `join Swampfox`).
+ */
+describe('joining when invited', () => {
+  const invited = (leader: string): Block =>
+    ({
+      type: 'party-invited',
+      domain: 'party',
+      raw: '',
+      plain: '',
+      text: '',
+      groups: { leader },
+      confidence: 1,
+      at: 0,
+      seq: 1
+    }) as unknown as Block;
+
+  const joining = (over: Partial<AutomationConfig['remotes']> = {}): Remotes =>
+    new Remotes({ ...config, remotes: { ...config.remotes, autoJoin: true, ...over } }, queue, {
+      notice: (m) => notices.push(m)
+    });
+
+  it('joins a leader allowed @join as soon as they invite', () => {
+    joining().onBlock(invited('Swampfox'), who());
+    drain();
+    expect(sent).toEqual(['join Swampfox']);
+  });
+
+  it('sends one join for the invitation and the @join behind it', () => {
+    const remotes = joining();
+    remotes.onBlock(invited('Swampfox'), who());
+    remotes.onBlock(said('conversation-telepath', 'Swampfox', '@join'), who());
+    drain();
+    expect(sent).toEqual(['join Swampfox']);
+  });
+
+  it('waits for @join while the switch is off', () => {
+    peers.onBlock(invited('Swampfox'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  it('does not join a leader without @join, and says so', () => {
+    joining({ players: {} }).onBlock(invited('Swampfox'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([
+      t('automation.remotes.autoJoinNotGranted', { from: 'Swampfox', unresolvedClause: '' })
+    ]);
+  });
+
+  it('says the gang is unresolved rather than that the leader is not granted', () => {
+    joining({ players: {}, gang: ['join'] }).onBlock(invited('Swampfox'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([
+      t('automation.remotes.autoJoinNotGranted', {
+        from: 'Swampfox',
+        unresolvedClause: t('automation.remotes.unresolvedGang')
+      })
+    ]);
+  });
+
+  it('says a leader denied @join by name is denied', () => {
+    const players = { swampfox: { allow: [], deny: ['join' as const] } };
+    joining({ players }).onBlock(invited('Swampfox'), who());
+    drain();
+    expect(notices).toEqual([t('automation.remotes.autoJoinDenied', { from: 'Swampfox' })]);
+  });
+
+  it('answers a later @join once the prompt after the join has come', () => {
+    const remotes = joining();
+    remotes.onBlock(invited('Swampfox'), who());
+    drain();
+    expect(sent).toEqual(['join Swampfox']);
+    remotes.onBlock(
+      { ...invited('x'), type: 'status-line', groups: {} } as unknown as Block,
+      who()
+    );
+    remotes.onBlock(said('conversation-telepath', 'Swampfox', '@join'), who());
+    drain();
+    expect(sent).toEqual(['join Swampfox', 'join Swampfox']);
+  });
+
+  it('does not wait on a join the queue dropped', () => {
+    // Held behind a half-typed line, so the join waits in the queue, then dropped with it.
+    queue.noteTyping(true);
+    const remotes = joining();
+    remotes.onBlock(invited('Swampfox'), who());
+    drain();
+    expect(sent).toEqual([]);
+    queue.clear();
+    remotes.onBlock(said('conversation-telepath', 'Swampfox', '@join'), who());
+    drain();
+    expect(sent).toEqual(['join Swampfox']);
+  });
+
+  it('does not join while following somebody else, and says so', () => {
+    const party = { ...EMPTY_CHARACTER.party, following: 'Buster' };
+    joining().onBlock(invited('Swampfox'), who({ party }));
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([t('automation.remotes.autoJoinInParty', { from: 'Swampfox' })]);
+  });
+
+  it('reads nothing into this character inviting somebody', () => {
+    const own = { ...invited('x'), groups: { player: 'Swampfox' } } as unknown as Block;
+    joining().onBlock(own, who());
+    drain();
+    expect(sent).toEqual([]);
   });
 });
 
@@ -802,6 +919,7 @@ describe('the gate: who may ask, and for what', () => {
     remotes: {
       enabled: true,
       gangpath: true,
+      autoJoin: false,
       gang: gang as never,
       party: [],
       players: Object.fromEntries(
@@ -1095,7 +1213,7 @@ describe('the gangpath is answered on only when it is switched on', () => {
    */
   const inGang = (gangpath: boolean): AutomationConfig => ({
     ...config,
-    remotes: { enabled: true, gangpath, gang: ['health'], party: [], players: {} }
+    remotes: { enabled: true, gangpath, autoJoin: false, gang: ['health'], party: [], players: {} }
   });
 
   const together = (): CharacterState =>
@@ -1145,7 +1263,14 @@ describe('the gangpath is answered on only when it is switched on', () => {
   it('does not act on one with it off either', () => {
     peers.configure({
       ...inGang(false),
-      remotes: { enabled: true, gangpath: false, gang: ['do'], party: [], players: {} }
+      remotes: {
+        enabled: true,
+        gangpath: false,
+        autoJoin: false,
+        gang: ['do'],
+        party: [],
+        players: {}
+      }
     });
     peers.onBlock(said('conversation-gangpath', 'Spike', '@do who'), together());
     drain();
@@ -1162,7 +1287,7 @@ describe('a channel this client never answers on, from somebody with no grant', 
    */
   const ungranted = (): AutomationConfig => ({
     ...config,
-    remotes: { enabled: true, gangpath: true, gang: [], party: [], players: {} }
+    remotes: { enabled: true, gangpath: true, autoJoin: false, gang: [], party: [], players: {} }
   });
 
   const live = (): CharacterState =>

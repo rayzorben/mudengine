@@ -1076,6 +1076,10 @@ automation:
   # say each address one person. Off, a gangpath `@` command is read and never
   # answered, however much is granted below.
   #
+  # `autoJoin` joins a party when its leader invites you, without waiting for
+  # the @join the leader would telepath next. Only somebody granted @join below
+  # is joined, and never while you are already in a party.
+  #
   # `gang` is what anybody in **this character's** gang may ask for. One list,
   # not one per gang: a character is in one at a time. Leave one gang for
   # another and the new one inherits the list -- the Gang card says so on every
@@ -1135,6 +1139,7 @@ automation:
   remotes:
     enabled: false
     gangpath: false
+    autoJoin: false
     gang: []
     party: [health, bless-expired, heal]
     players: {}

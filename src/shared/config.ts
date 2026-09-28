@@ -1041,6 +1041,12 @@ export interface RemotesConfig {
    */
   gangpath: boolean;
   /**
+   * Join a party when its leader invites this character, without waiting for
+   * the `@join` that would follow. Only a leader granted `join` is joined, and
+   * never while this character is already in a party (`AutoJoin`).
+   */
+  autoJoin: boolean;
+  /**
    * Remotes anybody in **this character's gang** may use.
    *
    * One list, not a map keyed by gang: a character is in one gang at a time.
@@ -2764,6 +2770,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     remotes: {
       enabled: false,
       gangpath: false,
+      autoJoin: false,
       gang: [],
       /*
        * The one grant that ships non-empty, and it is three names: see
@@ -3849,6 +3856,7 @@ function normalizeRemotes(value: unknown, d: RemotesConfig): RemotesConfig {
   return {
     enabled: bool(raw['enabled'], d.enabled),
     gangpath: bool(raw['gangpath'], d.gangpath),
+    autoJoin: bool(raw['autoJoin'], d.autoJoin),
     gang: remoteNames(raw['gang'], d.gang),
     party: remoteNames(raw['party'], d.party),
     players: playerGrants(raw['players'], d.players)
