@@ -20,7 +20,8 @@ import { Invoke, Push, Send } from '../ipc';
  * start the client.
  */
 const read = (file: string): string => fs.readFileSync(path.resolve(file), 'utf8');
-const main = read('src/main/client.ts');
+/** Main's handlers: the client, and the channels it composes in from elsewhere. */
+const main = ['src/main/client.ts', 'src/main/app/transfer.ts'].map(read).join('\n');
 const preload = read('src/preload/index.ts');
 const web = read('src/renderer/src/lib/webBridge.ts');
 
@@ -31,7 +32,13 @@ const web = read('src/renderer/src/lib/webBridge.ts');
  * still has to be a method on the bridge; it is only the channel constant it
  * does not name.
  */
-const ANSWERED_IN_THE_WINDOW = ['copyText', 'pasteText', 'chooseRealm', 'raiseWindow'] as const;
+const ANSWERED_IN_THE_WINDOW = [
+  'copyText',
+  'pasteText',
+  'chooseRealm',
+  'chooseCharacterFile',
+  'raiseWindow'
+] as const;
 
 /** Whether a file mentions `Invoke.name`, `Send.name` or `Push.name`. */
 const mentions = (source: string, group: string, key: string): boolean =>

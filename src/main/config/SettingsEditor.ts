@@ -18,7 +18,7 @@ import {
   type RetreatConfig,
   type SupplyItem
 } from '../../shared/config';
-import { fileSlug } from '../../shared/files';
+import { fileSlug, isLoopFileName } from '../../shared/files';
 import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
@@ -1564,7 +1564,7 @@ function readLoopFiles(dir: string): { file: string; slug: string; name: string 
 
   const found: { file: string; slug: string; name: string }[] = [];
   for (const name of names) {
-    if (name.startsWith('.') || !/\.ya?ml$/i.test(name)) continue;
+    if (!isLoopFileName(name)) continue;
     const file = path.join(dir, name);
     const slug = name.replace(/\.ya?ml$/i, '');
     try {

@@ -79,6 +79,14 @@ export interface FileChoice {
   allFilesLabel: string;
 }
 
+/** A native save picker: a file to write, starting from a suggested name. */
+export interface SaveChoice {
+  title: string;
+  defaultName: string;
+  extensions: readonly string[];
+  extensionsLabel: string;
+}
+
 /**
  * Windows, for a host that has more than one.
  *
@@ -174,6 +182,12 @@ export interface Host {
   reveal(target: string, kind: 'file' | 'directory'): Promise<boolean>;
   /** A native file picker. Null when dismissed — or when there is no such thing. */
   chooseFile(caller: Caller, choice: FileChoice): Promise<string | null>;
+  /**
+   * Where to write a file: the player's choice in a native dialog, or, where
+   * the host has none on the machine the files are on, a free name under
+   * `exports/` in the home. Null when dismissed.
+   */
+  chooseSaveFile(caller: Caller, choice: SaveChoice): Promise<string | null>;
   /** The system clipboard, or null where the window has to keep its own. */
   readonly clipboard: { read(): string; write(text: string): void } | null;
   /** Put the quit confirmation up and wait for the answer. */

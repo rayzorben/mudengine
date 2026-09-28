@@ -27,7 +27,7 @@
 import { Invoke, Push, Send, type IpcApi, type Notice } from '@shared/ipc';
 import { asRpcOutbound, RPC_PATH, trimArgs, type RpcRequest } from '@shared/rpc';
 import { t } from './i18n';
-import { hasRealmPicker, pickRealm } from './pickers';
+import { hasHomePicker, pickFromHome } from './pickers';
 import { tuning } from './tuning';
 
 type Listener = (payload: unknown) => void;
@@ -49,6 +49,19 @@ export function createWebBridge(): IpcApi {
   const notice = (message: string): void => {
     const payload: Notice = { session: null, message };
     for (const listener of listeners.get(Push.notice) ?? []) listener(payload);
+  };
+
+  /*
+   * The window's own picker over the client's disk (`lib/pickers.ts`), never
+   * a channel: main in web mode has no dialog to put up, and a
+   * `<input type="file">` would browse the wrong machine.
+   */
+  const pickOnTheClient = (): Promise<string | null> => {
+    if (!hasHomePicker()) {
+      notice(t('web.picker.unavailable'));
+      return Promise.resolve(null);
+    }
+    return pickFromHome();
   };
 
   const url = (): string => {
@@ -250,18 +263,10 @@ export function createWebBridge(): IpcApi {
     saveServer: (previousName, draft) => invoke(Invoke.saveServer, previousName, draft),
     deleteServer: (name) => invoke(Invoke.deleteServer, name),
     settingsSnapshot: () => invoke(Invoke.settingsSnapshot),
-    /*
-     * The window's own picker over the client's disk (`lib/pickers.ts`),
-     * never the channel: main in web mode has no dialog to put up, and a
-     * `<input type="file">` would browse the wrong machine.
-     */
-    chooseRealm: () => {
-      if (!hasRealmPicker()) {
-        notice(t('web.picker.unavailable'));
-        return Promise.resolve(null);
-      }
-      return pickRealm();
-    },
+    chooseRealm: () => pickOnTheClient(),
+    exportCharacter: (id, password) => invoke(Invoke.exportCharacter, id, password),
+    chooseCharacterFile: () => pickOnTheClient(),
+    importCharacter: (file) => invoke(Invoke.importCharacter, file),
     searchRooms: (session, query) => invoke(Invoke.searchRooms, session, query),
     mobNames: (session) => invoke(Invoke.mobNames, session),
     worldInfo: (session) => invoke(Invoke.worldInfo, session),

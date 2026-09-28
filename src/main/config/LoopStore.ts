@@ -31,6 +31,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from 'yaml';
 
+import { isLoopFileName } from '../../shared/files';
 import { asLoops, type Loop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { directoryNames } from './dirs';
@@ -197,10 +198,7 @@ function directories(root: string): string[] {
 /** YAML files inside `dir`, sorted. Backups and temporaries are not loops. */
 function yamlFiles(dir: string): string[] {
   try {
-    return fs
-      .readdirSync(dir)
-      .filter((name) => !name.startsWith('.') && /\.ya?ml$/i.test(name))
-      .sort();
+    return fs.readdirSync(dir).filter(isLoopFileName).sort();
   } catch {
     return [];
   }

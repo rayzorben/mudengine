@@ -2102,6 +2102,15 @@ const TUNING_DEFAULTS = {
     /** Collapses the burst of writes an editor emits into a single reload. */
     debounceMs: 80
   },
+  /** Exporting and importing a character (`config/CharacterTransfer.ts`). */
+  transfer: {
+    /**
+     * The most a character file may be, and unpack to, on import. The
+     * largest character here was 73 MB unpacked (2026-09-28: 48 MB of fights,
+     * 22 MB of scrollback); past this it is not a file the client wrote.
+     */
+    maxImportBytes: 524_288_000
+  },
   /**
    * Serving the window over HTTP (`MUDENGINE_WEB=1`; see `main/host/web/`).
    */

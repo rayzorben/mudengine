@@ -37,7 +37,10 @@ app:
     guardNotice: 'Client error encountered. Background sessions remain connected: {message}'
   dialog:
     allFilesFilter: All files
+    characterFileFilter: Exported character
     chooseRealmTitle: Choose a world database
+    exportCharacterTitle: Export character
+    importCharacterTitle: Import character
     realmDatabaseFilter: World database
   errorBoundary:
     body: Active character sessions are unaffected. Reload to restore the interface.
@@ -67,6 +70,19 @@ app:
     loadFailed: 'Character not loaded: {error}'
     noSuchCharacter: No such character.
     stillConnected: '{name} is still connected.'
+  transfer:
+    databaseMissing: The world database for {realm} is not on this computer ({database}). Choose it
+      on the realm's page.
+    exportFailed: 'Could not write the file: {message}'
+    noPassword: The file holds no password; type it on the character's page.
+    noRealm: No realm here is called {realm}; add one on the Realms page.
+    notACharacter: This is not a character exported by mudengine.
+    nothingLeft: nothing was left behind
+    realmAdded: Added the realm {realm}.
+    realmKept: Using the realm {realm} already here.
+    renamed: A character here already uses its file name, so {name} was imported as {id}.
+    unreadable: 'Could not read {file}.'
+    writeFailed: 'Import stopped: {message}. Left behind: {left}.'
   quit:
     cancelButton: Cancel
     confirmButton: Quit and disconnect
@@ -3329,6 +3345,15 @@ settings:
   footer:
     openConfig: Options file
     openProfiles: Characters folder
+  transfer:
+    askPassword: Put the password in the file?
+    cancel: Cancel
+    export: Export character
+    exported: 'Exported to {file}'
+    import: Import character
+    imported: Imported {characterName}.
+    withPassword: With password
+    withoutPassword: Without
   formActions:
     idle: Saved as you type.
     notSaved: Not saved.

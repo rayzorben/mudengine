@@ -89,6 +89,7 @@ import { Workspace } from './windows/Workspace';
 import { quitGuard, type QuitAnswer } from './app/quit';
 import { t } from './app/i18n';
 import { listHome } from './app/browse';
+import { handleCharacterTransfer } from './app/transfer';
 import { claimHome, type HomeLock } from './app/homeLock';
 import type { Caller, Host } from './host/Host';
 import {
@@ -533,7 +534,7 @@ function memoryFor(id: SessionId): WorldMemory | undefined {
   const realm = world?.info.source;
   if (realm === undefined) return undefined;
 
-  const store = new WorldMemory(home.state('memory', `${id}.json`), realm, (message) =>
+  const store = new WorldMemory(home.record('memory', id), realm, (message) =>
     announce('memory', message)
   );
   memories.set(id, store);
@@ -576,7 +577,7 @@ function fightsFor(id: SessionId): FightSink {
   if (!(config?.config.logging.fights ?? DEFAULT_CONFIG.logging.fights)) return NO_FIGHTS;
   const existing = fightLogs.get(id);
   if (existing) return existing;
-  const log = new FightLog(home.state('fights', `${id}.jsonl.gz`), {
+  const log = new FightLog(home.record('fights', id), {
     notice: (message) => announce('fights', message)
   });
   fightLogs.set(id, log);
@@ -605,7 +606,7 @@ function talkFor(id: SessionId): TalkSink {
   const existing = talkLogs.get(id);
   if (existing) return existing;
   const log = new TalkLog(
-    home.state('talk', `${id}.jsonl`),
+    home.record('talk', id),
     config?.config.logging.conversationDays ?? DEFAULT_CONFIG.logging.conversationDays,
     { notice: (message) => announce('talk', message) }
   );
@@ -637,7 +638,7 @@ function belongingsAt(id: SessionId, target: ConnectionTarget): BelongingsSink {
     existing.close();
   }
   const record = new Belongings({
-    file: home.state('belongings', `${id}.json`),
+    file: home.record('belongings', id),
     realm,
     notify: (message) => announce('belongings', message)
   });
@@ -1291,7 +1292,7 @@ function createHost(): SessionHost {
     talkFor,
     // Beside the conversation and for the same reason: what the console
     // showed outlives the launch. `check:secrets` walks the whole home.
-    backscrollFor: (id) => home.state('backscroll', `${id}.log`),
+    backscrollFor: (id) => home.record('backscroll', id),
     belongingsAt,
     playersFor,
     destinationsFor,
@@ -2674,7 +2675,7 @@ function registerIpc(): void {
       const book =
         live && live.realm === realm
           ? live.recallSpellbook()
-          : peekSpellbook(home.state('belongings', `${id}.json`), realm);
+          : peekSpellbook(home.record('belongings', id), realm);
       if (book === null) return { spellbook: null, cureGates: null };
       const world = worldFor(id as SessionId);
       return {
@@ -2749,6 +2750,8 @@ function registerIpc(): void {
       allFilesLabel: t('app.dialog.allFilesFilter')
     })
   );
+
+  handleCharacterTransfer({ home, host: platform, loaded: (id) => host?.has(id) ?? false });
 
   handle(Invoke.saveProfile, (_caller, rawId: unknown, rawDraft: unknown) => {
     const id = asProfileId(rawId);
