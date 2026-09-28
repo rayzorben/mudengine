@@ -1,7 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import BentoCard, { type CardChrome } from './BentoCard';
+import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import MapRouteFinder from './MapRouteFinder';
+import { findAction } from './findAction';
 import MapView from './MapView';
 import RouteSheetView from './RouteSheetView';
 import { useRoutePreview } from '../hooks/useRoutePreview';
@@ -191,6 +192,25 @@ function MapCard({
     clear();
     setHome((count) => count + 1);
   }, [clear]);
+  /*
+   * The start and destination fields stay folded until the search glyph asks
+   * for them, so the map keeps the row. A route already planned keeps its
+   * pager when they fold; the pager's own close ends it.
+   */
+  const [finding, setFinding] = useState(false);
+  const { returnFocus } = chrome;
+  const actions = useMemo((): CardAction[] => {
+    const find = findAction(t('cards.map.finder.open'), finding, setFinding, returnFocus);
+    const recentre: CardAction[] =
+      here === null
+        ? []
+        : [{ id: 'locate', label: t('cards.map.finder.locate'), icon: 'crosshair', run: locate }];
+    const build: CardAction[] =
+      onBuild === null
+        ? []
+        : [{ id: 'build', label: t('cards.map.buildAction'), icon: 'flag', run: onBuild }];
+    return [find, ...recentre, ...build];
+  }, [finding, here, locate, onBuild, returnFocus]);
 
   /* One element for as long as the reason holds, so the view's memo holds too. */
   const empty = useMemo(
@@ -241,13 +261,10 @@ function MapCard({
   return (
     <BentoCard
       {...chrome}
-      actions={
-        onBuild === null
-          ? undefined
-          : [{ id: 'build', label: t('cards.map.buildAction'), icon: 'flag', run: onBuild }]
-      }
+      actions={actions}
       badge={badge}
       className="map-card"
+      copyable={false}
       scroll
       title={t('cards.map.title')}
     >
@@ -265,8 +282,8 @@ function MapCard({
        * way to send a character somewhere by accident.
        */}
       <MapRouteFinder
-        onDone={chrome.returnFocus}
-        onLocate={here === null ? null : locate}
+        finding={finding}
+        onDone={returnFocus}
         placed={here !== null}
         preview={preview}
         search={search}

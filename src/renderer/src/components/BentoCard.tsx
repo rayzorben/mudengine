@@ -199,6 +199,12 @@ export interface BentoCardProps {
    * card* has always offered, so the two never disagree.
    */
   copyText?(): string;
+  /**
+   * False to leave the copy glyph out of the action column, for a card whose
+   * contents are a picture with nothing worth pasting. The right-click menu's
+   * copies stay.
+   */
+  copyable?: boolean;
   /** Anything else the card can do, after close and copy. */
   actions?: CardAction[];
   /**
@@ -345,6 +351,7 @@ export default function BentoCard({
   onActive,
   onClose,
   copyText,
+  copyable = true,
   pinned,
   onPin,
   rolled,
@@ -476,7 +483,9 @@ export default function BentoCard({
           }
         ]
       : []),
-    { id: 'copy', label: t('cards.chrome.copy'), icon: 'copy' as const, run: copyCard },
+    ...(copyable
+      ? [{ id: 'copy', label: t('cards.chrome.copy'), icon: 'copy' as const, run: copyCard }]
+      : []),
     ...(actions ?? []),
     // And the shown face's own, last: the card's offer is about the card and
     // outranks one about whichever face happens to be up.

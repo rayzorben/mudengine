@@ -1,6 +1,7 @@
 /**
- * The Map card's finder: a start, a destination and the locate button, and
- * under them the pager through the route's legs.
+ * The Map card's finder: a start and a destination, drawn while the card's
+ * search glyph has them out, and under them the pager through the route's
+ * legs, drawn whenever there is a route.
  *
  * Picking a destination alone moves the map to it; with a start (the
  * character's room when none is picked) the route between them is planned
@@ -23,8 +24,8 @@ export interface MapRouteFinderProps {
   search(query: string): Promise<WorldRoom[]>;
   /** Whether the character's room is known, so the start may be left empty. */
   placed: boolean;
-  /** Back to the character's room; null while it is not known. */
-  onLocate: (() => void) | null;
+  /** Whether the two fields are out, from the search glyph in the action column. */
+  finding: boolean;
   onDone?: () => void;
 }
 
@@ -92,47 +93,41 @@ function LegPager({ preview }: { preview: RoutePreview }) {
   );
 }
 
-function MapRouteFinder({ preview, search, placed, onLocate, onDone }: MapRouteFinderProps) {
+function MapRouteFinder({ preview, search, placed, finding, onDone }: MapRouteFinderProps) {
+  const note = preview.planning ? (
+    <div className="map-finder-note quiet">{t('cards.map.preview.planning')}</div>
+  ) : preview.refused !== null ? (
+    <div className="map-finder-note route-refused">{preview.refused}</div>
+  ) : preview.legs.length > 0 ? (
+    <LegPager preview={preview} />
+  ) : null;
+  if (!finding && note === null) return null;
   return (
     <div className="map-finder">
-      <div className="map-finder-fields">
-        <RoomField
-          label={t('cards.map.finder.fromAria')}
-          onDone={onDone}
-          onPick={preview.pickFrom}
-          picked={preview.from}
-          placeholder={placed ? t('cards.map.finder.fromHere') : t('cards.map.finder.fromUnknown')}
-          search={search}
-        />
-        <RoomField
-          label={t('cards.map.finder.toAria')}
-          onDone={onDone}
-          onPick={preview.pickTo}
-          picked={preview.to}
-          placeholder={t('cards.map.finder.toPlaceholder')}
-          search={search}
-        />
-        <button
-          aria-label={t('cards.map.finder.locate')}
-          className="quiet builder-key"
-          disabled={onLocate === null}
-          onClick={onLocate ?? undefined}
-          onMouseDown={keepFocus}
-          title={
-            onLocate === null ? t('cards.map.roomUnknownTooltip') : t('cards.map.finder.locate')
-          }
-          type="button"
-        >
-          <Icon name="crosshair" />
-        </button>
-      </div>
-      {preview.planning ? (
-        <div className="map-finder-note quiet">{t('cards.map.preview.planning')}</div>
-      ) : preview.refused !== null ? (
-        <div className="map-finder-note route-refused">{preview.refused}</div>
-      ) : (
-        <LegPager preview={preview} />
+      {finding && (
+        <div className="map-finder-fields">
+          <RoomField
+            label={t('cards.map.finder.fromAria')}
+            onDone={onDone}
+            onPick={preview.pickFrom}
+            picked={preview.from}
+            placeholder={
+              placed ? t('cards.map.finder.fromHere') : t('cards.map.finder.fromUnknown')
+            }
+            search={search}
+          />
+          <RoomField
+            autoFocus
+            label={t('cards.map.finder.toAria')}
+            onDone={onDone}
+            onPick={preview.pickTo}
+            picked={preview.to}
+            placeholder={t('cards.map.finder.toPlaceholder')}
+            search={search}
+          />
+        </div>
       )}
+      {note}
     </div>
   );
 }
