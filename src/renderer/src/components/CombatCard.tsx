@@ -9,6 +9,7 @@ import type { RoomVerdict } from '@shared/verdict';
 import { woundBandFor } from '@shared/wounds';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
+import { percent } from '../lib/outlook';
 import { isKnownPlayer, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { levelWord } from '../lib/vitals';
@@ -216,7 +217,7 @@ function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | nul
         : survival.level === 'risky'
           ? 'caution'
           : 'critical';
-  const percent = survival === null ? 0 : Math.round(survival.survives * 100);
+  const survives = survival === null ? null : percent(survival.survives);
   return (
     <div className="combat-survival">
       <div
@@ -228,19 +229,19 @@ function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | nul
             : t('cards.combat.survival.trials', { count: survival.trials })
         }
       >
-        <div className="fill" style={survival === null ? undefined : { width: `${percent}%` }} />
+        <div className="fill" style={survives === null ? undefined : { width: `${survives}%` }} />
         {/* A figure and a word, like every meter: a sentence in a bar wraps
             when the chrome font is turned up. The sentence is the hint's. */}
         <span className="meter-label">
-          {survival === null ? '—' : t('cards.combat.survival.figure', { percent })}
+          {survives === null ? '—' : t('cards.combat.survival.figure', { percent: survives })}
           {survival !== null && <span className="meter-state">{levelWord(level)}</span>}
         </span>
       </div>
       <span className="hint">
-        {survival === null
+        {survival === null || survives === null
           ? t('cards.combat.survival.unknown')
           : [
-              t('cards.combat.survival.walkOut', { percent }),
+              t('cards.combat.survival.walkOut', { percent: survives }),
               survival.hpLeft === null
                 ? t('cards.combat.survival.roundsOnly', {
                     rounds: Math.round(survival.rounds.value)

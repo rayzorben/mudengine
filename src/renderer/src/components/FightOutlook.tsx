@@ -3,13 +3,15 @@ import { Fragment } from 'react';
 import type { Odds } from '@shared/survival';
 import type { RoomVerdict } from '@shared/verdict';
 import { t } from '../lib/i18n';
+import { horizonsShown, percent } from '../lib/outlook';
 
 /**
  * How the room's fight goes, read part way (todo 03): at each of the rounds
  * the run was read at, the share of fights the character is still alive in,
  * the share already won, and the health lost by then, on average and at
  * most; the worst single round; and each monster fought on its own, out of
- * the odds book. Beneath the survival meter, which is the fight's end.
+ * the odds book. The rounds stop at the first that reads 100% won. Beneath
+ * the survival meter, which is the fight's end.
  */
 export default function FightOutlook({ verdict }: { verdict: RoomVerdict }) {
   const survival = verdict.survival;
@@ -19,22 +21,23 @@ export default function FightOutlook({ verdict }: { verdict: RoomVerdict }) {
   if (survival === null && alone.length === 0) return null;
   return (
     <dl className="readout combat-outlook">
-      {survival?.horizons.map((at) => (
-        <Fragment key={at.rounds}>
-          <dt>{t('cards.combat.outlook.byRound', { rounds: at.rounds })}</dt>
-          <dd>
-            {t('cards.combat.outlook.standing', {
-              standing: Math.round(at.standing * 100),
-              won: Math.round(at.won * 100)
-            })}
-            {' · '}
-            {t('cards.combat.outlook.lost', {
-              mean: Math.round(at.lost.mean),
-              most: at.lost.most
-            })}
-          </dd>
-        </Fragment>
-      ))}
+      {survival !== null &&
+        horizonsShown(survival.horizons).map((at) => (
+          <Fragment key={at.rounds}>
+            <dt>{t('cards.combat.outlook.byRound', { rounds: at.rounds })}</dt>
+            <dd>
+              {t('cards.combat.outlook.standing', {
+                standing: percent(at.standing),
+                won: percent(at.won)
+              })}
+              {' · '}
+              {t('cards.combat.outlook.lost', {
+                mean: Math.round(at.lost.mean),
+                most: at.lost.most
+              })}
+            </dd>
+          </Fragment>
+        ))}
       {survival !== null && (
         <>
           <dt>{t('cards.combat.outlook.worstLabel')}</dt>
@@ -57,7 +60,7 @@ function aloneFigure(name: string, odds: Odds): string {
     case 'run':
       return t('cards.combat.outlook.alone', {
         name,
-        percent: Math.round(odds.survival.survives * 100)
+        percent: percent(odds.survival.survives)
       });
     case 'pending':
       return t('cards.combat.outlook.alonePending', { name });
