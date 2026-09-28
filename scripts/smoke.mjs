@@ -7516,16 +7516,25 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * Every card's controls live down its right edge: close at the top, the
    * settings gear directly under it, the pin where the card has one, then
    * copy and whatever the card itself offers. The button is enough here: the
-   * clipboard is written in main.
+   * clipboard is written in main. The Map card is a picture and has no copy
+   * (the user's ask, 2026-09-27).
    */
   check(
     await evaluate(
       `[...document.querySelectorAll('.rail .card')].every((c) =>
         !!c.querySelector('.card-side .card-close') &&
         !!c.querySelector('.card-side .card-action[data-action="settings"]') &&
-        !!c.querySelector('.card-side .card-action[data-action="copy"]'))`
+        (c.classList.contains('map-card') ||
+          !!c.querySelector('.card-side .card-action[data-action="copy"]')))`
     ),
     'every card on the rail has close, settings and copy in its action column'
+  );
+  check(
+    await evaluate(
+      `!!document.querySelector('.rail .map-card') &&
+        !document.querySelector('.rail .map-card .card-action[data-action="copy"]')`
+    ),
+    'the Map card has no copy in its action column'
   );
 
   /*

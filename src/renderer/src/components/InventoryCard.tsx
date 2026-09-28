@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import BentoCard, { type CardAction, type CardChrome } from './BentoCard';
 import Icon from './Icon';
+import { findAction } from './findAction';
 import CardTable, { type Column, type Facet } from './CardTable';
 import EntityNumber, { entityNumberText } from './EntityNumber';
 import { keepFocus } from '../lib/focus';
@@ -162,7 +163,9 @@ function InventoryCard({
    * somebody reaches for them; an empty pack is a card that is saying so in
    * words above them.
    */
-  const actions: CardAction[] = [findAction(finding, setFinding, chrome.returnFocus)];
+  const actions: CardAction[] = [
+    findAction(t('cards.inventory.findPlaceholder'), finding, setFinding, chrome.returnFocus)
+  ];
   if (gear && items.length > 0) {
     actions.push({
       id: 'equip-all',
@@ -242,38 +245,6 @@ function packCopyText(character: CharacterState): string {
           : item.name
     )
   ].join('\n');
-}
-
-/**
- * The search glyph for a pack, and what it does.
- *
- * The Talk card's arrangement, and now the pack's: a find field standing open
- * above a listing spends a whole row on a question nobody is asking, and this
- * listing is the one whose rows are worth the most — a pack is read to find one
- * thing in it. Behind the glyph the row appears when it is asked for, takes the
- * caret, and clears itself on the way out.
- *
- * Written once because two cards draw the same pack: the Inventory card in its
- * own action column, the Self card on its PACK face's. Two copies would drift.
- */
-export function findAction(
-  finding: boolean,
-  setFinding: (open: boolean) => void,
-  returnFocus?: () => void
-): CardAction {
-  return {
-    id: 'find',
-    label: t('cards.inventory.findPlaceholder'),
-    icon: 'search',
-    run: () => {
-      if (!finding) {
-        setFinding(true);
-        return;
-      }
-      setFinding(false);
-      returnFocus?.();
-    }
-  };
 }
 
 export interface InventoryBodyProps {

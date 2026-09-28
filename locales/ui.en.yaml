@@ -1885,13 +1885,15 @@ cards:
     badgeFoldedCount: '{roomCount} · {droppedCount} dropped'
     badgeRoomCount: '{roomCount} rooms'
     badgeTooltipDropped: Rooms the grid could not place
-    emptyNoLocation: Room unknown. Find a room above to look at the map.
+    emptyNoLocation: Room unknown. Find a room to look at the map.
     emptyNoWorldData: The world data has nothing for here.
     roomUnknown: Room unknown
     roomUnknownTooltip: The client does not know which room this character is in.
-    # The finder over the map: a start, a destination, and the button back
-    # to the character's room.
+    # The finder over the map: a start and a destination, opened from the
+    # search glyph in the action column beside the button back to the
+    # character's room.
     finder:
+      open: Find a room or route
       fromAria: Route from
       fromHere: 'From: your room'
       fromUnknown: 'From: find a room'

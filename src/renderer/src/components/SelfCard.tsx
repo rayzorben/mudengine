@@ -25,7 +25,8 @@ import { memo, useState, type CSSProperties } from 'react';
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
-import { InventoryBody, findAction, type InventoryBodyProps } from './InventoryCard';
+import { InventoryBody, type InventoryBodyProps } from './InventoryCard';
+import { findAction } from './findAction';
 import type { CharacterState } from '@shared/character';
 import type { SupplyItem } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
@@ -432,7 +433,9 @@ function SelfCard({
        * sheet and a supply list, and a find glyph over either would be a
        * control that can only ever do nothing. See `CardTab.actions`.
        */
-      actions: [findAction(finding, setFinding, chrome.returnFocus)],
+      actions: [
+        findAction(t('cards.inventory.findPlaceholder'), finding, setFinding, chrome.returnFocus)
+      ],
       copyText: () => character.inventory.items.map((item) => item.name).join('\n')
     },
     {

@@ -20,9 +20,19 @@ export interface RoomFieldProps {
   search(query: string): Promise<WorldRoom[]>;
   /** Where the caret goes once a room is picked or the field is left. */
   onDone?: () => void;
+  /** Take the caret when drawn, for a field opened by a press elsewhere. */
+  autoFocus?: boolean;
 }
 
-function RoomField({ label, placeholder, picked, onPick, search, onDone }: RoomFieldProps) {
+function RoomField({
+  label,
+  placeholder,
+  picked,
+  onPick,
+  search,
+  onDone,
+  autoFocus
+}: RoomFieldProps) {
   const [query, setQuery] = useState('');
   const { matches, failed } = useRoomSearch(search, query);
   const choose = (room: WorldRoom): void => {
@@ -52,6 +62,7 @@ function RoomField({ label, placeholder, picked, onPick, search, onDone }: RoomF
       >
         <input
           aria-label={label}
+          autoFocus={autoFocus}
           onChange={(event) => {
             if (picked !== null) onPick(null);
             setQuery(event.target.value);
