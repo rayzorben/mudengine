@@ -29,7 +29,7 @@ import path from 'node:path';
 
 import { slug, stamp } from './filename';
 import { errorMessage } from '../../shared/values';
-import type { ConnectionTarget, StreamLine } from '../../shared/types';
+import type { ConnectionTarget, LostEnter, StreamLine } from '../../shared/types';
 
 export interface SessionCaptureOptions {
   directory: string;
@@ -137,6 +137,14 @@ export class SessionCapture {
   /** A command the client sent, whoever decided to send it. */
   out(command: string, source: 'user' | 'automation' = 'user'): void {
     this.record({ k: 'out', s: command, src: source });
+  }
+
+  /**
+   * A plain Enter the window saw and the console never sent (todo 00), timed
+   * on the same clock as the letters echoed before it.
+   */
+  lostEnter(report: LostEnter): void {
+    this.record({ k: 'lost-enter', ...report });
   }
 
   /**

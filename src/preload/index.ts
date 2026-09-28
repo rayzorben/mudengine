@@ -40,6 +40,7 @@ import type { QuestRunProgress, QuestWatched, RoomAsk } from '../shared/quests';
 import type {
   ConnectionState,
   ConnectionTarget,
+  LostEnter,
   StreamChunk,
   StreamLine,
   TelnetEvent,
@@ -61,6 +62,8 @@ const api: IpcApi = {
   macro: (session: SessionId, line: string) => ipcRenderer.send(Send.macro, session, line),
   dropMacro: (session: SessionId) => ipcRenderer.send(Send.dropMacro, session),
   resize: (session: SessionId, size: TerminalSize) => ipcRenderer.send(Send.resize, session, size),
+  lostEnter: (session: SessionId, report: LostEnter) =>
+    ipcRenderer.send(Send.lostEnter, session, report),
   diagnostics: (on: boolean) => ipcRenderer.send(Send.diagnostics, on),
   debugFeed: (on: boolean) => ipcRenderer.send(Send.debugFeed, on),
 
