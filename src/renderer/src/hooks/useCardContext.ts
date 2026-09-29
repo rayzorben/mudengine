@@ -76,6 +76,8 @@ export interface CardContext {
   searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
   /** The Map card's preview route between two rooms, priced for this character. */
   routeBetween(from: RoomId, to: RoomId): ReturnType<IpcApi['routeBetween']>;
+  /** This character's walk under way, in the Map card's pages. */
+  walkPages(): ReturnType<IpcApi['walkPages']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   /** Null for a character not shown: the route panel is the shown one's. */
   chooseOnMap: ((map: number, room: number) => void) | null;
@@ -198,6 +200,8 @@ export interface AddressedActions {
   searchRooms(query: string): ReturnType<IpcApi['searchRooms']>;
   /** The Map card's preview route between two rooms, priced for this character. */
   routeBetween(from: RoomId, to: RoomId): ReturnType<IpcApi['routeBetween']>;
+  /** This character's walk under way, in the Map card's pages. */
+  walkPages(): ReturnType<IpcApi['walkPages']>;
   lookupName(query: string): ReturnType<IpcApi['lookup']>;
   loadQuests(): ReturnType<IpcApi['questBook']>;
   loadErrand(block: number): ReturnType<IpcApi['questErrand']>;
@@ -233,6 +237,7 @@ export type CardApi = Pick<
   | 'localMap'
   | 'searchRooms'
   | 'routeBetween'
+  | 'walkPages'
   | 'lookup'
   | 'questBook'
   | 'questErrand'
@@ -407,6 +412,7 @@ export function useCardContext({
         loadMap: (map, room, radius) => api.localMap(sid, map, room, radius),
         searchRooms: (query) => api.searchRooms(sid, query),
         routeBetween: (from, to) => api.routeBetween(sid, from, to),
+        walkPages: () => api.walkPages(sid),
         lookupName: (query) => api.lookup(sid, query),
         loadQuests: () => api.questBook(sid),
         loadErrand: (block) => api.questErrand(sid, block),
@@ -526,6 +532,7 @@ export function useCardContext({
         loadMap: shown ? loadMap : bound.loadMap,
         searchRooms: bound.searchRooms,
         routeBetween: bound.routeBetween,
+        walkPages: bound.walkPages,
         lookupName: shown ? lookupName : bound.lookupName,
         chooseOnMap: shown ? chooseOnMap : null,
         peekRoom: shown ? peekRoom : null,

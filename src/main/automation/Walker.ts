@@ -358,19 +358,19 @@ export class Walker implements SessionModule {
     return { to: last.to, name: last.name, left: this.route.steps.length - this.index };
   }
 
+  /**
+   * The steps still to walk, empty unless walking. The first one's `from` is
+   * where the character stands, since the index only advances on a confirmed
+   * step. The map draws the line and pages the walk from it.
+   */
+  get remaining(): RouteStep[] {
+    return this.status === 'walking' ? (this.route?.steps.slice(this.index) ?? []) : [];
+  }
+
   get progress(): WalkProgress {
     const step = this.route?.steps[this.index] ?? null;
     const last = this.route?.steps.at(-1) ?? null;
-    /*
-     * The rooms still to travel, for the map to draw the route with.
-     *
-     * `from` of the step being attempted is where the character is standing —
-     * the index only advances on a *confirmed* step — so it is the anchor the
-     * line is drawn out of, and every `to` after it is a room not yet entered.
-     * Sliced from `index`, which is what takes a room off the drawing as it is
-     * walked rather than the renderer having to work out which are behind.
-     */
-    const ahead = this.status === 'walking' ? (this.route?.steps.slice(this.index) ?? []) : [];
+    const ahead = this.remaining;
     return {
       status: this.status,
       // An idle walker has walked nothing to be wrong about, and a stopped leg

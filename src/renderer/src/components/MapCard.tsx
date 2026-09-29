@@ -6,6 +6,7 @@ import { findAction } from './findAction';
 import MapView from './MapView';
 import RouteSheetView from './RouteSheetView';
 import { useRoutePreview } from '../hooks/useRoutePreview';
+import { useWalkPages } from '../hooks/useWalkPages';
 import { t } from '../lib/i18n';
 import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
@@ -13,7 +14,7 @@ import { DEFAULT_MAP_DENSITY, EMPTY_MAP, roomPixelsFor, type LocalMap } from '@s
 import type { CharacterState } from '@shared/character';
 import type { LoopProgress } from '@shared/loops';
 import type { WalkProgress } from '@shared/walk';
-import type { RoutePages } from '@shared/routeLegs';
+import type { RoutePages, WalkPages } from '@shared/routeLegs';
 import { roomId, type RoomId, type WorldRoom } from '@shared/world';
 import { roomsWithFinds, type Find } from '@shared/finds';
 
@@ -32,6 +33,8 @@ export interface MapCardProps extends CardChrome {
   search(query: string): Promise<WorldRoom[]>;
   /** The preview route between two rooms. See `useRoutePreview`. */
   routeBetween(from: RoomId, to: RoomId): Promise<RoutePages>;
+  /** The route this character is walking, paged. See `useWalkPages`. */
+  walkPages(): Promise<WalkPages>;
   /**
    * Where this character is headed, so the map can draw it.
    *
@@ -98,6 +101,7 @@ function MapCard({
   routeBetween,
   search,
   walk,
+  walkPages,
   ...chrome
 }: MapCardProps) {
   const [map, setMap] = useState<LocalMap>(EMPTY_MAP);
@@ -178,20 +182,27 @@ function MapCard({
    * The route preview, and where it puts the eye: the leg on screen, else
    * the room picked in either field, else the character. The preview has a
    * zoom of its own, fitted to each leg, so paging through a route never
-   * writes the card's density.
+   * writes the card's density. With no preview, a page of the walk turned to
+   * ahead of the character is drawn the same way; the page being walked is
+   * the live map.
    */
   const preview = useRoutePreview(routeBetween, here);
-  const leg = preview.legs[preview.leg] ?? null;
+  const walking = useWalkPages(walkPages, walk);
+  const ahead =
+    preview.to === null && walking.shown !== null ? walking.legs[walking.shown] : undefined;
+  const leg = preview.legs[preview.leg] ?? ahead ?? null;
   const [legZoom, setLegZoom] = useState(zoom);
   const fit = useMemo(() => (leg === null ? null : new Set(leg.rooms)), [leg]);
   const legEnd = useMemo(() => (leg === null ? [] : leg.rooms.slice(-1)), [leg]);
   const centre = leg?.rooms[0] ?? preview.to?.id ?? preview.from?.id ?? here;
   const [home, setHome] = useState(0);
   const { clear } = preview;
+  const { follow } = walking;
   const locate = useCallback((): void => {
     clear();
+    follow();
     setHome((count) => count + 1);
-  }, [clear]);
+  }, [clear, follow]);
   /*
    * The start and destination fields stay folded until the search glyph asks
    * for them, so the map keeps the row. A route already planned keeps its
@@ -287,6 +298,8 @@ function MapCard({
         placed={here !== null}
         preview={preview}
         search={search}
+        walk={walking}
+        walkingTo={walk.destination ?? ''}
       />
       {leg?.sheet ? (
         <RouteSheetView

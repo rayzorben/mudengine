@@ -134,7 +134,13 @@ import {
   type ShopPlace
 } from '../shared/world';
 import { LoopDraftCache } from './world/loopDraft';
-import { pagesOf, type RoutePages } from '../shared/routeLegs';
+import {
+  NO_WALK_PAGES,
+  pagesOf,
+  type RoutePage,
+  type RoutePages,
+  type WalkPages
+} from '../shared/routeLegs';
 import { errorMessage } from '../shared/values';
 import { formatDebugReport } from '../shared/debug';
 import { fileSlug } from '../shared/files';
@@ -1625,6 +1631,26 @@ function registerIpc(): void {
    */
   const drafts = new Map<SessionId, LoopDraftCache>();
 
+  /*
+   * A route in the Map card's pages, cut by the widest map the card can
+   * fetch, so every page draws whole.
+   */
+  const pagesFor = (
+    session: SessionId,
+    world: WorldGraph,
+    route: Route,
+    start: RoomId
+  ): RoutePage[] => {
+    const radius = tuning().view.mapRadiusMax;
+    const draw = (centre: RoomId): LocalMap =>
+      localMap(world, centre, radius, lairLevelOf(session));
+    const packing = {
+      stretches: tuning().world.routePageStretches,
+      steps: tuning().world.routePageSteps
+    };
+    return pagesOf(route, start, draw, packing);
+  };
+
   /** A route refused before any search, in the reader's words. */
   const unrouted = (reason: string): Route => ({ steps: [], cost: 0, blocked: true, reason });
 
@@ -1666,17 +1692,24 @@ function registerIpc(): void {
         return { route: unrouted(t('app.route.invalidPayload')), legs: [] };
       }
       const route = world.route(start, goal, travellerOf(session, 'route'));
-      /* Paged by the widest map the card can fetch, so every page draws whole. */
-      const radius = tuning().view.mapRadiusMax;
-      const draw = (centre: RoomId): LocalMap =>
-        localMap(world, centre, radius, lairLevelOf(session));
-      const packing = {
-        stretches: tuning().world.routePageStretches,
-        steps: tuning().world.routePageSteps
-      };
-      return { route, legs: pagesOf(route, start, draw, packing) };
+      return { route, legs: pagesFor(session, world, route, start) };
     }
   );
+
+  /*
+   * The walk under way, paged from the room the character stands in, with the
+   * step count it was paged at so the card can follow the walk along it.
+   */
+  handle(Invoke.walkPages, (_caller, session: SessionId): WalkPages => {
+    const walker = host?.get(session)?.manager.walker;
+    const world = worldFor(session);
+    const steps = walker?.remaining ?? [];
+    const start = steps[0]?.from;
+    if (walker === undefined || !world || start === undefined) return NO_WALK_PAGES;
+    // The paging reads the steps alone; the cost was spent choosing them.
+    const route: Route = { steps, cost: 0, blocked: false };
+    return { done: walker.progress.done, legs: pagesFor(session, world, route, start) };
+  });
 
   /*
    * A loop being built by hand, planned. Parsed rather than trusted: every

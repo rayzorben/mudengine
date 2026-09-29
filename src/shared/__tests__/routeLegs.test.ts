@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { legsOf, pagesOf } from '../routeLegs';
+import { legsOf, pageWalking, pagesOf } from '../routeLegs';
 import type { LocalMap, MapCell } from '../map';
 import type { Route, RouteStep } from '../world';
 
@@ -183,5 +183,23 @@ describe('gathering short stretches onto one page', () => {
     const cells = pages[0]?.sheet?.floors[0]?.map.cells ?? [];
     expect(cells.map((cell) => cell.id)).toEqual(['1/1', '1/2']);
     expect(cells.some((cell) => cell.away !== undefined)).toBe(false);
+  });
+});
+
+describe('finding the page a walk is on', () => {
+  const down = step('12/695', '12/900', { direction: 'd', command: 'd' });
+  const legs = legsOf(
+    route([step('12/694', '12/695'), down, step('12/900', '12/901'), step('12/901', '12/902')]),
+    '12/694'
+  );
+
+  it('counts the jump off a page as the last step on it', () => {
+    expect([0, 1, 2, 3, 4].map((walked) => pageWalking(legs, walked))).toEqual([0, 0, 1, 1, 1]);
+  });
+
+  it('answers null for a count outside the pages', () => {
+    expect(pageWalking(legs, 5)).toBeNull();
+    expect(pageWalking(legs, -1)).toBeNull();
+    expect(pageWalking([], 0)).toBeNull();
   });
 });
