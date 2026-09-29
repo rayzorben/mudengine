@@ -2832,12 +2832,45 @@ describe('the commands a room named this takes', () => {
     const graph = withRooms([
       { m: 1, r: 1, n: 'Sewer Grate', x: { d: { m: 1, r: 2, i: 'Text: go manhole, go man' } } }
     ]);
-    expect(graph.exitCommandsNamed('Sewer Grate')).toEqual(['go manhole']);
+    expect(graph.roomCommandsNamed('Sewer Grate')).toEqual(['go manhole']);
+  });
+
+  /*
+   * Paradigm 12/1075 has one exit, `sw`, and the way down is in its text block
+   * alone; reading the exits alone left it with no button. The `Text:` exit
+   * and the lever are added here to fix the order: exits, then the block.
+   */
+  it('answers with the words the room’s text block takes, after its exits', () => {
+    const graph = withRooms([
+      {
+        m: 12,
+        r: 1075,
+        n: 'Scorching Desert, Sinkhole',
+        x: { sw: { m: 12, r: 687 }, d: { m: 12, r: 9, i: 'Text: go crack' } },
+        cmd: [
+          { say: ['dive sinkhole', 'jump sinkhole', 'go sinkhole'], to: '12/2224' },
+          { say: ['pull lever'], opens: { room: '12/1075', direction: 'e' } }
+        ]
+      }
+    ]);
+    expect(graph.roomCommandsNamed('Scorching Desert, Sinkhole')).toEqual([
+      'go crack',
+      'dive sinkhole',
+      'pull lever'
+    ]);
+  });
+
+  it('refuses a name whose rooms’ text blocks disagree', () => {
+    const graph = withRooms([
+      { m: 1, r: 1, n: 'Oasis', cmd: [{ say: ['dive pool'] }] },
+      { m: 1, r: 2, n: 'Oasis' }
+    ]);
+    expect(graph.roomCommandsNamed('Oasis')).toBeUndefined();
   });
 
   it('says nothing for a room whose exits carry no command', () => {
     const graph = withRooms([{ m: 1, r: 1, n: 'Town Square', x: { n: { m: 1, r: 2 } } }]);
-    expect(graph.exitCommandsNamed('Town Square')).toBeUndefined();
+    expect(graph.roomCommandsNamed('Town Square')).toBeUndefined();
   });
 
   it('refuses a name whose rooms disagree', () => {
@@ -2845,7 +2878,7 @@ describe('the commands a room named this takes', () => {
       { m: 1, r: 1, n: 'Town Gates', x: { d: { m: 1, r: 3, i: 'Text: go manhole' } } },
       { m: 1, r: 2, n: 'Town Gates', x: { d: { m: 1, r: 4, i: 'Text: go hatch' } } }
     ]);
-    expect(graph.exitCommandsNamed('Town Gates')).toBeUndefined();
+    expect(graph.roomCommandsNamed('Town Gates')).toBeUndefined();
   });
 
   /*
@@ -2857,11 +2890,11 @@ describe('the commands a room named this takes', () => {
       { m: 1, r: 1, n: 'Sewer Grate', x: { d: { m: 1, r: 3, i: 'Text: go manhole' } } },
       { m: 1, r: 2, n: 'Sewer Grate', x: { d: { m: 1, r: 4, i: 'Text: go manhole' } } }
     ]);
-    expect(graph.exitCommandsNamed('Sewer Grate')).toEqual(['go manhole']);
+    expect(graph.roomCommandsNamed('Sewer Grate')).toEqual(['go manhole']);
   });
 
   it('says nothing about a room the realm does not have', () => {
-    expect(withRooms([]).exitCommandsNamed('Nowhere')).toBeUndefined();
+    expect(withRooms([]).roomCommandsNamed('Nowhere')).toBeUndefined();
   });
 });
 

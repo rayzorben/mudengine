@@ -14,7 +14,8 @@
  * therefore comes from one of exactly two authorities:
  *
  * - **the realm's own data**, for an exit whose instruction names the command
- *   (`Text: go manhole, go man`); or
+ *   (`Text: go manhole, go man`) or a word the room's text block answers
+ *   (`dive sinkhole`); or
  * - **the server's own command table** (docs/greatermud/commands.md), for the
  *   verbs a kind of shop takes.
  *
@@ -45,7 +46,7 @@
  *
  * ## An amount is not a thing a button may carry
  *
- * The exits above are safe to compose here because the realm's own text does
+ * The room commands above are safe to compose here because the realm's own text does
  * not go stale between the line being printed and the button being pressed. A
  * *figure* does, and `Deposit All` used to carry one: `['i', 'deposit 192600',
  * 'bank']`, composed the moment the room's name printed, with a note saying
@@ -65,26 +66,25 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 
 /**
- * The commands a room's own exits take, as the realm names them.
+ * The commands a room takes, as the realm names them.
  *
- * `Text:` exits are not walked by typing a direction — `go manhole` is the
- * whole of how that exit works — so the button is the only way through one that
- * does not require knowing the realm data by heart.
+ * Neither a `Text:` exit (`go manhole`) nor a text-block word (`dive
+ * sinkhole`) is walked by typing a direction, so the button is the only way
+ * to use one without knowing the realm data by heart.
  *
- * The list is `WorldGraph.exitCommandsNamed`'s, which is already one command
- * per exit (the realm lists the canonical phrasing first and its synonyms
- * after — `Text: go manhole, go man` — and offering both would be two buttons
- * that do one thing) and already refuses a name several rooms share.
+ * The list is `WorldGraph.roomCommandsNamed`'s, which is already one command
+ * per way (the first phrase the realm lists) and already refuses a name
+ * several rooms disagree on.
  *
  * **The label is the command, uncased.** These are the realm's words, not
  * ours, and the label doubles as the thing a player can retype; `Go Manhole`
  * would be a button whose face and payload disagree.
  */
-function exitActions(commands: readonly string[]): TerminalAction[] {
+function roomCommandActions(commands: readonly string[]): TerminalAction[] {
   return commands.map((command) => ({
     label: command,
     commands: [command],
-    title: t('terminal.actions.exitTitle', { command })
+    title: t('terminal.actions.commandTitle', { command })
   }));
 }
 
@@ -142,15 +142,15 @@ function bankActions(wealth: number | null, bankBalance: number | null): Termina
 
 export function actionsFor(
   kind: ShopKind | undefined,
-  exits: readonly string[],
+  commands: readonly string[],
   wealth: number | null,
   /** What `bank` last said this vault holds, or null while it has not been asked. */
   bankBalance: number | null = null
 ): TerminalAction[] {
   const actions = [
     ...(kind === 'bank' ? bankActions(wealth, bankBalance) : []),
-    // A shop is why somebody is standing here; an exit is how they leave.
-    ...exitActions(exits)
+    // A shop is why somebody is standing here; then what else the room takes.
+    ...roomCommandActions(commands)
   ];
   return actions.slice(0, tuning().session.roomActions);
 }

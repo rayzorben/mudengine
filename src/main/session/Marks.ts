@@ -17,7 +17,7 @@ import type { TerminalMark } from '../../shared/types';
 /** The purse, the vaults and whether the next room is a peek; the realm's places and room commands. */
 export interface MarksParts {
   readonly tracker: Pick<CharacterTracker, 'current' | 'nextRoomIsPeek'>;
-  readonly world: Pick<WorldGraph, 'placeNamed' | 'exitCommandsNamed'> | undefined;
+  readonly world: Pick<WorldGraph, 'placeNamed' | 'roomCommandsNamed'> | undefined;
 }
 
 /** What the session that built this answers for it. */
@@ -45,7 +45,7 @@ export class Marks {
    * Asked on the *name* line, which is before `Obvious exits:` has completed
    * the room and resolved which of the thirteen Town Gates this is — so both
    * halves are answered from the name and both refuse a name whose rooms
-   * disagree (`placeNamed`, `exitCommandsNamed`). Guessing here would put a
+   * disagree (`placeNamed`, `roomCommandsNamed`). Guessing here would put a
    * button on screen that sends a command the room does not take, and an
    * unrecognised command on this server is *said out loud* to everybody
    * standing in it.
@@ -85,7 +85,7 @@ export class Marks {
       ? []
       : actionsFor(
           kind,
-          this.world?.exitCommandsNamed(name) ?? [],
+          this.world?.roomCommandsNamed(name) ?? [],
           this.tracker.current.inventory.wealth,
           vault?.copper ?? null
         );

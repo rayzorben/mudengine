@@ -1643,10 +1643,11 @@ const TUNING_DEFAULTS = {
      */
     automationPublishMs: 250,
     /**
-     * Actions offered on the room line the console just printed. Capped
-     * because a row of eight buttons pushes the room's name off the screen.
+     * Actions offered on the room line the console just printed. Enough for
+     * every room either realm has: 9 commands at the most (Ancient Darkwood
+     * Tree, Small Statue), and a bank's two buttons beside them.
      */
-    roomActions: 4,
+    roomActions: 12,
     /**
      * Cap on the half-typed line the client keeps a copy of. Past this it is
      * not a command anybody is typing, and dropping it beats growing for ever.
