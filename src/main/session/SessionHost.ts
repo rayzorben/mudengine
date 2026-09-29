@@ -21,6 +21,7 @@
  * immutable afterwards, and the per-session state pathfinding needs is passed
  * per query rather than held per graph.
  */
+import { t } from '../app/i18n';
 import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
@@ -43,7 +44,7 @@ import {
 } from '../../shared/ipc';
 import type { AppConfig, AutomationSwitch } from '../../shared/config';
 import type { RealmWords } from '../../shared/profiles';
-import type { ConnectionState, ConnectionTarget } from '../../shared/types';
+import { sameTarget, type ConnectionState, type ConnectionTarget } from '../../shared/types';
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
@@ -533,7 +534,8 @@ export class SessionHost {
   /**
    * Dials a session, opening its log and capture first.
    *
-   * Only the in-flight phases are refused. Connecting while *connected* is a
+   * The in-flight phases are refused, and so is the realm the character is
+   * already playing in. Connecting elsewhere while *connected* is a
    * legitimate way to switch servers, and the palette offers it; refusing a
    * second attempt while one is still in flight is what stops a call arriving
    * mid-handshake from killing a connection that was seconds from succeeding.
@@ -547,6 +549,20 @@ export class SessionHost {
      * the player just made.
      */
     slot.reconnect.cancel();
+    /*
+     * The same realm while already playing there is refused: the dial starts
+     * by hanging up. A tab that had not caught up showed a playing character
+     * as offline, and its Connect logged the character in again (2026-09-28).
+     * A different address still switches servers.
+     */
+    const state = slot.manager.state;
+    if (state.phase === 'connected' && state.target !== null && sameTarget(state.target, target)) {
+      this.options.notice({
+        session: id,
+        message: t('notices.session.alreadyConnected', { host: target.host, port: target.port })
+      });
+      return state;
+    }
     return this.dial(slot, target);
   }
 

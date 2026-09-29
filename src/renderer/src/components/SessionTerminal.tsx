@@ -5,6 +5,7 @@ import TerminalView, { type TerminalHandle } from './TerminalView';
 import { errorMessage } from '@shared/values';
 import { t } from '../lib/i18n';
 import { restores } from '../lib/restore';
+import { useBackscrollPages } from '../hooks/useBackscrollPages';
 import type { AttachSnapshot, SessionId } from '@shared/ipc';
 import type { TerminalConfig } from '@shared/config';
 import type { QuestRunProgress } from '@shared/quests';
@@ -119,6 +120,8 @@ function SessionTerminal({
   const [ready, setReady] = useState(false);
   const shownRef = useRef(shown);
   shownRef.current = shown;
+  const pages = useBackscrollPages(api, session, handleRef, settings.scrollback);
+  const { attached: pageAttached } = pages;
 
   const handleReady = useCallback(
     (handle: TerminalHandle) => {
@@ -181,6 +184,7 @@ function SessionTerminal({
         if (!live) return;
         // The cards have the snapshot at once; the console waits its turn.
         onSnapshot(session, snapshot);
+        pageAttached(snapshot.backscroll.older);
         /*
          * What arrived during the round trip stays held until the backscroll
          * is queued ahead of it, and the backscroll is queued behind the
@@ -192,7 +196,7 @@ function SessionTerminal({
           for (const act of pending.current) act(handle);
           pending.current = [];
         };
-        if (snapshot.backscroll.length === 0) {
+        if (snapshot.backscroll.text.length === 0) {
           release();
           letGo();
           return;
@@ -200,7 +204,7 @@ function SessionTerminal({
         takeBack = restores.add({
           shown: () => shownRef.current,
           run: (done) => {
-            handle.restore(snapshot.backscroll, done);
+            handle.restore(snapshot.backscroll.text, done);
             release();
           }
         });
@@ -230,7 +234,7 @@ function SessionTerminal({
       attached.current = false;
       void api.detach(session);
     };
-  }, [api, session, ready, onSnapshot]);
+  }, [api, session, ready, onSnapshot, pageAttached]);
 
   const input = useCallback((data: string) => onInput(session, data), [onInput, session]);
   const resize = useCallback((size: TerminalSize) => onResize(session, size), [onResize, session]);
@@ -290,6 +294,21 @@ function SessionTerminal({
     >
       {/* Over this pane rather than docked: `mudengine-ui` › quests, *the run is a banner*. */}
       <QuestRunBanner onSettled={focusConsole} onStop={stopRun} run={run} walk={walk} />
+      {(pages.more !== null || pages.loading) && (
+        <button
+          className="jump-latest load-more"
+          disabled={pages.loading}
+          onClick={() => {
+            pages.more?.load();
+            focusConsole();
+          }}
+          type="button"
+        >
+          {pages.loading
+            ? t('terminal.loadingMore')
+            : t('terminal.loadMore', { count: (pages.more?.count ?? 0).toLocaleString() })}
+        </button>
+      )}
       <TerminalView
         fontStack={fontStack}
         index={index}
@@ -313,6 +332,8 @@ function SessionTerminal({
         // the last one it was really shown at.
         reportSize={shown}
         settings={settings}
+        scrollback={pages.hold}
+        onEdge={pages.onEdge}
       />
     </div>
   );

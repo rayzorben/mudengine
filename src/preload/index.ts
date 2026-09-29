@@ -110,6 +110,7 @@ const api: IpcApi = {
   unloadProfile: (id, force) => ipcRenderer.invoke(Invoke.unloadProfile, id, force),
   attach: (session) => ipcRenderer.invoke(Invoke.attach, session),
   detach: (session) => ipcRenderer.invoke(Invoke.detach, session),
+  backscrollPage: (session, lines) => ipcRenderer.invoke(Invoke.backscrollPage, session, lines),
   popOut: (session) => ipcRenderer.invoke(Invoke.popOut, session),
   reorderSessions: (order) => ipcRenderer.invoke(Invoke.reorderSessions, order),
   popIn: (session) => ipcRenderer.invoke(Invoke.popIn, session),

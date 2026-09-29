@@ -211,6 +211,19 @@ export interface Notice {
 }
 
 /**
+ * The newest lines of a character's backscroll, escape sequences intact and
+ * starting at a line boundary, and how many older lines main still keeps. A
+ * console holds `tuning.view.consolePageLines` and asks for more at its top.
+ */
+export interface BackscrollPage {
+  text: string;
+  older: number;
+}
+
+/** A character with nothing retained, or one main does not have. */
+export const NO_BACKSCROLL: Readonly<BackscrollPage> = { text: '', older: 0 };
+
+/**
  * Everything a window needs to start drawing a session it has just attached to.
  *
  * One call, assembled synchronously in main, because the alternative — a
@@ -223,8 +236,8 @@ export interface Notice {
  * lines quietly did not, which is the kind of gap that reads as "parsing broke".
  */
 export interface AttachSnapshot {
-  /** Retained bytes for the terminal, escape sequences intact. */
-  backscroll: string;
+  /** The newest page of the terminal's retained output. */
+  backscroll: BackscrollPage;
   /** Retained framed lines, for the diagnostics stream card. */
   lines: StreamLine[];
   state: ConnectionState;
@@ -733,6 +746,8 @@ export const Invoke = {
   attach: 'sessions:attach',
   /** This window is no longer showing that session. */
   detach: 'sessions:detach',
+  /** The newest `lines` lines of a character's backscroll: *Load more* at the console's top. */
+  backscrollPage: 'sessions:backscroll-page',
   /**
    * The rail, in the order somebody dragged it into.
    *
@@ -1248,6 +1263,7 @@ export interface IpcApi {
   /** Resolves with everything needed to draw the session from cold. */
   attach(session: SessionId): Promise<AttachSnapshot>;
   detach(session: SessionId): Promise<void>;
+  backscrollPage(session: SessionId, lines: number): Promise<BackscrollPage>;
   /** The rail's own order, remembered across restarts. See the channel. */
   reorderSessions(order: SessionId[]): Promise<void>;
   /** Each resolves to why it refused, or null. */

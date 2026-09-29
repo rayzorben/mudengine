@@ -94,9 +94,11 @@ import { claimHome, type HomeLock } from './app/homeLock';
 import type { Caller, Host } from './host/Host';
 import {
   Invoke,
+  NO_BACKSCROLL,
   Push,
   Send,
   type AttachSnapshot,
+  type BackscrollPage,
   type HomeListing,
   type Notice,
   type ProfileSummary,
@@ -2059,7 +2061,7 @@ function registerIpc(): void {
     if (slot) windows.attach(caller.windowId, session);
     const manager = slot?.manager;
     return {
-      backscroll: slot?.backscroll.text ?? '',
+      backscroll: slot?.backscroll.page(tuning().view.consolePageLines) ?? NO_BACKSCROLL,
       lines: manager?.lines ?? [],
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
@@ -2078,6 +2080,13 @@ function registerIpc(): void {
       // creates one, so it must not conjure a log for a stale id either.
       talk: slot ? talkFor(session).backlog() : []
     };
+  });
+
+  // A number off the wire: anything but a count of lines is answered with nothing.
+  handle(Invoke.backscrollPage, (_caller, session: SessionId, lines: unknown): BackscrollPage => {
+    const slot = host?.get(session);
+    if (!slot || typeof lines !== 'number' || !Number.isFinite(lines)) return NO_BACKSCROLL;
+    return slot.backscroll.page(lines);
   });
 
   handle(Invoke.detach, (caller, session: SessionId) => {

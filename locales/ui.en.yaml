@@ -625,6 +625,9 @@ notices:
       saveError: 'Could not write {fileName}: {message}. The console still works, but nothing more
         is saved for the next launch.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
+    # Connect pressed on a character already playing there, from a tab that
+    # had not caught up: dialling again would hang up on the game.
+    alreadyConnected: Already connected to {host}:{port}.
   world:
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the world database {file}…
@@ -858,6 +861,11 @@ terminal:
   fontNotFixedPitch: "{fontName} is not fixed-width ('{widest}' is wider than '{narrowest}'), so
     maps and frames will not line up."
   jumpToLatest: Jump to latest ↓
+  # At the top of a console holding tuning.view.consolePageLines: the next
+  # page back from what the client keeps (terminal.scrollback).
+  loadMore: Load {count} more lines ↑
+  loadingMore: Loading earlier lines…
+  loadMoreFailed: Could not load earlier lines ({message}).
   # The run of a quest plan, as a banner over the top of this character's
   # console (2026-09-22): the chain as a row of numbered stops with the one
   # being carried lit, the phase in a word, and what it is about after it.

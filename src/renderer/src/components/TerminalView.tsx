@@ -33,6 +33,7 @@ import { GLYPH_CELLS } from '@shared/template';
 import { sliceLines, splitMarks } from '../lib/chunks';
 import { tuning } from '../lib/tuning';
 import { silenceQueries } from '../lib/terminalQueries';
+import { edgeOf, type ScrollEdge } from '../lib/pages';
 
 /** The handle the parent uses to drive the terminal once it has mounted. */
 export interface TerminalHandle {
@@ -42,6 +43,13 @@ export interface TerminalHandle {
    * the view is at the live edge. See `lib/restore.ts`.
    */
   restore(text: string, done: () => void): void;
+  /**
+   * Replace everything held with a longer page of the same backscroll, now
+   * holding `scrollback` lines, and keep the reader on the line they were on.
+   */
+  refill(text: string, scrollback: number, done: () => void): void;
+  /** Whether lines have scrolled off the top, so older ones exist in main. */
+  atCapacity(): boolean;
   /**
    * Empty the screen and the scrollback, for a slate about to show a different
    * character. Concatenating two characters' output into one backscroll is
@@ -124,6 +132,10 @@ export interface TerminalViewProps {
   onAct?(action: TerminalActionName): void;
   /** Live presentation options from the YAML file. */
   settings: TerminalConfig;
+  /** Lines the console holds, a page of what main keeps (`lib/pages.ts`). */
+  scrollback: number;
+  /** The reader reached the oldest line held, the live edge, or left one. */
+  onEdge?(edge: ScrollEdge): void;
   /** The resolved CSS font stack for `settings.font.family`. */
   fontStack: string;
   /** The active theme's 16-colour palette and ground. */
@@ -166,6 +178,8 @@ export default function TerminalView({
   onAct,
   reportSize = true,
   settings,
+  scrollback,
+  onEdge,
   fontStack,
   palette
 }: TerminalViewProps) {
@@ -218,7 +232,7 @@ export default function TerminalView({
    * with it — so the initial values are read through a ref and every later
    * change is applied by the effect below instead.
    */
-  const initial = useRef({ settings, fontStack, palette });
+  const initial = useRef({ settings, scrollback, fontStack, palette });
 
   /**
    * The parent re-renders on every state change, but the xterm instance must be
@@ -236,7 +250,8 @@ export default function TerminalView({
     onSelectGang,
     onSelectSlot,
     onChooseRoom,
-    onAct
+    onAct,
+    onEdge
   });
   handlers.current = {
     onInput,
@@ -249,7 +264,8 @@ export default function TerminalView({
     onSelectGang,
     onSelectSlot,
     onChooseRoom,
-    onAct
+    onAct,
+    onEdge
   };
 
   /*
@@ -376,7 +392,7 @@ export default function TerminalView({
       // The virtualised backscroll requirement: xterm keeps only the viewport in
       // the DOM and the rest in a circular buffer, so 100k lines costs memory
       // proportional to content, not to rendered nodes.
-      scrollback: initial.current.settings.scrollback,
+      scrollback: initial.current.scrollback,
       fontFamily: initial.current.fontStack,
       fontSize: initial.current.settings.font.size,
       lineHeight: 1,
@@ -783,9 +799,14 @@ export default function TerminalView({
      * the viewport is already at the bottom, and the pin re-establishes itself
      * as soon as they return to the live edge.
      */
+    let edge: ScrollEdge | null = null;
     const syncPin = (): void => {
       const buffer = term.buffer.active;
-      setPinned(buffer.viewportY >= buffer.baseY);
+      const now = edgeOf(buffer.viewportY, buffer.baseY);
+      setPinned(now === 'latest');
+      if (now === edge) return;
+      edge = now;
+      handlers.current.onEdge?.(now);
     };
 
     const scrollListener = term.onScroll(syncPin);
@@ -902,6 +923,26 @@ export default function TerminalView({
           done();
         });
       },
+      refill: (text, lines, done) => {
+        // Lines above the live viewport, read when the refill reaches the
+        // front of the queue, so what arrived before it is counted.
+        let above = 0;
+        writer.settled(() => {
+          const buffer = term.buffer.active;
+          above = buffer.baseY - buffer.viewportY;
+          term.options.scrollback = lines;
+          term.reset();
+        });
+        for (const piece of sliceLines(text, tuning().restoreSliceChars)) writer.write(piece);
+        writer.settled(() => {
+          done();
+          // Said again once it is done: the edges it passed while filling were not heard.
+          edge = null;
+          term.scrollToLine(Math.max(0, term.buffer.active.baseY - above));
+          syncPin();
+        });
+      },
+      atCapacity: () => term.buffer.active.baseY >= (term.options.scrollback ?? 0),
       reset: () => writer.settled(() => term.reset()),
       notice: (message) => {
         /*
@@ -989,12 +1030,12 @@ export default function TerminalView({
 
     term.options.fontFamily = fontStack;
     term.options.fontSize = settings.font.size;
-    term.options.scrollback = settings.scrollback;
+    term.options.scrollback = scrollback;
     term.options.cursorBlink = settings.cursorBlink;
     term.options.cursorStyle = settings.cursorStyle;
 
     if (metricsChanged) fitRef.current?.fit();
-  }, [fontStack, settings]);
+  }, [fontStack, settings, scrollback]);
 
   /**
    * Repaints the grid when the theme changes.
