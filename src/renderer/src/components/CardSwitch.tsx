@@ -125,6 +125,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           load={ctx.loadMap}
           routeBetween={ctx.routeBetween}
           search={ctx.searchRooms}
+          walkPages={ctx.walkPages}
           // This character's own route and lap, drawn over its own
           // neighbourhood — a pinned float belongs to somebody else.
           loop={view.loop}

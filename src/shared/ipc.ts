@@ -17,7 +17,7 @@
 import type { AutomationSnapshot } from './automation';
 import type { Block } from './blocks';
 import type { LocalMap } from './map';
-import type { RoutePages } from './routeLegs';
+import type { RoutePages, WalkPages } from './routeLegs';
 import type { Discovery } from './memory';
 import type { Find } from './finds';
 import type { CharacterIdentity, ResetSignal } from './reset';
@@ -648,6 +648,12 @@ export const Invoke = {
    * for no alternatives.
    */
   routeBetween: 'world:route-between',
+  /**
+   * The route this character is walking, paged as the preview is from the
+   * room it stands in. The Map card's pager while walking. Empty legs when
+   * nothing is walked.
+   */
+  walkPages: 'walk:pages',
   /** Walk a planned route. Returns why it could not start, or null. */
   walkRoute: 'walk:start',
   /**
@@ -1146,6 +1152,8 @@ export interface IpcApi {
    * pages the Map card shows it in. See `Invoke.routeBetween`.
    */
   routeBetween(session: SessionId, from: RoomId, to: RoomId): Promise<RoutePages>;
+  /** The walk under way, in the preview's pages. See `Invoke.walkPages`. */
+  walkPages(session: SessionId): Promise<WalkPages>;
   /**
    * Walks the plan the panel is showing.
    *

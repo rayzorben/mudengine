@@ -103,6 +103,40 @@ export interface RoutePages {
   legs: RoutePage[];
 }
 
+/**
+ * The route being walked, paged from the room the character stood in when it
+ * was asked for. `done` is the walk's `WalkProgress.done` at that moment, so
+ * the page being walked is found by the steps taken since (`pageWalking`).
+ */
+export interface WalkPages {
+  done: number;
+  legs: RoutePage[];
+}
+
+/** No walk under way, so no pages. */
+export const NO_WALK_PAGES: Readonly<WalkPages> = Object.freeze({ done: 0, legs: [] });
+
+/** The steps a page walks: its own, and the jump off its end. */
+function stepsOn(page: RouteLeg): number {
+  return page.steps.length + (page.jump === null ? 0 : 1);
+}
+
+/**
+ * The page holding the step `walked` steps into the paged route, or null
+ * when the count falls outside the pages, which are then stale.
+ */
+export function pageWalking(pages: readonly RouteLeg[], walked: number): number | null {
+  // Behind the pages: the push has not caught up with the paging yet.
+  if (walked < 0) return null;
+  let start = 0;
+  for (const [index, page] of pages.entries()) {
+    const end = start + stepsOn(page);
+    if (walked < end || (walked === end && index === pages.length - 1)) return index;
+    start = end;
+  }
+  return null;
+}
+
 /** How many stretches may share a page, and how many flat steps they may walk between them. */
 export interface PagePacking {
   stretches: number;

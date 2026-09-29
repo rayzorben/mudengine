@@ -78,6 +78,7 @@ const api: IpcApi = {
   getCharacter: (session) => ipcRenderer.invoke(Invoke.getCharacter, session),
   routeTo: (session, map, room) => ipcRenderer.invoke(Invoke.routeTo, session, map, room),
   routeBetween: (session, from, to) => ipcRenderer.invoke(Invoke.routeBetween, session, from, to),
+  walkPages: (session) => ipcRenderer.invoke(Invoke.walkPages, session),
   walkRoute: (session, route, run) => ipcRenderer.invoke(Invoke.walkRoute, session, route, run),
   startMoving: (session, loop, confirmed) =>
     ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),
