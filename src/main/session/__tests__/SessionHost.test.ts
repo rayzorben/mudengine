@@ -202,6 +202,21 @@ describe('SessionHost', () => {
     expect(dialledRealms).toEqual([where]);
   });
 
+  /*
+   * A tab that had not caught up showed a playing character as offline, and
+   * its Connect hung up on the game and logged in again (2026-09-28).
+   */
+  it('refuses to dial a character already connected to the same realm, and says so', async () => {
+    await host!.connect('thorn', target());
+    await until(() => host!.get('thorn')!.manager.state.phase === 'connected');
+
+    const state = await host!.connect('thorn', target());
+    expect(state.phase).toBe('connected');
+    expect(notices.some((notice) => notice.session === 'thorn')).toBe(true);
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]!.destroyed).toBe(false);
+  });
+
   it('sends a keystroke to one socket only', async () => {
     await host!.connect('thorn', target());
     await host!.connect('mara', target());

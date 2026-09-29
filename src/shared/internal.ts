@@ -2442,6 +2442,14 @@ const TUNING_DEFAULTS = {
      */
     restoreSliceChars: 65536,
     /**
+     * How many lines of backscroll a console holds, and how many more each
+     * *Load more* at its top brings back from main. Main keeps
+     * `terminal.scrollback`; a tab attaching after a day of play was sent all
+     * 100,000 lines (8 MB) and the web image closed it for it (2026-09-28).
+     * Back at the live edge the console drops to this again.
+     */
+    consolePageLines: 10000,
+    /**
      * How long after a plain Enter the shown console must have turned it into
      * input before the console says it did not (todo 00). xterm hands a key
      * over inside its own keydown, so this only has to outlast a busy frame.

@@ -1706,6 +1706,18 @@ kbd {
 }
 
 /*
+ * The console's other end: at the oldest line it holds, the next page back
+ * (`lib/pages.ts`). Top and centre, clear of Jump to latest.
+ */
+.load-more {
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  top: 16px;
+  translate: -50% 0;
+}
+
+/*
  * And the log manages its own scrolling, so the browser must not.
  *
  * Scroll anchoring moves `scrollTop` to keep what is on screen still when

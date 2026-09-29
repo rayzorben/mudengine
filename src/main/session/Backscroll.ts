@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { BackscrollPage } from '../../shared/ipc';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -87,6 +88,20 @@ export class Backscroll {
     return this.chunks
       .map((chunk, index) => (index === 0 ? chunk.text.slice(this.head) : chunk.text))
       .join('');
+  }
+
+  /**
+   * The newest `lines` lines and whatever is after the last newline, starting
+   * at a line boundary, and how many retained lines are older than them. A
+   * console holds a page and asks for a longer one at its top.
+   */
+  page(lines: number): BackscrollPage {
+    const text = this.text;
+    const skip = this.count - Math.max(0, Math.trunc(lines));
+    if (skip <= 0) return { text, older: 0 };
+    let from = 0;
+    for (let left = skip; left > 0; left -= 1) from = text.indexOf('\n', from) + 1;
+    return { text: text.slice(from), older: skip };
   }
 
   write(text: string): void {

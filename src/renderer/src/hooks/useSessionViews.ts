@@ -245,6 +245,7 @@ export type ViewFeeds = Pick<
   | 'onTelnet'
   | 'onLine'
   | 'onBlock'
+  | 'onSessions'
 >;
 
 /** What `App` reads of the views, and the writes it makes through the one queue. */
@@ -410,6 +411,20 @@ export function useSessionViews(
    */
   useEffect(() => {
     const off = [
+      /*
+       * The roster says whether each character is connected before its
+       * terminal's attach answers. Until then a view read `idle`, so a tab
+       * opened on a character playing all day showed it offline, and its
+       * Connect dialled again (2026-09-28). Only a view nothing has written
+       * a state into takes it; the snapshot and `onState` come after.
+       */
+      feeds.onSessions((roster) => {
+        for (const entry of roster) {
+          patchView(entry.id, (v) =>
+            v.state === INITIAL_STATE ? { ...v, state: entry.state } : v
+          );
+        }
+      }),
       feeds.onState(({ session: id, payload }) =>
         patchView(id, (v) => {
           const raised = alerts.link(id, v.state, payload);

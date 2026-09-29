@@ -15449,7 +15449,7 @@ if (logFiles[0]) {
     `${rmBefore} -> ${rmAfter}`
   );
   check(/Location: 1,2140/.test(body), 'the log still holds the answer to a quiet command');
-  const fed = await evaluate(`window.mudengine.attach('${SESSION}').then((s) => s.backscroll)`);
+  const fed = await evaluate(`window.mudengine.attach('${SESSION}').then((s) => s.backscroll.text)`);
   check(
     typeof fed === 'string' && fed.length > 0 && !fed.includes('Location: 1,2140'),
     'and the console was never shown it',

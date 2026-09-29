@@ -36,6 +36,15 @@ describe('Backscroll', () => {
     expect(scroll.text).toBe('line 35\nline 36\nline 37\nline 38\nline 39\n');
   });
 
+  it('hands out the newest lines as a page, with how many are older', () => {
+    const scroll = new Backscroll({ lines: 100 });
+    for (let i = 0; i < 10; i += 1) scroll.write(`line ${i}\n`);
+    scroll.write('[HP=30]:');
+    expect(scroll.page(3)).toEqual({ text: 'line 7\nline 8\nline 9\n[HP=30]:', older: 7 });
+    expect(scroll.page(10)).toEqual({ text: scroll.text, older: 0 });
+    expect(scroll.page(50)).toEqual({ text: scroll.text, older: 0 });
+  });
+
   it('counts the unterminated tail as part of the line it is on, not as a line', () => {
     const scroll = new Backscroll({ lines: 2 });
     scroll.write('a\nb\nc\n');

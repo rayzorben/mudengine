@@ -219,6 +219,7 @@ export function createWebBridge(): IpcApi {
     unloadProfile: (id, force) => invoke(Invoke.unloadProfile, id, force),
     attach: (session) => invoke(Invoke.attach, session),
     detach: (session) => invoke(Invoke.detach, session),
+    backscrollPage: (session, lines) => invoke(Invoke.backscrollPage, session, lines),
     popOut: (session) => invoke(Invoke.popOut, session),
     reorderSessions: (order) => invoke(Invoke.reorderSessions, order),
     popIn: (session) => invoke(Invoke.popIn, session),

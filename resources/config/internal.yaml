@@ -1848,6 +1848,11 @@ tuning:
     # second-long freeze per character; slices this size keep each short.
     restoreSliceChars: 65536
 
+    # How many lines of backscroll a console holds, and how many more each
+    # Load more at its top brings back. The client keeps terminal.scrollback;
+    # back at the latest line the console drops to this again.
+    consolePageLines: 10000
+
     # How long after a plain Enter the shown console must have turned it into
     # input before the console says it did not, and where the caret was.
     enterTakenMs: 250
