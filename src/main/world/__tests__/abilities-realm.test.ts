@@ -120,6 +120,12 @@ describe.runIf(available)('the shipped realm reads its own effects', () => {
     expect(classNames[5]).toBe('Priest');
   });
 
+  /* `LearnSp 5079` is the spell the scroll teaches, and the answer names it (todo 08). */
+  it('names the spell ephemeral scroll teaches', () => {
+    const { referred } = graph!.lookup('ephemeral scroll');
+    expect(referred.spell[5079]).toBe('searing light');
+  });
+
   /* The other reported item: `Crits 1%, Dodge +1` and one more, which is `Magical`. */
   it('reads every effect on bone charm', () => {
     const { rows, unread } = read('bone charm');

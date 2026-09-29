@@ -5,7 +5,13 @@ import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
 import type { RowPeace } from '@shared/mobRules';
-import { readEffects, type AbilityTable } from '@shared/abilities';
+import {
+  NO_REFERRED_NAMES,
+  readEffects,
+  type AbilityTable,
+  type EffectWord,
+  type ReferredNames
+} from '@shared/abilities';
 import type { RealmFamily } from '@shared/character';
 import type { Verdict } from '@shared/verdict';
 import { asRoomReference, roomId } from '@shared/world';
@@ -222,7 +228,7 @@ function MobDetail({
   places,
   peace,
   realm,
-  classNames,
+  names,
   onRoom,
   onResize
 }: {
@@ -233,7 +239,7 @@ function MobDetail({
   places: MobPlaces | null;
   peace: RowPeace | null;
   realm: RealmFamily | null;
-  classNames: Record<number, string>;
+  names: EffectNames;
   onRoom: ((map: number, room: number) => void) | null;
   onResize: (() => void) | null;
 }) {
@@ -474,7 +480,7 @@ function MobDetail({
         states, and `effectValues` reduces here: the cautious end of a
         magnitude, every member of a set — see `WorldMob.abilities`.
       */}
-      <EffectRows classNames={classNames} pairs={mob.abilities ?? []} realm={realm} table="mob" />
+      <EffectRows names={names} pairs={mob.abilities ?? []} realm={realm} table="mob" />
       {mob.drops !== undefined && (
         <>
           <dt>{t('cards.reference.mob.dropsLabel')}</dt>
@@ -599,6 +605,46 @@ function ArmourRows({ armour }: { armour: NonNullable<WorldItem['armour']> }) {
  * weight, where it comes from — follow. A kind the realm did not name shows
  * only those, and says so rather than inventing a heading.
  */
+/** What `EffectRows` needs besides the pairs to name the rows a value points at. */
+interface EffectNames {
+  /** The realm's class table, for `ClassOk`. See `WorldLookup.classNames`. */
+  classNames: Record<number, string>;
+  /** The spells, monsters and items the effects point at. See `WorldLookup.referred`. */
+  referred: ReferredNames;
+  /** Open the realm's answer about a name beside what was clicked. Null leaves names as text. */
+  onName: ((name: string, anchor: HTMLElement) => void) | null;
+}
+
+/** One effect's values, with a named row drawn as a way into that row. */
+function EffectWords({
+  words,
+  onName
+}: {
+  words: readonly EffectWord[];
+  onName: EffectNames['onName'];
+}) {
+  return (
+    <>
+      {words.map((word, index) => (
+        <Fragment key={`${word.text}-${index}`}>
+          {index > 0 && ', '}
+          {word.row !== null && onName !== null ? (
+            <button
+              className="lookup"
+              onClick={(event) => onName(word.text, event.currentTarget)}
+              type="button"
+            >
+              {word.text}
+            </button>
+          ) : (
+            word.text
+          )}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 /**
  * What an item *does*, from `Items.Abil-n` / `AbilVal-n` — realm format 12.
  *
@@ -623,7 +669,7 @@ function EffectRows({
   pairs,
   table,
   realm,
-  classNames,
+  names,
   magnitudeElsewhere = false
 }: {
   /**
@@ -644,8 +690,7 @@ function EffectRows({
    */
   table: AbilityTable;
   realm: RealmFamily | null;
-  /** The realm's class table, for `ClassOk`. See `WorldLookup.classNames`. */
-  classNames: Record<number, string>;
+  names: EffectNames;
   /**
    * This row's own table states the magnitude in columns of its own, so a
    * zero here is *not* the number.
@@ -675,7 +720,8 @@ function EffectRows({
     {
       table,
       family: realm === 'greatermud' ? 'greatermud' : 'other',
-      classNames,
+      classNames: names.classNames,
+      referred: names.referred,
       magnitudeElsewhere
     },
     t
@@ -689,7 +735,12 @@ function EffectRows({
         {shown.map((effect, index) => (
           <span key={`${effect.id}-${index}`}>
             {effect.label}
-            {effect.value && <span className="price"> {effect.value}</span>}
+            {effect.words.length > 0 && (
+              <span className="price">
+                {' '}
+                <EffectWords onName={names.onName} words={effect.words} />
+              </span>
+            )}
             {index < shown.length - 1 && ', '}
           </span>
         ))}
@@ -904,19 +955,17 @@ function GivenBy({
 function ItemDetail({
   item,
   realm,
-  classNames,
+  names,
   shopPlaces,
   onRoom,
-  onName,
   onResize,
   supplies
 }: {
   item: WorldItem;
   realm: RealmFamily | null;
-  classNames: Record<number, string>;
+  names: EffectNames;
   shopPlaces: Record<string, ShopPlace>;
   onRoom: ((map: number, room: number) => void) | null;
-  onName: ((name: string, anchor: HTMLElement) => void) | null;
   onResize: (() => void) | null;
   supplies: SupplyList | null;
 }) {
@@ -956,7 +1005,7 @@ function ItemDetail({
       {item.armour && <ArmourRows armour={item.armour} />}
       {/* What it does, ahead of what it costs: the effects are the reason to
           carry it and the price is the reason not to. */}
-      <EffectRows classNames={classNames} pairs={item.abilities ?? []} realm={realm} table="item" />
+      <EffectRows names={names} pairs={item.abilities ?? []} realm={realm} table="item" />
       {item.uses !== undefined && (
         <>
           <dt>{t('cards.reference.item.usesLabel')}</dt>
@@ -1002,13 +1051,13 @@ function ItemDetail({
       {item.mobs && item.mobs.length > 0 && (
         <>
           <dt>{t('cards.reference.item.droppedByLabel')}</dt>
-          <DroppedBy mobs={item.mobs} onName={onName} />
+          <DroppedBy mobs={item.mobs} onName={names.onName} />
         </>
       )}
       {item.from && item.from.length > 0 && (
         <>
           <dt>{t('cards.reference.item.givenByLabel')}</dt>
-          <GivenBy from={item.from} onName={onName} onRoom={onRoom} />
+          <GivenBy from={item.from} onName={names.onName} onRoom={onRoom} />
         </>
       )}
       {item.placed !== undefined && (
@@ -1091,12 +1140,12 @@ function SpellDetail({
   spell,
   level,
   realm,
-  classNames
+  names
 }: {
   spell: WorldSpell;
   level: number | null;
   realm: RealmFamily | null;
-  classNames: Record<number, string>;
+  names: EffectNames;
 }) {
   // Unknown level is not "too high": a character whose stat sheet has not
   // arrived must not read every spell as out of reach.
@@ -1112,8 +1161,8 @@ function SpellDetail({
         format 14.
       */}
       <EffectRows
-        classNames={classNames}
         magnitudeElsewhere={statesOwnMagnitude(spell)}
+        names={names}
         pairs={spell.abilities ?? []}
         realm={realm}
         table="spell"
@@ -1196,11 +1245,11 @@ function SpellDetail({
 function RaceDetail({
   race,
   realm,
-  classNames
+  names
 }: {
   race: WorldRace;
   realm: RealmFamily | null;
-  classNames: Record<number, string>;
+  names: EffectNames;
 }) {
   /*
    * Six literal `t()` calls rather than a loop over key strings: the coverage
@@ -1244,7 +1293,7 @@ function RaceDetail({
         dodge. Last, because the ranges are what a person choosing a race reads
         first and these are what they read second.
       */}
-      <EffectRows classNames={classNames} pairs={race.abilities ?? []} realm={realm} table="race" />
+      <EffectRows names={names} pairs={race.abilities ?? []} realm={realm} table="race" />
     </dl>
   );
 }
@@ -1258,11 +1307,11 @@ function RaceDetail({
 function ClassDetail({
   className,
   realm,
-  classNames
+  names
 }: {
   className: WorldClass;
   realm: RealmFamily | null;
-  classNames: Record<number, string>;
+  names: EffectNames;
 }) {
   return (
     <dl className="readout">
@@ -1289,12 +1338,7 @@ function ClassDetail({
         positions on a scale; this is the list of things the class can actually
         do, and it is what distinguishes a Thief from a Bard.
       */}
-      <EffectRows
-        classNames={classNames}
-        pairs={className.abilities ?? []}
-        realm={realm}
-        table="class"
-      />
+      <EffectRows names={names} pairs={className.abilities ?? []} realm={realm} table="class" />
     </dl>
   );
 }
@@ -1319,6 +1363,8 @@ export interface ReferenceDetailProps {
    * would make a restricted item look usable by anyone.
    */
   classNames?: Record<number, string>;
+  /** The rows the effects point at, by table and id. See `WorldLookup.referred`. */
+  referred?: ReferredNames;
   /**
    * Where each shop that sells one of these items is, by the shop's name
    * lower-cased. Empty by default, which leaves every `Sold by` name as the
@@ -1381,6 +1427,7 @@ export default function ReferenceDetail({
   level,
   realm = null,
   classNames = {},
+  referred = NO_REFERRED_NAMES,
   shopPlaces = {},
   onRoom = null,
   onName = null,
@@ -1388,6 +1435,7 @@ export default function ReferenceDetail({
   supplies = null,
   heading = true
 }: ReferenceDetailProps) {
+  const names: EffectNames = { classNames, referred, onName };
   return (
     <div
       className="reference-detail"
@@ -1405,10 +1453,10 @@ export default function ReferenceDetail({
       )}
       {entry.kind === 'mob' && (
         <MobDetail
-          classNames={classNames}
           fights={entry.fights}
           learned={entry.learned}
           mob={entry.mob}
+          names={names}
           onResize={onResize}
           onRoom={onRoom}
           peace={entry.peace}
@@ -1419,9 +1467,8 @@ export default function ReferenceDetail({
       )}
       {entry.kind === 'item' && (
         <ItemDetail
-          classNames={classNames}
           item={entry.item}
-          onName={onName}
+          names={names}
           onResize={onResize}
           onRoom={onRoom}
           realm={realm}
@@ -1430,13 +1477,11 @@ export default function ReferenceDetail({
         />
       )}
       {entry.kind === 'spell' && (
-        <SpellDetail classNames={classNames} level={level} realm={realm} spell={entry.spell} />
+        <SpellDetail level={level} names={names} realm={realm} spell={entry.spell} />
       )}
-      {entry.kind === 'race' && (
-        <RaceDetail classNames={classNames} race={entry.race} realm={realm} />
-      )}
+      {entry.kind === 'race' && <RaceDetail names={names} race={entry.race} realm={realm} />}
       {entry.kind === 'class' && (
-        <ClassDetail className={entry.className} classNames={classNames} realm={realm} />
+        <ClassDetail className={entry.className} names={names} realm={realm} />
       )}
     </div>
   );

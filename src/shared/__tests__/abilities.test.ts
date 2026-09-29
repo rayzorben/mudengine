@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ABILITY,
   ABILITY_INTERNAL,
+  ABILITY_REFERS,
   ABILITY_SHAPE,
   abilityIsNotable,
   abilityIsUnread,
@@ -11,6 +12,8 @@ import {
   capabilitiesOf,
   holdsAbility,
   IMMUNE_TO_POISON_ABILITY,
+  LEARN_SPELL_ABILITY,
+  NO_REFERRED_NAMES,
   PICKLOCKS_ABILITY,
   poisonRefusesRest,
   readEffects,
@@ -524,5 +527,47 @@ describe('what a character can do', () => {
   it('is false on another engine, whatever the rows say', () => {
     expect(poisonRefusesRest(capabilitiesOf(WARRIOR, HUMAN), 'majormud')).toBe(false);
     expect(poisonRefusesRest(capabilitiesOf(WARRIOR, HUMAN), null)).toBe(false);
+  });
+});
+
+/*
+ * `LearnSp 5079` on `ephemeral scroll` is the spell `searing light` (todo 08):
+ * a value that is a row id reads as that row's name, marked with its table so
+ * the card can open it, and keeps its number when the answer has no name.
+ */
+describe('an effect whose value is another row', () => {
+  const t = (key: string, params?: Record<string, unknown>): string =>
+    params === undefined ? key : `${key}:${String(params['value'])}`;
+
+  it('names the spell a scroll teaches, marked as a spell', () => {
+    const { shown } = readEffects(
+      [[LEARN_SPELL_ABILITY, 5079]],
+      {
+        table: 'item',
+        family: 'greatermud',
+        referred: { ...NO_REFERRED_NAMES, spell: { 5079: 'searing light' } }
+      },
+      t
+    );
+    expect(shown[0]?.value).toBe('searing light');
+    expect(shown[0]?.words).toEqual([{ text: 'searing light', row: 'spell' }]);
+  });
+
+  it('keeps the number where no row answers to it', () => {
+    const { shown } = readEffects(
+      [[LEARN_SPELL_ABILITY, 5079]],
+      { table: 'item', family: 'greatermud' },
+      t
+    );
+    expect(shown[0]?.words).toEqual([
+      { text: 'cards.reference.item.effectReference:5079', row: null }
+    ]);
+  });
+
+  it('points only at tables whose rows the realm numbers these by', () => {
+    for (const [id, table] of Object.entries(ABILITY_REFERS)) {
+      expect(ABILITY_SHAPE[Number(id)], `ability ${id}`).toBe('reference');
+      expect(['spell', 'mob', 'item']).toContain(table);
+    }
   });
 });

@@ -11,6 +11,7 @@ import { type PopoverAnchor } from '../lib/popover';
 import { usePopoverFrame } from '../hooks/usePopoverFrame';
 import { t } from '../lib/i18n';
 import type { ShopPlace, WorldLookup } from '@shared/world';
+import { NO_REFERRED_NAMES, type ReferredNames } from '@shared/abilities';
 
 /**
  * A name somebody clicked, and where: the element on a card, or the box of a
@@ -93,6 +94,7 @@ export default function ReferencePopover({
    * for a restriction it has been handed the word for.
    */
   const [classNames, setClassNames] = useState<Record<number, string>>({});
+  const [referred, setReferred] = useState<ReferredNames>(NO_REFERRED_NAMES);
   const [shopPlaces, setShopPlaces] = useState<Record<string, ShopPlace>>({});
   /*
    * That the detail has changed size on its own account — a spawn group opened
@@ -140,6 +142,7 @@ export default function ReferencePopover({
         const exact = all.find((found) => found.name.toLowerCase() === asked.name.toLowerCase());
         setEntry(exact ?? all[0] ?? null);
         setClassNames(answer.classNames);
+        setReferred(answer.referred);
         setShopPlaces(answer.shopPlaces ?? {});
       })
       .catch((error: unknown) => {
@@ -209,6 +212,7 @@ export default function ReferencePopover({
             onResize={onResize}
             onRoom={onRoom}
             realm={realm}
+            referred={referred}
             shopPlaces={shopPlaces}
             supplies={supplies}
           />

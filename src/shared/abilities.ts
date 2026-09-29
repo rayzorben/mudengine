@@ -497,6 +497,39 @@ export function poisonRefusesRest(
 export const LEARN_SPELL_ABILITY = 42;
 
 /**
+ * The realm table a `reference`-shaped value is a row id in, by ability id.
+ *
+ * Measured on `gmud20230902` (2026-09-28): every `LearnSp` value (226), all
+ * but one `CastsSp` value (449 of 450) and every `KillSpell` and
+ * `GiveTempSpell` value and 461 of 469 `RemovesSpell` values (the other
+ * eight are 0) is a `Spells` id; `Summon` values are `Monsters` ids
+ * and `NoAttackIfItemNum` an `Items` id. `%Spell`, `SpellImmu`, `Patrol` and
+ * `RechargeItem` are absent because their values are not row ids (`%Spell`
+ * is 10 to 25, a chance).
+ */
+export type ReferredTable = 'spell' | 'mob' | 'item';
+
+export const ABILITY_REFERS: Readonly<Partial<Record<number, ReferredTable>>> = {
+  [LEARN_SPELL_ABILITY]: 'spell',
+  43: 'spell', // CastsSp
+  122: 'spell', // RemovesSpell
+  153: 'spell', // KillSpell
+  160: 'spell', // GiveTempSpell
+  12: 'mob', // Summon
+  185: 'item' // NoAttackIfItemNum
+};
+
+/** The realm's names for the rows some effects point at, by table and row id. */
+export type ReferredNames = Readonly<Record<ReferredTable, Readonly<Record<number, string>>>>;
+
+/** A fresh, empty set of names for a builder to fill. */
+export function emptyReferredNames(): Record<ReferredTable, Record<number, string>> {
+  return { spell: {}, mob: {}, item: {} };
+}
+
+export const NO_REFERRED_NAMES: ReferredNames = emptyReferredNames();
+
+/**
  * The abilities that make a monster's spell dangerous, by id.
  *
  * Named here for the reason `MIN_LEVEL_ABILITY` is, and — unlike most of this
@@ -1255,6 +1288,17 @@ export interface ReadEffect {
   label: string;
   /** The magnitude as it is drawn — empty for a flag, whose presence is the fact. */
   value: string;
+  /**
+   * `value` word by word, each marked with the table it names a row in, so a
+   * card can draw the row's name as a link to that row.
+   */
+  words: EffectWord[];
+}
+
+/** One value of one effect as drawn, and the table whose row it names, if it does. */
+export interface EffectWord {
+  text: string;
+  row: ReferredTable | null;
 }
 
 /**
@@ -1283,6 +1327,8 @@ export function readEffects(
     family: 'greatermud' | 'other';
     /** The realm's class table, for an ability whose value is a class id. */
     classNames?: Record<number, string>;
+    /** The names of the rows a `reference` value points at. See `ABILITY_REFERS`. */
+    referred?: ReferredNames;
     /**
      * This row states its magnitude in columns of its own, so a zero here is
      * not the number. Only a spell sets it. See `EffectRows`.
@@ -1291,7 +1337,13 @@ export function readEffects(
   },
   t: UiLookup
 ): { shown: ReadEffect[]; quiet: number } {
-  const { table, family, classNames = {}, magnitudeElsewhere = false } = options;
+  const {
+    table,
+    family,
+    classNames = {},
+    referred = NO_REFERRED_NAMES,
+    magnitudeElsewhere = false
+  } = options;
   /*
    * Collected by id, because the realm states a *set* as one pair per member:
    * `staff-sling` carries `[[59, 12], [59, 5]]`, which is "usable by Mage, and
@@ -1314,14 +1366,21 @@ export function readEffects(
   const shown: ReadEffect[] = [];
   for (const [id, values] of collected) {
     const shape = abilityShape(id, table);
+    const refers = shape === 'reference' ? (ABILITY_REFERS[id] ?? null) : null;
+    const words = effectValues(id, values, table)
+      .map((value): EffectWord => {
+        const name = refers === null ? undefined : referred[refers][value];
+        return name === undefined
+          ? { text: effectWord(value, shape, { classNames, magnitudeElsewhere }, t), row: null }
+          : { text: name, row: refers };
+      })
+      .filter((word) => word.text.length > 0);
     shown.push({
       id,
       // Non-null: an id reaches this loop only after `abilityName` named it.
       label: abilityName(id, family)!,
-      value: effectValues(id, values, table)
-        .map((value) => effectWord(value, shape, { classNames, magnitudeElsewhere }, t))
-        .filter((word) => word.length > 0)
-        .join(', ')
+      value: words.map((word) => word.text).join(', '),
+      words
     });
   }
   return { shown, quiet };

@@ -41,7 +41,7 @@ import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
-import { nameAnswersTo } from '../shared/world';
+import { NO_LOOKUP, nameAnswersTo } from '../shared/world';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import {
   dropAllPlan,
@@ -2403,7 +2403,7 @@ function registerIpc(): void {
    */
   handle(Invoke.lookup, async (_caller, session: SessionId, query: unknown) => {
     const world = worldFor(session);
-    if (!world) return { mobs: [], items: [], spells: [], races: [], classes: [] };
+    if (!world) return NO_LOOKUP;
     /*
      * Asked from where the reader is standing, which is what tells two of the
      * realm's rows apart under one name: the Gnoll Tent's own lair names row

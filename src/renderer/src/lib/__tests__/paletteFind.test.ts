@@ -7,7 +7,7 @@ import { tuning } from '../tuning';
 import type { Visited } from '@shared/destinations';
 import type { SessionId } from '@shared/ipc';
 import type { WalkStart } from '@shared/movement';
-import { roomId, type Route, type WorldLookup, type WorldRoom } from '@shared/world';
+import { NO_LOOKUP, roomId, type Route, type WorldLookup, type WorldRoom } from '@shared/world';
 
 const HERO = 'hero' as SessionId;
 
@@ -34,14 +34,7 @@ const route = (steps: number, blocked = false): Route => ({
   blocked
 });
 
-const NOTHING: WorldLookup = {
-  mobs: [],
-  items: [],
-  spells: [],
-  races: [],
-  classes: [],
-  classNames: {}
-};
+const NOTHING: WorldLookup = NO_LOOKUP;
 
 /** The four bridge calls the rows make, each answering as main does. */
 function deps(
