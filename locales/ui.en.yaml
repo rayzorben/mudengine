@@ -841,7 +841,7 @@ terminal:
   actions:
     depositAll: Deposit All
     depositAllTitle: Check your cash and deposit all of it in this bank
-    exitTitle: 'Take exit: {command}'
+    commandTitle: 'Type {command} here'
     withdrawAll: Withdraw All
     withdrawAllTitle: Withdraw all coins from this bank ({amount} copper)
   contextMenu:

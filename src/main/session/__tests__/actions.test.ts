@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 import { actionsFor } from '../actions';
 
 describe('an exit the realm names a command for', () => {
@@ -14,7 +15,7 @@ describe('an exit the realm names a command for', () => {
       {
         label: 'go manhole',
         commands: ['go manhole'],
-        title: t('terminal.actions.exitTitle', { command: 'go manhole' })
+        title: t('terminal.actions.commandTitle', { command: 'go manhole' })
       }
     ]);
   });
@@ -23,12 +24,10 @@ describe('an exit the realm names a command for', () => {
     expect(actionsFor(undefined, [], null)).toEqual([]);
   });
 
-  /*
-   * These sit on the room's own line, so a row of eight would push the name
-   * off the screen.
-   */
   it('caps what one line can carry', () => {
-    expect(actionsFor('bank', ['a', 'b', 'c', 'd', 'e', 'f'], 500, 900)).toHaveLength(4);
+    const cap = tuning().session.roomActions;
+    const commands = Array.from({ length: cap + 3 }, (_, i) => `say ${i}`);
+    expect(actionsFor('bank', commands, 500, 900)).toHaveLength(cap);
   });
 
   /*

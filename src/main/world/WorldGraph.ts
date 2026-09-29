@@ -1371,29 +1371,22 @@ export class WorldGraph {
   }
 
   /**
-   * The commands the exits of a room *named* this take, where every room of
-   * that name agrees.
-   *
-   * The same discipline as `placeNamed`, and for the same reason: the console
-   * asks on the room's *name* line, before `Obvious exits:` has completed the
-   * room and resolved which of the thirteen Town Gates this is. A name shared
-   * by several rooms has several exit sets, and offering one of them would put
-   * a button on screen that sends a command the room does not take — which on
-   * this server is not a button that does nothing, it is one that says the text
-   * out loud to everybody standing there.
-   *
-   * So: undefined unless every room bearing the name offers exactly the same
-   * set of `Text:` commands. In practice that is a uniquely-named room, which
-   * is what a `go manhole` room almost always is.
+   * The commands a room *named* this takes: its `Text:` exits (`go manhole`),
+   * then the words its text block answers (`dive sinkhole`, `pull lever`).
+   * The first phrase of each, which is the realm's canonical one. Asked on the
+   * name line, before `Obvious exits:` resolves which Town Gates this is, and a
+   * command the room does not take is said out loud to the room, so undefined
+   * unless every room of the name agrees (the discipline of `placeNamed`).
    */
-  exitCommandsNamed(name: string): string[] | undefined {
+  roomCommandsNamed(name: string): string[] | undefined {
     const rooms = this.findByName(name);
     if (rooms.length === 0) return undefined;
     let agreed: string[] | undefined;
     for (const room of rooms) {
       const commands: string[] = [];
-      for (const exit of room.exits) {
-        const command = exit.requirement?.commands?.[0]?.trim();
+      const exits = room.exits.map((exit) => exit.requirement?.commands?.[0]);
+      for (const said of [...exits, ...(room.commands ?? []).map((answer) => answer.say[0])]) {
+        const command = said?.trim();
         if (command && !commands.includes(command)) commands.push(command);
       }
       if (agreed === undefined) agreed = commands;
