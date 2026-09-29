@@ -3420,8 +3420,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    * happening.
    */
   if (!afterWalk.open) {
-    const routeHead = await evaluate(
-      `document.querySelector('.navigation-card')?.dataset.face ?? ''`
+    // Waited for: the panel closes as the walk is asked for, and the card
+    // turns only when main's first walk push reaches it. Read once, this
+    // failed whenever the smoke ran after the gate's heavier steps.
+    const routeHead = await readUntil(
+      () => evaluate(`document.querySelector('.navigation-card')?.dataset.face ?? ''`),
+      (face) => face === 'route'
     );
     check(
       routeHead === 'route',
