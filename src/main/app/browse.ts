@@ -34,9 +34,8 @@ export interface BrowseWording {
  * `/home/ab`.
  */
 export function isWithin(root: string, candidate: string): boolean {
-  return (
-    candidate === root || candidate.startsWith(root.endsWith(path.sep) ? root : root + path.sep)
-  );
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 export async function listHome(

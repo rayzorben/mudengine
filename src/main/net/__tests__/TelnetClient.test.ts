@@ -230,6 +230,10 @@ describe('teardown', () => {
     await client.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     client.removeAllListeners();
 
+    // On Windows the server's accept callback can run just after the client's
+    // connect event. Wait for the peer before forcing the reset.
+    await until(() => peer !== null);
+
     // Reset rather than close: a FIN is an ordinary graceful exit and would not
     // produce the error event this is about.
     const socket = peer as unknown as net.Socket;
