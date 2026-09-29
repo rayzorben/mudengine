@@ -69,7 +69,7 @@ describe('runtime-built regular expressions', () => {
     for (const file of sources(root)) {
       const text = fs.readFileSync(file, 'utf8');
       const count = text.match(/\bnew RegExp\(/g)?.length ?? 0;
-      if (count > 0) found[path.relative(process.cwd(), file)] = count;
+      if (count > 0) found[path.relative(process.cwd(), file).replaceAll(path.sep, '/')] = count;
     }
     const expected = Object.fromEntries(
       Object.entries(BUILT_ONCE).map(([file, { count }]) => [file, count])

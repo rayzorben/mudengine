@@ -184,11 +184,12 @@ export function platformUserData(
   homedir: string,
   name: string
 ): string {
+  const join = platform === 'win32' ? path.win32.join : path.posix.join;
   if (platform === 'win32') {
-    return path.join(env['APPDATA'] ?? path.join(homedir, 'AppData', 'Roaming'), name);
+    return join(env['APPDATA'] ?? join(homedir, 'AppData', 'Roaming'), name);
   }
   if (platform === 'darwin') {
-    return path.join(homedir, 'Library', 'Application Support', name);
+    return join(homedir, 'Library', 'Application Support', name);
   }
-  return path.join(env['XDG_CONFIG_HOME'] ?? path.join(homedir, '.config'), name);
+  return join(env['XDG_CONFIG_HOME'] ?? join(homedir, '.config'), name);
 }

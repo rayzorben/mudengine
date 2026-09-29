@@ -91,7 +91,7 @@ function scanUsage(): Usage {
     const raw = readFileSync(path, 'utf8');
     if (!/from\s+'[^']*\/i18n'/.test(raw)) continue;
     const code = stripComments(raw);
-    const file = path.slice(ROOT.length);
+    const file = path.slice(ROOT.length).replaceAll('\\', '/');
     for (const match of code.matchAll(/\bt\(/g)) {
       const rest = code.slice((match.index ?? 0) + match[0].length);
       const literalCall = /^\s*'([^'\n]*)'\s*[,)]/.exec(rest);
