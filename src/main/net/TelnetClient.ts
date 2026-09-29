@@ -208,7 +208,10 @@ export class TelnetClient extends EventEmitter {
         if (generation === this.connectionGeneration) this.ingest(chunk);
       });
       socket.on('close', () => {
-        if (generation !== this.connectionGeneration) {
+        // A deliberate disconnect invalidates the generation too, but its
+        // close still belongs to the current socket and must reach the
+        // session. Only suppress a close from a socket that was replaced.
+        if (generation !== this.connectionGeneration && this.socket !== socket) {
           socket.removeAllListeners();
           socket.destroy();
           return;
