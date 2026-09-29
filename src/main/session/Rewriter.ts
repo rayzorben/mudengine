@@ -156,7 +156,8 @@ export class Rewriter {
       {
         table: 'item',
         family: context.state.realm === 'greatermud' ? 'greatermud' : 'other',
-        classNames: context.world?.namedClasses() ?? {}
+        classNames: context.world?.namedClasses() ?? {},
+        referred: context.world?.referredNames(pairs)
       },
       t
     );

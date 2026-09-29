@@ -13,6 +13,7 @@ import { tuning } from '../app/tuning';
 import { spellElementOf } from '../../shared/spellchoice';
 import {
   mobKey,
+  NO_LOOKUP,
   parseLair,
   hazardFor,
   shopKind,
@@ -49,7 +50,13 @@ import {
   itemInvocation,
   itemKind
 } from '../../shared/items';
-import { HAZARD_ABILITY } from '../../shared/abilities';
+import {
+  ABILITY_REFERS,
+  emptyReferredNames,
+  HAZARD_ABILITY,
+  type ReferredNames,
+  type ReferredTable
+} from '../../shared/abilities';
 import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
 import { counterPriceInCopper, currencyOfCode } from '../../shared/coins';
 import { respawnSeconds } from '../../shared/hunting';
@@ -1763,7 +1770,7 @@ export class Catalogue {
   lookup(query: string, limit = 12): WorldLookup {
     const needle = query.trim().toLowerCase();
     if (needle.length === 0) {
-      return { mobs: [], items: [], spells: [], races: [], classes: [], classNames: {} };
+      return NO_LOOKUP;
     }
 
     const rank = (name: string): number =>
@@ -1793,20 +1800,57 @@ export class Catalogue {
       if (printed) mobs = [printed];
     }
 
+    const items = best(
+      [...this.itemsByName.values()].map((item) => [item.name.toLowerCase(), item] as const)
+    );
+    const spells = this.searchSpells(query, limit);
+    /*
+     * Two closed vocabularies of thirteen and fifteen, so the same ranking
+     * over the whole list costs nothing and needs no separate search method.
+     */
+    const races = best(this.races.map((race) => [race.name.toLowerCase(), race] as const));
+    const classes = best(this.classes.map((entry) => [entry.name.toLowerCase(), entry] as const));
     return {
       mobs,
-      items: best(
-        [...this.itemsByName.values()].map((item) => [item.name.toLowerCase(), item] as const)
-      ),
-      spells: this.searchSpells(query, limit),
-      /*
-       * Two closed vocabularies of thirteen and fifteen, so the same ranking
-       * over the whole list costs nothing and needs no separate search method.
-       */
-      races: best(this.races.map((race) => [race.name.toLowerCase(), race] as const)),
-      classes: best(this.classes.map((entry) => [entry.name.toLowerCase(), entry] as const)),
-      classNames: this.classNames()
+      items,
+      spells,
+      races,
+      classes,
+      classNames: this.classNames(),
+      referred: this.referredNames(
+        [...mobs, ...items, ...spells, ...races, ...classes].flatMap((row) => row.abilities ?? [])
+      )
     };
+  }
+
+  /**
+   * The names of the rows these effects point at by id, for `readEffects`.
+   * A value no row answers to is left out, and the effect keeps its number.
+   */
+  referredNames(pairs: ReadonlyArray<readonly [number, number]>): ReferredNames {
+    const names = emptyReferredNames();
+    for (const [id, value] of pairs) {
+      const table = ABILITY_REFERS[id];
+      if (table === undefined) continue;
+      const name = this.rowName(table, value)?.trim();
+      if (name !== undefined && name.length > 0) names[table][value] = name;
+    }
+    return names;
+  }
+
+  private rowName(table: ReferredTable, id: number): string | undefined {
+    switch (table) {
+      case 'spell':
+        return this.spellById(id)?.name;
+      case 'mob':
+        return this.mobById(id)?.name;
+      case 'item':
+        return this.items.get(id)?.name;
+      default: {
+        const never: never = table;
+        return never;
+      }
+    }
   }
 }
 

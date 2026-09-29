@@ -14,7 +14,7 @@ import {
 import { useListNavigation } from '../hooks/useListNavigation';
 import type { RealmFamily } from '@shared/character';
 import { t } from '../lib/i18n';
-import type { WorldLookup } from '@shared/world';
+import { NO_LOOKUP, type WorldLookup } from '@shared/world';
 
 export interface ReferenceCardProps extends CardChrome {
   /** Asks the character's own realm. Two characters may be on two realms. */
@@ -74,14 +74,7 @@ function ReferenceCard({
   ...chrome
 }: ReferenceCardProps) {
   const [query, setQuery] = useState('');
-  const [found, setFound] = useState<WorldLookup>({
-    mobs: [],
-    items: [],
-    spells: [],
-    races: [],
-    classes: [],
-    classNames: {}
-  });
+  const [found, setFound] = useState<WorldLookup>(NO_LOOKUP);
   const [chosen, setChosen] = useState<ReferenceEntry | null>(null);
 
   /*
@@ -101,7 +94,7 @@ function ReferenceCard({
           if (!live) return;
           // A failed ask must not leave the previous answer standing: stale
           // rows under a newer query read as the realm's reply to it.
-          setFound({ mobs: [], items: [], spells: [], races: [], classes: [], classNames: {} });
+          setFound(NO_LOOKUP);
           console.error(`[reference] lookup for '${query}' failed:`, error);
         });
     }, 120);
@@ -153,6 +146,7 @@ function ReferenceCard({
             onName={onName}
             onRoom={onRoom}
             realm={realm}
+            referred={found.referred}
             shopPlaces={found.shopPlaces ?? {}}
             supplies={supplies}
           />

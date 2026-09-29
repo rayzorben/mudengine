@@ -26,7 +26,7 @@ import {
   needsAlong,
   landingRooms
 } from '../../../shared/world';
-import { roomId } from '../../../shared/world';
+import { NO_LOOKUP, roomId } from '../../../shared/world';
 import { tuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
 import { questLevel } from '../../../shared/quests';
@@ -2181,14 +2181,7 @@ describe('looking a name up across everything the realm knows', () => {
     const found = rich().lookup('');
     // `classNames` is the realm's own class table rather than a search result,
     // so an empty query returns it empty too — nothing was looked up.
-    expect(found).toEqual({
-      mobs: [],
-      items: [],
-      spells: [],
-      races: [],
-      classes: [],
-      classNames: {}
-    });
+    expect(found).toEqual(NO_LOOKUP);
   });
 
   /*

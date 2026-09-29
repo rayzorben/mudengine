@@ -66,7 +66,7 @@ import {
   type ShopKind
 } from '../../shared/world';
 import { trainersFor, type TrainerRow } from '../../shared/training';
-import { HAZARD_ABILITY, abilityShape } from '../../shared/abilities';
+import { HAZARD_ABILITY, abilityShape, type ReferredNames } from '../../shared/abilities';
 import { tuning } from '../app/tuning';
 import type { ExitEntity, ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
 import {
@@ -543,6 +543,10 @@ export class WorldGraph {
     return this.catalogue.namedClasses();
   }
 
+  referredNames(pairs: ReadonlyArray<readonly [number, number]>): ReferredNames {
+    return this.catalogue.referredNames(pairs);
+  }
+
   namedRaces(): Record<number, string> {
     return this.catalogue.namedRaces();
   }
@@ -814,16 +818,6 @@ export class WorldGraph {
   /** Every room within `steps` moves of `from`, pricing nothing — `Router.withinSteps`. */
   withinSteps(from: RoomId, steps: number, traveller?: Traveller): Map<RoomId, number> {
     return this.router.withinSteps(from, steps, traveller);
-  }
-
-  /**
-   * Every room the realm says holds a shop, for walking to the nearest one.
-   *
-   * A shop is a property of a room, so "where can I buy something" is a walk
-   * the world graph can plan without asking the server anything.
-   */
-  shopRooms(): WorldRoom[] {
-    return [...this.rooms.values()].filter((room) => room.shop !== undefined);
   }
 
   /**

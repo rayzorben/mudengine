@@ -17,6 +17,7 @@ import type { AlignmentCost, MobDisposition } from './mobs';
 import type { Verdict } from './verdict';
 import type { RowPeace } from './mobRules';
 import type { Denomination } from './character';
+import { NO_REFERRED_NAMES, type ReferredNames } from './abilities';
 
 /** The ten directions the game uses. */
 export type Direction = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'u' | 'd';
@@ -1648,6 +1649,12 @@ export interface WorldLookup {
    */
   classNames: Record<number, string>;
   /**
+   * The names of the spells, monsters and items the answer's effects point at
+   * by row id (`LearnSp 5079` is `searing light`), so the card names the row
+   * and opens it. Holds only the rows these effects reach.
+   */
+  referred: ReferredNames;
+  /**
    * What *this* character's realm has learned about each monster named, by
    * the monster's name, for the ones fighting has taught anything about.
    * Beside the realm's figure and never instead of it: the realm file is the
@@ -1695,6 +1702,17 @@ export interface WorldLookup {
    */
   mobPlaces?: Record<string, MobPlaces>;
 }
+
+/** The answer to a query that found nothing. */
+export const NO_LOOKUP: WorldLookup = {
+  mobs: [],
+  items: [],
+  spells: [],
+  races: [],
+  classes: [],
+  classNames: {},
+  referred: NO_REFERRED_NAMES
+};
 
 /**
  * What lives in a room the realm marks as a lair.

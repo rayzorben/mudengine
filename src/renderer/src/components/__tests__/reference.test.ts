@@ -5,7 +5,7 @@ import { entryKey, flattenLookup } from '../../lib/reference';
 // console's own rewrites wanted the same answer (todo 14); the safety decision
 // it holds is unchanged and is still asserted here.
 import { effectValues } from '@shared/abilities';
-import type { WorldLookup, WorldSpell } from '@shared/world';
+import { NO_LOOKUP, type WorldLookup, type WorldSpell } from '@shared/world';
 
 /*
  * The realm repeating a name is not hypothetical: `data-Paradigm-1.9-TEST`
@@ -19,18 +19,14 @@ const spell = (id: number, name: string, level?: number): WorldSpell =>
   level === undefined ? { id, name } : { id, name, level };
 
 const REPEATED: WorldLookup = {
-  mobs: [],
-  items: [],
+  ...NO_LOOKUP,
   // Two rows each, with the realm's own ids, exactly as `lookup('ma')` answers.
   spells: [
     spell(292, 'maelstrom', 24),
     spell(1374, 'maelstrom', 24),
     spell(52, 'magic armour', 6),
     spell(875, 'magic armour')
-  ],
-  races: [],
-  classes: [],
-  classNames: {}
+  ]
 };
 
 describe('a lookup the realm answered with a repeated name', () => {
@@ -55,15 +51,11 @@ describe('a lookup the realm answered with a repeated name', () => {
 describe("what a character has learned rides beside the realm's answer", () => {
   it('lands on the monster it names and nowhere else', () => {
     const entries = flattenLookup({
+      ...NO_LOOKUP,
       mobs: [
         { name: 'giant rat', hp: 12, disposition: null, uncertain: false, costly: 'never' },
         { name: 'cave rat', hp: 20, disposition: null, uncertain: false, costly: 'never' }
       ],
-      items: [],
-      spells: [],
-      races: [],
-      classes: [],
-      classNames: {},
       learned: { 'giant rat': { kill: 14, survived: 20, kills: 3, at: 1 } },
       fights: {
         'cave rat': {
@@ -132,6 +124,7 @@ describe('reading an effect the realm states more than once', () => {
 describe("where a monster is found rides beside the realm's answer", () => {
   it('lands on the monster it names and nowhere else', () => {
     const entries = flattenLookup({
+      ...NO_LOOKUP,
       mobs: [
         {
           name: 'wounded messenger',
@@ -142,11 +135,6 @@ describe("where a monster is found rides beside the realm's answer", () => {
         },
         { name: 'wounded sailor', hp: 30, disposition: null, uncertain: false, costly: 'never' }
       ],
-      items: [],
-      spells: [],
-      races: [],
-      classes: [],
-      classNames: {},
       mobPlaces: {
         'wounded messenger': {
           rooms: 1,
@@ -179,14 +167,8 @@ describe("where a monster is found rides beside the realm's answer", () => {
    */
   it('is null for a monster the realm places nowhere', () => {
     const entries = flattenLookup({
-      mobs: [
-        { name: 'summoned wisp', hp: 5, disposition: null, uncertain: false, costly: 'never' }
-      ],
-      items: [],
-      spells: [],
-      races: [],
-      classes: [],
-      classNames: {}
+      ...NO_LOOKUP,
+      mobs: [{ name: 'summoned wisp', hp: 5, disposition: null, uncertain: false, costly: 'never' }]
     });
     expect(entries[0]?.kind === 'mob' ? entries[0].places : 'x').toBeNull();
   });
