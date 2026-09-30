@@ -5,8 +5,9 @@ import { t } from '../../app/i18n';
 import { notesOf } from '../../app/copyMatch';
 import type { Block } from '../../../shared/blocks';
 import { DEFAULT_CONFIG } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import type { InstantSpellLore } from '../../../shared/lore';
+import type { RealmFamily } from '../../../shared/realm';
 import type { WorldSpell } from '../../../shared/world';
 
 function block(type: string, groups: Record<string, string> = {}): Block {
@@ -152,5 +153,70 @@ describe('the name an instant spell is kept under for the realm', () => {
     spells.heard(block('combat-status', { status: 'Engaged' }), state);
     expect(lore.held.size).toBe(0);
     expect(notices).toContain(t('automation.combat.spellNotInstant', { spell: 'word' }));
+  });
+});
+
+/*
+ * Todo 828: MegaMUD breaks an area spell that has finished the room on stock
+ * realms only; GreaterMUD's `DoMagicRound` breaks it itself (`Player.cs:6326`).
+ */
+describe('breaking an area spell that has emptied the room', () => {
+  const monster = (name: string): RoomOccupant => ({
+    name,
+    kind: 'mob',
+    disposition: null,
+    uncertain: false,
+    costly: 'never',
+    charmed: false,
+    hidden: false,
+    free: false
+  });
+  const room = (...occupants: RoomOccupant[]): CharacterState => ({
+    ...EMPTY_CHARACTER,
+    room: { ...EMPTY_CHARACTER.room, occupants }
+  });
+  const area: Action = { kind: 'spell', spell: 'fireball', area: true, by: 'module' };
+
+  function repeating(family: RealmFamily | null, action: Action = area): AttackSpells {
+    const spells = new AttackSpells(
+      { ...DEFAULT_CONFIG.automation.spells, areaAttack: 'fireball', minMana: 0 },
+      {},
+      () => null,
+      () => ({ combat: null, magery: null, family })
+    );
+    spells.sent(action);
+    return spells;
+  }
+
+  const two = room(monster('war dog'), monster('war dog'));
+  const one = room(monster('war dog'));
+  const none = room();
+
+  it('breaks once when the last monster goes on a MajorMUD realm', () => {
+    const spells = repeating('majormud');
+    expect(spells.breakEmptied(two, one)).toBe(null);
+    const stop = spells.breakEmptied(one, none);
+    expect(stop?.command).toBe('break');
+    expect(stop?.reason).toBe(t('automation.combat.reasonBreakEmptyRoom', { spell: 'fireball' }));
+    // The break's send ends what the server repeats.
+    spells.fightEnded();
+    expect(spells.breakEmptied(one, none)).toBe(null);
+  });
+
+  it('sends nothing while a monster is left (the control)', () => {
+    const spells = repeating('majormud');
+    expect(spells.breakEmptied(two, one)).toBe(null);
+    expect(spells.breakWanted(one)).toBe(false);
+    expect(spells.breakWanted(none)).toBe(true);
+  });
+
+  it('leaves a GreaterMUD realm, an unknown one and a single-target spell alone', () => {
+    expect(repeating('greatermud').breakEmptied(one, none)).toBe(null);
+    expect(repeating(null).breakEmptied(one, none)).toBe(null);
+    expect(repeating('majormud', cast('harm')).breakEmptied(one, none)).toBe(null);
+    expect(repeating('majormud', { ...area, by: 'player' }).breakEmptied(one, none)).toBe(null);
+    // A move into an empty room: the server ends the fight on its own.
+    const elsewhere = { ...none, room: { ...none.room, name: 'Dark Alley' } };
+    expect(repeating('majormud').breakEmptied(one, elsewhere)).toBe(null);
   });
 });

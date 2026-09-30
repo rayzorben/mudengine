@@ -2477,6 +2477,50 @@ describe('an attack spell opens the fight', () => {
     expect(sent).toEqual(['a tall kobold thief']);
   });
 
+  /*
+   * Todo 828: a MajorMUD server goes on casting the room spell into an empty
+   * room, and MegaMUD breaks it there only. A change of attack waiting when
+   * the last monster goes would be sent at nothing, so the break replaces it.
+   */
+  describe('the room spell once the room is empty', () => {
+    const emptied = (family: RealmFamily): AutoCombat => {
+      const auto = make(
+        fights(),
+        true,
+        caster({ attack: '', areaAttack: 'pclo', areaMinMobs: 1, areaMinMana: 0 }),
+        () => ({ combat: null, magery: null, family })
+      );
+      auto.onCharacter(standing());
+      drain();
+      engaged(auto);
+      auto.onBlock(block('user-hits'));
+      round();
+      expect(sent).toEqual(['a tall kobold thief', 'pclo']);
+      // A round's change of attack, held behind a half-typed line.
+      queue.noteTyping(true);
+      queue.enqueue({
+        command: 'a tall kobold thief',
+        priority: 'combat',
+        coalesceKey: 'round-attack',
+        reason: 'waiting'
+      });
+      auto.onCharacter(state({ ...fighting(), room: { ...room, occupants: [] } }));
+      queue.noteTyping(false);
+      drain();
+      return auto;
+    };
+
+    it('breaks it on a MajorMUD realm, in place of the waiting attack', () => {
+      emptied('majormud');
+      expect(sent).toEqual(['a tall kobold thief', 'pclo', 'break']);
+    });
+
+    it('leaves it to a GreaterMUD server, which breaks it itself (the control)', () => {
+      emptied('greatermud');
+      expect(sent).toEqual(['a tall kobold thief', 'pclo', 'a tall kobold thief']);
+    });
+  });
+
   /* The player's spell is theirs: with nothing configured, a round must not
      put the character back on melee (816 review). */
   it("leaves the player's own spell alone with none configured", () => {

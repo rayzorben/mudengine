@@ -1159,6 +1159,7 @@ export class AutoCombat implements SessionModule {
     // `whyNot`, which names the refusal and sends nothing. See `declinedOnly`.
     if (!this.acting && !this.declinedOnly) return;
     if (state.phase !== 'in-game') return;
+    if (this.acting && was !== null) this.breakEmptied(was, state);
 
     /*
      * A verb the server refused with the weapon that is no longer in hand.
@@ -2442,9 +2443,26 @@ export class AutoCombat implements SessionModule {
       command: change.command,
       priority: 'combat',
       coalesceKey: 'round-attack',
-      expiresAt: Date.now() + tuning().combat.roundMs * 20,
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: change.reason,
       onSent: () => this.attackSent(change)
+    });
+  }
+
+  /** `break` for the area spell once the room has no monster left (`AttackSpells.breakEmptied`). */
+  private breakEmptied(was: CharacterState, state: CharacterState): void {
+    const stop = this.spell.breakEmptied(was, state);
+    if (stop === null) return;
+    // The break replaces any change of attack still waiting: it would go out at an empty room.
+    this.queue.cancel((intent) => intent.coalesceKey === 'round-attack');
+    this.queue.enqueue({
+      command: stop.command,
+      priority: 'combat',
+      coalesceKey: 'break-area',
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
+      reason: stop.reason,
+      stillWanted: () => this.state !== null && this.spell.breakWanted(this.state),
+      onSent: () => this.spell.fightEnded()
     });
   }
 
@@ -2477,7 +2495,7 @@ export class AutoCombat implements SessionModule {
       coalesceKey: 'combat-refresh',
       // A read that arrives after the fight is a read of a room nothing is
       // deciding anything about.
-      expiresAt: Date.now() + tuning().combat.roundMs * 20,
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: t('automation.combat.reasonRefresh'),
       // Only a look that went out spends the count (todo 833). Held by the
       // player's half-typed line or refused, the rounds it waited through are
@@ -2536,7 +2554,7 @@ export class AutoCombat implements SessionModule {
       coalesceKey: 'combat-refresh',
       // Worthless late, for the same reason the periodic read is: by then the
       // room has been listed by something else or the thing has left.
-      expiresAt: Date.now() + tuning().combat.roundMs * 20,
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: t('automation.combat.reasonArrivalUnplaced')
     });
   }
