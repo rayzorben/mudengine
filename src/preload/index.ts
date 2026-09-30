@@ -36,6 +36,7 @@ import type { LoopProgress } from '../shared/loops';
 import type { WalkProgress } from '../shared/walk';
 import type { AutomationSnapshot } from '../shared/automation';
 import type { RoomVerdict } from '../shared/verdict';
+import type { CombatTally } from '../shared/tally';
 import type { QuestRunProgress, QuestWatched, RoomAsk } from '../shared/quests';
 import type {
   ConnectionState,
@@ -159,6 +160,7 @@ const api: IpcApi = {
   forget: (session, discovery) => ipcRenderer.invoke(Invoke.forget, session, discovery),
   forgetFind: (session, find) => ipcRenderer.invoke(Invoke.forgetFind, session, find),
   forgetCharacter: (session) => ipcRenderer.invoke(Invoke.forgetCharacter, session),
+  resetStats: (session) => ipcRenderer.invoke(Invoke.resetStats, session),
   names: (session) => ipcRenderer.invoke(Invoke.names, session),
   ask: (session, command) => ipcRenderer.invoke(Invoke.ask, session, command),
   locate: (session) => ipcRenderer.invoke(Invoke.locate, session),
@@ -179,6 +181,7 @@ const api: IpcApi = {
   onAutomation: (handler) => subscribe<Addressed<AutomationSnapshot>>(Push.automation, handler),
   onVerdict: (handler) => subscribe<Addressed<RoomVerdict>>(Push.verdict, handler),
   onAsks: (handler) => subscribe<Addressed<RoomAsk[]>>(Push.asks, handler),
+  onStatsBase: (handler) => subscribe<Addressed<CombatTally | null>>(Push.statsBase, handler),
   onNotice: (handler) => subscribe<Notice>(Push.notice, handler),
   onSessions: (handler) => subscribe<SessionSummary[]>(Push.sessions, handler),
   onProfiles: (handler) => subscribe<ProfileSummary[]>(Push.profiles, handler),

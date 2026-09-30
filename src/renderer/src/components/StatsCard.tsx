@@ -366,32 +366,16 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
   const graph = chrome.settings?.value.statsGraph ?? DEFAULT_STATS_GRAPH;
 
   /**
-   * The Reset control, as a *baseline* rather than a message to main.
+   * The Reset control, as a *baseline*: main keeps one monotonic total and a
+   * copy of it taken at the last reset (`StatsBaseline`), and every figure is
+   * read as the difference, so the untouched totals are still there. The
+   * button, a lap beginning and a party member's `@reset` all write that one
+   * copy in main, whether or not this card is mounted.
    *
-   * Main keeps one monotonic total; pressing Reset stores a copy of it and
-   * every figure is read as the difference. That makes the press instant, keeps
-   * main free of a second accumulator, and means the untouched totals are still
-   * there — which is what makes Reset safe to press. A baseline from a session
-   * that has since restarted is discarded below rather than producing negative
-   * counts.
-   *
-   * **The baseline is the views', not this card's** (todo 01, 2026-09-06). It
-   * was remembered here, per character, and that could not answer *starting a
-   * loop resets the statistics*: this card ships **put away**, so on most rails
-   * it is not mounted when a lap begins, and a card that re-based on mount would
-   * wipe however much of the lap had already happened. Whatever re-bases has to
-   * be running whether or not anything is drawn, and that is `useSessionViews`,
-   * which holds every session's view and hears the loop push for all of them.
-   * There is still exactly **one** baseline, written by the button and by the
-   * lap alike, so neither has to be compared against the other.
-   */
-  /*
-   * A baseline from another series cannot be subtracted from this one. The
-   * totals are kept per character *and realm* and outlive the launch, while
-   * the baseline is kept per character; `since` is set once per series, so a
-   * baseline taken on another realm's record — or on one since thrown away —
-   * carries a different one, and subtracting it would draw the totals
-   * negative.
+   * A baseline from another series cannot be subtracted from this one:
+   * `since` is set once per series, so a baseline taken on a record since
+   * thrown away carries a different one, and subtracting it would draw the
+   * totals negative.
    */
   const stale =
     baseline !== null &&

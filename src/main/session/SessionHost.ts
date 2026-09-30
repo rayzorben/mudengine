@@ -443,6 +443,7 @@ export class SessionHost {
         verdict: (appraisal) =>
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
+        statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
         switchAutomation: (name, on) => this.options.flipSwitch?.(id, name, on) ?? false,
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager

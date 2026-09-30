@@ -580,4 +580,17 @@ describe('what the fighting added up to', () => {
     store.close();
     expect(new Belongings({ file, realm: REALM }).recallStats()).toBeNull();
   });
+
+  it('keeps the Combat Stats baseline beside the totals, and forgets it with them', () => {
+    const store = new Belongings({ file, realm: REALM });
+    expect(store.recallStatsBase()).toBeNull();
+    store.rememberStats(tally);
+    store.rememberStatsBase(tally);
+    store.close();
+    const back = new Belongings({ file, realm: REALM });
+    expect(back.recallStatsBase()?.kills).toBe(3);
+    expect(back.forget()).toBe(true);
+    back.close();
+    expect(new Belongings({ file, realm: REALM }).recallStatsBase()).toBeNull();
+  });
 });

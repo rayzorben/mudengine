@@ -418,6 +418,12 @@ export class AutoCombat implements SessionModule {
   private walking = false;
   private looping = false;
   /**
+   * Whether the loop runner last said its lap is running. Apart from
+   * `looping` because `reset()` leaves it: a carried loop outlives a
+   * reconnect, and its lap has not started again.
+   */
+  private lap = false;
+  /**
    * Whether this journey is fighting, and whether the player has said not to.
    *
    * `travelling` is armed by the route or the lap that started (todo 00) and
@@ -666,8 +672,18 @@ export class AutoCombat implements SessionModule {
     this.walking = walking;
   }
 
-  /** Whether a loop is running its lap. */
+  /**
+   * Whether a loop is running its lap.
+   *
+   * A lap **fights**, whatever the switch says (todo 03). Said once as the lap
+   * starts; it is scoped to the loop, so stopping the lap is how you answer
+   * it, and nothing is written into the player's own file.
+   */
   noteLooping(looping: boolean): void {
+    if (looping && !this.lap && this.fightingBecauseTravelling) {
+      this.events.notice?.(t('automation.loops.fightingForTheLap'));
+    }
+    this.lap = looping;
     this.setTravelling(looping || this.walking || this.questing);
     this.looping = looping;
   }
@@ -851,6 +867,11 @@ export class AutoCombat implements SessionModule {
     // Whatever the switch reads: a run's decline stands beside a switch that
     // still reads on for half a second, and is reported for that half second.
     return this.enabled && this.travelling && this.declined;
+  }
+
+  /** Whether a lap is running, so a route started mid-lap is not announced as a fresh journey. */
+  get lapRunning(): boolean {
+    return this.lap;
   }
 
   /**

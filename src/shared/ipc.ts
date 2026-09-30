@@ -76,6 +76,7 @@ import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
 import type { MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
+import type { CombatTally } from './tally';
 import type {
   LoopDraft,
   RoomBrief,
@@ -251,6 +252,8 @@ export interface AttachSnapshot {
   verdict: RoomVerdict;
   /** What the occupants answer to when the window attached; `Push.asks` carries every change. */
   asks: RoomAsk[];
+  /** The Combat Stats card's baseline when the window attached, or null when never reset. */
+  statsBase: CombatTally | null;
   /** Negotiation history, for the traffic card. */
   telnet: TelnetEvent[];
   /**
@@ -956,6 +959,8 @@ export const Invoke = {
   forget: 'world:forget',
   forgetFind: 'world:forget-find',
   forgetCharacter: 'session:forget-character',
+  /** The Combat Stats card's Reset: re-base it on the totals as they stand. See `StatsBaseline`. */
+  resetStats: 'session:reset-stats',
   /**
    * Every name the realm knows, for the console to recognise. Once per
    * session: the list is a few thousand words, and a hover must not cost a
@@ -1069,6 +1074,8 @@ export const Push = {
    * the listed pack are all main's. See `asksHere`.
    */
   asks: 'session:asks',
+  /** The Combat Stats card's baseline on each reset, or null when a record has none. See `StatsBaseline`. */
+  statsBase: 'session:stats-base',
   /** A session was loaded or unloaded. */
   sessions: 'sessions:changed',
   /** The set of characters on disk changed. */
@@ -1505,6 +1512,7 @@ export interface IpcApi {
    * stopped being true. Whether there was anything to throw away.
    */
   forgetCharacter(session: SessionId): Promise<boolean>;
+  resetStats(session: SessionId): Promise<void>;
   names(session: SessionId): Promise<WorldNames>;
   /** Whether the arbiter took it. */
   ask(session: SessionId, command: string): Promise<boolean>;
@@ -1534,6 +1542,7 @@ export interface IpcApi {
   onAutomation(handler: (message: Addressed<AutomationSnapshot>) => void): () => void;
   onVerdict(handler: (message: Addressed<RoomVerdict>) => void): () => void;
   onAsks(handler: (message: Addressed<RoomAsk[]>) => void): () => void;
+  onStatsBase(handler: (message: Addressed<CombatTally | null>) => void): () => void;
   onNotice(handler: (notice: Notice) => void): () => void;
   onSessions(handler: (sessions: SessionSummary[]) => void): () => void;
   onProfiles(handler: (profiles: ProfileSummary[]) => void): () => void;

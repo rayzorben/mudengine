@@ -245,6 +245,8 @@ export interface RemoteEvents {
    * this character's own heal settings, as `blessExpired` goes to `Blessings`.
    */
   healRequested?(from: string): void;
+  /** Somebody said `@reset`: the Combat Stats card starts again from now. */
+  resetStats?(from: string): void;
   /**
    * Another player's client answered `@version`, or stopped answering the
    * extended question this client had asked it.
@@ -1261,6 +1263,16 @@ export class Remotes implements SessionModule {
         // No reply either: the heal landing on the sender is the answer, and
         // captures/081 shows MegaMUD giving no other (`mend death`, nothing said).
         this.events.healRequested?.(from);
+        return;
+
+      case 'reset':
+        /*
+         * MegaMUD's manual: *resets all of MegaMUD's internal flags and
+         * statistics*. Here the statistics are the Combat Stats card, and there
+         * are no flags for it to reset. No reply, since no capture shows one.
+         */
+        this.events.resetStats?.(from);
+        this.events.notice?.(t('automation.remotes.statsReset', { from }));
         return;
 
       case 'wait':

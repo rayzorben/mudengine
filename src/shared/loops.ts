@@ -588,7 +588,7 @@ export interface LoopProgress {
    * standing on one when Start was pressed; a `resume` leaves it alone,
    * because a pause is in the middle of a lap that has long since begun.
    *
-   * Read by the Combat Stats card, which re-bases its figures on it (todo 01,
+   * Read by `StatsBaseline`, which re-bases the Combat Stats card on it (todo 01,
    * *"starting a loop should reset combat statistics; restarting a loop should
    * not"*). Published rather than inferred from `stop` moving, because a stop
    * moves for a skip too, and a skipped opening stop is not a character that

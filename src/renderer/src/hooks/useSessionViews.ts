@@ -12,7 +12,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { keepRoster } from '../lib/roster';
 import { tuning } from '../lib/tuning';
 import type { AlertRaiser } from './useAlerts';
-import { recallStatsBase, rememberStatsBase } from './useRemembered';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import type { Block } from '@shared/blocks';
 import { EMPTY_CHARACTER, type CharacterState } from '@shared/character';
@@ -74,10 +73,9 @@ export interface SessionView {
    * The Combat Stats card's baseline: the totals every figure on it is a
    * difference from, or null for the whole session.
    *
-   * Held here rather than in the card because the card ships **put away**, and
-   * what re-bases it has to be running whether or not anything is drawn — a lap
-   * beginning is a moment, not a render. One value, written by the card's Reset
-   * button and by the lap alike, so neither has to outrank the other.
+   * Main's (`StatsBaseline`), pushed on each reset: the card's button, a lap
+   * beginning, and a party member's `@reset` all write the one value, and a
+   * reset made while no window is open still takes.
    */
   statsBase: CombatTally | null;
   lines: StreamLine[];
@@ -170,19 +168,6 @@ export const EMPTY_VIEW: SessionView = {
 };
 
 /**
- * The totals as they stand, written down as the Combat Stats card's baseline.
- *
- * The one writer for the button and the lap alike, so neither has to be
- * compared against the other — and written down beside the layout, because
- * main's totals outlive the launch and the reading they are subtracted from
- * has to as well, or a launch silently undid the last press or the lap.
- */
-function rebased(session: SessionId, view: SessionView): CombatTally {
-  rememberStatsBase(session, view.character.tally);
-  return view.character.tally;
-}
-
-/**
  * Folds new notices into the unseen count for a character.
  *
  * A character on screen has seen them by definition, so nothing accumulates for
@@ -246,6 +231,8 @@ export type ViewFeeds = Pick<
   | 'onLine'
   | 'onBlock'
   | 'onSessions'
+  | 'onStatsBase'
+  | 'resetStats'
 >;
 
 /** What `App` reads of the views, and the writes it makes through the one queue. */
@@ -336,7 +323,7 @@ export function useSessionViews(
 
   const applySnapshot = useCallback(
     (id: SessionId, snapshot: AttachSnapshot) => {
-      patchView(id, (was) => ({
+      patchView(id, () => ({
         state: snapshot.state,
         character: snapshot.character,
         players: snapshot.players,
@@ -345,16 +332,7 @@ export function useSessionViews(
         automation: snapshot.automation,
         verdict: snapshot.verdict,
         asks: snapshot.asks,
-        /*
-         * Carried, not reset. A snapshot is this window attaching to a session
-         * that was already running, and main's totals are the same monotonic
-         * ones the baseline was taken from — so a reading this window had
-         * survives the attach — and one written down before the launch is
-         * read back here, since main's totals outlive the launch too. A
-         * baseline older than the *totals* is a different matter and is
-         * discarded by the card's own `stale` test.
-         */
-        statsBase: was.statsBase ?? recallStatsBase(id),
+        statsBase: snapshot.statsBase,
         lines: snapshot.lines.slice(-tuning().lineLogLimit),
         telnet: snapshot.telnet.slice(-tuning().telnetLogLimit),
         // The conversation log's tail: main keeps what was said on disk, so a
@@ -389,17 +367,8 @@ export function useSessionViews(
     }
   }, [shown, patchView]);
 
-  /**
-   * Re-base one character's Combat Stats card to its totals as they stand.
-   *
-   * The same write the lap makes on `onLoop`, so the button and the loop
-   * cannot disagree about what a baseline is; main's totals are untouched by
-   * either, which is what makes both safe.
-   */
-  const resetStats = useCallback(
-    (sid: SessionId) => patchView(sid, (v) => ({ ...v, statsBase: rebased(sid, v) })),
-    [patchView]
-  );
+  /** Re-base one character's Combat Stats card; main pushes the baseline back. */
+  const resetStats = useCallback((sid: SessionId) => void feeds.resetStats(sid), [feeds]);
 
   /**
    * Facts about every character, kept for every character.
@@ -457,31 +426,9 @@ export function useSessionViews(
           };
         })
       ),
-      feeds.onLoop(({ session: id, payload }) =>
-        patchView(id, (v) => ({
-          ...v,
-          loop: payload,
-          /*
-           * A lap that has just begun re-bases the Combat Stats card — todo
-           * 01, *"starting a loop should reset combat statistics; restarting a
-           * loop should not"*.
-           *
-           * `lapBegunAt` is the moment the run first stood on the loop, which
-           * is what makes both halves of that sentence one test: `start` clears
-           * it and the first stop reached sets it, while `resume` leaves it
-           * exactly as it was, so a restart moves nothing here. And it is the
-           * *lap* rather than the button, so the twenty-eight steps out from
-           * town are not counted as a stretch the loop earned nothing over.
-           *
-           * The totals as they stand at that instant, which is the same value
-           * the Reset button writes — main's own totals are untouched either
-           * way, so this is a reading being re-based and never data being lost.
-           */
-          statsBase:
-            payload.lapBegunAt !== null && payload.lapBegunAt !== v.loop.lapBegunAt
-              ? rebased(id, v)
-              : v.statsBase
-        }))
+      feeds.onLoop(({ session: id, payload }) => patchView(id, (v) => ({ ...v, loop: payload }))),
+      feeds.onStatsBase(({ session: id, payload }) =>
+        patchView(id, (v) => ({ ...v, statsBase: payload }))
       ),
       feeds.onPlayers(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, players: payload }))

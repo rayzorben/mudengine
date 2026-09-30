@@ -2071,6 +2071,7 @@ function registerIpc(): void {
       automation: manager?.automation ?? EMPTY_AUTOMATION,
       verdict: manager?.appraisal.verdict ?? EMPTY_ROOM_VERDICT,
       asks: [...(manager?.appraisal.asks ?? [])],
+      statsBase: manager?.statsBaseline.base ?? null,
       telnet: manager?.log ?? [],
       learned: manager?.learned ?? [],
       finds: manager?.foundHere ?? [],
@@ -2679,6 +2680,10 @@ function registerIpc(): void {
 
   handle(Invoke.forgetCharacter, (_caller, session: SessionId) => {
     return host?.get(session)?.manager.forgetCharacter() ?? false;
+  });
+
+  handle(Invoke.resetStats, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.statsBaseline.rebase();
   });
 
   // Parsed, not checked, like every payload that reaches a file on disk.
