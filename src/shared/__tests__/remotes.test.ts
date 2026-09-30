@@ -187,8 +187,6 @@ describe('the gang grant, once the roster can answer it', () => {
  * shape is not captured the formatter returns null, and that is asserted too.
  */
 describe('answering the questions the way MegaMUD does', () => {
-  const HOUR = 3_600_000;
-
   it('prints a thousands separator the way Needed: 2,150 does', () => {
     expect(withCommas(2150)).toBe('2,150');
     expect(withCommas(0)).toBe('0');
@@ -196,33 +194,32 @@ describe('answering the questions the way MegaMUD does', () => {
   });
 
   it('answers @exp in the captured frame, with ? where nothing can be computed', () => {
-    expect(formatExp(0, 2150, 1_000, 1_000 + HOUR)).toBe(
+    expect(formatExp(0, 2150, null)).toBe(
       '{Made: 0  Needed: 2,150  Rate: ? k/hr  Will level in: ?}'
     );
   });
 
-  /* The zero a fresh session starts with is "nothing counted", not "nothing made". */
-  it('has no @exp answer before the session has begun', () => {
-    expect(formatExp(0, 2150, null, HOUR)).toBeNull();
+  /* A scope that has not begun is "nothing counted", not "nothing made". */
+  it('has no @exp answer before the scope has begun', () => {
+    expect(formatExp(null, 2150, null)).toBeNull();
   });
 
-  it('shares the rate floor with the Vitals card, and prints ? for a rate that rounds to nothing', () => {
-    // Ninety seconds in: the card shows no rate yet, and neither does this.
-    expect(formatExp(300, 2150, 0, 90_000)).toMatch(/Rate: \? k\/hr  Will level in: \?}$/);
+  it('prints ? for a rate that rounds to nothing', () => {
     // Twenty points in an hour would print 0.0 k/hr beside a 107-hour wait.
-    expect(formatExp(20, 2150, 0, HOUR)).toMatch(/Rate: \? k\/hr  Will level in: \?}$/);
+    expect(formatExp(20, 2150, 20)).toMatch(/Rate: \? k\/hr  Will level in: \?}$/);
   });
 
-  it('computes the rate and the wait once experience has been made', () => {
-    // 3,000 in two hours: 1.5 k/hr; 4,500 more needed is three hours.
-    expect(formatExp(3000, 4500, 0, 2 * HOUR)).toBe(
+  it('prints the rate and the wait once experience has been made', () => {
+    // 1.5 k/hr; 4,500 more needed is three hours.
+    expect(formatExp(3000, 4500, 1500)).toBe(
       '{Made: 3,000  Needed: 4,500  Rate: 1.5 k/hr  Will level in: 3h 0m}'
     );
   });
 
   it('answers @level, and has no level to answer with before a sheet', () => {
-    expect(formatLevel(1, 2150, 0, null, 0)).toBe('{Level: 1  Needed: 2,150  Will level in: ?}');
-    expect(formatLevel(null, 2150, 0, null, 0)).toBeNull();
+    expect(formatLevel(1, 2150, null)).toBe('{Level: 1  Needed: 2,150  Will level in: ?}');
+    expect(formatLevel(1, 4500, 1500)).toBe('{Level: 1  Needed: 4,500  Will level in: 3h 0m}');
+    expect(formatLevel(null, 2150, null)).toBeNull();
   });
 
   it('answers @lives, @wealth and @enc as captured, and null before the fact is known', () => {

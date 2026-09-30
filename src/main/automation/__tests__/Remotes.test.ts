@@ -5,6 +5,7 @@ import { Remotes } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { wireExit, wireItem } from '../../../shared/entities';
 import type { AutomationConfig } from '../../../shared/config';
 import type { Block } from '../../../shared/blocks';
@@ -1724,30 +1725,71 @@ describe('@heal', () => {
 });
 
 describe('@reset', () => {
+  const baseline = (base: CombatTally | null = null) => {
+    const port = { base, resets: 0, rebase: () => void port.resets++ };
+    return port;
+  };
+
   it('starts the combat statistics again, says so, and answers nothing', () => {
-    const reset: string[] = [];
-    const remotes = new Remotes(config, queue, {
-      resetStats: (from) => reset.push(from),
-      notice: (m) => notices.push(m)
-    });
+    const stats = baseline();
+    const remotes = new Remotes(config, queue, { stats, notice: (m) => notices.push(m) });
     remotes.onBlock(said('conversation-telepath', 'Soul', '@reset'), who());
     drain();
-    expect(reset).toEqual(['Soul']);
+    expect(stats.resets).toBe(1);
     expect(notices).toContain(t('automation.remotes.statsReset', { from: 'Soul' }));
     expect(sent).toEqual([]);
   });
 
   it('is not granted by the shipped lists', () => {
-    const reset: string[] = [];
+    const stats = baseline();
     const shipped: AutomationConfig = {
       ...config,
       remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
     };
-    new Remotes(shipped, queue, { resetStats: (from) => reset.push(from) }).onBlock(
+    new Remotes(shipped, queue, { stats }).onBlock(
       said('conversation-telepath', 'Soul', '@reset'),
       who()
     );
-    expect(reset).toEqual([]);
+    expect(stats.resets).toBe(0);
+  });
+
+  /* Todo 03: @exp is the Combat Stats card's figures, so a reset starts it again. */
+  it('answers @exp and @level from the card, since the last reset', () => {
+    const HOUR = 3_600_000;
+    const now = Date.now();
+    const since = now - 2 * HOUR;
+    const tally: CombatTally = {
+      ...NO_TALLY,
+      since,
+      at: now,
+      experience: 3_000,
+      onlineMs: 2 * HOUR,
+      onlineSince: null
+    };
+    const progress = { ...EMPTY_CHARACTER.progress, level: 1, expNeeded: 4_500 };
+    const state = who({ tally, progress });
+    // Drained each time: two replies to one asker in the queue are one reply.
+    const ask = (stats: ReturnType<typeof baseline>, raw: string) => {
+      new Remotes(config, queue, { stats }).onBlock(
+        said('conversation-telepath', 'Rand', raw),
+        state
+      );
+      drain();
+    };
+
+    ask(baseline(), '@exp');
+    // Reset an hour in, at 1,000: 2,000 made in the hour since.
+    const reset = { ...tally, at: now - HOUR, experience: 1_000, onlineMs: HOUR };
+    ask(baseline(reset), '@exp');
+    ask(baseline(reset), '@level');
+    // A baseline from another series is not subtracted.
+    ask(baseline({ ...reset, since: since - 1 }), '@exp');
+    expect(sent).toEqual([
+      '/Rand {Made: 3,000  Needed: 4,500  Rate: 1.5 k/hr  Will level in: 3h 0m}',
+      '/Rand {Made: 2,000  Needed: 4,500  Rate: 2.0 k/hr  Will level in: 2h 15m}',
+      '/Rand {Level: 1  Needed: 4,500  Will level in: 2h 15m}',
+      '/Rand {Made: 3,000  Needed: 4,500  Rate: 1.5 k/hr  Will level in: 3h 0m}'
+    ]);
   });
 });
 

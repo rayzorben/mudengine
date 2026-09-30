@@ -10,7 +10,7 @@ import {
   type SessionPhase,
   type VitalThresholds
 } from '@shared/character';
-import { experienceOwed, experienceStanding, type ExperienceLevel } from '@shared/experience';
+import { experienceOf, type ExperienceLevel } from '@shared/experience';
 import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
@@ -135,13 +135,13 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
       : Math.round(progress.expThisSession / (elapsed / 3_600_000));
 
   const table = progress.expTable;
-  const standing = useMemo(
-    () => experienceStanding(progress.level, progress.exp, table),
-    [progress.level, progress.exp, table]
-  );
   // The realm's own figure wherever it answers, this client's arithmetic only
   // where it cannot — and marked when it is the second. See `experienceOwed`.
-  const owed = experienceOwed(progress.expNeeded, standing);
+  const { level, exp, expNeeded } = progress;
+  const { standing, owed } = useMemo(
+    () => experienceOf({ level, exp, expNeeded, expTable: table }),
+    [level, exp, expNeeded, table]
+  );
 
   /*
    * One condition, most urgent first.

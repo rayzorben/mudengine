@@ -302,6 +302,11 @@ export interface ExperienceStanding {
   earnedSource: ExperienceSource | null;
 }
 
+export interface ExperienceOwed {
+  value: number | null;
+  derived: boolean;
+}
+
 /**
  * What is still owed for the next level, and whether the client worked it out.
  *
@@ -320,16 +325,40 @@ export interface ExperienceStanding {
  * level` is `0` and the level actually being earned towards is further up — and
  * what comes back then is marked.
  *
- * Shared by both cards so the two cannot come to different answers about the
- * same character.
+ * Read through `experienceOf`.
  */
 export function experienceOwed(
   stated: number | null,
   standing: ExperienceStanding | null
-): { value: number | null; derived: boolean } {
+): ExperienceOwed {
   if (standing === null) return { value: stated, derived: false };
   if (!standing.ahead && stated !== null) return { value: stated, derived: false };
   return { value: standing.needed, derived: standing.nextSource === 'database' };
+}
+
+/** What the realm has said about this character's experience, as `Progress` holds it. */
+export interface ExperienceProgress {
+  level: number | null;
+  exp: number | null;
+  expNeeded: number | null;
+  expTable: ExperienceTable | null;
+}
+
+/**
+ * Where a character stands and what it still owes, as the Vitals card, the
+ * Combat Stats card and `@level` all read it.
+ *
+ * `Exp needed for next level` reads 0 for a character that has not been to a
+ * guild in a while, and `Will level in` under it then read `0:00:00`, telling
+ * somebody they are already there when what they are earning is levels further
+ * up. The table corrects it; see `experienceOwed`.
+ */
+export function experienceOf(facts: ExperienceProgress): {
+  standing: ExperienceStanding | null;
+  owed: ExperienceOwed;
+} {
+  const standing = experienceStanding(facts.level, facts.exp, facts.expTable);
+  return { standing, owed: experienceOwed(facts.expNeeded, standing) };
 }
 
 export function experienceStanding(

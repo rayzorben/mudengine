@@ -1474,7 +1474,7 @@ export class SessionManager {
       },
       // A blessed party member says the spell wore off; recast on the event.
       blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell),
-      resetStats: () => this.statsBaseline.rebase(),
+      stats: this.statsBaseline,
       /*
        * A member asks for a heal. Decided now rather than on the next status
        * line, which out of a fight may be a long way off — under the guard the

@@ -4,7 +4,7 @@ import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import CardTable, { type Column } from './CardTable';
 import type { CharacterState } from '@shared/character';
-import { experienceOwed, experienceStanding } from '@shared/experience';
+import { experienceOf } from '@shared/experience';
 import {
   BLOW_KINDS,
   DEFAULT_STATS_GRAPH,
@@ -12,6 +12,7 @@ import {
   damageDealt,
   engagedFor,
   engagedShare,
+  experienceRate,
   hitsDealt,
   mean,
   perRound,
@@ -19,7 +20,7 @@ import {
   ratePerHour,
   rateSeries,
   share,
-  sinceBaseline,
+  statsScope,
   swings,
   turnedAside,
   type BlowKind,
@@ -370,17 +371,10 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * copy of it taken at the last reset (`StatsBaseline`), and every figure is
    * read as the difference, so the untouched totals are still there. The
    * button, a lap beginning and a party member's `@reset` all write that one
-   * copy in main, whether or not this card is mounted.
-   *
-   * A baseline from another series cannot be subtracted from this one:
-   * `since` is set once per series, so a baseline taken on a record since
-   * thrown away carries a different one, and subtracting it would draw the
-   * totals negative.
+   * copy in main, whether or not this card is mounted. `@exp` reads the same
+   * scope (`statsScope`).
    */
-  const stale =
-    baseline !== null &&
-    (tally.since === null || baseline.at === null || baseline.since !== tally.since);
-  const shown = sinceBaseline(tally, stale ? null : baseline);
+  const shown = statsScope(tally, baseline);
 
   // Read once per render rather than per figure, so every number on the card
   // is taken at the same instant — two clocks in one readout disagree.
@@ -399,19 +393,9 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * disconnected is not an hour the character earned nothing in.
    */
   const elapsed = onlineFor(shown, now);
-  const expRate = ratePerHour(shown.experience, elapsed, tuning().rateFloorMs);
-  /*
-   * **What is still owed, from the table rather than from the realm's summary.**
-   *
-   * `progress.expNeeded` is the server's `Exp needed for next level`, which
-   * reads 0 for a character that has not been to a guild in a while — and
-   * `Will level in` under it then read `0:00:00`, which is a client telling
-   * somebody they are already there when what they are actually earning is
-   * three levels further up. The Vitals card makes the same correction from
-   * the same place, so the two cannot disagree; see `src/shared/experience.ts`.
-   */
-  const standing = experienceStanding(progress.level, progress.exp, progress.expTable);
-  const owed = experienceOwed(progress.expNeeded, standing);
+  const expRate = experienceRate(shown, now, tuning().rateFloorMs);
+  // What is still owed, from the table as well as the realm's summary.
+  const { standing, owed } = experienceOf(progress);
 
   /*
    * **Which rows exist is read from the session, not from the reset.**
