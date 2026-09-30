@@ -13,7 +13,7 @@
  * fight, and the server casts it every round*.
  */
 import { canPayFor } from './mana';
-import { countThreats } from './RuleEngine';
+import { countMobs, countThreats } from './RuleEngine';
 import { DrainWhenHurt } from './DrainWhenHurt';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -78,6 +78,9 @@ export function isCastResult(block: Block): boolean {
     (block.groups['line'] ?? '').trim().toLowerCase().startsWith('cast ')
   );
 }
+
+/** The command that stops the spell the server repeats: MegaMUD's own. */
+const BREAK = 'break';
 
 /** A spell worth casting, by the name its casts are counted under, and the word that casts it. */
 interface Wanted {
@@ -277,6 +280,46 @@ export class AttackSpells {
       action: { kind: 'melee' },
       reason: t('automation.combat.reasonRoundMelee', { spell: repeating.spell, verb: melee })
     };
+  }
+
+  /**
+   * `break`, when the area spell this module cast has just emptied the room
+   * on a MajorMUD realm, or null. The server there goes on casting it with
+   * nothing to land on, and MegaMUD breaks it for stock realms only ("When an
+   * area spell finishes a mob, the client now sends break"). GreaterMUD
+   * stops the spell itself (`DoMagicRound`, `BreakCombat(true)`,
+   * `Player.cs:6326`). No capture of a stock realm shows it (todo 828).
+   * Once, because the break's send ends what the server repeats.
+   */
+  breakEmptied(
+    was: CharacterState,
+    state: CharacterState
+  ): Pick<Proposal, 'command' | 'reason'> | null {
+    const cast = this.repeated;
+    // The same room: a new one listed empty is a move, which ends the fight on its own.
+    const sameRoom = was.room.name === state.room.name && was.room.arrival === state.room.arrival;
+    if (cast === null || !sameRoom || countMobs(was.room.occupants) === 0) return null;
+    if (!this.breakWanted(state)) return null;
+    return {
+      command: BREAK,
+      reason: t('automation.combat.reasonBreakEmptyRoom', { spell: cast.spell })
+    };
+  }
+
+  /**
+   * Whether a `break` still has something to stop: this module's area spell
+   * repeating on a MajorMUD realm, into a room with no monster listed. Asked
+   * again at the send, since one may walk in while it waits.
+   */
+  breakWanted(state: CharacterState): boolean {
+    const cast = this.repeated;
+    return (
+      cast !== null &&
+      cast.area &&
+      cast.by === 'module' &&
+      this.realmClass().family === 'majormud' &&
+      countMobs(state.room.occupants) === 0
+    );
   }
 
   /** A line was classified: an engagement, a cast confirmed or fizzled, or refused as having no effect. */

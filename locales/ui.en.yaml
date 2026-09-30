@@ -4701,6 +4701,8 @@ automation:
     runRefused: "Not running it: auto-combat could not be turned off in the character's file."
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something arrived that the world data could not place'
+    # Todo 828: a MajorMUD server goes on casting the area spell into an empty room.
+    reasonBreakEmptyRoom: 'auto-combat: {spell} has no monsters left in the room, breaking'
     reasonRefresh: 'auto-combat: re-reading the room'
     reasonRoundAreaSpell: 'auto-combat: the room is crowded enough for the area spell'
     # Todo 816: the server repeats the spell each round; spent, the round changes to {verb}.
