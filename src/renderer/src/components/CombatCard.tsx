@@ -15,6 +15,9 @@ import type { PopoverAnchor } from '../lib/popover';
 import { levelWord } from '../lib/vitals';
 import { tuning } from '../lib/tuning';
 
+import type { AutomationSnapshot } from '@shared/automation';
+import type { SessionId } from '@shared/ipc';
+
 export interface CombatCardProps extends CardChrome {
   character: CharacterState;
   /** The registry, pushed apart from the character: which attackers are people. */
@@ -25,6 +28,8 @@ export interface CombatCardProps extends CardChrome {
   inspect?(name: string, anchor: HTMLElement): void;
   /** A person's name clicked: the Player flyout — a PvP attacker is a person. */
   onSelect?(name: string, anchor: PopoverAnchor): void;
+  automation?: AutomationSnapshot;
+  session?: SessionId;
 }
 
 /**
@@ -266,6 +271,8 @@ function CombatCard({
   verdict,
   inspect,
   onSelect,
+  automation,
+  session,
   ...chrome
 }: CombatCardProps) {
   const { combat } = character;
@@ -294,6 +301,49 @@ function CombatCard({
       title={t('cards.combat.title')}
     >
       <div className="scroller">
+        {automation?.konami?.active && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '6px 10px',
+              margin: '0 0 8px 0',
+              background: 'var(--surface-2, rgba(255, 255, 255, 0.05))',
+              borderRadius: '4px',
+              border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))'
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: automation.konami.paused
+                    ? 'var(--text-muted, #aaa)'
+                    : 'var(--accent, #38bdf8)'
+                }}
+              >
+                {automation.konami.providerName ?? 'Autonomous Decision Engine'}
+              </div>
+              <div style={{ fontSize: '10px', opacity: 0.7 }}>
+                {automation.konami.paused ? 'Paused' : '100% Survival Invariant Active'}
+              </div>
+            </div>
+            <button
+              type="button"
+              className={`btn chip ${automation.konami.paused ? 'warn' : 'on'}`}
+              style={{ cursor: 'pointer', padding: '2px 8px', fontSize: '11px', fontWeight: 600 }}
+              onClick={() => {
+                if (session && window.mudengine?.toggleKonamiPause) {
+                  void window.mudengine.toggleKonamiPause(session);
+                }
+              }}
+            >
+              {automation.konami.buttonLabel}
+            </button>
+          </div>
+        )}
         {/* Drawn whether or not anything has swung yet: the question it
             answers is asked on the way in, and only where the room holds
             something the realm could weigh. */}

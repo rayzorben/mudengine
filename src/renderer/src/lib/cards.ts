@@ -57,6 +57,7 @@ export const CARDS = [
   { id: 'combat', label: t('cards.combat.title') },
   { id: 'room', label: t('cards.room.title') },
   { id: 'map', label: t('cards.map.title') },
+  { id: 'konami', label: t('cards.konami.title') },
   /*
    * Where a loop is drawn: the map again, as a chooser rather than a
    * picture. Put away by default and brought out as a float by the palette,

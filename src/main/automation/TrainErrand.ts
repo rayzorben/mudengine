@@ -22,6 +22,7 @@ import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
 import { roomId, type RoomId, type Route, type TrainerChoice } from '../../shared/world';
 import type { SessionModule } from './Module';
+import type { KonamiBridge } from './KonamiBridge';
 
 export interface TrainPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -97,6 +98,11 @@ export class TrainErrand implements SessionModule {
    * fee and came back was told nothing.
    */
   private poor: { level: number; cost: number } | null = null;
+  private konami?: KonamiBridge;
+
+  setKonamiBridge(bridge: KonamiBridge): void {
+    this.konami = bridge;
+  }
 
   constructor(
     private config: TrainConfig,
@@ -152,7 +158,8 @@ export class TrainErrand implements SessionModule {
 
   /** Every state change: is a level waiting, and is this the moment to go? */
   onCharacter(state: CharacterState): void {
-    if (!this.enabled || !this.config.levels) return;
+    const isKonami = this.konami?.isActive() && !this.konami?.isPaused();
+    if ((!this.enabled || !this.config.levels) && !isKonami) return;
     if (state.phase !== 'in-game') return;
     if (this.phase.kind === 'training') {
       this.settle(state);

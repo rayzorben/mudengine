@@ -212,6 +212,9 @@ export function createWebBridge(): IpcApi {
     runLoop: (session, loop) => invoke(Invoke.runLoop, session, loop),
     getWalk: (session) => invoke(Invoke.getWalk, session),
     getAutomation: (session) => invoke(Invoke.getAutomation, session),
+    toggleKonamiPause: (session) => invoke(Invoke.toggleKonamiPause, session),
+    submitKonamiFeedback: (session, transactionId, feedback, notes) =>
+      invoke(Invoke.submitKonamiFeedback, session, transactionId, feedback, notes),
 
     listSessions: () => invoke(Invoke.listSessions),
     listProfiles: () => invoke(Invoke.listProfiles),

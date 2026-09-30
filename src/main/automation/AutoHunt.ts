@@ -28,6 +28,7 @@ import { huntLoop, type HuntingAdvice, type HuntingSpot } from '../../shared/hun
 import type { Loop } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
 import type { SessionModule } from './Module';
+import type { KonamiBridge } from './KonamiBridge';
 
 export interface HuntPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -99,6 +100,11 @@ export class AutoHunt implements SessionModule {
   private surveyedAt = 0;
   /** The refusal last said, so one situation is said once. */
   private said: string | null = null;
+  private konami?: KonamiBridge;
+
+  setKonamiBridge(bridge: KonamiBridge): void {
+    this.konami = bridge;
+  }
   /**
    * What the estimate was made *for*, so a changed character asks again.
    *
@@ -216,9 +222,17 @@ export class AutoHunt implements SessionModule {
     this.judgedFor = null;
   }
 
+  huntSpot(spot: HuntingSpot, state: CharacterState): void {
+    if (this.phase.kind === 'hunting' && this.phase.key === spot.key) return;
+    this.go(state, spot);
+  }
+
   /** Every state change: is this the moment to go hunting? */
   onCharacter(state: CharacterState): void {
-    if (!this.enabled || !this.config.enabled) return;
+    const isKonamiActive = this.konami?.isActive() && !this.konami?.isPaused();
+    if (!this.enabled || !this.config.enabled) {
+      if (!isKonamiActive) return;
+    }
     if (state.phase !== 'in-game') return;
     if (this.phase.kind === 'walking') return;
 
@@ -432,7 +446,11 @@ export class AutoHunt implements SessionModule {
    * somebody else is working it. Null where the survey could not finish it.
    */
   private priced(spot: HuntingSpot): number | null {
-    return this.pricedRate(spot.key, spot.estimate.expPerHour);
+    const rate =
+      spot.estimate.expPerHour ??
+      spot.estimate.ceilingPerHour ??
+      (spot.estimate.expPerCycle ? spot.estimate.expPerCycle * 30 : null);
+    return this.pricedRate(spot.key, rate);
   }
 
   private pricedRate(key: string, rate: number | null): number | null {
@@ -455,10 +473,20 @@ export class AutoHunt implements SessionModule {
 
   /** The highest priced lair over the floor, or undefined. */
   private pick(spots: readonly HuntingSpot[]): HuntingSpot | null {
+    const isKonami = this.konami?.isActive() && !this.konami?.isPaused();
+    if (this.konami && isKonami && spots.length > 0) {
+      const chosenKey = this.konami.getHuntingTarget();
+      if (chosenKey && !chosenKey.startsWith('resident:')) {
+        const matched = spots.find((s) => s.key === chosenKey);
+        if (matched) return matched;
+      }
+    }
     const floor = this.walkConfig.minExpPerHour;
     let best: HuntingSpot | null = null;
     let value = -1;
     for (const spot of spots) {
+      if (isKonami && spot.key.startsWith('resident:')) continue;
+      if (isKonami && (spot.estimate.worstShare ?? 0) > 0.35) continue;
       const worth = this.priced(spot);
       if (worth === null || (floor > 0 && worth < floor)) continue;
       if (worth > value) {

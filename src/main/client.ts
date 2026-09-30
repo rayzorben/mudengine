@@ -1584,6 +1584,20 @@ function registerIpc(): void {
     Invoke.getAutomation,
     (_caller, session: SessionId) => host?.get(session)?.manager.automation ?? EMPTY_AUTOMATION
   );
+  handle(
+    Invoke.toggleKonamiPause,
+    (_caller, session: SessionId) => host?.get(session)?.manager.toggleKonamiPause() ?? false
+  );
+  handle(
+    Invoke.submitKonamiFeedback,
+    (
+      _caller,
+      session: SessionId,
+      transactionId: string,
+      feedback: 'correct' | 'incorrect',
+      notes?: string
+    ) => host?.get(session)?.manager.submitKonamiFeedback(transactionId, feedback, notes) ?? false
+  );
 
   /**
    * Who is walking, for pricing a route against them.

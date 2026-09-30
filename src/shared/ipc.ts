@@ -721,6 +721,10 @@ export const Invoke = {
   getWalk: 'walk:get',
   /** The decision trace, for a renderer that mounted mid-session. */
   getAutomation: 'automation:get',
+  /** Toggle external decision provider pause state. */
+  toggleKonamiPause: 'automation:toggle-konami-pause',
+  /** Submit feedback for a decision transaction. */
+  submitKonamiFeedback: 'automation:submit-konami-feedback',
 
   // -- sessions and windows
   /** Every loaded session, for a window that has just mounted. */
@@ -1254,6 +1258,13 @@ export interface IpcApi {
   draftLoop(session: SessionId, rooms: RoomId[]): Promise<LoopDraft>;
   getWalk(session: SessionId): Promise<WalkProgress>;
   getAutomation(session: SessionId): Promise<AutomationSnapshot>;
+  toggleKonamiPause(session: SessionId): Promise<boolean>;
+  submitKonamiFeedback(
+    session: SessionId,
+    transactionId: string,
+    feedback: 'correct' | 'incorrect',
+    notes?: string
+  ): Promise<boolean>;
 
   listSessions(): Promise<SessionSummary[]>;
   listProfiles(): Promise<ProfileSummary[]>;

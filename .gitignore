@@ -45,7 +45,7 @@ logs/
 # recorded paths. Read from (docs/mega-paramud.md) and converted by
 # `npm run build:loops`; the converted loops are committed, this is not.
 mega-paramud/
-captures/
+captures
 # Claude Code's own working tree: agents, skills and worktrees it writes for
 # itself. It has never been committed and must not be -- `settings.local.json`
 # under it holds machine-specific permissions, and the rest is a cache of this

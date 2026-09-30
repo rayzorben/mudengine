@@ -1789,6 +1789,21 @@ cards:
       aloneUnread: '{name} waits for your stats'
       aloneUnrun: '{name} cannot be rated'
     title: Combat
+  konami:
+    title: Konami Mode
+    badge:
+      active: Active
+      paused: Paused
+      off: Off
+    headings:
+      objectives: Objectives
+      tactics: Tactical Intelligence
+      trace: Decision Trace
+      terminal: Live Decision Terminal
+    objectives:
+      expGoal: 'Goal: Maximize EXP/hr for current race/class/level'
+      survivalInvariant: 'Invariant: 100% Zero-Death Survival (Auto-Retreat @ 30% HP)'
+    empty: Autonomous decisions disabled.
   copyMenu:
     copy: Copy
     copyCard: Copy card

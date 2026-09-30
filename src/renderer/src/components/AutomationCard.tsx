@@ -4,9 +4,11 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';
 import type { AutomationSnapshot } from '@shared/automation';
+import type { SessionId } from '@shared/ipc';
 
 export interface AutomationCardProps extends CardChrome {
   automation: AutomationSnapshot;
+  session?: SessionId;
 }
 
 /**
@@ -26,8 +28,8 @@ export interface AutomationCardProps extends CardChrome {
  *   by a guard shows which guard, which is the answer to the more common
  *   question of why the bot did nothing.
  */
-function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
-  const { queue, sent, firings, safety, engagements, enabled } = automation;
+function AutomationCard({ automation, session, ...chrome }: AutomationCardProps) {
+  const { queue, sent, firings, safety, engagements, enabled, konami } = automation;
 
   const badge = !enabled ? (
     <span className="chip off">{t('cards.automation.badge.off')}</span>
@@ -49,6 +51,27 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
       scroll
       title={t('cards.automation.title')}
     >
+      {konami?.active && (
+        <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            type="button"
+            className={`btn chip ${konami.paused ? 'warn' : 'on'}`}
+            style={{ cursor: 'pointer' }}
+            onClick={() => {
+              const api = window.mudengine;
+              if (session && api?.toggleKonamiPause) {
+                void api.toggleKonamiPause(session);
+              }
+            }}
+          >
+            {konami.buttonLabel}
+          </button>
+          <span style={{ fontSize: '11px', opacity: 0.7 }}>
+            {konami.paused ? 'Paused' : 'Active (autonomous decisions)'}
+          </span>
+        </div>
+      )}
+
       {!enabled && <div className="empty">{t('cards.automation.emptyDisabled')}</div>}
 
       {queue.pending.length > 0 && (

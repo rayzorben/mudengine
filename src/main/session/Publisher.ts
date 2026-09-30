@@ -42,6 +42,7 @@ export interface PublisherParts {
 export interface PublisherSession {
   /** The automation settings as last loaded. */
   config(): AutomationConfig;
+  konamiSnapshot?(): { active: boolean; paused: boolean; buttonLabel: string } | undefined;
 }
 
 /** The members of the session's sink this calls, and no more. */
@@ -209,7 +210,8 @@ export class Publisher {
       sent: [...this.sentLog].reverse(),
       firings: this.rules.firings.reverse(),
       safety: [...this.safetyLog].reverse(),
-      engagements: [...this.engageLog].reverse()
+      engagements: [...this.engageLog].reverse(),
+      konami: this.session.konamiSnapshot?.()
     };
   }
 

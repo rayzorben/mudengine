@@ -63,6 +63,7 @@ import { Grounded } from './Grounded';
 import { Safety } from './Safety';
 import { FleeGoto } from './FleeGoto';
 import { Events } from '../automation/Events';
+import { KonamiBridge } from '../automation/KonamiBridge';
 import type { SessionModule } from '../automation/Module';
 import type { Loop } from '../../shared/loops';
 import {
@@ -401,6 +402,7 @@ export class SessionManager {
    * `emergency`, and it is told to stand down whenever an escape is in flight.
    */
   readonly combat: AutoCombat;
+  readonly konami: KonamiBridge;
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
@@ -653,6 +655,11 @@ export class SessionManager {
      * write to the socket on automation's behalf — docs/legacy-assessment.md §6.
      */
     this.automationConfig = automation;
+    this.konami = new KonamiBridge(automation, {
+      notice: (msg) => this.sink.notice(msg),
+      changed: () => this.publisher?.publishAutomation(),
+      canHide: () => holdsAbility(this.errands.capabilities(), CLASS_STEALTH_ABILITY) === true
+    });
     this.queue = new CommandQueue(automation, {
       send: (command, intent) => {
         /*
@@ -974,6 +981,7 @@ export class SessionManager {
       () => this.errands.realmClass(),
       lore
     );
+    this.combat.setKonamiBridge(this.konami);
 
     /*
      * Sitting down, which is the opposite answer to the same number the
@@ -1232,13 +1240,7 @@ export class SessionManager {
         stopLoop: stopLap,
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking,
-        /*
-         * Nothing else in the middle of something. The escapes, and **the
-         * errands** — each of which has phases where nothing is walking and
-         * nothing is looping (a shop errand waiting for its listing, a trainer
-         * errand waiting for the level to move), during which a hunt would
-         * otherwise survey and walk the character away from what it came for.
-         */
+        // Escapes and errands: nothing else in the middle of something.
         busy: () =>
           this.travel.isRetreating() ||
           this.travel.retreatArmed ||
@@ -1250,11 +1252,18 @@ export class SessionManager {
       },
       reports
     );
-    /*
-     * And going to get the thing a door wants (todo 07): bought where the
-     * realm names a counter, hunted where it names a monster, and the route
-     * the player asked for walked once the pack holds it.
-     */
+    this.hunt.setKonamiBridge(this.konami);
+    this.trainLevel.setKonamiBridge(this.konami);
+    this.konami.setDirectorHandlers({
+      state: () => this.tracker.current,
+      survey: () => this.huntingGrounds(null),
+      startHunt: (s) => this.hunt.huntSpot(s, this.tracker.current),
+      trainLevel: () => this.trainLevel.onCharacter(this.tracker.current),
+      send: (c) => this.queue.enqueue({ command: c, priority: 'user' }),
+      isBusy: () => this.travel.isRetreating() || this.tracker.pendingMoves > 0 || this.walker.walking,
+      isHunting: () => this.hunt.hunting
+    });
+    // Door requirement errand (bought from counter, hunted from monster).
     this.itemErrand = new ItemErrand(
       {
         here: () => roomAddress(this.tracker.current.room),
@@ -1787,9 +1796,10 @@ export class SessionManager {
         rules: this.rules,
         client: this.client
       },
-      { config: () => this.automationConfig },
+      { config: () => this.automationConfig, konamiSnapshot: () => this.konami.snapshot() },
       sink
     );
+    this.publisher.publishAutomation();
     this.grounded = new Grounded(this.publisher, sink);
     const safetyParts = {
       tracker: this.tracker,
@@ -2699,6 +2709,7 @@ export class SessionManager {
     rewrites: RewritesUiConfig = DEFAULT_CONFIG.ui.rewrites
   ): void {
     this.automationConfig = automation;
+    this.konami.reconfigure(automation);
     this.rewriter.configure(rewrites);
     this.promptDesign.noteDesign();
     this.errands.forgetPreferred();
@@ -2717,6 +2728,7 @@ export class SessionManager {
     this.loops.configure(automation.health, automation.movement, automation.walk);
     this.login.configure(login);
     this.publisher.useSecret(login.password);
+    this.publisher.publishAutomation();
   }
 
   /**
@@ -3315,6 +3327,7 @@ export class SessionManager {
       // A step still waiting for its room stands auto-combat down: a fight
       // opened now lands in the room being left. Observed above, off every
       // line, because it is a fact about the wire rather than about the state.
+      this.konami.onCharacter(state);
       this.combat.onCharacter(state);
       // Under the passage's spell every routine below stands down: the walk
       // is the one thing that helps, and the walker is already told so.
@@ -3735,9 +3748,14 @@ export class SessionManager {
     this.sink.notice(t('session.stats.released'));
   }
 
-  /** The decision trace, for a renderer that mounted mid-session. See `Publisher.automation`. */
-  get automation(): AutomationSnapshot {
-    return this.publisher.automation;
+  get automation(): AutomationSnapshot { return this.publisher.automation; }
+  toggleKonamiPause(): boolean {
+    const res = this.konami.togglePause();
+    this.publisher.publishAutomation(); return res;
+  }
+  submitKonamiFeedback(id: string, fb: 'correct' | 'incorrect', notes?: string): boolean {
+    const res = this.konami.recordFeedback(id, fb, notes);
+    this.publisher.publishAutomation(); return res;
   }
 
   /**

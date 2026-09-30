@@ -2384,6 +2384,10 @@ export interface AutomationConfig {
   quests: QuestsConfig;
   /** Which kit to be in, and when. See `GearConfig`. */
   gear: GearConfig;
+  /** Hidden unbranded hook for external decision provider. */
+  superKonamiMode?: boolean;
+  konamiProviderPath?: string;
+  konamiPaused?: boolean;
 }
 
 /**
@@ -2838,7 +2842,10 @@ export const DEFAULT_CONFIG: AppConfig = {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true
-    }
+    },
+    superKonamiMode: false,
+    konamiProviderPath: '',
+    konamiPaused: false
   }
 };
 
@@ -3751,7 +3758,10 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     hunting: normalizeHuntingAutomation(raw['hunting']),
     train: normalizeTrain(raw['train']),
     quests: normalizeQuests(raw['quests']),
-    gear: normalizeGear(raw['gear'])
+    gear: normalizeGear(raw['gear']),
+    superKonamiMode: bool(raw['superKonamiMode'], d.superKonamiMode ?? false),
+    konamiProviderPath: str(raw['konamiProviderPath'], d.konamiProviderPath ?? ''),
+    konamiPaused: bool(raw['konamiPaused'], d.konamiPaused ?? false)
   };
 }
 
