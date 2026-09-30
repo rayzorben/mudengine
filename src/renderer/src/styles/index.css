@@ -5179,6 +5179,31 @@ button.quest-plan-back {
   white-space: nowrap;
 }
 
+/*
+ * *New character* and the chevron that reopens a closed one: one pill cut in
+ * two by a 1px seam, so it reads as a single control with a second way in.
+ * The chevron is square in the band, like the gear.
+ */
+.tab-rail .new-character-group {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 1px;
+  min-width: 0;
+}
+
+.tab-rail .new-character-group[data-split] > .new-character:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.tab-rail .new-character.closed-characters {
+  flex: 0 0 auto;
+  width: var(--topbar-h);
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 /* The identity colour, resolved once per tab and read by everything below. */
 .tab {
   --tab-accent: var(--accent);

@@ -942,6 +942,7 @@ tabs:
   head:
     newCharacterAria: New character
     newCharacterTooltip: New character…
+    closedCharactersAria: Reopen a character
     settingsAria: Settings
     settingsTooltip: Settings…
   tab:
