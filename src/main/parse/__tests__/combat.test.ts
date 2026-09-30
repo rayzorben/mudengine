@@ -313,3 +313,65 @@ describe('a monster heals while you fight it', () => {
     expect(next.combat.health?.remaining).toBe(1);
   });
 });
+
+/*
+ * A spell cast mid-fight is answered `*Combat Off*` then `*Combat Engaged*`
+ * (GreaterMUD wire, `dfir` and `msto`; todo 843), and the monsters hitting the
+ * character did not stop for it.
+ */
+describe('a Combat Off and Combat Engaged pair', () => {
+  const inRoom = (s: CharacterState, map: number, number: number): CharacterState => ({
+    ...s,
+    room: { ...s.room, map, number }
+  });
+  const crowd = () => {
+    const { tracker, s } = fight([mob('sea giant'), mob('sea giant warrior')]);
+    let next = tracker.blowOnMe(inRoom(s, 1, 100), 1_000, 'sea giant');
+    next = tracker.blowOnMe(next, 1_100, 'sea giant warrior');
+    return { tracker, s: next };
+  };
+
+  it('keeps the attackers across a cast mid-fight and drops the target', () => {
+    const { tracker, s } = crowd();
+    const off = tracker.status(s, false, 2_000);
+    expect(off.combat.attackers).toEqual([]);
+    const engaged = tracker.status(off, true, 2_050);
+    expect(engaged.combat.attackers).toEqual(['sea giant warrior', 'sea giant']);
+    expect(engaged.combat.target).toBeNull();
+  });
+
+  it('does not bring back a monster the kill took out of the room', () => {
+    const { tracker, s } = fight([mob('giant rat'), mob('kobold thief')]);
+    let next = tracker.hit(inRoom(s, 1, 100), 1_000, 'giant rat', 'You', 9)!;
+    next = tracker.blowOnMe(next, 1_100, 'giant rat');
+    next = tracker.died(next, 2_000);
+    const off = tracker.status(next, false, 2_100);
+    tracker.noteAttack('kobold thief', 'aa kobold thief', 2_200);
+    const engaged = tracker.status(off, true, 2_300);
+    expect(engaged.combat.attackers).toEqual([]);
+    expect(engaged.combat.target).toBe('kobold thief');
+  });
+
+  it('does not carry the attackers into another room or past the bind window', () => {
+    const moved = crowd();
+    const off = moved.tracker.status(moved.s, false, 2_000);
+    expect(moved.tracker.status(inRoom(off, 1, 101), true, 2_050).combat.attackers).toEqual([]);
+
+    const late = crowd();
+    const bind = DEFAULT_INTERNAL.tuning.parse.engageBindMs;
+    const lateOff = late.tracker.status(late.s, false, 2_000);
+    expect(late.tracker.status(lateOff, true, 2_001 + bind).combat.attackers).toEqual([]);
+  });
+
+  it('gives the attackers back once, and never after forget', () => {
+    const once = crowd();
+    const off = once.tracker.status(once.s, false, 2_000);
+    once.tracker.status(off, true, 2_050);
+    expect(once.tracker.status(off, true, 2_100).combat.attackers).toEqual([]);
+
+    const forgot = crowd();
+    const forgotOff = forgot.tracker.status(forgot.s, false, 2_000);
+    forgot.tracker.forget();
+    expect(forgot.tracker.status(forgotOff, true, 2_050).combat.attackers).toEqual([]);
+  });
+});
