@@ -344,7 +344,8 @@ export class Remotes implements SessionModule {
   }
 
   /**
-   * A classified line arrived. Only chat that opens with `@` matters here.
+   * A classified line arrived. Chat that opens with `@` matters here, and a
+   * party join (`askJoined`).
    *
    * `state` is passed rather than held because the answer to `@health` is a
    * fact about *now*, and a copy kept from the last state change is a copy that
@@ -353,6 +354,10 @@ export class Remotes implements SessionModule {
   onBlock(block: Block, state: CharacterState): void {
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     this.autoJoin.onBlock(block, state);
+    if (block.type === 'party-joined') {
+      this.askJoined(block.groups['player'] ?? block.groups['leader'], state);
+      return;
+    }
     const channel = CHANNELS.get(block.type);
     if (channel === undefined) return;
 
@@ -534,35 +539,30 @@ export class Remotes implements SessionModule {
   }
 
   /**
-   * Asks every other member of the party for its numbers.
+   * Asks somebody who just joined the party for its numbers: the member who
+   * started to follow this character, or the leader this character now follows.
    *
-   * Called when the party changes, which is both the moment a roster becomes
-   * worth having and the moment it is emptiest. The party listing that fires
-   * alongside this gives percentages; this gives the numbers, and it spends a
+   * Only on a join. A leave or a disband is no reason to ask: the member has gone,
+   * and the leader disbanding once sent `@health` and `@version` to the member
+   * who had just left (festus, 2026-09-25). The party listing that fires
+   * alongside gives percentages; this gives the numbers, and it spends a
    * telepath rather than a command from the budget walking and fighting spend
    * from.
-   *
-   * Coalesced per name, so a burst of joins and leaves is one question each
-   * rather than one per announcement.
    */
-  askParty(state: CharacterState): void {
-    if (!this.config.enabled || !this.config.remotes.enabled) return;
-    const me = state.name?.toLowerCase() ?? null;
-    for (const member of state.party.members) {
-      if (member.invited) continue;
-      if (me !== null && member.name.toLowerCase() === me) continue;
-      // MegaMUD's *Request Party Health* (`party.askHealth`, todo 831).
-      if (this.config.party.askHealth) this.ask(member.name, 'health', state);
-      /*
-       * And which client they run, once, because it decides the wording of
-       * every question after this one. Only while nothing has said: the answer
-       * is a fact about the player and is kept realm-wide, so a party that
-       * re-forms all evening asks nobody twice.
-       */
-      if (this.events.peer?.(member.name)?.client == null) {
-        this.ask(member.name, 'version', state);
-      }
-    }
+  private askJoined(who: string | undefined, state: CharacterState): void {
+    if (who === undefined) return;
+    // MegaMUD's *Request Party Health* (`party.askHealth`, todo 831).
+    if (this.config.party.askHealth) this.ask(who, 'health', state);
+    /*
+     * And which client they run, once ever, because it decides the wording of
+     * every question after this one. Any answer or lapse is kept realm-wide on
+     * the player (`client`, `extendedRemotes`), so a party that re-forms all
+     * evening asks nobody twice, and a client that never answers is not asked
+     * again either.
+     */
+    const peer = this.events.peer?.(who);
+    const settled = peer != null && (peer.client !== null || peer.extendedRemotes !== 'unknown');
+    if (!settled && !this.asked.has(playerKey(who))) this.ask(who, 'version', state);
   }
 
   /**
@@ -690,7 +690,7 @@ export class Remotes implements SessionModule {
        * Silence is evidence about the extended vocabulary and about nothing
        * else. A client that answers neither `@version` nor an extended
        * question is not one this client can talk to — which is exactly what is
-       * recorded, and it is corrected the moment a `@version` does come back.
+       * recorded, and a join does not ask them again (`askJoined`).
        */
       this.events.clientNamed?.(outstanding.who, undefined, 'no');
       const plain = plainRemote(outstanding.name);

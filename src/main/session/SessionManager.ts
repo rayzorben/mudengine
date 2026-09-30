@@ -3059,9 +3059,6 @@ export class SessionManager {
 
     const roomBefore = this.tracker.current.room;
     const fed = applyAct(this.tracker, step);
-    // The members' own numbers, asked of the party as it stands after this
-    // block: one who just joined, never one who left.
-    if (partyChanged) this.remotes.askParty(this.tracker.current);
     // An escape in flight reads what the server said back (todos 06, 813).
     this.travel.settleEscape(block, roomBefore);
     this.fleeGoto.settle(block, this.answering);

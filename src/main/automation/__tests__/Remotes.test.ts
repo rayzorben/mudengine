@@ -65,6 +65,10 @@ const config: AutomationConfig = {
   pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
 };
 
+/** `<player> started to follow you.`, or `You are now following <leader>.` */
+const joins = (group: 'player' | 'leader', name: string): Block =>
+  ({ type: 'party-joined', domain: 'presence', groups: { [group]: name } }) as unknown as Block;
+
 const said = (type: string, player: string, message: string): Block =>
   ({
     type,
@@ -621,56 +625,24 @@ describe('what it will not be driven by', () => {
 });
 
 describe('asking, which is the other half of the same vocabulary', () => {
-  it('asks every member of the party for its numbers when one is formed', () => {
-    peers.askParty(
-      who({
-        party: {
-          engaged: {},
-          threatened: {},
-          following: null,
-          members: [
-            {
-              name: 'Vaelor',
-              className: null,
-              health: null,
-              mana: null,
-              rank: null,
-              activity: null,
-              invited: false,
-              vitals: null
-            },
-            {
-              name: 'Soul',
-              className: null,
-              health: null,
-              mana: null,
-              rank: null,
-              activity: null,
-              invited: false,
-              vitals: null
-            },
-            {
-              name: 'Yang',
-              className: null,
-              health: null,
-              mana: null,
-              rank: null,
-              activity: null,
-              invited: true,
-              vitals: null
-            }
-          ]
-        }
-      })
-    );
+  it('asks somebody joining the party for its numbers and which client it runs', () => {
+    peers.onBlock(joins('player', 'Soul'), who());
     drain();
-    /*
-     * Not itself, and not somebody who has not accepted the invitation. The
-     * second question is which client they run: it decides the wording of
-     * every question after this one, and it is asked only while nothing has
-     * said — see `PlayerRecord.client`.
-     */
+    // The second question decides the wording of every question after this one.
     expect(sent).toEqual(['/Soul @health', '/Soul @version']);
+  });
+
+  /*
+   * The leader disbanding sent both to the member who had just left
+   * (festus, 2026-09-25). A second join asks `@health` again, and `@version`
+   * only while nothing has answered or lapsed.
+   */
+  it('asks which client somebody runs once, however often they join', () => {
+    peers.onBlock(joins('player', 'Soul'), who());
+    drain();
+    peers.onBlock(joins('leader', 'Soul'), who());
+    drain();
+    expect(sent).toEqual(['/Soul @health', '/Soul @version', '/Soul @health']);
   });
 
   /*
@@ -1423,22 +1395,20 @@ describe('talking to another one of these clients', () => {
     expect(clients).toEqual([]);
   });
 
-  // The positive control is `asks every member of the party for its numbers`.
-  it('does not ask a party member which client it runs once the registry has said', () => {
+  // The positive control is `asks somebody joining the party for its numbers`.
+  it('does not ask a joining member which client it runs once the registry has said', () => {
     knowing('Soul', 'yes');
-    const soul = { name: 'Soul', className: null, health: null, mana: null, rank: null };
-    peers.askParty(
-      who({
-        party: {
-          engaged: {},
-          threatened: {},
-          following: null,
-          members: [{ ...soul, activity: null, invited: false, vitals: null }]
-        }
-      })
-    );
+    peers.onBlock(joins('player', 'Soul'), who());
     drain();
     expect(sent).toEqual(['/Soul @health']);
+  });
+
+  it('does not ask again after a @version went unanswered', () => {
+    knowing('Rand', 'no');
+    registry = { rand: { ...registry['rand']!, client: null } };
+    peers.onBlock(joins('player', 'Rand'), who());
+    drain();
+    expect(sent).toEqual(['/Rand @health']);
   });
 
   it('reads where a peer said it is standing, by address', () => {
@@ -1846,10 +1816,10 @@ describe('party pacing', () => {
     const party = who({
       party: { engaged: {}, threatened: {}, following: null, members: [member('Soul', 1)] }
     });
-    make({ askHealth: false }).askParty(party);
+    make({ askHealth: false }).onBlock(joins('player', 'Soul'), party);
     drain();
     expect(sent).not.toContain('/Soul @health');
-    make({ askHealth: true }).askParty(party);
+    make({ askHealth: true }).onBlock(joins('player', 'Soul'), party);
     drain();
     expect(sent).toContain('/Soul @health');
   });
