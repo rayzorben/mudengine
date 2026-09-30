@@ -61,6 +61,7 @@ import { RealmMenu } from './RealmMenu';
 import { RowOverrides } from '../automation/RowOverrides';
 import { Grounded } from './Grounded';
 import { Safety } from './Safety';
+import { StatsBaseline } from './StatsBaseline';
 import { FleeGoto } from './FleeGoto';
 import { Events } from '../automation/Events';
 import type { SessionModule } from '../automation/Module';
@@ -442,6 +443,7 @@ export class SessionManager {
   /** Keeping the pack stocked. See `Supplies`. */
   private readonly supplies: Supplies;
   private readonly remotes: Remotes;
+  readonly statsBaseline: StatsBaseline;
   private readonly afk: Afk;
   private readonly heal: AutoHeal;
   private readonly castRound: CastRound;
@@ -453,14 +455,10 @@ export class SessionManager {
   private readonly invoke: AutoInvoke;
   readonly loops: LoopRunner;
   /**
-   * Whether a lap, or a route, was moving on the previous progress push.
-   *
-   * Only so the *edge* is caught: `progress` fires on every step of every leg,
-   * and the line about a journey fighting through a switch that is off belongs
-   * at the start of it, not once a stop. Two flags because the two progress
-   * callbacks are two, and a route starting mid-lap is not a fresh journey.
+   * Whether a route was moving on the previous progress push, so the line
+   * about a journey fighting through a switch that is off is said at its start
+   * and not once a step. The lap's edge is `AutoCombat.lapRunning`.
    */
-  private wasLooping = false;
   private wasWalking = false;
 
   /**
@@ -555,6 +553,8 @@ export class SessionManager {
         notice: (message) => this.sink.notice(message)
       }
     );
+    const tally = () => this.tracker.current.tally;
+    this.statsBaseline = new StatsBaseline(tally, (base) => this.sink.statsBase?.(base));
     this.useRealm(players);
     /*
      * One interval for the life of the session, armed here rather than in
@@ -917,7 +917,7 @@ export class SessionManager {
         if (
           walking &&
           !this.wasWalking &&
-          !this.wasLooping &&
+          !this.combat.lapRunning &&
           !this.travel.walkIsRun &&
           this.combat.fightingBecauseTravelling
         ) {
@@ -1474,6 +1474,7 @@ export class SessionManager {
       },
       // A blessed party member says the spell wore off; recast on the event.
       blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell),
+      resetStats: () => this.statsBaseline.rebase(),
       /*
        * A member asks for a heal. Decided now rather than on the next status
        * line, which out of a fight may be a long way off — under the guard the
@@ -1697,20 +1698,9 @@ export class SessionManager {
         notice: (message) => this.sink.notice(message),
         progress: (progress) => {
           // A loop's walk engages: the loop was chosen for what lives on it.
-          const running = progress.status === 'running';
-          /*
-           * And it **fights**, whatever the switch says — todo 03. Said once
-           * as the lap starts, because a client that attacks while the
-           * toolbar's own switch reads off is two surfaces disagreeing in
-           * silence; it is scoped to the loop, so stopping the lap is how you
-           * answer it, and nothing is written into the player's own file.
-           */
-          if (running && !this.wasLooping && this.combat.fightingBecauseTravelling) {
-            this.sink.notice(t('automation.loops.fightingForTheLap'));
-          }
-          this.wasLooping = running;
-          this.combat.noteLooping(running);
+          this.combat.noteLooping(progress.status === 'running');
           this.travel.noteLap(progress);
+          this.statsBaseline.noteLap(progress);
           this.sink.loop?.(progress);
         },
         locate: () => this.claims.askWhereIAm()
@@ -2740,6 +2730,7 @@ export class SessionManager {
     // and not with the character. See `SessionHostOptions.belongingsAt`.
     this.tracker.useBelongings(belongings);
     this.belongings = belongings;
+    this.statsBaseline.useStore(belongings);
     this.forgetPlayers = players.subscribe((batch) => {
       if (this.tracker.absorbPlayers(batch)) this.publisher.players();
     });
@@ -3808,6 +3799,7 @@ export class SessionManager {
     // empty; the room, the roster and the phase are this session's own and are
     // left exactly as they are.
     this.tracker.forgetBelongings();
+    this.statsBaseline.useStore(this.belongings);
     this.questWatch.reset();
     this.publishCharacter();
     this.sink.notice(t('session.reset.forgotten'));

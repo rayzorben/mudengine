@@ -32,8 +32,7 @@
  * it, `settleClocks` closes what a gap left open), and only a reset noticed
  * and confirmed empties it. The Reset control is a *baseline* the reader
  * subtracts (`sinceBaseline`), which is what lets one published figure serve
- * both "since I arrived" and "since I pressed the button" without main holding
- * a second copy of everything or a round trip to clear it.
+ * both "since I arrived" and "since the last reset".
  *
  * Dependency-free like everything in `shared/`.
  */
@@ -291,11 +290,11 @@ function blowsBetween(now: BlowTally, then: BlowTally): BlowTally {
 /**
  * The tally as it reads from a baseline — what the Reset control produces.
  *
- * Main publishes one monotonic total and the reader subtracts a reading it
- * took earlier. That is what lets Reset be instant, survive a re-render, and
- * cost neither a round trip nor a second accumulator in main; a baseline from
- * a session that has since restarted is discarded by the caller, which is why
- * `since` comes off the baseline rather than being invented here.
+ * Main publishes one monotonic total and a copy of it taken at the last reset
+ * (`StatsBaseline`), and the reader subtracts the copy, so no second
+ * accumulator is kept; a baseline from a series that has since restarted is
+ * discarded by the caller, which is why `since` comes off the baseline rather
+ * than being invented here.
  *
  * `since` is also the rates' denominator, so pressing Reset re-bases them in
  * the same act — which is what makes *how am I doing right now* a question the

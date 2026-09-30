@@ -10911,6 +10911,8 @@ describe('the spellbook and the belongings record', () => {
         rememberStats: (tally: CombatTally) => {
           state.stats = { savedAt: state.stats?.savedAt ?? 0, tally: { ...tally } };
         },
+        recallStatsBase: () => null,
+        rememberStatsBase: () => {},
         forget: () => false
       }
     };

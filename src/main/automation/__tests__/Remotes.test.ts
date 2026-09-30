@@ -1723,6 +1723,34 @@ describe('@heal', () => {
   });
 });
 
+describe('@reset', () => {
+  it('starts the combat statistics again, says so, and answers nothing', () => {
+    const reset: string[] = [];
+    const remotes = new Remotes(config, queue, {
+      resetStats: (from) => reset.push(from),
+      notice: (m) => notices.push(m)
+    });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@reset'), who());
+    drain();
+    expect(reset).toEqual(['Soul']);
+    expect(notices).toContain(t('automation.remotes.statsReset', { from: 'Soul' }));
+    expect(sent).toEqual([]);
+  });
+
+  it('is not granted by the shipped lists', () => {
+    const reset: string[] = [];
+    const shipped: AutomationConfig = {
+      ...config,
+      remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+    };
+    new Remotes(shipped, queue, { resetStats: (from) => reset.push(from) }).onBlock(
+      said('conversation-telepath', 'Soul', '@reset'),
+      who()
+    );
+    expect(reset).toEqual([]);
+  });
+});
+
 /* Todo 831: MegaMUD's party settings, on both ends of the party. */
 describe('party pacing', () => {
   let paced: string[];

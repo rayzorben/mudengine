@@ -388,11 +388,11 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     because: 'no such setting here'
   },
   settings: { name: 'settings', support: 'answered' },
-  reset: {
-    name: 'reset',
-    support: 'unread',
-    because: 'no capture shows the reply, and what would be reset is not the same set'
-  },
+  /*
+   * Acted and never answered, like `heal`: no capture shows MegaMUD replying.
+   * What it resets is the Combat Stats card (`StatsBaseline`).
+   */
+  reset: { name: 'reset', support: 'acted' },
   divert: {
     name: 'divert',
     support: 'unread',

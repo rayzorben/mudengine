@@ -929,6 +929,19 @@ describe('refusing to start one', () => {
     expect(make(combat({ enabled: false }), false).fightingBecauseTravelling).toBe(false);
   });
 
+  it('says once, as the lap starts, that the lap is why it fights', () => {
+    const lap = t('automation.loops.fightingForTheLap');
+    const auto = make(combat({ enabled: false }));
+    auto.noteLooping(true);
+    auto.noteLooping(true);
+    // A reconnect resets the module; a carried loop's lap has not started again.
+    auto.reset();
+    auto.noteLooping(true);
+    expect(notices.filter((n) => n === lap)).toHaveLength(1);
+    make(combat({ enabled: true })).noteLooping(true);
+    expect(notices.filter((n) => n === lap)).toHaveLength(1);
+  });
+
   /*
    * Running away outranks fighting, and this is where that is enforced: a
    * client that ran from a room and swung on the way out would have spent the

@@ -5112,6 +5112,7 @@ automation:
       answering for one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
     ranParty: '{from} asked the party to "{command}".'
+    statsReset: '{from} sent @reset; the combat statistics start again from now.'
     peerIsOurs: "{who} answered @version with {client}, so questions to them will use this client's
       own format: a room's map number instead of its name."
     peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's

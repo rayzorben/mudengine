@@ -144,6 +144,14 @@ export interface BelongingsSink {
   /** The tally moved; keep the whole of it, since every change is the newest fact. */
   rememberStats(tally: CombatTally): void;
   /**
+   * The totals as they stood at the last reset of the Combat Stats card, which
+   * the card subtracts (`sinceBaseline`). Null is *never reset*. Kept beside
+   * the totals, so a baseline and the series it was taken on come back together.
+   */
+  recallStatsBase(): CombatTally | null;
+  /** The card was reset: by its button, by a lap beginning, or by `@reset`. */
+  rememberStatsBase(base: CombatTally): void;
+  /**
    * Throws the whole record away, because the player says this is not the same
    * character.
    *
@@ -175,5 +183,7 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberIdentity: () => {},
   recallStats: () => null,
   rememberStats: () => {},
+  recallStatsBase: () => null,
+  rememberStatsBase: () => {},
   forget: () => false
 };
