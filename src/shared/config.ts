@@ -1990,6 +1990,25 @@ export interface SpellsConfig {
    */
   areaCasts: number;
   /**
+   * The spell cast instead of `attack` while health is low: one that hurts the
+   * target and heals the caster by it (`vampiric assault`, the realm's
+   * `DrainLife`). Blank keeps `attack`, or with `autoChoose` on picks from the
+   * spell list's drains (todo 841).
+   */
+  drain: string;
+  /** The same for the room spell, under the area spell's crowd and mana tests. Blank casts none. */
+  areaDrain: string;
+  /** The share of maximum health below which the drains are cast. 0 never drains. */
+  drainBelow: number;
+  /**
+   * Drain until health is back to this share; 0 stops as soon as it is over
+   * `drainBelow`. Every change of spell is a cast, answered `*Combat Off*`
+   * then `*Combat Engaged*` (`Player.cs:6083`), so a gap keeps a drain that
+   * lifts health one point over the line from flipping the fight back.
+   * Clamped up to `drainBelow`, as `healTo` is.
+   */
+  drainTo: number;
+  /**
    * The spell to heal **this character** with. Blank heals nobody.
    *
    * MegaMUD's *Heal if below* on the Health tab, moved beside the attack
@@ -2825,6 +2844,10 @@ export const DEFAULT_CONFIG: AppConfig = {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -4155,6 +4178,13 @@ function normalizeSpells(value: unknown): SpellsConfig {
     attackFallback: str(raw['attackFallback'], d.attackFallback).trim(),
     attackCasts: int(raw['attackCasts'], d.attackCasts, 0, 99),
     areaCasts: int(raw['areaCasts'], d.areaCasts, 0, 99),
+    drain: str(raw['drain'], d.drain).trim(),
+    areaDrain: str(raw['areaDrain'], d.areaDrain).trim(),
+    drainBelow: fraction(raw['drainBelow'], d.drainBelow),
+    drainTo: ceilingOver(
+      fraction(raw['drainTo'], d.drainTo),
+      fraction(raw['drainBelow'], d.drainBelow)
+    ),
     heal: str(raw['heal'], d.heal).trim(),
     healPartyWith: str(raw['healPartyWith'], d.healPartyWith).trim(),
     healBelow: fraction(raw['healBelow'], d.healBelow),

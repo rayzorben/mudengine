@@ -40,7 +40,7 @@ import {
   type WorldSpell
 } from '../../shared/world';
 import type { TrainerRow } from '../../shared/training';
-import { spellServes, spellTargeting, type SpellServes } from '../../shared/spellcraft';
+import { servesOf, spellServes, spellTargeting, type SpellServes } from '../../shared/spellcraft';
 import {
   ARMOUR_TYPE,
   WEAPON_CLASS,
@@ -1420,7 +1420,7 @@ export class Catalogue {
         targeting: spellTargeting(spell.targets),
         // What the realm says it serves, so the cure fields can each
         // offer the spells that answer their own question (todo 00).
-        serves: spellServes(spell.abilities)
+        serves: servesOf(spell, (id) => this.spellById(id))
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }

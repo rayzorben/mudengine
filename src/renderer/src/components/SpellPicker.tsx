@@ -56,6 +56,14 @@ export function castableOn(
 }
 
 /**
+ * Narrow a picker to the drains (`spellServes`). A spell with no `serves` is
+ * one the realm cannot read, and is offered, as `castableOn` offers `unknown`.
+ */
+export function drainsIn(spells: readonly SpellOption[]): SpellOption[] {
+  return spells.filter((spell) => spell.serves?.drains !== false);
+}
+
+/**
  * Whether the configured name is a spell the realm will not let this field
  * cast — a self-only spell in the party heal, say.
  *

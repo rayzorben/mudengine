@@ -261,6 +261,10 @@ export interface GlobalDraft {
       attackFallback: string;
       attackCasts: number;
       areaCasts: number;
+      drain: string;
+      areaDrain: string;
+      drainBelow: number;
+      drainTo: number;
       heal: string;
       healPartyWith: string;
       healBelow: number;
@@ -560,6 +564,11 @@ export interface ProfileDraft {
     attackFallback: string;
     attackCasts: number;
     areaCasts: number;
+    /** See `SpellsConfig`: the drains cast instead while health is low (841). */
+    drain: string;
+    areaDrain: string;
+    drainBelow: number;
+    drainTo: number;
     /**
      * The heal, per character.
      *
@@ -1111,6 +1120,10 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // 0 is no limit, so a missing or unreadable figure is the unlimited one.
       attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
       areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
+      drain: text(spells['drain']).slice(0, 40),
+      areaDrain: text(spells['areaDrain']).slice(0, 40),
+      drainBelow: unit(spells['drainBelow']),
+      drainTo: unit(spells['drainTo']),
       heal: typeof spells['heal'] === 'string' ? spells['heal'].trim().slice(0, 40) : '',
       healPartyWith:
         typeof spells['healPartyWith'] === 'string'
@@ -1311,6 +1324,10 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         attackFallback: text(spells['attackFallback']).slice(0, 40),
         attackCasts: Math.max(0, Math.min(99, Math.round(Number(spells['attackCasts']) || 0))),
         areaCasts: Math.max(0, Math.min(99, Math.round(Number(spells['areaCasts']) || 0))),
+        drain: text(spells['drain']).slice(0, 40),
+        areaDrain: text(spells['areaDrain']).slice(0, 40),
+        drainBelow: unit(spells['drainBelow']),
+        drainTo: unit(spells['drainTo']),
         heal: text(spells['heal']).slice(0, 40),
         healPartyWith: text(spells['healPartyWith']).slice(0, 40),
         healBelow: unit(spells['healBelow']),

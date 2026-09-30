@@ -143,9 +143,9 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
     if (input.excluded.has(spell.name)) continue;
     const realm = input.realm(spell.name);
     if (realm === null) continue;
-    if (spellTargeting(realm.targets) !== 'enemy') continue;
+    if (!weighsAsAttack(realm)) continue;
     const power = realm.power;
-    if (power === undefined || power[1] <= 0) continue;
+    if (power === undefined) continue;
     attackSpells += 1;
     const required = spell.level ?? realm.level ?? null;
     if (input.level !== null && required !== null && required > input.level) continue;
@@ -385,4 +385,13 @@ export function castsToKill(
     mana: chosen.cost,
     spell: chosen.spell.name
   };
+}
+
+/**
+ * Whether `chooseAttackSpell` weighs this realm row at all: aimed at a single
+ * monster, with power. `DrainWhenHurt` asks it before announcing a drain the
+ * choice could pick (todo 841).
+ */
+export function weighsAsAttack(realm: WorldSpell): boolean {
+  return spellTargeting(realm.targets) === 'enemy' && (realm.power?.[1] ?? 0) > 0;
 }

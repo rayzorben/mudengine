@@ -55,6 +55,7 @@ const SECTION_FIELDSETS: Record<CharacterSection, readonly NavFieldset[]> = {
   ],
   spells: [
     { id: 'spells-round', label: t('settings.spells.legend') },
+    { id: 'spells-drain', label: t('settings.spells.drainLegend') },
     { id: 'spells-heal', label: t('settings.spells.healLegend') },
     { id: 'spells-cures', label: t('settings.spells.cureLegend') },
     { id: 'spells-blessings', label: t('settings.spells.blessingsLegend') }

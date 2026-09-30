@@ -28,7 +28,7 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
  */
 const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the wearer join, shared with the pack's query (`world/wearer.ts`).
-  'src/main/session/SessionManager.ts': 3823,
+  'src/main/session/SessionManager.ts': 3822,
   'src/main/world/WorldGraph.ts': 2549,
   'src/main/parse/CharacterTracker.ts': 2539,
   'src/renderer/src/App.tsx': 1786,
@@ -39,7 +39,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // rest and meditate fields, shared with the options page (825), and the
   // party's (831).
   // Lowered by the remotes switches it shares with the Global page (`RemoteSwitches`, todo 07).
-  'src/renderer/src/components/CharacterForm.tsx': 1678
+  // Lowered by the attack spell's fields, shared with the Global page (`AttackFields`, todo 841).
+  'src/renderer/src/components/CharacterForm.tsx': 1634
 };
 
 /**

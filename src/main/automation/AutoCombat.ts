@@ -514,9 +514,11 @@ export class AutoCombat implements SessionModule {
      * (todo 820), so the opening an instant spell cannot make is paid once per
      * realm rather than once per connection. See `AttackSpells.isInstant`.
      */
-    instants: InstantSpellLore = NO_INSTANT_SPELLS
+    instants: InstantSpellLore = NO_INSTANT_SPELLS,
+    /** The realm's spell by row id, for what one ends in (`servesOf`: a drain's heal). */
+    realmSpellById: (id: number) => WorldSpell | null = () => null
   ) {
-    this.spell = new AttackSpells(spells, events, realmSpell, realmClass, instants);
+    this.spell = new AttackSpells(spells, events, realmSpell, realmClass, instants, realmSpellById);
     this.spell.configure(undefined, config.mobRules);
   }
 
