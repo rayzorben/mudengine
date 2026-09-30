@@ -2547,7 +2547,7 @@ describe('asking another player from the palette', () => {
   });
 });
 
-/* `party.askHealth` asks the party as the tracker holds it after a party block. */
+/* `party.askHealth` asks the player a party join names. */
 describe('asking the party for its numbers', () => {
   it('asks a member who just joined and not one who just left', async () => {
     const { sink } = collect();
