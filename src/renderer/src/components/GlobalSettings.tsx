@@ -232,6 +232,7 @@ import {
   fractionOf as fraction,
   joinNames,
   percentOf as percent,
+  RETREAT_OPTIONS,
   splitNames
 } from '../lib/form';
 
@@ -1117,7 +1118,7 @@ export default function GlobalSettings({
                     }
                   })
                 }
-                options={RETREAT_STRATEGIES.map((s) => ({ value: s, label: s }))}
+                options={RETREAT_OPTIONS()}
                 value={draft.automation.retreat.strategy}
               />
               {draft.automation.retreat.strategy === 'safe-haven' && (

@@ -46,6 +46,7 @@ import {
   LOCATE_OPTIONS,
   penaltiesChoice,
   penaltiesOf,
+  RETREAT_OPTIONS,
   splitNames
 } from '../lib/form';
 import {
@@ -63,13 +64,7 @@ import { isThemePreference, THEME_IDS, THEMES } from '@shared/themes';
 import type { ProfileEditable } from '@shared/ipc';
 import type { Loop, ScopedLoop } from '@shared/loops';
 import { ENCODINGS, type StreamEncoding } from '@shared/types';
-import {
-  PVP_ACTIONS,
-  RETREAT_STRATEGIES,
-  type EngagePolicy,
-  type Server,
-  type VitalsUiConfig
-} from '@shared/config';
+import { PVP_ACTIONS, type EngagePolicy, type Server, type VitalsUiConfig } from '@shared/config';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 
 const SECTION_LABEL: Record<CharacterSection, string> = {
@@ -822,7 +817,7 @@ export default function CharacterForm({
                   label={t('settings.health.retreatStrategyLabel')}
                   name="retreat-strategy"
                   onChange={(value) => patch({ retreatStrategy: value })}
-                  options={RETREAT_STRATEGIES.map((s) => ({ value: s, label: s }))}
+                  options={RETREAT_OPTIONS()}
                   value={form.retreatStrategy}
                 />
                 {form.retreatStrategy === 'safe-haven' && (

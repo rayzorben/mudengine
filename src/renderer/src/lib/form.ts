@@ -7,7 +7,7 @@
  * the forgiving variants.
  */
 import { vitalLevel, type VitalLevel, type VitalThresholds } from '@shared/character';
-import type { EncumbranceGate } from '@shared/config';
+import { RETREAT_STRATEGIES, type EncumbranceGate, type RetreatStrategy } from '@shared/config';
 import { LOCATE_WORDS, locateCommand, type LocateWord } from '@shared/locate';
 import { t } from './i18n';
 
@@ -23,6 +23,23 @@ export const GRADE_OPTIONS = (): Array<{ value: EncumbranceGate; label: string }
   { value: 'medium', label: t('settings.movement.lootGradeMedium') },
   { value: 'heavy', label: t('settings.movement.lootGradeHeavy') }
 ];
+
+/** Where Auto-Run runs to, one row per strategy, for both settings pages. */
+export const RETREAT_OPTIONS = (): Array<{ value: RetreatStrategy; label: string }> =>
+  RETREAT_STRATEGIES.map((strategy) => ({ value: strategy, label: retreatLabel(strategy) }));
+
+function retreatLabel(strategy: RetreatStrategy): string {
+  switch (strategy) {
+    case 'step-back':
+      return t('settings.health.retreatStrategies.stepBack');
+    case 'safe-haven':
+      return t('settings.health.retreatStrategies.safeHaven');
+    default: {
+      const unhandled: never = strategy;
+      return String(unhandled);
+    }
+  }
+}
 
 /** A stored fraction as the whole percent a person types. */
 export function percentOf(fraction: number): number {

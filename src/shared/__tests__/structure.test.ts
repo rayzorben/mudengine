@@ -39,7 +39,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // rest and meditate fields, shared with the options page (825), and the
   // party's (831).
   // Lowered by the remotes switches it shares with the Global page (`RemoteSwitches`, todo 07).
-  'src/renderer/src/components/CharacterForm.tsx': 1753
+  'src/renderer/src/components/CharacterForm.tsx': 1748
 };
 
 /**
