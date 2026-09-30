@@ -79,7 +79,7 @@ import { CharacterTracker } from '../parse/CharacterTracker';
 import { Classifier } from '../parse/Classifier';
 import { actsOf, applyAct, readLine, type LineAct, type LineRead } from '../parse/lineActs';
 import { LineTokenizer, plainText } from '../net/LineTokenizer';
-import { TelnetClient } from '../net/TelnetClient';
+import { DialCancelled, TelnetClient } from '../net/TelnetClient';
 import { LinkWatch } from './LinkWatch';
 import { isPrompt, type Block } from '../../shared/blocks';
 import {
@@ -2215,9 +2215,9 @@ export class SessionManager {
       this.publisher.patch({ phase: 'connected', connectedAt: Date.now(), detail: null });
       this.sink.notice(t('session.connection.connected', { host: target.host, port: target.port }));
     } catch (error) {
-      const detail = errorMessage(error);
-      this.publisher.patch({ phase: 'error', detail });
-      this.sink.notice(t('session.connection.failed', { detail }));
+      if (error instanceof DialCancelled) return this.publisher.state; // `close` reports it
+      this.publisher.patch({ phase: 'error', detail: errorMessage(error) });
+      this.sink.notice(t('session.connection.failed', { detail: errorMessage(error) }));
     }
 
     return this.publisher.state;

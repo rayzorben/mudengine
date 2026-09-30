@@ -1,7 +1,8 @@
+import { once } from 'node:events';
 import net from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { TelnetClient } from '../TelnetClient';
+import { DialCancelled, TelnetClient } from '../TelnetClient';
 import { CMD, OPT, SUB } from '../telnet-constants';
 
 /**
@@ -168,6 +169,45 @@ describe('TelnetClient', () => {
       client.connect({ host: '127.0.0.1', port: 1, encoding: 'cp437' })
     ).rejects.toThrow();
     expect(client.connected).toBe(false);
+  });
+
+  it('fails the dial when it is hung up before it opens, and still reports the close', async () => {
+    const server = await startServer();
+    const client = new TelnetClient();
+    const closes: boolean[] = [];
+    client.on('close', (graceful) => closes.push(graceful));
+
+    const dial = client.connect({ host: '127.0.0.1', port: server.port, encoding: 'cp437' });
+    client.disconnect();
+
+    await expect(dial).rejects.toBeInstanceOf(DialCancelled);
+    await until(() => closes.length === 1);
+    expect(closes[0]).toBe(true);
+  });
+
+  it('keeps the new connection when the one it replaced finishes closing', async () => {
+    const first = await startServer();
+    const second = await startServer();
+    const client = new TelnetClient();
+    const closes: boolean[] = [];
+    const text: string[] = [];
+    client.on('close', (graceful) => closes.push(graceful));
+    client.on('data', (chunk) => text.push(chunk));
+
+    await client.connect({ host: '127.0.0.1', port: first.port, encoding: 'cp437' });
+    // The replaced socket is private; its own `close` is the trigger to wait on.
+    const replaced = (client as unknown as { socket: net.Socket }).socket;
+    const replacedClosed = once(replaced, 'close');
+    await client.connect({ host: '127.0.0.1', port: second.port, encoding: 'cp437' });
+    await second.connected;
+    await replacedClosed;
+
+    second.send('still here\r\n');
+    await until(() => text.join('').includes('still here'));
+    expect(client.connected).toBe(true);
+    expect(closes).toEqual([]);
+
+    client.disconnect();
   });
 });
 

@@ -8,7 +8,8 @@ import { describe, expect, it } from 'vitest';
  * `mudengine-ui` › quests, *the run is a banner*.
  */
 const root = path.resolve(__dirname, '..', '..', '..', '..', '..');
-const read = (file: string): string => fs.readFileSync(path.join(root, file), 'utf8').replaceAll('\r\n', '\n');
+const read = (file: string): string =>
+  fs.readFileSync(path.join(root, file), 'utf8').replaceAll('\r\n', '\n');
 
 /** One CSS rule's body, by its selector line. */
 function rule(css: string, selector: string): string {
