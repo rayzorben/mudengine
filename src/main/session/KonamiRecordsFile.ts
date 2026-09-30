@@ -1,7 +1,8 @@
 /**
  * The planner's records on disk (todos 56–58), under one directory per
- * character: `decisions.jsonl`, appended a line at a time, and one folder per
- * death or stuck log, `deaths/<stamp>/` and `stucks/<stamp>/`.
+ * character: `decisions.jsonl`, appended a line at a time, one folder per
+ * death or stuck log, `deaths/<stamp>/` and `stucks/<stamp>/`, and the running
+ * log, `log/<run>.log`: one file per launch, every step the planner takes.
  *
  * Every write is asynchronous and in order: a death log holds a hundred
  * briefs and ten thousand lines, and writing it synchronously would stall the
@@ -13,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { stripAnsi } from '../net/LineTokenizer';
+import { stamp as runStamp } from './filename';
 import type { KonamiIncidentKind, KonamiRecords } from '../../shared/konamiRecords';
 import { errorMessage } from '../../shared/values';
 
@@ -29,6 +31,7 @@ function stamp(at: number): string {
 }
 
 export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
+  const logFile = path.join(options.dir, 'log', `${runStamp(new Date())}.log`);
   let chain: Promise<void> = Promise.resolve();
   const inOrder = (write: () => Promise<void>): void => {
     chain = chain.then(write).catch((error: unknown) => options.onProblem(errorMessage(error)));
@@ -39,6 +42,12 @@ export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
         await fs.promises.mkdir(options.dir, { recursive: true });
         await fs.promises.appendFile(path.join(options.dir, 'decisions.jsonl'), `${line}\n`);
       }),
+    log: (text) =>
+      inOrder(async () => {
+        await fs.promises.mkdir(path.dirname(logFile), { recursive: true });
+        await fs.promises.appendFile(logFile, text.endsWith('\n') ? text : `${text}\n`);
+      }),
+    logPath: logFile,
     incident: (kind: KonamiIncidentKind, at, files) => {
       const folder = path.join(options.dir, `${kind}s`, stamp(at));
       inOrder(async () => {

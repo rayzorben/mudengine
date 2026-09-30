@@ -27,6 +27,13 @@ export interface KonamiDecision {
   settledAt: number | null;
 }
 
+/** One ask as the card's terminal shows it: what went, what came back. */
+export interface KonamiExchange {
+  request: { state: KonamiBrief; questions: KonamiDecision['questions'] };
+  raw: unknown;
+  refusal: string | null;
+}
+
 export type KonamiIncidentKind = 'death' | 'stuck';
 
 /**
@@ -43,6 +50,10 @@ export interface KonamiRecords {
     at: number,
     files: Readonly<Record<string, string>>
   ): string | null;
+  /** Appends to the running log: every step the planner takes, in order. */
+  log(text: string): void;
+  /** Where the running log is written. */
+  logPath: string;
   /** The newest `lines` lines the session printed, colour codes removed. */
   recentLines(lines: number): string;
 }
@@ -88,6 +99,8 @@ export interface KonamiSnapshot {
   /** Newest first. */
   decisions: KonamiDecisionRow[];
   incidents: KonamiIncidentRow[];
+  /** Where this run's running log is written, or null with no records. */
+  log: string | null;
 }
 
 export const EMPTY_KONAMI: KonamiSnapshot = {
@@ -99,5 +112,6 @@ export const EMPTY_KONAMI: KonamiSnapshot = {
   refusal: null,
   plan: null,
   decisions: [],
-  incidents: []
+  incidents: [],
+  log: null
 };

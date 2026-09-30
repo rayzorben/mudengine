@@ -65,6 +65,8 @@ function inRealm(over: Partial<CharacterState> = {}): CharacterState {
     phase: 'in-game',
     room: { ...base.room, map: 1, number: 1 },
     vitals: { ...base.vitals, hp: 100, hpMax: 100 },
+    progress: { ...base.progress, level: 3 },
+    inventory: { ...base.inventory, wealth: 0 },
     ...over
   };
 }
@@ -78,11 +80,13 @@ let relayers: number;
 let journal: string[];
 let incidents: Array<{ kind: string; files: Record<string, string> }>;
 let hunting: boolean;
+let logged: string[];
+let briefRefusal: string | null;
 
 function planner(): KonamiPlanner {
   const facts: PlannerFacts = {
     state: () => state,
-    brief: () => structuredClone(BRIEF),
+    brief: () => (briefRefusal === null ? structuredClone(BRIEF) : { refusal: briefRefusal }),
     busy: () => false,
     hunting: () => hunting,
     buying: () => false,
@@ -104,7 +108,9 @@ function planner(): KonamiPlanner {
       incidents.push({ kind, files: { ...files } });
       return `/tmp/${kind}`;
     },
-    recentLines: () => 'the last lines'
+    recentLines: () => 'the last lines',
+    log: (text) => logged.push(text),
+    logPath: '/tmp/konami.log'
   };
   return new KonamiPlanner(facts, hands, { changed: () => {}, notice: () => {} }, records, null);
 }
@@ -143,6 +149,8 @@ beforeEach(() => {
   journal = [];
   incidents = [];
   hunting = false;
+  logged = [];
+  briefRefusal = null;
   global.__konamiGoal = 'hunt_0';
   global.__konamiAsked = 0;
 });
@@ -191,6 +199,74 @@ describe('the planner', () => {
     state = inRealm();
     it.onCharacter(state);
     await asked(1);
+    it.dispose();
+  });
+
+  it('waits for the stats and the inventory before asking on entering the realm', async () => {
+    state = inRealm({ inventory: { ...EMPTY_CHARACTER.inventory, wealth: null } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await settle();
+    expect(global.__konamiAsked).toBe(0);
+    state = inRealm();
+    it.onCharacter(state);
+    await asked(1);
+    it.dispose();
+  });
+
+  it('keeps the trigger when no brief can be built yet, and asks once one can', async () => {
+    briefRefusal = 'not placed';
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await settle();
+    expect(global.__konamiAsked).toBe(0);
+    expect(it.snapshot().pending).toBe('entered');
+    briefRefusal = null;
+    it.onCharacter(state);
+    await settle();
+    // Not built again on every statline: after a tick.
+    expect(global.__konamiAsked).toBe(0);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 6_000 });
+    it.onCharacter(state);
+    vi.useRealTimers();
+    await asked(1);
+    it.dispose();
+  });
+
+  it('asks again when what is worn changes', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    state = inRealm({
+      inventory: {
+        ...state.inventory,
+        items: [{ name: 'quarterstaff', equipped: true, slot: 'Weapon Hand' } as never]
+      }
+    });
+    it.onCharacter(state);
+    await asked(2);
+    expect(it.snapshot().decisions[0]?.trigger).toBe('gear');
+    it.dispose();
+  });
+
+  it('writes what it sent and what came back to the running log', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    const text = logged.join('\n');
+    expect(text).toContain('"questions"');
+    expect(text).toContain('"answers"');
+    expect(it.snapshot().log).toBe('/tmp/konami.log');
+    const id = it.snapshot().decisions[0]!.id;
+    expect(it.exchange(id)?.request.questions).toHaveProperty('goal');
     it.dispose();
   });
 

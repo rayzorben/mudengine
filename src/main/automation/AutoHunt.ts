@@ -187,14 +187,22 @@ export class AutoHunt implements SessionModule {
    * module started for another spot is ended, since the plan has moved on.
    */
   steer(key: string | null | undefined): void {
-    if (key === this.steered) return;
+    if (key === this.steered) {
+      // The same spot planned again: whatever was refused before is asked again now.
+      if (typeof key === 'string' && this.phase.kind === 'idle') this.rejudge();
+      return;
+    }
     this.steered = key;
-    this.said = null;
-    this.judgedFor = null;
-    this.surveyedAt = 0;
+    this.rejudge();
     if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === key) return;
     if (this.mine()) this.planner.stopLoop(t('automation.hunt.steeredAway'));
     this.phase = { kind: 'idle' };
+  }
+
+  private rejudge(): void {
+    this.said = null;
+    this.judgedFor = null;
+    this.surveyedAt = 0;
   }
 
   /** What this module last said it would not do, until it next sets off. */
@@ -487,6 +495,13 @@ export class AutoHunt implements SessionModule {
     for (const spot of spots) {
       if (this.steered !== undefined && spot.key !== this.steered) continue;
       const worth = this.priced(spot);
+      /*
+       * A spot an outside plan chose is walked to without a rate: a realm
+       * whose lairs state no respawn clock prices every spot at unknown, so a
+       * steered hunt could never start there (2026-09-30). A known rate still
+       * answers to the floor.
+       */
+      if (worth === null && typeof this.steered === 'string') return spot;
       if (worth === null || (floor > 0 && worth < floor)) continue;
       if (worth > value) {
         best = spot;

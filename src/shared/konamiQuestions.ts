@@ -6,7 +6,7 @@
  * whichever label comes back, carrying it out is a matter of handing it to the
  * module that already does that thing.
  */
-import type { KonamiBrief } from './konamiBrief';
+import type { BriefSpot, KonamiBrief, SlotUpgrade } from './konamiBrief';
 import type {
   KonamiGoal,
   KonamiLayer,
@@ -48,6 +48,26 @@ const number = (value: number | null, digits = 0): string =>
 const percent = (share: number | null): string =>
   share === null ? 'unknown' : `${Math.round(share * 100)}%`;
 
+/** A spot's experience: by the hour where the respawn clock is known, else by the lap. */
+function rateText(exp: BriefSpot['exp']): string {
+  if (exp.perHour !== null) return `${number(exp.perHour)} exp an hour`;
+  if (exp.perCycle !== null) {
+    return `${number(exp.perCycle)} exp a lap (no hourly rate: the realm states no respawn time)`;
+  }
+  return 'unknown exp';
+}
+
+/** What an item changes in its slot, in the slot's own measure. */
+function gainText(slot: SlotUpgrade, figure: number | null): string {
+  const measure = slot.ranking === 'weapon' ? 'damage a round' : 'armour class';
+  if (slot.worn === null) {
+    return slot.ranking === 'weapon'
+      ? `${number(figure, 1)} ${measure}, against fighting bare-handed`
+      : `${number(figure, 1)} ${measure}, against nothing worn there now (0)`;
+  }
+  return `${number(figure, 1)} ${measure}, against ${number(slot.wornFigure, 1)} for the ${slot.worn} worn now`;
+}
+
 function goalQuestion(brief: KonamiBrief): {
   question: KonamiQuestion;
   labels: KonamiLabels['goal'];
@@ -58,8 +78,8 @@ function goalQuestion(brief: KonamiBrief): {
     const label = `hunt_${index}`;
     labels[label] = { kind: 'hunt', key: spot.key, name: spot.name };
     criteria[label] =
-      `Hunt ${spot.name} (spot ${spot.key}): ${number(spot.exp.perHour)} exp an hour, ` +
-      `worst room takes ${percent(spot.survival.worstShare)} of max HP, ` +
+      `Hunt ${spot.name} (spot ${spot.key}, ranked ${index + 1} on the Hunting grounds): ` +
+      `${rateText(spot.exp)}, worst room takes ${percent(spot.survival.worstShare)} of max HP, ` +
       `${number(spot.steps)} steps away.`;
   });
   const cash = brief.character.cash.total;
@@ -80,8 +100,8 @@ function goalQuestion(brief: KonamiBrief): {
       };
       criteria[label] =
         `Buy and wear ${offer.name} for the ${slot.slot} slot at ${offer.shop} ` +
-        `(${offer.copper} copper, ${offer.moves} moves away): ` +
-        `${number(offer.figure, 1)} against ${number(slot.wornFigure, 1)} for ${slot.worn ?? 'nothing worn'}.`;
+        `(${offer.copper === 0 ? 'free' : `${offer.copper} copper`}, ${offer.moves} moves away): ` +
+        `${gainText(slot, offer.figure)}.`;
     });
   }
   if (brief.character.levelReady === true) {

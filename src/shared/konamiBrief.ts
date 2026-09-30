@@ -11,9 +11,11 @@
  * the reason, because *safe* is the one answer an unknown must never give.
  */
 import type { AttackOption } from './attackOptions';
+import { bankedCopper } from './coins';
 import type { CharacterState } from './character';
 import type { MobEntity } from './entities';
 import { primaryMob, type HuntingAdvice, type HuntingSpot } from './hunting';
+import { wornItems } from './items';
 import type { KonamiLayer } from './konami';
 import type { MobAttack } from './world';
 
@@ -279,9 +281,7 @@ export function buildBrief(input: BriefInput): KonamiBrief {
       mana: vitals.mana,
       manaMax: vitals.manaMax,
       cp: progress.cp,
-      worn: inventory.items
-        .filter((item) => item.equipped)
-        .map((item) => ({ slot: item.slot, name: item.name })),
+      worn: wornItems(inventory.items).map((item) => ({ slot: item.slot, name: item.name })),
       carried: inventory.items
         .filter((item) => !item.equipped)
         .map((item) => ({ name: item.name, count: item.count ?? 1 })),
@@ -289,7 +289,7 @@ export function buildBrief(input: BriefInput): KonamiBrief {
       cash: {
         onHand,
         banks,
-        total: onHand === null ? null : onHand + banks.reduce((sum, bank) => sum + bank.copper, 0)
+        total: onHand === null ? null : onHand + bankedCopper(banks)
       }
     },
     hunting: {

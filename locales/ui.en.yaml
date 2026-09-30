@@ -1808,7 +1808,8 @@ cards:
       plan: Plan
       settings: Settings the plan uses
       decisions: Decisions
-      logs: Death and stuck logs
+      terminal: Sent and received
+      logs: Logs
     goal:
       hunt: Hunt {name}
       buy: Buy {item} at {shop} ({copper} copper)
@@ -1824,6 +1825,7 @@ cards:
       goalRefused: goal refused
       cashStep: more cash
       upgradeAffordable: an upgrade is affordable
+      gear: gear changed
       stuck: stuck
       asked: asked
     outcome:
@@ -1836,6 +1838,16 @@ cards:
     incident:
       death: death log
       stuck: stuck log
+    runningLog: this run
+    terminal:
+      sent: '>>> sent: the character, the Hunting grounds and the gear ({trigger})'
+      received: '<<< received: {picks}'
+      failed: '<<< no answer: {why}'
+      made: '=== {goal}'
+      show: show
+      hide: hide
+      loading: Loading…
+      gone: No longer kept here; it is in this run's log.
     question:
       goal: Goal
       bless: Keep {spell} up
@@ -5170,7 +5182,8 @@ automation:
     ignoredParty: 'Not running @party from {from}: Ignore @party If Following is on.'
     autoJoinInParty: '{from} invited this character; not joining, because it is already in a party.'
     autoJoinDenied: '{from} invited this character; not joining, because @join is denied to {from} by name.'
-    autoJoinNotGranted: '{from} invited this character; not joining, because {from} has not been granted
+    autoJoinNotGranted:
+      '{from} invited this character; not joining, because {from} has not been granted
       @join.{unresolvedClause}'
     ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
     dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'

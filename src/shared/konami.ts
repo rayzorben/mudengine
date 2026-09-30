@@ -112,6 +112,7 @@ export const KONAMI_TRIGGERS = [
   'goal-refused',
   'cash-step',
   'upgrade-affordable',
+  'gear',
   'stuck',
   'asked'
 ] as const;

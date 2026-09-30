@@ -89,6 +89,7 @@ import type {
   WorldRoom
 } from './world';
 import type { Visited } from './destinations';
+import type { KonamiExchange } from './konamiRecords';
 import type {
   ConnectionState,
   ConnectionTarget,
@@ -727,6 +728,8 @@ export const Invoke = {
   konamiAsk: 'automation:konami-ask',
   /** The Konami card's *keep these*: the plan's settings written into the character's file. */
   konamiKeep: 'automation:konami-keep',
+  /** The Konami card's terminal: what was sent and what came back for one decision. */
+  konamiExchange: 'automation:konami-exchange',
 
   // -- sessions and windows
   /** Every loaded session, for a window that has just mounted. */
@@ -1265,6 +1268,8 @@ export interface IpcApi {
   konamiAsk(session: SessionId): Promise<void>;
   /** The error, or null once written. See `Invoke.konamiKeep`. */
   konamiKeep(session: SessionId): Promise<string | null>;
+  /** Null once the decision is no longer kept. See `Invoke.konamiExchange`. */
+  konamiExchange(session: SessionId, id: string): Promise<KonamiExchange | null>;
 
   listSessions(): Promise<SessionSummary[]>;
   listProfiles(): Promise<ProfileSummary[]>;

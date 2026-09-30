@@ -1,12 +1,18 @@
 import { memo, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
+import KonamiTerminal from './KonamiTerminal';
 import { clock } from '../lib/clock';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { SessionId } from '@shared/ipc';
 import type { KonamiGoal, KonamiLayer, KonamiQuestionName, KonamiTrigger } from '@shared/konami';
-import type { KonamiIncidentKind, KonamiOutcome, KonamiSnapshot } from '@shared/konamiRecords';
+import type {
+  KonamiDecisionRow,
+  KonamiIncidentKind,
+  KonamiOutcome,
+  KonamiSnapshot
+} from '@shared/konamiRecords';
 
 export interface KonamiCardProps extends CardChrome {
   konami: KonamiSnapshot;
@@ -50,6 +56,8 @@ function triggerText(trigger: KonamiTrigger): string {
       return t('cards.konami.trigger.cashStep');
     case 'upgrade-affordable':
       return t('cards.konami.trigger.upgradeAffordable');
+    case 'gear':
+      return t('cards.konami.trigger.gear');
     case 'stuck':
       return t('cards.konami.trigger.stuck');
     case 'asked':
@@ -59,6 +67,14 @@ function triggerText(trigger: KonamiTrigger): string {
       return never;
     }
   }
+}
+
+/** A decision as the terminal words it. */
+function decisionWords(decision: KonamiDecisionRow): { trigger: string; goal: string } {
+  return {
+    trigger: triggerText(decision.trigger),
+    goal: decision.plan === null ? '' : goalText(decision.plan.goal)
+  };
 }
 
 function outcomeText(outcome: KonamiOutcome): string {
@@ -145,9 +161,10 @@ function layerRows(layer: KonamiLayer): Array<[string, string]> {
 }
 
 /**
- * The "what to do next" planner (todo 59): the plan in force and why it was
- * asked for, the provider's picks with how sure it was, the settings the plan
- * lays over the character's own, the recent decisions and the logs written.
+ * The "what to do next" planner (todo 59): the plan in force and the
+ * provider's picks on the left, the settings the plan lays over the
+ * character's own on the right, and under both the decisions, the terminal of
+ * what was sent and what came back, and the logs written.
  * Three buttons under it: pause, ask again, keep these settings.
  */
 function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
@@ -180,45 +197,54 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
           <>
             {konami.refusal !== null && <div className="empty">{konami.refusal}</div>}
             {keepError !== null && <div className="empty">{keepError}</div>}
-            <div className="trace-heading">{t('cards.konami.headings.plan')}</div>
-            <div className="trace">
-              {plan === null ? (
-                <div className="empty">{t('cards.konami.emptyPlan')}</div>
-              ) : (
-                <div className="row">
-                  <span className="trace-command">{goalText(plan.goal)}</span>
-                </div>
-              )}
-              {konami.pending !== null && (
-                <div className="row">
-                  <span className="trace-reason">
-                    {t('cards.konami.pending', { trigger: triggerText(konami.pending) })}
-                  </span>
-                </div>
-              )}
-              {plan?.picks.map((pick) => (
-                <div className="row" key={pick.question}>
-                  <span className="trace-priority">{`${Math.round(pick.p * 100)}%`}</span>
-                  <span className="trace-command">{questionText(pick.question)}</span>
-                </div>
-              ))}
-            </div>
-            {plan !== null && (
-              <>
-                <div className="trace-heading">{t('cards.konami.headings.settings')}</div>
+            <div className="konami-columns">
+              <div className="konami-column">
+                <div className="trace-heading">{t('cards.konami.headings.plan')}</div>
                 <div className="trace">
-                  <div className="row">
-                    <span className="trace-reason">{t('cards.konami.goalSwitches')}</span>
-                  </div>
-                  {layerRows(plan.layer).map(([name, value]) => (
-                    <div className="row" key={name}>
-                      <span className="trace-command">{name}</span>
-                      <span className="trace-reason">{value}</span>
+                  {plan === null ? (
+                    <div className="empty">{t('cards.konami.emptyPlan')}</div>
+                  ) : (
+                    <div className="row">
+                      <span className="trace-command">{goalText(plan.goal)}</span>
+                    </div>
+                  )}
+                  {konami.pending !== null && (
+                    <div className="row">
+                      <span className="trace-reason">
+                        {t('cards.konami.pending', { trigger: triggerText(konami.pending) })}
+                      </span>
+                    </div>
+                  )}
+                  {plan?.picks.map((pick) => (
+                    <div className="row" key={pick.question}>
+                      <span className="trace-priority">{`${Math.round(pick.p * 100)}%`}</span>
+                      <span className="trace-command">{questionText(pick.question)}</span>
+                      <span className="trace-reason">{pick.label}</span>
                     </div>
                   ))}
                 </div>
-              </>
-            )}
+              </div>
+              <div className="konami-column">
+                <div className="trace-heading">{t('cards.konami.headings.settings')}</div>
+                <div className="trace">
+                  {plan === null ? (
+                    <div className="empty">{t('cards.konami.emptyPlan')}</div>
+                  ) : (
+                    <>
+                      {layerRows(plan.layer).map(([name, value]) => (
+                        <div className="row" key={name}>
+                          <span className="trace-command">{name}</span>
+                          <span className="trace-reason">{value}</span>
+                        </div>
+                      ))}
+                      <div className="row">
+                        <span className="trace-reason">{t('cards.konami.goalSwitches')}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
             <div className="trace-heading">{t('cards.konami.headings.decisions')}</div>
             <div className="trace">
               {konami.decisions.length === 0 ? (
@@ -248,20 +274,28 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
                 ))
               )}
             </div>
-            {konami.incidents.length > 0 && (
-              <>
-                <div className="trace-heading">{t('cards.konami.headings.logs')}</div>
-                <div className="trace">
-                  {konami.incidents.map((incident) => (
-                    <div className="row blocked" key={`${incident.kind}-${incident.at}`}>
-                      <span className="trace-at">{clock(incident.at)}</span>
-                      <span className="trace-priority">{incidentText(incident.kind)}</span>
-                      <span className="trace-reason">{incident.path ?? ''}</span>
-                    </div>
-                  ))}
+            <div className="trace-heading">{t('cards.konami.headings.terminal')}</div>
+            <KonamiTerminal decisions={konami.decisions} session={session} words={decisionWords} />
+            <div className="trace-heading">{t('cards.konami.headings.logs')}</div>
+            <div className="trace">
+              {konami.log !== null && (
+                <div className="row">
+                  <span className="trace-priority">{t('cards.konami.runningLog')}</span>
+                  <span className="trace-reason" title={konami.log}>
+                    {konami.log}
+                  </span>
                 </div>
-              </>
-            )}
+              )}
+              {konami.incidents.map((incident) => (
+                <div className="row blocked" key={`${incident.kind}-${incident.at}`}>
+                  <span className="trace-at">{clock(incident.at)}</span>
+                  <span className="trace-priority">{incidentText(incident.kind)}</span>
+                  <span className="trace-reason" title={incident.path ?? ''}>
+                    {incident.path ?? ''}
+                  </span>
+                </div>
+              ))}
+            </div>
           </>
         )}
       </div>

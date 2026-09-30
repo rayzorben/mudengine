@@ -504,3 +504,8 @@ export function itemHitProcs(item: {
   }
   return found;
 }
+
+/** What of a pack is worn or wielded, in the pack's order. */
+export function wornItems<T extends { equipped: boolean }>(items: readonly T[]): T[] {
+  return items.filter((item) => item.equipped);
+}

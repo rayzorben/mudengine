@@ -430,7 +430,7 @@ option {
   --card-h: 208px;
 }
 .rail > .konami-card {
-  --card-h: 320px;
+  --card-h: 420px;
 }
 .rail > .stream-card {
   --card-h: 224px;
@@ -12765,4 +12765,68 @@ tr:hover .row-action.worn,
   color: var(--text-hi);
   max-width: 34rem;
   padding: 20px 26px;
+}
+
+/* ============================================================ konami card */
+
+/* The plan on the left, the settings it uses on the right; they stack at the
+   rail's narrow end rather than squeeze. */
+.konami-columns {
+  display: grid;
+  gap: 0 calc(var(--gap) * 2);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.konami-column {
+  min-width: 0;
+}
+
+.konami-exchange {
+  border-bottom: 1px solid var(--ink-line);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  padding: 3px 0;
+}
+
+.konami-line {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+}
+
+.konami-line > span:not(.trace-at) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.konami-sent {
+  color: var(--accent);
+}
+
+.konami-received {
+  color: var(--ok);
+}
+
+.konami-made {
+  color: var(--text-lo);
+}
+
+.konami-show {
+  flex: none;
+  font-size: var(--font-micro);
+  padding: 0 6px;
+}
+
+.konami-payload {
+  background: var(--ink-slate);
+  border-radius: 6px;
+  color: var(--text);
+  margin: 4px 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px 8px;
+  white-space: pre-wrap;
 }

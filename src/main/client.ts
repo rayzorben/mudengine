@@ -1601,6 +1601,9 @@ function registerIpc(): void {
     const result = editor().setAutomationValues(session, writes);
     return result.ok ? null : result.error;
   });
+  handle(Invoke.konamiExchange, (_caller, session: SessionId, id: unknown) =>
+    typeof id === 'string' ? (host?.get(session)?.manager.konami.exchange(id) ?? null) : null
+  );
 
   /**
    * Who is walking, for pricing a route against them.

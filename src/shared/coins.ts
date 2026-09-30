@@ -263,3 +263,8 @@ export function coinReader(names: CoinNames): CoinReader {
     word: (coin) => names[coin]?.split(/\s+/)[0] ?? coin
   };
 }
+
+/** Every bank on record, in copper. */
+export function bankedCopper(banks: ReadonlyArray<{ copper: number }>): number {
+  return banks.reduce((sum, bank) => sum + bank.copper, 0);
+}

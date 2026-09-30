@@ -399,6 +399,25 @@ describe('a spot an outside plan names (todo 54)', () => {
     expect(started[0]!.name).toContain('Sewer');
   });
 
+  it('walks to the named spot where the realm states no rate for it', () => {
+    answer = advice([spot('lair:b', null, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:b');
+    here = '1/900';
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+  });
+
+  it('asks again when the same spot is planned again after a refusal', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:gone');
+    auto.onCharacter(ready());
+    expect(auto.refusal).not.toBeNull();
+    auto.steer('lair:gone');
+    expect(auto.refusal).toBeNull();
+  });
+
   it('hunts nowhere while the plan says so', () => {
     const auto = hunt();
     auto.steer(null);

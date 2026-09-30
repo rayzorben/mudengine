@@ -9,6 +9,7 @@
  * line in each case that can move them is that many chances to forget one.
  */
 import type { CharacterState } from '../../shared/character';
+import type { ItemEntity } from '../../shared/entities';
 import {
   abilitySum,
   carriedLights,
@@ -70,6 +71,37 @@ export function withPackRows(
   const held = s.inventory.rows;
   if (rows.length === held.length && rows.every((id, at) => id === held[at])) return s;
   return { ...s, inventory: { ...s.inventory, rows } };
+}
+
+/**
+ * The realm's row joined onto an item the pack gained between listings.
+ *
+ * A purchase, a pick-up or a `wear` adds a wire-only entry (`gained`,
+ * `withEquipped`), and until the next `i` it had no `kind` and no `weapon`:
+ * a staff bought and worn fought as a bare hand, so every spot's rounds were
+ * unknown and the planner was told nothing could be hunted (2026-09-30). An
+ * entry the realm still cannot name stays as it is.
+ */
+export function withJoinedItems(
+  s: CharacterState,
+  world: Pick<WorldGraph, 'buildItemEntity'> | undefined
+): CharacterState {
+  if (world === undefined) return s;
+  let joined = false;
+  const items = s.inventory.items.map((item): ItemEntity => {
+    if (item.source !== 'wire') return item;
+    const row = world.buildItemEntity(item.name, {
+      slot: item.slot,
+      ...(item.slotSource === undefined ? {} : { slotSource: item.slotSource }),
+      equipped: item.equipped,
+      charges: item.charges,
+      ...(item.count === undefined ? {} : { count: item.count })
+    });
+    if (row.source === 'wire') return item;
+    joined = true;
+    return row;
+  });
+  return joined ? { ...s, inventory: { ...s.inventory, items } } : s;
 }
 
 /**

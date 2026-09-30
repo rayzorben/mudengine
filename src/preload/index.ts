@@ -106,6 +106,7 @@ const api: IpcApi = {
   konamiPause: (session) => ipcRenderer.invoke(Invoke.konamiPause, session),
   konamiAsk: (session) => ipcRenderer.invoke(Invoke.konamiAsk, session),
   konamiKeep: (session) => ipcRenderer.invoke(Invoke.konamiKeep, session),
+  konamiExchange: (session, id) => ipcRenderer.invoke(Invoke.konamiExchange, session, id),
 
   listSessions: () => ipcRenderer.invoke(Invoke.listSessions),
   listProfiles: () => ipcRenderer.invoke(Invoke.listProfiles),

@@ -98,7 +98,7 @@ import { Trail } from './trail';
 import { DeathSentence } from './deathSentence';
 import { Kills } from './kills';
 import { isProcHousekeeping, readsAsProc } from './proc';
-import { withPackRows, withSight, withSpans, withTargetEntity } from './joins';
+import { withJoinedItems, withPackRows, withSight, withSpans, withTargetEntity } from './joins';
 import { attackAim, occupantNamed } from '../../shared/aim';
 import { commandOf, type RereadClaim } from '../../shared/commands';
 import { wireItem, type ItemEntity } from '../../shared/entities';
@@ -902,8 +902,7 @@ export class CharacterTracker {
      * one the reducer produced.
      */
     const tally = trackTally(base.tally, block, base, before, proc);
-    // Written down as it moves, so the Combat Stats card opens where it was
-    // left; the record defers the write, so this costs the parse path nothing.
+    // Written down as it moves (deferred), so the Combat Stats card opens where it was left.
     if (tally !== this.state.tally) this.belongings.rememberStats(tally);
     // Folded from the same place and for the same reason `trackPlayers` is: a
     // condition can move in any of a dozen cases, and this reads the
@@ -919,12 +918,13 @@ export class CharacterTracker {
      * line in each of the seventy-four cases that can move an item is
      * seventy-four chances to forget one.
      *
-     * Only when the pack actually changed. A status line arrives every few
-     * hundred milliseconds and carries no inventory at all; running the merge
-     * on each of them would be work for nothing on the thread that is framing
-     * bytes.
+     * Only when the pack changed: a status line carries no inventory. An
+     * entry gained since the last `i` gets its realm row here too.
      */
-    if (this.state.inventory.items !== before.inventory.items) this.rememberGear(block.at);
+    if (this.state.inventory.items !== before.inventory.items) {
+      this.state = withJoinedItems(this.state, this.world);
+      this.rememberGear(block.at);
+    }
     if (this.state.inventory.items !== before.inventory.items || this.state.race !== before.race) {
       this.state = withSight(this.state, this.world);
     }
