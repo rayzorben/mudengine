@@ -1327,12 +1327,9 @@ export default function App() {
         style={widths.style as React.CSSProperties}
       >
         {/*
-          Shown as soon as there are characters, not only when there is a choice
-          between them. With one it is still the thing that names who you are
-          playing and reports their health -- and it is where the connection
-          state and the close affordance live now that the command strip is
-          gone. With no characters there is no rail, because there is nothing to
-          say — and no session either: the new-character form is open instead.
+          Shown as soon as there are characters: with one it still names who is
+          playing and holds their health, connection and close button. With
+          none there is no rail, and the new-character form is open instead.
         */}
         <TabRail
           active={session}
@@ -1341,10 +1338,13 @@ export default function App() {
           onEdit={editCharacter}
           onEditGlobal={editGlobal}
           onNew={newCharacter}
+          onOpen={api.loadProfile}
           onReorder={reorderSessions}
           onSelect={showSession}
           onToggleConnection={toggleSessionConnection}
+          profiles={profiles}
           restToFor={restToFor}
+          returnFocus={returnFocus}
           sessions={showTabs ? sessions : NO_SESSIONS}
           side={tabSide}
           thresholds={config.ui.vitals}

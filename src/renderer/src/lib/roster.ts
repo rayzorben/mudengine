@@ -1,4 +1,5 @@
 import type { CharacterState } from '@shared/character';
+import type { ProfileSummary } from '@shared/ipc';
 
 /**
  * The realm's roster, kept the same array for as long as its rows are equal.
@@ -29,4 +30,14 @@ function sameRows<T extends object>(a: readonly T[], b: readonly T[]): boolean {
 function sameFields<T extends object>(a: T, b: T): boolean {
   const keys = Object.keys(a) as (keyof T)[];
   return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));
+}
+
+/**
+ * The characters on disk with no tab open: what closing a tab left behind,
+ * offered back by the palette and by the rail's *New character* menu.
+ */
+export function closedCharacters<T extends Pick<ProfileSummary, 'loaded'>>(
+  profiles: readonly T[]
+): T[] {
+  return profiles.filter((profile) => !profile.loaded);
 }

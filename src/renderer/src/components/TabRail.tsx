@@ -2,11 +2,12 @@ import { Fragment, memo, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 
 import Icon from './Icon';
+import NewCharacterButton from './NewCharacterButton';
 import { reordered } from '../lib/reorder';
 
 import { ratio, vitalLevel, type CharacterState, type VitalThresholds } from '@shared/character';
 import type { VitalsUiConfig } from '@shared/config';
-import type { SessionId, SessionSummary } from '@shared/ipc';
+import type { ProfileSummary, SessionId, SessionSummary } from '@shared/ipc';
 import {
   isAfflictionHold,
   walkIsResting,
@@ -84,6 +85,12 @@ export interface TabRailProps {
   onReorder(order: SessionId[]): void;
   /** Make a character. The way in, beside the characters it makes. */
   onNew(): void;
+  /** Every character on disk; the ones with no tab are offered back beside `onNew`. */
+  profiles: readonly ProfileSummary[];
+  /** Open a tab again for a character whose tab was closed. */
+  onOpen(id: SessionId): Promise<void>;
+  /** Hands the caret back to the console after the reopen menu took it. */
+  returnFocus(): void;
   /**
    * The client's own settings — everything a character inherits.
    *
@@ -394,6 +401,9 @@ function TabRail({
   onClose,
   onReorder,
   onNew,
+  profiles,
+  onOpen,
+  returnFocus,
   onEditGlobal,
   onEdit,
   onToggleConnection
@@ -503,19 +513,13 @@ function TabRail({
           <Icon name="settings" />
         </button>
 
-        <button
-          aria-label={t('tabs.head.newCharacterAria')}
-          className="new-character"
-          onClick={onNew}
-          // The settings screen takes the caret itself; the button must not fight
-          // it for one on the way there.
-          onMouseDown={keepFocus}
-          title={t('tabs.head.newCharacterTooltip')}
-          type="button"
-        >
-          <Icon name="plus" />
-          {stacked && <span className="what">{t('tabs.head.newCharacterAria')}</span>}
-        </button>
+        <NewCharacterButton
+          onNew={onNew}
+          onOpen={onOpen}
+          profiles={profiles}
+          returnFocus={returnFocus}
+          stacked={stacked}
+        />
       </div>
 
       {/*
