@@ -2547,6 +2547,39 @@ describe('asking another player from the palette', () => {
   });
 });
 
+/* `party.askHealth` asks the party as the tracker holds it after a party block. */
+describe('asking the party for its numbers', () => {
+  it('asks a member who just joined and not one who just left', async () => {
+    const { sink } = collect();
+    manager = build(sink, {
+      automation: {
+        ...DEFAULT_CONFIG.automation,
+        enabled: true,
+        remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+      }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: Buffer[] = [];
+    socket.on('data', (chunk) => received.push(chunk));
+    const wire = (): string => Buffer.concat(received).toString('latin1');
+    const askedSoul = (): number => wire().split('/Soul @health\r\n').length - 1;
+
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    socket.write('Soul started to follow you.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => askedSoul() === 1);
+
+    socket.write('Soul is no longer following you.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.party.members.length === 0);
+    // The positive control: a question queued after the leave reaches the wire.
+    expect(manager.askRemote('Yang', 'health')).toBe(true);
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => wire().includes('/Yang @health\r\n'));
+    expect(askedSoul()).toBe(1);
+  });
+});
+
 /*
  * A Goto or a Loop pressed in an unplaced room asks first (todo 812): the
  * wait is ended by the answer itself, off the character's own publish, not by

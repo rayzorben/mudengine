@@ -3010,15 +3010,11 @@ export class SessionManager {
      * A party forming or breaking up is the moment its roster becomes worth
      * having — and the moment it is emptiest, because nothing has asked.
      */
-    if (
+    const partyChanged =
       block.type === 'party-joined' ||
       block.type === 'party-left' ||
-      block.type === 'party-rank-changed'
-    ) {
-      this.routines.onPartyChanged();
-      // And the numbers behind the percentages, from the members' own clients.
-      this.remotes.askParty(this.tracker.current);
-    }
+      block.type === 'party-rank-changed';
+    if (partyChanged) this.routines.onPartyChanged();
     /*
      * Somebody was noticed with no listing to say what they are — entering the
      * realm, or walking into this room without already being on the roster at
@@ -3073,6 +3069,9 @@ export class SessionManager {
 
     const roomBefore = this.tracker.current.room;
     const fed = applyAct(this.tracker, step);
+    // The members' own numbers, asked of the party as it stands after this
+    // block: one who just joined, never one who left.
+    if (partyChanged) this.remotes.askParty(this.tracker.current);
     // An escape in flight reads what the server said back (todos 06, 813).
     this.travel.settleEscape(block, roomBefore);
     this.fleeGoto.settle(block, this.answering);

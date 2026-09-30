@@ -4339,6 +4339,10 @@ session:
     escapeStaying: 'Not running: {why}, but nothing is moving this character anywhere, so it stays
       put. {then}'
     escapeStayingReason: nothing is moving this character anywhere
+    # A follower leaves running away to the party leader it follows, {leader}.
+    escapeFollowing: 'Not running: {why}, but {leader} is leading the party and decides when to run.
+      {then}'
+    escapeFollowingReason: following {leader}, who decides when to run
     escapeNotFighting: 'Not fighting: auto-combat is off.'
     escapeNoExitReason: no exit known from this room
     escapeOpening: 'The {barrier} to the {direction} is closed: opening it and running again.'

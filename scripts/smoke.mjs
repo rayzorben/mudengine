@@ -12915,7 +12915,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * from the Combat section is still on, and a lap waits a fight out, so the
    * lap starts without a step and the escape is the only move this section
    * sends. The Navigation card naming it running is the positive control.
+   *
+   * And out of the party first: the fixture has followed Soul since the
+   * roster at the top, and a follower leaves running to its leader
+   * (2026-09-29).
    */
+  await hostSays(
+    () =>
+      liveSockets[0]?.write(
+        Buffer.from('\x1b[0;36mYou are no longer following Soul.\x1b[0m\r\n', 'latin1')
+      ),
+    /You are no longer following Soul/
+  );
   const lapStarted = await evaluate(`window.mudengine.startLoop('${SESSION}', 'Smoke loop')`);
   await waitFor(async () =>
     evaluate(
