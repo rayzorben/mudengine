@@ -36,6 +36,7 @@ import { mobKey, nameAnswersTo, roomAddress, roomId, type RoomId } from '../../s
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
 import { leavesRoom } from './departs';
+import { LeftOff } from './leftOff';
 import { OwedAttacks } from './owed';
 
 /**
@@ -217,6 +218,9 @@ export class FightTracker {
    */
   private readonly owed = new OwedAttacks();
 
+  /** Who was attacking when the last `*Combat Off*` came, for a `*Combat Engaged*` right behind it (`leftOff.ts`). */
+  private readonly leftOff = new LeftOff();
+
   /**
    * The monster a death sentence has just taken out of the room, by key.
    *
@@ -330,6 +334,7 @@ export class FightTracker {
   forget(): void {
     this.ledgers.clear();
     this.owed.forget();
+    this.leftOff.forget();
     this.landed = null;
     this.fell = null;
   }
@@ -339,7 +344,8 @@ export class FightTracker {
     // Leaving combat ends the fight outright rather than leaving a target
     // and a list of attackers behind. A stale target is worse than none: a
     // rule that attacks `{target}` would swing at something that is not
-    // there, in a room that may have somebody else in it.
+    // there, in a room that may have somebody else in it. The attackers come
+    // back if `*Combat Engaged*` follows at once (`leftOff.ts`); the target does not.
     if (!engaged) {
       /*
        * `*Combat Off*` is the end of the fight and not the end of a
@@ -362,6 +368,7 @@ export class FightTracker {
        * answer to an attack command, so an entry kept across an unrelated
        * Off can never bind to an engagement that command did not cause.
        */
+      this.leftOff.off(s, at);
       return { ...s, inCombat: false, combat: NO_COMBAT };
     }
     /*
@@ -378,8 +385,13 @@ export class FightTracker {
      * answers its attack.
      */
     const aimed = this.owed.answer(at);
+    const resumed = this.leftOff.resume(s, at);
+    const attackers =
+      resumed.length === 0
+        ? s.combat.attackers
+        : [...s.combat.attackers, ...resumed].slice(0, tuning().parse.maxAttackers);
     if (s.combat.target !== null || aimed === null) {
-      return { ...s, inCombat: true, combat: { ...s.combat, engaged: true } };
+      return { ...s, inCombat: true, combat: { ...s.combat, engaged: true, attackers } };
     }
     const target = resolveAgainstRoom(s, aimed);
     return {
@@ -388,6 +400,7 @@ export class FightTracker {
       combat: {
         ...s.combat,
         engaged: true,
+        attackers,
         target,
         health: this.healthFor(target, at, roomAddress(s.room))
       }
