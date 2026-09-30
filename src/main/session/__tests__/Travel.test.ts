@@ -157,3 +157,36 @@ describe('escaping a monster its row names, out of a fight', () => {
     ]);
   });
 });
+
+/* A follower leaves running away to the leader, even with a lap of its own running. */
+describe('running away while following', () => {
+  it('stays with the party and says so once', () => {
+    const base = beside();
+    const state: CharacterState = {
+      ...base,
+      inCombat: true,
+      vitals: { ...base.vitals, hp: 5 },
+      party: { ...base.party, following: 'Brackle' }
+    };
+    const { travel: follower, sent, notices, decisions } = travel(state, 'held');
+    follower.considerEscape(state);
+    follower.considerEscape(state);
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([
+      t('session.safety.escapeFollowing', {
+        why: t('session.safety.whyHealth', { percent: '5%' }),
+        leader: 'Brackle',
+        then: t('session.safety.escapeStanding')
+      })
+    ]);
+    expect(decisions.map((decision) => decision.acted)).toEqual([false]);
+  });
+
+  it('runs once nobody is being followed', () => {
+    const base = beside();
+    const state: CharacterState = { ...base, inCombat: true, vitals: { ...base.vitals, hp: 5 } };
+    const { travel: alone, sent } = travel(state, 'held');
+    alone.considerEscape(state);
+    expect(sent).toEqual(['n']);
+  });
+});

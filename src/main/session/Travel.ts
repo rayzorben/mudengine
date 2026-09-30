@@ -49,6 +49,8 @@ import {
 
 /** `escapeRefusalSaid` for a character nothing is taking anywhere, which no room key can equal. */
 const STAYING = '\0staying';
+/** `escapeRefusalSaid` for a character following a party leader. */
+const FOLLOWING = '\0following';
 
 /**
  * How well the client knows the exit it is running through. See
@@ -884,42 +886,76 @@ export class Travel implements SessionModule {
           ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
           : t('session.safety.whyDreaded', { mob: dread });
     /*
+     * **A follower leaves running to its leader**: a member that walks out
+     * alone leaves the party in the fight and is no longer beside it when the
+     * leader moves on, so whoever `party.following` names decides, lap or no
+     * lap. Checked before `goingSomewhere()` because a follower may have a
+     * lap of its own running.
+     */
+    if (state.party.following !== null) {
+      const leader = state.party.following;
+      this.stayPut(
+        FOLLOWING,
+        why,
+        fighting,
+        now,
+        (then) => t('session.safety.escapeFollowing', { why, leader, then }),
+        t('session.safety.escapeFollowingReason', { leader })
+      );
+      return;
+    }
+    /*
      * **Only a character the client is taking somewhere runs** (todo 03): a
      * route that has arrived is where the player wanted to be. Said once a
      * fight and traced; the PvP retreat is its own switch and does not come
      * through here. `mudengine-automation` › *Running away is a direction*.
      */
     if (!this.goingSomewhere()) {
-      if (this.escapeRefusalSaid === STAYING) return;
-      this.escapeRefusalSaid = STAYING;
-      /*
-       * What happens instead, which out of a fight is not *standing and
-       * fighting*: only an `escape` row's monster brings this here out of one,
-       * and nothing is opened beside it (todo 818, on review).
-       */
-      const standing = this.combat.willFight || this.combatLease.lending;
-      this.session.notice(
-        t('session.safety.escapeStaying', {
-          why,
-          then: !fighting
-            ? t('session.safety.escapeNotOpening')
-            : standing
-              ? t('session.safety.escapeStanding')
-              : t('session.safety.escapeNotFighting')
-        })
+      this.stayPut(
+        STAYING,
+        why,
+        fighting,
+        now,
+        (then) => t('session.safety.escapeStaying', { why, then }),
+        t('session.safety.escapeStayingReason')
       );
-      this.session.decided({
-        at: now,
-        action: 'retreat',
-        because: why,
-        acted: false,
-        refused: t('session.safety.escapeStayingReason')
-      });
       return;
     }
 
     this.lastAskedToEscape = now;
     this.escape(state, why, now);
+  }
+
+  /**
+   * An escape refused because the character stays where it is, said once a
+   * fight and traced under `marker`.
+   */
+  private stayPut(
+    marker: string,
+    why: string,
+    fighting: boolean,
+    now: number,
+    notice: (then: string) => string,
+    refused: string
+  ): void {
+    if (this.escapeRefusalSaid === marker) return;
+    this.escapeRefusalSaid = marker;
+    /*
+     * What happens instead, which out of a fight is not *standing and
+     * fighting*: only an `escape` row's monster brings this here out of one,
+     * and nothing is opened beside it (todo 818, on review).
+     */
+    const standing = this.combat.willFight || this.combatLease.lending;
+    this.session.notice(
+      notice(
+        !fighting
+          ? t('session.safety.escapeNotOpening')
+          : standing
+            ? t('session.safety.escapeStanding')
+            : t('session.safety.escapeNotFighting')
+      )
+    );
+    this.session.decided({ at: now, action: 'retreat', because: why, acted: false, refused });
   }
 
   /**
