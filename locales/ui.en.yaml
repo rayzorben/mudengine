@@ -277,13 +277,13 @@ notices:
       it.'
     statusLineStated: '"automation.statline" and "ui.rewrites" were added to {file}, all off. The
       first sets the status line when you log in, so every prompt shows maximum health and mana, exp
-      and cash. The second lets you design your own status line and listings, drawn in place of the
-      game''s. Turn them on there, or in the Rewrites section of settings.'
+      and cash. The second lets you design your own statline, inventory, who list and more, drawn
+      in place of the game''s. Turn them on there, or in the Rewrites section of settings.'
     rewritesGathered: '"ui.statline" in {file} became the Status line design under "ui.rewrites",
-      next to the other listings the console can redraw: the inventory, the who list, a shop''s
+      next to everything else the console can redraw: the inventory, the who list, a shop''s
       list, the party and the experience line. All were added, turned off. The Rewrites section in
       settings lists them.'
-    rewritesListed: '"ui.rewrites" in {file} is now a list of designs. Each listing it had became
+    rewritesListed: '"ui.rewrites" in {file} is now a list of designs. Each entry it held became
       one design, on or off as before, with its lines combined into one template, and the status
       line''s color bands now apply to the whole block. The Rewrites section in settings lists them,
       and each design opens in an editor that shows every value it can use.'
@@ -558,18 +558,18 @@ notices:
         regenerates six times slower, so without it one heal ended resting for the whole recovery.
         {fileList}
     escapeIsADirection:
-      many: 'The flee settings were renamed to retreat in {count} files, and any flee or
-        reverse-step strategy is now step-back. This server family has no flee command: on 2
+      many: 'The flee settings in {count} files are now the Auto-Run settings, and any flee or
+        reverse-step choice now runs one room away. This server family has no flee command: on 2
         September 2026 the client sent it eleven times in one fight, and every one came back "Your
         command had no effect." Running now sends a direction: the way you came if known, otherwise
         an exit of the room, and nothing at all rather than a command that does nothing. Your
         threshold and switch are unchanged. {fileList}'
-      one: 'The flee settings were renamed to retreat in {count} file, and any flee or reverse-step
-        strategy is now step-back. This server family has no flee command: on 2 September 2026 the
-        client sent it eleven times in one fight, and every one came back "Your command had no
-        effect." Running now sends a direction: the way you came if known, otherwise an exit of the
-        room, and nothing at all rather than a command that does nothing. Your threshold and switch
-        are unchanged. {fileList}'
+      one: 'The flee settings in {count} file are now the Auto-Run settings, and any flee or
+        reverse-step choice now runs one room away. This server family has no flee command: on 2
+        September 2026 the client sent it eleven times in one fight, and every one came back "Your
+        command had no effect." Running now sends a direction: the way you came if known, otherwise
+        an exit of the room, and nothing at all rather than a command that does nothing. Your
+        threshold and switch are unchanged. {fileList}'
     escapeSettle: The loop setting fledSettleMs was renamed to escapeSettleMs in {file}. Your value
       was kept.
     restOnePair:
@@ -1724,7 +1724,7 @@ cards:
     emptyDisabled: Automation disabled.
     emptySent: No automated commands sent.
     headings:
-      engagements: Active Engagements
+      engagements: Fights
       queued: Queued
       rules: Rules
       safety: Safety
@@ -2061,7 +2061,7 @@ cards:
       runningForLabel: Running for
       statusFighting: fighting
       statusRetreated: recovering
-      statusErrand: shopping
+      statusErrand: detouring
       statusBlind: blind
       statusHeld: held
       statusPoisoned: poisoned
@@ -2406,11 +2406,11 @@ cards:
     copy:
       atCoordinates: at {map}/{number}
       exitsLine: 'exits: {exitList}'
-      hereLine: 'here: {occupantList}'
+      hereLine: 'Also here: {occupantList}.'
       hiddenLine: 'hidden: {itemList}'
       itemsLine: 'items: {itemList}'
       lightLine: 'light: {light}'
-      lightLineDeadReckoning: 'light: {light}, placed by dead reckoning'
+      lightLineDeadReckoning: 'light: {light}, room guessed from the last step'
       lightLineRemembered: 'light: {light}, room as last seen before it went dark'
     empty: No room yet.
     exits:
@@ -2440,7 +2440,7 @@ cards:
     fixedTitle: The game will not let anyone pick this up
     itemLookupTooltip: What the world data says about it
     light:
-      deadReckoning: placed by dead reckoning
+      deadReckoning: guessed room
       remembered: as last seen, before it went dark
       unplaced: nothing says which room this is
     occupant:
@@ -3433,14 +3433,17 @@ settings:
     retreatHint: 'Walking out of the fight ends combat without the penalty a disconnect carries.
       This server family has no flee command, so running always means moving in a direction: the way
       you came in if known, otherwise an exit of this room. It only runs while something is moving
-      the character (a route, a loop, an errand, a quest run); once a route has arrived, the
+      the character (a route, a loop, a detour, a quest run); once a route has arrived, the
       character stays put.'
     retreatLabel: Auto-Run
     retreatLegend: Auto-Run
-    retreatStrategyHint: 'How far to run. step-back moves one room. safe-haven makes the same move,
-      then walks to the room below once the fight is over. The exit is not a setting: the way you
-      came is always preferred over one never used.'
+    retreatStrategyHint: 'How far to run: one room away, or one room and then on to the safe room
+      named below once the fight is over. The exit is not a setting: the way you came is always
+      preferred over one never used.'
     retreatStrategyLabel: Where to Run
+    retreatStrategies:
+      stepBack: One Room Away
+      safeHaven: Safe Room
     safeHavenHint: Named the same way as a loop stop, with the map/room number so a shared name is
       not guessed.
     safeHavenLabel: Safe Room
@@ -3456,7 +3459,7 @@ settings:
     fleeGotoCommandPlaceholder: sys go 1 297
     hangPenaltiesHint: Whether this realm penalizes a hangup. Paradigm's realm menu reports this
       itself, and that takes priority.
-    hangPenaltiesLabel: Hang Penalties
+    hangPenaltiesLabel: Hangup Penalty
     hangPenaltiesGlobal: As Global says
     hangPenaltiesRealm: As the realm says
     hangPenaltiesYes: Charged
@@ -3464,7 +3467,7 @@ settings:
     hangUpLabel: Auto-Hangup / Emergency Disconnect
     hangUpLegend: Auto-Hangup
     hangUpOnPlayer: Hang Up When a Player Is Seen
-    hangUpWarning: On a realm with hang penalties, a disconnect costs part of your maximum health,
+    hangUpWarning: On a realm with a hangup penalty, a disconnect costs part of your maximum health,
       and at low health it kills. Use Auto-Run instead.
     meditateBelowHint: Sends med below this. Ignored for a class with no mana.
     meditateBelowLabel: Meditate If Below Mana %
@@ -3657,7 +3660,7 @@ settings:
       IgnoreConfusion default). A confused character's commands can be ignored.
     fightOnArrival: Auto-Combat On at Arrival
     fightOnArrivalHint: Turns auto-combat back on when a route you asked for arrives, since walking
-      with it off is how you travel without fighting. Loops and errands are unaffected.
+      with it off is how you travel without fighting. Loops and detours are unaffected.
     extinguishInLight: Put the Light Out in Lit Rooms
     extinguishInLightHint: Removes a lit torch in a room that does not need it, when nothing is
       moving the character, so the torch lasts through the sewer instead of burning out on the way
@@ -3683,7 +3686,7 @@ settings:
     keepOutLegend: Avoiding
     keepOutOf: Places to Avoid
     keepOutOfHint: Words for a path or place, as the game writes them. A route you ask for that
-      crosses one is shown next to the way around, and you choose; loops, errands and quest runs go
+      crosses one is shown next to the way around, and you choose; loops, detours and quest runs go
       around.
     keepOutOfPlaceholder: 'vortex, Negative Power Plane'
     carryLegend: What It Carries
@@ -4068,8 +4071,8 @@ settings:
   rewrites:
     listLegend: Your Designs
     note: Each design is drawn in place of what the game printed, with what the client knows added,
-      as soon as the listing is complete; what was drawn stays in the scrollback. One design draws
-      each listing, and turning one on turns off the others for it.
+      as soon as the game has finished printing it; what was drawn stays in the scrollback. One
+      design draws each list or line, and turning one on turns off the others for it.
     empty: None. Add one below.
     enabledAria: Draw {name} yourself
     editAria: Edit {name}
@@ -4100,8 +4103,8 @@ settings:
       nameLabel: Name
       entityLabel: Draws
       enabledLabel: Draw It Myself
-      enabledHint: The game's lines for this are held back until the listing is complete, and this
-        design is drawn in their place. When off, the game's own lines are shown.
+      enabledHint: The game's lines for this are held back until it has finished printing them, and
+        this design is drawn in their place. When off, the game's own lines are shown.
       templateLabel: Template
       templateHint: Text with tags in braces, one line here per line in the console. Click a value,
         a color or a control on the left to insert it at the cursor.
@@ -4121,7 +4124,7 @@ settings:
         stray: '{tag} has nothing open to close; it is drawn as typed.'
         badTest: '{tag} is not a test this template language understands; its branch is never used.'
       sidebar:
-        listing: This listing
+        listing: What it draws
         character: Character
         row: Inside a row
         colours: Colors
@@ -4379,8 +4382,8 @@ session:
     hangUpRefused: 'Not hanging up: {why}. {reasons}. Disconnecting now would be penalized; walk out
       instead.'
     hangingUpClean: 'Hanging up: {why}.'
-    hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hang penalty."
-    hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hang
+    hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hangup penalty."
+    hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hangup
       penalty.'
     realmCharges: "{realm}'s realm menu says a hangup costs {percent}%."
     realmChargesNothing: "{realm}'s realm menu says a hangup costs nothing."
@@ -4569,7 +4572,7 @@ automation:
     whyStopped: you asked it to
     whySwitchedOff: Auto-Quest was switched off
     whyWalkStopped: the walk stopped
-    whyErrandEnded: the shopping errand ended without it
+    whyErrandEnded: the detour to the shop ended without it
     whyNothingMoved: nothing happened for long enough that something is stuck
     whyLegStalled: the walk to the next step stood still
     heldUp: 'Held up: {why}. Trying again in {seconds}s (setback {tries} of {max}).'
@@ -5012,11 +5015,11 @@ automation:
     refusalNothingReaches: 'no light you carry makes it bright enough: {items}'
   supplies:
     abandonedPlayerMoved: you took over
-    refusalBusy: a shopping errand is already running
+    refusalBusy: already on a detour to a shop
     refusalNotInRealm: this character is not in the realm
-    refusalNoErrand: the errand could not be started
+    refusalNoErrand: the detour could not be started
     abandonedEscape: the character is running away
-    refusalTookTooLong: the errand took too long and the loop resumed
+    refusalTookTooLong: the detour took too long and the loop resumed
     abandonedLeftRealm: the realm was left
     abandonedConnectionClosed: the connection closed
     abandonedSwitchedOff: Auto-Buy was turned off
@@ -5406,7 +5409,7 @@ browser:
   up: Up
   copyPath: Copy path
   close: Close
-  loading: Listing…
+  loading: Reading the folder…
   empty: Nothing here.
   use: use this file
   realmChip: realm
