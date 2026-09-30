@@ -2295,6 +2295,19 @@ export interface PartyConfig {
   parSeconds: number;
   /** In a party, send `par` after every combat round (`ParAfterRound`). */
   parAfterRound: boolean;
+  /**
+   * Leading, say `@party <command>` before a room's own command that moves only
+   * the one who types it (`go vortex`), so a follower runs it too (todo 839).
+   * A text exit in a compass slot needs none: the server moves followers with
+   * the leader (`Exits.SuccessMoveThroughExit`).
+   */
+  relayPortals: boolean;
+  /**
+   * Leading, after going through one, send `par`, invite again a member standing
+   * here who is out of the party, and hold the walk up to this many minutes
+   * for everyone to be here and in it. 0 invites and does not wait.
+   */
+  regroupMinutes: number;
 }
 
 /**
@@ -2739,7 +2752,9 @@ export const DEFAULT_CONFIG: AppConfig = {
       ignoreParty: false,
       askHealth: true,
       parSeconds: 0,
-      parAfterRound: false
+      parAfterRound: false,
+      relayPortals: true,
+      regroupMinutes: 5
     },
     health: {
       /*
@@ -4225,7 +4240,8 @@ const MAX_BLESSINGS = 16;
 /** The whole-number party settings' bounds, one statement for the file and the settings screen. */
 export const PARTY_RANGES = {
   waitMinutes: [0, 120],
-  parSeconds: [0, 3600]
+  parSeconds: [0, 3600],
+  regroupMinutes: [0, 60]
 } as const satisfies Partial<Record<keyof PartyConfig, readonly [number, number]>>;
 
 function normalizeParty(value: unknown): PartyConfig {
@@ -4242,7 +4258,9 @@ function normalizeParty(value: unknown): PartyConfig {
     ignoreParty: bool(raw['ignoreParty'], d.ignoreParty),
     askHealth: bool(raw['askHealth'], d.askHealth),
     parSeconds: int(raw['parSeconds'], d.parSeconds, ...PARTY_RANGES.parSeconds),
-    parAfterRound: bool(raw['parAfterRound'], d.parAfterRound)
+    parAfterRound: bool(raw['parAfterRound'], d.parAfterRound),
+    relayPortals: bool(raw['relayPortals'], d.relayPortals),
+    regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes)
   };
 }
 

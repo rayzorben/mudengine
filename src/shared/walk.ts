@@ -177,6 +177,8 @@ export type WalkHold =
   | 'resting'
   /** A room too dark to read, while the light that fixes it is on its way. */
   | 'dark'
+  /** Leading, on the far side of a portal, until the party rejoins (todo 839). */
+  | 'party'
   | null;
 
 /**

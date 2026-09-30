@@ -934,7 +934,16 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         ...PARTY_RANGES.parSeconds,
         DEFAULT_CONFIG.automation.party.parSeconds
       ),
-      parAfterRound: party['parAfterRound'] === true
+      parAfterRound: party['parAfterRound'] === true,
+      relayPortals:
+        typeof party['relayPortals'] === 'boolean'
+          ? party['relayPortals']
+          : DEFAULT_CONFIG.automation.party.relayPortals,
+      regroupMinutes: clamp(
+        party['regroupMinutes'],
+        ...PARTY_RANGES.regroupMinutes,
+        DEFAULT_CONFIG.automation.party.regroupMinutes
+      )
     },
     health: {
       /*

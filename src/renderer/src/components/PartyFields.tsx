@@ -2,7 +2,8 @@
  * The party settings, one set of fields for the character form and the
  * options page (todo 831): following (assist, defend, rest with the leader,
  * the leader's `@party`), leading (MegaMUD's *Wait For Party Members*, its
- * time limit and `@wait`), the party listing's pace, and healing. Each figure
+ * time limit and `@wait`, the portal relay and its rejoin wait, todo 839), the
+ * party listing's pace, and healing. Each figure
  * is held as typed (`PartyForm`); the page turns a change back into its draft.
  */
 import { CheckField, NumberField } from './FormField';
@@ -46,6 +47,7 @@ export default function PartyFields({
       | 'ignoreParty'
       | 'ignoreWait'
       | 'parAfterRound'
+      | 'relayPortals'
       | 'askHealth',
     label: string,
     hint: string,
@@ -124,6 +126,21 @@ export default function PartyFields({
           t('settings.party.parAfterRoundHint'),
           'par-after-round'
         )}
+        {check(
+          'relayPortals',
+          t('settings.party.relayPortalsLabel'),
+          t('settings.party.relayPortalsHint'),
+          'relay-portals'
+        )}
+        <div className="settings-inline">
+          <NumberField
+            hint={t('settings.party.regroupMinutesHint')}
+            label={t('settings.party.regroupMinutesLabel')}
+            name={`${namePrefix}party-regroup-minutes`}
+            onChange={(value) => set('regroupMinutes', value)}
+            value={party.regroupMinutes}
+          />
+        </div>
       </fieldset>
       <fieldset className="settings-menus" data-fieldset="party-healing">
         <legend>{t('settings.party.healLegend')}</legend>

@@ -1930,6 +1930,16 @@ automation:
     # In a party, send par after every combat round.
     parAfterRound: false
 
+    # Leading, say @party <command> before a room's own command that moves only
+    # the one who types it (go vortex), so the party runs it too. A text exit
+    # the server moves followers through needs none.
+    relayPortals: true
+
+    # Leading, after going through one: send par, invite again a member standing
+    # in the room who is out of the party, and hold the walk up to this many
+    # minutes for everyone to be here and in it. 0 invites and walks on.
+    regroupMinutes: 5
+
   # Keeping a character alive, rather than playing it.
   safety:
     # Running away.

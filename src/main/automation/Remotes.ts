@@ -99,6 +99,8 @@ import {
 } from '../../shared/tally';
 import type { SessionModule } from './Module';
 import { AutoJoin, joinIntent } from './AutoJoin';
+import { PartyRegroup, inviteIntent } from './PartyRegroup';
+import type { Direction, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
 /**
@@ -320,6 +322,8 @@ export class Remotes implements SessionModule {
   private seen = false;
   /** Answering an invitation as though `@join` had followed it. See `AutoJoin`. */
   private readonly autoJoin: AutoJoin;
+  /** Leading the party through a room's own command, and waiting for it. See `PartyRegroup`. */
+  private readonly regroup: PartyRegroup;
 
   constructor(
     private config: AutomationConfig,
@@ -336,11 +340,31 @@ export class Remotes implements SessionModule {
     private readonly client: string = CLIENT_NAME
   ) {
     this.autoJoin = new AutoJoin(config, queue, { notice: (message) => events.notice?.(message) });
+    this.regroup = new PartyRegroup(config, queue, {
+      notice: (message) => events.notice?.(message),
+      askJoin: (member, state) => this.ask(member, 'join', state)
+    });
   }
 
   configure(config: AutomationConfig): void {
     this.config = config;
     this.autoJoin.configure(config);
+    this.regroup.configure(config);
+  }
+
+  /** A walk's step is about to be queued: a portal's `@party` goes ahead of it. */
+  stepping(
+    command: string,
+    direction: Direction | 'portal',
+    to: RoomId,
+    state: CharacterState
+  ): void {
+    this.regroup.stepping(command, direction, to, state);
+  }
+
+  /** Whether the walk stands still for the party to rejoin (`Holds.holdForParty`). */
+  regrouping(state: CharacterState): boolean {
+    return this.regroup.regrouping(state);
   }
 
   /**
@@ -352,6 +376,8 @@ export class Remotes implements SessionModule {
    * is one round out of date in exactly the situation somebody asks.
    */
   onBlock(block: Block, state: CharacterState): void {
+    // The party's own switch, not the remotes': the regroup answers nobody's `@`.
+    this.regroup.onBlock(block);
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     this.autoJoin.onBlock(block, state);
     if (block.type === 'party-joined') {
@@ -579,6 +605,7 @@ export class Remotes implements SessionModule {
    * character is.
    */
   onCharacter(state: CharacterState): void {
+    this.regroup.onCharacter(state);
     if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
     this.askForHeal(state);
     const margin = tuning().loop.resumeMarginWhenUncapped;
@@ -765,6 +792,12 @@ export class Remotes implements SessionModule {
     this.wantsHeal = false;
     this.seen = false;
     this.autoJoin.reset();
+    this.regroup.reset();
+  }
+
+  /** The regroup's clock is the one thing here that outlives a call. */
+  dispose(): void {
+    this.regroup.dispose();
   }
 
   /**
@@ -1180,12 +1213,7 @@ export class Remotes implements SessionModule {
          * capture shows a reply to either, and the party listing that follows
          * is the acknowledgement both clients can already see.
          */
-        this.queue.enqueue({
-          command: `invite ${from}`,
-          priority: 'user',
-          coalesceKey: `remote:invite:${from.toLowerCase()}`,
-          reason: t('automation.remotes.reasonInvite', { from })
-        });
+        this.queue.enqueue(inviteIntent(from, t('automation.remotes.reasonInvite', { from })));
         return;
       }
 

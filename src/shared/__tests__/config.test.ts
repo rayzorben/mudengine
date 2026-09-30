@@ -729,7 +729,9 @@ describe('following somebody', () => {
   /*
    * Nothing new sent unasked: every switch off and every figure 0, but for
    * asking a joining member's @health, which the client always did, and a
-   * time limit on a wait nothing starts (todo 831).
+   * time limit on a wait nothing starts (todo 831). The one exception is the
+   * leader's @party before a portal and the wait behind it, which the user
+   * asked to have on (todo 839, 2026-09-30).
    */
   it('ships sending nothing new', () => {
     expect(party({})).toEqual({
@@ -743,7 +745,9 @@ describe('following somebody', () => {
       ignoreParty: false,
       askHealth: true,
       parSeconds: 0,
-      parAfterRound: false
+      parAfterRound: false,
+      relayPortals: true,
+      regroupMinutes: 5
     });
   });
 

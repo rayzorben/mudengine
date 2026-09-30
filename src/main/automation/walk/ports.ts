@@ -112,6 +112,11 @@ export interface WalkerEvents {
    */
   lightComing?(state: CharacterState): boolean;
   /**
+   * Whether this character, leading, is waiting on the far side of a portal
+   * for its party to rejoin (`PartyRegroup`, todo 839), which owns the bound.
+   */
+  regrouping?(state: CharacterState): boolean;
+  /**
    * The name to type for the key an exit demands, when this character is
    * carrying it — and null when it is not, or when the realm cannot name the
    * row.
