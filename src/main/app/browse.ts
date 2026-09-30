@@ -29,13 +29,16 @@ export interface BrowseWording {
 }
 
 /**
- * Whether one real path is the other or inside it. String arithmetic on
- * resolved paths, with the separator appended so `/home/a` does not contain
- * `/home/ab`.
+ * Whether one real path is the other or inside it, by `path.relative` on the
+ * resolved paths, so `/home/a` does not contain `/home/ab` and a path on
+ * another Windows drive is outside.
  */
 export function isWithin(root: string, candidate: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
-  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+  return (
+    relative === '' ||
+    (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  );
 }
 
 export async function listHome(

@@ -25,6 +25,12 @@ import type {
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
 
+/**
+ * The dial a `disconnect()` cut short. The session says nothing for it, because
+ * the socket's own `close` follows and reports the end.
+ */
+export class DialCancelled extends Error {}
+
 export interface TelnetClientEvents {
   /** Socket is open; Telnet negotiation may still be in flight. */
   connect: [];
@@ -71,6 +77,12 @@ export class TelnetClient extends EventEmitter {
   private closingIntentionally = false;
   /** Identifies the current socket so late events from a replaced socket are ignored. */
   private connectionGeneration = 0;
+  /**
+   * Fails the `connect()` still dialling. A hang-up mid-dial moves the
+   * generation on, so the dial's own handlers ignore what the socket does next
+   * and would otherwise leave the promise pending for good.
+   */
+  private cancelDial: ((reason: Error) => void) | null = null;
 
   /**
    * How long to wait for the socket to open. See `tuning.net.connectTimeoutMs`.
@@ -153,6 +165,7 @@ export class TelnetClient extends EventEmitter {
       let dialTimer: NodeJS.Timeout | null = setTimeout(() => {
         if (generation !== this.connectionGeneration) return;
         dialTimer = null;
+        this.cancelDial = null;
         socket.removeListener('connect', onConnect);
         socket.removeListener('error', onConnectError);
         this.teardown();
@@ -170,9 +183,16 @@ export class TelnetClient extends EventEmitter {
         dialTimer = null;
       };
 
+      this.cancelDial = (reason) => {
+        clearDial();
+        this.cancelDial = null;
+        reject(reason);
+      };
+
       const onConnectError = (error: Error): void => {
         if (generation !== this.connectionGeneration) return;
         clearDial();
+        this.cancelDial = null;
         socket.removeListener('connect', onConnect);
         this.teardown();
         reject(error);
@@ -181,6 +201,7 @@ export class TelnetClient extends EventEmitter {
       const onConnect = (): void => {
         if (generation !== this.connectionGeneration) return;
         clearDial();
+        this.cancelDial = null;
         socket.removeListener('error', onConnectError);
         /*
          * Guarded, because `EventEmitter` *throws* on an `error` event with no
@@ -195,6 +216,7 @@ export class TelnetClient extends EventEmitter {
          * safe.
          */
         socket.on('error', (error) => {
+          if (generation !== this.connectionGeneration) return;
           if (this.listenerCount('error') > 0) this.emit('error', error);
         });
         this.emit('connect');
@@ -225,6 +247,7 @@ export class TelnetClient extends EventEmitter {
 
   disconnect(): void {
     if (!this.socket) return;
+    this.cancelDial?.(new DialCancelled());
     this.connectionGeneration++;
     this.closingIntentionally = true;
     this.socket.end();
