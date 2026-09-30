@@ -5,7 +5,7 @@ import ClearField from './ClearField';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { chord } from '../lib/platform';
-import type { PopoverAnchor } from '../lib/popover';
+import { measuredAnchor, type PopoverAnchor } from '../lib/popover';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { tuning } from '../lib/tuning';
 
@@ -334,13 +334,11 @@ export default function CommandPalette({
   /*
    * Where the palette stood, measured before it goes: a command that opens a
    * panel places it beside this box, and the dialog itself is unmounted by
-   * the time that panel is laid out. `within` is the body because nothing
-   * that scrolls encloses a fixed dialog, so no scroll dismisses the panel.
+   * the time that panel is laid out.
    */
   const choose = (command: Command): void => {
     const dialog = dialogRef.current;
-    const from: PopoverAnchor | undefined =
-      dialog === null ? undefined : { box: dialog.getBoundingClientRect(), within: document.body };
+    const from: PopoverAnchor | undefined = dialog === null ? undefined : measuredAnchor(dialog);
     onClose(command.movesFocus ?? false);
     command.run(from);
   };

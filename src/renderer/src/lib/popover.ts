@@ -147,6 +147,26 @@ export function anchorRect(anchor: PopoverAnchor): Box {
 }
 
 /**
+ * An element measured now, for a panel laid out after it is gone. `within` is
+ * the body because nothing that scrolls encloses a panel or dialog drawn on
+ * the portal, so no scroll dismisses what hangs off it.
+ */
+export function measuredAnchor(element: HTMLElement): PopoverAnchor {
+  return { box: element.getBoundingClientRect(), within: document.body };
+}
+
+/**
+ * An anchor that outlives the panel it was clicked in. Panels open one at a
+ * time, so a name clicked inside a panel unmounts its own button before the
+ * next panel is laid out, and a panel whose anchor is gone is put away or
+ * left unplaced.
+ */
+export function outlastingAnchor(anchor: PopoverAnchor): PopoverAnchor {
+  if (!(anchor instanceof HTMLElement) || anchor.closest('.popover') === null) return anchor;
+  return measuredAnchor(anchor);
+}
+
+/**
  * The part of a DOM node this needs: whether another one sits inside it.
  *
  * Structural rather than `Node`, because the unit suite runs with no DOM at
