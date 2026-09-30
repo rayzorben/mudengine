@@ -10566,7 +10566,7 @@ tr:hover .row-action.worn,
   align-content: start;
 }
 
-:is(.settings-form, .settings-menus, .settings-inline, .settings-advanced-body)
+:is(.settings-form, .settings-section, .settings-menus, .settings-inline, .settings-advanced-body)
   > .settings-field:not(.settings-check) {
   display: grid;
   gap: 3px;
@@ -10579,7 +10579,7 @@ tr:hover .row-action.worn,
  * whose label is a sentence, not a caption -- and a field that says its value
  * needs the width.
  */
-:is(.settings-form, .settings-menus, .settings-inline, .settings-advanced-body)
+:is(.settings-form, .settings-section, .settings-menus, .settings-inline, .settings-advanced-body)
   > :is(:not(.settings-field), .settings-check, .settings-field-wide) {
   grid-column: 1 / -1;
 }
@@ -10623,7 +10623,7 @@ tr:hover .row-action.worn,
  * the range where this would otherwise overflow.
  */
 @media (min-width: 800px) {
-  :is(.settings-form, .settings-menus, .settings-inline, .settings-advanced-body)
+  :is(.settings-form, .settings-section, .settings-menus, .settings-inline, .settings-advanced-body)
     > .settings-check {
     align-self: end;
     grid-column: span 2;
@@ -10765,11 +10765,17 @@ tr:hover .row-action.worn,
  * colour of whichever section happened to be open.
  */
 .settings-form[data-section='profile'],
+.settings-section[data-section='profile'],
 .settings-form[data-section='realm'],
+.settings-section[data-section='realm'],
 .settings-form[data-section='spells'],
+.settings-section[data-section='spells'],
 .settings-form[data-section='train'],
+.settings-section[data-section='train'],
 .settings-form[data-section='talk'],
+.settings-section[data-section='talk'],
 .settings-form[data-section='appearance'],
+.settings-section[data-section='appearance'],
 .settings-nav-section[data-section='profile'],
 .settings-nav-section[data-section='realm'],
 .settings-nav-section[data-section='spells'],
@@ -10784,9 +10790,13 @@ tr:hover .row-action.worn,
 }
 
 .settings-form[data-section='login'],
+.settings-section[data-section='login'],
 .settings-form[data-section='party'],
+.settings-section[data-section='party'],
 .settings-form[data-section='alerts'],
+.settings-section[data-section='alerts'],
 .settings-form[data-section='records'],
+.settings-section[data-section='records'],
 .settings-nav-section[data-section='login'],
 .settings-nav-section[data-section='party'],
 .settings-nav-section[data-section='alerts'],
@@ -10799,7 +10809,9 @@ tr:hover .row-action.worn,
 }
 
 .settings-form[data-section='combat'],
+.settings-section[data-section='combat'],
 .settings-form[data-section='movement'],
+.settings-section[data-section='movement'],
 .settings-nav-section[data-section='combat'],
 .settings-nav-section[data-section='movement'] {
   --section-hue: var(--section-c);
@@ -10810,7 +10822,9 @@ tr:hover .row-action.worn,
 }
 
 .settings-form[data-section='health'],
+.settings-section[data-section='health'],
 .settings-form[data-section='remotes'],
+.settings-section[data-section='remotes'],
 .settings-nav-section[data-section='health'],
 .settings-nav-section[data-section='remotes'] {
   --section-hue: var(--section-d);
@@ -10890,6 +10904,51 @@ tr:hover .row-action.worn,
    hue as the section, because that is exactly what it is part of. */
 .settings-form .settings-subhead {
   color: var(--group-hue);
+}
+
+/*
+ * One section of a form, as `SettingsSection` draws it: no box of its own, so
+ * its fields stay items of the form's grid, and its own hue, so a search that
+ * draws every section draws each in the colour its rail row wears. The
+ * fieldset count behind `nth-of-type` restarts inside it for the same reason.
+ */
+.settings-section {
+  display: contents;
+  --group-hue: var(--section-hue);
+}
+
+/* A section's name over its fields, drawn only while the form is searched. */
+.settings-section-heading {
+  color: var(--section-hue);
+  font-size: 0.82em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 6px 0 0;
+  scroll-margin-top: 4px;
+  text-transform: uppercase;
+}
+
+/*
+ * What a search leaves out. `!important` because this is a filter over every
+ * layout rule on the screen: a field is a grid by a three-class selector, and
+ * a hidden one must stay hidden whichever of those is the more specific.
+ */
+.settings-form [data-search='miss'] {
+  display: none !important;
+}
+
+/* A field the query named, inside a fieldset shown whole. */
+.settings-form .settings-field[data-search='hit'] {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  border-radius: calc(var(--r-card) - 8px);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) var(--tone), transparent);
+}
+
+.settings-nav-none {
+  color: var(--text-lo);
+  font-size: 0.86em;
+  margin: 0;
+  padding: 0 9px;
 }
 
 .settings-accents {

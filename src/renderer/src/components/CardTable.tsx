@@ -215,6 +215,11 @@ export interface FindFieldProps {
    * is about rows that appear on their own.
    */
   autoFocus?: boolean;
+  /**
+   * Inside a surface that owns its own Escape, the settings panel: a press that
+   * clears stops here, and a press on an empty field is the surface's.
+   */
+  nested?: boolean;
 }
 
 /**
@@ -239,7 +244,8 @@ export function FindField({
   onChange,
   returnFocus,
   onDismiss,
-  autoFocus
+  autoFocus,
+  nested
 }: FindFieldProps): React.JSX.Element {
   return (
     <div className="table-find">
@@ -251,6 +257,10 @@ export function FindField({
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return;
+            if (nested === true) {
+              if (query === '') return;
+              event.stopPropagation();
+            }
             event.preventDefault();
             onChange('');
             onDismiss?.();

@@ -42,20 +42,22 @@ function composed(file: string): string {
   return [source, ...local.map(read)].join('\n');
 }
 
+// The form, the file its rail table is in, and the fieldsets that are not jump targets.
 describe.each([
-  ['CharacterForm.tsx', [] as string[]],
-  ['GlobalSettings.tsx', [] as string[]]
-])('%s', (file, notNavigable) => {
+  ['CharacterForm.tsx', 'characterNav.ts', [] as string[]],
+  ['GlobalSettings.tsx', 'GlobalSettings.tsx', [] as string[]]
+])('%s', (file, tableFile, notNavigable) => {
   const source = composed(file);
+  const table = read(tableFile);
 
   /* The positive control: a regex that matched nothing would pass everything. */
   it('finds both halves at all', () => {
-    expect(offered(source).length).toBeGreaterThan(5);
+    expect(offered(table).length).toBeGreaterThan(5);
     expect(drawn(source).length).toBeGreaterThan(5);
   });
 
   it('draws a fieldset for every jump target the rail offers', () => {
-    const missing = offered(source).filter((id) => !drawn(source).includes(id));
+    const missing = offered(table).filter((id) => !drawn(source).includes(id));
     expect(missing).toEqual([]);
   });
 
@@ -66,7 +68,7 @@ describe.each([
    */
   it('offers a jump target for every fieldset it tags', () => {
     const stray = drawn(source).filter(
-      (id) => !offered(source).includes(id) && !notNavigable.includes(id)
+      (id) => !offered(table).includes(id) && !notNavigable.includes(id)
     );
     expect(stray).toEqual([]);
   });

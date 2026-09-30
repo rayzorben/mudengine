@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
 import SettingsNav from './SettingsNav';
-import CharacterForm, { CHARACTER_NAV } from './CharacterForm';
+import CharacterForm from './CharacterForm';
+import { CHARACTER_NAV } from './characterNav';
 import ServerForm from './ServerForm';
 import FormActions from './FormActions';
+import EditorActions from './EditorActions';
 import GlobalSettings from './GlobalSettings';
 import SettingsPaths from './SettingsPaths';
 
@@ -37,6 +39,7 @@ import { withLoopToggled } from '../lib/loops';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { useCharacterRealm, type CharacterRealmLoaders } from '../hooks/useCharacterRealm';
 import { useSettingsPanel } from '../hooks/useSettingsPanel';
+import { useSettingsFind } from '../hooks/useSettingsFind';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import type { Loop, ScopedLoop } from '@shared/loops';
 import type { SessionId, SettingsSnapshot } from '@shared/ipc';
@@ -281,6 +284,8 @@ export default function SettingsScreen({
   /* Where the player dragged it, and the two gestures that move it. */
   const panel = useSettingsPanel();
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const find = useSettingsFind(body);
 
   /**
    * Puts a form on screen without making it a step.
@@ -690,6 +695,15 @@ export default function SettingsScreen({
       redo: () => setHistory((current) => (current ? redo(current) : current))
     };
   }, [tab, globalSave, serverSave, characterSave, globalHistory, serverHistory, history]);
+  const status = (
+    <FormActions
+      can={active.can}
+      error={active.save.error}
+      onRedo={active.redo}
+      onUndo={active.undo}
+      state={active.save.state}
+    />
+  );
 
   /**
    * Closing does not lose the last second of typing.
@@ -1001,7 +1015,7 @@ export default function SettingsScreen({
         */}
         {required && <p className="settings-warn">{t('settings.dialog.characterRequired')}</p>}
 
-        <div className="settings-body" data-tab={tab}>
+        <div className="settings-body" data-tab={tab} ref={body}>
           {showsGlobal(tab) ? (
             globalForm === null ? (
               <div className="settings-form empty">{t('settings.global.loading')}</div>
@@ -1009,6 +1023,7 @@ export default function SettingsScreen({
               <GlobalSettings
                 catalogue={catalogue}
                 draft={globalForm}
+                find={find}
                 palette={palette}
                 scope={tab}
                 firstFieldRef={firstFieldRef}
@@ -1019,15 +1034,7 @@ export default function SettingsScreen({
                 }}
                 onDonePicking={() => setPicking(false)}
                 onOpenPicker={openPicker}
-                actions={
-                  <FormActions
-                    can={active.can}
-                    error={active.save.error}
-                    onRedo={active.redo}
-                    onUndo={active.undo}
-                    state={active.save.state}
-                  />
-                }
+                actions={status}
                 onSubmit={() => void submitGlobal()}
                 onToggleLoop={toggleGlobalLoop}
                 picking={picking}
@@ -1041,6 +1048,7 @@ export default function SettingsScreen({
                 the form keeps the whole of the other column (todo 02).
               */}
               <SettingsNav
+                find={find}
                 onSection={(id: string) => setSection(id as CharacterSection)}
                 picker={{
                   addId: NEW_CHARACTER,
@@ -1071,55 +1079,17 @@ export default function SettingsScreen({
               ) : (
                 <CharacterForm
                   actions={
-                    <>
-                      {/*
-                        Creating still takes a press; editing does not.
-                        A half-typed file name is a *different* character, so an
-                        auto-saved new one would write a directory per keystroke.
-                      */}
-                      {selected === NEW_CHARACTER ? (
-                        <button className="primary" type="submit">
-                          {t('settings.actions.createCharacter')}
-                        </button>
-                      ) : (
-                        <FormActions
-                          can={active.can}
-                          error={active.save.error}
-                          onRedo={active.redo}
-                          onUndo={active.undo}
-                          state={active.save.state}
-                        />
-                      )}
-                      {selected !== NEW_CHARACTER &&
-                        (confirming === selected ? (
-                          <>
-                            <span className="hint">
-                              {t('settings.actions.confirmRemoveCharacter')}
-                            </span>
-                            <button className="danger" onClick={() => void remove()} type="button">
-                              {t('settings.actions.confirmYes')}
-                            </button>
-                            <button
-                              className="quiet"
-                              onClick={() => setConfirming(null)}
-                              type="button"
-                            >
-                              {t('settings.actions.confirmKeep')}
-                            </button>
-                          </>
-                        ) : (
-                          /* Asked first, because this is a click that may destroy
-                             the only record of a password. The file is backed up
-                             beside itself either way. */
-                          <button
-                            className="quiet"
-                            onClick={() => setConfirming(selected)}
-                            type="button"
-                          >
-                            {t('settings.actions.remove')}
-                          </button>
-                        ))}
-                    </>
+                    <EditorActions
+                      confirmText={t('settings.actions.confirmRemoveCharacter')}
+                      confirming={confirming === selected}
+                      create={
+                        selected === NEW_CHARACTER ? t('settings.actions.createCharacter') : null
+                      }
+                      onAsk={() => setConfirming(selected)}
+                      onKeep={() => setConfirming(null)}
+                      onRemove={() => void remove()}
+                      status={status}
+                    />
                   }
                   bands={bands}
                   copy={
@@ -1139,6 +1109,7 @@ export default function SettingsScreen({
                   palette={palette}
                   patch={patch}
                   realm={realm}
+                  searching={find.searching}
                   section={section}
                   servers={servers}
                   shelf={shelf}
@@ -1177,49 +1148,15 @@ export default function SettingsScreen({
               ) : (
                 <ServerForm
                   actions={
-                    <>
-                      {serverPick === NEW_SERVER ? (
-                        <button className="primary" type="submit">
-                          {t('settings.realms.submit')}
-                        </button>
-                      ) : (
-                        <FormActions
-                          can={active.can}
-                          error={active.save.error}
-                          onRedo={active.redo}
-                          onUndo={active.undo}
-                          state={active.save.state}
-                        />
-                      )}
-                      {serverPick !== NEW_SERVER &&
-                        (confirming === serverPick ? (
-                          <>
-                            <span className="hint">{t('settings.realms.confirmRemove')}</span>
-                            <button
-                              className="danger"
-                              onClick={() => void removeServer()}
-                              type="button"
-                            >
-                              {t('settings.actions.confirmYes')}
-                            </button>
-                            <button
-                              className="quiet"
-                              onClick={() => setConfirming(null)}
-                              type="button"
-                            >
-                              {t('settings.actions.confirmKeep')}
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            className="quiet"
-                            onClick={() => setConfirming(serverPick)}
-                            type="button"
-                          >
-                            {t('settings.actions.remove')}
-                          </button>
-                        ))}
-                    </>
+                    <EditorActions
+                      confirmText={t('settings.realms.confirmRemove')}
+                      confirming={confirming === serverPick}
+                      create={serverPick === NEW_SERVER ? t('settings.realms.submit') : null}
+                      onAsk={() => setConfirming(serverPick)}
+                      onKeep={() => setConfirming(null)}
+                      onRemove={() => void removeServer()}
+                      status={status}
+                    />
                   }
                   chooseRealm={chooseRealm}
                   draft={serverForm}

@@ -9,7 +9,8 @@ import type { StatlineFigures } from '@shared/statline';
 import type { TerminalPalette } from '@shared/themes';
 import AlertList from './AlertList';
 import MobRuleList from './MobRuleList';
-import type { NavFieldset, NavSection } from './SettingsNav';
+import SettingsSection from './SettingsSection';
+import { CHARACTER_SECTION_LABEL } from './characterNav';
 import GearSetList from './GearSetList';
 import PotionList, { WardRules } from './PotionList';
 import Icon from './Icon';
@@ -50,7 +51,6 @@ import {
   splitNames
 } from '../lib/form';
 import {
-  CHARACTER_SECTIONS,
   HEAL_KEYS,
   healValuesOf,
   walksAnotherWorld,
@@ -67,96 +67,6 @@ import { ENCODINGS, type StreamEncoding } from '@shared/types';
 import { PVP_ACTIONS, type EngagePolicy, type Server, type VitalsUiConfig } from '@shared/config';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 
-const SECTION_LABEL: Record<CharacterSection, string> = {
-  profile: t('settings.sections.character'),
-  login: t('settings.sections.login'),
-  combat: t('settings.tabs.combat'),
-  health: t('settings.tabs.health'),
-  spells: t('settings.tabs.spells'),
-  party: t('settings.tabs.party'),
-  movement: t('settings.tabs.movement'),
-  gear: t('settings.tabs.gear'),
-  train: t('settings.tabs.train'),
-  quests: t('settings.tabs.quests'),
-  remotes: t('settings.tabs.remotes'),
-  talk: t('settings.tabs.talk'),
-  alerts: t('settings.tabs.alerts'),
-  rewrites: t('settings.tabs.rewrites')
-};
-
-/**
- * The fieldsets inside each section, as the rail's jump targets (todo 02).
- *
- * Written down rather than read off the DOM: a fieldset drawn only when a
- * switch is on — Combat's three — would come and go from a list built by
- * counting, and the rail would then scroll to whichever fieldset happened to
- * be third today. Each `id` matches the `data-fieldset` on the fieldset
- * itself, which is the whole of the contract between the two.
- *
- * A section with one fieldset lists none: the section's own row already goes
- * there, and a single child under it would be the same press written twice.
- * `profile` has no fieldsets at all — its fields sit directly in the section.
- */
-const SECTION_FIELDSETS: Record<CharacterSection, readonly NavFieldset[]> = {
-  profile: [],
-  login: [{ id: 'login', label: t('settings.login.legend') }],
-  combat: [
-    { id: 'combat-attack', label: t('settings.combat.attackLegend') },
-    { id: 'combat-attacks', label: t('settings.combat.attacksLegend') },
-    { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
-    { id: 'combat-mob-rules', label: t('settings.combat.mobRuleLegend') }
-  ],
-  health: [
-    { id: 'health-recover', label: t('settings.health.recoverLegend') },
-    { id: 'health-retreat', label: t('settings.health.retreatLegend') },
-    { id: 'health-hangup', label: t('settings.health.hangUpLegend') },
-    { id: 'health-potions', label: t('settings.health.potionRuleLegend') }
-  ],
-  spells: [
-    { id: 'spells-round', label: t('settings.spells.legend') },
-    { id: 'spells-heal', label: t('settings.spells.healLegend') },
-    { id: 'spells-cures', label: t('settings.spells.cureLegend') },
-    { id: 'spells-blessings', label: t('settings.spells.blessingsLegend') }
-  ],
-  party: [
-    { id: 'party-follow', label: t('settings.party.legend') },
-    { id: 'party-healing', label: t('settings.party.healLegend') },
-    { id: 'party-remotes', label: t('settings.party.remotesLegend') }
-  ],
-  movement: [
-    { id: 'movement-doors', label: t('settings.movement.doorsLegend') },
-    { id: 'movement-stealth', label: t('settings.movement.stealthLegend') },
-    { id: 'movement-light', label: t('settings.movement.lightLegend') },
-    { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
-    { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
-    { id: 'movement-carry', label: t('settings.movement.carryLegend') },
-    { id: 'hunting', label: t('settings.hunting.legend') }
-  ],
-  gear: [
-    { id: 'gear', label: t('settings.gear.legend') },
-    { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
-  ],
-  train: [{ id: 'train', label: t('settings.train.legend') }],
-  quests: [{ id: 'quests', label: t('settings.quests.legend') }],
-  remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
-  talk: [
-    { id: 'talk', label: t('settings.talk.legend') },
-    { id: 'talk-pvp', label: t('settings.health.pvpLegend') }
-  ],
-  alerts: [
-    { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
-    { id: 'alerts-afk', label: t('settings.afk.legend') }
-  ],
-  rewrites: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }]
-};
-
-/** The rail's rows for the character page, in the order the form draws them. */
-export const CHARACTER_NAV: readonly NavSection[] = CHARACTER_SECTIONS.map((id) => ({
-  id,
-  label: SECTION_LABEL[id],
-  fieldsets: SECTION_FIELDSETS[id]
-}));
-
 /** Starting a new character from one that already works: see `copyOf`. */
 export interface CopySource {
   /** The character chosen, or '' for the blank form. */
@@ -171,6 +81,8 @@ export interface CharacterFormProps {
   patch(change: Partial<CharacterFields>): void;
   onSubmit(event: FormEvent): void;
   section: CharacterSection;
+  /** A query is typed in the rail's find field: every section is drawn. */
+  searching: boolean;
   /** A character not yet on disk: its id is chosen here, and saving takes a press. */
   creating: boolean;
   /** Offered only while creating, and only with a character to copy. */
@@ -240,6 +152,7 @@ export default function CharacterForm({
   patch,
   onSubmit,
   section,
+  searching,
   creating,
   copy,
   shown,
@@ -257,6 +170,12 @@ export default function CharacterForm({
   actions
 }: CharacterFormProps): React.JSX.Element {
   const { trainers, serving, wards, mobs, banks } = realm;
+  const shows = (id: CharacterSection): boolean => searching || section === id;
+  const sectionOf = (id: CharacterSection) => ({
+    id,
+    label: CHARACTER_SECTION_LABEL[id],
+    searching
+  });
   /**
    * What the character form's spell pickers offer: the shown character's own
    * book, read by `sp`/`pow` and persisted with its belongings. Null is
@@ -287,8 +206,8 @@ export default function CharacterForm({
 
   return (
     <form className="settings-form" data-section={section} onSubmit={onSubmit}>
-      {section === 'profile' && (
-        <>
+      {shows('profile') && (
+        <SettingsSection {...sectionOf('profile')}>
           {/*
             Start from a character that already works.
 
@@ -498,95 +417,97 @@ export default function CharacterForm({
             ]}
             value={form.theme}
           />
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'login' && (
-        <fieldset className="settings-menus" data-fieldset="login">
-          <legend>{t('settings.login.legend')}</legend>
-          {/*
-            Empty is the ordinary case and says so, rather than
-            being an empty box somebody feels obliged to fill in.
-            The script belongs to the realm -- every character on
-            one meets the same menus -- and a character states its
-            own only to differ, which in practice means a different
-            character slot.
-          */}
-          <p className="settings-note">
-            {t('settings.login.note', {
-              realmOrAddress:
-                form.serverName === null
-                  ? t('settings.login.noteFallbackAddress')
-                  : form.serverName,
-              /*
-                The placeholders, passed as values so they survive.
-                This is the one login string whose call site has
-                params, and `makeT` interpolates every `{name}` in
-                a string it is given any -- so a literal `{user}`
-                written in the copy would be reported as a value
-                nobody supplied. A replacement is not re-scanned,
-                so handing them in prints them.
-              */
-              user: '{user}',
-              password: '{password}'
-            })}
-          </p>
+      {shows('login') && (
+        <SettingsSection {...sectionOf('login')}>
+          <fieldset className="settings-menus" data-fieldset="login">
+            <legend>{t('settings.login.legend')}</legend>
+            {/*
+              Empty is the ordinary case and says so, rather than
+              being an empty box somebody feels obliged to fill in.
+              The script belongs to the realm -- every character on
+              one meets the same menus -- and a character states its
+              own only to differ, which in practice means a different
+              character slot.
+            */}
+            <p className="settings-note">
+              {t('settings.login.note', {
+                realmOrAddress:
+                  form.serverName === null
+                    ? t('settings.login.noteFallbackAddress')
+                    : form.serverName,
+                /*
+                  The placeholders, passed as values so they survive.
+                  This is the one login string whose call site has
+                  params, and `makeT` interpolates every `{name}` in
+                  a string it is given any -- so a literal `{user}`
+                  written in the copy would be reported as a value
+                  nobody supplied. A replacement is not re-scanned,
+                  so handing them in prints them.
+                */
+                user: '{user}',
+                password: '{password}'
+              })}
+            </p>
 
-          <LoginStepRows
-            onChange={(login) => patch({ login })}
-            sendPlaceholder={t('settings.login.stepSendPlaceholder')}
-            steps={form.login}
-            whenPlaceholder={t('settings.login.stepWhenPlaceholder')}
-          />
-
-          {/*
-            The first row on an empty list copies the realm's
-            script, then adds the blank one.
-
-            A character's list **replaces** the realm's, so adding
-            one row to change a character slot used to leave a
-            script of exactly that row -- and with the account now
-            two rows of the script rather than two fields beside
-            it, that silently took the login with it. Copying is
-            what the player meant: the realm's menus plus my one
-            change. The realm's own rows are the right source
-            rather than a guessed pair, since a realm that words
-            its username prompt differently says so there.
-          */}
-          <button
-            className="quiet add-step"
-            onClick={() =>
-              patch({
-                login: [
-                  ...(form.login.length === 0
-                    ? (servers.find((entry) => entry.name === form.serverName)?.login ?? [])
-                    : form.login),
-                  { when: '', send: '' }
-                ]
-              })
-            }
-            type="button"
-          >
-            <Icon name="plus" />
-            <span>{t('settings.login.addStep')}</span>
-          </button>
-
-          {/* Its own locate word over its realm's, as its own script is (todo 811). */}
-          <div className="settings-inline">
-            <SelectField
-              hint={t('settings.locate.hint')}
-              label={t('settings.locate.label')}
-              name="locate"
-              onChange={(value) => patch({ locate: asLocateWord(value) })}
-              options={[{ value: '', label: t('settings.locate.realm') }, ...LOCATE_OPTIONS()]}
-              value={form.locate ?? ''}
+            <LoginStepRows
+              onChange={(login) => patch({ login })}
+              sendPlaceholder={t('settings.login.stepSendPlaceholder')}
+              steps={form.login}
+              whenPlaceholder={t('settings.login.stepWhenPlaceholder')}
             />
-          </div>
-        </fieldset>
+
+            {/*
+              The first row on an empty list copies the realm's
+              script, then adds the blank one.
+
+              A character's list **replaces** the realm's, so adding
+              one row to change a character slot used to leave a
+              script of exactly that row -- and with the account now
+              two rows of the script rather than two fields beside
+              it, that silently took the login with it. Copying is
+              what the player meant: the realm's menus plus my one
+              change. The realm's own rows are the right source
+              rather than a guessed pair, since a realm that words
+              its username prompt differently says so there.
+            */}
+            <button
+              className="quiet add-step"
+              onClick={() =>
+                patch({
+                  login: [
+                    ...(form.login.length === 0
+                      ? (servers.find((entry) => entry.name === form.serverName)?.login ?? [])
+                      : form.login),
+                    { when: '', send: '' }
+                  ]
+                })
+              }
+              type="button"
+            >
+              <Icon name="plus" />
+              <span>{t('settings.login.addStep')}</span>
+            </button>
+
+            {/* Its own locate word over its realm's, as its own script is (todo 811). */}
+            <div className="settings-inline">
+              <SelectField
+                hint={t('settings.locate.hint')}
+                label={t('settings.locate.label')}
+                name="locate"
+                onChange={(value) => patch({ locate: asLocateWord(value) })}
+                options={[{ value: '', label: t('settings.locate.realm') }, ...LOCATE_OPTIONS()]}
+                value={form.locate ?? ''}
+              />
+            </div>
+          </fieldset>
+        </SettingsSection>
       )}
 
-      {section === 'combat' && (
-        <>
+      {shows('combat') && (
+        <SettingsSection {...sectionOf('combat')}>
           {/*
             The one warning left in the open on this screen, and the
             rule for why: a sentence stays out of a tooltip when the
@@ -740,11 +661,11 @@ export default function CharacterForm({
               </fieldset>
             </>
           )}
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'health' && (
-        <>
+      {shows('health') && (
+        <SettingsSection {...sectionOf('health')}>
           <fieldset className="settings-menus" data-fieldset="health-recover">
             <legend>{t('settings.health.recoverLegend')}</legend>
             <p className="settings-note">{t('settings.health.restingNote')}</p>
@@ -923,11 +844,11 @@ export default function CharacterForm({
             />
             <WardRules rules={wards} />
           </fieldset>
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'spells' && (
-        <>
+      {shows('spells') && (
+        <SettingsSection {...sectionOf('spells')}>
           {shownBook.unread && (
             <p className="settings-note">{t('settings.spells.bookUnreadNote')}</p>
           )}
@@ -1069,11 +990,11 @@ export default function CharacterForm({
               onChange={(value) => patch({ spellInvokeItems: value })}
             />
           </fieldset>
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'party' && (
-        <>
+      {shows('party') && (
+        <SettingsSection {...sectionOf('party')}>
           <PartyFields
             bands={bands.hp}
             hpMax={maxima.hpMax}
@@ -1119,127 +1040,133 @@ export default function CharacterForm({
             />
           </fieldset>
           <p className="settings-note">{t('settings.party.blessingsMoved')}</p>
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'train' && (
-        <fieldset className="settings-menus" data-fieldset="train">
-          <legend>{t('settings.train.legend')}</legend>
-          <p className="settings-warn">{t('settings.train.warning')}</p>
-          {/*
-            Going to collect the level, and where (todo 18).
-            Above the stat screen's own switch because it comes
-            first in time: the points this spends are awarded by
-            the level this collects.
-          */}
-          <CheckField
-            checked={form.trainLevels}
-            hint={t('settings.train.levelsHint')}
-            label={t('settings.train.levels')}
-            name="train-levels"
-            onChange={(value) => patch({ trainLevels: value })}
-          />
-          {form.trainLevels && (
-            <>
-              {/*
-                Only the rooms the realm says will take this
-                character at this level — a trainer that refuses
-                is a walk across two maps to be told so. The class
-                room stops at level 10 and every band has a
-                ceiling, so the list shrinks as the character
-                grows and a stated room can stop being offered.
-              */}
-              <SelectField
-                hint={t('settings.train.trainerHint')}
-                label={t('settings.train.trainerLabel')}
-                name="train-trainer"
-                onChange={(value) => patch({ trainTrainer: value })}
-                options={[
-                  { value: '', label: t('settings.train.trainerCheapest') },
-                  ...(trainers ?? []).map((entry) => ({
-                    value: String(entry.shop),
-                    label: t('settings.train.trainerOption', {
-                      name: entry.name,
-                      room: entry.roomName,
-                      cost: entry.cost.toLocaleString()
-                    })
-                  }))
-                ]}
-                value={form.trainTrainer}
-              />
-              {/*
-                Said out loud, because an empty picker and a
-                picker still loading look the same and mean
-                opposite things. And a stated room no longer in
-                the list is the case the reviewer asked about:
-                the errand refuses rather than quietly walking
-                somewhere else.
-              */}
-              {trainers !== null && trainers.length === 0 && (
-                <p className="settings-warn">{t('settings.train.trainerNowhere')}</p>
-              )}
-              {trainers !== null &&
-                form.trainTrainer !== '' &&
-                !trainers.some((entry) => String(entry.shop) === form.trainTrainer) && (
-                  <p className="settings-warn">{t('settings.train.trainerStale')}</p>
+      {shows('train') && (
+        <SettingsSection {...sectionOf('train')}>
+          <fieldset className="settings-menus" data-fieldset="train">
+            <legend>{t('settings.train.legend')}</legend>
+            <p className="settings-warn">{t('settings.train.warning')}</p>
+            {/*
+              Going to collect the level, and where (todo 18).
+              Above the stat screen's own switch because it comes
+              first in time: the points this spends are awarded by
+              the level this collects.
+            */}
+            <CheckField
+              checked={form.trainLevels}
+              hint={t('settings.train.levelsHint')}
+              label={t('settings.train.levels')}
+              name="train-levels"
+              onChange={(value) => patch({ trainLevels: value })}
+            />
+            {form.trainLevels && (
+              <>
+                {/*
+                  Only the rooms the realm says will take this
+                  character at this level — a trainer that refuses
+                  is a walk across two maps to be told so. The class
+                  room stops at level 10 and every band has a
+                  ceiling, so the list shrinks as the character
+                  grows and a stated room can stop being offered.
+                */}
+                <SelectField
+                  hint={t('settings.train.trainerHint')}
+                  label={t('settings.train.trainerLabel')}
+                  name="train-trainer"
+                  onChange={(value) => patch({ trainTrainer: value })}
+                  options={[
+                    { value: '', label: t('settings.train.trainerCheapest') },
+                    ...(trainers ?? []).map((entry) => ({
+                      value: String(entry.shop),
+                      label: t('settings.train.trainerOption', {
+                        name: entry.name,
+                        room: entry.roomName,
+                        cost: entry.cost.toLocaleString()
+                      })
+                    }))
+                  ]}
+                  value={form.trainTrainer}
+                />
+                {/*
+                  Said out loud, because an empty picker and a
+                  picker still loading look the same and mean
+                  opposite things. And a stated room no longer in
+                  the list is the case the reviewer asked about:
+                  the errand refuses rather than quietly walking
+                  somewhere else.
+                */}
+                {trainers !== null && trainers.length === 0 && (
+                  <p className="settings-warn">{t('settings.train.trainerNowhere')}</p>
                 )}
-            </>
-          )}
-          <CheckField
-            checked={form.trainStats}
-            hint={t('settings.train.statsHint')}
-            label={t('settings.train.stats')}
-            name="train-stats"
-            onChange={(value) => patch({ trainStats: value })}
-          />
-          <p className="settings-note">{t('settings.train.wantedNote')}</p>
-          <div className="settings-inline">
-            <NumberField
-              label={t('settings.train.strength')}
-              name="train-strength"
-              onChange={(value) => patch({ trainWanted: { ...form.trainWanted, strength: value } })}
-              value={form.trainWanted.strength}
+                {trainers !== null &&
+                  form.trainTrainer !== '' &&
+                  !trainers.some((entry) => String(entry.shop) === form.trainTrainer) && (
+                    <p className="settings-warn">{t('settings.train.trainerStale')}</p>
+                  )}
+              </>
+            )}
+            <CheckField
+              checked={form.trainStats}
+              hint={t('settings.train.statsHint')}
+              label={t('settings.train.stats')}
+              name="train-stats"
+              onChange={(value) => patch({ trainStats: value })}
             />
-            <NumberField
-              label={t('settings.train.intellect')}
-              name="train-intellect"
-              onChange={(value) =>
-                patch({ trainWanted: { ...form.trainWanted, intellect: value } })
-              }
-              value={form.trainWanted.intellect}
-            />
-            <NumberField
-              label={t('settings.train.willpower')}
-              name="train-willpower"
-              onChange={(value) =>
-                patch({ trainWanted: { ...form.trainWanted, willpower: value } })
-              }
-              value={form.trainWanted.willpower}
-            />
-            <NumberField
-              label={t('settings.train.agility')}
-              name="train-agility"
-              onChange={(value) => patch({ trainWanted: { ...form.trainWanted, agility: value } })}
-              value={form.trainWanted.agility}
-            />
-            <NumberField
-              label={t('settings.train.health')}
-              name="train-health"
-              onChange={(value) => patch({ trainWanted: { ...form.trainWanted, health: value } })}
-              value={form.trainWanted.health}
-            />
-            <NumberField
-              label={t('settings.train.charm')}
-              name="train-charm"
-              onChange={(value) => patch({ trainWanted: { ...form.trainWanted, charm: value } })}
-              value={form.trainWanted.charm}
-            />
-          </div>
-        </fieldset>
+            <p className="settings-note">{t('settings.train.wantedNote')}</p>
+            <div className="settings-inline">
+              <NumberField
+                label={t('settings.train.strength')}
+                name="train-strength"
+                onChange={(value) =>
+                  patch({ trainWanted: { ...form.trainWanted, strength: value } })
+                }
+                value={form.trainWanted.strength}
+              />
+              <NumberField
+                label={t('settings.train.intellect')}
+                name="train-intellect"
+                onChange={(value) =>
+                  patch({ trainWanted: { ...form.trainWanted, intellect: value } })
+                }
+                value={form.trainWanted.intellect}
+              />
+              <NumberField
+                label={t('settings.train.willpower')}
+                name="train-willpower"
+                onChange={(value) =>
+                  patch({ trainWanted: { ...form.trainWanted, willpower: value } })
+                }
+                value={form.trainWanted.willpower}
+              />
+              <NumberField
+                label={t('settings.train.agility')}
+                name="train-agility"
+                onChange={(value) =>
+                  patch({ trainWanted: { ...form.trainWanted, agility: value } })
+                }
+                value={form.trainWanted.agility}
+              />
+              <NumberField
+                label={t('settings.train.health')}
+                name="train-health"
+                onChange={(value) => patch({ trainWanted: { ...form.trainWanted, health: value } })}
+                value={form.trainWanted.health}
+              />
+              <NumberField
+                label={t('settings.train.charm')}
+                name="train-charm"
+                onChange={(value) => patch({ trainWanted: { ...form.trainWanted, charm: value } })}
+                value={form.trainWanted.charm}
+              />
+            </div>
+          </fieldset>
+        </SettingsSection>
       )}
 
-      {section === 'gear' && (
-        <>
+      {shows('gear') && (
+        <SettingsSection {...sectionOf('gear')}>
           {/*
             The kit, and when to be in it (todo 00). The sets are
             the section; the off-round invocation is its own
@@ -1285,86 +1212,90 @@ export default function CharacterForm({
               />
             </div>
           </fieldset>
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'quests' && (
-        <fieldset className="settings-menus" data-fieldset="quests">
-          <legend>{t('settings.quests.legend')}</legend>
-          <p className="settings-warn">{t('settings.quests.warning')}</p>
-          <CheckField
-            checked={form.questsEnabled}
-            hint={t('settings.quests.enabledHint')}
-            label={t('settings.quests.enabled')}
-            name="quests-enabled"
-            onChange={(value) => patch({ questsEnabled: value })}
-          />
-        </fieldset>
+      {shows('quests') && (
+        <SettingsSection {...sectionOf('quests')}>
+          <fieldset className="settings-menus" data-fieldset="quests">
+            <legend>{t('settings.quests.legend')}</legend>
+            <p className="settings-warn">{t('settings.quests.warning')}</p>
+            <CheckField
+              checked={form.questsEnabled}
+              hint={t('settings.quests.enabledHint')}
+              label={t('settings.quests.enabled')}
+              name="quests-enabled"
+              onChange={(value) => patch({ questsEnabled: value })}
+            />
+          </fieldset>
+        </SettingsSection>
       )}
 
-      {section === 'remotes' && (
-        <fieldset className="settings-menus" data-fieldset="remotes">
-          <legend>{t('settings.remotes.legend')}</legend>
-          {/*
-            The third warning in the open, and it earns the place
-            the other two do: what this switch turns on is a channel
-            by which somebody else's typing moves this character.
-            Above the control, because a warning behind a hover is
-            one nobody reads until afterwards.
-          */}
-          <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
-          <CheckField
-            checked={form.answerRemotes}
-            hint={t('settings.remotes.answerHint')}
-            label={t('settings.remotes.enabledLabel')}
-            name="remotes-enabled"
-            onChange={(value) => patch({ answerRemotes: value })}
-          />
-          {/*
-            The gate. Only drawn with the switch on: grants for a
-            channel nobody is listening on are a form asking a
-            question that cannot matter yet.
-          */}
-          {form.answerRemotes && (
-            <>
-              <RemoteSwitches
-                autoJoin={form.remoteAutoJoin}
-                gang={form.remoteGang}
-                gangpath={form.remoteGangpath}
-                name="remotes"
-                onAutoJoin={(value) => patch({ remoteAutoJoin: value })}
-                onGang={(value) => patch({ remoteGang: value })}
-                onGangpath={(value) => patch({ remoteGangpath: value })}
-              />
+      {shows('remotes') && (
+        <SettingsSection {...sectionOf('remotes')}>
+          <fieldset className="settings-menus" data-fieldset="remotes">
+            <legend>{t('settings.remotes.legend')}</legend>
+            {/*
+              The third warning in the open, and it earns the place
+              the other two do: what this switch turns on is a channel
+              by which somebody else's typing moves this character.
+              Above the control, because a warning behind a hover is
+              one nobody reads until afterwards.
+            */}
+            <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
+            <CheckField
+              checked={form.answerRemotes}
+              hint={t('settings.remotes.answerHint')}
+              label={t('settings.remotes.enabledLabel')}
+              name="remotes-enabled"
+              onChange={(value) => patch({ answerRemotes: value })}
+            />
+            {/*
+              The gate. Only drawn with the switch on: grants for a
+              channel nobody is listening on are a form asking a
+              question that cannot matter yet.
+            */}
+            {form.answerRemotes && (
+              <>
+                <RemoteSwitches
+                  autoJoin={form.remoteAutoJoin}
+                  gang={form.remoteGang}
+                  gangpath={form.remoteGangpath}
+                  name="remotes"
+                  onAutoJoin={(value) => patch({ remoteAutoJoin: value })}
+                  onGang={(value) => patch({ remoteGang: value })}
+                  onGangpath={(value) => patch({ remoteGangpath: value })}
+                />
 
-              {/*
-                The per-player half, which the Player flyout also
-                writes — and it is here because the flyout can only
-                be opened on somebody the client has *seen*. A pair
-                of characters set up before either has logged in is
-                the ordinary case, and a permission reachable only
-                once the person is standing in front of you is one
-                you cannot prepare.
-              */}
-              <PlayerGrants
-                grants={form.remotePlayers}
-                onChange={(players) => patch({ remotePlayers: players })}
-              />
-            </>
-          )}
-          {/*
-            Where the third list is. A permission page showing two
-            of the three grants would have somebody auditing who
-            can drive this character conclude they had seen it all.
-          */}
-          <p className="settings-note">{t('settings.remotes.partyListNote')}</p>
-          <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
-          <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
-        </fieldset>
+                {/*
+                  The per-player half, which the Player flyout also
+                  writes — and it is here because the flyout can only
+                  be opened on somebody the client has *seen*. A pair
+                  of characters set up before either has logged in is
+                  the ordinary case, and a permission reachable only
+                  once the person is standing in front of you is one
+                  you cannot prepare.
+                */}
+                <PlayerGrants
+                  grants={form.remotePlayers}
+                  onChange={(players) => patch({ remotePlayers: players })}
+                />
+              </>
+            )}
+            {/*
+              Where the third list is. A permission page showing two
+              of the three grants would have somebody auditing who
+              can drive this character conclude they had seen it all.
+            */}
+            <p className="settings-note">{t('settings.remotes.partyListNote')}</p>
+            <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
+            <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
+          </fieldset>
+        </SettingsSection>
       )}
 
-      {section === 'talk' && (
-        <>
+      {shows('talk') && (
+        <SettingsSection {...sectionOf('talk')}>
           <fieldset className="settings-menus" data-fieldset="talk">
             <legend>{t('settings.talk.legend')}</legend>
             {/*
@@ -1405,11 +1336,11 @@ export default function CharacterForm({
               value={form.pvpAction}
             />
           </fieldset>
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'rewrites' && (
-        <>
+      {shows('rewrites') && (
+        <SettingsSection {...sectionOf('rewrites')}>
           <fieldset className="settings-menus" data-fieldset="rewrites-statline">
             <legend>{t('settings.statline.legend')}</legend>
             <CheckField
@@ -1428,63 +1359,62 @@ export default function CharacterForm({
             palette={palette}
             value={form.rewrites}
           />
-        </>
+        </SettingsSection>
       )}
 
-      {section === 'alerts' && (
-        <fieldset className="settings-menus" data-fieldset="alerts-rules">
-          {/*
+      {shows('alerts') && (
+        <SettingsSection {...sectionOf('alerts')}>
+          <fieldset className="settings-menus" data-fieldset="alerts-rules">
+            {/*
             The player's own rows first, because they decide before
             the floor and the mute list below do — reading the
             screen top to bottom should be reading the order the
             client asks in (todo 29).
           */}
-          <legend>{t('settings.alerts.ruleLegend')}</legend>
-          <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
-          <AlertList
-            namePrefix="alert-rule"
-            onChange={(alertRules) => patch({ alertRules })}
-            rules={form.alertRules}
-          />
-        </fieldset>
+            <legend>{t('settings.alerts.ruleLegend')}</legend>
+            <p className="settings-note">{t('settings.alerts.ruleNote')}</p>
+            <AlertList
+              namePrefix="alert-rule"
+              onChange={(alertRules) => patch({ alertRules })}
+              rules={form.alertRules}
+            />
+          </fieldset>
+          {/*
+          Beside the alerts, because both are about a player who is
+          not looking: alerts are what they hear about the character,
+          and this is what the character says for them.
+        */}
+          <fieldset className="settings-menus" data-fieldset="alerts-afk">
+            <legend>{t('settings.afk.legend')}</legend>
+            <div className="settings-inline">
+              <CheckField
+                checked={form.afkEnabled}
+                hint={t('settings.afk.enabledHint')}
+                label={t('settings.afk.enabled')}
+                name="afk-enabled"
+                onChange={(value) => patch({ afkEnabled: value })}
+              />
+              <NumberField
+                hint={t('settings.afk.afterHint')}
+                label={t('settings.afk.afterLabel')}
+                name="afk-after"
+                onChange={(value) => patch({ afkAfterMinutes: value })}
+                value={form.afkAfterMinutes}
+              />
+              <TextField
+                hint={t('settings.afk.replyHint')}
+                label={t('settings.afk.replyLabel')}
+                name="afk-reply"
+                onChange={(value) => patch({ afkReply: value })}
+                value={form.afkReply}
+              />
+            </div>
+          </fieldset>
+        </SettingsSection>
       )}
 
-      {/*
-        Beside the alerts, because both are about a player who is
-        not looking: alerts are what they hear about the character,
-        and this is what the character says for them.
-      */}
-      {section === 'alerts' && (
-        <fieldset className="settings-menus" data-fieldset="alerts-afk">
-          <legend>{t('settings.afk.legend')}</legend>
-          <div className="settings-inline">
-            <CheckField
-              checked={form.afkEnabled}
-              hint={t('settings.afk.enabledHint')}
-              label={t('settings.afk.enabled')}
-              name="afk-enabled"
-              onChange={(value) => patch({ afkEnabled: value })}
-            />
-            <NumberField
-              hint={t('settings.afk.afterHint')}
-              label={t('settings.afk.afterLabel')}
-              name="afk-after"
-              onChange={(value) => patch({ afkAfterMinutes: value })}
-              value={form.afkAfterMinutes}
-            />
-            <TextField
-              hint={t('settings.afk.replyHint')}
-              label={t('settings.afk.replyLabel')}
-              name="afk-reply"
-              onChange={(value) => patch({ afkReply: value })}
-              value={form.afkReply}
-            />
-          </div>
-        </fieldset>
-      )}
-
-      {section === 'movement' && (
-        <>
+      {shows('movement') && (
+        <SettingsSection {...sectionOf('movement')}>
           {/*
             Four questions, four fieldsets (todo 00). This was one
             fieldset of fourteen controls under a single *Walking a
@@ -1739,7 +1669,7 @@ export default function CharacterForm({
                 : undefined
             }
           />
-        </>
+        </SettingsSection>
       )}
 
       <div className="settings-actions">{actions}</div>

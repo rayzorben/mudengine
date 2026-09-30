@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import Icon from './Icon';
+import { FindField } from './CardTable';
+import type { SettingsFind } from '../hooks/useSettingsFind';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 
@@ -55,6 +57,8 @@ export interface SettingsNavProps {
     addId: string;
     addLabel: string;
   };
+  /** The find field over the sections, on a page that has sections. */
+  find?: Pick<SettingsFind, 'query' | 'setQuery' | 'found'>;
 }
 
 /**
@@ -82,7 +86,8 @@ export default function SettingsNav({
   sections,
   section,
   onSection,
-  picker
+  picker,
+  find
 }: SettingsNavProps): React.JSX.Element {
   /*
    * Where the next press wants the form left, held until the form is drawn.
@@ -98,16 +103,43 @@ export default function SettingsNav({
   useLayoutEffect(() => {
     if (wanted === null) return;
     setWanted(null);
-    if (wanted.kind === 'top') scrollFormToTop();
-    else scrollToFieldset(wanted.id);
+    switch (wanted.kind) {
+      case 'top':
+        return scrollFormToTop();
+      case 'heading':
+        return scrollToHeading(wanted.id);
+      case 'fieldset':
+        return scrollToFieldset(wanted.id);
+      default: {
+        const never: never = wanted;
+        return never;
+      }
+    }
   }, [wanted]);
+
+  // While a query is typed, the rail lists the sections that answer it, in the
+  // order the form draws them, and a press goes to that section's heading.
+  const found = find?.found ?? null;
+  const listed =
+    found === null ? sections : found.flatMap((id) => sections.filter((entry) => entry.id === id));
 
   return (
     <nav aria-label={t('settings.nav.label')} className="settings-nav">
       {picker && <NavPicker {...picker} />}
+      {find && (
+        <FindField
+          label={t('settings.nav.find')}
+          nested
+          onChange={find.setQuery}
+          query={find.query}
+        />
+      )}
+      {found !== null && found.length === 0 && (
+        <p className="settings-nav-none">{t('settings.nav.findNone')}</p>
+      )}
       <ul className="settings-nav-sections">
-        {sections.map((entry) => {
-          const active = entry.id === section;
+        {listed.map((entry) => {
+          const active = found === null && entry.id === section;
           return (
             <li key={entry.id}>
               <button
@@ -123,7 +155,7 @@ export default function SettingsNav({
                     opens the next one part-way through -- the form is one
                     scroller and it keeps its offset across the swap.
                   */
-                  setWanted({ kind: 'top' });
+                  setWanted(found === null ? { kind: 'top' } : { kind: 'heading', id: entry.id });
                 }}
                 onMouseDown={keepFocus}
                 type="button"
@@ -282,7 +314,8 @@ function NavPicker({
  * its fieldsets. A union rather than a nullable id with a sentinel in it, so
  * *the top* cannot collide with a fieldset somebody names later.
  */
-type Destination = { kind: 'top' } | { kind: 'fieldset'; id: string };
+type Destination =
+  { kind: 'top' } | { kind: 'heading'; id: string } | { kind: 'fieldset'; id: string };
 
 /** The form's own scroller, which is what both destinations move. */
 function settingsForm(): Element | null {
@@ -292,6 +325,14 @@ function settingsForm(): Element | null {
 /** A section press lands at its first field, not part-way down the last one. */
 function scrollFormToTop(): void {
   settingsForm()?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/** While searching, a section press lands at that section's heading. */
+function scrollToHeading(id: string): void {
+  const target = settingsForm()?.querySelector(
+    `.settings-section-heading[data-section="${CSS.escape(id)}"]`
+  );
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 /**
