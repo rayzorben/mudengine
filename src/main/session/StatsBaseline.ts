@@ -9,11 +9,11 @@
  */
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
 import type { LoopProgress } from '../../shared/loops';
-import type { CombatTally } from '../../shared/tally';
+import type { CombatStatsBaseline, CombatTally } from '../../shared/tally';
 
 type BaselineStore = Pick<BelongingsSink, 'recallStatsBase' | 'rememberStatsBase'>;
 
-export class StatsBaseline {
+export class StatsBaseline implements CombatStatsBaseline {
   private store: BaselineStore = NO_BELONGINGS;
   /**
    * Held here as well as in the store, because a record that cannot be

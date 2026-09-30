@@ -616,6 +616,36 @@ export function ratePerHour(total: number, elapsedMs: number, floorMs = 0): numb
   return (total / elapsedMs) * 3_600_000;
 }
 
+/** The card's baseline as main holds it (`StatsBaseline`), for a reader in automation. */
+export interface CombatStatsBaseline {
+  readonly base: CombatTally | null;
+  rebase(): void;
+}
+
+/**
+ * What the Combat Stats card and `@exp` both read: the totals since the last
+ * reset, or the whole series when the baseline belongs to another one.
+ *
+ * `since` is set once per series, so a baseline taken on another realm's
+ * record, or on one since thrown away, carries a different one, and
+ * subtracting it would draw the totals negative.
+ */
+export function statsScope(tally: CombatTally, baseline: CombatTally | null): CombatTally {
+  const stale =
+    baseline !== null &&
+    (tally.since === null || baseline.at === null || baseline.since !== tally.since);
+  return sinceBaseline(tally, stale ? null : baseline);
+}
+
+/**
+ * Experience an hour over the scope's own clock: the time in the realm since
+ * the scope began, since a night spent disconnected is not an hour the
+ * character earned nothing in.
+ */
+export function experienceRate(scope: CombatTally, now: number, floorMs: number): number | null {
+  return ratePerHour(scope.experience, onlineFor(scope, now), floorMs);
+}
+
 /** Every swing this character made, landed or not — the denominator MegaMUD used. */
 export function swings(tally: CombatTally): number {
   return (

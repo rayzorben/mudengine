@@ -90,6 +90,13 @@ import { bareName, countedLabel } from '../../shared/items';
 import { playerKey, type PlayerRecord } from '../../shared/players';
 import type { CommandQueue } from './CommandQueue';
 import { tuning } from '../app/tuning';
+import { experienceOf } from '../../shared/experience';
+import {
+  experienceRate,
+  statsScope,
+  type CombatStatsBaseline,
+  type CombatTally
+} from '../../shared/tally';
 import type { SessionModule } from './Module';
 import { AutoJoin, joinIntent } from './AutoJoin';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
@@ -245,8 +252,11 @@ export interface RemoteEvents {
    * this character's own heal settings, as `blessExpired` goes to `Blessings`.
    */
   healRequested?(from: string): void;
-  /** Somebody said `@reset`: the Combat Stats card starts again from now. */
-  resetStats?(from: string): void;
+  /**
+   * The Combat Stats card's baseline: `@reset` re-bases it, and `@exp` and
+   * `@level` read their figures over the scope it starts.
+   */
+  stats?: CombatStatsBaseline;
   /**
    * Another player's client answered `@version`, or stopped answering the
    * extended question this client had asked it.
@@ -882,23 +892,14 @@ export class Remotes implements SessionModule {
        * `{0 lives remaining}` would be a lie somebody acts on.
        */
       case 'exp': {
-        const { expThisSession, expNeeded, realmEnteredAt } = state.progress;
-        this.say(
-          from,
-          command,
-          formatExp(expThisSession, expNeeded, realmEnteredAt, Date.now()),
-          prefix
-        );
+        const { scope, needed, perHour } = this.experience(state);
+        const made = scope.since === null ? null : scope.experience;
+        this.say(from, command, formatExp(made, needed, perHour), prefix);
         return;
       }
       case 'level': {
-        const { level, expNeeded, expThisSession, realmEnteredAt } = state.progress;
-        this.say(
-          from,
-          command,
-          formatLevel(level, expNeeded, expThisSession, realmEnteredAt, Date.now()),
-          prefix
-        );
+        const { needed, perHour } = this.experience(state);
+        this.say(from, command, formatLevel(state.progress.level, needed, perHour), prefix);
         return;
       }
       case 'lives':
@@ -1271,7 +1272,7 @@ export class Remotes implements SessionModule {
          * statistics*. Here the statistics are the Combat Stats card, and there
          * are no flags for it to reset. No reply, since no capture shows one.
          */
-        this.events.resetStats?.(from);
+        this.events.stats?.rebase();
         this.events.notice?.(t('automation.remotes.statsReset', { from }));
         return;
 
@@ -1321,6 +1322,23 @@ export class Remotes implements SessionModule {
       coalesceKey: `remote:reply:${to.toLowerCase()}`,
       reason: t('automation.remotes.reasonAnswering', { name: to })
     });
+  }
+
+  /**
+   * Experience as the Combat Stats card reads it: made and the rate over the
+   * scope since the last reset, and what is owed (`experienceOf`).
+   */
+  private experience(state: CharacterState): {
+    scope: CombatTally;
+    needed: number | null;
+    perHour: number | null;
+  } {
+    const scope = statsScope(state.tally, this.events.stats?.base ?? null);
+    return {
+      scope,
+      needed: experienceOf(state.progress).owed.value,
+      perHour: experienceRate(scope, Date.now(), tuning().view.rateFloorMs)
+    };
   }
 
   /** Replies with a formatted answer, or says locally why there is none yet. */

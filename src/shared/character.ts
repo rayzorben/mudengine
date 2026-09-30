@@ -724,14 +724,13 @@ export function packRows(inventory: Inventory): number[] | null {
 }
 
 /**
- * How long a session has to have run before an experience rate means anything.
+ * How long a session has to have run before the Vitals card shows an
+ * experience rate.
  *
  * Under this, `expThisSession` divided by the elapsed time is dominated by
  * whatever happened in the first few seconds and swings by orders of magnitude
- * between status lines. Stated once: the Vitals card and the `@exp` answer to
- * another client read the same two fields, and each had its own guess at this
- * number — 60s in one file and 120s in the other, so between the two the client
- * told a peer a rate its own card would not show.
+ * between status lines. `@exp` reads the Combat Stats card's scope instead
+ * (`experienceRate`).
  */
 export const EXP_RATE_SETTLE_MS = 120_000;
 
