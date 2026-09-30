@@ -704,6 +704,8 @@ tuning:
     lessonsSent: 20
     # A plan replaced sooner than this taught nothing, and leaves no lesson.
     lessonMinMs: 60000
+    # The most lessons the Konami card lists, newest first.
+    lessonsShown: 50
 
   # Spending character points on the stat screen — `StatScreen`. `echoMs` is
   # how long the screen has to echo a keystroke before the driver lets go of
@@ -1662,6 +1664,9 @@ tuning:
   view:
     # Diagnostics log kept in renderer memory.
     telnetLogLimit: 500
+
+    # The lessons that apply, listed on the Konami card's first face.
+    konamiLessonsListed: 3
 
     # How often a browser tab that lost its socket tries the client again
     # before reloading itself. Web mode only.

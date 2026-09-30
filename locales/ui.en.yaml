@@ -1796,6 +1796,9 @@ cards:
   # The "what to do next" planner (todo 59).
   konami:
     title: Konami
+    tabs:
+      decisions: Decisions
+      lessons: Lessons
     badge:
       off: Off
       noProvider: No provider
@@ -1804,20 +1807,66 @@ cards:
       running: Running
     emptyOff: The planner is off for this character.
     emptyPlan: No plan yet.
+    emptyAsking: 'Asking {provider} what to do next…'
     emptyDecisions: Nothing asked yet.
-    pending: 'Will ask again ({trigger}) once the character is free.'
-    headings:
-      plan: Plan
-      settings: Settings the plan uses
-      decisions: Decisions
-      terminal: Sent and received
-      logs: Logs
+    emptyLessons: None of the lessons kept are near this level.
+    pending: 'Asks again ({trigger}) once the character is free.'
+    sure: sure
+    because: 'because: {trigger}'
+    chosenAt: 'chosen {time}'
+    expSince: '{exp} exp'
+    level: 'L{level}'
+    kind:
+      hunt: Hunt
+      buy: Buy
+      train: Train
+      wait: Stay
     goal:
       hunt: Hunt {name}
       buy: Buy {item} at {shop} ({copper} copper)
       train: Train
       wait: Stay here
+    goalName:
+      train: Train the level that is ready
+      wait: Stay here
+    buyAt: 'at {shop} · {copper} copper'
+    buyFree: 'at {shop} · free'
+    headings:
+      odds: Odds on each choice
+      settings: Settings the plan uses
+      recent: Last decisions
+      lessons: Lessons that apply
+    oddsHint: What the provider gave each choice it was offered. Go picks one instead of its choice.
+    go: Go
+    goHint: Go here instead. The provider's choice is remembered as turned down.
+    chosen: chosen
+    facts:
+      lap: '{exp} a lap'
+      survives: 'survives {share}'
+      steps: '{steps} steps'
+      lairs: '{lairs} lairs'
+      routeHp: '{hp} HP on the way'
+      routeUnknown: HP on the way not known
+      deadly: 'dies at {room}'
     goalSwitches: Auto-Hunt, training and shop trips are on while the plan's goal needs them.
+    lessonsApply: '{count} of {kept} sent with the next ask (within {band} levels of L{level})'
+    lessonsAll: 'All {count}'
+    lessonsNow: 'Sent now {count}'
+    seeAll: See all
+    forget: Forget
+    forgetHint: Stop keeping this lesson and stop sending it.
+    lesson:
+      diedThere: 'died there'
+      diedOnTheWay: 'died on the way'
+      died: died
+      to: 'to {killers}'
+      in: 'in {room}'
+      refused: 'could not be done: {why}'
+      noReason: no reason given
+      vetoed: you said no to it
+      ran: '{minutes} min'
+      exp: '{exp} exp'
+      stats: 'HP {hp} · AC {ac}'
     trigger:
       entered: entered the realm
       level: a level
@@ -1830,29 +1879,31 @@ cards:
       gear: gear changed
       stuck: stuck
       asked: asked
+      vetoed: you said no
+      chosen: you chose
     outcome:
       applied: in force
       done: done
       refused: refused
       replaced: replaced
       failed: failed
-    outcomeWhy: '{outcome}: {why}'
+      vetoed: you said no
+      died: died
+    took: '{minutes} min'
+    tookUnder: under a minute
     incident:
-      death: death log
-      stuck: stuck log
-    runningLog: this run
-    terminal:
-      sent: '>>> sent: the character, the Hunting grounds and the gear ({trigger})'
-      received: '<<< received: {picks}'
-      failed: '<<< no answer: {why}'
-      made: '=== {goal}'
-      show: show
-      hide: hide
+      death: Death log
+      stuck: Stuck log
+    open: Open
+    openHint: Open in the file manager
+    listed: 'It is at {path}'
+    runningLog: Running log
+    exchange:
+      sent: Sent
+      received: Reply
+      copy: Copy
       loading: Loading…
       gone: No longer kept here; it is in this run's log.
-    question:
-      goal: Goal
-      bless: Keep {spell} up
     layer:
       attack: Attack
       opener: Opener
@@ -1867,7 +1918,9 @@ cards:
     pause: Pause
     resume: Resume
     askAgain: Ask again
-    keep: Keep these settings
+    notThis: Not this
+    notThisHint: Turn this plan down, remember it for this level, and ask for another.
+    keep: Keep settings
     keepHint: Write the plan's settings into this character's file.
   copyMenu:
     copy: Copy
@@ -4695,6 +4748,8 @@ automation:
     unplaced: the room is not known yet
     noWorld: this realm has no world database
     died: the character died
+    vetoed: you said no on the card
+    chose: 'you chose {goal} instead'
     notBought: '{item} was not bought'
     reasonWear: 'wearing {item}, which the plan bought'
     goal:

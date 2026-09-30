@@ -26,6 +26,7 @@ export type IconName =
   | 'server'
   | 'play'
   | 'stop'
+  | 'pause'
   | 'skip'
   | 'reverse'
   | 'loop'
@@ -147,10 +148,16 @@ const ICONS: Record<IconName, ReactNode> = {
   /*
    * The transport family beside play and stop, filled like them: a bar with a
    * triangle against it, and a pair of arrows. Filled because an outlined skip
-   * is a diagram; the silhouettes are what forty years of players read. There
-   * is no pause — a stop keeps its place, so play is the resume
-   * (`src/shared/movement.ts`), and a glyph nothing draws is dead vocabulary.
+   * is a diagram; the silhouettes are what forty years of players read. A loop
+   * has no pause (a stop keeps its place, so play is the resume); the Konami
+   * card's planner does, and wears the two bars.
    */
+  pause: (
+    <>
+      <rect x="6.5" y="5.5" width="3.8" height="13" rx="1.2" fill="currentColor" stroke="none" />
+      <rect x="13.7" y="5.5" width="3.8" height="13" rx="1.2" fill="currentColor" stroke="none" />
+    </>
+  ),
   skip: (
     <>
       <path d="M6 5.5v13l9-6.5Z" fill="currentColor" stroke="none" />

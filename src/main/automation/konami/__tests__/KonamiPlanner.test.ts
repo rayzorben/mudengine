@@ -29,7 +29,7 @@ function providerFile(): string {
         for (const [name, q] of Object.entries(request.questions)) {
           answers[name] = q.type === 'noul'
             ? { type: 'noul', noul: 0.9 }
-            : { type: 'choice', choice: name === 'goal' ? goal : Object.keys(q.criteria)[0], confidence: 0.6, probabilities: {} };
+            : { type: 'choice', choice: name === 'goal' ? goal : Object.keys(q.criteria)[0], confidence: 0.6, probabilities: name === 'goal' ? { [goal]: 0.6, wait: 0.3 } : {} };
         }
         return { model: 'test', answers };
       }
@@ -136,7 +136,10 @@ function planner(): KonamiPlanner {
     log: (text) => logged.push(text),
     logPath: '/tmp/konami.log',
     lesson: (row) => learned.push(row),
-    lessons: () => [...learned]
+    lessons: () => [...learned],
+    rewriteLessons: (rows) => {
+      learned = [...rows];
+    }
   };
   return new KonamiPlanner(facts, hands, { changed: () => {}, notice: () => {} }, records, null);
 }
@@ -350,6 +353,71 @@ describe('the planner', () => {
       goal: { kind: 'hunt', key: 'lair:a' }
     });
     expect(briefLessons.at(-1)).toHaveLength(1);
+    it.dispose();
+  });
+
+  it('shows the odds on every goal offered, with what it was told about each spot', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    const [chosen, other] = it.snapshot().decisions[0]!.options;
+    expect(chosen).toMatchObject({ goal: { kind: 'hunt', key: 'lair:a' }, p: 0.6, chosen: true });
+    expect(chosen!.spot).not.toBeNull();
+    expect(other).toMatchObject({ goal: { kind: 'wait' }, p: 0.3, chosen: false, spot: null });
+    it.dispose();
+  });
+
+  it('turns the plan down when the player says no, remembers it, and asks again', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.veto();
+    expect(steered.at(-1)).toBeNull();
+    expect(it.snapshot().plan).toBeNull();
+    await asked(2);
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({ outcome: 'vetoed', goal: { key: 'lair:a' } });
+    const [now, before] = it.snapshot().decisions;
+    expect(now!.trigger).toBe('vetoed');
+    expect(before!.outcome).toBe('vetoed');
+    expect(briefLessons.at(-1)).toHaveLength(1);
+    expect(it.snapshot().lessons[0]!.applies).toBe(true);
+    it.dispose();
+  });
+
+  it('goes where the player chooses instead, and remembers the answer turned down', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.choose('wait');
+    expect(it.snapshot().plan?.goal).toEqual({ kind: 'wait' });
+    expect(steered.at(-1)).toBeNull();
+    const [now, before] = it.snapshot().decisions;
+    expect(now).toMatchObject({ trigger: 'chosen', outcome: 'applied' });
+    expect(now!.options.find((option) => option.chosen)?.goal).toEqual({ kind: 'wait' });
+    expect(before!.outcome).toBe('vetoed');
+    expect(learned[0]).toMatchObject({ outcome: 'vetoed', goal: { key: 'lair:a' } });
+    expect(global.__konamiAsked).toBe(1);
+    it.dispose();
+  });
+
+  it('forgets a lesson the player forgets, on disk and in what is sent', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.veto();
+    await asked(2);
+    it.forget(learned[0]!.at);
+    expect(learned).toEqual([]);
+    expect(it.snapshot()).toMatchObject({ lessons: [], lessonsKept: 0 });
     it.dispose();
   });
 

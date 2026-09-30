@@ -10,6 +10,7 @@ import type { BriefSpot, GearOffer, KonamiBrief, SlotUpgrade } from './konamiBri
 import type {
   KonamiGoal,
   KonamiLayer,
+  KonamiOption,
   KonamiPick,
   KonamiPlan,
   KonamiQuestion,
@@ -158,7 +159,7 @@ function goalQuestion(brief: KonamiBrief): {
       instructions:
         `${AIM} What should the character do next? The state lists every spot with each monster's stats, ` +
         `the damage arithmetic, the simulated fight and the walk there with the lairs it passes, and the gear per slot. ` +
-        `Its history is what past plans near this level came to: do not choose again what killed the character.`,
+        `Its history is what past plans near this level came to: do not choose again what killed the character or what the player said no to.`,
       criteria
     },
     labels
@@ -297,6 +298,16 @@ export function readPlan(reply: KonamiReply, { labels }: KonamiQuestions): Konam
   const goal: KonamiGoal = (goalLabel === null ? undefined : labels.goal[goalLabel]) ?? {
     kind: 'wait'
   };
+  const goalAnswer = reply.answers['goal'];
+  const options: KonamiOption[] =
+    goalAnswer?.type === 'choice'
+      ? Object.entries(goalAnswer.probabilities)
+          .flatMap(([label, p]) => {
+            const offered = labels.goal[label];
+            return offered === undefined ? [] : [{ goal: offered, p }];
+          })
+          .sort((a, b) => b.p - a.p)
+      : [];
   const layer: KonamiLayer = {};
   const attack = choice('attack');
   if (attack !== null && labels.attack[attack] !== undefined) layer.attack = labels.attack[attack];
@@ -321,7 +332,7 @@ export function readPlan(reply: KonamiReply, { labels }: KonamiQuestions): Konam
   if (stat !== null && labels.trainFirst[stat] !== undefined) {
     layer.trainFirst = labels.trainFirst[stat];
   }
-  return { goal, layer, picks };
+  return { goal, layer, picks, options };
 }
 
 /** Two plans do the same thing: the stuck log's test of whether asking again helped. */

@@ -430,7 +430,7 @@ option {
   --card-h: 208px;
 }
 .rail > .konami-card {
-  --card-h: 420px;
+  --card-h: 480px;
 }
 .rail > .stream-card {
   --card-h: 224px;
@@ -4109,7 +4109,6 @@ button.quest-plan-back {
  * rather than clips at the rail's narrow end, where three buttons do not fit
  * on one line — a control on a second line is still a control.
  */
-.konami-actions,
 .hunt-actions {
   flex: 0 0 auto;
   flex-wrap: wrap;
@@ -12769,32 +12768,708 @@ tr:hover .row-action.worn,
 
 /* ============================================================ konami card */
 
-/* The plan on the left, the settings it uses on the right; they stack at the
-   rail's narrow end rather than squeeze. */
-.konami-columns {
-  display: grid;
-  gap: 0 calc(var(--gap) * 2);
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+/*
+ * The planner on three faces (`KonamiCard`). Every tint is a `color-mix` of
+ * the theme's own hues, and every figure that has a size is drawn against it:
+ * the confidence ring and a spot's survival run from `--danger` to `--ok` by
+ * the share itself (`--share`), so no threshold is chosen anywhere.
+ */
+.konami-ring,
+.konami-fact[style*='--share'] {
+  /* Declared where `--share` is: a custom property inherits resolved, so on
+     the card it would be read once at the card's share of nothing. */
+  --konami-ramp: color-mix(in oklch, var(--ok) calc(var(--share, 0) * 100%), var(--danger));
 }
 
-.konami-column {
+.konami-now {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) * 1.5);
+}
+
+/* ---- the hero: what it is doing, and how sure it was */
+
+.konami-hero {
+  --kind: var(--text-lo);
+  align-items: center;
+  background:
+    radial-gradient(
+      120% 140% at 0% 0%,
+      color-mix(in srgb, var(--kind) 22%, transparent),
+      transparent 60%
+    ),
+    color-mix(in srgb, var(--ink-raised) 70%, transparent);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-rim);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 12px 14px;
+  position: relative;
+  transition:
+    filter var(--dur-surface) var(--ease-out),
+    background var(--dur-surface) var(--ease-out);
+}
+
+.konami-hero[data-kind='hunt'] {
+  --kind: var(--accent);
+}
+
+.konami-hero[data-kind='buy'] {
+  --kind: var(--section-b);
+}
+
+.konami-hero[data-kind='train'] {
+  --kind: var(--ok);
+}
+
+.konami-hero[data-state='paused'] {
+  filter: saturate(0.25);
+}
+
+.konami-hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   min-width: 0;
 }
 
-.konami-exchange {
-  border-bottom: 1px solid var(--ink-line);
+.konami-eyebrow {
+  align-items: center;
+  color: var(--kind);
+  display: flex;
   font-family: var(--font-mono);
   font-size: var(--font-micro);
-  padding: 3px 0;
+  font-weight: 600;
+  gap: 6px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.konami-line {
+.konami-eyebrow svg {
+  height: 14px;
+  width: 14px;
+}
+
+.konami-goal {
+  color: var(--text-hi);
+  font-size: 1.3em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.konami-goal.quiet {
+  color: var(--text-lo);
+  font-size: 1em;
+  font-weight: 500;
+  white-space: normal;
+}
+
+.konami-goal-detail {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
+.konami-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.konami-meta-item {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.konami-meta-item[data-tone='ok'] {
+  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
+  color: var(--ok);
+}
+
+/* ---- the confidence ring */
+
+.konami-ring {
+  height: 68px;
+  position: relative;
+  width: 68px;
+}
+
+.konami-ring svg {
+  height: 100%;
+  transform: rotate(-90deg);
+  width: 100%;
+}
+
+.konami-ring circle {
+  fill: none;
+  stroke-width: 6;
+}
+
+.konami-ring-track {
+  stroke: color-mix(in srgb, var(--text-lo) var(--tone), transparent);
+}
+
+.konami-ring-arc {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--konami-ramp) 45%, transparent));
+  stroke: var(--konami-ramp);
+  stroke-linecap: round;
+  transition:
+    stroke-dasharray var(--dur-surface) var(--ease-out),
+    stroke var(--dur-surface) var(--ease-out);
+}
+
+.konami-ring[data-asking='true'] .konami-ring-arc {
+  stroke: var(--accent);
+}
+
+.konami-ring[data-asking='true'] svg {
+  animation: konami-spin 1.2s linear infinite;
+}
+
+.konami-ring-text {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  justify-content: center;
+  line-height: 1;
+  position: absolute;
+}
+
+.konami-ring-text strong {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: 1.05em;
+}
+
+.konami-ring-text span {
+  color: var(--text-lo);
+  font-size: 0.7em;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
+.konami-ring-none {
+  color: var(--text-lo);
+  font-size: 1.2em;
+}
+
+@keyframes konami-spin {
+  from {
+    transform: rotate(-90deg);
+  }
+  to {
+    transform: rotate(270deg);
+  }
+}
+
+/* A dot that breathes: the planner is waiting on something. */
+.konami-pulse {
+  animation: dot-pulse 1.6s var(--ease-inout) infinite;
+  background: var(--pending);
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  height: 8px;
+  width: 8px;
+}
+
+.konami-ring .konami-pulse {
+  background: var(--accent);
+}
+
+/* ---- banners */
+
+.konami-banner {
+  --tone-hue: var(--pending);
+  align-items: center;
+  background: color-mix(in srgb, var(--tone-hue) var(--tone-weak), transparent);
+  border-left: 3px solid color-mix(in srgb, var(--tone-hue) 70%, transparent);
+  border-radius: var(--r-control);
+  color: var(--text);
+  display: flex;
+  gap: 10px;
+  padding: 7px 10px;
+}
+
+.konami-banner[data-tone='bad'] {
+  --tone-hue: var(--danger);
+}
+
+.konami-banner svg {
+  color: var(--tone-hue);
+  flex: none;
+  height: 14px;
+  width: 14px;
+}
+
+/* ---- sections */
+
+.konami-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.konami-section-head {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  gap: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.konami-count {
+  background: color-mix(in srgb, var(--text-lo) var(--tone), transparent);
+  border-radius: var(--r-pill);
+  padding: 0 6px;
+}
+
+.konami-hint {
+  color: var(--text-lo-quiet);
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+.konami-link {
+  align-items: center;
+  display: inline-flex;
+  font-size: var(--font-micro);
+  gap: 4px;
+  height: auto;
+  margin-left: auto;
+  padding: 1px 8px;
+}
+
+.konami-link svg {
+  height: 12px;
+  width: 12px;
+}
+
+/* ---- the odds on each choice */
+
+.konami-odds {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.konami-option {
+  align-items: center;
+  border-radius: var(--r-control);
+  display: grid;
+  gap: 4px 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  padding: 6px 8px;
+  transition: background var(--dur-tint) linear;
+}
+
+.konami-option:hover {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+}
+
+.konami-option[data-chosen='true'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+}
+
+.konami-option-icon {
+  align-items: center;
+  align-self: start;
+  background: color-mix(in srgb, var(--text-lo) var(--tone), transparent);
+  border-radius: 50%;
+  color: var(--text-lo);
+  display: flex;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.konami-option[data-chosen='true'] .konami-option-icon {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.konami-option-icon svg {
+  height: 13px;
+  width: 13px;
+}
+
+.konami-option-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.konami-option-name {
   align-items: baseline;
   display: flex;
   gap: 8px;
+  min-width: 0;
 }
 
-.konami-line > span:not(.trace-at) {
+.konami-option-title {
+  color: var(--text-hi);
+  flex: 0 1 auto;
+  font-weight: 500;
+  min-width: 8ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Gives way before the name does. */
+.konami-option-detail {
+  color: var(--text-lo);
+  flex: 0 100 auto;
+  font-size: var(--font-micro);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The bar is drawn against the likeliest choice, so the leader always fills it. */
+.konami-bar {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-pill);
+  height: 4px;
+  overflow: hidden;
+}
+
+.konami-bar > span {
+  background: color-mix(in srgb, var(--text-lo) 60%, transparent);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition: width var(--dur-surface) var(--ease-out);
+  width: calc(var(--fill, 0) * 100%);
+}
+
+.konami-option[data-chosen='true'] .konami-bar > span {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 60%, transparent),
+    var(--accent)
+  );
+}
+
+.konami-pct {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  min-width: 3.5ch;
+  text-align: right;
+}
+
+.konami-option[data-chosen='true'] .konami-pct {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.konami-go {
+  font-size: var(--font-micro);
+  height: auto;
+  min-width: 4.5ch;
+  padding: 2px 10px;
+}
+
+.konami-go.chosen {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.konami-option:not(:hover) .konami-go:not(.chosen) {
+  opacity: 0.55;
+}
+
+.konami-odds.compact .konami-option {
+  padding: 3px 6px;
+}
+
+.konami-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.konami-fact {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.konami-fact[style*='--share'] {
+  background: color-mix(in srgb, var(--konami-ramp) var(--tone), transparent);
+  color: var(--konami-ramp);
+}
+
+.konami-fact[data-tone='bad'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+}
+
+/* ---- the settings it lays over the character's */
+
+.konami-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.konami-setting {
+  background: color-mix(in srgb, var(--ink-raised) 80%, transparent);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-rim);
+  display: inline-flex;
+  font-size: var(--font-micro);
+  gap: 6px;
+  padding: 2px 10px;
+}
+
+.konami-setting > span {
+  color: var(--text-lo);
+}
+
+.konami-setting > strong {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* ---- the last decisions, one dot each, oldest to newest */
+
+.konami-streak {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.konami-streak-dot,
+.konami-node {
+  --tone-hue: var(--text-lo);
+  align-items: center;
+  background: color-mix(in srgb, var(--tone-hue) var(--tone), var(--ink-card));
+  border: var(--rule) solid color-mix(in srgb, var(--tone-hue) var(--tone-strong), transparent);
+  border-radius: 50%;
+  box-shadow: none;
+  color: var(--tone-hue);
+  display: inline-flex;
+  flex: none;
+  height: 22px;
+  justify-content: center;
+  padding: 0;
+  width: 22px;
+}
+
+.konami-streak-dot svg,
+.konami-node svg {
+  height: 11px;
+  width: 11px;
+}
+
+.konami-streak-dot:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tone-hue) var(--tone-strong), var(--ink-card));
+  transform: scale(1.12);
+}
+
+:is(.konami-streak-dot, .konami-entry, .konami-lesson, .konami-lesson-lines > li)[data-tone='on'] {
+  --tone-hue: var(--accent);
+}
+
+:is(.konami-streak-dot, .konami-entry, .konami-lesson, .konami-lesson-lines > li)[data-tone='ok'] {
+  --tone-hue: var(--ok);
+}
+
+:is(.konami-streak-dot, .konami-entry, .konami-lesson, .konami-lesson-lines > li)[data-tone='bad'] {
+  --tone-hue: var(--danger);
+}
+
+:is(
+  .konami-streak-dot,
+  .konami-entry,
+  .konami-lesson,
+  .konami-lesson-lines > li
+)[data-tone='warn'] {
+  --tone-hue: var(--pending);
+}
+
+.konami-entry .konami-node {
+  --tone-hue: inherit;
+}
+
+/* ---- lessons, a few on the first face */
+
+.konami-lesson-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.konami-lesson-lines > li {
+  --tone-hue: var(--text-lo);
+  align-items: baseline;
+  display: grid;
+  font-size: var(--font-micro);
+  gap: 8px;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+}
+
+.konami-lesson-lines svg {
+  color: var(--tone-hue);
+  height: 11px;
+  width: 11px;
+}
+
+.konami-lesson-level {
+  color: var(--text-lo);
+  font-family: var(--font-mono);
+}
+
+.konami-lesson-goal {
+  color: var(--text-hi);
+  white-space: nowrap;
+}
+
+.konami-lesson-why {
+  color: var(--text-lo);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- the controls under every face */
+
+.konami-note {
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  padding: 4px var(--pad-card) 0;
+}
+
+.konami-actions {
+  border-top: 1px solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: var(--gap) 0 0;
+}
+
+.konami-actions > button {
+  align-items: center;
+  display: inline-flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  justify-content: center;
+}
+
+.konami-actions svg {
+  height: 13px;
+  width: 13px;
+}
+
+/* ---- the Decisions face: one line of time */
+
+.konami-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+/* The line the nodes hang on. */
+.konami-timeline::before {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent),
+    color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent)
+  );
+  bottom: 8px;
+  content: '';
+  left: 10px;
+  position: absolute;
+  top: 8px;
+  width: 2px;
+}
+
+.konami-entry {
+  --tone-hue: var(--text-lo);
+  display: grid;
+  gap: 2px 10px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  padding: 5px 0;
+  position: relative;
+}
+
+.konami-entry > .konami-node {
+  grid-row: span 3;
+  position: relative;
+  z-index: 1;
+}
+
+.konami-entry-head {
+  align-items: center;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  gap: 8px;
+  height: auto;
+  min-width: 0;
+  padding: 2px 6px;
+  text-align: left;
+}
+
+.konami-entry-head:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border: 0;
+}
+
+.konami-entry-head.static {
+  cursor: default;
+}
+
+.konami-when {
+  color: var(--text-lo);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.konami-entry-goal {
+  color: var(--text-hi);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -12802,31 +13477,237 @@ tr:hover .row-action.worn,
   white-space: nowrap;
 }
 
-.konami-sent {
-  color: var(--accent);
-}
-
-.konami-received {
-  color: var(--ok);
-}
-
-.konami-made {
+.konami-entry-sub {
   color: var(--text-lo);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 2px 10px;
+  grid-column: 2;
+  padding: 0 6px;
 }
 
-.konami-show {
-  flex: none;
-  font-size: var(--font-micro);
-  padding: 0 6px;
+.konami-why {
+  color: var(--tone-hue);
+}
+
+.konami-entry-body {
+  background: color-mix(in srgb, var(--ink-raised) 60%, transparent);
+  border-radius: var(--r-control);
+  box-shadow: var(--glass-rim);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  grid-column: 2;
+  margin-top: 4px;
+  padding: 8px;
+}
+
+.konami-entry[data-open='true'] .konami-node {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone-hue) var(--tone-weak), transparent);
+}
+
+.konami-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.konami-segment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.konami-segment > button {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.konami-segment svg {
+  height: 12px;
+  width: 12px;
 }
 
 .konami-payload {
   background: var(--ink-slate);
-  border-radius: 6px;
+  border-radius: var(--r-control);
   color: var(--text);
-  margin: 4px 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  margin: 0;
   max-height: 320px;
   overflow: auto;
-  padding: 6px 8px;
+  padding: 8px 10px;
   white-space: pre-wrap;
+}
+
+.konami-run {
+  align-items: center;
+  border-top: 1px solid var(--ink-line);
+  color: var(--text-lo);
+  display: flex;
+  font-size: var(--font-micro);
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+}
+
+.konami-run svg {
+  flex: none;
+  height: 13px;
+  width: 13px;
+}
+
+.konami-run-label {
+  color: var(--text);
+  flex: none;
+}
+
+.konami-run-path {
+  flex: 1;
+  font-family: var(--font-mono);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- the Lessons face */
+
+.konami-lessons-head {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: var(--gap);
+}
+
+.konami-filter {
+  display: flex;
+  gap: 4px;
+}
+
+.konami-lessons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.konami-lesson {
+  --tone-hue: var(--text-lo);
+  align-items: start;
+  background: color-mix(in srgb, var(--ink-raised) 60%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--tone-hue) 70%, transparent);
+  border-radius: var(--r-control);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 8px 10px;
+}
+
+.konami-lesson[data-applies='false'] {
+  opacity: 0.6;
+}
+
+.konami-level-badge {
+  background: color-mix(in srgb, var(--tone-hue) var(--tone), transparent);
+  border-radius: var(--r-control);
+  color: var(--tone-hue);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  min-width: 4ch;
+  padding: 3px 6px;
+  text-align: center;
+}
+
+.konami-lesson-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.konami-lesson-title {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.konami-lesson-title > svg {
+  color: var(--text-lo);
+  flex: none;
+  height: 13px;
+  width: 13px;
+}
+
+.konami-lesson-title .konami-lesson-goal {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.konami-lesson-title .chip {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  gap: 4px;
+}
+
+.konami-lesson-title .chip svg {
+  height: 10px;
+  width: 10px;
+}
+
+.konami-lesson .konami-lesson-why {
+  color: var(--text);
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.konami-lesson-when {
+  color: var(--text-lo-quiet);
+  display: flex;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  gap: 10px;
+}
+
+.konami-forget {
+  align-items: center;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  opacity: 0.5;
+  padding: 0;
+  width: 24px;
+}
+
+.konami-forget svg {
+  height: 12px;
+  width: 12px;
+}
+
+.konami-lesson:hover .konami-forget {
+  opacity: 1;
+}
+
+.konami-forget:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--ink-line));
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .konami-ring[data-asking='true'] svg,
+  .konami-pulse {
+    animation: none;
+  }
 }

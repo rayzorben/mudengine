@@ -114,7 +114,9 @@ export const KONAMI_TRIGGERS = [
   'upgrade-affordable',
   'gear',
   'stuck',
-  'asked'
+  'asked',
+  'vetoed',
+  'chosen'
 ] as const;
 
 export type KonamiTrigger = (typeof KONAMI_TRIGGERS)[number];
@@ -182,11 +184,19 @@ export interface KonamiPick {
   p: number;
 }
 
+/** One goal the provider was offered, and the odds it gave it. */
+export interface KonamiOption {
+  goal: KonamiGoal;
+  p: number;
+}
+
 /** What an answer makes: somewhere to go and the settings to go with. */
 export interface KonamiPlan {
   goal: KonamiGoal;
   layer: KonamiLayer;
   picks: KonamiPick[];
+  /** Every goal the reply gave odds to, likeliest first; the chosen one among them. */
+  options: KonamiOption[];
 }
 
 /** A self blessing as the player's own form writes one (`normalizeBlessings`). */

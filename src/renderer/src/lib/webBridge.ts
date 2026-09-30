@@ -216,6 +216,10 @@ export function createWebBridge(): IpcApi {
     konamiAsk: (session) => invoke(Invoke.konamiAsk, session),
     konamiKeep: (session) => invoke(Invoke.konamiKeep, session),
     konamiExchange: (session, id) => invoke(Invoke.konamiExchange, session, id),
+    konamiVeto: (session) => invoke(Invoke.konamiVeto, session),
+    konamiChoose: (session, goal) => invoke(Invoke.konamiChoose, session, goal),
+    konamiForget: (session, at) => invoke(Invoke.konamiForget, session, at),
+    konamiReveal: (session, at) => invoke(Invoke.konamiReveal, session, at),
 
     listSessions: () => invoke(Invoke.listSessions),
     listProfiles: () => invoke(Invoke.listProfiles),

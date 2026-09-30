@@ -1,0 +1,289 @@
+/**
+ * The Konami card's words: a goal, a trigger, an outcome and a lesson as the
+ * card says them, and the few number forms it draws. Pure; the faces are in
+ * `components/Konami*.tsx`.
+ */
+import type { IconName } from '../components/Icon';
+import { t } from './i18n';
+import { percent } from './outlook';
+import { compact } from './rates';
+import type { KonamiGoal, KonamiLayer, KonamiTrigger } from '@shared/konami';
+import type { KonamiLesson } from '@shared/konamiLessons';
+import type { KonamiIncidentKind, KonamiOutcome } from '@shared/konamiRecords';
+
+/** A goal in one line, for a list. */
+export function goalText(goal: KonamiGoal): string {
+  switch (goal.kind) {
+    case 'hunt':
+      return t('cards.konami.goal.hunt', { name: goal.name });
+    case 'buy':
+      return t('cards.konami.goal.buy', { item: goal.name, shop: goal.shop, copper: goal.copper });
+    case 'train':
+      return t('cards.konami.goal.train');
+    case 'wait':
+      return t('cards.konami.goal.wait');
+    default: {
+      const never: never = goal;
+      return never;
+    }
+  }
+}
+
+/** A goal as a heading: the spot or the item, without the verb the kind already says. */
+export function goalName(goal: KonamiGoal): string {
+  switch (goal.kind) {
+    case 'hunt':
+    case 'buy':
+      return goal.name;
+    case 'train':
+      return t('cards.konami.goalName.train');
+    case 'wait':
+      return t('cards.konami.goalName.wait');
+    default: {
+      const never: never = goal;
+      return never;
+    }
+  }
+}
+
+/** What a heading's name leaves out: where an item is bought and for how much. */
+export function goalDetail(goal: KonamiGoal): string | null {
+  if (goal.kind !== 'buy') return null;
+  return goal.copper === 0
+    ? t('cards.konami.buyFree', { shop: goal.shop })
+    : t('cards.konami.buyAt', { shop: goal.shop, copper: goal.copper.toLocaleString() });
+}
+
+export function kindText(goal: KonamiGoal): string {
+  switch (goal.kind) {
+    case 'hunt':
+      return t('cards.konami.kind.hunt');
+    case 'buy':
+      return t('cards.konami.kind.buy');
+    case 'train':
+      return t('cards.konami.kind.train');
+    case 'wait':
+      return t('cards.konami.kind.wait');
+    default: {
+      const never: never = goal;
+      return never;
+    }
+  }
+}
+
+export function goalIcon(goal: KonamiGoal): IconName {
+  switch (goal.kind) {
+    case 'hunt':
+      return 'crosshair';
+    case 'buy':
+      return 'coins';
+    case 'train':
+      return 'sparkle';
+    case 'wait':
+      return 'moon';
+    default: {
+      const never: never = goal;
+      return never;
+    }
+  }
+}
+
+/** Why a plan was asked for, in words. */
+export function triggerText(trigger: KonamiTrigger): string {
+  switch (trigger) {
+    case 'entered':
+      return t('cards.konami.trigger.entered');
+    case 'level':
+      return t('cards.konami.trigger.level');
+    case 'trained':
+      return t('cards.konami.trigger.trained');
+    case 'death':
+      return t('cards.konami.trigger.death');
+    case 'goal-done':
+      return t('cards.konami.trigger.goalDone');
+    case 'goal-refused':
+      return t('cards.konami.trigger.goalRefused');
+    case 'cash-step':
+      return t('cards.konami.trigger.cashStep');
+    case 'upgrade-affordable':
+      return t('cards.konami.trigger.upgradeAffordable');
+    case 'gear':
+      return t('cards.konami.trigger.gear');
+    case 'stuck':
+      return t('cards.konami.trigger.stuck');
+    case 'asked':
+      return t('cards.konami.trigger.asked');
+    case 'vetoed':
+      return t('cards.konami.trigger.vetoed');
+    case 'chosen':
+      return t('cards.konami.trigger.chosen');
+    default: {
+      const never: never = trigger;
+      return never;
+    }
+  }
+}
+
+/** How an ending reads: the tone its chip and its node wear. */
+export type OutcomeTone = 'on' | 'ok' | 'bad' | 'warn' | 'quiet';
+
+export function outcomeText(outcome: KonamiOutcome): string {
+  switch (outcome) {
+    case 'applied':
+      return t('cards.konami.outcome.applied');
+    case 'done':
+      return t('cards.konami.outcome.done');
+    case 'refused':
+      return t('cards.konami.outcome.refused');
+    case 'replaced':
+      return t('cards.konami.outcome.replaced');
+    case 'failed':
+      return t('cards.konami.outcome.failed');
+    case 'vetoed':
+      return t('cards.konami.outcome.vetoed');
+    case 'died':
+      return t('cards.konami.outcome.died');
+    default: {
+      const never: never = outcome;
+      return never;
+    }
+  }
+}
+
+export function outcomeTone(outcome: KonamiOutcome): OutcomeTone {
+  switch (outcome) {
+    case 'applied':
+      return 'on';
+    case 'done':
+      return 'ok';
+    case 'died':
+    case 'failed':
+      return 'bad';
+    case 'refused':
+    case 'vetoed':
+      return 'warn';
+    case 'replaced':
+      return 'quiet';
+    default: {
+      const never: never = outcome;
+      return never;
+    }
+  }
+}
+
+export function outcomeIcon(outcome: KonamiOutcome): IconName {
+  switch (outcome) {
+    case 'applied':
+      return 'play';
+    case 'done':
+      return 'check';
+    case 'died':
+      return 'flame';
+    case 'failed':
+    case 'refused':
+    case 'vetoed':
+      return 'close';
+    case 'replaced':
+      return 'next';
+    default: {
+      const never: never = outcome;
+      return never;
+    }
+  }
+}
+
+export function incidentText(kind: KonamiIncidentKind): string {
+  switch (kind) {
+    case 'death':
+      return t('cards.konami.incident.death');
+    case 'stuck':
+      return t('cards.konami.incident.stuck');
+    default: {
+      const never: never = kind;
+      return never;
+    }
+  }
+}
+
+/** A share as a whole percentage, as the Combat card prints one. */
+export function shareText(share: number): string {
+  return t('cards.stats.percent', { value: percent(share) });
+}
+
+/** A stretch of time in minutes, as a decision's row says how long it ran. */
+export function tookText(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  return minutes < 1 ? t('cards.konami.tookUnder') : t('cards.konami.took', { minutes });
+}
+
+/** A lesson's ending as the Lessons face words it, a death with where and to what. */
+export function lessonDetail(lesson: KonamiLesson): string {
+  switch (lesson.outcome) {
+    case 'died': {
+      const how =
+        lesson.atTheSpot === true
+          ? t('cards.konami.lesson.diedThere')
+          : lesson.atTheSpot === false
+            ? t('cards.konami.lesson.diedOnTheWay')
+            : t('cards.konami.lesson.died');
+      return [
+        how,
+        lesson.killers.length === 0
+          ? null
+          : t('cards.konami.lesson.to', { killers: lesson.killers.join(', ') }),
+        lesson.room === null ? null : t('cards.konami.lesson.in', { room: lesson.room })
+      ]
+        .filter((part) => part !== null)
+        .join(' ');
+    }
+    case 'refused':
+      return t('cards.konami.lesson.refused', {
+        why: lesson.why ?? t('cards.konami.lesson.noReason')
+      });
+    case 'vetoed':
+      return t('cards.konami.lesson.vetoed');
+    case 'done':
+    case 'replaced':
+      return [
+        t('cards.konami.lesson.ran', { minutes: lesson.minutes }),
+        lesson.expGained === null
+          ? null
+          : t('cards.konami.lesson.exp', { exp: compact(lesson.expGained) })
+      ]
+        .filter((part) => part !== null)
+        .join(' · ');
+    default: {
+      const never: never = lesson.outcome;
+      return never;
+    }
+  }
+}
+
+/** The plan's settings, one pair each, in the order the questions are asked. */
+export function layerRows(layer: KonamiLayer): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  if (layer.attack !== undefined) rows.push([t('cards.konami.layer.attack'), layer.attack]);
+  if (layer.opener !== undefined) {
+    rows.push([t('cards.konami.layer.opener'), layer.opener || t('cards.konami.layer.none')]);
+  }
+  if (layer.sneak !== undefined) {
+    rows.push([
+      t('cards.konami.layer.sneak'),
+      layer.sneak ? t('cards.konami.layer.yes') : t('cards.konami.layer.no')
+    ]);
+  }
+  if (layer.heal !== undefined) rows.push([t('cards.konami.layer.heal'), layer.heal]);
+  if (layer.blessings !== undefined) {
+    rows.push([
+      t('cards.konami.layer.blessings'),
+      layer.blessings.join(', ') || t('cards.konami.layer.none')
+    ]);
+  }
+  if (layer.restBelow !== undefined) {
+    rows.push([t('cards.konami.layer.restBelow'), shareText(layer.restBelow)]);
+  }
+  if (layer.trainFirst !== undefined) {
+    rows.push([t('cards.konami.layer.trainFirst'), layer.trainFirst]);
+  }
+  return rows;
+}

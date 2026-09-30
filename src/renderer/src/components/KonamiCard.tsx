@@ -1,175 +1,64 @@
-import { memo, useState } from 'react';
+import { memo, useCallback, useState } from 'react';
 
-import BentoCard, { type CardChrome } from './BentoCard';
-import KonamiTerminal from './KonamiTerminal';
+import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
+import Icon from './Icon';
+import KonamiLessons from './KonamiLessons';
+import KonamiNow from './KonamiNow';
+import KonamiTimeline from './KonamiTimeline';
 import { clock } from '../lib/clock';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
+import { goalText, outcomeText } from '../lib/konami';
 import type { SessionId } from '@shared/ipc';
-import type { KonamiGoal, KonamiLayer, KonamiQuestionName, KonamiTrigger } from '@shared/konami';
-import type {
-  KonamiDecisionRow,
-  KonamiIncidentKind,
-  KonamiOutcome,
-  KonamiSnapshot
-} from '@shared/konamiRecords';
+import type { KonamiSnapshot } from '@shared/konamiRecords';
 
 export interface KonamiCardProps extends CardChrome {
   konami: KonamiSnapshot;
   session: SessionId;
 }
 
-/** A goal in one line. */
-function goalText(goal: KonamiGoal): string {
-  switch (goal.kind) {
-    case 'hunt':
-      return t('cards.konami.goal.hunt', { name: goal.name });
-    case 'buy':
-      return t('cards.konami.goal.buy', { item: goal.name, shop: goal.shop, copper: goal.copper });
-    case 'train':
-      return t('cards.konami.goal.train');
-    case 'wait':
-      return t('cards.konami.goal.wait');
-    default: {
-      const never: never = goal;
-      return never;
-    }
-  }
-}
+type Face = 'now' | 'decisions' | 'lessons';
 
-/** Why a plan was asked for, in words. */
-function triggerText(trigger: KonamiTrigger): string {
-  switch (trigger) {
-    case 'entered':
-      return t('cards.konami.trigger.entered');
-    case 'level':
-      return t('cards.konami.trigger.level');
-    case 'trained':
-      return t('cards.konami.trigger.trained');
-    case 'death':
-      return t('cards.konami.trigger.death');
-    case 'goal-done':
-      return t('cards.konami.trigger.goalDone');
-    case 'goal-refused':
-      return t('cards.konami.trigger.goalRefused');
-    case 'cash-step':
-      return t('cards.konami.trigger.cashStep');
-    case 'upgrade-affordable':
-      return t('cards.konami.trigger.upgradeAffordable');
-    case 'gear':
-      return t('cards.konami.trigger.gear');
-    case 'stuck':
-      return t('cards.konami.trigger.stuck');
-    case 'asked':
-      return t('cards.konami.trigger.asked');
-    default: {
-      const never: never = trigger;
-      return never;
-    }
-  }
-}
-
-/** A decision as the terminal words it. */
-function decisionWords(decision: KonamiDecisionRow): { trigger: string; goal: string } {
-  return {
-    trigger: triggerText(decision.trigger),
-    goal: decision.plan === null ? '' : goalText(decision.plan.goal)
-  };
-}
-
-function outcomeText(outcome: KonamiOutcome): string {
-  switch (outcome) {
-    case 'applied':
-      return t('cards.konami.outcome.applied');
-    case 'done':
-      return t('cards.konami.outcome.done');
-    case 'refused':
-      return t('cards.konami.outcome.refused');
-    case 'replaced':
-      return t('cards.konami.outcome.replaced');
-    case 'failed':
-      return t('cards.konami.outcome.failed');
-    default: {
-      const never: never = outcome;
-      return never;
-    }
-  }
-}
-
-function incidentText(kind: KonamiIncidentKind): string {
-  switch (kind) {
-    case 'death':
-      return t('cards.konami.incident.death');
-    case 'stuck':
-      return t('cards.konami.incident.stuck');
-    default: {
-      const never: never = kind;
-      return never;
-    }
-  }
-}
-
-/** A question's name as the card says it; a blessing's names its spell. */
-function questionText(question: KonamiQuestionName): string {
-  switch (question) {
-    case 'goal':
-      return t('cards.konami.question.goal');
-    case 'attack':
-      return t('cards.konami.layer.attack');
-    case 'opener':
-      return t('cards.konami.layer.opener');
-    case 'sneak':
-      return t('cards.konami.layer.sneak');
-    case 'heal':
-      return t('cards.konami.layer.heal');
-    case 'restBelow':
-      return t('cards.konami.layer.restBelow');
-    case 'trainFirst':
-      return t('cards.konami.layer.trainFirst');
-    default:
-      return t('cards.konami.question.bless', { spell: question.slice('bless_'.length) });
-  }
-}
-
-/** The plan's settings, one row each, in the order the questions are asked. */
-function layerRows(layer: KonamiLayer): Array<[string, string]> {
-  const rows: Array<[string, string]> = [];
-  if (layer.attack !== undefined) rows.push([t('cards.konami.layer.attack'), layer.attack]);
-  if (layer.opener !== undefined) {
-    rows.push([t('cards.konami.layer.opener'), layer.opener || t('cards.konami.layer.none')]);
-  }
-  if (layer.sneak !== undefined) {
-    rows.push([
-      t('cards.konami.layer.sneak'),
-      layer.sneak ? t('cards.konami.layer.yes') : t('cards.konami.layer.no')
-    ]);
-  }
-  if (layer.heal !== undefined) rows.push([t('cards.konami.layer.heal'), layer.heal]);
-  if (layer.blessings !== undefined) {
-    rows.push([
-      t('cards.konami.layer.blessings'),
-      layer.blessings.join(', ') || t('cards.konami.layer.none')
-    ]);
-  }
-  if (layer.restBelow !== undefined) {
-    rows.push([t('cards.konami.layer.restBelow'), `${Math.round(layer.restBelow * 100)}%`]);
-  }
-  if (layer.trainFirst !== undefined) {
-    rows.push([t('cards.konami.layer.trainFirst'), layer.trainFirst]);
-  }
-  return rows;
+/** The card as text: the plan in force and each decision, for the copy glyph. */
+function copyOf(konami: KonamiSnapshot): string {
+  const plan = konami.plan === null ? t('cards.konami.emptyPlan') : goalText(konami.plan.goal);
+  const rows = konami.decisions.map(
+    (row) =>
+      `${clock(row.at)} ${row.plan === null ? (row.refusal ?? '') : goalText(row.plan.goal)} · ${outcomeText(row.outcome)}`
+  );
+  return [plan, ...rows].join('\n');
 }
 
 /**
- * The "what to do next" planner (todo 59): the plan in force and the
- * provider's picks on the left, the settings the plan lays over the
- * character's own on the right, and under both the decisions, the terminal of
- * what was sent and what came back, and the logs written.
- * Three buttons under it: pause, ask again, keep these settings.
+ * The "what to do next" planner (todo 59), on three faces: what it is doing
+ * now and why, with the odds on every choice it was offered; every ask on a
+ * line of time, opening onto what was sent and what came back; and what past
+ * plans came to. Under each, the controls: pause, ask again, turn this plan
+ * down, keep its settings.
  */
 function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
   const api = window.mudengine;
-  const [keepError, setKeepError] = useState<string | null>(null);
+  const [face, setFace] = useState<Face>('now');
+  const [open, setOpen] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const choose = useCallback((key: string) => void api?.konamiChoose(session, key), [api, session]);
+  const forget = useCallback((at: number) => void api?.konamiForget(session, at), [api, session]);
+  const reveal = useCallback(
+    (at: number | null) =>
+      void api?.konamiReveal(session, at).then((revealed) => {
+        setNote(
+          revealed?.how === 'listed' ? t('cards.konami.listed', { path: revealed.path }) : null
+        );
+      }),
+    [api, session]
+  );
+  const openDecision = useCallback((id: string) => {
+    setOpen(id);
+    setFace('decisions');
+  }, []);
+  const seeLessons = useCallback(() => setFace('lessons'), []);
+
   const badge = !konami.on ? (
     <span className="chip off">{t('cards.konami.badge.off')}</span>
   ) : konami.provider === null ? (
@@ -177,160 +66,134 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
   ) : konami.paused ? (
     <span className="chip warn">{t('cards.konami.badge.paused')}</span>
   ) : konami.asking ? (
-    <span className="chip on">{t('cards.konami.badge.asking')}</span>
+    <span className="chip info">{t('cards.konami.badge.asking')}</span>
   ) : (
     <span className="chip on">{t('cards.konami.badge.running')}</span>
   );
+
+  if (!konami.on) {
+    return (
+      <BentoCard {...chrome} badge={badge} className="konami-card" title={t('cards.konami.title')}>
+        <div className="empty">{t('cards.konami.emptyOff')}</div>
+      </BentoCard>
+    );
+  }
+
   const plan = konami.plan;
+  const vetoable = plan !== null && plan.goal.kind !== 'wait' && !konami.paused;
+  const controls = (
+    <>
+      {note !== null && <div className="konami-note">{note}</div>}
+      <div className="konami-actions">
+        <button
+          className={konami.paused ? 'primary' : 'quiet'}
+          onClick={() => void api?.konamiPause(session)}
+          onMouseDown={keepFocus}
+          type="button"
+        >
+          <Icon name={konami.paused ? 'play' : 'pause'} />
+          {konami.paused ? t('cards.konami.resume') : t('cards.konami.pause')}
+        </button>
+        <button
+          className={konami.paused ? 'quiet' : 'primary'}
+          disabled={konami.paused || konami.asking}
+          onClick={() => void api?.konamiAsk(session)}
+          onMouseDown={keepFocus}
+          type="button"
+        >
+          <Icon name="reset" />
+          {t('cards.konami.askAgain')}
+        </button>
+        <button
+          className="quiet"
+          disabled={!vetoable || konami.asking}
+          onClick={() => void api?.konamiVeto(session)}
+          onMouseDown={keepFocus}
+          title={t('cards.konami.notThisHint')}
+          type="button"
+        >
+          <Icon name="close" />
+          {t('cards.konami.notThis')}
+        </button>
+        <button
+          className="quiet"
+          disabled={plan === null}
+          onClick={() => void api?.konamiKeep(session).then(setNote)}
+          onMouseDown={keepFocus}
+          title={t('cards.konami.keepHint')}
+          type="button"
+        >
+          <Icon name="check" />
+          {t('cards.konami.keep')}
+        </button>
+      </div>
+    </>
+  );
+
+  const tabs: CardTab[] = [
+    {
+      id: 'now',
+      label: t('cards.konami.title'),
+      paned: true,
+      content: (
+        <>
+          <KonamiNow
+            konami={konami}
+            onChoose={choose}
+            onOpenDecision={openDecision}
+            onSeeLessons={seeLessons}
+          />
+          {controls}
+        </>
+      )
+    },
+    {
+      id: 'decisions',
+      label: t('cards.konami.tabs.decisions'),
+      paned: true,
+      content: (
+        <>
+          <KonamiTimeline
+            decisions={konami.decisions}
+            incidents={konami.incidents}
+            log={konami.log}
+            onOpen={setOpen}
+            onReveal={reveal}
+            open={open}
+            session={session}
+          />
+          {controls}
+        </>
+      )
+    }
+  ];
+  // A face that would say nothing is not offered.
+  if (konami.lessonsKept > 0) {
+    tabs.push({
+      id: 'lessons',
+      label: t('cards.konami.tabs.lessons'),
+      paned: true,
+      content: (
+        <>
+          <KonamiLessons konami={konami} onForget={forget} />
+          {controls}
+        </>
+      )
+    });
+  }
+  const active = tabs.some((tab) => tab.id === face) ? face : 'now';
+
   return (
     <BentoCard
       {...chrome}
+      active={active}
       badge={badge}
       className="konami-card"
-      paned
+      copyText={() => copyOf(konami)}
+      onActive={(id) => setFace(id as Face)}
+      tabs={tabs}
       title={t('cards.konami.title')}
-    >
-      <div className="scroller">
-        {!konami.on ? (
-          <div className="empty">{t('cards.konami.emptyOff')}</div>
-        ) : (
-          <>
-            {konami.refusal !== null && <div className="empty">{konami.refusal}</div>}
-            {keepError !== null && <div className="empty">{keepError}</div>}
-            <div className="konami-columns">
-              <div className="konami-column">
-                <div className="trace-heading">{t('cards.konami.headings.plan')}</div>
-                <div className="trace">
-                  {plan === null ? (
-                    <div className="empty">{t('cards.konami.emptyPlan')}</div>
-                  ) : (
-                    <div className="row">
-                      <span className="trace-command">{goalText(plan.goal)}</span>
-                    </div>
-                  )}
-                  {konami.pending !== null && (
-                    <div className="row">
-                      <span className="trace-reason">
-                        {t('cards.konami.pending', { trigger: triggerText(konami.pending) })}
-                      </span>
-                    </div>
-                  )}
-                  {plan?.picks.map((pick) => (
-                    <div className="row" key={pick.question}>
-                      <span className="trace-priority">{`${Math.round(pick.p * 100)}%`}</span>
-                      <span className="trace-command">{questionText(pick.question)}</span>
-                      <span className="trace-reason">{pick.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="konami-column">
-                <div className="trace-heading">{t('cards.konami.headings.settings')}</div>
-                <div className="trace">
-                  {plan === null ? (
-                    <div className="empty">{t('cards.konami.emptyPlan')}</div>
-                  ) : (
-                    <>
-                      {layerRows(plan.layer).map(([name, value]) => (
-                        <div className="row" key={name}>
-                          <span className="trace-command">{name}</span>
-                          <span className="trace-reason">{value}</span>
-                        </div>
-                      ))}
-                      <div className="row">
-                        <span className="trace-reason">{t('cards.konami.goalSwitches')}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="trace-heading">{t('cards.konami.headings.decisions')}</div>
-            <div className="trace">
-              {konami.decisions.length === 0 ? (
-                <div className="empty">{t('cards.konami.emptyDecisions')}</div>
-              ) : (
-                konami.decisions.map((decision) => (
-                  <div
-                    className={`row${decision.outcome === 'failed' || decision.outcome === 'refused' ? ' blocked' : ''}`}
-                    key={decision.id}
-                  >
-                    <span className="trace-at">{clock(decision.at)}</span>
-                    <span className="trace-priority">{triggerText(decision.trigger)}</span>
-                    <span className="trace-command">
-                      {decision.plan === null
-                        ? (decision.refusal ?? '')
-                        : goalText(decision.plan.goal)}
-                    </span>
-                    <span className="trace-reason">
-                      {decision.outcomeWhy === null
-                        ? outcomeText(decision.outcome)
-                        : t('cards.konami.outcomeWhy', {
-                            outcome: outcomeText(decision.outcome),
-                            why: decision.outcomeWhy
-                          })}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="trace-heading">{t('cards.konami.headings.terminal')}</div>
-            <KonamiTerminal decisions={konami.decisions} session={session} words={decisionWords} />
-            <div className="trace-heading">{t('cards.konami.headings.logs')}</div>
-            <div className="trace">
-              {konami.log !== null && (
-                <div className="row">
-                  <span className="trace-priority">{t('cards.konami.runningLog')}</span>
-                  <span className="trace-reason" title={konami.log}>
-                    {konami.log}
-                  </span>
-                </div>
-              )}
-              {konami.incidents.map((incident) => (
-                <div className="row blocked" key={`${incident.kind}-${incident.at}`}>
-                  <span className="trace-at">{clock(incident.at)}</span>
-                  <span className="trace-priority">{incidentText(incident.kind)}</span>
-                  <span className="trace-reason" title={incident.path ?? ''}>
-                    {incident.path ?? ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      {konami.on && (
-        <div className="loop-controls konami-actions">
-          <button
-            className="quiet"
-            onClick={() => void api?.konamiPause(session)}
-            onMouseDown={keepFocus}
-            type="button"
-          >
-            {konami.paused ? t('cards.konami.resume') : t('cards.konami.pause')}
-          </button>
-          <button
-            className="quiet"
-            disabled={konami.paused || konami.asking}
-            onClick={() => void api?.konamiAsk(session)}
-            onMouseDown={keepFocus}
-            type="button"
-          >
-            {t('cards.konami.askAgain')}
-          </button>
-          <button
-            className="quiet"
-            disabled={plan === null}
-            onClick={() => void api?.konamiKeep(session).then(setKeepError)}
-            onMouseDown={keepFocus}
-            title={t('cards.konami.keepHint')}
-            type="button"
-          >
-            {t('cards.konami.keep')}
-          </button>
-        </div>
-      )}
-    </BentoCard>
+    />
   );
 }
 

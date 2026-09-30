@@ -31,6 +31,7 @@ import {
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
 import { t } from '../lib/i18n';
+import { rate } from '../lib/rates';
 import { tuning } from '../lib/tuning';
 
 export interface StatsCardProps extends CardChrome {
@@ -55,23 +56,6 @@ function figure(value: number | null, digits = 0): string {
 /** A share as a percentage, or a dash. `share` already returns null for 0/0. */
 function percent(value: number | null): string {
   return value === null ? '—' : t('cards.stats.percent', { value: (value * 100).toFixed(1) });
-}
-
-/**
- * A rate an hour, in the unit that keeps it readable.
- *
- * MegaMUD switched between `k/hr` and `m/hr` for the same reason: six figures
- * of experience per hour is a number nobody reads at a glance, and the card is
- * three inches wide.
- */
-function rate(value: number | null): string {
-  if (value === null) return '—';
-  const size = Math.abs(value);
-  if (size >= 1_000_000)
-    return t('cards.stats.ratePerHour', { value: `${(value / 1_000_000).toFixed(2)}M` });
-  if (size >= 1_000)
-    return t('cards.stats.ratePerHour', { value: `${(value / 1_000).toFixed(1)}k` });
-  return t('cards.stats.ratePerHour', { value: value.toFixed(0) });
 }
 
 /** `12 – 48`, or a dash while nothing has landed. */

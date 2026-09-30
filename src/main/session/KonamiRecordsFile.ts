@@ -87,6 +87,13 @@ export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
         await fs.promises.mkdir(options.dir, { recursive: true });
         await fs.promises.appendFile(lessonsFile, `${JSON.stringify(row)}\n`);
       }),
-    lessons: () => readLessons(lessonsFile, options.onProblem)
+    lessons: () => readLessons(lessonsFile, options.onProblem),
+    rewriteLessons: (rows) => {
+      const text = rows.map((row) => `${JSON.stringify(row)}\n`).join('');
+      inOrder(async () => {
+        await fs.promises.mkdir(options.dir, { recursive: true });
+        await fs.promises.writeFile(lessonsFile, text);
+      });
+    }
   };
 }

@@ -730,6 +730,14 @@ export const Invoke = {
   konamiKeep: 'automation:konami-keep',
   /** The Konami card's terminal: what was sent and what came back for one decision. */
   konamiExchange: 'automation:konami-exchange',
+  /** The Konami card's *not this*: the plan in force turned down, remembered, and asked again. */
+  konamiVeto: 'automation:konami-veto',
+  /** The Konami card's *go here instead*: one of the last answer's other goals, by `goalKey`. */
+  konamiChoose: 'automation:konami-choose',
+  /** The Konami card's *forget* on a lesson, by the moment it was learned. */
+  konamiForget: 'automation:konami-forget',
+  /** Opens this run's log (null) or an incident's folder (its moment) in the file manager. */
+  konamiReveal: 'automation:konami-reveal',
 
   // -- sessions and windows
   /** Every loaded session, for a window that has just mounted. */
@@ -1270,6 +1278,11 @@ export interface IpcApi {
   konamiKeep(session: SessionId): Promise<string | null>;
   /** Null once the decision is no longer kept. See `Invoke.konamiExchange`. */
   konamiExchange(session: SessionId, id: string): Promise<KonamiExchange | null>;
+  konamiVeto(session: SessionId): Promise<void>;
+  konamiChoose(session: SessionId, goal: string): Promise<void>;
+  konamiForget(session: SessionId, at: number): Promise<void>;
+  /** Null where there is nothing to open. See `Invoke.konamiReveal`. */
+  konamiReveal(session: SessionId, at: number | null): Promise<Revealed | null>;
 
   listSessions(): Promise<SessionSummary[]>;
   listProfiles(): Promise<ProfileSummary[]>;

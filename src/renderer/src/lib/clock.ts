@@ -17,3 +17,16 @@ const CLOCK = new Intl.DateTimeFormat(undefined, {
 export function clock(at: number): string {
   return CLOCK.format(at);
 }
+
+const DAY_AND_TIME = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  hour12: false
+});
+
+/** `Sep 30, 19:26`, for a record that outlives the day: a Konami lesson. */
+export function dayAndTime(at: number): string {
+  return DAY_AND_TIME.format(at);
+}

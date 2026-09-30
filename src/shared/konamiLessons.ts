@@ -11,7 +11,8 @@
  */
 import type { KonamiGoal } from './konami';
 
-export type LessonOutcome = 'died' | 'done' | 'refused' | 'replaced';
+/** `vetoed`: the player turned the plan down from the card. */
+export type LessonOutcome = 'died' | 'done' | 'refused' | 'replaced' | 'vetoed';
 
 export interface KonamiLesson {
   at: number;
@@ -84,6 +85,8 @@ export function lessonText(lesson: KonamiLesson): string {
     }
     case 'refused':
       return `at ${level}, could not be done: ${lesson.why ?? 'no reason given'}`;
+    case 'vetoed':
+      return `at ${level}, the player said no to it`;
     case 'done':
     case 'replaced': {
       const exp = lesson.expGained === null ? '' : `, ${lesson.expGained} exp`;

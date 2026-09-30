@@ -4,9 +4,9 @@
  * beside each monster costs, next to what the lines say it did.
  *
  * Read off the same blocks `HangUp` reads: `user-hits` with `you` as the
- * target (the attacker named by the line), `mob-hits` (a monster's blow the
- * line names no caster for) and `user-takes-damage` (a trap, a room, a spell
- * with no attacker).
+ * target (the attacker named by the line), `mob-hits` (a blow on the
+ * character the classifier names nobody for: the monster is read off the
+ * line's own words) and `user-takes-damage` (a trap, a room, a door).
  */
 import type { Block } from '../../../shared/blocks';
 import type { KonamiBlow } from '../../../shared/konamiRecords';
@@ -47,6 +47,15 @@ export class Blows {
         return;
       }
       case 'mob-hits':
+        // The server frames a monster's blow `The <name> <verb> you`; a line
+        // opening `A`/`An` is a spell's effect and names nobody (`patterns.ts`).
+        this.add({
+          at: block.at,
+          from: /^The /.test(block.text) ? attackerOf(block) : null,
+          damage,
+          text: block.text
+        });
+        return;
       case 'user-takes-damage':
         this.add({ at: block.at, from: null, damage, text: block.text });
         return;

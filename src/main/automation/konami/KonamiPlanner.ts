@@ -41,20 +41,26 @@ import {
   type LayerWrite
 } from '../../../shared/konami';
 import type { KonamiBrief } from '../../../shared/konamiBrief';
-import { lessonsFor, type KonamiLesson, type LessonOutcome } from '../../../shared/konamiLessons';
+import {
+  goalKey,
+  lessonsFor,
+  type KonamiLesson,
+  type LessonOutcome
+} from '../../../shared/konamiLessons';
 import {
   nextUpgradePrice,
   planQuestions,
   readPlan,
   samePlan
 } from '../../../shared/konamiQuestions';
-import type {
-  KonamiDecision,
-  KonamiExchange,
-  KonamiIncidentKind,
-  KonamiIncidentRow,
-  KonamiRecords,
-  KonamiSnapshot
+import {
+  decisionRow,
+  type KonamiDecision,
+  type KonamiExchange,
+  type KonamiIncidentKind,
+  type KonamiIncidentRow,
+  type KonamiRecords,
+  type KonamiSnapshot
 } from '../../../shared/konamiRecords';
 import { bankedCopper } from '../../../shared/coins';
 import { bareName, wornItems } from '../../../shared/items';
@@ -101,6 +107,11 @@ export interface PlannerHands {
 export interface PlannerEvents {
   changed(): void;
   notice(message: string): void;
+}
+
+/** A decision's id: its moment, and a little to tell two in one millisecond apart. */
+function decisionId(now: number): string {
+  return `${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 /** What is worn, as one word: a change is a new plan's worth. */
@@ -280,7 +291,7 @@ export class KonamiPlanner implements SessionModule {
       case 'user-dies':
         this.log.say('died', stateLine(this.facts.state()));
         this.incident('death');
-        this.settle('failed', t('automation.konami.died'), 'died');
+        this.settle('died', t('automation.konami.died'));
         this.hands.steerHunt(null);
         this.trigger('death');
         return;
@@ -343,6 +354,13 @@ export class KonamiPlanner implements SessionModule {
   }
 
   snapshot(): KonamiSnapshot {
+    const state = this.facts.state();
+    const level = state.progress.level;
+    const { lessonLevels, lessonsSent, lessonsShown } = tuning().konami;
+    const sent = new Set(lessonsFor(this.lessons, level, lessonLevels, lessonsSent));
+    const latest = this.journal.latest;
+    const since =
+      latest?.outcome === 'applied' && latest.plan !== null ? latest.brief.character.exp : null;
     return {
       on: this.on,
       paused: this.paused,
@@ -351,18 +369,93 @@ export class KonamiPlanner implements SessionModule {
       pending: this.pending,
       refusal: this.refusal,
       plan: this.plan,
-      decisions: [...this.journal.decisions].reverse().map((decision) => ({
-        id: decision.id,
-        at: decision.at,
-        trigger: decision.trigger,
-        plan: decision.plan,
-        refusal: decision.refusal,
-        outcome: decision.outcome,
-        outcomeWhy: decision.outcomeWhy
-      })),
+      decisions: [...this.journal.decisions].reverse().map(decisionRow),
       incidents: [...this.incidents].reverse(),
-      log: this.log.path
+      log: this.log.path,
+      expSince: since === null || state.progress.exp === null ? null : state.progress.exp - since,
+      lessons: this.lessons
+        .slice(-lessonsShown)
+        .reverse()
+        .map((lesson) => ({ ...lesson, applies: sent.has(lesson) })),
+      lessonsKept: this.lessons.length,
+      level,
+      lessonLevels
     };
+  }
+
+  /**
+   * The player's *not this*: the plan in force is turned down, remembered as
+   * a lesson so it is not offered back at this level, and a new one asked for.
+   */
+  veto(): void {
+    const plan = this.plan;
+    if (plan === null || plan.goal.kind === 'wait' || !this.running) return;
+    this.log.say('vetoed', `by the player · ${stateLine(this.facts.state())}`);
+    this.goal = { kind: 'none' };
+    this.hands.steerHunt(null);
+    this.settle('vetoed', t('automation.konami.vetoed'));
+    // Its settings come off with it; the next plan lays its own.
+    this.plan = null;
+    this.hands.relayer();
+    this.trigger('vetoed');
+  }
+
+  /**
+   * The player's *go here instead*: one of the goals the last answer gave
+   * odds to, in place of the one it chose. The answer's pick is remembered as
+   * turned down, and the player's is a decision of its own, asked with the
+   * same brief.
+   */
+  choose(key: string): void {
+    const latest = this.journal.latest;
+    const plan = latest?.outcome === 'applied' ? latest.plan : null;
+    if (latest === null || plan === null || !this.running) return;
+    const option = plan.options.find((each) => goalKey(each.goal) === key);
+    if (option === undefined || goalKey(option.goal) === goalKey(plan.goal)) return;
+    this.log.say(
+      'chosen',
+      `by the player: ${goalNotice(option.goal)}, not ${goalNotice(plan.goal)}`
+    );
+    this.settle('vetoed', t('automation.konami.chose', { goal: goalNotice(option.goal) }));
+    const now = Date.now();
+    // The goal's pick carries the odds of what was chosen, not of what was turned down.
+    const chosen: KonamiPlan = {
+      ...plan,
+      goal: option.goal,
+      picks: plan.picks.map((pick) =>
+        pick.question === 'goal' ? { ...pick, label: key, p: option.p } : pick
+      )
+    };
+    this.journal.add({
+      ...latest,
+      id: decisionId(now),
+      at: now,
+      trigger: 'chosen',
+      plan: chosen,
+      outcome: 'applied',
+      outcomeWhy: null,
+      settledAt: null
+    });
+    this.apply(chosen);
+  }
+
+  /** The player's *forget*: the lesson learned at `at` is no longer kept or sent. */
+  forget(at: number): void {
+    const index = this.lessons.findIndex((lesson) => lesson.at === at);
+    if (index < 0) return;
+    const [gone] = this.lessons.splice(index, 1);
+    this.records?.rewriteLessons(this.lessons);
+    this.log.block('forgot', 'by the player', gone);
+    this.events.changed();
+  }
+
+  /** Where the card may open: this run's log, or an incident's folder, by its moment. */
+  revealable(at: number | null): { path: string; kind: 'file' | 'directory' } | null {
+    if (at === null) return this.log.path === null ? null : { path: this.log.path, kind: 'file' };
+    const incident = this.incidents.find((each) => each.at === at);
+    return incident === undefined || incident.path === null
+      ? null
+      : { path: incident.path, kind: 'directory' };
   }
 
   private async load(): Promise<void> {
@@ -526,15 +619,11 @@ export class KonamiPlanner implements SessionModule {
 
   /**
    * What became of the plan in hand: the journal's outcome, and the lesson it
-   * leaves (a death is `failed` to the journal and `died` to the lesson).
+   * leaves under the same word.
    */
-  private settle(
-    outcome: 'done' | 'refused' | 'failed' | 'replaced',
-    why: string | null,
-    learned: LessonOutcome | null = outcome === 'failed' ? null : outcome
-  ): void {
+  private settle(outcome: LessonOutcome, why: string | null): void {
     const decision = this.journal.latest;
-    if (decision?.outcome === 'applied' && learned !== null) this.learn(decision, learned, why);
+    if (decision?.outcome === 'applied') this.learn(decision, outcome, why);
     this.journal.settle(outcome, why);
     this.events.changed();
   }
@@ -621,7 +710,7 @@ export class KonamiPlanner implements SessionModule {
     const plan = 'refusal' in answer ? null : readPlan(answer.reply, asked);
     const previous = this.plan;
     const decision: KonamiDecision = {
-      id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      id: decisionId(now),
       at: now,
       trigger: why,
       provider: provider.name,

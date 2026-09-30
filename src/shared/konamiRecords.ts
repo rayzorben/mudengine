@@ -2,12 +2,23 @@
  * What the planner keeps and writes down: each decision whole (todo 56), the
  * death and stuck logs (57, 58), and what the Konami card is shown (59).
  */
-import type { KonamiAsk, KonamiPlan, KonamiTrigger } from './konami';
-import type { KonamiBrief } from './konamiBrief';
-import type { KonamiLesson } from './konamiLessons';
+import type { KonamiAsk, KonamiGoal, KonamiPlan, KonamiTrigger } from './konami';
+import type { BriefSpot, KonamiBrief } from './konamiBrief';
+import { goalKey, type KonamiLesson } from './konamiLessons';
 
-/** What became of a decision. `applied` until one of the others lands. */
-export type KonamiOutcome = 'applied' | 'done' | 'refused' | 'replaced' | 'failed';
+/**
+ * What became of a decision. `applied` until one of the others lands;
+ * `failed` is an ask that made no plan, `vetoed` the player turning one down
+ * from the card.
+ */
+export type KonamiOutcome =
+  | 'applied'
+  | 'done'
+  | 'refused'
+  | 'replaced'
+  | 'failed'
+  | 'died'
+  | 'vetoed';
 
 /** One ask of the provider, whole: what was sent, what came back, what was made of it. */
 export interface KonamiDecision {
@@ -61,6 +72,8 @@ export interface KonamiRecords {
   lesson(row: KonamiLesson): void;
   /** Every lesson on record for this character, oldest first. */
   lessons(): KonamiLesson[];
+  /** Writes the lessons file over with these, for a lesson the player forgot. */
+  rewriteLessons(rows: readonly KonamiLesson[]): void;
 }
 
 /** One blow on the character, as the death log lists it. */
@@ -72,15 +85,87 @@ export interface KonamiBlow {
   text: string;
 }
 
+/** What the provider was shown about a spot, as the card draws it beside the odds. */
+export interface KonamiSpotFacts {
+  expPerHour: number | null;
+  expPerLap: number | null;
+  /** The simulated fight's share survived, 0..1; null where it was not run. */
+  survives: number | null;
+  steps: number | null;
+  lairs: number | null;
+  /** Health the walk's lairs cost, summed; null where any could not be weighed. */
+  routeHp: number | null;
+  /** The room the walk is expected to die in, where there is one. */
+  deadly: string | null;
+}
+
+/** One goal offered, the odds the reply gave it, and for a spot what it was told. */
+export interface KonamiOptionRow {
+  goal: KonamiGoal;
+  p: number;
+  chosen: boolean;
+  spot: KonamiSpotFacts | null;
+}
+
 /** A decision as the card lists it. */
 export interface KonamiDecisionRow {
   id: string;
   at: number;
   trigger: KonamiTrigger;
+  /** The character's level when it was asked. */
+  level: number | null;
   plan: KonamiPlan | null;
+  options: KonamiOptionRow[];
   refusal: string | null;
   outcome: KonamiOutcome;
   outcomeWhy: string | null;
+  settledAt: number | null;
+}
+
+/** A lesson as the card lists it: `applies` while it is still sent with each brief. */
+export interface KonamiLessonRow extends KonamiLesson {
+  applies: boolean;
+}
+
+function spotFacts(spot: BriefSpot): KonamiSpotFacts {
+  return {
+    expPerHour: spot.exp.perHour,
+    expPerLap: spot.exp.perCycle,
+    survives: spot.fight?.survives ?? null,
+    steps: spot.route?.steps ?? spot.steps,
+    lairs: spot.route?.lairs ?? null,
+    routeHp: spot.route?.damage ?? null,
+    deadly: spot.route?.deadly ?? null
+  };
+}
+
+/** A decision as the card lists it, with each option's spot read off the brief it was asked with. */
+export function decisionRow(decision: KonamiDecision): KonamiDecisionRow {
+  const chosen = decision.plan === null ? null : goalKey(decision.plan.goal);
+  return {
+    id: decision.id,
+    at: decision.at,
+    trigger: decision.trigger,
+    level: decision.brief.character.level,
+    plan: decision.plan,
+    options: (decision.plan?.options ?? []).map((option) => {
+      const goal = option.goal;
+      const spot =
+        goal.kind === 'hunt'
+          ? decision.brief.hunting.spots.find((each) => each.key === goal.key)
+          : undefined;
+      return {
+        goal,
+        p: option.p,
+        chosen: goalKey(goal) === chosen,
+        spot: spot === undefined ? null : spotFacts(spot)
+      };
+    }),
+    refusal: decision.refusal,
+    outcome: decision.outcome,
+    outcomeWhy: decision.outcomeWhy,
+    settledAt: decision.settledAt
+  };
 }
 
 export interface KonamiIncidentRow {
@@ -106,6 +191,15 @@ export interface KonamiSnapshot {
   incidents: KonamiIncidentRow[];
   /** Where this run's running log is written, or null with no records. */
   log: string | null;
+  /** The plan in force: experience made since it was chosen, null before the sheet says. */
+  expSince: number | null;
+  /** Lessons on record, newest first, at most `tuning.konami.lessonsShown`. */
+  lessons: KonamiLessonRow[];
+  /** Every lesson on record, shown or not. */
+  lessonsKept: number;
+  /** The character's level now, and how many levels either side of it a lesson is sent for. */
+  level: number | null;
+  lessonLevels: number;
 }
 
 export const EMPTY_KONAMI: KonamiSnapshot = {
@@ -118,5 +212,10 @@ export const EMPTY_KONAMI: KonamiSnapshot = {
   plan: null,
   decisions: [],
   incidents: [],
-  log: null
+  log: null,
+  expSince: null,
+  lessons: [],
+  lessonsKept: 0,
+  level: null,
+  lessonLevels: 0
 };

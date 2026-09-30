@@ -870,7 +870,9 @@ const TUNING_DEFAULTS = {
     /** The most past outcomes sent with one brief. */
     lessonsSent: 20,
     /** A plan replaced sooner than this taught nothing, and leaves no lesson. */
-    lessonMinMs: 60_000
+    lessonMinMs: 60_000,
+    /** The most lessons the Konami card lists, newest first. */
+    lessonsShown: 50
   },
   /** Spending character points on the stat screen — `StatScreen`. */
   train: {
@@ -2195,6 +2197,8 @@ const TUNING_DEFAULTS = {
   view: {
     /** Diagnostics log kept in renderer memory. */
     telnetLogLimit: 500,
+    /** The lessons that apply, listed on the Konami card's first face; the rest are a face away. */
+    konamiLessonsListed: 3,
     /**
      * How often a browser tab that lost its socket tries the client again
      * before reloading itself. Web mode only; the desktop window has no socket

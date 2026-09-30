@@ -1604,6 +1604,15 @@ function registerIpc(): void {
   handle(Invoke.konamiExchange, (_caller, session: SessionId, id: unknown) =>
     typeof id === 'string' ? (host?.get(session)?.manager.konami.exchange(id) ?? null) : null
   );
+  handle(Invoke.konamiVeto, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.konami.veto();
+  });
+  handle(Invoke.konamiChoose, (_caller, session: SessionId, goal: unknown) => {
+    if (typeof goal === 'string') host?.get(session)?.manager.konami.choose(goal);
+  });
+  handle(Invoke.konamiForget, (_caller, session: SessionId, at: unknown) => {
+    if (typeof at === 'number') host?.get(session)?.manager.konami.forget(at);
+  });
 
   /**
    * Who is walking, for pricing a route against them.
@@ -2953,6 +2962,14 @@ function registerIpc(): void {
     if (typeof name !== 'string' || name.trim().length === 0) return t('app.servers.noSuchServer');
     const result = editor().deleteServer(name.trim());
     return result.ok ? null : result.error;
+  });
+
+  // Only a path the planner itself names: the window says which, never where.
+  handle(Invoke.konamiReveal, async (_caller, session: SessionId, at: unknown) => {
+    const target = host
+      ?.get(session)
+      ?.manager.konami.revealable(typeof at === 'number' ? at : null);
+    return target === undefined || target === null ? null : reveal(target.path, target.kind);
   });
 
   handle(Invoke.revealLogs, async (): Promise<Revealed> => {
