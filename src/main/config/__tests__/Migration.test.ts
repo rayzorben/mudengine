@@ -5454,6 +5454,34 @@ describe('choosing the spell is stated', () => {
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
   });
 
+  // Drain when hurt (todo 841): four keys after `areaCasts`, off, once.
+  it('writes the drain keys off after areaCasts, once, and leaves a stated drain alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  spells:\n    attack: aslt\n    areaCasts: 0\n    heal: ""\n',
+      'utf8'
+    );
+    migrate();
+    const keys = Object.keys(spells());
+    const at = keys.indexOf('areaCasts');
+    expect(keys.slice(at + 1, at + 5)).toEqual(['drain', 'areaDrain', 'drainBelow', 'drainTo']);
+    expect(spells()['drainBelow']).toBe(0);
+    expect(
+      notesOf(said, 'notices.migration.drainStated.one', 'notices.migration.drainStated.many')
+    ).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  spells:\n    drain: vampiric assault\n    drainBelow: 0.7\n',
+      'utf8'
+    );
+    migrate();
+    expect(spells()['drain']).toBe('vampiric assault');
+    expect(spells()['drainBelow']).toBe(0.7);
+  });
+
   it('writes the heal switch off where the spell choice was off, and leaves a stated one', () => {
     fs.writeFileSync(home.options, 'automation:\n  spells:\n    autoChoose: false\n', 'utf8');
     migrate();

@@ -30,7 +30,8 @@ import RestFields from './RestFields';
 import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
-import SpellField from './SpellPicker';
+import AttackFields from './AttackFields';
+import DrainFields from './DrainFields';
 import HealFields from './HealFields';
 import LoopSection, { type LoopShelf } from './LoopSection';
 import PlayerGrants from './PlayerGrants';
@@ -51,6 +52,10 @@ import {
   splitNames
 } from '../lib/form';
 import {
+  ATTACK_KEYS,
+  attackValuesOf,
+  DRAIN_KEYS,
+  drainValuesOf,
   HEAL_KEYS,
   healValuesOf,
   walksAnotherWorld,
@@ -854,77 +859,28 @@ export default function CharacterForm({
           )}
           <fieldset className="settings-menus" data-fieldset="spells-round">
             <legend>{t('settings.spells.legend')}</legend>
-            <CheckField
-              checked={form.spellAutoChoose}
-              hint={t('settings.spells.autoChooseHint')}
-              label={t('settings.spells.autoChoose')}
-              name="spell-auto-choose"
-              onChange={(value) => patch({ spellAutoChoose: value })}
-            />
-            <SpellField
-              hint={t('settings.spells.castHint')}
-              label={t('settings.spells.castLabel')}
-              name="spell"
-              onChange={(value) => patch({ spellAttack: value })}
+            <AttackFields
+              bands={bands.mana}
+              manaMax={maxima.manaMax}
+              namePrefix=""
+              onChange={(field, value) => patch({ [ATTACK_KEYS[field]]: value })}
+              onToggle={(field, value) => patch({ [ATTACK_KEYS[field]]: value })}
               spells={shownBook.spells}
-              value={form.spellAttack}
-            />
-            <SpellField
-              hint={t('settings.spells.fallbackCastHint')}
-              label={t('settings.spells.fallbackCastLabel')}
-              name="spell-fallback"
-              onChange={(value) => patch({ spellAttackFallback: value })}
-              spells={shownBook.spells}
-              value={form.spellAttackFallback}
-            />
-            <NumberField
-              hint={t('settings.spells.attackCastsHint')}
-              label={t('settings.spells.attackCastsLabel')}
-              name="attack-casts"
-              onChange={(value) => patch({ spellAttackCasts: value })}
-              value={form.spellAttackCasts}
-            />
-            <NumberField
-              hint={t('settings.spells.minManaHint')}
-              label={t('settings.spells.minManaLabel')}
-              name="min-mana"
-              onChange={(value) => patch({ spellMinMana: value })}
-              bar={barOfMana(form.spellMinMana)}
-              figure={ofMana(form.spellMinMana)}
-              value={form.spellMinMana}
-            />
-            <SpellField
-              hint={t('settings.spells.areaCastHint')}
-              label={t('settings.spells.areaCastLabel')}
-              name="area-spell"
-              onChange={(value) => patch({ spellAreaAttack: value })}
-              spells={shownBook.spells}
-              value={form.spellAreaAttack}
-            />
-            <NumberField
-              hint={t('settings.spells.areaMinMobsHint')}
-              label={t('settings.spells.areaMinMobsLabel')}
-              name="area-min-mobs"
-              onChange={(value) => patch({ spellAreaMinMobs: value })}
-              value={form.spellAreaMinMobs}
-            />
-            <NumberField
-              hint={t('settings.spells.areaMinManaHint')}
-              label={t('settings.spells.areaMinManaLabel')}
-              name="area-min-mana"
-              onChange={(value) => patch({ spellAreaMinMana: value })}
-              bar={barOfMana(form.spellAreaMinMana)}
-              figure={ofMana(form.spellAreaMinMana)}
-              value={form.spellAreaMinMana}
-            />
-            <NumberField
-              hint={t('settings.spells.areaCastsHint')}
-              label={t('settings.spells.areaCastsLabel')}
-              name="area-casts"
-              onChange={(value) => patch({ spellAreaCasts: value })}
-              value={form.spellAreaCasts}
+              values={attackValuesOf(form)}
             />
             <p className="settings-note">{t('settings.spells.note')}</p>
+          </fieldset>
+
+          <fieldset className="settings-menus" data-fieldset="spells-drain">
+            <legend>{t('settings.spells.drainLegend')}</legend>
+            <DrainFields
+              bands={bands.hp}
+              hpMax={maxima.hpMax}
+              namePrefix=""
+              onChange={(field, value) => patch({ [DRAIN_KEYS[field]]: value })}
+              spells={shownBook.spells}
+              values={drainValuesOf(form)}
+            />
           </fieldset>
 
           <fieldset className="settings-menus" data-fieldset="spells-heal">

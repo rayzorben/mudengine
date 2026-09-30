@@ -468,6 +468,21 @@ describe('automation.combat', () => {
  * figures are the ones that pair had rather than the 0 every other automated
  * threshold here ships at.
  */
+/* Drain when hurt (todo 841): the heal's pair, for the round spell. */
+describe('the drain pair', () => {
+  const spells = (raw: Record<string, unknown>) =>
+    normalizeConfig({ automation: { spells: raw } }).automation.spells;
+
+  it('ships off', () => {
+    expect(spells({})).toMatchObject({ drain: '', areaDrain: '', drainBelow: 0, drainTo: 0 });
+  });
+
+  it('lifts a ceiling under the floor, and keeps 0 as no ceiling', () => {
+    expect(spells({ drainBelow: 0.5, drainTo: 0.3 }).drainTo).toBe(0.5);
+    expect(spells({ drainBelow: 0.5, drainTo: 0 }).drainTo).toBe(0);
+  });
+});
+
 describe('the resting pair', () => {
   const health = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { health: raw } }).automation.health;

@@ -965,14 +965,13 @@ export class SessionManager {
       /*
        * The character's own side of the combat arithmetic, read at the point
        * of use: the class is not known until a stat sheet has been read.
-       *
-       * `Vocabulary.family` and not the realm data's, deliberately: this decides
-       * which *formulas* run, and the formulas are the server's. The two can
-       * legitimately differ — see `Vocabulary.noteFamily` — and on the shipped
-       * configuration they do.
+       * `Vocabulary.family`, not the realm data's: this decides which formulas
+       * run, the server's, and the two differ on the shipped configuration
+       * (`Vocabulary.noteFamily`).
        */
       () => this.errands.realmClass(),
-      lore
+      lore,
+      (id) => this.world?.spellById(id) ?? null
     );
 
     /*

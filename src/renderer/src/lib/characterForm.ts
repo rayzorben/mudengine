@@ -40,6 +40,8 @@ import type { StreamEncoding } from '@shared/types';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import type { RemoteGrant, RemoteName } from '@shared/remotes';
 import { fractionOf, percentOf } from './form';
+import type { AttackField, AttackFieldsProps } from '../components/AttackFields';
+import type { DrainField, DrainFieldsProps } from '../components/DrainFields';
 import type { HealField, HealFieldsProps, HealSwitch } from '../components/HealFields';
 import { sameJson } from './history';
 
@@ -201,6 +203,11 @@ export interface CharacterFields {
   spellAttackFallback: string;
   spellAttackCasts: string;
   spellAreaCasts: string;
+  /** The drains cast instead while health is low, and the pair that starts and stops them (841). */
+  spellDrain: string;
+  spellAreaDrain: string;
+  spellDrainBelow: string;
+  spellDrainTo: string;
   /**
    * The heal, per character: a spell cast on this character, a spell cast on a
    * member, and the pair of figures that start and stop the casting.
@@ -338,10 +345,46 @@ export const HEAL_KEYS = {
 
 /** The form's heal, in the shape `HealFields` draws. */
 export function healValuesOf(form: CharacterFields): HealFieldsProps['values'] {
-  // Complete by construction: `HEAL_KEYS` satisfies a record over every field.
-  return Object.fromEntries(
-    Object.entries(HEAL_KEYS).map(([field, key]) => [field, form[key]])
-  ) as HealFieldsProps['values'];
+  return valuesOf(HEAL_KEYS, form) as HealFieldsProps['values'];
+}
+
+/** Where each of `AttackFields`' values lives on this form. */
+export const ATTACK_KEYS = {
+  autoChoose: 'spellAutoChoose',
+  attack: 'spellAttack',
+  attackFallback: 'spellAttackFallback',
+  attackCasts: 'spellAttackCasts',
+  minMana: 'spellMinMana',
+  areaAttack: 'spellAreaAttack',
+  areaMinMobs: 'spellAreaMinMobs',
+  areaMinMana: 'spellAreaMinMana',
+  areaCasts: 'spellAreaCasts'
+} as const satisfies Record<AttackField | 'autoChoose', keyof CharacterFields>;
+
+/** The form's attack spell, in the shape `AttackFields` draws. */
+export function attackValuesOf(form: CharacterFields): AttackFieldsProps['values'] {
+  return valuesOf(ATTACK_KEYS, form) as AttackFieldsProps['values'];
+}
+
+/** Where each of `DrainFields`' values lives on this form. */
+export const DRAIN_KEYS = {
+  drain: 'spellDrain',
+  areaDrain: 'spellAreaDrain',
+  drainBelow: 'spellDrainBelow',
+  drainTo: 'spellDrainTo'
+} as const satisfies Record<DrainField, keyof CharacterFields>;
+
+/** The form's drain, in the shape `DrainFields` draws. */
+export function drainValuesOf(form: CharacterFields): DrainFieldsProps['values'] {
+  return valuesOf(DRAIN_KEYS, form) as DrainFieldsProps['values'];
+}
+
+/** A shared field set's values, read off the form: complete, since each key table satisfies a record over its fields. */
+function valuesOf(
+  keys: Readonly<Record<string, keyof CharacterFields>>,
+  form: CharacterFields
+): Record<string, CharacterFields[keyof CharacterFields]> {
+  return Object.fromEntries(Object.entries(keys).map(([field, key]) => [field, form[key]]));
 }
 
 export function formOf(entry: ProfileEditable): CharacterFields {
@@ -415,6 +458,10 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     spellAttackFallback: entry.spells.attackFallback,
     spellAttackCasts: String(entry.spells.attackCasts),
     spellAreaCasts: String(entry.spells.areaCasts),
+    spellDrain: entry.spells.drain,
+    spellAreaDrain: entry.spells.areaDrain,
+    spellDrainBelow: percent(entry.spells.drainBelow),
+    spellDrainTo: percent(entry.spells.drainTo),
     spellHeal: entry.spells.heal,
     spellHealPartyWith: entry.spells.healPartyWith,
     spellHealBelow: percent(entry.spells.healBelow),
@@ -586,6 +633,10 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       attackFallback: form.spellAttackFallback.trim(),
       attackCasts: Math.max(0, Number.parseInt(form.spellAttackCasts, 10) || 0),
       areaCasts: Math.max(0, Number.parseInt(form.spellAreaCasts, 10) || 0),
+      drain: form.spellDrain.trim(),
+      areaDrain: form.spellAreaDrain.trim(),
+      drainBelow: fractionOf(form.spellDrainBelow),
+      drainTo: fractionOf(form.spellDrainTo),
       heal: form.spellHeal.trim(),
       healPartyWith: form.spellHealPartyWith.trim(),
       healBelow: fractionOf(form.spellHealBelow),
@@ -878,6 +929,10 @@ export function emptyForm(
     spellAttackFallback: spells.attackFallback,
     spellAttackCasts: String(spells.attackCasts),
     spellAreaCasts: String(spells.areaCasts),
+    spellDrain: spells.drain,
+    spellAreaDrain: spells.areaDrain,
+    spellDrainBelow: percent(spells.drainBelow),
+    spellDrainTo: percent(spells.drainTo),
     spellHeal: spells.heal,
     spellHealPartyWith: spells.healPartyWith,
     spellHealBelow: percent(spells.healBelow),

@@ -535,6 +535,9 @@ notices:
     autoJoin:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
+    drainStated:
+      many: 'Drain When Hurt was added, off, to {count} files: {fileList}'
+      one: 'Drain When Hurt was added, off, to {fileList}'
     meditateCeiling:
       many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
       one: 'Keep Meditating To Mana % was added, off, to {fileList}'
@@ -4038,6 +4041,21 @@ settings:
     attackCastsLabel: Casts Per Target
     areaCastsHint: Casts of the area spell per fight. 0 is no limit.
     areaCastsLabel: AE Casts Per Fight
+    drainLegend: Drain When Hurt
+    drainNote: A drain spell hurts the monster and heals you by what it takes. Below the threshold
+      the drains are cast instead of your attack spells, under the same limits, until your health
+      is back up. Only spells the world database marks as drains are offered.
+    drainHint: Cast instead of the attack spell while you are hurt. Blank keeps the attack spell,
+      or picks from your spell list when Auto Choose is on.
+    drainLabel: Drain Spell
+    areaDrainHint: Cast at the room while you are hurt and the room is crowded enough for the area
+      spell. Blank casts none.
+    areaDrainLabel: AE Drain Spell
+    drainBelowHint: Start casting the drains below this share of health. 0 never drains.
+    drainBelowLabel: Drain If Below HP %
+    drainToHint: Keep draining until health is back to this. 0 stops as soon as you are over the
+      threshold; a gap keeps one drain from switching the spell back and forth.
+    drainToLabel: Drain Up To HP %
     healBelowInCombatHint: A separate threshold while fighting. 0 uses the one next to it for both;
       set it lower so a scratch does not cost a round.
     healBelowInCombatLabel: Heal In Combat Below %
@@ -4772,6 +4790,7 @@ automation:
     spellNotInstant: '{spell} started combat after all: it is a combat spell, so it is no longer
       treated as instant on this realm and opens fights again.'
     spellIneffectiveArea: '{spell} has no effect here; the attack spell carries this fight.'
+    drainIneffective: '{spell} has no effect here; the attack spells carry this fight.'
     spellIneffectiveNoFallback: '{spell} has no effect here and no fallback spell is set; your
       regular attacks carry this fight.'
     whyUnweighed: 'first of {count} here: the world data cannot rate {target}, and unknown is not
@@ -4809,6 +4828,9 @@ automation:
     noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
     allResisted: 'Auto Choose Best Spell: this target resists every attack spell in the book; your
       regular attacks carry the fight.'
+    drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
+    drainEnds: Health is back up; casting the attack spells again.
+    drainNone: No drain spell to cast; casting the attack spells.
   train:
     reason: 'spending {cp} character points at the trainer'
     # Going to collect the level -- `TrainErrand` (todo 18). Every sentence

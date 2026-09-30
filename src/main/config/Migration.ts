@@ -248,6 +248,7 @@ function migrateAll(options: MigrationOptions): void {
   statedThePartyPacing(home, note, options.template);
   statedTheHealChoice(home, note, options.template);
   statedTheAutoJoin(home, note);
+  statedTheDrain(home, note, options.template);
 }
 
 /**
@@ -2761,9 +2762,8 @@ function statedThePartyPacing(
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const comments = templateComments(template, 'automation');
   const d = DEFAULT_CONFIG.automation.party;
-  const keys = [
+  const stated = stateKeysIn(home, template, PARTY_BLOCK, 'askForHealBelow', [
     ['waitBelow', d.waitBelow],
     ['waitMinutes', d.waitMinutes],
     ['ignoreWait', d.ignoreWait],
@@ -2771,21 +2771,37 @@ function statedThePartyPacing(
     ['askHealth', d.askHealth],
     ['parSeconds', d.parSeconds],
     ['parAfterRound', d.parAfterRound]
-  ] as const;
-  const stated = new Set<string>();
-  let after = 'askForHealBelow';
-  for (const [key, value] of keys) {
-    const comment = comments.get(`automation.party.${key}`);
-    for (const file of stateIn(home, PARTY_BLOCK, key, value, after, comment)) stated.add(file);
-    after = key;
-  }
-  if (stated.size === 0) return;
-  const params = { count: stated.size, fileList: [...stated].join(', ') };
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
   note(
-    stated.size === 1
+    stated.length === 1
       ? t('notices.migration.partyPacing.one', params)
       : t('notices.migration.partyPacing.many', params)
   );
+}
+
+/**
+ * Several keys into every file that states `block` without them, at the given
+ * values, in order after `after`, each with the template's comment where it
+ * has one. The files any key went into, once each.
+ */
+function stateKeysIn(
+  home: Home,
+  template: string | undefined,
+  block: readonly string[],
+  after: string,
+  keys: ReadonlyArray<readonly [string, unknown]>
+): string[] {
+  const comments = templateComments(template, 'automation');
+  const stated = new Set<string>();
+  let anchor = after;
+  for (const [key, value] of keys) {
+    const comment = comments.get([...block, key].join('.'));
+    for (const file of stateIn(home, block, key, value, anchor, comment)) stated.add(file);
+    anchor = key;
+  }
+  return [...stated];
 }
 
 /**
@@ -2814,6 +2830,32 @@ function statedTheHealChoice(
     stated.length === 1
       ? t('notices.migration.healChoice.one', params)
       : t('notices.migration.healChoice.many', params)
+  );
+}
+
+/**
+ * `automation.spells.drain`, `areaDrain`, `drainBelow` and `drainTo` (todo
+ * 841, 2026-09-30) into every file that states `spells:` without them, off,
+ * after `areaCasts`, with the template's paragraph on the first.
+ */
+function statedTheDrain(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const d = DEFAULT_CONFIG.automation.spells;
+  const stated = stateKeysIn(home, template, SPELLS_BLOCK, 'areaCasts', [
+    ['drain', d.drain],
+    ['areaDrain', d.areaDrain],
+    ['drainBelow', d.drainBelow],
+    ['drainTo', d.drainTo]
+  ]);
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.drainStated.one', params)
+      : t('notices.migration.drainStated.many', params)
   );
 }
 

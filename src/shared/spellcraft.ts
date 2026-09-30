@@ -256,12 +256,34 @@ export interface SpellServes {
   blind: boolean;
   diseased: boolean;
   held: boolean;
+  /**
+   * A hit that heals the caster by what it takes: `DrainLife` on the row
+   * (`vampiric assault`), or a hit whose `EndCast` heals, where `linked` can
+   * read that row (`necromantic storm` on the mudrev realm ends in `suck the
+   * life force`; fatavatar, 2026-09-28). Todo 841.
+   */
+  drains: boolean;
 }
 
-export function spellServes(abilities: AbilityPairs | undefined): SpellServes {
-  const serves = { hp: false, poisoned: false, blind: false, diseased: false, held: false };
+export function spellServes(
+  abilities: AbilityPairs | undefined,
+  linked?: (id: number) => AbilityPairs | undefined
+): SpellServes {
+  const serves = {
+    hp: false,
+    poisoned: false,
+    blind: false,
+    diseased: false,
+    held: false,
+    drains: false
+  };
   if (abilities === undefined) return serves;
+  let hits = false;
+  let endsIn: number | null = null;
   for (const [id, value] of abilities) {
+    if (id === HAZARD_ABILITY.drain) serves.drains = true;
+    if (id === HAZARD_ABILITY.damage || id === HAZARD_ABILITY.damageWithMr) hits = true;
+    if (id === HAZARD_ABILITY.endCast) endsIn = value;
     if (id === HEALS) serves.hp = true;
     if (id === CURE_POISON) serves.poisoned = true;
     if (id === DISPELL_MAGIC && value === POISON) serves.poisoned = true;
@@ -269,7 +291,18 @@ export function spellServes(abilities: AbilityPairs | undefined): SpellServes {
     if (id === REMOVES_SPELL) serves.diseased = true;
     if (id === FREEDOM) serves.held = true;
   }
+  if (!serves.drains && hits && endsIn !== null && linked !== undefined) {
+    serves.drains = (linked(endsIn) ?? []).some(([id]) => id === HEALS);
+  }
   return serves;
+}
+
+/** `spellServes` over a realm row, its `EndCast` read through `byId`: the one reading the pickers and the automation share. */
+export function servesOf(
+  spell: WorldSpell,
+  byId: (id: number) => WorldSpell | null | undefined
+): SpellServes {
+  return spellServes(spell.abilities, (id) => byId(id)?.abilities);
 }
 
 /**
@@ -277,7 +310,7 @@ export function spellServes(abilities: AbilityPairs | undefined): SpellServes {
  * state and `spellServes`' flag (*poisoned*). One map, read by `Cures` and by
  * the cure fields, so the two cannot disagree.
  */
-export const CURE_CONDITION: Readonly<Record<Cure, Exclude<keyof SpellServes, 'hp'>>> = {
+export const CURE_CONDITION: Readonly<Record<Cure, Exclude<keyof SpellServes, 'hp' | 'drains'>>> = {
   blindness: 'blind',
   poison: 'poisoned',
   disease: 'diseased',
