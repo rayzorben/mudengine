@@ -4,6 +4,7 @@
  */
 import type { KonamiAsk, KonamiPlan, KonamiTrigger } from './konami';
 import type { KonamiBrief } from './konamiBrief';
+import type { KonamiLesson } from './konamiLessons';
 
 /** What became of a decision. `applied` until one of the others lands. */
 export type KonamiOutcome = 'applied' | 'done' | 'refused' | 'replaced' | 'failed';
@@ -56,6 +57,10 @@ export interface KonamiRecords {
   logPath: string;
   /** The newest `lines` lines the session printed, colour codes removed. */
   recentLines(lines: number): string;
+  /** Appends one lesson: what a plan came to. */
+  lesson(row: KonamiLesson): void;
+  /** Every lesson on record for this character, oldest first. */
+  lessons(): KonamiLesson[];
 }
 
 /** One blow on the character, as the death log lists it. */

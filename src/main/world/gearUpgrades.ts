@@ -102,7 +102,8 @@ export function gearUpgrades(
         shop: place.shop,
         at: { map: place.map, room: place.room },
         moves: place.moves,
-        copper
+        copper,
+        effect: null
       });
     }
     const current = worn.get(code)?.name ?? null;
@@ -112,6 +113,7 @@ export function gearUpgrades(
       slot: gear.slot,
       worn: current,
       wornFigure: wornRow === undefined ? null : figureOf(wornRow),
+      wornDr: wornRow?.dr ?? null,
       ranking: gear.ranking.by,
       offers
     });

@@ -2,7 +2,8 @@
  * The planner's records on disk (todos 56–58), under one directory per
  * character: `decisions.jsonl`, appended a line at a time, one folder per
  * death or stuck log, `deaths/<stamp>/` and `stucks/<stamp>/`, and the running
- * log, `log/<run>.log`: one file per launch, every step the planner takes.
+ * log, `log/<run>.log`: one file per launch, every step the planner takes, and
+ * `lessons.jsonl`, what each plan came to, read back when the planner starts.
  *
  * Every write is asynchronous and in order: a death log holds a hundred
  * briefs and ten thousand lines, and writing it synchronously would stall the
@@ -15,6 +16,7 @@ import path from 'node:path';
 
 import { stripAnsi } from '../net/LineTokenizer';
 import { stamp as runStamp } from './filename';
+import type { KonamiLesson } from '../../shared/konamiLessons';
 import type { KonamiIncidentKind, KonamiRecords } from '../../shared/konamiRecords';
 import { errorMessage } from '../../shared/values';
 
@@ -30,8 +32,29 @@ function stamp(at: number): string {
   return new Date(at).toISOString().replace(/[:.]/g, '-');
 }
 
+/** Every lesson in the file; a line that does not parse is skipped and said. None before the first. */
+function readLessons(file: string, onProblem: (message: string) => void): KonamiLesson[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return [];
+  }
+  const lessons: KonamiLesson[] = [];
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue;
+    try {
+      lessons.push(JSON.parse(line) as KonamiLesson);
+    } catch (error) {
+      onProblem(`${file}: ${errorMessage(error)}`);
+    }
+  }
+  return lessons;
+}
+
 export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
   const logFile = path.join(options.dir, 'log', `${runStamp(new Date())}.log`);
+  const lessonsFile = path.join(options.dir, 'lessons.jsonl');
   let chain: Promise<void> = Promise.resolve();
   const inOrder = (write: () => Promise<void>): void => {
     chain = chain.then(write).catch((error: unknown) => options.onProblem(errorMessage(error)));
@@ -58,6 +81,12 @@ export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
       });
       return folder;
     },
-    recentLines: (lines) => stripAnsi(options.backscroll(lines))
+    recentLines: (lines) => stripAnsi(options.backscroll(lines)),
+    lesson: (row) =>
+      inOrder(async () => {
+        await fs.promises.mkdir(options.dir, { recursive: true });
+        await fs.promises.appendFile(lessonsFile, `${JSON.stringify(row)}\n`);
+      }),
+    lessons: () => readLessons(lessonsFile, options.onProblem)
   };
 }

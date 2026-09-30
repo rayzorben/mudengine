@@ -1275,6 +1275,7 @@ export class SessionManager {
     this.konami = konamiPlanner({
       tracker: this.tracker,
       errands: this.errands,
+      odds: { lair: (room) => this.odds.lair(room) }, // built below, read per brief
       world,
       hunt: this.hunt,
       supplies: this.supplies,
@@ -1291,11 +1292,10 @@ export class SessionManager {
       deps: deps.konami
     });
     /*
-     * And carrying a quest's plan (todos 102–103): the errands above, the
-     * walker and auto-combat, driven one step at a time by the plan the card
-     * drew. Its legs are an errand's — quiet, held for health, not owed
-     * across a lost connection — and it holds the lap as the errands do.
-     */
+     * And carrying a quest's plan (todos 102–103): the errands above, the walker
+     * and auto-combat, driven a step at a time by the plan the card drew. Its
+     * legs are an errand's (quiet, held for health, not owed across a lost
+     * connection) and it holds the lap as the errands do. */
     this.questRunner = new QuestRunner(
       automation.quests,
       automation.enabled,

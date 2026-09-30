@@ -4,6 +4,7 @@ import {
   type MenacePlayer,
   type MenaceSubject,
   type MenaceWeights,
+  REALM_ARMOUR_SCALE,
   weighRoom
 } from './menace';
 import { swing, type ProwessSheet, type ProwessWeapon, type Reckoning } from './prowess';
@@ -149,8 +150,10 @@ export function targetOf(entity: TargetEntity | undefined): {
   if (entity === undefined) return {};
   const dodge = entity.abilities?.find(([id]) => id === DODGE_ABILITY)?.[1];
   return {
-    ...(entity.armour !== undefined ? { armourClass: entity.armour / 10 } : {}),
-    ...(entity.damageResist !== undefined ? { damageResist: entity.damageResist / 10 } : {}),
+    ...(entity.armour !== undefined ? { armourClass: entity.armour / REALM_ARMOUR_SCALE } : {}),
+    ...(entity.damageResist !== undefined
+      ? { damageResist: entity.damageResist / REALM_ARMOUR_SCALE }
+      : {}),
     ...(dodge !== undefined ? { dodge } : {}),
     ...(entity.hp !== undefined ? { hp: entity.hp } : {})
   };

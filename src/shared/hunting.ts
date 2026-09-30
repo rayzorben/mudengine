@@ -972,6 +972,24 @@ export interface HuntingAssumptions {
   constants: HuntingConstants;
 }
 
+/** What the survey left out before ranking, counted by reason. */
+export interface HuntExclusions {
+  dangerous: number;
+  beneath: number;
+  unsurvivable: number;
+  unsimulated: number;
+  evil: number;
+}
+
+/** Nothing left out. */
+export const NO_EXCLUSIONS: Readonly<HuntExclusions> = {
+  dangerous: 0,
+  beneath: 0,
+  unsurvivable: 0,
+  unsimulated: 0,
+  evil: 0
+};
+
 export interface HuntingAdvice {
   /** Where the sweep started, or null when the character is unplaced. */
   from: { id: RoomId; name: string } | null;
@@ -990,9 +1008,10 @@ export interface HuntingAdvice {
   /**
    * What was left out before the ranking, and why. `unsurvivable` is a lair
    * whose fight at full health is survived no more often than the safe level
-   * (`OddsBook`, todo 03); `unsimulated` one whose fight has not been run yet.
+   * (`OddsBook`, todo 03); `unsimulated` one whose fight has not been run yet;
+   * `evil` one where every monster costs evil points to attack.
    */
-  excluded: { dangerous: number; beneath: number; unsurvivable: number; unsimulated: number };
+  excluded: HuntExclusions;
   assumptions: HuntingAssumptions;
   /** Why there is no answer, said out loud. */
   refusal: string | null;

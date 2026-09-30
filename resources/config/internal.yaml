@@ -694,6 +694,16 @@ tuning:
     # Death and stuck logs listed on the card, and refusals copied into a stuck log.
     incidentsKept: 20
     refusalsKept: 30
+    # How long a plan waits for the simulator to run every lair's fight before
+    # asking anyway; the worst lairs on the walk to a spot the brief names; how
+    # many levels a past outcome is sent for either side of the level it was
+    # learned at, and the most sent with one brief.
+    simulateWaitMs: 120000
+    lairsNamed: 3
+    lessonLevels: 2
+    lessonsSent: 20
+    # A plan replaced sooner than this taught nothing, and leaves no lesson.
+    lessonMinMs: 60000
 
   # Spending character points on the stat screen — `StatScreen`. `echoMs` is
   # how long the screen has to echo a keystroke before the driver lets go of

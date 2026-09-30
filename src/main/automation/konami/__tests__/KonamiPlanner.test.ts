@@ -8,6 +8,8 @@ import type { Block } from '../../../../shared/blocks';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../../shared/config';
 import type { KonamiBrief } from '../../../../shared/konamiBrief';
+import { NO_EXCLUSIONS } from '../../../../shared/hunting';
+import type { KonamiLesson } from '../../../../shared/konamiLessons';
 import type { KonamiRecords } from '../../../../shared/konamiRecords';
 import { damageReport, lastFight } from '../incident';
 import { KonamiPlanner, type PlannerFacts, type PlannerHands } from '../KonamiPlanner';
@@ -38,7 +40,17 @@ function providerFile(): string {
 
 const BRIEF = {
   at: 0,
-  character: { levelReady: false, cash: { total: 0 }, spells: [], stats: {} },
+  character: {
+    level: 3,
+    exp: 0,
+    hpMax: 100,
+    armourClass: 0,
+    levelReady: false,
+    cash: { total: 0 },
+    spells: [],
+    stats: {}
+  },
+  settings: { attack: 'aa' },
   hunting: {
     spots: [
       {
@@ -47,6 +59,9 @@ const BRIEF = {
         exp: { perHour: 9000, ceilingPerHour: null, perCycle: 300 },
         survival: { worstShare: 0.1 },
         steps: 3,
+        fight: null,
+        route: null,
+        history: [],
         mobs: []
       }
     ],
@@ -82,11 +97,20 @@ let incidents: Array<{ kind: string; files: Record<string, string> }>;
 let hunting: boolean;
 let logged: string[];
 let briefRefusal: string | null;
+let learned: KonamiLesson[];
+let unsimulated: number;
+let briefLessons: KonamiLesson[][];
 
 function planner(): KonamiPlanner {
   const facts: PlannerFacts = {
     state: () => state,
-    brief: () => (briefRefusal === null ? structuredClone(BRIEF) : { refusal: briefRefusal }),
+    brief: (_now, lessons) => {
+      briefLessons.push(lessons);
+      if (briefRefusal !== null) return { refusal: briefRefusal };
+      const made = structuredClone(BRIEF);
+      made.hunting.excluded = { ...NO_EXCLUSIONS, unsimulated };
+      return made;
+    },
     busy: () => false,
     hunting: () => hunting,
     buying: () => false,
@@ -110,7 +134,9 @@ function planner(): KonamiPlanner {
     },
     recentLines: () => 'the last lines',
     log: (text) => logged.push(text),
-    logPath: '/tmp/konami.log'
+    logPath: '/tmp/konami.log',
+    lesson: (row) => learned.push(row),
+    lessons: () => [...learned]
   };
   return new KonamiPlanner(facts, hands, { changed: () => {}, notice: () => {} }, records, null);
 }
@@ -151,6 +177,9 @@ beforeEach(() => {
   hunting = false;
   logged = [];
   briefRefusal = null;
+  learned = [];
+  unsimulated = 0;
+  briefLessons = [];
   global.__konamiGoal = 'hunt_0';
   global.__konamiAsked = 0;
 });
@@ -284,6 +313,43 @@ describe('the planner', () => {
     expect(incidents[0]!.files['session.log']).toBe('the last lines');
     await asked(2);
     expect(it.snapshot().decisions.map((row) => row.trigger)).toEqual(['death', 'entered']);
+    it.dispose();
+  });
+
+  it('waits for the simulator to run the lairs before it asks', async () => {
+    unsimulated = 40;
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await settle();
+    expect(global.__konamiAsked).toBe(0);
+    expect(it.snapshot().pending).toBe('entered');
+    unsimulated = 0;
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 6_000 });
+    it.onCharacter(state);
+    vi.useRealTimers();
+    await asked(1);
+    it.dispose();
+  });
+
+  it('keeps what a death came to, killers named, and sends it with the next brief', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.onBlock(block('user-hits', { target: 'you', attacker: 'fierce bandit', damage: '12' }));
+    it.onBlock(block('user-dies'));
+    await asked(2);
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({
+      outcome: 'died',
+      killers: ['fierce bandit'],
+      level: 3,
+      goal: { kind: 'hunt', key: 'lair:a' }
+    });
+    expect(briefLessons.at(-1)).toHaveLength(1);
     it.dispose();
   });
 

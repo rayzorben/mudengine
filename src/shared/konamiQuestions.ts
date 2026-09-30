@@ -6,7 +6,7 @@
  * whichever label comes back, carrying it out is a matter of handing it to the
  * module that already does that thing.
  */
-import type { BriefSpot, KonamiBrief, SlotUpgrade } from './konamiBrief';
+import type { BriefSpot, GearOffer, KonamiBrief, SlotUpgrade } from './konamiBrief';
 import type {
   KonamiGoal,
   KonamiLayer,
@@ -16,6 +16,7 @@ import type {
   KonamiQuestionName,
   KonamiReply
 } from './konami';
+import { REALM_ARMOUR_SCALE } from './menace';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 /** What the character is playing for; said in every question. */
@@ -57,15 +58,55 @@ function rateText(exp: BriefSpot['exp']): string {
   return 'unknown exp';
 }
 
-/** What an item changes in its slot, in the slot's own measure. */
-function gainText(slot: SlotUpgrade, figure: number | null): string {
-  const measure = slot.ranking === 'weapon' ? 'damage a round' : 'armour class';
-  if (slot.worn === null) {
-    return slot.ranking === 'weapon'
-      ? `${number(figure, 1)} ${measure}, against fighting bare-handed`
-      : `${number(figure, 1)} ${measure}, against nothing worn there now (0)`;
+/**
+ * What an item changes. A weapon in damage a round against what is wielded;
+ * armour in the sheet's armour class (the realm's item figure is ten times
+ * it), and what that does to the damage taken at the best spot offered.
+ */
+function gainText(slot: SlotUpgrade, offer: GearOffer): string {
+  if (slot.ranking === 'weapon') {
+    const against =
+      slot.worn === null
+        ? 'fighting bare-handed'
+        : `${number(slot.wornFigure, 1)} for the ${slot.worn} wielded now`;
+    return `${number(offer.figure, 1)} damage a round, against ${against}`;
   }
-  return `${number(figure, 1)} ${measure}, against ${number(slot.wornFigure, 1)} for the ${slot.worn} worn now`;
+  const effect = offer.effect;
+  const replaces = slot.worn === null ? 'nothing worn there now' : `the ${slot.worn} worn now`;
+  if (effect === null) {
+    return `${number(offer.ac === null ? null : offer.ac / REALM_ARMOUR_SCALE, 1)} armour class, in place of ${replaces}`;
+  }
+  const { armourClass, perRound } = effect;
+  return (
+    `armour class ${number(armourClass.now, 1)} -> ${number(armourClass.with, 1)} in place of ${replaces}; ` +
+    `damage taken a round at ${effect.spot} (one of each monster there) ${number(perRound.now, 1)} -> ${number(perRound.with, 1)}`
+  );
+}
+
+/** The fight there as the simulator ran it. */
+function fightText(fight: BriefSpot['fight']): string {
+  if (fight === null) return 'fight not simulated';
+  return `fight simulated at full health: survived ${percent(fight.survives)} (${fight.level}), ${number(fight.rounds, 1)} rounds`;
+}
+
+/** The walk there, condensed: steps, lairs passed, what they cost, the worst of them. */
+function routeText(spot: BriefSpot, hpMax: number | null): string {
+  const route = spot.route;
+  if (route === null) return `${number(spot.steps)} steps away (no route planned)`;
+  if (route.lairs === 0) return `${route.steps} steps away, passing no lairs`;
+  const cost =
+    route.damage === null
+      ? `, ${route.unweighed} of them not weighed, so what passing costs is unknown`
+      : ` costing about ${number(route.damage)} HP in all to pass (${number(hpMax)} max)`;
+  const worst = route.worst
+    .map(
+      (lair) =>
+        `${lair.monsters.join('/') || 'unknown'} in ${lair.room} ${percent(lair.share)} of max HP a pass` +
+        (lair.fight === null ? '' : `, its fight ${lair.fight}`)
+    )
+    .join('; ');
+  const deadly = route.deadly === null ? '' : ` Expected to die passing ${route.deadly}.`;
+  return `${route.steps} steps away, passing ${route.lairs} lairs${cost}; worst: ${worst}.${deadly}`;
 }
 
 function goalQuestion(brief: KonamiBrief): {
@@ -77,10 +118,11 @@ function goalQuestion(brief: KonamiBrief): {
   brief.hunting.spots.forEach((spot, index) => {
     const label = `hunt_${index}`;
     labels[label] = { kind: 'hunt', key: spot.key, name: spot.name };
+    const before = spot.history.length === 0 ? '' : ` Before: ${spot.history.join('; ')}.`;
     criteria[label] =
       `Hunt ${spot.name} (spot ${spot.key}, ranked ${index + 1} on the Hunting grounds): ` +
-      `${rateText(spot.exp)}, worst room takes ${percent(spot.survival.worstShare)} of max HP, ` +
-      `${number(spot.steps)} steps away.`;
+      `${rateText(spot.exp)}; ${fightText(spot.fight)}; worst room takes ${percent(spot.survival.worstShare)} of max HP. ` +
+      `Getting there: ${routeText(spot, brief.character.hpMax)}${before}`;
   });
   const cash = brief.character.cash.total;
   const level = brief.character.level;
@@ -101,7 +143,7 @@ function goalQuestion(brief: KonamiBrief): {
       criteria[label] =
         `Buy and wear ${offer.name} for the ${slot.slot} slot at ${offer.shop} ` +
         `(${offer.copper === 0 ? 'free' : `${offer.copper} copper`}, ${offer.moves} moves away): ` +
-        `${gainText(slot, offer.figure)}.`;
+        `${gainText(slot, offer)}.`;
     });
   }
   if (brief.character.levelReady === true) {
@@ -113,7 +155,10 @@ function goalQuestion(brief: KonamiBrief): {
   return {
     question: {
       type: 'choice',
-      instructions: `${AIM} What should the character do next? The state lists every spot with each monster's stats and the damage arithmetic, and the gear per slot.`,
+      instructions:
+        `${AIM} What should the character do next? The state lists every spot with each monster's stats, ` +
+        `the damage arithmetic, the simulated fight and the walk there with the lairs it passes, and the gear per slot. ` +
+        `Its history is what past plans near this level came to: do not choose again what killed the character.`,
       criteria
     },
     labels

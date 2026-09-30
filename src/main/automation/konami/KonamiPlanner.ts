@@ -14,8 +14,12 @@
  * a goal done or refused, cash crossing a step, cash reaching the cheapest
  * upgrade, a change in what is worn, the player's own button, and standing
  * still for `stuckMs`. Never during a fight, while another move is out, or
- * before the room, the `st` and the `i` have been read; the trigger waits,
- * and a brief that cannot be built yet keeps it waiting rather than losing it.
+ * before the room, the `st` and the `i` have been read, nor while the
+ * simulator is still running the lairs' fights; the trigger waits, and a brief
+ * that cannot be built yet keeps it waiting rather than losing it.
+ *
+ * What each plan came to is kept as a lesson (`lessons.jsonl`) and sent back
+ * with every brief while the character is near the level it was learned at.
  *
  * Every step is written to the running log (`RunLog`).
  */
@@ -37,6 +41,7 @@ import {
   type LayerWrite
 } from '../../../shared/konami';
 import type { KonamiBrief } from '../../../shared/konamiBrief';
+import { lessonsFor, type KonamiLesson, type LessonOutcome } from '../../../shared/konamiLessons';
 import {
   nextUpgradePrice,
   planQuestions,
@@ -59,14 +64,15 @@ import { fightIsRunning } from '../Walker';
 import { Blows } from './Blows';
 import { incidentFiles } from './incident';
 import { Journal } from './Journal';
+import { lessonOf } from './lesson';
 import { askWithin, loadProvider, providerPaths } from './ProviderLoader';
 import { RunLog, stateLine } from './RunLog';
 
 /** What the planner reads. */
 export interface PlannerFacts {
   state(): CharacterState;
-  /** The brief for this moment, or why there is none (no realm data, unplaced). */
-  brief(now: number): KonamiBrief | { refusal: string };
+  /** The brief for this moment, with the lessons that apply, or why there is none. */
+  brief(now: number, lessons: KonamiLesson[]): KonamiBrief | { refusal: string };
   /** Something else holds the character: an escape, a move out, a walk, a shop trip. */
   busy(): boolean;
   /** `AutoHunt` is walking to or running a spot. */
@@ -154,6 +160,15 @@ export class KonamiPlanner implements SessionModule {
   private briefRefused: string | null = null;
   /** Not before this is a brief that refused built again. */
   private briefAgainAt = 0;
+  /** Since when a brief has come back with lairs still to simulate; null when none has. */
+  private simulatingSince: number | null = null;
+  /**
+   * The lairs still unsimulated when the wait last ran out: not waited on
+   * again until more than that are (the book started over for new figures).
+   */
+  private simulateGaveUpAt: number | null = null;
+  /** What past plans came to, oldest first: read from the records once, added to as plans end. */
+  private readonly lessons: KonamiLesson[];
   private huntSaid: string | null = null;
   private readonly blows = new Blows(() => tuning().konami.blowsKept);
   private readonly incidents: KonamiIncidentRow[] = [];
@@ -184,6 +199,7 @@ export class KonamiPlanner implements SessionModule {
   ) {
     this.journal = new Journal(records, () => tuning().konami.journal);
     this.log = new RunLog(records);
+    this.lessons = records?.lessons() ?? [];
   }
 
   /** Where this run's log is written, or null with no records. */
@@ -264,7 +280,7 @@ export class KonamiPlanner implements SessionModule {
       case 'user-dies':
         this.log.say('died', stateLine(this.facts.state()));
         this.incident('death');
-        this.settle('failed', t('automation.konami.died'));
+        this.settle('failed', t('automation.konami.died'), 'died');
         this.hands.steerHunt(null);
         this.trigger('death');
         return;
@@ -314,6 +330,8 @@ export class KonamiPlanner implements SessionModule {
     this.worn = null;
     this.briefRefused = null;
     this.briefAgainAt = 0;
+    this.simulatingSince = null;
+    this.simulateGaveUpAt = null;
     this.huntSaid = null;
     this.blows.reset();
   }
@@ -506,9 +524,37 @@ export class KonamiPlanner implements SessionModule {
     this.trigger(outcome === 'done' ? 'goal-done' : 'goal-refused');
   }
 
-  private settle(outcome: 'done' | 'refused' | 'failed' | 'replaced', why: string | null): void {
+  /**
+   * What became of the plan in hand: the journal's outcome, and the lesson it
+   * leaves (a death is `failed` to the journal and `died` to the lesson).
+   */
+  private settle(
+    outcome: 'done' | 'refused' | 'failed' | 'replaced',
+    why: string | null,
+    learned: LessonOutcome | null = outcome === 'failed' ? null : outcome
+  ): void {
+    const decision = this.journal.latest;
+    if (decision?.outcome === 'applied' && learned !== null) this.learn(decision, learned, why);
     this.journal.settle(outcome, why);
     this.events.changed();
+  }
+
+  private learn(decision: KonamiDecision, outcome: LessonOutcome, why: string | null): void {
+    const now = Date.now();
+    const lesson = lessonOf({
+      decision,
+      outcome,
+      why,
+      state: this.facts.state(),
+      blows: this.blows.since(now - tuning().konami.blowWindowMs),
+      fightGapMs: tuning().konami.fightGapMs,
+      lessonMinMs: tuning().konami.lessonMinMs,
+      now
+    });
+    if (lesson === null) return;
+    this.lessons.push(lesson);
+    this.records?.lesson(lesson);
+    this.log.block('learned', lesson.outcome, lesson);
   }
 
   /** Asks now if a trigger is waiting and the character is free. */
@@ -537,7 +583,9 @@ export class KonamiPlanner implements SessionModule {
     const provider = this.provider;
     if (provider === null) return;
     const now = Date.now();
-    const brief = this.facts.brief(now);
+    const level = this.facts.state().progress.level;
+    const { lessonLevels, lessonsSent } = tuning().konami;
+    const brief = this.facts.brief(now, lessonsFor(this.lessons, level, lessonLevels, lessonsSent));
     if ('refusal' in brief) {
       // Kept waiting and tried again after a tick, so entering the realm is never lost.
       if (this.pending === null) this.pending = why;
@@ -552,6 +600,7 @@ export class KonamiPlanner implements SessionModule {
       return;
     }
     this.briefRefused = null;
+    if (this.stillSimulating(why, brief, now)) return;
     this.asking = true;
     this.events.changed();
     const asked = planQuestions(brief);
@@ -586,7 +635,7 @@ export class KonamiPlanner implements SessionModule {
       outcomeWhy: null,
       settledAt: null
     };
-    this.journal.settle('replaced', null);
+    this.settle('replaced', null);
     this.journal.add(decision);
     this.upgradeAt = nextUpgradePrice(brief);
     if (plan === null) {
@@ -644,6 +693,39 @@ export class KonamiPlanner implements SessionModule {
     }
     this.events.notice(goalNotice(goal));
     this.events.changed();
+  }
+
+  /**
+   * Whether to hold the ask while the simulator runs the lairs' fights: a
+   * brief built before then leaves every lair out and offers what little is
+   * left. Held for `simulateWaitMs` at most, then asked with what there is.
+   */
+  private stillSimulating(why: KonamiTrigger, brief: KonamiBrief, now: number): boolean {
+    const left = brief.hunting.excluded.unsimulated;
+    if (this.simulateGaveUpAt !== null && left <= this.simulateGaveUpAt) return false;
+    this.simulateGaveUpAt = null;
+    if (left === 0) {
+      if (this.simulatingSince !== null) {
+        this.log.say(
+          'simulated',
+          `every lair's fight after ${Math.round((now - this.simulatingSince) / 1000)}s`
+        );
+      }
+      this.simulatingSince = null;
+      return false;
+    }
+    this.simulatingSince ??= now;
+    if (now - this.simulatingSince >= tuning().konami.simulateWaitMs) {
+      this.log.say('simulated', `not all: asking anyway with ${left} lairs not yet simulated`);
+      this.simulatingSince = null;
+      this.simulateGaveUpAt = left;
+      return false;
+    }
+    if (this.pending === null) this.pending = why;
+    this.briefAgainAt = now + tuning().konami.tickMs;
+    this.log.wait(`${why}: the simulator is still running the lairs' fights`);
+    this.events.changed();
+    return true;
   }
 
   /** What is worn changed by any hand: a different character to plan for. */

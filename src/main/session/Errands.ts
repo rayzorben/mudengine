@@ -32,6 +32,7 @@ import {
   moveDelayMs,
   orderRing,
   respawnSeconds,
+  NO_EXCLUSIONS,
   sizeLoop,
   type FillerInput,
   type HealingCast,
@@ -48,7 +49,7 @@ import {
 import type { Odds } from '../../shared/survival';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
-import { attacksOnSight } from '../../shared/mobs';
+import { attacksOnSight, fightable } from '../../shared/mobs';
 import { dodge, regeneration, swing, type ProwessSheet } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
 import {
@@ -1264,7 +1265,7 @@ export class Errands implements SessionModule {
       swept: 0,
       spots: [],
       unmeasured: [],
-      excluded: { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 },
+      excluded: { ...NO_EXCLUSIONS },
       assumptions,
       refusal
     });
@@ -1366,12 +1367,19 @@ export class Errands implements SessionModule {
     }
     const remembered = this.huntPrices.groups;
     /** One group's monsters priced, and its clock: the half a move does not change. */
-    const price = (group: HuntGroup): HuntPrice | null => {
-      const entities =
+    const price = (group: HuntGroup): HuntPrice | null | 'evil' => {
+      const all =
         group.via === 'lair'
           ? world.lairEntities(group.sample)
           : world.residentEntities(group.sample);
-      if (entities.length === 0) return null;
+      if (all.length === 0) return null;
+      /*
+       * A monster that costs evil points to attack, certainly or by a row the
+       * name cannot rule out, is never fought (`AutoCombat` refuses it), so
+       * its experience is not the spot's; a spot of nothing else is no spot.
+       */
+      const entities = fightable(all);
+      if (entities.length === 0) return 'evil';
       const verdicts = weighVerdicts(entities, player, weights, sheet, weapon, family);
       const bare = weighRoom(entities, naked, weights);
       const recorded = (hp: number | null): number | null =>
@@ -1417,13 +1425,14 @@ export class Errands implements SessionModule {
       return { mobs, clock, respawn };
     };
     const priced = new Map<string, HuntPriced>();
-    const excluded = { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 };
+    const excluded = { ...NO_EXCLUSIONS };
     const survey: HuntingSpot[] = [];
     for (const [key, group] of groups) {
       let known = remembered.get(key);
       if (known === undefined) {
         const fresh = price(group);
-        if (fresh === null) continue;
+        if (fresh === 'evil') excluded.evil += 1;
+        if (fresh === null || fresh === 'evil') continue;
         remembered.set(key, fresh);
         known = fresh;
       }

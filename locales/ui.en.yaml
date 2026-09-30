@@ -1347,6 +1347,8 @@ cards:
     # Lairs whose fight is still being simulated in the background; they are
     # left out until it has been run.
     unsimulated: '{count} more not yet simulated.'
+    # Every monster there costs evil points to attack, so auto-combat never would.
+    evil: '{count} where attacking costs evil points.'
     # The fight itself unpriced -- the rounds to kill, or the blows, unknown --
     # so the row is ordered by distance and never by what it pays.
     unpricedOne: The fight in one of them could not be rated, so it is listed by distance.

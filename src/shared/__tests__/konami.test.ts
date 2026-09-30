@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { attackOptions } from '../attackOptions';
 import { EMPTY_CHARACTER, type CharacterState } from '../character';
 import { DEFAULT_CONFIG } from '../config';
-import type { HuntingAdvice, HuntingSpot, SpotEstimate } from '../hunting';
+import { NO_EXCLUSIONS, type HuntingAdvice, type HuntingSpot, type SpotEstimate } from '../hunting';
 import {
   asKonamiReply,
   cashStep,
@@ -13,6 +13,7 @@ import {
   type KonamiReply
 } from '../konami';
 import { buildBrief, leftOutWhy, type KonamiBrief, type SlotUpgrade } from '../konamiBrief';
+import type { KonamiLesson } from '../konamiLessons';
 import { nextUpgradePrice, planQuestions, readPlan, samePlan } from '../konamiQuestions';
 import type { ProwessSheet } from '../prowess';
 
@@ -162,6 +163,7 @@ const HELM: SlotUpgrade = {
   slot: 'Head',
   worn: null,
   wornFigure: null,
+  wornDr: null,
   ranking: 'armour',
   offers: [
     {
@@ -174,7 +176,8 @@ const HELM: SlotUpgrade = {
       shop: 'Armoury',
       at: { map: 1, room: 9 },
       moves: 3,
-      copper: 500
+      copper: 500,
+      effect: null
     },
     {
       item: 8,
@@ -186,12 +189,13 @@ const HELM: SlotUpgrade = {
       shop: 'Armoury',
       at: { map: 1, room: 9 },
       moves: 3,
-      copper: 50_000
+      copper: 50_000,
+      effect: null
     }
   ]
 };
 
-function brief(over: Partial<CharacterState> = {}): KonamiBrief {
+function brief(over: Partial<CharacterState> = {}, lessons: KonamiLesson[] = []): KonamiBrief {
   const base = structuredClone(EMPTY_CHARACTER);
   const state: CharacterState = {
     ...base,
@@ -204,7 +208,7 @@ function brief(over: Partial<CharacterState> = {}): KonamiBrief {
   const advice = {
     from: { id: '1/1', name: 'Town Gates' },
     spots: [spot('lair:a'), spot('lair:b', { worstShare: null, unknown: ['rounds'] })],
-    excluded: { dangerous: 2, beneath: 0, unsurvivable: 1, unsimulated: 0 },
+    excluded: { ...NO_EXCLUSIONS, dangerous: 2, unsurvivable: 1 },
     refusal: null
   } as unknown as HuntingAdvice;
   return buildBrief({
@@ -229,11 +233,35 @@ function brief(over: Partial<CharacterState> = {}): KonamiBrief {
       trainFirst: null
     },
     maxSpots: 10,
+    lessons,
+    walk: () => null,
+    simulated: () => null,
     now: 1
   });
 }
 
 describe('the brief', () => {
+  it('gives each spot what choosing it came to before, and every lesson whole', () => {
+    const died: KonamiLesson = {
+      at: 5,
+      goal: { kind: 'hunt', key: 'lair:a', name: 'fierce zombie' },
+      level: 10,
+      hpMax: 100,
+      armourClass: 3,
+      attack: 'a',
+      outcome: 'died',
+      why: null,
+      killers: ['fierce bandit'],
+      room: 'Main Road',
+      atTheSpot: false,
+      expGained: null,
+      minutes: 2
+    };
+    const made = brief({}, [died]);
+    expect(made.history).toEqual([died]);
+    expect(made.hunting.spots[0]!.history).toHaveLength(1);
+  });
+
   it('counts the bank into the cash and leaves out a spot whose damage is unknown, saying why', () => {
     const made = brief();
     expect(made.character.cash.total).toBe(3_000);

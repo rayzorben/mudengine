@@ -17,6 +17,8 @@ import type { MobEntity } from './entities';
 import { primaryMob, type HuntingAdvice, type HuntingSpot } from './hunting';
 import { wornItems } from './items';
 import type { KonamiLayer } from './konami';
+import { goalKey, lessonText, type KonamiLesson } from './konamiLessons';
+import type { SurvivalLevel } from './survival';
 import type { MobAttack } from './world';
 
 /** One better item for a slot, and where it is sold. */
@@ -34,6 +36,53 @@ export interface GearOffer {
   moves: number;
   /** The counter's price before charm; null where the realm does not say. */
   copper: number | null;
+  /** What wearing it changes at the best spot offered; null for a weapon or with no spot. */
+  effect: GearEffect | null;
+}
+
+/**
+ * An armour piece weighed where it would be worn: the damage a round one of
+ * each of the spot's monsters does to the character now, and with it on.
+ */
+export interface GearEffect {
+  spot: string;
+  /** The sheet's armour class now and with it on (the realm's item figure is ten times this). */
+  armourClass: { now: number | null; with: number | null };
+  perRound: { now: number | null; with: number | null };
+}
+
+/** A spot's fight as the simulator ran it, at full health, every monster at its cap. */
+export interface BriefFight {
+  level: SurvivalLevel;
+  /** The share of fights survived, 0..1. */
+  survives: number;
+  hpLeft: number | null;
+  rounds: number;
+}
+
+/** A lair passed on the walk to a spot. */
+export interface BriefLairPassed {
+  room: string;
+  monsters: string[];
+  /** One pass through it, as a share of max health. */
+  share: number;
+  /** Its fight as the simulator ran it, where it has been. */
+  fight: SurvivalLevel | null;
+}
+
+/** The walk from where the character stands to a spot. */
+export interface BriefRoute {
+  steps: number;
+  /** Lairs the walk passes through. */
+  lairs: number;
+  /** Health one pass through every lair on the way costs, summed; null where any could not be weighed. */
+  damage: number | null;
+  /** Lairs on the way nobody could weigh (an unread sheet, a monster the arithmetic cannot price). */
+  unweighed: number;
+  /** The room a pass is expected to kill the character in, where there is one. */
+  deadly: string | null;
+  /** The worst lairs on the way, worst first. */
+  worst: BriefLairPassed[];
 }
 
 /** One slot: what is worn and what the realm sells that is better. */
@@ -41,6 +90,8 @@ export interface SlotUpgrade {
   slot: string;
   worn: string | null;
   wornFigure: number | null;
+  /** The worn item's damage resistance as the realm states it; null where it does not. */
+  wornDr: number | null;
   ranking: 'armour' | 'weapon';
   offers: GearOffer[];
 }
@@ -95,6 +146,12 @@ export interface BriefSpot {
     restSeconds: number | null;
     unknown: string[];
   };
+  /** The simulator's run of the fight there; null for a placed monster or one not run. */
+  fight: BriefFight | null;
+  /** The walk there; null where no route could be planned. */
+  route: BriefRoute | null;
+  /** What choosing this spot came to before, near this level, newest first. */
+  history: string[];
   mobs: BriefMob[];
 }
 
@@ -140,6 +197,8 @@ export interface KonamiBrief {
     refusal: string | null;
   };
   gear: SlotUpgrade[];
+  /** What past plans came to near this level, newest first: the outcome of each decision. */
+  history: KonamiLesson[];
   attacks: Array<{ verb: string; kind: string; perRound: number | null }>;
   openers: string[];
   canSneak: boolean | null;
@@ -159,6 +218,12 @@ export interface BriefInput {
   spells: BookSpell[] | null;
   settings: KonamiBrief['settings'];
   maxSpots: number;
+  /** Past plans near this level (`lessonsFor`). */
+  lessons: KonamiLesson[];
+  /** The walk to a spot offered. */
+  walk(spot: HuntingSpot): BriefRoute | null;
+  /** The simulator's run of a spot's fight. */
+  simulated(spot: HuntingSpot): BriefFight | null;
   now: number;
 }
 
@@ -198,8 +263,13 @@ function briefMob(entity: MobEntity | undefined, mob: HuntingSpot['mobs'][number
   };
 }
 
-function briefSpot(spot: HuntingSpot, entities: readonly MobEntity[]): BriefSpot {
+function briefSpot(
+  spot: HuntingSpot,
+  entities: readonly MobEntity[],
+  input: BriefInput
+): BriefSpot {
   const { estimate } = spot;
+  const key = goalKey({ kind: 'hunt', key: spot.key, name: '' });
   return {
     key: spot.key,
     name: primaryMob(spot),
@@ -222,6 +292,11 @@ function briefSpot(spot: HuntingSpot, entities: readonly MobEntity[]): BriefSpot
       restSeconds: estimate.restSeconds,
       unknown: [...estimate.unknown]
     },
+    fight: input.simulated(spot),
+    route: input.walk(spot),
+    history: input.lessons
+      .filter((lesson) => goalKey(lesson.goal) === key)
+      .map((lesson) => lessonText(lesson)),
     mobs: spot.mobs.map((mob) =>
       briefMob(
         entities.find((entity) => entity.name.toLowerCase() === mob.name.toLowerCase()),
@@ -243,21 +318,26 @@ export function leftOutWhy(spot: HuntingSpot): LeftOutReason | null {
   return null;
 }
 
-export function buildBrief(input: BriefInput): KonamiBrief {
-  const { state, advice } = input;
-  const { progress, vitals, inventory } = state;
-  const offered: BriefSpot[] = [];
+/** The spots the brief offers, best first, at most `maxSpots`; the rest left out with why. */
+export function offeredSpots(
+  advice: HuntingAdvice,
+  maxSpots: number
+): { offered: HuntingSpot[]; leftOut: KonamiBrief['hunting']['leftOut'] } {
+  const offered: HuntingSpot[] = [];
   const leftOut: KonamiBrief['hunting']['leftOut'] = [];
   for (const spot of advice.spots) {
     const why = leftOutWhy(spot);
-    if (why !== null) {
-      leftOut.push({ key: spot.key, name: primaryMob(spot), why });
-      continue;
-    }
-    if (offered.length < input.maxSpots) {
-      offered.push(briefSpot(spot, input.entities.get(spot.key) ?? []));
-    }
+    if (why !== null) leftOut.push({ key: spot.key, name: primaryMob(spot), why });
+    else if (offered.length < maxSpots) offered.push(spot);
   }
+  return { offered, leftOut };
+}
+
+export function buildBrief(input: BriefInput): KonamiBrief {
+  const { state, advice } = input;
+  const { progress, vitals, inventory } = state;
+  const { offered: chosen, leftOut } = offeredSpots(advice, input.maxSpots);
+  const offered = chosen.map((spot) => briefSpot(spot, input.entities.get(spot.key) ?? [], input));
   const banks = state.banks.map((bank) => ({ name: bank.name, copper: bank.copper }));
   const onHand = inventory.wealth;
   const stats: Record<string, number | null> = {};
@@ -300,6 +380,7 @@ export function buildBrief(input: BriefInput): KonamiBrief {
       refusal: advice.refusal
     },
     gear: input.gear,
+    history: input.lessons,
     attacks: input.attacks.map((option) => ({
       verb: option.verb,
       kind: option.kind,

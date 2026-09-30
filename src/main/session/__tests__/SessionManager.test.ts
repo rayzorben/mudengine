@@ -7128,7 +7128,7 @@ describe('stepping back the way the character came', () => {
  */
 describe('the hunting survey prices a kill off the fight record', () => {
   /** A town and two lairs in a line, from a realm that names no family; a dragon's third. */
-  const lairs = (dragon = false): WorldGraph => {
+  const lairs = (dragon = false, goodOrc = false): WorldGraph => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-hunt-'));
     const file = path.join(dir, 'rooms.jsonl.gz');
     const rooms = [
@@ -7170,7 +7170,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
       generatedAt: 'x',
       mobs: [
         mob('goblin', 7, 200, 300),
-        mob('orc', 8, 300, 400, 300),
+        { ...mob('orc', 8, 300, 400, 300), ...(goodOrc ? { ep: 'a' } : {}) },
         ...(dragon
           ? [
               {
@@ -7230,11 +7230,12 @@ describe('the hunting survey prices a kill off the fight record', () => {
   async function surveyed(
     fights: FightSink | undefined,
     sheet: string[] = [],
-    dragon = false
+    dragon = false,
+    goodOrc = false
   ): Promise<void> {
     const { sink } = collect();
     manager = build(sink, {
-      world: lairs(dragon),
+      world: lairs(dragon, goodOrc),
       automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
       fights
     });
@@ -7328,6 +7329,16 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(rows.find((spot) => spot.mobs[0]?.name === 'goblin')).toBeDefined();
     expect(rows.find((spot) => spot.mobs[0]?.name === 'dragon')).toBeUndefined();
     expect(advice.excluded.unsurvivable).toBe(1);
+  });
+
+  it('leaves out a lair whose every monster costs evil points to attack, and counts it', async () => {
+    await surveyed(record().fights, [], false, true);
+    const advice = await settled();
+    const rows = [...advice.spots, ...advice.unmeasured];
+    // Positive control: the goblin is kept.
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'goblin')).toBeDefined();
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'orc')).toBeUndefined();
+    expect(advice.excluded.evil).toBe(1);
   });
 
   it('leaves the rounds unknown, and says nothing measured, with no record to ask', async () => {

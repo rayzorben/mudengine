@@ -282,6 +282,7 @@ function HuntingCard({
                 beneath: advice.excluded.beneath
               })
             : '',
+          advice.excluded.evil > 0 ? t('cards.hunting.evil', { count: advice.excluded.evil }) : '',
           advice.excluded.unsimulated > 0
             ? t('cards.hunting.unsimulated', { count: advice.excluded.unsimulated })
             : ''

@@ -856,7 +856,21 @@ const TUNING_DEFAULTS = {
     fightGapMs: 60_000,
     /** Death and stuck logs listed on the card, and refusals copied into a stuck log. */
     incidentsKept: 20,
-    refusalsKept: 30
+    refusalsKept: 30,
+    /**
+     * How long a plan waits for the simulator to run every lair's fight: a
+     * brief built before it has leaves the lairs out, and offers only what is
+     * left. Past this it asks anyway and says so in the running log.
+     */
+    simulateWaitMs: 120_000,
+    /** The worst lairs on the walk to a spot named in the brief. */
+    lairsNamed: 3,
+    /** A past plan's outcome is sent while the character is within this many levels of it. */
+    lessonLevels: 2,
+    /** The most past outcomes sent with one brief. */
+    lessonsSent: 20,
+    /** A plan replaced sooner than this taught nothing, and leaves no lesson. */
+    lessonMinMs: 60_000
   },
   /** Spending character points on the stat screen — `StatScreen`. */
   train: {

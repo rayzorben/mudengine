@@ -15,6 +15,7 @@ import type { KonamiRecords } from '../../shared/konamiRecords';
 import type { ConnectionTarget } from '../../shared/types';
 import type { Errands } from './Errands';
 import { konamiBrief, type BriefingWorld } from './KonamiBriefing';
+import type { OddsReader } from './OddsBook';
 
 /** What the host hands a session for the planner: where its records go and the client's home. */
 export interface KonamiDeps {
@@ -26,8 +27,10 @@ export interface KonamiWiring {
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<
     Errands,
-    'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt'
+    'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'menacePlayer'
   >;
+  /** The simulator's run of each lair's fight. */
+  odds: Pick<OddsReader, 'lair'>;
   world: BriefingWorld | undefined;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
@@ -52,7 +55,7 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
   return new KonamiPlanner(
     {
       state: () => tracker.current,
-      brief: (now) =>
+      brief: (now, lessons) =>
         konamiBrief(
           {
             world: wiring.world,
@@ -61,10 +64,13 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
             realmClass: () => errands.realmClass(),
             capabilities: () => errands.capabilities(),
             traveller: (state) => errands.travellerNow(state),
-            priceAt: (name, shop) => errands.priceAt(name, shop)
+            priceAt: (name, shop) => errands.priceAt(name, shop),
+            lairOdds: (room) => wiring.odds.lair(room),
+            menacePlayer: (state) => errands.menacePlayer(state)
           },
           tracker.current,
-          now
+          now,
+          lessons
         ),
       busy: wiring.busy,
       hunting: () => wiring.hunt.hunting,
