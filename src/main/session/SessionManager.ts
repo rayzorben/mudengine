@@ -792,6 +792,7 @@ export class SessionManager {
         this.questRunner.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to, landing) => {
+        this.remotes.stepping(command, direction, to, this.tracker.current);
         if (landing !== undefined && direction !== 'portal') {
           /*
            * An exit whose cast moves the character, which answers with **two**
@@ -803,9 +804,8 @@ export class SessionManager {
           return;
         }
         if (direction === 'portal') {
-          // A scripted teleport: the arriving room is resolved by the
-          // coordinates the script states, never by an exit that does not
-          // exist. `to` is `map/room` by construction; parsed, not trusted.
+          // A scripted teleport lands by the script's coordinates, never by an exit;
+          // `to` is `map/room` by construction, parsed rather than trusted.
           const target = /^(\d{1,3})\/(\d{1,6})$/.exec(to);
           if (target) {
             this.tracker.hintTeleport(command, Number(target[1]), Number(target[2]));
@@ -824,9 +824,8 @@ export class SessionManager {
         this.travel.supersedeJourney();
         this.sink.destination?.(room, name);
       },
-      // The tracker's queue, not the walker's own idea of one: it counts a
-      // typed direction and a leg left over from a walk combat stopped, which
-      // are the moves a route cannot see and is desynchronised by.
+      // The tracker's queue, not the walker's: it counts a typed direction and a leg left over
+      // from a walk combat stopped, the moves a route cannot see and is desynchronised by.
       pendingMoves: () => this.tracker.pendingMoves,
       // A rest, or a floor read after a kill, asked a moment ago and unanswered: a move
       // in flight's kind of fact (`Recovery.restInFlight`, todo 14; `AutoLoot`, 814).
@@ -897,6 +896,7 @@ export class SessionManager {
        * read the answer off the queue — it has to ask.
        */
       lightComing: (state) => this.light.couldReady(state),
+      regrouping: (state) => this.remotes.regrouping(state),
       keyToUse: (keyId) => this.errands.keyToUse(keyId),
       notice: (message) => this.sink.notice(message),
       progress: (progress) => {

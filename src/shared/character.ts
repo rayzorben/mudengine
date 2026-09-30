@@ -1782,11 +1782,16 @@ export function ownAlignment(state: Pick<CharacterState, 'name' | 'online'>): Al
  */
 export function membersBelow(state: CharacterState, share: number): string[] {
   if (share <= 0) return [];
-  const here = new Set(state.room.occupants.map((who) => who.name.toLowerCase()));
+  const here = standingHere(state);
   return joinedMembers(state)
     .filter((member) => here.has(member.name.toLowerCase()))
     .filter((member) => member.health !== null && member.health < share)
     .map((member) => member.name);
+}
+
+/** The names of the people standing in this room, lower-cased. */
+export function standingHere(state: Pick<CharacterState, 'room'>): Set<string> {
+  return new Set(state.room.occupants.map((who) => who.name.toLowerCase()));
 }
 
 /** Everybody besides this character who has joined its party: an invitation is not membership. */

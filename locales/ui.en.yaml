@@ -523,9 +523,10 @@ notices:
       many: '{count} character files moved into their own folders, so each can hold its own loops.'
       one: 1 character file moved into its own folder, so it can hold its own loops.
     partyPacing:
-      many: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {count}
-        files: {fileList}"
-      one: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {fileList}"
+      many: "The party settings (Wait For Party Members, the @party relay and the rest) were added
+        to {count} files: {fileList}"
+      one: "The party settings (Wait For Party Members, the @party relay and the rest) were added
+        to {fileList}"
     healChoice:
       many:
         'Auto Choose Best Heal was added to {count} files, turned on where Auto Choose Best Spell
@@ -973,6 +974,7 @@ tabs:
     markSearching: searching
     markBlocked: blocked
     markLighting: lighting
+    markRegrouping: waiting for party
     markBlind: blind
     markHeld: held
     markPoisoned: poisoned
@@ -2082,6 +2084,7 @@ cards:
       badgeSearching: searching
       badgeBlocked: blocked
       badgeDark: lighting
+      badgeRegrouping: waiting for party
       badgeStopped: stopped
       endedReason: 'Ended: {reason}'
       gatedLabel: Gated
@@ -3853,6 +3856,12 @@ settings:
     waitMinutesHint: Leading, give up a wait and walk on after this many minutes. 0 waits until
       everyone is ready.
     waitMinutesLabel: Wait No Longer Than (minutes)
+    relayPortalsHint: Leading, say @party before a room's own command that moves only you (go
+      vortex), so the party runs it too. A text exit the party follows through needs none.
+    relayPortalsLabel: Relay Portals With @party
+    regroupMinutesHint: After going through one, send par, invite back a member who is here but out
+      of the party, and hold the walk this many minutes for everyone. 0 does not wait.
+    regroupMinutesLabel: Rejoin Wait (minutes)
     warning: It is not yet known whether the game limits commands per connection or per computer.
       These settings make a second automated character useful; turning them on means testing that
       yourself.
@@ -5108,6 +5117,14 @@ automation:
     reasonDefend: 'defend: {target} is attacking {member}'
     reasonRestWithLeader: 'resting with {leader}'
     reasonMeditateWithLeader: 'meditating with {leader}'
+    # Todo 839: the party led through a room's own command, and waited for.
+    reasonRelay: 'leading the party through "{command}"'
+    reasonReinvite: 'inviting {member} back into the party'
+    regrouping: 'Waiting up to {minutes} min for the party to rejoin: {members}.'
+    reinvited: '{member} is here but out of the party; inviting them back.'
+    regrouped: The party is back together; walking on.
+    regroupLeft: Stopped waiting for the party; this character is not in the room the portal leads to.
+    regroupGaveUp: 'Stopped waiting for the party: {members} did not rejoin within {minutes} min.'
   queue:
     fumbledResend: The game ignored "{command}"; sending it again.
   search:

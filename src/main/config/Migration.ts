@@ -2753,9 +2753,9 @@ function stateInFrom(
 }
 
 /**
- * MegaMUD's party settings (todo 831) into every file that states `party:`
- * without them, at the shipped values and with the template's comments, in
- * the template's order after `askForHealBelow`.
+ * MegaMUD's party settings (todo 831) and the `@party` relay's pair (todo 839)
+ * into every file that states `party:` without them, at the shipped values and
+ * with the template's comments, in the template's order after `askForHealBelow`.
  */
 function statedThePartyPacing(
   home: Home,
@@ -2770,7 +2770,9 @@ function statedThePartyPacing(
     ['ignoreParty', d.ignoreParty],
     ['askHealth', d.askHealth],
     ['parSeconds', d.parSeconds],
-    ['parAfterRound', d.parAfterRound]
+    ['parAfterRound', d.parAfterRound],
+    ['relayPortals', d.relayPortals],
+    ['regroupMinutes', d.regroupMinutes]
   ]);
   if (stated.length === 0) return;
   const params = { count: stated.length, fileList: stated.join(', ') };
