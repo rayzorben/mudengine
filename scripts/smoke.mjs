@@ -10690,6 +10690,88 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   }
 
   /*
+   * Find a setting (todo 04): a field's own label typed into the rail's find
+   * field narrows the form to it across sections, and Escape puts it back.
+   * The query is read off the screen, never written here.
+   */
+  {
+    const wanted = await evaluate(`
+      document.querySelector(
+        '.settings-form fieldset[data-fieldset="health-recover"] .settings-field > span'
+      )?.firstChild?.textContent?.trim() ?? ''
+    `);
+    check(wanted.length > 0, `a Recover field has a label to look for (${wanted})`);
+    const sectionsBefore = await evaluate(
+      `document.querySelectorAll('.settings-nav-section').length`
+    );
+    await evaluate(`
+      (() => {
+        const input = document.querySelector('.settings-nav .table-find input');
+        if (!input) return false;
+        input.focus();
+        const set = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value'
+        ).set;
+        set.call(input, ${JSON.stringify(wanted)});
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    const found = await waitFor(async () =>
+      evaluate(`
+        !!document.querySelector(
+          '.settings-form fieldset[data-fieldset="health-recover"] .settings-field[data-search="hit"]'
+        )
+      `)
+    );
+    check(found, 'the field it names is marked');
+    const narrowed = JSON.parse(
+      await evaluate(`
+        JSON.stringify({
+          rows: [...document.querySelectorAll('.settings-nav-section')].map((b) => b.dataset.section),
+          heading: !!document.querySelector('.settings-section-heading[data-section="health"]'),
+          hidden: document.querySelectorAll('.settings-section[data-search="miss"]').length,
+          recover: document.querySelector('fieldset[data-fieldset="health-recover"]')?.offsetParent !== null
+        })
+      `)
+    );
+    check(
+      narrowed.rows.includes('health') && narrowed.rows.length < sectionsBefore,
+      `the rail lists the sections that answer it (${narrowed.rows.join(', ')} of ${sectionsBefore})`
+    );
+    check(narrowed.heading && narrowed.recover, 'and the form draws Health under its heading');
+    check(narrowed.hidden > 0, `and leaves out the sections that do not (${narrowed.hidden})`);
+
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    const cleared = await waitFor(async () =>
+      evaluate(`
+        document.querySelector('.settings-nav .table-find input')?.value === '' &&
+          !document.querySelector('.settings-form [data-search]') &&
+          !document.querySelector('.settings-section-heading')
+      `)
+    );
+    check(cleared, 'Escape clears the find field and puts every field back');
+    check(
+      (await evaluate(`!!document.querySelector('.settings-body')`)) &&
+        (await evaluate(
+          `document.querySelector('.settings-nav-section[data-section="health"]')?.dataset.active === 'true'`
+        )),
+      'and leaves settings open on the section it was on'
+    );
+  }
+
+  /*
    * One label column for the whole page, measured rather than eyeballed.
    *
    * This section is where the defect showed: three fieldsets of percentages,

@@ -3954,6 +3954,8 @@ settings:
     login: Login
   nav:
     character: Which character
+    find: Find a setting
+    findNone: No setting matches.
     label: Settings sections
     realm: Which realm
   spells:

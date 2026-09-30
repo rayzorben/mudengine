@@ -12,6 +12,8 @@ import MobRuleList from './MobRuleList';
 import GearSetList from './GearSetList';
 import PotionList from './PotionList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
+import SettingsSection from './SettingsSection';
+import type { SettingsFind } from '../hooks/useSettingsFind';
 import SpellField from './SpellPicker';
 import HealFields from './HealFields';
 import CarrySections from './CarrySections';
@@ -106,6 +108,8 @@ export interface GlobalSettingsProps {
    * written on its own — see `useAutoSave`.
    */
   actions: React.ReactNode;
+  /** The rail's find field; while it has words every section of this half is drawn. */
+  find: SettingsFind;
 }
 
 /** Which half of the file this form is showing. */
@@ -261,7 +265,8 @@ export default function GlobalSettings({
   firstFieldRef,
   realmSpells,
   palette,
-  actions
+  actions,
+  find
 }: GlobalSettingsProps): React.JSX.Element {
   /*
    * The first section of whichever half is showing.
@@ -272,6 +277,9 @@ export default function GlobalSettings({
    */
   const [section, setSection] = useState<Section>(() => SECTIONS[scope][0]!);
   const shown = SECTIONS[scope].includes(section) ? section : SECTIONS[scope][0]!;
+  const shows = (id: Section): boolean =>
+    find.searching ? SECTIONS[scope].includes(id) : shown === id;
+  const sectionOf = (id: Section) => ({ id, label: SECTION_LABEL[id], searching: find.searching });
 
   /**
    * One block at a time, merged onto the draft.
@@ -356,6 +364,7 @@ export default function GlobalSettings({
     */
     <>
       <SettingsNav
+        find={find}
         onSection={(id: string) => setSection(id as Section)}
         section={shown}
         sections={SECTIONS[scope].map((id) => ({
@@ -381,8 +390,8 @@ export default function GlobalSettings({
           <p className="settings-note">{t('settings.global.startingValuesNote')}</p>
         )}
 
-        {shown === 'appearance' && (
-          <>
+        {shows('appearance') && (
+          <SettingsSection {...sectionOf('appearance')}>
             <TextField
               hint={t('settings.client.appearance.consoleFontHint')}
               inputRef={firstFieldRef}
@@ -594,11 +603,11 @@ export default function GlobalSettings({
                 ))}
               </fieldset>
             </Advanced>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'realm' && (
-          <>
+        {shows('realm') && (
+          <SettingsSection {...sectionOf('realm')}>
             <p className="settings-note">{t('settings.global.realm.noteBeforeCharacter')}</p>
 
             <div className="settings-inline">
@@ -722,11 +731,11 @@ export default function GlobalSettings({
                 </button>
               </fieldset>
             </Advanced>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'combat' && (
-          <>
+        {shows('combat') && (
+          <SettingsSection {...sectionOf('combat')}>
             <CheckField
               checked={draft.automation.enabled}
               hint={t('settings.combat.masterSwitchHint')}
@@ -980,11 +989,11 @@ export default function GlobalSettings({
             </Advanced>
 
             <p className="settings-note">{t('settings.combat.rulesPointerNote')}</p>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'health' && (
-          <>
+        {shows('health') && (
+          <SettingsSection {...sectionOf('health')}>
             <fieldset className="settings-menus" data-fieldset="health-recover">
               <legend>{t('settings.health.recoverLegend')}</legend>
               <p className="settings-note">{t('settings.health.restingNote')}</p>
@@ -1229,11 +1238,11 @@ export default function GlobalSettings({
                 value={draft.automation.pvp.action}
               />
             </fieldset>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'spells' && (
-          <>
+        {shows('spells') && (
+          <SettingsSection {...sectionOf('spells')}>
             <p className="settings-note">{t('settings.spells.rulesPointerNote')}</p>
             <CheckField
               checked={draft.automation.spells.autoChoose}
@@ -1423,11 +1432,11 @@ export default function GlobalSettings({
                 }
               />
             </fieldset>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'party' && (
-          <>
+        {shows('party') && (
+          <SettingsSection {...sectionOf('party')}>
             <PartyFields
               bands={draft.ui.vitals.hp}
               namePrefix="global-"
@@ -1478,11 +1487,11 @@ export default function GlobalSettings({
               />
             </fieldset>
             <p className="settings-note">{t('settings.party.blessingsMoved')}</p>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'movement' && (
-          <>
+        {shows('movement') && (
+          <SettingsSection {...sectionOf('movement')}>
             {/* Four questions, four fieldsets (todo 00) -- the character page
               groups them the same way, because one setting keeps one shape on
               every page that shows it. */}
@@ -1846,126 +1855,128 @@ export default function GlobalSettings({
                 wide
               />
             </Advanced>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'train' && (
-          <fieldset className="settings-menus" data-fieldset="train">
-            <legend>{t('settings.train.legend')}</legend>
-            <p className="settings-warn">{t('settings.train.warning')}</p>
-            <CheckField
-              checked={draft.automation.train.stats}
-              hint={t('settings.train.statsHint')}
-              label={t('settings.train.stats')}
-              name="global-train-stats"
-              onChange={(value) =>
-                automation({ train: { ...draft.automation.train, stats: value } })
-              }
-            />
-            <p className="settings-note">{t('settings.train.wantedNote')}</p>
-            <div className="settings-inline">
-              <NumberField
-                label={t('settings.train.strength')}
-                name="global-train-strength"
+        {shows('train') && (
+          <SettingsSection {...sectionOf('train')}>
+            <fieldset className="settings-menus" data-fieldset="train">
+              <legend>{t('settings.train.legend')}</legend>
+              <p className="settings-warn">{t('settings.train.warning')}</p>
+              <CheckField
+                checked={draft.automation.train.stats}
+                hint={t('settings.train.statsHint')}
+                label={t('settings.train.stats')}
+                name="global-train-stats"
                 onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        strength: Number.parseInt(value, 10) || 0
-                      }
-                    }
-                  })
+                  automation({ train: { ...draft.automation.train, stats: value } })
                 }
-                value={draft.automation.train.wanted.strength}
               />
-              <NumberField
-                label={t('settings.train.intellect')}
-                name="global-train-intellect"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        intellect: Number.parseInt(value, 10) || 0
+              <p className="settings-note">{t('settings.train.wantedNote')}</p>
+              <div className="settings-inline">
+                <NumberField
+                  label={t('settings.train.strength')}
+                  name="global-train-strength"
+                  onChange={(value) =>
+                    automation({
+                      train: {
+                        ...draft.automation.train,
+                        wanted: {
+                          ...draft.automation.train.wanted,
+                          strength: Number.parseInt(value, 10) || 0
+                        }
                       }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.intellect}
-              />
-              <NumberField
-                label={t('settings.train.willpower')}
-                name="global-train-willpower"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        willpower: Number.parseInt(value, 10) || 0
+                    })
+                  }
+                  value={draft.automation.train.wanted.strength}
+                />
+                <NumberField
+                  label={t('settings.train.intellect')}
+                  name="global-train-intellect"
+                  onChange={(value) =>
+                    automation({
+                      train: {
+                        ...draft.automation.train,
+                        wanted: {
+                          ...draft.automation.train.wanted,
+                          intellect: Number.parseInt(value, 10) || 0
+                        }
                       }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.willpower}
-              />
-              <NumberField
-                label={t('settings.train.agility')}
-                name="global-train-agility"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        agility: Number.parseInt(value, 10) || 0
+                    })
+                  }
+                  value={draft.automation.train.wanted.intellect}
+                />
+                <NumberField
+                  label={t('settings.train.willpower')}
+                  name="global-train-willpower"
+                  onChange={(value) =>
+                    automation({
+                      train: {
+                        ...draft.automation.train,
+                        wanted: {
+                          ...draft.automation.train.wanted,
+                          willpower: Number.parseInt(value, 10) || 0
+                        }
                       }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.agility}
-              />
-              <NumberField
-                label={t('settings.train.health')}
-                name="global-train-health"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        health: Number.parseInt(value, 10) || 0
+                    })
+                  }
+                  value={draft.automation.train.wanted.willpower}
+                />
+                <NumberField
+                  label={t('settings.train.agility')}
+                  name="global-train-agility"
+                  onChange={(value) =>
+                    automation({
+                      train: {
+                        ...draft.automation.train,
+                        wanted: {
+                          ...draft.automation.train.wanted,
+                          agility: Number.parseInt(value, 10) || 0
+                        }
                       }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.health}
-              />
-              <NumberField
-                label={t('settings.train.charm')}
-                name="global-train-charm"
-                onChange={(value) =>
-                  automation({
-                    train: {
-                      ...draft.automation.train,
-                      wanted: {
-                        ...draft.automation.train.wanted,
-                        charm: Number.parseInt(value, 10) || 0
+                    })
+                  }
+                  value={draft.automation.train.wanted.agility}
+                />
+                <NumberField
+                  label={t('settings.train.health')}
+                  name="global-train-health"
+                  onChange={(value) =>
+                    automation({
+                      train: {
+                        ...draft.automation.train,
+                        wanted: {
+                          ...draft.automation.train.wanted,
+                          health: Number.parseInt(value, 10) || 0
+                        }
                       }
-                    }
-                  })
-                }
-                value={draft.automation.train.wanted.charm}
-              />
-            </div>
-          </fieldset>
+                    })
+                  }
+                  value={draft.automation.train.wanted.health}
+                />
+                <NumberField
+                  label={t('settings.train.charm')}
+                  name="global-train-charm"
+                  onChange={(value) =>
+                    automation({
+                      train: {
+                        ...draft.automation.train,
+                        wanted: {
+                          ...draft.automation.train.wanted,
+                          charm: Number.parseInt(value, 10) || 0
+                        }
+                      }
+                    })
+                  }
+                  value={draft.automation.train.wanted.charm}
+                />
+              </div>
+            </fieldset>
+          </SettingsSection>
         )}
 
-        {shown === 'gear' && (
-          <>
+        {shows('gear') && (
+          <SettingsSection {...sectionOf('gear')}>
             {/*
               The kit, and when to be in it (todo 00). No monster suggestions
               here: which monsters exist is a property of a realm, and this
@@ -2029,87 +2040,91 @@ export default function GlobalSettings({
                 />
               </div>
             </fieldset>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'quests' && (
-          <fieldset className="settings-menus" data-fieldset="quests">
-            <legend>{t('settings.quests.legend')}</legend>
-            {/*
-              In the open, like opening fights unasked: a run has the character
-              for as long as a chain takes, and the sentence that says so is
-              not a tooltip.
+        {shows('quests') && (
+          <SettingsSection {...sectionOf('quests')}>
+            <fieldset className="settings-menus" data-fieldset="quests">
+              <legend>{t('settings.quests.legend')}</legend>
+              {/*
+                In the open, like opening fights unasked: a run has the character
+                for as long as a chain takes, and the sentence that says so is
+                not a tooltip.
+              */}
+              <p className="settings-warn">{t('settings.quests.warning')}</p>
+              <CheckField
+                checked={draft.automation.quests.enabled}
+                hint={t('settings.quests.enabledHint')}
+                label={t('settings.quests.enabled')}
+                name="global-quests-enabled"
+                onChange={(value) => automation({ quests: { enabled: value } })}
+              />
+            </fieldset>
+          </SettingsSection>
+        )}
+
+        {shows('remotes') && (
+          <SettingsSection {...sectionOf('remotes')}>
+            <fieldset className="settings-menus" data-fieldset="remotes">
+              <legend>{t('settings.remotes.legend')}</legend>
+              {/*
+              In the open, like Hang up and opening fights unasked, and for the
+              same reason: what this turns on is a channel by which somebody
+              else's typing moves a character.
             */}
-            <p className="settings-warn">{t('settings.quests.warning')}</p>
-            <CheckField
-              checked={draft.automation.quests.enabled}
-              hint={t('settings.quests.enabledHint')}
-              label={t('settings.quests.enabled')}
-              name="global-quests-enabled"
-              onChange={(value) => automation({ quests: { enabled: value } })}
-            />
-          </fieldset>
+              <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
+              <CheckField
+                checked={draft.automation.remotes.enabled}
+                hint={t('settings.remotes.answerHint')}
+                label={t('settings.remotes.enabledLabel')}
+                name="global-remotes-enabled"
+                onChange={(value) =>
+                  automation({ remotes: { ...draft.automation.remotes, enabled: value } })
+                }
+              />
+              {/*
+              The gate, here as well as on the character page.
+
+              These are the values a character **copies at creation**, so a Global
+              page that could set the switch and not the grants would hand every
+              new character a feature switched on and answering nobody — with the
+              only surface able to fix it being somewhere else. That is the
+              copied-once template failure this project already wrote down.
+            */}
+              {draft.automation.remotes.enabled && (
+                <>
+                  <RemoteSwitches
+                    autoJoin={draft.automation.remotes.autoJoin}
+                    gang={draft.automation.remotes.gang}
+                    gangpath={draft.automation.remotes.gangpath}
+                    name="global-remotes"
+                    onAutoJoin={(value) =>
+                      automation({ remotes: { ...draft.automation.remotes, autoJoin: value } })
+                    }
+                    onGang={(value) =>
+                      automation({ remotes: { ...draft.automation.remotes, gang: value } })
+                    }
+                    onGangpath={(value) =>
+                      automation({ remotes: { ...draft.automation.remotes, gangpath: value } })
+                    }
+                  />
+                </>
+              )}
+              {/*
+              Where the third list is. A permission page that showed two of the
+              three grants would have somebody auditing who can drive this
+              character conclude they had seen all of it.
+            */}
+              <p className="settings-note">{t('settings.remotes.partyListNote')}</p>
+              <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
+              <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
+            </fieldset>
+          </SettingsSection>
         )}
 
-        {shown === 'remotes' && (
-          <fieldset className="settings-menus" data-fieldset="remotes">
-            <legend>{t('settings.remotes.legend')}</legend>
-            {/*
-            In the open, like Hang up and opening fights unasked, and for the
-            same reason: what this turns on is a channel by which somebody
-            else's typing moves a character.
-          */}
-            <p className="settings-warn">{t('settings.remotes.channelWarning')}</p>
-            <CheckField
-              checked={draft.automation.remotes.enabled}
-              hint={t('settings.remotes.answerHint')}
-              label={t('settings.remotes.enabledLabel')}
-              name="global-remotes-enabled"
-              onChange={(value) =>
-                automation({ remotes: { ...draft.automation.remotes, enabled: value } })
-              }
-            />
-            {/*
-            The gate, here as well as on the character page.
-
-            These are the values a character **copies at creation**, so a Global
-            page that could set the switch and not the grants would hand every
-            new character a feature switched on and answering nobody — with the
-            only surface able to fix it being somewhere else. That is the
-            copied-once template failure this project already wrote down.
-          */}
-            {draft.automation.remotes.enabled && (
-              <>
-                <RemoteSwitches
-                  autoJoin={draft.automation.remotes.autoJoin}
-                  gang={draft.automation.remotes.gang}
-                  gangpath={draft.automation.remotes.gangpath}
-                  name="global-remotes"
-                  onAutoJoin={(value) =>
-                    automation({ remotes: { ...draft.automation.remotes, autoJoin: value } })
-                  }
-                  onGang={(value) =>
-                    automation({ remotes: { ...draft.automation.remotes, gang: value } })
-                  }
-                  onGangpath={(value) =>
-                    automation({ remotes: { ...draft.automation.remotes, gangpath: value } })
-                  }
-                />
-              </>
-            )}
-            {/*
-            Where the third list is. A permission page that showed two of the
-            three grants would have somebody auditing who can drive this
-            character conclude they had seen all of it.
-          */}
-            <p className="settings-note">{t('settings.remotes.partyListNote')}</p>
-            <p className="settings-note">{t('settings.remotes.remoteControlNote')}</p>
-            <p className="settings-note">{t('settings.remotes.replyRoutingNote')}</p>
-          </fieldset>
-        )}
-
-        {shown === 'rewrites' && (
-          <>
+        {shows('rewrites') && (
+          <SettingsSection {...sectionOf('rewrites')}>
             <fieldset className="settings-menus" data-fieldset="rewrites-statline">
               <legend>{t('settings.statline.legend')}</legend>
               <CheckField
@@ -2128,11 +2143,11 @@ export default function GlobalSettings({
               palette={palette}
               value={draft.ui.rewrites}
             />
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'alerts' && (
-          <>
+        {shows('alerts') && (
+          <SettingsSection {...sectionOf('alerts')}>
             {/*
             The player's own rows, and the only thing that decides what is
             alerted (todo 02). The same fieldset the character page draws, from
@@ -2191,11 +2206,11 @@ export default function GlobalSettings({
                 />
               </div>
             </fieldset>
-          </>
+          </SettingsSection>
         )}
 
-        {shown === 'records' && (
-          <>
+        {shows('records') && (
+          <SettingsSection {...sectionOf('records')}>
             <p className="settings-note">{t('settings.client.records.note')}</p>
             <CheckField
               checked={draft.logging.enabled}
@@ -2252,7 +2267,7 @@ export default function GlobalSettings({
                 value={draft.logging.maxBytes}
               />
             </Advanced>
-          </>
+          </SettingsSection>
         )}
 
         <div className="settings-actions">{actions}</div>

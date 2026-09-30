@@ -33,13 +33,13 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/main/parse/CharacterTracker.ts': 2539,
   'src/renderer/src/App.tsx': 1786,
   'src/main/automation/Walker.ts': 2039,
-  'src/renderer/src/components/SettingsScreen.tsx': 1282,
+  'src/renderer/src/components/SettingsScreen.tsx': 1219,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
   // rest and meditate fields, shared with the options page (825), and the
   // party's (831).
   // Lowered by the remotes switches it shares with the Global page (`RemoteSwitches`, todo 07).
-  'src/renderer/src/components/CharacterForm.tsx': 1748
+  'src/renderer/src/components/CharacterForm.tsx': 1678
 };
 
 /**
