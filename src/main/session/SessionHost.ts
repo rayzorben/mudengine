@@ -25,6 +25,8 @@ import { t } from '../app/i18n';
 import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
+import { konamiRecords } from './KonamiRecordsFile';
+import type { KonamiDeps } from './konamiWiring';
 import { Reconnect } from './Reconnect';
 import { BUSY_PHASES, SessionManager } from './SessionManager';
 import type { InternalConfig } from '../../shared/internal';
@@ -158,6 +160,12 @@ export interface SessionHostOptions {
    * See `Backscroll`.
    */
   backscrollFor?(id: SessionId): string;
+  /**
+   * Where the planner writes this character's decisions and death and stuck
+   * logs, and the client's home it looks for a provider under. Optional: a
+   * test writes nothing. See `KonamiPlanner`.
+   */
+  konamiFor?(id: SessionId): { dir: string; home: string };
   /**
    * What is known about the other players on *this character's* realm.
    *
@@ -500,7 +508,8 @@ export class SessionHost {
         spellLore: this.options.spellLoreFor?.(id),
         finds: this.options.findsFor?.(id),
         sentences: this.options.sentences?.(),
-        words: () => this.options.wordsFor(id)
+        words: () => this.options.wordsFor(id),
+        konami: this.konamiFor(id, () => slot)
       }
     );
 
@@ -623,6 +632,20 @@ export class SessionHost {
     // file says it lives: the two differ when a saved realm is dialled ad hoc.
     slot.manager.useRealm(this.options.playersAt(target), this.options.belongingsAt(id, target));
     return slot.manager.connect(target);
+  }
+
+  /** The planner's records for one character, reading the slot's backscroll once it exists. */
+  private konamiFor(id: SessionId, slot: () => SessionSlot): KonamiDeps | undefined {
+    const where = this.options.konamiFor?.(id);
+    if (where === undefined) return undefined;
+    return {
+      home: where.home,
+      records: konamiRecords({
+        dir: where.dir,
+        backscroll: (lines) => slot().backscroll.page(lines).text,
+        onProblem: (message) => this.options.notice({ session: id, message })
+      })
+    };
   }
 
   /**

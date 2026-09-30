@@ -15,6 +15,8 @@
 app:
   supplies:
     invalidList: The supplies list could not be read, so nothing was saved.
+  konami:
+    nothingToKeep: There is no plan to keep yet.
   automation:
     unknownSwitch: Unrecognized automation switch.
   config:
@@ -1789,21 +1791,70 @@ cards:
       aloneUnread: '{name} waits for your stats'
       aloneUnrun: '{name} cannot be rated'
     title: Combat
+  # The "what to do next" planner (todo 59).
   konami:
-    title: Konami Mode
+    title: Konami
     badge:
-      active: Active
-      paused: Paused
       off: Off
+      noProvider: No provider
+      paused: Paused
+      asking: Asking
+      running: Running
+    emptyOff: The planner is off for this character.
+    emptyPlan: No plan yet.
+    emptyDecisions: Nothing asked yet.
+    pending: 'Will ask again ({trigger}) once the character is free.'
     headings:
-      objectives: Objectives
-      tactics: Tactical Intelligence
-      trace: Decision Trace
-      terminal: Live Decision Terminal
-    objectives:
-      expGoal: 'Goal: Maximize EXP/hr for current race/class/level'
-      survivalInvariant: 'Invariant: 100% Zero-Death Survival (Auto-Retreat @ 30% HP)'
-    empty: Autonomous decisions disabled.
+      plan: Plan
+      settings: Settings the plan uses
+      decisions: Decisions
+      logs: Death and stuck logs
+    goal:
+      hunt: Hunt {name}
+      buy: Buy {item} at {shop} ({copper} copper)
+      train: Train
+      wait: Stay here
+    goalSwitches: Auto-Hunt, training and shop trips are on while the plan's goal needs them.
+    trigger:
+      entered: entered the realm
+      level: a level
+      trained: trained
+      death: a death
+      goalDone: goal done
+      goalRefused: goal refused
+      cashStep: more cash
+      upgradeAffordable: an upgrade is affordable
+      stuck: stuck
+      asked: asked
+    outcome:
+      applied: in force
+      done: done
+      refused: refused
+      replaced: replaced
+      failed: failed
+    outcomeWhy: '{outcome}: {why}'
+    incident:
+      death: death log
+      stuck: stuck log
+    question:
+      goal: Goal
+      bless: Keep {spell} up
+    layer:
+      attack: Attack
+      opener: Opener
+      sneak: Sneak
+      heal: Heal
+      blessings: Blessings
+      restBelow: Rest below
+      trainFirst: Train first
+      none: none
+      yes: 'yes'
+      no: 'no'
+    pause: Pause
+    resume: Resume
+    askAgain: Ask again
+    keep: Keep these settings
+    keepHint: Write the plan's settings into this character's file.
   copyMenu:
     copy: Copy
     copyCard: Copy card
@@ -4616,6 +4667,29 @@ automation:
     refusalPackUnmoved: Step {nth} was sent and your inventory did not change; this realm shows no
       counter to check instead.
     refusalUnwatched: Step {nth} was sent and nothing on this realm shows whether it worked.
+  # The "what to do next" planner -- `KonamiPlanner` (todo 50). It asks an
+  # outside provider for a plan and hands each goal to what already does it.
+  konami:
+    loaded: 'Konami: asking {provider} what to do next.'
+    noProvider: 'Konami: no decision provider found (looked in {paths}).'
+    notAProvider: 'Konami: {file} does not export a provider with a name and an ask function.'
+    loadFailed: 'Konami: could not load {file}: {error}'
+    timedOut: 'Konami: no answer after {seconds} seconds.'
+    badReply: 'Konami: {provider} answered something other than what was asked.'
+    askFailed: 'Konami: asking {provider} failed: {error}'
+    noBrief: 'Konami: not asking yet: {why}'
+    unplaced: the room is not known yet
+    noWorld: this realm has no world database
+    died: the character died
+    notBought: '{item} was not bought'
+    reasonWear: 'wearing {item}, which the plan bought'
+    goal:
+      hunt: 'Konami: going to hunt {name}.'
+      buy: 'Konami: going to buy {item} at {shop} for {copper} copper.'
+      train: 'Konami: going to train.'
+      wait: 'Konami: nothing worth doing; staying here.'
+    deathLog: 'Konami: death log written to {path}'
+    stuckLog: 'Konami: stuck log written to {path}'
   # Hunting on its own -- `AutoHunt` (todo 05). Every sentence names a figure:
   # what it is going to, what it expects to earn there, or why it will not.
   hunt:
@@ -4637,6 +4711,8 @@ automation:
     refusalNothingReachable: Nothing within reach is worth hunting.
     refusalNotReached: 'Did not reach {room}: {why}'
     started: Hunting {loopName}, for about {rate} exp an hour.
+    steeredAway: the plan moved on to another spot
+    refusalSteeredGone: The spot the plan chose is no longer on the hunting list.
     stoppedForBetter: '{mob} pays better'
     stoodDown: You stopped {loopName}, so Auto-Hunt is paused until this character levels, changes
       gear, or a loop stops for paying too little.

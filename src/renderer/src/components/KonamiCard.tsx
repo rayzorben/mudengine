@@ -2,408 +2,299 @@ import { memo, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import { clock } from '../lib/clock';
+import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import type { AutomationSnapshot } from '@shared/automation';
-import type { CharacterState } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
+import type { KonamiGoal, KonamiLayer, KonamiQuestionName, KonamiTrigger } from '@shared/konami';
+import type { KonamiIncidentKind, KonamiOutcome, KonamiSnapshot } from '@shared/konamiRecords';
 
 export interface KonamiCardProps extends CardChrome {
-  automation: AutomationSnapshot;
-  character: CharacterState;
-  session?: SessionId;
+  konami: KonamiSnapshot;
+  session: SessionId;
 }
 
-function KonamiCard({ automation, character, session, ...chrome }: KonamiCardProps) {
-  const [expandedPayloads, setExpandedPayloads] = useState<Record<string, boolean>>({});
-  const konami = automation.konami;
-  const active = Boolean(konami?.active);
-  const paused = Boolean(konami?.paused);
+/** A goal in one line. */
+function goalText(goal: KonamiGoal): string {
+  switch (goal.kind) {
+    case 'hunt':
+      return t('cards.konami.goal.hunt', { name: goal.name });
+    case 'buy':
+      return t('cards.konami.goal.buy', { item: goal.name, shop: goal.shop, copper: goal.copper });
+    case 'train':
+      return t('cards.konami.goal.train');
+    case 'wait':
+      return t('cards.konami.goal.wait');
+    default: {
+      const never: never = goal;
+      return never;
+    }
+  }
+}
 
-  const togglePayload = (key: string): void => {
-    setExpandedPayloads((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+/** Why a plan was asked for, in words. */
+function triggerText(trigger: KonamiTrigger): string {
+  switch (trigger) {
+    case 'entered':
+      return t('cards.konami.trigger.entered');
+    case 'level':
+      return t('cards.konami.trigger.level');
+    case 'trained':
+      return t('cards.konami.trigger.trained');
+    case 'death':
+      return t('cards.konami.trigger.death');
+    case 'goal-done':
+      return t('cards.konami.trigger.goalDone');
+    case 'goal-refused':
+      return t('cards.konami.trigger.goalRefused');
+    case 'cash-step':
+      return t('cards.konami.trigger.cashStep');
+    case 'upgrade-affordable':
+      return t('cards.konami.trigger.upgradeAffordable');
+    case 'stuck':
+      return t('cards.konami.trigger.stuck');
+    case 'asked':
+      return t('cards.konami.trigger.asked');
+    default: {
+      const never: never = trigger;
+      return never;
+    }
+  }
+}
 
-  const badge = !active ? (
+function outcomeText(outcome: KonamiOutcome): string {
+  switch (outcome) {
+    case 'applied':
+      return t('cards.konami.outcome.applied');
+    case 'done':
+      return t('cards.konami.outcome.done');
+    case 'refused':
+      return t('cards.konami.outcome.refused');
+    case 'replaced':
+      return t('cards.konami.outcome.replaced');
+    case 'failed':
+      return t('cards.konami.outcome.failed');
+    default: {
+      const never: never = outcome;
+      return never;
+    }
+  }
+}
+
+function incidentText(kind: KonamiIncidentKind): string {
+  switch (kind) {
+    case 'death':
+      return t('cards.konami.incident.death');
+    case 'stuck':
+      return t('cards.konami.incident.stuck');
+    default: {
+      const never: never = kind;
+      return never;
+    }
+  }
+}
+
+/** A question's name as the card says it; a blessing's names its spell. */
+function questionText(question: KonamiQuestionName): string {
+  switch (question) {
+    case 'goal':
+      return t('cards.konami.question.goal');
+    case 'attack':
+      return t('cards.konami.layer.attack');
+    case 'opener':
+      return t('cards.konami.layer.opener');
+    case 'sneak':
+      return t('cards.konami.layer.sneak');
+    case 'heal':
+      return t('cards.konami.layer.heal');
+    case 'restBelow':
+      return t('cards.konami.layer.restBelow');
+    case 'trainFirst':
+      return t('cards.konami.layer.trainFirst');
+    default:
+      return t('cards.konami.question.bless', { spell: question.slice('bless_'.length) });
+  }
+}
+
+/** The plan's settings, one row each, in the order the questions are asked. */
+function layerRows(layer: KonamiLayer): Array<[string, string]> {
+  const rows: Array<[string, string]> = [];
+  if (layer.attack !== undefined) rows.push([t('cards.konami.layer.attack'), layer.attack]);
+  if (layer.opener !== undefined) {
+    rows.push([t('cards.konami.layer.opener'), layer.opener || t('cards.konami.layer.none')]);
+  }
+  if (layer.sneak !== undefined) {
+    rows.push([
+      t('cards.konami.layer.sneak'),
+      layer.sneak ? t('cards.konami.layer.yes') : t('cards.konami.layer.no')
+    ]);
+  }
+  if (layer.heal !== undefined) rows.push([t('cards.konami.layer.heal'), layer.heal]);
+  if (layer.blessings !== undefined) {
+    rows.push([
+      t('cards.konami.layer.blessings'),
+      layer.blessings.join(', ') || t('cards.konami.layer.none')
+    ]);
+  }
+  if (layer.restBelow !== undefined) {
+    rows.push([t('cards.konami.layer.restBelow'), `${Math.round(layer.restBelow * 100)}%`]);
+  }
+  if (layer.trainFirst !== undefined) {
+    rows.push([t('cards.konami.layer.trainFirst'), layer.trainFirst]);
+  }
+  return rows;
+}
+
+/**
+ * The "what to do next" planner (todo 59): the plan in force and why it was
+ * asked for, the provider's picks with how sure it was, the settings the plan
+ * lays over the character's own, the recent decisions and the logs written.
+ * Three buttons under it: pause, ask again, keep these settings.
+ */
+function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
+  const api = window.mudengine;
+  const [keepError, setKeepError] = useState<string | null>(null);
+  const badge = !konami.on ? (
     <span className="chip off">{t('cards.konami.badge.off')}</span>
-  ) : paused ? (
+  ) : konami.provider === null ? (
+    <span className="chip warn">{t('cards.konami.badge.noProvider')}</span>
+  ) : konami.paused ? (
     <span className="chip warn">{t('cards.konami.badge.paused')}</span>
+  ) : konami.asking ? (
+    <span className="chip on">{t('cards.konami.badge.asking')}</span>
   ) : (
-    <span className="chip on">{t('cards.konami.badge.active')}</span>
+    <span className="chip on">{t('cards.konami.badge.running')}</span>
   );
-
-  const title = konami?.providerName || t('cards.konami.title');
-
+  const plan = konami.plan;
   return (
     <BentoCard
       {...chrome}
       badge={badge}
-      className="automation-card konami-card"
-      scroll
-      title={title}
+      className="konami-card"
+      paned
+      title={t('cards.konami.title')}
     >
-      {!active ? (
-        <div className="empty">{t('cards.konami.empty')}</div>
-      ) : (
-        <>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 12px',
-              marginBottom: '10px',
-              backgroundColor: 'var(--surface-2, rgba(255, 255, 255, 0.05))',
-              borderRadius: '6px',
-              border: '1px solid var(--border-subtle, rgba(255, 255, 255, 0.1))'
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-bright, #fff)' }}>
-                {title}
-              </div>
-              <div style={{ fontSize: '11px', opacity: 0.75, marginTop: '2px' }}>
-                {paused
-                  ? 'Decisions paused — manual control'
-                  : 'Autonomous 24/7 decision pipeline active'}
-              </div>
+      <div className="scroller">
+        {!konami.on ? (
+          <div className="empty">{t('cards.konami.emptyOff')}</div>
+        ) : (
+          <>
+            {konami.refusal !== null && <div className="empty">{konami.refusal}</div>}
+            {keepError !== null && <div className="empty">{keepError}</div>}
+            <div className="trace-heading">{t('cards.konami.headings.plan')}</div>
+            <div className="trace">
+              {plan === null ? (
+                <div className="empty">{t('cards.konami.emptyPlan')}</div>
+              ) : (
+                <div className="row">
+                  <span className="trace-command">{goalText(plan.goal)}</span>
+                </div>
+              )}
+              {konami.pending !== null && (
+                <div className="row">
+                  <span className="trace-reason">
+                    {t('cards.konami.pending', { trigger: triggerText(konami.pending) })}
+                  </span>
+                </div>
+              )}
+              {plan?.picks.map((pick) => (
+                <div className="row" key={pick.question}>
+                  <span className="trace-priority">{`${Math.round(pick.p * 100)}%`}</span>
+                  <span className="trace-command">{questionText(pick.question)}</span>
+                </div>
+              ))}
             </div>
-            <button
-              type="button"
-              className={`btn chip ${paused ? 'warn' : 'on'}`}
-              style={{
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '12px',
-                padding: '4px 12px',
-                minWidth: '95px',
-                textAlign: 'center'
-              }}
-              onClick={() => {
-                if (session && window.mudengine?.toggleKonamiPause) {
-                  void window.mudengine.toggleKonamiPause(session);
-                }
-              }}
-            >
-              {konami?.buttonLabel ?? (paused ? 'Resume' : 'Pause')}
-            </button>
-          </div>
-
-          <div className="trace-heading">{t('cards.konami.headings.objectives')}</div>
-          <div
-            style={{
-              fontSize: '11px',
-              padding: '6px 10px',
-              marginBottom: '10px',
-              background: 'var(--surface-1, rgba(0, 0, 0, 0.2))',
-              borderRadius: '4px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px'
-            }}
-          >
-            <div style={{ color: 'var(--text-bright, #eee)' }}>
-              🎯 {t('cards.konami.objectives.expGoal')}
-            </div>
-            <div style={{ color: 'var(--accent-ok, #4ade80)' }}>
-              🛡️ {t('cards.konami.objectives.survivalInvariant')}
-            </div>
-          </div>
-
-          <div className="trace-heading">{t('cards.konami.headings.tactics')}</div>
-          <div
-            style={{
-              fontSize: '11px',
-              padding: '6px 10px',
-              marginBottom: '10px',
-              background: 'var(--surface-1, rgba(0, 0, 0, 0.2))',
-              borderRadius: '4px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '6px'
-            }}
-          >
-            {konami?.macroDirective && (
-              <div>
-                <span style={{ opacity: 0.6, marginRight: '6px' }}>Macro Directive:</span>
-                <strong style={{ color: 'var(--accent-ok, #4ade80)' }}>
-                  {konami.macroDirective}
-                </strong>
-                {konami?.macroReason && (
-                  <div style={{ opacity: 0.75, fontSize: '10px', marginTop: '2px' }}>
-                    {konami.macroReason}
+            {plan !== null && (
+              <>
+                <div className="trace-heading">{t('cards.konami.headings.settings')}</div>
+                <div className="trace">
+                  <div className="row">
+                    <span className="trace-reason">{t('cards.konami.goalSwitches')}</span>
                   </div>
-                )}
-              </div>
+                  {layerRows(plan.layer).map(([name, value]) => (
+                    <div className="row" key={name}>
+                      <span className="trace-command">{name}</span>
+                      <span className="trace-reason">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
-
-            <div>
-              <span style={{ opacity: 0.6, marginRight: '6px' }}>Opener:</span>
-              <strong style={{ color: 'var(--accent, #38bdf8)' }}>
-                {konami?.nextOpener ?? 'Evaluated per engagement'}
-              </strong>
-              {konami?.nextOpenerReason && (
-                <span style={{ opacity: 0.7, marginLeft: '6px' }}>({konami.nextOpenerReason})</span>
+            <div className="trace-heading">{t('cards.konami.headings.decisions')}</div>
+            <div className="trace">
+              {konami.decisions.length === 0 ? (
+                <div className="empty">{t('cards.konami.emptyDecisions')}</div>
+              ) : (
+                konami.decisions.map((decision) => (
+                  <div
+                    className={`row${decision.outcome === 'failed' || decision.outcome === 'refused' ? ' blocked' : ''}`}
+                    key={decision.id}
+                  >
+                    <span className="trace-at">{clock(decision.at)}</span>
+                    <span className="trace-priority">{triggerText(decision.trigger)}</span>
+                    <span className="trace-command">
+                      {decision.plan === null
+                        ? (decision.refusal ?? '')
+                        : goalText(decision.plan.goal)}
+                    </span>
+                    <span className="trace-reason">
+                      {decision.outcomeWhy === null
+                        ? outcomeText(decision.outcome)
+                        : t('cards.konami.outcomeWhy', {
+                            outcome: outcomeText(decision.outcome),
+                            why: decision.outcomeWhy
+                          })}
+                    </span>
+                  </div>
+                ))
               )}
             </div>
-
-            {konami?.roundTactic && (
-              <div>
-                <span style={{ opacity: 0.6, marginRight: '6px' }}>Round Tactic:</span>
-                <span>{konami.roundTactic}</span>
-              </div>
-            )}
-
-            {konami?.huntingTarget && (
-              <div>
-                <span style={{ opacity: 0.6, marginRight: '6px' }}>Target Lair:</span>
-                <span style={{ color: 'var(--accent-ok, #4ade80)' }}>{konami.huntingTarget}</span>
-              </div>
-            )}
-
-            <div>
-              <span style={{ opacity: 0.6, marginRight: '6px' }}>Character:</span>
-              <span>
-                {character.name || 'Soul'} · Lv {character.progress.level}{' '}
-                {character.className || 'Priest'} ({character.vitals.hp}/{character.vitals.hpMax} HP)
-              </span>
-            </div>
-          </div>
-
-          <div
-            className="trace-heading"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-          >
-            <span>{t('cards.konami.headings.terminal')}</span>
-            <span style={{ fontSize: '10px', opacity: 0.6, textTransform: 'none', fontWeight: 'normal' }}>
-              Streaming Live I/O
-            </span>
-          </div>
-          <div
-            style={{
-              backgroundColor: '#0d1117',
-              border: '1px solid #30363d',
-              borderRadius: '6px',
-              padding: '8px 10px',
-              marginBottom: '10px',
-              fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
-              fontSize: '11px',
-              lineHeight: '1.4',
-              maxHeight: '300px',
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}
-          >
-            {!konami?.transactions || konami.transactions.length === 0 ? (
-              <div style={{ color: '#8b949e', fontStyle: 'italic', padding: '6px 0' }}>
-                Waiting for first autonomous decision transaction...
-              </div>
-            ) : (
-              konami.transactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  style={{
-                    borderBottom: '1px solid #21262d',
-                    paddingBottom: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '4px'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      <span style={{ color: '#8b949e', fontSize: '10px' }}>[{clock(tx.timestamp)}]</span>
-                      <span
-                        style={{
-                          backgroundColor:
-                            tx.type === 'macro' ? '#238636' : tx.type === 'opener' ? '#1f6feb' : '#8957e5',
-                          color: '#fff',
-                          padding: '1px 5px',
-                          borderRadius: '3px',
-                          fontSize: '9px',
-                          fontWeight: 600,
-                          textTransform: 'uppercase'
-                        }}
-                      >
-                        {tx.type}
-                      </span>
-                      {tx.confidence !== undefined && (
-                        <span style={{ color: '#58a6ff', fontSize: '10px' }}>
-                          {Math.round(tx.confidence * 100)}% conf
-                        </span>
-                      )}
+            {konami.incidents.length > 0 && (
+              <>
+                <div className="trace-heading">{t('cards.konami.headings.logs')}</div>
+                <div className="trace">
+                  {konami.incidents.map((incident) => (
+                    <div className="row blocked" key={`${incident.kind}-${incident.at}`}>
+                      <span className="trace-at">{clock(incident.at)}</span>
+                      <span className="trace-priority">{incidentText(incident.kind)}</span>
+                      <span className="trace-reason">{incident.path ?? ''}</span>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      {tx.feedback === 'correct' ? (
-                        <span style={{ color: '#3fb950', fontSize: '10px', fontWeight: 600 }}>
-                          ✓ Correct
-                        </span>
-                      ) : tx.feedback === 'incorrect' ? (
-                        <span style={{ color: '#f85149', fontSize: '10px', fontWeight: 600 }}>
-                          ✗ Incorrect
-                        </span>
-                      ) : (
-                        session && (
-                          <>
-                            <button
-                              type="button"
-                              style={{
-                                cursor: 'pointer',
-                                background: 'rgba(46, 160, 67, 0.15)',
-                                border: '1px solid #2ea043',
-                                color: '#3fb950',
-                                borderRadius: '3px',
-                                padding: '1px 6px',
-                                fontSize: '10px'
-                              }}
-                              onClick={() => {
-                                if (window.mudengine?.submitKonamiFeedback) {
-                                  void window.mudengine.submitKonamiFeedback(
-                                    session,
-                                    tx.id,
-                                    'correct'
-                                  );
-                                }
-                              }}
-                              title="Reinforce decision as correct"
-                            >
-                              👍 Correct
-                            </button>
-                            <button
-                              type="button"
-                              style={{
-                                cursor: 'pointer',
-                                background: 'rgba(248, 81, 73, 0.15)',
-                                border: '1px solid #f85149',
-                                color: '#f85149',
-                                borderRadius: '3px',
-                                padding: '1px 6px',
-                                fontSize: '10px'
-                              }}
-                              onClick={() => {
-                                if (window.mudengine?.submitKonamiFeedback) {
-                                  void window.mudengine.submitKonamiFeedback(
-                                    session,
-                                    tx.id,
-                                    'incorrect',
-                                    'Marked incorrect by player'
-                                  );
-                                }
-                              }}
-                              title="Mark incorrect to disallow target and critique future prompts"
-                            >
-                              👎 Incorrect
-                            </button>
-                          </>
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ color: '#58a6ff' }}>
-                    <span style={{ opacity: 0.7 }}>&gt;&gt;&gt; [REQUEST] </span>
-                    <span>{tx.requestSummary}</span>
-                    {tx.requestDetail && (
-                      <button
-                        type="button"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#8b949e',
-                          cursor: 'pointer',
-                          fontSize: '10px',
-                          marginLeft: '6px',
-                          textDecoration: 'underline'
-                        }}
-                        onClick={() => togglePayload(`${tx.id}-req`)}
-                      >
-                        {expandedPayloads[`${tx.id}-req`] ? 'hide payload' : 'show payload'}
-                      </button>
-                    )}
-                  </div>
-                  {expandedPayloads[`${tx.id}-req`] && tx.requestDetail && (
-                    <pre
-                      style={{
-                        margin: '4px 0',
-                        padding: '6px',
-                        background: '#161b22',
-                        borderRadius: '4px',
-                        fontSize: '10px',
-                        overflowX: 'auto',
-                        color: '#c9d1d9',
-                        whiteSpace: 'pre-wrap'
-                      }}
-                    >
-                      {tx.requestDetail}
-                    </pre>
-                  )}
-
-                  <div style={{ color: '#3fb950' }}>
-                    <span style={{ opacity: 0.7 }}>&lt;&lt;&lt; [RESPONSE] </span>
-                    <span>{tx.responseSummary}</span>
-                    {tx.responseDetail && (
-                      <button
-                        type="button"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#8b949e',
-                          cursor: 'pointer',
-                          fontSize: '10px',
-                          marginLeft: '6px',
-                          textDecoration: 'underline'
-                        }}
-                        onClick={() => togglePayload(`${tx.id}-resp`)}
-                      >
-                        {expandedPayloads[`${tx.id}-resp`] ? 'hide raw' : 'show raw'}
-                      </button>
-                    )}
-                  </div>
-                  {expandedPayloads[`${tx.id}-resp`] && tx.responseDetail && (
-                    <pre
-                      style={{
-                        margin: '4px 0',
-                        padding: '6px',
-                        background: '#161b22',
-                        borderRadius: '4px',
-                        fontSize: '10px',
-                        overflowX: 'auto',
-                        color: '#7ee787',
-                        whiteSpace: 'pre-wrap'
-                      }}
-                    >
-                      {tx.responseDetail}
-                    </pre>
-                  )}
-
-                  <div style={{ color: '#d29922' }}>
-                    <span style={{ opacity: 0.7 }}>=== [INTERPRETATION] </span>
-                    <span>{tx.interpretation}</span>
-                  </div>
+                  ))}
                 </div>
-              ))
+              </>
             )}
-          </div>
-
-          {konami?.decisions && konami.decisions.length > 0 && (
-            <>
-              <div className="trace-heading">{t('cards.konami.headings.trace')}</div>
-              <div className="trace">
-                {konami.decisions.slice(0, 10).map((d, index) => (
-                  <div className="row" key={`${d.timestamp}-${index}`}>
-                    <span className="trace-at">{clock(d.timestamp)}</span>
-                    <span className="trace-priority" style={{ textTransform: 'uppercase' }}>
-                      {d.type}
-                    </span>
-                    <span className="trace-command">{d.action}</span>
-                    <span className="trace-reason">{d.reason ?? ''}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </>
+          </>
+        )}
+      </div>
+      {konami.on && (
+        <div className="loop-controls konami-actions">
+          <button
+            className="quiet"
+            onClick={() => void api?.konamiPause(session)}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {konami.paused ? t('cards.konami.resume') : t('cards.konami.pause')}
+          </button>
+          <button
+            className="quiet"
+            disabled={konami.paused || konami.asking}
+            onClick={() => void api?.konamiAsk(session)}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {t('cards.konami.askAgain')}
+          </button>
+          <button
+            className="quiet"
+            disabled={plan === null}
+            onClick={() => void api?.konamiKeep(session).then(setKeepError)}
+            onMouseDown={keepFocus}
+            title={t('cards.konami.keepHint')}
+            type="button"
+          >
+            {t('cards.konami.keep')}
+          </button>
+        </div>
       )}
     </BentoCard>
   );

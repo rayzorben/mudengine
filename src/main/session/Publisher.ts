@@ -10,6 +10,7 @@
  * told is the publisher's*, and `parts/terminal.md` › *Nothing in it
  * redacts, and nothing may*.
  */
+import type { KonamiSnapshot } from '../../shared/konamiRecords';
 import { tuning } from '../app/tuning';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { RuleEngine } from '../automation/RuleEngine';
@@ -42,7 +43,8 @@ export interface PublisherParts {
 export interface PublisherSession {
   /** The automation settings as last loaded. */
   config(): AutomationConfig;
-  konamiSnapshot?(): { active: boolean; paused: boolean; buttonLabel: string } | undefined;
+  /** The planner's plan and decisions. See `KonamiPlanner`. */
+  konami(): KonamiSnapshot;
 }
 
 /** The members of the session's sink this calls, and no more. */
@@ -211,7 +213,7 @@ export class Publisher {
       firings: this.rules.firings.reverse(),
       safety: [...this.safetyLog].reverse(),
       engagements: [...this.engageLog].reverse(),
-      konami: this.session.konamiSnapshot?.()
+      konami: this.session.konami()
     };
   }
 

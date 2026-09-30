@@ -119,6 +119,9 @@ export const WEAPON_HAND = 'Weapon Hand';
 /** Its `Items.Worn` code: the one slot ranked by what it does rather than what it stops. */
 export const WEAPON_WORN = 1;
 
+/** `Worn` and `Readied` (16, 17): what is carried to use, a light or a thrown weapon, not what protects. */
+export const USED_NOT_WORN: ReadonlySet<number> = new Set([16, 17]);
+
 /**
  * `Worn` code 12 — the other hand, which a two-handed weapon takes with it.
  *

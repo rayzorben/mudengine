@@ -5,6 +5,7 @@ import {
   castOdds,
   dodge,
   regeneration,
+  martialRoundDamage,
   roundDamage,
   REGEN_TICK_SECONDS,
   swing,
@@ -385,5 +386,29 @@ describe('damage a round, by how the weapon is swung', () => {
 
   it('answers nothing outside GreaterMUD', () => {
     expect(roundDamage(SHEET, blade, 'attack', 'majormud')).toBeNull();
+  });
+});
+
+describe('a martial-arts round', () => {
+  const bare = { ...SHEET, stated: null };
+
+  it('takes its range from the level and its blows from the attack’s own speed', () => {
+    // Level 10: a punch is 10/8 + 2 = 3 to (10 + 3)/4 + 6 = 9, at speed 1150.
+    const swings = swingsPerRound(bare, { min: 3, max: 9, speed: 1150 }, 'greatermud')!.value;
+    const punch = martialRoundDamage(bare, 'punch', 0, 'greatermud');
+    expect(punch?.value).toBeCloseTo((Math.min(6, swings) * 12) / 2, 6);
+    expect(punch?.from).toBe('bound');
+  });
+
+  it('adds the attack’s damage ability to both ends and multiplies a kick by 1.33', () => {
+    // Level 10: a kick is 3 to 10/5 + 7 = 9, plus 2 at each end.
+    const swings = swingsPerRound(bare, { min: 5, max: 11, speed: 1400 }, 'greatermud')!.value;
+    const kick = martialRoundDamage(bare, 'kick', 2, 'greatermud')!.value;
+    expect(kick).toBeCloseTo((Math.min(6, swings) * 16 * 1.33) / 2, 6);
+  });
+
+  it('knows nothing without a level or off the GreaterMUD lineage', () => {
+    expect(martialRoundDamage({ ...bare, level: null }, 'jumpkick', 0, 'greatermud')).toBeNull();
+    expect(martialRoundDamage(bare, 'jumpkick', 0, 'majormud')).toBeNull();
   });
 });

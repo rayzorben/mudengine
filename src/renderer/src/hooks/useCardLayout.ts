@@ -26,7 +26,8 @@ const IDS: readonly CardId[] = CARDS.map((card) => card.id);
  * would be a slot spent on "this character is in no gang" for nearly everybody.
  * Banks is the same shape: a character that has never banked has nothing for it
  * to say. Combat Stats is the other shape — a card somebody opens to ask a
- * question rather than one they watch while playing.
+ * question rather than one they watch while playing. Konami is the planner's,
+ * and only a character with the planner switched on has anything for it.
  */
 const DEFAULT_AWAY: readonly CardId[] = [
   'inventory',
@@ -36,7 +37,8 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'stats',
   'builder',
   'quests',
-  'hunting'
+  'hunting',
+  'konami'
 ];
 
 /**

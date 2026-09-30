@@ -721,10 +721,12 @@ export const Invoke = {
   getWalk: 'walk:get',
   /** The decision trace, for a renderer that mounted mid-session. */
   getAutomation: 'automation:get',
-  /** Toggle external decision provider pause state. */
-  toggleKonamiPause: 'automation:toggle-konami-pause',
-  /** Submit feedback for a decision transaction. */
-  submitKonamiFeedback: 'automation:submit-konami-feedback',
+  /** The Konami card's pause: the plan's settings come off, or it asks again. */
+  konamiPause: 'automation:konami-pause',
+  /** The Konami card's *ask again*. */
+  konamiAsk: 'automation:konami-ask',
+  /** The Konami card's *keep these*: the plan's settings written into the character's file. */
+  konamiKeep: 'automation:konami-keep',
 
   // -- sessions and windows
   /** Every loaded session, for a window that has just mounted. */
@@ -1258,13 +1260,11 @@ export interface IpcApi {
   draftLoop(session: SessionId, rooms: RoomId[]): Promise<LoopDraft>;
   getWalk(session: SessionId): Promise<WalkProgress>;
   getAutomation(session: SessionId): Promise<AutomationSnapshot>;
-  toggleKonamiPause(session: SessionId): Promise<boolean>;
-  submitKonamiFeedback(
-    session: SessionId,
-    transactionId: string,
-    feedback: 'correct' | 'incorrect',
-    notes?: string
-  ): Promise<boolean>;
+  /** Paused afterwards. See `Invoke.konamiPause`. */
+  konamiPause(session: SessionId): Promise<boolean>;
+  konamiAsk(session: SessionId): Promise<void>;
+  /** The error, or null once written. See `Invoke.konamiKeep`. */
+  konamiKeep(session: SessionId): Promise<string | null>;
 
   listSessions(): Promise<SessionSummary[]>;
   listProfiles(): Promise<ProfileSummary[]>;

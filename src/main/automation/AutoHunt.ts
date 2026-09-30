@@ -28,7 +28,6 @@ import { huntLoop, type HuntingAdvice, type HuntingSpot } from '../../shared/hun
 import type { Loop } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
 import type { SessionModule } from './Module';
-import type { KonamiBridge } from './KonamiBridge';
 
 export interface HuntPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -100,11 +99,6 @@ export class AutoHunt implements SessionModule {
   private surveyedAt = 0;
   /** The refusal last said, so one situation is said once. */
   private said: string | null = null;
-  private konami?: KonamiBridge;
-
-  setKonamiBridge(bridge: KonamiBridge): void {
-    this.konami = bridge;
-  }
   /**
    * What the estimate was made *for*, so a changed character asks again.
    *
@@ -115,6 +109,8 @@ export class AutoHunt implements SessionModule {
    * is what turns `LoopEvents.betterSpot` from a sentence into a move.
    */
   private judgedFor: string | null = null;
+  /** See `steer`. */
+  private steered: string | null | undefined = undefined;
   /**
    * Lairs somebody else was seen working, and when.
    *
@@ -184,6 +180,28 @@ export class AutoHunt implements SessionModule {
     this.correction.clear();
   }
 
+  /**
+   * The spot an outside plan names (`KonamiPlanner`, todo 54): only that key,
+   * nowhere (null), or this module's own choice (undefined). Every guard
+   * below still holds; what changes is which spots are candidates. A lap this
+   * module started for another spot is ended, since the plan has moved on.
+   */
+  steer(key: string | null | undefined): void {
+    if (key === this.steered) return;
+    this.steered = key;
+    this.said = null;
+    this.judgedFor = null;
+    this.surveyedAt = 0;
+    if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === key) return;
+    if (this.mine()) this.planner.stopLoop(t('automation.hunt.steeredAway'));
+    this.phase = { kind: 'idle' };
+  }
+
+  /** What this module last said it would not do, until it next sets off. */
+  get refusal(): string | null {
+    return this.said;
+  }
+
   /** Whether a hunt this module started is what the character is doing. */
   get hunting(): boolean {
     return this.phase.kind !== 'idle';
@@ -222,17 +240,9 @@ export class AutoHunt implements SessionModule {
     this.judgedFor = null;
   }
 
-  huntSpot(spot: HuntingSpot, state: CharacterState): void {
-    if (this.phase.kind === 'hunting' && this.phase.key === spot.key) return;
-    this.go(state, spot);
-  }
-
   /** Every state change: is this the moment to go hunting? */
   onCharacter(state: CharacterState): void {
-    const isKonamiActive = this.konami?.isActive() && !this.konami?.isPaused();
-    if (!this.enabled || !this.config.enabled) {
-      if (!isKonamiActive) return;
-    }
+    if (!this.enabled || !this.config.enabled) return;
     if (state.phase !== 'in-game') return;
     if (this.phase.kind === 'walking') return;
 
@@ -276,6 +286,8 @@ export class AutoHunt implements SessionModule {
     // A lap that is not this module's: the character is busy, and whose lap it
     // is has already been settled above.
     if (this.planner.runningLoop() !== null) return;
+    // A plan that hunts nowhere for now: it is somewhere else's turn.
+    if (this.steered === null) return;
 
     const judged = this.judgement(state);
     if (judged === this.judgedFor) return;
@@ -446,11 +458,7 @@ export class AutoHunt implements SessionModule {
    * somebody else is working it. Null where the survey could not finish it.
    */
   private priced(spot: HuntingSpot): number | null {
-    const rate =
-      spot.estimate.expPerHour ??
-      spot.estimate.ceilingPerHour ??
-      (spot.estimate.expPerCycle ? spot.estimate.expPerCycle * 30 : null);
-    return this.pricedRate(spot.key, rate);
+    return this.pricedRate(spot.key, spot.estimate.expPerHour);
   }
 
   private pricedRate(key: string, rate: number | null): number | null {
@@ -473,20 +481,11 @@ export class AutoHunt implements SessionModule {
 
   /** The highest priced lair over the floor, or undefined. */
   private pick(spots: readonly HuntingSpot[]): HuntingSpot | null {
-    const isKonami = this.konami?.isActive() && !this.konami?.isPaused();
-    if (this.konami && isKonami && spots.length > 0) {
-      const chosenKey = this.konami.getHuntingTarget();
-      if (chosenKey && !chosenKey.startsWith('resident:')) {
-        const matched = spots.find((s) => s.key === chosenKey);
-        if (matched) return matched;
-      }
-    }
     const floor = this.walkConfig.minExpPerHour;
     let best: HuntingSpot | null = null;
     let value = -1;
     for (const spot of spots) {
-      if (isKonami && spot.key.startsWith('resident:')) continue;
-      if (isKonami && (spot.estimate.worstShare ?? 0) > 0.35) continue;
+      if (this.steered !== undefined && spot.key !== this.steered) continue;
       const worth = this.priced(spot);
       if (worth === null || (floor > 0 && worth < floor)) continue;
       if (worth > value) {
@@ -513,10 +512,13 @@ export class AutoHunt implements SessionModule {
      */
     const best = this.pick(advice.spots) ?? undefined;
     if (best === undefined) {
+      const steered = this.steered;
       this.refuse(
-        advice.spots.length === 0
-          ? t('automation.hunt.refusalNothingReachable')
-          : t('automation.hunt.refusalNoRate', { floor: Math.round(floor).toLocaleString() })
+        typeof steered === 'string' && !advice.spots.some((spot) => spot.key === steered)
+          ? t('automation.hunt.refusalSteeredGone')
+          : advice.spots.length === 0
+            ? t('automation.hunt.refusalNothingReachable')
+            : t('automation.hunt.refusalNoRate', { floor: Math.round(floor).toLocaleString() })
       );
       return null;
     }

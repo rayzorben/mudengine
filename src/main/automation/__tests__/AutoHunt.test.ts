@@ -387,3 +387,41 @@ describe('going hunting on its own', () => {
     expect(decisions.at(-1)).toMatchObject({ acted: false });
   });
 });
+
+describe('a spot an outside plan names (todo 54)', () => {
+  it('walks to the named spot even where another pays more', () => {
+    answer = advice([spot('lair:a', 20_000), spot('lair:b', 5_000, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:b');
+    here = '1/900';
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+    expect(started[0]!.name).toContain('Sewer');
+  });
+
+  it('hunts nowhere while the plan says so', () => {
+    const auto = hunt();
+    auto.steer(null);
+    auto.onCharacter(ready());
+    expect(walked).toHaveLength(0);
+    expect(started).toHaveLength(0);
+  });
+
+  it('refuses out loud when the named spot is no longer surveyed', () => {
+    const auto = hunt();
+    auto.steer('lair:gone');
+    auto.onCharacter(ready());
+    expect(walked).toHaveLength(0);
+    expect(decisions.at(-1)).toMatchObject({ action: 'hunt', acted: false });
+  });
+
+  it('ends its own lap when the plan moves to another spot', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+    auto.steer('lair:b');
+    expect(stops).toHaveLength(1);
+    expect(auto.hunting).toBe(false);
+  });
+});

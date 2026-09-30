@@ -366,6 +366,77 @@ export function roundDamage(
   return { value: (blows * (low + high) * how.multiplier) / 2, from: 'bound' };
 }
 
+/**
+ * The three martial-arts attacks, by the server's `CombatRound` classes. None
+ * swings a weapon: the range comes from the character's level.
+ */
+export const MARTIAL_ATTACKS = ['punch', 'kick', 'jumpkick'] as const;
+
+export type MartialAttack = (typeof MARTIAL_ATTACKS)[number];
+
+/**
+ * `AttackTypes/{Punch,Kick,Jumpkick}CombatRound.cs`: the range below level 20
+ * and from 20 on, the round's speed in the server's weapon units, and the
+ * damage multiplier (the same at both ends, so rolled as one figure).
+ */
+const MARTIAL: Readonly<
+  Record<
+    MartialAttack,
+    {
+      low(level: number): number;
+      high(level: number): number;
+      speed: number;
+      multiplier: number;
+    }
+  >
+> = {
+  punch: {
+    low: (level) => (level < 20 ? Math.trunc(level / 8) + 2 : Math.max(5, Math.trunc(level / 6))),
+    high: (level) =>
+      level < 20 ? Math.trunc((level + 3) / 4) + 6 : Math.max(12, Math.trunc(level / 4)),
+    speed: 1150,
+    multiplier: 1
+  },
+  kick: {
+    low: (level) => (level < 20 ? Math.trunc(level / 8) + 2 : Math.max(5, Math.trunc(level / 6))),
+    high: (level) => (level < 20 ? Math.trunc(level / 5) + 7 : Math.max(10, Math.trunc(level / 4))),
+    speed: 1400,
+    multiplier: 1.33
+  },
+  jumpkick: {
+    low: (level) => (level < 20 ? Math.trunc(level / 8) + 2 : Math.max(5, Math.trunc(level / 6))),
+    high: (level) => (level < 20 ? Math.trunc(level / 6) + 7 : Math.max(10, Math.trunc(level / 4))),
+    // `JumpkickCombatRound.Speed`: "was 1900, major nerf".
+    speed: 3000,
+    multiplier: 1.66
+  }
+};
+
+/**
+ * What a martial-arts round does, before the target's armour, its dodge and a
+ * miss: the level's range plus the attack's own damage ability
+ * (`PunchDmg`/`KickDmg`/`JumpKDmg`, summed off the class and race rows by the
+ * caller), times the blows the round's speed buys and the multiplier. A
+ * `bound`, as `roundDamage` is, and for the same reason: the strength bonus
+ * both add is left out of both, so the two compare like with like.
+ */
+export function martialRoundDamage(
+  sheet: ProwessSheet,
+  attack: MartialAttack,
+  bonus: number,
+  family: RealmFamily | null
+): Reckoning<number> | null {
+  const level = sheet.level;
+  if (level === null) return null;
+  const how = MARTIAL[attack];
+  const low = how.low(level) + bonus;
+  const high = how.high(level) + bonus;
+  const perSwing = energyPerSwing(sheet, { min: low, max: high, speed: how.speed }, family);
+  if (perSwing === null || high < low) return null;
+  const blows = Math.min(MAX_SWINGS, swingsFor(perSwing.value));
+  return { value: (blows * (low + high) * how.multiplier) / 2, from: 'bound' };
+}
+
 /** What a swing is expected to do to one target, and how long the target lasts. */
 export interface Swing {
   /** Chance one blow lands, 0–1: the hit roll less what dodge turns away. */

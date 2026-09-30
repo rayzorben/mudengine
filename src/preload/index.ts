@@ -103,9 +103,9 @@ const api: IpcApi = {
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),
   getWalk: (session) => ipcRenderer.invoke(Invoke.getWalk, session),
   getAutomation: (session) => ipcRenderer.invoke(Invoke.getAutomation, session),
-  toggleKonamiPause: (session) => ipcRenderer.invoke(Invoke.toggleKonamiPause, session),
-  submitKonamiFeedback: (session, transactionId, feedback, notes) =>
-    ipcRenderer.invoke(Invoke.submitKonamiFeedback, session, transactionId, feedback, notes),
+  konamiPause: (session) => ipcRenderer.invoke(Invoke.konamiPause, session),
+  konamiAsk: (session) => ipcRenderer.invoke(Invoke.konamiAsk, session),
+  konamiKeep: (session) => ipcRenderer.invoke(Invoke.konamiKeep, session),
 
   listSessions: () => ipcRenderer.invoke(Invoke.listSessions),
   listProfiles: () => ipcRenderer.invoke(Invoke.listProfiles),

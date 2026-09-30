@@ -429,6 +429,9 @@ option {
 .rail > .automation-card {
   --card-h: 208px;
 }
+.rail > .konami-card {
+  --card-h: 320px;
+}
 .rail > .stream-card {
   --card-h: 224px;
 }
@@ -4106,6 +4109,7 @@ button.quest-plan-back {
  * rather than clips at the rail's narrow end, where three buttons do not fit
  * on one line — a control on a second line is still a control.
  */
+.konami-actions,
 .hunt-actions {
   flex: 0 0 auto;
   flex-wrap: wrap;

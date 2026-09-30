@@ -120,7 +120,6 @@ import { attacksOnSight } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
-import type { KonamiBridge } from './KonamiBridge';
 
 /**
  * `notice`, and `needBook` — the spellbook never read while *Auto Choose Best
@@ -463,11 +462,6 @@ export class AutoCombat implements SessionModule {
    * worth saying even when it repeats the last session's.
    */
   private lastDecision: string | null = null;
-  private konami?: KonamiBridge;
-
-  setKonamiBridge(bridge: KonamiBridge): void {
-    this.konami = bridge;
-  }
 
   constructor(
     private config: CombatConfig,
@@ -649,7 +643,6 @@ export class AutoCombat implements SessionModule {
     this.opened.clear();
     this.focus = null;
     this.openerSpent = false;
-    this.konami?.clearOpener();
     this.saidOpenerNeedsStealth = false;
     this.retreating = false;
     this.walking = false;
@@ -2172,7 +2165,6 @@ export class AutoCombat implements SessionModule {
     this.opened.set(key, now);
     this.focus = key;
     this.openerSpent = true;
-    this.konami?.clearOpener();
     /*
      * Not announced, unlike an escape.
      *
@@ -2244,20 +2236,6 @@ export class AutoCombat implements SessionModule {
     target: string
   ): { verb: string } | { held: OpenerHeld } {
     if (this.openerSpent) return { held: 'other' };
-    if (this.konami?.isActive() && !this.konami?.isPaused()) {
-      const decision = this.konami.getOpener();
-      if (decision) {
-        if (decision.action === 'backstab') {
-          if (!this.classCannotHide()) return { verb: 'bs' };
-        } else if (decision.action === 'attack') {
-          return { verb: this.config.attack };
-        } else if (decision.action === 'spell' && decision.spellName) {
-          return { verb: `c ${decision.spellName}` };
-        } else if (decision.action === 'skip') {
-          return { held: 'other' };
-        }
-      }
-    }
     const opener = this.config.opener.trim();
     if (opener.length === 0) return { held: 'other' };
     if (this.isRefused(opener)) return { held: 'other' };
@@ -2582,7 +2560,6 @@ export class AutoCombat implements SessionModule {
    */
   private endFight(): void {
     this.openerSpent = false;
-    this.konami?.clearOpener();
     this.clearRound();
   }
 

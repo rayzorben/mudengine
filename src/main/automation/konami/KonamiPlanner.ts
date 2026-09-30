@@ -1,0 +1,569 @@
+/**
+ * The "what to do next" planner (todo 50): asks the provider for a plan when
+ * something changed, and carries the answer out through the modules that
+ * already do each thing.
+ *
+ * It never sends a command of its own. A goal is handed on: a hunt to
+ * `AutoHunt` (steered to the chosen spot), a purchase to the shop trip
+ * (`Supplies.fetch`, which withdraws a short purse from the bank), a level to
+ * `TrainErrand`, which the plan's settings switch on. The one line it
+ * proposes is the `wear` for an item it bought, and that goes to the command
+ * queue like any other.
+ *
+ * Asked on a trigger, never on a timer: entering the realm, a level, a death,
+ * a goal done or refused, cash crossing a step, cash reaching the cheapest
+ * upgrade, the player's own button, and standing still for `stuckMs`. Never
+ * during a fight or while another move is out; the trigger waits.
+ */
+import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
+import type { Block } from '../../../shared/blocks';
+import type { CharacterState } from '../../../shared/character';
+import type { AutomationConfig } from '../../../shared/config';
+import {
+  cashStep,
+  layered,
+  layerWrites,
+  type KonamiGoal,
+  type KonamiLayer,
+  type KonamiPlan,
+  type KonamiProvider,
+  type KonamiTrigger,
+  type LayerWrite
+} from '../../../shared/konami';
+import type { KonamiBrief } from '../../../shared/konamiBrief';
+import {
+  nextUpgradePrice,
+  planQuestions,
+  readPlan,
+  samePlan
+} from '../../../shared/konamiQuestions';
+import type {
+  KonamiDecision,
+  KonamiIncidentKind,
+  KonamiIncidentRow,
+  KonamiRecords,
+  KonamiSnapshot
+} from '../../../shared/konamiRecords';
+import { bareName } from '../../../shared/items';
+import { nameAnswersTo } from '../../../shared/world';
+import type { SessionModule } from '../Module';
+import { fightIsRunning } from '../Walker';
+import { Blows } from './Blows';
+import { incidentFiles } from './incident';
+import { Journal } from './Journal';
+import { askWithin, loadProvider, providerPaths } from './ProviderLoader';
+
+/** What the planner reads. */
+export interface PlannerFacts {
+  state(): CharacterState;
+  /** The brief for this moment, or why there is none (no realm data, unplaced). */
+  brief(now: number): KonamiBrief | { refusal: string };
+  /** Something else holds the character: an escape, a move out, a walk, a shop trip. */
+  busy(): boolean;
+  /** `AutoHunt` is walking to or running a spot. */
+  hunting(): boolean;
+  /** A shop trip is under way. */
+  buying(): boolean;
+  /** What `AutoHunt` last said it would not do for the steered spot, or null. */
+  huntRefusal(): string | null;
+  /** What the modules last said they would not do, newest first. */
+  refusals(): string[];
+  realm(): string | null;
+}
+
+/** What the planner does, each through the module that owns it. */
+export interface PlannerHands {
+  /** A spot key to hunt only there, null to hunt nowhere, undefined to let `AutoHunt` choose. */
+  steerHunt(key: string | null | undefined): void;
+  /** Starts the shop trip; the refusal, or null. */
+  buy(goal: Extract<KonamiGoal, { kind: 'buy' }>): string | null;
+  /** Proposes `wear` for an item in the pack. */
+  wear(name: string): void;
+  /** The plan's settings changed: the session configures again through `over`. */
+  relayer(): void;
+}
+
+export interface PlannerEvents {
+  changed(): void;
+  notice(message: string): void;
+}
+
+/** Where a goal has got to. */
+type GoalState = { kind: 'none' } | { kind: 'started' } | { kind: 'running' } | { kind: 'wearing' };
+
+/** A fingerprint of what moves when the character is getting somewhere. */
+function progressMark(state: CharacterState): string {
+  const { vitals, room, progress, inventory } = state;
+  return JSON.stringify([
+    vitals.hp,
+    vitals.mana,
+    room.map,
+    room.number,
+    progress.exp,
+    progress.level,
+    inventory.wealth,
+    inventory.items.length,
+    state.inCombat
+  ]);
+}
+
+export class KonamiPlanner implements SessionModule {
+  private on = false;
+  private paused = false;
+  private providerPath = '';
+  private provider: KonamiProvider | null = null;
+  private loading = false;
+  private refusal: string | null = null;
+  private asking = false;
+  private pending: KonamiTrigger | null = null;
+  private plan: KonamiPlan | null = null;
+  private goal: GoalState = { kind: 'none' };
+  private readonly journal: Journal;
+  private readonly blows = new Blows(() => tuning().konami.blowsKept);
+  private readonly incidents: KonamiIncidentRow[] = [];
+  private step: number | null = null;
+  private upgradeAt: number | null = null;
+  private inRealm = false;
+  private mark = '';
+  private markedAt = Date.now();
+  /** A stuck log has been written for this stretch of standing still. */
+  private stuckLogged = false;
+  private timer: NodeJS.Timeout | null = null;
+  /** The character's own settings, as last handed to `over`. */
+  private own: AutomationConfig | null = null;
+  /**
+   * Moves whenever what was asked stops mattering: a pause, a reset, the
+   * switch off, disposal. A reply that comes back to a different generation
+   * is dropped, since the character it was about is no longer the planner's.
+   */
+  private generation = 0;
+  private disposed = false;
+
+  constructor(
+    private readonly facts: PlannerFacts,
+    private readonly hands: PlannerHands,
+    private readonly events: PlannerEvents,
+    private readonly records: KonamiRecords | null,
+    private readonly home: string | null
+  ) {
+    this.journal = new Journal(records, () => tuning().konami.journal);
+  }
+
+  /** Running: switched on, not paused, and a provider in hand. */
+  get running(): boolean {
+    return this.on && !this.paused && this.provider !== null;
+  }
+
+  configure(automation: AutomationConfig): void {
+    const on = automation.superKonamiMode;
+    const path = automation.konamiProviderPath;
+    const pathChanged = path !== this.providerPath;
+    this.providerPath = path;
+    if (pathChanged) this.provider = null;
+    if (on === this.on && !pathChanged) return;
+    this.on = on;
+    if (!on) {
+      // Configuring now, through `over`, which is already taking the plan off.
+      this.standDown(false);
+      return;
+    }
+    void this.load();
+  }
+
+  /** The player's pause: the plan's settings come off and the character is the player's again. */
+  togglePause(): boolean {
+    this.paused = !this.paused;
+    if (this.paused) this.standDown();
+    else this.trigger('asked');
+    this.events.changed();
+    return this.paused;
+  }
+
+  /** The player's *ask again*. */
+  askNow(): void {
+    this.trigger('asked');
+  }
+
+  /**
+   * The settings the session runs on: the character's own, with the plan's
+   * laid over them while the planner runs.
+   */
+  over(own: AutomationConfig): AutomationConfig {
+    this.own = own;
+    // The switch as this reload states it: turned off, the plan comes off in the same reload.
+    const plan = own.superKonamiMode && this.running ? this.plan : null;
+    return plan === null ? own : layered(own, plan.layer, plan.goal.kind);
+  }
+
+  /** The plan's settings as writes into the character's file, for *keep these*. */
+  keep(): LayerWrite[] | null {
+    const layer: KonamiLayer | undefined = this.plan?.layer;
+    return layer === undefined || this.own === null ? null : layerWrites(this.own, layer);
+  }
+
+  onBlock(block: Block): void {
+    this.blows.onBlock(block);
+    if (!this.running) return;
+    switch (block.type) {
+      case 'user-dies':
+        this.incident('death');
+        this.settle('failed', t('automation.konami.died'));
+        this.hands.steerHunt(null);
+        this.trigger('death');
+        return;
+      case 'user-levels':
+        this.trigger('level');
+        return;
+      case 'user-trains':
+        if (this.plan?.goal.kind === 'train') this.settle('done', null);
+        this.trigger('trained');
+        return;
+      default:
+        return;
+    }
+  }
+
+  onCharacter(state: CharacterState): void {
+    const inRealm = state.phase === 'in-game';
+    if (inRealm && !this.inRealm) this.trigger('entered');
+    this.inRealm = inRealm;
+    if (!this.running || !inRealm) return;
+    const mark = progressMark(state);
+    if (mark !== this.mark) {
+      this.mark = mark;
+      this.markedAt = Date.now();
+      this.stuckLogged = false;
+    }
+    this.watchCash(state);
+    this.watchGoal(state);
+    this.consider(state);
+  }
+
+  reset(): void {
+    this.generation += 1;
+    this.pending = null;
+    this.goal = { kind: 'none' };
+    this.inRealm = false;
+    this.step = null;
+    this.upgradeAt = null;
+    this.blows.reset();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.generation += 1;
+    this.disarm();
+  }
+
+  snapshot(): KonamiSnapshot {
+    return {
+      on: this.on,
+      paused: this.paused,
+      provider: this.provider?.name ?? null,
+      asking: this.asking,
+      pending: this.pending,
+      refusal: this.refusal,
+      plan: this.plan,
+      decisions: [...this.journal.decisions].reverse().map((decision) => ({
+        id: decision.id,
+        at: decision.at,
+        trigger: decision.trigger,
+        plan: decision.plan,
+        refusal: decision.refusal,
+        outcome: decision.outcome,
+        outcomeWhy: decision.outcomeWhy
+      })),
+      incidents: [...this.incidents].reverse()
+    };
+  }
+
+  private async load(): Promise<void> {
+    if (this.loading || this.provider !== null) return;
+    this.loading = true;
+    try {
+      const loaded = await loadProvider(providerPaths(this.providerPath, this.home));
+      // Switched off or put away while the file loaded: nothing to arm.
+      if (this.disposed || !this.on) return;
+      if ('refusal' in loaded) {
+        this.refusal = loaded.refusal;
+        this.events.notice(loaded.refusal);
+        return;
+      }
+      this.provider = loaded.provider;
+      this.refusal = null;
+      this.events.notice(t('automation.konami.loaded', { provider: loaded.provider.name }));
+      this.arm();
+      // Already in the realm when it loaded: the edge `onCharacter` asks on has passed.
+      if (!this.paused && this.inRealm) this.trigger('entered');
+    } finally {
+      this.loading = false;
+      this.events.changed();
+    }
+  }
+
+  /**
+   * One owned interval (`tuning.konami.tickMs`, never under five seconds, as an
+   * event's): the stuck clock, and a waiting trigger once the character is free.
+   */
+  private arm(): void {
+    if (this.timer !== null) return;
+    this.timer = setInterval(() => this.tick(), tuning().konami.tickMs);
+  }
+
+  private disarm(): void {
+    if (this.timer !== null) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  private tick(): void {
+    if (!this.running || !this.inRealm) return;
+    const state = this.facts.state();
+    if (this.plan !== null && !fightIsRunning(state)) {
+      if (Date.now() - this.markedAt >= tuning().konami.stuckMs && this.pending === null) {
+        // Measured again from now, so a plan that changes nothing is not asked every tick.
+        this.markedAt = Date.now();
+        this.trigger('stuck');
+      }
+    }
+    this.consider(state);
+  }
+
+  private standDown(relayer = true): void {
+    this.generation += 1;
+    if (!this.on) this.disarm();
+    this.pending = null;
+    this.goal = { kind: 'none' };
+    this.hands.steerHunt(undefined);
+    if (relayer) this.hands.relayer();
+  }
+
+  private trigger(why: KonamiTrigger): void {
+    if (!this.running) return;
+    // A death outranks whatever was waiting: its log is written and its plan is what matters.
+    if (this.pending === null || why === 'death') this.pending = why;
+    this.events.changed();
+    this.consider(this.facts.state());
+  }
+
+  private watchCash(state: CharacterState): void {
+    const onHand = state.inventory.wealth;
+    const total =
+      onHand === null ? null : onHand + state.banks.reduce((sum, bank) => sum + bank.copper, 0);
+    const step = cashStep(total);
+    if (step !== null && this.step !== null && step > this.step) this.trigger('cash-step');
+    if (step !== null) this.step = step;
+    if (this.upgradeAt !== null && total !== null && total >= this.upgradeAt) {
+      this.upgradeAt = null;
+      this.trigger('upgrade-affordable');
+    }
+  }
+
+  /** Where the goal in hand has got to, and whether it is over. */
+  private watchGoal(state: CharacterState): void {
+    const goal = this.plan?.goal;
+    if (goal === undefined || this.goal.kind === 'none') return;
+    switch (goal.kind) {
+      case 'hunt': {
+        if (this.facts.hunting()) {
+          this.goal = { kind: 'running' };
+          return;
+        }
+        if (this.facts.busy()) return;
+        const refused = this.facts.huntRefusal();
+        if (this.goal.kind === 'started' && refused !== null) this.finish('refused', refused);
+        else if (this.goal.kind === 'running') this.finish('done', null);
+        return;
+      }
+      case 'buy': {
+        const wanted = bareName(goal.name);
+        const held = state.inventory.items.find((item) =>
+          nameAnswersTo(bareName(item.name), wanted)
+        );
+        if (held?.equipped === true) {
+          this.finish('done', null);
+          return;
+        }
+        if (held !== undefined && this.goal.kind !== 'wearing') {
+          this.goal = { kind: 'wearing' };
+          this.hands.wear(goal.name);
+          return;
+        }
+        if (this.facts.buying()) this.goal = { kind: 'running' };
+        else if (this.goal.kind === 'running' && held === undefined) {
+          this.finish('refused', t('automation.konami.notBought', { item: goal.name }));
+        }
+        return;
+      }
+      case 'train':
+        if (state.progress.expNeeded !== null && state.progress.expNeeded > 0) {
+          this.finish('done', null);
+        }
+        return;
+      case 'wait':
+        return;
+      default: {
+        const never: never = goal;
+        return never;
+      }
+    }
+  }
+
+  private finish(outcome: 'done' | 'refused', why: string | null): void {
+    this.goal = { kind: 'none' };
+    this.settle(outcome, why);
+    this.trigger(outcome === 'done' ? 'goal-done' : 'goal-refused');
+  }
+
+  private settle(outcome: 'done' | 'refused' | 'failed' | 'replaced', why: string | null): void {
+    this.journal.settle(outcome, why);
+    this.events.changed();
+  }
+
+  /** Asks now if a trigger is waiting and the character is free. */
+  private consider(state: CharacterState): void {
+    const why = this.pending;
+    if (why === null || this.asking || !this.running || state.phase !== 'in-game') return;
+    if (fightIsRunning(state) || this.facts.busy()) return;
+    this.pending = null;
+    void this.ask(why);
+  }
+
+  private async ask(why: KonamiTrigger): Promise<void> {
+    const provider = this.provider;
+    if (provider === null) return;
+    const now = Date.now();
+    const brief = this.facts.brief(now);
+    if ('refusal' in brief) {
+      this.refusal = brief.refusal;
+      this.events.notice(t('automation.konami.noBrief', { why: brief.refusal }));
+      this.events.changed();
+      return;
+    }
+    this.asking = true;
+    this.events.changed();
+    const asked = planQuestions(brief);
+    const generation = this.generation;
+    const answer = await askWithin(
+      provider,
+      { state: brief, questions: asked.questions },
+      tuning().konami.askTimeoutMs
+    );
+    this.asking = false;
+    if (generation !== this.generation || !this.running) {
+      this.events.changed();
+      return;
+    }
+    const plan = 'refusal' in answer ? null : readPlan(answer.reply, asked);
+    const previous = this.plan;
+    const decision: KonamiDecision = {
+      id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      at: now,
+      trigger: why,
+      provider: provider.name,
+      model: 'refusal' in answer ? null : answer.reply.model,
+      brief,
+      questions: asked.questions,
+      raw: 'refusal' in answer ? null : answer.raw,
+      plan,
+      refusal: 'refusal' in answer ? answer.refusal : null,
+      outcome: plan === null ? 'failed' : 'applied',
+      outcomeWhy: null,
+      settledAt: null
+    };
+    this.journal.settle('replaced', null);
+    this.journal.add(decision);
+    this.upgradeAt = nextUpgradePrice(brief);
+    if (plan === null) {
+      this.refusal = decision.refusal;
+      this.events.notice(decision.refusal ?? '');
+      this.events.changed();
+      return;
+    }
+    this.refusal = null;
+    if (why === 'stuck' && previous !== null && samePlan(previous, plan) && !this.stuckLogged) {
+      this.stuckLogged = true;
+      this.incident('stuck');
+    }
+    this.apply(plan);
+  }
+
+  private apply(plan: KonamiPlan): void {
+    this.plan = plan;
+    this.hands.relayer();
+    const goal = plan.goal;
+    this.goal = { kind: 'started' };
+    switch (goal.kind) {
+      case 'hunt':
+        this.hands.steerHunt(goal.key);
+        break;
+      case 'buy': {
+        this.hands.steerHunt(null);
+        const refused = this.hands.buy(goal);
+        if (refused !== null) this.finish('refused', refused);
+        break;
+      }
+      case 'train':
+      case 'wait':
+        this.hands.steerHunt(null);
+        break;
+      default: {
+        const never: never = goal;
+        return never;
+      }
+    }
+    this.events.notice(goalNotice(goal));
+    this.events.changed();
+  }
+
+  private incident(kind: KonamiIncidentKind): void {
+    if (this.records === null) return;
+    const at = Date.now();
+    const state = this.facts.state();
+    const files = incidentFiles({
+      kind,
+      at,
+      state,
+      realm: this.facts.realm(),
+      lines: this.records.recentLines(tuning().konami.logLines),
+      decisions: this.journal.decisions,
+      plan: this.plan,
+      blows: this.blows.since(at - tuning().konami.blowWindowMs),
+      fightGapMs: tuning().konami.fightGapMs,
+      roundSeconds: tuning().hunting.roundSeconds,
+      refusals: this.facts.refusals()
+    });
+    const path = this.records.incident(kind, at, files);
+    this.incidents.push({ kind, at, path });
+    const over = this.incidents.length - tuning().konami.incidentsKept;
+    if (over > 0) this.incidents.splice(0, over);
+    this.events.notice(
+      kind === 'death'
+        ? t('automation.konami.deathLog', { path: path ?? '' })
+        : t('automation.konami.stuckLog', { path: path ?? '' })
+    );
+    this.events.changed();
+  }
+}
+
+/** What the character is told when a goal is handed on. */
+function goalNotice(goal: KonamiGoal): string {
+  switch (goal.kind) {
+    case 'hunt':
+      return t('automation.konami.goal.hunt', { name: goal.name });
+    case 'buy':
+      return t('automation.konami.goal.buy', {
+        item: goal.name,
+        shop: goal.shop,
+        copper: goal.copper
+      });
+    case 'train':
+      return t('automation.konami.goal.train');
+    case 'wait':
+      return t('automation.konami.goal.wait');
+    default: {
+      const never: never = goal;
+      return never;
+    }
+  }
+}

@@ -9,6 +9,7 @@
  * as a string union in `rules.ts` — which is the same mistake as holding two
  * representations of a direction: the two agree until one of them is edited.
  */
+import { EMPTY_KONAMI, type KonamiSnapshot } from './konamiRecords';
 import type { CharacterState } from './character';
 import type { RuleFiring } from './rules';
 
@@ -176,43 +177,6 @@ export interface EngageDecision {
   because?: string;
 }
 
-export interface KonamiDecisionItem {
-  type: string;
-  action: string;
-  reason?: string;
-  timestamp: number;
-}
-
-export interface KonamiTransaction {
-  id: string;
-  timestamp: number;
-  type: 'macro' | 'opener' | 'combat';
-  target?: string;
-  requestSummary: string;
-  requestDetail?: string;
-  responseSummary: string;
-  responseDetail?: string;
-  interpretation: string;
-  confidence?: number;
-  feedback?: 'correct' | 'incorrect';
-  notes?: string;
-}
-
-export interface KonamiSnapshot {
-  active: boolean;
-  paused: boolean;
-  buttonLabel: string;
-  providerName?: string;
-  nextOpener?: string;
-  nextOpenerReason?: string;
-  roundTactic?: string;
-  huntingTarget?: string;
-  macroDirective?: string;
-  macroReason?: string;
-  decisions?: KonamiDecisionItem[];
-  transactions?: KonamiTransaction[];
-}
-
 export interface AutomationSnapshot {
   /** False when `automation.enabled` is off: nothing here will act. */
   enabled: boolean;
@@ -225,8 +189,8 @@ export interface AutomationSnapshot {
   safety: SafetyDecision[];
   /** Newest first. What auto-combat opened on, or declined to and why. */
   engagements: EngageDecision[];
-  /** State of the external decision provider, if enabled and loaded. */
-  konami?: KonamiSnapshot;
+  /** The "what to do next" planner: its plan, its decisions, its logs. */
+  konami: KonamiSnapshot;
 }
 
 export const EMPTY_AUTOMATION: AutomationSnapshot = {
@@ -235,5 +199,6 @@ export const EMPTY_AUTOMATION: AutomationSnapshot = {
   sent: [],
   firings: [],
   safety: [],
-  engagements: []
+  engagements: [],
+  konami: EMPTY_KONAMI
 };

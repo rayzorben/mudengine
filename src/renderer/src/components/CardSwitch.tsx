@@ -285,12 +285,10 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
       return (
         <CombatCard
           {...chrome}
-          automation={view.automation}
           character={character}
+          players={view.players}
           inspect={ctx.inspect}
           onSelect={ctx.selectPlayer}
-          players={view.players}
-          session={ctx.session}
           verdict={view.verdict}
         />
       );
@@ -502,26 +500,15 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
       return (
         <ToolbarCard
           {...chrome}
-          automation={view.automation}
           onPinButton={ctx.pinToolbarButton}
           pinnedButtons={ctx.toolbarPinned}
-          session={ctx.session}
           subject={ctx.toolbar}
         />
       );
     case 'automation':
-      return <AutomationCard {...chrome} automation={view.automation} session={ctx.session} />;
-    case 'konami': {
-      if (!view.automation.konami?.active) return null;
-      return (
-        <KonamiCard
-          {...chrome}
-          automation={view.automation}
-          character={character}
-          session={ctx.session}
-        />
-      );
-    }
+      return <AutomationCard {...chrome} automation={view.automation} />;
+    case 'konami':
+      return <KonamiCard {...chrome} konami={view.automation.konami} session={ctx.session} />;
     case 'stream':
       return <StreamCard {...chrome} lines={view.lines} quiet={ctx.quiet} />;
     default: {

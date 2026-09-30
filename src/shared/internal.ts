@@ -830,6 +830,34 @@ const TUNING_DEFAULTS = {
      */
     moveMargin: 0.25
   },
+  /**
+   * The "what to do next" planner (`KonamiPlanner`, todo 50). `maxSpots` and
+   * `upgradesPerSlot` bound what is offered, since a label nobody can weigh
+   * is noise to the provider. `askTimeoutMs` gives up on a reply; `stuckMs` is
+   * how long with nothing sent and nothing changing before a plan is asked
+   * again; `journal` is how many decisions are kept for the death and stuck
+   * logs, and `logLines` how many lines of the session go into them.
+   */
+  konami: {
+    maxSpots: 12,
+    upgradesPerSlot: 3,
+    askTimeoutMs: 30000,
+    stuckMs: 30000,
+    journal: 100,
+    logLines: 10000,
+    /** A `wear` for a bought item still queued after this is for a moment that has passed. */
+    wearExpiresMs: 8000,
+    /** How often the stuck clock is read and a waiting trigger tried. */
+    tickMs: 5000,
+    /** Blows on the character kept, and how far back a death log reads them. */
+    blowsKept: 400,
+    blowWindowMs: 600_000,
+    /** A quiet longer than this between two blows is a new fight. */
+    fightGapMs: 60_000,
+    /** Death and stuck logs listed on the card, and refusals copied into a stuck log. */
+    incidentsKept: 20,
+    refusalsKept: 30
+  },
   /** Spending character points on the stat screen — `StatScreen`. */
   train: {
     /**

@@ -423,6 +423,16 @@ export const TRAPS_ABILITY = 1002;
 export const CLASS_STEALTH_ABILITY = 103;
 
 /**
+ * The attacks a class or race row grants: `AttackCommand.cs` refuses a bash or
+ * a smash without its ability. GreaterMUD refuses the three martial attacks
+ * outside the Mystic (`ClassID 15`), which is the class carrying all three.
+ */
+export const ATTACK_ABILITY = { bash: 31, smash: 32, punch: 29, kick: 30, jumpkick: 35 } as const;
+
+/** Each martial attack's damage bonus (`Player.PunchDamage` and the rest). */
+export const MARTIAL_DAMAGE_ABILITY = { punch: 92, kick: 93, jumpkick: 94 } as const;
+
+/**
  * `ShadowHome` (the server's spelling; `ShadowRest` above is this client's).
  *
  * Three commands read it and all three read it the same way — as an

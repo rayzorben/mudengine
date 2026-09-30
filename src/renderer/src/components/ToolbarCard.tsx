@@ -7,9 +7,6 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { toolbarButtons, type ToolbarButton, type ToolbarSubject } from '../lib/toolbar';
 
-import type { AutomationSnapshot } from '@shared/automation';
-import type { SessionId } from '@shared/ipc';
-
 export interface ToolbarCardProps extends CardChrome {
   subject: ToolbarSubject;
   /**
@@ -21,8 +18,6 @@ export interface ToolbarCardProps extends CardChrome {
    */
   pinnedButtons: ReadonlySet<string>;
   onPinButton(id: string): void;
-  automation?: AutomationSnapshot;
-  session?: SessionId;
 }
 
 /**
@@ -61,8 +56,6 @@ export default function ToolbarCard({
   subject,
   pinnedButtons,
   onPinButton,
-  automation,
-  session,
   ...chrome
 }: ToolbarCardProps) {
   const all = toolbarButtons(subject);
@@ -83,35 +76,6 @@ export default function ToolbarCard({
           <span className="empty">{t('cards.toolbar.emptyRow')}</span>
         ) : (
           shown.map((button) => <ToolbarKey button={button} key={button.id} />)
-        )}
-        {automation?.konami?.active && (
-          <button
-            type="button"
-            className={`btn chip ${automation.konami.paused ? 'warn' : 'on'}`}
-            style={{
-              cursor: 'pointer',
-              marginLeft: '6px',
-              marginRight: '4px',
-              padding: '2px 10px',
-              fontSize: '11px',
-              height: '24px',
-              lineHeight: '20px',
-              alignSelf: 'center',
-              fontWeight: 600
-            }}
-            title={
-              automation.konami.paused
-                ? 'Click to resume autonomous decisions'
-                : 'Click to pause autonomous decisions'
-            }
-            onClick={() => {
-              if (session && window.mudengine?.toggleKonamiPause) {
-                void window.mudengine.toggleKonamiPause(session);
-              }
-            }}
-          >
-            {automation.konami.buttonLabel}
-          </button>
         )}
         <button
           aria-expanded={menu}

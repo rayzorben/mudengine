@@ -1301,6 +1301,8 @@ function createHost(): SessionHost {
     // Beside the conversation and for the same reason: what the console
     // showed outlives the launch. `check:secrets` walks the whole home.
     backscrollFor: (id) => home.record('backscroll', id),
+    // The planner's decisions and death and stuck logs, one directory each.
+    konamiFor: (id) => ({ dir: home.state('konami', id), home: home.root }),
     belongingsAt,
     playersFor,
     destinationsFor,
@@ -1584,20 +1586,21 @@ function registerIpc(): void {
     Invoke.getAutomation,
     (_caller, session: SessionId) => host?.get(session)?.manager.automation ?? EMPTY_AUTOMATION
   );
+  // The Konami card's three buttons (todo 59).
   handle(
-    Invoke.toggleKonamiPause,
-    (_caller, session: SessionId) => host?.get(session)?.manager.toggleKonamiPause() ?? false
+    Invoke.konamiPause,
+    (_caller, session: SessionId) => host?.get(session)?.manager.konami.togglePause() ?? false
   );
-  handle(
-    Invoke.submitKonamiFeedback,
-    (
-      _caller,
-      session: SessionId,
-      transactionId: string,
-      feedback: 'correct' | 'incorrect',
-      notes?: string
-    ) => host?.get(session)?.manager.submitKonamiFeedback(transactionId, feedback, notes) ?? false
-  );
+  handle(Invoke.konamiAsk, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.konami.askNow();
+  });
+  handle(Invoke.konamiKeep, (_caller, session: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const writes = host?.get(session)?.manager.konami.keep() ?? null;
+    if (writes === null) return t('app.konami.nothingToKeep');
+    const result = editor().setAutomationValues(session, writes);
+    return result.ok ? null : result.error;
+  });
 
   /**
    * Who is walking, for pricing a route against them.

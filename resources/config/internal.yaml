@@ -672,6 +672,29 @@ tuning:
     collectMs: 8000
     expiresMs: 6000
 
+  # The "what to do next" planner. `maxSpots` and `upgradesPerSlot` bound what
+  # is offered to the provider; `askTimeoutMs` gives up on a reply; `stuckMs`
+  # is how long with nothing sent and nothing changing before a plan is asked
+  # again; `journal` is how many decisions the death and stuck logs keep, and
+  # `logLines` how many lines of the session go into them.
+  konami:
+    maxSpots: 12
+    upgradesPerSlot: 3
+    askTimeoutMs: 30000
+    stuckMs: 30000
+    journal: 100
+    logLines: 10000
+    wearExpiresMs: 8000
+    tickMs: 5000
+    # Blows on the character kept, how far back a death log reads them, and the
+    # quiet between two blows that makes a new fight.
+    blowsKept: 400
+    blowWindowMs: 600000
+    fightGapMs: 60000
+    # Death and stuck logs listed on the card, and refusals copied into a stuck log.
+    incidentsKept: 20
+    refusalsKept: 30
+
   # Spending character points on the stat screen — `StatScreen`. `echoMs` is
   # how long the screen has to echo a keystroke before the driver lets go of
   # it; `expiresMs` drops a `train stats` still queued when the moment has

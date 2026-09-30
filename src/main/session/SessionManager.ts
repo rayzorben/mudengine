@@ -54,7 +54,6 @@ import {
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand } from '../automation/ItemErrand';
 import { QuestRunner } from '../automation/QuestRunner';
-import { AFTER_WORD } from '../automation/PackAfter';
 import { EquipmentManager } from '../automation/EquipmentManager';
 import { Wards } from '../automation/Wards';
 import { RealmMenu } from './RealmMenu';
@@ -63,11 +62,9 @@ import { Grounded } from './Grounded';
 import { Safety } from './Safety';
 import { FleeGoto } from './FleeGoto';
 import { Events } from '../automation/Events';
-import { KonamiBridge } from '../automation/KonamiBridge';
 import type { SessionModule } from '../automation/Module';
 import type { Loop } from '../../shared/loops';
 import {
-  nameAnswersTo,
   roomAddress,
   roomId,
   landingRooms,
@@ -101,10 +98,10 @@ import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
+import { itemPlanner } from './itemPlanner';
+import { konamiPlanner, type KonamiDeps } from './konamiWiring';
+import type { KonamiPlanner } from '../automation/konami/KonamiPlanner';
 
-/** The item errand's phrase and the listing asked after it, so both can be taken back. */
-const COLLECT_SAY_KEY = 'collect:say';
-const COLLECT_AFTER_KEY = 'collect:after';
 import { NO_LORE, type RealmLoreView } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
 import { NO_SHIPPED_SENTENCES, type ShippedSentences } from '../../shared/sentences';
@@ -304,6 +301,8 @@ export interface SessionDeps {
   readonly sentences?: ShippedSentences;
   /** The realm's own words (`Profile.locate`, `.coins`), read through so a reload lands. */
   readonly words?: VocabularyParts['words'];
+  /** Where the planner's records go. Absent in every test: nothing is written. */
+  readonly konami?: KonamiDeps;
 }
 
 /** A module on the session's list, and the slice of a reload it reads, where it reads one. */
@@ -402,7 +401,8 @@ export class SessionManager {
    * `emergency`, and it is told to stand down whenever an escape is in flight.
    */
   readonly combat: AutoCombat;
-  readonly konami: KonamiBridge;
+  /** What to do next, asked of an outside provider (todo 50). See `KonamiPlanner`. */
+  readonly konami: KonamiPlanner;
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
@@ -410,6 +410,8 @@ export class SessionManager {
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'reset' | 'dispose'>;
   private automationConfig: AutomationConfig;
+  /** What `configure` was last handed, so the planner's settings can be laid over it again. */
+  private configured: Parameters<SessionManager['configure']>;
   private readonly login: LoginAutomator;
   private readonly recovery: Recovery;
   private readonly loot: AutoLoot;
@@ -655,11 +657,7 @@ export class SessionManager {
      * write to the socket on automation's behalf — docs/legacy-assessment.md §6.
      */
     this.automationConfig = automation;
-    this.konami = new KonamiBridge(automation, {
-      notice: (msg) => this.sink.notice(msg),
-      changed: () => this.publisher?.publishAutomation(),
-      canHide: () => holdsAbility(this.errands.capabilities(), CLASS_STEALTH_ABILITY) === true
-    });
+    this.configured = [automation, login];
     this.queue = new CommandQueue(automation, {
       send: (command, intent) => {
         /*
@@ -981,7 +979,6 @@ export class SessionManager {
       () => this.errands.realmClass(),
       lore
     );
-    this.combat.setKonamiBridge(this.konami);
 
     /*
      * Sitting down, which is the opposite answer to the same number the
@@ -1240,92 +1237,59 @@ export class SessionManager {
         stopLoop: stopLap,
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking,
-        // Escapes and errands: nothing else in the middle of something.
-        busy: () =>
-          this.travel.isRetreating() ||
-          this.travel.retreatArmed ||
-          this.travel.escapeUnanswered ||
-          this.supplies.current !== null ||
-          this.trainLevel.busy ||
-          this.itemErrand.running ||
-          this.questRunner.running
+        /*
+         * Nothing else in the middle of something. The escapes, and **the
+         * errands** — each of which has phases where nothing is walking and
+         * nothing is looping (a shop errand waiting for its listing, a trainer
+         * errand waiting for the level to move), during which a hunt would
+         * otherwise survey and walk the character away from what it came for.
+         */
+        busy: () => this.errandHeld()
       },
       reports
     );
-    this.hunt.setKonamiBridge(this.konami);
-    this.trainLevel.setKonamiBridge(this.konami);
-    this.konami.setDirectorHandlers({
-      state: () => this.tracker.current,
-      survey: () => this.huntingGrounds(null),
-      startHunt: (s) => this.hunt.huntSpot(s, this.tracker.current),
-      trainLevel: () => this.trainLevel.onCharacter(this.tracker.current),
-      send: (c) => this.queue.enqueue({ command: c, priority: 'user' }),
-      isBusy: () => this.travel.isRetreating() || this.tracker.pendingMoves > 0 || this.walker.walking,
-      isHunting: () => this.hunt.hunting
-    });
-    // Door requirement errand (bought from counter, hunted from monster).
+    /*
+     * And going to get the thing a door wants (todo 07): bought where the
+     * realm names a counter, hunted where it names a monster, and the route
+     * the player asked for walked once the pack holds it.
+     */
     this.itemErrand = new ItemErrand(
-      {
-        here: () => roomAddress(this.tracker.current.room),
-        sourcesOf: (item, to) => this.errands.itemSources(item, to),
-        buy: (row) => this.supplies.fetch(row, this.tracker.current),
-        buying: () => this.supplies.current !== null,
-        runLoop: (loop) => {
-          // `startLoop` replaces whatever lap was running, which is right — one
-          // movement at a time — and worth saying, because the lap it replaces
-          // is the player's and it is not coming back on its own.
-          if (this.loops.progress.status === 'running') {
-            this.sink.notice(
-              t('automation.collect.replacingLap', { loopName: this.loops.progress.name ?? '' })
-            );
-          }
-          const answer = this.travel.startLoop(loop);
-          return 'refused' in answer ? answer.refused : null;
-        },
-        looping: () => this.loops.progress.status === 'running',
-        stopLoop: stopLap,
-        alsoTake: (name) => this.loot.alsoTake(name),
-        stopTaking: (name) => this.loot.stopTaking(name),
-        walk: (route, run) => this.travel.walkAfterCollecting(route, run),
-        // The player's own list is what makes a found key worth keeping.
-        kept: (name) =>
-          this.automationConfig.supplies.items.some((row) => nameAnswersTo(name, row.name)),
-        walkTo: (room) => this.travel.walkLegTo(room),
-        walking: () => this.walker.walking,
-        // The phrase in the `probe` band, as the quest run's act, and seen by
-        // the quest book like any act this client sends for the player.
-        say: (command, onSent) =>
-          this.queue.enqueue({
-            command,
-            priority: 'probe',
-            coalesceKey: COLLECT_SAY_KEY,
-            // Lapses as the quest run's act does, so a phrase that never goes
-            // out ends the errand rather than holding it (`saying`).
-            expiresAt: Date.now() + tuning().quests.expiresMs,
-            reason: t('automation.collect.reasonSay', { command }),
-            onSent: () => {
-              onSent();
-              this.questWatch.noteSaid(command);
-            }
-          }),
-        listPack: (onSent) =>
-          this.queue.enqueue({
-            command: AFTER_WORD,
-            priority: 'probe',
-            coalesceKey: COLLECT_AFTER_KEY,
-            expiresAt: Date.now() + tuning().quests.expiresMs,
-            reason: t('automation.collect.reasonPackAfter'),
-            onSent
-          }),
-        saying: () => this.queue.queued((intent) => intent.coalesceKey === COLLECT_SAY_KEY),
-        takeBack: () =>
-          this.queue.cancel(
-            (intent) =>
-              intent.coalesceKey === COLLECT_SAY_KEY || intent.coalesceKey === COLLECT_AFTER_KEY
-          )
-      },
+      itemPlanner({
+        modules: () => ({
+          tracker: this.tracker,
+          errands: this.errands,
+          supplies: this.supplies,
+          loops: this.loops,
+          travel: this.travel,
+          loot: this.loot,
+          walker: this.walker,
+          queue: this.queue,
+          questWatch: this.questWatch
+        }),
+        stopLap,
+        config: () => this.automationConfig,
+        notice: (message) => this.sink.notice(message)
+      }),
       reports
     );
+    this.konami = konamiPlanner({
+      tracker: this.tracker,
+      errands: this.errands,
+      world,
+      hunt: this.hunt,
+      supplies: this.supplies,
+      queue: this.queue,
+      config: () => this.automationConfig,
+      busy: () => this.errandHeld() || this.tracker.pendingMoves > 0 || this.walker.walking,
+      safety: () => this.publisher.automation.safety,
+      target: () => this.state.target,
+      relayer: () => this.configure(...this.configured),
+      events: {
+        changed: () => this.publisher.publishAutomation(),
+        notice: (m) => this.sink.notice(m)
+      },
+      deps: deps.konami
+    });
     /*
      * And carrying a quest's plan (todos 102–103): the errands above, the
      * walker and auto-combat, driven one step at a time by the plan the card
@@ -1796,10 +1760,9 @@ export class SessionManager {
         rules: this.rules,
         client: this.client
       },
-      { config: () => this.automationConfig, konamiSnapshot: () => this.konami.snapshot() },
+      { config: () => this.automationConfig, konami: () => this.konami.snapshot() },
       sink
     );
-    this.publisher.publishAutomation();
     this.grounded = new Grounded(this.publisher, sink);
     const safetyParts = {
       tracker: this.tracker,
@@ -1884,6 +1847,7 @@ export class SessionManager {
       { module: this.cures, configure: (a) => this.cures.configure(a.spells, a.enabled) },
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
       { module: this.combatLease },
+      { module: this.konami, configure: (a) => this.konami.configure(a) },
       {
         module: this.invoke,
         configure: (a) => this.invoke.configure(a.enabled && a.spells.invokeItems)
@@ -2704,12 +2668,14 @@ export class SessionManager {
   }
 
   configure(
-    automation: AutomationConfig,
+    own: AutomationConfig,
     login: LoginConfig,
     rewrites: RewritesUiConfig = DEFAULT_CONFIG.ui.rewrites
   ): void {
+    this.configured = [own, login, rewrites];
+    // The planner's settings over the character's own, while it runs.
+    const automation = this.konami.over(own);
     this.automationConfig = automation;
-    this.konami.reconfigure(automation);
     this.rewriter.configure(rewrites);
     this.promptDesign.noteDesign();
     this.errands.forgetPreferred();
@@ -2728,7 +2694,6 @@ export class SessionManager {
     this.loops.configure(automation.health, automation.movement, automation.walk);
     this.login.configure(login);
     this.publisher.useSecret(login.password);
-    this.publisher.publishAutomation();
   }
 
   /**
@@ -3009,6 +2974,7 @@ export class SessionManager {
      * listing, a level-up voids the one on file), and each listing's answer (835).
      */
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
+    this.konami.onBlock(block);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
     /*
@@ -3225,6 +3191,7 @@ export class SessionManager {
        * decide on the leg from the same line that placed the character.
        */
       this.travel.pickUpAfterLoss(state);
+      this.konami.onCharacter(state);
       /*
        * **And nothing at all while the character is on the ground** (todo 20).
        *
@@ -3327,7 +3294,6 @@ export class SessionManager {
       // A step still waiting for its room stands auto-combat down: a fight
       // opened now lands in the room being left. Observed above, off every
       // line, because it is a fact about the wire rather than about the state.
-      this.konami.onCharacter(state);
       this.combat.onCharacter(state);
       // Under the passage's spell every routine below stands down: the walk
       // is the one thing that helps, and the walker is already told so.
@@ -3455,6 +3421,25 @@ export class SessionManager {
     const here = roomAddress(state.room);
     if (here === null || this.world === undefined) return null;
     return this.world.spellOver(here);
+  }
+
+  /**
+   * Nothing else in the middle of something: the escapes, and **the errands**,
+   * each of which has phases where nothing is walking and nothing is looping (a
+   * shop errand waiting for its listing, a trainer errand waiting for the level
+   * to move), during which a hunt or a plan would walk the character away from
+   * what it came for.
+   */
+  private errandHeld(): boolean {
+    return (
+      this.travel.isRetreating() ||
+      this.travel.retreatArmed ||
+      this.travel.escapeUnanswered ||
+      this.supplies.current !== null ||
+      this.trainLevel.busy ||
+      this.itemErrand.running ||
+      this.questRunner.running
+    );
   }
 
   /** The passage last said, so going in and coming out are each said once. */
@@ -3748,14 +3733,9 @@ export class SessionManager {
     this.sink.notice(t('session.stats.released'));
   }
 
-  get automation(): AutomationSnapshot { return this.publisher.automation; }
-  toggleKonamiPause(): boolean {
-    const res = this.konami.togglePause();
-    this.publisher.publishAutomation(); return res;
-  }
-  submitKonamiFeedback(id: string, fb: 'correct' | 'incorrect', notes?: string): boolean {
-    const res = this.konami.recordFeedback(id, fb, notes);
-    this.publisher.publishAutomation(); return res;
+  /** The decision trace, for a renderer that mounted mid-session. See `Publisher.automation`. */
+  get automation(): AutomationSnapshot {
+    return this.publisher.automation;
   }
 
   /**

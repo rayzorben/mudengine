@@ -57,7 +57,6 @@ export const CARDS = [
   { id: 'combat', label: t('cards.combat.title') },
   { id: 'room', label: t('cards.room.title') },
   { id: 'map', label: t('cards.map.title') },
-  { id: 'konami', label: t('cards.konami.title') },
   /*
    * Where a loop is drawn: the map again, as a chooser rather than a
    * picture. Put away by default and brought out as a float by the palette,
@@ -179,6 +178,8 @@ export const CARDS = [
    * and the rail is short on purpose.
    */
   { id: 'stats', label: t('cards.stats.title') },
+  // The planner's (todo 59), put away by default: only a character with it on has anything to show.
+  { id: 'konami', label: t('cards.konami.title') },
   // The diagnostics half. Toggled as a group by the rail shortcut, and each one
   // can still be put away on its own — "all cards" means all of them.
   { id: 'session', label: t('cards.session.title') },

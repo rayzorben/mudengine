@@ -2384,10 +2384,14 @@ export interface AutomationConfig {
   quests: QuestsConfig;
   /** Which kit to be in, and when. See `GearConfig`. */
   gear: GearConfig;
-  /** Hidden unbranded hook for external decision provider. */
-  superKonamiMode?: boolean;
-  konamiProviderPath?: string;
-  konamiPaused?: boolean;
+  /**
+   * The "what to do next" planner's switch, and the file its decision
+   * provider loads from (`KonamiPlanner`, todo 50). Kept out of the template
+   * and the settings screen on purpose: the provider is the player's own and
+   * is named nowhere in this client.
+   */
+  superKonamiMode: boolean;
+  konamiProviderPath: string;
 }
 
 /**
@@ -2844,8 +2848,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       autoBless: true
     },
     superKonamiMode: false,
-    konamiProviderPath: '',
-    konamiPaused: false
+    konamiProviderPath: ''
   }
 };
 
@@ -3759,9 +3762,8 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     train: normalizeTrain(raw['train']),
     quests: normalizeQuests(raw['quests']),
     gear: normalizeGear(raw['gear']),
-    superKonamiMode: bool(raw['superKonamiMode'], d.superKonamiMode ?? false),
-    konamiProviderPath: str(raw['konamiProviderPath'], d.konamiProviderPath ?? ''),
-    konamiPaused: bool(raw['konamiPaused'], d.konamiPaused ?? false)
+    superKonamiMode: bool(raw['superKonamiMode'], d.superKonamiMode),
+    konamiProviderPath: str(raw['konamiProviderPath'], d.konamiProviderPath)
   };
 }
 

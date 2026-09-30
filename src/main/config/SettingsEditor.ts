@@ -4,6 +4,7 @@ import { isMap, isSeq, parse, Scalar } from 'yaml';
 
 import { editYaml, removeYaml, type EditResult } from './YamlFile';
 import type { RemoteGrant, RemoteName } from '../../shared/remotes';
+import type { LayerWrite } from '../../shared/konami';
 import { LoopStore, readLoops } from './LoopStore';
 import { ServerStore } from './ServerStore';
 import { directoryNames } from './dirs';
@@ -622,6 +623,23 @@ export class SettingsEditor {
     }
     return editYaml(file, {
       mutate: (document) => document.setIn(['automation', ...AUTOMATION_SWITCHES[name]], on)
+    });
+  }
+
+  /**
+   * Writes a plan's settings into the character's file: the player pressed
+   * *keep these* on the Konami card (todo 59). The paths are `layerWrites`,
+   * the same list the planner lays over the settings in memory.
+   */
+  setAutomationValues(id: string, writes: readonly LayerWrite[]): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    return editYaml(file, {
+      mutate: (document) => {
+        for (const [path, value] of writes) document.setIn(['automation', ...path], value);
+      }
     });
   }
 
