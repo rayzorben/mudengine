@@ -2549,14 +2549,21 @@ cards:
     walkToButton: Plan route
     walkToTooltip: Plan the way here. Nothing is walked until you check the steps and confirm.
   slotPeek:
+    acPerWeightTooltip: AC and DR together for every 100 of weight. Higher is more armour for the load.
     ariaLabel: What this character can wear in {slot}
     columnAc: AC
+    columnAcPerWeight: AC/Wt
     columnDamage: Dmg
     columnDr: DR
     columnItem: Item
     columnLevel: Lvl
     columnPerRound: Dmg/round
     columnSpeed: Speed
+    columnType: Type
+    columnWeight: Wt
+    damageKind:
+      blunt: Blunt
+      sharp: Sharp
     empty: Nothing in the world database for this slot that this character can use.
     findPlaceholder: Find an item
     method:
@@ -2576,6 +2583,8 @@ cards:
     slotTooltip: What this character can wear here, best first
     tableCaption: Items for {slot}
     unread: "This character's class, race, level or alignment isn't known yet, so some of these may be refused."
+    weaponType: '{hands}H {damage}'
+    weightless: weightless
     wornChip: worn
   route:
     alreadyHere: You are already here.

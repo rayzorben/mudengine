@@ -20,9 +20,15 @@ import { t } from '../lib/i18n';
 import type { PopoverAnchor } from '../lib/popover';
 import type { CharacterState } from '@shared/character';
 import type { SessionId } from '@shared/ipc';
-import { sameItem } from '@shared/items';
+import { sameItem, type WeaponClass } from '@shared/items';
 import type { SwingMethod } from '@shared/prowess';
-import { meanBlow, type SlotGear, type SlotGearRow, type SlotRanking } from '@shared/slotGear';
+import {
+  armourPerWeight,
+  meanBlow,
+  type SlotGear,
+  type SlotGearRow,
+  type SlotRanking
+} from '@shared/slotGear';
 import { errorMessage } from '@shared/values';
 
 /** A slot word clicked, whose character's listing it was, and where. Fresh per click. */
@@ -56,6 +62,15 @@ function methodWord(method: SwingMethod): string {
       return String(unhandled);
     }
   }
+}
+
+/** MMUD Explorer's `1H Sharp`: hands, then what the blow does. */
+function weaponTypeWord(weapon: WeaponClass): string {
+  const damage =
+    weapon.damage === 'blunt'
+      ? t('cards.slotPeek.damageKind.blunt')
+      : t('cards.slotPeek.damageKind.sharp');
+  return t('cards.slotPeek.weaponType', { hands: weapon.hands, damage });
 }
 
 function rankedBy(ranking: SlotRanking): string {
@@ -217,19 +232,45 @@ function columnsFor(
     numeric: true,
     value: (row) => row.minLevel
   };
+  const weight: Column<SlotGearRow> = {
+    id: 'weight',
+    label: t('cards.slotPeek.columnWeight'),
+    numeric: true,
+    value: (row) => row.weight
+  };
   if (ranking.by === 'armour') {
     return [
       item,
       number,
       level,
+      weight,
       { id: 'ac', label: t('cards.slotPeek.columnAc'), numeric: true, value: (row) => row.ac },
-      { id: 'dr', label: t('cards.slotPeek.columnDr'), numeric: true, value: (row) => row.dr }
+      { id: 'dr', label: t('cards.slotPeek.columnDr'), numeric: true, value: (row) => row.dr },
+      {
+        id: 'acPerWeight',
+        label: t('cards.slotPeek.columnAcPerWeight'),
+        numeric: true,
+        value: armourPerWeight,
+        cell: (row) => {
+          const ratio = armourPerWeight(row);
+          if (ratio === null) return null;
+          // Sorted as weighing one; a figure per 100 of no weight means nothing.
+          if (row.weight === 0) return t('cards.slotPeek.weightless');
+          return <span title={t('cards.slotPeek.acPerWeightTooltip')}>{ratio.toFixed(1)}</span>;
+        }
+      }
     ];
   }
   return [
     item,
     number,
     level,
+    {
+      id: 'type',
+      label: t('cards.slotPeek.columnType'),
+      value: (row) => (row.weaponClass === null ? null : weaponTypeWord(row.weaponClass))
+    },
+    weight,
     {
       id: 'damage',
       label: t('cards.slotPeek.columnDamage'),
