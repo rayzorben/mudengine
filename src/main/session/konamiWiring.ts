@@ -35,12 +35,7 @@ export interface KonamiWiring {
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<
     Errands,
-    | 'huntingGrounds'
-    | 'realmClass'
-    | 'capabilities'
-    | 'travellerNow'
-    | 'priceAt'
-    | 'trainers'
+    'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'trainers'
   >;
   /** The simulator's run of each lair's fight. */
   odds: Pick<OddsReader, 'lair'>;
