@@ -6,7 +6,7 @@
  * console name, a palette row) is the opener's. See `mudengine-ui` ›
  * *Focus lives in the terminal*.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { WorldRoom } from '@shared/world';
 
@@ -35,11 +35,22 @@ export function useRoutePanel(returnFocus: () => void): RoutePanelState {
   const [destination, setDestination] = useState<WorldRoom | null>(null);
   const [search, setSearch] = useState<string | null>(null);
 
-  /** Route planning is a dialog that types, so it hands focus back on close. */
-  const close = useCallback(() => {
-    setOpen(false);
-    returnFocus();
-  }, [returnFocus]);
+  const close = useCallback(() => setOpen(false), []);
+
+  /*
+   * Route planning is a dialog that types, so it hands the caret back once it
+   * has closed, however it closed. When `close` called `returnFocus` beside
+   * `setOpen(false)`, a close made after a walk's IPC answer could reach
+   * `returnFocus`'s frame before React removed the panel; the caret was still
+   * in the dialog, so the hand-back stood down, and the unmount then left it on
+   * the body, where the next Enter reached nothing (todo 00). `Ctrl/Cmd G`
+   * never handed it back.
+   */
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) returnFocus();
+    wasOpen.current = open;
+  }, [open, returnFocus]);
 
   const openOn = useCallback((room: WorldRoom | null, name: string | null) => {
     setDestination(room);
