@@ -10,7 +10,8 @@
  */
 import { COPPER_PER } from './coins';
 import { experienceStanding, type ExperienceTable } from './experience';
-import type { AutomationConfig, BlessingConfig } from './config';
+import type { BlessingConfig } from './blessings';
+import type { AutomationConfig } from './config';
 import type { TrainedAttribute } from './training';
 
 /** A question the provider answers: one label of several, or yes or no. */
