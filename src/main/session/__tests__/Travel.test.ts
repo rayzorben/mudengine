@@ -9,6 +9,7 @@ import { NO_LOOP } from '../../../shared/loops';
 import { NOT_MOVING } from '../../../shared/movement';
 import { classifyOccupant } from '../../../shared/mobs';
 import { IDLE_WALK } from '../../../shared/walk';
+import type { Route } from '../../../shared/world';
 
 const ooze: RoomOccupant = classifyOccupant('black ooze', {
   players: new Set<string>(),
@@ -53,8 +54,14 @@ const config: AutomationConfig = {
 };
 
 /** Travel over whole-port doubles; `walk` says whether a walk is stepping or held. */
-function travel(state: CharacterState, walk: 'stepping' | 'held' | 'none', going = true) {
+function travel(
+  state: CharacterState,
+  walk: 'stepping' | 'held' | 'none',
+  going = true,
+  master = { on: true, writes: true }
+) {
   const sent: string[] = [];
+  const switched: boolean[] = [];
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
   const parts: TravelParts = {
@@ -110,14 +117,19 @@ function travel(state: CharacterState, walk: 'stepping' | 'held' | 'none', going
     questRunner: { running: false, abandon: vi.fn() }
   };
   const session: TravelSession = {
-    config: () => config,
+    config: () => ({ ...config, enabled: master.on }),
     movement: () => (going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING }),
     loopNamed: () => undefined,
     dropTyped: vi.fn(),
     notice: (message) => void notices.push(message),
-    decided: (decision) => void decisions.push(decision)
+    decided: (decision) => void decisions.push(decision),
+    switchAutomation: (on) => {
+      switched.push(on);
+      if (master.writes) master.on = on;
+      return master.writes;
+    }
   };
-  return { travel: new Travel(parts, session), sent, notices, decisions };
+  return { travel: new Travel(parts, session), parts, sent, notices, decisions, switched };
 }
 
 /*
@@ -188,5 +200,53 @@ describe('running away while following', () => {
     const { travel: alone, sent } = travel(state, 'held');
     alone.considerEscape(state);
     expect(sent).toEqual(['n']);
+  });
+});
+
+/*
+ * Todo 03: a character hung up hurt, the player turned automation off to log
+ * back in, then sent it to a room to run there. The press turns it back on.
+ */
+describe('a route asked for with automation off', () => {
+  const route: Route = { steps: [], cost: 0, blocked: false };
+  const items = [{ id: 1, name: 'rope' }];
+
+  it('turns automation on, says so, and walks', () => {
+    const master = { on: false, writes: true };
+    const { travel: moving, parts, notices, switched } = travel(beside(), 'none', false, master);
+    vi.mocked(parts.itemErrand.collect).mockImplementation(() => {
+      // Positive control: the walk is asked for after the switch is read back.
+      expect(master.on).toBe(true);
+      return null;
+    });
+    expect(moving.collectThenWalk(items, route)).toBeNull();
+    expect(switched).toEqual([true]);
+    expect(notices).toEqual([t('session.walk.automationOn')]);
+  });
+
+  it('puts the switch back when the walk is refused anyway', () => {
+    const master = { on: false, writes: true };
+    const { travel: moving, parts, notices, switched } = travel(beside(), 'none', false, master);
+    vi.mocked(parts.itemErrand.collect).mockReturnValue('no way there');
+    expect(moving.collectThenWalk(items, route)).toBe('no way there');
+    expect(switched).toEqual([true, false]);
+    expect(master.on).toBe(false);
+    expect(notices).toEqual([]);
+  });
+
+  it('refuses out loud when the file will not take the write', () => {
+    const master = { on: false, writes: false };
+    const { travel: moving, parts, switched } = travel(beside(), 'none', false, master);
+    expect(moving.collectThenWalk(items, route)).toBe(t('session.walk.automationNotOn'));
+    expect(switched).toEqual([true]);
+    expect(parts.itemErrand.collect).not.toHaveBeenCalled();
+  });
+
+  it('touches nothing when automation is already on', () => {
+    const { travel: moving, parts, notices, switched } = travel(beside(), 'none', false);
+    vi.mocked(parts.itemErrand.collect).mockReturnValue(null);
+    expect(moving.collectThenWalk(items, route)).toBeNull();
+    expect(switched).toEqual([]);
+    expect(notices).toEqual([]);
   });
 });

@@ -167,6 +167,11 @@ export interface TravelSession {
   notice(message: string): void;
   /** A safety decision, for the trace. */
   decided(decision: SafetyDecision): void;
+  /**
+   * Write the master switch into the character's file and read it back
+   * before returning. Whether it was written.
+   */
+  switchAutomation(on: boolean): boolean;
 }
 
 export class Travel implements SessionModule {
@@ -1575,7 +1580,36 @@ export class Travel implements SessionModule {
     route: Route,
     run = false
   ): string | null {
-    return this.unchosen(route) ?? this.itemErrand.collect(items, route, this.tracker.current, run);
+    return (
+      this.unchosen(route) ??
+      this.switchedOnFor(() => this.itemErrand.collect(items, route, this.tracker.current, run))
+    );
+  }
+
+  /**
+   * A route the player sent the character on or picked back up, walked with
+   * automation turned back on if it was off (todo 03). A character hangs up hurt, the player
+   * turns automation off to log back in, then picks a room to run to: the
+   * press is the player asking for automation again, and refusing it costs
+   * the seconds the run was for. A walk that is refused anyway leaves the
+   * switch off as it was.
+   */
+  private switchedOnFor(walk: () => string | null): string | null {
+    if (this.session.config().enabled) return walk();
+    if (!this.session.switchAutomation(true)) return t('session.walk.automationNotOn');
+    let refused: string | null;
+    try {
+      refused = walk();
+    } catch (error) {
+      this.session.switchAutomation(false);
+      throw error;
+    }
+    if (refused !== null) {
+      this.session.switchAutomation(false);
+      return refused;
+    }
+    this.session.notice(t('session.walk.automationOn'));
+    return null;
   }
 
   /**
@@ -1676,7 +1710,7 @@ export class Travel implements SessionModule {
 
   /** `walkRoute`'s answer as the press's union. */
   private started(route: Route, run: boolean): WalkStart {
-    const refused = this.walkRoute(route, run);
+    const refused = this.switchedOnFor(() => this.walkRoute(route, run));
     return refused === null ? { started: true } : { refused };
   }
 
@@ -2043,7 +2077,7 @@ export class Travel implements SessionModule {
     // Through `walkRoute`, so a resumed route is consulted against the supply
     // list exactly as the one the player drew was: being about to travel is
     // what makes the pack matter, and resuming is being about to travel.
-    const refused = this.walkRoute(plan);
+    const refused = this.switchedOnFor(() => this.walkRoute(plan));
     return refused === null ? { started: true } : { refused };
   }
 

@@ -6867,6 +6867,43 @@ describe('starting and stopping a movement', () => {
     expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 10 });
   });
 
+  /*
+   * Todo 03: automation turned off to log a hurt character back in, then a
+   * room picked to run to. The press turns it back on, read back before the
+   * first step, so the step goes out now.
+   */
+  it('turns automation back on to walk a route the player pressed', async () => {
+    const world = corridor();
+    const { sink, notices } = collect();
+    const switched: boolean[] = [];
+    manager = build(
+      {
+        ...sink,
+        switchAutomationNow: (name, on) => {
+          switched.push(on);
+          if (name === 'automation') {
+            manager!.configure({ ...quiet, enabled: on }, DEFAULT_CONFIG.connection.login);
+          }
+          return true;
+        }
+      },
+      { world, automation: { ...quiet, enabled: false } }
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,40\r\nRoom 40\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 40);
+
+    expect(manager.walkPlan(world.route('1/40', '1/38'))).toEqual({ started: true });
+    expect(switched).toEqual([true]);
+    expect(manager.walker.progress).toMatchObject({ status: 'walking', total: 2 });
+    expect(notices.some(composes('session.walk.automationOn'))).toBe(true);
+    await until(() => Buffer.concat(chunks).toString('latin1').includes('s\r\n'));
+  });
+
   /* A plan drawn from where the character is standing is walked untouched. */
   it('leaves a plan that still starts here alone', async () => {
     const { world, notices } = await atTheNorthEnd();

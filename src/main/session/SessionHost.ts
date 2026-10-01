@@ -109,6 +109,8 @@ export interface SessionHostOptions {
   worldFor(id: SessionId): WorldGraph | undefined;
   /** Write one automation switch into a character's file; whether it was written. See `CombatLease`. */
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
+  /** Read every character's file again now, rather than on the next poll. */
+  reread?(): void;
   /**
    * What is known about the monsters and attack spells on *this character's* realm.
    *
@@ -445,6 +447,14 @@ export class SessionHost {
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
         switchAutomation: (name, on) => this.options.flipSwitch?.(id, name, on) ?? false,
+        // Nothing is written that cannot be read back now.
+        switchAutomationNow: (name, on) => {
+          const { flipSwitch, reread } = this.options;
+          if (flipSwitch === undefined || reread === undefined) return false;
+          if (!flipSwitch(id, name, on)) return false;
+          reread();
+          return true;
+        },
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager
           // holds from `connect`; a word with no address is a word about nowhere.

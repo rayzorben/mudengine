@@ -156,4 +156,10 @@ export interface SessionSink {
    * lent for a hold, and given back on arrival. Whether it was written.
    */
   switchAutomation?(name: AutomationSwitch, on: boolean): boolean;
+  /**
+   * The same write, read back before this returns: a route the player sent
+   * the character on with automation off is walked now, not on the next
+   * reload (todo 03). Whether it was written.
+   */
+  switchAutomationNow?(name: AutomationSwitch, on: boolean): boolean;
 }
