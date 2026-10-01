@@ -574,6 +574,21 @@ describe('the planner', () => {
     it.dispose();
   });
 
+  it('is not stuck while it hunts at the spot between respawns', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    activity = { doing: { kind: 'hunt', walking: false, place: 'Small Cavern' }, walk: null };
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.stuckMs + 1 });
+    (it as unknown as { tick(): void }).tick();
+    vi.useRealTimers();
+    await settle();
+    expect(global.__konamiAsked).toBe(1);
+    it.dispose();
+  });
+
   it('pauses when the player stops the walk, rather than planning the next one', async () => {
     const it = planner();
     it.configure(on(providerFile()));

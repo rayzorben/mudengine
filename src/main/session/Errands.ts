@@ -31,6 +31,8 @@ import {
   estimateSpot,
   moveDelayMs,
   orderRing,
+  lapClock,
+  refillsOnEntry,
   respawnSeconds,
   NO_EXCLUSIONS,
   sizeLoop,
@@ -113,6 +115,8 @@ interface HuntPrice {
   mobs: SpotMob[];
   clock: HuntingSpot['clock'];
   respawn: number | null;
+  /** Refilled whenever a player walks in (GreaterMUD, `Delay` 0); see `refillsOnEntry`. */
+  refills: boolean;
 }
 
 /** One group priced against the character, before any loop is drawn round it. */
@@ -1422,7 +1426,8 @@ export class Errands implements SessionModule {
           : entities[0]?.regenHours === undefined
             ? null
             : entities[0].regenHours * 3600;
-      return { mobs, clock, respawn };
+      const refills = group.via === 'lair' && refillsOnEntry(group.sample.delay, family);
+      return { mobs, clock, respawn, refills };
     };
     const priced = new Map<string, HuntPriced>();
     const excluded = { ...NO_EXCLUSIONS };
@@ -1436,9 +1441,9 @@ export class Errands implements SessionModule {
         remembered.set(key, fresh);
         known = fresh;
       }
-      const { mobs, clock, respawn } = known;
+      const { mobs, clock, respawn, refills } = known;
       const rooms = [...group.rooms].sort((a, b) => a.steps - b.steps);
-      const entry: HuntPriced = { key, group, mobs, clock, respawn, rooms };
+      const entry: HuntPriced = { key, group, mobs, clock, respawn, refills, rooms };
       /*
        * A first estimate to rank on and to exclude by: the nearest rooms, the
        * ring's length guessed from the sweep's distances — out to the farthest
@@ -1578,7 +1583,8 @@ export class Errands implements SessionModule {
       respawnSeconds: own.respawn,
       loopSteps: ringSteps(rooms),
       character,
-      filler: []
+      filler: [],
+      refillsOnEntry: own.refills
     });
     const sized = sizeLoop(base, candidates.length, c);
     const ring = order.slice(0, sized.rooms);
@@ -1618,7 +1624,8 @@ export class Errands implements SessionModule {
             spawns: other.group.spawns,
             mobs: other.mobs,
             respawnSeconds: other.respawn,
-            detourSteps: 2 * steps
+            detourSteps: 2 * steps,
+            refillsOnEntry: other.refills
           }
         });
       }
@@ -1635,6 +1642,18 @@ export class Errands implements SessionModule {
     ring.forEach((room, at) => {
       walk.push(room);
       for (const offer of taken) if (offer.after === at) walk.push(offer.room);
+    });
+    // Each stop's clock as the lap gives it (`lapClock`), so the lap walks a refilling room every time.
+    const refilling = new Set<RoomId>([
+      ...(own.refills ? ring.map((room) => room.id) : []),
+      ...taken.filter((offer) => offer.input.refillsOnEntry === true).map((o) => o.room.id)
+    ]);
+    walk.forEach((room, at) => {
+      if (!refilling.has(room.id)) return;
+      walk[at] = {
+        ...room,
+        respawnSeconds: lapClock(room.respawnSeconds ?? own.respawn, true, walk.length) ?? undefined
+      };
     });
     const estimate: SpotEstimate = filled.estimate;
     return {
@@ -2153,9 +2172,10 @@ export class Errands implements SessionModule {
   lairClock(room: RoomId): number | null {
     const found = this.world?.byId(room);
     if (!found?.lair) return null;
-    const { greatermudRespawnOffsetSeconds } = tuning().hunting;
+    const { greatermudRespawnOffsetSeconds, passiveTickSeconds } = tuning().hunting;
     return respawnSeconds(found.delay ?? null, this.serverFamily, {
-      greatermudRespawnOffsetSeconds
+      greatermudRespawnOffsetSeconds,
+      passiveTickSeconds
     });
   }
 

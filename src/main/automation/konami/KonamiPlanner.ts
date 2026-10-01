@@ -547,7 +547,11 @@ export class KonamiPlanner implements SessionModule {
         this.trigger('review');
       }
     }
-    if (this.plan !== null && !fightIsRunning(state)) {
+    // A hunt lap standing at a stop waits for respawns; the review clock reconsiders it.
+    const activity = this.facts.activity();
+    const camping =
+      activity?.doing.kind === 'hunt' && !activity.doing.walking && activity.walk === null;
+    if (this.plan !== null && !fightIsRunning(state) && !camping) {
       if (Date.now() - this.markedAt >= tuning().konami.stuckMs && this.pending === null) {
         // Measured again from now, so a plan that changes nothing is not asked every tick.
         this.log.say('stuck', `nothing moved for ${Math.round(tuning().konami.stuckMs / 1000)}s`);

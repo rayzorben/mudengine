@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addFiller,
+  huntLoop,
+  lapClock,
+  refillsOnEntry,
   compareSpots,
   estimateSpot,
   fightUnpriced,
@@ -42,7 +45,43 @@ describe('the respawn clock', () => {
 
   it('states no clock for a room that states none', () => {
     expect(respawnSeconds(null, 'greatermud', C)).toBeNull();
-    expect(respawnSeconds(0, 'greatermud', C)).toBeNull();
+    expect(respawnSeconds(0, 'majormud', C)).toBeNull();
+  });
+
+  /*
+   * GreaterMUD refills a room with `Delay` 0 at its next regen: the pass for a
+   * room stood in (`RegenTickTime`, 121s) and every entry (`Player.cs:782`).
+   */
+  it('reads a GreaterMUD delay of 0 as the regen pass', () => {
+    expect(respawnSeconds(0, 'greatermud', C)).toBe(C.passiveTickSeconds);
+  });
+
+  it('puts no clock on a refilling stop, so the lap walks it every time', () => {
+    const room = (name: string, number: number, respawnSeconds?: number) => ({
+      id: `1/${number}`,
+      map: 1,
+      room: number,
+      name,
+      steps: 1,
+      ...(respawnSeconds === undefined ? {} : { respawnSeconds })
+    });
+    const spot = {
+      key: 'lair:1:80:',
+      mobs: [{ name: 'cave bear' }],
+      respawnSeconds: C.passiveTickSeconds,
+      walk: [room('Small Cavern', 2156, 0), room('Dungeon, Entrance', 2152, 0)]
+    } as unknown as HuntingSpot;
+    const loop = huntLoop(spot, (key) => key);
+    expect(loop.stops.map((stop) => stop.every)).toEqual([undefined, undefined]);
+  });
+
+  it('refills on entry only for a GreaterMUD delay of 0, and only on a lap of two stops or more', () => {
+    expect(refillsOnEntry(0, 'greatermud')).toBe(true);
+    expect(refillsOnEntry(1, 'greatermud')).toBe(false);
+    expect(refillsOnEntry(0, 'majormud')).toBe(false);
+    expect(lapClock(121, true, 1)).toBe(121);
+    expect(lapClock(121, true, 2)).toBe(0);
+    expect(lapClock(121, false, 2)).toBe(121);
   });
 });
 
@@ -499,6 +538,26 @@ describe('filling the wait', () => {
     expect(filled.taken.length).toBeGreaterThan(0);
     expect(filled.estimate.expPerHour!).toBeGreaterThan(before.expPerHour!);
     expect(filled.estimate.fillerExpPerCycle).toBeGreaterThan(0);
+  });
+
+  /*
+   * The cave bear: one room on GreaterMUD's regen pass, refilled whenever a
+   * player walks in. Standing there waits the pass out; stepping next door and
+   * back re-enters it every lap, so the lair beside it is taken and the wait goes.
+   */
+  it('takes the room next door for a lair that refills on entry, and the wait goes', () => {
+    const bear = singles({ respawnSeconds: C.passiveTickSeconds, refillsOnEntry: true });
+    const camping = estimateSpot(bear, C);
+    expect(camping.waitSeconds!).toBeGreaterThan(0);
+    const filled = addFiller(
+      bear,
+      [{ ...rat, respawnSeconds: C.passiveTickSeconds, refillsOnEntry: true }],
+      8,
+      C
+    );
+    expect(filled.taken).toEqual([0]);
+    expect(filled.estimate.waitSeconds).toBe(0);
+    expect(filled.estimate.expPerHour!).toBeGreaterThan(camping.expPerHour!);
   });
 
   it('adds nothing to a cycle already slower than its clock', () => {
