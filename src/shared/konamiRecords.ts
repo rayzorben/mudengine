@@ -4,6 +4,7 @@
  */
 import type { KonamiAsk, KonamiGoal, KonamiPlan, KonamiTrigger } from './konami';
 import type { BriefSpot, KonamiBrief } from './konamiBrief';
+import type { HuntWait } from './hunting';
 import { goalKey, type KonamiLesson } from './konamiLessons';
 
 /**
@@ -173,7 +174,9 @@ export type KonamiDoing =
   | { kind: 'train'; trainer: string; room: string; copper: number; training: boolean }
   /** `bank`: fetching the cash first; `shop`: at the counter, listing or buying. */
   | { kind: 'buy'; item: string; shop: string; stage: 'walking' | 'bank' | 'shop' }
-  | { kind: 'hunt'; walking: boolean; place: string };
+  | { kind: 'hunt'; walking: boolean; place: string }
+  /** The hunt was steered and has not set off, and why. */
+  | { kind: 'waiting'; on: HuntWait };
 
 /** The goal at work, and how far the walk it is on has got, where it is walking. */
 export interface KonamiActivity {
@@ -189,6 +192,8 @@ export interface KonamiSnapshot {
   /** The provider's name once loaded, else null with `refusal` saying why. */
   provider: string | null;
   asking: boolean;
+  /** `automation.enabled`: off, nothing a plan hands a goal to acts, and nothing is asked. */
+  automation: boolean;
   /** Waiting to be asked, and why, until the character is free. */
   pending: KonamiTrigger | null;
   refusal: string | null;
@@ -216,6 +221,7 @@ export const EMPTY_KONAMI: KonamiSnapshot = {
   paused: false,
   provider: null,
   asking: false,
+  automation: true,
   pending: null,
   refusal: null,
   plan: null,

@@ -504,6 +504,20 @@ describe('the planner', () => {
     it.dispose();
   });
 
+  it('asks nothing while automation is switched off, says so, and asks once it is on', async () => {
+    const it = planner();
+    it.configure({ ...on(providerFile()), enabled: false });
+    await loaded(it);
+    it.onCharacter(state);
+    await settle();
+    expect(global.__konamiAsked).toBe(0);
+    expect(it.snapshot().automation).toBe(false);
+    it.configure(on(providerFile()));
+    it.onCharacter(state);
+    await asked(1);
+    it.dispose();
+  });
+
   it('pauses when the player stops the walk, rather than planning the next one', async () => {
     const it = planner();
     it.configure(on(providerFile()));

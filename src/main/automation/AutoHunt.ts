@@ -24,7 +24,12 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { HealthConfig, HuntingAutomationConfig, WalkConfig } from '../../shared/config';
-import { huntLoop, type HuntingAdvice, type HuntingSpot } from '../../shared/hunting';
+import {
+  huntLoop,
+  type HuntingAdvice,
+  type HuntingSpot,
+  type HuntWait
+} from '../../shared/hunting';
 import type { Loop } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
 import type { SessionModule } from './Module';
@@ -94,6 +99,10 @@ type Phase =
 const ACTION = 'hunt';
 
 export class AutoHunt implements SessionModule {
+  /** A lap that was running, not this module's, when the hunt was steered: the planner's to end. */
+  private inherited: string | null = null;
+  /** What held the hunt on the last line, or null. See `waiting`. */
+  private waitingOn: HuntWait | null = null;
   private phase: Phase = { kind: 'idle' };
   /** When the survey was last asked for, so a status line is not a sweep. */
   private surveyedAt = 0;
@@ -193,6 +202,9 @@ export class AutoHunt implements SessionModule {
       return;
     }
     this.steered = key;
+    // A lap running now, and not this module's, is left over from before the steer.
+    const running = this.planner.runningLoop();
+    this.inherited = typeof key === 'string' && running !== null && !this.mine() ? running : null;
     this.rejudge();
     if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === key) return;
     if (this.mine()) this.planner.stopLoop(t('automation.hunt.steeredAway'));
@@ -208,6 +220,19 @@ export class AutoHunt implements SessionModule {
   /** What this module last said it would not do, until it next sets off. */
   get refusal(): string | null {
     return this.said;
+  }
+
+  /**
+   * What is holding the hunt this line, where something is: a fight, a walk,
+   * another errand, low health, a lap that is not this module's. Said by the
+   * Konami card and its run log, so a hunt that does not set off says why.
+   */
+  get waiting(): HuntWait | null {
+    return typeof this.steered === 'string' ? this.waitingOn : null;
+  }
+
+  private wait(why: HuntWait | null): void {
+    this.waitingOn = why;
   }
 
   /** Whether a hunt this module started is what the character is doing. */
@@ -299,19 +324,30 @@ export class AutoHunt implements SessionModule {
      * nothing: `Recovery` is already resting, and the hunt goes as soon as it
      * is up.
      */
-    if (state.inCombat || state.combat.attackers.length > 0) return;
-    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
-    if (this.tooHurt(state)) return;
+    if (state.inCombat || state.combat.attackers.length > 0) return this.wait('fight');
+    if (this.planner.moveInFlight() || this.planner.walking()) return this.wait('walking');
+    if (this.planner.busy()) return this.wait('busy');
+    if (this.tooHurt(state)) return this.wait('hurt');
 
     if (this.phase.kind === 'hunting') {
+      this.waitingOn = null;
       this.keepHonest(state);
       return;
     }
-    // A lap that is not this module's: the character is busy, and whose lap it
-    // is has already been settled above.
-    if (this.planner.runningLoop() !== null) return;
+    // A lap that is not this module's: the character is busy. One left running
+    // from before the planner steered the hunt is the planner's to end; one the
+    // player started since is the player's, and the hunt waits for it.
+    const running = this.planner.runningLoop();
+    if (running !== null) {
+      if (typeof this.steered === 'string' && running === this.inherited) {
+        this.inherited = null;
+        this.planner.stopLoop(t('automation.hunt.takingOver', { loopName: running }));
+      }
+      return this.wait('lap');
+    }
     // A plan that hunts nowhere for now: it is somewhere else's turn.
-    if (this.steered === null) return;
+    if (this.steered === null) return this.wait(null);
+    this.waitingOn = null;
 
     const judged = this.judgement(state);
     if (judged === this.judgedFor) return;

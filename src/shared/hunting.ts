@@ -1135,3 +1135,10 @@ export function huntLoop(spot: HuntingSpot, t: UiLookup): Loop {
     })
   };
 }
+
+/**
+ * What holds a hunt from setting off (`AutoHunt.waiting`): a fight, a walk or
+ * a move under way, another errand, health under the resting floor, a lap
+ * that is not the hunt's.
+ */
+export type HuntWait = 'fight' | 'walking' | 'busy' | 'hurt' | 'lap';

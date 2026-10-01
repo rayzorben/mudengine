@@ -61,6 +61,8 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
 
   const badge = !konami.on ? (
     <span className="chip off">{t('cards.konami.badge.off')}</span>
+  ) : !konami.automation ? (
+    <span className="chip warn">{t('cards.konami.badge.automationOff')}</span>
   ) : konami.provider === null ? (
     <span className="chip warn">{t('cards.konami.badge.noProvider')}</span>
   ) : konami.paused ? (

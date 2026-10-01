@@ -20,6 +20,7 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
+import { REFRESH } from '../../shared/staleness';
 import { bestTrainer } from '../../shared/training';
 import { roomId, type RoomId, type Route, type TrainerChoice } from '../../shared/world';
 import type { SessionModule } from './Module';
@@ -71,6 +72,8 @@ export class TrainErrand implements SessionModule {
    * of grinding, which is the right price for not spending commands in a loop.
    */
   private attempted: number | null = null;
+  /** The level `exp` was last asked at for an unread `expNeeded`, so it is asked once. */
+  private askedOwed: number | null = null;
   /** Whether the *nowhere to go* refusal has been said for this level. */
   private saidNowhere: number | null = null;
   /**
@@ -116,6 +119,7 @@ export class TrainErrand implements SessionModule {
   reset(): void {
     this.phase = { kind: 'idle' };
     this.attempted = null;
+    this.askedOwed = null;
     this.saidNowhere = null;
   }
 
@@ -180,8 +184,15 @@ export class TrainErrand implements SessionModule {
      * it is null until an `exp` or a sheet has been read — and `null <= 0` is
      * false in JavaScript only because the comparison is written this way
      * round, which is exactly the mistake this client keeps a rule about.
-     * Unknown is never the answer that sends a character across the realm.
+     * Unknown is never the answer that sends a character across the realm, so
+     * an unread figure is asked for, once a level: `st` states the experience
+     * and not what is needed, and a character logged in with a level waiting
+     * otherwise waits for ever.
      */
+    if (level !== null && owed === null) {
+      this.askOwed(level);
+      return;
+    }
     if (level === null || owed === null || owed > 0) return;
     if (this.expStaleSince !== null) {
       if (this.now() - this.expStaleSince < tuning().train.confirmMs) return;
@@ -368,6 +379,18 @@ export class TrainErrand implements SessionModule {
     }
     if (this.planner.looping()) this.planner.hold();
     this.phase = { kind: 'walking', to: roomId(chosen.map, chosen.room), trainer: chosen };
+  }
+
+  /** Asks `exp` once per level, for the figure the trip is decided on. */
+  private askOwed(level: number): void {
+    if (this.askedOwed === level) return;
+    // A refused enqueue is *not now*: marked only once the queue takes it.
+    const taken = this.queue.enqueue({
+      ...REFRESH.experience,
+      priority: 'probe',
+      reason: t('automation.train.reasonAskOwed')
+    });
+    if (taken) this.askedOwed = level;
   }
 
   /** The experience figure said again: the next banked level may be asked about. */

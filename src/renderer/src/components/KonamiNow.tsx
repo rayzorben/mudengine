@@ -167,6 +167,12 @@ function KonamiNow({ konami, onChoose, onOpenDecision, onSeeLessons }: KonamiNow
         </div>
       </section>
 
+      {!konami.automation && (
+        <div className="konami-banner" data-tone="bad">
+          <Icon name="close" />
+          <span>{t('cards.konami.automationOff')}</span>
+        </div>
+      )}
       {konami.pending !== null && (
         <div className="konami-banner" data-tone="pending">
           <span className="konami-pulse" />

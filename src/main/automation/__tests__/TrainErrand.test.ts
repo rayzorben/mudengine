@@ -172,10 +172,37 @@ describe('going to collect the level', () => {
    * `expNeeded` is null until an `exp` or a sheet has been read, and unknown
    * is never the answer that sends a character across the realm.
    */
-  it('does nothing while the experience owed is unread', () => {
-    const base = owed();
-    make().onCharacter({ ...base, progress: { ...base.progress, expNeeded: null } });
-    expect(walked).toEqual([]);
+  it('asks for the experience owed once a level while it is unread, and walks nowhere', () => {
+    const errand = make();
+    const unread = owed({ progress: { ...EMPTY_CHARACTER.progress, level: 30, expNeeded: null } });
+    errand.onCharacter(unread);
+    errand.onCharacter(unread);
+    drain();
+    expect(walked).toHaveLength(0);
+    expect(sent).toEqual(['exp']);
+  });
+
+  it('asks again on the next line when the queue would not take the ask', () => {
+    let refuse = true;
+    const accepted: string[] = [];
+    const held = new TrainErrand(
+      train(),
+      true,
+      {
+        enqueue: (intent: { command: string }) => {
+          if (refuse) return false;
+          accepted.push(intent.command);
+          return true;
+        }
+      } as unknown as CommandQueue,
+      planner(),
+      {}
+    );
+    const unread = owed({ progress: { ...EMPTY_CHARACTER.progress, level: 30, expNeeded: null } });
+    held.onCharacter(unread);
+    refuse = false;
+    held.onCharacter(unread);
+    expect(accepted).toEqual(['exp']);
   });
 
   it('does nothing while experience is still owed', () => {

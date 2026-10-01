@@ -399,6 +399,40 @@ describe('a spot an outside plan names (todo 54)', () => {
     expect(started[0]!.name).toContain('Sewer');
   });
 
+  it('stops a lap it did not start, then sets off for the named spot', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    running = 'old lap';
+    const auto = hunt();
+    auto.steer('lair:b');
+    auto.onCharacter(ready());
+    expect(stops).toHaveLength(1);
+    expect(auto.waiting).toBe('lap');
+    here = '1/900';
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+    expect(auto.waiting).toBeNull();
+  });
+
+  it('waits on a lap the player started after the steer, and stops none', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:b');
+    running = 'my own lap';
+    auto.onCharacter(ready());
+    expect(stops).toEqual([]);
+    expect(auto.waiting).toBe('lap');
+  });
+
+  it('says what holds it while steered, and nothing while not', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    const busy = hunt({ busy: () => true });
+    busy.onCharacter(ready());
+    expect(busy.waiting).toBeNull();
+    busy.steer('lair:b');
+    busy.onCharacter(ready());
+    expect(busy.waiting).toBe('busy');
+  });
+
   it('walks to the named spot where the realm states no rate for it', () => {
     answer = advice([spot('lair:b', null, 'Sewer', 900)]);
     const auto = hunt();

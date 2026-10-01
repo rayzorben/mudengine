@@ -1802,10 +1802,12 @@ cards:
     badge:
       off: Off
       noProvider: No provider
+      automationOff: Automation off
       paused: Paused
       asking: Asking
       running: Running
     emptyOff: The planner is off for this character.
+    automationOff: Automation is off for this character, so nothing would carry out a plan and none is asked for. Turn on Auto in the toolbar.
     emptyPlan: No plan yet.
     emptyAsking: 'Asking {provider} what to do next…'
     emptyDecisions: Nothing asked yet.
@@ -1838,6 +1840,11 @@ cards:
       buying: 'Buying {item} at {shop}'
       toSpot: 'Walking to {place}'
       hunting: 'Hunting at {place}'
+      waitFight: 'Not setting off yet: a fight is on'
+      waitWalking: 'Not setting off yet: a walk or a move is under way'
+      waitBusy: 'Not setting off yet: a shop trip, training or a run has the character'
+      waitHurt: 'Not setting off yet: resting first'
+      waitLap: 'Not setting off yet: a loop is running'
     buyAt: 'at {shop} · {copper} copper'
     buyFree: 'at {shop} · free'
     headings:
@@ -4802,6 +4809,7 @@ automation:
     refusalNotReached: 'Did not reach {room}: {why}'
     started: Hunting {loopName}, for about {rate} exp an hour.
     steeredAway: the plan moved on to another spot
+    takingOver: 'stopping {loopName} to walk to the spot the plan chose'
     refusalSteeredGone: The spot the plan chose is no longer on the hunting list.
     stoppedForBetter: '{mob} pays better'
     stoodDown: You stopped {loopName}, so Auto-Hunt is paused until this character levels, changes
@@ -4988,6 +4996,7 @@ automation:
     going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
     levelled: Welcome to level {level}.
     reasonLevel: 'training: the experience for a level is there'
+    reasonAskOwed: 'reading the experience needed, to see if a level is ready'
     abandonedDied: 'Died: the walk to the trainer is canceled. The level is still waiting.'
     becauseOwed: a level was earned and not collected
     whyStopped: the walk stopped before it arrived

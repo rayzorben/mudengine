@@ -10,6 +10,7 @@ import {
   cashStep,
   layered,
   layerWrites,
+  levelReady,
   type KonamiQuestion,
   type KonamiReply
 } from '../konami';
@@ -254,6 +255,21 @@ function brief(
     now: 1
   });
 }
+
+describe('whether a level is ready', () => {
+  const table = {
+    rows: [
+      { level: 2, experience: 1_000, source: 'database' as const },
+      { level: 3, experience: 3_000, source: 'database' as const }
+    ]
+  };
+  it('reads the experience needed where exp said it, else the experience held against the table', () => {
+    expect(levelReady({ level: 1, exp: 0, expNeeded: 0, expTable: null })).toBe(true);
+    expect(levelReady({ level: 1, exp: 14_949, expNeeded: null, expTable: table })).toBe(true);
+    expect(levelReady({ level: 1, exp: 500, expNeeded: null, expTable: table })).toBe(false);
+    expect(levelReady({ level: 1, exp: 14_949, expNeeded: null, expTable: null })).toBeNull();
+  });
+});
 
 describe('the brief', () => {
   it('offers only spots whose own fight is survived well enough, with the rest named', () => {

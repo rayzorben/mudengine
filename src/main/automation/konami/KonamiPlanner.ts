@@ -185,6 +185,8 @@ export class KonamiPlanner implements SessionModule {
   /** What past plans came to, oldest first: read from the records once, added to as plans end. */
   private readonly lessons: KonamiLesson[];
   private huntSaid: string | null = null;
+  /** What held the hunt when last said, so a wait is written once. */
+  private waitSaid: string | null = null;
   private readonly blows = new Blows(() => tuning().konami.blowsKept);
   private readonly incidents: KonamiIncidentRow[] = [];
   private step: number | null = null;
@@ -206,6 +208,8 @@ export class KonamiPlanner implements SessionModule {
    */
   private generation = 0;
   private disposed = false;
+  /** `automation.enabled`, the master switch everything the plan hands a goal to obeys. */
+  private master = true;
 
   constructor(
     private readonly facts: PlannerFacts,
@@ -235,12 +239,22 @@ export class KonamiPlanner implements SessionModule {
     };
   }
 
-  /** Running: switched on, not paused, and a provider in hand. */
+  /**
+   * Running: switched on, not paused, a provider in hand, and automation's
+   * master switch on. With it off nothing the plan hands a goal to acts, so a
+   * plan asked for then is a plan nothing walks.
+   */
   get running(): boolean {
-    return this.on && !this.paused && this.provider !== null;
+    return this.on && !this.paused && this.provider !== null && this.master;
   }
 
   configure(automation: AutomationConfig): void {
+    if (automation.enabled !== this.master) {
+      this.master = automation.enabled;
+      this.log.say('switch', `automation ${this.master ? 'on' : 'off'}`);
+      this.events.changed();
+      if (this.master && this.on) this.trigger('asked');
+    }
     const on = automation.superKonamiMode;
     const path = automation.konamiProviderPath;
     const pathChanged = path !== this.providerPath;
@@ -386,6 +400,7 @@ export class KonamiPlanner implements SessionModule {
       provider: this.provider?.name ?? null,
       asking: this.asking,
       pending: this.pending,
+      automation: this.master,
       refusal: this.refusal,
       plan: this.plan,
       decisions: [...this.journal.decisions].reverse().map(decisionRow),
@@ -874,6 +889,13 @@ export class KonamiPlanner implements SessionModule {
 
   /** The Hunting grounds' own refusals, written as they change. */
   private watchHunt(): void {
+    // What holds the goal from moving, said when it changes, so a still character says why.
+    const doing = this.plan === null ? null : this.facts.activity()?.doing;
+    const waiting = doing?.kind === 'waiting' ? doing.on : null;
+    if (waiting !== this.waitSaid) {
+      this.waitSaid = waiting;
+      if (waiting !== null) this.log.say('hunt', `not set off: ${waiting}`);
+    }
     const said = this.facts.huntRefusal();
     if (said === this.huntSaid) return;
     this.huntSaid = said;
@@ -883,6 +905,7 @@ export class KonamiPlanner implements SessionModule {
   /** Why the planner is not running, in words. */
   private idleWhy(): string {
     if (!this.on) return 'switched off';
+    if (!this.master) return 'automation is off';
     if (this.paused) return 'paused';
     return this.refusal ?? 'no provider loaded';
   }

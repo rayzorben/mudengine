@@ -35,7 +35,7 @@ export interface KonamiWiring {
   /** The simulator's run of each lair's fight. */
   odds: Pick<OddsReader, 'lair'>;
   world: BriefingWorld | undefined;
-  hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading'>;
+  hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
   /** The trainer a training trip is bound for, and the walk under way, for the card. */
   trainLevel: Pick<TrainErrand, 'heading'>;
@@ -89,7 +89,9 @@ function activityOf(wiring: KonamiWiring): KonamiActivity | null {
         ? { kind: 'buy', item: buy.item.name, shop: buy.shopName, stage: tripStage(buy.stage) }
         : hunt !== null
           ? { kind: 'hunt', ...hunt }
-          : null;
+          : wiring.hunt.waiting !== null
+            ? { kind: 'waiting', on: wiring.hunt.waiting }
+            : null;
   if (doing === null) return null;
   const progress = wiring.walker.progress;
   const walk =

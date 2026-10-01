@@ -9,6 +9,7 @@
  * See `todo/50-konami-plan-not-steer.md`.
  */
 import { COPPER_PER } from './coins';
+import { experienceStanding, type ExperienceTable } from './experience';
 import type { AutomationConfig, BlessingConfig } from './config';
 import type { TrainedAttribute } from './training';
 
@@ -102,9 +103,22 @@ export function asKonamiReply(
   return { model, answers };
 }
 
-/** Whether a level is ready to train: experience needed counted down to nothing; null unread. */
-export function levelReady(progress: { expNeeded: number | null }): boolean | null {
-  return progress.expNeeded === null ? null : progress.expNeeded <= 0;
+/**
+ * Whether a level is ready to train: experience needed counted down to
+ * nothing, where `exp` has said; else the experience held against the table
+ * (`experienceStanding`, the realm's rows or the ones derived from its data),
+ * since `st` states the experience and not what is needed. Null where neither
+ * can say.
+ */
+export function levelReady(progress: {
+  level: number | null;
+  exp: number | null;
+  expNeeded: number | null;
+  expTable: ExperienceTable | null;
+}): boolean | null {
+  if (progress.expNeeded !== null) return progress.expNeeded <= 0;
+  const standing = experienceStanding(progress.level, progress.exp, progress.expTable);
+  return standing === null ? null : standing.earned > standing.level;
 }
 
 /** Why a plan was asked for. */

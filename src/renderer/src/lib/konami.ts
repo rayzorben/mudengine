@@ -239,6 +239,23 @@ export function doingText(doing: KonamiDoing): string {
       return doing.walking
         ? t('cards.konami.doing.toSpot', { place: doing.place })
         : t('cards.konami.doing.hunting', { place: doing.place });
+    case 'waiting':
+      switch (doing.on) {
+        case 'fight':
+          return t('cards.konami.doing.waitFight');
+        case 'walking':
+          return t('cards.konami.doing.waitWalking');
+        case 'busy':
+          return t('cards.konami.doing.waitBusy');
+        case 'hurt':
+          return t('cards.konami.doing.waitHurt');
+        case 'lap':
+          return t('cards.konami.doing.waitLap');
+        default: {
+          const never: never = doing.on;
+          return never;
+        }
+      }
     default: {
       const never: never = doing;
       return never;
