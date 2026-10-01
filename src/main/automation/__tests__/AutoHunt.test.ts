@@ -137,7 +137,6 @@ afterEach(() => {
   setTuning(DEFAULT_INTERNAL.tuning);
 });
 
-
 describe('going hunting on its own', () => {
   it('walks to the best spot and runs its loop', () => {
     const auto = hunt();
@@ -507,6 +506,71 @@ describe('going hunting on its own', () => {
     auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 6_000 } }));
     expect(stops).toHaveLength(1);
     expect(walked).toHaveLength(2);
+  });
+
+  /*
+   * Todo 72: Slum Street has no clock in the database, so the survey priced
+   * it on the realm's usual regen and planned no filler; once its own regen is
+   * timed, the same lair is planned with a lair nearby, and the lap takes it in.
+   */
+  it('takes in the lairs the survey adds to fill the wait of the lair it hunts', () => {
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    answer = advice([spot('lair:a', 12_000)]);
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    expect(started).toHaveLength(1);
+    const plain = spot('lair:a', 12_000);
+    const beside = { id: '1/817', map: 1, room: 817, name: 'Alley', steps: 5 };
+    answer = advice([{ ...plain, filler: [beside], walk: [...plain.walk, beside] }]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 4_000 } }));
+    expect(stops).toHaveLength(1);
+    expect(started).toHaveLength(2);
+    expect(started[1]?.stops).toHaveLength(2);
+  });
+
+  it('keeps a lap paying the cash floor off a filled plan that falls short of it', () => {
+    const auto = hunt({}, { cashPerHour: 200 });
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    const paying = spot('lair:a', 12_000);
+    answer = advice([{ ...paying, estimate: { ...paying.estimate, copperPerHour: 300 } }]);
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    const beside = { id: '1/817', map: 1, room: 817, name: 'Alley', steps: 5 };
+    answer = advice([
+      {
+        ...paying,
+        filler: [beside],
+        walk: [...paying.walk, beside],
+        estimate: { ...paying.estimate, copperPerHour: 100 }
+      }
+    ]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 4_000 } }));
+    expect(stops).toHaveLength(0);
+  });
+
+  it('moves on to a better lair before filling the one it hunts', () => {
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    answer = advice([spot('lair:a', 12_000)]);
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    const plain = spot('lair:a', 12_000);
+    const beside = { id: '1/817', map: 1, room: 817, name: 'Alley', steps: 5 };
+    answer = advice([
+      { ...plain, filler: [beside], walk: [...plain.walk, beside] },
+      spot('lair:b', 90_000, 'Sewer', 920)
+    ]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 4_000 } }));
+    expect(stops).toHaveLength(1);
+    expect(walked.at(-1)).toBeDefined();
+    expect(started).toHaveLength(1);
   });
 
   /* Todo 70: what a stay measured is kept, by spot and level, for the survey and the next session. */

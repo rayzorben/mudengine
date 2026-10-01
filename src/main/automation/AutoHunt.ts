@@ -78,6 +78,9 @@ export interface HuntEvents {
   decided?(decision: SafetyDecision): void;
 }
 
+/** The hunting phase: a lap running on a lair. */
+type Hunting = Extract<Phase, { kind: 'hunting' }>;
+
 type Phase =
   | { kind: 'idle' }
   | { kind: 'walking'; to: RoomId; spot: HuntingSpot; loop: Loop }
@@ -102,6 +105,8 @@ type Phase =
       from: { at: number; exp: number } | null;
       /** Whether the company sentence has been said for this stay. */
       saidCompany: boolean;
+      /** The filler lairs the lap was started with (todo 72). */
+      filler: number;
     };
 
 const ACTION = 'hunt';
@@ -355,61 +360,108 @@ export class AutoHunt implements SessionModule {
       this.correction.set(this.phase.key, clampCorrection(measured.perHour / expected));
     }
 
-    const best = this.bestOther(this.phase.key);
-    if (best === null) return;
+    const advice = this.planner.survey(this.config.radius > 0 ? this.config.radius : null);
+    if (advice.refusal !== null) return;
+    const walking = this.phase;
+    const here = measured?.perHour ?? this.pricedRate(walking.key, expected);
+    if (this.moveOn(state, advice, walking, here)) return;
+    this.fill(state, advice, walking);
+  }
+
+  /**
+   * Off to a better lair, where one pays enough more; true where it went.
+   *
+   * **What is being walked is judged on what it paid, never on what it was
+   * predicted to pay.** The model is what the alternatives have; reality is
+   * what this one has, and where the two disagree the measurement wins.
+   * Before a rate can be measured the estimate stands in, priced as a
+   * candidate would be, which is where a contested lair is halved.
+   */
+  private moveOn(
+    state: CharacterState,
+    advice: HuntingAdvice,
+    walking: Hunting,
+    here: number | null
+  ): boolean {
+    const best = this.pick(advice.spots.filter((spot) => spot.key !== walking.key));
+    if (best === null) return false;
     const worth = this.priced(best);
-    if (worth === null) return;
-    /*
-     * **What is being walked is judged on what it paid, never on what it was
-     * predicted to pay.** The model is what the alternatives have; reality is
-     * what this one has, and where the two disagree the measurement wins.
-     * Before a rate can be measured the estimate stands in, priced as a
-     * candidate would be — which is where a contested lair is halved.
-     */
-    const here = measured?.perHour ?? this.pricedRate(this.phase.key, expected);
+    if (worth === null) return false;
     // A cash floor outranks exp: never off a lair paying it for one that does not, and off one
     // short of it for one that pays it (todo 64), unless it earns under `cashExpShare` of the exp
     // here (todo 71).
     const cash = this.config.cashPerHour;
-    const hereShort = shortOfCash(this.phase.copper, cash);
+    const hereShort = shortOfCash(walking.copper, cash);
     const thereShort = shortOfCash(best.estimate.copperPerHour, cash);
-    if (!hereShort && thereShort) return;
+    if (!hereShort && thereShort) return false;
     // Both short: the one paying more copper, as the survey ranks them; the same copper, by exp.
-    const copper = (best.estimate.copperPerHour ?? 0) - (this.phase.copper ?? 0);
-    if (hereShort && thereShort && copper < 0) return;
+    const copper = (best.estimate.copperPerHour ?? 0) - (walking.copper ?? 0);
+    if (hereShort && thereShort && copper < 0) return false;
     const against = floorFor(cash, here ?? 0, tuning().hunting.cashExpShare);
     const affords = cashTier(worth, best.estimate.copperPerHour, against) !== 2;
     const forCash = hereShort && (!thereShort || copper > 0) && affords;
-    if (!forCash && here !== null && worth <= here * (1 + tuning().hunting.moveMargin)) return;
+    if (!forCash && here !== null && worth <= here * (1 + tuning().hunting.moveMargin))
+      return false;
 
+    const figures = {
+      here: here === null ? '?' : Math.round(here).toLocaleString(),
+      rate: Math.round(worth).toLocaleString()
+    };
+    const mob = best.mobs[0]?.name ?? '';
     this.events.notice?.(
-      t('automation.hunt.movingOn', {
-        loopName: this.phase.name,
-        here: here === null ? '?' : Math.round(here).toLocaleString(),
-        rate: Math.round(worth).toLocaleString(),
-        mob: best.mobs[0]?.name ?? ''
-      })
+      t('automation.hunt.movingOn', { loopName: walking.name, mob, ...figures })
     );
-    this.events.decided?.({
-      at: this.now(),
-      action: ACTION,
-      because: t('automation.hunt.becauseBetter', {
-        here: here === null ? '?' : Math.round(here).toLocaleString(),
-        rate: Math.round(worth).toLocaleString()
-      }),
-      acted: true
-    });
-    /*
-     * **The lap is stopped before anything walks.** One movement at a time at
-     * every door: `Walker.start` supersedes a leg silently and raises no
-     * `ended`, so a lap left running would wait for a leg that never comes and
-     * then read this journey's arrival as its own. The reason is said in the
-     * runner's own words, as every other stop is.
-     */
+    this.relocate(
+      state,
+      best,
+      t('automation.hunt.becauseBetter', figures),
+      t('automation.hunt.stoppedForBetter', { mob })
+    );
+    return true;
+  }
+
+  /**
+   * The same lair, planned with lairs nearby to fill a wait the survey did not
+   * price when the lap started (todo 72): a lair with no clock in the
+   * database is priced on the realm's usual regen until its own is timed, and
+   * Slum Street stood a level-5 character still for 70 seconds a kill. Never
+   * onto a plan that falls short of a cash floor the lap was paying.
+   */
+  private fill(state: CharacterState, advice: HuntingAdvice, walking: Hunting): void {
+    const same = advice.spots.find((spot) => spot.key === walking.key);
+    if (same === undefined || same.filler.length <= walking.filler) return;
+    const cash = this.config.cashPerHour;
+    if (!shortOfCash(walking.copper, cash) && shortOfCash(same.estimate.copperPerHour, cash))
+      return;
+    this.events.notice?.(
+      same.filler.length === 1
+        ? t('automation.hunt.filled.one', { loopName: walking.name })
+        : t('automation.hunt.filled.many', { loopName: walking.name, count: same.filler.length })
+    );
+    this.relocate(
+      state,
+      same,
+      t('automation.hunt.becauseFilled'),
+      t('automation.hunt.stoppedForFiller')
+    );
+  }
+
+  /**
+   * Stops the lap and sets off on another plan, traced.
+   *
+   * **The lap is stopped before anything walks.** One movement at a time at
+   * every door: `Walker.start` supersedes a leg silently and raises no
+   * `ended`, so a lap left running would wait for a leg that never comes and
+   * then read this journey's arrival as its own. The phase goes idle first, so
+   * the stop is not read as the player standing the hunt down
+   * (`noteStopped`). The reason is said in the runner's own words.
+   */
+  private relocate(state: CharacterState, spot: HuntingSpot, because: string, stop: string): void {
+    this.events.decided?.({ at: this.now(), action: ACTION, because, acted: true });
     this.phase = { kind: 'idle' };
-    this.planner.stopLoop(t('automation.hunt.stoppedForBetter', { mob: best.mobs[0]?.name ?? '' }));
+    this.planner.stopLoop(stop);
     // The spot the comparison was made on, not a second sweep of the realm.
-    this.go(state, best);
+    this.go(state, spot);
   }
 
   /**
@@ -493,13 +545,6 @@ export class AutoHunt implements SessionModule {
     // ever on the strength of a passer-by is one this client never goes back
     // to. See `tuning.hunting.contestedForgetMs`.
     return this.shared(key, rate * (this.correction.get(key) ?? 1));
-  }
-
-  /** The best lair that is not the one being walked, priced. */
-  private bestOther(not: string): HuntingSpot | null {
-    const advice = this.planner.survey(this.config.radius > 0 ? this.config.radius : null);
-    if (advice.refusal !== null) return null;
-    return this.pick(advice.spots.filter((spot) => spot.key !== not));
   }
 
   /**
@@ -652,7 +697,8 @@ export class AutoHunt implements SessionModule {
       expected: spot.estimate.expPerHour,
       copper: spot.estimate.copperPerHour,
       from: anchor(state, this.now()),
-      saidCompany: false
+      saidCompany: false,
+      filler: spot.filler.length
     };
     this.events.notice?.(t('automation.hunt.started', { loopName: loop.name, rate: rateOf(spot) }));
     this.events.decided?.({
