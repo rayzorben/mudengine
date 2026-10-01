@@ -57,7 +57,8 @@ type Way = { kind: 'here' } | { kind: 'route'; route: Route } | { kind: 'none'; 
 type Phase =
   | { kind: 'idle' }
   | { kind: 'walking'; to: RoomId; trainer: TrainerChoice }
-  | { kind: 'training'; trainer: TrainerChoice; sentAt: number };
+  /** `sentAt` null while the `train` waits in the queue: the screen's hold can still drop it. */
+  | { kind: 'training'; trainer: TrainerChoice; queuedAt: number; sentAt: number | null };
 
 const ACTION = 'train level';
 
@@ -72,6 +73,15 @@ export class TrainErrand implements SessionModule {
    * of grinding, which is the right price for not spending commands in a loop.
    */
   private attempted: number | null = null;
+  /**
+   * The level whose `train` moved nothing, and when it may be tried again
+   * (todo 69). Tied to the level so it lifts that mark and no later one: a
+   * mark kept after a death, a refused route or a trainer not reached waits
+   * for the level to move.
+   */
+  private retry: { level: number; at: number } | null = null;
+  /** The level the *did not move* refusal was last announced at. */
+  private unansweredAt: number | null = null;
   /** The level `exp` was last asked at for an unread `expNeeded`, so it is asked once. */
   private askedOwed: number | null = null;
   /** Whether the *nowhere to go* refusal has been said for this level. */
@@ -119,6 +129,8 @@ export class TrainErrand implements SessionModule {
   reset(): void {
     this.phase = { kind: 'idle' };
     this.attempted = null;
+    this.retry = null;
+    this.unansweredAt = null;
     this.askedOwed = null;
     this.saidNowhere = null;
   }
@@ -186,7 +198,11 @@ export class TrainErrand implements SessionModule {
       if (this.now() - this.expStaleSince < tuning().train.confirmMs) return;
       this.expStaleSince = null;
     }
-    if (level === this.attempted) return;
+    if (level === this.attempted) {
+      if (this.retry === null || this.retry.level !== level || this.now() < this.retry.at) return;
+      this.attempted = null;
+      this.retry = null;
+    }
     if (this.poor !== null && this.poor.level === level) {
       const purse = state.inventory.wealth;
       if (purse !== null && purse < this.poor.cost) return;
@@ -405,12 +421,18 @@ export class TrainErrand implements SessionModule {
   }
 
   private send(trainer: TrainerChoice): void {
-    this.phase = { kind: 'training', trainer, sentAt: this.now() };
-    const accepted = this.queue.enqueue({
+    const phase: Phase = { kind: 'training', trainer, queuedAt: this.now(), sentAt: null };
+    this.phase = phase;
+    // `joined` is the one still waiting from before: its `onSent` is now this one, for this phase.
+    const offered = this.queue.offer({
       command: 'train',
       priority: 'probe',
       coalesceKey: 'train:level',
-      reason: t('automation.train.reasonLevel')
+      reason: t('automation.train.reasonLevel'),
+      // The clock starts when it goes: queued behind the stat screen it can be dropped (todo 69).
+      onSent: () => {
+        if (this.phase === phase) phase.sentAt = this.now();
+      }
     });
     /*
      * *Not now* is not *never* (todo 113): the arbiter refuses while the stat
@@ -419,7 +441,7 @@ export class TrainErrand implements SessionModule {
      * *the level did not move*, and never asked again at this level. The
      * mark goes back and the next status line after the hold lifts asks.
      */
-    if (!accepted) {
+    if (offered !== 'queued' && offered !== 'joined') {
       this.phase = { kind: 'idle' };
       this.attempted = null;
       this.planner.release();
@@ -437,7 +459,7 @@ export class TrainErrand implements SessionModule {
    */
   private settle(state: CharacterState): void {
     if (this.phase.kind !== 'training') return;
-    const { trainer, sentAt } = this.phase;
+    const { trainer, queuedAt, sentAt } = this.phase;
     const level = state.progress.level;
     if (level !== null && this.attempted !== null && level > this.attempted) {
       this.phase = { kind: 'idle' };
@@ -461,14 +483,34 @@ export class TrainErrand implements SessionModule {
       });
       return;
     }
+    if (sentAt === null) {
+      /*
+       * A train the stat screen's hold dropped never went (todo 69): after a
+       * level the screen opens and its hold drops what is queued, the next
+       * level's train with it. The attempt goes back, and the next status line
+       * asks again. One still waiting behind a half-typed line is offered again
+       * and joins it.
+       */
+      if (this.now() - queuedAt < tuning().train.confirmMs) return;
+      this.phase = { kind: 'idle' };
+      this.attempted = null;
+      this.planner.release();
+      return;
+    }
     if (this.now() - sentAt < tuning().train.confirmMs) return;
     this.phase = { kind: 'idle' };
+    if (this.attempted !== null) {
+      this.retry = { level: this.attempted, at: this.now() + tuning().train.retryMs };
+    }
     this.planner.release();
-    this.refuse(t('automation.train.refusalUnanswered', { trainer: trainer.name }));
+    // Said once a level: each retry after `retryMs` is recorded, not announced again.
+    const again = this.unansweredAt !== null && this.unansweredAt === this.attempted;
+    this.unansweredAt = this.attempted;
+    this.refuse(t('automation.train.refusalUnanswered', { trainer: trainer.name }), again);
   }
 
-  private refuse(why: string): void {
-    this.events.notice?.(why);
+  private refuse(why: string, quietly = false): void {
+    if (!quietly) this.events.notice?.(why);
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

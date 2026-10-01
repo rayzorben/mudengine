@@ -727,6 +727,8 @@ tuning:
     # comes back, and it is generous: the answer arrives with the next status
     # line.
     confirmMs: 10000
+    # A level whose train went out and moved nothing is tried again after this.
+    retryMs: 60000
 
   # Getting back into the shadows between fights — `AutoStealth`.
   # `askEveryMs` floors the retry after a failed roll, so a low-Stealth
