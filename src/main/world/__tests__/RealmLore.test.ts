@@ -150,6 +150,22 @@ describe('keeping what was learned', () => {
     expect(store().forRealm('gmud.sqlite', world).maximumFor('grue').max).toBe(420);
   });
 
+  it('keeps the refills it timed per realm and reads them back', () => {
+    const first = store();
+    const view = first.forRealm('gmud.sqlite', world);
+    view.observeRefill({ room: '1/2156', seconds: 32, names: ['cave bear'] }, 5);
+    view.observeRefill({ room: '1/2156', seconds: 19, names: ['cave bear'] }, 6);
+    first.flush();
+
+    const again = store();
+    expect(again.forRealm('gmud.sqlite', world).spawnsAt('1/2156')).toEqual({
+      refills: [32, 19],
+      seen: { 'cave bear': 2 },
+      at: 6
+    });
+    expect(again.forRealm('other.sqlite', world).spawnsAt('1/2156')).toBeNull();
+  });
+
   /*
    * How much health a giant rat has is a fact about the *world*. Four
    * characters on one realm share what any of them learns; a character that

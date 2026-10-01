@@ -126,6 +126,8 @@ export interface FillerInput {
   respawnSeconds: number;
   /** Steps off the ring and back. */
   detourSteps: number;
+  /** Refilled on entry, so nothing to wait for on a lap (`refillsOnEntry`). */
+  refillsOnEntry?: boolean;
 }
 
 export interface SpotInput {
@@ -140,6 +142,11 @@ export interface SpotInput {
   loopSteps: number;
   character: SpotCharacter;
   filler: FillerInput[];
+  /**
+   * The lair is refilled whenever a player walks in (GreaterMUD, `Delay` 0):
+   * a loop of two stops or more re-enters it every lap, so there is no wait.
+   */
+  refillsOnEntry?: boolean;
 }
 
 export type HuntingUnknown =
@@ -225,14 +232,23 @@ export interface SpotEstimate {
  * comparing (`RegenSlot.cs:33`), so its lairs come back that much sooner —
  * measured 18–20s in a `Delay=1` lair against a nominal 60. Never below zero,
  * and null for a room that states no clock.
+ *
+ * GreaterMUD's `Delay` of 0 is a clock too: the elapsed minutes are at once
+ * past it, so the room is refilled at its next regen: the regen pass every
+ * `passiveTickSeconds` for a room a player stands in (`RegenTickTime`, 121),
+ * and on every entry (`Player.cs:782`, `inEnteringRoom.Regen`). Read here as
+ * the pass, the clock for a character standing in it; a loop that re-enters
+ * it is priced by `refillsOnEntry`. Paradigm states 0 for its lairs, which
+ * left every spot on orohost without a rate.
  */
 export function respawnSeconds(
   delay: number | null | undefined,
   family: RealmFamily | null,
-  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds'>,
+  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds' | 'passiveTickSeconds'>,
   arena = false
 ): number | null {
-  if (delay === null || delay === undefined || !Number.isFinite(delay) || delay === 0) return null;
+  if (delay === null || delay === undefined || !Number.isFinite(delay)) return null;
+  if (delay === 0) return refillsOnEntry(delay, family) ? constants.passiveTickSeconds : null;
   const nominal = delay > 0 ? delay * (arena ? 1 : 60) : Math.abs(delay);
   if (family !== 'greatermud') return nominal;
   return Math.max(0, nominal - constants.greatermudRespawnOffsetSeconds);
@@ -412,6 +428,44 @@ function roomCycle(
 }
 
 /**
+ * Whether a lair is refilled whenever a player walks in: GreaterMUD reads a
+ * `Delay` of 0 as at once past (`RegenSlot.cs:53`), and runs the room's regen
+ * on every entry (`Player.cs:782`). The one reading of the column's 0, for
+ * `respawnSeconds` and the survey both.
+ */
+export function refillsOnEntry(
+  delay: number | null | undefined,
+  family: RealmFamily | null
+): boolean {
+  return delay === 0 && family === 'greatermud';
+}
+
+/**
+ * A stop's clock on a lap of `stops` stops: a refilling room on a lap of two
+ * or more is re-entered every time, so it has nothing to wait for (0); a
+ * single room is never left, and keeps its clock (the regen pass). The one
+ * rule the estimate prices by and the loop's stops are built by.
+ */
+export function lapClock(respawn: number, refills: boolean, stops: number): number;
+export function lapClock(respawn: number | null, refills: boolean, stops: number): number | null;
+export function lapClock(respawn: number | null, refills: boolean, stops: number): number | null {
+  return refills && stops >= 2 ? 0 : respawn;
+}
+
+/** A spot's input with each refilling room's clock as the lap gives it (`lapClock`). */
+function refilled(input: SpotInput): SpotInput {
+  const stops = input.rooms + input.filler.length;
+  return {
+    ...input,
+    respawnSeconds: lapClock(input.respawnSeconds, input.refillsOnEntry === true, stops),
+    filler: input.filler.map((room) => ({
+      ...room,
+      respawnSeconds: lapClock(room.respawnSeconds, room.refillsOnEntry === true, stops)
+    }))
+  };
+}
+
+/**
  * One spot, estimated.
  *
  * The cycle: fight every room of the ring and each filler off it, walk the
@@ -423,7 +477,8 @@ function roomCycle(
  * the realm's figures and the character's own, folded once, with every
  * unknown named.
  */
-export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimate {
+export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimate {
+  const input = refilled(given);
   const unknown: HuntingUnknown[] = [];
   const rooms = Math.max(1, input.rooms);
   const ch = input.character;
@@ -479,8 +534,10 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
    * filler whole, so the cycle it handed the second pass was too long and the
    * filler was then credited more laps than that cycle allows.
    */
+  // A lair clock of 0 (refilled on the lap) says nothing about a window not yet worked out.
+  const unworked = input.respawnSeconds === 0 ? null : input.respawnSeconds;
   const shareOf = (filler: { respawn: number }, window: number | null): number => {
-    const seen = window ?? input.respawnSeconds;
+    const seen = window ?? unworked;
     return seen === null ? 1 : Math.min(1, seen / Math.max(1, filler.respawn));
   };
 
@@ -504,7 +561,7 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
     spawns: number,
     window: number | null
   ): number | null => {
-    const seen = window ?? input.respawnSeconds;
+    const seen = window ?? unworked;
     const each = mean(
       mobs.map((mob) => {
         if (mob.experience === null) return null;
@@ -526,7 +583,7 @@ export function estimateSpot(input: SpotInput, c: HuntingConstants): SpotEstimat
    * against the ring's faster cycle.
    */
   const visitWindow = (filler: { respawn: number }, window: number | null): number | null => {
-    const seen = window ?? input.respawnSeconds;
+    const seen = window ?? unworked;
     return seen === null ? null : Math.max(seen, filler.respawn);
   };
 
@@ -929,14 +986,26 @@ export function addFiller(
   return { input: current, estimate, taken };
 }
 
+/**
+ * What makes a room a hunting ground: a lair the world database states, a
+ * placed monster (`Rooms.NPC`), or refills timed on the wire in a room the
+ * database gives neither (`spawns.ts`).
+ */
+export type HuntVia = 'lair' | 'resident' | 'seen';
+
 /** One suggestion: a lair, the rooms that hold it, and what it is worth. */
 export interface HuntingSpot {
   /** The lair's signature, stable across asks. */
   key: string;
+  via: HuntVia;
   /** The monsters, as the realm names them. */
   mobs: SpotMob[];
-  /** Where the clock came from: the room's `Delay`, or a placed monster's `RegenTime`. */
-  clock: 'delay' | 'regenTime' | null;
+  /**
+   * Where the clock came from: the room's `Delay`, a placed monster's
+   * `RegenTime`, its refills timed on the wire (`timed`), or, for a lair not
+   * yet timed, the realm's usual timed lair clock (`usual`). See `spawns.ts`.
+   */
+  clock: 'delay' | 'regenTime' | 'timed' | 'usual' | null;
   /** A placed monster on its own clock — a boss, whose kill is not repeatable within it. */
   boss: boolean;
   respawnSeconds: number | null;
@@ -972,6 +1041,24 @@ export interface HuntingAssumptions {
   constants: HuntingConstants;
 }
 
+/** What the survey left out before ranking, counted by reason. */
+export interface HuntExclusions {
+  dangerous: number;
+  beneath: number;
+  unsurvivable: number;
+  unsimulated: number;
+  evil: number;
+}
+
+/** Nothing left out. */
+export const NO_EXCLUSIONS: Readonly<HuntExclusions> = {
+  dangerous: 0,
+  beneath: 0,
+  unsurvivable: 0,
+  unsimulated: 0,
+  evil: 0
+};
+
 export interface HuntingAdvice {
   /** Where the sweep started, or null when the character is unplaced. */
   from: { id: RoomId; name: string } | null;
@@ -990,9 +1077,10 @@ export interface HuntingAdvice {
   /**
    * What was left out before the ranking, and why. `unsurvivable` is a lair
    * whose fight at full health is survived no more often than the safe level
-   * (`OddsBook`, todo 03); `unsimulated` one whose fight has not been run yet.
+   * (`OddsBook`, todo 03); `unsimulated` one whose fight has not been run yet;
+   * `evil` one where every monster costs evil points to attack.
    */
-  excluded: { dangerous: number; beneath: number; unsurvivable: number; unsimulated: number };
+  excluded: HuntExclusions;
   assumptions: HuntingAssumptions;
   /** Why there is no answer, said out loud. */
   refusal: string | null;

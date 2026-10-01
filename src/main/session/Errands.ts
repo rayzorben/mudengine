@@ -18,23 +18,30 @@ import type { ItemSources } from '../automation/ItemErrand';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { LairCosts } from '../world/LairCosts';
+import { RoomClocks, type RefillingRoom } from './RoomClocks';
+import { GROUNDS, groundRefills, type Ground } from './huntGrounds';
 import { preferredEdges } from '../world/loopDraft';
 import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shared/abilities';
+import type { Block } from '../../shared/blocks';
 import { ownAlignment, packRows, type CharacterState } from '../../shared/character';
 import { chargedInCopper } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { FightSink } from '../../shared/fights';
+import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
   compareSpots,
   estimateSpot,
   moveDelayMs,
   orderRing,
+  lapClock,
   respawnSeconds,
+  NO_EXCLUSIONS,
   sizeLoop,
   type FillerInput,
   type HealingCast,
+  type HuntVia,
   type HuntingAdvice,
   type HuntingAssumptions,
   type HuntingConstants,
@@ -48,7 +55,7 @@ import {
 import type { Odds } from '../../shared/survival';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
-import { attacksOnSight } from '../../shared/mobs';
+import { attacksOnSight, fightable } from '../../shared/mobs';
 import { dodge, regeneration, swing, type ProwessSheet } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
 import {
@@ -103,8 +110,21 @@ const NO_EDGES: ReadonlySet<string> = new Set();
 interface HuntGroup {
   rooms: HuntingRoom[];
   sample: WorldRoom;
-  via: 'lair' | 'resident';
+  /** `seen`: a room with no lair that refilled while stood in (`RoomClocks.refilling`). */
+  via: HuntVia;
   spawns: number | null;
+  /** A `seen` room's monsters and timed clock. */
+  seen?: RefillingRoom;
+}
+
+/** A group as its row in `GROUNDS` reads it. */
+function groundOf(group: HuntGroup): Ground {
+  return {
+    room: group.sample,
+    at: group.rooms[0]?.id ?? null,
+    came: group.seen?.names ?? [],
+    timed: group.seen?.clock ?? null
+  };
 }
 
 /** What pricing a group costs to work out and what it depends on: the character, never the room. */
@@ -112,6 +132,8 @@ interface HuntPrice {
   mobs: SpotMob[];
   clock: HuntingSpot['clock'];
   respawn: number | null;
+  /** Refilled whenever a player walks in (GreaterMUD, `Delay` 0); see `refillsOnEntry`. */
+  refills: boolean;
 }
 
 /** One group priced against the character, before any loop is drawn round it. */
@@ -138,6 +160,7 @@ export type CastingInput = Omit<SpellChoiceInput, 'target' | 'excluded'>;
  */
 export type ErrandsWorld = Pick<
   WorldGraph,
+  | 'buildMobEntity'
   | 'buyingPlaces'
   | 'byId'
   | 'cashPlaces'
@@ -175,6 +198,8 @@ export interface ErrandsParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
   /** What this character has measured dealing a round, for the survey. */
   readonly fightRecord: Pick<FightSink, 'measured'>;
+  /** The rooms' refills the wire timed on this realm (`RealmLore`). */
+  readonly spawns: SpawnLore;
 }
 
 /** What the session that built this answers for it. */
@@ -196,6 +221,8 @@ export class Errands implements SessionModule {
   private readonly world: ErrandsWorld | undefined;
   private readonly tracker: ErrandsParts['tracker'];
   private readonly fightRecord: ErrandsParts['fightRecord'];
+  /** The refill clocks the wire timed, where the world database states none. */
+  private readonly clocks: RoomClocks;
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
   private fitted: { state: CharacterState; key: string } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
@@ -246,6 +273,7 @@ export class Errands implements SessionModule {
     this.world = parts.world;
     this.tracker = parts.tracker;
     this.fightRecord = parts.fightRecord;
+    this.clocks = new RoomClocks(parts.spawns);
   }
 
   private get automationConfig(): AutomationConfig {
@@ -265,6 +293,13 @@ export class Errands implements SessionModule {
   reset(): void {
     this.refusedEdges.clear();
     this.shutEdges.clear();
+    this.clocks.reset();
+  }
+
+  /** Every character line, with its block: an exit the room prints given back, and a refill timed. */
+  onCharacter(state: CharacterState, block: Pick<Block, 'type'>): void {
+    this.unrefuseWhatTheRoomPrints(state);
+    this.clocks.onCharacter(state, block);
   }
 
   /** The server's family moved, so every remembered `fitness` is stale. */
@@ -327,7 +362,7 @@ export class Errands implements SessionModule {
    * Cheap: it runs only where the room prints something *and* something is
    * refused, which after a healthy session is never.
    */
-  unrefuseWhatTheRoomPrints(state: CharacterState): void {
+  private unrefuseWhatTheRoomPrints(state: CharacterState): void {
     if (this.shutEdges.size === 0) return;
     const { map, number } = state.room;
     if (map === null || number === null) return;
@@ -1264,7 +1299,7 @@ export class Errands implements SessionModule {
       swept: 0,
       spots: [],
       unmeasured: [],
-      excluded: { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 },
+      excluded: { ...NO_EXCLUSIONS },
       assumptions,
       refusal
     });
@@ -1298,7 +1333,7 @@ export class Errands implements SessionModule {
       const room = world.byId(id);
       if (!room) continue;
       let key: string;
-      let via: 'lair' | 'resident';
+      let via: HuntGroup['via'];
       let spawns: number | null = null;
       if (room.lair) {
         // The clock is part of what spawns: two rooms naming the same rows on
@@ -1316,6 +1351,22 @@ export class Errands implements SessionModule {
       entry.rooms.push({ id, map: room.map, room: room.room, name: room.name, steps });
       groups.set(key, entry);
       groupOfRoom.set(id, key);
+    }
+    /*
+     * And a room the world database gives no lair that refilled while the
+     * character stood in it: the Newhaven Arena, which GreaterMUD fills from
+     * its monster group while a player is there (`Room.Regen`) and neither
+     * database marks. One monster at a time for one player.
+     */
+    const isLair = (id: RoomId): boolean => this.isLair(id);
+    for (const seen of this.clocks.refilling(isLair)) {
+      const steps = reach.get(seen.room);
+      const room = world.byId(seen.room);
+      if (steps === undefined || !room || groupOfRoom.has(seen.room)) continue;
+      const key = `seen:${seen.room}`;
+      const rooms = [{ id: seen.room, map: room.map, room: room.room, name: room.name, steps }];
+      groups.set(key, { rooms, sample: room, via: 'seen', spawns: 1, seen });
+      groupOfRoom.set(seen.room, key);
     }
 
     const player = this.menacePlayer(state);
@@ -1366,12 +1417,17 @@ export class Errands implements SessionModule {
     }
     const remembered = this.huntPrices.groups;
     /** One group's monsters priced, and its clock: the half a move does not change. */
-    const price = (group: HuntGroup): HuntPrice | null => {
-      const entities =
-        group.via === 'lair'
-          ? world.lairEntities(group.sample)
-          : world.residentEntities(group.sample);
-      if (entities.length === 0) return null;
+    const price = (group: HuntGroup): HuntPrice | null | 'evil' => {
+      const ground = groundOf(group);
+      const all = GROUNDS[group.via].entities(world, ground);
+      if (all.length === 0) return null;
+      /*
+       * A monster that costs evil points to attack, certainly or by a row the
+       * name cannot rule out, is never fought (`AutoCombat` refuses it), so
+       * its experience is not the spot's; a spot of nothing else is no spot.
+       */
+      const entities = fightable(all);
+      if (entities.length === 0) return 'evil';
       const verdicts = weighVerdicts(entities, player, weights, sheet, weapon, family);
       const bare = weighRoom(entities, naked, weights);
       const recorded = (hp: number | null): number | null =>
@@ -1400,42 +1456,49 @@ export class Errands implements SessionModule {
          */
         regenSeconds: entity.regenHours === undefined ? null : entity.regenHours * 3600
       }));
-      const clock: HuntingSpot['clock'] =
-        group.via === 'lair'
-          ? group.sample.delay === undefined
-            ? null
-            : 'delay'
-          : (entities[0]?.regenHours ?? null) === null
-            ? null
-            : 'regenTime';
-      const respawn =
-        group.via === 'lair'
-          ? respawnSeconds(group.sample.delay ?? null, family, c)
-          : entities[0]?.regenHours === undefined
-            ? null
-            : entities[0].regenHours * 3600;
-      return { mobs, clock, respawn };
+      /*
+       * The world database's clock; what the wire timed (`RoomClocks`)
+       * outranks it below, read past the price cache, since it belongs to
+       * the realm's rooms, whatever the character.
+       */
+      const { clock, respawn } = GROUNDS[group.via].stated(ground, entities, family, c);
+      const refills = groundRefills(group.via, group.sample, family);
+      return { mobs, clock, respawn, refills };
     };
     const priced = new Map<string, HuntPriced>();
-    const excluded = { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 };
+    const excluded = { ...NO_EXCLUSIONS };
     const survey: HuntingSpot[] = [];
     for (const [key, group] of groups) {
-      let known = remembered.get(key);
+      // A `seen` room's monsters and clock move as it is stood in, so they are part of what is priced.
+      const cached =
+        group.seen === undefined ? key : `${key}|${group.seen.names.join(',')}|${group.seen.clock}`;
+      let known = remembered.get(cached);
       if (known === undefined) {
         const fresh = price(group);
-        if (fresh === null) continue;
-        remembered.set(key, fresh);
+        if (fresh === 'evil') excluded.evil += 1;
+        if (fresh === null || fresh === 'evil') continue;
+        remembered.set(cached, fresh);
         known = fresh;
       }
-      const { mobs, clock, respawn } = known;
+      const kind = GROUNDS[group.via];
+      const timed = kind.lair
+        ? this.clocks.lairClock(
+            group.rooms.map((room) => room.id),
+            isLair,
+            known.respawn === null
+          )
+        : null;
+      const { mobs, refills } = known;
+      const clock = timed?.whose ?? known.clock;
+      const respawn = timed?.seconds ?? known.respawn;
       const rooms = [...group.rooms].sort((a, b) => a.steps - b.steps);
-      const entry: HuntPriced = { key, group, mobs, clock, respawn, rooms };
+      const entry: HuntPriced = { key, group, mobs, clock, respawn, refills, rooms };
       /*
        * A first estimate to rank on and to exclude by: the nearest rooms, the
        * ring's length guessed from the sweep's distances — out to the farthest
        * and back, a step between neighbours. The best are then measured.
        */
-      const loop = group.via === 'lair' ? rooms.slice(0, c.maxLoopRooms) : rooms.slice(0, 1);
+      const loop = kind.lair ? rooms.slice(0, c.maxLoopRooms) : rooms.slice(0, 1);
       const guessed =
         loop.length <= 1
           ? 0
@@ -1458,7 +1521,7 @@ export class Errands implements SessionModule {
        * figures, is not known to be: both are left out and counted. A fight
        * `simulateFight` cannot run is left to the estimate.
        */
-      const odds = group.via === 'lair' ? this.session.lairOdds(group.sample) : null;
+      const odds = kind.lair ? this.session.lairOdds(group.sample) : null;
       if (odds?.kind === 'pending' || odds?.kind === 'unread') {
         excluded.unsimulated += 1;
         continue;
@@ -1478,6 +1541,7 @@ export class Errands implements SessionModule {
       priced.set(key, entry);
       survey.push({
         key,
+        via: group.via,
         mobs,
         clock,
         boss: clock === 'regenTime',
@@ -1548,8 +1612,9 @@ export class Errands implements SessionModule {
     c: HuntingConstants,
     world: ErrandsWorld
   ): HuntingSpot {
-    const candidates =
-      own.group.via === 'lair' ? own.rooms.slice(0, c.maxLoopRooms) : own.rooms.slice(0, 1);
+    const candidates = GROUNDS[own.group.via].lair
+      ? own.rooms.slice(0, c.maxLoopRooms)
+      : own.rooms.slice(0, 1);
     if (candidates.length === 0) return spot;
     const sweeps = new Map<RoomId, Map<RoomId, number>>();
     // Priced by the traveller, as the survey's own sweep is: a ring whose
@@ -1569,7 +1634,8 @@ export class Errands implements SessionModule {
       respawnSeconds: own.respawn,
       loopSteps: ringSteps(rooms),
       character,
-      filler: []
+      filler: [],
+      refillsOnEntry: own.refills
     });
     const sized = sizeLoop(base, candidates.length, c);
     const ring = order.slice(0, sized.rooms);
@@ -1584,9 +1650,10 @@ export class Errands implements SessionModule {
         const key = groupOfRoom.get(id);
         if (key === undefined || key === own.key) continue;
         const other = byKey.get(key);
-        // A filler is a clocked lair another admissible group holds; a placed
-        // boss is its own spot, and a room with no clock is hunted on luck.
-        if (other === undefined || other.respawn === null || other.group.via !== 'lair') continue;
+        // A filler is a ground that fills (`GROUNDS`) another admissible
+        // group holds, on a clock: a room with none is hunted on luck.
+        if (other === undefined || other.respawn === null || !GROUNDS[other.group.via].fills)
+          continue;
         const found = world.byId(id);
         if (!found) continue;
         seen.add(id);
@@ -1609,7 +1676,8 @@ export class Errands implements SessionModule {
             spawns: other.group.spawns,
             mobs: other.mobs,
             respawnSeconds: other.respawn,
-            detourSteps: 2 * steps
+            detourSteps: 2 * steps,
+            refillsOnEntry: other.refills
           }
         });
       }
@@ -1626,6 +1694,18 @@ export class Errands implements SessionModule {
     ring.forEach((room, at) => {
       walk.push(room);
       for (const offer of taken) if (offer.after === at) walk.push(offer.room);
+    });
+    // Each stop's clock as the lap gives it (`lapClock`), so the lap walks a refilling room every time.
+    const refilling = new Set<RoomId>([
+      ...(own.refills ? ring.map((room) => room.id) : []),
+      ...taken.filter((offer) => offer.input.refillsOnEntry === true).map((o) => o.room.id)
+    ]);
+    walk.forEach((room, at) => {
+      if (!refilling.has(room.id)) return;
+      walk[at] = {
+        ...room,
+        respawnSeconds: lapClock(room.respawnSeconds ?? own.respawn, true, walk.length) ?? undefined
+      };
     });
     const estimate: SpotEstimate = filled.estimate;
     return {
@@ -2138,16 +2218,27 @@ export class Errands implements SessionModule {
 
   /**
    * How soon a room's lair makes its monsters again, for the rest next door
-   * (`RestAwayPlanner.lairClock`): the realm's own clock, read the way
-   * `huntingGrounds` reads it. Null for a room with no lair.
+   * (`RestAwayPlanner.lairClock`): the one the wire timed, else the realm's
+   * own, read the way `huntingGrounds` reads them. Null for a room with no
+   * lair.
    */
   lairClock(room: RoomId): number | null {
-    const found = this.world?.byId(room);
-    if (!found?.lair) return null;
-    const { greatermudRespawnOffsetSeconds } = tuning().hunting;
-    return respawnSeconds(found.delay ?? null, this.serverFamily, {
-      greatermudRespawnOffsetSeconds
+    const world = this.world;
+    const found = world?.byId(room);
+    if (!world || !found?.lair) return null;
+    const { greatermudRespawnOffsetSeconds, passiveTickSeconds } = tuning().hunting;
+    const stated = respawnSeconds(found.delay ?? null, this.serverFamily, {
+      greatermudRespawnOffsetSeconds,
+      passiveTickSeconds
     });
+    return (
+      this.clocks.lairClock([room], (id) => this.isLair(id), stated === null)?.seconds ?? stated
+    );
+  }
+
+  /** Whether the world database states a lair in a room: what `RoomClocks` reads a lair clock over. */
+  private isLair(room: RoomId): boolean {
+    return this.world?.byId(room)?.lair !== undefined;
   }
 
   /**

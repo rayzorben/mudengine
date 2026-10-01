@@ -23,6 +23,7 @@ import {
   type SlotLoreEntry
 } from '../../shared/lore';
 import { rowNameOf } from '../../shared/mobs';
+import { learnRefill, type LearnedSpawns, type RefillTimed } from '../../shared/spawns';
 import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
@@ -97,6 +98,12 @@ interface LoreFile {
    * reason `slots` is.
    */
   instants?: Record<string, Record<string, LearnedInstant>>;
+  /**
+   * How soon each room made its monsters again, per realm, keyed by room,
+   * timed on the wire where the world database states no clock. See
+   * `src/shared/spawns.ts`. Optional for the same reason `slots` is.
+   */
+  spawns?: Record<string, Record<string, LearnedSpawns>>;
 }
 
 /** When a realm first answered a cast of one attack spell instantly. */
@@ -132,6 +139,8 @@ export class RealmLore {
   private readonly deathIndex = new Map<string, Map<string, string[]>>();
   /** What each realm worked out about unnameable effects. See `ledgerFor`. */
   private readonly effects = new Map<string, Map<string, LearnedEffect>>();
+  /** Each realm's rooms' timed refills. See `LoreFile.spawns`. */
+  private readonly spawns = new Map<string, Map<RoomId, LearnedSpawns>>();
   /** The attack spells each realm answered instantly, by spell. See `LoreFile.instants`. */
   private readonly instants = new Map<string, Map<string, LearnedInstant>>();
   private timer: NodeJS.Timeout | null = null;
@@ -180,8 +189,33 @@ export class RealmLore {
         ),
       isInstantSpell: (spell) => this.isInstant(key, spell),
       observeInstantSpell: (spell, at) => this.observeInstant(key, spell, at),
-      forgetInstantSpell: (spell) => this.forgetInstant(key, spell)
+      forgetInstantSpell: (spell) => this.forgetInstant(key, spell),
+      spawnsAt: (room) => this.spawnTable(key).get(room) ?? null,
+      allSpawns: () => this.spawnTable(key),
+      observeRefill: (refill, at) => this.observeRefill(key, refill, at)
     };
+  }
+
+  /* -------------------------------------------------------------- spawns */
+
+  private spawnTable(realm: string): Map<RoomId, LearnedSpawns> {
+    this.load();
+    let table = this.spawns.get(realm);
+    if (!table) {
+      table = new Map();
+      this.spawns.set(realm, table);
+    }
+    return table;
+  }
+
+  /** One refill timed in a room (`RoomClocks.onCharacter`), kept to `tuning.hunting.refillsKept`. */
+  private observeRefill(realm: string, refill: RefillTimed, at: number): void {
+    const table = this.spawnTable(realm);
+    table.set(
+      refill.room,
+      learnRefill(table.get(refill.room), refill, at, tuning().hunting.refillsKept)
+    );
+    this.schedule();
   }
 
   /* ------------------------------------------------------------ instants */
@@ -663,6 +697,12 @@ export class RealmLore {
     })) {
       this.instants.set(realm, table);
     }
+    for (const [realm, table] of readTables(file.spawns, (room, value) => {
+      const entry = readSpawnsEntry(value);
+      return entry ? [room, entry] : null;
+    })) {
+      this.spawns.set(realm, table);
+    }
   }
 
   /** True once the file was found unparseable; nothing is written over it. */
@@ -705,6 +745,7 @@ export class RealmLore {
     const deaths = writeTables(this.deaths);
     const effects = writeTables(this.effects);
     const instants = writeTables(this.instants);
+    const spawns = writeTables(this.spawns);
 
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -719,7 +760,8 @@ export class RealmLore {
             ...(Object.keys(spells).length > 0 ? { spells } : {}),
             ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
             ...(Object.keys(effects).length > 0 ? { effects } : {}),
-            ...(Object.keys(instants).length > 0 ? { instants } : {})
+            ...(Object.keys(instants).length > 0 ? { instants } : {}),
+            ...(Object.keys(spawns).length > 0 ? { spawns } : {})
           } satisfies LoreFile,
           null,
           2
@@ -798,6 +840,29 @@ function writeTables<V>(tables: Map<string, Map<string, V>>): Record<string, Rec
     out[realm] = Object.fromEntries([...table].sort(([a], [b]) => (a < b ? -1 : 1)));
   }
   return out;
+}
+
+/** One room's timed refills, or null when the row holds no gap. */
+function readSpawnsEntry(value: unknown): LearnedSpawns | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { refills, seen, at } = value as Record<string, unknown>;
+  const gaps = Array.isArray(refills)
+    ? refills.filter(
+        (gap): gap is number => typeof gap === 'number' && Number.isFinite(gap) && gap >= 0
+      )
+    : [];
+  if (gaps.length === 0) return null;
+  const counts: Record<string, number> = {};
+  if (typeof seen === 'object' && seen !== null) {
+    for (const [name, count] of Object.entries(seen)) {
+      if (typeof count === 'number' && Number.isFinite(count) && count > 0) counts[name] = count;
+    }
+  }
+  return {
+    refills: gaps,
+    seen: counts,
+    at: typeof at === 'number' && Number.isFinite(at) ? at : 0
+  };
 }
 
 /** When a realm answered a spell instantly, or null when the row is not one. */

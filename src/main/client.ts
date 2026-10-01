@@ -81,7 +81,7 @@ import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
 import { slotGear } from './world/slotGear';
-import type { HuntingAdvice } from '../shared/hunting';
+import { NO_EXCLUSIONS, type HuntingAdvice } from '../shared/hunting';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
@@ -2288,7 +2288,7 @@ function registerIpc(): void {
         swept: 0,
         spots: [],
         unmeasured: [],
-        excluded: { dangerous: 0, beneath: 0, unsurvivable: 0, unsimulated: 0 },
+        excluded: { ...NO_EXCLUSIONS },
         assumptions: {
           family: null,
           hpMax: null,
