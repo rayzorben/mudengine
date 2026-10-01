@@ -5363,7 +5363,7 @@ describe('a step the server never answers', () => {
 
     // Positive control: the answer places the character and the lap goes on.
     socket.write('Location: 1,2140\r\n[HP=54/MA=12]:' + PROMPT_REPAINT);
-    await until(() => manager!.loops.progress.lapBegunAt !== null);
+    await until(() => (manager!.loops.place?.lapBegunAt ?? null) !== null);
     expect(asked()).toBe(1);
   });
 
@@ -5412,7 +5412,7 @@ describe('a step the server never answers', () => {
 
     // Positive control: the probe's answer settles the step and the lap goes on.
     socket.write('Location: 1,2140\r\n[HP=56/MA=12]:' + PROMPT_REPAINT);
-    await until(() => manager!.loops.progress.lapBegunAt !== null);
+    await until(() => (manager!.loops.place?.lapBegunAt ?? null) !== null);
     expect(asked() - before).toBe(1);
   });
 

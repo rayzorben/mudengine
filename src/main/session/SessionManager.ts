@@ -1703,11 +1703,11 @@ export class SessionManager {
           // A loop's walk engages: the loop was chosen for what lives on it.
           this.combat.noteLooping(progress.status === 'running');
           this.travel.noteLap(progress);
-          this.statsBaseline.noteLap(progress);
           this.carryOver.remember();
           this.sink.loop?.(progress);
         },
-        locate: () => this.claims.askWhereIAm()
+        locate: () => this.claims.askWhereIAm(),
+        lapBegun: () => this.statsBaseline.rebase()
       }
     );
     /*

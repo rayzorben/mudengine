@@ -202,109 +202,99 @@ describe('starting a loop', () => {
 });
 
 /*
- * todo 01, 2026-09-06: *"starting a loop should reset combat statistics;
- * restarting a loop should not, but if not in loop, when the player gets to
- * the start of the loop, combat statistics should automatically be reset."*
- *
- * `lapBegunAt` is that sentence as one fact. The Combat Stats card re-bases on
- * it; everything here is about *when* it moves, because that is the whole of
- * the decision — the card only watches it change.
+ * todo 01, 2026-09-06, and todo 02, 2026-09-30: *"statistics should be reset
+ * right when the loop starts ... literally the first room of the loop, reset
+ * statistics. every time."* `lapBegun` is that moment; the Combat Stats card
+ * re-bases on it, so everything here is about when it fires.
  */
 describe('when the lap actually begins', () => {
+  function counted(p: LoopPlanner) {
+    let begun = 0;
+    const runner = new LoopRunner(p, { lapBegun: () => (begun += 1) });
+    return { runner, begun: () => begun };
+  }
+
   it('is not the button: a run walking out to the loop has not begun one', () => {
-    const { planner: p } = planner();
-    const runner = new LoopRunner(p, {});
+    const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
-    // Started, walking, and not yet standing anywhere the loop names. The
-    // twenty-eight steps out from town are not a stretch the lap earned
-    // nothing over -- they are not the lap.
+    // Started and walking out from town; those steps are not the lap.
     expect(runner.progress.startedAt).not.toBeNull();
-    expect(runner.progress.lapBegunAt).toBeNull();
+    expect(begun()).toBe(0);
   });
 
   it('is the first stop reached', () => {
-    const { planner: p } = planner();
-    const runner = new LoopRunner(p, {});
+    const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
-    expect(runner.progress.lapBegunAt).not.toBeNull();
+    expect(begun()).toBe(1);
   });
 
   it('is at once when the character was already standing on the loop', () => {
-    const { planner: p } = planner({ here: (stop) => stop.name === 'Road' });
-    const runner = new LoopRunner(p, {});
+    const { runner, begun } = counted(planner({ here: (stop) => stop.name === 'Road' }).planner);
     runner.start(loop, state());
-    /*
-     * `advance`'s `here` branch steps *past* the stop under its feet rather
-     * than dwelling on it, so it never reaches `arrive` -- which is the half a
-     * reading of `arrive` alone would miss, and the common case for somebody
-     * who walks out by hand and then presses Start.
-     */
-    expect(runner.progress.lapBegunAt).not.toBeNull();
+    // `advance`'s `here` branch steps past the stop under its feet and never
+    // reaches `arrive`, the common case after walking out by hand.
+    expect(begun()).toBe(1);
   });
 
-  it('does not move again for every later stop', () => {
-    const { planner: p } = planner();
-    const runner = new LoopRunner(p, {});
+  it('does not fire again for every later stop or lap', () => {
+    const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
-    const begun = runner.progress.lapBegunAt;
     vi.advanceTimersByTime(2_100);
     runner.onWalkEnded(true, null, state());
     vi.advanceTimersByTime(2_100);
-    // A second stop, and a completed lap, and the card is not re-based by
-    // either: *starting* a loop resets the statistics, going round it does not.
     expect(runner.progress.laps).toBe(1);
-    expect(runner.progress.lapBegunAt).toBe(begun);
+    expect(begun()).toBe(1);
   });
 
-  it('survives a stop and a resume, because a restart is not a start', () => {
-    const { planner: p } = planner();
-    const runner = new LoopRunner(p, {});
+  it('fires again when play is pressed on a stopped lap, at the first stop reached', () => {
+    const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
-    const begun = runner.progress.lapBegunAt;
     runner.stop('asked');
-    expect(runner.progress.lapBegunAt).toBe(begun);
+    expect(begun()).toBe(1);
     runner.resume(state());
-    expect(runner.progress.lapBegunAt).toBe(begun);
+    // Walking to the next stop: not yet.
+    expect(begun()).toBe(1);
+    runner.onWalkEnded(true, null, state());
+    expect(begun()).toBe(2);
   });
 
-  it('outlives the run that made it, exactly as `startedAt` does', () => {
-    const { planner: p } = planner();
-    const runner = new LoopRunner(p, {});
+  it('fires again for every Start', () => {
+    const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
-    const begun = runner.progress.lapBegunAt;
     runner.stop('done');
-    /*
-     * A stopped loop keeps its figures — why it ended is the news, and the
-     * Navigation card goes on drawing them. So this is not cleared here, and
-     * the card is not re-based by a loop ending either.
-     */
-    expect(runner.progress.lapBegunAt).toBe(begun);
+    runner.start(loop, state());
+    expect(begun()).toBe(1);
+    runner.onWalkEnded(true, null, state());
+    expect(begun()).toBe(2);
   });
 
-  it('is owed again by the next run, never inherited from the last', () => {
-    const { planner: p } = planner();
-    const runner = new LoopRunner(p, {});
+  it('does not fire for a lap carried over from the last launch', () => {
+    const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
-    expect(runner.progress.lapBegunAt).not.toBeNull();
-    runner.stop('done');
-    runner.start(loop, state());
-    // Walking out to the loop again: begun is owed, not carried over — or the
-    // card would never be re-based by the second run.
-    expect(runner.progress.lapBegunAt).toBeNull();
+    const place = runner.place!;
+    const { runner: next, begun: nextBegun } = counted(planner().planner);
+    next.carry(place);
+    next.noteOnline();
+    next.onWalkEnded(true, null, state());
+    expect(place.lapBegunAt).not.toBeNull();
+    expect(nextBegun()).toBe(0);
+    expect(begun()).toBe(1);
   });
 
   it('goes with the loop when the runner is reset', () => {
-    const { planner: p } = planner();
-    const runner = new LoopRunner(p, {});
+    const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
     runner.reset();
-    expect(runner.progress.lapBegunAt).toBeNull();
+    expect(runner.place).toBeNull();
+    runner.start(loop, state());
+    runner.onWalkEnded(true, null, state());
+    expect(begun()).toBe(2);
   });
 });
 

@@ -90,6 +90,12 @@ export interface LoopEvents {
    * the stop, so the reason says what to do rather than only what happened.
    */
   betterSpot?(): string | null;
+  /**
+   * The player started this lap and the character is now standing on it: the
+   * first stop reached after Start or play. Once per press, and not again for
+   * a carried lap that had already reached its first stop. See `beginLap`.
+   */
+  lapBegun?(): void;
 }
 
 export interface LoopPlanner {
@@ -318,8 +324,8 @@ export class LoopRunner implements SessionModule {
   private startedAt: number | null = null;
   private expAtStart: number | null = null;
   /**
-   * When this run first stood on the loop. See `LoopProgress.lapBegunAt`, and
-   * `beginLap` for the two ways a run gets there.
+   * When this run first stood on the loop since the player last pressed Start
+   * or play, or null while it is still walking out to it. See `beginLap`.
    */
   private lapBegunAt: number | null = null;
   /**
@@ -402,7 +408,6 @@ export class LoopRunner implements SessionModule {
                         : null
         : null,
       startedAt: this.startedAt,
-      lapBegunAt: this.lapBegunAt,
       expAtStart: this.expAtStart,
       forward: this.forward,
       bounce: this.loop?.bounce ?? false
@@ -531,6 +536,9 @@ export class LoopRunner implements SessionModule {
     this.escaped = false;
     // And outranks an errand: whoever owns it hears the walk superseded.
     this.errand = false;
+    // Play is a start for the Combat Stats card (todo 02): the first stop
+    // reached from here resets it, as it does after Start.
+    this.lapBegunAt = null;
     // A pause of any length is not a lap earning nothing.
     this.anchorRate(state);
     this.events.notice?.(t('automation.loops.resumed'));
@@ -1309,7 +1317,9 @@ export class LoopRunner implements SessionModule {
   }
 
   /**
-   * This run has reached the loop. Once per run, and never on a `resume`.
+   * This run has reached the loop. Once per press of Start or play, and not
+   * again for a lap `carry` brings back that had already reached its first
+   * stop: a relaunch is not the player starting it.
    *
    * Two callers, because there are two ways to be standing on a stop and they
    * are the same fact: the run walked to one (`arrive`), or the character was
@@ -1318,11 +1328,13 @@ export class LoopRunner implements SessionModule {
    * would be two halves of one gate — and the half that was missed is the
    * common one for somebody who walks out by hand and then presses Start.
    *
-   * Deliberately not published from here: both callers publish on their own
-   * next line, and a second push would be the same fact twice.
+   * Progress is deliberately not published from here: both callers publish
+   * on their own next line, and a second push would be the same fact twice.
    */
   private beginLap(): void {
-    if (this.lapBegunAt === null) this.lapBegunAt = this.now();
+    if (this.lapBegunAt !== null) return;
+    this.lapBegunAt = this.now();
+    this.events.lapBegun?.();
   }
 
   /** Arrived at a stop: dwell — the configured linger, or long enough to fight. */

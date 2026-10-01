@@ -22,6 +22,7 @@ export interface CarriedLap {
   running: boolean;
   reason: string | null;
   startedAt: number | null;
+  /** When the lap was reached after the player last started it; see `LoopRunner.beginLap`. */
   lapBegunAt: number | null;
   expAtStart: number | null;
 }
