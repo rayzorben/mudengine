@@ -125,7 +125,7 @@ export interface TravelParts {
   readonly world: Pick<WorldGraph, 'byId' | 'route'> | undefined;
   readonly errands: Pick<
     Errands,
-    'planFromHere' | 'travellerNow' | 'lapTraveller' | 'askCountersFor' | 'findStop'
+    'planFromHere' | 'travellerNow' | 'lapTraveller' | 'askCountersFor' | 'findStop' | 'shun'
   >;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly walker: Pick<
@@ -992,6 +992,9 @@ export class Travel implements SessionModule {
     const { level } = state.progress;
     const forgetMs = tuning().combat.fledForgetMs;
     this.session.keepFled(withFled(this.session.fled(), fled, level, Date.now(), forgetMs));
+    const { map, number } = state.room;
+    // And the room itself, kept out of for a while by routes and the survey (todo 73).
+    if (map !== null && number !== null) this.errands.shun(roomId(map, number));
   }
 
   /**

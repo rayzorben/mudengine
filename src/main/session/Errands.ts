@@ -272,6 +272,8 @@ export class Errands implements SessionModule {
    * is not the authority on.
    */
   private readonly shutEdges = new Set<string>();
+  /** Rooms run out of for health, and until when they are kept out of (todo 73). */
+  private readonly shunned = new Map<RoomId, number>();
   /** The corridors of this character's preferred routes; null until asked, and after the loops change. */
   private preferred: ReadonlySet<string> | null = null;
   /** Which ask for a plan is current; an earlier chain stops at its next leg. */
@@ -305,6 +307,7 @@ export class Errands implements SessionModule {
   reset(): void {
     this.refusedEdges.clear();
     this.shutEdges.clear();
+    this.shunned.clear();
     this.clocks.reset();
   }
 
@@ -525,6 +528,7 @@ export class Errands implements SessionModule {
       spellsUp: this.spellsUp(state),
       ...pack,
       refused: this.refusedEdges,
+      shunned: this.shunnedNow(),
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
       // What waits in each room, against this character as they stand now.
       danger: (room) => this.lairDanger(room, state),
@@ -776,6 +780,18 @@ export class Errands implements SessionModule {
       minLevel: found.trainer.minLevel ?? null,
       maxLevel: found.trainer.maxLevel ?? null
     }));
+  }
+
+  /** The room run out of for health: no route or hunting ground goes back in for a while (todo 73). */
+  shun(room: RoomId): void {
+    this.shunned.set(room, Date.now() + tuning().combat.shunRoomMs);
+  }
+
+  /** The rooms still kept out of, the lapsed dropped. */
+  private shunnedNow(): ReadonlySet<RoomId> {
+    const now = Date.now();
+    for (const [room, until] of this.shunned) if (until <= now) this.shunned.delete(room);
+    return new Set(this.shunned.keys());
   }
 
   /**

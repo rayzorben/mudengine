@@ -3205,6 +3205,8 @@ export type RouteBlock =
       name: string;
       word: string;
     }
+  /** A room this character ran out of for its health a short while ago (todo 73). */
+  | { kind: 'ranFrom'; at: RoomId; to: RoomId; name: string }
   /** No path at all, gates ignored: the two rooms are not joined in the data. */
   | { kind: 'unreachable' };
 
@@ -3224,6 +3226,7 @@ export const ROUTE_BLOCK_KINDS = [
   'quest',
   'door',
   'keptOut',
+  'ranFrom',
   'unreachable'
 ] as const;
 
@@ -3409,6 +3412,8 @@ export function describeBlock(block: RouteBlock): string {
     }
     case 'keptOut':
       return `${block.name} is kept out of — "${block.word}" is on your Keep Out Of list`;
+    case 'ranFrom':
+      return `${block.name} is where this character ran from a fight a few minutes ago`;
     case 'unreachable':
       return 'No way there at all — the realm data joins no path between the two';
   }
@@ -3440,6 +3445,7 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
     case 'born':
     case 'quest':
     case 'keptOut':
+    case 'ranFrom':
     case 'unreachable':
       return null;
   }

@@ -150,6 +150,15 @@ export interface Traveller {
    */
   keepOut?: { words: readonly string[]; allowed?: readonly string[] };
   /**
+   * Rooms this character ran out of for its health a short while ago (todo 73):
+   * no route crosses one and no hunting ground behind one is reached, until
+   * `tuning.combat.shunRoomMs` has passed. Soul ran from a mad wizard, rested
+   * to full in the next room and walked back in twice, and died. A route's own
+   * ends are let through (`route`), as a place kept out of is, and a gates-open
+   * search crosses one to say it is the block (`ranFrom`).
+   */
+  shunned?: ReadonlySet<RoomId>;
+  /**
    * This character's `Classes` row id, for a class-gated exit.
    *
    * The stat sheet prints the realm's own word (`Class: Paladin`) and the
@@ -704,6 +713,11 @@ export function edgePenalty(requirement: Requirement | null, traveller: Travelle
   return total + UNEVALUATED;
 }
 
+/** Whether this traveller ran out of the room for its health a short while ago (todo 73). */
+function ranFrom(traveller: Traveller, room: WorldRoom): boolean {
+  return traveller.shunned?.has(roomId(room.map, room.room)) === true;
+}
+
 /**
  * What a way in that puts a timed spell on the character costs (todo 104):
  * the rooms under it to the exit that lifts it, against the ticks it lasts.
@@ -1215,7 +1229,7 @@ export class Router {
     const open = (exit: WorldExit | PortalExit): boolean => {
       if (who === undefined) return true;
       const next = this.rooms.get(this.beyond(exit));
-      return next === undefined || this.keptOut(who, exit, next) === null;
+      return next === undefined || (this.keptOut(who, exit, next) === null && !ranFrom(who, next));
     };
     seen.set(from, 0);
     let frontier: RoomId[] = [from];
@@ -1342,6 +1356,15 @@ export class Router {
       };
     }
     if (from === to) return { steps: [], cost: 0, blocked: false };
+    // A room run from is let through where the character stands in it, and where the player asked
+    // for it on the panel; a walk nobody watches does not go back in (todo 73).
+    const asked = options.alternatives === true;
+    if (traveller.shunned?.has(from) === true || (asked && traveller.shunned?.has(to) === true)) {
+      const shunned = new Set(traveller.shunned);
+      shunned.delete(from);
+      if (asked) shunned.delete(to);
+      traveller = { ...traveller, shunned };
+    }
 
     /*
      * **The ways and places kept out of** (todo 806). A walk that starts or
@@ -2625,6 +2648,7 @@ export class Router {
     // holds them open to find a way somebody may walk. A refusal's own
     // explanation lifts the words instead (`route`). See `Traveller.keepOut`.
     if (into !== null && this.keptOut(traveller, exit, into) !== null) return null;
+    if (into !== null && !openGates && ranFrom(traveller, into)) return null;
     /*
      * **A draw costs a move here, whatever it costs everywhere else.**
      * `edgePenalty` walls one, and that is the right answer for every reader
@@ -2900,6 +2924,9 @@ export class Router {
       const kept = into === undefined ? null : this.keptOut(traveller, exit, into);
       if (kept !== null) {
         blocks.unshift({ kind: 'keptOut', at: prev, to: cursor, name: into!.name, word: kept });
+      }
+      if (into !== undefined && ranFrom(traveller, into)) {
+        blocks.unshift({ kind: 'ranFrom', at: prev, to: cursor, name: into.name });
       }
       const blocked = edgeBlock(exit.requirement, traveller);
       if (blocked) {
