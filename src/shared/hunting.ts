@@ -8,6 +8,7 @@
  * constant is `tuning.hunting`; every unknown is named, never zeroed. See
  * `mudengine-world` § *Where to hunt is derived from the realm's own clock*.
  */
+import { median } from './median';
 import type { MeasuredOutput } from './fights';
 import type { UiLookup } from './i18n';
 import type { Loop } from './loops';
@@ -169,6 +170,12 @@ export type HuntingUnknown =
 export interface SpotEstimate {
   /** The answer, or null while a part it needs is unknown. */
   expPerHour: number | null;
+  /**
+   * What hunting it actually paid this character at this level, where a hunt
+   * there lasted long enough to say, and when (todo 70). A measured rate
+   * outranks `expPerHour` wherever a spot is ranked (`spotRate`).
+   */
+  measured?: { perHour: number; minutes: number; at: number } | null;
   /** The spawn-rate bound: what the lair pays if every kill were free. */
   ceilingPerHour: number | null;
   expPerCycle: number | null;
@@ -1091,6 +1098,8 @@ export interface HuntExclusions {
   unsurvivable: number;
   unsimulated: number;
   evil: number;
+  /** Behind a gate the next level shuts, with that level ready to train (todo 71). */
+  gated: number;
 }
 
 /** Nothing left out. */
@@ -1099,7 +1108,8 @@ export const NO_EXCLUSIONS: Readonly<HuntExclusions> = {
   beneath: 0,
   unsurvivable: 0,
   unsimulated: 0,
-  evil: 0
+  evil: 0,
+  gated: 0
 };
 
 export interface HuntingAdvice {
@@ -1125,8 +1135,10 @@ export interface HuntingAdvice {
    */
   excluded: HuntExclusions;
   assumptions: HuntingAssumptions;
-  /** The copper an hour the spots were ranked against (`automation.hunting.cashPerHour`). */
-  cashPerHour: number;
+  /** The cash floor the spots were ranked against (`automation.hunting.cashPerHour`, `cashFloor`). */
+  floor: CashFloor;
+  /** Measured over estimated where both are known, scaling every unhunted ground; null before any (`withMeasured`). */
+  pace: number | null;
   /** Why there is no answer, said out loud. */
   refusal: string | null;
 }
@@ -1162,28 +1174,27 @@ export function fightUnpriced(
  * the most dangerous room in reach. Nearest is the one fact the character
  * has about every one of them.
  */
-export function compareSpots(a: HuntingSpot, b: HuntingSpot, cashPerHour = 0): number {
+export function compareSpots(a: HuntingSpot, b: HuntingSpot, floor: CashFloor = NO_FLOOR): number {
   const rank = (spot: HuntingSpot): number =>
-    spot.estimate.deadly
-      ? 3
-      : spot.estimate.expPerHour !== null
-        ? 0
-        : fightUnpriced(spot.estimate)
-          ? 2
-          : 1;
+    spot.estimate.deadly ? 3 : spotRate(spot) !== null ? 0 : fightUnpriced(spot.estimate) ? 2 : 1;
   const ra = rank(a);
   const rb = rank(b);
   if (ra !== rb) return ra - rb;
   if (ra === 0) {
-    // Under a cash floor, a spot paying it comes first, and among those short of it the most copper.
-    const sa = shortOfCash(a.estimate.copperPerHour, cashPerHour);
-    const sb = shortOfCash(b.estimate.copperPerHour, cashPerHour);
-    if (sa !== sb) return sa ? 1 : -1;
-    if (sa) {
+    /*
+     * Under a cash floor: a spot paying it first, then those short of it by
+     * copper, then the rest by exp. Copper counts only where the exp is within
+     * `expAtLeast` of the best (todo 71): a floor nothing paid ranked the realm
+     * by copper alone and dropped a cave bear earning 56k an hour.
+     */
+    const ta = cashTier(spotRate(a), a.estimate.copperPerHour, floor);
+    const tb = cashTier(spotRate(b), b.estimate.copperPerHour, floor);
+    if (ta !== tb) return ta - tb;
+    if (ta === 1) {
       const cash = (b.estimate.copperPerHour ?? 0) - (a.estimate.copperPerHour ?? 0);
       if (cash !== 0) return cash;
     }
-    const d = b.estimate.expPerHour! - a.estimate.expPerHour!;
+    const d = (spotRate(b) ?? 0) - (spotRate(a) ?? 0);
     if (d !== 0) return d;
   } else if (ra !== 2) {
     /*
@@ -1201,6 +1212,131 @@ export function compareSpots(a: HuntingSpot, b: HuntingSpot, cashPerHour = 0): n
     if (ceiling !== 0) return ceiling;
   }
   return (a.rooms[0]?.steps ?? 0) - (b.rooms[0]?.steps ?? 0);
+}
+
+/**
+ * The copper an hour the hunt is asked for, and the least exp an hour a spot
+ * must pay for its copper to count: `expShare` of the best rate offered.
+ */
+export interface CashFloor {
+  copperPerHour: number;
+  expAtLeast: number;
+}
+
+/** No floor: spots rank by exp alone. */
+export const NO_FLOOR: Readonly<CashFloor> = { copperPerHour: 0, expAtLeast: 0 };
+
+/**
+ * Where a spot stands under a floor: 0 paying it (or no floor), 1 short of it
+ * with exp enough for its copper to count, 2 too little exp for copper to count.
+ * Within 0 and 2 the exp decides; within 1 the copper.
+ */
+export function cashTier(exp: number | null, copper: number | null, floor: CashFloor): 0 | 1 | 2 {
+  if (floor.copperPerHour <= 0) return 0;
+  if ((exp ?? 0) < floor.expAtLeast) return 2;
+  return shortOfCash(copper, floor.copperPerHour) ? 1 : 0;
+}
+
+/** A spot's exp an hour as ranked: what it measured where it was hunted, else the estimate. */
+export function spotRate(spot: HuntingSpot): number | null {
+  return spot.estimate.measured?.perHour ?? spot.estimate.expPerHour;
+}
+
+/** What hunting one spot paid a character, as kept between sessions (todo 70). */
+export interface MeasuredRate {
+  perHour: number;
+  minutes: number;
+  /** The level it was measured at: another level is another character. */
+  level: number;
+  at: number;
+}
+
+export interface MeasuredUse {
+  level: number | null;
+  now: number;
+  /** A measurement older than this says nothing (`tuning.hunting.measuredForgetMs`). */
+  forgetMs: number;
+  /** A stay shorter than this is the walk in, not the rate (`tuning.hunting.measuredMinutesLeast`). */
+  minutesLeast: number;
+  /** The bounds on the pace: one strange ground does not rescale the realm. */
+  paceLeast: number;
+  paceMost: number;
+}
+
+/**
+ * The survey with what was measured (todo 70): a spot hunted at this level
+ * carries its measured rate, and every other spot's hourly figures are scaled
+ * by the pace, the median of measured over estimated where both are known.
+ * The model's arithmetic assumes the server's round and the database's
+ * experience; a realm run faster (orohost runs about five times) or paying
+ * more per kill measures above it, and the pace carries that to the grounds
+ * not yet hunted. Pure.
+ */
+export function withMeasured(
+  spots: readonly HuntingSpot[],
+  rates: ReadonlyMap<string, MeasuredRate>,
+  use: MeasuredUse
+): { spots: HuntingSpot[]; pace: number | null } {
+  const valid = (rate: MeasuredRate | undefined): rate is MeasuredRate =>
+    rate !== undefined &&
+    use.level !== null &&
+    rate.level === use.level &&
+    use.now - rate.at < use.forgetMs &&
+    rate.minutes >= use.minutesLeast;
+  const ratios: number[] = [];
+  for (const spot of spots) {
+    const rate = rates.get(spot.key);
+    const estimated = spot.estimate.expPerHour;
+    if (valid(rate) && estimated !== null && estimated > 0) ratios.push(rate.perHour / estimated);
+  }
+  const middle = median(ratios);
+  const pace = middle === null ? null : Math.min(use.paceMost, Math.max(use.paceLeast, middle));
+  const scaled = (value: number | null): number | null =>
+    value === null || pace === null ? value : value * pace;
+  return {
+    pace,
+    spots: spots.map((spot) => {
+      const rate = rates.get(spot.key);
+      if (valid(rate)) {
+        return {
+          ...spot,
+          estimate: {
+            ...spot.estimate,
+            measured: { perHour: rate.perHour, minutes: rate.minutes, at: rate.at }
+          }
+        };
+      }
+      if (pace === null) return spot;
+      return {
+        ...spot,
+        estimate: {
+          ...spot.estimate,
+          expPerHour: scaled(spot.estimate.expPerHour),
+          ceilingPerHour: scaled(spot.estimate.ceilingPerHour),
+          copperPerHour: scaled(spot.estimate.copperPerHour)
+        }
+      };
+    })
+  };
+}
+
+/** The floor against a best exp rate: copper counts only within `expShare` of it. */
+export function floorFor(copperPerHour: number, bestExp: number, expShare: number): CashFloor {
+  return copperPerHour <= 0 ? NO_FLOOR : { copperPerHour, expAtLeast: bestExp * expShare };
+}
+
+/** The floor over these spots, against the best exp rate among them. */
+export function cashFloor(
+  spots: readonly HuntingSpot[],
+  copperPerHour: number,
+  expShare: number
+): CashFloor {
+  let best = 0;
+  for (const spot of spots) {
+    const exp = spotRate(spot);
+    if (!spot.estimate.deadly && exp !== null && exp > best) best = exp;
+  }
+  return floorFor(copperPerHour, best, expShare);
 }
 
 /**

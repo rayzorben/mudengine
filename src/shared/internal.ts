@@ -542,7 +542,9 @@ const TUNING_DEFAULTS = {
     /** A monster run from is not attacked again until the character is this many levels past it… */
     fledLevels: 2,
     /** …or this long has passed, so a loop whose one monster was run from goes on earning. */
-    fledForgetMs: 1_800_000
+    fledForgetMs: 1_800_000,
+    /** A room run out of for health is kept out of, by routes and the hunting survey, for this long (todo 73). */
+    shunRoomMs: 900_000
   },
   /**
    * How a monster's hazards are priced when auto-combat decides what to hit
@@ -821,6 +823,22 @@ const TUNING_DEFAULTS = {
      */
     sizeTolerance: 0.05,
     /**
+     * Under a cash floor, a spot's copper counts only while its exp an hour is
+     * at least this share of the best spot's (todo 71). A floor set above what
+     * any ground pays would otherwise rank grounds by copper alone.
+     */
+    cashExpShare: 0.5,
+    /**
+     * A hunt's measured exp an hour (todo 70): kept per character and spot,
+     * trusted for this long, only from a stay of at least `measuredMinutesLeast`,
+     * and the pace it puts on every unhunted ground bounded so one strange spot
+     * does not rescale the realm.
+     */
+    measuredForgetMs: 604_800_000,
+    measuredMinutesLeast: 10,
+    paceLeast: 0.2,
+    paceMost: 10,
+    /**
      * How many refills a room must have been timed over before its timed
      * clock prices it, where the world database states none
      * (`src/shared/spawns.ts`). One gap is a wanderer as often as a refill.
@@ -976,7 +994,13 @@ const TUNING_DEFAULTS = {
      * generous: the answer arrives with the next status line, and a realm
      * under load is still seconds rather than tens of them.
      */
-    confirmMs: 10_000
+    confirmMs: 10_000,
+    /**
+     * A level whose `train` went out and moved nothing is tried again after
+     * this (todo 69): one unanswered attempt was the level refused for good,
+     * and a character with levels banked stood under them for an hour.
+     */
+    retryMs: 60_000
   },
   /** Going back for the kit after a death — `GearRecovery`. */
   gearRecovery: {

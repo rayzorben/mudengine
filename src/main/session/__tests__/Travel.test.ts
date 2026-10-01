@@ -81,7 +81,8 @@ function travel(
       travellerNow: vi.fn(),
       lapTraveller: vi.fn(),
       askCountersFor: vi.fn(),
-      findStop: vi.fn()
+      findStop: vi.fn(),
+      shun: vi.fn()
     },
     queue: {
       enqueue: (intent) => {
@@ -214,6 +215,17 @@ describe('running from a fight that could kill', () => {
     moving.considerEscape(state);
     expect(sent).toEqual(['n']);
     expect(kept.map((list) => list.map((entry) => entry.name))).toEqual([['black ooze']]);
+  });
+
+  /* Todo 73: and the room it ran out of is kept out of, so nothing walks it back in. */
+  it('keeps the room it ran out of off every route for a while', () => {
+    const state = hit(20, 'Dank Room', 1);
+    const { travel: moving, parts } = travel(state, 'none', true, undefined, {
+      settings: plain,
+      fight: () => thug
+    });
+    moving.considerEscape(state);
+    expect(parts.errands.shun).toHaveBeenCalledWith('1/1');
   });
 
   it('runs again at once from a monster that follows, though nothing walks any more', () => {

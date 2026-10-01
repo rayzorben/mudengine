@@ -28,6 +28,7 @@
  *
  * Dependency-free like everything in `shared/`.
  */
+import type { MeasuredRate } from './hunting';
 import type { AbilitySums, BankBalance, KnownSpell } from './character';
 import type { FledEntry } from './fled';
 import type { Loadout } from './gear';
@@ -107,6 +108,10 @@ export interface BelongingsSink {
   recallFled(): readonly FledEntry[];
   /** The whole list as it stands after a run. */
   rememberFled(entries: readonly FledEntry[]): void;
+  /** What hunting each spot paid this character, by spot key (todo 70). */
+  recallHuntRates(): ReadonlyMap<string, MeasuredRate>;
+  /** One spot's measured rate, as the hunt last measured it. */
+  rememberHuntRate(key: string, rate: MeasuredRate): void;
   /**
    * What `abil` last summed for this character, with the clock it was read on.
    *
@@ -185,6 +190,8 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberSpellDuration: () => {},
   recallFled: () => [],
   rememberFled: () => {},
+  recallHuntRates: () => new Map(),
+  rememberHuntRate: () => {},
   recallAbilities: () => null,
   rememberAbilities: () => {},
   recallIdentity: () => null,

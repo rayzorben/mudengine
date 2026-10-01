@@ -81,7 +81,7 @@ import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
 import { slotGear } from './world/slotGear';
-import { NO_EXCLUSIONS, type HuntingAdvice } from '../shared/hunting';
+import { NO_EXCLUSIONS, NO_FLOOR, type HuntingAdvice } from '../shared/hunting';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
@@ -2335,7 +2335,8 @@ function registerIpc(): void {
           measured: null,
           constants: tuning().hunting
         },
-        cashPerHour: 0,
+        floor: NO_FLOOR,
+        pace: null,
         refusal: t('session.hunt.noSession')
       } satisfies HuntingAdvice;
     }

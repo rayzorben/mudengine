@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AutoHunt, type HuntPlanner } from '../AutoHunt';
+import { setTuning } from '../../app/tuning';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { DEFAULT_CONFIG, type HuntingAutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
@@ -76,6 +78,8 @@ let running: string | null;
 /** Every reason a lap was stopped with. */
 let stops: string[];
 let clock: number;
+/** Every rate the hunt measured and kept. */
+let noted: Array<{ key: string; perHour: number }>;
 
 function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationConfig> = {}) {
   const planner: HuntPlanner = {
@@ -85,6 +89,7 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
       return answer;
     },
     routeTo: () => ROUTE,
+    noteRate: (key, rate) => void noted.push({ key, perHour: rate.perHour }),
     walk: (route) => {
       walked.push(route);
       return null;
@@ -124,8 +129,12 @@ beforeEach(() => {
   here = '1/1';
   running = null;
   stops = [];
+  noted = [];
   clock = 1_000_000;
   answer = advice([spot('lair:a', 12_000)]);
+});
+afterEach(() => {
+  setTuning(DEFAULT_INTERNAL.tuning);
 });
 
 describe('going hunting on its own', () => {
@@ -415,13 +424,28 @@ describe('going hunting on its own', () => {
     });
     answer = advice([
       paying(spot('lair:a', 30_000), 0),
-      paying(spot('lair:b', 12_000, 'Sewer', 920), 300)
+      paying(spot('lair:b', 16_000, 'Sewer', 920), 300)
     ]);
     here = '1/920';
     const auto = hunt({}, { cashPerHour: 200 });
     auto.onCharacter(ready());
     expect(walked).toHaveLength(0);
     expect(started[0]?.name).toContain('Sewer');
+  });
+
+  /* Todo 71: copper counts only within `cashExpShare` (a half) of the best exp. */
+  it('never goes for copper to a spot paying under half the best exp', () => {
+    const paying = (s: HuntingSpot, copper: number): HuntingSpot => ({
+      ...s,
+      estimate: { ...s.estimate, copperPerHour: copper }
+    });
+    answer = advice([
+      paying(spot('lair:a', 30_000), 0),
+      paying(spot('lair:b', 12_000, 'Sewer', 920), 300)
+    ]);
+    const auto = hunt({}, { cashPerHour: 200 });
+    auto.onCharacter(ready());
+    expect(walked).toHaveLength(1);
   });
 
   it('takes the most exp among spots short of the floor by the same copper', () => {
@@ -466,7 +490,118 @@ describe('going hunting on its own', () => {
     expect(stops).toHaveLength(0);
   });
 
-  it('moves off a lair short of the cash floor for one paying it, whatever the exp', () => {
+  it('moves off a lair short of the cash floor for one paying it, with half the exp or more', () => {
+    const auto = hunt({}, { cashPerHour: 200 });
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    const thief = spot('lair:b', 12_000, 'Sewer', 920);
+    answer = advice([
+      spot('lair:a', 12_000),
+      { ...thief, estimate: { ...thief.estimate, copperPerHour: 300 } }
+    ]);
+    clock += 900_000;
+    // 20,000 an hour measured here; the thieves pay 12,000 exp, over half of it.
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 6_000 } }));
+    expect(stops).toHaveLength(1);
+    expect(walked).toHaveLength(2);
+  });
+
+  /*
+   * Todo 72: Slum Street has no clock in the database, so the survey priced
+   * it on the realm's usual regen and planned no filler; once its own regen is
+   * timed, the same lair is planned with a lair nearby, and the lap takes it in.
+   */
+  it('takes in the lairs the survey adds to fill the wait of the lair it hunts', () => {
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    answer = advice([spot('lair:a', 12_000)]);
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    expect(started).toHaveLength(1);
+    const plain = spot('lair:a', 12_000);
+    const beside = { id: '1/817', map: 1, room: 817, name: 'Alley', steps: 5 };
+    answer = advice([{ ...plain, filler: [beside], walk: [...plain.walk, beside] }]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 4_000 } }));
+    expect(stops).toHaveLength(1);
+    expect(started).toHaveLength(2);
+    expect(started[1]?.stops).toHaveLength(2);
+  });
+
+  it('keeps a lap paying the cash floor off a filled plan that falls short of it', () => {
+    const auto = hunt({}, { cashPerHour: 200 });
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    const paying = spot('lair:a', 12_000);
+    answer = advice([{ ...paying, estimate: { ...paying.estimate, copperPerHour: 300 } }]);
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    const beside = { id: '1/817', map: 1, room: 817, name: 'Alley', steps: 5 };
+    answer = advice([
+      {
+        ...paying,
+        filler: [beside],
+        walk: [...paying.walk, beside],
+        estimate: { ...paying.estimate, copperPerHour: 100 }
+      }
+    ]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 4_000 } }));
+    expect(stops).toHaveLength(0);
+  });
+
+  it('moves on to a better lair before filling the one it hunts', () => {
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    answer = advice([spot('lair:a', 12_000)]);
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    const plain = spot('lair:a', 12_000);
+    const beside = { id: '1/817', map: 1, room: 817, name: 'Alley', steps: 5 };
+    answer = advice([
+      { ...plain, filler: [beside], walk: [...plain.walk, beside] },
+      spot('lair:b', 90_000, 'Sewer', 920)
+    ]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 4_000 } }));
+    expect(stops).toHaveLength(1);
+    expect(walked.at(-1)).toBeDefined();
+    expect(started).toHaveLength(1);
+  });
+
+  /* Todo 70: what a stay measured is kept, by spot and level, for the survey and the next session. */
+  it('keeps what hunting a lair paid', () => {
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 6_000 } }));
+    expect(noted).toEqual([{ key: 'lair:a', perHour: 20_000 }]);
+  });
+
+  it('keeps nothing from a stay too short to say what a lair pays', () => {
+    // A grace shorter than the least stay, so the least stay is what decides.
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      loop: { ...DEFAULT_INTERNAL.tuning.loop, expRateGraceMs: 60_000 }
+    });
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    clock += 300_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 6_000 } }));
+    expect(noted).toEqual([]);
+  });
+
+  it('stays on a lair short of the cash floor when the one paying it earns under half the exp', () => {
     const auto = hunt({}, { cashPerHour: 200 });
     const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
     auto.onCharacter(at);
@@ -480,8 +615,7 @@ describe('going hunting on its own', () => {
     clock += 900_000;
     // 36,000 an hour measured here, three times what the thieves pay in exp.
     auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 10_000 } }));
-    expect(stops).toHaveLength(1);
-    expect(walked).toHaveLength(2);
+    expect(stops).toHaveLength(0);
   });
 
   /* The walk that never arrived is a refusal, not a loop started somewhere

@@ -31,7 +31,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // and by the close handler once every close carries the lap (todo 01).
   // And by the item trip's wiring, out whole (`itemPlanner.ts`, todo 21),
   // the room the danger checks then took (todo 22); and the planner's wiring.
-  'src/main/session/SessionManager.ts': 3798,
+  'src/main/session/SessionManager.ts': 3794,
   'src/main/world/WorldGraph.ts': 2549,
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,

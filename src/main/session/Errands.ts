@@ -7,6 +7,7 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
+import { median } from '../../shared/median';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
@@ -28,10 +29,16 @@ import { chargedInCopper, expectedCopper } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { FightSink } from '../../shared/fights';
+import type { KillExpLore } from '../../shared/lore';
 import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
+  cashFloor,
   compareSpots,
+  withMeasured,
+  type MeasuredRate,
+  type MeasuredUse,
+  NO_FLOOR,
   estimateSpot,
   moveDelayMs,
   orderRing,
@@ -175,6 +182,7 @@ export type ErrandsWorld = Pick<
   | 'itemsNamed'
   | 'lair'
   | 'lairEntities'
+  | 'mob'
   | 'planStep'
   | 'priceAt'
   | 'quests'
@@ -198,8 +206,8 @@ export interface ErrandsParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
   /** What this character has measured dealing a round, for the survey. */
   readonly fightRecord: Pick<FightSink, 'measured'>;
-  /** The rooms' refills the wire timed on this realm (`RealmLore`). */
-  readonly spawns: SpawnLore;
+  /** The rooms' refills the wire timed, and what its kills paid solo, on this realm (`RealmLore`). */
+  readonly lore: SpawnLore & KillExpLore;
 }
 
 /** What the session that built this answers for it. */
@@ -212,6 +220,8 @@ export interface ErrandsSession {
   watched(): QuestWatched;
   /** A lair's fight for this character rested (`OddsBook`). */
   lairOdds(room: WorldRoom): Odds;
+  /** What hunting each spot paid this character (`Belongings`, todo 70). */
+  rates(): ReadonlyMap<string, MeasuredRate>;
   /** The one `abil` of the session (`Routines.askAbilities`). */
   askAbilities(state: CharacterState): void;
   notice(message: string): void;
@@ -221,6 +231,7 @@ export class Errands implements SessionModule {
   private readonly world: ErrandsWorld | undefined;
   private readonly tracker: ErrandsParts['tracker'];
   private readonly fightRecord: ErrandsParts['fightRecord'];
+  private readonly kills: KillExpLore;
   /** The refill clocks the wire timed, where the world database states none. */
   private readonly clocks: RoomClocks;
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
@@ -261,6 +272,8 @@ export class Errands implements SessionModule {
    * is not the authority on.
    */
   private readonly shutEdges = new Set<string>();
+  /** Rooms run out of for health, and until when they are kept out of (todo 73). */
+  private readonly shunned = new Map<RoomId, number>();
   /** The corridors of this character's preferred routes; null until asked, and after the loops change. */
   private preferred: ReadonlySet<string> | null = null;
   /** Which ask for a plan is current; an earlier chain stops at its next leg. */
@@ -273,7 +286,8 @@ export class Errands implements SessionModule {
     this.world = parts.world;
     this.tracker = parts.tracker;
     this.fightRecord = parts.fightRecord;
-    this.clocks = new RoomClocks(parts.spawns);
+    this.clocks = new RoomClocks(parts.lore);
+    this.kills = parts.lore;
   }
 
   private get automationConfig(): AutomationConfig {
@@ -293,6 +307,7 @@ export class Errands implements SessionModule {
   reset(): void {
     this.refusedEdges.clear();
     this.shutEdges.clear();
+    this.shunned.clear();
     this.clocks.reset();
   }
 
@@ -513,6 +528,7 @@ export class Errands implements SessionModule {
       spellsUp: this.spellsUp(state),
       ...pack,
       refused: this.refusedEdges,
+      shunned: this.shunnedNow(),
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
       // What waits in each room, against this character as they stand now.
       danger: (room) => this.lairDanger(room, state),
@@ -764,6 +780,51 @@ export class Errands implements SessionModule {
       minLevel: found.trainer.minLevel ?? null,
       maxLevel: found.trainer.maxLevel ?? null
     }));
+  }
+
+  /** The room run out of for health: no route or hunting ground goes back in for a while (todo 73). */
+  shun(room: RoomId): void {
+    this.shunned.set(room, Date.now() + tuning().combat.shunRoomMs);
+  }
+
+  /** The rooms still kept out of, the lapsed dropped. */
+  private shunnedNow(): ReadonlySet<RoomId> {
+    const now = Date.now();
+    for (const [room, until] of this.shunned) if (until <= now) this.shunned.delete(room);
+    return new Set(this.shunned.keys());
+  }
+
+  /**
+   * With a level ready to train, the rooms reachable at the level it is about
+   * to be from wherever it may train (todo 71): the trainer the player chose,
+   * else any that takes the level and is reached from here, since which one
+   * the trip picks is weighed then. A ground behind an exit for levels up to
+   * this one is reachable from inside it now and shut once trained: the cave
+   * bear's dungeon is entered by a `Level: 0 to 5` stair, and Soul hunted it
+   * from inside at 5. Null with no level ready, or no trainer reached.
+   */
+  private reachAfterTraining(
+    state: CharacterState,
+    reach: ReadonlyMap<RoomId, number>
+  ): ReadonlyMap<RoomId, number> | null {
+    const { level, expNeeded } = state.progress;
+    const world = this.world;
+    if (!world || level === null || expNeeded === null || expNeeded > 0) return null;
+    const chosen = this.automationConfig.train.trainer;
+    const trainers = this.trainers(level).filter(
+      (each) => (chosen <= 0 || each.shop === chosen) && reach.has(roomId(each.map, each.room))
+    );
+    if (trainers.length === 0) return null;
+    const traveller = { ...this.travellerNow(state), level: level + 1 };
+    // A room counts while any trainer the trip might walk to gets back to it.
+    const union = new Map<RoomId, number>();
+    for (const trainer of trainers) {
+      const from = roomId(trainer.map, trainer.room);
+      for (const [id, steps] of world.withinSteps(from, Number.POSITIVE_INFINITY, traveller)) {
+        union.set(id, Math.min(steps, union.get(id) ?? steps));
+      }
+    }
+    return union;
   }
 
   /**
@@ -1218,7 +1279,12 @@ export class Errands implements SessionModule {
       clusterRadius,
       fillerRadius,
       sizeTolerance,
-      measuredFightsMin
+      measuredFightsMin,
+      cashExpShare,
+      measuredForgetMs,
+      measuredMinutesLeast,
+      paceLeast,
+      paceMost
     } = tuning().hunting;
     const c: HuntingConstants = {
       roundSeconds,
@@ -1293,7 +1359,6 @@ export class Errands implements SessionModule {
       constants: c
     };
     const cashPerHour = this.automationConfig.hunting.cashPerHour;
-    const order = (a: HuntingSpot, b: HuntingSpot): number => compareSpots(a, b, cashPerHour);
     const refused = (refusal: string): HuntingAdvice => ({
       from: null,
       radius,
@@ -1302,7 +1367,8 @@ export class Errands implements SessionModule {
       unmeasured: [],
       excluded: { ...NO_EXCLUSIONS },
       assumptions,
-      cashPerHour,
+      floor: NO_FLOOR,
+      pace: null,
       refusal
     });
     if (!world || world.size === 0) return refused(t('session.hunt.noRealmData'));
@@ -1405,8 +1471,12 @@ export class Errands implements SessionModule {
             roundMs: roundSeconds * 1000,
             openerRounds: backstab ? backstabMultiplier : 1
           }) ?? null);
+    const learnedExp = this.kills.allKillExp();
+    const scale = killExpScale(learnedExp, world);
     const priceKey = [
       this.fitness(state),
+      [...learnedExp.values()].reduce((sum, exp) => sum + exp, 0),
+      scale,
       this.automationConfig.spells.attack,
       this.automationConfig.spells.autoChoose,
       this.automationConfig.combat.opener,
@@ -1436,7 +1506,15 @@ export class Errands implements SessionModule {
         measured === null || hp === null || hp <= 0 ? null : hp / measured.perRound;
       const mobs: SpotMob[] = entities.map((entity, index) => ({
         name: entity.name,
-        experience: entity.experience ?? null,
+        /*
+         * The realm's own figure where a solo kill has recorded one, else the
+         * database figure times the realm's scale (todo 70).
+         */
+        experience:
+          this.kills.killExpFor(entity.name) ??
+          (entity.experience === undefined || entity.experience === null
+            ? null
+            : entity.experience * scale),
         copper: entity.coins === undefined ? null : expectedCopper(entity.coins),
         rounds:
           verdicts[index]?.rounds?.value ??
@@ -1471,7 +1549,13 @@ export class Errands implements SessionModule {
     const priced = new Map<string, HuntPriced>();
     const excluded = { ...NO_EXCLUSIONS };
     const survey: HuntingSpot[] = [];
+    const afterTraining = this.reachAfterTraining(state, reach);
     for (const [key, group] of groups) {
+      // Behind a gate the next level shuts, with that level about to be trained (todo 71).
+      if (afterTraining !== null && !group.rooms.some((room) => afterTraining.has(room.id))) {
+        excluded.gated += 1;
+        continue;
+      }
       // A `seen` room's monsters and clock move as it is stood in, so they are part of what is priced.
       const cached =
         group.seen === undefined ? key : `${key}|${group.seen.names.join(',')}|${group.seen.clock}`;
@@ -1558,7 +1642,19 @@ export class Errands implements SessionModule {
         estimate
       });
     }
-    survey.sort(order);
+    // What was measured where it was hunted, and the pace it puts on the rest (todo 70).
+    const use: MeasuredUse = {
+      level: state.progress.level,
+      now: Date.now(),
+      forgetMs: measuredForgetMs,
+      minutesLeast: measuredMinutesLeast,
+      paceLeast,
+      paceMost
+    };
+    const rates = this.session.rates();
+    const guessed = withMeasured(survey, rates, use).spots;
+    // Cut on exp alone; the cash floor orders only the measured spots below (todo 71).
+    guessed.sort((a, b) => compareSpots(a, b));
     /*
      * Only the best are measured: a bounded sweep from each of a ring's rooms
      * is under a millisecond and there are thousands of groups, so the survey
@@ -1569,13 +1665,15 @@ export class Errands implements SessionModule {
      * Paradigm's cost 1.1s, and a list cut at twenty-four is not the realm.
      * The one a reader opened is measured too, so what it walks is a ring.
      */
-    const rest = survey.slice(c.maxSpots);
+    const rest = guessed.slice(c.maxSpots);
     const opened = rest.findIndex((spot) => spot.key === measure);
-    const chosen = survey.slice(0, c.maxSpots);
+    const chosen = guessed.slice(0, c.maxSpots);
     if (opened !== -1) chosen.push(rest[opened]!);
-    const spots = chosen.map((spot) =>
+    // Measured from the survey's own spots, so none is paced twice.
+    const unpaced = new Map(survey.map((spot) => [spot.key, spot]));
+    const measuredSpots = chosen.map((spot) =>
       this.measuredSpot(
-        spot,
+        unpaced.get(spot.key) ?? spot,
         priced.get(spot.key)!,
         priced,
         groupOfRoom,
@@ -1585,16 +1683,19 @@ export class Errands implements SessionModule {
         world
       )
     );
-    spots.sort(order);
+    const { spots: known, pace } = withMeasured(measuredSpots, rates, use);
+    const floor = cashFloor(known, cashPerHour, cashExpShare);
+    known.sort((a, b) => compareSpots(a, b, floor));
     return {
       from: { id: from, name: start.name },
       radius,
       swept: reach.size,
-      spots,
+      spots: known,
       unmeasured: opened === -1 ? rest : rest.filter((_, at) => at !== opened),
       excluded,
       assumptions: { ...assumptions, measured },
-      cashPerHour,
+      floor,
+      pace,
       refusal: null
     };
   }
@@ -2335,4 +2436,21 @@ function statFigure(state: CharacterState, stat: string): number | null {
     default:
       return null;
   }
+}
+
+/**
+ * How much the realm pays against what its database says, from every monster
+ * a solo kill has priced (todo 70): the median of learned over stated, so one
+ * odd monster does not move every estimate. 1 before any kill.
+ */
+export function killExpScale(
+  learned: ReadonlyMap<string, number>,
+  world: Pick<WorldGraph, 'mob'>
+): number {
+  const ratios: number[] = [];
+  for (const [name, exp] of learned) {
+    const stated = world.mob(name)?.experience;
+    if (typeof stated === 'number' && stated > 0) ratios.push(exp / stated);
+  }
+  return median(ratios) ?? 1;
 }

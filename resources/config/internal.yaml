@@ -467,6 +467,9 @@ tuning:
     # whose one monster was run from goes on earning.
     fledLevels: 2
     fledForgetMs: 1800000
+    # A room run out of for health is kept out of, by routes and the hunting
+    # survey, for this long.
+    shunRoomMs: 900000
 
   # How a monster's hazards are priced when auto-combat decides what to hit
   # first. A blow is hit points and needs no pricing; everything else a
@@ -666,6 +669,16 @@ tuning:
     clusterRadius: 30
     fillerRadius: 8
     sizeTolerance: 0.05
+    # Under a cash floor, a spot's copper counts only while its exp an hour is
+    # at least this share of the best spot's.
+    cashExpShare: 0.5
+    # A hunt's measured exp an hour, per character and spot: trusted for a week,
+    # only from a stay of ten minutes or more, and the pace it puts on unhunted
+    # grounds kept between a fifth and ten times the estimate.
+    measuredForgetMs: 604800000
+    measuredMinutesLeast: 10
+    paceLeast: 0.2
+    paceMost: 10
 
     # Where the world database states no lair clock (a MegaMUD export has no
     # Delay column) or no lair at all (an arena), the client times the gap
@@ -789,6 +802,8 @@ tuning:
     # comes back, and it is generous: the answer arrives with the next status
     # line.
     confirmMs: 10000
+    # A level whose train went out and moved nothing is tried again after this.
+    retryMs: 60000
 
   # Getting back into the shadows between fights — `AutoStealth`.
   # `askEveryMs` floors the retry after a failed roll, so a low-Stealth
