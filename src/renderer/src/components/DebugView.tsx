@@ -7,6 +7,7 @@ import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
 import type { DebugKind, DebugRecord } from '@shared/debug';
 import type { SessionId } from '@shared/ipc';
+import { timeOfDay } from '@shared/values';
 
 /**
  * Every kind, in the order a line of the game actually produces them.
@@ -354,8 +355,7 @@ function DebugView({ session, load, subscribe, save, reveal, onClose }: DebugVie
  * than that one.
  */
 const DebugRow = memo(function DebugRow({ record }: { record: DebugRecord }) {
-  const at = new Date(record.at);
-  const stamp = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}:${String(at.getSeconds()).padStart(2, '0')}.${String(at.getMilliseconds()).padStart(3, '0')}`;
+  const stamp = timeOfDay(record.at);
   return (
     <div className="debug-row" data-kind={record.kind}>
       <span className="at">{stamp}</span>

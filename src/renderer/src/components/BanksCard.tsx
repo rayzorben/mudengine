@@ -4,6 +4,7 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { bankKey, type BankBalance, type CharacterState } from '@shared/character';
+import { bankedCopper } from '@shared/coins';
 
 /**
  * What this character has left in each vault, and when each vault said so.
@@ -76,7 +77,7 @@ function BanksCard({ character, ...chrome }: BanksCardProps): React.JSX.Element 
    */
   const now = Date.now();
 
-  const total = banks.reduce((sum, bank) => sum + bank.copper, 0);
+  const total = bankedCopper(banks);
 
   return (
     <BentoCard

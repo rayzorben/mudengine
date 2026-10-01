@@ -31,6 +31,7 @@ import {
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
 import { t } from '../lib/i18n';
+import { rate } from '../lib/rates';
 import { tuning } from '../lib/tuning';
 import { duration, figure, percent } from '../lib/stats';
 import TimeFace, { timeCopyText } from './TimeFace';
@@ -47,23 +48,6 @@ export interface StatsCardProps extends CardChrome {
   baseline: CombatTally | null;
   /** Re-base to the totals as they stand now. */
   onReset(): void;
-}
-
-/**
- * A rate an hour, in the unit that keeps it readable.
- *
- * MegaMUD switched between `k/hr` and `m/hr` for the same reason: six figures
- * of experience per hour is a number nobody reads at a glance, and the card is
- * three inches wide.
- */
-function rate(value: number | null): string {
-  if (value === null) return '—';
-  const size = Math.abs(value);
-  if (size >= 1_000_000)
-    return t('cards.stats.ratePerHour', { value: `${(value / 1_000_000).toFixed(2)}M` });
-  if (size >= 1_000)
-    return t('cards.stats.ratePerHour', { value: `${(value / 1_000).toFixed(1)}k` });
-  return t('cards.stats.ratePerHour', { value: value.toFixed(0) });
 }
 
 /** `12 – 48`, or a dash while nothing has landed. */

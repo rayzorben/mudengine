@@ -5188,7 +5188,8 @@ automation:
     ignoredParty: 'Not running @party from {from}: Ignore @party If Following is on.'
     autoJoinInParty: '{from} invited this character; not joining, because it is already in a party.'
     autoJoinDenied: '{from} invited this character; not joining, because @join is denied to {from} by name.'
-    autoJoinNotGranted: '{from} invited this character; not joining, because {from} has not been granted
+    autoJoinNotGranted:
+      '{from} invited this character; not joining, because {from} has not been granted
       @join.{unresolvedClause}'
     ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
     dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
