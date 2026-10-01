@@ -8,6 +8,9 @@
  * it is somebody else's. Why a death owns a quest step whoever landed it:
  * `mudengine-world` › `parts/quests.md`.
  */
+import type { CharacterState } from '../../shared/character';
+import { killedAlone } from '../../shared/company';
+import type { MobLore } from '../../shared/lore';
 import { rowNameOf } from '../../shared/mobs';
 import { mobKey } from '../../shared/world';
 
@@ -23,7 +26,22 @@ export class Kills {
   private readonly deaths = new Set<string>();
 
   /** `known`: whether the realm knows a monster by this name (`WorldGraph.mob`). */
-  constructor(private readonly known: (name: string) => boolean) {}
+  constructor(
+    private readonly known: (name: string) => boolean,
+    private readonly lore: Pick<MobLore, 'observeKillExp'> = {}
+  ) {}
+
+  /**
+   * This character's kill of its target: noted, and what it paid kept for the realm where
+   * nobody could have shared it (todo 70). The database's experience is not
+   * what the wire pays, and a shared kill pays a share.
+   */
+  killed(state: CharacterState, exp: number, at: number): void {
+    const name = state.combat.target;
+    if (name === null) return;
+    this.noted(name);
+    if (killedAlone(state)) this.lore.observeKillExp?.(name, exp, at);
+  }
 
   /**
    * A monster died, whoever landed it: written down under the realm's own row.

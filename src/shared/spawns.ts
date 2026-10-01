@@ -22,6 +22,7 @@
  *
  * Dependency-free like everything in `shared/`.
  */
+import { median } from './median';
 import type { CharacterState } from './character';
 import { mobKey, roomAddress, type RoomId } from './world';
 
@@ -62,13 +63,6 @@ export function learnRefill(
     seen,
     at
   };
-}
-
-function median(values: readonly number[]): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
 }
 
 /** A room's timed clock, the median gap, once it has `least` refills; null before. */

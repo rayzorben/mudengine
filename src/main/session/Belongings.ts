@@ -31,6 +31,7 @@
  * `WorldMemory` and `YamlFile` do — because `remember` is called from inside
  * block handling, on the thread that is framing bytes and feeding a terminal.
  */
+import type { MeasuredRate } from '../../shared/hunting';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -80,6 +81,8 @@ interface BelongingsFile {
   spellDurations?: Record<string, number>;
   /** The monsters run from, and at what level. Absent is none. */
   fled?: FledEntry[];
+  /** What hunting each spot paid, by spot key (todo 70). Absent is none. */
+  huntRates?: Record<string, MeasuredRate>;
   /**
    * What `abil` last summed, under the same absence allowance as the
    * spellbook: **absent means never read, not "the realm counts none"**. The
@@ -120,6 +123,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   private spellbook: KnownSpell[] | null = null;
   private durations: Record<string, number> = {};
   private fled: FledEntry[] = [];
+  private huntRates = new Map<string, MeasuredRate>();
   /** Null is *never read*, never "the realm counts none". See the sink. */
   private abilities: AbilitySums | null = null;
   /** Null is *never read*. See `recallIdentity`. */
@@ -206,6 +210,16 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   rememberFled(entries: readonly FledEntry[]): void {
     if (this.suspended) return;
     this.fled = entries.map((entry) => ({ ...entry }));
+    this.schedule();
+  }
+
+  recallHuntRates(): ReadonlyMap<string, MeasuredRate> {
+    return this.huntRates;
+  }
+
+  rememberHuntRate(key: string, rate: MeasuredRate): void {
+    if (this.suspended) return;
+    this.huntRates.set(key, { ...rate });
     this.schedule();
   }
 
@@ -364,6 +378,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       this.spellbook = parsed.spellbook ?? null;
       this.durations = parsed.spellDurations ?? {};
       this.fled = parsed.fled ?? [];
+      this.huntRates = new Map(Object.entries(parsed.huntRates ?? {}));
       // Absent is *never read*, and stays null — the spellbook's rule.
       this.abilities = parsed.abilities ?? null;
       this.identity = parsed.identity ?? null;
@@ -416,6 +431,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       ...(this.spellbook !== null ? { spellbook: this.spellbook } : {}),
       ...(Object.keys(this.durations).length > 0 ? { spellDurations: this.durations } : {}),
       ...(this.fled.length > 0 ? { fled: this.fled } : {}),
+      ...(this.huntRates.size > 0 ? { huntRates: Object.fromEntries(this.huntRates) } : {}),
       // Omitted while never read, so the absence survives the round trip.
       ...(this.abilities !== null ? { abilities: this.abilities } : {}),
       ...(this.identity !== null ? { identity: this.identity } : {}),
@@ -540,11 +556,24 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.spellbook !== undefined && !file.spellbook.every(isKnownSpell)) return false;
   if (file.spellDurations !== undefined && !isDurationRecord(file.spellDurations)) return false;
   if (file.fled !== undefined && !isFledList(file.fled)) return false;
+  if (file.huntRates !== undefined && !isHuntRates(file.huntRates)) return false;
   if (file.abilities !== undefined && !isAbilitySums(file.abilities)) return false;
   if (file.identity !== undefined && !isIdentity(file.identity)) return false;
   if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;
   if (file.statsBase !== undefined && !isCombatTally(file.statsBase)) return false;
   return file.banks.every(isBankBalance);
+}
+
+/** Each spot's measured rate: four finite figures. */
+function isHuntRates(value: unknown): value is Record<string, MeasuredRate> {
+  if (typeof value !== 'object' || value === null) return false;
+  return Object.values(value).every((rate: unknown) => {
+    if (typeof rate !== 'object' || rate === null) return false;
+    const { perHour, minutes, level, at } = rate as Record<string, unknown>;
+    return [perHour, minutes, level, at].every(
+      (figure) => typeof figure === 'number' && Number.isFinite(figure)
+    );
+  });
 }
 
 /** The clock is what closes an interval the record left open, so a record without one is refused. */

@@ -335,7 +335,7 @@ export class CharacterTracker {
     // writes what it learned to the lore.
     const known = (name: string): boolean => world?.mob(name) !== undefined;
     this.deathSentence = new DeathSentence({ known, lore });
-    this.kills = new Kills(known);
+    this.kills = new Kills(known, lore);
   }
 
   /** The walker is about to send `command`, and knows it is a move. See `Expectations`. */
@@ -1413,7 +1413,7 @@ export class CharacterTracker {
         // And a quest step can be owned by a monster's death, so the name goes
         // where `SessionManager` can read it. `after !== s` is `FightTracker`
         // saying the target is what died.
-        if (after !== s && s.combat.target !== null) this.kills.noted(s.combat.target);
+        if (after !== s) this.kills.killed(s, Number(g['exp']), block.at);
         return experienceGained(after, s, g['exp']);
       }
 

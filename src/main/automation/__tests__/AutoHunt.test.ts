@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AutoHunt, type HuntPlanner } from '../AutoHunt';
+import { setTuning } from '../../app/tuning';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { DEFAULT_CONFIG, type HuntingAutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
@@ -76,6 +78,8 @@ let running: string | null;
 /** Every reason a lap was stopped with. */
 let stops: string[];
 let clock: number;
+/** Every rate the hunt measured and kept. */
+let noted: Array<{ key: string; perHour: number }>;
 
 function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationConfig> = {}) {
   const planner: HuntPlanner = {
@@ -85,6 +89,7 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
       return answer;
     },
     routeTo: () => ROUTE,
+    noteRate: (key, rate) => void noted.push({ key, perHour: rate.perHour }),
     walk: (route) => {
       walked.push(route);
       return null;
@@ -124,9 +129,14 @@ beforeEach(() => {
   here = '1/1';
   running = null;
   stops = [];
+  noted = [];
   clock = 1_000_000;
   answer = advice([spot('lair:a', 12_000)]);
 });
+afterEach(() => {
+  setTuning(DEFAULT_INTERNAL.tuning);
+});
+
 
 describe('going hunting on its own', () => {
   it('walks to the best spot and runs its loop', () => {
@@ -497,6 +507,34 @@ describe('going hunting on its own', () => {
     auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 6_000 } }));
     expect(stops).toHaveLength(1);
     expect(walked).toHaveLength(2);
+  });
+
+  /* Todo 70: what a stay measured is kept, by spot and level, for the survey and the next session. */
+  it('keeps what hunting a lair paid', () => {
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 6_000 } }));
+    expect(noted).toEqual([{ key: 'lair:a', perHour: 20_000 }]);
+  });
+
+  it('keeps nothing from a stay too short to say what a lair pays', () => {
+    // A grace shorter than the least stay, so the least stay is what decides.
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      loop: { ...DEFAULT_INTERNAL.tuning.loop, expRateGraceMs: 60_000 }
+    });
+    const auto = hunt();
+    const at = ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_000 } });
+    auto.onCharacter(at);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at);
+    clock += 300_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 6_000 } }));
+    expect(noted).toEqual([]);
   });
 
   it('stays on a lair short of the cash floor when the one paying it earns under half the exp', () => {

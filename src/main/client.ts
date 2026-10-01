@@ -2301,6 +2301,7 @@ function registerIpc(): void {
           constants: tuning().hunting
         },
         floor: NO_FLOOR,
+        pace: null,
         refusal: t('session.hunt.noSession')
       } satisfies HuntingAdvice;
     }

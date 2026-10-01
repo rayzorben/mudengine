@@ -198,7 +198,29 @@ export interface MobLore {
   deathOf?(text: string): readonly string[];
   /** A monster's death sentence, read positionally off the wire (see `CharacterTracker`). */
   observeDeath?(name: string, text: string, at: number): void;
+  /** What a solo kill of a monster paid (todo 70). See `KillExpLore`. */
+  observeKillExp?(name: string, exp: number, at: number): void;
 }
+
+/**
+ * What a realm pays for each kind of monster, learned from solo kills (todo
+ * 70). The world database's `experience` is not what the wire pays: Paradigm
+ * paid 300 for a cave bear the database rates at 100. A fact about the realm,
+ * kept across characters; the last solo kill is the figure, since a kill
+ * alone always pays the same.
+ */
+export interface KillExpLore {
+  /** What the last solo kill of this monster paid, or null before one. */
+  killExpFor(name: string): number | null;
+  /** Every monster's learned kill exp, by the realm's row name. */
+  allKillExp(): ReadonlyMap<string, number>;
+}
+
+/** A realm that has taught nothing about what its kills pay. */
+export const NO_KILL_EXP: KillExpLore = {
+  killExpFor: () => null,
+  allKillExp: () => new Map()
+};
 
 /** What one realm taught about how one monster dies. */
 export interface LearnedDeath {
@@ -241,7 +263,7 @@ export const NO_INSTANT_SPELLS: InstantSpellLore = {
  * parser, the spells' half for the fight, the rooms' refills for the hunting
  * survey, each consumer typed to its own.
  */
-export type RealmLoreView = MobLore & InstantSpellLore & SpawnLore;
+export type RealmLoreView = MobLore & InstantSpellLore & SpawnLore & KillExpLore;
 
 /** A lore that knows nothing and learns nothing. The zero-realm client. */
 export const NO_LORE: RealmLoreView = {
@@ -253,6 +275,8 @@ export const NO_LORE: RealmLoreView = {
   observeSlot: () => {},
   deathOf: () => [],
   observeDeath: () => {},
+  observeKillExp: () => {},
+  ...NO_KILL_EXP,
   ...NO_INSTANT_SPELLS,
   ...NO_SPAWNS
 };

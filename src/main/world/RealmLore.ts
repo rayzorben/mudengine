@@ -104,6 +104,18 @@ interface LoreFile {
    * `src/shared/spawns.ts`. Optional for the same reason `slots` is.
    */
   spawns?: Record<string, Record<string, LearnedSpawns>>;
+  /**
+   * What each realm paid for a solo kill of each monster, keyed by the realm's
+   * row name (todo 70). See `KillExpLore`. Optional for the same reason
+   * `slots` is.
+   */
+  killExp?: Record<string, Record<string, LearnedKillExp>>;
+}
+
+/** What one realm paid for a solo kill of one monster, and when it last said so. */
+interface LearnedKillExp {
+  exp: number;
+  at: number;
 }
 
 /** When a realm first answered a cast of one attack spell instantly. */
@@ -143,6 +155,8 @@ export class RealmLore {
   private readonly spawns = new Map<string, Map<RoomId, LearnedSpawns>>();
   /** The attack spells each realm answered instantly, by spell. See `LoreFile.instants`. */
   private readonly instants = new Map<string, Map<string, LearnedInstant>>();
+  /** What each realm paid for a solo kill, by row name. See `LoreFile.killExp`. */
+  private readonly killExp = new Map<string, Map<string, LearnedKillExp>>();
   private timer: NodeJS.Timeout | null = null;
   private dirty = false;
   private loaded = false;
@@ -190,6 +204,19 @@ export class RealmLore {
       isInstantSpell: (spell) => this.isInstant(key, spell),
       observeInstantSpell: (spell, at) => this.observeInstant(key, spell, at),
       forgetInstantSpell: (spell) => this.forgetInstant(key, spell),
+      // Filed under the realm's row name, as a death sentence is, so `large cave bear` is `cave bear`.
+      observeKillExp: (name, exp, at) =>
+        this.observeKillExp(
+          key,
+          rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined),
+          exp,
+          at
+        ),
+      killExpFor: (name) =>
+        this.killExpTable(key).get(rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined))
+          ?.exp ?? null,
+      allKillExp: () =>
+        new Map([...this.killExpTable(key)].map(([name, entry]) => [name, entry.exp])),
       spawnsAt: (room) => this.spawnTable(key).get(room) ?? null,
       allSpawns: () => this.spawnTable(key),
       observeRefill: (refill, at) => this.observeRefill(key, refill, at)
@@ -215,6 +242,27 @@ export class RealmLore {
       refill.room,
       learnRefill(table.get(refill.room), refill, at, tuning().hunting.refillsKept)
     );
+    this.schedule();
+  }
+
+  /* ------------------------------------------------------------ kill exp */
+
+  private killExpTable(realm: string): ReadonlyMap<string, LearnedKillExp> {
+    this.load();
+    return this.killExp.get(realm) ?? new Map();
+  }
+
+  /** A solo kill paid this: kept as the figure, and written only when it changed. */
+  private observeKillExp(realm: string, name: string, exp: number, at: number): void {
+    if (name.length === 0 || !Number.isFinite(exp) || exp <= 0) return;
+    this.load();
+    let table = this.killExp.get(realm);
+    if (!table) {
+      table = new Map();
+      this.killExp.set(realm, table);
+    }
+    if (table.get(name)?.exp === exp) return;
+    table.set(name, { exp, at });
     this.schedule();
   }
 
@@ -697,6 +745,12 @@ export class RealmLore {
     })) {
       this.instants.set(realm, table);
     }
+    for (const [realm, table] of readTables(file.killExp, (name, value) => {
+      const entry = readKillExpEntry(value);
+      return entry && name.length > 0 ? [name, entry] : null;
+    })) {
+      this.killExp.set(realm, table);
+    }
     for (const [realm, table] of readTables(file.spawns, (room, value) => {
       const entry = readSpawnsEntry(value);
       return entry ? [room, entry] : null;
@@ -746,6 +800,7 @@ export class RealmLore {
     const effects = writeTables(this.effects);
     const instants = writeTables(this.instants);
     const spawns = writeTables(this.spawns);
+    const killExp = writeTables(this.killExp);
 
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -761,7 +816,8 @@ export class RealmLore {
             ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
             ...(Object.keys(effects).length > 0 ? { effects } : {}),
             ...(Object.keys(instants).length > 0 ? { instants } : {}),
-            ...(Object.keys(spawns).length > 0 ? { spawns } : {})
+            ...(Object.keys(spawns).length > 0 ? { spawns } : {}),
+            ...(Object.keys(killExp).length > 0 ? { killExp } : {})
           } satisfies LoreFile,
           null,
           2
@@ -863,6 +919,14 @@ function readSpawnsEntry(value: unknown): LearnedSpawns | null {
     seen: counts,
     at: typeof at === 'number' && Number.isFinite(at) ? at : 0
   };
+}
+
+/** What a solo kill paid, or null when the row holds no figure. */
+function readKillExpEntry(value: unknown): LearnedKillExp | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { exp, at } = value as Record<string, unknown>;
+  if (typeof exp !== 'number' || !Number.isFinite(exp) || exp <= 0) return null;
+  return { exp, at: typeof at === 'number' && Number.isFinite(at) ? at : 0 };
 }
 
 /** When a realm answered a spell instantly, or null when the row is not one. */

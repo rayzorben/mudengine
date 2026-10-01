@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  type MeasuredRate,
+  withMeasured,
+  spotRate,
   cashFloor,
   addFiller,
   huntLoop,
@@ -728,58 +731,59 @@ describe('the ring', () => {
   });
 });
 
-describe('the order the reader wants', () => {
-  const spot = (
-    key: string,
-    rate: number | null,
-    ceiling: number | null,
-    deadly = false
-  ): HuntingSpot => {
-    const here: HuntingRoom = { id: '1/1', map: 1, room: 1, name: 'Here', steps: 3 };
-    return {
-      key,
-      mobs: [],
-      clock: 'delay',
-      via: 'lair',
-      boss: false,
-      respawnSeconds: 30,
-      spawns: 1,
-      rooms: [here],
-      filler: [],
-      walk: [here],
-      roomCount: 1,
-      loopSteps: 0,
-      estimate: {
-        expPerHour: rate,
-        ceilingPerHour: ceiling,
-        expPerCycle: null,
-        fillerExpPerCycle: 0,
-        copperPerCycle: null,
-        copperPerHour: null,
-        cycleSeconds: null,
-        combatSeconds: null,
-        restSeconds: null,
-        meditateSeconds: null,
-        healCasts: null,
-        poisonSeconds: null,
-        walkSeconds: 0,
-        stepMs: C.stepMs,
-        waitSeconds: null,
-        damagePerRoom: null,
-        worstDamagePerRoom: null,
-        worstDamageAtLeast: null,
-        damageShare: null,
-        worstShare: null,
-        worstShareAtLeast: null,
-        roundsPerKill: null,
-        deadly,
-        costly: false,
-        trivial: false,
-        unknown: []
-      }
-    };
+/** A spot with only its rates set, for the ranking. */
+const spot = (
+  key: string,
+  rate: number | null,
+  ceiling: number | null,
+  deadly = false
+): HuntingSpot => {
+  const here: HuntingRoom = { id: '1/1', map: 1, room: 1, name: 'Here', steps: 3 };
+  return {
+    key,
+    mobs: [],
+    clock: 'delay',
+    via: 'lair',
+    boss: false,
+    respawnSeconds: 30,
+    spawns: 1,
+    rooms: [here],
+    filler: [],
+    walk: [here],
+    roomCount: 1,
+    loopSteps: 0,
+    estimate: {
+      expPerHour: rate,
+      ceilingPerHour: ceiling,
+      expPerCycle: null,
+      fillerExpPerCycle: 0,
+      copperPerCycle: null,
+      copperPerHour: null,
+      cycleSeconds: null,
+      combatSeconds: null,
+      restSeconds: null,
+      meditateSeconds: null,
+      healCasts: null,
+      poisonSeconds: null,
+      walkSeconds: 0,
+      stepMs: C.stepMs,
+      waitSeconds: null,
+      damagePerRoom: null,
+      worstDamagePerRoom: null,
+      worstDamageAtLeast: null,
+      damageShare: null,
+      worstShare: null,
+      worstShareAtLeast: null,
+      roundsPerKill: null,
+      deadly,
+      costly: false,
+      trivial: false,
+      unknown: []
+    }
   };
+};
 
+describe('the order the reader wants', () => {
   it('puts a known rate first, an unknown one by its ceiling after, and deadly last', () => {
     const ordered = [
       spot('deadly-rich', null, 9_000_000, true),
@@ -950,5 +954,81 @@ describe("a caster's cycle", () => {
     const unread = estimateSpot(singles(caster({ meditatingManaPerTick: null })), C);
     expect(unread.unknown).toContain('mana');
     expect(unread.expPerHour).toBeNull();
+  });
+});
+
+/*
+ * Todo 70: what hunting a spot paid outranks the arithmetic, and the gap the
+ * hunted spots show is carried to every spot not yet hunted. Soul's cave bear
+ * was estimated at 8,935 an hour and earned 56,000 on orohost.
+ */
+describe('what hunting measured', () => {
+  const use = {
+    level: 5,
+    now: 1_000_000,
+    forgetMs: 600_000,
+    minutesLeast: 10,
+    paceLeast: 0.2,
+    paceMost: 10
+  };
+  const rate = (perHour: number, over: Partial<MeasuredRate> = {}): MeasuredRate => ({
+    perHour,
+    minutes: 60,
+    level: 5,
+    at: 900_000,
+    ...over
+  });
+
+  it('marks a hunted spot with what it paid, and paces the rest by the gap', () => {
+    const { spots, pace } = withMeasured(
+      [spot('bear', 8_000, 8_000), spot('thug', 4_000, 4_000)],
+      new Map([['bear', rate(48_000)]]),
+      use
+    );
+    expect(pace).toBe(6);
+    expect(spots[0]!.estimate.measured).toEqual({ perHour: 48_000, minutes: 60, at: 900_000 });
+    expect(spotRate(spots[0]!)).toBe(48_000);
+    expect(spots[1]!.estimate.expPerHour).toBe(24_000);
+    expect(spots[1]!.estimate.measured).toBeUndefined();
+  });
+
+  it('ignores a measurement at another level, too short, or too old', () => {
+    for (const stale of [
+      rate(48_000, { level: 4 }),
+      rate(48_000, { minutes: 3 }),
+      rate(48_000, { at: 0 })
+    ]) {
+      const { spots, pace } = withMeasured(
+        [spot('bear', 8_000, 8_000)],
+        new Map([['bear', stale]]),
+        use
+      );
+      expect(pace).toBeNull();
+      expect(spotRate(spots[0]!)).toBe(8_000);
+    }
+  });
+
+  it('bounds the pace one strange ground puts on the realm', () => {
+    const { pace } = withMeasured(
+      [spot('bear', 1_000, 1_000)],
+      new Map([['bear', rate(1_000_000)]]),
+      use
+    );
+    expect(pace).toBe(10);
+  });
+
+  it('ranks a hunted spot on what it paid', () => {
+    const { spots } = withMeasured(
+      [spot('thug', 9_000, 9_000), spot('bear', 8_000, 8_000)],
+      new Map([
+        ['bear', rate(48_000)],
+        ['thug', rate(4_000)]
+      ]),
+      use
+    );
+    expect([...spots].sort((a, b) => compareSpots(a, b)).map((s) => s.key)).toEqual([
+      'bear',
+      'thug'
+    ]);
   });
 });

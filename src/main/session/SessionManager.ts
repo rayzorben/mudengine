@@ -536,9 +536,10 @@ export class SessionManager {
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
     // Before `useRealm`, which tells it the family is unread again.
     this.errands = new Errands(
-      { world, tracker: this.tracker, fightRecord: fights, spawns: lore },
+      { world, tracker: this.tracker, fightRecord: fights, lore },
       {
         config: () => this.automationConfig,
+        rates: () => this.belongings.recallHuntRates(),
         family: () => this.vocabulary.family,
         watched: () => this.questWatch.watched,
         lairOdds: (room) => this.odds.lair(room),
@@ -1206,6 +1207,7 @@ export class SessionManager {
       {
         here: () => roomAddress(this.tracker.current.room),
         survey: (radius) => this.errands.huntingGrounds(radius),
+        noteRate: (key, rate) => this.belongings.rememberHuntRate(key, rate),
         routeTo: (room) => this.errands.planFromHere(room),
         walk: (route) => this.walker.start(route, this.tracker.current),
         runLoop: (loop) => {
@@ -1219,13 +1221,7 @@ export class SessionManager {
         stopLoop: stopLap,
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking,
-        /*
-         * Nothing else in the middle of something. The escapes, and **the
-         * errands** — each of which has phases where nothing is walking and
-         * nothing is looping (a shop errand waiting for its listing, a trainer
-         * errand waiting for the level to move), during which a hunt would
-         * otherwise survey and walk the character away from what it came for.
-         */
+        // Nothing else in the middle of something: see `errandHeld`.
         busy: () => this.errandHeld()
       },
       reports

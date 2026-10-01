@@ -827,6 +827,16 @@ const TUNING_DEFAULTS = {
      */
     cashExpShare: 0.5,
     /**
+     * A hunt's measured exp an hour (todo 70): kept per character and spot,
+     * trusted for this long, only from a stay of at least `measuredMinutesLeast`,
+     * and the pace it puts on every unhunted ground bounded so one strange spot
+     * does not rescale the realm.
+     */
+    measuredForgetMs: 604_800_000,
+    measuredMinutesLeast: 10,
+    paceLeast: 0.2,
+    paceMost: 10,
+    /**
      * How many refills a room must have been timed over before its timed
      * clock prices it, where the world database states none
      * (`src/shared/spawns.ts`). One gap is a wanderer as often as a refill.
