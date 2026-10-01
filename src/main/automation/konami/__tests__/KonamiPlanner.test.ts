@@ -27,6 +27,7 @@ function providerFile(): string {
       async ask(request) {
         const goal = globalThis.__konamiGoal ?? 'hunt_0';
         globalThis.__konamiAsked = (globalThis.__konamiAsked ?? 0) + 1;
+        if (globalThis.__konamiFail) throw new Error('400 max_tokens_exceeded');
         const answers = {};
         for (const [name, q] of Object.entries(request.questions)) {
           answers[name] = q.type === 'noul'
@@ -51,7 +52,8 @@ const BRIEF = {
     trainCost: null,
     cash: { onHand: 0, banks: [], total: 0 },
     spells: [],
-    stats: {}
+    stats: {},
+    worn: []
   },
   settings: { attack: 'aa' },
   history: [],
@@ -119,6 +121,7 @@ function planner(): KonamiPlanner {
       briefLessons.push(lessons);
       if (briefRefusal !== null) return { refusal: briefRefusal };
       const made = structuredClone(BRIEF);
+      made.history = lessons;
       made.hunting.excluded = { ...NO_EXCLUSIONS, unsimulated };
       if (trainReady) Object.assign(made.character, { levelReady: true, trainCost: 0 });
       briefPatch?.(made);
@@ -186,7 +189,14 @@ async function asked(times: number): Promise<void> {
   await settle();
 }
 
+/** Until `count` decisions are listed, asked or decided here. */
+async function decided(it: KonamiPlanner, count: number): Promise<void> {
+  await vi.waitFor(() => expect(it.snapshot().decisions).toHaveLength(count));
+  await settle();
+}
+
 const global = globalThis as {
+  __konamiFail?: boolean;
   __konamiGoal?: string;
   __konamiAsked?: number;
   __konamiChoices?: Record<string, string>;
@@ -212,6 +222,7 @@ beforeEach(() => {
   global.__konamiChoices = {};
   briefPatch = null;
   global.__konamiAsked = 0;
+  global.__konamiFail = false;
 });
 
 afterEach(() => {
@@ -325,7 +336,7 @@ describe('the planner', () => {
     expect(text).toContain('"answers"');
     expect(it.snapshot().log).toBe('/tmp/konami.log');
     const id = it.snapshot().decisions[0]!.id;
-    expect(it.exchange(id)?.request.questions).toHaveProperty('goal');
+    expect(it.exchange(id)?.request?.questions).toHaveProperty('goal');
     it.dispose();
   });
 
@@ -489,7 +500,7 @@ describe('the planner', () => {
     it.dispose();
   });
 
-  it('writes a stuck log when standing still brings back the same plan', async () => {
+  it('writes a stuck log, and asks nothing, when standing still changes nothing to decide', async () => {
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
@@ -501,7 +512,9 @@ describe('the planner', () => {
     vi.setSystemTime(Date.now() + 35_000);
     (it as unknown as { tick(): void }).tick();
     vi.useRealTimers();
-    await asked(2);
+    await vi.waitFor(() => expect(incidents).toHaveLength(1));
+    expect(global.__konamiAsked).toBe(1);
+    expect(it.snapshot().decisions).toHaveLength(1);
     expect(incidents.map((row) => row.kind)).toEqual(['stuck']);
     expect(JSON.parse(incidents[0]!.files['refusals.json']!)).toEqual(['hunt: no route']);
     it.dispose();
@@ -523,33 +536,45 @@ describe('the planner', () => {
     it.dispose();
   });
 
-  it('ends a training plan the trip refuses, and asks again', async () => {
-    global.__konamiGoal = 'train';
+  it('trains a level that is ready without asking, since nothing else is offered', async () => {
     trainReady = true;
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
     it.onCharacter(state);
-    await asked(1);
+    await decided(it, 1);
+    expect(global.__konamiAsked).toBe(0);
+    expect(it.snapshot().plan?.goal).toEqual({ kind: 'train' });
+    const id = it.snapshot().decisions[0]!.id;
+    expect(it.exchange(id)?.request).toBeNull();
+    it.dispose();
+  });
+
+  it('ends a training plan the trip refuses, and asks again', async () => {
+    trainReady = true;
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await decided(it, 1);
     expect(it.snapshot().plan?.goal).toEqual({ kind: 'train' });
     trainRefusal = { why: 'the purse does not cover it', at: Date.now() };
     global.__konamiGoal = 'wait';
     it.onCharacter(state);
-    await asked(2);
+    await asked(1);
     expect(it.snapshot().decisions[1]?.outcome).toBe('refused');
     expect(learned.at(-1)).toMatchObject({ outcome: 'refused', goal: { kind: 'train' } });
     it.dispose();
   });
 
   it('keeps a training plan whose trip refused before it was chosen', async () => {
-    global.__konamiGoal = 'train';
     trainReady = true;
     trainRefusal = { why: 'no cash, an hour ago', at: Date.now() - 3_600_000 };
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
     it.onCharacter(state);
-    await asked(1);
+    await decided(it, 1);
     it.onCharacter(state);
     await settle();
     expect(it.snapshot().decisions[0]?.outcome).toBe('applied');
@@ -557,18 +582,17 @@ describe('the planner', () => {
   });
 
   it('ends a training plan whose trip never sets off, saying nothing', async () => {
-    global.__konamiGoal = 'train';
     trainReady = true;
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
     it.onCharacter(state);
-    await asked(1);
+    await decided(it, 1);
     global.__konamiGoal = 'wait';
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.trainStartMs + 1 });
     it.onCharacter(state);
     vi.useRealTimers();
-    await asked(2);
+    await asked(1);
     expect(it.snapshot().decisions[1]?.outcome).toBe('refused');
     it.dispose();
   });
@@ -611,17 +635,98 @@ describe('the planner', () => {
     it.dispose();
   });
 
-  it('reviews a plan still running after the review interval', async () => {
+  it('reviews a plan still running after the review interval, only when something changed', async () => {
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
     it.onCharacter(state);
     await asked(1);
-    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.reviewMs + 1 });
+    const review = tuning().konami.reviewMs;
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + review + 1 });
+    (it as unknown as { tick(): void }).tick();
+    vi.useRealTimers();
+    await settle();
+    expect(global.__konamiAsked).toBe(1);
+    expect(it.snapshot().decisions).toHaveLength(1);
+    expect(it.snapshot().pending).toBeNull();
+    // A second spot is something new to decide between.
+    briefPatch = (brief) =>
+      brief.hunting.spots.push({ ...brief.hunting.spots[0]!, key: 'lair:b', name: 'orc' });
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 2 * review + 2 });
     (it as unknown as { tick(): void }).tick();
     vi.useRealTimers();
     await asked(2);
     expect(it.snapshot().decisions[0]?.trigger).toBe('review');
+    it.dispose();
+  });
+
+  it('keeps the plan in hand when an ask fails, and asks again after the back-off', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    global.__konamiFail = true;
+    it.askNow();
+    await asked(2);
+    const [failed, standing] = it.snapshot().decisions;
+    expect(failed?.outcome).toBe('failed');
+    expect(standing?.outcome).toBe('applied');
+    expect(it.snapshot().plan?.goal).toMatchObject({ kind: 'hunt', key: 'lair:a' });
+    expect(it.snapshot().pending).toBe('asked');
+    global.__konamiFail = false;
+    // Not before the back-off,
+    it.onCharacter(state);
+    await settle();
+    expect(global.__konamiAsked).toBe(2);
+    // and once it has run out.
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.retryMs + 1 });
+    it.onCharacter(state);
+    vi.useRealTimers();
+    await asked(3);
+    expect(it.snapshot().decisions[0]?.outcome).toBe('applied');
+    it.dispose();
+  });
+
+  it('trains a level the moment it is paid for, even while a failed ask waits', async () => {
+    state = inRealm({ progress: { ...inRealm().progress, expNeeded: 100 } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    global.__konamiFail = true;
+    it.askNow();
+    await asked(2);
+    expect(it.snapshot().decisions[0]?.outcome).toBe('failed');
+    trainReady = true;
+    state = inRealm({ progress: { ...inRealm().progress, expNeeded: 0 } });
+    it.onCharacter(state);
+    await decided(it, 3);
+    expect(it.snapshot().plan?.goal).toEqual({ kind: 'train' });
+    expect(global.__konamiAsked).toBe(2);
+    it.dispose();
+  });
+
+  it('decides training once the copper it costs is carried, without asking', async () => {
+    briefPatch = (brief) =>
+      Object.assign(brief.character, {
+        levelReady: true,
+        trainCost: 50,
+        cash: { onHand: state.inventory.wealth, banks: [], total: state.inventory.wealth }
+      });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    expect(it.snapshot().plan?.goal.kind).toBe('hunt');
+    state = inRealm({ inventory: { ...inRealm().inventory, wealth: 60 } });
+    it.onCharacter(state);
+    await decided(it, 2);
+    expect(it.snapshot().decisions[0]?.trigger).toBe('train-affordable');
+    expect(it.snapshot().plan?.goal).toEqual({ kind: 'train' });
+    expect(global.__konamiAsked).toBe(1);
     it.dispose();
   });
 

@@ -19,15 +19,24 @@ export class Journal {
     return this.kept;
   }
 
+  /**
+   * The plan standing: the newest decision that made one. An ask that failed
+   * is kept and listed, but stands for nothing, so the plan before it runs on
+   * and is reviewed and settled as if it had not been asked.
+   */
   get latest(): KonamiDecision | null {
-    return this.kept[this.kept.length - 1] ?? null;
+    for (let at = this.kept.length - 1; at >= 0; at -= 1) {
+      if (this.kept[at]!.outcome !== 'failed') return this.kept[at]!;
+    }
+    return null;
   }
 
   add(decision: KonamiDecision): void {
     this.kept.push(decision);
     const over = this.kept.length - Math.max(1, this.size());
     if (over > 0) this.kept.splice(0, over);
-    this.records?.journal(JSON.stringify({ kind: 'decision', ...decision }));
+    // The brief stays in memory for the death logs; the file holds what was sent (todo 65).
+    this.records?.journal(JSON.stringify({ kind: 'decision', ...decision, brief: undefined }));
   }
 
   /** What became of the newest decision; said once, since an outcome is final. */

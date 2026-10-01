@@ -1928,6 +1928,7 @@ cards:
       ready: a level is ready to train
       review: the plan has run a while
       saved: the copper saved for is there
+      trainAffordable: the copper to train is there
     outcome:
       applied: in force
       done: done
@@ -1951,6 +1952,8 @@ cards:
       copy: Copy
       loading: Loading…
       gone: No longer kept here; it is in this run's log.
+      notAsked: Nothing was sent. There was only one choice, so mudengine made it.
+      noReply: No reply came back.
     layer:
       attack: Attack
       opener: Opener

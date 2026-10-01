@@ -140,7 +140,8 @@ export const KONAMI_TRIGGERS = [
   'chosen',
   'ready',
   'review',
-  'saved'
+  'saved',
+  'train-affordable'
 ] as const;
 
 export type KonamiTrigger = (typeof KONAMI_TRIGGERS)[number];

@@ -5,6 +5,7 @@
  */
 import { bankedCopper } from './coins';
 import type { KonamiBrief, SlotUpgrade } from './konamiBrief';
+import { REALM_ARMOUR_SCALE } from './menace';
 
 /** A figure as the provider reads it; an unknown one is said, never 0. */
 export const number = (value: number | null, digits = 0): string =>
@@ -41,4 +42,28 @@ export function purseText(brief: KonamiBrief): string {
 /** The label an upgrade is offered under, buying it or saving for it: its slot and its place there. */
 export function offerLabel(slot: SlotUpgrade, index: number): string {
   return `buy_${slot.slot.toLowerCase().replace(/[^a-z]+/g, '_')}_${index}`;
+}
+
+/**
+ * The copper training the level that is ready costs, while what is carried does
+ * not cover it (the trainer's trip draws on no bank); null otherwise. Reaching
+ * it is a trigger, since a level that can be paid for is trained first.
+ */
+export function trainNotCarried(brief: KonamiBrief): number | null {
+  const { levelReady, trainCost, cash } = brief.character;
+  return levelReady === true &&
+    trainCost !== null &&
+    cash.onHand !== null &&
+    trainCost > cash.onHand
+    ? trainCost
+    : null;
+}
+
+/**
+ * What an item gives in the sheet's own figures: damage a round for a weapon,
+ * armour class for armour (the realm's item figure is ten times the sheet's).
+ */
+export function slotGives(ranking: SlotUpgrade['ranking'], figure: number | null): number | null {
+  if (figure === null) return null;
+  return ranking === 'weapon' ? figure : figure / REALM_ARMOUR_SCALE;
 }

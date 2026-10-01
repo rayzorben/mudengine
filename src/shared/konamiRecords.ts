@@ -23,8 +23,10 @@ export interface KonamiDecision {
   trigger: KonamiTrigger;
   provider: string;
   model: string | null;
+  /** The brief the questions were built from, trimmed as sent; kept in memory, never written. */
   brief: KonamiBrief;
-  questions: KonamiAsk['questions'];
+  /** Exactly what went to the provider (`fitRequest`); null where the plan was decided here. */
+  sent: KonamiAsk | null;
   /** The reply as the provider sent it, before it was parsed. */
   raw: unknown;
   plan: KonamiPlan | null;
@@ -42,7 +44,8 @@ export interface KonamiDecision {
 
 /** One ask as the card's terminal shows it: what went, what came back. */
 export interface KonamiExchange {
-  request: { state: KonamiBrief; questions: KonamiDecision['questions'] };
+  /** Null where nothing was asked: the plan was decided here. */
+  request: KonamiAsk | null;
   raw: unknown;
   refusal: string | null;
 }

@@ -880,12 +880,32 @@ const TUNING_DEFAULTS = {
    * logs, and `logLines` how many lines of the session go into them.
    */
   konami: {
-    maxSpots: 12,
-    upgradesPerSlot: 3,
+    /** The most hunting grounds, and offers per slot, sent with one ask (todo 65). */
+    maxSpots: 8,
+    upgradesPerSlot: 2,
+    /**
+     * The most characters of JSON one ask sends: the provider is paid per call and
+     * refuses a request over about 62,000. `fitRequest` trims lessons, then offers,
+     * then grounds until it fits.
+     */
+    requestChars: 16_000,
+    /** The least `fitRequest` trims to before it sends over the budget, and says so. */
+    trimGrounds: 3,
+    trimOffers: 1,
+    trimLessons: 2,
+    /** Past outcomes named in a ground's criterion (the state lists them all), and the most items offered to save for. */
+    beforeNamed: 2,
+    savingGear: 6,
     askTimeoutMs: 30000,
     stuckMs: 30000,
-    /** A plan still running is asked about again after this long; 0 never. */
-    reviewMs: 600_000,
+    /**
+     * A plan still running is asked about again after this long, and only when what
+     * would be asked has changed; 0 never.
+     */
+    reviewMs: 3_600_000,
+    /** A failed ask is tried again after this, doubling up to `retryMaxMs` (todo 66). */
+    retryMs: 120_000,
+    retryMaxMs: 1_800_000,
     /** A training plan whose trip has not set off after this long ends refused. */
     trainStartMs: 15_000,
     journal: 100,
@@ -913,7 +933,7 @@ const TUNING_DEFAULTS = {
     /** A past plan's outcome is sent while the character is within this many levels of it. */
     lessonLevels: 2,
     /** The most past outcomes sent with one brief. */
-    lessonsSent: 20,
+    lessonsSent: 10,
     /** A plan replaced sooner than this taught nothing, and leaves no lesson. */
     lessonMinMs: 60_000,
     /** The most lessons the Konami card lists, newest first. */

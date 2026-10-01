@@ -24,12 +24,13 @@ export interface SavingLabels {
 
 /**
  * What can be saved for: the level that is ready, while the copper carried does
- * not cover the trainer; and every upgrade offered that the purse does not
- * reach, so a robe for a gold can be weighed against one for two platinum.
+ * not cover the trainer; and, per slot, the cheapest upgrade offered that the
+ * purse does not reach, cheapest slots first, so a robe for a gold can be
+ * weighed against one for two platinum without every item sold being sent.
  * Nothing while the purse is unread, since every shortfall would be a guess.
  * Empty where nothing is short.
  */
-export function savingOffers(brief: KonamiBrief): Record<string, SavingOffer> {
+export function savingOffers(brief: KonamiBrief, most: number): Record<string, SavingOffer> {
   const offers: Record<string, SavingOffer> = {};
   const { trainCost, levelReady, cash, level } = brief.character;
   const carried = cash.onHand;
@@ -43,22 +44,31 @@ export function savingOffers(brief: KonamiBrief): Record<string, SavingOffer> {
       short: trainCost - carried
     };
   }
+  const gear: Array<[string, SavingOffer]> = [];
   for (const slot of brief.gear) {
-    slot.offers.forEach((offer, index) => {
-      if (offer.copper === null || offer.copper <= total) return;
+    let cheapest: [string, SavingOffer] | null = null;
+    for (const [index, offer] of slot.offers.entries()) {
+      if (offer.copper === null || offer.copper <= total) continue;
+      if (cheapest !== null && cheapest[1].copper <= offer.copper) continue;
       // Saved for ahead of the level it needs, which the provider is told.
       const needs =
         offer.minLevel !== null && level !== null && offer.minLevel > level
           ? ` (wearable from level ${offer.minLevel})`
           : '';
-      offers[offerLabel(slot, index)] = {
-        what: `${offer.name} for the ${slot.slot} slot at ${offer.shop}${needs}`,
-        copper: offer.copper,
-        carried: false,
-        short: offer.copper - total
-      };
-    });
+      cheapest = [
+        offerLabel(slot, index),
+        {
+          what: `${offer.name} for the ${slot.slot} slot at ${offer.shop}${needs}`,
+          copper: offer.copper,
+          carried: false,
+          short: offer.copper - total
+        }
+      ];
+    }
+    if (cheapest !== null) gear.push(cheapest);
   }
+  gear.sort((a, b) => a[1].copper - b[1].copper);
+  for (const [label, offer] of gear.slice(0, most)) offers[label] = offer;
   return offers;
 }
 
@@ -77,9 +87,10 @@ function bestCash(brief: KonamiBrief): { name: string; perHour: number } | null 
 /** The two saving questions, or none where nothing is short. */
 export function savingQuestions(
   brief: KonamiBrief,
-  aim: string
+  aim: string,
+  most: number
 ): { questions: Record<string, KonamiQuestion>; labels: SavingLabels } {
-  const offers = savingOffers(brief);
+  const offers = savingOffers(brief, most);
   if (Object.keys(offers).length === 0) {
     return { questions: {}, labels: { saveFor: {}, saveWithin: {} } };
   }

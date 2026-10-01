@@ -18,14 +18,20 @@ import type {
   KonamiQuestionName,
   KonamiReply
 } from './konami';
-import { REALM_ARMOUR_SCALE } from './menace';
-import { number, offerLabel, purseText } from './konamiPurse';
+import { number, offerLabel, purseText, slotGives } from './konamiPurse';
 import { readSaving, savingQuestions, type SavingLabels } from './konamiSaving';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 /** What the character is playing for; said in every question. */
-const AIM =
-  'The character plays unattended. Aim for the most experience over the next 24 hours with no deaths: a death costs experience, gear and time.';
+const AIM = 'Unattended play: the most exp over the next 24 hours, and no deaths.';
+
+/** How much of the brief the questions name (`tuning.konami`). */
+export interface QuestionSizes {
+  /** Past outcomes named in a ground's criterion; the state lists them all. */
+  beforeNamed: number;
+  /** The most items offered to save for. */
+  savingGear: number;
+}
 
 /** The `restBelow` choices offered, as fractions of the bar. */
 const REST_BELOW = [0.35, 0.5, 0.6, 0.7] as const;
@@ -76,18 +82,14 @@ const percent = (share: number | null): string =>
 
 /** A spot's experience: by the hour where the respawn clock is known, else by the lap. */
 function rateText(exp: BriefSpot['exp']): string {
-  if (exp.perHour !== null) return `${number(exp.perHour)} exp an hour`;
-  if (exp.perCycle !== null) {
-    return `${number(exp.perCycle)} exp a lap (no hourly rate: the realm states no respawn time)`;
-  }
-  return 'unknown exp';
+  if (exp.perHour !== null) return `${number(exp.perHour)} exp/hr`;
+  if (exp.perCycle !== null) return `${number(exp.perCycle)} exp a lap (no respawn time)`;
+  return 'exp unknown';
 }
 
 /** The coin its monsters carry, where they carry any. */
 function cashRateText(cash: BriefSpot['cash']): string {
-  return cash.perHour !== null && cash.perHour > 0
-    ? `, ${number(cash.perHour)} copper an hour`
-    : '';
+  return cash.perHour !== null && cash.perHour > 0 ? `, ${number(cash.perHour)} copper/hr` : '';
 }
 
 /**
@@ -97,48 +99,43 @@ function cashRateText(cash: BriefSpot['cash']): string {
  */
 function gainText(slot: SlotUpgrade, offer: GearOffer): string {
   if (slot.ranking === 'weapon') {
-    const against =
-      slot.worn === null
-        ? 'fighting bare-handed'
-        : `${number(slot.wornFigure, 1)} for the ${slot.worn} wielded now`;
-    return `${number(offer.figure, 1)} damage a round, against ${against}`;
+    const against = slot.worn === null ? 'bare hands' : `${number(slot.wornFigure, 1)} now`;
+    return `${number(slotGives(slot.ranking, offer.figure), 1)} damage a round against ${against}`;
   }
   const effect = offer.effect;
-  const replaces = slot.worn === null ? 'nothing worn there now' : `the ${slot.worn} worn now`;
   if (effect === null) {
-    return `${number(offer.ac === null ? null : offer.ac / REALM_ARMOUR_SCALE, 1)} armour class, in place of ${replaces}`;
+    return `${number(slotGives(slot.ranking, offer.ac), 1)} armour class`;
   }
   const { armourClass, perRound } = effect;
   return (
-    `armour class ${number(armourClass.now, 1)} -> ${number(armourClass.with, 1)} in place of ${replaces}; ` +
-    `damage taken a round at ${effect.spot} (one of each monster there) ${number(perRound.now, 1)} -> ${number(perRound.with, 1)}`
+    `armour class ${number(armourClass.now, 1)} -> ${number(armourClass.with, 1)}; ` +
+    `damage taken a round at the best ground ${number(perRound.now, 1)} -> ${number(perRound.with, 1)}`
   );
 }
 
 /** The fight there as the simulator ran it. */
 function fightText(fight: BriefSpot['fight']): string {
   if (fight === null) return 'fight not simulated';
-  return `fight simulated at full health: survived ${percent(fight.survives)} (${fight.level}), ${number(fight.rounds, 1)} rounds`;
+  return `survives ${percent(fight.survives)} (${fight.level})`;
 }
 
-/** The walk there, condensed: steps, lairs passed, what they cost, the worst of them. */
-function routeText(spot: BriefSpot, hpMax: number | null): string {
+/** The walk there: steps, what its lairs cost, the worst of them and how its fight goes. */
+function routeText(spot: BriefSpot): string {
   const route = spot.route;
-  if (route === null) return `${number(spot.steps)} steps away (no route planned)`;
-  if (route.lairs === 0) return `${route.steps} steps away, passing no lairs`;
+  if (route === null) return `${number(spot.steps)} steps, no route planned`;
+  if (route.lairs === 0) return `${route.steps} steps, no lairs on the way`;
   const cost =
     route.damage === null
-      ? `, ${route.unweighed} of them not weighed, so what passing costs is unknown`
-      : ` costing about ${number(route.damage)} HP in all to pass (${number(hpMax)} max)`;
-  const worst = route.worst
-    .map(
-      (lair) =>
-        `${lair.monsters.join('/') || 'unknown'} in ${lair.room} ${percent(lair.share)} of max HP a pass` +
-        (lair.fight === null ? '' : `, its fight ${lair.fight}`)
-    )
-    .join('; ');
-  const deadly = route.deadly === null ? '' : ` Expected to die passing ${route.deadly}.`;
-  return `${route.steps} steps away, passing ${route.lairs} lairs${cost}; worst: ${worst}.${deadly}`;
+      ? `${route.unweighed} of ${route.lairs} lairs on the way not weighed`
+      : `the walk costs ${number(route.damage)} HP`;
+  const worst = route.worst[0];
+  const worstText =
+    worst === undefined
+      ? ''
+      : `; worst lair ${worst.room} ${percent(worst.share)} HP a pass` +
+        (worst.fight === null ? '' : ` (${worst.fight})`);
+  const deadly = route.deadly === null ? '' : `; expected to die passing ${route.deadly}`;
+  return `${route.steps} steps, ${cost}${worstText}${deadly}`;
 }
 
 /** Training the level that is ready, as a goal offered. */
@@ -147,7 +144,10 @@ function offerTraining(labels: Record<string, KonamiGoal>, criteria: Record<stri
   criteria['train'] = 'Walk to a trainer and train the level that is ready.';
 }
 
-function goalQuestion(brief: KonamiBrief): {
+function goalQuestion(
+  brief: KonamiBrief,
+  sizes: QuestionSizes
+): {
   question: KonamiQuestion;
   labels: KonamiLabels['goal'];
 } {
@@ -185,11 +185,14 @@ function goalQuestion(brief: KonamiBrief): {
   brief.hunting.spots.forEach((spot, index) => {
     const label = `hunt_${index}`;
     labels[label] = { kind: 'hunt', key: spot.key, name: spot.name };
-    const before = spot.history.length === 0 ? '' : ` Before: ${spot.history.join('; ')}.`;
+    const before =
+      spot.history.length === 0
+        ? ''
+        : ` Before: ${spot.history.slice(0, sizes.beforeNamed).join('; ')}.`;
     criteria[label] =
-      `Hunt ${spot.name} (spot ${spot.key}, ranked ${index + 1} on the Hunting grounds): ` +
-      `${rateText(spot.exp)}${cashRateText(spot.cash)}; ${fightText(spot.fight)}; worst room takes ${percent(spot.survival.worstShare)} of max HP. ` +
-      `Getting there: ${routeText(spot, brief.character.hpMax)}${before}`;
+      `Hunt ${spot.name} (${spot.key}, ground ${index + 1}): ` +
+      `${rateText(spot.exp)}${cashRateText(spot.cash)}; ${fightText(spot.fight)}; worst room ${percent(spot.survival.worstShare)} HP. ` +
+      `${routeText(spot)}.${before}`;
   });
   for (const slot of brief.gear) {
     slot.offers.forEach((offer, index) => {
@@ -206,9 +209,8 @@ function goalQuestion(brief: KonamiBrief): {
         copper: offer.copper
       };
       criteria[label] =
-        `Buy and wear ${offer.name} for the ${slot.slot} slot at ${offer.shop} ` +
-        `(${offer.copper === 0 ? 'free' : `${offer.copper} copper`}, ${offer.moves} moves away): ` +
-        `${gainText(slot, offer)}.`;
+        `Buy and wear ${offer.name} (${slot.slot}, ${offer.copper === 0 ? 'free' : `${offer.copper} copper`}, ` +
+        `${offer.moves} moves): ${gainText(slot, offer)}.`;
     });
   }
   if (ready) offerTraining(labels, criteria);
@@ -218,10 +220,10 @@ function goalQuestion(brief: KonamiBrief): {
     question: {
       type: 'choice',
       instructions:
-        `${AIM} What should the character do next? The state lists every spot with each monster's stats, ` +
-        `the damage arithmetic, the simulated fight and the walk there with the lairs it passes, and the gear per slot. ` +
-        `Every spot offered passed the survival check; a death loses everything carried, so prefer the spot whose fight and walk are safest, and among the safe ones the most exp an hour. ` +
-        `Its history is what past plans near this level came to, and the monsters there the character ran from: do not choose again what killed the character, what it ran from, or what the player said no to.`,
+        `${AIM} What should the character do next? The state lists each hunting ground with the exp and copper it yields an hour, ` +
+        `its simulated fight and the walk there, and the best gear sold per slot. ` +
+        `Every ground offered passed the survival check; a death loses everything carried, so prefer the safest fight and walk, and among the safe ones the most exp an hour. ` +
+        `Lessons are what past plans near this level came to: do not choose again what killed the character, what it ran from, or what the player said no to.`,
       criteria
     },
     labels
@@ -232,9 +234,9 @@ function goalQuestion(brief: KonamiBrief): {
  * The questions for one brief. A question with nothing to choose between is
  * not asked: one attack, a class that cannot hide, an empty book.
  */
-export function planQuestions(brief: KonamiBrief): KonamiQuestions {
+export function planQuestions(brief: KonamiBrief, sizes: QuestionSizes): KonamiQuestions {
   const questions: Record<string, KonamiQuestion> = {};
-  const goal = goalQuestion(brief);
+  const goal = goalQuestion(brief, sizes);
   questions['goal'] = goal.question;
 
   const attack: Record<string, string> = {};
@@ -345,7 +347,7 @@ export function planQuestions(brief: KonamiBrief): KonamiQuestions {
     criteria: coinCriteria
   };
 
-  const saving = savingQuestions(brief, AIM);
+  const saving = savingQuestions(brief, AIM, sizes.savingGear);
   Object.assign(questions, saving.questions);
 
   return {

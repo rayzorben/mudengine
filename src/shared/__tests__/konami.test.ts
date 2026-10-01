@@ -25,7 +25,10 @@ import {
 import type { KonamiLesson } from '../konamiLessons';
 import { nextUpgradePrice } from '../konamiPurse';
 import { planQuestions, readPlan, samePlan } from '../konamiQuestions';
+import { DEFAULT_INTERNAL } from '../internal';
 import type { ProwessSheet } from '../prowess';
+
+const questionsOf = (made: KonamiBrief) => planQuestions(made, DEFAULT_INTERNAL.tuning.konami);
 
 describe('the cash steps a new plan is asked on', () => {
   it('climbs 1p, 10p, 20p … 90p, then a runic at a time', () => {
@@ -373,18 +376,18 @@ describe('the questions and the plan their answers make', () => {
   });
 
   it('offers no training while the purse does not cover the cheapest trainer', () => {
-    const goal = planQuestions(brief({}, [], [], {}, 50_000)).questions['goal'];
+    const goal = questionsOf(brief({}, [], [], {}, 50_000)).questions['goal'];
     expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).not.toContain('train');
   });
 
   it('counts only the cash carried towards training, since the trip draws on no bank', () => {
     // 1,000 carried and 2,000 banked against 1,500: not offered.
-    const goal = planQuestions(brief({}, [], [], {}, 1_500)).questions['goal'];
+    const goal = questionsOf(brief({}, [], [], {}, 1_500)).questions['goal'];
     expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).not.toContain('train');
   });
 
   it('offers training alone while a level is ready', () => {
-    const goal = planQuestions(brief()).questions['goal'];
+    const goal = questionsOf(brief()).questions['goal'];
     expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).toEqual(['train']);
   });
 
@@ -405,7 +408,7 @@ describe('the questions and the plan their answers make', () => {
       expGained: null,
       minutes: 1
     };
-    const asked = planQuestions(brief({}, [refused]));
+    const asked = questionsOf(brief({}, [refused]));
     const goal = asked.questions['goal'];
     expect(goal?.type).toBe('choice');
     const labels = Object.keys(goal?.type === 'choice' ? goal.criteria : {});
@@ -416,7 +419,7 @@ describe('the questions and the plan their answers make', () => {
   });
 
   it('turns the answers into a goal and the settings to go with it', () => {
-    const asked = planQuestions(
+    const asked = questionsOf(
       brief({ progress: { ...EMPTY_CHARACTER.progress, level: 10, expNeeded: 500 } })
     );
     const plan = readPlan(
@@ -450,7 +453,7 @@ describe('the questions and the plan their answers make', () => {
 
   /* Soul, 2026-10-01: no coin carried, training at 50 copper, and copper not picked up. */
   it('asks which coins to pick up, against what the next level and upgrade cost', () => {
-    const coins = planQuestions(brief()).questions['coins'];
+    const coins = questionsOf(brief()).questions['coins'];
     expect(coins?.type).toBe('choice');
     expect(Object.keys(coins?.type === 'choice' ? coins.criteria : {})).toEqual([
       'all',
@@ -466,7 +469,7 @@ describe('the questions and the plan their answers make', () => {
    * the copper carried is short of it, and every upgrade out of reach.
    */
   it('asks what to save for and over how long, and turns it into copper an hour', () => {
-    const asked = planQuestions(brief({}, [], [], {}, 1_500));
+    const asked = questionsOf(brief({}, [], [], {}, 1_500));
     const saveFor = asked.questions['saveFor'];
     expect(Object.keys(saveFor?.type === 'choice' ? saveFor.criteria : {})).toEqual([
       'none',
@@ -490,7 +493,7 @@ describe('the questions and the plan their answers make', () => {
   });
 
   it('leaves the floor alone where saving went unanswered, and offers nothing on an unread purse', () => {
-    const asked = planQuestions(brief({}, [], [], {}, 1_500));
+    const asked = questionsOf(brief({}, [], [], {}, 1_500));
     expect(readPlan(answer({ goal: 'hunt_0' }, {}), asked).layer.cashPerHour).toBeUndefined();
     const unread = brief(
       { inventory: { ...EMPTY_CHARACTER.inventory, wealth: null } },
@@ -499,14 +502,14 @@ describe('the questions and the plan their answers make', () => {
       {},
       1_500
     );
-    expect(planQuestions(unread).questions['saveFor']).toBeUndefined();
+    expect(questionsOf(unread).questions['saveFor']).toBeUndefined();
   });
 
   it('asks nothing about saving while nothing is short', () => {
     const rich = brief({ inventory: { ...EMPTY_CHARACTER.inventory, wealth: 100_000 } });
-    expect(planQuestions(rich).questions['saveFor']).toBeUndefined();
+    expect(questionsOf(rich).questions['saveFor']).toBeUndefined();
     expect(
-      readPlan(answer({ goal: 'hunt_0' }, {}), planQuestions(rich)).layer.cashPerHour
+      readPlan(answer({ goal: 'hunt_0' }, {}), questionsOf(rich)).layer.cashPerHour
     ).toBeUndefined();
   });
 

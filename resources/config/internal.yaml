@@ -712,12 +712,29 @@ tuning:
   # again; `journal` is how many decisions the death and stuck logs keep, and
   # `logLines` how many lines of the session go into them.
   konami:
-    maxSpots: 12
-    upgradesPerSlot: 3
+    # The most hunting grounds, and offers per slot, sent with one ask; and the
+    # most characters of JSON one ask sends. The provider is paid per call and
+    # refuses a request over about 62,000, so lessons, then offers, then grounds
+    # are trimmed until it fits.
+    maxSpots: 8
+    upgradesPerSlot: 2
+    requestChars: 16000
+    # The least a request is trimmed to before it goes over the budget, said in
+    # the running log; past outcomes named in a ground's description; and the
+    # most items offered to save for.
+    trimGrounds: 3
+    trimOffers: 1
+    trimLessons: 2
+    beforeNamed: 2
+    savingGear: 6
     askTimeoutMs: 30000
     stuckMs: 30000
-    # A plan still running is asked about again after this long; 0 never.
-    reviewMs: 600000
+    # A plan still running is asked about again after this long, and only when
+    # what would be asked has changed; 0 never.
+    reviewMs: 3600000
+    # A failed ask is tried again after this, doubling up to retryMaxMs.
+    retryMs: 120000
+    retryMaxMs: 1800000
     # A training plan whose trip has not set off after this long ends refused.
     trainStartMs: 15000
     journal: 100
@@ -739,7 +756,7 @@ tuning:
     simulateWaitMs: 120000
     lairsNamed: 3
     lessonLevels: 2
-    lessonsSent: 20
+    lessonsSent: 10
     # A plan replaced sooner than this taught nothing, and leaves no lesson.
     lessonMinMs: 60000
     # The most lessons the Konami card lists, newest first.

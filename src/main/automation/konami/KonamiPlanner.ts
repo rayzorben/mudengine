@@ -39,6 +39,7 @@ import {
   type KonamiPlan,
   type KonamiSaving,
   type KonamiProvider,
+  type KonamiReply,
   type KonamiTrigger,
   type LayerWrite
 } from '../../../shared/konami';
@@ -49,8 +50,15 @@ import {
   type KonamiLesson,
   type LessonOutcome
 } from '../../../shared/konamiLessons';
-import { nextUpgradePrice } from '../../../shared/konamiPurse';
-import { planQuestions, readPlan, samePlan } from '../../../shared/konamiQuestions';
+import { nextUpgradePrice, trainNotCarried } from '../../../shared/konamiPurse';
+import { readPlan, samePlan } from '../../../shared/konamiQuestions';
+import {
+  fitRequest,
+  onlyGoal,
+  requestSizes,
+  requestSubstance,
+  type FittedRequest
+} from '../../../shared/konamiWire';
 import {
   decisionRow,
   type KonamiActivity,
@@ -62,6 +70,7 @@ import {
   type KonamiSnapshot
 } from '../../../shared/konamiRecords';
 import { bankedCopper } from '../../../shared/coins';
+import { timeOfDay } from '../../../shared/values';
 import { bareName, wornItems } from '../../../shared/items';
 import { nameAnswersTo } from '../../../shared/world';
 import type { SessionModule } from '../Module';
@@ -71,6 +80,7 @@ import { History } from './History';
 import { incidentFiles, killersOf } from './incident';
 import { Journal } from './Journal';
 import { lessonOf } from './lesson';
+import { AskGate } from './AskGate';
 import { askWithin, loadProvider, providerPaths } from './ProviderLoader';
 import { RunLog, stateLine } from './RunLog';
 
@@ -112,6 +122,17 @@ export interface PlannerEvents {
   changed(): void;
   notice(message: string): void;
 }
+
+/**
+ * Triggers on a clock or a drift, asked only when what the ask would decide
+ * has changed since the last plan (todo 66): the provider is paid per call.
+ */
+const UNCHANGED_SKIPS: ReadonlySet<KonamiTrigger> = new Set<KonamiTrigger>([
+  'review',
+  'stuck',
+  'cash-step',
+  'upgrade-affordable'
+]);
 
 /** A decision's id: its moment, and a little to tell two in one millisecond apart. */
 function decisionId(now: number): string {
@@ -175,6 +196,15 @@ export class KonamiPlanner implements SessionModule {
   private briefRefused: string | null = null;
   /** Not before this is a brief that refused built again. */
   private briefAgainAt = 0;
+  /** When the provider is paid for an ask: not after a failure, nor twice over the same substance. */
+  private readonly gate = new AskGate(() => {
+    const { retryMs, retryMaxMs } = tuning().konami;
+    return { retryMs, retryMaxMs };
+  });
+  /** When the review clock last ran out, asked or not. */
+  private reviewedAt = 0;
+  /** The copper carried that pays for the level ready, while it is not carried yet. */
+  private trainAt: number | null = null;
   /** Since when a brief has come back with lairs still to simulate; null when none has. */
   private simulatingSince: number | null = null;
   /**
@@ -242,7 +272,7 @@ export class KonamiPlanner implements SessionModule {
     const decision = this.journal.decisions.find((kept) => kept.id === id);
     if (decision === undefined) return null;
     return {
-      request: { state: decision.brief, questions: decision.questions },
+      request: decision.sent,
       raw: decision.raw,
       refusal: decision.refusal
     };
@@ -381,10 +411,13 @@ export class KonamiPlanner implements SessionModule {
     this.inRealm = false;
     this.step = null;
     this.upgradeAt = null;
+    this.trainAt = null;
     this.ready = null;
     this.worn = null;
     this.briefRefused = null;
     this.briefAgainAt = 0;
+    this.gate.reset();
+    this.reviewedAt = 0;
     this.simulatingSince = null;
     this.simulateGaveUpAt = null;
     this.huntSaid = null;
@@ -553,7 +586,8 @@ export class KonamiPlanner implements SessionModule {
     const latest = this.journal.latest;
     const review = tuning().konami.reviewMs;
     if (latest?.outcome === 'applied' && this.pending === null && !this.asking && review > 0) {
-      if (Date.now() - latest.at >= review) {
+      if (Date.now() - Math.max(latest.at, this.reviewedAt) >= review) {
+        this.reviewedAt = Date.now();
         this.log.say('review', `the plan has run ${Math.round(review / 60_000)} minutes`);
         this.trigger('review');
       }
@@ -580,6 +614,8 @@ export class KonamiPlanner implements SessionModule {
     if (!this.on) this.disarm();
     this.pending = null;
     this.goal = { kind: 'none' };
+    this.gate.reset();
+    this.reviewedAt = 0;
     this.hands.steerHunt(undefined);
     if (relayer) this.hands.relayer();
   }
@@ -589,6 +625,11 @@ export class KonamiPlanner implements SessionModule {
       this.log.say('trigger', `${why}, not asked: ${this.idleWhy()}`);
       return;
     }
+    // A failed ask's back-off is waited out by a retry, not by the player's own ask or a death.
+    if (why === 'asked' || why === 'death') this.gate.release();
+    // Something happened: the brief is built again at once, so a choice with one option is
+    // made now rather than behind a held ask.
+    if (!UNCHANGED_SKIPS.has(why)) this.briefAgainAt = 0;
     // A death outranks whatever was waiting: its log is written and its plan is what matters.
     if (this.pending === null || why === 'death') {
       this.log.say('trigger', why);
@@ -636,6 +677,11 @@ export class KonamiPlanner implements SessionModule {
         );
         this.trigger('saved');
       }
+    }
+    if (this.trainAt !== null && onHand !== null && onHand >= this.trainAt) {
+      this.log.say('cash', `${onHand} copper carried pays the ${this.trainAt} training costs`);
+      this.trainAt = null;
+      this.trigger('train-affordable');
     }
     if (this.upgradeAt !== null && total !== null && total >= this.upgradeAt) {
       this.log.say('cash', `${total} copper reaches the ${this.upgradeAt} the next upgrade costs`);
@@ -790,31 +836,90 @@ export class KonamiPlanner implements SessionModule {
     if (provider === null) return;
     const now = Date.now();
     const level = this.facts.state().progress.level;
-    const { lessonLevels, lessonsSent } = tuning().konami;
-    const brief = this.facts.brief(now, lessonsFor(this.lessons, level, lessonLevels, lessonsSent));
-    if ('refusal' in brief) {
+    const {
+      lessonLevels,
+      lessonsSent,
+      maxSpots,
+      upgradesPerSlot,
+      requestChars,
+      trimGrounds,
+      trimOffers,
+      trimLessons,
+      beforeNamed,
+      savingGear
+    } = tuning().konami;
+    const full = this.facts.brief(now, lessonsFor(this.lessons, level, lessonLevels, lessonsSent));
+    if ('refusal' in full) {
       // Kept waiting and tried again after a tick, so entering the realm is never lost.
       if (this.pending === null) this.pending = why;
       this.briefAgainAt = Date.now() + tuning().konami.tickMs;
-      this.log.wait(`${why}: no brief yet: ${brief.refusal}`);
-      if (brief.refusal !== this.briefRefused) {
-        this.briefRefused = brief.refusal;
-        this.refusal = brief.refusal;
-        this.events.notice(t('automation.konami.noBrief', { why: brief.refusal }));
+      this.log.wait(`${why}: no brief yet: ${full.refusal}`);
+      if (full.refusal !== this.briefRefused) {
+        this.briefRefused = full.refusal;
+        this.refusal = full.refusal;
+        this.events.notice(t('automation.konami.noBrief', { why: full.refusal }));
       }
       this.events.changed();
       return;
     }
     this.briefRefused = null;
-    if (this.stillSimulating(why, brief, now)) return;
+    if (this.stillSimulating(why, full, now)) return;
+    const fitted = fitRequest(
+      full,
+      requestSizes({
+        maxSpots,
+        upgradesPerSlot,
+        lessonsSent,
+        requestChars,
+        trimGrounds,
+        trimOffers,
+        trimLessons,
+        beforeNamed,
+        savingGear
+      })
+    );
+    const brief = fitted.brief;
+    this.upgradeAt = nextUpgradePrice(brief);
+    this.trainAt = trainNotCarried(brief);
+    const substance = requestSubstance(fitted);
+    // Nothing to decide has changed since the last plan: not paid for again (todo 66).
+    if (UNCHANGED_SKIPS.has(why) && this.plan !== null && this.gate.unchanged(substance)) {
+      this.log.say('not asked', `${why}: nothing to decide has changed since the last ask`);
+      // Standing still with nothing new to decide is what the stuck log is for.
+      if (why === 'stuck' && !this.stuckLogged) {
+        this.stuckLogged = true;
+        this.incident('stuck');
+      }
+      this.events.changed();
+      return;
+    }
+    const only = onlyGoal(fitted);
+    if (only !== null) {
+      this.gate.planned(substance);
+      this.decideHere(why, fitted, only, now);
+      return;
+    }
+    // Only a call to the provider waits out a failure before it.
+    const heldUntil = this.gate.heldUntil(Date.now());
+    if (heldUntil !== null) {
+      this.pending ??= why;
+      this.briefAgainAt = heldUntil;
+      this.log.wait(`${why}: the last ask failed; asking again at ${timeOfDay(heldUntil)}`);
+      this.events.changed();
+      return;
+    }
     this.asking = true;
     this.events.changed();
-    const asked = planQuestions(brief);
+    const asked = fitted.asked;
     const generation = this.generation;
-    const request = { state: brief, questions: asked.questions };
     this.log.say('asking', `${provider.name} for ${why} · ${stateLine(this.facts.state())}`);
-    this.log.block('sent', `${Object.keys(asked.questions).length} questions`, request);
-    const answer = await askWithin(provider, request, tuning().konami.askTimeoutMs);
+    this.log.block(
+      'sent',
+      `${Object.keys(asked.questions).length} questions, ${fitted.chars} characters` +
+        (fitted.over ? ` (over the budget at the smallest trim)` : ''),
+      fitted.sent
+    );
+    const answer = await askWithin(provider, fitted.sent, tuning().konami.askTimeoutMs);
     this.asking = false;
     const took = `${((Date.now() - now) / 1000).toFixed(1)}s`;
     if ('refusal' in answer) this.log.say('failed', `after ${took}: ${answer.refusal}`);
@@ -825,10 +930,56 @@ export class KonamiPlanner implements SessionModule {
       return;
     }
     const plan = 'refusal' in answer ? null : readPlan(answer.reply, asked);
+    if (plan === null) {
+      this.failed(why, fitted, 'refusal' in answer ? answer.refusal : null, provider.name, now);
+      return;
+    }
+    this.gate.planned(substance);
     const previous = this.plan;
+    this.record(why, fitted, plan, provider.name, 'refusal' in answer ? null : answer, now);
+    this.refusal = null;
+    if (why === 'stuck' && previous !== null && samePlan(previous, plan) && !this.stuckLogged) {
+      this.stuckLogged = true;
+      this.incident('stuck');
+    }
+    this.apply(plan);
+  }
+
+  /**
+   * One goal offered is no question: the level that is ready is trained, and
+   * the settings the plan in hand laid stay. Recorded as a decision with
+   * nothing sent, so the card shows why the plan changed and that it cost nothing.
+   */
+  private decideHere(
+    why: KonamiTrigger,
+    fitted: FittedRequest,
+    goal: KonamiGoal,
+    now: number
+  ): void {
+    const plan: KonamiPlan = {
+      goal,
+      layer: this.plan?.layer ?? {},
+      picks: [],
+      options: [{ goal, p: 1 }],
+      saving: null
+    };
+    this.log.say('decided', `${goalNotice(goal)}: the one goal offered, so nothing was asked`);
+    this.record(why, fitted, plan, this.provider?.name ?? '', null, now);
+    this.refusal = null;
+    this.apply(plan);
+  }
+
+  /** The decision journalled, the plan before it settled as replaced unless it continues. */
+  private record(
+    why: KonamiTrigger,
+    fitted: FittedRequest,
+    plan: KonamiPlan,
+    provider: string,
+    reply: { reply: KonamiReply; raw: unknown } | null,
+    now: number
+  ): void {
     const latest = this.journal.latest;
     const continues =
-      plan !== null &&
       latest?.outcome === 'applied' &&
       latest.plan !== null &&
       goalKey(latest.plan.goal) === goalKey(plan.goal);
@@ -836,34 +987,58 @@ export class KonamiPlanner implements SessionModule {
       id: decisionId(now),
       at: now,
       trigger: why,
-      provider: provider.name,
-      model: 'refusal' in answer ? null : answer.reply.model,
-      brief,
-      questions: asked.questions,
-      raw: 'refusal' in answer ? null : answer.raw,
+      provider,
+      model: reply?.reply.model ?? null,
+      brief: fitted.brief,
+      sent: reply === null ? null : fitted.sent,
+      raw: reply?.raw ?? null,
       plan,
-      refusal: 'refusal' in answer ? answer.refusal : null,
-      outcome: plan === null ? 'failed' : 'applied',
+      refusal: null,
+      outcome: 'applied',
       outcomeWhy: null,
       settledAt: null,
-      goalSince: continues ? latest.goalSince : { at: now, exp: brief.character.exp }
+      goalSince: continues ? latest.goalSince : { at: now, exp: fitted.brief.character.exp }
     };
     // The same goal back is the same stretch: learned from when it ends, not now.
     this.settle('replaced', null, !continues);
     this.journal.add(decision);
-    this.upgradeAt = nextUpgradePrice(brief);
-    if (plan === null) {
-      this.refusal = decision.refusal;
-      this.events.notice(decision.refusal ?? '');
-      this.events.changed();
-      return;
-    }
-    this.refusal = null;
-    if (why === 'stuck' && previous !== null && samePlan(previous, plan) && !this.stuckLogged) {
-      this.stuckLogged = true;
-      this.incident('stuck');
-    }
-    this.apply(plan);
+  }
+
+  /**
+   * An ask that made no plan: listed, but the plan in hand runs on, unsettled,
+   * and the same trigger is asked again after a back-off that doubles with each
+   * failure in a row (`retryMs` up to `retryMaxMs`).
+   */
+  private failed(
+    why: KonamiTrigger,
+    fitted: FittedRequest,
+    refusal: string | null,
+    provider: string,
+    now: number
+  ): void {
+    const againAt = this.gate.failed(Date.now());
+    this.pending ??= why;
+    this.briefAgainAt = againAt;
+    this.journal.add({
+      id: decisionId(now),
+      at: now,
+      trigger: why,
+      provider,
+      model: null,
+      brief: fitted.brief,
+      sent: fitted.sent,
+      raw: null,
+      plan: null,
+      refusal,
+      outcome: 'failed',
+      outcomeWhy: null,
+      settledAt: null,
+      goalSince: { at: now, exp: fitted.brief.character.exp }
+    });
+    this.log.say('retry', `${why} again at ${timeOfDay(againAt)}; the plan in hand runs on`);
+    this.refusal = refusal;
+    this.events.notice(refusal ?? '');
+    this.events.changed();
   }
 
   private apply(plan: KonamiPlan): void {

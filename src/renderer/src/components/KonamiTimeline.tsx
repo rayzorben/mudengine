@@ -56,7 +56,13 @@ function Exchange({ session, id }: { session: SessionId; id: string }) {
         ? t('cards.konami.exchange.loading')
         : fetched === null
           ? t('cards.konami.exchange.gone')
-          : JSON.stringify(shown === 'sent' ? fetched.request : fetched.raw, null, 2);
+          : fetched.request === null
+            ? t('cards.konami.exchange.notAsked')
+            : shown === 'sent'
+              ? JSON.stringify(fetched.request, null, 2)
+              : fetched.raw === null
+                ? (fetched.refusal ?? t('cards.konami.exchange.noReply'))
+                : JSON.stringify(fetched.raw, null, 2);
   return (
     <div className="konami-exchange">
       <div className="konami-segment" role="group">
