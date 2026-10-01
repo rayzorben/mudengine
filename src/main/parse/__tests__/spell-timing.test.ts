@@ -7,7 +7,8 @@ import { WorldGraph } from '../../world/WorldGraph';
 import { DESC_MESSAGE_ABILITY } from '../../../shared/abilities';
 import { Blessings } from '../../automation/Blessings';
 import { CommandQueue } from '../../automation/CommandQueue';
-import { DEFAULT_CONFIG, type BlessingConfig } from '../../../shared/config';
+import { DEFAULT_CONFIG } from '../../../shared/config';
+import type { BlessingConfig } from '../../../shared/blessings';
 import {
   parseSpellMessagesCsv,
   SpellMessageBook,

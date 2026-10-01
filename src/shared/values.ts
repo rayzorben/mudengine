@@ -3,7 +3,7 @@
  *
  * Every boundary in this client parses rather than validates — an options file,
  * a profile, a draft posted from the renderer — and every one of them needs the
- * same four primitives to do it. They were written out **four times**
+ * same few primitives to do it. They were written out **four times**
  * (`config.ts`, `profiles.ts`, `drafts.ts`, `SettingsEditor.ts`), which is not
  * a hypothetical cost: the fifth helper of the same family, `text`, exists in
  * two copies that **disagree** about whether to trim, and nothing says which
@@ -55,6 +55,25 @@ export function int(value: unknown, fallback: number, min: number, max: number):
   const n = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+/**
+ * A 0–1 fraction, read forgivingly.
+ *
+ * The rule engine's `hp.percent` guard is a fraction, so the options file uses
+ * fractions too rather than holding two representations of the same idea — the
+ * mistake that let exit-signature room resolution silently never match.
+ *
+ * But "percent" invites `50`, and clamping that to `1` would paint the bar red
+ * permanently: a plausible misreading must not be the most dangerous one. So a
+ * value above 1 is taken as a percentage. There is no ambiguity to resolve —
+ * a threshold above 100% of maximum is not a thing anyone means.
+ */
+export function fraction(value: unknown, fallback: number): number {
+  const n = typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''));
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  const asFraction = n > 1 ? n / 100 : n;
+  return Math.min(1, Math.max(0, asFraction));
 }
 
 /**
