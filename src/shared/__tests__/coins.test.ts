@@ -9,6 +9,7 @@ import {
   counterPriceInCopper,
   currencyOf,
   currencyOfCode,
+  expectedCopper,
   quotedInCopper,
   takeCoins
 } from '../coins';
@@ -163,6 +164,28 @@ describe('coinReader, narrowly', () => {
     );
     expect(reader.toStock('5 dimes drop to the ground.')).toBe(
       '5 silver nobles drop to the ground.'
+    );
+  });
+});
+
+/*
+ * `Mob.CreateCash`: each coin rolled 1 to its maximum inclusive where the
+ * maximum is above none, so each pays (1 + max) / 2 on average.
+ */
+describe('expectedCopper', () => {
+  const none = { runic: 0, platinum: 0, gold: 0, silver: 0, copper: 0 };
+
+  it('reads a kobold thief, S 7 C 20, as 50.5 copper a kill', () => {
+    expect(expectedCopper({ ...none, silver: 7, copper: 20 })).toBe(4 * 10 + 10.5);
+  });
+
+  it('is nothing for a monster that carries none', () => {
+    expect(expectedCopper(none)).toBe(0);
+  });
+
+  it('counts every coin up the ladder', () => {
+    expect(expectedCopper({ runic: 1, platinum: 1, gold: 1, silver: 1, copper: 1 })).toBe(
+      COPPER_PER.runic + COPPER_PER.platinum + COPPER_PER.gold + COPPER_PER.silver + 1
     );
   });
 });

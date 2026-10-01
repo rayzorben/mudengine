@@ -109,6 +109,7 @@ describe('one step of a walk', () => {
 const mutant = (over: Partial<SpotMob> = {}): SpotMob => ({
   name: 'mutant',
   experience: 225,
+  copper: 0,
   rounds: 6,
   perRound: 10,
   nakedPerRound: 30,
@@ -163,6 +164,37 @@ describe('what a spot pays', () => {
     expect(e.healCasts).toBe(0);
     expect(e.poisonSeconds).toBe(0);
     expect(e.unknown).toEqual([]);
+  });
+
+  /* Format 49: a kill's copper rides the same cycle as its exp, and ranks nothing. */
+  it('pays copper a cycle and an hour on the cycle the exp is paid on', () => {
+    const plain = estimateSpot(singles(), C);
+    const thief = estimateSpot(singles({ mobs: [mutant({ copper: 50.5 })] }), C);
+    expect(thief.copperPerCycle).toBeCloseTo(50.5, 5);
+    expect(thief.copperPerHour).toBeCloseTo((50.5 * 3600) / thief.cycleSeconds!, 3);
+    expect(thief.expPerHour).toBe(plain.expPerHour);
+    expect(plain.copperPerHour).toBe(0);
+  });
+
+  it("weighs a filler's copper at the share of laps it is found up", () => {
+    const filler: FillerInput = {
+      spawns: 1,
+      mobs: [mutant({ copper: 100 })],
+      respawnSeconds: 1_000_000,
+      detourSteps: 0
+    };
+    const e = estimateSpot(singles({ filler: [filler] }), C);
+    // The ring's mutant carries none; the filler's 100 is paid at its exp's share.
+    expect(e.fillerExpPerCycle).toBeGreaterThan(0);
+    expect(e.fillerExpPerCycle).toBeLessThan(225);
+    expect(e.copperPerCycle).toBeCloseTo((e.fillerExpPerCycle * 100) / 225, 5);
+  });
+
+  it("says nothing of copper where the realm file predates monsters' coins", () => {
+    const e = estimateSpot(singles({ mobs: [mutant({ copper: null })] }), C);
+    expect(e.copperPerCycle).toBeNull();
+    expect(e.copperPerHour).toBeNull();
+    expect(e.expPerHour).not.toBeNull();
   });
 
   /* The reviewer's point: a backstabber wants singles, and the arithmetic says why. */
@@ -706,6 +738,8 @@ describe('the order the reader wants', () => {
         ceilingPerHour: ceiling,
         expPerCycle: null,
         fillerExpPerCycle: 0,
+        copperPerCycle: null,
+        copperPerHour: null,
         cycleSeconds: null,
         combatSeconds: null,
         restSeconds: null,
