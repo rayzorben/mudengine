@@ -29,6 +29,7 @@ import YAML from 'yaml';
 // The UI's own words, from the dictionary the app renders (run under
 // `scripts/lib/register.mjs`): the form is found by its key, never its wording.
 import { phrase, sentence } from '../src/main/app/copyMatch.ts';
+import { holdPort } from './lib/port-lock.mjs';
 
 /*
  * What the settings screen's character picker says it is showing: its own
@@ -55,6 +56,7 @@ const CONFIG_DIR = path.resolve('out/first-run');
 const CONFIG = path.join(CONFIG_DIR, 'global', 'default.yaml');
 const PROFILE = path.resolve('out/first-run-profile');
 const CDP_PORT = 9444;
+await holdPort(CDP_PORT, 'first-run check');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
