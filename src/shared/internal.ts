@@ -903,7 +903,9 @@ const TUNING_DEFAULTS = {
     /** A plan replaced sooner than this taught nothing, and leaves no lesson. */
     lessonMinMs: 60_000,
     /** The most lessons the Konami card lists, newest first. */
-    lessonsShown: 50
+    lessonsShown: 50,
+    /** How many entries the Konami card's History face lists, newest first, and the planner keeps. */
+    historyShown: 300
   },
   /** Spending character points on the stat screen — `StatScreen`. */
   train: {

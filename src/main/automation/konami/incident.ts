@@ -28,6 +28,13 @@ export interface IncidentInput {
   refusals: readonly string[];
 }
 
+/** Who landed the blows of the last fight, each named once, where the line named one. */
+export function killersOf(blows: readonly KonamiBlow[], gapMs: number): string[] {
+  return [
+    ...new Set(lastFight(blows, gapMs).flatMap((blow) => (blow.from === null ? [] : [blow.from])))
+  ];
+}
+
 /** The blows of the last fight: back from the newest to the first quiet gap longer than `gapMs`. */
 export function lastFight(blows: readonly KonamiBlow[], gapMs: number): KonamiBlow[] {
   let from = blows.length - 1;

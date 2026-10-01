@@ -5,6 +5,7 @@
 import type { KonamiAsk, KonamiGoal, KonamiPlan, KonamiTrigger } from './konami';
 import type { BriefSpot, KonamiBrief } from './konamiBrief';
 import type { HuntWait } from './hunting';
+import type { HistoryEntry } from './konamiHistory';
 import { goalKey, type KonamiLesson } from './konamiLessons';
 
 /**
@@ -69,6 +70,10 @@ export interface KonamiRecords {
   lessons(): KonamiLesson[];
   /** Writes the lessons file over with these, for a lesson the player forgot. */
   rewriteLessons(rows: readonly KonamiLesson[]): void;
+  /** Appends one thing the character did to the history. */
+  historyLine(entry: HistoryEntry): void;
+  /** The whole history on record for this character, oldest first. */
+  history(): HistoryEntry[];
 }
 
 /** One blow on the character, as the death log lists it. */
@@ -207,6 +212,8 @@ export interface KonamiSnapshot {
   expSince: number | null;
   /** What the plan's goal is doing right now; null while nothing is at work on it. */
   activity: KonamiActivity | null;
+  /** What the character has done, newest first, at most `tuning.konami.historyShown`. */
+  history: HistoryEntry[];
   /** Lessons on record, newest first, at most `tuning.konami.lessonsShown`. */
   lessons: KonamiLessonRow[];
   /** Every lesson on record, shown or not. */
@@ -230,6 +237,7 @@ export const EMPTY_KONAMI: KonamiSnapshot = {
   log: null,
   expSince: null,
   activity: null,
+  history: [],
   lessons: [],
   lessonsKept: 0,
   level: null,

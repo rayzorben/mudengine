@@ -8,6 +8,8 @@ import { t } from './i18n';
 import { percent } from './outlook';
 import { compact } from './rates';
 import type { KonamiGoal, KonamiLayer, KonamiTrigger } from '@shared/konami';
+import type { HistoryEvent } from '@shared/konamiHistory';
+import type { TrainedAttribute } from '@shared/training';
 import type { KonamiLesson } from '@shared/konamiLessons';
 import type { KonamiDoing, KonamiIncidentKind, KonamiOutcome } from '@shared/konamiRecords';
 
@@ -344,4 +346,106 @@ export function layerRows(layer: KonamiLayer): Array<[string, string]> {
     rows.push([t('cards.konami.layer.trainFirst'), layer.trainFirst]);
   }
   return rows;
+}
+
+/** A trained stat's name, as the Self card labels it. */
+function statLabel(stat: TrainedAttribute): string {
+  switch (stat) {
+    case 'strength':
+      return t('cards.self.labels.strength');
+    case 'intellect':
+      return t('cards.self.labels.intellect');
+    case 'willpower':
+      return t('cards.self.labels.willpower');
+    case 'agility':
+      return t('cards.self.labels.agility');
+    case 'health':
+      return t('cards.self.labels.health');
+    case 'charm':
+      return t('cards.self.labels.charm');
+    default: {
+      const never: never = stat;
+      return never;
+    }
+  }
+}
+
+/** One thing the character did, as the History face says it. */
+export function historyText(event: HistoryEvent): string {
+  switch (event.kind) {
+    case 'huntStarted':
+      return t('cards.konami.history.huntStarted', { place: event.place });
+    case 'hunted':
+      return event.exp === null
+        ? t('cards.konami.history.hunted', { place: event.place, minutes: event.minutes })
+        : t('cards.konami.history.huntedExp', {
+            place: event.place,
+            minutes: event.minutes,
+            exp: compact(event.exp)
+          });
+    case 'levelled':
+      return t('cards.konami.history.levelled', { from: event.from, to: event.to });
+    case 'stats':
+      return t('cards.konami.history.stats', {
+        changes: event.changes
+          .map((each) =>
+            t('cards.konami.history.statChange', {
+              stat: statLabel(each.stat),
+              from: each.from,
+              to: each.to
+            })
+          )
+          .join(t('cards.konami.history.joiner'))
+      });
+    case 'bought':
+      return event.copper === 0
+        ? t('cards.konami.history.boughtFree', { item: event.item, shop: event.shop })
+        : t('cards.konami.history.bought', {
+            item: event.item,
+            shop: event.shop,
+            copper: event.copper.toLocaleString()
+          });
+    case 'wore':
+      return t('cards.konami.history.wore', { item: event.item });
+    case 'removed':
+      return t('cards.konami.history.removed', { item: event.item });
+    case 'died':
+      if (event.room === null) return t('cards.konami.history.diedSomewhere');
+      return event.killers.length === 0
+        ? t('cards.konami.history.died', { room: event.room })
+        : t('cards.konami.history.diedTo', {
+            room: event.room,
+            killers: event.killers.join(t('cards.konami.history.joiner'))
+          });
+    default: {
+      const never: never = event;
+      return never;
+    }
+  }
+}
+
+/** The glyph and tone a history entry wears. */
+export function historyLook(event: HistoryEvent): { icon: IconName; tone: OutcomeTone } {
+  switch (event.kind) {
+    case 'huntStarted':
+      return { icon: 'crosshair', tone: 'on' };
+    case 'hunted':
+      return { icon: 'crosshair', tone: 'quiet' };
+    case 'levelled':
+      return { icon: 'sparkle', tone: 'ok' };
+    case 'stats':
+      return { icon: 'plus', tone: 'ok' };
+    case 'bought':
+      return { icon: 'coins', tone: 'on' };
+    case 'wore':
+      return { icon: 'shirtWorn', tone: 'on' };
+    case 'removed':
+      return { icon: 'shirtOff', tone: 'quiet' };
+    case 'died':
+      return { icon: 'flame', tone: 'bad' };
+    default: {
+      const never: never = event;
+      return never;
+    }
+  }
 }

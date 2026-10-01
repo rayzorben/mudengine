@@ -70,7 +70,8 @@ import { nameAnswersTo } from '../../../shared/world';
 import type { SessionModule } from '../Module';
 import { fightIsRunning } from '../Walker';
 import { Blows } from './Blows';
-import { incidentFiles } from './incident';
+import { History } from './History';
+import { incidentFiles, killersOf } from './incident';
 import { Journal } from './Journal';
 import { lessonOf } from './lesson';
 import { askWithin, loadProvider, providerPaths } from './ProviderLoader';
@@ -186,6 +187,8 @@ export class KonamiPlanner implements SessionModule {
   private simulateGaveUpAt: number | null = null;
   /** What past plans came to, oldest first: read from the records once, added to as plans end. */
   private readonly lessons: KonamiLesson[];
+  /** What the character did (`History`). */
+  private readonly history: History;
   private huntSaid: string | null = null;
   /** What held the hunt when last said, so a wait is written once. */
   private waitSaid: string | null = null;
@@ -223,6 +226,11 @@ export class KonamiPlanner implements SessionModule {
     this.journal = new Journal(records, () => tuning().konami.journal);
     this.log = new RunLog(records);
     this.lessons = records?.lessons() ?? [];
+    this.history = new History(
+      records,
+      () => tuning().konami.historyShown,
+      () => this.events.changed()
+    );
   }
 
   /** Where this run's log is written, or null with no records. */
@@ -323,6 +331,7 @@ export class KonamiPlanner implements SessionModule {
     switch (block.type) {
       case 'user-dies':
         this.log.say('died', stateLine(this.facts.state()));
+        this.noteDeath();
         this.incident('death');
         this.settle('died', t('automation.konami.died'));
         this.hands.steerHunt(null);
@@ -350,6 +359,7 @@ export class KonamiPlanner implements SessionModule {
     }
     if (!inRealm && this.inRealm) this.log.say('left', 'the realm');
     this.inRealm = inRealm;
+    this.history.watch(state, this.running, this.facts.activity());
     if (!this.running || !inRealm) return;
     this.watchWorn(state);
     this.watchHunt();
@@ -410,6 +420,7 @@ export class KonamiPlanner implements SessionModule {
       log: this.log.path,
       expSince: since === null || state.progress.exp === null ? null : state.progress.exp - since,
       activity: this.running && this.plan !== null ? this.facts.activity() : null,
+      history: this.history.newestFirst(),
       lessons: this.lessons
         .slice(-lessonsShown)
         .reverse()
@@ -688,6 +699,10 @@ export class KonamiPlanner implements SessionModule {
   }
 
   private finish(outcome: 'done' | 'refused', why: string | null): void {
+    const goal = this.plan?.goal;
+    if (outcome === 'done' && goal?.kind === 'buy') {
+      this.history.bought(goal);
+    }
     this.log.say(
       'goal',
       `${outcome}${why === null ? '' : `: ${why}`} · ${stateLine(this.facts.state())}`
@@ -724,6 +739,13 @@ export class KonamiPlanner implements SessionModule {
     this.lessons.push(lesson);
     this.records?.lesson(lesson);
     this.log.block('learned', lesson.outcome, lesson);
+  }
+
+  /** A death, with who landed the blows of the last fight and where. */
+  private noteDeath(): void {
+    const { blowWindowMs, fightGapMs } = tuning().konami;
+    const killers = killersOf(this.blows.since(Date.now() - blowWindowMs), fightGapMs);
+    this.history.died(this.facts.state().room.name, killers);
   }
 
   /** Asks now if a trigger is waiting and the character is free. */

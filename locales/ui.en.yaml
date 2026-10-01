@@ -1798,7 +1798,9 @@ cards:
     title: Konami
     tabs:
       decisions: Decisions
-      lessons: Lessons
+      history: History
+    historyDone: Done
+    historyLessons: Lessons
     badge:
       off: Off
       noProvider: No provider
@@ -1812,6 +1814,22 @@ cards:
     emptyAsking: 'Asking {provider} what to do next…'
     emptyDecisions: Nothing asked yet.
     emptyLessons: None of the lessons kept are near this level.
+    emptyHistory: Nothing done yet.
+    history:
+      huntStarted: 'Started hunting at {place}'
+      hunted: 'Hunted at {place} for {minutes} min'
+      huntedExp: 'Hunted at {place} for {minutes} min, {exp} exp'
+      levelled: 'Trained level {from} to {to}'
+      stats: 'Spent character points: {changes}'
+      bought: 'Bought {item} at {shop} for {copper} copper'
+      boughtFree: 'Took {item} at {shop}, free'
+      wore: 'Wore {item}'
+      removed: 'Removed {item}'
+      statChange: '{stat} {from} to {to}'
+      joiner: ', '
+      diedSomewhere: Died
+      died: 'Died in {room}'
+      diedTo: 'Died in {room} to {killers}'
     pending: 'Asks again ({trigger}) once the character is free.'
     sure: sure
     because: 'because: {trigger}'

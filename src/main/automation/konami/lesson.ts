@@ -6,7 +6,7 @@
 import type { CharacterState } from '../../../shared/character';
 import type { KonamiLesson, LessonOutcome } from '../../../shared/konamiLessons';
 import type { KonamiBlow, KonamiDecision } from '../../../shared/konamiRecords';
-import { lastFight } from './incident';
+import { killersOf } from './incident';
 
 export interface LessonInput {
   decision: KonamiDecision;
@@ -29,15 +29,7 @@ export function lessonOf(input: LessonInput): KonamiLesson | null {
   if (outcome === 'replaced' && input.now - decision.at < input.lessonMinMs) return null;
   const character = decision.brief.character;
   const died = outcome === 'died';
-  const killers = died
-    ? [
-        ...new Set(
-          lastFight(input.blows, input.fightGapMs).flatMap((blow) =>
-            blow.from === null ? [] : [blow.from]
-          )
-        )
-      ]
-    : [];
+  const killers = died ? killersOf(input.blows, input.fightGapMs) : [];
   const spot =
     goal.kind === 'hunt'
       ? decision.brief.hunting.spots.find((each) => each.key === goal.key)

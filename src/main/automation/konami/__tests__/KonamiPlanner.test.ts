@@ -11,6 +11,7 @@ import { DEFAULT_CONFIG, type AutomationConfig } from '../../../../shared/config
 import type { KonamiBrief } from '../../../../shared/konamiBrief';
 import { NO_EXCLUSIONS } from '../../../../shared/hunting';
 import type { KonamiLesson } from '../../../../shared/konamiLessons';
+import type { HistoryEntry } from '../../../../shared/konamiHistory';
 import type { KonamiActivity, KonamiRecords } from '../../../../shared/konamiRecords';
 import { damageReport, lastFight } from '../incident';
 import { KonamiPlanner, type PlannerFacts, type PlannerHands } from '../KonamiPlanner';
@@ -105,6 +106,7 @@ let briefLessons: KonamiLesson[][];
 let activity: KonamiActivity | null;
 let trainRefusal: { why: string; at: number } | null;
 let trainReady: boolean;
+let written: HistoryEntry[];
 
 function planner(): KonamiPlanner {
   const facts: PlannerFacts = {
@@ -147,7 +149,9 @@ function planner(): KonamiPlanner {
     lessons: () => [...learned],
     rewriteLessons: (rows) => {
       learned = [...rows];
-    }
+    },
+    historyLine: (entry) => void written.push(entry),
+    history: () => []
   };
   return new KonamiPlanner(facts, hands, { changed: () => {}, notice: () => {} }, records, null);
 }
@@ -194,6 +198,7 @@ beforeEach(() => {
   activity = null;
   trainRefusal = null;
   trainReady = false;
+  written = [];
   global.__konamiGoal = 'hunt_0';
   global.__konamiAsked = 0;
 });
@@ -586,6 +591,26 @@ describe('the planner', () => {
     vi.useRealTimers();
     await settle();
     expect(global.__konamiAsked).toBe(1);
+    it.dispose();
+  });
+
+  it('keeps a history of the hunt it went on and what it paid', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    activity = { doing: { kind: 'hunt', walking: false, place: 'Small Cavern' }, walk: null };
+    state = inRealm({ progress: { ...inRealm().progress, exp: 100 } });
+    it.onCharacter(state);
+    activity = null;
+    state = inRealm({ progress: { ...inRealm().progress, exp: 700 } });
+    it.onCharacter(state);
+    expect(written.map((entry) => entry.event)).toEqual([
+      { kind: 'huntStarted', place: 'Small Cavern' },
+      { kind: 'hunted', place: 'Small Cavern', minutes: 0, exp: 600 }
+    ]);
+    expect(it.snapshot().history[0]?.event.kind).toBe('hunted');
     it.dispose();
   });
 

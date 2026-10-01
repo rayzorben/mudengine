@@ -13597,6 +13597,13 @@ tr:hover .row-action.worn,
   white-space: nowrap;
 }
 
+/* ---- the History face: what was done, or the lessons, one at a time */
+
+.konami-records-toggle {
+  flex: 0 0 auto;
+  padding-bottom: var(--gap);
+}
+
 /* ---- the Lessons face */
 
 .konami-lessons-head {

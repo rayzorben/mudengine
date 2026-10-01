@@ -733,6 +733,8 @@ tuning:
     lessonMinMs: 60000
     # The most lessons the Konami card lists, newest first.
     lessonsShown: 50
+    # How many entries the Konami card's History face lists, newest first.
+    historyShown: 300
 
   # Spending character points on the stat screen — `StatScreen`. `echoMs` is
   # how long the screen has to echo a keystroke before the driver lets go of

@@ -2,6 +2,7 @@ import { memo, useCallback, useState } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import Icon from './Icon';
+import KonamiHistory from './KonamiHistory';
 import KonamiLessons from './KonamiLessons';
 import KonamiNow from './KonamiNow';
 import KonamiTimeline from './KonamiTimeline';
@@ -17,7 +18,7 @@ export interface KonamiCardProps extends CardChrome {
   session: SessionId;
 }
 
-type Face = 'now' | 'decisions' | 'lessons';
+type Face = 'now' | 'decisions' | 'history';
 
 /** The card as text: the plan in force and each decision, for the copy glyph. */
 function copyOf(konami: KonamiSnapshot): string {
@@ -41,6 +42,7 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
   const [face, setFace] = useState<Face>('now');
   const [open, setOpen] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [recordsView, setRecordsView] = useState<'done' | 'lessons'>('done');
 
   const choose = useCallback((key: string) => void api?.konamiChoose(session, key), [api, session]);
   const forget = useCallback((at: number) => void api?.konamiForget(session, at), [api, session]);
@@ -57,7 +59,10 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
     setOpen(id);
     setFace('decisions');
   }, []);
-  const seeLessons = useCallback(() => setFace('lessons'), []);
+  const seeLessons = useCallback(() => {
+    setRecordsView('lessons');
+    setFace('history');
+  }, []);
 
   const badge = !konami.on ? (
     <span className="chip off">{t('cards.konami.badge.off')}</span>
@@ -169,15 +174,42 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
       )
     }
   ];
-  // A face that would say nothing is not offered.
-  if (konami.lessonsKept > 0) {
+  // A face that would say nothing is not offered; Lessons share it with what was done.
+  const records = konami.lessonsKept > 0 ? recordsView : 'done';
+  if (konami.history.length > 0 || konami.lessonsKept > 0) {
     tabs.push({
-      id: 'lessons',
-      label: t('cards.konami.tabs.lessons'),
+      id: 'history',
+      label: t('cards.konami.tabs.history'),
       paned: true,
       content: (
         <>
-          <KonamiLessons konami={konami} onForget={forget} />
+          {konami.lessonsKept > 0 && (
+            <div className="konami-filter konami-records-toggle" role="group">
+              <button
+                aria-pressed={records === 'done'}
+                className="chip pick"
+                onClick={() => setRecordsView('done')}
+                onMouseDown={keepFocus}
+                type="button"
+              >
+                {t('cards.konami.historyDone')}
+              </button>
+              <button
+                aria-pressed={records === 'lessons'}
+                className="chip pick"
+                onClick={() => setRecordsView('lessons')}
+                onMouseDown={keepFocus}
+                type="button"
+              >
+                {t('cards.konami.historyLessons')}
+              </button>
+            </div>
+          )}
+          {records === 'done' ? (
+            <KonamiHistory history={konami.history} />
+          ) : (
+            <KonamiLessons konami={konami} onForget={forget} />
+          )}
           {controls}
         </>
       )

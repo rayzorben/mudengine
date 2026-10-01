@@ -16,6 +16,7 @@ import path from 'node:path';
 
 import { stripAnsi } from '../net/LineTokenizer';
 import { stamp as runStamp } from './filename';
+import { isHistoryEntry } from '../../shared/konamiHistory';
 import type { KonamiLesson } from '../../shared/konamiLessons';
 import type { KonamiIncidentKind, KonamiRecords } from '../../shared/konamiRecords';
 import { errorMessage } from '../../shared/values';
@@ -32,29 +33,39 @@ function stamp(at: number): string {
   return new Date(at).toISOString().replace(/[:.]/g, '-');
 }
 
-/** Every lesson in the file; a line that does not parse is skipped and said. None before the first. */
-function readLessons(file: string, onProblem: (message: string) => void): KonamiLesson[] {
+/** Every row of a JSON-lines file; a line that does not parse is skipped and said. None before the first. */
+function readLines<T>(
+  file: string,
+  onProblem: (message: string) => void,
+  accept: (value: unknown) => value is T
+): T[] {
   let text: string;
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch {
     return [];
   }
-  const lessons: KonamiLesson[] = [];
+  const rows: T[] = [];
   for (const line of text.split('\n')) {
     if (line.trim() === '') continue;
     try {
-      lessons.push(JSON.parse(line) as KonamiLesson);
+      const value: unknown = JSON.parse(line);
+      if (accept(value)) rows.push(value);
+      else onProblem(`${file}: a line that is not a record`);
     } catch (error) {
       onProblem(`${file}: ${errorMessage(error)}`);
     }
   }
-  return lessons;
+  return rows;
 }
+
+const anyLesson = (value: unknown): value is KonamiLesson =>
+  typeof value === 'object' && value !== null;
 
 export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
   const logFile = path.join(options.dir, 'log', `${runStamp(new Date())}.log`);
   const lessonsFile = path.join(options.dir, 'lessons.jsonl');
+  const historyFile = path.join(options.dir, 'history.jsonl');
   let chain: Promise<void> = Promise.resolve();
   const inOrder = (write: () => Promise<void>): void => {
     chain = chain.then(write).catch((error: unknown) => options.onProblem(errorMessage(error)));
@@ -87,7 +98,13 @@ export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
         await fs.promises.mkdir(options.dir, { recursive: true });
         await fs.promises.appendFile(lessonsFile, `${JSON.stringify(row)}\n`);
       }),
-    lessons: () => readLessons(lessonsFile, options.onProblem),
+    lessons: () => readLines(lessonsFile, options.onProblem, anyLesson),
+    historyLine: (entry) =>
+      inOrder(async () => {
+        await fs.promises.mkdir(options.dir, { recursive: true });
+        await fs.promises.appendFile(historyFile, `${JSON.stringify(entry)}\n`);
+      }),
+    history: () => readLines(historyFile, options.onProblem, isHistoryEntry),
     rewriteLessons: (rows) => {
       const text = rows.map((row) => `${JSON.stringify(row)}\n`).join('');
       inOrder(async () => {
