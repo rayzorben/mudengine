@@ -29,7 +29,8 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
 const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the wearer join, shared with the pack's query (`world/wearer.ts`),
   // and by the close handler once every close carries the lap (todo 01).
-  'src/main/session/SessionManager.ts': 3804,
+  // And by the item trip's wiring, out whole (`itemPlanner.ts`, todo 21).
+  'src/main/session/SessionManager.ts': 3752,
   'src/main/world/WorldGraph.ts': 2549,
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
