@@ -594,3 +594,66 @@ describe('what the fighting added up to', () => {
     expect(new Belongings({ file, realm: REALM }).recallStatsBase()).toBeNull();
   });
 });
+
+describe('what this character was doing when the app closed', () => {
+  const lap = {
+    loop: { name: 'Forest trail', stops: [{ room: 'Trail 1/100' }, { room: 'Glade 1/101' }] },
+    index: 1,
+    forward: true,
+    laps: 3,
+    running: true,
+    reason: null,
+    startedAt: 1_700_000_000_000,
+    lapBegunAt: 1_700_000_001_000,
+    expAtStart: null
+  };
+  const route = { to: '1/2140', name: 'Town Square', run: false };
+
+  it('keeps the lap and the route and hands them back to the next launch', () => {
+    const first = new Belongings({ file, realm: REALM });
+    first.rememberUnderway({ lap, route });
+    first.close();
+
+    const back = new Belongings({ file, realm: REALM }).recallUnderway();
+    expect(back.route).toEqual(route);
+    expect(back.lap).toMatchObject({ index: 1, laps: 3, running: true, expAtStart: null });
+    expect(back.lap?.loop.stops).toHaveLength(2);
+  });
+
+  it('writes nothing for a session with nothing underway', () => {
+    const book = new Belongings({ file, realm: REALM });
+    book.rememberBanks([balance()]);
+    book.rememberUnderway({ lap: null, route: null });
+    book.close();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).not.toHaveProperty('underway');
+  });
+
+  /* A part that does not parse is nothing carried; the balances beside it still load. */
+  it('reads a lap whose place is off the end of its loop as no lap', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        realm: REALM,
+        banks: [balance()],
+        underway: { lap: { ...lap, index: 9 }, route: { ...route, to: 'nowhere' } }
+      }),
+      'utf8'
+    );
+    const book = new Belongings({ file, realm: REALM });
+    expect(book.recallUnderway()).toEqual({ lap: null, route: null });
+    expect(book.recallBanks()).toHaveLength(1);
+  });
+});
+
+describe('a change after the record was closed', () => {
+  /* A realm switch closes the old record, then clears what was underway on it. */
+  it('is written at once rather than on a timer nothing waits for', () => {
+    const book = new Belongings({ file, realm: REALM });
+    book.rememberUnderway({ lap: null, route: { to: '1/2140', name: 'Town Square', run: false } });
+    book.close();
+    book.rememberUnderway({ lap: null, route: null });
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).not.toHaveProperty('underway');
+  });
+});

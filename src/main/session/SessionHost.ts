@@ -48,7 +48,7 @@ import { sameTarget, type ConnectionState, type ConnectionTarget } from '../../s
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
-import type { BelongingsSink } from '../../shared/belongings';
+import type { CharacterRecord } from '../../shared/belongings';
 import type { TalkSink } from './TalkLog';
 import { isTalkBlock } from '../../shared/talk';
 import { SessionDebug } from './SessionDebug';
@@ -192,7 +192,7 @@ export interface SessionHostOptions {
    * belong to the server. So both keys are needed, and `connect` is where the
    * second one is known.
    */
-  belongingsAt(id: SessionId, target: ConnectionTarget): BelongingsSink;
+  belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord;
   /**
    * Where what a `search` turns up is written down.
    *

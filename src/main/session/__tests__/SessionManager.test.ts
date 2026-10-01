@@ -36,7 +36,8 @@ import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
 import type { QuestWatched } from '../../../shared/quests';
-import { NO_BELONGINGS } from '../../../shared/belongings';
+import { NO_RECORD, type CharacterRecord } from '../../../shared/belongings';
+import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
 import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
 
 /**
@@ -2899,7 +2900,7 @@ describe('the plan to a step', () => {
       const { sink } = collect();
       sink.questSaid = (progress) => pushed.push(progress);
       manager = build(sink, { world: questWorld(), automation: questing });
-      manager.useRealm(NO_REALM_PLAYERS, { ...NO_BELONGINGS, forget: () => true });
+      manager.useRealm(NO_REALM_PLAYERS, { ...NO_RECORD, forget: () => true });
       await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
       const socket = await client();
       socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT + beside);
@@ -5563,8 +5564,9 @@ describe('picking up after a lost connection', () => {
     expect(notices).toContain(t('automation.loops.walkingOnAfterReconnect'));
   });
 
-  it('ends the loop when this client asked for the disconnect, and says why', async () => {
-    const { sink, notices } = collect();
+  /* Disconnect and quit are not Stop (todo 01): the lap is held as a loss holds it. */
+  it('holds the loop through a disconnect this client asked for, and walks it on at the next dial', async () => {
+    const { sink, notices, drops } = collect();
     manager = build(sink, { automation: automation() });
     await manager.connect(dial());
     await placed(await client());
@@ -5572,14 +5574,72 @@ describe('picking up after a lost connection', () => {
 
     manager.disconnect();
     await until(() => manager!.state.phase === 'closed');
-    expect(manager.loops.progress).toMatchObject({
-      status: 'stopped',
-      reason: t('session.loop.stoppedDisconnected')
-    });
-    expect(manager.loops.carried).toBe(false);
-    expect(notices).toContain(
-      t('automation.loops.stopped', { reason: t('session.loop.stoppedDisconnected') })
-    );
+    expect(manager.loops.progress).toMatchObject({ status: 'running', hold: 'offline' });
+    expect(manager.loops.carried).toBe(true);
+    // Still not a loss: nothing dials a Disconnect back.
+    expect(drops).toEqual([]);
+
+    await manager.connect(dial());
+    await placed(await client(1));
+    await until(() => manager!.loops.progress.hold === null);
+    expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap' });
+    expect(notices).toContain(t('automation.loops.walkingOnAfterReconnect'));
+  });
+
+  /* Stop on a held lap is the player ending it, and no line follows to say so: the publish writes it. */
+  it('writes a lap stopped while the socket is closed as stopped', async () => {
+    let kept: Underway = NOTHING_UNDERWAY;
+    const record: CharacterRecord = {
+      ...NO_RECORD,
+      recallUnderway: () => kept,
+      rememberUnderway: (underway) => {
+        kept = underway;
+      }
+    };
+    const { sink } = collect();
+    manager = build(sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    await placed(await client());
+    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
+    expect(kept.lap).toMatchObject({ running: true });
+
+    manager.disconnect();
+    await until(() => manager!.state.phase === 'closed');
+    expect(kept.lap).toMatchObject({ running: true });
+    manager.stopMoving();
+    expect(kept.lap).toMatchObject({ running: false, loop: { name: 'lap' } });
+  });
+
+  /* A quit disposes the session; the character's record is what carries the lap to the next launch. */
+  it('picks up the lap the last launch was running, from the character record', async () => {
+    let kept: Underway = NOTHING_UNDERWAY;
+    const record: CharacterRecord = {
+      ...NO_RECORD,
+      recallUnderway: () => kept,
+      rememberUnderway: (underway) => {
+        kept = underway;
+      }
+    };
+    const before = collect();
+    manager = build(before.sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    const first = await client();
+    await placed(first);
+    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
+    expect(kept.lap).toMatchObject({ running: true, index: 0, loop: { name: 'lap' } });
+    manager.dispose();
+
+    const after = collect();
+    manager = build(after.sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    expect(manager.loops.progress).toMatchObject({ status: 'running', hold: 'offline' });
+    expect(after.notices).toContain(t('automation.loops.carriedOver', { loopName: 'lap' }));
+    await placed(await client(1));
+    await until(() => manager!.loops.progress.hold === null);
+    expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap' });
   });
 
   /* A loop is a list of rooms in one realm. */
@@ -5767,9 +5827,10 @@ describe('picking up after a lost connection', () => {
     expect(notices).not.toContain(t('automation.loops.walkingOnAfterReconnect'));
   });
 
-  it('forgets the route when this client asked for the disconnect', async () => {
+  /* Disconnect is not Stop (todo 01): the route is picked up as a loss's is. */
+  it('walks the route on after a disconnect this client asked for', async () => {
     const world = line();
-    const { sink } = collect();
+    const { sink, notices } = collect();
     manager = build(sink, { world, automation: automation() });
     await manager.connect(dial());
     const first = await client();
@@ -5784,9 +5845,8 @@ describe('picking up after a lost connection', () => {
     const second = await client(1);
     second.write('[HP=34]:' + PROMPT_REPAINT);
     second.write('Location:            1,3\r\nBridge\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(manager.walker.progress.status).not.toBe('walking');
+    await until(() => manager!.walker.progress.status === 'walking');
+    expect(notices).toContain(t('session.walk.resumed', { destination: 'Gate' }));
   });
 });
 

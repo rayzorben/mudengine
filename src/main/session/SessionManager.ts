@@ -100,6 +100,7 @@ import { QuestWatch } from './QuestWatch';
 import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
+import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 
 /** The item errand's phrase and the listing asked after it, so both can be taken back. */
@@ -114,7 +115,7 @@ import {
   type PlayerRegistry,
   type RealmPlayers
 } from '../../shared/players';
-import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
+import { NO_RECORD, type CharacterRecord } from '../../shared/belongings';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
@@ -466,7 +467,7 @@ export class SessionManager {
    * same instance the tracker writes through. Held here so the blessing
    * watchdog can read the measured durations at the point of use.
    */
-  private belongings: BelongingsSink = NO_BELONGINGS;
+  private belongings: CharacterRecord = NO_RECORD;
 
   /** Stops listening to the realm's player book. See `useRealm`. */
   private forgetPlayers: () => void = () => {};
@@ -506,6 +507,8 @@ export class SessionManager {
   private readonly questWatch: QuestWatch;
   /** Walking, looping and running away, and what a lost connection carries. See `Travel`. */
   private readonly travel: Travel;
+  /** What was underway, kept in the character's record across a relaunch. See `CarryOver`. */
+  private readonly carryOver: CarryOver;
 
   constructor(
     private readonly sink: SessionSink,
@@ -925,6 +928,7 @@ export class SessionManager {
         this.wasWalking = walking;
         this.combat.noteWalking(walking);
         this.tracker.noteMoving(walking);
+        this.carryOver.remember();
         this.sink.walk?.(progress);
       }
     });
@@ -1700,6 +1704,7 @@ export class SessionManager {
           this.combat.noteLooping(progress.status === 'running');
           this.travel.noteLap(progress);
           this.statsBaseline.noteLap(progress);
+          this.carryOver.remember();
           this.sink.loop?.(progress);
         },
         locate: () => this.claims.askWhereIAm()
@@ -1741,6 +1746,7 @@ export class SessionManager {
         ...reports
       }
     );
+    this.carryOver = new CarryOver(this.loops, this.travel, () => this.belongings);
     this.claims = new Claims(
       {
         tracker: this.tracker,
@@ -1933,49 +1939,26 @@ export class SessionManager {
        * Whether this close is a *loss*: nobody on this side asked for it.
        * `graceful` is the whole test of who asked, and `login.standDown` is
        * the latch that says the player typed their way out before the far end
-       * hung up. They are the two facts `Reconnect.lost` reads first, so what
-       * is carried here is never something that stood down there.
-       *
-       * The carry follows the **loss**, not the dial. Whether the character
-       * is dialled back is `Reconnect`'s and the profile's — auto-reconnect
-       * off, the ladder giving up, a realm that keeps dropping — and none of
-       * that changes what was underway when the link went. A character
-       * dialled back by hand an hour later gets the lap it was running, said
-       * out loud on the way (`heldOffline`, then `walkingOnAfterReconnect`),
-       * with the Loop card reading `offline` the whole time it is owed and
-       * its Stop the way to say otherwise. Pressing Disconnect at the closed
-       * socket does not put it down: that is *stop trying to dial*, which
-       * `SessionHost` answers, and the socket it would close is already gone.
+       * hung up. They are the two facts `Reconnect.lost` reads first; here
+       * they decide only who ended it and what the lease is told.
        */
-      const lost = !graceful && this.login.standDown === null;
+      const walkedOut = this.login.standDown !== null;
+      const lost = !graceful && !walkedOut;
       /*
-       * A lost socket does not end the lap, and a deliberate one does. The
-       * character is still standing wherever the link went — on this server
-       * family a disconnect is not a pause, and whatever was in the room is
-       * still there — so the loop is *held* (`LoopRunner.noteOffline`), the
-       * route the player was walking is remembered, and both are picked up
-       * when the character is back in the realm and placed
-       * (`pickUpAfterLoss`). Before this the loop was left nominally running
-       * on a closed socket with the leg below booked against it as a failed
-       * stop, and the next dial reset it to nothing: a character dialled back
-       * in by `Reconnect` stood in a lair all night with the lap it had been
-       * running gone from the card.
-       *
-       * A close this client asked for is the player ending the session —
-       * Disconnect, the low-health hang-up, switching realms, quitting — and
-       * the lap ends with it, said out loud like every other way one ends.
-       * The loop before the walker, as `leftTheRealm` orders it: stopping a
-       * walk reports `ended`, and a loop still running would book that as a
-       * failed leg on its way out. The errand goes either way — `Supplies`
-       * starts afresh from the next pack listing, and its walk is the one
-       * below — and after the loop, so the loop hears the errand end silently
-       * rather than announcing that it is walking on from a shop it never
-       * reached.
+       * Whoever closed it, the lap is held and the route kept (todo 01,
+       * 2026-09-30): the character stands wherever the socket went, and the
+       * next dial picks both up once it is placed (`pickUpAfterLoss`), within
+       * this launch or after a relaunch (`CarryOver`). Disconnect and quit are
+       * not Stop; Stop is, and so is typing the way out. A different realm
+       * drops both at `connect`. The loop before the walker: stopping a walk
+       * reports `ended`, which a running loop would book as a failed leg. The
+       * errand after the loop, so the loop hears it end silently; `Supplies`
+       * starts afresh from the next pack listing.
        */
-      if (lost) this.loops.noteOffline();
-      else this.loops.stop(t('session.loop.stoppedDisconnected'));
+      if (walkedOut) this.loops.stop(t('session.loop.stoppedLeftRealm'));
+      else this.loops.noteOffline();
       this.supplies.abandon(t('automation.supplies.abandonedConnectionClosed'));
-      this.travel.carryJourney(lost);
+      if (!walkedOut) this.travel.carryJourney();
       /*
        * A walk cannot continue through a closed socket, and leaving it in
        * `walking` means the card reports progress for a route nothing is
@@ -2117,6 +2100,7 @@ export class SessionManager {
   }
 
   async connect(target: ConnectionTarget): Promise<ConnectionState> {
+    this.carryOver.dial();
     this.telnetLog.length = 0;
     this.lineLog.length = 0;
     this.lineSeq = 0;
@@ -2180,6 +2164,7 @@ export class SessionManager {
       this.loops.reset();
       this.travel.forgetFollowers();
     }
+    this.carryOver.takeUp();
     this.realmMismatchSaid = false;
     this.publisher.reset();
     // Off the list: leaving the realm lands at the menu, where the login has
@@ -2720,7 +2705,7 @@ export class SessionManager {
    * is pushed, so the flyout on this tab says what the realm knows; no module
    * is told, since a fact absorbed is not a fact this character observed.
    */
-  useRealm(players: RealmPlayers, belongings: BelongingsSink = NO_BELONGINGS): void {
+  useRealm(players: RealmPlayers, belongings: CharacterRecord = NO_RECORD): void {
     this.forgetPlayers();
     // What the realm said it lacks, and its family. See `Vocabulary.forgetRealm`.
     this.vocabulary.forgetRealm();
@@ -2728,6 +2713,7 @@ export class SessionManager {
     // A vault and a kit are the server's, so they are re-keyed with the roster
     // and not with the character. See `SessionHostOptions.belongingsAt`.
     this.tracker.useBelongings(belongings);
+    if (belongings !== this.belongings) this.carryOver.leave(this.belongings);
     this.belongings = belongings;
     this.statsBaseline.useStore(belongings);
     this.forgetPlayers = players.subscribe((batch) => {
@@ -2755,6 +2741,7 @@ export class SessionManager {
   private reconsiderTimer: NodeJS.Timeout | null = null;
 
   dispose(): void {
+    this.carryOver.dispose();
     this.paint.dispose();
     this.forgetPlayers();
     this.feed.dispose();

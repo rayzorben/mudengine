@@ -4305,7 +4305,6 @@ session:
     stoppedDied: you were killed, and the game has moved you
     stoppedForLoop: you started a loop
     stoppedForRoute: you asked for a route
-    stoppedDisconnected: you disconnected
     stoppedLeftRealm: you left the realm
     stoppedRealmChanged: this is a different realm
     unknownRoom: The client cannot tell which room you are in.
@@ -5036,7 +5035,8 @@ automation:
     afflictionOver: The condition has passed; the loop continues.
     heldAfterEscape: Ran away; the loop waits here until the fight is over and health is back.
     walkingOnAfterEscape: Recovered after running; the loop continues.
-    heldOffline: Connection lost; the loop waits until you are back in the realm.
+    heldOffline: Disconnected; the loop waits until you are back in the realm.
+    carriedOver: 'Looping {loopName} from last time; it continues once you are back in the realm.'
     walkingOnAfterReconnect: Back in the realm; the loop continues from here.
     fallbackNextStop: the next stop
     fallbackStop: a stop
