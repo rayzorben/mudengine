@@ -6,7 +6,8 @@
  * whichever label comes back, carrying it out is a matter of handing it to the
  * module that already does that thing.
  */
-import type { BriefSpot, GearOffer, KonamiBrief, SlotUpgrade } from './konamiBrief';
+import { refusedLately } from './konamiLessons';
+import type { BriefSpot, KonamiBrief } from './konamiBrief';
 import type {
   CoinPickup,
   KonamiGoal,
@@ -18,19 +19,21 @@ import type {
   KonamiQuestionName,
   KonamiReply
 } from './konami';
-import { number, offerLabel, purseText, slotGives } from './konamiPurse';
+import { number, purseText } from './konamiPurse';
 import { readSaving, savingQuestions, type SavingLabels } from './konamiSaving';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 /** What the character is playing for; said in every question. */
 const AIM = 'Unattended play: the most exp over the next 24 hours, and no deaths.';
 
-/** How much of the brief the questions name (`tuning.konami`). */
+/** How much of the brief the questions name, and for how long a refusal holds (`tuning.konami`). */
 export interface QuestionSizes {
   /** Past outcomes named in a ground's criterion; the state lists them all. */
   beforeNamed: number;
   /** The most items offered to save for. */
   savingGear: number;
+  /** How long training refused at a level keeps it off the menu there (todo 75). */
+  trainRetryMs: number;
 }
 
 /** The `restBelow` choices offered, as fractions of the bar. */
@@ -82,6 +85,9 @@ const percent = (share: number | null): string =>
 
 /** A spot's experience: by the hour where the respawn clock is known, else by the lap. */
 function rateText(exp: BriefSpot['exp']): string {
+  if (exp.measured) {
+    return `measured ${number(exp.measured.perHour)} exp/hr over ${number(exp.measured.minutes)} min`;
+  }
   if (exp.perHour !== null) return `${number(exp.perHour)} exp/hr`;
   if (exp.perCycle !== null) return `${number(exp.perCycle)} exp a lap (no respawn time)`;
   return 'exp unknown';
@@ -90,27 +96,6 @@ function rateText(exp: BriefSpot['exp']): string {
 /** The coin its monsters carry, where they carry any. */
 function cashRateText(cash: BriefSpot['cash']): string {
   return cash.perHour !== null && cash.perHour > 0 ? `, ${number(cash.perHour)} copper/hr` : '';
-}
-
-/**
- * What an item changes. A weapon in damage a round against what is wielded;
- * armour in the sheet's armour class (the realm's item figure is ten times
- * it), and what that does to the damage taken at the best spot offered.
- */
-function gainText(slot: SlotUpgrade, offer: GearOffer): string {
-  if (slot.ranking === 'weapon') {
-    const against = slot.worn === null ? 'bare hands' : `${number(slot.wornFigure, 1)} now`;
-    return `${number(slotGives(slot.ranking, offer.figure), 1)} damage a round against ${against}`;
-  }
-  const effect = offer.effect;
-  if (effect === null) {
-    return `${number(slotGives(slot.ranking, offer.ac), 1)} armour class`;
-  }
-  const { armourClass, perRound } = effect;
-  return (
-    `armour class ${number(armourClass.now, 1)} -> ${number(armourClass.with, 1)}; ` +
-    `damage taken a round at the best ground ${number(perRound.now, 1)} -> ${number(perRound.with, 1)}`
-  );
 }
 
 /** The fight there as the simulator ran it. */
@@ -159,15 +144,13 @@ function goalQuestion(
    * refused, so a trainer out of reach is no loop.
    */
   const level = brief.character.level;
-  const trainRefused = brief.history.some(
-    (lesson) =>
-      lesson.goal.kind === 'train' && lesson.outcome === 'refused' && lesson.level === level
-  );
+  // Refused a while ago is asked again (todo 75): one refusal stood under the level for an hour.
+  const trainRefused =
+    refusedLately(brief.history, 'train', brief.at, sizes.trainRetryMs, level).length > 0;
   // Only while the cash carried covers the trainer (the trip draws on no bank): level 1 is
   // free, level 2 is not.
   const { trainCost } = brief.character;
   const carried = brief.character.cash.onHand;
-  const cash = brief.character.cash.total;
   const affordable =
     trainCost !== null && (trainCost === 0 || (carried !== null && trainCost <= carried));
   const ready = brief.character.levelReady === true && affordable;
@@ -194,25 +177,7 @@ function goalQuestion(
       `${rateText(spot.exp)}${cashRateText(spot.cash)}; ${fightText(spot.fight)}; worst room ${percent(spot.survival.worstShare)} HP. ` +
       `${routeText(spot)}.${before}`;
   });
-  for (const slot of brief.gear) {
-    slot.offers.forEach((offer, index) => {
-      if (offer.copper === null || cash === null || offer.copper > cash) return;
-      if (offer.minLevel !== null && level !== null && offer.minLevel > level) return;
-      const label = offerLabel(slot, index);
-      labels[label] = {
-        kind: 'buy',
-        item: offer.item,
-        name: offer.name,
-        slot: slot.slot,
-        shop: offer.shop,
-        at: offer.at,
-        copper: offer.copper
-      };
-      criteria[label] =
-        `Buy and wear ${offer.name} (${slot.slot}, ${offer.copper === 0 ? 'free' : `${offer.copper} copper`}, ` +
-        `${offer.moves} moves): ${gainText(slot, offer)}.`;
-    });
-  }
+  // Gear is not asked: mudengine buys what it can afford before it asks (`upgradeToBuy`, todo 77).
   if (ready) offerTraining(labels, criteria);
   labels['wait'] = { kind: 'wait' };
   criteria['wait'] = 'Nothing offered is worth doing; stay where you are.';

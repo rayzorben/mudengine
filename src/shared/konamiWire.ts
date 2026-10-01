@@ -23,6 +23,8 @@ export interface WireGround {
   key: string;
   name: string;
   expPerHour: number | null;
+  /** What hunting it paid this character at this level, an hour (todo 76); outranks the estimate. */
+  measuredPerHour: number | null;
   /** Experience a lap, where the realm states no respawn time to make an hour of it. */
   expPerLap: number | null;
   copperPerHour: number | null;
@@ -111,6 +113,7 @@ function ground(spot: BriefSpot): WireGround {
     key: spot.key,
     name: spot.name,
     expPerHour: round(spot.exp.perHour),
+    measuredPerHour: round(spot.exp.measured?.perHour ?? null),
     expPerLap: spot.exp.perHour === null ? round(spot.exp.perCycle) : null,
     copperPerHour: round(spot.cash.perHour),
     survives: percent(spot.fight?.survives ?? null),
@@ -200,7 +203,12 @@ export function wireState(brief: KonamiBrief): KonamiWireState {
 export function trimBrief(brief: KonamiBrief, limits: WireLimits): KonamiBrief {
   return {
     ...brief,
-    hunting: { ...brief.hunting, spots: brief.hunting.spots.slice(0, limits.grounds) },
+    hunting: {
+      ...brief.hunting,
+      spots: brief.hunting.spots.filter(
+        (spot, at) => at < limits.grounds || spot.key === brief.hunting.inHand
+      )
+    },
     gear: brief.gear.map((slot) => ({
       ...slot,
       offers: slot.offers.slice(0, limits.offersPerSlot)
@@ -229,6 +237,7 @@ export function requestSizes(konami: {
   trimLessons: number;
   beforeNamed: number;
   savingGear: number;
+  trainRetryMs: number;
 }): RequestSizes {
   return {
     limits: {
@@ -242,7 +251,11 @@ export function requestSizes(konami: {
       lessons: konami.trimLessons
     },
     budget: konami.requestChars,
-    questions: { beforeNamed: konami.beforeNamed, savingGear: konami.savingGear }
+    questions: {
+      beforeNamed: konami.beforeNamed,
+      savingGear: konami.savingGear,
+      trainRetryMs: konami.trainRetryMs
+    }
   };
 }
 

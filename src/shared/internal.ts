@@ -914,6 +914,19 @@ const TUNING_DEFAULTS = {
     /** Past outcomes named in a ground's criterion (the state lists them all), and the most items offered to save for. */
     beforeNamed: 2,
     savingGear: 6,
+    /** Training refused at a level is offered again there after this (todo 75). */
+    trainRetryMs: 600_000,
+    /** An item whose trip was refused is not bought again without asking for this long (todo 77). */
+    buyRetryMs: 3_600_000,
+    /** A death keeps its ground off the menu, and its lesson sent, for this many levels (todo 76). */
+    deathLevels: 5,
+    /**
+     * A hunt paying under `underShare` of what it was chosen on, over
+     * `underMinutes` of it, asks for a new plan (todo 78): Soul earned about
+     * 500 an hour at a ground offered at 4,400, and nothing noticed.
+     */
+    underShare: 0.25,
+    underMinutes: 15,
     /** The road ahead (todo 68): the most goals projected, and the offers per slot it may buy. */
     roadSteps: 16,
     roadOffersPerSlot: 4,

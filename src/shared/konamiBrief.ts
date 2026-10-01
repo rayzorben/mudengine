@@ -37,19 +37,6 @@ export interface GearOffer {
   moves: number;
   /** The counter's price before charm; null where the realm does not say. */
   copper: number | null;
-  /** What wearing it changes at the best spot offered; null for a weapon or with no spot. */
-  effect: GearEffect | null;
-}
-
-/**
- * An armour piece weighed where it would be worn: the damage a round one of
- * each of the spot's monsters does to the character now, and with it on.
- */
-export interface GearEffect {
-  spot: string;
-  /** The sheet's armour class now and with it on (the realm's item figure is ten times this). */
-  armourClass: { now: number | null; with: number | null };
-  perRound: { now: number | null; with: number | null };
 }
 
 /** A spot's fight as the simulator ran it, at full health, every monster at its cap. */
@@ -137,7 +124,13 @@ export interface BriefSpot {
   loopSteps: number;
   boss: boolean;
   respawnSeconds: number | null;
-  exp: { perHour: number | null; ceilingPerHour: number | null; perCycle: number | null };
+  exp: {
+    perHour: number | null;
+    ceilingPerHour: number | null;
+    perCycle: number | null;
+    /** What hunting it paid this character at this level (todo 76, `SpotEstimate.measured`). */
+    measured: { perHour: number; minutes: number } | null;
+  };
   /** Copper an hour from the coins its monsters carry (`SpotEstimate.copperPerHour`). */
   cash: { perHour: number | null };
   cycleSeconds: number | null;
@@ -202,6 +195,8 @@ export interface KonamiBrief {
   hunting: {
     from: string | null;
     spots: BriefSpot[];
+    /** The ground the plan in hand hunts, kept through every trim (todo 76). */
+    inHand: string | null;
     leftOut: Array<{ key: string; name: string; why: LeftOutReason }>;
     /** What the survey itself left out before ranking, counted. */
     excluded: HuntingAdvice['excluded'];
@@ -231,6 +226,8 @@ export interface BriefInput {
   maxSpots: number;
   /** Past plans near this level (`lessonsFor`). */
   lessons: KonamiLesson[];
+  /** The ground the plan in hand hunts, kept on offer (todo 76). */
+  inHand?: string | null;
   /** What the cheapest trainer for this level charges (`BriefingParts.trainCost`). */
   trainCost: number | null;
   /** The monsters this character ran from and is still kept off (`avoided`). */
@@ -298,7 +295,11 @@ function briefSpot(
     exp: {
       perHour: estimate.expPerHour,
       ceilingPerHour: estimate.ceilingPerHour,
-      perCycle: estimate.expPerCycle
+      perCycle: estimate.expPerCycle,
+      measured:
+        estimate.measured === undefined || estimate.measured === null
+          ? null
+          : { perHour: estimate.measured.perHour, minutes: estimate.measured.minutes }
     },
     cash: { perHour: estimate.copperPerHour },
     cycleSeconds: estimate.cycleSeconds,
@@ -365,14 +366,16 @@ export function unsafeWhy(
 export function offeredSpots(
   advice: HuntingAdvice,
   maxSpots: number,
-  unsafe: (spot: HuntingSpot) => LeftOutReason | null
+  unsafe: (spot: HuntingSpot) => LeftOutReason | null,
+  /** The ground being hunted, offered past the cut so a review can keep it (todo 76). */
+  inHand: string | null = null
 ): { offered: HuntingSpot[]; leftOut: KonamiBrief['hunting']['leftOut'] } {
   const offered: HuntingSpot[] = [];
   const leftOut: KonamiBrief['hunting']['leftOut'] = [];
   for (const spot of advice.spots) {
     const why = leftOutWhy(spot) ?? unsafe(spot);
     if (why !== null) leftOut.push({ key: spot.key, name: primaryMob(spot), why });
-    else if (offered.length < maxSpots) offered.push(spot);
+    else if (offered.length < maxSpots || spot.key === inHand) offered.push(spot);
   }
   return { offered, leftOut };
 }
@@ -380,7 +383,8 @@ export function offeredSpots(
 export function buildBrief(input: BriefInput): KonamiBrief {
   const { state, advice } = input;
   const { progress, vitals, inventory } = state;
-  const { offered: chosen, leftOut } = offeredSpots(advice, input.maxSpots, input.unsafe);
+  const inHand = input.inHand ?? null;
+  const { offered: chosen, leftOut } = offeredSpots(advice, input.maxSpots, input.unsafe, inHand);
   const offered = chosen.map((spot) => briefSpot(spot, input.entities.get(spot.key) ?? [], input));
   const banks = state.banks.map((bank) => ({ name: bank.name, copper: bank.copper }));
   const onHand = inventory.wealth;
@@ -420,6 +424,7 @@ export function buildBrief(input: BriefInput): KonamiBrief {
     hunting: {
       from: advice.from?.name ?? null,
       spots: offered,
+      inHand,
       leftOut,
       excluded: advice.excluded,
       refusal: advice.refusal

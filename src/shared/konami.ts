@@ -141,7 +141,8 @@ export const KONAMI_TRIGGERS = [
   'ready',
   'review',
   'saved',
-  'train-affordable'
+  'train-affordable',
+  'underpaid'
 ] as const;
 
 export type KonamiTrigger = (typeof KONAMI_TRIGGERS)[number];
@@ -210,6 +211,8 @@ export interface KonamiSaving {
   what: string;
   copper: number;
   carried: boolean;
+  /** The item saved for, where it is one; bought first once the copper is there (todo 77). */
+  item: number | null;
 }
 
 /** Which coins are worth bending down for, and which are worth shedding. */

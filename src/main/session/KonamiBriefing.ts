@@ -18,20 +18,17 @@ import type { MobEntity } from '../../shared/entities';
 import type { HuntingAdvice, HuntingSpot } from '../../shared/hunting';
 import {
   buildBrief,
-  offeredSpots,
   unsafeWhy,
   type BookSpell,
   type BriefFight,
   type BriefLairPassed,
   type BriefRoute,
-  type GearEffect,
   type KonamiBrief,
   type LeftOutReason,
   type SlotUpgrade
 } from '../../shared/konamiBrief';
 import type { KonamiLesson } from '../../shared/konamiLessons';
 import type { RoadFacts } from '../../shared/konamiRoad';
-import { REALM_ARMOUR_SCALE, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { fightable } from '../../shared/mobs';
 import type { Odds } from '../../shared/survival';
 import { castsOnSelf, spellServes, spellTargeting } from '../../shared/spellcraft';
@@ -79,8 +76,6 @@ export interface BriefingParts {
   priceAt(name: string, shop: RoomId): number | null;
   /** The simulator's run of a lair's fight (`OddsBook.lair`). */
   lairOdds(room: WorldRoom): Odds;
-  /** What a monster's blows are measured against (`Errands.menacePlayer`). */
-  menacePlayer(state: CharacterState): MenacePlayer;
   /** The monsters this character ran from (`Belongings.recallFled`). */
   fled(): readonly FledEntry[];
   /** What the trainer that takes a level charges for it, or null where none does. */
@@ -294,66 +289,12 @@ function spotEntities(world: BriefingWorld, spot: HuntingSpot): MobEntity[] {
   );
 }
 
-/** One of each monster: the damage a round they do to `player`; null where any is unknown. */
-function perRoundAt(entities: readonly MobEntity[], player: MenacePlayer): number | null {
-  const weighed = weighRoom(entities, player, tuning().menace);
-  if (weighed.length === 0 || weighed.some((each) => each === null)) return null;
-  return weighed.reduce((sum, each) => sum + (each?.perRound ?? 0), 0);
-}
-
-/**
- * A sheet figure with one item swapped in for what is worn in its slot, the
- * realm's figures scaled to the sheet's; null where any of the three is
- * unknown (an empty slot is a known zero).
- */
-function swapped(sheet: number | null, offer: number | null, worn: number | null): number | null {
-  if (sheet === null || offer === null || worn === null) return null;
-  return sheet + (offer - worn) / REALM_ARMOUR_SCALE;
-}
-
-/**
- * Each armour piece weighed at the best spot offered: the sheet's armour
- * class and damage resistance with it on in place of what is worn there, and
- * the damage a round one of each monster there does, now and with it.
- */
-function withEffects(
-  gear: SlotUpgrade[],
-  best: { key: string; entities: readonly MobEntity[] } | undefined,
-  player: MenacePlayer
-): SlotUpgrade[] {
-  if (best === undefined || best.entities.length === 0) return gear;
-  const now = perRoundAt(best.entities, player);
-  return gear.map((slot) => {
-    if (slot.ranking !== 'armour') return slot;
-    // What is worn there: nothing is a known zero, an item with no figure is not.
-    const wornAc = slot.worn === null ? 0 : slot.wornFigure;
-    return {
-      ...slot,
-      offers: slot.offers.map((offer) => {
-        const ac = swapped(player.armourClass, offer.ac, wornAc);
-        const dr = swapped(player.damageResist, offer.dr, slot.worn === null ? 0 : slot.wornDr);
-        const effect: GearEffect = {
-          spot: best.key,
-          armourClass: { now: player.armourClass, with: ac },
-          perRound: {
-            now,
-            with:
-              ac === null || dr === null
-                ? null
-                : perRoundAt(best.entities, { ...player, armourClass: ac, damageResist: dr })
-          }
-        };
-        return { ...offer, effect };
-      })
-    };
-  });
-}
-
 export function konamiBrief(
   parts: BriefingParts,
   state: CharacterState,
   now: number,
-  lessons: KonamiLesson[]
+  lessons: KonamiLesson[],
+  inHand: string | null = null
 ): KonamiBrief | { refusal: string } {
   const world = parts.world;
   if (world === undefined || world.size === 0) return { refusal: t('automation.konami.noWorld') };
@@ -385,7 +326,6 @@ export function konamiBrief(
   };
   const unsafe = (spot: HuntingSpot): LeftOutReason | null =>
     unsafeWhy(fight(spot), walk(spot), tuning().combat.openAbove);
-  const best = offeredSpots(advice, maxSpots, unsafe).offered[0];
   const capabilities = parts.capabilities();
   const weapon = wieldedWeapon(state.inventory.items);
   const canHide = holdsAbility(capabilities, CLASS_STEALTH_ABILITY);
@@ -393,11 +333,7 @@ export function konamiBrief(
     state,
     advice,
     entities,
-    gear: withEffects(
-      gear,
-      best === undefined ? undefined : { key: best.key, entities: entities.get(best.key) ?? [] },
-      parts.menacePlayer(state)
-    ),
+    gear,
     attacks: attackOptions(sheet, weapon, capabilities.abilities, family),
     // A backstab needs a weapon in hand and a class that can hide.
     openers: canHide === true && weapon !== null ? ['bs'] : [],
@@ -409,6 +345,7 @@ export function konamiBrief(
     settings: settingsOf(config),
     maxSpots,
     lessons,
+    inHand,
     trainCost: state.progress.level === null ? null : parts.trainCostAt(state.progress.level),
     fled: parts.fled().filter(
       (entry) =>

@@ -41,6 +41,7 @@ export function savingOffers(brief: KonamiBrief, most: number): Record<string, S
       what: 'training the level that is ready',
       copper: trainCost,
       carried: true,
+      item: null,
       short: trainCost - carried
     };
   }
@@ -61,6 +62,7 @@ export function savingOffers(brief: KonamiBrief, most: number): Record<string, S
           what: `${offer.name} for the ${slot.slot} slot at ${offer.shop}${needs}`,
           copper: offer.copper,
           carried: false,
+          item: offer.item,
           short: offer.copper - total
         }
       ];
@@ -148,6 +150,6 @@ export function readSaving(
   if (offer === null) return { saving: null, cashPerHour: 0 };
   const within = chosen.saveWithin === null ? undefined : labels.saveWithin[chosen.saveWithin];
   const hours = within ?? SAVE_WITHIN[0];
-  const { what, copper, carried } = offer;
-  return { saving: { what, copper, carried }, cashPerHour: Math.ceil(offer.short / hours) };
+  const { what, copper, carried, item } = offer;
+  return { saving: { what, copper, carried, item }, cashPerHour: Math.ceil(offer.short / hours) };
 }

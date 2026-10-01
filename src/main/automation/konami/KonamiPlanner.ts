@@ -46,11 +46,12 @@ import {
 import type { KonamiBrief } from '../../../shared/konamiBrief';
 import {
   goalKey,
+  killedAt,
   lessonsFor,
   type KonamiLesson,
   type LessonOutcome
 } from '../../../shared/konamiLessons';
-import { nextUpgradePrice, trainNotCarried } from '../../../shared/konamiPurse';
+import { nextUpgradePrice, trainNotCarried, upgradeToBuy } from '../../../shared/konamiPurse';
 import { readPlan, samePlan } from '../../../shared/konamiQuestions';
 import {
   fitRequest,
@@ -90,7 +91,12 @@ import { RunLog, stateLine } from './RunLog';
 export interface PlannerFacts {
   state(): CharacterState;
   /** The brief for this moment, with the lessons that apply, or why there is none. */
-  brief(now: number, lessons: KonamiLesson[]): KonamiBrief | { refusal: string };
+  /** `inHand`: the ground the plan in hand hunts, kept on offer (todo 76). */
+  brief(
+    now: number,
+    lessons: KonamiLesson[],
+    inHand: string | null
+  ): KonamiBrief | { refusal: string };
   /** What the road ahead is projected from, gathered beside a brief (todo 68). */
   road(brief: KonamiBrief): RoadFacts | null;
   /** Something else holds the character: an escape, a move out, a walk, a shop trip. */
@@ -234,6 +240,8 @@ export class KonamiPlanner implements SessionModule {
   private inRealm = false;
   private mark = '';
   private markedAt = Date.now();
+  /** The stretch whose pay has been said to fall short, by its start, so it asks once (todo 78). */
+  private saidUnderpaid: number | null = null;
   /** The saving whose copper has been said to be there, so it asks once. */
   private saidSaved: KonamiSaving | null = null;
   /** A stuck log has been written for this stretch of standing still. */
@@ -322,7 +330,11 @@ export class KonamiPlanner implements SessionModule {
     this.paused = !this.paused;
     this.log.say(this.paused ? 'paused' : 'resumed', 'by the player');
     if (this.paused) this.standDown();
-    else this.trigger('asked');
+    else {
+      // Resumed is not stuck: the clock starts from the press (todo 79).
+      this.markedAt = Date.now();
+      this.trigger('asked');
+    }
     this.events.changed();
     return this.paused;
   }
@@ -440,8 +452,8 @@ export class KonamiPlanner implements SessionModule {
   snapshot(): KonamiSnapshot {
     const state = this.facts.state();
     const level = state.progress.level;
-    const { lessonLevels, lessonsSent, lessonsShown } = tuning().konami;
-    const sent = new Set(lessonsFor(this.lessons, level, lessonLevels, lessonsSent));
+    const { lessonLevels, lessonsSent, lessonsShown, deathLevels } = tuning().konami;
+    const sent = new Set(lessonsFor(this.lessons, level, lessonLevels, lessonsSent, deathLevels));
     const latest = this.journal.latest;
     const since =
       latest?.outcome === 'applied' && latest.plan !== null ? latest.brief.character.exp : null;
@@ -659,6 +671,7 @@ export class KonamiPlanner implements SessionModule {
     const camping =
       (activity?.doing.kind === 'hunt' && !activity.doing.walking && activity.walk === null) ||
       (activity?.doing.kind === 'waiting' && activity.doing.on === 'lap');
+    this.watchPay(state);
     if (this.plan !== null && !fightIsRunning(state) && !camping) {
       if (Date.now() - this.markedAt >= tuning().konami.stuckMs && this.pending === null) {
         // Measured again from now, so a plan that changes nothing is not asked every tick.
@@ -715,6 +728,34 @@ export class KonamiPlanner implements SessionModule {
       this.trigger('ready');
     }
     this.ready = ready;
+  }
+
+  /**
+   * A hunt paying far under what it was chosen on (todo 78): its measured rate
+   * where the brief had one, else the estimate. Over `underMinutes` of the
+   * stretch, under `underShare` of it, a new plan is asked for, once.
+   */
+  private watchPay(state: CharacterState): void {
+    const latest = this.journal.latest;
+    const goal = latest?.plan?.goal;
+    if (latest === null || goal?.kind !== 'hunt' || this.goal.kind !== 'running') return;
+    const since = latest.goalSince;
+    if (this.saidUnderpaid === since.at || since.exp === null || state.progress.exp === null)
+      return;
+    const { underShare, underMinutes } = tuning().konami;
+    const minutes = (Date.now() - since.at) / 60_000;
+    if (minutes < underMinutes) return;
+    const spot = latest.brief.hunting.spots.find((each) => each.key === goal.key);
+    const expected = spot?.exp.measured?.perHour ?? spot?.exp.perHour ?? null;
+    if (expected === null || expected <= 0) return;
+    const paid = ((state.progress.exp - since.exp) * 60) / minutes;
+    if (paid >= expected * underShare) return;
+    this.saidUnderpaid = since.at;
+    this.log.say(
+      'underpaid',
+      `${Math.round(paid)} an hour at ${goal.name}, chosen at ${Math.round(expected)}`
+    );
+    this.trigger('underpaid');
   }
 
   private watchCash(state: CharacterState): void {
@@ -907,9 +948,15 @@ export class KonamiPlanner implements SessionModule {
       trimOffers,
       trimLessons,
       beforeNamed,
-      savingGear
+      savingGear,
+      trainRetryMs,
+      buyRetryMs,
+      deathLevels
     } = tuning().konami;
-    const full = this.facts.brief(now, lessonsFor(this.lessons, level, lessonLevels, lessonsSent));
+    const goal = this.plan?.goal;
+    const inHand = goal?.kind === 'hunt' ? goal.key : null;
+    const sending = lessonsFor(this.lessons, level, lessonLevels, lessonsSent, deathLevels);
+    const full = this.facts.brief(now, sending, inHand);
     if ('refusal' in full) {
       // Kept waiting and tried again after a tick, so entering the realm is never lost.
       if (this.pending === null) this.pending = why;
@@ -925,9 +972,12 @@ export class KonamiPlanner implements SessionModule {
     }
     this.briefRefused = null;
     if (this.stillSimulating(why, full, now)) return;
-    this.road.learn(this.facts.road(full));
+    // Never offered: what the player said no to, and the grounds that killed it lately (todo 76).
+    const shut = new Set([...this.road.declined, ...killedAt(this.lessons, level, deathLevels)]);
+    const open = withoutDeclined(full, shut);
+    this.road.learn(this.facts.road(open));
     const fitted = fitRequest(
-      withoutDeclined(full, this.road.declined),
+      open,
       requestSizes({
         maxSpots,
         upgradesPerSlot,
@@ -937,7 +987,8 @@ export class KonamiPlanner implements SessionModule {
         trimOffers,
         trimLessons,
         beforeNamed,
-        savingGear
+        savingGear,
+        trainRetryMs
       })
     );
     const brief = fitted.brief;
@@ -955,7 +1006,8 @@ export class KonamiPlanner implements SessionModule {
       this.events.changed();
       return;
     }
-    const only = onlyGoal(fitted);
+    // A level that is ready and paid for, then gear the purse covers: neither is asked (todos 66, 77).
+    const only = onlyGoal(fitted) ?? upgradeToBuy(open, buyRetryMs, this.plan?.saving ?? null);
     if (only !== null) {
       this.gate.planned(substance);
       this.decideHere(why, fitted, only, now);
@@ -1018,14 +1070,16 @@ export class KonamiPlanner implements SessionModule {
     goal: KonamiGoal,
     now: number
   ): void {
+    // A saving stands until its own item is the thing bought (todo 77).
+    const saving = this.plan?.saving ?? null;
     const plan: KonamiPlan = {
       goal,
       layer: this.plan?.layer ?? {},
       picks: [],
       options: [{ goal, p: 1 }],
-      saving: null
+      saving: goal.kind === 'buy' && saving?.item === goal.item ? null : saving
     };
-    this.log.say('decided', `${goalNotice(goal)}: the one goal offered, so nothing was asked`);
+    this.log.say('decided', `${goalNotice(goal)}: decided here, so nothing was asked`);
     this.record(why, fitted, plan, this.provider?.name ?? '', null, now);
     this.refusal = null;
     this.apply(plan);

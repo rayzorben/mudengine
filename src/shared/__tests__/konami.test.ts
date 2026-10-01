@@ -23,7 +23,7 @@ import {
   type SlotUpgrade
 } from '../konamiBrief';
 import type { KonamiLesson } from '../konamiLessons';
-import { nextUpgradePrice } from '../konamiPurse';
+import { nextUpgradePrice, upgradeToBuy } from '../konamiPurse';
 import { planQuestions, readPlan, samePlan } from '../konamiQuestions';
 import { DEFAULT_INTERNAL } from '../internal';
 import type { ProwessSheet } from '../prowess';
@@ -199,8 +199,7 @@ const HELM: SlotUpgrade = {
       shop: 'Armoury',
       at: { map: 1, room: 9 },
       moves: 3,
-      copper: 500,
-      effect: null
+      copper: 500
     },
     {
       item: 8,
@@ -212,8 +211,7 @@ const HELM: SlotUpgrade = {
       shop: 'Armoury',
       at: { map: 1, room: 9 },
       moves: 3,
-      copper: 50_000,
-      effect: null
+      copper: 50_000
     }
   ]
 };
@@ -391,7 +389,7 @@ describe('the questions and the plan their answers make', () => {
     expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).toEqual(['train']);
   });
 
-  it('offers only what the cash covers, the level that is ready, and staying put', () => {
+  it('offers the grounds, the level that is ready, and staying put; gear is not asked', () => {
     // Training was refused at this level, so it is offered beside the rest, not alone.
     const refused: KonamiLesson = {
       at: 5,
@@ -412,10 +410,78 @@ describe('the questions and the plan their answers make', () => {
     const goal = asked.questions['goal'];
     expect(goal?.type).toBe('choice');
     const labels = Object.keys(goal?.type === 'choice' ? goal.criteria : {});
-    expect(labels).toEqual(['hunt_0', 'buy_head_0', 'train', 'wait']);
+    expect(labels).toEqual(['hunt_0', 'train', 'wait']);
     expect(Object.keys(asked.questions)).toEqual(
       expect.arrayContaining(['attack', 'opener', 'sneak', 'heal', 'bless_bles', 'restBelow'])
     );
+  });
+
+  /* Todo 75: one refusal used to keep training off the menu at that level for good. */
+  it('offers training alone again once a refusal at this level is old', () => {
+    const refused: KonamiLesson = {
+      at: 5,
+      goal: { kind: 'train' },
+      level: 10,
+      hpMax: 100,
+      armourClass: 3,
+      attack: 'a',
+      outcome: 'refused',
+      why: 'no trainer',
+      killers: [],
+      room: null,
+      atTheSpot: null,
+      expGained: null,
+      minutes: 1
+    };
+    const later = { ...brief({}, [refused]), at: 5 + DEFAULT_INTERNAL.tuning.konami.trainRetryMs };
+    const goal = questionsOf(later).questions['goal'];
+    expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).toEqual(['train']);
+  });
+
+  /* Todo 77: Soul held 5,000 to 18,000 copper for an hour and bought nothing. */
+  it('buys the cheapest upgrade the level wears and the purse covers, training kept in hand', () => {
+    const made = brief({ progress: { ...EMPTY_CHARACTER.progress, level: 10, expNeeded: 500 } });
+    expect(upgradeToBuy(made, 600_000, null)).toMatchObject({ kind: 'buy', name: 'padded helm' });
+    const poor = {
+      ...made,
+      character: { ...made.character, trainCost: made.character.cash.total }
+    };
+    expect(upgradeToBuy(poor, 600_000, null)).toBeNull();
+  });
+
+  it('keeps the copper a plan saves for, and buys the item saved for once it is there', () => {
+    const made = brief({ progress: { ...EMPTY_CHARACTER.progress, level: 10, expNeeded: 500 } });
+    const saving = (item: number, copper: number) => ({
+      what: 'a helm',
+      copper,
+      carried: false,
+      item
+    });
+    // Saving 50,000 for the iron helm: the padded one would spend it.
+    expect(upgradeToBuy(made, 600_000, saving(8, 50_000))).toBeNull();
+    // Saving for the padded helm, now affordable: that is what is bought.
+    expect(upgradeToBuy(made, 600_000, saving(7, 500))).toMatchObject({ item: 7 });
+  });
+
+  it('does not buy again what a trip was refused lately', () => {
+    const made = brief({ progress: { ...EMPTY_CHARACTER.progress, level: 10, expNeeded: 500 } });
+    const helm = upgradeToBuy(made, 600_000, null)!;
+    const refused: KonamiLesson = {
+      at: made.at,
+      goal: helm,
+      level: 10,
+      hpMax: 100,
+      armourClass: 3,
+      attack: 'a',
+      outcome: 'refused',
+      why: 'not sold',
+      killers: [],
+      room: null,
+      atTheSpot: null,
+      expGained: null,
+      minutes: 0
+    };
+    expect(upgradeToBuy({ ...made, history: [refused] }, 600_000, null)?.item).not.toBe(helm.item);
   });
 
   it('turns the answers into a goal and the settings to go with it', () => {
@@ -425,7 +491,7 @@ describe('the questions and the plan their answers make', () => {
     const plan = readPlan(
       answer(
         {
-          goal: 'buy_head_0',
+          goal: 'hunt_0',
           attack: 'pu',
           opener: 'none',
           heal: 'auto',
@@ -437,7 +503,7 @@ describe('the questions and the plan their answers make', () => {
       ),
       asked
     );
-    expect(plan.goal).toMatchObject({ kind: 'buy', name: 'padded helm', copper: 500 });
+    expect(plan.goal).toMatchObject({ kind: 'hunt' });
     expect(plan.layer).toEqual({
       attack: 'pu',
       opener: '',
@@ -481,7 +547,12 @@ describe('the questions and the plan their answers make', () => {
       answer({ goal: 'hunt_0', saveFor: 'train', saveWithin: 'hours_2' }, {}),
       asked
     );
-    expect(plan.saving).toEqual({ what: expect.any(String), copper: 1_500, carried: true });
+    expect(plan.saving).toEqual({
+      what: expect.any(String),
+      copper: 1_500,
+      carried: true,
+      item: null
+    });
     // 500 short of the 1,500 over two hours.
     expect(plan.layer.cashPerHour).toBe(250);
     const none = readPlan(

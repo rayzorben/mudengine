@@ -128,3 +128,20 @@ describe('saving for something', () => {
     expect(prices).toEqual([...prices].sort((a, b) => a - b));
   });
 });
+
+/*
+ * Todo 76: at a review the ground being hunted (56k an hour measured) was not
+ * among the grounds offered, and the provider moved Soul to its death.
+ */
+describe('the ground in hand', () => {
+  it('stays through every trim, and goes with what it measured', () => {
+    const brief = hunting();
+    const last = brief.hunting.spots.at(-1)!;
+    brief.hunting.inHand = last.key;
+    last.exp.measured = { perHour: 56_000, minutes: 60 };
+    const fitted = fitRequest(brief, { ...SIZES, limits: { ...SIZES.limits, grounds: 1 } });
+    const grounds = (fitted.sent.state as KonamiWireState).grounds;
+    expect(grounds.map((ground) => ground.key)).toContain(last.key);
+    expect(grounds.find((ground) => ground.key === last.key)?.measuredPerHour).toBe(56_000);
+  });
+});

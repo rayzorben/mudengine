@@ -17,8 +17,7 @@ const robe = (item: number, copper: number, ac: number, minLevel: number) => ({
   shop: 'Tailor',
   at: { map: 1, room: 9 },
   moves: 4,
-  copper,
-  effect: null
+  copper
 });
 
 const TORSO: SlotUpgrade = {

@@ -740,6 +740,16 @@ tuning:
     trimLessons: 2
     beforeNamed: 2
     savingGear: 6
+    # Training refused at a level is offered again there after this; a death
+    # keeps its ground off the menu, and its lesson sent, for this many levels.
+    trainRetryMs: 600000
+    # An item whose trip was refused is not bought again without asking for this long.
+    buyRetryMs: 3600000
+    deathLevels: 5
+    # A hunt paying under underShare of what it was chosen on, over underMinutes
+    # of it, asks for a new plan.
+    underShare: 0.25
+    underMinutes: 15
     # The road ahead on the Konami card: the most goals projected, and the
     # offers per slot it may buy on the way.
     roadSteps: 16

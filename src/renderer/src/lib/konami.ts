@@ -131,6 +131,8 @@ export function triggerText(trigger: KonamiTrigger): string {
       return t('cards.konami.trigger.saved');
     case 'train-affordable':
       return t('cards.konami.trigger.trainAffordable');
+    case 'underpaid':
+      return t('cards.konami.trigger.underpaid');
     default: {
       const never: never = trigger;
       return never;

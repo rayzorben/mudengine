@@ -1970,6 +1970,7 @@ cards:
       review: the plan has run a while
       saved: the copper saved for is there
       trainAffordable: the copper to train is there
+      underpaid: the hunt paid far less than expected
     outcome:
       applied: in force
       done: done

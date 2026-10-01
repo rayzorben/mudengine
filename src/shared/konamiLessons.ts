@@ -65,14 +65,56 @@ export function lessonsFor(
   lessons: readonly KonamiLesson[],
   level: number | null,
   band: number,
-  most: number
+  most: number,
+  /** A death is sent this many levels either side instead (todo 76): it killed at 1 and again at 5. */
+  deathBand = band
 ): KonamiLesson[] {
   return lessons
     .filter(
-      (lesson) => level === null || lesson.level === null || Math.abs(lesson.level - level) <= band
+      (lesson) =>
+        level === null ||
+        lesson.level === null ||
+        Math.abs(lesson.level - level) <= (lesson.outcome === 'died' ? deathBand : band)
     )
     .sort((a, b) => b.at - a.at)
     .slice(0, most);
+}
+
+/** Lessons of a goal of this kind refused within `ms` of `now`, at `level` where one is given. */
+export function refusedLately(
+  lessons: readonly KonamiLesson[],
+  kind: KonamiGoal['kind'],
+  now: number,
+  ms: number,
+  level?: number | null
+): KonamiLesson[] {
+  return lessons.filter(
+    (lesson) =>
+      lesson.goal.kind === kind &&
+      lesson.outcome === 'refused' &&
+      now - lesson.at < ms &&
+      (level === undefined || lesson.level === level)
+  );
+}
+
+/**
+ * The grounds that killed this character within `band` levels below it (todo
+ * 76), by goal key: never offered again until it is `band` levels past the
+ * death. Soul died at level 1 on the way to the azure slime, was offered it at
+ * 5 with the lesson out of range, chose it, and died on the way again.
+ */
+export function killedAt(
+  lessons: readonly KonamiLesson[],
+  level: number | null,
+  band: number
+): Set<string> {
+  const keys = new Set<string>();
+  for (const lesson of lessons) {
+    if (lesson.outcome !== 'died' || lesson.goal.kind !== 'hunt') continue;
+    if (level !== null && lesson.level !== null && level >= lesson.level + band) continue;
+    keys.add(goalKey(lesson.goal));
+  }
+  return keys;
 }
 
 /** One lesson in a line, for a question's criteria: `at level 1, died on the way to fierce bandit`. */

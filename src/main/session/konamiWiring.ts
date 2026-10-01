@@ -40,7 +40,6 @@ export interface KonamiWiring {
     | 'capabilities'
     | 'travellerNow'
     | 'priceAt'
-    | 'menacePlayer'
     | 'trainers'
   >;
   /** The simulator's run of each lair's fight. */
@@ -121,7 +120,6 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
     traveller: (state) => errands.travellerNow(state),
     priceAt: (name, shop) => errands.priceAt(name, shop),
     lairOdds: (room) => wiring.odds.lair(room),
-    menacePlayer: (state) => errands.menacePlayer(state),
     fled: wiring.fled,
     // The trainer the player chose, else the cheapest (listed first). Reach is the trip's
     // to judge (`bestTrainer`), so a trainer no route reaches can price lower than it pays.
@@ -137,7 +135,7 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
   return new KonamiPlanner(
     {
       state: () => tracker.current,
-      brief: (now, lessons) => konamiBrief(parts, tracker.current, now, lessons),
+      brief: (now, lessons, inHand) => konamiBrief(parts, tracker.current, now, lessons, inHand),
       road: (brief) => konamiRoadFacts(parts, tracker.current, brief),
       busy: wiring.busy,
       hunting: () => wiring.hunt.hunting,

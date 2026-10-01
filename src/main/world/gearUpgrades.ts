@@ -102,8 +102,7 @@ export function gearUpgrades(
         shop: place.shop,
         at: { map: place.map, room: place.room },
         moves: place.moves,
-        copper,
-        effect: null
+        copper
       });
     }
     const current = worn.get(code)?.name ?? null;

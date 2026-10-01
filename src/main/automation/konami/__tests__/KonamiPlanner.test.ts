@@ -126,6 +126,11 @@ const ROAD: RoadFacts = {
   gear: []
 };
 
+/** A second ground beside the zombie's, so a brief without the first still asks. */
+const secondGround = (brief: KonamiBrief): void => {
+  brief.hunting.spots.push({ ...brief.hunting.spots[0]!, key: 'lair:b', name: 'orc' });
+};
+
 /** What the road is projected from, and the marks written to disk. */
 let roadFacts: RoadFacts | null;
 let marks: RoadMark[];
@@ -365,7 +370,27 @@ describe('the planner', () => {
     it.dispose();
   });
 
+  /* Todo 76: a ground that killed is not offered again until five levels past the death. */
+  it('never offers the ground that killed it, the next brief on', async () => {
+    briefPatch = secondGround;
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.onBlock(block('user-dies'));
+    await asked(2);
+    const sent = JSON.parse(journal.at(-1)!) as {
+      sent: { questions: { goal: { criteria: object } } };
+    };
+    const offered = JSON.stringify(sent.sent.questions.goal.criteria);
+    expect(offered).not.toContain('lair:a');
+    expect(offered).toContain('lair:b');
+    it.dispose();
+  });
+
   it('writes a death log with the fight in it, and asks again', async () => {
+    briefPatch = secondGround;
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
@@ -400,6 +425,7 @@ describe('the planner', () => {
   });
 
   it('keeps what a death came to, killers named, and sends it with the next brief', async () => {
+    briefPatch = secondGround;
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
@@ -442,6 +468,7 @@ describe('the planner', () => {
   });
 
   it('learns the whole stretch of a goal given back when it ends in a death', async () => {
+    briefPatch = secondGround;
     const it = planner();
     it.configure(on(providerFile()));
     await loaded(it);
@@ -829,6 +856,62 @@ describe('the planner', () => {
     (it as unknown as { road: { learn(facts: RoadFacts): void } }).road.learn(ROAD);
     it.decline('hunt:lair:a', true);
     expect(learned.at(-1)).toMatchObject({ outcome: 'vetoed', level: 3 });
+    it.dispose();
+  });
+
+  /* Todo 77: gear the purse covers is bought without asking the provider. */
+  it('buys an upgrade it can afford without asking', async () => {
+    briefPatch = (brief) => {
+      Object.assign(brief.character, { cash: { onHand: 100, banks: [], total: 100 } });
+      brief.gear = [
+        {
+          slot: 'Hands',
+          worn: null,
+          wornFigure: null,
+          wornDr: null,
+          ranking: 'armour',
+          offers: [
+            {
+              item: 7,
+              name: 'cotton gloves',
+              figure: 10,
+              ac: 10,
+              dr: null,
+              minLevel: null,
+              shop: 'Leatherworks',
+              at: { map: 1, room: 5 },
+              moves: 3,
+              copper: 40
+            }
+          ]
+        }
+      ];
+    };
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await decided(it, 1);
+    expect(global.__konamiAsked).toBe(0);
+    expect(it.snapshot().plan?.goal).toMatchObject({ kind: 'buy', name: 'cotton gloves' });
+    it.dispose();
+  });
+
+  /* Todo 78: about 500 an hour at a ground chosen at 4,400, and nothing noticed. */
+  it('asks again when the hunt pays far under what it was chosen on', async () => {
+    hunting = true;
+    state = inRealm({ progress: { ...inRealm().progress, exp: 0 } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.onCharacter(state);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 16 * 60_000 });
+    (it as unknown as { tick(): void }).tick();
+    vi.useRealTimers();
+    await asked(2);
+    expect(it.snapshot().decisions[0]?.trigger).toBe('underpaid');
     it.dispose();
   });
 
