@@ -1881,6 +1881,10 @@ cards:
       recent: Last decisions
       lessons: Lessons that apply
     oddsHint: What the provider gave each choice it was offered. Go picks one instead of its choice.
+    oddsMore:
+      one: Show 1 more at 0%
+      many: Show {count} more at 0%
+    oddsFewer: Hide those at 0%
     go: Go
     goHint: Go here instead. The provider's choice is remembered as turned down.
     chosen: chosen

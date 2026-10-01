@@ -1,9 +1,9 @@
-import { memo, type CSSProperties } from 'react';
+import { memo, useState, type CSSProperties } from 'react';
 
 import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { goalDetail, goalIcon, goalName, shareText } from '../lib/konami';
+import { goalDetail, goalIcon, goalName, oddsShown, shareText } from '../lib/konami';
 import { compact, rate } from '../lib/rates';
 import { goalKey } from '@shared/konamiLessons';
 import type { KonamiOptionRow, KonamiSpotFacts } from '@shared/konamiRecords';
@@ -68,10 +68,13 @@ function SpotFacts({ spot }: { spot: KonamiSpotFacts }) {
  * than a word. The chosen one is marked; any other can be chosen instead.
  */
 function KonamiOdds({ options, onChoose, compact = false }: KonamiOddsProps) {
+  const [all, setAll] = useState(false);
+  const { shown, hidden } = oddsShown(options);
+  const drawn = all ? options : shown;
   const most = Math.max(...options.map((option) => option.p), 0.0001);
   return (
     <ol className={`konami-odds${compact ? ' compact' : ''}`}>
-      {options.map((option) => {
+      {drawn.map((option) => {
         const key = goalKey(option.goal);
         const detail = goalDetail(option.goal);
         return (
@@ -112,6 +115,23 @@ function KonamiOdds({ options, onChoose, compact = false }: KonamiOddsProps) {
           </li>
         );
       })}
+      {hidden > 0 && (
+        <li className="konami-odds-more">
+          <button
+            aria-expanded={all}
+            className="quiet konami-link"
+            onClick={() => setAll((was) => !was)}
+            onMouseDown={keepFocus}
+            type="button"
+          >
+            {all
+              ? t('cards.konami.oddsFewer')
+              : hidden === 1
+                ? t('cards.konami.oddsMore.one')
+                : t('cards.konami.oddsMore.many', { count: hidden })}
+          </button>
+        </li>
+      )}
     </ol>
   );
 }

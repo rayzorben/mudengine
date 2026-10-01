@@ -13225,6 +13225,12 @@ tr:hover .row-action.worn,
   padding: 0;
 }
 
+/* The options the reply gave under a whole percent, folded behind one quiet line (todo 67). */
+.konami-odds-more {
+  display: flex;
+  padding: 2px 8px;
+}
+
 .konami-option {
   align-items: center;
   border-radius: var(--r-control);

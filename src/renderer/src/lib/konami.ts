@@ -269,6 +269,18 @@ export function doingText(doing: KonamiDoing): string {
   }
 }
 
+/**
+ * The options worth drawing (todo 67): every one the reply gave at least a
+ * whole percent, and the one chosen whatever it was given. The rest are
+ * counted, so the card can still show them on request.
+ */
+export function oddsShown<T extends { p: number; chosen: boolean }>(
+  options: readonly T[]
+): { shown: T[]; hidden: number } {
+  const shown = options.filter((option) => option.chosen || percent(option.p) > 0);
+  return { shown, hidden: options.length - shown.length };
+}
+
 /** A share as a whole percentage, as the Combat card prints one. */
 export function shareText(share: number): string {
   return t('cards.stats.percent', { value: percent(share) });

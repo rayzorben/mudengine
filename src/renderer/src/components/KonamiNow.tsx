@@ -14,6 +14,7 @@ import {
   kindText,
   layerRows,
   lessonDetail,
+  oddsShown,
   outcomeIcon,
   outcomeText,
   outcomeTone,
@@ -190,9 +191,10 @@ function KonamiNow({ konami, onChoose, onOpenDecision, onSeeLessons }: KonamiNow
         <section className="konami-section">
           <header className="konami-section-head" title={t('cards.konami.oddsHint')}>
             <span>{t('cards.konami.headings.odds')}</span>
-            <span className="konami-count">{current.options.length}</span>
+            <span className="konami-count">{oddsShown(current.options).shown.length}</span>
           </header>
           <KonamiOdds
+            key={current.id}
             onChoose={running && current.outcome === 'applied' ? onChoose : undefined}
             options={current.options}
           />
