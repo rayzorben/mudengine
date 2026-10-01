@@ -117,6 +117,10 @@ export function triggerText(trigger: KonamiTrigger): string {
       return t('cards.konami.trigger.vetoed');
     case 'chosen':
       return t('cards.konami.trigger.chosen');
+    case 'ready':
+      return t('cards.konami.trigger.ready');
+    case 'review':
+      return t('cards.konami.trigger.review');
     default: {
       const never: never = trigger;
       return never;

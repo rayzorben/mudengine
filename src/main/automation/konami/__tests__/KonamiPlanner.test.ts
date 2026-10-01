@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { tuning } from '../../../app/tuning';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -51,6 +52,7 @@ const BRIEF = {
     stats: {}
   },
   settings: { attack: 'aa' },
+  history: [],
   hunting: {
     spots: [
       {
@@ -436,6 +438,50 @@ describe('the planner', () => {
     await asked(2);
     expect(incidents.map((row) => row.kind)).toEqual(['stuck']);
     expect(JSON.parse(incidents[0]!.files['refusals.json']!)).toEqual(['hunt: no route']);
+    it.dispose();
+  });
+
+  it('asks again the moment a level becomes ready to train', async () => {
+    state = inRealm({ progress: { ...inRealm().progress, expNeeded: 100 } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    state = inRealm({ progress: { ...inRealm().progress, expNeeded: 0 } });
+    it.onCharacter(state);
+    await asked(2);
+    expect(it.snapshot().decisions[0]?.trigger).toBe('ready');
+    it.dispose();
+  });
+
+  it('reviews a plan still running after the review interval', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.reviewMs + 1 });
+    (it as unknown as { tick(): void }).tick();
+    vi.useRealTimers();
+    await asked(2);
+    expect(it.snapshot().decisions[0]?.trigger).toBe('review');
+    it.dispose();
+  });
+
+  it('does not review again while an ask is still waiting for its answer', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.reviewMs + 1 });
+    const inner = it as unknown as { tick(): void; asking: boolean };
+    inner.asking = true;
+    inner.tick();
+    vi.useRealTimers();
+    await settle();
+    expect(global.__konamiAsked).toBe(1);
     it.dispose();
   });
 

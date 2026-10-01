@@ -16,7 +16,7 @@ import type { CharacterState } from './character';
 import type { MobEntity } from './entities';
 import { primaryMob, type HuntingAdvice, type HuntingSpot } from './hunting';
 import { wornItems } from './items';
-import type { KonamiLayer } from './konami';
+import { levelReady, type KonamiLayer } from './konami';
 import type { FledEntry } from './fled';
 import { goalKey, lessonText, type KonamiLesson } from './konamiLessons';
 import type { SurvivalLevel } from './survival';
@@ -388,7 +388,7 @@ export function buildBrief(input: BriefInput): KonamiBrief {
       level: progress.level,
       exp: progress.exp,
       expNeeded: progress.expNeeded,
-      levelReady: progress.expNeeded === null ? null : progress.expNeeded <= 0,
+      levelReady: levelReady(progress),
       lives: progress.lives,
       stats,
       armourClass: progress.armourClass,

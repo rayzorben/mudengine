@@ -110,12 +110,39 @@ function routeText(spot: BriefSpot, hpMax: number | null): string {
   return `${route.steps} steps away, passing ${route.lairs} lairs${cost}; worst: ${worst}.${deadly}`;
 }
 
+/** Training the level that is ready, as a goal offered. */
+function offerTraining(labels: Record<string, KonamiGoal>, criteria: Record<string, string>): void {
+  labels['train'] = { kind: 'train' };
+  criteria['train'] = 'Walk to a trainer and train the level that is ready.';
+}
+
 function goalQuestion(brief: KonamiBrief): {
   question: KonamiQuestion;
   labels: KonamiLabels['goal'];
 } {
   const criteria: Record<string, string> = {};
   const labels: Record<string, KonamiGoal> = {};
+  /*
+   * A level ready to train is trained first: training raises max HP before
+   * the next fight. Offered alone unless training at this level has been
+   * refused, so a trainer out of reach is no loop.
+   */
+  const level = brief.character.level;
+  const trainRefused = brief.history.some(
+    (lesson) =>
+      lesson.goal.kind === 'train' && lesson.outcome === 'refused' && lesson.level === level
+  );
+  if (brief.character.levelReady === true && !trainRefused) {
+    offerTraining(labels, criteria);
+    return {
+      question: {
+        type: 'choice',
+        instructions: `${AIM} A level is ready to train, and training comes before anything else.`,
+        criteria
+      },
+      labels
+    };
+  }
   brief.hunting.spots.forEach((spot, index) => {
     const label = `hunt_${index}`;
     labels[label] = { kind: 'hunt', key: spot.key, name: spot.name };
@@ -126,7 +153,6 @@ function goalQuestion(brief: KonamiBrief): {
       `Getting there: ${routeText(spot, brief.character.hpMax)}${before}`;
   });
   const cash = brief.character.cash.total;
-  const level = brief.character.level;
   for (const slot of brief.gear) {
     slot.offers.forEach((offer, index) => {
       if (offer.copper === null || cash === null || offer.copper > cash) return;
@@ -147,10 +173,7 @@ function goalQuestion(brief: KonamiBrief): {
         `${gainText(slot, offer)}.`;
     });
   }
-  if (brief.character.levelReady === true) {
-    labels['train'] = { kind: 'train' };
-    criteria['train'] = 'Walk to a trainer and train the level that is ready.';
-  }
+  if (brief.character.levelReady === true) offerTraining(labels, criteria);
   labels['wait'] = { kind: 'wait' };
   criteria['wait'] = 'Nothing offered is worth doing; stay where you are.';
   return {

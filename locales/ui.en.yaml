@@ -1881,6 +1881,8 @@ cards:
       asked: asked
       vetoed: you said no
       chosen: you chose
+      ready: a level is ready to train
+      review: the plan has run a while
     outcome:
       applied: in force
       done: done

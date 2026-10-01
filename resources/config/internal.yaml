@@ -705,6 +705,8 @@ tuning:
     upgradesPerSlot: 3
     askTimeoutMs: 30000
     stuckMs: 30000
+    # A plan still running is asked about again after this long; 0 never.
+    reviewMs: 600000
     journal: 100
     logLines: 10000
     wearExpiresMs: 8000

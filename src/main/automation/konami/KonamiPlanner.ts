@@ -33,6 +33,7 @@ import {
   goalWrites,
   layered,
   layerWrites,
+  levelReady,
   type KonamiGoal,
   type KonamiLayer,
   type KonamiPlan,
@@ -185,6 +186,8 @@ export class KonamiPlanner implements SessionModule {
   private readonly incidents: KonamiIncidentRow[] = [];
   private step: number | null = null;
   private upgradeAt: number | null = null;
+  /** Whether a level was ready to train at the last state; null before the first. */
+  private ready: boolean | null = null;
   private inRealm = false;
   private mark = '';
   private markedAt = Date.now();
@@ -338,6 +341,7 @@ export class KonamiPlanner implements SessionModule {
       this.stuckLogged = false;
     }
     this.watchCash(state);
+    this.watchReady(state);
     this.watchGoal(state);
     this.consider(state);
   }
@@ -349,6 +353,7 @@ export class KonamiPlanner implements SessionModule {
     this.inRealm = false;
     this.step = null;
     this.upgradeAt = null;
+    this.ready = null;
     this.worn = null;
     this.briefRefused = null;
     this.briefAgainAt = 0;
@@ -512,6 +517,15 @@ export class KonamiPlanner implements SessionModule {
   private tick(): void {
     if (!this.running || !this.inRealm) return;
     const state = this.facts.state();
+    // Asked again on a clock while a plan runs, so a goal that goes on working is still reviewed.
+    const latest = this.journal.latest;
+    const review = tuning().konami.reviewMs;
+    if (latest?.outcome === 'applied' && this.pending === null && !this.asking && review > 0) {
+      if (Date.now() - latest.at >= review) {
+        this.log.say('review', `the plan has run ${Math.round(review / 60_000)} minutes`);
+        this.trigger('review');
+      }
+    }
     if (this.plan !== null && !fightIsRunning(state)) {
       if (Date.now() - this.markedAt >= tuning().konami.stuckMs && this.pending === null) {
         // Measured again from now, so a plan that changes nothing is not asked every tick.
@@ -546,6 +560,21 @@ export class KonamiPlanner implements SessionModule {
     }
     this.events.changed();
     this.consider(this.facts.state());
+  }
+
+  /**
+   * A level has become ready to train: experience counts `expNeeded` down to
+   * nothing as it comes in, and nothing the realm prints says so, so no other
+   * trigger would ask. Unread is not an answer, and changes nothing.
+   */
+  private watchReady(state: CharacterState): void {
+    const ready = levelReady(state.progress);
+    if (ready === null) return;
+    if (ready && this.ready === false) {
+      this.log.say('ready', `a level to train · ${stateLine(state)}`);
+      this.trigger('ready');
+    }
+    this.ready = ready;
   }
 
   private watchCash(state: CharacterState): void {

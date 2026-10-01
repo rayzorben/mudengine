@@ -102,6 +102,11 @@ export function asKonamiReply(
   return { model, answers };
 }
 
+/** Whether a level is ready to train: experience needed counted down to nothing; null unread. */
+export function levelReady(progress: { expNeeded: number | null }): boolean | null {
+  return progress.expNeeded === null ? null : progress.expNeeded <= 0;
+}
+
 /** Why a plan was asked for. */
 export const KONAMI_TRIGGERS = [
   'entered',
@@ -116,7 +121,9 @@ export const KONAMI_TRIGGERS = [
   'stuck',
   'asked',
   'vetoed',
-  'chosen'
+  'chosen',
+  'ready',
+  'review'
 ] as const;
 
 export type KonamiTrigger = (typeof KONAMI_TRIGGERS)[number];

@@ -867,6 +867,8 @@ const TUNING_DEFAULTS = {
     upgradesPerSlot: 3,
     askTimeoutMs: 30000,
     stuckMs: 30000,
+    /** A plan still running is asked about again after this long; 0 never. */
+    reviewMs: 600_000,
     journal: 100,
     logLines: 10000,
     /** A `wear` for a bought item still queued after this is for a moment that has passed. */

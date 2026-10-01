@@ -341,8 +341,29 @@ describe('the questions and the plan their answers make', () => {
     }
   });
 
+  it('offers training alone while a level is ready', () => {
+    const goal = planQuestions(brief()).questions['goal'];
+    expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).toEqual(['train']);
+  });
+
   it('offers only what the cash covers, the level that is ready, and staying put', () => {
-    const asked = planQuestions(brief());
+    // Training was refused at this level, so it is offered beside the rest, not alone.
+    const refused: KonamiLesson = {
+      at: 5,
+      goal: { kind: 'train' },
+      level: 10,
+      hpMax: 100,
+      armourClass: 3,
+      attack: 'a',
+      outcome: 'refused',
+      why: 'no trainer',
+      killers: [],
+      room: null,
+      atTheSpot: null,
+      expGained: null,
+      minutes: 1
+    };
+    const asked = planQuestions(brief({}, [refused]));
     const goal = asked.questions['goal'];
     expect(goal?.type).toBe('choice');
     const labels = Object.keys(goal?.type === 'choice' ? goal.criteria : {});
@@ -353,7 +374,9 @@ describe('the questions and the plan their answers make', () => {
   });
 
   it('turns the answers into a goal and the settings to go with it', () => {
-    const asked = planQuestions(brief());
+    const asked = planQuestions(
+      brief({ progress: { ...EMPTY_CHARACTER.progress, level: 10, expNeeded: 500 } })
+    );
     const plan = readPlan(
       answer(
         {
