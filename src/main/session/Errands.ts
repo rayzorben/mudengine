@@ -94,11 +94,7 @@ import {
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
 import { carriedCount } from '../../shared/supplies';
-import {
-  trainingCost,
-  type StatLimits,
-  type TrainedAttribute
-} from '../../shared/training';
+import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import {
   lairPass,
   passShare,
@@ -1737,8 +1733,12 @@ export class Errands implements SessionModule {
     current: Record<TrainedAttribute, number>,
     limits: Record<TrainedAttribute, StatLimits>
   ): ReturnType<typeof chooseByExp> {
-    return chooseByExp(state, current, limits, tuning().train.statHorizon, (as) =>
-      this.huntingGrounds(null, null, as).spots
+    return chooseByExp(
+      state,
+      current,
+      limits,
+      tuning().train.statHorizon,
+      (as) => this.huntingGrounds(null, null, as).spots
     );
   }
 

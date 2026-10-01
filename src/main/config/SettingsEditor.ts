@@ -4,6 +4,7 @@ import { isMap, isSeq, parse, Scalar } from 'yaml';
 
 import { editYaml, removeYaml, type EditResult } from './YamlFile';
 import type { RemoteGrant, RemoteName } from '../../shared/remotes';
+import { unknownWrites, type LayerWrite } from '../../shared/extensions';
 import { LoopStore, readLoops } from './LoopStore';
 import { ServerStore } from './ServerStore';
 import { directoryNames } from './dirs';
@@ -622,6 +623,29 @@ export class SettingsEditor {
     }
     return editYaml(file, {
       mutate: (document) => document.setIn(['automation', ...AUTOMATION_SWITCHES[name]], on)
+    });
+  }
+
+  /**
+   * Writes settings under `automation` into the character's file: the player
+   * kept an extension's settings (todo 84). The writes are the same list the
+   * extension lays over the settings in memory (`withLayer`), and a setting
+   * the client does not have is refused rather than written.
+   */
+  setAutomationValues(id: string, writes: readonly LayerWrite[]): EditResult {
+    const file = this.profilePath(id);
+    if (!fs.existsSync(file)) {
+      return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
+    }
+    const unknown = unknownWrites(DEFAULT_CONFIG.automation, writes);
+    if (unknown.length > 0) {
+      const paths = unknown.map(([path]) => path.join('.')).join(', ');
+      return { ok: false, error: t('errors.settings.unknownSettings', { paths }) };
+    }
+    return editYaml(file, {
+      mutate: (document) => {
+        for (const [path, value] of writes) document.setIn(['automation', ...path], value);
+      }
     });
   }
 

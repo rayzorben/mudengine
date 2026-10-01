@@ -628,3 +628,94 @@ describe('going hunting on its own', () => {
     expect(decisions.at(-1)).toMatchObject({ acted: false });
   });
 });
+
+describe('a spot an outside plan names (todo 54)', () => {
+  it('walks to the named spot even where another pays more', () => {
+    answer = advice([spot('lair:a', 20_000), spot('lair:b', 5_000, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:b');
+    here = '1/900';
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+    expect(started[0]!.name).toContain('Sewer');
+  });
+
+  it('stops a lap it did not start, then sets off for the named spot', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    running = 'old lap';
+    const auto = hunt();
+    auto.steer('lair:b');
+    auto.onCharacter(ready());
+    expect(stops).toHaveLength(1);
+    expect(auto.waiting).toBe('lap');
+    here = '1/900';
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+    expect(auto.waiting).toBeNull();
+  });
+
+  it('waits on a lap the player started after the steer, and stops none', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:b');
+    running = 'my own lap';
+    auto.onCharacter(ready());
+    expect(stops).toEqual([]);
+    expect(auto.waiting).toBe('lap');
+  });
+
+  it('says what holds it while steered, and nothing while not', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    const busy = hunt({ busy: () => true });
+    busy.onCharacter(ready());
+    expect(busy.waiting).toBeNull();
+    busy.steer('lair:b');
+    busy.onCharacter(ready());
+    expect(busy.waiting).toBe('busy');
+  });
+
+  it('walks to the named spot where the realm states no rate for it', () => {
+    answer = advice([spot('lair:b', null, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:b');
+    here = '1/900';
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+  });
+
+  it('asks again when the same spot is planned again after a refusal', () => {
+    answer = advice([spot('lair:b', 5_000, 'Sewer', 900)]);
+    const auto = hunt();
+    auto.steer('lair:gone');
+    auto.onCharacter(ready());
+    expect(auto.refusal).not.toBeNull();
+    auto.steer('lair:gone');
+    expect(auto.refusal).toBeNull();
+  });
+
+  it('hunts nowhere while the plan says so', () => {
+    const auto = hunt();
+    auto.steer(null);
+    auto.onCharacter(ready());
+    expect(walked).toHaveLength(0);
+    expect(started).toHaveLength(0);
+  });
+
+  it('refuses out loud when the named spot is no longer surveyed', () => {
+    const auto = hunt();
+    auto.steer('lair:gone');
+    auto.onCharacter(ready());
+    expect(walked).toHaveLength(0);
+    expect(decisions.at(-1)).toMatchObject({ action: 'hunt', acted: false });
+  });
+
+  it('ends its own lap when the plan moves to another spot', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+    auto.steer('lair:b');
+    expect(stops).toHaveLength(1);
+    expect(auto.hunting).toBe(false);
+  });
+});

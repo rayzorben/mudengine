@@ -42,6 +42,8 @@ export interface PublisherParts {
 export interface PublisherSession {
   /** The automation settings as last loaded. */
   config(): AutomationConfig;
+  /** Each installed extension's card view, by name. */
+  extensions(): Record<string, unknown>;
 }
 
 /** The members of the session's sink this calls, and no more. */
@@ -209,7 +211,8 @@ export class Publisher {
       sent: [...this.sentLog].reverse(),
       firings: this.rules.firings.reverse(),
       safety: [...this.safetyLog].reverse(),
-      engagements: [...this.engageLog].reverse()
+      engagements: [...this.engageLog].reverse(),
+      extensions: this.session.extensions()
     };
   }
 

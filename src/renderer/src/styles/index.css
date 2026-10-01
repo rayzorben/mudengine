@@ -429,6 +429,9 @@ option {
 .rail > .automation-card {
   --card-h: 208px;
 }
+.rail > .extension-card {
+  --card-h: 480px;
+}
 .rail > .stream-card {
   --card-h: 224px;
 }
@@ -12891,4 +12894,18 @@ tr:hover .row-action.worn,
   color: var(--text-hi);
   max-width: 34rem;
   padding: 20px 26px;
+}
+
+/* ======================================================= extension card */
+/* An extension's own page (todo 84): the frame fills the card's body. */
+.extension-card > .body {
+  display: flex;
+  flex-direction: column;
+}
+.extension-frame {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
 }

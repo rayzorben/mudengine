@@ -323,6 +323,7 @@ export function createWebHost(layout: Layout): Host {
     transport,
 
     ready: () => Promise.resolve(),
+    extensionPage: (name) => `/ext/${encodeURIComponent(name)}/`,
     // The port is the lock: a second client on the same one fails to listen
     // and says so, below.
     claimInstance: () => true,
@@ -361,7 +362,8 @@ export function createWebHost(layout: Layout): Host {
         tokens,
         trustProxy,
         onSocket: (connection, remote) => attach(hooks, connection, remote),
-        log: say
+        log: say,
+        extensionFile: (name, relative) => hooks.extensionFile(name, relative)
       });
       server.listen(port, bind).then(
         (bound) => {

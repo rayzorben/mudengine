@@ -120,6 +120,8 @@ export interface ClientHooks {
   quitting: QuitGuard;
   /** The client's own icon, for a window's frame. */
   appIcon(): string;
+  /** A file of an installed extension's card page, or null (`ExtensionLoader.pageFile`). */
+  extensionFile(name: string, relative: string): string | null;
   /**
    * The host cannot open. Ends the client with the reason said, the stores
    * disposed and the exit held until the reason has left the pipe — never
@@ -175,6 +177,9 @@ export interface Host {
    * to. A host with one rail for every view answers with that rail.
    */
   mainWindowId(): number | null;
+
+  /** Where an extension's card page is served from, ending in a slash. */
+  extensionPage(name: string): string;
 
   /** Chromium's compositing verdict, or null where nothing here composites. */
   gpu(): GpuStatus | null;

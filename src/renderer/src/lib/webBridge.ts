@@ -212,6 +212,9 @@ export function createWebBridge(): IpcApi {
     runLoop: (session, loop) => invoke(Invoke.runLoop, session, loop),
     getWalk: (session) => invoke(Invoke.getWalk, session),
     getAutomation: (session) => invoke(Invoke.getAutomation, session),
+    listExtensions: () => invoke(Invoke.listExtensions),
+    extensionAction: (session, name, action, args) =>
+      invoke(Invoke.extensionAction, session, name, action, args),
 
     listSessions: () => invoke(Invoke.listSessions),
     listProfiles: () => invoke(Invoke.listProfiles),
