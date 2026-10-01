@@ -1808,7 +1808,37 @@ cards:
     title: Konami
     tabs:
       decisions: Decisions
+      road: Road
       history: History
+    road:
+      eyebrow: The road ahead, at today's rates
+      summary: Level {from} to {to} in about {time}
+      empty: The road shows once Konami has asked for its first plan.
+      huntLevel: Hunt {name} to level {level}
+      huntCopper: Hunt {name} for {coins}
+      huntDetail: about {time} · {exp} exp · {coins}
+      huntDetailNoCoin: about {time} · {exp} exp · copper not known
+      train: Train to level {level}
+      buy: Buy {item}
+      buyDetail: '{slot} · {shop} · {coins}'
+      startsIn: in {time}
+      now: now
+      decline: Not this
+      declineHint: Leave it off the road until you restore it.
+      bad: Bad
+      badHint: Mark it bad. It stays off the road until you restore it, and the provider is told it was the wrong thing to do.
+      end:
+        table: The road stops at level {level}, where the experience table does.
+        trainer: The road stops at level {level}. No trainer in the world database trains it.
+        grounds: The road stops here. No ground offered is known to pay what is needed next.
+      marks: You said no to
+      restore: Restore
+      restoreHint: Put it back on the road, and offer it again.
+      markedBad: bad
+      next: Next on the road
+      seeAll: See the road
+      minutes: '{minutes} min'
+      hours: '{hours} h'
     historyDone: Done
     historyLessons: Lessons
     badge:
@@ -4881,6 +4911,7 @@ automation:
     noWorld: this realm has no world database
     died: the character died
     vetoed: you said no on the card
+    markedBad: you marked it bad on the road
     pausedByStop: 'Konami: paused, because you pressed Stop. Resume it on the Konami card.'
     chose: 'you chose {goal} instead'
     trainDidNotGo: the training trip did not set off

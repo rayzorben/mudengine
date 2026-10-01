@@ -1614,6 +1614,12 @@ function registerIpc(): void {
   handle(Invoke.konamiForget, (_caller, session: SessionId, at: unknown) => {
     if (typeof at === 'number') host?.get(session)?.manager.konami.forget(at);
   });
+  handle(Invoke.konamiDecline, (_caller, session: SessionId, key: unknown, bad: unknown) => {
+    if (typeof key === 'string') host?.get(session)?.manager.konami.decline(key, bad === true);
+  });
+  handle(Invoke.konamiRestore, (_caller, session: SessionId, key: unknown) => {
+    if (typeof key === 'string') host?.get(session)?.manager.konami.restore(key);
+  });
 
   /**
    * Who is walking, for pricing a route against them.

@@ -17,7 +17,12 @@ import type { AutomationConfig } from '../../shared/config';
 import type { KonamiActivity, KonamiDoing, KonamiRecords } from '../../shared/konamiRecords';
 import type { ConnectionTarget } from '../../shared/types';
 import type { Errands } from './Errands';
-import { konamiBrief, type BriefingWorld } from './KonamiBriefing';
+import {
+  konamiBrief,
+  konamiRoadFacts,
+  type BriefingParts,
+  type BriefingWorld
+} from './KonamiBriefing';
 import type { OddsReader } from './OddsBook';
 
 /** What the host hands a session for the planner: where its records go and the client's home. */
@@ -107,35 +112,33 @@ function activityOf(wiring: KonamiWiring): KonamiActivity | null {
 
 export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
   const { tracker, errands, supplies } = wiring;
+  const parts: BriefingParts = {
+    world: wiring.world,
+    config: wiring.config,
+    survey: () => errands.huntingGrounds(null),
+    realmClass: () => errands.realmClass(),
+    capabilities: () => errands.capabilities(),
+    traveller: (state) => errands.travellerNow(state),
+    priceAt: (name, shop) => errands.priceAt(name, shop),
+    lairOdds: (room) => wiring.odds.lair(room),
+    menacePlayer: (state) => errands.menacePlayer(state),
+    fled: wiring.fled,
+    // The trainer the player chose, else the cheapest (listed first). Reach is the trip's
+    // to judge (`bestTrainer`), so a trainer no route reaches can price lower than it pays.
+    trainCostAt: (level) => {
+      const chosen = wiring.config().train.trainer;
+      const taking = errands.trainers(level);
+      // A level the chosen trainer does not take goes to the cheapest that does, as the trip would.
+      const trainer =
+        (chosen > 0 ? taking.find((each) => each.shop === chosen) : undefined) ?? taking[0];
+      return trainer?.cost ?? null;
+    }
+  };
   return new KonamiPlanner(
     {
       state: () => tracker.current,
-      brief: (now, lessons) =>
-        konamiBrief(
-          {
-            world: wiring.world,
-            config: wiring.config,
-            survey: () => errands.huntingGrounds(null),
-            realmClass: () => errands.realmClass(),
-            capabilities: () => errands.capabilities(),
-            traveller: (state) => errands.travellerNow(state),
-            priceAt: (name, shop) => errands.priceAt(name, shop),
-            lairOdds: (room) => wiring.odds.lair(room),
-            menacePlayer: (state) => errands.menacePlayer(state),
-            fled: wiring.fled,
-            // The trainer the player chose, else the cheapest (listed first). Reach is the trip's
-            // to judge (`bestTrainer`), so a trainer no route reaches can price lower than it pays.
-            trainCost: () => {
-              const chosen = wiring.config().train.trainer;
-              const taking = errands.trainers();
-              const trainer = chosen > 0 ? taking.find((each) => each.shop === chosen) : taking[0];
-              return trainer?.cost ?? null;
-            }
-          },
-          tracker.current,
-          now,
-          lessons
-        ),
+      brief: (now, lessons) => konamiBrief(parts, tracker.current, now, lessons),
+      road: (brief) => konamiRoadFacts(parts, tracker.current, brief),
       busy: wiring.busy,
       hunting: () => wiring.hunt.hunting,
       activity: () => activityOf(wiring),

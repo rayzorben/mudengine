@@ -749,10 +749,9 @@ export class Errands implements SessionModule {
    * would offer a room the server refuses — the walk across two maps this
    * whole query exists to avoid.
    */
-  trainers(): TrainerChoice[] {
+  trainers(level: number | null = this.tracker.current.progress.level): TrainerChoice[] {
     const state = this.tracker.current;
     const world = this.world;
-    const level = state.progress.level;
     if (world === null || world === undefined || level === null) return [];
     const classId = state.className ? (world.classNamed(state.className)?.id ?? null) : null;
     return world.trainersTaking(level, classId).map((found) => ({

@@ -6,12 +6,16 @@
 import type { IconName } from '../components/Icon';
 import { t } from './i18n';
 import { percent } from './outlook';
+import { COIN_NAME, coinText } from './coins';
 import { compact } from './rates';
+import { copperSpread } from '@shared/coins';
 import type { KonamiGoal, KonamiLayer, KonamiTrigger } from '@shared/konami';
+import { goalKey } from '@shared/konamiLessons';
 import type { HistoryEvent } from '@shared/konamiHistory';
 import type { TrainedAttribute } from '@shared/training';
 import type { KonamiLesson } from '@shared/konamiLessons';
 import type { KonamiDoing, KonamiIncidentKind, KonamiOutcome } from '@shared/konamiRecords';
+import type { RoadEnd, RoadStep } from '@shared/konamiRoad';
 
 /** A goal in one line, for a list. */
 export function goalText(goal: KonamiGoal): string {
@@ -476,6 +480,119 @@ export function historyLook(event: HistoryEvent): { icon: IconName; tone: Outcom
       return { icon: 'flame', tone: 'bad' };
     default: {
       const never: never = event;
+      return never;
+    }
+  }
+}
+
+/**
+ * The road after the goal in hand. The road starts from the character as it
+ * stands, so its first hunt is usually the goal already being hunted: that
+ * one is drawn once, as the goal in hand, with what the road expects of it.
+ */
+export function roadAfter(
+  steps: readonly RoadStep[],
+  plan: KonamiGoal | null
+): { inHand: RoadStep | null; ahead: RoadStep[] } {
+  const first = steps[0];
+  const inHand =
+    plan !== null &&
+    first !== undefined &&
+    first.kind !== 'train' &&
+    goalKey(first.goal) === goalKey(plan)
+      ? first
+      : null;
+  return { inHand, ahead: inHand === null ? [...steps] : steps.slice(1) };
+}
+
+/** When a goal on the road starts: now, or in how long. */
+export function startsText(at: number): string {
+  return at * 60 < 1
+    ? t('cards.konami.road.now')
+    : t('cards.konami.road.startsIn', { time: hoursText(at) });
+}
+
+/** A stretch of the road in hours: minutes under one, a tenth of an hour above. */
+export function hoursText(hours: number): string {
+  return hours < 1
+    ? t('cards.konami.road.minutes', { minutes: Math.max(1, Math.round(hours * 60)) })
+    : t('cards.konami.road.hours', { hours: hours.toFixed(1) });
+}
+
+/** Copper as the coins it is, the way the purse prints them. */
+export function copperText(copper: number): string {
+  return copper >= 1 ? coinText(copperSpread(copper), 1) : `0 ${COIN_NAME.copper[1]}`;
+}
+
+/** One goal on the road, as its row's title. */
+export function roadStepTitle(step: RoadStep): string {
+  switch (step.kind) {
+    case 'hunt':
+      return 'level' in step.until
+        ? t('cards.konami.road.huntLevel', { name: step.goal.name, level: step.until.level })
+        : t('cards.konami.road.huntCopper', {
+            name: step.goal.name,
+            coins: copperText(step.until.copper)
+          });
+    case 'train':
+      return t('cards.konami.road.train', { level: step.level });
+    case 'buy':
+      return t('cards.konami.road.buy', { item: step.goal.name });
+    default: {
+      const never: never = step;
+      return never;
+    }
+  }
+}
+
+/** What a goal on the road costs or brings, under its title. */
+export function roadStepDetail(step: RoadStep): string {
+  switch (step.kind) {
+    case 'hunt':
+      return step.copper === null
+        ? t('cards.konami.road.huntDetailNoCoin', {
+            time: hoursText(step.hours),
+            exp: compact(step.exp)
+          })
+        : t('cards.konami.road.huntDetail', {
+            time: hoursText(step.hours),
+            exp: compact(step.exp),
+            coins: copperText(step.copper)
+          });
+    case 'train':
+      return copperText(step.copper);
+    case 'buy':
+      return t('cards.konami.road.buyDetail', {
+        slot: step.goal.slot,
+        shop: step.goal.shop,
+        coins: copperText(step.goal.copper)
+      });
+    default: {
+      const never: never = step;
+      return never;
+    }
+  }
+}
+
+/** The icon a goal on the road wears: the same as the goal's own. */
+export function roadStepIcon(step: RoadStep): IconName {
+  return step.kind === 'train' ? goalIcon({ kind: 'train' }) : goalIcon(step.goal);
+}
+
+/** Why the road stops where it does, or null where it only ran out of rows to draw. */
+export function roadEndText(end: RoadEnd, level: number): string | null {
+  switch (end) {
+    case 'steps':
+    case 'unread':
+      return null;
+    case 'table':
+      return t('cards.konami.road.end.table', { level });
+    case 'trainer':
+      return t('cards.konami.road.end.trainer', { level });
+    case 'grounds':
+      return t('cards.konami.road.end.grounds');
+    default: {
+      const never: never = end;
       return never;
     }
   }

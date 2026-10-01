@@ -5,6 +5,7 @@ import Icon from './Icon';
 import KonamiHistory from './KonamiHistory';
 import KonamiLessons from './KonamiLessons';
 import KonamiNow from './KonamiNow';
+import KonamiRoad from './KonamiRoad';
 import KonamiTimeline from './KonamiTimeline';
 import { clock } from '../lib/clock';
 import { keepFocus } from '../lib/focus';
@@ -18,7 +19,7 @@ export interface KonamiCardProps extends CardChrome {
   session: SessionId;
 }
 
-type Face = 'now' | 'decisions' | 'history';
+type Face = 'now' | 'road' | 'decisions' | 'history';
 
 /** The card as text: the plan in force and each decision, for the copy glyph. */
 function copyOf(konami: KonamiSnapshot): string {
@@ -59,6 +60,15 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
     setOpen(id);
     setFace('decisions');
   }, []);
+  const decline = useCallback(
+    (key: string, bad: boolean) => void api?.konamiDecline(session, key, bad),
+    [api, session]
+  );
+  const restore = useCallback(
+    (key: string) => void api?.konamiRestore(session, key),
+    [api, session]
+  );
+  const seeRoad = useCallback(() => setFace('road'), []);
   const seeLessons = useCallback(() => {
     setRecordsView('lessons');
     setFace('history');
@@ -149,11 +159,27 @@ function KonamiCard({ konami, session, ...chrome }: KonamiCardProps) {
             onChoose={choose}
             onOpenDecision={openDecision}
             onSeeLessons={seeLessons}
+            onSeeRoad={seeRoad}
           />
           {controls}
         </>
       )
     },
+    ...(konami.road === null
+      ? []
+      : [
+          {
+            id: 'road',
+            label: t('cards.konami.tabs.road'),
+            paned: true,
+            content: (
+              <>
+                <KonamiRoad konami={konami} onDecline={decline} onRestore={restore} />
+                {controls}
+              </>
+            )
+          }
+        ]),
     {
       id: 'decisions',
       label: t('cards.konami.tabs.decisions'),

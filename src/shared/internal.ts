@@ -896,6 +896,9 @@ const TUNING_DEFAULTS = {
     /** Past outcomes named in a ground's criterion (the state lists them all), and the most items offered to save for. */
     beforeNamed: 2,
     savingGear: 6,
+    /** The road ahead (todo 68): the most goals projected, and the offers per slot it may buy. */
+    roadSteps: 16,
+    roadOffersPerSlot: 4,
     askTimeoutMs: 30000,
     stuckMs: 30000,
     /**

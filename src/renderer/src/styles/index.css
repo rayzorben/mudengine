@@ -12917,6 +12917,176 @@ tr:hover .row-action.worn,
   gap: calc(var(--gap) * 1.5);
 }
 
+/* ---- the road ahead (todo 68): the progression's three words, a row per goal */
+
+.konami-road {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gap) * 1.5);
+}
+
+.konami-road-hero {
+  --kind: var(--accent);
+  background:
+    radial-gradient(
+      120% 140% at 0% 0%,
+      color-mix(in srgb, var(--kind) 18%, transparent),
+      transparent 60%
+    ),
+    color-mix(in srgb, var(--ink-raised) 70%, transparent);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-rim);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.konami-road-summary {
+  color: var(--text-hi);
+  font-size: 1.15em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.konami-road-summary.quiet {
+  color: var(--text-lo);
+  font-size: 1em;
+  font-weight: 400;
+}
+
+/* Each row a goal: its icon, what it is and what it costs, when it starts, the player's say. */
+.konami-road-steps > li {
+  align-items: center;
+  border-radius: var(--r-control);
+  gap: 8px;
+  padding: 5px 8px;
+  transition: background var(--dur-tint) linear;
+}
+
+.konami-road-steps > li:hover,
+.konami-road-steps > li:focus-within {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+}
+
+.konami-road-steps > li[data-progress='now'] {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+}
+
+.konami-road-steps.compact > li {
+  padding: 2px 6px;
+}
+
+.konami-road-icon {
+  color: var(--text-lo);
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.konami-road-icon svg {
+  height: 14px;
+  width: 14px;
+}
+
+[data-progress='now'] > .konami-road-icon {
+  color: var(--accent);
+}
+
+[data-kind='train'] > .konami-road-icon {
+  color: var(--ok);
+}
+
+[data-kind='buy'] > .konami-road-icon {
+  color: var(--section-b);
+}
+
+.konami-road-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.konami-road-detail {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.konami-road-when {
+  color: var(--text-lo-quiet);
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/* The player's say on a goal: there on hover or focus, and always where nothing hovers. */
+.konami-road-verdicts {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--dur-tint) linear;
+}
+
+.konami-road-steps > li:hover .konami-road-verdicts,
+.konami-road-steps > li:focus-within .konami-road-verdicts,
+.konami-road-steps > li[data-progress='now'] .konami-road-verdicts {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .konami-road-verdicts {
+    opacity: 1;
+  }
+}
+
+.konami-road-verdict {
+  font-size: var(--font-micro);
+  font-weight: 400;
+  gap: 3px;
+  height: auto;
+  padding: 2px 6px;
+}
+
+.konami-road-verdict[data-tone='bad']:hover {
+  color: var(--danger);
+}
+
+.konami-road-marks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.konami-road-marks > li {
+  align-items: center;
+  color: var(--text-lo);
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.konami-road-marks > li[data-bad='true'] > svg {
+  color: var(--danger);
+}
+
+.konami-road-mark-goal {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---- the hero: what it is doing, and how sure it was */
 
 .konami-hero {

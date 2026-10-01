@@ -36,13 +36,16 @@ export interface KonamiLesson {
   minutes: number;
 }
 
+/** An item's goal key: what buying it is known by, wherever it is sold. */
+export const itemKey = (item: number): string => `buy:${item}`;
+
 /** The goal a lesson is about, as one key: a spot, an item, training, waiting. */
 export function goalKey(goal: KonamiGoal): string {
   switch (goal.kind) {
     case 'hunt':
       return `hunt:${goal.key}`;
     case 'buy':
-      return `buy:${goal.item}`;
+      return itemKey(goal.item);
     case 'train':
     case 'wait':
       return goal.kind;

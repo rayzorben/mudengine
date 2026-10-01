@@ -19,6 +19,7 @@ import { stamp as runStamp } from './filename';
 import { isHistoryEntry } from '../../shared/konamiHistory';
 import type { KonamiLesson } from '../../shared/konamiLessons';
 import type { KonamiIncidentKind, KonamiRecords } from '../../shared/konamiRecords';
+import type { RoadMark } from '../../shared/konamiRoad';
 import { errorMessage } from '../../shared/values';
 
 export interface KonamiRecordsOptions {
@@ -62,13 +63,28 @@ function readLines<T>(
 const anyLesson = (value: unknown): value is KonamiLesson =>
   typeof value === 'object' && value !== null;
 
+const isRoadMark = (value: unknown): value is RoadMark =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { key?: unknown }).key === 'string' &&
+  typeof (value as { goal?: unknown }).goal === 'object';
+
 export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
   const logFile = path.join(options.dir, 'log', `${runStamp(new Date())}.log`);
   const lessonsFile = path.join(options.dir, 'lessons.jsonl');
   const historyFile = path.join(options.dir, 'history.jsonl');
+  const roadFile = path.join(options.dir, 'road.jsonl');
   let chain: Promise<void> = Promise.resolve();
   const inOrder = (write: () => Promise<void>): void => {
     chain = chain.then(write).catch((error: unknown) => options.onProblem(errorMessage(error)));
+  };
+  /** A file of one JSON row a line, written over with these. */
+  const rewrite = (file: string, rows: readonly unknown[]): void => {
+    const text = rows.map((row) => `${JSON.stringify(row)}\n`).join('');
+    inOrder(async () => {
+      await fs.promises.mkdir(options.dir, { recursive: true });
+      await fs.promises.writeFile(file, text);
+    });
   };
   return {
     journal: (line) =>
@@ -105,12 +121,8 @@ export function konamiRecords(options: KonamiRecordsOptions): KonamiRecords {
         await fs.promises.appendFile(historyFile, `${JSON.stringify(entry)}\n`);
       }),
     history: () => readLines(historyFile, options.onProblem, isHistoryEntry),
-    rewriteLessons: (rows) => {
-      const text = rows.map((row) => `${JSON.stringify(row)}\n`).join('');
-      inOrder(async () => {
-        await fs.promises.mkdir(options.dir, { recursive: true });
-        await fs.promises.writeFile(lessonsFile, text);
-      });
-    }
+    roadMarks: () => readLines(roadFile, options.onProblem, isRoadMark),
+    rewriteRoadMarks: (rows) => rewrite(roadFile, rows),
+    rewriteLessons: (rows) => rewrite(lessonsFile, rows)
   };
 }

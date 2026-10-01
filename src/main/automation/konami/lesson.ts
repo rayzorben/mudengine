@@ -4,6 +4,7 @@
  * blows of the last fight when the end was a death. Pure.
  */
 import type { CharacterState } from '../../../shared/character';
+import type { KonamiGoal } from '../../../shared/konami';
 import type { KonamiLesson, LessonOutcome } from '../../../shared/konamiLessons';
 import type { KonamiBlow, KonamiDecision } from '../../../shared/konamiRecords';
 import { killersOf } from './incident';
@@ -56,5 +57,36 @@ export function lessonOf(input: LessonInput): KonamiLesson | null {
     // A death takes experience; what it cost is not what the plan earned.
     expGained: died ? null : exp,
     minutes: Math.round((input.now - since.at) / 60_000)
+  };
+}
+
+/**
+ * A goal the player marked bad on the road (todo 68), as a lesson: turned down
+ * at the level the road would have reached it, so it is sent with each brief
+ * near that level.
+ */
+export function markedBad(input: {
+  goal: KonamiGoal;
+  level: number | null;
+  state: CharacterState;
+  attack: string | null;
+  why: string;
+  now: number;
+}): KonamiLesson {
+  const { goal, level, state, attack, why, now } = input;
+  return {
+    at: now,
+    goal,
+    level,
+    hpMax: state.vitals.hpMax,
+    armourClass: state.progress.armourClass,
+    attack,
+    outcome: 'vetoed',
+    why,
+    killers: [],
+    room: null,
+    atTheSpot: null,
+    expGained: null,
+    minutes: 0
   };
 }

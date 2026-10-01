@@ -13,6 +13,7 @@ import { NO_EXCLUSIONS } from '../../../../shared/hunting';
 import type { KonamiLesson } from '../../../../shared/konamiLessons';
 import type { HistoryEntry } from '../../../../shared/konamiHistory';
 import type { KonamiActivity, KonamiRecords } from '../../../../shared/konamiRecords';
+import type { RoadFacts, RoadMark } from '../../../../shared/konamiRoad';
 import { damageReport, lastFight } from '../incident';
 import { KonamiPlanner, type PlannerFacts, type PlannerHands } from '../KonamiPlanner';
 
@@ -111,6 +112,23 @@ let activity: KonamiActivity | null;
 let trainRefusal: { why: string; at: number } | null;
 let trainReady: boolean;
 let written: HistoryEntry[];
+/** A road from level 3: one ground, a table to level 5, training at 100 copper. */
+const ROAD: RoadFacts = {
+  thresholds: [
+    { level: 4, exp: 1_000 },
+    { level: 5, exp: 3_000 }
+  ],
+  trainCosts: [
+    { level: 3, copper: 100 },
+    { level: 4, copper: 150 }
+  ],
+  grounds: [{ key: 'lair:a', name: 'fierce zombie', expPerHour: 9000, copperPerHour: 500 }],
+  gear: []
+};
+
+/** What the road is projected from, and the marks written to disk. */
+let roadFacts: RoadFacts | null;
+let marks: RoadMark[];
 /** A change to the brief each ask builds, or null. */
 let briefPatch: ((brief: KonamiBrief) => void) | null;
 
@@ -127,6 +145,7 @@ function planner(): KonamiPlanner {
       briefPatch?.(made);
       return made;
     },
+    road: () => roadFacts,
     busy: () => false,
     hunting: () => hunting,
     buying: () => false,
@@ -159,7 +178,11 @@ function planner(): KonamiPlanner {
       learned = [...rows];
     },
     historyLine: (entry) => void written.push(entry),
-    history: () => []
+    history: () => [],
+    roadMarks: () => [...marks],
+    rewriteRoadMarks: (rows) => {
+      marks = [...rows];
+    }
   };
   return new KonamiPlanner(facts, hands, { changed: () => {}, notice: () => {} }, records, null);
 }
@@ -221,6 +244,8 @@ beforeEach(() => {
   global.__konamiGoal = 'hunt_0';
   global.__konamiChoices = {};
   briefPatch = null;
+  roadFacts = null;
+  marks = [];
   global.__konamiAsked = 0;
   global.__konamiFail = false;
 });
@@ -705,6 +730,105 @@ describe('the planner', () => {
     await decided(it, 3);
     expect(it.snapshot().plan?.goal).toEqual({ kind: 'train' });
     expect(global.__konamiAsked).toBe(2);
+    it.dispose();
+  });
+
+  it('draws the road ahead from the facts a brief gathered', async () => {
+    roadFacts = ROAD;
+    state = inRealm({ progress: { ...inRealm().progress, exp: 0 } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    const road = it.snapshot().road;
+    expect(road?.steps[0]).toMatchObject({ kind: 'hunt', goal: { key: 'lair:a' } });
+    it.dispose();
+  });
+
+  it('never offers a ground declined on the road again, and keeps the no on disk', async () => {
+    // The road goes to the orc's ground while the plan hunts the zombie's.
+    roadFacts = {
+      ...ROAD,
+      grounds: [{ key: 'lair:b', name: 'orc', expPerHour: 9000, copperPerHour: 500 }]
+    };
+    state = inRealm({ progress: { ...inRealm().progress, exp: 0 } });
+    briefPatch = (brief) =>
+      brief.hunting.spots.push({ ...brief.hunting.spots[0]!, key: 'lair:b', name: 'orc' });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.decline('hunt:lair:b', false);
+    expect(marks.map((mark) => mark.key)).toEqual(['hunt:lair:b']);
+    expect(learned).toHaveLength(0);
+    it.askNow();
+    await asked(2);
+    const sent = JSON.parse(journal.at(-1)!) as {
+      sent: { questions: { goal: { criteria: object } } };
+    };
+    expect(JSON.stringify(sent.sent.questions.goal.criteria)).not.toContain('lair:b');
+    it.restore('hunt:lair:b');
+    expect(marks).toEqual([]);
+    it.dispose();
+  });
+
+  it('turns the plan in hand down when its goal is marked bad, and plans without it', async () => {
+    roadFacts = ROAD;
+    state = inRealm({ progress: { ...inRealm().progress, exp: 0 } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.decline('hunt:lair:a', true);
+    // Its one ground gone, waiting is all that is left: decided here, nothing asked.
+    await decided(it, 2);
+    expect(global.__konamiAsked).toBe(1);
+    expect(it.snapshot().plan?.goal).toEqual({ kind: 'wait' });
+    expect(marks[0]).toMatchObject({ key: 'hunt:lair:a', bad: true });
+    expect(learned.at(-1)).toMatchObject({ outcome: 'vetoed', goal: { key: 'lair:a' } });
+    expect(it.snapshot().decisions[1]?.outcome).toBe('vetoed');
+    it.dispose();
+  });
+
+  it('drops the goal in hand when it is only declined, telling the provider nothing', async () => {
+    roadFacts = ROAD;
+    state = inRealm({ progress: { ...inRealm().progress, exp: 0 } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.decline('hunt:lair:a', false);
+    await decided(it, 2);
+    expect(learned).toHaveLength(0);
+    expect(marks[0]).toMatchObject({ key: 'hunt:lair:a', bad: false });
+    it.dispose();
+  });
+
+  it('draws no road from a purse not yet read', async () => {
+    roadFacts = ROAD;
+    state = inRealm({ progress: { ...inRealm().progress, exp: 0 } });
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    state = inRealm({ inventory: { ...inRealm().inventory, wealth: null } });
+    marks = [];
+    expect(it.snapshot().road?.steps ?? []).toEqual([]);
+    it.dispose();
+  });
+
+  it('keeps a goal marked bad further down the road as a lesson at its level', () => {
+    roadFacts = ROAD;
+    state = inRealm({ progress: { ...inRealm().progress, exp: 0 } });
+    const it = planner();
+    (it as unknown as { road: { learn(facts: RoadFacts): void } }).road.learn(ROAD);
+    it.decline('hunt:lair:a', true);
+    expect(learned.at(-1)).toMatchObject({ outcome: 'vetoed', level: 3 });
     it.dispose();
   });
 

@@ -59,6 +59,7 @@ import {
   requestSubstance,
   type FittedRequest
 } from '../../../shared/konamiWire';
+import { withoutDeclined, type RoadFacts } from '../../../shared/konamiRoad';
 import {
   decisionRow,
   type KonamiActivity,
@@ -79,7 +80,8 @@ import { Blows } from './Blows';
 import { History } from './History';
 import { incidentFiles, killersOf } from './incident';
 import { Journal } from './Journal';
-import { lessonOf } from './lesson';
+import { lessonOf, markedBad } from './lesson';
+import { RoadBook } from './RoadBook';
 import { AskGate } from './AskGate';
 import { askWithin, loadProvider, providerPaths } from './ProviderLoader';
 import { RunLog, stateLine } from './RunLog';
@@ -89,6 +91,8 @@ export interface PlannerFacts {
   state(): CharacterState;
   /** The brief for this moment, with the lessons that apply, or why there is none. */
   brief(now: number, lessons: KonamiLesson[]): KonamiBrief | { refusal: string };
+  /** What the road ahead is projected from, gathered beside a brief (todo 68). */
+  road(brief: KonamiBrief): RoadFacts | null;
   /** Something else holds the character: an escape, a move out, a walk, a shop trip. */
   busy(): boolean;
   /** `AutoHunt` is walking to or running a spot. */
@@ -214,6 +218,8 @@ export class KonamiPlanner implements SessionModule {
   private simulateGaveUpAt: number | null = null;
   /** What past plans came to, oldest first: read from the records once, added to as plans end. */
   private readonly lessons: KonamiLesson[];
+  /** The road ahead, and what the player declined on it. */
+  private readonly road: RoadBook;
   /** What the character did (`History`). */
   private readonly history: History;
   private huntSaid: string | null = null;
@@ -255,6 +261,7 @@ export class KonamiPlanner implements SessionModule {
     this.journal = new Journal(records, () => tuning().konami.journal);
     this.log = new RunLog(records);
     this.lessons = records?.lessons() ?? [];
+    this.road = new RoadBook(records);
     this.history = new History(
       records,
       () => tuning().konami.historyShown,
@@ -453,6 +460,7 @@ export class KonamiPlanner implements SessionModule {
       expSince: since === null || state.progress.exp === null ? null : state.progress.exp - since,
       activity: this.running && this.plan !== null ? this.facts.activity() : null,
       history: this.history.newestFirst(),
+      road: this.road.view(state, tuning().konami.roadSteps),
       lessons: this.lessons
         .slice(-lessonsShown)
         .reverse()
@@ -468,12 +476,20 @@ export class KonamiPlanner implements SessionModule {
    * a lesson so it is not offered back at this level, and a new one asked for.
    */
   veto(): void {
+    this.turnDown(t('automation.konami.vetoed'), true);
+  }
+
+  /**
+   * The plan in force dropped and a new one asked for: settled as turned down,
+   * with a lesson only where the player meant the provider to be told.
+   */
+  private turnDown(why: string, learn: boolean): void {
     const plan = this.plan;
     if (plan === null || plan.goal.kind === 'wait' || !this.running) return;
     this.log.say('vetoed', `by the player · ${stateLine(this.facts.state())}`);
     this.goal = { kind: 'none' };
     this.hands.steerHunt(null);
-    this.settle('vetoed', t('automation.konami.vetoed'));
+    this.settle('vetoed', why, learn);
     // Its settings come off with it; the next plan lays its own.
     this.plan = null;
     this.hands.relayer();
@@ -518,6 +534,51 @@ export class KonamiPlanner implements SessionModule {
       goalSince: { at: now, exp: this.facts.state().progress.exp }
     });
     this.apply(chosen);
+  }
+
+  /**
+   * The player's no to a goal on the road (todo 68), by its key: it is left off
+   * the road and never offered to the provider again. Marked bad, it is also a
+   * lesson sent near the level the road would have reached it. The goal in
+   * hand is turned down as *not this* is, and a new plan asked for.
+   */
+  decline(key: string, bad: boolean): void {
+    const state = this.facts.state();
+    const found = this.road.find(key, state, tuning().konami.roadSteps);
+    const current = this.plan !== null && goalKey(this.plan.goal) === key ? this.plan.goal : null;
+    const goal = found?.goal ?? current;
+    if (goal === null || (goal.kind !== 'hunt' && goal.kind !== 'buy')) return;
+    const level = found?.level ?? state.progress.level;
+    if (!this.road.mark(goal, bad, level, Date.now())) return;
+    this.log.say(bad ? 'marked' : 'declined', `by the player: ${goalNotice(goal)}`);
+    const why = t('automation.konami.markedBad');
+    if (current !== null) {
+      // Declined, it is only dropped; marked bad, the provider is told as well.
+      this.turnDown(bad ? why : t('automation.konami.vetoed'), bad);
+      this.events.changed();
+      return;
+    }
+    if (bad) {
+      const lesson = markedBad({
+        goal,
+        level,
+        state,
+        attack: this.own?.combat.attack ?? null,
+        why,
+        now: Date.now()
+      });
+      this.lessons.push(lesson);
+      this.records?.lesson(lesson);
+    }
+    this.events.changed();
+  }
+
+  /** The player takes a no back: the goal may be on the road and offered again. */
+  restore(key: string): void {
+    const gone = this.road.restore(key);
+    if (gone === null) return;
+    this.log.say('restored', `by the player: ${goalNotice(gone.goal)}`);
+    this.events.changed();
   }
 
   /** The player's *forget*: the lesson learned at `at` is no longer kept or sent. */
@@ -864,8 +925,9 @@ export class KonamiPlanner implements SessionModule {
     }
     this.briefRefused = null;
     if (this.stillSimulating(why, full, now)) return;
+    this.road.learn(this.facts.road(full));
     const fitted = fitRequest(
-      full,
+      withoutDeclined(full, this.road.declined),
       requestSizes({
         maxSpots,
         upgradesPerSlot,

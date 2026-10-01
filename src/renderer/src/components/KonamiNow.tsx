@@ -18,7 +18,11 @@ import {
   outcomeIcon,
   outcomeText,
   outcomeTone,
+  roadAfter,
+  roadStepIcon,
+  roadStepTitle,
   shareText,
+  startsText,
   tookText,
   triggerText
 } from '../lib/konami';
@@ -32,6 +36,8 @@ export interface KonamiNowProps {
   /** Opens a decision on the Decisions face. */
   onOpenDecision(id: string): void;
   onSeeLessons(): void;
+  /** Opens the Road face. */
+  onSeeRoad(): void;
 }
 
 /** How long the plan has run, redrawn on its own clock so the card does not tick. */
@@ -85,7 +91,10 @@ function ConfidenceRing({ p, asking }: { p: number | null; asking: boolean }) {
   );
 }
 
-function KonamiNow({ konami, onChoose, onOpenDecision, onSeeLessons }: KonamiNowProps) {
+/** The goals on the road the Now face shows; the Road face has the rest. */
+const ROAD_PREVIEW = 3;
+
+function KonamiNow({ konami, onChoose, onOpenDecision, onSeeLessons, onSeeRoad }: KonamiNowProps) {
   const plan = konami.plan;
   const current = plan === null ? undefined : konami.decisions[0];
   const sure = current?.options.find((option) => option.chosen)?.p ?? null;
@@ -93,6 +102,10 @@ function KonamiNow({ konami, onChoose, onOpenDecision, onSeeLessons }: KonamiNow
   const applying = konami.lessons.filter((lesson) => lesson.applies);
   const detail = plan === null ? null : goalDetail(plan.goal);
   const running = konami.provider !== null && !konami.paused;
+  const ahead = roadAfter(konami.road?.steps ?? [], plan?.goal ?? null).ahead.slice(
+    0,
+    ROAD_PREVIEW
+  );
   return (
     <div className="scroller konami-now">
       <section
@@ -198,6 +211,35 @@ function KonamiNow({ konami, onChoose, onOpenDecision, onSeeLessons }: KonamiNow
             onChoose={running && current.outcome === 'applied' ? onChoose : undefined}
             options={current.options}
           />
+        </section>
+      )}
+
+      {ahead.length > 0 && (
+        <section className="konami-section">
+          <header className="konami-section-head">
+            <span>{t('cards.konami.road.next')}</span>
+            <button
+              className="quiet konami-link"
+              onClick={onSeeRoad}
+              onMouseDown={keepFocus}
+              type="button"
+            >
+              {t('cards.konami.road.seeAll')}
+            </button>
+          </header>
+          <ol className="progression konami-road-steps compact">
+            {ahead.map((step, index) => (
+              <li data-kind={step.kind} data-progress="left" key={index}>
+                <span className="konami-road-icon">
+                  <Icon name={roadStepIcon(step)} />
+                </span>
+                <div className="konami-road-main">
+                  <span className="step-name">{roadStepTitle(step)}</span>
+                </div>
+                <span className="konami-road-when">{startsText(step.at)}</span>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 

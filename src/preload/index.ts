@@ -111,6 +111,8 @@ const api: IpcApi = {
   konamiVeto: (session) => ipcRenderer.invoke(Invoke.konamiVeto, session),
   konamiChoose: (session, goal) => ipcRenderer.invoke(Invoke.konamiChoose, session, goal),
   konamiForget: (session, at) => ipcRenderer.invoke(Invoke.konamiForget, session, at),
+  konamiDecline: (session, key, bad) => ipcRenderer.invoke(Invoke.konamiDecline, session, key, bad),
+  konamiRestore: (session, key) => ipcRenderer.invoke(Invoke.konamiRestore, session, key),
   konamiReveal: (session, at) => ipcRenderer.invoke(Invoke.konamiReveal, session, at),
 
   listSessions: () => ipcRenderer.invoke(Invoke.listSessions),

@@ -7,6 +7,7 @@ import type { BriefSpot, KonamiBrief } from './konamiBrief';
 import type { HuntWait } from './hunting';
 import type { HistoryEntry } from './konamiHistory';
 import { goalKey, type KonamiLesson } from './konamiLessons';
+import type { KonamiRoadView, RoadMark } from './konamiRoad';
 
 /**
  * What became of a decision. `applied` until one of the others lands;
@@ -78,6 +79,10 @@ export interface KonamiRecords {
   lessons(): KonamiLesson[];
   /** Writes the lessons file over with these, for a lesson the player forgot. */
   rewriteLessons(rows: readonly KonamiLesson[]): void;
+  /** The goals the player declined or marked bad on the road, oldest first. */
+  roadMarks(): RoadMark[];
+  /** Writes the road's marks over with these. */
+  rewriteRoadMarks(rows: readonly RoadMark[]): void;
   /** Appends one thing the character did to the history. */
   historyLine(entry: HistoryEntry): void;
   /** The whole history on record for this character, oldest first. */
@@ -222,6 +227,8 @@ export interface KonamiSnapshot {
   activity: KonamiActivity | null;
   /** What the character has done, newest first, at most `tuning.konami.historyShown`. */
   history: HistoryEntry[];
+  /** The road ahead and what the player said about it; null before there is either. */
+  road: KonamiRoadView | null;
   /** Lessons on record, newest first, at most `tuning.konami.lessonsShown`. */
   lessons: KonamiLessonRow[];
   /** Every lesson on record, shown or not. */
@@ -246,6 +253,7 @@ export const EMPTY_KONAMI: KonamiSnapshot = {
   expSince: null,
   activity: null,
   history: [],
+  road: null,
   lessons: [],
   lessonsKept: 0,
   level: null,

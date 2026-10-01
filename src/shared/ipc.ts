@@ -739,6 +739,10 @@ export const Invoke = {
   konamiChoose: 'automation:konami-choose',
   /** The Konami card's *forget* on a lesson, by the moment it was learned. */
   konamiForget: 'automation:konami-forget',
+  /** The road's *not this* or *bad*: a goal, by `goalKey`, never offered again (todo 68). */
+  konamiDecline: 'automation:konami-decline',
+  /** The road's *restore*: a goal declined, by `goalKey`, offered again. */
+  konamiRestore: 'automation:konami-restore',
   /** Opens this run's log (null) or an incident's folder (its moment) in the file manager. */
   konamiReveal: 'automation:konami-reveal',
 
@@ -1288,6 +1292,9 @@ export interface IpcApi {
   konamiVeto(session: SessionId): Promise<void>;
   konamiChoose(session: SessionId, goal: string): Promise<void>;
   konamiForget(session: SessionId, at: number): Promise<void>;
+  /** `bad` also sends it as a lesson. See `Invoke.konamiDecline`. */
+  konamiDecline(session: SessionId, key: string, bad: boolean): Promise<void>;
+  konamiRestore(session: SessionId, key: string): Promise<void>;
   /** Null where there is nothing to open. See `Invoke.konamiReveal`. */
   konamiReveal(session: SessionId, at: number | null): Promise<Revealed | null>;
 

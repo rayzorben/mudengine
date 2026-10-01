@@ -30,6 +30,7 @@ import {
   type SlotUpgrade
 } from '../../shared/konamiBrief';
 import type { KonamiLesson } from '../../shared/konamiLessons';
+import type { RoadFacts } from '../../shared/konamiRoad';
 import { REALM_ARMOUR_SCALE, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { fightable } from '../../shared/mobs';
 import type { Odds } from '../../shared/survival';
@@ -82,8 +83,85 @@ export interface BriefingParts {
   menacePlayer(state: CharacterState): MenacePlayer;
   /** The monsters this character ran from (`Belongings.recallFled`). */
   fled(): readonly FledEntry[];
-  /** What the cheapest trainer that takes this level charges, or null where none does. */
-  trainCost(): number | null;
+  /** What the trainer that takes a level charges for it, or null where none does. */
+  trainCostAt(level: number): number | null;
+}
+
+/**
+ * The better gear per slot and where it is sold, for this character as it
+ * stands or (the road) at a later level: what is worn now is what it betters.
+ */
+function upgradesAt(
+  parts: BriefingParts,
+  world: BriefingWorld,
+  here: RoomId,
+  state: CharacterState,
+  perSlot: number
+): SlotUpgrade[] {
+  const { combat, magery, family } = parts.realmClass();
+  const traveller = parts.traveller(state);
+  return gearUpgrades(
+    state,
+    {
+      itemsWornIn: (worn) => world.itemsWornIn(worn),
+      stockingPlaces: (items) => world.stockingPlaces(items, here, null, traveller),
+      priceAt: (name, at) => parts.priceAt(name, at)
+    },
+    {
+      wearer: wearerOf(state, world),
+      sheet: prowessSheetOf(state, { combat, magery }),
+      family,
+      attack: parts.config().combat.attack
+    },
+    perSlot
+  );
+}
+
+/**
+ * What the road ahead is projected from (todo 68): the experience each level
+ * needs as far as the table goes, what training from each costs, the gear
+ * wearable up to its last level, and the grounds the brief offered as safe.
+ * Null where the character is unplaced or the table unread.
+ */
+export function konamiRoadFacts(
+  parts: BriefingParts,
+  state: CharacterState,
+  brief: KonamiBrief
+): RoadFacts | null {
+  const world = parts.world;
+  const { map, number } = state.room;
+  const level = state.progress.level;
+  const rows = state.progress.expTable?.rows ?? [];
+  if (world === undefined || map === null || number === null || level === null) return null;
+  const thresholds = rows
+    .filter((row) => row.level > level)
+    .map((row) => ({ level: row.level, exp: row.experience }));
+  const last = thresholds.at(-1)?.level;
+  if (last === undefined) return null;
+  const trainCosts: Array<{ level: number; copper: number }> = [];
+  for (let at = level; at < last; at += 1) {
+    const copper = parts.trainCostAt(at);
+    if (copper !== null) trainCosts.push({ level: at, copper });
+  }
+  // Wearable by the road's last level; each offer says from which.
+  const ahead = { ...state, progress: { ...state.progress, level: last } };
+  return {
+    thresholds,
+    trainCosts,
+    gear: upgradesAt(parts, world, roomId(map, number), ahead, tuning().konami.roadOffersPerSlot),
+    grounds: brief.hunting.spots.flatMap((spot) =>
+      spot.exp.perHour === null
+        ? []
+        : [
+            {
+              key: spot.key,
+              name: spot.name,
+              expPerHour: spot.exp.perHour,
+              copperPerHour: spot.cash.perHour
+            }
+          ]
+    )
+  };
 }
 
 /** `Abil` ids that make a lasting spell something other than a blessing. */
@@ -290,17 +368,7 @@ export function konamiBrief(
 
   const { combat, magery, family } = parts.realmClass();
   const sheet = prowessSheetOf(state, { combat, magery });
-  const traveller = parts.traveller(state);
-  const gear = gearUpgrades(
-    state,
-    {
-      itemsWornIn: (worn) => world.itemsWornIn(worn),
-      stockingPlaces: (items) => world.stockingPlaces(items, here, null, traveller),
-      priceAt: (name, at) => parts.priceAt(name, at)
-    },
-    { wearer: wearerOf(state, world), sheet, family, attack: config.combat.attack },
-    tuning().konami.upgradesPerSlot
-  );
+  const gear = upgradesAt(parts, world, here, state, tuning().konami.upgradesPerSlot);
 
   const maxSpots = tuning().konami.maxSpots;
   // Each spot's walk and fight once: the offer, the gear's effect and the brief all read them.
@@ -341,7 +409,7 @@ export function konamiBrief(
     settings: settingsOf(config),
     maxSpots,
     lessons,
-    trainCost: parts.trainCost(),
+    trainCost: state.progress.level === null ? null : parts.trainCostAt(state.progress.level),
     fled: parts.fled().filter(
       (entry) =>
         avoided([entry], entry.name, state.progress.level, {
