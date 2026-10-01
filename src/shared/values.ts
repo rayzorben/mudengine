@@ -100,3 +100,10 @@ export function figure(value: string | undefined): number | null {
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** `HH:MM:SS.mmm` in local time: a line of a log read against the moment it happened. */
+export function timeOfDay(at: number): string {
+  const d = new Date(at);
+  const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+}

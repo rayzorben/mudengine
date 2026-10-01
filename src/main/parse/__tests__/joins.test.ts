@@ -7,7 +7,7 @@ import {
   type RoomOccupant
 } from '../../../shared/character';
 import type { EntitySource, MobEntity } from '../../../shared/entities';
-import { withPackRows, withSight, withSpans, withTargetEntity } from '../joins';
+import { withJoinedItems, withPackRows, withSight, withSpans, withTargetEntity } from '../joins';
 
 /*
  * What the commit point's joins hand back when nothing they state moved
@@ -108,5 +108,37 @@ describe('what the joins hand back', () => {
     expect(withTargetEntity(soul, built('mdb')).combat.targetEntity).toBeNull();
     expect(asked).toEqual(['giant rat', 'giant rat']);
     expect(withTargetEntity(rat, undefined)).toBe(rat);
+  });
+});
+
+describe('an item gained between listings', () => {
+  const world = {
+    buildItemEntity: (name: string, observed: { equipped?: boolean; slot?: string | null } = {}) =>
+      ({
+        name,
+        source: name === 'quarterstaff' ? 'hybrid' : 'wire',
+        slot: observed.slot ?? null,
+        equipped: observed.equipped ?? false,
+        charges: null,
+        ...(name === 'quarterstaff'
+          ? { kind: 'weapon', weapon: { min: 2, max: 8, speed: 1100 } }
+          : {})
+      }) as CarriedItem
+  };
+  const wire = (name: string, equipped = false): CarriedItem =>
+    ({ name, source: 'wire', slot: null, equipped, charges: null }) as CarriedItem;
+
+  it('carries the realm row once the realm names it, keeping what the wire said', () => {
+    const joined = withJoinedItems(character(null, wire('quarterstaff', true)), world);
+    const [staff] = joined.inventory.items;
+    expect(staff?.source).toBe('hybrid');
+    expect(staff?.weapon).toEqual({ min: 2, max: 8, speed: 1100 });
+    expect(staff?.equipped).toBe(true);
+  });
+
+  it('hands back the same state when the realm names nothing new', () => {
+    const s = character(null, wire('pebble'));
+    expect(withJoinedItems(s, world)).toBe(s);
+    expect(withJoinedItems(s, undefined)).toBe(s);
   });
 });

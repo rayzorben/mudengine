@@ -163,6 +163,11 @@ const MAGIC_RES_PIVOT = 50;
 const RESISTED_BY_ANYONE = 2;
 /** MME's `IsSpellResisted` clamps the resistance it halves at 196. */
 const RESIST_ROLL_CEILING = 196;
+/**
+ * The realm's rows state armour class and damage resistance at ten times the
+ * sheet's figure: an item's `ac: 10` is one point of armour class on `st`.
+ */
+export const REALM_ARMOUR_SCALE = 10;
 /** MME's `GMUD_HIT_MIN` and `GMUD_HIT_CAP`: no blow is ever certain to miss. */
 const HIT_FLOOR = 2;
 const HIT_CEILING = 100;
