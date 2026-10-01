@@ -67,7 +67,8 @@ describe('a verdict is both halves or it is honest about the missing one', () =>
 
   it('answers no cost when only one half is known', () => {
     // Half a product is not an estimate of it.
-    const noRounds = verdictFor(menace(8, 120), {}, SHEET, null, 'greatermud');
+    // No swing arithmetic on this lineage, so no rounds.
+    const noRounds = verdictFor(menace(8, 120), {}, SHEET, SWORD, 'majormud');
     expect(noRounds.rounds).toBeNull();
     expect(noRounds.cost).toBeNull();
     expect(noRounds.menace).not.toBeNull();

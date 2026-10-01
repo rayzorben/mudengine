@@ -25,15 +25,24 @@ import {
   wantsMore,
   TRAINED_ATTRIBUTES,
   type Purchase,
+  type StatGain,
   type StatLimits,
-  type TrainedAttribute,
-  type TrainingPlan
+  type TrainedAttribute
 } from '../../shared/training';
 import type { SessionModule } from './Module';
 
 export interface StatScreenPlanner {
   /** Whether the room the character stands in is a trainer's. */
   atTrainer(): boolean;
+  /**
+   * The figures to aim at where points go where they raise the exp rate most
+   * (`train.pick: exp`, todo 83), and the stat chosen with what it was worth.
+   */
+  byExp(
+    state: CharacterState,
+    current: Record<TrainedAttribute, number>,
+    limits: Record<TrainedAttribute, StatLimits>
+  ): { wanted: Record<TrainedAttribute, number>; chose: StatGain | null };
   /** Bytes straight to the wire, past the held queue: the one exemption. */
   write(bytes: string): void;
 }
@@ -225,6 +234,8 @@ export class StatScreen implements SessionModule {
   private proposed = false;
   /** The last situation acted on or declined, so one situation is one attempt and one sentence. */
   private handled: string | null = null;
+  /** The figures this visit aims at: `train.wanted`, or what `byExp` chose for it. */
+  private aimed: Record<TrainedAttribute, number> | null = null;
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -245,6 +256,7 @@ export class StatScreen implements SessionModule {
     this.phase = { kind: 'idle' };
     this.proposed = false;
     this.handled = null;
+    this.aimed = null;
   }
 
   dispose(): void {
@@ -285,30 +297,64 @@ export class StatScreen implements SessionModule {
 
     const current: Partial<Record<TrainedAttribute, number | null>> = {};
     for (const attribute of TRAINED_ATTRIBUTES) current[attribute] = state.progress[attribute];
-    const key = [
-      cp,
-      state.room.map,
-      state.room.number,
-      ...TRAINED_ATTRIBUTES.map(
-        (attribute) => `${current[attribute] ?? '?'}>${this.config.wanted[attribute]}`
-      )
-    ].join('|');
+    /*
+     * Weighed once a level at a trainer: the weighing is seven surveys, and
+     * the points it leaves unspent stay unspent until the next level gives
+     * more to weigh.
+     */
+    const byExp = this.config.pick === 'exp';
+    const key = byExp
+      ? ['exp', state.progress.level, state.room.map, state.room.number].join('|')
+      : [
+          cp,
+          state.room.map,
+          state.room.number,
+          ...TRAINED_ATTRIBUTES.map(
+            (attribute) => `${current[attribute] ?? '?'}>${this.config.wanted[attribute]}`
+          )
+        ].join('|');
     if (this.handled === key) return;
     this.handled = key;
 
-    if (!wantsMore(this.config.wanted, current)) {
+    const sheet = this.sheetOf(state);
+    if (byExp) {
+      // The race's spans price every stat; without them nothing can be weighed.
+      if (sheet === null) {
+        this.events.notice?.(t('automation.train.byExpUnread', { cp }));
+        this.decide(false, t('automation.train.whyByExpUnread'), cp);
+        return;
+      }
+      const { wanted, chose } = this.planner.byExp(state, sheet.current, sheet.limits);
+      this.aimed = wanted;
+      if (chose === null) {
+        this.events.notice?.(t('automation.train.byExpNothing', { cp }));
+        this.decide(false, t('automation.train.whyByExpNothing'), cp);
+        return;
+      }
       this.events.notice?.(
-        t('automation.train.nothingWanted', { cp, figures: this.figures(current) })
+        t('automation.train.byExpChose', {
+          attribute: attributeWord(chose.attribute),
+          points: chose.points,
+          cost: chose.cost,
+          gain: Math.round(chose.gain ?? 0).toLocaleString()
+        })
       );
-      this.decide(false, t('automation.train.whyNothingWanted'), cp);
-      return;
+    } else {
+      this.aimed = this.config.wanted;
+      if (!wantsMore(this.config.wanted, current)) {
+        this.events.notice?.(
+          t('automation.train.nothingWanted', { cp, figures: this.figures(current) })
+        );
+        this.decide(false, t('automation.train.whyNothingWanted'), cp);
+        return;
+      }
     }
     /*
      * Priced from the sheet where the realm's race spans allow, so a screen
      * that would be opened only to be left is not opened. The screen's own
      * figures are the ones bought on; this is a forecast.
      */
-    const forecast = this.forecast(state, cp);
+    const forecast = sheet === null ? null : planTraining({ ...sheet, wanted: this.aimed, cp });
     if (forecast !== null && forecast.purchases.length === 0) {
       const dearest = forecast.unaffordable[0];
       if (dearest) {
@@ -416,7 +462,7 @@ export class StatScreen implements SessionModule {
     }
     const plan = planTraining({
       current: reading.current,
-      wanted: this.config.wanted,
+      wanted: this.aimed ?? this.config.wanted,
       limits: reading.limits,
       cp: reading.cp
     });
@@ -642,7 +688,11 @@ export class StatScreen implements SessionModule {
     });
   }
 
-  private forecast(state: CharacterState, cp: number): TrainingPlan | null {
+  /** The sheet's six figures and the race's spans for each, or null while any is unread. */
+  private sheetOf(state: CharacterState): {
+    current: Record<TrainedAttribute, number>;
+    limits: Record<TrainedAttribute, StatLimits>;
+  } | null {
     const spans = state.attributeSpans;
     if (spans === null) return null;
     const current = {} as Record<TrainedAttribute, number>;
@@ -654,7 +704,7 @@ export class StatScreen implements SessionModule {
       current[attribute] = figure;
       limits[attribute] = { base: span[0], max: span[1] };
     }
-    return planTraining({ current, wanted: this.config.wanted, limits, cp });
+    return { current, limits };
   }
 
   private figures(current: Partial<Record<TrainedAttribute, number | null>>): string {

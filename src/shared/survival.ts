@@ -25,6 +25,7 @@ import {
 import {
   MAX_SWINGS,
   swing,
+  type ProwessAttack,
   type ProwessSheet,
   type ProwessWeapon,
   type Reckoning
@@ -65,6 +66,8 @@ export interface SurvivalInput {
   player: MenacePlayer;
   sheet: ProwessSheet;
   weapon: ProwessWeapon | null;
+  /** The attack typed (`combat.attack`); the plain one where absent. */
+  attack?: ProwessAttack;
   family: RealmFamily | null;
   weights: MenaceWeights;
   /**
@@ -177,7 +180,14 @@ export function simulateFight(input: SurvivalInput): Survival | null {
   const subjects = foes.map((foe) => foe.subject);
   const ranked = weighRoom(subjects, input.player, input.weights);
   const verdicts = subjects.map((subject, index) =>
-    verdictFor(ranked[index] ?? null, targetOf(subject), input.sheet, input.weapon, input.family)
+    verdictFor(
+      ranked[index] ?? null,
+      targetOf(subject),
+      input.sheet,
+      input.weapon,
+      input.family,
+      input.attack
+    )
   );
   const order = guardsFirst(
     rankByVerdict(verdicts),
@@ -196,7 +206,8 @@ export function simulateFight(input: SurvivalInput): Survival | null {
         dodge: target.dodge ?? null,
         health: subject.hp ?? null
       },
-      input.family
+      input.family,
+      input.attack
     );
     return {
       hp: subject.hp !== undefined && subject.hp > 0 ? subject.hp : 1,
@@ -221,11 +232,6 @@ export function simulateFight(input: SurvivalInput): Survival | null {
     .sort((a, b) => a - b);
   const reads = horizons.map(() => ({ standing: 0, won: 0, lost: [] as number[] }));
   const count = input.draw === undefined ? null : Math.max(1, Math.trunc(input.draw));
-  // The sheet's own range where `stat all` still states it: `prowess.swing`'s rule.
-  const stated = input.sheet.stated?.damage;
-  const weaponLow = stated?.min ?? input.weapon?.min;
-  const weaponHigh = stated?.max ?? input.weapon?.max;
-
   let survived = 0;
   let roundsTotal = 0;
   let healsTotal = 0;
@@ -346,10 +352,17 @@ export function simulateFight(input: SurvivalInput): Survival | null {
         let dealt = 0;
         for (let n = 0; n < swings; n += 1) {
           if (random() >= side.attack.lands.value) continue;
-          dealt +=
-            weaponLow !== undefined && weaponHigh !== undefined
-              ? Math.max(0, between(random, weaponLow, weaponHigh) - side.resist)
-              : side.attack.damage.value;
+          // The blow's own range, as `prowess.swing` reads it, and a critical `rand(2 × max, 4 × max)`.
+          const range = side.attack.range;
+          if (range === null) {
+            dealt += side.attack.damage.value;
+            continue;
+          }
+          const critical = random() < (side.attack.crit?.value ?? 0);
+          const rolled = critical
+            ? between(random, 2 * range.high, 4 * range.high)
+            : between(random, range.low, range.high);
+          dealt += Math.max(0, rolled - side.resist);
         }
         return dealt;
       }

@@ -66,7 +66,7 @@ export class FightSetup {
     if (hpMax === null || hpMax <= 0) return null;
     const health = at === 'rested' ? hpMax : hp;
     if (health === null) return null;
-    const { combat, magery, family } = this.errands.realmClass();
+    const { combat, magery, family, attack } = this.errands.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery });
     const regen = regeneration(sheet, null, family);
     const roundCap = tuning().menace.survivalRoundCap;
@@ -78,6 +78,7 @@ export class FightSetup {
       player: this.errands.menacePlayer(state),
       sheet,
       weapon: wieldedWeapon(state.inventory.items),
+      attack,
       family,
       weights: tuning().menace,
       heal: this.heal(state, at === 'rested' ? manaMax : mana),
@@ -126,8 +127,9 @@ export class FightSetup {
    * fight's odds move with that the sheet does not show.
    */
   settingsKey(state: CharacterState): string {
-    const { spells } = this.session.config();
+    const { spells, combat } = this.session.config();
     return [
+      combat.attack,
       spells.heal,
       spells.healTo,
       spells.minMana,

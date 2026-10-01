@@ -357,23 +357,231 @@ export function roundDamage(
   method: SwingMethod,
   family: RealmFamily | null
 ): Reckoning<number> | null {
-  const perSwing = energyPerSwing(sheet, weapon, family);
-  if (perSwing === null || weapon.max < weapon.min) return null;
-  const how = METHOD[method];
-  const low = Math.floor(weapon.min * how.preRoll);
-  const high = Math.floor(weapon.max * how.preRoll);
-  const blows = Math.min(MAX_SWINGS, swingsFor(how.energy(perSwing.value)));
-  return { value: (blows * (low + high) * how.multiplier) / 2, from: 'bound' };
+  return roundOf(blowOf(sheet, weapon, { kind: method, bonus: 0 }, family));
+}
+
+/**
+ * The three martial-arts attacks, by the server's `CombatRound` classes. None
+ * swings a weapon: the range comes from the character's level.
+ */
+export const MARTIAL_ATTACKS = ['punch', 'kick', 'jumpkick'] as const;
+
+export type MartialAttack = (typeof MARTIAL_ATTACKS)[number];
+
+/**
+ * `AttackTypes/{Punch,Kick,Jumpkick}CombatRound.cs`: the range below level 20
+ * and from 20 on, the round's speed in the server's weapon units, and the
+ * damage multiplier (the same at both ends, so rolled as one figure).
+ */
+const MARTIAL: Readonly<
+  Record<
+    MartialAttack,
+    {
+      low(level: number): number;
+      high(level: number): number;
+      speed: number;
+      multiplier: number;
+    }
+  >
+> = {
+  punch: {
+    low: (level) => (level < 20 ? Math.trunc(level / 8) + 2 : Math.max(5, Math.trunc(level / 6))),
+    high: (level) =>
+      level < 20 ? Math.trunc((level + 3) / 4) + 6 : Math.max(12, Math.trunc(level / 4)),
+    speed: 1150,
+    multiplier: 1
+  },
+  kick: {
+    low: (level) => (level < 20 ? Math.trunc(level / 8) + 2 : Math.max(5, Math.trunc(level / 6))),
+    high: (level) => (level < 20 ? Math.trunc(level / 5) + 7 : Math.max(10, Math.trunc(level / 4))),
+    speed: 1400,
+    multiplier: 1.33
+  },
+  jumpkick: {
+    low: (level) => (level < 20 ? Math.trunc(level / 8) + 2 : Math.max(5, Math.trunc(level / 6))),
+    high: (level) => (level < 20 ? Math.trunc(level / 6) + 7 : Math.max(10, Math.trunc(level / 4))),
+    // `GreaterMUD.Module`'s `JumpkickCombatRound.Speed`: 2900 ("was 1900, then 3000").
+    speed: 2900,
+    multiplier: 1.66
+  }
+};
+
+/**
+ * What a martial-arts round does, before the target's armour, its dodge and a
+ * miss: the level's range plus the attack's own damage ability
+ * (`PunchDmg`/`KickDmg`/`JumpKDmg`, summed off the class and race rows by the
+ * caller) and strength's bonus, times the blows the round's speed buys and
+ * the multiplier. A `bound`, as `roundDamage` is.
+ */
+export function martialRoundDamage(
+  sheet: ProwessSheet,
+  attack: MartialAttack,
+  bonus: number,
+  family: RealmFamily | null
+): Reckoning<number> | null {
+  return roundOf(blowOf(sheet, null, { kind: attack, bonus }, family));
+}
+
+/** Every attack a character can make: a weapon swung one of three ways, or a martial one. */
+export type AttackKind = SwingMethod | MartialAttack;
+
+/**
+ * The attack a fight is fought with (`combat.attack`), and a martial attack's
+ * own damage ability (`PunchDmg`/`KickDmg`/`JumpKDmg`), summed by the caller.
+ */
+export interface ProwessAttack {
+  kind: AttackKind;
+  bonus: number;
+}
+
+/** `a`: the weapon in hand, or the bare hand, swung plainly. */
+export const PLAIN_ATTACK: ProwessAttack = { kind: 'attack', bonus: 0 };
+
+/**
+ * The bare hand's range and speed (`PlayerAttackType.Min`/`Max`/`Speed` with
+ * no weapon equipped): 1–3 at 1200.
+ */
+export const BARE_HAND: ProwessWeapon = { min: 1, max: 3, speed: 1200 };
+
+/** Whether an attack is one of the three martial ones, which swing no weapon. */
+export function isMartial(kind: AttackKind): kind is MartialAttack {
+  return (MARTIAL_ATTACKS as readonly string[]).includes(kind);
+}
+
+/** One blow of an attack: its range after the pre-roll, its multiplier, and the blows a round buys. */
+interface Blow {
+  low: number;
+  high: number;
+  multiplier: number;
+  blows: number;
+  from: Provenance;
+}
+
+/**
+ * What a blow of this attack is, from the weapon in hand (the bare hand
+ * without one) or, for a martial attack, the level's own range.
+ */
+function blowOf(
+  sheet: ProwessSheet,
+  weapon: ProwessWeapon | null,
+  attack: ProwessAttack,
+  family: RealmFamily | null
+): Blow | null {
+  const strong = strengthBonus(sheet.strength);
+  if (isMartial(attack.kind)) {
+    const level = sheet.level;
+    if (level === null) return null;
+    const how = MARTIAL[attack.kind];
+    const low = how.low(level) + attack.bonus + strong.low;
+    const high = how.high(level) + attack.bonus + strong.high;
+    const perSwing = energyPerSwing(sheet, { min: low, max: high, speed: how.speed }, family);
+    if (perSwing === null || high < low) return null;
+    const blows = Math.min(MAX_SWINGS, swingsFor(perSwing.value));
+    return { low, high, multiplier: how.multiplier, blows, from: perSwing.from };
+  }
+  const held = weapon ?? BARE_HAND;
+  const perSwing = energyPerSwing(sheet, held, family);
+  if (perSwing === null || held.max < held.min) return null;
+  const how = METHOD[attack.kind];
+  return {
+    low: Math.floor((held.min + strong.low) * how.preRoll),
+    high: Math.floor((held.max + strong.high) * how.preRoll),
+    multiplier: how.multiplier,
+    blows: Math.min(MAX_SWINGS, swingsFor(how.energy(perSwing.value))),
+    from: perSwing.from
+  };
+}
+
+/**
+ * `Player.MinDamage` and `MaxDamage`: strength's bonus to the low end above
+ * 100 and to the high end above 50, a point each ten, on every attack. An
+ * unread strength adds nothing, and the `MaxDamage` gear and spells may add
+ * is not seen, so a figure carrying it is a floor.
+ */
+function strengthBonus(strength: number | null): { low: number; high: number } {
+  if (strength === null) return { low: 0, high: 0 };
+  return {
+    low: Math.max(0, Math.trunc((strength - 100) / 10)),
+    high: Math.max(0, Math.trunc((strength - 50) / 10))
+  };
+}
+
+/**
+ * What each attack adds to the accuracy it rolls with
+ * (`PlayerAttackType.AttackTypeAccMod`, overridden per `CombatRound`).
+ */
+const ACCURACY_MOD: Readonly<Record<AttackKind, number>> = {
+  attack: 0,
+  bash: -15,
+  smash: -25,
+  punch: 0,
+  kick: -10,
+  jumpkick: -15
+};
+
+/** The attacks a blow of which can be critical (`PlayerAttackType.CrittableAttacks`). */
+const CRITTABLE: ReadonlySet<AttackKind> = new Set(['attack', 'punch', 'kick', 'jumpkick']);
+
+/** `GMUDServer.CRIT_MAX`: no attack crits more often than this, in per cent. */
+const CRIT_MAX = 65;
+
+/**
+ * The chance a landed blow is critical, 0–0.65 (`PlayerAttackType.GetCrits`):
+ * `Player.CritsFromStats` (a point per ten levels, per ten intellect over 50,
+ * per twenty agility over 50 and per thirty charm over 50, at least 1), and
+ * seven less the class's combat level for a class that fights poorly. None
+ * for a bash or a smash. A `bound`: the crits gear and spells add and the
+ * quick-and-deadly bonus are not seen.
+ */
+export function critChance(
+  sheet: ProwessSheet,
+  attack: AttackKind,
+  family: RealmFamily | null
+): Reckoning<number> | null {
+  if (family !== 'greatermud') return null;
+  if (!CRITTABLE.has(attack)) return { value: 0, from: 'source' };
+  const held = need(sheet.level, sheet.intellect, sheet.agility, sheet.charm, sheet.combatLevel);
+  if (held === null) return null;
+  const [level, intellect, agility, charm, combat] = held as [
+    number,
+    number,
+    number,
+    number,
+    number
+  ];
+  const fromStats = Math.max(
+    1,
+    Math.trunc(level / 10) +
+      Math.trunc((intellect - 50) / 10) +
+      Math.trunc((agility - 50) / 20) +
+      Math.trunc((charm - 50) / 30)
+  );
+  const crits = fromStats + Math.max(0, 7 - combat);
+  return { value: Math.min(CRIT_MAX, Math.max(0, crits)) / 100, from: 'bound' };
+}
+
+/**
+ * A round of blows before the target's armour, dodge and a miss. A `bound`:
+ * a critical is left out, the same for every attack, so two attacks compare
+ * like with like.
+ */
+function roundOf(blow: Blow | null): Reckoning<number> | null {
+  if (blow === null) return null;
+  return { value: (blow.blows * (blow.low + blow.high) * blow.multiplier) / 2, from: 'bound' };
 }
 
 /** What a swing is expected to do to one target, and how long the target lasts. */
 export interface Swing {
   /** Chance one blow lands, 0–1: the hit roll less what dodge turns away. */
   lands: Reckoning<number>;
-  /** Mean damage of a blow that lands, after the target's damage resistance. */
+  /** Mean damage of a blow that lands, a critical's share counted, after the target's damage resistance. */
   damage: Reckoning<number>;
-  /** Blows a round buys, from `swingsPerRound`. Null when no weapon is known. */
+  /** Blows a round buys, from `swingsPerRound`. Null when the round cannot be worked out. */
   swings: Reckoning<number> | null;
+  /** The chance a landed blow is critical, already in `damage` (`critChance`). */
+  crit: Reckoning<number> | null;
+  /** A blow's range before the target's resistance, the multiplier applied; null where unknown. */
+  range: { low: number; high: number } | null;
   /**
    * Rounds to take the target's health down, or `null` when the target's
    * health is not known or nothing gets through its resistance.
@@ -412,35 +620,48 @@ export function swing(
   sheet: ProwessSheet,
   weapon: ProwessWeapon | null,
   target: ProwessTarget,
-  family: RealmFamily | null
+  family: RealmFamily | null,
+  attack: ProwessAttack = PLAIN_ATTACK
 ): Swing | null {
   // The hit roll below is GreaterMUD's, whoever stated the accuracy.
   if (family !== 'greatermud') return null;
   const acc = accuracy(sheet, weapon, family);
   if (acc === null) return null;
+  // The roll is made at the accuracy the attack itself moves (`fixedAcc`).
+  const aim = acc.value + ACCURACY_MOD[attack.kind];
 
-  const hit = hitChance(acc.value, target.armourClass);
-  const dodged = dodgedFraction(target.dodge, acc.value);
+  const hit = hitChance(aim, target.armourClass);
+  const dodged = dodgedFraction(target.dodge, aim);
   const lands = Math.max(0, hit * (1 - dodged));
+
+  /*
+   * What `stat all` printed holds for the plain attack only: the sheet's own
+   * range and blows, with every damage modifier applied and one for a bare
+   * hand. Any other attack, and a plain one the sheet has not stated, is the
+   * blow its own `CombatRound` makes: the weapon's range, else the bare
+   * hand's 1–3, else a martial attack's level range (2026-10-01: a Mystic who
+   * lost the staff kicked for 28 a round while every spot read unpriced).
+   */
+  const stated = attack.kind === 'attack' ? sheet.stated?.damage : undefined;
+  const blow = stated === undefined ? blowOf(sheet, weapon, attack, family) : null;
+  const low = stated?.min ?? (blow === null ? null : Math.floor(blow.low * blow.multiplier));
+  const high = stated?.max ?? (blow === null ? null : Math.floor(blow.high * blow.multiplier));
+  // The plain attack's blows are the sheet's where it printed them.
+  const swings: Reckoning<number> | null =
+    attack.kind === 'attack'
+      ? swingsPerRound(sheet, weapon ?? BARE_HAND, family)
+      : blow === null
+        ? null
+        : { value: blow.blows, from: blow.from };
 
   /*
    * `damage = rand(min, max) - DR / 10`, and a blow reduced to nothing is a
    * blow that did not land — the same reading `menace.expectedBlow` takes of
-   * the same line, from the other side. An unarmed character has no range the
-   * realm can state, so damage is `null` rather than zero: martial arts is on
-   * the sheet and its conversion to a range is not in hand.
+   * the same line, from the other side.
    */
-  /*
-   * The sheet's own range where it holds — the server's, with every damage
-   * modifier applied (`PreRollMinModifier`, `DamageMultiplierMin`) and one for
-   * a bare hand, which the realm's item row cannot give.
-   */
-  const stated = sheet.stated?.damage;
-  const low = stated?.min ?? weapon?.min;
-  const high = stated?.max ?? weapon?.max;
   const resist = Math.max(0, Math.trunc(target.damageResist ?? 0));
   let mean: number | null = null;
-  if (low !== undefined && high !== undefined && high >= low) {
+  if (low !== null && high !== null && high >= low) {
     const first = Math.max(low, resist + 1);
     if (first <= high) {
       const count = high - first + 1;
@@ -451,7 +672,16 @@ export function swing(
     }
   }
 
-  const swings = swingsPerRound(sheet, weapon, family);
+  /*
+   * A critical blow is `rand(2 × max, 4 × max)`, three times the top of the
+   * range on average, before the multiplier and the target's resistance.
+   */
+  const crit = critChance(sheet, attack.kind, family);
+  if (mean !== null && high !== null && crit !== null && crit.value > 0) {
+    const critical = Math.max(0, 3 * high - resist);
+    mean = (1 - crit.value) * mean + crit.value * critical;
+  }
+
   let rounds: Reckoning<number> | null = null;
   if (mean !== null && mean > 0 && target.health !== null && target.health > 0) {
     const perRound = lands * mean * Math.min(MAX_SWINGS, swings?.value ?? 1);
@@ -465,6 +695,8 @@ export function swing(
       from: mean === null ? 'bound' : stated !== undefined ? 'stated' : 'source'
     },
     swings,
+    crit,
+    range: low !== null && high !== null && high >= low ? { low, high } : null,
     rounds
   };
 }

@@ -1177,7 +1177,7 @@ export class SessionManager {
       this.queue,
       {
         here: () => roomAddress(this.tracker.current.room),
-        trainers: () => this.errands.trainers(),
+        trainers: (level) => this.errands.trainers(level),
         routeTo: (room) => this.errands.planFromHere(room),
         walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
         moveInFlight: () => this.tracker.pendingMoves > 0,
@@ -1324,9 +1324,8 @@ export class SessionManager {
      * And the character points, on the one screen the queue stands down for.
      * The driver is handed a write past the queue because the hold refuses
      * every intent while the form is up, and the form is what it is typing
-     * into; its keystrokes are reported as the arbiter's are, so the capture
-     * shows them. Whether the room is a trainer's is the resolved room's own
-     * shop, as the bank's is below.
+     * into; its keystrokes are reported as the arbiter's are. Whether the room
+     * is a trainer's is the resolved room's own shop, as the bank's is below.
      */
     this.statScreen = new StatScreen(
       automation.train,
@@ -1339,6 +1338,7 @@ export class SessionManager {
           if (!room || room.shop === undefined) return false;
           return this.world?.shop(room.shop)?.kind === 'trainer';
         },
+        byExp: (state, current, limits) => this.errands.statsByExp(state, current, limits),
         write: (bytes) => {
           this.client.send(bytes);
           this.sink.command?.(bytes.replace(/\r?\n$/, ''), 'automation');

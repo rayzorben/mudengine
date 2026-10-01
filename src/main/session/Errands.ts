@@ -63,7 +63,15 @@ import type { Odds } from '../../shared/survival';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { attacksOnSight, fightable } from '../../shared/mobs';
-import { dodge, regeneration, swing, type ProwessSheet } from '../../shared/prowess';
+import {
+  dodge,
+  regeneration,
+  swing,
+  type ProwessAttack,
+  type ProwessSheet
+} from '../../shared/prowess';
+import { attackFor } from '../../shared/attackOptions';
+import { chooseByExp } from '../../shared/statGains';
 import type { RealmFamily } from '../../shared/realm';
 import {
   countersNow,
@@ -86,7 +94,11 @@ import {
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
 import { carriedCount } from '../../shared/supplies';
-import { trainingCost } from '../../shared/training';
+import {
+  trainingCost,
+  type StatLimits,
+  type TrainedAttribute
+} from '../../shared/training';
 import {
   lairPass,
   passShare,
@@ -156,6 +168,8 @@ export interface RealmClass {
   combat: number | null;
   magery: number | null;
   family: RealmFamily | null;
+  /** The attack `combat.attack` types, as the class can make it (`attackFor`). */
+  attack: ProwessAttack;
 }
 
 /** What `chooseAttackSpell` is handed about the caster, before a target. */
@@ -682,7 +696,8 @@ export class Errands implements SessionModule {
    * The figures a lair's cost depends on, as one string, so a change to any
    * of them drops every remembered room. The sheet, the weapon in hand, the
    * class row, the standing (which decides who attacks on sight), the
-   * server's family and what `stat all` still states; not the pack, the purse
+   * server's family, what `stat all` still states and the attack typed
+   * (`combat.attack`); not the pack, the purse
    * nor the health itself, which move every room and change no blow.
    */
   fitness(state: CharacterState): string {
@@ -702,7 +717,8 @@ export class Errands implements SessionModule {
       state.className,
       JSON.stringify(wieldedWeapon(state.inventory.items)),
       this.serverFamily,
-      JSON.stringify(statedNow(state))
+      JSON.stringify(statedNow(state)),
+      this.automationConfig.combat.attack
     ].join('|');
     this.fitted = { state, key };
     return key;
@@ -728,7 +744,7 @@ export class Errands implements SessionModule {
     const lair = world.lair(room, this.serverFamily);
     if (lair === null || lair.mobs.length === 0) return null;
     const state = this.tracker.current;
-    const { combat, magery, family } = this.realmClass();
+    const { combat, magery, family, attack } = this.realmClass();
     /*
      * By the rows the lair names, never by name (todo 01, 2026-09-10): a name
      * folds every row sharing it and takes the worst, and the guard post on
@@ -744,7 +760,8 @@ export class Errands implements SessionModule {
       tuning().menace,
       prowessSheetOf(state, { combat, magery }),
       wieldedWeapon(state.inventory.items),
-      family
+      family,
+      attack
     );
     const standing = ownAlignment(state);
     const rounds = tuning().world.passRounds;
@@ -1257,9 +1274,17 @@ export class Errands implements SessionModule {
    * are then measured properly (`measuredSpot`) and ranked again, with the
    * one `measure` names; the rest come back unmeasured, since the answer is
    * the realm. Distance is a column, not a bound: the walk there is automated.
+   *
+   * `as` surveys a character other than the one on the wire: the same one
+   * with a stat raised, to see what a point would buy (`StatGains`). Its
+   * prices are kept apart, so the live survey's are not thrown away for it.
    */
-  huntingGrounds(radius: number | null, measure: string | null = null): HuntingAdvice {
-    const state = this.tracker.current;
+  huntingGrounds(
+    radius: number | null,
+    measure: string | null = null,
+    as: CharacterState = this.tracker.current
+  ): HuntingAdvice {
+    const state = as;
     const world = this.world;
     // Every figure the model runs on, named here so each has a reader.
     const {
@@ -1304,7 +1329,7 @@ export class Errands implements SessionModule {
       fillerRadius,
       sizeTolerance
     };
-    const { combat, magery, family } = this.realmClass();
+    const { combat, magery, family, attack } = this.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery });
     const regen = regeneration(sheet, null, family);
     const backstab = commandOf(this.automationConfig.combat.opener.trim()) === 'BackStab';
@@ -1458,7 +1483,7 @@ export class Errands implements SessionModule {
      */
     const blank = { armourClass: null, damageResist: null, dodge: null, health: null };
     const declines =
-      swing(sheet, weapon, blank, family) === null &&
+      swing(sheet, weapon, blank, family, attack) === null &&
       (casting === null ||
         chooseAttackSpell({ ...casting, target: null, excluded: new Set() }).refusal ===
           'no-attack-spells');
@@ -1480,14 +1505,16 @@ export class Errands implements SessionModule {
       this.automationConfig.spells.attack,
       this.automationConfig.spells.autoChoose,
       this.automationConfig.combat.opener,
+      this.automationConfig.combat.attack,
       state.spellbook?.length ?? -1,
       state.vitals.manaMax,
       measured === null ? '-' : Math.round(measured.perRound)
     ].join('|');
-    if (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world) {
+    const live = as === this.tracker.current;
+    if (live && (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world)) {
       this.huntPrices = { key: priceKey, world, groups: new Map() };
     }
-    const remembered = this.huntPrices.groups;
+    const remembered = live && this.huntPrices !== null ? this.huntPrices.groups : new Map();
     /** One group's monsters priced, and its clock: the half a move does not change. */
     const price = (group: HuntGroup): HuntPrice | null | 'evil' => {
       const ground = groundOf(group);
@@ -1500,7 +1527,7 @@ export class Errands implements SessionModule {
        */
       const entities = fightable(all);
       if (entities.length === 0) return 'evil';
-      const verdicts = weighVerdicts(entities, player, weights, sheet, weapon, family);
+      const verdicts = weighVerdicts(entities, player, weights, sheet, weapon, family, attack);
       const bare = weighRoom(entities, naked, weights);
       const recorded = (hp: number | null): number | null =>
         measured === null || hp === null || hp <= 0 ? null : hp / measured.perRound;
@@ -1698,6 +1725,21 @@ export class Errands implements SessionModule {
       pace,
       refusal: null
     };
+  }
+
+  /**
+   * Where character points raise the exp rate most (`train.pick: exp`, todo
+   * 83): the survey run for the character as it stands and again with each
+   * stat's next `statHorizon` points (`chooseByExp`).
+   */
+  statsByExp(
+    state: CharacterState,
+    current: Record<TrainedAttribute, number>,
+    limits: Record<TrainedAttribute, StatLimits>
+  ): ReturnType<typeof chooseByExp> {
+    return chooseByExp(state, current, limits, tuning().train.statHorizon, (as) =>
+      this.huntingGrounds(null, null, as).spots
+    );
   }
 
   /**
@@ -2167,7 +2209,8 @@ export class Errands implements SessionModule {
     return {
       combat: row?.combat ?? null,
       magery: row?.magery ?? null,
-      family: this.serverFamily
+      family: this.serverFamily,
+      attack: attackFor(this.automationConfig.combat.attack, this.capabilities().abilities)
     };
   }
 

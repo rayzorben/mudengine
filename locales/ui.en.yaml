@@ -523,10 +523,10 @@ notices:
       many: '{count} character files moved into their own folders, so each can hold its own loops.'
       one: 1 character file moved into its own folder, so it can hold its own loops.
     partyPacing:
-      many: "The party settings (Wait For Party Members, the @party relay and the rest) were added
-        to {count} files: {fileList}"
-      one: "The party settings (Wait For Party Members, the @party relay and the rest) were added
-        to {fileList}"
+      many: 'The party settings (Wait For Party Members, the @party relay and the rest) were added
+        to {count} files: {fileList}'
+      one: 'The party settings (Wait For Party Members, the @party relay and the rest) were added
+        to {fileList}'
     healChoice:
       many:
         'Auto Choose Best Heal was added to {count} files, turned on where Auto Choose Best Spell
@@ -3672,8 +3672,16 @@ settings:
       Nothing will be walked to until one does.
     trainerStale: The trainer chosen here no longer trains this character. Pick another, or leave it
       on the cheapest; nothing will be walked to until then.
-    statsHint: At a trainer with unspent CPs, opens the stat screen, buys the stats set below as far
-      as the CPs go (cheapest first), and saves. When off, the client leaves that screen alone.
+    statsHint: At a trainer with unspent CPs, opens the stat screen, buys stats as chosen below, and
+      saves. When off, the client leaves that screen alone.
+    pick: Spend points on
+    pickHint:
+      The stat that raises the exp rate most is worked out at each level, from what each stat's
+      next few points do at the best place this character can safely hunt, per CP. Health counts only
+      for what the extra hit points let this character hunt. Where no stat adds anything, the points
+      are kept.
+    pickExp: The stat that raises the exp rate most
+    pickWanted: The values below
     wantedNote: The value each stat should reach. 0, or a value at or below the current one, leaves
       that stat alone; values above the race's maximum are capped. The first ten points above the
       race's base cost 1 CP each, the next ten 2 each, and so on.
@@ -4938,6 +4946,15 @@ automation:
     nothingAffordable: 'Auto Train Stats: {cp} CP unspent, but the cheapest target point
       ({attribute}, {cost} CP) costs more than that.'
     whyNothingWanted: every target stat is at or below its current value
+    # Todo 83: points go where they raise the exp rate most.
+    byExpChose: 'Auto Train Stats: {points} more {attribute} adds the most exp per CP here, about
+      {gain} an hour for {cost} CP.'
+    byExpNothing: 'Auto Train Stats: {cp} CP unspent, and no stat raises the exp rate at the places
+      this character can hunt. Keeping them for a later level.'
+    byExpUnread: "Auto Train Stats: {cp} CP unspent, but the race's stat ranges are not read yet, so
+      no stat can be weighed."
+    whyByExpNothing: no stat raises the exp rate
+    whyByExpUnread: the race's stat ranges are not read
     whyUnaffordable: the cheapest target point costs {cost} CP and {left} are left
     notName: 'Not using this stat screen: it has the name open for editing, which the client never
       touches. Finish it by hand by pressing Enter through to SAVE.'

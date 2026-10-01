@@ -1366,20 +1366,27 @@ automation:
   # form; the client stands down from it and touches nothing, because the
   # first field is the family name and a command typed there renames the
   # character. With `stats` on, the client itself opens the form at a
-  # trainer when points are unspent, reads its figures, buys the cheapest
-  # wanted point first until nothing wanted is affordable, and saves. It
-  # never types into the name fields and never quits the form; what it
-  # bought, what was refused and what is left are all said out loud.
+  # trainer when points are unspent, reads its figures, buys what `pick`
+  # says, and saves. It never types into the name fields and never quits the
+  # form; what it bought, what was refused and what is left are all said out
+  # loud.
   #
-  # `wanted` is where each stat should end up. 0, or a figure at or under
-  # the current one, leaves that stat alone -- so the switch does nothing
-  # until a figure here is raised. The race's ceiling caps a figure above it.
-  # The price is the server's: the first ten points above the race's base
-  # cost 1 CP each, the next ten 2 each, and so on.
+  # `pick: exp` spends the points on the stat whose next points raise the
+  # exp rate most at the best place the character can safely hunt, per CP:
+  # more swings, accuracy, crits and damage, dodge, and health only for what
+  # the extra hit points let the character hunt. Worked out again at each
+  # level. Where no stat adds anything, the points are kept for later.
+  #
+  # `pick: wanted` buys the cheapest wanted point first until nothing wanted
+  # is affordable. `wanted` is where each stat should end up. 0, or a figure
+  # at or under the current one, leaves that stat alone. The race's ceiling
+  # caps a figure above it. The price is the server's: the first ten points
+  # above the race's base cost 1 CP each, the next ten 2 each, and so on.
   train:
     levels: false
     trainer: 0
     stats: false
+    pick: exp
     wanted:
       strength: 0
       intellect: 0

@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { StatScreen, readAdvance, readRefusal, readScreen } from '../StatScreen';
+import {
+  StatScreen,
+  readAdvance,
+  readRefusal,
+  readScreen,
+  type StatScreenPlanner
+} from '../StatScreen';
 import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type TrainConfig } from '../../../shared/config';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
@@ -27,6 +33,7 @@ const echoSeconds = (): number => Math.round(tuning().train.echoMs / 1000);
 const NOTHING = { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 };
 const train = (wanted: Partial<TrainConfig['wanted']> = {}, stats = true): TrainConfig => ({
   stats,
+  pick: 'wanted',
   wanted: { ...NOTHING, ...wanted },
   // The levelling errand's own two, which this driver does not read.
   levels: false,
@@ -115,6 +122,9 @@ let notices: string[];
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
 let trainer: boolean;
+/** What the exp-rate weighing answers (`train.pick: exp`). */
+let byExp: ReturnType<StatScreenPlanner['byExp']>;
+let weighed: number;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -124,6 +134,8 @@ beforeEach(() => {
   notices = [];
   decisions = [];
   trainer = true;
+  byExp = { wanted: { ...NOTHING }, chose: null };
+  weighed = 0;
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
 });
 
@@ -137,7 +149,14 @@ const make = (config = train({ health: 71 }), enabled = true): StatScreen =>
     config,
     enabled,
     queue,
-    { atTrainer: () => trainer, write: (bytes) => wrote.push(bytes) },
+    {
+      atTrainer: () => trainer,
+      byExp: () => {
+        weighed += 1;
+        return byExp;
+      },
+      write: (bytes) => wrote.push(bytes)
+    },
     { notice: (m) => notices.push(m), decided: (d) => decisions.push(d) }
   );
 const drain = (): void => void vi.advanceTimersByTime(50);
@@ -453,5 +472,59 @@ describe('driving the screen it opened', () => {
       })
     );
     expect(wrote).toEqual(['\r\n']);
+  });
+});
+
+/*
+ * Todo 83: points go where they raise the exp rate most, weighed by the
+ * hunting survey per stat, rather than toward fixed figures.
+ */
+describe('spending where the exp rate rises most', () => {
+  const byExpConfig = (): TrainConfig => ({ ...train(), pick: 'exp' });
+
+  it('aims at the stat the weighing chose, says why, and opens the screen', () => {
+    byExp = {
+      wanted: { ...NOTHING, agility: 120 },
+      chose: { attribute: 'agility', points: 10, cost: 20, gain: 1234 }
+    };
+    const auto = make(byExpConfig());
+    auto.onCharacter(atTheTrainer());
+    drain();
+    expect(sent).toEqual(['train stats']);
+    expect(notices).toContain(
+      t('automation.train.byExpChose', {
+        attribute: t('automation.train.attribute.agility'),
+        points: 10,
+        cost: 20,
+        gain: (1234).toLocaleString()
+      })
+    );
+  });
+
+  it('keeps the points where no stat adds anything, and weighs once a visit', () => {
+    const auto = make(byExpConfig());
+    auto.onCharacter(atTheTrainer());
+    auto.onCharacter(atTheTrainer());
+    drain();
+    expect(sent).toEqual([]);
+    expect(weighed).toBe(1);
+    expect(notices).toEqual([t('automation.train.byExpNothing', { cp: 10 })]);
+  });
+
+  it('weighs once a level at a trainer, and again at the next level', () => {
+    const auto = make(byExpConfig());
+    auto.onCharacter(atTheTrainer());
+    auto.onCharacter(atTheTrainer({ cp: 7 }));
+    expect(weighed).toBe(1);
+    auto.onCharacter(atTheTrainer({ level: 11 }));
+    expect(weighed).toBe(2);
+  });
+
+  it('weighs nothing while the race’s spans are unread', () => {
+    const auto = make(byExpConfig());
+    auto.onCharacter({ ...atTheTrainer(), attributeSpans: null });
+    drain();
+    expect(weighed).toBe(0);
+    expect(notices).toEqual([t('automation.train.byExpUnread', { cp: 10 })]);
   });
 });

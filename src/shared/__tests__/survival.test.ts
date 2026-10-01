@@ -152,8 +152,10 @@ describe('the room’s fight, run', () => {
 
   it('refuses a foe the realm cannot weigh, and a fight it cannot win', () => {
     expect(simulateFight(fight({ foes: [{ name: 'stranger', subject: {} }] }))).toBeNull();
-    // No weapon and no spell: nothing to hurt it with, so nothing to say.
-    expect(simulateFight(fight({ weapon: null }))).toBeNull();
+    // No arithmetic for the swing on this lineage and no spell: nothing to say.
+    expect(simulateFight(fight({ family: 'majormud' }))).toBeNull();
+    // A bare hand is still a fight (2026-10-01).
+    expect(simulateFight(fight({ weapon: null }))).not.toBeNull();
     expect(simulateFight(fight({ foes: [] }))).toBeNull();
   });
 

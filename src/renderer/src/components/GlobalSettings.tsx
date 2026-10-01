@@ -26,6 +26,7 @@ import RemoteSwitches from './RemoteSwitches';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
 import RewritesDesigner from './RewriteDesigner';
+import TrainStatFields from './TrainStatFields';
 
 import { t } from '../lib/i18n';
 import {
@@ -1813,105 +1814,23 @@ export default function GlobalSettings({
                   automation({ train: { ...draft.automation.train, stats: value } })
                 }
               />
-              <p className="settings-note">{t('settings.train.wantedNote')}</p>
-              <div className="settings-inline">
-                <NumberField
-                  label={t('settings.train.strength')}
-                  name="global-train-strength"
-                  onChange={(value) =>
-                    automation({
-                      train: {
-                        ...draft.automation.train,
-                        wanted: {
-                          ...draft.automation.train.wanted,
-                          strength: Number.parseInt(value, 10) || 0
-                        }
+              <TrainStatFields
+                name="global-train"
+                onPick={(pick) => automation({ train: { ...draft.automation.train, pick } })}
+                onWanted={(attribute, value) =>
+                  automation({
+                    train: {
+                      ...draft.automation.train,
+                      wanted: {
+                        ...draft.automation.train.wanted,
+                        [attribute]: Number.parseInt(value, 10) || 0
                       }
-                    })
-                  }
-                  value={draft.automation.train.wanted.strength}
-                />
-                <NumberField
-                  label={t('settings.train.intellect')}
-                  name="global-train-intellect"
-                  onChange={(value) =>
-                    automation({
-                      train: {
-                        ...draft.automation.train,
-                        wanted: {
-                          ...draft.automation.train.wanted,
-                          intellect: Number.parseInt(value, 10) || 0
-                        }
-                      }
-                    })
-                  }
-                  value={draft.automation.train.wanted.intellect}
-                />
-                <NumberField
-                  label={t('settings.train.willpower')}
-                  name="global-train-willpower"
-                  onChange={(value) =>
-                    automation({
-                      train: {
-                        ...draft.automation.train,
-                        wanted: {
-                          ...draft.automation.train.wanted,
-                          willpower: Number.parseInt(value, 10) || 0
-                        }
-                      }
-                    })
-                  }
-                  value={draft.automation.train.wanted.willpower}
-                />
-                <NumberField
-                  label={t('settings.train.agility')}
-                  name="global-train-agility"
-                  onChange={(value) =>
-                    automation({
-                      train: {
-                        ...draft.automation.train,
-                        wanted: {
-                          ...draft.automation.train.wanted,
-                          agility: Number.parseInt(value, 10) || 0
-                        }
-                      }
-                    })
-                  }
-                  value={draft.automation.train.wanted.agility}
-                />
-                <NumberField
-                  label={t('settings.train.health')}
-                  name="global-train-health"
-                  onChange={(value) =>
-                    automation({
-                      train: {
-                        ...draft.automation.train,
-                        wanted: {
-                          ...draft.automation.train.wanted,
-                          health: Number.parseInt(value, 10) || 0
-                        }
-                      }
-                    })
-                  }
-                  value={draft.automation.train.wanted.health}
-                />
-                <NumberField
-                  label={t('settings.train.charm')}
-                  name="global-train-charm"
-                  onChange={(value) =>
-                    automation({
-                      train: {
-                        ...draft.automation.train,
-                        wanted: {
-                          ...draft.automation.train.wanted,
-                          charm: Number.parseInt(value, 10) || 0
-                        }
-                      }
-                    })
-                  }
-                  value={draft.automation.train.wanted.charm}
-                />
-              </div>
+                    }
+                  })
+                }
+                pick={draft.automation.train.pick}
+                wanted={draft.automation.train.wanted}
+              />
             </fieldset>
           </SettingsSection>
         )}

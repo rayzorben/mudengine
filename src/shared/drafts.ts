@@ -23,6 +23,7 @@ import {
   type HuntingAutomationConfig,
   normalizeTrain,
   type RewritesUiConfig,
+  type TrainConfig,
   type Cure,
   type DensityPreference,
   type EngagePolicy,
@@ -77,7 +78,6 @@ import {
   type ThemeId,
   type ThemePreference
 } from './themes';
-import type { TrainedAttribute } from './training';
 import type { StreamEncoding } from './types';
 import { isRecord } from './values';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
@@ -493,14 +493,7 @@ export interface ProfileDraft {
    */
   hunting: HuntingAutomationConfig;
   /** Spending character points on the stat screen — `automation.train`. See `TrainConfig`. */
-  train: {
-    stats: boolean;
-    wanted: Record<TrainedAttribute, number>;
-    /** Go and collect a level when the experience is there. See `TrainConfig`. */
-    levels: boolean;
-    /** The trainer's shop row, or 0 for the cheapest that will take this character. */
-    trainer: number;
-  };
+  train: TrainConfig;
   /** Running a quest's plan — `automation.quests`. See `QuestsConfig`. */
   quests: { enabled: boolean };
   /** Which kit to be in, and when — `automation.gear`. See `GearConfig`. */

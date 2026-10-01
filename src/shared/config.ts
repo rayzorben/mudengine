@@ -1850,6 +1850,14 @@ export interface HuntingAutomationConfig {
 }
 
 /**
+ * How character points are spent: where they raise the exp rate most at the
+ * places the character can hunt (`exp`, todo 83), or toward the figures in
+ * `wanted`.
+ */
+export const TRAIN_PICKS = ['exp', 'wanted'] as const;
+export type TrainPick = (typeof TRAIN_PICKS)[number];
+
+/**
  * Spending character points on the `train stats` screen — `StatScreen`.
  *
  * Off by default, and inert while every wanted figure is at or under the
@@ -1861,6 +1869,7 @@ export interface HuntingAutomationConfig {
 export interface TrainConfig {
   /** Auto Train Stats. */
   stats: boolean;
+  pick: TrainPick;
   wanted: Record<TrainedAttribute, number>;
   /**
    * Go and collect a level when the experience is there (todo 18).
@@ -2812,6 +2821,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
     train: {
       stats: false,
+      pick: 'exp',
       wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 },
       levels: false,
       trainer: 0
@@ -4051,6 +4061,7 @@ export function normalizeTrain(value: unknown): TrainConfig {
   }
   return {
     stats: bool(raw['stats'], d.stats),
+    pick: oneOf(raw['pick'], TRAIN_PICKS, d.pick),
     wanted: figures,
     levels: bool(raw['levels'], d.levels),
     // A shop row number. 0 is *the cheapest that will take me*, which is also
