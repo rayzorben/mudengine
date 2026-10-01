@@ -7389,3 +7389,47 @@ describe('a way that is materially different from the plan', () => {
     expect(route.another).toBeUndefined();
   });
 });
+
+/*
+ * Format 49: a monster's coin maxima ride the fold and each row, so the
+ * Hunting grounds can price what a lair carries. Absent from a file that has
+ * them is none; absent from an older file is unknown.
+ */
+describe('a monster’s coins', () => {
+  const rooms = [
+    { m: 1, r: 1, n: 'Dungeon, Entrance', x: {}, lair: '(Max 1): 7,' },
+    { m: 1, r: 2, n: 'Small Cavern', x: {}, lair: '(Max 1): 80,' },
+    { m: 1, r: 3, n: 'Orc Den', x: {}, lair: '(Max 1): 31,' }
+  ];
+  const mobs = [
+    { n: 'kobold thief', hp: 20, i: [7], cs: [0, 0, 0, 7, 20] },
+    { n: 'cave bear', hp: 90, i: [80] },
+    {
+      n: 'orc',
+      hp: 40,
+      i: [30, 31],
+      cs: [0, 0, 2, 0, 0],
+      rw: [
+        { hp: 40, cs: [0, 0, 2, 0, 0] },
+        { hp: 40, cs: [0, 0, 0, 30, 0] }
+      ]
+    }
+  ];
+  const none = { runic: 0, platinum: 0, gold: 0, silver: 0, copper: 0 };
+
+  it('reads each lair’s own row, and none where the row states none', () => {
+    const graph = makeWorld(rooms, { mobs }, 49);
+    expect(graph.lairEntities(graph.byId('1/1')!)[0]?.coins).toEqual({
+      ...none,
+      silver: 7,
+      copper: 20
+    });
+    expect(graph.lairEntities(graph.byId('1/2')!)[0]?.coins).toEqual(none);
+    expect(graph.lairEntities(graph.byId('1/3')!)[0]?.coins).toEqual({ ...none, silver: 30 });
+  });
+
+  it('knows nothing of coins on a file that predates them', () => {
+    const graph = makeWorld(rooms, { mobs }, 48);
+    expect(graph.lairEntities(graph.byId('1/2')!)[0]?.coins).toBeUndefined();
+  });
+});

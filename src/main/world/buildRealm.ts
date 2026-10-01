@@ -23,6 +23,8 @@ import {
   worstDisposition,
   type MobDisposition
 } from '../../shared/mobs';
+import { DENOMINATIONS, type Denomination } from '../../shared/character';
+import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coins';
 
 /**
  * Turning a realm database into the one normalised form the client loads.
@@ -97,8 +99,9 @@ import {
  * | 46 | **A gate on level says *which* character, and the router is planning for one.** Format 43 follows `minlevel` / `maxlevel` at full weight — what stands behind a gate happens to *somebody* — and then flattened it, so the desert's sandstorm (`86:maxlevel 19:cast 713`, a one-in-a-hundred teleport) was priced as *it moves you somewhere else* on all 979 of Paradigm's desert rooms, for a level 21 character it cannot touch. Reported as *it is set to maxlevel 19 so in this case festus is level 21 so it wont execute and can be ignored*. `BuiltSpellHazard.lv` carries the band each of `d`, `tp` and `sm` was recorded under — a gate governs the rest of its own line, so the band is taken back at the end of each — and `hazardFor` (`src/shared/world.ts`) narrows a hazard to the character's level at `WorldGraph.hazardOf`, the one join. **An unstated level keeps the whole hazard**, and an effect recorded both inside a gate and outside one is ungated: the reassuring answer here is *it cannot happen to you* — todo 01 |
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
  * | 48 | **What a class may wield and wear.** `Classes.WeaponType` and `ArmourType` were in every class row and read by nothing, so the client could not say that a Mage wears cloth (1) and a Priest swings a staff (9): `ItemType.CanPlayerUseItem` refuses armour heavier than the class's `Armour` and a weapon kind the class's `Weapon` rules out (4 one-handed, 7 blunt, 9 none but what the item names the class for), and a slot's quick view listed plate first for a Mage. `BuiltClass.wpn` and `arm` carry the codes |
+ * | 49 | **What a monster carries.** `Monsters.R`, `P`, `G`, `S` and `C`, the most of each coin it is made with, were read by nothing, so the Hunting grounds could say what a lair pays in exp and never in cash. `BuiltMob.cs` and `BuiltMobRow.cs` carry them, and `expectedCopper` (`src/shared/coins.ts`) reads them as the server rolls them — todo 62 |
  */
-export const REALM_FORMAT = 48;
+export const REALM_FORMAT = 49;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -679,6 +682,12 @@ export interface BuiltMob {
    */
   rt?: number;
   /**
+   * Its coin maxima, `Monsters.R P G S C` in `DENOMINATIONS` order (format 49).
+   * The fold takes the row whose coins are worth least, as `xp` takes the
+   * least exp. Absent where every coin is none.
+   */
+  cs?: number[];
+  /**
    * What it drops, by item name, capped — format 12.
    *
    * The reverse of `BuiltItem.mobs`, which has always been built: that answers
@@ -794,6 +803,8 @@ export interface BuiltMobRow {
   rgn?: number;
   /** `Monsters.RegenTime`, hours: a placed monster's clock (format 33). */
   rt?: number;
+  /** This row's coin maxima (format 49), as `BuiltMob.cs`. */
+  cs?: number[];
   fol?: number;
   dmg?: number;
   chl?: number;
@@ -908,6 +919,33 @@ function ownClock(row: Record<string, unknown>): number | null {
   if (limit === null || limit === 0 || limit === BLANK_AS_NUMBER) return null;
   const hours = number(row['RegenTime']);
   return hours === null || hours <= 0 || hours === BLANK_AS_NUMBER ? null : hours;
+}
+
+/** The `Monsters` column holding each coin's maximum. */
+const COIN_COLUMN: Readonly<Record<Denomination, string>> = {
+  runic: 'R',
+  platinum: 'P',
+  gold: 'G',
+  silver: 'S',
+  copper: 'C'
+};
+
+/**
+ * A row's coin maxima (format 49), or null where it carries none of any
+ * coin, which is also how a realm without the columns reads.
+ */
+function coinMaxima(row: Record<string, unknown>): CoinMaxima | null {
+  const at = (coin: Denomination): number => {
+    const value = number(row[COIN_COLUMN[coin]]);
+    return value === null || value <= 0 || value === BLANK_AS_NUMBER ? 0 : value;
+  };
+  const maxima = coinMaximaOf(at);
+  return DENOMINATIONS.some((coin) => maxima[coin] > 0) ? maxima : null;
+}
+
+/** Coin maxima as the file writes them: one figure per coin, in `DENOMINATIONS` order. */
+function compactCoins(maxima: CoinMaxima): number[] {
+  return DENOMINATIONS.map((coin) => maxima[coin]);
 }
 
 /**
@@ -2050,6 +2088,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       dr?: number;
       mr?: number;
       xp?: number;
+      /** Format 49: the coins worth least of any row's, a row of none counting. */
+      coins: CoinMaxima | null;
       rgn?: number;
       fol?: number;
       und?: 1;
@@ -2130,6 +2170,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       how,
       costs,
       ids: id === null ? [] : [id],
+      coins: coinMaxima(row),
       rts: new Set<number>(),
       types: new Set<number>(),
       casts: new Set<number>(),
@@ -2154,6 +2195,15 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
     entry.dr = worse(entry.dr, number(row['DamageResist']));
     entry.mr = worse(entry.mr, number(row['MagicRes']));
     entry.xp = least(entry.xp, number(row['EXP']));
+    // Format 49. A row carrying no coin is worth the least, so it wins the fold.
+    const coins = coinMaxima(row);
+    if (
+      span &&
+      entry.coins !== null &&
+      (coins === null || expectedCopper(coins) < expectedCopper(entry.coins))
+    ) {
+      entry.coins = coins;
+    }
     entry.rgn = worse(entry.rgn, number(row['HPRegen']));
     entry.fol = worse(entry.fol, number(row['Follow%']));
     if (number(row['Undead']) === 1) entry.und = 1;
@@ -2214,6 +2264,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       own.rgn = stated('HPRegen');
       // Only where `GameLimit` makes it one — see `ownClock`.
       own.rt = ownClock(row) ?? undefined;
+      if (coins !== null) own.cs = compactCoins(coins);
       own.fol = stated('Follow%');
       own.dmg = stated('AvgDmg');
       own.chl = stated('CharmLVL');
@@ -2269,6 +2320,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       if (span.dr !== undefined) mob.dr = span.dr;
       if (span.mr !== undefined) mob.mr = span.mr;
       if (span.xp !== undefined) mob.xp = span.xp;
+      if (span.coins !== null) mob.cs = compactCoins(span.coins);
       if (span.rgn !== undefined) mob.rgn = span.rgn;
       if (span.fol !== undefined) mob.fol = span.fol;
       if (span.und !== undefined) mob.und = span.und;

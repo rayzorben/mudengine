@@ -36,6 +36,36 @@ export const COPPER_PER: Readonly<Record<Denomination, number>> = {
 };
 
 /**
+ * A monster's coin maxima, one per denomination: `Monsters.R P G S C`, the
+ * most of each it carries (realm format 49). Zero is none of that coin.
+ */
+export type CoinMaxima = Readonly<Record<Denomination, number>>;
+
+/** Coin maxima read one coin at a time, so every reader spells the five coins once. */
+export function coinMaximaOf(at: (coin: Denomination) => number): CoinMaxima {
+  return Object.fromEntries(DENOMINATIONS.map((coin) => [coin, at(coin)])) as Record<
+    Denomination,
+    number
+  >;
+}
+
+/**
+ * The copper a kill is expected to carry, from its coin maxima.
+ *
+ * GreaterMUD rolls each coin on its own as the monster is made, 1 to its
+ * maximum inclusive wherever the maximum is above none (`Mob.CreateCash`,
+ * `Mob.cs:825`; `Randomizer.GetRandomNumber`, `Randomizer.cs:18`, is
+ * `rand.Next(min, max + 1)`), so a coin's mean is `(1 + max) / 2`. A kobold
+ * thief (S 7, C 20) is 4 silver and 10.5 copper: 50.5 copper.
+ */
+export function expectedCopper(maxima: CoinMaxima): number {
+  return DENOMINATIONS.reduce(
+    (sum, coin) => (maxima[coin] > 0 ? sum + ((1 + maxima[coin]) / 2) * COPPER_PER[coin] : sum),
+    0
+  );
+}
+
+/**
  * A quoted price in copper, or null where the words are not a price this
  * client can read. `Free` is zero — the one place a word is a number, because
  * the realm prints it for a starter shop and it means exactly that.

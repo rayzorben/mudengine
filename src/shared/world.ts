@@ -17,6 +17,7 @@ import type { AlignmentCost, MobDisposition } from './mobs';
 import type { Verdict } from './verdict';
 import type { RowPeace } from './mobRules';
 import type { Denomination } from './character';
+import type { CoinMaxima } from './coins';
 import { NO_REFERRED_NAMES, type ReferredNames } from './abilities';
 
 /** The ten directions the game uses. */
@@ -1976,6 +1977,8 @@ export interface WorldMobRow {
    * a uniquely named boss, having no `rw`, carried no clock at all.
    */
   regenHours?: number;
+  /** This row's coin maxima (`Monsters.R P G S C`, format 49). Absent on an older realm file. */
+  coins?: CoinMaxima;
   follows?: number;
   averageDamage?: number;
   charmLevel?: number;
@@ -2108,6 +2111,12 @@ export interface WorldMob {
   regen?: number;
   /** Hours a placed one stays dead — `Monsters.RegenTime` (format 33). */
   regenHours?: number;
+  /**
+   * The most of each coin it is made with (`Monsters.R P G S C`, format 49):
+   * the row worth least, like `experience`. All zero where it carries none,
+   * absent on a realm file built before format 49.
+   */
+  coins?: CoinMaxima;
   /**
    * The chance it follows when this character leaves the room, as a percentage.
    *

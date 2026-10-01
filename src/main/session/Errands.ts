@@ -24,7 +24,7 @@ import { preferredEdges } from '../world/loopDraft';
 import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shared/abilities';
 import type { Block } from '../../shared/blocks';
 import { ownAlignment, packRows, type CharacterState } from '../../shared/character';
-import { chargedInCopper } from '../../shared/coins';
+import { chargedInCopper, expectedCopper } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { FightSink } from '../../shared/fights';
@@ -1435,6 +1435,7 @@ export class Errands implements SessionModule {
       const mobs: SpotMob[] = entities.map((entity, index) => ({
         name: entity.name,
         experience: entity.experience ?? null,
+        copper: entity.coins === undefined ? null : expectedCopper(entity.coins),
         rounds:
           verdicts[index]?.rounds?.value ??
           (casting === null

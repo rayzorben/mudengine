@@ -437,6 +437,33 @@ describe('naming what a monster is worth in health', () => {
     expect(mobs[0]?.rw).toBeUndefined();
   });
 
+  /*
+   * Format 49: `Monsters.R P G S C`, each coin's maximum, in `DENOMINATIONS`
+   * order. Paradigm's kobold thief is S 7, C 20; its cave bear carries none.
+   * A name holding several rows folds to the row worth least, as `xp` does.
+   */
+  it('reads each coin’s maximum, and folds a shared name to the row worth least', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 80, Name: 'cave bear', HP: 90, R: 0, P: 0, G: 0, S: 0, C: 0, 'In Game': 1 },
+          { Number: 7, Name: 'kobold thief', HP: 20, R: 0, P: 0, G: 0, S: 7, C: 20, 'In Game': 1 },
+          { Number: 30, Name: 'orc', HP: 40, G: 2, 'In Game': 1 },
+          { Number: 31, Name: 'orc', HP: 40, S: 30, 'In Game': 1 }
+        ]
+      })
+    );
+    const named = (n: string) => mobs.find((mob) => mob.n === n);
+    expect(named('kobold thief')?.cs).toEqual([0, 0, 0, 7, 20]);
+    expect(named('cave bear')?.cs).toBeUndefined();
+    // 2 gold is 150 copper on average, 30 silver 155: the gold row is worth less.
+    expect(named('orc')?.cs).toEqual([0, 0, 2, 0, 0]);
+    expect(named('orc')?.rw?.map((row) => row.cs)).toEqual([
+      [0, 0, 2, 0, 0],
+      [0, 0, 0, 30, 0]
+    ]);
+  });
+
   it('carries the realm’s own numbers for every row sharing a name, so a lair resolves', () => {
     const mobs = indexMobs(
       fake({

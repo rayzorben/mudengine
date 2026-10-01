@@ -1396,6 +1396,8 @@ cards:
       rate: Expected
       rateValue: '{rate} exp/hr'
       ceiling: Best case
+      cash: Cash
+      cashValue: '{copper} copper/hr'
       spawns: Up at once
       respawn: Regen
       respawnHours: '{hours} h'
