@@ -97,6 +97,15 @@ describe("the plan's settings over the character's own", () => {
     expect(out.combat.hideForOpener).toBe(true);
   });
 
+  it('picks up the coins chosen and sheds the rest it names', () => {
+    const out = layered(own, { coins: { pick: ['gold', 'platinum'], shed: ['copper'] } }, 'wait');
+    expect(out.loot).toMatchObject({
+      coins: true,
+      coinKinds: ['gold', 'platinum'],
+      discardKinds: ['copper']
+    });
+  });
+
   it('writes to the file only what the layer names, never a goal’s switch', () => {
     const paths = layerWrites(own, { heal: 'auto', trainFirst: 'agility' }).map(([path]) =>
       path.join('.')
@@ -246,7 +255,8 @@ function brief(
       heal: '',
       blessings: [],
       restBelow: 0.35,
-      trainFirst: null
+      trainFirst: null,
+      coins: { pick: [], shed: [] }
     },
     maxSpots: 10,
     lessons,
@@ -415,7 +425,8 @@ describe('the questions and the plan their answers make', () => {
           opener: 'none',
           heal: 'auto',
           restBelow: 'rest_60',
-          trainFirst: 'agility'
+          trainFirst: 'agility',
+          coins: 'gold_up_shed'
         },
         { sneak: 0.9, bless_bles: 0.2 }
       ),
@@ -429,9 +440,23 @@ describe('the questions and the plan their answers make', () => {
       heal: 'auto',
       blessings: [],
       restBelow: 0.6,
-      trainFirst: 'agility'
+      trainFirst: 'agility',
+      coins: { pick: ['runic', 'platinum', 'gold'], shed: ['silver', 'copper'] }
     });
     expect(samePlan(plan, { ...plan, picks: [] })).toBe(true);
+  });
+
+  /* Soul, 2026-10-01: no coin carried, training at 50 copper, and copper not picked up. */
+  it('asks which coins to pick up, against what the next level and upgrade cost', () => {
+    const coins = planQuestions(brief()).questions['coins'];
+    expect(coins?.type).toBe('choice');
+    expect(Object.keys(coins?.type === 'choice' ? coins.criteria : {})).toEqual([
+      'all',
+      'silver_up',
+      'gold_up',
+      'gold_up_shed'
+    ]);
+    expect(coins?.instructions).toContain(String(nextUpgradePrice(brief())));
   });
 
   it('names the cheapest upgrade still out of reach', () => {

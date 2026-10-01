@@ -8,6 +8,7 @@
  */
 import type { BriefSpot, GearOffer, KonamiBrief, SlotUpgrade } from './konamiBrief';
 import type {
+  CoinPickup,
   KonamiGoal,
   KonamiLayer,
   KonamiOption,
@@ -17,6 +18,7 @@ import type {
   KonamiQuestionName,
   KonamiReply
 } from './konami';
+import { bankedCopper } from './coins';
 import { REALM_ARMOUR_SCALE } from './menace';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
@@ -26,6 +28,28 @@ const AIM =
 
 /** The `restBelow` choices offered, as fractions of the bar. */
 const REST_BELOW = [0.35, 0.5, 0.6, 0.7] as const;
+
+const LARGE_COIN = ['runic', 'platinum', 'gold'] as const;
+
+/** The coin pickups offered, from every coin to gold and up with copper and silver dropped. */
+const COIN_PICKUPS: Readonly<Record<string, { pickup: CoinPickup; says: string }>> = {
+  all: {
+    pickup: { pick: [...LARGE_COIN, 'silver', 'copper'], shed: [] },
+    says: 'Pick up every coin, copper and silver included.'
+  },
+  silver_up: {
+    pickup: { pick: [...LARGE_COIN, 'silver'], shed: [] },
+    says: 'Leave copper on the floor; keep any already carried.'
+  },
+  gold_up: {
+    pickup: { pick: [...LARGE_COIN], shed: [] },
+    says: 'Leave copper and silver on the floor; keep any already carried.'
+  },
+  gold_up_shed: {
+    pickup: { pick: [...LARGE_COIN], shed: ['silver', 'copper'] },
+    says: 'Leave copper and silver on the floor, and drop any carried.'
+  }
+};
 
 /** What each label of each question stands for. */
 export interface KonamiLabels {
@@ -37,6 +61,7 @@ export interface KonamiLabels {
   blessings: Readonly<Record<`bless_${string}`, string>>;
   restBelow: Readonly<Record<string, number>>;
   trainFirst: Readonly<Record<string, TrainedAttribute>>;
+  coins: Readonly<Record<string, CoinPickup>>;
 }
 
 export interface KonamiQuestions {
@@ -302,10 +327,45 @@ export function planQuestions(brief: KonamiBrief): KonamiQuestions {
     criteria: trainCriteria
   };
 
+  const coins: Record<string, CoinPickup> = {};
+  const coinCriteria: Record<string, string> = {};
+  for (const [label, { pickup, says }] of Object.entries(COIN_PICKUPS)) {
+    coins[label] = pickup;
+    coinCriteria[label] = says;
+  }
+  questions['coins'] = {
+    type: 'choice',
+    instructions: `${AIM} Which coins should the character pick up from the floor? ${cashText(brief)}`,
+    criteria: coinCriteria
+  };
+
   return {
     questions,
-    labels: { goal: goal.labels, attack, opener, heal, blessings, restBelow, trainFirst }
+    labels: { goal: goal.labels, attack, opener, heal, blessings, restBelow, trainFirst, coins }
   };
+}
+
+/**
+ * The purse against what is wanted next, for the coin question: copper and
+ * silver matter while cash is short of the next level or upgrade, and are
+ * weight and a command a coin once there is plenty.
+ */
+function cashText(brief: KonamiBrief): string {
+  const { cash, trainCost, level } = brief.character;
+  const train =
+    trainCost === null
+      ? 'what training costs is unknown'
+      : `training costs ${number(trainCost)} copper`;
+  const upgrade = nextUpgradePrice(brief);
+  const gear =
+    upgrade === null
+      ? 'no gear upgrade is priced above what is held'
+      : `the cheapest gear upgrade not yet affordable costs ${number(upgrade)} copper`;
+  return (
+    `In copper: ${number(cash.onHand)} carried and ${number(bankedCopper(cash.banks))} banked, at level ${number(level)}; ${train}, and ${gear}. ` +
+    `Every coin picked up is a command and carries weight: copper and silver are worth it while cash is short of what is needed next, ` +
+    `and not once there is plenty.`
+  );
 }
 
 /**
@@ -366,6 +426,8 @@ export function readPlan(reply: KonamiReply, { labels }: KonamiQuestions): Konam
   if (stat !== null && labels.trainFirst[stat] !== undefined) {
     layer.trainFirst = labels.trainFirst[stat];
   }
+  const coins = choice('coins');
+  if (coins !== null && labels.coins[coins] !== undefined) layer.coins = labels.coins[coins];
   return { goal, layer, picks, options };
 }
 

@@ -116,7 +116,11 @@ function settingsOf(config: AutomationConfig): KonamiBrief['settings'] {
     heal: config.spells.autoChooseHeal ? 'auto' : config.spells.heal,
     blessings: config.spells.blessings.map((row) => row.spell),
     restBelow: config.health.restBelow,
-    trainFirst: null
+    trainFirst: null,
+    coins: {
+      pick: config.loot.coins ? config.loot.coinKinds : [],
+      shed: config.loot.discardKinds
+    }
   };
 }
 

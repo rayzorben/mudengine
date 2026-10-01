@@ -345,6 +345,15 @@ export function layerRows(layer: KonamiLayer): Array<[string, string]> {
   if (layer.trainFirst !== undefined) {
     rows.push([t('cards.konami.layer.trainFirst'), layer.trainFirst]);
   }
+  if (layer.coins !== undefined) {
+    rows.push([
+      t('cards.konami.layer.coinsPicked'),
+      layer.coins.pick.join(', ') || t('cards.konami.layer.none')
+    ]);
+    if (layer.coins.shed.length > 0) {
+      rows.push([t('cards.konami.layer.coinsDropped'), layer.coins.shed.join(', ')]);
+    }
+  }
   return rows;
 }
 

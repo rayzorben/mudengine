@@ -11,6 +11,7 @@
 import { COPPER_PER } from './coins';
 import { experienceStanding, type ExperienceTable } from './experience';
 import type { BlessingConfig } from './blessings';
+import type { Denomination } from './character';
 import type { AutomationConfig } from './config';
 import type { TrainedAttribute } from './training';
 
@@ -192,11 +193,27 @@ export interface KonamiLayer {
   blessings?: string[];
   restBelow?: number;
   trainFirst?: TrainedAttribute;
+  /** The coins picked up from the floor, and those carried that are dropped. */
+  coins?: CoinPickup;
+}
+
+/** Which coins are worth bending down for, and which are worth shedding. */
+export interface CoinPickup {
+  pick: Denomination[];
+  shed: Denomination[];
 }
 
 /** The questions asked, by name; one per blessing in the book, named for its spell word. */
 export type KonamiQuestionName =
-  'goal' | 'attack' | 'opener' | 'sneak' | 'heal' | 'restBelow' | 'trainFirst' | `bless_${string}`;
+  | 'goal'
+  | 'attack'
+  | 'opener'
+  | 'sneak'
+  | 'heal'
+  | 'restBelow'
+  | 'trainFirst'
+  | 'coins'
+  | `bless_${string}`;
 
 /** The label picked for a question and how sure the provider was. */
 export interface KonamiPick {
@@ -258,6 +275,11 @@ export function layerWrites(config: AutomationConfig, layer: KonamiLayer): Layer
     writes.push([['train', 'stats'], true]);
     // Above any race's ceiling: `planTraining` aims at the ceiling and says so.
     writes.push([['train', 'wanted', layer.trainFirst], 999]);
+  }
+  if (layer.coins !== undefined) {
+    writes.push([['loot', 'coins'], true]);
+    writes.push([['loot', 'coinKinds'], layer.coins.pick]);
+    writes.push([['loot', 'discardKinds'], layer.coins.shed]);
   }
   return writes;
 }

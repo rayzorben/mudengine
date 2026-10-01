@@ -1956,6 +1956,8 @@ cards:
       blessings: Blessings
       restBelow: Rest below
       trainFirst: Train first
+      coinsPicked: Coins to collect
+      coinsDropped: Coins to discard
       none: none
       yes: 'yes'
       no: 'no'

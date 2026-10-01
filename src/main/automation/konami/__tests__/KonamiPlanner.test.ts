@@ -48,7 +48,8 @@ const BRIEF = {
     hpMax: 100,
     armourClass: 0,
     levelReady: false,
-    cash: { total: 0 },
+    trainCost: null,
+    cash: { onHand: 0, banks: [], total: 0 },
     spells: [],
     stats: {}
   },
