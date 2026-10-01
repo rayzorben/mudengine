@@ -769,11 +769,6 @@ export class SessionManager {
       notice: (message: string): void => this.sink.notice(message),
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     };
-    /*
-     * Walking a route is an outbound action, so it proposes to the arbiter like
-     * everything else. Phase 4 planned routes and stopped there deliberately;
-     * this is the piece that executes one, a verified step at a time.
-     */
     this.combatLease = new CombatLease({
       flip: (on) => this.sink.switchAutomation?.('combat', on) ?? false,
       ...reports,
@@ -783,6 +778,8 @@ export class SessionManager {
     // Configured where it is built, as the loop runner is: unconfigured, it
     // read every switch as on and would never lend (todo 00).
     this.combatLease.configure(automation);
+    // Walking a route is an outbound action: it proposes to the arbiter like
+    // everything else, a verified step at a time.
     this.walker = new Walker(automation, this.queue, {
       // A loop walks through the walker, so this is how it hears a leg end.
       ended: (arrived, reason) => {
@@ -1743,6 +1740,7 @@ export class SessionManager {
         movement: () => this.movement,
         loopNamed: (name) => this.loopNamed(name),
         dropTyped: (died) => this.dropTyped(died),
+        switchAutomation: (on) => this.sink.switchAutomationNow?.('automation', on) ?? false,
         ...reports
       }
     );

@@ -1291,6 +1291,7 @@ function createHost(): SessionHost {
     worldFor,
     // The same write the toolbar's press makes, so the toggle shows it.
     flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
+    reread: () => profiles?.refresh(),
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,

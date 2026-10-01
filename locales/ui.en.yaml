@@ -4528,6 +4528,10 @@ session:
     notResumed: 'Not walking on to {destination}: {reason}'
     replanned: 'That route started in a room you have since left, so it was re-planned from here:
       {steps} steps to {destination}.'
+    automationOn: Automation was off. It is on again so the character can walk there, and it stays
+      on.
+    automationNotOn: "Not walking: automation is off, and it could not be turned on in the
+      character's file."
   world:
     realmMismatch: The game says you are in room {map},{room}, which the loaded world data does not
       have. This character's world.database may not match this realm, so routes will fail from here.
