@@ -139,7 +139,8 @@ export const KONAMI_TRIGGERS = [
   'vetoed',
   'chosen',
   'ready',
-  'review'
+  'review',
+  'saved'
 ] as const;
 
 export type KonamiTrigger = (typeof KONAMI_TRIGGERS)[number];
@@ -195,6 +196,19 @@ export interface KonamiLayer {
   trainFirst?: TrainedAttribute;
   /** The coins picked up from the floor, and those carried that are dropped. */
   coins?: CoinPickup;
+  /** Copper an hour the hunt should earn while the plan saves (`hunting.cashPerHour`). */
+  cashPerHour?: number;
+}
+
+/**
+ * What the plan saves for: the copper wanted, and whether it must be carried
+ * (the trainer's trip draws on no bank) or may be banked too (a shop trip
+ * withdraws). Reaching it asks for a new plan.
+ */
+export interface KonamiSaving {
+  what: string;
+  copper: number;
+  carried: boolean;
 }
 
 /** Which coins are worth bending down for, and which are worth shedding. */
@@ -213,6 +227,8 @@ export type KonamiQuestionName =
   | 'restBelow'
   | 'trainFirst'
   | 'coins'
+  | 'saveFor'
+  | 'saveWithin'
   | `bless_${string}`;
 
 /** The label picked for a question and how sure the provider was. */
@@ -236,6 +252,8 @@ export interface KonamiPlan {
   picks: KonamiPick[];
   /** Every goal the reply gave odds to, likeliest first; the chosen one among them. */
   options: KonamiOption[];
+  /** What the plan saves for, or null. */
+  saving: KonamiSaving | null;
 }
 
 /** A self blessing as the player's own form writes one (`normalizeBlessings`). */
@@ -280,6 +298,9 @@ export function layerWrites(config: AutomationConfig, layer: KonamiLayer): Layer
     writes.push([['loot', 'coins'], true]);
     writes.push([['loot', 'coinKinds'], layer.coins.pick]);
     writes.push([['loot', 'discardKinds'], layer.coins.shed]);
+  }
+  if (layer.cashPerHour !== undefined) {
+    writes.push([['hunting', 'cashPerHour'], layer.cashPerHour]);
   }
   return writes;
 }

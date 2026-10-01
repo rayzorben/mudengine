@@ -123,6 +123,8 @@ export function triggerText(trigger: KonamiTrigger): string {
       return t('cards.konami.trigger.ready');
     case 'review':
       return t('cards.konami.trigger.review');
+    case 'saved':
+      return t('cards.konami.trigger.saved');
     default: {
       const never: never = trigger;
       return never;
@@ -353,6 +355,12 @@ export function layerRows(layer: KonamiLayer): Array<[string, string]> {
     if (layer.coins.shed.length > 0) {
       rows.push([t('cards.konami.layer.coinsDropped'), layer.coins.shed.join(', ')]);
     }
+  }
+  if (layer.cashPerHour !== undefined) {
+    rows.push([
+      t('cards.konami.layer.cashPerHour'),
+      layer.cashPerHour > 0 ? layer.cashPerHour.toLocaleString() : t('cards.konami.layer.none')
+    ]);
   }
   return rows;
 }

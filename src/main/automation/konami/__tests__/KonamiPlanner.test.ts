@@ -31,7 +31,7 @@ function providerFile(): string {
         for (const [name, q] of Object.entries(request.questions)) {
           answers[name] = q.type === 'noul'
             ? { type: 'noul', noul: 0.9 }
-            : { type: 'choice', choice: name === 'goal' ? goal : Object.keys(q.criteria)[0], confidence: 0.6, probabilities: name === 'goal' ? { [goal]: 0.6, wait: 0.3 } : {} };
+            : { type: 'choice', choice: name === 'goal' ? goal : (globalThis.__konamiChoices?.[name] ?? Object.keys(q.criteria)[0]), confidence: 0.6, probabilities: name === 'goal' ? { [goal]: 0.6, wait: 0.3 } : {} };
         }
         return { model: 'test', answers };
       }
@@ -61,6 +61,7 @@ const BRIEF = {
         key: 'lair:a',
         name: 'fierce zombie',
         exp: { perHour: 9000, ceilingPerHour: null, perCycle: 300 },
+        cash: { perHour: null },
         survival: { worstShare: 0.1 },
         steps: 3,
         fight: null,
@@ -108,6 +109,8 @@ let activity: KonamiActivity | null;
 let trainRefusal: { why: string; at: number } | null;
 let trainReady: boolean;
 let written: HistoryEntry[];
+/** A change to the brief each ask builds, or null. */
+let briefPatch: ((brief: KonamiBrief) => void) | null;
 
 function planner(): KonamiPlanner {
   const facts: PlannerFacts = {
@@ -118,6 +121,7 @@ function planner(): KonamiPlanner {
       const made = structuredClone(BRIEF);
       made.hunting.excluded = { ...NO_EXCLUSIONS, unsimulated };
       if (trainReady) Object.assign(made.character, { levelReady: true, trainCost: 0 });
+      briefPatch?.(made);
       return made;
     },
     busy: () => false,
@@ -182,7 +186,11 @@ async function asked(times: number): Promise<void> {
   await settle();
 }
 
-const global = globalThis as { __konamiGoal?: string; __konamiAsked?: number };
+const global = globalThis as {
+  __konamiGoal?: string;
+  __konamiAsked?: number;
+  __konamiChoices?: Record<string, string>;
+};
 
 beforeEach(() => {
   state = inRealm();
@@ -201,6 +209,8 @@ beforeEach(() => {
   trainReady = false;
   written = [];
   global.__konamiGoal = 'hunt_0';
+  global.__konamiChoices = {};
+  briefPatch = null;
   global.__konamiAsked = 0;
 });
 
@@ -574,6 +584,30 @@ describe('the planner', () => {
     it.onCharacter(state);
     await asked(2);
     expect(it.snapshot().decisions[0]?.trigger).toBe('ready');
+    it.dispose();
+  });
+
+  /* Todo 63: Soul at level 2, 0 copper and training at 50. */
+  it('saves for the trainer, asks the hunt for the copper, and asks again once it is carried', async () => {
+    briefPatch = (made) => Object.assign(made.character, { levelReady: true, trainCost: 50 });
+    global.__konamiChoices = { saveFor: 'train', saveWithin: 'hours_1' };
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    expect(it.snapshot().decisions[0]?.plan).toMatchObject({
+      layer: { cashPerHour: 50 },
+      saving: { copper: 50, carried: true }
+    });
+    state = inRealm({ inventory: { ...inRealm().inventory, wealth: 49 } });
+    it.onCharacter(state);
+    await settle();
+    expect(global.__konamiAsked).toBe(1);
+    state = inRealm({ inventory: { ...inRealm().inventory, wealth: 55 } });
+    it.onCharacter(state);
+    await asked(2);
+    expect(it.snapshot().decisions[0]?.trigger).toBe('saved');
     it.dispose();
   });
 

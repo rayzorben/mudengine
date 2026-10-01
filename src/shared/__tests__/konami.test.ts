@@ -23,7 +23,8 @@ import {
   type SlotUpgrade
 } from '../konamiBrief';
 import type { KonamiLesson } from '../konamiLessons';
-import { nextUpgradePrice, planQuestions, readPlan, samePlan } from '../konamiQuestions';
+import { nextUpgradePrice } from '../konamiPurse';
+import { planQuestions, readPlan, samePlan } from '../konamiQuestions';
 import type { ProwessSheet } from '../prowess';
 
 describe('the cash steps a new plan is asked on', () => {
@@ -256,7 +257,8 @@ function brief(
       blessings: [],
       restBelow: 0.35,
       trainFirst: null,
-      coins: { pick: [], shed: [] }
+      coins: { pick: [], shed: [] },
+      cashPerHour: 0
     },
     maxSpots: 10,
     lessons,
@@ -457,6 +459,55 @@ describe('the questions and the plan their answers make', () => {
       'gold_up_shed'
     ]);
     expect(coins?.instructions).toContain(String(nextUpgradePrice(brief())));
+  });
+
+  /*
+   * Todo 63: what can be saved for, each against the purse: the trainer while
+   * the copper carried is short of it, and every upgrade out of reach.
+   */
+  it('asks what to save for and over how long, and turns it into copper an hour', () => {
+    const asked = planQuestions(brief({}, [], [], {}, 1_500));
+    const saveFor = asked.questions['saveFor'];
+    expect(Object.keys(saveFor?.type === 'choice' ? saveFor.criteria : {})).toEqual([
+      'none',
+      'train',
+      'buy_head_1'
+    ]);
+    expect(asked.questions['saveWithin']?.type).toBe('choice');
+    const plan = readPlan(
+      answer({ goal: 'hunt_0', saveFor: 'train', saveWithin: 'hours_2' }, {}),
+      asked
+    );
+    expect(plan.saving).toEqual({ what: expect.any(String), copper: 1_500, carried: true });
+    // 500 short of the 1,500 over two hours.
+    expect(plan.layer.cashPerHour).toBe(250);
+    const none = readPlan(
+      answer({ goal: 'hunt_0', saveFor: 'none', saveWithin: 'hours_2' }, {}),
+      asked
+    );
+    expect(none.saving).toBeNull();
+    expect(none.layer.cashPerHour).toBe(0);
+  });
+
+  it('leaves the floor alone where saving went unanswered, and offers nothing on an unread purse', () => {
+    const asked = planQuestions(brief({}, [], [], {}, 1_500));
+    expect(readPlan(answer({ goal: 'hunt_0' }, {}), asked).layer.cashPerHour).toBeUndefined();
+    const unread = brief(
+      { inventory: { ...EMPTY_CHARACTER.inventory, wealth: null } },
+      [],
+      [],
+      {},
+      1_500
+    );
+    expect(planQuestions(unread).questions['saveFor']).toBeUndefined();
+  });
+
+  it('asks nothing about saving while nothing is short', () => {
+    const rich = brief({ inventory: { ...EMPTY_CHARACTER.inventory, wealth: 100_000 } });
+    expect(planQuestions(rich).questions['saveFor']).toBeUndefined();
+    expect(
+      readPlan(answer({ goal: 'hunt_0' }, {}), planQuestions(rich)).layer.cashPerHour
+    ).toBeUndefined();
   });
 
   it('names the cheapest upgrade still out of reach', () => {

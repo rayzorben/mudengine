@@ -138,6 +138,8 @@ export interface BriefSpot {
   boss: boolean;
   respawnSeconds: number | null;
   exp: { perHour: number | null; ceilingPerHour: number | null; perCycle: number | null };
+  /** Copper an hour from the coins its monsters carry (`SpotEstimate.copperPerHour`). */
+  cash: { perHour: number | null };
   cycleSeconds: number | null;
   survival: {
     damagePerRoom: number | null;
@@ -298,6 +300,7 @@ function briefSpot(
       ceilingPerHour: estimate.ceilingPerHour,
       perCycle: estimate.expPerCycle
     },
+    cash: { perHour: estimate.copperPerHour },
     cycleSeconds: estimate.cycleSeconds,
     survival: {
       damagePerRoom: estimate.damagePerRoom,

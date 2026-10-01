@@ -18,8 +18,9 @@ import type {
   KonamiQuestionName,
   KonamiReply
 } from './konami';
-import { bankedCopper } from './coins';
 import { REALM_ARMOUR_SCALE } from './menace';
+import { number, offerLabel, purseText } from './konamiPurse';
+import { readSaving, savingQuestions, type SavingLabels } from './konamiSaving';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 /** What the character is playing for; said in every question. */
@@ -62,15 +63,13 @@ export interface KonamiLabels {
   restBelow: Readonly<Record<string, number>>;
   trainFirst: Readonly<Record<string, TrainedAttribute>>;
   coins: Readonly<Record<string, CoinPickup>>;
+  saving: SavingLabels;
 }
 
 export interface KonamiQuestions {
   questions: Record<string, KonamiQuestion>;
   labels: KonamiLabels;
 }
-
-const number = (value: number | null, digits = 0): string =>
-  value === null ? 'unknown' : value.toFixed(digits);
 
 const percent = (share: number | null): string =>
   share === null ? 'unknown' : `${Math.round(share * 100)}%`;
@@ -82,6 +81,13 @@ function rateText(exp: BriefSpot['exp']): string {
     return `${number(exp.perCycle)} exp a lap (no hourly rate: the realm states no respawn time)`;
   }
   return 'unknown exp';
+}
+
+/** The coin its monsters carry, where they carry any. */
+function cashRateText(cash: BriefSpot['cash']): string {
+  return cash.perHour !== null && cash.perHour > 0
+    ? `, ${number(cash.perHour)} copper an hour`
+    : '';
 }
 
 /**
@@ -182,14 +188,14 @@ function goalQuestion(brief: KonamiBrief): {
     const before = spot.history.length === 0 ? '' : ` Before: ${spot.history.join('; ')}.`;
     criteria[label] =
       `Hunt ${spot.name} (spot ${spot.key}, ranked ${index + 1} on the Hunting grounds): ` +
-      `${rateText(spot.exp)}; ${fightText(spot.fight)}; worst room takes ${percent(spot.survival.worstShare)} of max HP. ` +
+      `${rateText(spot.exp)}${cashRateText(spot.cash)}; ${fightText(spot.fight)}; worst room takes ${percent(spot.survival.worstShare)} of max HP. ` +
       `Getting there: ${routeText(spot, brief.character.hpMax)}${before}`;
   });
   for (const slot of brief.gear) {
     slot.offers.forEach((offer, index) => {
       if (offer.copper === null || cash === null || offer.copper > cash) return;
       if (offer.minLevel !== null && level !== null && offer.minLevel > level) return;
-      const label = `buy_${slot.slot.toLowerCase().replace(/[^a-z]+/g, '_')}_${index}`;
+      const label = offerLabel(slot, index);
       labels[label] = {
         kind: 'buy',
         item: offer.item,
@@ -339,9 +345,22 @@ export function planQuestions(brief: KonamiBrief): KonamiQuestions {
     criteria: coinCriteria
   };
 
+  const saving = savingQuestions(brief, AIM);
+  Object.assign(questions, saving.questions);
+
   return {
     questions,
-    labels: { goal: goal.labels, attack, opener, heal, blessings, restBelow, trainFirst, coins }
+    labels: {
+      goal: goal.labels,
+      attack,
+      opener,
+      heal,
+      blessings,
+      restBelow,
+      trainFirst,
+      coins,
+      saving: saving.labels
+    }
   };
 }
 
@@ -351,18 +370,8 @@ export function planQuestions(brief: KonamiBrief): KonamiQuestions {
  * weight and a command a coin once there is plenty.
  */
 function cashText(brief: KonamiBrief): string {
-  const { cash, trainCost, level } = brief.character;
-  const train =
-    trainCost === null
-      ? 'what training costs is unknown'
-      : `training costs ${number(trainCost)} copper`;
-  const upgrade = nextUpgradePrice(brief);
-  const gear =
-    upgrade === null
-      ? 'no gear upgrade is priced above what is held'
-      : `the cheapest gear upgrade not yet affordable costs ${number(upgrade)} copper`;
   return (
-    `In copper: ${number(cash.onHand)} carried and ${number(bankedCopper(cash.banks))} banked, at level ${number(level)}; ${train}, and ${gear}. ` +
+    `${purseText(brief)} ` +
     `Every coin picked up is a command and carries weight: copper and silver are worth it while cash is short of what is needed next, ` +
     `and not once there is plenty.`
   );
@@ -428,23 +437,15 @@ export function readPlan(reply: KonamiReply, { labels }: KonamiQuestions): Konam
   }
   const coins = choice('coins');
   if (coins !== null && labels.coins[coins] !== undefined) layer.coins = labels.coins[coins];
-  return { goal, layer, picks, options };
+  const saved = readSaving(labels.saving, {
+    saveFor: choice('saveFor'),
+    saveWithin: choice('saveWithin')
+  });
+  if (saved !== null) layer.cashPerHour = saved.cashPerHour;
+  return { goal, layer, picks, options, saving: saved?.saving ?? null };
 }
 
 /** Two plans do the same thing: the stuck log's test of whether asking again helped. */
 export function samePlan(a: KonamiPlan, b: KonamiPlan): boolean {
   return JSON.stringify([a.goal, a.layer]) === JSON.stringify([b.goal, b.layer]);
-}
-
-/** The cheapest item offered that is not yet affordable, in copper; null when none is priced. */
-export function nextUpgradePrice(brief: KonamiBrief): number | null {
-  const cash = brief.character.cash.total ?? 0;
-  let cheapest: number | null = null;
-  for (const slot of brief.gear) {
-    for (const offer of slot.offers) {
-      if (offer.copper === null || offer.copper <= cash) continue;
-      if (cheapest === null || offer.copper < cheapest) cheapest = offer.copper;
-    }
-  }
-  return cheapest;
 }

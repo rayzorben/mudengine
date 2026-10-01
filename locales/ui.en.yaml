@@ -1927,6 +1927,7 @@ cards:
       chosen: you chose
       ready: a level is ready to train
       review: the plan has run a while
+      saved: the copper saved for is there
     outcome:
       applied: in force
       done: done
@@ -1960,6 +1961,7 @@ cards:
       trainFirst: Train first
       coinsPicked: Coins to collect
       coinsDropped: Coins to discard
+      cashPerHour: Cash an hour (copper)
       none: none
       yes: 'yes'
       no: 'no'

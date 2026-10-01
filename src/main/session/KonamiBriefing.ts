@@ -120,7 +120,8 @@ function settingsOf(config: AutomationConfig): KonamiBrief['settings'] {
     coins: {
       pick: config.loot.coins ? config.loot.coinKinds : [],
       shed: config.loot.discardKinds
-    }
+    },
+    cashPerHour: config.hunting.cashPerHour
   };
 }
 

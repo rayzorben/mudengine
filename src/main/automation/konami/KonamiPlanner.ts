@@ -37,6 +37,7 @@ import {
   type KonamiGoal,
   type KonamiLayer,
   type KonamiPlan,
+  type KonamiSaving,
   type KonamiProvider,
   type KonamiTrigger,
   type LayerWrite
@@ -48,12 +49,8 @@ import {
   type KonamiLesson,
   type LessonOutcome
 } from '../../../shared/konamiLessons';
-import {
-  nextUpgradePrice,
-  planQuestions,
-  readPlan,
-  samePlan
-} from '../../../shared/konamiQuestions';
+import { nextUpgradePrice } from '../../../shared/konamiPurse';
+import { planQuestions, readPlan, samePlan } from '../../../shared/konamiQuestions';
 import {
   decisionRow,
   type KonamiActivity,
@@ -201,6 +198,8 @@ export class KonamiPlanner implements SessionModule {
   private inRealm = false;
   private mark = '';
   private markedAt = Date.now();
+  /** The saving whose copper has been said to be there, so it asks once. */
+  private saidSaved: KonamiSaving | null = null;
   /** A stuck log has been written for this stretch of standing still. */
   private stuckLogged = false;
   private timer: NodeJS.Timeout | null = null;
@@ -625,6 +624,19 @@ export class KonamiPlanner implements SessionModule {
       this.trigger('cash-step');
     }
     if (step !== null) this.step = step;
+    // The copper a plan saves for is there: carried where the trainer wants it on hand.
+    const saving = this.plan?.saving ?? null;
+    if (saving !== null && saving !== this.saidSaved) {
+      const have = saving.carried ? onHand : total;
+      if (have !== null && have >= saving.copper) {
+        this.saidSaved = saving;
+        this.log.say(
+          'cash',
+          `${have} copper reaches the ${saving.copper} saved for ${saving.what}`
+        );
+        this.trigger('saved');
+      }
+    }
     if (this.upgradeAt !== null && total !== null && total >= this.upgradeAt) {
       this.log.say('cash', `${total} copper reaches the ${this.upgradeAt} the next upgrade costs`);
       this.upgradeAt = null;
