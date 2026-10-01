@@ -257,6 +257,8 @@ export interface CharacterFields {
   huntAuto: boolean;
   /** How far to look for a lair, as text; '' is everywhere the exits reach. */
   huntRadius: string;
+  /** Copper an hour the hunt should earn, as text; '' is exp alone. */
+  huntCash: string;
   /** Spending character points on the stat screen — `automation.train`. */
   trainStats: boolean;
   trainLevels: boolean;
@@ -496,6 +498,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     collectKeys: entry.movement.collectKeys,
     huntAuto: entry.hunting.enabled,
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
+    huntCash: entry.hunting.cashPerHour > 0 ? String(entry.hunting.cashPerHour) : '',
     trainStats: entry.train.stats,
     trainLevels: entry.train.levels,
     trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
@@ -684,7 +687,8 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       enabled: form.huntAuto,
       // Blank and 0 are the same answer — *everywhere the exits reach* — which
       // is what the field's own hint says.
-      radius: Number.parseInt(form.huntRadius, 10) || 0
+      radius: Number.parseInt(form.huntRadius, 10) || 0,
+      cashPerHour: Math.max(0, Number.parseInt(form.huntCash, 10) || 0)
     },
     train: {
       stats: form.trainStats,
@@ -967,6 +971,7 @@ export function emptyForm(
     collectKeys: movement.collectKeys,
     huntAuto: hunting.enabled,
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
+    huntCash: hunting.cashPerHour > 0 ? String(hunting.cashPerHour) : '',
     trainStats: train.stats,
     trainLevels: train.levels,
     trainTrainer: train.trainer > 0 ? String(train.trainer) : '',

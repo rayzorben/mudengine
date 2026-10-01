@@ -27,6 +27,7 @@ import CarrySections from './CarrySections';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
+import HuntingFields from './HuntingFields';
 import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
@@ -1575,24 +1576,19 @@ export default function CharacterForm({
           <fieldset className="settings-menus" data-fieldset="hunting">
             <legend>{t('settings.hunting.legend')}</legend>
             <p className="settings-note">{t('settings.hunting.note')}</p>
-            <div className="settings-inline">
-              <CheckField
-                checked={form.huntAuto}
-                hint={t('settings.hunting.autoHint')}
-                label={t('settings.hunting.auto')}
-                name="hunt-auto"
-                onChange={(value) => patch({ huntAuto: value })}
-              />
-              {form.huntAuto && (
-                <NumberField
-                  hint={t('settings.hunting.radiusHint')}
-                  label={t('settings.hunting.radius')}
-                  name="hunt-radius"
-                  onChange={(value) => patch({ huntRadius: value })}
-                  value={form.huntRadius}
-                />
-              )}
-            </div>
+            <HuntingFields
+              cash={form.huntCash}
+              enabled={form.huntAuto}
+              namePrefix=""
+              onChange={(change) =>
+                patch({
+                  ...(change.enabled !== undefined && { huntAuto: change.enabled }),
+                  ...(change.radius !== undefined && { huntRadius: change.radius }),
+                  ...(change.cash !== undefined && { huntCash: change.cash })
+                })
+              }
+              radius={form.huntRadius}
+            />
           </fieldset>
 
           {/*

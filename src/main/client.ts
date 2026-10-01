@@ -2300,6 +2300,7 @@ function registerIpc(): void {
           measured: null,
           constants: tuning().hunting
         },
+        cashPerHour: 0,
         refusal: t('session.hunt.noSession')
       } satisfies HuntingAdvice;
     }

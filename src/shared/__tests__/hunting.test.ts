@@ -592,6 +592,21 @@ describe('filling the wait', () => {
     expect(filled.estimate.expPerHour!).toBeGreaterThan(camping.expPerHour!);
   });
 
+  /* Todo 64: a loop short of its cash floor takes a lair that carries coin, at a cost in exp. */
+  it('takes a coin-carrying lair under a cash floor, even where it costs exp', () => {
+    const busy = singles();
+    const thief: FillerInput = {
+      ...rat,
+      mobs: [mutant({ name: 'kobold thief', experience: 1, rounds: 3, perRound: 1, copper: 50.5 })],
+      detourSteps: 10
+    };
+    expect(addFiller(busy, [thief], 8, C).taken).toEqual([]);
+    const filled = addFiller(busy, [thief], 8, C, 1_000_000);
+    expect(filled.taken).toEqual([0]);
+    expect(filled.estimate.copperPerHour!).toBeGreaterThan(0);
+    expect(filled.estimate.expPerHour!).toBeLessThan(estimateSpot(busy, C).expPerHour!);
+  });
+
   it('adds nothing to a cycle already slower than its clock', () => {
     const busy = singles();
     expect(estimateSpot(busy, C).waitSeconds).toBe(0);
@@ -786,6 +801,35 @@ describe('the order the reader wants', () => {
    * monster on a one-hour clock outranked eight rooms of sewer monsters whose
    * rooms carry no clock. Among unknown rates, what one sweep earns decides.
    */
+  /*
+   * Todo 64: under a cash floor a spot paying it comes first, then the rest by
+   * copper; deadly stays last. Soul, level 2: the cave bear pays no coin.
+   */
+  it('ranks a spot paying the cash floor above more exp, and deadly still last', () => {
+    const paying = (key: string, exp: number, copper: number, deadly = false): HuntingSpot => {
+      const s = spot(key, exp, exp, deadly);
+      return { ...s, estimate: { ...s.estimate, copperPerHour: copper } };
+    };
+    const spots = [
+      paying('cave bear', 15_000, 0),
+      paying('kobold', 5_000, 300),
+      paying('rats', 8_000, 40),
+      paying('dragon', 90_000, 9_000, true)
+    ];
+    expect([...spots].sort((a, b) => compareSpots(a, b, 200)).map((s) => s.key)).toEqual([
+      'kobold',
+      'rats',
+      'cave bear',
+      'dragon'
+    ]);
+    expect([...spots].sort(compareSpots).map((s) => s.key)).toEqual([
+      'cave bear',
+      'rats',
+      'kobold',
+      'dragon'
+    ]);
+  });
+
   it('orders unknown rates by what one sweep earns before the ceiling', () => {
     const sweep = (key: string, cycle: number | null, ceiling: number | null): HuntingSpot => {
       const s = spot(key, null, ceiling);
