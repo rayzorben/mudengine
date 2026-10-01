@@ -79,6 +79,15 @@ export function costsAlignment(align: number): boolean {
  */
 export type AlignmentCost = 'never' | 'sometimes' | 'always';
 
+/**
+ * The monsters auto-combat will fight: none that costs evil points to attack,
+ * certainly or by a row the name cannot rule out. What the hunting survey
+ * prices.
+ */
+export function fightable<T extends { costly: AlignmentCost }>(mobs: readonly T[]): T[] {
+  return mobs.filter((mob) => mob.costly === 'never');
+}
+
 /** Combines the per-row answers for one name. */
 export function alignmentCost(rows: Iterable<boolean>): AlignmentCost {
   let any = false;

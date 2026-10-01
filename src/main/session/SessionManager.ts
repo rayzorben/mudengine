@@ -536,7 +536,7 @@ export class SessionManager {
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
     // Before `useRealm`, which tells it the family is unread again.
     this.errands = new Errands(
-      { world, tracker: this.tracker, fightRecord: fights },
+      { world, tracker: this.tracker, fightRecord: fights, spawns: lore },
       {
         config: () => this.automationConfig,
         family: () => this.vocabulary.family,
@@ -3143,7 +3143,7 @@ export class SessionManager {
        * spend the budget on refusals. Why quiet helps: `Grounded`.
        */
       if (this.grounded.standsDown(state)) return;
-      this.errands.unrefuseWhatTheRoomPrints(state);
+      this.errands.onCharacter(state, block);
       this.statlineReport.noteStatline(state);
       /*
        * Under a timed spell the way in put on the character — the dive into

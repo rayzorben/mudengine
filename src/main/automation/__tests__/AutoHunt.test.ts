@@ -42,6 +42,7 @@ const spot = (key: string, rate: number | null, room = 'Graveyard', at = 816): H
     key,
     mobs: [{ name: 'fierce zombie', experience: 70 }],
     clock: 'delay',
+    via: 'lair',
     boss: false,
     respawnSeconds: 60,
     spawns: 2,
