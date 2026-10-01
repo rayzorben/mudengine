@@ -1355,6 +1355,9 @@ cards:
     evil: '{count} where attacking costs evil points.'
     # A level is ready, and the way back from the trainer is an exit for levels up to this one.
     gated: '{count} you could not get back to once the next level is trained.'
+    # Every unhunted ground's estimate scaled by what hunting measured against the estimate.
+    paced: 'Spots not hunted yet are scaled by {pace}x, from what your hunts paid against their estimates.'
+    measuredHint: 'What hunting here paid at this level, over {minutes} minutes.'
     # The fight itself unpriced -- the rounds to kill, or the blows, unknown --
     # so the row is ordered by distance and never by what it pays.
     unpricedOne: The fight in one of them could not be rated, so it is listed by distance.
@@ -1396,7 +1399,9 @@ cards:
       held: holds
     detail:
       rate: Expected
-      rateValue: '{rate} exp/hr'
+      rateValue: '{rate}/hr'
+      measured: Measured
+      measuredValue: '{rate}/hr over {minutes} min'
       ceiling: Best case
       cash: Cash
       cashValue: '{copper} copper/hr'

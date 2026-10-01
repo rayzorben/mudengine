@@ -607,3 +607,31 @@ describe('the attack spells a realm answered instantly', () => {
     expect(store().forRealm('gmud.sqlite', world).isInstantSpell('hold person')).toBe(false);
   });
 });
+
+/*
+ * Todo 70: what a realm pays for a kill is not the database's figure (Paradigm
+ * paid 300 for a cave bear rated 100), so a solo kill's figure is kept per
+ * realm, under the realm's own row name.
+ */
+describe('what a realm pays for a kill', () => {
+  it('keeps the last solo kill under the row name, per realm, and reads it back', () => {
+    const lore = store();
+    lore.forRealm('gmud.sqlite', world).observeKillExp?.('big giant rat', 27, 7);
+    lore.flush();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).killExp['gmud.sqlite']).toEqual({
+      'giant rat': { exp: 27, at: 7 }
+    });
+    const again = store().forRealm('gmud.sqlite', world);
+    expect(again.killExpFor('giant rat')).toBe(27);
+    expect(again.killExpFor('fat giant rat')).toBe(27);
+    expect([...again.allKillExp()]).toEqual([['giant rat', 27]]);
+    // Another realm learned nothing.
+    expect(store().forRealm('paradigm.sqlite', world).killExpFor('giant rat')).toBeNull();
+  });
+
+  it('keeps nothing from a kill that paid nothing', () => {
+    const lore = store();
+    lore.forRealm('gmud.sqlite', world).observeKillExp?.('giant rat', 0, 7);
+    expect(lore.forRealm('gmud.sqlite', world).killExpFor('giant rat')).toBeNull();
+  });
+});

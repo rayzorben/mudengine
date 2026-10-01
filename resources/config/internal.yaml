@@ -669,6 +669,13 @@ tuning:
     # Under a cash floor, a spot's copper counts only while its exp an hour is
     # at least this share of the best spot's.
     cashExpShare: 0.5
+    # A hunt's measured exp an hour, per character and spot: trusted for a week,
+    # only from a stay of ten minutes or more, and the pace it puts on unhunted
+    # grounds kept between a fifth and ten times the estimate.
+    measuredForgetMs: 604800000
+    measuredMinutesLeast: 10
+    paceLeast: 0.2
+    paceMost: 10
 
     # Where the world database states no lair clock (a MegaMUD export has no
     # Delay column) or no lair at all (an arena), the client times the gap

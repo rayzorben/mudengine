@@ -19,6 +19,7 @@
  * `mudengine-automation` § *Hunting is a switch, and the loop it runs is
  * never filed*.
  */
+import { companyIn } from '../../shared/company';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
@@ -30,6 +31,7 @@ import {
   huntLoop,
   shortOfCash,
   type HuntingAdvice,
+  type MeasuredRate,
   type HuntingSpot
 } from '../../shared/hunting';
 import type { Loop } from '../../shared/loops';
@@ -67,6 +69,8 @@ export interface HuntPlanner {
   walking(): boolean;
   /** An escape in flight, an armed retreat, an errand: not now. */
   busy(): boolean;
+  /** What hunting a spot paid, kept for the survey and the next session (todo 70). */
+  noteRate(key: string, rate: MeasuredRate): void;
 }
 
 export interface HuntEvents {
@@ -317,6 +321,20 @@ export class AutoHunt implements SessionModule {
     if (this.phase.kind !== 'hunting') return;
     this.noteCompany(state);
     const measured = this.measure(state);
+    const level = state.progress.level;
+    // Kept from a stay long enough to say, so a short visit never replaces an hour's figure.
+    if (
+      measured !== null &&
+      level !== null &&
+      measured.minutes >= tuning().hunting.measuredMinutesLeast
+    ) {
+      this.planner.noteRate(this.phase.key, {
+        perHour: measured.perHour,
+        minutes: measured.minutes,
+        level,
+        at: this.now()
+      });
+    }
 
     const judged = this.judgement(state);
     const changed = judged !== this.judgedFor;
@@ -334,7 +352,7 @@ export class AutoHunt implements SessionModule {
      */
     const expected = this.phase.expected;
     if (measured !== null && expected !== null && expected > 0) {
-      this.correction.set(this.phase.key, clampCorrection(measured / expected));
+      this.correction.set(this.phase.key, clampCorrection(measured.perHour / expected));
     }
 
     const best = this.bestOther(this.phase.key);
@@ -348,7 +366,7 @@ export class AutoHunt implements SessionModule {
      * Before a rate can be measured the estimate stands in, priced as a
      * candidate would be — which is where a contested lair is halved.
      */
-    const here = measured ?? this.pricedRate(this.phase.key, expected);
+    const here = measured?.perHour ?? this.pricedRate(this.phase.key, expected);
     // A cash floor outranks exp: never off a lair paying it for one that does not, and off one
     // short of it for one that pays it (todo 64), unless it earns under `cashExpShare` of the exp
     // here (todo 71).
@@ -404,17 +422,7 @@ export class AutoHunt implements SessionModule {
    */
   private noteCompany(state: CharacterState): void {
     if (this.phase.kind !== 'hunting') return;
-    const mine = new Set(state.party.members.map((member) => member.name.toLowerCase()));
-    const own = state.name?.toLowerCase() ?? '';
-    const stranger =
-      state.room.occupants.find(
-        (occupant) =>
-          occupant.kind === 'player' &&
-          occupant.name.toLowerCase() !== own &&
-          !mine.has(occupant.name.toLowerCase())
-      )?.name ??
-      Object.values(state.combat.claimed).find((claim) => !mine.has(claim.by.toLowerCase()))?.by ??
-      null;
+    const stranger = companyIn(state);
     if (stranger === null) return;
     this.contested.set(this.phase.key, this.now());
     if (this.phase.saidCompany) return;
@@ -428,7 +436,7 @@ export class AutoHunt implements SessionModule {
    * What this lair has actually paid, an hour, since the measurement's anchor
    * — or null until the grace has passed and the figures are known.
    */
-  private measure(state: CharacterState): number | null {
+  private measure(state: CharacterState): { perHour: number; minutes: number } | null {
     if (this.phase.kind !== 'hunting') return null;
     const from = this.phase.from;
     const exp = state.progress.exp;
@@ -441,7 +449,7 @@ export class AutoHunt implements SessionModule {
     // The low-experience stop's own grace: the first minutes of any lap are
     // the walk to the first lair.
     if (elapsed < tuning().loop.expRateGraceMs) return null;
-    return ((exp - from.exp) * 3_600_000) / elapsed;
+    return { perHour: ((exp - from.exp) * 3_600_000) / elapsed, minutes: elapsed / 60_000 };
   }
 
   /** What the estimate was made for: change either and it is asked again. */
@@ -464,18 +472,27 @@ export class AutoHunt implements SessionModule {
    * somebody else is working it. Null where the survey could not finish it.
    */
   private priced(spot: HuntingSpot): number | null {
+    // A spot hunted at this level is priced on what it paid: no correction, and the sharing only
+    // where somebody was seen after it was measured, since the measurement holds any before.
+    const measured = spot.estimate.measured;
+    if (measured) return this.shared(spot.key, measured.perHour, measured.at);
     return this.pricedRate(spot.key, spot.estimate.expPerHour);
+  }
+
+  /** A rate at the contested share while somebody else was seen working the lair lately. */
+  private shared(key: string, rate: number, after = 0): number {
+    const seen = this.contested.get(key);
+    const contested =
+      seen !== undefined && seen > after && this.now() - seen < tuning().hunting.contestedForgetMs;
+    return contested ? rate * tuning().hunting.contestedShare : rate;
   }
 
   private pricedRate(key: string, rate: number | null): number | null {
     if (rate === null) return null;
-    const corrected = rate * (this.correction.get(key) ?? 1);
     // A sighting has a shelf life: people leave, and a lair priced at half for
     // ever on the strength of a passer-by is one this client never goes back
     // to. See `tuning.hunting.contestedForgetMs`.
-    const seen = this.contested.get(key);
-    const shared = seen !== undefined && this.now() - seen < tuning().hunting.contestedForgetMs;
-    return shared ? corrected * tuning().hunting.contestedShare : corrected;
+    return this.shared(key, rate * (this.correction.get(key) ?? 1));
   }
 
   /** The best lair that is not the one being walked, priced. */

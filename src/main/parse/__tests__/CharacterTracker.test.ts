@@ -2143,6 +2143,48 @@ describe('the fight this character is in', () => {
     expect(tracker.current.combat.attackers).toEqual([]);
   });
 
+  /* Todo 70: what a kill paid is kept for the realm only where nobody else could have shared it. */
+  describe('what a kill paid', () => {
+    const paid = (): MobLore & { kills: Array<[string, number]> } => {
+      const kills: Array<[string, number]> = [];
+      return { ...NO_LORE, kills, observeKillExp: (name, exp) => void kills.push([name, exp]) };
+    };
+
+    it('is kept from a solo kill, under the target', () => {
+      const lore = paid();
+      play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'You gain 25 experience.'
+        ],
+        combatWorld(),
+        lore
+      );
+      expect(lore.kills).toEqual([['orc rogue', 25]]);
+    });
+
+    it('is not kept while another player is in the room', () => {
+      const lore = paid();
+      play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: Rend, orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          'You slash the orc rogue for 40 damage!',
+          'You gain 25 experience.'
+        ],
+        combatWorld(),
+        lore
+      );
+      expect(lore.kills).toEqual([]);
+    });
+  });
+
   /*
    * The death sentence is realm data with no column in the shipped database,
    * so it is read positionally: the unread line immediately before this
@@ -10971,6 +11013,8 @@ describe('the spellbook and the belongings record', () => {
         },
         recallFled: () => [],
         rememberFled: () => {},
+        recallHuntRates: () => new Map(),
+        rememberHuntRate: () => {},
         recallAbilities: () => state.abilities,
         rememberAbilities: (abilities: AbilitySums) => {
           state.abilities = { ...abilities, sums: { ...abilities.sums } };

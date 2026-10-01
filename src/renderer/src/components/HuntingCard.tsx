@@ -10,6 +10,7 @@ import {
   fightUnpriced,
   huntLoop,
   loopNameOf,
+  spotRate,
   type HuntingAdvice,
   type HuntingRoom,
   type HuntingSpot,
@@ -217,10 +218,20 @@ function HuntingCard({
         id: 'rate',
         label: t('cards.hunting.columns.rate'),
         numeric: true,
-        value: (spot) => spot.estimate.expPerHour ?? spot.estimate.ceilingPerHour ?? null,
+        value: (spot) => spotRate(spot) ?? spot.estimate.ceilingPerHour ?? null,
         cell: (spot) =>
           spot.estimate.deadly ? (
             <span className="chip bad">{t('cards.hunting.deadly')}</span>
+          ) : spot.estimate.measured ? (
+            // What hunting it paid at this level, over the estimate (todo 70).
+            <span
+              className="chip ok"
+              title={t('cards.hunting.measuredHint', {
+                minutes: Math.round(spot.estimate.measured.minutes)
+              })}
+            >
+              {hours(spot.estimate.measured.perHour)}
+            </span>
           ) : spot.estimate.expPerHour === null ? (
             <span
               className="chip quiet"
@@ -297,7 +308,8 @@ function HuntingCard({
             : '',
           advice.excluded.gated > 0
             ? t('cards.hunting.gated', { count: advice.excluded.gated })
-            : ''
+            : '',
+          advice.pace !== null ? t('cards.hunting.paced', { pace: advice.pace.toFixed(1) }) : ''
         ]
           .filter((part) => part.length > 0)
           .join(' ');
@@ -425,6 +437,17 @@ function SpotDetail({
                 ? t('cards.hunting.unknownParts', { parts: unknownWords(estimate.unknown) })
                 : t('cards.hunting.detail.rateValue', { rate: hours(estimate.expPerHour) })}
           </dd>
+          {estimate.measured ? (
+            <>
+              <dt>{t('cards.hunting.detail.measured')}</dt>
+              <dd>
+                {t('cards.hunting.detail.measuredValue', {
+                  rate: hours(estimate.measured.perHour),
+                  minutes: Math.round(estimate.measured.minutes)
+                })}
+              </dd>
+            </>
+          ) : null}
           <dt>{t('cards.hunting.detail.ceiling')}</dt>
           <dd>{t('cards.hunting.detail.rateValue', { rate: hours(estimate.ceilingPerHour) })}</dd>
           {/* Only where its monsters carry coin: most lairs pay none. */}
