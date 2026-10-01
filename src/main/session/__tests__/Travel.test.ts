@@ -226,4 +226,22 @@ describe('running from a fight that could kill', () => {
     moving.considerEscape(next);
     expect(sent).toEqual(['n', 'n']);
   });
+
+  it('waits out the cooldown in a room nothing followed it into', () => {
+    const first = hit(10, 'Dank Room', 1);
+    const {
+      travel: moving,
+      sent,
+      parts
+    } = travel(first, 'none', true, {
+      settings: plain,
+      fight: () => thug
+    });
+    moving.considerEscape(first);
+    const empty = { ...hit(6, 'Weapons Shop', 2), combat: { ...first.combat, attackers: [] } };
+    (parts.tracker as { current: CharacterState }).current = empty;
+    moving.settleEscape({ type: 'room' } as never, first.room);
+    moving.considerEscape(empty);
+    expect(sent).toEqual(['n']);
+  });
 });

@@ -854,7 +854,11 @@ export class Travel implements SessionModule {
     }
 
     const now = Date.now();
-    const landedSince = this.landedAt > 0 && this.landedAt >= this.lastAskedToEscape;
+    // Followed: something is swinging in the room the last run landed in.
+    const landedSince =
+      this.landedAt > 0 &&
+      this.landedAt >= this.lastAskedToEscape &&
+      state.combat.attackers.length > 0;
     if (now - this.lastAskedToEscape < safety.cooldownMs && !landedSince) return;
     /*
      * And not while the escape already chosen is waiting for its answer.
