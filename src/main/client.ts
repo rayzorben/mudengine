@@ -120,6 +120,8 @@ import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
+import type { ExtensionInfo } from '../shared/extensions';
+import { loadExtensions, pageFile, type LoadedExtension } from './extensions/ExtensionLoader';
 import { IDLE_QUEST_RUN } from '../shared/quests';
 import { EMPTY_ROOM_VERDICT, prowessSheetOf } from '../shared/verdict';
 import { EMPTY_MAP, type LocalMap } from '../shared/map';
@@ -274,6 +276,8 @@ let workspace: Workspace | null = null;
  */
 const windows = new WindowRegistry();
 let host: SessionHost | null = null;
+/** The extensions found in the home at startup (todo 84). */
+let extensions: readonly LoadedExtension[] = [];
 
 /**
  * The realm knowledge base, loaded once.
@@ -1302,6 +1306,17 @@ function createHost(): SessionHost {
     // Beside the conversation and for the same reason: what the console
     // showed outlives the launch. `check:secrets` walks the whole home.
     backscrollFor: (id) => home.record('backscroll', id),
+    // Each extension's records go under the home in a folder of its own name.
+    extensions: {
+      loaded: () => extensions,
+      home: home.root,
+      // Apart from the home's own folders, whatever an extension is called.
+      records: (name, id) => home.state('extension-records', name, id),
+      keep: (id, writes) => {
+        const result = new SettingsEditor({ home }).setAutomationValues(id, writes);
+        return result.ok ? null : result.error;
+      }
+    },
     belongingsAt,
     playersFor,
     destinationsFor,
@@ -1584,6 +1599,27 @@ function registerIpc(): void {
   handle(
     Invoke.getAutomation,
     (_caller, session: SessionId) => host?.get(session)?.manager.automation ?? EMPTY_AUTOMATION
+  );
+  // The extensions installed, and one of a card's buttons (todo 84).
+  handle(Invoke.listExtensions, (): ExtensionInfo[] =>
+    extensions.map(({ manifest }) => ({
+      name: manifest.name,
+      title: manifest.title,
+      page: manifest.ui === undefined ? null : platform.extensionPage(manifest.name)
+    }))
+  );
+  handle(
+    Invoke.extensionAction,
+    async (_caller, session: SessionId, name: unknown, action: unknown, args: unknown) => {
+      const manager = host?.get(session)?.manager;
+      if (manager === undefined || typeof name !== 'string' || typeof action !== 'string') {
+        return {
+          refusal:
+            manager === undefined ? t('app.profiles.noSuchCharacter') : t('extensions.badCall')
+        };
+      }
+      return manager.extensions.action(name, action, Array.isArray(args) ? args : []);
+    }
   );
 
   /**
@@ -3087,7 +3123,20 @@ export function startClient(host: Host): void {
      * the way.
      */
     if (!ownsTheProfile) return;
-    build();
+    // Found before anything is built, so every character's session is made with them.
+    void loadExtensions(path.join(home.root, 'extensions'))
+      .catch((error: unknown) => ({
+        loaded: [],
+        problems: [t('extensions.loadingFailed', { error: errorMessage(error) })]
+      }))
+      .then(({ loaded, problems }) => {
+        extensions = loaded;
+        build();
+        for (const each of loaded) {
+          announce('extensions', t('extensions.loaded', { title: each.manifest.title }), 'log');
+        }
+        for (const problem of problems) announce('extensions', problem);
+      });
   });
 }
 
@@ -3198,6 +3247,7 @@ function build(): void {
   platform.open({
     home,
     windows,
+    extensionFile: (name, relative) => pageFile(extensions, name, relative),
     workspace: () => workspace,
     publishRosters,
     quitting,

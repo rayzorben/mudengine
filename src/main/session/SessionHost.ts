@@ -26,6 +26,9 @@ import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
+import type { ExtensionDeps } from './extensionWiring';
+import type { LoadedExtension } from '../extensions/ExtensionLoader';
+import type { LayerWrite } from '../../shared/extensions';
 import { BUSY_PHASES, SessionManager } from './SessionManager';
 import type { InternalConfig } from '../../shared/internal';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -160,6 +163,18 @@ export interface SessionHostOptions {
    * See `Backscroll`.
    */
   backscrollFor?(id: SessionId): string;
+  /**
+   * The installed extensions (todo 84), the client's home each keeps its
+   * records under, and how a character's settings are written when the
+   * player keeps an extension's. Optional: a test runs none.
+   */
+  extensions?: {
+    loaded(): readonly LoadedExtension[];
+    home: string;
+    /** The folder one extension keeps one character's records in. */
+    records(name: string, id: SessionId): string;
+    keep(id: SessionId, writes: readonly LayerWrite[]): string | null;
+  };
   /**
    * What is known about the other players on *this character's* realm.
    *
@@ -511,7 +526,8 @@ export class SessionHost {
         spellLore: this.options.spellLoreFor?.(id),
         finds: this.options.findsFor?.(id),
         sentences: this.options.sentences?.(),
-        words: () => this.options.wordsFor(id)
+        words: () => this.options.wordsFor(id),
+        extensions: this.extensionsFor(id, () => slot)
       }
     );
 
@@ -634,6 +650,19 @@ export class SessionHost {
     // file says it lives: the two differ when a saved realm is dialled ad hoc.
     slot.manager.useRealm(this.options.playersAt(target), this.options.belongingsAt(id, target));
     return slot.manager.connect(target);
+  }
+
+  /** What one character's extensions are handed: the slot's backscroll is read once it exists. */
+  private extensionsFor(id: SessionId, slot: () => SessionSlot): ExtensionDeps | undefined {
+    const given = this.options.extensions;
+    if (given === undefined) return undefined;
+    return {
+      extensions: given.loaded(),
+      home: given.home,
+      records: (name) => given.records(name, id),
+      keep: (writes) => given.keep(id, writes),
+      backscroll: (lines) => slot().backscroll.page(lines).text
+    };
   }
 
   /**

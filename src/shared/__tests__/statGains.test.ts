@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CHARACTER, type CharacterState } from '../character';
 import type { HuntingSpot } from '../hunting';
 import { chooseByExp, statGains } from '../statGains';
-import { raisedBy, statSteps, wantedByGain, type StatLimits, type TrainedAttribute } from '../training';
+import {
+  raisedBy,
+  statSteps,
+  wantedByGain,
+  type StatLimits,
+  type TrainedAttribute
+} from '../training';
 
 const CURRENT: Record<TrainedAttribute, number> = {
   strength: 82,

@@ -90,6 +90,7 @@ import type {
   WorldRoom
 } from './world';
 import type { Visited } from './destinations';
+import type { ExtensionInfo } from './extensions';
 import type {
   ConnectionState,
   ConnectionTarget,
@@ -724,6 +725,10 @@ export const Invoke = {
   getWalk: 'walk:get',
   /** The decision trace, for a renderer that mounted mid-session. */
   getAutomation: 'automation:get',
+  /** The extensions installed in the home, and where each one's card page is (todo 84). */
+  listExtensions: 'extensions:list',
+  /** One of an extension card's buttons: its answer, or why there is none. */
+  extensionAction: 'extensions:action',
 
   // -- sessions and windows
   /** Every loaded session, for a window that has just mounted. */
@@ -1261,6 +1266,13 @@ export interface IpcApi {
   draftLoop(session: SessionId, rooms: RoomId[]): Promise<LoopDraft>;
   getWalk(session: SessionId): Promise<WalkProgress>;
   getAutomation(session: SessionId): Promise<AutomationSnapshot>;
+  listExtensions(): Promise<ExtensionInfo[]>;
+  extensionAction(
+    session: SessionId,
+    name: string,
+    action: string,
+    args: readonly unknown[]
+  ): Promise<{ value: unknown } | { refusal: string }>;
 
   listSessions(): Promise<SessionSummary[]>;
   listProfiles(): Promise<ProfileSummary[]>;

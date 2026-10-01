@@ -1,6 +1,7 @@
 import type { PointerEvent } from 'react';
 
 import CardPicker from './CardPicker';
+import { useExtensions } from '../hooks/useExtensions';
 import type { CardId } from '../lib/cards';
 import { t } from '../lib/i18n';
 import { version } from '../../../../package.json';
@@ -29,7 +30,10 @@ export interface CardRailHeadProps {
  * carries both either way, from the same `package.json` main reports
  * (`appVersion`).
  */
-export default function CardRailHead({ away, showLogo, ...picker }: CardRailHeadProps) {
+export default function CardRailHead({ away: put, showLogo, ...picker }: CardRailHeadProps) {
+  // The extension card is offered only where an extension draws one.
+  const installed = useExtensions().length > 0;
+  const away = installed ? put : put.filter((id) => id !== 'extension');
   if (away.length === 0 && !showLogo) return null;
   const name = t('app.windowTitle');
   return (

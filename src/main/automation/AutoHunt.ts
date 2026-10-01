@@ -31,8 +31,9 @@ import {
   huntLoop,
   shortOfCash,
   type HuntingAdvice,
-  type MeasuredRate,
-  type HuntingSpot
+  type HuntingSpot,
+  type HuntWait,
+  type MeasuredRate
 } from '../../shared/hunting';
 import type { Loop } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
@@ -112,6 +113,10 @@ type Phase =
 const ACTION = 'hunt';
 
 export class AutoHunt implements SessionModule {
+  /** A lap that was running, not this module's, when the hunt was steered: the steerer's to end. */
+  private inherited: string | null = null;
+  /** What held the hunt on the last line, or null. See `waiting`. */
+  private waitingOn: HuntWait | null = null;
   private phase: Phase = { kind: 'idle' };
   /** When the survey was last asked for, so a status line is not a sweep. */
   private surveyedAt = 0;
@@ -127,6 +132,8 @@ export class AutoHunt implements SessionModule {
    * is what turns `LoopEvents.betterSpot` from a sentence into a move.
    */
   private judgedFor: string | null = null;
+  /** See `steer`. */
+  private steered: string | null | undefined = undefined;
   /**
    * Lairs somebody else was seen working, and when.
    *
@@ -206,9 +213,71 @@ export class AutoHunt implements SessionModule {
     this.correction.clear();
   }
 
+  /**
+   * The spot an extension names (todo 84): only that key,
+   * nowhere (null), or this module's own choice (undefined). Every guard
+   * below still holds; what changes is which spots are candidates. A lap this
+   * module started for another spot is ended, since the plan has moved on.
+   */
+  steer(key: string | null | undefined): void {
+    if (key === this.steered) {
+      // The same spot planned again: whatever was refused before is asked again now.
+      if (typeof key === 'string' && this.phase.kind === 'idle') this.rejudge();
+      return;
+    }
+    this.steered = key;
+    // A lap running now, and not this module's, is left over from before the steer.
+    const running = this.planner.runningLoop();
+    this.inherited = typeof key === 'string' && running !== null && !this.mine() ? running : null;
+    this.rejudge();
+    if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === key) return;
+    if (this.mine()) this.planner.stopLoop(t('automation.hunt.steeredAway'));
+    this.phase = { kind: 'idle' };
+  }
+
+  private rejudge(): void {
+    this.said = null;
+    this.judgedFor = null;
+    this.surveyedAt = 0;
+  }
+
+  /** What this module last said it would not do, until it next sets off. */
+  get refusal(): string | null {
+    return this.said;
+  }
+
+  /**
+   * What is holding the hunt this line, where something is: a fight, a walk,
+   * another errand, low health, a lap that is not this module's. Said on an
+   * extension's card, so a hunt that does not set off says why.
+   */
+  get waiting(): HuntWait | null {
+    return typeof this.steered === 'string' ? this.waitingOn : null;
+  }
+
+  private wait(why: HuntWait | null): void {
+    this.waitingOn = why;
+  }
+
   /** Whether a hunt this module started is what the character is doing. */
   get hunting(): boolean {
     return this.phase.kind !== 'idle';
+  }
+
+  /** Where the hunt is walking to, or the lap it is hunting on, for an extension's card. */
+  get heading(): { walking: boolean; place: string } | null {
+    switch (this.phase.kind) {
+      case 'idle':
+        return null;
+      case 'walking':
+        return { walking: true, place: this.phase.spot.walk[0]?.name ?? this.phase.loop.name };
+      case 'hunting':
+        return { walking: false, place: this.phase.name };
+      default: {
+        const never: never = this.phase;
+        return never;
+      }
+    }
   }
 
   /**
@@ -279,17 +348,30 @@ export class AutoHunt implements SessionModule {
      * nothing: `Recovery` is already resting, and the hunt goes as soon as it
      * is up.
      */
-    if (state.inCombat || state.combat.attackers.length > 0) return;
-    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
-    if (this.tooHurt(state)) return;
+    if (state.inCombat || state.combat.attackers.length > 0) return this.wait('fight');
+    if (this.planner.moveInFlight() || this.planner.walking()) return this.wait('walking');
+    if (this.planner.busy()) return this.wait('busy');
+    if (this.tooHurt(state)) return this.wait('hurt');
 
     if (this.phase.kind === 'hunting') {
+      this.waitingOn = null;
       this.keepHonest(state);
       return;
     }
-    // A lap that is not this module's: the character is busy, and whose lap it
-    // is has already been settled above.
-    if (this.planner.runningLoop() !== null) return;
+    // A lap that is not this module's: the character is busy. One left running
+    // from before the hunt was steered is the steerer's to end; one the
+    // player started since is the player's, and the hunt waits for it.
+    const running = this.planner.runningLoop();
+    if (running !== null) {
+      if (typeof this.steered === 'string' && running === this.inherited) {
+        this.inherited = null;
+        this.planner.stopLoop(t('automation.hunt.takingOver', { loopName: running }));
+      }
+      return this.wait('lap');
+    }
+    // Steered to hunt nowhere for now: it is somewhere else's turn.
+    if (this.steered === null) return this.wait(null);
+    this.waitingOn = null;
 
     const judged = this.judgement(state);
     if (judged === this.judgedFor) return;
@@ -555,10 +637,20 @@ export class AutoHunt implements SessionModule {
    */
   private pick(spots: readonly HuntingSpot[]): HuntingSpot | null {
     const floor = this.walkConfig.minExpPerHour;
-    const priced = spots.flatMap((spot) => {
+    const priced: Array<{ spot: HuntingSpot; worth: number }> = [];
+    for (const spot of spots) {
+      if (this.steered !== undefined && spot.key !== this.steered) continue;
       const worth = this.priced(spot);
-      return worth === null || (floor > 0 && worth < floor) ? [] : [{ spot, worth }];
-    });
+      /*
+       * A spot an extension chose is walked to without a rate: a realm
+       * whose lairs state no respawn clock prices every spot at unknown, so a
+       * steered hunt could never start there (2026-09-30). A known rate still
+       * answers to the floor.
+       */
+      if (worth === null && typeof this.steered === 'string') return spot;
+      if (worth === null || (floor > 0 && worth < floor)) continue;
+      priced.push({ spot, worth });
+    }
     const most = priced.reduce((top, each) => Math.max(top, each.worth), 0);
     const cash = floorFor(this.config.cashPerHour, most, tuning().hunting.cashExpShare);
     let best: { spot: HuntingSpot; worth: number; tier: number; copper: number } | null = null;
@@ -591,10 +683,13 @@ export class AutoHunt implements SessionModule {
      */
     const best = this.pick(advice.spots) ?? undefined;
     if (best === undefined) {
+      const steered = this.steered;
       this.refuse(
-        advice.spots.length === 0
-          ? t('automation.hunt.refusalNothingReachable')
-          : t('automation.hunt.refusalNoRate', { floor: Math.round(floor).toLocaleString() })
+        typeof steered === 'string' && !advice.spots.some((spot) => spot.key === steered)
+          ? t('automation.hunt.refusalSteeredGone')
+          : advice.spots.length === 0
+            ? t('automation.hunt.refusalNothingReachable')
+            : t('automation.hunt.refusalNoRate', { floor: Math.round(floor).toLocaleString() })
       );
       return null;
     }

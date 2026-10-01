@@ -17,6 +17,7 @@ import ConversationCard from './ConversationCard';
 import GangCard from './GangCard';
 import HuntingCard from './HuntingCard';
 import InventoryCard from './InventoryCard';
+import ExtensionCard from './ExtensionCard';
 import LinkCard from './LinkCard';
 import LoopBuilderCard from './LoopBuilderCard';
 import MapCard from './MapCard';
@@ -506,6 +507,8 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
       );
     case 'automation':
       return <AutomationCard {...chrome} automation={view.automation} />;
+    case 'extension':
+      return <ExtensionCard {...chrome} session={ctx.session} views={view.automation.extensions} />;
     case 'stream':
       return <StreamCard {...chrome} lines={view.lines} quiet={ctx.quiet} />;
     default: {

@@ -188,6 +188,8 @@ export interface AutomationSnapshot {
   safety: SafetyDecision[];
   /** Newest first. What auto-combat opened on, or declined to and why. */
   engagements: EngageDecision[];
+  /** Each installed extension's card view, by name (todo 84). */
+  extensions: Record<string, unknown>;
 }
 
 export const EMPTY_AUTOMATION: AutomationSnapshot = {
@@ -196,5 +198,6 @@ export const EMPTY_AUTOMATION: AutomationSnapshot = {
   sent: [],
   firings: [],
   safety: [],
-  engagements: []
+  engagements: [],
+  extensions: {}
 };

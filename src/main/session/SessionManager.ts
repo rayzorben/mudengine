@@ -7,7 +7,6 @@ import { CommandQueue } from '../automation/CommandQueue';
 import { Routines } from '../automation/Routines';
 import { Walker } from '../automation/Walker';
 import { splitOntoChannel } from '../../shared/talk';
-import { macroLength, parseMacro } from '../../shared/macro';
 import {
   CLASS_STEALTH_ABILITY,
   CONFUSE_MESSAGE_ABILITY,
@@ -101,6 +100,9 @@ import { ERRAND_LEG, Travel } from './Travel';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
+import { queueMacro } from './macros';
+import { sessionExtensions, type ExtensionDeps } from './extensionWiring';
+import type { SessionExtensions } from '../extensions/SessionExtensions';
 
 import { NO_LORE, type RealmLoreView } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
@@ -302,6 +304,8 @@ export interface SessionDeps {
   readonly sentences?: ShippedSentences;
   /** The realm's own words (`Profile.locate`, `.coins`), read through so a reload lands. */
   readonly words?: VocabularyParts['words'];
+  /** The installed extensions, and where their records go (todo 84). Absent in tests. */
+  readonly extensions?: ExtensionDeps;
 }
 
 /** A module on the session's list, and the slice of a reload it reads, where it reads one. */
@@ -407,6 +411,10 @@ export class SessionManager {
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'reset' | 'dispose'>;
   private automationConfig: AutomationConfig;
+  /** What `configure` was last handed, so an extension's layer is laid again over it. */
+  private configured: Parameters<SessionManager['configure']>;
+  /** Each installed extension's session (todo 84). See `SessionExtensions`. */
+  readonly extensions: SessionExtensions;
   private readonly login: LoginAutomator;
   private readonly recovery: Recovery;
   private readonly loot: AutoLoot;
@@ -654,6 +662,7 @@ export class SessionManager {
      * write to the socket on automation's behalf — docs/legacy-assessment.md §6.
      */
     this.automationConfig = automation;
+    this.configured = [automation, login];
     this.queue = new CommandQueue(automation, {
       send: (command, intent) => {
         /*
@@ -1715,10 +1724,24 @@ export class SessionManager {
         rules: this.rules,
         client: this.client
       },
-      { config: () => this.automationConfig },
+      { config: () => this.automationConfig, extensions: () => this.extensions.views() },
       sink
     );
     this.grounded = new Grounded(this.publisher, sink);
+    this.extensions = sessionExtensions({
+      ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },
+      ...{ supplies: this.supplies, trainLevel: this.trainLevel, queue: this.queue, fled },
+      world: () => this.world,
+      lairOdds: (room) => this.odds.lair(room),
+      config: () => this.automationConfig,
+      busy: () => this.errandHeld() || this.tracker.pendingMoves > 0 || this.walker.walking,
+      safety: () => this.publisher.automation.safety,
+      target: () => this.state.target,
+      relayer: () => this.configure(...this.configured),
+      notice: (message) => this.sink.notice(message),
+      changed: () => this.publisher.publishAutomation(),
+      deps: deps.extensions
+    });
     const safetyParts = {
       tracker: this.tracker,
       hangUp: this.hangUp,
@@ -1803,6 +1826,7 @@ export class SessionManager {
       { module: this.cures, configure: (a) => this.cures.configure(a.spells, a.enabled) },
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
       { module: this.combatLease },
+      { module: this.extensions, configure: (a) => this.extensions.configure(a) },
       {
         module: this.invoke,
         configure: (a) => this.invoke.configure(a.enabled && a.spells.invokeItems)
@@ -2299,64 +2323,16 @@ export class SessionManager {
     this.tracker.noteTyping(this.outbound.length > 0);
   }
 
-  /**
-   * A talk-box line that stands for several commands (todo 04), parsed here
-   * again rather than trusted off the wire. Each goes into the queue at the
-   * player's own band and out through `send` when its turn comes, one prompt
-   * at a time: written at once, fifteen commands fill the realm's queue and
-   * the automation behind them is told to slow down (`Intent.typed`).
-   */
+  /** A talk-box line that stands for several commands, queued one by one. See `queueMacro`. */
   sendMacro(line: string): void {
-    const steps = parseMacro(line);
-    if (steps === null) {
-      this.send(`${line}\r`);
-      return;
-    }
-    const count = macroLength(steps);
-    const limit = tuning().session.macroCommands;
-    if (count > limit) {
-      this.sink.notice(t('session.macro.tooMany', { count, limit }));
-      return;
-    }
-    const holding = this.queue.holding;
-    if (holding !== null || !this.client.connected) {
-      this.sink.notice(
-        holding !== null ? t('session.macro.held', { reason: holding }) : t('session.macro.offline')
-      );
-      return;
-    }
-    const batch = `macro:${(this.macros += 1)}:`;
-    let n = 0;
-    for (const step of steps) {
-      for (let i = 0; i < step.times; i += 1) {
-        n += 1;
-        const taken = this.queue.enqueue({
-          command: step.command,
-          priority: 'user',
-          typed: true,
-          // Unique per command: a second `s` is a different move.
-          coalesceKey: `${batch}${n}`,
-          reason: t('session.macro.reason', { line })
-        });
-        if (!taken) {
-          /*
-           * The line's own earlier command can close the queue: a `train
-           * stats` goes out inside `enqueue` and holds it. What is still
-           * waiting of the line goes too; what went out has gone.
-           */
-          this.queue.cancel((intent) => intent.coalesceKey?.startsWith(batch) === true);
-          const reason = this.queue.holding;
-          this.sink.notice(
-            reason !== null
-              ? t('session.macro.restHeld', { command: step.command, reason })
-              : t('session.macro.restRefused', { command: step.command })
-          );
-          this.publisher.publishAutomation();
-          return;
-        }
-      }
-    }
-    this.publisher.publishAutomation();
+    queueMacro(line, {
+      send: (data) => this.send(data),
+      queue: this.queue,
+      connected: () => this.client.connected,
+      notice: (message) => this.sink.notice(message),
+      published: () => this.publisher.publishAutomation(),
+      batch: () => (this.macros += 1)
+    });
   }
 
   /**
@@ -2602,10 +2578,13 @@ export class SessionManager {
   }
 
   configure(
-    automation: AutomationConfig,
+    own: AutomationConfig,
     login: LoginConfig,
     rewrites: RewritesUiConfig = DEFAULT_CONFIG.ui.rewrites
   ): void {
+    this.configured = [own, login, rewrites];
+    // Every extension's settings over the character's own, while they are laid.
+    const automation = this.extensions.over(own);
     this.automationConfig = automation;
     this.rewriter.configure(rewrites);
     this.promptDesign.noteDesign();
@@ -2908,6 +2887,7 @@ export class SessionManager {
      * listing, a level-up voids the one on file), and each listing's answer (835).
      */
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
+    this.extensions.onBlock(block);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
     /*
@@ -3120,6 +3100,7 @@ export class SessionManager {
        * decide on the leg from the same line that placed the character.
        */
       this.travel.pickUpAfterLoss(state);
+      this.extensions.onCharacter(state);
       /*
        * **And nothing at all while the character is on the ground** (todo 20).
        *
@@ -3614,6 +3595,7 @@ export class SessionManager {
   /** The one stop, whichever of the two is running. See `Travel.stopMoving`. */
   stopMoving(): void {
     this.travel.stopMoving();
+    this.extensions.playerStopped();
   }
 
   /** The named loop, or whatever was stopped. See `Travel.startMoving`. */

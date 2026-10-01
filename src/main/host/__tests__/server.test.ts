@@ -49,7 +49,10 @@ beforeAll(async () => {
       sockets.push(connection);
       connection.onMessage = (text) => connection.send(`echo:${text}`);
     },
-    log: (line) => log.push(line)
+    log: (line) => log.push(line),
+    // One extension, `planner`, whose page is the renderer's own index for the test.
+    extensionFile: (name, relative) =>
+      name === 'planner' && relative === 'index.html' ? path.join(dir, 'index.html') : null
   });
   ({ port } = await server.listen(0, '127.0.0.1'));
 });
@@ -256,6 +259,22 @@ describe('with a session', () => {
     expect((await get('/%2e%2e/%2e%2e/etc/passwd', { Cookie: cookie })).status).toBe(404);
     expect((await get('/assets/../../../../etc/passwd', { Cookie: cookie })).status).toBe(404);
     expect((await get('/index.html.bak', { Cookie: cookie })).status).toBe(404);
+  });
+
+  it('serves an extension’s card page behind the same password, and nothing it does not name', async () => {
+    expect((await get('/ext/planner/index.html')).status).toBe(401);
+    const cookie = await signIn();
+    const page = await get('/ext/planner/index.html', { Cookie: cookie });
+    expect(page.status).toBe(200);
+    expect(page.headers.get('content-type')).toContain('text/html');
+    // Framed by the client's own page, and by nothing else; everything else is never framed.
+    expect(page.headers.get('x-frame-options')).toBe('SAMEORIGIN');
+    expect(page.headers.get('content-security-policy')).toBe("frame-ancestors 'self'");
+    const asset = await get('/assets/index-abc.js', { Cookie: cookie });
+    expect(asset.headers.get('x-frame-options')).toBe('DENY');
+    expect((await get('/ext/planner/missing.js', { Cookie: cookie })).status).toBe(404);
+    expect((await get('/ext/other/index.html', { Cookie: cookie })).status).toBe(404);
+    expect((await get('/ext/%E0%A4%A/index.html', { Cookie: cookie })).status).toBe(404);
   });
 
   it('refuses a socket opened from another origin', async () => {

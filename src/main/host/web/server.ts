@@ -52,7 +52,12 @@ export interface WebServerOptions {
   onSocket(connection: WebSocketConnection, remote: string): void;
   /** The server explaining itself: a refused sign-in, a refused upgrade. */
   log(line: string): void;
+  /** A file of an installed extension's card page, served at `/ext/<name>/` (todo 84). */
+  extensionFile?(name: string, relative: string): string | null;
 }
+
+/** An extension's card page: `/ext/<name>/<path>`. */
+const EXTENSION_PATH = /^\/ext\/([^/]+)\/(.*)$/;
 
 export interface WebServer {
   listen(port: number, host: string): Promise<{ port: number; host: string }>;
@@ -91,6 +96,17 @@ const HARDENING: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer'
+};
+
+/**
+ * An extension's card page is drawn in a frame of the client's own page, so
+ * it may be framed by this origin alone (todo 84). The page arrives whole in
+ * one file: a sandboxed frame's own requests carry no cookie, so a script or
+ * stylesheet beside it would be refused at the password.
+ */
+const FRAMED_BY_US: Record<string, string> = {
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Content-Security-Policy': "frame-ancestors 'self'"
 };
 
 function escapeHtml(text: string): string {
@@ -332,18 +348,34 @@ export function createWebServer(options: WebServerOptions): WebServer {
       return;
     }
 
+    // Vite names every asset by its content hash, so a cached one can never
+    // be stale; anything else is re-asked for on each load.
+    sendFile(
+      request,
+      response,
+      file,
+      type,
+      wanted.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache'
+    );
+  };
+
+  /** A file off the disk, streamed; a 404 where it is not one. */
+  const sendFile = (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+    file: string,
+    type: string,
+    cache: string,
+    framing: Record<string, string> = {}
+  ): void => {
     fs.stat(file, (error, stat) => {
       if (error || !stat.isFile()) {
         reply(response, 404, { 'Content-Type': CONTENT_TYPES['.txt']! }, 'not found');
         return;
       }
-      // Vite names every asset by its content hash, so a cached one can never
-      // be stale; anything else is re-asked for on each load.
-      const cache = wanted.startsWith('/assets/')
-        ? 'public, max-age=31536000, immutable'
-        : 'no-cache';
       response.writeHead(200, {
         ...HARDENING,
+        ...framing,
         'Content-Type': type,
         'Content-Length': String(stat.size),
         'Cache-Control': cache
@@ -393,7 +425,35 @@ export function createWebServer(options: WebServerOptions): WebServer {
       reply(response, 405, { Allow: 'GET, HEAD', 'Content-Type': CONTENT_TYPES['.txt']! }, 'GET');
       return;
     }
+    const extension = EXTENSION_PATH.exec(pathname);
+    if (extension !== null) {
+      serveExtension(request, response, extension[1]!, extension[2]!);
+      return;
+    }
     serveStatic(request, response, pathname);
+  };
+
+  /** An extension's card page, behind the same password as the client. */
+  const serveExtension = (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+    name: string,
+    relative: string
+  ): void => {
+    let file: string | null = null;
+    try {
+      file =
+        options.extensionFile?.(decodeURIComponent(name), decodeURIComponent(relative)) ?? null;
+    } catch {
+      file = null;
+    }
+    const type = file === null ? undefined : CONTENT_TYPES[path.extname(file).toLowerCase()];
+    if (file === null || type === undefined) {
+      reply(response, 404, { 'Content-Type': CONTENT_TYPES['.txt']! }, 'not found');
+      return;
+    }
+    // Framed by the client's own card, and by nothing else.
+    sendFile(request, response, file, type, 'no-cache', FRAMED_BY_US);
   };
 
   /** A refused upgrade: one status line, and the socket goes. */

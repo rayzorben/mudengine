@@ -104,6 +104,9 @@ const api: IpcApi = {
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),
   getWalk: (session) => ipcRenderer.invoke(Invoke.getWalk, session),
   getAutomation: (session) => ipcRenderer.invoke(Invoke.getAutomation, session),
+  listExtensions: () => ipcRenderer.invoke(Invoke.listExtensions),
+  extensionAction: (session, name, action, args) =>
+    ipcRenderer.invoke(Invoke.extensionAction, session, name, action, args),
 
   listSessions: () => ipcRenderer.invoke(Invoke.listSessions),
   listProfiles: () => ipcRenderer.invoke(Invoke.listProfiles),

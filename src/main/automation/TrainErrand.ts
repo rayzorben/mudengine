@@ -98,6 +98,8 @@ export class TrainErrand implements SessionModule {
   private unansweredAt: number | null = null;
   /** The level `exp` was last asked at for an unread `expNeeded`, so it is asked once. */
   private askedOwed: number | null = null;
+  /** The last refusal said, cleared when a trip sets off. See `refusal`. */
+  private said: { why: string; at: number } | null = null;
   /** Whether the *nowhere to go* refusal has been said for this level. */
   private saidNowhere: number | null = null;
   /**
@@ -146,6 +148,7 @@ export class TrainErrand implements SessionModule {
     this.retry = null;
     this.unansweredAt = null;
     this.askedOwed = null;
+    this.said = null;
     this.saidNowhere = null;
   }
 
@@ -159,6 +162,23 @@ export class TrainErrand implements SessionModule {
    */
   get busy(): boolean {
     return this.phase.kind !== 'idle';
+  }
+
+  /** What the errand last said it would not do, and when, until it next sets off. */
+  get refusal(): { why: string; at: number } | null {
+    return this.said;
+  }
+
+  /** Which trainer the errand is walking to or training with, for an extension's card. */
+  get heading(): { trainer: string; room: string; copper: number; training: boolean } | null {
+    if (this.phase.kind === 'idle') return null;
+    const { trainer } = this.phase;
+    return {
+      trainer: trainer.name,
+      room: trainer.roomName,
+      copper: trainer.cost,
+      training: this.phase.kind === 'training'
+    };
   }
 
   /**
@@ -381,6 +401,7 @@ export class TrainErrand implements SessionModule {
 
   /** The purse, then the walk or the verb. One level is one attempt from here on. */
   private go(state: CharacterState, level: number, chosen: TrainerChoice, way: Way): void {
+    this.said = null;
     /*
      * **The purse, before the walk.** The cost is computable from data already
      * loaded and the markups are enormous — 88,450 copper at level 30 at a
@@ -560,6 +581,7 @@ export class TrainErrand implements SessionModule {
   }
 
   private refuse(why: string, quietly = false): void {
+    this.said = { why, at: this.now() };
     if (!quietly) this.events.notice?.(why);
     this.events.decided?.({
       at: this.now(),

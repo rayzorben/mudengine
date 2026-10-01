@@ -36,7 +36,8 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'stats',
   'builder',
   'quests',
-  'hunting'
+  'hunting',
+  'extension'
 ];
 
 /**

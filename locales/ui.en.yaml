@@ -1288,8 +1288,26 @@ rewrites:
     invited: invited
     resting: resting
     meditating: meditating
+# Extensions found in the home's extensions folder at startup (todo 84).
+extensions:
+  loaded: '{title} is installed and running.'
+  badManifest: 'The extension in {name} has a manifest.json that cannot be read: {error}'
+  notAManifest: "The extension in {name} has a manifest.json that lacks its folder's name (lower
+    case), a title or a main file."
+  noMain: 'The extension in {name} names {file} as its main file, which is not in its folder.'
+  notAnExtension: 'The extension in {name} does not export a session function, so it was not
+    started.'
+  loadFailed: 'The extension in {name} could not be loaded: {error}'
+  failed: 'The extension {name} failed in {hook}: {error}'
+  noAction: 'The extension {name} has no button called {action}.'
+  badCall: A card asked for an extension's button without naming it.
+  loadingFailed: 'The extensions folder could not be read, so none was started: {error}'
 
 cards:
+  # An extension's own page, framed on the rail (todo 84).
+  extension:
+    title: Extension
+    none: No extension with a card is installed.
   alerts:
     badge:
       critical: '{count} critical'
@@ -4263,6 +4281,7 @@ settings:
 errors:
   settings:
     characterNotFound: No character called {id}.
+    unknownSettings: 'These are not settings this client has, so nothing was written: {paths}.'
     duplicateRealmName: There is already a realm called {name}.
     globalAddressMismatch: the address did not survive being saved
     loopScopeUnknown: 'Nowhere to put that loop: the character or realm it names does not exist.'
@@ -4725,6 +4744,10 @@ automation:
     refusalNothingReachable: Nothing within reach is worth hunting.
     refusalNotReached: 'Did not reach {room}: {why}'
     started: Hunting {loopName}, for about {rate} exp an hour.
+    # An extension steering the hunt (todo 84).
+    steeredAway: an extension chose another spot
+    takingOver: 'stopping {loopName} to walk to the spot an extension chose'
+    refusalSteeredGone: The spot an extension chose is no longer on the hunting list.
     stoppedForBetter: '{mob} pays better'
     stoppedForFiller: adding lairs nearby while it regens
     # The lair being hunted is now planned with lairs nearby, fought while it regens.

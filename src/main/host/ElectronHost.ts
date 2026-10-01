@@ -9,19 +9,38 @@
  * CLAUDE.md). Everything here was lifted out of `index.ts` on 2026-09-07 with
  * its reasoning intact; the reasoning is the part worth keeping.
  */
-import { app, BrowserWindow, clipboard, dialog, ipcMain, screen, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  net,
+  protocol,
+  screen,
+  shell
+} from 'electron';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import type { SessionId } from '../../shared/ipc';
 import { t } from '../app/i18n';
 import { ownTheProfile } from '../app/instance';
 import type { QuitAnswer } from '../app/quit';
 import type { Caller, ClientHooks, Host, Layout, Transport } from './Host';
+import { EXTENSION_SCHEME } from '../../shared/extensions';
 
 export function createElectronHost(layout: Layout): Host {
   let mainWindow: BrowserWindow | null = null;
   let hooks: ClientHooks | null = null;
+  // An extension's card page is its own origin, a frame in the rail (todo 84). Before `ready`.
+  protocol.registerSchemesAsPrivileged([
+    {
+      scheme: EXTENSION_SCHEME,
+      privileges: { standard: true, secure: true, supportFetchAPI: true }
+    }
+  ]);
 
   /** Who sent this, as the client wants to know it. */
   const callerOf = (sender: Electron.WebContents): Caller => ({
@@ -217,6 +236,7 @@ export function createElectronHost(layout: Layout): Host {
     transport,
 
     ready: () => app.whenReady(),
+    extensionPage: (name) => `${EXTENSION_SCHEME}://${name}/`,
 
     /*
      * Claimed before anything is built, because everything built here is
@@ -244,6 +264,19 @@ export function createElectronHost(layout: Layout): Host {
 
     open: (client) => {
       hooks = client;
+      protocol.handle(EXTENSION_SCHEME, (request) => {
+        const url = new URL(request.url);
+        let relative: string;
+        try {
+          relative = decodeURIComponent(url.pathname.replace(/^\//, ''));
+        } catch {
+          return new Response(null, { status: 400 });
+        }
+        const file = client.extensionFile(url.hostname, relative);
+        return file === null
+          ? new Response(null, { status: 404 })
+          : net.fetch(pathToFileURL(file).toString());
+      });
       createWindow();
       /*
        * Whatever was popped out last time.

@@ -315,6 +315,21 @@ ui:
   });
 });
 
+describe('keeping an extension’s settings (todo 84)', () => {
+  it('writes each one under automation, and nothing the client does not have', () => {
+    const file = home.profile('vaelor').file;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'server: GreaterMUD (local)\n', 'utf8');
+    expect(editor.setAutomationValues('vaelor', [[['combat', 'attack'], 'kic']])).toEqual({
+      ok: true
+    });
+    expect(read('vaelor')['automation']).toEqual({ combat: { attack: 'kic' } });
+    const refused = editor.setAutomationValues('vaelor', [[['combat', 'invented'], 1]]);
+    expect(refused.ok).toBe(false);
+    expect(read('vaelor')['automation']).toEqual({ combat: { attack: 'kic' } });
+  });
+});
+
 describe('removing a character', () => {
   it('removes the file and keeps a copy of it', () => {
     editor.saveProfile('vaelor', draft());
