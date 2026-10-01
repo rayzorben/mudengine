@@ -360,6 +360,19 @@ describe('a supply found on the floor', () => {
     expect(sent).toEqual([]);
   });
 
+  /* The pickup festus made with three already on the ring: `i` lists keys
+     apart from the pack (todo 00). */
+  it('counts a key on the ring as carried', () => {
+    const auto = make(loot(), true, stocking([supply('black star key', 1, 1)]));
+    const base = state();
+    auto.onBlock(block('room-items', { items: 'black star key' }), {
+      ...base,
+      inventory: { ...base.inventory, keys: ['golden idol', 'black star key'] }
+    });
+    drain();
+    expect(sent).toEqual([]);
+  });
+
   /*
    * The case the todo is written around: torches at min 3, max 6, four
    * carried. A fifth and a sixth are picked up and a seventh is left.

@@ -2441,8 +2441,8 @@ export const BATCH_RULES: BatchRule[] = [
      *              Vaelor                -  Apprentice S
      *
      * The trailing letter is a status flag, not part of the title — gluing it
-     * on was the first thing a real capture caught. The alignment column is
-     * present only for characters that have one.
+     * on was the first thing a real capture caught. A blank alignment column
+     * is Neutral (`alignmentOf`).
      *
      * **A gang follows the title as `of <gang>`.** Two realms, two spacings —
      * MajorMUD (captures/076, fifteen gangs on) puts two spaces before `of`,
