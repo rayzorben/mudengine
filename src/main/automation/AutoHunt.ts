@@ -176,7 +176,17 @@ export class AutoHunt implements SessionModule {
   }
 
   reset(): void {
-    this.phase = { kind: 'idle' };
+    /*
+     * A lap carried over a reconnect is still this module's: `LoopRunner` keeps
+     * it running through the loss, and dropping the phase here left it running
+     * with nothing keeping it honest. `mine()` settles it on the next line, so a
+     * lap a different realm stopped is let go there. The measurement starts over
+     * from the first line back, as the lap's own rate does.
+     */
+    this.phase =
+      this.phase.kind === 'hunting'
+        ? { ...this.phase, from: null, saidCompany: false }
+        : { kind: 'idle' };
     this.said = null;
     this.judgedFor = null;
     this.surveyedAt = 0;

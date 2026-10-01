@@ -378,6 +378,35 @@ describe('going hunting on its own', () => {
     expect(walked).toHaveLength(1);
   });
 
+  /*
+   * A reconnect resets every module, and the lap carries over it. Soul hunted
+   * a lap the hunt no longer knew as its own for six hours (2026-10-01).
+   */
+  it('keeps a lap carried over a reconnect, measured from the first line back', () => {
+    const auto = hunting();
+    auto.reset();
+    clock += 900_000;
+    // The anchor is taken here, so the time offline is not counted as time earning nothing.
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 1_500 } }));
+    expect(auto.hunting).toBe(true);
+    expect(stops).toHaveLength(0);
+    // Still kept honest: 2,000 an hour from there, and a better lair elsewhere.
+    answer = advice([spot('lair:a', 12_000), spot('lair:b', 30_000, 'Sewer', 920)]);
+    clock += 900_000;
+    auto.onCharacter(ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp: 2_000 } }));
+    expect(stops).toHaveLength(1);
+    expect(walked).toHaveLength(2);
+  });
+
+  it('lets go after a reconnect when the lap did not carry', () => {
+    const auto = hunting();
+    auto.reset();
+    running = null;
+    // In a fight, so nothing new is set off on the same line.
+    auto.onCharacter(ready({ inCombat: true }));
+    expect(auto.hunting).toBe(false);
+  });
+
   /* The walk that never arrived is a refusal, not a loop started somewhere
      the character is not standing. */
   it('does not start the loop when the walk stopped short', () => {
