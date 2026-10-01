@@ -27,21 +27,23 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
  * (702), was taken back by its carve-out (740).
  */
 const CEILINGS: Readonly<Record<string, number>> = {
-  // Lowered by the wearer join, shared with the pack's query (`world/wearer.ts`).
+  // Lowered by the wearer join, shared with the pack's query (`world/wearer.ts`),
+  // and by the close handler once every close carries the lap (todo 01).
   // And by the fight's wiring folded beside the danger checks (2026-09-30).
-  'src/main/session/SessionManager.ts': 3825,
+  'src/main/session/SessionManager.ts': 3798,
   'src/main/world/WorldGraph.ts': 2549,
-  'src/main/parse/CharacterTracker.ts': 2539,
+  'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
   'src/main/automation/Walker.ts': 1986,
-  'src/renderer/src/components/SettingsScreen.tsx': 1282,
+  'src/renderer/src/components/SettingsScreen.tsx': 1219,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
   // rest and meditate fields, shared with the options page (825), and the
   // party's (831).
   // Lowered by the remotes switches it shares with the Global page (`RemoteSwitches`, todo 07).
-  'src/renderer/src/components/CharacterForm.tsx': 1753
+  // Lowered by the attack spell's fields, shared with the Global page (`AttackFields`, todo 841).
+  'src/renderer/src/components/CharacterForm.tsx': 1634
 };
 
 /**

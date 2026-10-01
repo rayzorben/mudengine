@@ -1990,6 +1990,25 @@ export interface SpellsConfig {
    */
   areaCasts: number;
   /**
+   * The spell cast instead of `attack` while health is low: one that hurts the
+   * target and heals the caster by it (`vampiric assault`, the realm's
+   * `DrainLife`). Blank keeps `attack`, or with `autoChoose` on picks from the
+   * spell list's drains (todo 841).
+   */
+  drain: string;
+  /** The same for the room spell, under the area spell's crowd and mana tests. Blank casts none. */
+  areaDrain: string;
+  /** The share of maximum health below which the drains are cast. 0 never drains. */
+  drainBelow: number;
+  /**
+   * Drain until health is back to this share; 0 stops as soon as it is over
+   * `drainBelow`. Every change of spell is a cast, answered `*Combat Off*`
+   * then `*Combat Engaged*` (`Player.cs:6083`), so a gap keeps a drain that
+   * lifts health one point over the line from flipping the fight back.
+   * Clamped up to `drainBelow`, as `healTo` is.
+   */
+  drainTo: number;
+  /**
    * The spell to heal **this character** with. Blank heals nobody.
    *
    * MegaMUD's *Heal if below* on the Health tab, moved beside the attack
@@ -2276,6 +2295,19 @@ export interface PartyConfig {
   parSeconds: number;
   /** In a party, send `par` after every combat round (`ParAfterRound`). */
   parAfterRound: boolean;
+  /**
+   * Leading, say `@party <command>` before a room's own command that moves only
+   * the one who types it (`go vortex`), so a follower runs it too (todo 839).
+   * A text exit in a compass slot needs none: the server moves followers with
+   * the leader (`Exits.SuccessMoveThroughExit`).
+   */
+  relayPortals: boolean;
+  /**
+   * Leading, after going through one, send `par`, invite again a member standing
+   * here who is out of the party, and hold the walk up to this many minutes
+   * for everyone to be here and in it. 0 invites and does not wait.
+   */
+  regroupMinutes: number;
 }
 
 /**
@@ -2728,7 +2760,9 @@ export const DEFAULT_CONFIG: AppConfig = {
       ignoreParty: false,
       askHealth: true,
       parSeconds: 0,
-      parAfterRound: false
+      parAfterRound: false,
+      relayPortals: true,
+      regroupMinutes: 5
     },
     health: {
       /*
@@ -2833,6 +2867,10 @@ export const DEFAULT_CONFIG: AppConfig = {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -4167,6 +4205,13 @@ function normalizeSpells(value: unknown): SpellsConfig {
     attackFallback: str(raw['attackFallback'], d.attackFallback).trim(),
     attackCasts: int(raw['attackCasts'], d.attackCasts, 0, 99),
     areaCasts: int(raw['areaCasts'], d.areaCasts, 0, 99),
+    drain: str(raw['drain'], d.drain).trim(),
+    areaDrain: str(raw['areaDrain'], d.areaDrain).trim(),
+    drainBelow: fraction(raw['drainBelow'], d.drainBelow),
+    drainTo: ceilingOver(
+      fraction(raw['drainTo'], d.drainTo),
+      fraction(raw['drainBelow'], d.drainBelow)
+    ),
     heal: str(raw['heal'], d.heal).trim(),
     healPartyWith: str(raw['healPartyWith'], d.healPartyWith).trim(),
     healBelow: fraction(raw['healBelow'], d.healBelow),
@@ -4207,7 +4252,8 @@ const MAX_BLESSINGS = 16;
 /** The whole-number party settings' bounds, one statement for the file and the settings screen. */
 export const PARTY_RANGES = {
   waitMinutes: [0, 120],
-  parSeconds: [0, 3600]
+  parSeconds: [0, 3600],
+  regroupMinutes: [0, 60]
 } as const satisfies Partial<Record<keyof PartyConfig, readonly [number, number]>>;
 
 function normalizeParty(value: unknown): PartyConfig {
@@ -4224,7 +4270,9 @@ function normalizeParty(value: unknown): PartyConfig {
     ignoreParty: bool(raw['ignoreParty'], d.ignoreParty),
     askHealth: bool(raw['askHealth'], d.askHealth),
     parSeconds: int(raw['parSeconds'], d.parSeconds, ...PARTY_RANGES.parSeconds),
-    parAfterRound: bool(raw['parAfterRound'], d.parAfterRound)
+    parAfterRound: bool(raw['parAfterRound'], d.parAfterRound),
+    relayPortals: bool(raw['relayPortals'], d.relayPortals),
+    regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes)
   };
 }
 

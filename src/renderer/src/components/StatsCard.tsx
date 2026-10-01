@@ -4,14 +4,14 @@ import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import CardTable, { type Column } from './CardTable';
 import type { CharacterState } from '@shared/character';
-import { experienceOwed, experienceStanding } from '@shared/experience';
+import { experienceOf } from '@shared/experience';
 import {
   BLOW_KINDS,
   DEFAULT_STATS_GRAPH,
   DEFAULT_STATS_HOURS,
   damageDealt,
-  engagedFor,
-  engagedShare,
+  critShare,
+  experienceRate,
   hitsDealt,
   mean,
   perRound,
@@ -19,7 +19,7 @@ import {
   ratePerHour,
   rateSeries,
   share,
-  sinceBaseline,
+  statsScope,
   swings,
   turnedAside,
   type BlowKind,
@@ -33,6 +33,8 @@ import type { SessionId } from '@shared/ipc';
 import { t } from '../lib/i18n';
 import { rate } from '../lib/rates';
 import { tuning } from '../lib/tuning';
+import { duration, figure, percent } from '../lib/stats';
+import TimeFace, { timeCopyText } from './TimeFace';
 
 export interface StatsCardProps extends CardChrome {
   character: CharacterState;
@@ -48,35 +50,12 @@ export interface StatsCardProps extends CardChrome {
   onReset(): void;
 }
 
-/** A figure the realm has not made yet reads as a dash, never as zero. */
-function figure(value: number | null, digits = 0): string {
-  return value === null ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: digits });
-}
-
-/** A share as a percentage, or a dash. `share` already returns null for 0/0. */
-function percent(value: number | null): string {
-  return value === null ? '—' : t('cards.stats.percent', { value: (value * 100).toFixed(1) });
-}
-
 /** `12 – 48`, or a dash while nothing has landed. */
 function span(blows: BlowTally): string {
   if (blows.least === null || blows.most === null) return '—';
   return blows.least === blows.most
     ? String(blows.least)
     : t('cards.stats.span', { least: blows.least, most: blows.most });
-}
-
-/**
- * A stretch of time on the clock, `h:mm:ss` — MegaMUD's own `Duration:` shape.
- *
- * It was `3m` / `51s`, and the badge these go in is uppercased, so a three
- * minute count read `3M`. One unbroken format also means the badge and the
- * Attacking row cannot disagree about what counts as a long time.
- */
-function clock(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 1000));
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
 }
 
 /** A quiet `avg 4.4`, or nothing where nothing has landed. */
@@ -156,10 +135,10 @@ const KIND_LABEL: Record<BlowKind, string> = {
  *   lashworm lunges at you!` and says nothing about why it did no damage.
  *   Calling *that* a dodge would be a claim read off a sentence that makes
  *   none — which is exactly why the dodges it does state are counted apart.
- * - **One time figure, not four.** The server announces engagement and
- *   announces nothing that could add up resting, walking or idling the same
- *   way. `Attacking 41%` is true; a pie of four slices where three were
- *   guessed is not.
+ * - **No time slice the client cannot state.** `Attacking` is the server's
+ *   `*Combat Engaged*`, `Resting` and `Meditating` the prompt's own suffixes,
+ *   and `Moving` a route being walked; what none covers is `Other`, never
+ *   split by guessing (the `Time` face, `TimeFace`).
  * - **No coin banked or sold, and no item count.** MegaMUD's `Deposit/Sold`
  *   and `Stashed` are totals of what *it* did, and this client is not the only
  *   thing spending a purse. Its `Items` column has no frame at all: the server
@@ -174,18 +153,19 @@ const KIND_LABEL: Record<BlowKind, string> = {
  * card: this is a readout of what already happened.
  */
 /*
- * Two faces (todo 08): the card, with what decides an evening — the level
- * meter, the rates and the damage — and *More*, with what qualifies it. The
- * face is remembered per character, as the Self card's is.
+ * Three faces: the card, with what decides an evening (the level meter, the
+ * rates and the damage), *Time*, with where the hours went and what each kill
+ * cost, and *More*, with what qualifies it. The face is remembered per
+ * character, as the Self card's is.
  */
-const FACE_IDS = ['stats', 'more'] as const;
+const FACE_IDS = ['stats', 'time', 'more'] as const;
 const MORE_ROWS: ReadonlySet<string> = new Set([
   'deflected',
   'dodged',
   'sneak',
   'coins',
   'income',
-  'attacking'
+  'crit'
 ]);
 
 interface LevelReading {
@@ -350,37 +330,14 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
   const graph = chrome.settings?.value.statsGraph ?? DEFAULT_STATS_GRAPH;
 
   /**
-   * The Reset control, as a *baseline* rather than a message to main.
-   *
-   * Main keeps one monotonic total; pressing Reset stores a copy of it and
-   * every figure is read as the difference. That makes the press instant, keeps
-   * main free of a second accumulator, and means the untouched totals are still
-   * there — which is what makes Reset safe to press. A baseline from a session
-   * that has since restarted is discarded below rather than producing negative
-   * counts.
-   *
-   * **The baseline is the views', not this card's** (todo 01, 2026-09-06). It
-   * was remembered here, per character, and that could not answer *starting a
-   * loop resets the statistics*: this card ships **put away**, so on most rails
-   * it is not mounted when a lap begins, and a card that re-based on mount would
-   * wipe however much of the lap had already happened. Whatever re-bases has to
-   * be running whether or not anything is drawn, and that is `useSessionViews`,
-   * which holds every session's view and hears the loop push for all of them.
-   * There is still exactly **one** baseline, written by the button and by the
-   * lap alike, so neither has to be compared against the other.
+   * The Reset control, as a *baseline*: main keeps one monotonic total and a
+   * copy of it taken at the last reset (`StatsBaseline`), and every figure is
+   * read as the difference, so the untouched totals are still there. The
+   * button, a lap beginning and a party member's `@reset` all write that one
+   * copy in main, whether or not this card is mounted. `@exp` reads the same
+   * scope (`statsScope`).
    */
-  /*
-   * A baseline from another series cannot be subtracted from this one. The
-   * totals are kept per character *and realm* and outlive the launch, while
-   * the baseline is kept per character; `since` is set once per series, so a
-   * baseline taken on another realm's record — or on one since thrown away —
-   * carries a different one, and subtracting it would draw the totals
-   * negative.
-   */
-  const stale =
-    baseline !== null &&
-    (tally.since === null || baseline.at === null || baseline.since !== tally.since);
-  const shown = sinceBaseline(tally, stale ? null : baseline);
+  const shown = statsScope(tally, baseline);
 
   // Read once per render rather than per figure, so every number on the card
   // is taken at the same instant — two clocks in one readout disagree.
@@ -399,19 +356,9 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
    * disconnected is not an hour the character earned nothing in.
    */
   const elapsed = onlineFor(shown, now);
-  const expRate = ratePerHour(shown.experience, elapsed, tuning().rateFloorMs);
-  /*
-   * **What is still owed, from the table rather than from the realm's summary.**
-   *
-   * `progress.expNeeded` is the server's `Exp needed for next level`, which
-   * reads 0 for a character that has not been to a guild in a while — and
-   * `Will level in` under it then read `0:00:00`, which is a client telling
-   * somebody they are already there when what they are actually earning is
-   * three levels further up. The Vitals card makes the same correction from
-   * the same place, so the two cannot disagree; see `src/shared/experience.ts`.
-   */
-  const standing = experienceStanding(progress.level, progress.exp, progress.expTable);
-  const owed = experienceOwed(progress.expNeeded, standing);
+  const expRate = experienceRate(shown, now, tuning().rateFloorMs);
+  // What is still owed, from the table as well as the realm's summary.
+  const { standing, owed } = experienceOf(progress);
 
   /*
    * **Which rows exist is read from the session, not from the reset.**
@@ -525,7 +472,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         label: t('cards.stats.willLevelLabel'),
         value: (() => {
           const ms = levelIn(owed.value, expRate);
-          return ms === null ? '—' : clock(ms);
+          return ms === null ? '—' : duration(ms);
         })()
       },
       { key: 'killed', label: t('cards.stats.killedLabel'), value: figure(shown.kills) },
@@ -590,10 +537,14 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         when: everHappened(tally.coins)
       },
       {
-        key: 'attacking',
-        label: t('cards.stats.attackingLabel'),
-        value: clock(engagedFor(shown, now)),
-        second: percent(engagedShare(shown, now))
+        key: 'crit',
+        label: t('cards.stats.critRateLabel'),
+        value: percent(critShare(shown)),
+        second: t('cards.stats.critsOfHits', {
+          crits: figure(shown.dealt.critical.hits),
+          landed: figure(swings(shown) - shown.missed)
+        }),
+        when: everHappened(tally.dealt.critical.hits)
       }
     ].filter((row) => row.when !== false);
 
@@ -637,6 +588,8 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
           ])
     ].join('\n');
   }, [moreRows, exchange, dealt, shown.taken.damage]);
+
+  const copyTime = useCallback((): string => timeCopyText(shown, Date.now()), [shown]);
 
   const empty = shown.since === null ? <div className="empty">{t('cards.stats.empty')}</div> : null;
   const pairs = (list: typeof readout): React.JSX.Element[] =>
@@ -685,6 +638,17 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
               />
             </>
           )}
+        </div>
+      )
+    },
+    {
+      id: 'time',
+      label: t('cards.stats.faceTime'),
+      paned: true,
+      copyText: copyTime,
+      content: (
+        <div className="scroller">
+          {empty ?? <TimeFace now={now} session={session} shown={shown} />}
         </div>
       )
     },
@@ -742,7 +706,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         shown.since === null ? (
           <span className="chip off">{t('cards.stats.badge.nothingYet')}</span>
         ) : (
-          <span className="chip off">{clock(elapsed)}</span>
+          <span className="chip off">{duration(elapsed)}</span>
         )
       }
       className="stats-card"

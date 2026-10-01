@@ -20,6 +20,7 @@ import {
 import { t } from './i18n';
 import type { HeldLoop } from './loops';
 import { chord } from './platform';
+import { closedCharacters } from './roster';
 import { CONSOLE_COLUMNS as MIN_COLUMNS, type PaneFlow } from './splitter';
 import type { UseTheme } from './theme';
 import { tuning } from './tuning';
@@ -351,16 +352,14 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
             run: () => deps.showSession(entry.id)
           }))
       : []),
-    ...profiles
-      .filter((profile) => !profile.loaded)
-      .map((profile) => ({
-        id: `open:${profile.id}`,
-        icon: 'login' as const,
-        label: t('palette.character.openLabel', { characterName: profile.name }),
-        hint: `${profile.target.host}:${profile.target.port}`,
-        group: 'character' as const,
-        run: () => void api.loadProfile(profile.id)
-      })),
+    ...closedCharacters(profiles).map((profile) => ({
+      id: `open:${profile.id}`,
+      icon: 'login' as const,
+      label: t('palette.character.openLabel', { characterName: profile.name }),
+      hint: `${profile.target.host}:${profile.target.port}`,
+      group: 'character' as const,
+      run: () => void api.loadProfile(profile.id)
+    })),
     ...(showTabs
       ? [
           {

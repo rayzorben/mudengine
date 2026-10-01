@@ -37,6 +37,8 @@ const EXCEPTIONS: Readonly<Record<string, string>> = {
   statlineReport:
     'what `pro` said, said once a connection: put down on connect only, as it always was',
   loops: 'carried across a same-realm reconnect; stopped before it is reset on leaving',
+  carryOver:
+    'holds the record read at the top of `connect` until the reset the list walks is over: disposed by hand',
   login: 'never reset on leaving the realm: the menu it lands at has been logged in to',
   realmMenu: 'never reset on leaving the realm: the menu it lands at said what it said'
 };

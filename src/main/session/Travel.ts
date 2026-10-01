@@ -35,6 +35,7 @@ import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { PartyWait } from './PartyWait';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
 import type { Survival } from '../../shared/survival';
+import type { CarriedRoute } from '../../shared/underway';
 import { landed, stillFled, type FledRoom } from '../../shared/walk';
 import {
   asDirection,
@@ -53,6 +54,8 @@ import {
 
 /** `escapeRefusalSaid` for a character nothing is taking anywhere, which no room key can equal. */
 const STAYING = '\0staying';
+/** `escapeRefusalSaid` for a character following a party leader. */
+const FOLLOWING = '\0following';
 
 /**
  * How well the client knows the exit it is running through. See
@@ -173,6 +176,11 @@ export interface TravelSession {
   /** The monsters this character ran from, and the list as it stands after a run (`Belongings`). */
   fled(): readonly FledEntry[];
   keepFled(entries: readonly FledEntry[]): void;
+  /**
+   * Write the master switch into the character's file and read it back
+   * before returning. Whether it was written.
+   */
+  switchAutomation(on: boolean): boolean;
 }
 
 export class Travel implements SessionModule {
@@ -295,17 +303,17 @@ export class Travel implements SessionModule {
    */
   private homeward: string | null = null;
   /**
-   * Where a route the player was walking still owes them, across a lost
-   * connection. See `pickUpAfterLoss`.
+   * Where a route the player was walking still owes them, across a closed
+   * connection or a relaunch. See `pickUpAfterLoss`.
    *
-   * Taken from `Walker.journey` at the moment the socket goes and only for a
-   * loss — a deliberate disconnect is the player ending the session — and
+   * Taken from `Walker.journey` at the moment the socket goes, or from the
+   * character's record at the first dial (`owe`), and
    * spent the first time the character is back in the realm and placed, or
    * dropped when anything supersedes it: a new walk, leaving the realm, a dial
    * to a different realm. The loop keeps its own place (`LoopRunner.carried`);
    * this is the one journey with nobody else holding its destination.
    */
-  private journey: { to: RoomId; name: string; run: boolean } | null = null;
+  private journey: CarriedRoute | null = null;
   /**
    * The kept-out words the player chose to cross to reach one room (todo 806):
    * a route asked for through a way `movement.keepOutOf` names, picked on the
@@ -448,14 +456,24 @@ export class Travel implements SessionModule {
   }
 
   /**
-   * The socket went. A loss keeps the route the player was walking, a close
-   * this client asked for keeps nothing; read before the walk is stopped,
-   * because a stopped walk owes nothing. See `pickUpAfterLoss`.
+   * The socket went, whoever closed it: the route the player was walking is
+   * kept. Read before the walk is stopped, because a stopped walk owes
+   * nothing. See `pickUpAfterLoss`.
    */
-  carryJourney(lost: boolean): void {
-    const journey = lost ? this.walker.journey : null;
+  carryJourney(): void {
+    this.journey = this.owed;
+  }
+
+  /** The route the player asked for and is owed, walking or carried, for the character's record. */
+  get owed(): CarriedRoute | null {
+    const walking = this.walker.journey;
     // With how it was asked for: a run picked up again is still a run.
-    this.journey = journey === null ? null : { ...journey, run: this.walkRun };
+    return this.journey ?? (walking === null ? null : { ...walking, run: this.walkRun });
+  }
+
+  /** A route the record says the app was walking when it closed; one this launch carries stands. */
+  owe(route: CarriedRoute): void {
+    this.journey ??= route;
   }
 
   /** A walk started, whoever started it, so nothing owed from a lost connection outlives it. */
@@ -925,37 +943,39 @@ export class Travel implements SessionModule {
             ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
             : t('session.safety.whyDreaded', { mob: dread });
     /*
+     * **A follower leaves running to its leader**: a member that walks out
+     * alone leaves the party in the fight and is no longer beside it when the
+     * leader moves on, so whoever `party.following` names decides, lap or no
+     * lap. Checked before `goingSomewhere()` because a follower may have a
+     * lap of its own running.
+     */
+    if (state.party.following !== null) {
+      const leader = state.party.following;
+      this.stayPut(
+        FOLLOWING,
+        why,
+        fighting,
+        now,
+        (then) => t('session.safety.escapeFollowing', { why, leader, then }),
+        t('session.safety.escapeFollowingReason', { leader })
+      );
+      return;
+    }
+    /*
      * **Only a character the client is taking somewhere runs** (todo 03): a
      * route that has arrived is where the player wanted to be. Said once a
      * fight and traced; the PvP retreat is its own switch and does not come
      * through here. `mudengine-automation` › *Running away is a direction*.
      */
     if (!this.goingSomewhere()) {
-      if (this.escapeRefusalSaid === STAYING) return;
-      this.escapeRefusalSaid = STAYING;
-      /*
-       * What happens instead, which out of a fight is not *standing and
-       * fighting*: only an `escape` row's monster brings this here out of one,
-       * and nothing is opened beside it (todo 818, on review).
-       */
-      const standing = this.combat.willFight || this.combatLease.lending;
-      this.session.notice(
-        t('session.safety.escapeStaying', {
-          why,
-          then: !fighting
-            ? t('session.safety.escapeNotOpening')
-            : standing
-              ? t('session.safety.escapeStanding')
-              : t('session.safety.escapeNotFighting')
-        })
+      this.stayPut(
+        STAYING,
+        why,
+        fighting,
+        now,
+        (then) => t('session.safety.escapeStaying', { why, then }),
+        t('session.safety.escapeStayingReason')
       );
-      this.session.decided({
-        at: now,
-        action: 'retreat',
-        because: why,
-        acted: false,
-        refused: t('session.safety.escapeStayingReason')
-      });
       return;
     }
 
@@ -972,6 +992,38 @@ export class Travel implements SessionModule {
     const { level } = state.progress;
     const forgetMs = tuning().combat.fledForgetMs;
     this.session.keepFled(withFled(this.session.fled(), fled, level, Date.now(), forgetMs));
+  }
+
+  /**
+   * An escape refused because the character stays where it is, said once a
+   * fight and traced under `marker`.
+   */
+  private stayPut(
+    marker: string,
+    why: string,
+    fighting: boolean,
+    now: number,
+    notice: (then: string) => string,
+    refused: string
+  ): void {
+    if (this.escapeRefusalSaid === marker) return;
+    this.escapeRefusalSaid = marker;
+    /*
+     * What happens instead, which out of a fight is not *standing and
+     * fighting*: only an `escape` row's monster brings this here out of one,
+     * and nothing is opened beside it (todo 818, on review).
+     */
+    const standing = this.combat.willFight || this.combatLease.lending;
+    this.session.notice(
+      notice(
+        !fighting
+          ? t('session.safety.escapeNotOpening')
+          : standing
+            ? t('session.safety.escapeStanding')
+            : t('session.safety.escapeNotFighting')
+      )
+    );
+    this.session.decided({ at: now, action: 'retreat', because: why, acted: false, refused });
   }
 
   /**
@@ -1587,7 +1639,36 @@ export class Travel implements SessionModule {
     route: Route,
     run = false
   ): string | null {
-    return this.unchosen(route) ?? this.itemErrand.collect(items, route, this.tracker.current, run);
+    return (
+      this.unchosen(route) ??
+      this.switchedOnFor(() => this.itemErrand.collect(items, route, this.tracker.current, run))
+    );
+  }
+
+  /**
+   * A route the player sent the character on or picked back up, walked with
+   * automation turned back on if it was off (todo 03). A character hangs up hurt, the player
+   * turns automation off to log back in, then picks a room to run to: the
+   * press is the player asking for automation again, and refusing it costs
+   * the seconds the run was for. A walk that is refused anyway leaves the
+   * switch off as it was.
+   */
+  private switchedOnFor(walk: () => string | null): string | null {
+    if (this.session.config().enabled) return walk();
+    if (!this.session.switchAutomation(true)) return t('session.walk.automationNotOn');
+    let refused: string | null;
+    try {
+      refused = walk();
+    } catch (error) {
+      this.session.switchAutomation(false);
+      throw error;
+    }
+    if (refused !== null) {
+      this.session.switchAutomation(false);
+      return refused;
+    }
+    this.session.notice(t('session.walk.automationOn'));
+    return null;
   }
 
   /**
@@ -1688,7 +1769,7 @@ export class Travel implements SessionModule {
 
   /** `walkRoute`'s answer as the press's union. */
   private started(route: Route, run: boolean): WalkStart {
-    const refused = this.walkRoute(route, run);
+    const refused = this.switchedOnFor(() => this.walkRoute(route, run));
     return refused === null ? { started: true } : { refused };
   }
 
@@ -2055,7 +2136,7 @@ export class Travel implements SessionModule {
     // Through `walkRoute`, so a resumed route is consulted against the supply
     // list exactly as the one the player drew was: being about to travel is
     // what makes the pack matter, and resuming is being about to travel.
-    const refused = this.walkRoute(plan);
+    const refused = this.switchedOnFor(() => this.walkRoute(plan));
     return refused === null ? { started: true } : { refused };
   }
 

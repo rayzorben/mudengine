@@ -9,7 +9,7 @@
  */
 import { commandOf } from '../../shared/commands';
 import { equipBlock, type Wearer } from '../../shared/gear';
-import { WEAPON_WORN, WORN_SLOT } from '../../shared/items';
+import { WEAPON_CLASS, WEAPON_WORN, WORN_SLOT } from '../../shared/items';
 import { roundDamage, type ProwessSheet, type SwingMethod } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
 import { meanBlow, type SlotGear, type SlotGearRow, type SlotRanking } from '../../shared/slotGear';
@@ -45,6 +45,8 @@ function rowOf(item: WorldItem, asker: SlotAsker, method: SwingMethod | null): S
     // The realm omits a zero, and armour stating none has none.
     ac: item.armour === undefined ? null : (item.armour.ac ?? 0),
     dr: item.armour === undefined ? null : (item.armour.dr ?? 0),
+    weight: item.encumbrance ?? 0,
+    weaponClass: weapon?.kind === undefined ? null : (WEAPON_CLASS[weapon.kind] ?? null),
     damage: weapon === undefined ? null : { min: weapon.min, max: weapon.max },
     speed: weapon?.speed ?? null,
     perRound:

@@ -236,7 +236,11 @@ export function gained(items: CarriedItem[], item: string, count: number): Carri
  * the listing wrote singular — and if that guess is wrong too, nothing is
  * removed and the next `i` corrects it, which is what makes the guess safe.
  */
-export function lost(items: CarriedItem[], item: string, count: number): CarriedItem[] {
+export function lost<T extends { name: string; equipped?: boolean }>(
+  items: T[],
+  item: string,
+  count: number
+): T[] {
   const pick = (name: string): number[] => {
     const spare: number[] = [];
     const worn: number[] = [];
@@ -264,8 +268,13 @@ export function withItem(state: CharacterState, item: string, count = 1): Charac
 
 export function withoutItem(state: CharacterState, item: string, count = 1): CharacterState {
   const items = lost(state.inventory.items, item, count);
-  if (items.length === state.inventory.items.length) return state;
-  return { ...state, inventory: { ...state.inventory, items } };
+  // `i` lists keys apart from the pack, so what the pack did not give up of a
+  // counted drop comes off the key ring.
+  const owed = Math.max(1, count) - (state.inventory.items.length - items.length);
+  const ring = state.inventory.keys.map((name) => ({ name }));
+  const keys = owed > 0 ? lost(ring, item, owed).map((key) => key.name) : state.inventory.keys;
+  if (items.length === state.inventory.items.length && keys.length === ring.length) return state;
+  return { ...state, inventory: { ...state.inventory, items, keys } };
 }
 
 /**

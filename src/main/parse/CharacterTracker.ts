@@ -105,8 +105,8 @@ import { wireItem, type ItemEntity } from '../../shared/entities';
 import { Company } from './company';
 import { claimedBy, engagedBy, swingingAtMe, threatenedBy, vouchedFor } from './engagements';
 import { keepPartyCurrent } from './partyUpkeep';
-import { trackTally } from './tally';
-import { NO_TALLY, settleClocks, type CombatTally } from '../../shared/tally';
+import { freshTally, pastimeOf, trackTally } from './tally';
+import { NO_TALLY, settleClocks, withPastime, type CombatTally } from '../../shared/tally';
 import {
   withArrival,
   withFollowing,
@@ -235,6 +235,8 @@ export class CharacterTracker {
    * `You have no keys.` was (2026-09-12), and cost an `st` and a notice.
    */
   private listingOpen = false;
+  /** Whether a route is being walked, handed in by `noteMoving`. */
+  private moving = false;
   /**
    * Where this character's own record is kept between sessions — the balances
    * each bank stated, and what was in each worn slot.
@@ -626,6 +628,20 @@ export class CharacterTracker {
     this.statusLine.forget();
   }
 
+  /** A route began or ended: MegaMUD's `Moving`, which only the walker knows. */
+  noteMoving(moving: boolean, at = Date.now()): void {
+    this.moving = moving;
+    this.keepTally(withPastime(this.state.tally, pastimeOf(this.state, moving), at));
+  }
+
+  /** A tally moved outside `apply`, committed and written down; whether it moved. */
+  private keepTally(tally: CombatTally): boolean {
+    if (tally === this.state.tally) return false;
+    this.state = { ...this.state, tally };
+    this.belongings.rememberStats(tally);
+    return true;
+  }
+
   /**
    * The socket closed, so the character is no longer in the realm.
    *
@@ -646,17 +662,9 @@ export class CharacterTracker {
    */
   leaveRealm(at = Date.now()): boolean {
     this.expect.dropHint();
-    /*
-     * Both clocks close now: the character is in no fight and in no realm,
-     * and nothing on the wire describes the moment the socket died. The
-     * totals themselves stay — they outlive the socket and the launch.
-     */
-    const tally = settleClocks(this.state.tally, at);
-    const settled = tally !== this.state.tally;
-    if (settled) {
-      this.state = { ...this.state, tally };
-      this.belongings.rememberStats(tally);
-    }
+    // Every clock closes now, since nothing on the wire describes the moment
+    // the socket died. The totals stay: they outlive the socket and the launch.
+    const settled = this.keepTally(settleClocks(this.state.tally, at));
     // The buffs go with the realm, and so does every half-learned ending.
     this.effects.leaveRealm();
     this.sheetOpen = false;
@@ -901,7 +909,7 @@ export class CharacterTracker {
      * off the *transition*, so it is given both states rather than only the
      * one the reducer produced.
      */
-    const tally = trackTally(base.tally, block, base, before, proc);
+    const tally = trackTally(base.tally, block, base, before, proc, this.moving);
     // Written down as it moves (deferred), so the Combat Stats card opens where it was left.
     if (tally !== this.state.tally) this.belongings.rememberStats(tally);
     // Folded from the same place and for the same reason `trackPlayers` is: a
@@ -1082,18 +1090,8 @@ export class CharacterTracker {
       loadout: this.belongings.recallLoadout().map((worn) => ({ ...worn })),
       spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
       abilities: this.belongings.recallAbilities(),
-      // And the totals, which were somebody gone's. The character is standing
-      // in the realm, so the clocks that were running start again now.
-      tally:
-        this.state.phase === 'in-game'
-          ? {
-              ...NO_TALLY,
-              since: at,
-              at,
-              onlineSince: at,
-              engagedSince: this.state.inCombat ? at : null
-            }
-          : NO_TALLY
+      // And the totals, which were somebody gone's.
+      tally: freshTally(this.state, at, this.moving)
     };
   }
 

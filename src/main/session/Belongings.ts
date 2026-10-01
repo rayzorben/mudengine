@@ -38,6 +38,13 @@ import type { AbilitySums, BankBalance, KnownSpell } from '../../shared/characte
 import { bankKey } from '../../shared/character';
 import type { BelongingsSink, StatsRecord } from '../../shared/belongings';
 import type { CharacterIdentity } from '../../shared/reset';
+import {
+  asUnderway,
+  NOTHING_UNDERWAY,
+  sameUnderway,
+  type Underway,
+  type UnderwaySink
+} from '../../shared/underway';
 import { isCombatTally, settleClocks, type CombatTally } from '../../shared/tally';
 import type { Loadout, WornSlot } from '../../shared/gear';
 import { isFledList, type FledEntry } from '../../shared/fled';
@@ -89,6 +96,9 @@ interface BelongingsFile {
    * Absent means never kept. See `StatsRecord`.
    */
   stats?: StatsRecord;
+  statsBase?: CombatTally;
+  /** The lap and the route the app last saw. Parsed by `asUnderway`; absent is nothing. */
+  underway?: unknown;
 }
 
 export interface BelongingsOptions {
@@ -104,7 +114,7 @@ export interface BelongingsOptions {
   notify?(message: string): void;
 }
 
-export class Belongings implements BelongingsSink {
+export class Belongings implements BelongingsSink, UnderwaySink {
   private banks: BankBalance[] = [];
   private loadout: WornSlot[] = [];
   private spellbook: KnownSpell[] | null = null;
@@ -116,10 +126,15 @@ export class Belongings implements BelongingsSink {
   private identity: CharacterIdentity | null = null;
   /** Null is *never kept*. See `recallStats`. */
   private stats: StatsRecord | null = null;
+  /** Null is *never reset*. See `recallStatsBase`. */
+  private statsBase: CombatTally | null = null;
+  private underway: Underway = NOTHING_UNDERWAY;
   private timer: NodeJS.Timeout | null = null;
   /** When the armed timer fires, so a sooner request can replace a later one. */
   private due = 0;
   private dirty = false;
+  /** Set by `close`: a change after it (a realm switch clearing what was underway) is written at once. */
+  private closed = false;
   /** True once the file was found unreadable; nothing is written over it. */
   private suspended = false;
 
@@ -202,6 +217,16 @@ export class Belongings implements BelongingsSink {
     return this.identity;
   }
 
+  recallUnderway(): Underway {
+    return this.underway;
+  }
+
+  rememberUnderway(underway: Underway): void {
+    if (this.suspended || sameUnderway(this.underway, underway)) return;
+    this.underway = underway;
+    this.schedule();
+  }
+
   recallStats(): StatsRecord | null {
     return this.stats;
   }
@@ -222,6 +247,16 @@ export class Belongings implements BelongingsSink {
      */
     this.stats = { savedAt: Date.now(), tally };
     this.schedule(tuning().records.statsWriteDelayMs);
+  }
+
+  recallStatsBase(): CombatTally | null {
+    return this.statsBase;
+  }
+
+  rememberStatsBase(base: CombatTally): void {
+    if (this.suspended) return;
+    this.statsBase = base;
+    this.schedule();
   }
 
   /**
@@ -248,6 +283,8 @@ export class Belongings implements BelongingsSink {
     this.abilities = null;
     this.identity = null;
     this.stats = null;
+    this.statsBase = null;
+    this.underway = NOTHING_UNDERWAY;
     this.schedule();
     return true;
   }
@@ -282,6 +319,7 @@ export class Belongings implements BelongingsSink {
 
   /** Writes anything outstanding and stops the timer. Safe to call twice. */
   close(): void {
+    this.closed = true;
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -330,6 +368,8 @@ export class Belongings implements BelongingsSink {
       this.abilities = parsed.abilities ?? null;
       this.identity = parsed.identity ?? null;
       this.stats = parsed.stats ?? null;
+      this.statsBase = parsed.statsBase ?? null;
+      this.underway = asUnderway(parsed.underway);
     } catch (error) {
       /*
        * Suspended rather than started fresh: this is the only copy of what the
@@ -348,6 +388,10 @@ export class Belongings implements BelongingsSink {
 
   private schedule(delayMs = tuning().records.belongingsWriteDelayMs): void {
     this.dirty = true;
+    if (this.closed) {
+      this.write();
+      return;
+    }
     const due = Date.now() + delayMs;
     // A timer already due sooner stands; a later one is brought forward.
     if (this.timer && due >= this.due) return;
@@ -375,7 +419,11 @@ export class Belongings implements BelongingsSink {
       // Omitted while never read, so the absence survives the round trip.
       ...(this.abilities !== null ? { abilities: this.abilities } : {}),
       ...(this.identity !== null ? { identity: this.identity } : {}),
-      ...(this.stats !== null ? { stats: this.stats } : {})
+      ...(this.stats !== null ? { stats: this.stats } : {}),
+      ...(this.statsBase !== null ? { statsBase: this.statsBase } : {}),
+      ...(this.underway.lap === null && this.underway.route === null
+        ? {}
+        : { underway: this.underway })
     };
     const temporary = `${this.options.file}.tmp`;
     try {
@@ -495,6 +543,7 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.abilities !== undefined && !isAbilitySums(file.abilities)) return false;
   if (file.identity !== undefined && !isIdentity(file.identity)) return false;
   if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;
+  if (file.statsBase !== undefined && !isCombatTally(file.statsBase)) return false;
   return file.banks.every(isBankBalance);
 }
 

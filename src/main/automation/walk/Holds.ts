@@ -50,6 +50,7 @@ export type HoldsEvents = Pick<
   | 'restInFlight'
   | 'floorInFlight'
   | 'lightComing'
+  | 'regrouping'
   | 'stateNow'
   | 'pendingMoves'
   | 'spellsHold'
@@ -715,7 +716,8 @@ export class Holds {
       return false;
     }
 
-    if (this.hold === null || (mine && this.hold !== wanted)) {
+    // The party's hold is asked after this one, so a vital takes the word from it.
+    if (this.hold === null || this.hold === 'party' || (mine && this.hold !== wanted)) {
       this.hold = wanted;
       this.walk.publish();
     }
@@ -884,6 +886,27 @@ export class Holds {
         t('automation.walk.reasonDarkUnresolved', { lightLevel: now.room.light ?? '?' })
       );
     });
+    return true;
+  }
+
+  /**
+   * Stand still, leading, while the party rejoins on the far side of a portal.
+   * The wait and its bound are `PartyRegroup`'s, which says when it starts and
+   * ends; this re-asks on the beat and lets go when the answer turns false.
+   */
+  holdForParty(state: CharacterState): boolean {
+    if (this.events.regrouping?.(state) !== true) {
+      if (this.hold === 'party') {
+        this.hold = null;
+        this.walk.publish();
+      }
+      return false;
+    }
+    if (this.hold !== 'party') {
+      this.hold = 'party';
+      this.walk.publish();
+    }
+    this.walk.retryAfter(tuning().walk.holdMs, state);
     return true;
   }
 

@@ -47,7 +47,7 @@
  * longer the only one. See CLAUDE.md "Every listing is seeded by a command and
  * maintained for free".
  */
-import { PartyListing } from './PartyListing';
+import { PARTY_LISTING_KEY, PartyListing } from './PartyListing';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
@@ -364,7 +364,7 @@ export class Routines implements SessionModule {
     this.queue.enqueue({
       command,
       priority: 'probe',
-      coalesceKey: 'probe:party',
+      coalesceKey: PARTY_LISTING_KEY,
       reason: t('automation.routines.reasonPartyChanged')
     });
   }

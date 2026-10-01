@@ -491,6 +491,12 @@ const TUNING_DEFAULTS = {
      */
     roundGapMs: 2000,
     /**
+     * How long a command proposed on the round tick (a change of attack, a
+     * `break`, a re-read of the room) stays worth sending: late, it answers a
+     * room that has moved on.
+     */
+    roundCommandExpiryMs: 2000,
+    /**
      * The shortest gap between two attempts to open a fight on the same thing.
      * Not pacing — pacing comes from the prompt — but a floor on *asking*: an
      * attack refused for a reason this client cannot see leaves the room

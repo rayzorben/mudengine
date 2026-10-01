@@ -579,23 +579,6 @@ export interface LoopProgress {
   /** When this run started, epoch ms; null while nothing has. */
   startedAt: number | null;
   /**
-   * When this run first stood on the loop, epoch ms; null until it has.
-   *
-   * `startedAt` is the button; this is the lap. They differ by the walk out —
-   * twenty-eight steps from town, on the run this was asked for — and that
-   * stretch is not part of what the loop is earning. Set once per run, at the
-   * first stop the run reaches *or* immediately when the character was already
-   * standing on one when Start was pressed; a `resume` leaves it alone,
-   * because a pause is in the middle of a lap that has long since begun.
-   *
-   * Read by the Combat Stats card, which re-bases its figures on it (todo 01,
-   * *"starting a loop should reset combat statistics; restarting a loop should
-   * not"*). Published rather than inferred from `stop` moving, because a stop
-   * moves for a skip too, and a skipped opening stop is not a character that
-   * got to the start of its loop.
-   */
-  lapBegunAt: number | null;
-  /**
    * The character's experience when the run started, or null when it was not
    * known then — in which case nothing about experience made is claimed.
    */
@@ -617,7 +600,6 @@ export const NO_LOOP: LoopProgress = {
   reason: null,
   hold: null,
   startedAt: null,
-  lapBegunAt: null,
   expAtStart: null,
   forward: true,
   bounce: false

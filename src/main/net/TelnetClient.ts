@@ -25,6 +25,12 @@ import type {
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
 
+/**
+ * The dial a `disconnect()` cut short. The session says nothing for it, because
+ * the socket's own `close` follows and reports the end.
+ */
+export class DialCancelled extends Error {}
+
 export interface TelnetClientEvents {
   /** Socket is open; Telnet negotiation may still be in flight. */
   connect: [];
@@ -69,6 +75,14 @@ export class TelnetClient extends EventEmitter {
   private nawsTimer: NodeJS.Timeout | null = null;
   /** Set on an explicit `disconnect()` so `close` can report a graceful exit. */
   private closingIntentionally = false;
+  /** Identifies the current socket so late events from a replaced socket are ignored. */
+  private connectionGeneration = 0;
+  /**
+   * Fails the `connect()` still dialling. A hang-up mid-dial moves the
+   * generation on, so the dial's own handlers ignore what the socket does next
+   * and would otherwise leave the promise pending for good.
+   */
+  private cancelDial: ((reason: Error) => void) | null = null;
 
   /**
    * How long to wait for the socket to open. See `tuning.net.connectTimeoutMs`.
@@ -110,6 +124,7 @@ export class TelnetClient extends EventEmitter {
    */
   connect(target: ConnectionTarget): Promise<void> {
     this.disconnect();
+    const generation = ++this.connectionGeneration;
 
     this.encoding = target.encoding;
     this.escapeCarry = '';
@@ -148,7 +163,9 @@ export class TelnetClient extends EventEmitter {
        * moment the socket connects or fails.
        */
       let dialTimer: NodeJS.Timeout | null = setTimeout(() => {
+        if (generation !== this.connectionGeneration) return;
         dialTimer = null;
+        this.cancelDial = null;
         socket.removeListener('connect', onConnect);
         socket.removeListener('error', onConnectError);
         this.teardown();
@@ -166,15 +183,25 @@ export class TelnetClient extends EventEmitter {
         dialTimer = null;
       };
 
-      const onConnectError = (error: Error): void => {
+      this.cancelDial = (reason) => {
         clearDial();
+        this.cancelDial = null;
+        reject(reason);
+      };
+
+      const onConnectError = (error: Error): void => {
+        if (generation !== this.connectionGeneration) return;
+        clearDial();
+        this.cancelDial = null;
         socket.removeListener('connect', onConnect);
         this.teardown();
         reject(error);
       };
 
       const onConnect = (): void => {
+        if (generation !== this.connectionGeneration) return;
         clearDial();
+        this.cancelDial = null;
         socket.removeListener('error', onConnectError);
         /*
          * Guarded, because `EventEmitter` *throws* on an `error` event with no
@@ -189,6 +216,7 @@ export class TelnetClient extends EventEmitter {
          * safe.
          */
         socket.on('error', (error) => {
+          if (generation !== this.connectionGeneration) return;
           if (this.listenerCount('error') > 0) this.emit('error', error);
         });
         this.emit('connect');
@@ -198,8 +226,18 @@ export class TelnetClient extends EventEmitter {
       socket.once('error', onConnectError);
       socket.once('connect', onConnect);
 
-      socket.on('data', (chunk) => this.ingest(chunk));
+      socket.on('data', (chunk) => {
+        if (generation === this.connectionGeneration) this.ingest(chunk);
+      });
       socket.on('close', () => {
+        // A deliberate disconnect invalidates the generation too, but its
+        // close still belongs to the current socket and must reach the
+        // session. Only suppress a close from a socket that was replaced.
+        if (generation !== this.connectionGeneration && this.socket !== socket) {
+          socket.removeAllListeners();
+          socket.destroy();
+          return;
+        }
         const graceful = this.closingIntentionally;
         this.teardown();
         this.emit('close', graceful);
@@ -209,6 +247,8 @@ export class TelnetClient extends EventEmitter {
 
   disconnect(): void {
     if (!this.socket) return;
+    this.cancelDial?.(new DialCancelled());
+    this.connectionGeneration++;
     this.closingIntentionally = true;
     this.socket.end();
     // `end()` waits for the FIN handshake; destroy on the next tick guarantees

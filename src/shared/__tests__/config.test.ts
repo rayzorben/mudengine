@@ -468,6 +468,21 @@ describe('automation.combat', () => {
  * figures are the ones that pair had rather than the 0 every other automated
  * threshold here ships at.
  */
+/* Drain when hurt (todo 841): the heal's pair, for the round spell. */
+describe('the drain pair', () => {
+  const spells = (raw: Record<string, unknown>) =>
+    normalizeConfig({ automation: { spells: raw } }).automation.spells;
+
+  it('ships off', () => {
+    expect(spells({})).toMatchObject({ drain: '', areaDrain: '', drainBelow: 0, drainTo: 0 });
+  });
+
+  it('lifts a ceiling under the floor, and keeps 0 as no ceiling', () => {
+    expect(spells({ drainBelow: 0.5, drainTo: 0.3 }).drainTo).toBe(0.5);
+    expect(spells({ drainBelow: 0.5, drainTo: 0 }).drainTo).toBe(0);
+  });
+});
+
 describe('the resting pair', () => {
   const health = (raw: Record<string, unknown>) =>
     normalizeConfig({ automation: { health: raw } }).automation.health;
@@ -714,7 +729,9 @@ describe('following somebody', () => {
   /*
    * Nothing new sent unasked: every switch off and every figure 0, but for
    * asking a joining member's @health, which the client always did, and a
-   * time limit on a wait nothing starts (todo 831).
+   * time limit on a wait nothing starts (todo 831). The one exception is the
+   * leader's @party before a portal and the wait behind it, which the user
+   * asked to have on (todo 839, 2026-09-30).
    */
   it('ships sending nothing new', () => {
     expect(party({})).toEqual({
@@ -728,7 +745,9 @@ describe('following somebody', () => {
       ignoreParty: false,
       askHealth: true,
       parSeconds: 0,
-      parAfterRound: false
+      parAfterRound: false,
+      relayPortals: true,
+      regroupMinutes: 5
     });
   });
 

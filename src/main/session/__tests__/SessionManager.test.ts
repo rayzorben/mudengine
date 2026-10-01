@@ -38,7 +38,8 @@ import type { Route } from '../../../shared/world';
 import { NO_LORE } from '../../../shared/lore';
 import type { LearnedSpawns } from '../../../shared/spawns';
 import type { QuestWatched } from '../../../shared/quests';
-import { NO_BELONGINGS } from '../../../shared/belongings';
+import { NO_RECORD, type CharacterRecord } from '../../../shared/belongings';
+import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
 import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
 
 /**
@@ -2549,6 +2550,39 @@ describe('asking another player from the palette', () => {
   });
 });
 
+/* `party.askHealth` asks the player a party join names. */
+describe('asking the party for its numbers', () => {
+  it('asks a member who just joined and not one who just left', async () => {
+    const { sink } = collect();
+    manager = build(sink, {
+      automation: {
+        ...DEFAULT_CONFIG.automation,
+        enabled: true,
+        remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+      }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: Buffer[] = [];
+    socket.on('data', (chunk) => received.push(chunk));
+    const wire = (): string => Buffer.concat(received).toString('latin1');
+    const askedSoul = (): number => wire().split('/Soul @health\r\n').length - 1;
+
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    socket.write('Soul started to follow you.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => askedSoul() === 1);
+
+    socket.write('Soul is no longer following you.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.party.members.length === 0);
+    // The positive control: a question queued after the leave reaches the wire.
+    expect(manager.askRemote('Yang', 'health')).toBe(true);
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => wire().includes('/Yang @health\r\n'));
+    expect(askedSoul()).toBe(1);
+  });
+});
+
 /*
  * A Goto or a Loop pressed in an unplaced room asks first (todo 812): the
  * wait is ended by the answer itself, off the character's own publish, not by
@@ -2868,7 +2902,7 @@ describe('the plan to a step', () => {
       const { sink } = collect();
       sink.questSaid = (progress) => pushed.push(progress);
       manager = build(sink, { world: questWorld(), automation: questing });
-      manager.useRealm(NO_REALM_PLAYERS, { ...NO_BELONGINGS, forget: () => true });
+      manager.useRealm(NO_REALM_PLAYERS, { ...NO_RECORD, forget: () => true });
       await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
       const socket = await client();
       socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT + beside);
@@ -5331,7 +5365,7 @@ describe('a step the server never answers', () => {
 
     // Positive control: the answer places the character and the lap goes on.
     socket.write('Location: 1,2140\r\n[HP=54/MA=12]:' + PROMPT_REPAINT);
-    await until(() => manager!.loops.progress.lapBegunAt !== null);
+    await until(() => (manager!.loops.place?.lapBegunAt ?? null) !== null);
     expect(asked()).toBe(1);
   });
 
@@ -5380,7 +5414,7 @@ describe('a step the server never answers', () => {
 
     // Positive control: the probe's answer settles the step and the lap goes on.
     socket.write('Location: 1,2140\r\n[HP=56/MA=12]:' + PROMPT_REPAINT);
-    await until(() => manager!.loops.progress.lapBegunAt !== null);
+    await until(() => (manager!.loops.place?.lapBegunAt ?? null) !== null);
     expect(asked() - before).toBe(1);
   });
 
@@ -5532,8 +5566,9 @@ describe('picking up after a lost connection', () => {
     expect(notices).toContain(t('automation.loops.walkingOnAfterReconnect'));
   });
 
-  it('ends the loop when this client asked for the disconnect, and says why', async () => {
-    const { sink, notices } = collect();
+  /* Disconnect and quit are not Stop (todo 01): the lap is held as a loss holds it. */
+  it('holds the loop through a disconnect this client asked for, and walks it on at the next dial', async () => {
+    const { sink, notices, drops } = collect();
     manager = build(sink, { automation: automation() });
     await manager.connect(dial());
     await placed(await client());
@@ -5541,14 +5576,72 @@ describe('picking up after a lost connection', () => {
 
     manager.disconnect();
     await until(() => manager!.state.phase === 'closed');
-    expect(manager.loops.progress).toMatchObject({
-      status: 'stopped',
-      reason: t('session.loop.stoppedDisconnected')
-    });
-    expect(manager.loops.carried).toBe(false);
-    expect(notices).toContain(
-      t('automation.loops.stopped', { reason: t('session.loop.stoppedDisconnected') })
-    );
+    expect(manager.loops.progress).toMatchObject({ status: 'running', hold: 'offline' });
+    expect(manager.loops.carried).toBe(true);
+    // Still not a loss: nothing dials a Disconnect back.
+    expect(drops).toEqual([]);
+
+    await manager.connect(dial());
+    await placed(await client(1));
+    await until(() => manager!.loops.progress.hold === null);
+    expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap' });
+    expect(notices).toContain(t('automation.loops.walkingOnAfterReconnect'));
+  });
+
+  /* Stop on a held lap is the player ending it, and no line follows to say so: the publish writes it. */
+  it('writes a lap stopped while the socket is closed as stopped', async () => {
+    let kept: Underway = NOTHING_UNDERWAY;
+    const record: CharacterRecord = {
+      ...NO_RECORD,
+      recallUnderway: () => kept,
+      rememberUnderway: (underway) => {
+        kept = underway;
+      }
+    };
+    const { sink } = collect();
+    manager = build(sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    await placed(await client());
+    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
+    expect(kept.lap).toMatchObject({ running: true });
+
+    manager.disconnect();
+    await until(() => manager!.state.phase === 'closed');
+    expect(kept.lap).toMatchObject({ running: true });
+    manager.stopMoving();
+    expect(kept.lap).toMatchObject({ running: false, loop: { name: 'lap' } });
+  });
+
+  /* A quit disposes the session; the character's record is what carries the lap to the next launch. */
+  it('picks up the lap the last launch was running, from the character record', async () => {
+    let kept: Underway = NOTHING_UNDERWAY;
+    const record: CharacterRecord = {
+      ...NO_RECORD,
+      recallUnderway: () => kept,
+      rememberUnderway: (underway) => {
+        kept = underway;
+      }
+    };
+    const before = collect();
+    manager = build(before.sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    const first = await client();
+    await placed(first);
+    manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character);
+    expect(kept.lap).toMatchObject({ running: true, index: 0, loop: { name: 'lap' } });
+    manager.dispose();
+
+    const after = collect();
+    manager = build(after.sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    expect(manager.loops.progress).toMatchObject({ status: 'running', hold: 'offline' });
+    expect(after.notices).toContain(t('automation.loops.carriedOver', { loopName: 'lap' }));
+    await placed(await client(1));
+    await until(() => manager!.loops.progress.hold === null);
+    expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap' });
   });
 
   /* A loop is a list of rooms in one realm. */
@@ -5736,9 +5829,10 @@ describe('picking up after a lost connection', () => {
     expect(notices).not.toContain(t('automation.loops.walkingOnAfterReconnect'));
   });
 
-  it('forgets the route when this client asked for the disconnect', async () => {
+  /* Disconnect is not Stop (todo 01): the route is picked up as a loss's is. */
+  it('walks the route on after a disconnect this client asked for', async () => {
     const world = line();
-    const { sink } = collect();
+    const { sink, notices } = collect();
     manager = build(sink, { world, automation: automation() });
     await manager.connect(dial());
     const first = await client();
@@ -5753,9 +5847,8 @@ describe('picking up after a lost connection', () => {
     const second = await client(1);
     second.write('[HP=34]:' + PROMPT_REPAINT);
     second.write('Location:            1,3\r\nBridge\r\nObvious exits: north, south\r\n');
-    await until(() => manager!.character.room.number === 3);
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(manager.walker.progress.status).not.toBe('walking');
+    await until(() => manager!.walker.progress.status === 'walking');
+    expect(notices).toContain(t('session.walk.resumed', { destination: 'Gate' }));
   });
 });
 
@@ -6774,6 +6867,43 @@ describe('starting and stopping a movement', () => {
     const redrawn = (answer as { replanned: { route: Route } }).replanned.route;
     expect(manager!.walkPlan(redrawn)).toEqual({ started: true });
     expect(manager!.walker.progress).toMatchObject({ status: 'walking', total: 10 });
+  });
+
+  /*
+   * Todo 03: automation turned off to log a hurt character back in, then a
+   * room picked to run to. The press turns it back on, read back before the
+   * first step, so the step goes out now.
+   */
+  it('turns automation back on to walk a route the player pressed', async () => {
+    const world = corridor();
+    const { sink, notices } = collect();
+    const switched: boolean[] = [];
+    manager = build(
+      {
+        ...sink,
+        switchAutomationNow: (name, on) => {
+          switched.push(on);
+          if (name === 'automation') {
+            manager!.configure({ ...quiet, enabled: on }, DEFAULT_CONFIG.connection.login);
+          }
+          return true;
+        }
+      },
+      { world, automation: { ...quiet, enabled: false } }
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,40\r\nRoom 40\r\nObvious exits: south\r\n');
+    await until(() => manager!.character.room.number === 40);
+
+    expect(manager.walkPlan(world.route('1/40', '1/38'))).toEqual({ started: true });
+    expect(switched).toEqual([true]);
+    expect(manager.walker.progress).toMatchObject({ status: 'walking', total: 2 });
+    expect(notices.some(composes('session.walk.automationOn'))).toBe(true);
+    await until(() => Buffer.concat(chunks).toString('latin1').includes('s\r\n'));
   });
 
   /* A plan drawn from where the character is standing is walked untouched. */

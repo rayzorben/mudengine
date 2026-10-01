@@ -38,7 +38,7 @@ import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from '../shared/memory';
 import { RealmLore, realmKey } from './world/RealmLore';
 import { PlayerBook, realmAddress } from './world/PlayerBook';
-import { cureGates, spellServes, spellTargeting } from '../shared/spellcraft';
+import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
 import { NO_LOOKUP, nameAnswersTo } from '../shared/world';
@@ -58,7 +58,7 @@ import {
   UNKNOWN_WEARER
 } from '../shared/gear';
 import { Belongings, peekSpellbook } from './session/Belongings';
-import type { BelongingsSink } from '../shared/belongings';
+import type { CharacterRecord } from '../shared/belongings';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
 import {
   SpellMessageBook,
@@ -638,7 +638,7 @@ function talkFor(id: SessionId): TalkSink {
  */
 const belongings = new Map<SessionId, Belongings>();
 
-function belongingsAt(id: SessionId, target: ConnectionTarget): BelongingsSink {
+function belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord {
   const realm = realmAddress(target);
   const existing = belongings.get(id);
   if (existing) {
@@ -1291,6 +1291,7 @@ function createHost(): SessionHost {
     worldFor,
     // The same write the toolbar's press makes, so the toggle shows it.
     flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
+    reread: () => profiles?.refresh(),
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,
@@ -2100,6 +2101,7 @@ function registerIpc(): void {
       automation: manager?.automation ?? EMPTY_AUTOMATION,
       verdict: manager?.appraisal.verdict ?? EMPTY_ROOM_VERDICT,
       asks: [...(manager?.appraisal.asks ?? [])],
+      statsBase: manager?.statsBaseline.base ?? null,
       telnet: manager?.log ?? [],
       learned: manager?.learned ?? [],
       finds: manager?.foundHere ?? [],
@@ -2710,6 +2712,10 @@ function registerIpc(): void {
     return host?.get(session)?.manager.forgetCharacter() ?? false;
   });
 
+  handle(Invoke.resetStats, (_caller, session: SessionId) => {
+    host?.get(session)?.manager.statsBaseline.rebase();
+  });
+
   // Parsed, not checked, like every payload that reaches a file on disk.
   handle(Invoke.forgetFind, (_caller, session: SessionId, find: unknown) => {
     if (typeof find !== 'object' || find === null) return false;
@@ -2769,7 +2775,9 @@ function registerIpc(): void {
              * where the realm has no row: unknown offers everything, the
              * same rule `targeting` keeps one line up.
              */
-            ...(row === undefined || row === null ? {} : { serves: spellServes(row.abilities) })
+            ...(row === undefined || row === null
+              ? {}
+              : { serves: servesOf(row, (id) => world?.spellById(id)) })
           };
         }),
         // No realm to ask means no gates, never closed ones: unknown must

@@ -15,7 +15,7 @@ import type { Asked } from '../components/ReferencePopover';
 import type { RoomAsked } from '../components/RoomQuickView';
 import type { SlotAsked } from '../components/SlotQuickView';
 import { t } from '../lib/i18n';
-import type { PopoverAnchor } from '../lib/popover';
+import { outlastingAnchor, type PopoverAnchor } from '../lib/popover';
 import { tuning } from '../lib/tuning';
 import type { SessionId } from '@shared/ipc';
 import { asRoomReference, type RoomId } from '@shared/world';
@@ -150,7 +150,7 @@ export function useSlideOuts(
       setGangFlyout(null);
       setSlotAsked(null);
       dismissPeek();
-      setAsked({ name, anchor });
+      setAsked({ name, anchor: outlastingAnchor(anchor) });
     },
     [dismissPeek]
   );
@@ -173,7 +173,7 @@ export function useSlideOuts(
       setGangFlyout(null);
       setSlotAsked(null);
       dismissPeek();
-      setFlyout({ session: sid, name, anchor });
+      setFlyout({ session: sid, name, anchor: outlastingAnchor(anchor) });
     },
     [dismissPeek]
   );
@@ -194,7 +194,7 @@ export function useSlideOuts(
       setFlyout(null);
       setSlotAsked(null);
       dismissPeek();
-      setGangFlyout({ session: sid, name, anchor });
+      setGangFlyout({ session: sid, name, anchor: outlastingAnchor(anchor) });
     },
     [dismissPeek]
   );
@@ -207,7 +207,7 @@ export function useSlideOuts(
       setFlyout(null);
       setGangFlyout(null);
       dismissPeek();
-      setSlotAsked({ session: sid, slot, anchor });
+      setSlotAsked({ session: sid, slot, anchor: outlastingAnchor(anchor) });
     },
     [dismissPeek]
   );

@@ -10,8 +10,21 @@
 import { t } from '../app/i18n';
 import { inAParty, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import type { CommandQueue } from './CommandQueue';
+import type { CommandQueue, Intent } from './CommandQueue';
 import { fightIsRunning } from './Walker';
+
+/** Every ask for the party listing shares it, so asks that meet in the queue are one `par`. */
+export const PARTY_LISTING_KEY = 'probe:party';
+
+/** One `par`, under the party-change ask's key and word, so every ask for the listing is one. */
+export function partyListingIntent(config: AutomationConfig): Intent {
+  return {
+    command: config.onPartyChange || 'par',
+    priority: 'probe',
+    coalesceKey: PARTY_LISTING_KEY,
+    reason: t('automation.routines.reasonPar')
+  };
+}
 
 export class PartyListing {
   private askedAt: number | null = null;
@@ -42,12 +55,6 @@ export class PartyListing {
   private ask(): void {
     if (!this.config().enabled) return;
     this.askedAt = this.now();
-    this.queue.enqueue({
-      // The party-change ask's own word, so the two coalesce as one listing.
-      command: this.config().onPartyChange || 'par',
-      priority: 'probe',
-      coalesceKey: 'probe:party',
-      reason: t('automation.routines.reasonPar')
-    });
+    this.queue.enqueue(partyListingIntent(this.config()));
   }
 }

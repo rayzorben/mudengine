@@ -5,6 +5,7 @@ import { Remotes } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { wireExit, wireItem } from '../../../shared/entities';
 import type { AutomationConfig } from '../../../shared/config';
 import type { Block } from '../../../shared/blocks';
@@ -63,6 +64,10 @@ const config: AutomationConfig = {
   },
   pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
 };
+
+/** `<player> started to follow you.`, or `You are now following <leader>.` */
+const joins = (group: 'player' | 'leader', name: string): Block =>
+  ({ type: 'party-joined', domain: 'presence', groups: { [group]: name } }) as unknown as Block;
 
 const said = (type: string, player: string, message: string): Block =>
   ({
@@ -620,56 +625,24 @@ describe('what it will not be driven by', () => {
 });
 
 describe('asking, which is the other half of the same vocabulary', () => {
-  it('asks every member of the party for its numbers when one is formed', () => {
-    peers.askParty(
-      who({
-        party: {
-          engaged: {},
-          threatened: {},
-          following: null,
-          members: [
-            {
-              name: 'Vaelor',
-              className: null,
-              health: null,
-              mana: null,
-              rank: null,
-              activity: null,
-              invited: false,
-              vitals: null
-            },
-            {
-              name: 'Soul',
-              className: null,
-              health: null,
-              mana: null,
-              rank: null,
-              activity: null,
-              invited: false,
-              vitals: null
-            },
-            {
-              name: 'Yang',
-              className: null,
-              health: null,
-              mana: null,
-              rank: null,
-              activity: null,
-              invited: true,
-              vitals: null
-            }
-          ]
-        }
-      })
-    );
+  it('asks somebody joining the party for its numbers and which client it runs', () => {
+    peers.onBlock(joins('player', 'Soul'), who());
     drain();
-    /*
-     * Not itself, and not somebody who has not accepted the invitation. The
-     * second question is which client they run: it decides the wording of
-     * every question after this one, and it is asked only while nothing has
-     * said — see `PlayerRecord.client`.
-     */
+    // The second question decides the wording of every question after this one.
     expect(sent).toEqual(['/Soul @health', '/Soul @version']);
+  });
+
+  /*
+   * The leader disbanding sent both to the member who had just left
+   * (festus, 2026-09-25). A second join asks `@health` again, and `@version`
+   * only while nothing has answered or lapsed.
+   */
+  it('asks which client somebody runs once, however often they join', () => {
+    peers.onBlock(joins('player', 'Soul'), who());
+    drain();
+    peers.onBlock(joins('leader', 'Soul'), who());
+    drain();
+    expect(sent).toEqual(['/Soul @health', '/Soul @version', '/Soul @health']);
   });
 
   /*
@@ -1422,22 +1395,20 @@ describe('talking to another one of these clients', () => {
     expect(clients).toEqual([]);
   });
 
-  // The positive control is `asks every member of the party for its numbers`.
-  it('does not ask a party member which client it runs once the registry has said', () => {
+  // The positive control is `asks somebody joining the party for its numbers`.
+  it('does not ask a joining member which client it runs once the registry has said', () => {
     knowing('Soul', 'yes');
-    const soul = { name: 'Soul', className: null, health: null, mana: null, rank: null };
-    peers.askParty(
-      who({
-        party: {
-          engaged: {},
-          threatened: {},
-          following: null,
-          members: [{ ...soul, activity: null, invited: false, vitals: null }]
-        }
-      })
-    );
+    peers.onBlock(joins('player', 'Soul'), who());
     drain();
     expect(sent).toEqual(['/Soul @health']);
+  });
+
+  it('does not ask again after a @version went unanswered', () => {
+    knowing('Rand', 'no');
+    registry = { rand: { ...registry['rand']!, client: null } };
+    peers.onBlock(joins('player', 'Rand'), who());
+    drain();
+    expect(sent).toEqual(['/Rand @health']);
   });
 
   it('reads where a peer said it is standing, by address', () => {
@@ -1723,6 +1694,75 @@ describe('@heal', () => {
   });
 });
 
+describe('@reset', () => {
+  const baseline = (base: CombatTally | null = null) => {
+    const port = { base, resets: 0, rebase: () => void port.resets++ };
+    return port;
+  };
+
+  it('starts the combat statistics again, says so, and answers nothing', () => {
+    const stats = baseline();
+    const remotes = new Remotes(config, queue, { stats, notice: (m) => notices.push(m) });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@reset'), who());
+    drain();
+    expect(stats.resets).toBe(1);
+    expect(notices).toContain(t('automation.remotes.statsReset', { from: 'Soul' }));
+    expect(sent).toEqual([]);
+  });
+
+  it('is not granted by the shipped lists', () => {
+    const stats = baseline();
+    const shipped: AutomationConfig = {
+      ...config,
+      remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+    };
+    new Remotes(shipped, queue, { stats }).onBlock(
+      said('conversation-telepath', 'Soul', '@reset'),
+      who()
+    );
+    expect(stats.resets).toBe(0);
+  });
+
+  /* Todo 03: @exp is the Combat Stats card's figures, so a reset starts it again. */
+  it('answers @exp and @level from the card, since the last reset', () => {
+    const HOUR = 3_600_000;
+    const now = Date.now();
+    const since = now - 2 * HOUR;
+    const tally: CombatTally = {
+      ...NO_TALLY,
+      since,
+      at: now,
+      experience: 3_000,
+      onlineMs: 2 * HOUR,
+      onlineSince: null
+    };
+    const progress = { ...EMPTY_CHARACTER.progress, level: 1, expNeeded: 4_500 };
+    const state = who({ tally, progress });
+    // Drained each time: two replies to one asker in the queue are one reply.
+    const ask = (stats: ReturnType<typeof baseline>, raw: string) => {
+      new Remotes(config, queue, { stats }).onBlock(
+        said('conversation-telepath', 'Rand', raw),
+        state
+      );
+      drain();
+    };
+
+    ask(baseline(), '@exp');
+    // Reset an hour in, at 1,000: 2,000 made in the hour since.
+    const reset = { ...tally, at: now - HOUR, experience: 1_000, onlineMs: HOUR };
+    ask(baseline(reset), '@exp');
+    ask(baseline(reset), '@level');
+    // A baseline from another series is not subtracted.
+    ask(baseline({ ...reset, since: since - 1 }), '@exp');
+    expect(sent).toEqual([
+      '/Rand {Made: 3,000  Needed: 4,500  Rate: 1.5 k/hr  Will level in: 3h 0m}',
+      '/Rand {Made: 2,000  Needed: 4,500  Rate: 2.0 k/hr  Will level in: 2h 15m}',
+      '/Rand {Level: 1  Needed: 4,500  Will level in: 2h 15m}',
+      '/Rand {Made: 3,000  Needed: 4,500  Rate: 1.5 k/hr  Will level in: 3h 0m}'
+    ]);
+  });
+});
+
 /* Todo 831: MegaMUD's party settings, on both ends of the party. */
 describe('party pacing', () => {
   let paced: string[];
@@ -1776,10 +1816,10 @@ describe('party pacing', () => {
     const party = who({
       party: { engaged: {}, threatened: {}, following: null, members: [member('Soul', 1)] }
     });
-    make({ askHealth: false }).askParty(party);
+    make({ askHealth: false }).onBlock(joins('player', 'Soul'), party);
     drain();
     expect(sent).not.toContain('/Soul @health');
-    make({ askHealth: true }).askParty(party);
+    make({ askHealth: true }).onBlock(joins('player', 'Soul'), party);
     drain();
     expect(sent).toContain('/Soul @health');
   });

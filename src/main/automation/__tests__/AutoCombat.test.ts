@@ -177,6 +177,7 @@ function make(
     undefined,
     realmClass,
     instants,
+    undefined,
     guard ?? null
   );
 }
@@ -932,6 +933,19 @@ describe('refusing to start one', () => {
     expect(make(combat({ enabled: false })).fightingBecauseTravelling).toBe(true);
     expect(make(combat({ enabled: true })).fightingBecauseTravelling).toBe(false);
     expect(make(combat({ enabled: false }), false).fightingBecauseTravelling).toBe(false);
+  });
+
+  it('says once, as the lap starts, that the lap is why it fights', () => {
+    const lap = t('automation.loops.fightingForTheLap');
+    const auto = make(combat({ enabled: false }));
+    auto.noteLooping(true);
+    auto.noteLooping(true);
+    // A reconnect resets the module; a carried loop's lap has not started again.
+    auto.reset();
+    auto.noteLooping(true);
+    expect(notices.filter((n) => n === lap)).toHaveLength(1);
+    make(combat({ enabled: true })).noteLooping(true);
+    expect(notices.filter((n) => n === lap)).toHaveLength(1);
   });
 
   /*
@@ -1866,6 +1880,10 @@ describe('casting in a fight', () => {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1918,6 +1936,10 @@ describe('casting in a fight', () => {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1951,6 +1973,10 @@ describe('casting in a fight', () => {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -1983,6 +2009,10 @@ describe('casting in a fight', () => {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -2023,6 +2053,10 @@ describe('casting in a fight', () => {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -2069,6 +2103,10 @@ describe('casting in a fight', () => {
       attackFallback: '',
       attackCasts: 0,
       areaCasts: 0,
+      drain: '',
+      areaDrain: '',
+      drainBelow: 0,
+      drainTo: 0,
       heal: '',
       healPartyWith: '',
       healBelow: 0,
@@ -2443,6 +2481,50 @@ describe('an attack spell opens the fight', () => {
     auto.onCharacter(standing());
     drain();
     expect(sent).toEqual(['a tall kobold thief']);
+  });
+
+  /*
+   * Todo 828: a MajorMUD server goes on casting the room spell into an empty
+   * room, and MegaMUD breaks it there only. A change of attack waiting when
+   * the last monster goes would be sent at nothing, so the break replaces it.
+   */
+  describe('the room spell once the room is empty', () => {
+    const emptied = (family: RealmFamily): AutoCombat => {
+      const auto = make(
+        fights(),
+        true,
+        caster({ attack: '', areaAttack: 'pclo', areaMinMobs: 1, areaMinMana: 0 }),
+        () => ({ combat: null, magery: null, family })
+      );
+      auto.onCharacter(standing());
+      drain();
+      engaged(auto);
+      auto.onBlock(block('user-hits'));
+      round();
+      expect(sent).toEqual(['a tall kobold thief', 'pclo']);
+      // A round's change of attack, held behind a half-typed line.
+      queue.noteTyping(true);
+      queue.enqueue({
+        command: 'a tall kobold thief',
+        priority: 'combat',
+        coalesceKey: 'round-attack',
+        reason: 'waiting'
+      });
+      auto.onCharacter(state({ ...fighting(), room: { ...room, occupants: [] } }));
+      queue.noteTyping(false);
+      drain();
+      return auto;
+    };
+
+    it('breaks it on a MajorMUD realm, in place of the waiting attack', () => {
+      emptied('majormud');
+      expect(sent).toEqual(['a tall kobold thief', 'pclo', 'break']);
+    });
+
+    it('leaves it to a GreaterMUD server, which breaks it itself (the control)', () => {
+      emptied('greatermud');
+      expect(sent).toEqual(['a tall kobold thief', 'pclo', 'a tall kobold thief']);
+    });
   });
 
   /* The player's spell is theirs: with nothing configured, a round must not
@@ -4067,5 +4149,214 @@ describe('opening only a fight it walks out of', () => {
     auto.onCharacter({ ...at(34), progress: { ...EMPTY_CHARACTER.progress, level: 3 } });
     drain();
     expect(sent).toEqual(['a thug']);
+  });
+});
+
+/*
+ * Drain when hurt (todo 841, from fatavatar `89e3584`): a necrolyte's
+ * `vampiric assault` and `necromantic storm` hurt the monster and heal the
+ * caster (`Spell.cs:1418`), and stand in for the attack spells below
+ * `drainBelow` until health is back to `drainTo`.
+ */
+describe('draining when hurt', () => {
+  const spells = (over: Partial<SpellsConfig> = {}): SpellsConfig => ({
+    ...DEFAULT_CONFIG.automation.spells,
+    attack: 'ma',
+    drain: 'aslt',
+    drainBelow: 0.5,
+    drainTo: 0.7,
+    minMana: 0,
+    ...over
+  });
+  const fight = (hp: number, mobCount = 1): CharacterState =>
+    state({
+      inCombat: true,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'giant rat' },
+      vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 100, mana: 80, manaMax: 100, manaType: 'MA' },
+      room: {
+        ...EMPTY_CHARACTER.room,
+        occupants: Array.from({ length: mobCount }, (_, i) =>
+          mob(i === 0 ? 'giant rat' : `giant rat ${i}`, 'hostile')
+        )
+      }
+    });
+  const round = (auto: AutoCombat, at: CharacterState): void => {
+    auto.onCharacter(at);
+    auto.onBlock(block('user-hits'));
+    vi.advanceTimersByTime(200);
+    drain();
+  };
+  const rounds = (): CombatConfig => combat({ engage: 'none', refreshRounds: 0 });
+  const starts = t('automation.spells.drainStarts', { below: 50, to: 70 });
+
+  it('casts the attack spell over the line and the drain under it, and says so', () => {
+    const auto = make(rounds(), true, spells());
+    round(auto, fight(90));
+    expect(notices).not.toContain(starts);
+    round(auto, fight(40));
+    expect(sent).toEqual(['ma giant rat', 'aslt giant rat']);
+    expect(notices).toContain(starts);
+  });
+
+  // Every change of spell restarts the round, so a drain lifting health just
+  // over the line must not flip the fight back.
+  it('keeps draining until health is back to drainTo', () => {
+    const auto = make(rounds(), true, spells());
+    round(auto, fight(40));
+    round(auto, fight(60));
+    expect(sent).toEqual(['aslt giant rat']);
+    round(auto, fight(75));
+    expect(sent).toEqual(['aslt giant rat', 'ma giant rat']);
+    expect(notices).toContain(t('automation.spells.drainEnds'));
+  });
+
+  it('goes back at drainBelow when drainTo is 0', () => {
+    const auto = make(rounds(), true, spells({ drainTo: 0 }));
+    round(auto, fight(40));
+    round(auto, fight(55));
+    expect(sent).toEqual(['aslt giant rat', 'ma giant rat']);
+  });
+
+  it('never drains on an unknown maximum, or with drainBelow at 0', () => {
+    const unknown = make(rounds(), true, spells());
+    round(unknown, { ...fight(10), vitals: { ...fight(10).vitals, hpMax: null } });
+    const off = make(rounds(), true, spells({ drainBelow: 0 }));
+    round(off, fight(10));
+    expect(sent).toEqual(['ma giant rat', 'ma giant rat']);
+    expect(notices).not.toContain(starts);
+  });
+
+  it('says nothing about draining when no drain is set', () => {
+    const auto = make(rounds(), true, spells({ drain: '' }));
+    round(auto, fight(40));
+    expect(sent).toEqual(['ma giant rat']);
+    expect(notices).not.toContain(starts);
+  });
+
+  it('casts the room drain instead of the room spell in a crowd', () => {
+    const auto = make(
+      rounds(),
+      true,
+      spells({ areaAttack: 'pclo', areaDrain: 'nsto', areaMinMana: 0 })
+    );
+    round(auto, fight(90, 3));
+    round(auto, fight(40, 3));
+    expect(sent).toEqual(['pclo', 'nsto']);
+  });
+
+  // No room drain: the single drain heals, the room spell does not.
+  it('casts the single drain ahead of the room spell when no room drain is set', () => {
+    const auto = make(rounds(), true, spells({ areaAttack: 'pclo', areaMinMana: 0 }));
+    round(auto, fight(40, 3));
+    expect(sent).toEqual(['aslt giant rat']);
+  });
+
+  // `vampiric assault` affects the living only; against the undead the server
+  // says it has no effect, and the fight goes back to the ordinary choice.
+  it('goes back to the attack spell once the drain has no effect on the target', () => {
+    const auto = make(rounds(), true, spells());
+    round(auto, fight(40));
+    auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
+    round(auto, fight(40));
+    expect(sent).toEqual(['aslt giant rat', 'ma giant rat']);
+    expect(notices).toContain(t('automation.combat.drainIneffective', { spell: 'aslt' }));
+  });
+
+  describe('with Auto Choose on and the drain field blank', () => {
+    const rows: Record<string, WorldSpell> = {
+      'vampiric assault': {
+        id: 1438,
+        name: 'vampiric assault',
+        short: 'aslt',
+        level: 35,
+        mana: 10,
+        targets: 8,
+        power: [5, 5],
+        abilities: [[8, 0]]
+      } as WorldSpell,
+      'fire jet': {
+        id: 9,
+        name: 'fire jet',
+        short: 'fjet',
+        level: 6,
+        mana: 5,
+        targets: 8,
+        power: [30, 55]
+      } as WorldSpell,
+      // A hit that ends in a heal on the caster: a drain by its EndCast.
+      'soul rend': {
+        id: 20,
+        name: 'soul rend',
+        short: 'rend',
+        level: 30,
+        mana: 10,
+        targets: 8,
+        power: [5, 5],
+        abilities: [
+          [17, 0],
+          [151, 21]
+        ]
+      } as WorldSpell,
+      // The same, cast at the room: Auto Choose weighs single targets only.
+      'necromantic storm': {
+        id: 899,
+        name: 'necromantic storm',
+        short: 'nsto',
+        level: 30,
+        mana: 10,
+        targets: 12,
+        power: [5, 5],
+        abilities: [[8, 0]]
+      } as WorldSpell
+    };
+    const byId = (id: number): WorldSpell | null =>
+      id === 21
+        ? ({ id: 21, name: 'suck the life force', abilities: [[18, 0]] } as WorldSpell)
+        : null;
+    const choosing = (): AutoCombat =>
+      new AutoCombat(
+        rounds(),
+        true,
+        queue,
+        { notice: (m) => notices.push(m), onTheGround: () => false },
+        spells({ attack: '', drain: '', autoChoose: true }),
+        (name) => rows[name] ?? null,
+        undefined,
+        undefined,
+        byId
+      );
+    const booked = (hp: number, book: string[]): CharacterState => ({
+      ...fight(hp),
+      progress: { ...EMPTY_CHARACTER.progress, level: 40 },
+      spellbook: book.map((name) => ({
+        name,
+        short: rows[name]?.short ?? null,
+        level: rows[name]?.level ?? 1,
+        cost: rows[name]?.mana ?? 1
+      })) as CharacterState['spellbook']
+    });
+
+    it('picks the drain from the spell list', () => {
+      const auto = choosing();
+      round(auto, booked(90, ['vampiric assault', 'fire jet']));
+      round(auto, booked(40, ['vampiric assault', 'fire jet']));
+      expect(sent).toEqual(['fjet giant rat', 'aslt giant rat']);
+      expect(notices).toContain(starts);
+    });
+
+    it('picks a drain known by what it ends in', () => {
+      const auto = choosing();
+      round(auto, booked(40, ['soul rend', 'fire jet']));
+      expect(sent).toEqual(['rend giant rat']);
+      expect(notices).toContain(starts);
+    });
+
+    it('says nothing about draining when the spell list holds no drain it could pick', () => {
+      const auto = choosing();
+      round(auto, booked(40, ['fire jet']));
+      round(auto, booked(40, ['fire jet', 'necromantic storm']));
+      expect(sent).toEqual(['fjet giant rat']);
+      expect(notices).not.toContain(starts);
+    });
   });
 });

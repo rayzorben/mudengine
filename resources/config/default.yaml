@@ -1557,6 +1557,22 @@ automation:
     attackCasts: 0
     areaCasts: 0
 
+    # Drain when hurt. A drain spell hurts the monster and heals you by what it
+    # takes: a row with DrainLife (`vampiric assault`), or a hit that ends in a
+    # heal on the caster (`necromantic storm` on some realms). Below
+    # `drainBelow` of your maximum health, `areaDrain` is cast at the room when
+    # it is crowded enough for the area spell, then `drain` at the monster,
+    # ahead of a monster row's own spell and under the same casts and mana
+    # limits, until health is back to `drainTo`. 0 there switches back as soon
+    # as health is over `drainBelow`. Every switch is a new cast, which the
+    # server answers by breaking off the fight and engaging it again, so leave
+    # a gap. A blank `drain` with `autoChoose` on picks one from your spell
+    # list's single-target drains. `drainBelow: 0` never drains.
+    drain: ''
+    areaDrain: ''
+    drainBelow: 0
+    drainTo: 0
+
     # Heal if below -- MegaMUD's Health tab, kept beside the attack spell
     # because it is the same mechanism: one cast, chosen by a number, under
     # the same `minMana` floor.
@@ -1913,6 +1929,16 @@ automation:
 
     # In a party, send par after every combat round.
     parAfterRound: false
+
+    # Leading, say @party <command> before a room's own command that moves only
+    # the one who types it (go vortex), so the party runs it too. A text exit
+    # the server moves followers through needs none.
+    relayPortals: true
+
+    # Leading, after going through one: send par, invite again a member standing
+    # in the room who is out of the party, and hold the walk up to this many
+    # minutes for everyone to be here and in it. 0 invites and walks on.
+    regroupMinutes: 5
 
   # Keeping a character alive, rather than playing it.
   safety:

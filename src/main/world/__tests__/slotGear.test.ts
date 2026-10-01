@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { UNKNOWN_WEARER, type Wearer } from '../../../shared/gear';
 import type { ProwessSheet } from '../../../shared/prowess';
+import { armourPerWeight } from '../../../shared/slotGear';
 import type { WorldItem } from '../../../shared/world';
 import { slotGear, type SlotAsker } from '../slotGear';
 import { wearerOf } from '../wearer';
@@ -68,6 +69,20 @@ describe("a slot's gear, best first", () => {
   it('ranks by the attack verb the character uses', () => {
     const gear = slotGear(1, realm([sword(1, 'dagger', 3, 7, 900)]), asker({ attack: 'smash' }));
     expect(gear.ranking).toEqual({ by: 'weapon', method: 'smash', rounds: true });
+  });
+
+  it("carries each row's weight, and a weapon's hands and blow", () => {
+    const gear = slotGear(2, realm([helm(1, 'steel helm', 40, 10, { encumbrance: 200 })]), asker());
+    expect(gear.rows[0]).toMatchObject({ weight: 200, weaponClass: null });
+    const blade = slotGear(1, realm([sword(1, 'dagger', 3, 7, 900)]), asker()).rows[0];
+    expect(blade).toMatchObject({ weight: 0, weaponClass: { hands: 1, damage: 'sharp' } });
+  });
+
+  it("reckons MMUD Explorer's AC/Enc: AC and DR for every 100 of weight", () => {
+    expect(armourPerWeight({ ac: 40, dr: 10, weight: 200 })).toBe(25);
+    // A weightless piece counts as weight 1, so it sorts first.
+    expect(armourPerWeight({ ac: 5, dr: 0, weight: 0 })).toBe(500);
+    expect(armourPerWeight({ ac: null, dr: null, weight: 30 })).toBeNull();
   });
 
   it('says a character with nothing read may be refused some of them', () => {

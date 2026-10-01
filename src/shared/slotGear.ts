@@ -5,6 +5,7 @@
  * `SlotQuickView`. See `mudengine-ui` › *tables* and `gear.ts` for who may use
  * what.
  */
+import type { WeaponClass } from './items';
 import type { Reckoning, SwingMethod } from './prowess';
 
 /** How a slot's items are put in order. */
@@ -25,6 +26,10 @@ export interface SlotGearRow {
   minLevel: number | null;
   ac: number | null;
   dr: number | null;
+  /** `Encum`, in the units of the server's `Encumbrance: 1030/9000` line. The world database omits a zero. */
+  weight: number;
+  /** A weapon's `WeaponType`: how many hands, blunt or sharp. Null for armour or an unsampled code. */
+  weaponClass: WeaponClass | null;
   /** A weapon's range, `Min`–`Max`. */
   damage: { min: number; max: number } | null;
   /** A weapon's `Speed`; lower is faster. */
@@ -51,4 +56,16 @@ export interface SlotGear {
 /** A weapon's mean blow off its stated range: the tie-break and the Dmg column's sort. */
 export function meanBlow(damage: SlotGearRow['damage']): number | null {
   return damage === null ? null : (damage.min + damage.max) / 2;
+}
+
+/**
+ * AC and DR together for every 100 of weight, MMUD Explorer's `AC/Enc`
+ * (`Get_Enc_Ratio`). Weight is counted in whole units, so a weightless piece
+ * sorts as weighing one, the least the world database can hold; Explorer shows
+ * the plain total there, and the slot view says it weighs nothing. Null for a
+ * row that is not armour.
+ */
+export function armourPerWeight(row: Pick<SlotGearRow, 'ac' | 'dr' | 'weight'>): number | null {
+  if (row.ac === null && row.dr === null) return null;
+  return (((row.ac ?? 0) + (row.dr ?? 0)) / Math.max(row.weight, 1)) * 100;
 }

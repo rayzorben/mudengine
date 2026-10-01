@@ -432,6 +432,12 @@ export class AutoCombat implements SessionModule {
   private walking = false;
   private looping = false;
   /**
+   * Whether the loop runner last said its lap is running. Apart from
+   * `looping` because `reset()` leaves it: a carried loop outlives a
+   * reconnect, and its lap has not started again.
+   */
+  private lap = false;
+  /**
    * Whether this journey is fighting, and whether the player has said not to.
    *
    * `travelling` is armed by the route or the lap that started (todo 00) and
@@ -529,10 +535,12 @@ export class AutoCombat implements SessionModule {
      * realm rather than once per connection. See `AttackSpells.isInstant`.
      */
     instants: InstantSpellLore = NO_INSTANT_SPELLS,
+    /** The realm's spell by row id, for what one ends in (`servesOf`: a drain's heal). */
+    realmSpellById: (id: number) => WorldSpell | null = () => null,
     /** What opening a fight is weighed against. See `OpeningGuard`. */
     private readonly guard: OpeningGuard | null = null
   ) {
-    this.spell = new AttackSpells(spells, events, realmSpell, realmClass, instants);
+    this.spell = new AttackSpells(spells, events, realmSpell, realmClass, instants, realmSpellById);
     this.spell.configure(undefined, config.mobRules);
   }
 
@@ -689,8 +697,18 @@ export class AutoCombat implements SessionModule {
     this.walking = walking;
   }
 
-  /** Whether a loop is running its lap. */
+  /**
+   * Whether a loop is running its lap.
+   *
+   * A lap **fights**, whatever the switch says (todo 03). Said once as the lap
+   * starts; it is scoped to the loop, so stopping the lap is how you answer
+   * it, and nothing is written into the player's own file.
+   */
   noteLooping(looping: boolean): void {
+    if (looping && !this.lap && this.fightingBecauseTravelling) {
+      this.events.notice?.(t('automation.loops.fightingForTheLap'));
+    }
+    this.lap = looping;
     this.setTravelling(looping || this.walking || this.questing);
     this.looping = looping;
   }
@@ -874,6 +892,11 @@ export class AutoCombat implements SessionModule {
     // Whatever the switch reads: a run's decline stands beside a switch that
     // still reads on for half a second, and is reported for that half second.
     return this.enabled && this.travelling && this.declined;
+  }
+
+  /** Whether a lap is running, so a route started mid-lap is not announced as a fresh journey. */
+  get lapRunning(): boolean {
+    return this.lap;
   }
 
   /**
@@ -1161,6 +1184,7 @@ export class AutoCombat implements SessionModule {
     // `whyNot`, which names the refusal and sends nothing. See `declinedOnly`.
     if (!this.acting && !this.declinedOnly) return;
     if (state.phase !== 'in-game') return;
+    if (this.acting && was !== null) this.breakEmptied(was, state);
 
     /*
      * A verb the server refused with the weapon that is no longer in hand.
@@ -2538,9 +2562,26 @@ export class AutoCombat implements SessionModule {
       command: change.command,
       priority: 'combat',
       coalesceKey: 'round-attack',
-      expiresAt: Date.now() + tuning().combat.roundMs * 20,
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: change.reason,
       onSent: () => this.attackSent(change)
+    });
+  }
+
+  /** `break` for the area spell once the room has no monster left (`AttackSpells.breakEmptied`). */
+  private breakEmptied(was: CharacterState, state: CharacterState): void {
+    const stop = this.spell.breakEmptied(was, state);
+    if (stop === null) return;
+    // The break replaces any change of attack still waiting: it would go out at an empty room.
+    this.queue.cancel((intent) => intent.coalesceKey === 'round-attack');
+    this.queue.enqueue({
+      command: stop.command,
+      priority: 'combat',
+      coalesceKey: 'break-area',
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
+      reason: stop.reason,
+      stillWanted: () => this.state !== null && this.spell.breakWanted(this.state),
+      onSent: () => this.spell.fightEnded()
     });
   }
 
@@ -2573,7 +2614,7 @@ export class AutoCombat implements SessionModule {
       coalesceKey: 'combat-refresh',
       // A read that arrives after the fight is a read of a room nothing is
       // deciding anything about.
-      expiresAt: Date.now() + tuning().combat.roundMs * 20,
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: t('automation.combat.reasonRefresh'),
       // Only a look that went out spends the count (todo 833). Held by the
       // player's half-typed line or refused, the rounds it waited through are
@@ -2632,7 +2673,7 @@ export class AutoCombat implements SessionModule {
       coalesceKey: 'combat-refresh',
       // Worthless late, for the same reason the periodic read is: by then the
       // room has been listed by something else or the thing has left.
-      expiresAt: Date.now() + tuning().combat.roundMs * 20,
+      expiresAt: Date.now() + tuning().combat.roundCommandExpiryMs,
       reason: t('automation.combat.reasonArrivalUnplaced')
     });
   }

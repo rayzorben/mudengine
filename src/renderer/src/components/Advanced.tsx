@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Icon from './Icon';
+import { useSearching } from './SettingsSection';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -39,24 +40,27 @@ export interface AdvancedProps {
  */
 export default function Advanced({ label, children }: AdvancedProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  // Drawn while the form is searched, so the fields it holds can be found.
+  const searching = useSearching();
+  const shown = open || searching;
 
   return (
-    <div className="settings-advanced" data-open={open ? 'true' : 'false'}>
+    <div className="settings-advanced" data-open={shown ? 'true' : 'false'}>
       <button
-        aria-expanded={open}
+        aria-expanded={shown}
         className="quiet settings-advanced-toggle"
         onClick={() => setOpen(!open)}
         onMouseDown={keepFocus}
         type="button"
       >
-        <Icon name={open ? 'chevronDown' : 'chevronRight'} />
+        <Icon name={shown ? 'chevronDown' : 'chevronRight'} />
         <span>
           {label === undefined
             ? t('settings.advanced.togglePlain')
             : t('settings.advanced.toggle', { label })}
         </span>
       </button>
-      {open && <div className="settings-advanced-body">{children}</div>}
+      {shown && <div className="settings-advanced-body">{children}</div>}
     </div>
   );
 }

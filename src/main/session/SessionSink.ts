@@ -15,6 +15,7 @@ import type { Discovery } from '../../shared/memory';
 import type { PlayerRegistry } from '../../shared/players';
 import type { QuestRunProgress, QuestWatched, RoomAsk } from '../../shared/quests';
 import type { CharacterIdentity, ResetSignal } from '../../shared/reset';
+import type { CombatTally } from '../../shared/tally';
 import type { ConnectionState, StreamChunk, StreamLine, TelnetEvent } from '../../shared/types';
 import type { RoomVerdict } from '../../shared/verdict';
 import type { WalkProgress } from '../../shared/walk';
@@ -140,6 +141,8 @@ export interface SessionSink {
    * it stands — on change, and keyed like the verdict. See `asksHere`.
    */
   asks?(offers: readonly RoomAsk[]): void;
+  /** The Combat Stats card's baseline, on each reset and each record read; null when never reset. */
+  statsBase?(base: CombatTally | null): void;
   /**
    * The realm named its own data — `[MAJORMUD]:`, `[PARADIGM]:` at its menu —
    * once per connection. A hook rather than a store, like `destination`: which
@@ -153,4 +156,10 @@ export interface SessionSink {
    * lent for a hold, and given back on arrival. Whether it was written.
    */
   switchAutomation?(name: AutomationSwitch, on: boolean): boolean;
+  /**
+   * The same write, read back before this returns: a route the player sent
+   * the character on with automation off is walked now, not on the next
+   * reload (todo 03). Whether it was written.
+   */
+  switchAutomationNow?(name: AutomationSwitch, on: boolean): boolean;
 }

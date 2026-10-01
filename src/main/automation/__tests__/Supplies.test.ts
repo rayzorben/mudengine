@@ -596,6 +596,21 @@ describe('a row that names no shop', () => {
     drain();
     expect(sent).toEqual(['drop black star key']);
   });
+  /* `i` lists keys on their own line, so the ring is where a key row is held
+     (todo 00, festus carrying six black star keys against a max of one). */
+  it('counts the key ring, and drops a spare off it', () => {
+    const { planner: p } = planner();
+    const base = character(1);
+    make(p, KEYS).onCharacter({
+      ...base,
+      inventory: {
+        ...base.inventory,
+        keys: ['golden idol', 'black star key', 'black star key', 'black star key']
+      }
+    });
+    drain();
+    expect(sent).toEqual(['drop black star key']);
+  });
 });
 
 describe('when an errand may start at all', () => {

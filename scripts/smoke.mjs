@@ -33,6 +33,7 @@ import {
   sentence
 } from '../src/main/app/copyMatch.ts';
 import { escapeRegExp } from '../src/shared/regex.ts';
+import { holdPort } from './lib/port-lock.mjs';
 
 /*
  * Every pattern here is case-blind: a CSS `text-transform` reaches
@@ -88,6 +89,7 @@ const OPT_ECHO = 1,
   OPT_NAWS = 31;
 
 const CDP_PORT = 9333;
+await holdPort(CDP_PORT, 'smoke');
 /**
  * The session this harness drives.
  *
@@ -546,8 +548,7 @@ const server = net.createServer((socket) => {
          */
         Buffer.from('\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n', 'latin1'),
         // A `who` listing, verbatim in shape from `npm run probe:who`. The
-        // alignment column is the PvP-relevant one and is present only for
-        // characters that have a standing.
+        // alignment column is the PvP-relevant one.
         Buffer.from('\x1b[0;36m         Current Adventurers\x1b[0m\r\n', 'latin1'),
         Buffer.from('\x1b[0;36m         ===================\x1b[0m\r\n', 'latin1'),
         Buffer.from(
@@ -565,6 +566,10 @@ const server = net.createServer((socket) => {
          * would glue the status line to the party header and match neither.
          */
         Buffer.from('\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n', 'latin1'),
+        // Somebody who walks in after the listing, and so is a name and nothing
+        // else: the Realm card's unknown. Soul's arrival above comes before the
+        // listing, which drops her as gone.
+        Buffer.from('\x1b[0;33mVaga just entered the Realm.\x1b[0m\r\n', 'latin1'),
         // A travel party, verbatim in shape from `npm run probe:party` with two
         // characters on the local server. The mana column is present only for a
         // class that has any -- exactly as in the status line.
@@ -10690,6 +10695,88 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   }
 
   /*
+   * Find a setting (todo 04): a field's own label typed into the rail's find
+   * field narrows the form to it across sections, and Escape puts it back.
+   * The query is read off the screen, never written here.
+   */
+  {
+    const wanted = await evaluate(`
+      document.querySelector(
+        '.settings-form fieldset[data-fieldset="health-recover"] .settings-field > span'
+      )?.firstChild?.textContent?.trim() ?? ''
+    `);
+    check(wanted.length > 0, `a Recover field has a label to look for (${wanted})`);
+    const sectionsBefore = await evaluate(
+      `document.querySelectorAll('.settings-nav-section').length`
+    );
+    await evaluate(`
+      (() => {
+        const input = document.querySelector('.settings-nav .table-find input');
+        if (!input) return false;
+        input.focus();
+        const set = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value'
+        ).set;
+        set.call(input, ${JSON.stringify(wanted)});
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    const found = await waitFor(async () =>
+      evaluate(`
+        !!document.querySelector(
+          '.settings-form fieldset[data-fieldset="health-recover"] .settings-field[data-search="hit"]'
+        )
+      `)
+    );
+    check(found, 'the field it names is marked');
+    const narrowed = JSON.parse(
+      await evaluate(`
+        JSON.stringify({
+          rows: [...document.querySelectorAll('.settings-nav-section')].map((b) => b.dataset.section),
+          heading: !!document.querySelector('.settings-section-heading[data-section="health"]'),
+          hidden: document.querySelectorAll('.settings-section[data-search="miss"]').length,
+          recover: document.querySelector('fieldset[data-fieldset="health-recover"]')?.offsetParent !== null
+        })
+      `)
+    );
+    check(
+      narrowed.rows.includes('health') && narrowed.rows.length < sectionsBefore,
+      `the rail lists the sections that answer it (${narrowed.rows.join(', ')} of ${sectionsBefore})`
+    );
+    check(narrowed.heading && narrowed.recover, 'and the form draws Health under its heading');
+    check(narrowed.hidden > 0, `and leaves out the sections that do not (${narrowed.hidden})`);
+
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'rawKeyDown',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    await cdp('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: 'Escape',
+      code: 'Escape',
+      windowsVirtualKeyCode: 27
+    });
+    const cleared = await waitFor(async () =>
+      evaluate(`
+        document.querySelector('.settings-nav .table-find input')?.value === '' &&
+          !document.querySelector('.settings-form [data-search]') &&
+          !document.querySelector('.settings-section-heading')
+      `)
+    );
+    check(cleared, 'Escape clears the find field and puts every field back');
+    check(
+      (await evaluate(`!!document.querySelector('.settings-body')`)) &&
+        (await evaluate(
+          `document.querySelector('.settings-nav-section[data-section="health"]')?.dataset.active === 'true'`
+        )),
+      'and leaves settings open on the section it was on'
+    );
+  }
+
+  /*
    * One label column for the whole page, measured rather than eyeballed.
    *
    * This section is where the defect showed: three fieldsets of percentages,
@@ -12915,7 +13002,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * from the Combat section is still on, and a lap waits a fight out, so the
    * lap starts without a step and the escape is the only move this section
    * sends. The Navigation card naming it running is the positive control.
+   *
+   * And out of the party first: the fixture has followed Soul since the
+   * roster at the top, and a follower leaves running to its leader
+   * (2026-09-29).
    */
+  await hostSays(
+    () =>
+      liveSockets[0]?.write(
+        Buffer.from('\x1b[0;36mYou are no longer following Soul.\x1b[0m\r\n', 'latin1')
+      ),
+    /You are no longer following Soul/
+  );
   const lapStarted = await evaluate(`window.mudengine.startLoop('${SESSION}', 'Smoke loop')`);
   await waitFor(async () =>
     evaluate(
@@ -15452,17 +15550,24 @@ if (logFiles[0]) {
     'and pressing it sends one rm to the realm',
     `${rmBefore} -> ${rmAfter}`
   );
-  check(/Location: 1,2140/.test(body), 'the log still holds the answer to a quiet command');
-  const fed = await evaluate(`window.mudengine.attach('${SESSION}').then((s) => s.backscroll.text)`);
-  check(
-    typeof fed === 'string' && fed.length > 0 && !fed.includes('Location: 1,2140'),
-    'and the console was never shown it',
-    typeof fed === 'string' ? `${fed.length} chars` : String(fed)
+  const answer = 'Location: 1,2140';
+  check(body.includes(answer), 'the log still holds the answer to a quiet command');
+  const fed = await evaluate(
+    `window.mudengine.attach('${SESSION}').then((s) => s.backscroll.text)`
   );
-  // The echo follows the prompt's repaint marker, not a newline, so the
-  // test is for `rm` at the start of a row however the row was started.
+  const leak = typeof fed === 'string' ? fed.indexOf(answer) : -1;
   check(
-    typeof fed === 'string' && !/(?:\n|\[K)rm\r\n/.test(fed),
+    typeof fed === 'string' && fed.length > 0 && leak < 0,
+    'and the console was never shown it',
+    leak < 0
+      ? String(fed)
+      : `${JSON.stringify(fed.slice(Math.max(0, leak - 300), leak + 60))} (${rmAfter} rm sent)`
+  );
+  // The echo follows the prompt's repaint marker, not a newline, or lands
+  // after the colon of a prompt painted before it went out, so the test is
+  // for `rm` however its row was started.
+  check(
+    typeof fed === 'string' && !/(?:\n|\[K|\]:(?:\x1b\[[0-9;]*m)*\s?)rm\r\n/.test(fed),
     'nor the echo of the command that asked'
   );
   check(

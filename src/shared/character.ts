@@ -724,14 +724,13 @@ export function packRows(inventory: Inventory): number[] | null {
 }
 
 /**
- * How long a session has to have run before an experience rate means anything.
+ * How long a session has to have run before the Vitals card shows an
+ * experience rate.
  *
  * Under this, `expThisSession` divided by the elapsed time is dominated by
  * whatever happened in the first few seconds and swings by orders of magnitude
- * between status lines. Stated once: the Vitals card and the `@exp` answer to
- * another client read the same two fields, and each had its own guess at this
- * number — 60s in one file and 120s in the other, so between the two the client
- * told a peer a rate its own card would not show.
+ * between status lines. `@exp` reads the Combat Stats card's scope instead
+ * (`experienceRate`).
  */
 export const EXP_RATE_SETTLE_MS = 120_000;
 
@@ -835,8 +834,8 @@ export type { Alignment } from './alignment';
  * `alignment` and `title` come from a `who` listing and are **null when not
  * known**, which is the ordinary case for somebody who has walked in since the
  * last one: the arrival broadcast carries a name and nothing else. Null is not
- * `Neutral` — guessing an alignment is exactly the guess that gets somebody
- * killed on a PvP realm, so the card says "unknown" and means it.
+ * `Neutral`, so the card says "unknown". A blank column on the who list is
+ * how the realm prints Neutral, and is read as such (`alignmentOf`).
  */
 export interface Adventurer {
   name: string;
@@ -1783,11 +1782,16 @@ export function ownAlignment(state: Pick<CharacterState, 'name' | 'online'>): Al
  */
 export function membersBelow(state: CharacterState, share: number): string[] {
   if (share <= 0) return [];
-  const here = new Set(state.room.occupants.map((who) => who.name.toLowerCase()));
+  const here = standingHere(state);
   return joinedMembers(state)
     .filter((member) => here.has(member.name.toLowerCase()))
     .filter((member) => member.health !== null && member.health < share)
     .map((member) => member.name);
+}
+
+/** The names of the people standing in this room, lower-cased. */
+export function standingHere(state: Pick<CharacterState, 'room'>): Set<string> {
+  return new Set(state.room.occupants.map((who) => who.name.toLowerCase()));
 }
 
 /** Everybody besides this character who has joined its party: an invitation is not membership. */

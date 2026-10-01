@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { keepRoster } from '../roster';
+import { closedCharacters, keepRoster } from '../roster';
 import { EMPTY_CHARACTER, type Adventurer, type CharacterState } from '@shared/character';
 
 function row(name: string, over: Partial<Adventurer> = {}): Adventurer {
@@ -48,5 +48,20 @@ describe('keepRoster', () => {
     const before = pushed([row('Soul')]);
     const next = pushed([{ ...row('Soul'), seen: 1 } as Adventurer]);
     expect(keepRoster(before, next)).toBe(next);
+  });
+});
+
+describe('closedCharacters', () => {
+  it('lists the characters with no tab open, in the order given', () => {
+    const profiles = [
+      { id: 'a', loaded: true },
+      { id: 'b', loaded: false },
+      { id: 'c', loaded: false }
+    ];
+    expect(closedCharacters(profiles).map((profile) => profile.id)).toEqual(['b', 'c']);
+  });
+
+  it('is empty when every character has a tab, so the rail draws no chevron', () => {
+    expect(closedCharacters([{ loaded: true }])).toEqual([]);
   });
 });

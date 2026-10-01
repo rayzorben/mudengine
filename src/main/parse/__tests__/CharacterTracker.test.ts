@@ -41,6 +41,7 @@ import {
 } from '../../../shared/spell-messages';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { NO_TALLY, swings, type CombatTally } from '../../../shared/tally';
+import { pastimeOf } from '../tally';
 import { statedNow } from '../../../shared/stated';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
@@ -213,6 +214,31 @@ describe('vitals', () => {
     expect(play(['[HP=50 (Resting) ]: ']).current.vitals.resting).toBe(true);
     expect(play(['[HP=50]: (Meditating)']).current.vitals.meditating).toBe(true);
     expect(play(['[HP=50]: ']).current.vitals.resting).toBe(false);
+  });
+
+  /* The Combat Stats card's `Time` face, read off the prompt's own suffix. */
+  it('times a rest from the prompt that says it to the one that stops saying it', () => {
+    const tracker = play(['[HP=50]: ', '[HP=50 (Resting) ]: ', { wait: 3_000 }, '[HP=60]: ']);
+    expect(tracker.current.tally.spent.resting).toBe(3_001);
+    expect(tracker.current.tally.doing).toBeNull();
+  });
+
+  it('times a route as moving', () => {
+    const tracker = play(['[HP=50]: ']);
+    const start = tracker.current.updatedAt ?? 0;
+    tracker.noteMoving(true, start + 1_000);
+    expect(tracker.current.tally.doing).toEqual({ what: 'moving', since: start + 1_000 });
+    tracker.noteMoving(false, start + 5_000);
+    expect(tracker.current.tally.spent.moving).toBe(4_000);
+    expect(tracker.current.tally.doing).toBeNull();
+  });
+
+  it('counts a fight on the way, or a rest, as that rather than moving', () => {
+    const here = play(['[HP=50]: ']).current;
+    expect(pastimeOf(here, true)).toBe('moving');
+    expect(pastimeOf({ ...here, inCombat: true }, true)).toBeNull();
+    expect(pastimeOf({ ...here, vitals: { ...here.vitals, resting: true } }, true)).toBe('resting');
+    expect(pastimeOf({ ...here, phase: 'unknown' }, true)).toBeNull();
   });
 
   it('takes maxima from the stat sheet, which the status line never carries', () => {
@@ -1545,18 +1571,28 @@ describe('who else is in the realm', () => {
     expect(tracker.current.online[0]?.alignment).toBe('Outlaw');
   });
 
-  /* Absent is not Neutral. A guessed alignment is the guess that gets somebody
-     killed, and the reassuring guess is the dangerous one. */
-  it('leaves the alignment null when the listing does not give one', () => {
-    const tracker = listing('         Vaelor                -  Apprentice');
-    expect(tracker.current.online[0]?.alignment).toBeNull();
+  /* The server prints nothing for the Neutral band (`GetAlignmentTitle` with
+     `inTechnical = false`). Rows verbatim from captures/076's `sc`. */
+  it('reads a blank alignment column as Neutral', () => {
+    const tracker = listing(
+      '         Assad IbnAbbas            -  Menace',
+      '    Good CARLOS DANGER             -  Lyricist  of EyeExploredDora',
+      '   FIEND Nordyr TrampledUnderFoot  -  Scout  of EyeExploredDora',
+      '         Xero I                    x  Magebane'
+    );
+    expect(tracker.current.online.map((entry) => [entry.name, entry.alignment])).toEqual([
+      ['Assad', 'Neutral'],
+      ['CARLOS', 'Good'],
+      ['Nordyr', 'FIEND'],
+      ['Xero', 'Neutral']
+    ]);
   });
 
-  it('refuses a word that is not one of the realm’s alignments', () => {
+  it('never presents a word the realm does not print as a standing', () => {
     const tracker = listing('         Sideways Grimjaw      -  Apprentice');
-    // Either it parsed as a surname or not at all; what it must never do is
-    // present `Sideways` as a standing the client can reason about.
-    for (const entry of tracker.current.online) expect(entry.alignment).toBeNull();
+    // `Sideways` is not an alignment, so the row reads it as a name with a
+    // surname and a blank column.
+    expect(tracker.current.online[0]).toMatchObject({ name: 'Sideways', alignment: 'Neutral' });
   });
 
   /* A listing is authoritative: somebody absent from it has left. */
@@ -3390,6 +3426,38 @@ describe('what is carried, between listings', () => {
    * without normalisation — it is here for the day one of them does not, when
    * the cost would be an item that can be picked up and never put down.
    */
+  /* `i` lists keys on their own line, so a dropped key comes off the ring.
+     Festus's festus.log, 2026-09-29: `drop 3 black star` with six on it. */
+  it('takes a dropped key off the key ring', () => {
+    const made = feeder();
+    made.feed('[HP=33]:');
+    made.feed('You are carrying a torch.');
+    made.feed('You have the following keys: golden idol, 6 black star key.');
+    made.feed('Wealth: 40 copper farthings');
+    made.feed('[HP=33]:');
+    made.feed('You dropped 3 black star key.');
+    expect(made.tracker.current.inventory.keys).toEqual([
+      'golden idol',
+      'black star key',
+      'black star key',
+      'black star key'
+    ]);
+  });
+
+  // A key picked up since the listing is in the pack, the rest on the ring.
+  it('takes what the pack did not give up of a counted drop off the ring', () => {
+    const made = feeder();
+    made.feed('[HP=33]:');
+    made.feed('You are carrying a torch.');
+    made.feed('You have the following keys: 3 black star key.');
+    made.feed('Wealth: 40 copper farthings');
+    made.feed('[HP=33]:');
+    made.feed('You took black star key.');
+    made.feed('You dropped 3 black star key.');
+    expect(held(made.tracker).some((name) => /black star/.test(name))).toBe(false);
+    expect(made.tracker.current.inventory.keys).toEqual(['black star key']);
+  });
+
   it('matches an item however the article is spelled', () => {
     const { tracker, feed } = carrying();
     feed('You dropped rusty dagger.');
@@ -10913,6 +10981,8 @@ describe('the spellbook and the belongings record', () => {
         rememberStats: (tally: CombatTally) => {
           state.stats = { savedAt: state.stats?.savedAt ?? 0, tally: { ...tally } };
         },
+        recallStatsBase: () => null,
+        rememberStatsBase: () => {},
         forget: () => false
       }
     };

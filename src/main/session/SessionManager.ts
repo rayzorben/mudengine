@@ -60,6 +60,7 @@ import { RealmMenu } from './RealmMenu';
 import { RowOverrides } from '../automation/RowOverrides';
 import { Grounded } from './Grounded';
 import { Safety } from './Safety';
+import { StatsBaseline } from './StatsBaseline';
 import { FleeGoto } from './FleeGoto';
 import { Events } from '../automation/Events';
 import type { SessionModule } from '../automation/Module';
@@ -76,7 +77,7 @@ import { CharacterTracker } from '../parse/CharacterTracker';
 import { Classifier } from '../parse/Classifier';
 import { actsOf, applyAct, readLine, type LineAct, type LineRead } from '../parse/lineActs';
 import { LineTokenizer, plainText } from '../net/LineTokenizer';
-import { TelnetClient } from '../net/TelnetClient';
+import { DialCancelled, TelnetClient } from '../net/TelnetClient';
 import { LinkWatch } from './LinkWatch';
 import { isPrompt, type Block } from '../../shared/blocks';
 import {
@@ -97,6 +98,7 @@ import { QuestWatch } from './QuestWatch';
 import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
+import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
 import { konamiPlanner, type KonamiDeps } from './konamiWiring';
@@ -111,7 +113,7 @@ import {
   type PlayerRegistry,
   type RealmPlayers
 } from '../../shared/players';
-import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
+import { NO_RECORD, type CharacterRecord } from '../../shared/belongings';
 import type { FledEntry } from '../../shared/fled';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
@@ -447,6 +449,7 @@ export class SessionManager {
   /** Keeping the pack stocked. See `Supplies`. */
   private readonly supplies: Supplies;
   private readonly remotes: Remotes;
+  readonly statsBaseline: StatsBaseline;
   private readonly afk: Afk;
   private readonly heal: AutoHeal;
   private readonly castRound: CastRound;
@@ -458,14 +461,10 @@ export class SessionManager {
   private readonly invoke: AutoInvoke;
   readonly loops: LoopRunner;
   /**
-   * Whether a lap, or a route, was moving on the previous progress push.
-   *
-   * Only so the *edge* is caught: `progress` fires on every step of every leg,
-   * and the line about a journey fighting through a switch that is off belongs
-   * at the start of it, not once a stop. Two flags because the two progress
-   * callbacks are two, and a route starting mid-lap is not a fresh journey.
+   * Whether a route was moving on the previous progress push, so the line
+   * about a journey fighting through a switch that is off is said at its start
+   * and not once a step. The lap's edge is `AutoCombat.lapRunning`.
    */
-  private wasLooping = false;
   private wasWalking = false;
 
   /**
@@ -473,7 +472,7 @@ export class SessionManager {
    * same instance the tracker writes through. Held here so the blessing
    * watchdog can read the measured durations at the point of use.
    */
-  private belongings: BelongingsSink = NO_BELONGINGS;
+  private belongings: CharacterRecord = NO_RECORD;
 
   /** Stops listening to the realm's player book. See `useRealm`. */
   private forgetPlayers: () => void = () => {};
@@ -513,6 +512,8 @@ export class SessionManager {
   private readonly questWatch: QuestWatch;
   /** Walking, looping and running away, and what a lost connection carries. See `Travel`. */
   private readonly travel: Travel;
+  /** What was underway, kept in the character's record across a relaunch. See `CarryOver`. */
+  private readonly carryOver: CarryOver;
 
   constructor(
     private readonly sink: SessionSink,
@@ -560,6 +561,8 @@ export class SessionManager {
         notice: (message) => this.sink.notice(message)
       }
     );
+    const tally = () => this.tracker.current.tally;
+    this.statsBaseline = new StatsBaseline(tally, (base) => this.sink.statsBase?.(base));
     this.useRealm(players);
     /*
      * One interval for the life of the session, armed here rather than in
@@ -773,11 +776,6 @@ export class SessionManager {
       notice: (message: string): void => this.sink.notice(message),
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     };
-    /*
-     * Walking a route is an outbound action, so it proposes to the arbiter like
-     * everything else. Phase 4 planned routes and stopped there deliberately;
-     * this is the piece that executes one, a verified step at a time.
-     */
     this.combatLease = new CombatLease({
       flip: (on) => this.sink.switchAutomation?.('combat', on) ?? false,
       ...reports,
@@ -787,6 +785,8 @@ export class SessionManager {
     // Configured where it is built, as the loop runner is: unconfigured, it
     // read every switch as on and would never lend (todo 00).
     this.combatLease.configure(automation);
+    // Walking a route is an outbound action: it proposes to the arbiter like
+    // everything else, a verified step at a time.
     this.walker = new Walker(automation, this.queue, {
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
@@ -798,6 +798,7 @@ export class SessionManager {
         this.questRunner.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to, landing) => {
+        this.remotes.stepping(command, direction, to, this.tracker.current);
         if (landing !== undefined && direction !== 'portal') {
           /*
            * An exit whose cast moves the character, which answers with **two**
@@ -809,9 +810,8 @@ export class SessionManager {
           return;
         }
         if (direction === 'portal') {
-          // A scripted teleport: the arriving room is resolved by the
-          // coordinates the script states, never by an exit that does not
-          // exist. `to` is `map/room` by construction; parsed, not trusted.
+          // A scripted teleport lands by the script's coordinates, never by an exit;
+          // `to` is `map/room` by construction, parsed rather than trusted.
           const target = /^(\d{1,3})\/(\d{1,6})$/.exec(to);
           if (target) {
             this.tracker.hintTeleport(command, Number(target[1]), Number(target[2]));
@@ -891,13 +891,13 @@ export class SessionManager {
        * read the answer off the queue — it has to ask.
        */
       lightComing: (state) => this.light.couldReady(state),
+      regrouping: (state) => this.remotes.regrouping(state),
       keyToUse: (keyId) => this.errands.keyToUse(keyId),
       notice: (message) => this.sink.notice(message),
       progress: (progress) => {
         /*
-         * Auto-combat is told whether a route is running, rather than reaching
-         * into the walker for it: the walker is the only thing that knows a
-         * route is in progress.
+         * Auto-combat and the Combat Stats' `Moving` clock are told whether a
+         * route is running: only the walker knows one is in progress.
          *
          * **A route fights**, whatever the switch says (todo 00) — the player
          * asked to go somewhere, and what lives between here and there is the
@@ -911,7 +911,7 @@ export class SessionManager {
         if (
           walking &&
           !this.wasWalking &&
-          !this.wasLooping &&
+          !this.combat.lapRunning &&
           !this.travel.walkIsRun &&
           this.combat.fightingBecauseTravelling
         ) {
@@ -919,6 +919,8 @@ export class SessionManager {
         }
         this.wasWalking = walking;
         this.combat.noteWalking(walking);
+        this.tracker.noteMoving(walking);
+        this.carryOver.remember();
         this.sink.walk?.(progress);
       }
     });
@@ -959,14 +961,13 @@ export class SessionManager {
       /*
        * The character's own side of the combat arithmetic, read at the point
        * of use: the class is not known until a stat sheet has been read.
-       *
-       * `Vocabulary.family` and not the realm data's, deliberately: this decides
-       * which *formulas* run, and the formulas are the server's. The two can
-       * legitimately differ — see `Vocabulary.noteFamily` — and on the shipped
-       * configuration they do.
+       * `Vocabulary.family`, not the realm data's: this decides which formulas
+       * run, the server's, and the two differ on the shipped configuration
+       * (`Vocabulary.noteFamily`).
        */
       () => this.errands.realmClass(),
       lore,
+      (id) => this.world?.spellById(id) ?? null,
       { opening: (name) => (this.world ? this.appraisal.opening(name) : undefined), fled }
     );
 
@@ -1440,6 +1441,7 @@ export class SessionManager {
       },
       // A blessed party member says the spell wore off; recast on the event.
       blessExpired: (from, spell) => this.blessings.onPeerExpired(from, spell),
+      stats: this.statsBaseline,
       /*
        * A member asks for a heal. Decided now rather than on the next status
        * line, which out of a fight may be a long way off — under the guard the
@@ -1663,23 +1665,13 @@ export class SessionManager {
         notice: (message) => this.sink.notice(message),
         progress: (progress) => {
           // A loop's walk engages: the loop was chosen for what lives on it.
-          const running = progress.status === 'running';
-          /*
-           * And it **fights**, whatever the switch says — todo 03. Said once
-           * as the lap starts, because a client that attacks while the
-           * toolbar's own switch reads off is two surfaces disagreeing in
-           * silence; it is scoped to the loop, so stopping the lap is how you
-           * answer it, and nothing is written into the player's own file.
-           */
-          if (running && !this.wasLooping && this.combat.fightingBecauseTravelling) {
-            this.sink.notice(t('automation.loops.fightingForTheLap'));
-          }
-          this.wasLooping = running;
-          this.combat.noteLooping(running);
+          this.combat.noteLooping(progress.status === 'running');
           this.travel.noteLap(progress);
+          this.carryOver.remember();
           this.sink.loop?.(progress);
         },
-        locate: () => this.claims.askWhereIAm()
+        locate: () => this.claims.askWhereIAm(),
+        lapBegun: () => this.statsBaseline.rebase()
       }
     );
     /*
@@ -1718,9 +1710,11 @@ export class SessionManager {
         fight: () => this.appraisal.fight(),
         fled,
         keepFled: (entries) => this.belongings.rememberFled(entries),
+        switchAutomation: (on) => this.sink.switchAutomationNow?.('automation', on) ?? false,
         ...reports
       }
     );
+    this.carryOver = new CarryOver(this.loops, this.travel, () => this.belongings);
     this.claims = new Claims(
       {
         tracker: this.tracker,
@@ -1915,49 +1909,26 @@ export class SessionManager {
        * Whether this close is a *loss*: nobody on this side asked for it.
        * `graceful` is the whole test of who asked, and `login.standDown` is
        * the latch that says the player typed their way out before the far end
-       * hung up. They are the two facts `Reconnect.lost` reads first, so what
-       * is carried here is never something that stood down there.
-       *
-       * The carry follows the **loss**, not the dial. Whether the character
-       * is dialled back is `Reconnect`'s and the profile's — auto-reconnect
-       * off, the ladder giving up, a realm that keeps dropping — and none of
-       * that changes what was underway when the link went. A character
-       * dialled back by hand an hour later gets the lap it was running, said
-       * out loud on the way (`heldOffline`, then `walkingOnAfterReconnect`),
-       * with the Loop card reading `offline` the whole time it is owed and
-       * its Stop the way to say otherwise. Pressing Disconnect at the closed
-       * socket does not put it down: that is *stop trying to dial*, which
-       * `SessionHost` answers, and the socket it would close is already gone.
+       * hung up. They are the two facts `Reconnect.lost` reads first; here
+       * they decide only who ended it and what the lease is told.
        */
-      const lost = !graceful && this.login.standDown === null;
+      const walkedOut = this.login.standDown !== null;
+      const lost = !graceful && !walkedOut;
       /*
-       * A lost socket does not end the lap, and a deliberate one does. The
-       * character is still standing wherever the link went — on this server
-       * family a disconnect is not a pause, and whatever was in the room is
-       * still there — so the loop is *held* (`LoopRunner.noteOffline`), the
-       * route the player was walking is remembered, and both are picked up
-       * when the character is back in the realm and placed
-       * (`pickUpAfterLoss`). Before this the loop was left nominally running
-       * on a closed socket with the leg below booked against it as a failed
-       * stop, and the next dial reset it to nothing: a character dialled back
-       * in by `Reconnect` stood in a lair all night with the lap it had been
-       * running gone from the card.
-       *
-       * A close this client asked for is the player ending the session —
-       * Disconnect, the low-health hang-up, switching realms, quitting — and
-       * the lap ends with it, said out loud like every other way one ends.
-       * The loop before the walker, as `leftTheRealm` orders it: stopping a
-       * walk reports `ended`, and a loop still running would book that as a
-       * failed leg on its way out. The errand goes either way — `Supplies`
-       * starts afresh from the next pack listing, and its walk is the one
-       * below — and after the loop, so the loop hears the errand end silently
-       * rather than announcing that it is walking on from a shop it never
-       * reached.
+       * Whoever closed it, the lap is held and the route kept (todo 01,
+       * 2026-09-30): the character stands wherever the socket went, and the
+       * next dial picks both up once it is placed (`pickUpAfterLoss`), within
+       * this launch or after a relaunch (`CarryOver`). Disconnect and quit are
+       * not Stop; Stop is, and so is typing the way out. A different realm
+       * drops both at `connect`. The loop before the walker: stopping a walk
+       * reports `ended`, which a running loop would book as a failed leg. The
+       * errand after the loop, so the loop hears it end silently; `Supplies`
+       * starts afresh from the next pack listing.
        */
-      if (lost) this.loops.noteOffline();
-      else this.loops.stop(t('session.loop.stoppedDisconnected'));
+      if (walkedOut) this.loops.stop(t('session.loop.stoppedLeftRealm'));
+      else this.loops.noteOffline();
       this.supplies.abandon(t('automation.supplies.abandonedConnectionClosed'));
-      this.travel.carryJourney(lost);
+      if (!walkedOut) this.travel.carryJourney();
       /*
        * A walk cannot continue through a closed socket, and leaving it in
        * `walking` means the card reports progress for a route nothing is
@@ -2099,6 +2070,7 @@ export class SessionManager {
   }
 
   async connect(target: ConnectionTarget): Promise<ConnectionState> {
+    this.carryOver.dial();
     this.telnetLog.length = 0;
     this.lineLog.length = 0;
     this.lineSeq = 0;
@@ -2162,6 +2134,7 @@ export class SessionManager {
       this.loops.reset();
       this.travel.forgetFollowers();
     }
+    this.carryOver.takeUp();
     this.realmMismatchSaid = false;
     this.publisher.reset();
     // Off the list: leaving the realm lands at the menu, where the login has
@@ -2196,9 +2169,9 @@ export class SessionManager {
       this.publisher.patch({ phase: 'connected', connectedAt: Date.now(), detail: null });
       this.sink.notice(t('session.connection.connected', { host: target.host, port: target.port }));
     } catch (error) {
-      const detail = errorMessage(error);
-      this.publisher.patch({ phase: 'error', detail });
-      this.sink.notice(t('session.connection.failed', { detail }));
+      if (error instanceof DialCancelled) return this.publisher.state; // `close` reports it
+      this.publisher.patch({ phase: 'error', detail: errorMessage(error) });
+      this.sink.notice(t('session.connection.failed', { detail: errorMessage(error) }));
     }
 
     return this.publisher.state;
@@ -2705,7 +2678,7 @@ export class SessionManager {
    * is pushed, so the flyout on this tab says what the realm knows; no module
    * is told, since a fact absorbed is not a fact this character observed.
    */
-  useRealm(players: RealmPlayers, belongings: BelongingsSink = NO_BELONGINGS): void {
+  useRealm(players: RealmPlayers, belongings: CharacterRecord = NO_RECORD): void {
     this.forgetPlayers();
     // What the realm said it lacks, and its family. See `Vocabulary.forgetRealm`.
     this.vocabulary.forgetRealm();
@@ -2713,7 +2686,9 @@ export class SessionManager {
     // A vault and a kit are the server's, so they are re-keyed with the roster
     // and not with the character. See `SessionHostOptions.belongingsAt`.
     this.tracker.useBelongings(belongings);
+    if (belongings !== this.belongings) this.carryOver.leave(this.belongings);
     this.belongings = belongings;
+    this.statsBaseline.useStore(belongings);
     this.forgetPlayers = players.subscribe((batch) => {
       if (this.tracker.absorbPlayers(batch)) this.publisher.players();
     });
@@ -2739,6 +2714,7 @@ export class SessionManager {
   private reconsiderTimer: NodeJS.Timeout | null = null;
 
   dispose(): void {
+    this.carryOver.dispose();
     this.paint.dispose();
     this.forgetPlayers();
     this.feed.dispose();
@@ -2985,15 +2961,11 @@ export class SessionManager {
      * A party forming or breaking up is the moment its roster becomes worth
      * having — and the moment it is emptiest, because nothing has asked.
      */
-    if (
+    const partyChanged =
       block.type === 'party-joined' ||
       block.type === 'party-left' ||
-      block.type === 'party-rank-changed'
-    ) {
-      this.routines.onPartyChanged();
-      // And the numbers behind the percentages, from the members' own clients.
-      this.remotes.askParty(this.tracker.current);
-    }
+      block.type === 'party-rank-changed';
+    if (partyChanged) this.routines.onPartyChanged();
     /*
      * Somebody was noticed with no listing to say what they are — entering the
      * realm, or walking into this room without already being on the roster at
@@ -3802,6 +3774,7 @@ export class SessionManager {
     // empty; the room, the roster and the phase are this session's own and are
     // left exactly as they are.
     this.tracker.forgetBelongings();
+    this.statsBaseline.useStore(this.belongings);
     this.questWatch.reset();
     this.publishCharacter();
     this.sink.notice(t('session.reset.forgotten'));

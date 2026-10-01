@@ -24,9 +24,9 @@ describe('the platform’s own place', () => {
         'C:\\Users\\u',
         'mudengine'
       )
-    ).toBe(path.join('C:\\Users\\u\\AppData\\Roaming', 'mudengine'));
+    ).toBe(path.win32.join('C:\\Users\\u\\AppData\\Roaming', 'mudengine'));
     expect(platformUserData('win32', {}, 'C:\\Users\\u', 'mudengine')).toBe(
-      path.join('C:\\Users\\u', 'AppData', 'Roaming', 'mudengine')
+      path.win32.join('C:\\Users\\u', 'AppData', 'Roaming', 'mudengine')
     );
   });
 

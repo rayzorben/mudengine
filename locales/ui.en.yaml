@@ -279,13 +279,13 @@ notices:
       it.'
     statusLineStated: '"automation.statline" and "ui.rewrites" were added to {file}, all off. The
       first sets the status line when you log in, so every prompt shows maximum health and mana, exp
-      and cash. The second lets you design your own status line and listings, drawn in place of the
-      game''s. Turn them on there, or in the Rewrites section of settings.'
+      and cash. The second lets you design your own statline, inventory, who list and more, drawn
+      in place of the game''s. Turn them on there, or in the Rewrites section of settings.'
     rewritesGathered: '"ui.statline" in {file} became the Status line design under "ui.rewrites",
-      next to the other listings the console can redraw: the inventory, the who list, a shop''s
+      next to everything else the console can redraw: the inventory, the who list, a shop''s
       list, the party and the experience line. All were added, turned off. The Rewrites section in
       settings lists them.'
-    rewritesListed: '"ui.rewrites" in {file} is now a list of designs. Each listing it had became
+    rewritesListed: '"ui.rewrites" in {file} is now a list of designs. Each entry it held became
       one design, on or off as before, with its lines combined into one template, and the status
       line''s color bands now apply to the whole block. The Rewrites section in settings lists them,
       and each design opens in an editor that shows every value it can use.'
@@ -525,9 +525,10 @@ notices:
       many: '{count} character files moved into their own folders, so each can hold its own loops.'
       one: 1 character file moved into its own folder, so it can hold its own loops.
     partyPacing:
-      many: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {count}
-        files: {fileList}"
-      one: "MegaMUD's party settings (Wait For Party Members and the rest) were added to {fileList}"
+      many: "The party settings (Wait For Party Members, the @party relay and the rest) were added
+        to {count} files: {fileList}"
+      one: "The party settings (Wait For Party Members, the @party relay and the rest) were added
+        to {fileList}"
     healChoice:
       many:
         'Auto Choose Best Heal was added to {count} files, turned on where Auto Choose Best Spell
@@ -537,6 +538,9 @@ notices:
     autoJoin:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
+    drainStated:
+      many: 'Drain When Hurt was added, off, to {count} files: {fileList}'
+      one: 'Drain When Hurt was added, off, to {fileList}'
     meditateCeiling:
       many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
       one: 'Keep Meditating To Mana % was added, off, to {fileList}'
@@ -560,18 +564,18 @@ notices:
         regenerates six times slower, so without it one heal ended resting for the whole recovery.
         {fileList}
     escapeIsADirection:
-      many: 'The flee settings were renamed to retreat in {count} files, and any flee or
-        reverse-step strategy is now step-back. This server family has no flee command: on 2
+      many: 'The flee settings in {count} files are now the Auto-Run settings, and any flee or
+        reverse-step choice now runs one room away. This server family has no flee command: on 2
         September 2026 the client sent it eleven times in one fight, and every one came back "Your
         command had no effect." Running now sends a direction: the way you came if known, otherwise
         an exit of the room, and nothing at all rather than a command that does nothing. Your
         threshold and switch are unchanged. {fileList}'
-      one: 'The flee settings were renamed to retreat in {count} file, and any flee or reverse-step
-        strategy is now step-back. This server family has no flee command: on 2 September 2026 the
-        client sent it eleven times in one fight, and every one came back "Your command had no
-        effect." Running now sends a direction: the way you came if known, otherwise an exit of the
-        room, and nothing at all rather than a command that does nothing. Your threshold and switch
-        are unchanged. {fileList}'
+      one: 'The flee settings in {count} file are now the Auto-Run settings, and any flee or
+        reverse-step choice now runs one room away. This server family has no flee command: on 2
+        September 2026 the client sent it eleven times in one fight, and every one came back "Your
+        command had no effect." Running now sends a direction: the way you came if known, otherwise
+        an exit of the room, and nothing at all rather than a command that does nothing. Your
+        threshold and switch are unchanged. {fileList}'
     escapeSettle: The loop setting fledSettleMs was renamed to escapeSettleMs in {file}. Your value
       was kept.
     restOnePair:
@@ -944,6 +948,7 @@ tabs:
   head:
     newCharacterAria: New character
     newCharacterTooltip: New character…
+    closedCharactersAria: Reopen a character
     settingsAria: Settings
     settingsTooltip: Settings…
   tab:
@@ -971,6 +976,7 @@ tabs:
     markSearching: searching
     markBlocked: blocked
     markLighting: lighting
+    markRegrouping: waiting for party
     markBlind: blind
     markHeld: held
     markPoisoned: poisoned
@@ -1730,7 +1736,7 @@ cards:
     emptyDisabled: Automation disabled.
     emptySent: No automated commands sent.
     headings:
-      engagements: Active Engagements
+      engagements: Fights
       queued: Queued
       rules: Rules
       safety: Safety
@@ -2232,7 +2238,7 @@ cards:
       runningForLabel: Running for
       statusFighting: fighting
       statusRetreated: recovering
-      statusErrand: shopping
+      statusErrand: detouring
       statusBlind: blind
       statusHeld: held
       statusPoisoned: poisoned
@@ -2249,6 +2255,7 @@ cards:
       badgeSearching: searching
       badgeBlocked: blocked
       badgeDark: lighting
+      badgeRegrouping: waiting for party
       badgeStopped: stopped
       endedReason: 'Ended: {reason}'
       gatedLabel: Gated
@@ -2577,11 +2584,11 @@ cards:
     copy:
       atCoordinates: at {map}/{number}
       exitsLine: 'exits: {exitList}'
-      hereLine: 'here: {occupantList}'
+      hereLine: 'Also here: {occupantList}.'
       hiddenLine: 'hidden: {itemList}'
       itemsLine: 'items: {itemList}'
       lightLine: 'light: {light}'
-      lightLineDeadReckoning: 'light: {light}, placed by dead reckoning'
+      lightLineDeadReckoning: 'light: {light}, room guessed from the last step'
       lightLineRemembered: 'light: {light}, room as last seen before it went dark'
     empty: No room yet.
     exits:
@@ -2611,7 +2618,7 @@ cards:
     fixedTitle: The game will not let anyone pick this up
     itemLookupTooltip: What the world data says about it
     light:
-      deadReckoning: placed by dead reckoning
+      deadReckoning: guessed room
       remembered: as last seen, before it went dark
       unplaced: nothing says which room this is
     occupant:
@@ -2720,14 +2727,21 @@ cards:
     walkToButton: Plan route
     walkToTooltip: Plan the way here. Nothing is walked until you check the steps and confirm.
   slotPeek:
+    acPerWeightTooltip: AC and DR together for every 100 of weight. Higher is more armour for the load.
     ariaLabel: What this character can wear in {slot}
     columnAc: AC
+    columnAcPerWeight: AC/Wt
     columnDamage: Dmg
     columnDr: DR
     columnItem: Item
     columnLevel: Lvl
     columnPerRound: Dmg/round
     columnSpeed: Speed
+    columnType: Type
+    columnWeight: Wt
+    damageKind:
+      blunt: Blunt
+      sharp: Sharp
     empty: Nothing in the world database for this slot that this character can use.
     findPlaceholder: Find an item
     method:
@@ -2747,6 +2761,8 @@ cards:
     slotTooltip: What this character can wear here, best first
     tableCaption: Items for {slot}
     unread: "This character's class, race, level or alignment isn't known yet, so some of these may be refused."
+    weaponType: '{hands}H {damage}'
+    weightless: weightless
     wornChip: worn
   route:
     alreadyHere: You are already here.
@@ -3000,15 +3016,22 @@ cards:
     coinsLabel: Coins collected
     column:
       count: Count
+      doing: Activity
       kind: Attack Type
       mean: Avg
+      perKill: Per Kill
       share: Share
       span: Min-Max
+      time: Time
+    # Landed criticals over the swings that landed, beside the two counts.
+    critRateLabel: Crit rate
+    critsOfHits: '{crits} of {landed} hits'
     dealtLabel: Damage dealt
     deflectedLabel: Deflected
     dodgedLabel: Dodged
     empty: Nothing has been fought yet.
     expMadeLabel: Exp. made
+    expPerKillLabel: Exp. per kill
     expNeededLabel: Exp. needed
     # Named with its level where the table can say which: the next level is
     # often already paid for, and `Exp. needed` alone read as though it were not.
@@ -3017,6 +3040,7 @@ cards:
     exchangeFigure: '{dealt} dealt · {taken} taken'
     exchangeLabel: Dealt against taken
     faceMore: More
+    faceTime: Time
     graphEmpty: nothing measured in this window yet
     graphLabel: 'Exp. rate, last {hours} h'
     graphNow: 'now {rate}'
@@ -3025,6 +3049,7 @@ cards:
     levelOver: '{over} over'
     incomeRateLabel: Income rate
     killRateLabel: Kill rate
+    killEveryLabel: Time per kill
     killedLabel: Killed
     kind:
       backstab: Backstab
@@ -3041,10 +3066,22 @@ cards:
     perRoundLabel: Damage a round
     ratePerHour: '{value}/hr'
     resetAction: Reset Combat Statistics
+    roundsPerKillLabel: Rounds per kill
     sneakLabel: Sneak
+    swingsPerKillLabel: Swings per kill
     span: '{least}–{most}'
     tableCaption: Accuracy
     takenLabel: Damage taken
+    takenPerKillLabel: Damage taken per kill
+    # MegaMUD's `Time Analysis` rows beside `Attacking`. `Other` is time in the
+    # realm none of the four covers: waiting for a regen, a trip to the shop,
+    # standing at the keyboard.
+    time:
+      meditating: Meditating
+      moving: Moving
+      other: Other
+      resting: Resting
+    timeCaption: Time Analysis
     title: Combat Stats
     willLevelLabel: Will level in
   standby:
@@ -3595,14 +3632,17 @@ settings:
     retreatHint: 'Walking out of the fight ends combat without the penalty a disconnect carries.
       This server family has no flee command, so running always means moving in a direction: the way
       you came in if known, otherwise an exit of this room. It only runs while something is moving
-      the character (a route, a loop, an errand, a quest run); once a route has arrived, the
+      the character (a route, a loop, a detour, a quest run); once a route has arrived, the
       character stays put.'
     retreatLabel: Auto-Run
     retreatLegend: Auto-Run
-    retreatStrategyHint: 'How far to run. step-back moves one room. safe-haven makes the same move,
-      then walks to the room below once the fight is over. The exit is not a setting: the way you
-      came is always preferred over one never used.'
+    retreatStrategyHint: 'How far to run: one room away, or one room and then on to the safe room
+      named below once the fight is over. The exit is not a setting: the way you came is always
+      preferred over one never used.'
     retreatStrategyLabel: Where to Run
+    retreatStrategies:
+      stepBack: One Room Away
+      safeHaven: Safe Room
     safeHavenHint: Named the same way as a loop stop, with the map/room number so a shared name is
       not guessed.
     safeHavenLabel: Safe Room
@@ -3618,7 +3658,7 @@ settings:
     fleeGotoCommandPlaceholder: sys go 1 297
     hangPenaltiesHint: Whether this realm penalizes a hangup. Paradigm's realm menu reports this
       itself, and that takes priority.
-    hangPenaltiesLabel: Hang Penalties
+    hangPenaltiesLabel: Hangup Penalty
     hangPenaltiesGlobal: As Global says
     hangPenaltiesRealm: As the realm says
     hangPenaltiesYes: Charged
@@ -3626,7 +3666,7 @@ settings:
     hangUpLabel: Auto-Hangup / Emergency Disconnect
     hangUpLegend: Auto-Hangup
     hangUpOnPlayer: Hang Up When a Player Is Seen
-    hangUpWarning: On a realm with hang penalties, a disconnect costs part of your maximum health,
+    hangUpWarning: On a realm with a hangup penalty, a disconnect costs part of your maximum health,
       and at low health it kills. Use Auto-Run instead.
     meditateBelowHint: Sends med below this. Ignored for a class with no mana.
     meditateBelowLabel: Meditate If Below Mana %
@@ -3819,7 +3859,7 @@ settings:
       IgnoreConfusion default). A confused character's commands can be ignored.
     fightOnArrival: Auto-Combat On at Arrival
     fightOnArrivalHint: Turns auto-combat back on when a route you asked for arrives, since walking
-      with it off is how you travel without fighting. Loops and errands are unaffected.
+      with it off is how you travel without fighting. Loops and detours are unaffected.
     extinguishInLight: Put the Light Out in Lit Rooms
     extinguishInLightHint: Removes a lit torch in a room that does not need it, when nothing is
       moving the character, so the torch lasts through the sewer instead of burning out on the way
@@ -3845,7 +3885,7 @@ settings:
     keepOutLegend: Avoiding
     keepOutOf: Places to Avoid
     keepOutOfHint: Words for a path or place, as the game writes them. A route you ask for that
-      crosses one is shown next to the way around, and you choose; loops, errands and quest runs go
+      crosses one is shown next to the way around, and you choose; loops, detours and quest runs go
       around.
     keepOutOfPlaceholder: 'vortex, Negative Power Plane'
     carryLegend: What It Carries
@@ -4008,6 +4048,12 @@ settings:
     waitMinutesHint: Leading, give up a wait and walk on after this many minutes. 0 waits until
       everyone is ready.
     waitMinutesLabel: Wait No Longer Than (minutes)
+    relayPortalsHint: Leading, say @party before a room's own command that moves only you (go
+      vortex), so the party runs it too. A text exit the party follows through needs none.
+    relayPortalsLabel: Relay Portals With @party
+    regroupMinutesHint: After going through one, send par, invite back a member who is here but out
+      of the party, and hold the walk this many minutes for everyone. 0 does not wait.
+    regroupMinutesLabel: Rejoin Wait (minutes)
     warning: It is not yet known whether the game limits commands per connection or per computer.
       These settings make a second automated character useful; turning them on means testing that
       yourself.
@@ -4113,6 +4159,8 @@ settings:
     login: Login
   nav:
     character: Which character
+    find: Find a setting
+    findNone: No setting matches.
     label: Settings sections
     realm: Which realm
   spells:
@@ -4194,6 +4242,21 @@ settings:
     attackCastsLabel: Casts Per Target
     areaCastsHint: Casts of the area spell per fight. 0 is no limit.
     areaCastsLabel: AE Casts Per Fight
+    drainLegend: Drain When Hurt
+    drainNote: A drain spell hurts the monster and heals you by what it takes. Below the threshold
+      the drains are cast instead of your attack spells, under the same limits, until your health
+      is back up. Only spells the world database marks as drains are offered.
+    drainHint: Cast instead of the attack spell while you are hurt. Blank keeps the attack spell,
+      or picks from your spell list when Auto Choose is on.
+    drainLabel: Drain Spell
+    areaDrainHint: Cast at the room while you are hurt and the room is crowded enough for the area
+      spell. Blank casts none.
+    areaDrainLabel: AE Drain Spell
+    drainBelowHint: Start casting the drains below this share of health. 0 never drains.
+    drainBelowLabel: Drain If Below HP %
+    drainToHint: Keep draining until health is back to this. 0 stops as soon as you are over the
+      threshold; a gap keeps one drain from switching the spell back and forth.
+    drainToLabel: Drain Up To HP %
     healBelowInCombatHint: A separate threshold while fighting. 0 uses the one next to it for both;
       set it lower so a scratch does not cost a round.
     healBelowInCombatLabel: Heal In Combat Below %
@@ -4230,8 +4293,8 @@ settings:
   rewrites:
     listLegend: Your Designs
     note: Each design is drawn in place of what the game printed, with what the client knows added,
-      as soon as the listing is complete; what was drawn stays in the scrollback. One design draws
-      each listing, and turning one on turns off the others for it.
+      as soon as the game has finished printing it; what was drawn stays in the scrollback. One
+      design draws each list or line, and turning one on turns off the others for it.
     empty: None. Add one below.
     enabledAria: Draw {name} yourself
     editAria: Edit {name}
@@ -4262,8 +4325,8 @@ settings:
       nameLabel: Name
       entityLabel: Draws
       enabledLabel: Draw It Myself
-      enabledHint: The game's lines for this are held back until the listing is complete, and this
-        design is drawn in their place. When off, the game's own lines are shown.
+      enabledHint: The game's lines for this are held back until it has finished printing them, and
+        this design is drawn in their place. When off, the game's own lines are shown.
       templateLabel: Template
       templateHint: Text with tags in braces, one line here per line in the console. Click a value,
         a color or a control on the left to insert it at the cursor.
@@ -4283,7 +4346,7 @@ settings:
         stray: '{tag} has nothing open to close; it is drawn as typed.'
         badTest: '{tag} is not a test this template language understands; its branch is never used.'
       sidebar:
-        listing: This listing
+        listing: What it draws
         character: Character
         row: Inside a row
         colours: Colors
@@ -4413,7 +4476,6 @@ session:
     stoppedDied: you were killed, and the game has moved you
     stoppedForLoop: you started a loop
     stoppedForRoute: you asked for a route
-    stoppedDisconnected: you disconnected
     stoppedLeftRealm: you left the realm
     stoppedRealmChanged: this is a different realm
     unknownRoom: The client cannot tell which room you are in.
@@ -4510,6 +4572,10 @@ session:
     escapeStaying: 'Not running: {why}, but nothing is moving this character anywhere, so it stays
       put. {then}'
     escapeStayingReason: nothing is moving this character anywhere
+    # A follower leaves running away to the party leader it follows, {leader}.
+    escapeFollowing: 'Not running: {why}, but {leader} is leading the party and decides when to run.
+      {then}'
+    escapeFollowingReason: following {leader}, who decides when to run
     escapeNotFighting: 'Not fighting: auto-combat is off.'
     escapeNoExitReason: no exit known from this room
     escapeOpening: 'The {barrier} to the {direction} is closed: opening it and running again.'
@@ -4544,8 +4610,8 @@ session:
       has not said how much; dying would drop everything you carry.'
     beforeDeathCostly: 'Not hanging up: {why}, but the hangup would cost {cost} HP and kill you.'
     beforeDeathCostlyReason: the hangup would cost {cost} HP and kill
-    hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hang penalty."
-    hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hang
+    hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hangup penalty."
+    hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hangup
       penalty.'
     realmCharges: "{realm}'s realm menu says a hangup costs {percent}%."
     realmChargesNothing: "{realm}'s realm menu says a hangup costs nothing."
@@ -4642,6 +4708,10 @@ session:
     notResumed: 'Not walking on to {destination}: {reason}'
     replanned: 'That route started in a room you have since left, so it was re-planned from here:
       {steps} steps to {destination}.'
+    automationOn: Automation was off. It is on again so the character can walk there, and it stays
+      on.
+    automationNotOn: "Not walking: automation is off, and it could not be turned on in the
+      character's file."
   world:
     realmMismatch: The game says you are in room {map},{room}, which the loaded world data does not
       have. This character's world.database may not match this realm, so routes will fail from here.
@@ -4736,7 +4806,7 @@ automation:
     whyStopped: you asked it to
     whySwitchedOff: Auto-Quest was switched off
     whyWalkStopped: the walk stopped
-    whyErrandEnded: the shopping errand ended without it
+    whyErrandEnded: the detour to the shop ended without it
     whyNothingMoved: nothing happened for long enough that something is stuck
     whyLegStalled: the walk to the next step stood still
     heldUp: 'Held up: {why}. Trying again in {seconds}s (setback {tries} of {max}).'
@@ -4874,6 +4944,8 @@ automation:
     runRefused: "Not running it: auto-combat could not be turned off in the character's file."
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something arrived that the world data could not place'
+    # Todo 828: a MajorMUD server goes on casting the area spell into an empty room.
+    reasonBreakEmptyRoom: 'auto-combat: {spell} has no monsters left in the room, breaking'
     reasonRefresh: 'auto-combat: re-reading the room'
     reasonRoundAreaSpell: 'auto-combat: the room is crowded enough for the area spell'
     # Todo 816: the server repeats the spell each round; spent, the round changes to {verb}.
@@ -4973,6 +5045,7 @@ automation:
     spellNotInstant: '{spell} started combat after all: it is a combat spell, so it is no longer
       treated as instant on this realm and opens fights again.'
     spellIneffectiveArea: '{spell} has no effect here; the attack spell carries this fight.'
+    drainIneffective: '{spell} has no effect here; the attack spells carry this fight.'
     spellIneffectiveNoFallback: '{spell} has no effect here and no fallback spell is set; your
       regular attacks carry this fight.'
     whyUnweighed: 'first of {count} here: the world data cannot rate {target}, and unknown is not
@@ -5010,6 +5083,9 @@ automation:
     noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
     allResisted: 'Auto Choose Best Spell: this target resists every attack spell in the book; your
       regular attacks carry the fight.'
+    drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
+    drainEnds: Health is back up; casting the attack spells again.
+    drainNone: No drain spell to cast; casting the attack spells.
   train:
     reason: 'spending {cp} character points at the trainer'
     # Going to collect the level -- `TrainErrand` (todo 18). Every sentence
@@ -5184,7 +5260,8 @@ automation:
     afflictionOver: The condition has passed; the loop continues.
     heldAfterEscape: Ran away; the loop waits here until the fight is over and health is back.
     walkingOnAfterEscape: Recovered after running; the loop continues.
-    heldOffline: Connection lost; the loop waits until you are back in the realm.
+    heldOffline: Disconnected; the loop waits until you are back in the realm.
+    carriedOver: 'Looping {loopName} from last time; it continues once you are back in the realm.'
     walkingOnAfterReconnect: Back in the realm; the loop continues from here.
     fallbackNextStop: the next stop
     fallbackStop: a stop
@@ -5220,11 +5297,11 @@ automation:
     refusalNothingReaches: 'no light you carry makes it bright enough: {items}'
   supplies:
     abandonedPlayerMoved: you took over
-    refusalBusy: a shopping errand is already running
+    refusalBusy: already on a detour to a shop
     refusalNotInRealm: this character is not in the realm
-    refusalNoErrand: the errand could not be started
+    refusalNoErrand: the detour could not be started
     abandonedEscape: the character is running away
-    refusalTookTooLong: the errand took too long and the loop resumed
+    refusalTookTooLong: the detour took too long and the loop resumed
     abandonedLeftRealm: the realm was left
     abandonedConnectionClosed: the connection closed
     abandonedSwitchedOff: Auto-Buy was turned off
@@ -5286,6 +5363,14 @@ automation:
     reasonDefend: 'defend: {target} is attacking {member}'
     reasonRestWithLeader: 'resting with {leader}'
     reasonMeditateWithLeader: 'meditating with {leader}'
+    # Todo 839: the party led through a room's own command, and waited for.
+    reasonRelay: 'leading the party through "{command}"'
+    reasonReinvite: 'inviting {member} back into the party'
+    regrouping: 'Waiting up to {minutes} min for the party to rejoin: {members}.'
+    reinvited: '{member} is here but out of the party; inviting them back.'
+    regrouped: The party is back together; walking on.
+    regroupLeft: Stopped waiting for the party; this character is not in the room the portal leads to.
+    regroupGaveUp: 'Stopped waiting for the party: {members} did not rejoin within {minutes} min.'
   queue:
     fumbledResend: The game ignored "{command}"; sending it again.
   search:
@@ -5316,6 +5401,7 @@ automation:
       answering for one ({yes: 1}), so nothing was sent.'
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
     ranParty: '{from} asked the party to "{command}".'
+    statsReset: '{from} sent @reset; the combat statistics start again from now.'
     peerIsOurs: "{who} answered @version with {client}, so questions to them will use this client's
       own format: a room's map number instead of its name."
     peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's
@@ -5617,7 +5703,7 @@ browser:
   up: Up
   copyPath: Copy path
   close: Close
-  loading: Listing…
+  loading: Reading the folder…
   empty: Nothing here.
   use: use this file
   realmChip: realm

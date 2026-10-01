@@ -11,7 +11,9 @@ import { nameAnswersTo } from './world';
  * How many of `name` the pack holds, counted the way the server matches a
  * typed name (`nameAnswersTo`): `torch` finds every torch, lit or spare, and
  * `scroll of minor` finds the scroll. One per row, because the pack holds
- * instances — a listing's `2 torch` is already two rows.
+ * instances — a listing's `2 torch` is already two rows. The key ring counts
+ * too: `i` lists keys on their own line (`2 black star key`), so a key row read
+ * only from the carried list was never held and was picked up off every floor.
  */
 export function carriedCount(state: CharacterState, name: string): number {
   const typed = bareName(name);
@@ -19,6 +21,9 @@ export function carriedCount(state: CharacterState, name: string): number {
   let count = 0;
   for (const item of state.inventory.items) {
     if (nameAnswersTo(bareName(item.name), typed)) count += 1;
+  }
+  for (const key of state.inventory.keys) {
+    if (nameAnswersTo(bareName(key), typed)) count += 1;
   }
   return count;
 }

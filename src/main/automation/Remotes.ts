@@ -90,8 +90,17 @@ import { bareName, countedLabel } from '../../shared/items';
 import { playerKey, type PlayerRecord } from '../../shared/players';
 import type { CommandQueue } from './CommandQueue';
 import { tuning } from '../app/tuning';
+import { experienceOf } from '../../shared/experience';
+import {
+  experienceRate,
+  statsScope,
+  type CombatStatsBaseline,
+  type CombatTally
+} from '../../shared/tally';
 import type { SessionModule } from './Module';
 import { AutoJoin, joinIntent } from './AutoJoin';
+import { PartyRegroup, inviteIntent } from './PartyRegroup';
+import type { Direction, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
 /**
@@ -246,6 +255,11 @@ export interface RemoteEvents {
    */
   healRequested?(from: string): void;
   /**
+   * The Combat Stats card's baseline: `@reset` re-bases it, and `@exp` and
+   * `@level` read their figures over the scope it starts.
+   */
+  stats?: CombatStatsBaseline;
+  /**
    * Another player's client answered `@version`, or stopped answering the
    * extended question this client had asked it.
    *
@@ -308,6 +322,8 @@ export class Remotes implements SessionModule {
   private seen = false;
   /** Answering an invitation as though `@join` had followed it. See `AutoJoin`. */
   private readonly autoJoin: AutoJoin;
+  /** Leading the party through a room's own command, and waiting for it. See `PartyRegroup`. */
+  private readonly regroup: PartyRegroup;
 
   constructor(
     private config: AutomationConfig,
@@ -324,23 +340,50 @@ export class Remotes implements SessionModule {
     private readonly client: string = CLIENT_NAME
   ) {
     this.autoJoin = new AutoJoin(config, queue, { notice: (message) => events.notice?.(message) });
+    this.regroup = new PartyRegroup(config, queue, {
+      notice: (message) => events.notice?.(message),
+      askJoin: (member, state) => this.ask(member, 'join', state)
+    });
   }
 
   configure(config: AutomationConfig): void {
     this.config = config;
     this.autoJoin.configure(config);
+    this.regroup.configure(config);
+  }
+
+  /** A walk's step is about to be queued: a portal's `@party` goes ahead of it. */
+  stepping(
+    command: string,
+    direction: Direction | 'portal',
+    to: RoomId,
+    state: CharacterState
+  ): void {
+    this.regroup.stepping(command, direction, to, state);
+  }
+
+  /** Whether the walk stands still for the party to rejoin (`Holds.holdForParty`). */
+  regrouping(state: CharacterState): boolean {
+    return this.regroup.regrouping(state);
   }
 
   /**
-   * A classified line arrived. Only chat that opens with `@` matters here.
+   * A classified line arrived. Chat that opens with `@` matters here, and a
+   * party join (`askJoined`).
    *
    * `state` is passed rather than held because the answer to `@health` is a
    * fact about *now*, and a copy kept from the last state change is a copy that
    * is one round out of date in exactly the situation somebody asks.
    */
   onBlock(block: Block, state: CharacterState): void {
+    // The party's own switch, not the remotes': the regroup answers nobody's `@`.
+    this.regroup.onBlock(block);
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     this.autoJoin.onBlock(block, state);
+    if (block.type === 'party-joined') {
+      this.askJoined(block.groups['player'] ?? block.groups['leader'], state);
+      return;
+    }
     const channel = CHANNELS.get(block.type);
     if (channel === undefined) return;
 
@@ -522,35 +565,30 @@ export class Remotes implements SessionModule {
   }
 
   /**
-   * Asks every other member of the party for its numbers.
+   * Asks somebody who just joined the party for its numbers: the member who
+   * started to follow this character, or the leader this character now follows.
    *
-   * Called when the party changes, which is both the moment a roster becomes
-   * worth having and the moment it is emptiest. The party listing that fires
-   * alongside this gives percentages; this gives the numbers, and it spends a
+   * Only on a join. A leave or a disband is no reason to ask: the member has gone,
+   * and the leader disbanding once sent `@health` and `@version` to the member
+   * who had just left (festus, 2026-09-25). The party listing that fires
+   * alongside gives percentages; this gives the numbers, and it spends a
    * telepath rather than a command from the budget walking and fighting spend
    * from.
-   *
-   * Coalesced per name, so a burst of joins and leaves is one question each
-   * rather than one per announcement.
    */
-  askParty(state: CharacterState): void {
-    if (!this.config.enabled || !this.config.remotes.enabled) return;
-    const me = state.name?.toLowerCase() ?? null;
-    for (const member of state.party.members) {
-      if (member.invited) continue;
-      if (me !== null && member.name.toLowerCase() === me) continue;
-      // MegaMUD's *Request Party Health* (`party.askHealth`, todo 831).
-      if (this.config.party.askHealth) this.ask(member.name, 'health', state);
-      /*
-       * And which client they run, once, because it decides the wording of
-       * every question after this one. Only while nothing has said: the answer
-       * is a fact about the player and is kept realm-wide, so a party that
-       * re-forms all evening asks nobody twice.
-       */
-      if (this.events.peer?.(member.name)?.client == null) {
-        this.ask(member.name, 'version', state);
-      }
-    }
+  private askJoined(who: string | undefined, state: CharacterState): void {
+    if (who === undefined) return;
+    // MegaMUD's *Request Party Health* (`party.askHealth`, todo 831).
+    if (this.config.party.askHealth) this.ask(who, 'health', state);
+    /*
+     * And which client they run, once ever, because it decides the wording of
+     * every question after this one. Any answer or lapse is kept realm-wide on
+     * the player (`client`, `extendedRemotes`), so a party that re-forms all
+     * evening asks nobody twice, and a client that never answers is not asked
+     * again either.
+     */
+    const peer = this.events.peer?.(who);
+    const settled = peer != null && (peer.client !== null || peer.extendedRemotes !== 'unknown');
+    if (!settled && !this.asked.has(playerKey(who))) this.ask(who, 'version', state);
   }
 
   /**
@@ -567,6 +605,7 @@ export class Remotes implements SessionModule {
    * character is.
    */
   onCharacter(state: CharacterState): void {
+    this.regroup.onCharacter(state);
     if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
     this.askForHeal(state);
     const margin = tuning().loop.resumeMarginWhenUncapped;
@@ -678,7 +717,7 @@ export class Remotes implements SessionModule {
        * Silence is evidence about the extended vocabulary and about nothing
        * else. A client that answers neither `@version` nor an extended
        * question is not one this client can talk to — which is exactly what is
-       * recorded, and it is corrected the moment a `@version` does come back.
+       * recorded, and a join does not ask them again (`askJoined`).
        */
       this.events.clientNamed?.(outstanding.who, undefined, 'no');
       const plain = plainRemote(outstanding.name);
@@ -753,6 +792,12 @@ export class Remotes implements SessionModule {
     this.wantsHeal = false;
     this.seen = false;
     this.autoJoin.reset();
+    this.regroup.reset();
+  }
+
+  /** The regroup's clock is the one thing here that outlives a call. */
+  dispose(): void {
+    this.regroup.dispose();
   }
 
   /**
@@ -880,23 +925,14 @@ export class Remotes implements SessionModule {
        * `{0 lives remaining}` would be a lie somebody acts on.
        */
       case 'exp': {
-        const { expThisSession, expNeeded, realmEnteredAt } = state.progress;
-        this.say(
-          from,
-          command,
-          formatExp(expThisSession, expNeeded, realmEnteredAt, Date.now()),
-          prefix
-        );
+        const { scope, needed, perHour } = this.experience(state);
+        const made = scope.since === null ? null : scope.experience;
+        this.say(from, command, formatExp(made, needed, perHour), prefix);
         return;
       }
       case 'level': {
-        const { level, expNeeded, expThisSession, realmEnteredAt } = state.progress;
-        this.say(
-          from,
-          command,
-          formatLevel(level, expNeeded, expThisSession, realmEnteredAt, Date.now()),
-          prefix
-        );
+        const { needed, perHour } = this.experience(state);
+        this.say(from, command, formatLevel(state.progress.level, needed, perHour), prefix);
         return;
       }
       case 'lives':
@@ -1177,12 +1213,7 @@ export class Remotes implements SessionModule {
          * capture shows a reply to either, and the party listing that follows
          * is the acknowledgement both clients can already see.
          */
-        this.queue.enqueue({
-          command: `invite ${from}`,
-          priority: 'user',
-          coalesceKey: `remote:invite:${from.toLowerCase()}`,
-          reason: t('automation.remotes.reasonInvite', { from })
-        });
+        this.queue.enqueue(inviteIntent(from, t('automation.remotes.reasonInvite', { from })));
         return;
       }
 
@@ -1263,6 +1294,16 @@ export class Remotes implements SessionModule {
         this.events.healRequested?.(from);
         return;
 
+      case 'reset':
+        /*
+         * MegaMUD's manual: *resets all of MegaMUD's internal flags and
+         * statistics*. Here the statistics are the Combat Stats card, and there
+         * are no flags for it to reset. No reply, since no capture shows one.
+         */
+        this.events.stats?.rebase();
+        this.events.notice?.(t('automation.remotes.statsReset', { from }));
+        return;
+
       case 'wait':
       case 'ok': {
         /*
@@ -1309,6 +1350,23 @@ export class Remotes implements SessionModule {
       coalesceKey: `remote:reply:${to.toLowerCase()}`,
       reason: t('automation.remotes.reasonAnswering', { name: to })
     });
+  }
+
+  /**
+   * Experience as the Combat Stats card reads it: made and the rate over the
+   * scope since the last reset, and what is owed (`experienceOf`).
+   */
+  private experience(state: CharacterState): {
+    scope: CombatTally;
+    needed: number | null;
+    perHour: number | null;
+  } {
+    const scope = statsScope(state.tally, this.events.stats?.base ?? null);
+    return {
+      scope,
+      needed: experienceOf(state.progress).owed.value,
+      perHour: experienceRate(scope, Date.now(), tuning().view.rateFloorMs)
+    };
   }
 
   /** Replies with a formatted answer, or says locally why there is none yet. */

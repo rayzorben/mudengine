@@ -47,7 +47,7 @@
  */
 
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
-import { EXP_RATE_SETTLE_MS, type Stealth } from './character';
+import type { Stealth } from './character';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 export const REMOTE_NAMES = [
@@ -388,11 +388,11 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     because: 'no such setting here'
   },
   settings: { name: 'settings', support: 'answered' },
-  reset: {
-    name: 'reset',
-    support: 'unread',
-    because: 'no capture shows the reply, and what would be reset is not the same set'
-  },
+  /*
+   * Acted and never answered, like `heal`: no capture shows MegaMUD replying.
+   * What it resets is the Combat Stats card (`StatsBaseline`).
+   */
+  reset: { name: 'reset', support: 'acted' },
   divert: {
     name: 'divert',
     support: 'unread',
@@ -661,37 +661,33 @@ export function withCommas(value: number): string {
  * rate to one decimal and the wait in hours and minutes — a display on the
  * asker's screen, not a format another client parses.
  *
- * Null before the session has begun: `made` is a running count that starts
- * at zero, and until a first status line has stamped `since` that zero is
- * "nothing counted yet", not "nothing made" — the same zero, and a different
- * fact. A rate that rounds to `0.0` is `?` too, rather than a nothing beside
- * a wait computed from the unrounded figure.
+ * `made` and `perHour` are the Combat Stats card's own figures (`statsScope`,
+ * `experienceRate`), so a reset starts both again. Null `made` is a scope that
+ * has not begun, and the answer is null: "nothing counted yet" is not
+ * "nothing made".
  */
 export function formatExp(
-  made: number,
+  made: number | null,
   needed: number | null,
-  since: number | null,
-  now: number
+  perHour: number | null
 ): string | null {
-  if (since === null) return null;
-  const perHour = ratePerHour(made, since, now);
-  const rate = perHour === null ? '?' : `${(perHour / 1000).toFixed(1)}`;
-  const wait = perHour === null || needed === null ? '?' : formatHours(needed / perHour);
+  if (made === null) return null;
+  const shown = printable(perHour);
+  const rate = shown === null ? '?' : `${(shown / 1000).toFixed(1)}`;
   const need = needed === null ? '?' : withCommas(needed);
-  return `{Made: ${withCommas(made)}  Needed: ${need}  Rate: ${rate} k/hr  Will level in: ${wait}}`;
+  return `{Made: ${withCommas(made)}  Needed: ${need}  Rate: ${rate} k/hr  Will level in: ${levelWait(needed, shown)}}`;
 }
 
 /**
- * Experience per hour, or null while there is nothing to divide or too little
- * time to divide by (`EXP_RATE_SETTLE_MS`, shared with the Vitals card so the
- * two never disagree about whether a rate exists yet), or when the figure
- * would print as `0.0 k/hr`.
+ * A rate worth printing: positive, and not one that rounds to `0.0 k/hr`,
+ * which would sit beside a wait worked out from the unrounded figure.
  */
-function ratePerHour(made: number, since: number, now: number): number | null {
-  const elapsed = now - since;
-  if (made <= 0 || elapsed < EXP_RATE_SETTLE_MS) return null;
-  const perHour = made / (elapsed / 3_600_000);
-  return perHour / 1000 < 0.05 ? null : perHour;
+function printable(perHour: number | null): number | null {
+  return perHour === null || perHour / 1000 < 0.05 ? null : perHour;
+}
+
+function levelWait(needed: number | null, perHour: number | null): string {
+  return perHour === null || needed === null ? '?' : formatHours(needed / perHour);
 }
 
 function formatHours(hours: number): string {
@@ -704,15 +700,11 @@ function formatHours(hours: number): string {
 export function formatLevel(
   level: number | null,
   needed: number | null,
-  made: number,
-  since: number | null,
-  now: number
+  perHour: number | null
 ): string | null {
   if (level === null) return null;
-  const perHour = since === null ? null : ratePerHour(made, since, now);
-  const wait = perHour === null || needed === null ? '?' : formatHours(needed / perHour);
   const need = needed === null ? '?' : withCommas(needed);
-  return `{Level: ${level}  Needed: ${need}  Will level in: ${wait}}`;
+  return `{Level: ${level}  Needed: ${need}  Will level in: ${levelWait(needed, printable(perHour))}}`;
 }
 
 /** `{9 lives remaining}`. */

@@ -1323,8 +1323,8 @@ export class Walker implements SessionModule {
     if (this.holds.holdForHealth(state, fightIsRunning(state))) return true;
     // Then a condition the server has stated, on the same terms.
     if (this.holds.holdForAffliction(state)) return true;
-    // Then the trap the step ahead fires, on the same terms again.
-    if (this.holds.holdForTrap(state)) return true;
+    // Then the trap the step ahead fires, and the party rejoining, on the same terms again.
+    if (this.holds.holdForTrap(state) || this.holds.holdForParty(state)) return true;
     /*
      * A fight running here is not "no quarry", and it is outside the budget
      * too. `holdAt` asks whether engagement *would open* on something in this

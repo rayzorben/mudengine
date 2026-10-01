@@ -11,6 +11,7 @@ import { classifyOccupant } from '../../../shared/mobs';
 import type { FledEntry } from '../../../shared/fled';
 import type { Survival } from '../../../shared/survival';
 import { IDLE_WALK } from '../../../shared/walk';
+import type { Route } from '../../../shared/world';
 
 const ooze: RoomOccupant = classifyOccupant('black ooze', {
   players: new Set<string>(),
@@ -59,9 +60,11 @@ function travel(
   state: CharacterState,
   walk: 'stepping' | 'held' | 'none',
   going = true,
+  master = { on: true, writes: true },
   overrides: Partial<TravelSession> & { settings?: AutomationConfig } = {}
 ) {
   const sent: string[] = [];
+  const switched: boolean[] = [];
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
   const parts: TravelParts = {
@@ -117,7 +120,7 @@ function travel(
     questRunner: { running: false, abandon: vi.fn() }
   };
   const session: TravelSession = {
-    config: () => overrides.settings ?? config,
+    config: () => ({ ...(overrides.settings ?? config), enabled: master.on }),
     movement:
       overrides.movement ??
       (() => (going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING })),
@@ -127,9 +130,14 @@ function travel(
     decided: (decision) => void decisions.push(decision),
     fight: overrides.fight ?? (() => null),
     fled: overrides.fled ?? (() => []),
-    keepFled: overrides.keepFled ?? (() => {})
+    keepFled: overrides.keepFled ?? (() => {}),
+    switchAutomation: (on) => {
+      switched.push(on);
+      if (master.writes) master.on = on;
+      return master.writes;
+    }
   };
-  return { travel: new Travel(parts, session), sent, notices, decisions, parts };
+  return { travel: new Travel(parts, session), parts, sent, notices, decisions, switched };
 }
 
 /*
@@ -198,7 +206,7 @@ describe('running from a fight that could kill', () => {
   it('runs once the fight kills too often within three rounds, above the share of health', () => {
     const state = hit(20, 'Dank Room', 1);
     const kept: FledEntry[][] = [];
-    const { travel: moving, sent } = travel(state, 'none', true, {
+    const { travel: moving, sent } = travel(state, 'none', true, undefined, {
       settings: plain,
       fight: () => thug,
       keepFled: (entries) => void kept.push([...entries])
@@ -215,7 +223,7 @@ describe('running from a fight that could kill', () => {
       travel: moving,
       sent,
       parts
-    } = travel(first, 'none', true, {
+    } = travel(first, 'none', true, undefined, {
       settings: plain,
       fight: () => thug,
       movement: () =>
@@ -238,7 +246,7 @@ describe('running from a fight that could kill', () => {
       travel: moving,
       sent,
       parts
-    } = travel(first, 'none', true, {
+    } = travel(first, 'none', true, undefined, {
       settings: plain,
       fight: () => thug
     });
@@ -248,5 +256,86 @@ describe('running from a fight that could kill', () => {
     moving.settleEscape({ type: 'room' } as never, first.room);
     moving.considerEscape(empty);
     expect(sent).toEqual(['n']);
+  });
+});
+
+/* A follower leaves running away to the leader, even with a lap of its own running. */
+describe('running away while following', () => {
+  it('stays with the party and says so once', () => {
+    const base = beside();
+    const state: CharacterState = {
+      ...base,
+      inCombat: true,
+      vitals: { ...base.vitals, hp: 5 },
+      party: { ...base.party, following: 'Brackle' }
+    };
+    const { travel: follower, sent, notices, decisions } = travel(state, 'held');
+    follower.considerEscape(state);
+    follower.considerEscape(state);
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([
+      t('session.safety.escapeFollowing', {
+        why: t('session.safety.whyHealth', { percent: '5%' }),
+        leader: 'Brackle',
+        then: t('session.safety.escapeStanding')
+      })
+    ]);
+    expect(decisions.map((decision) => decision.acted)).toEqual([false]);
+  });
+
+  it('runs once nobody is being followed', () => {
+    const base = beside();
+    const state: CharacterState = { ...base, inCombat: true, vitals: { ...base.vitals, hp: 5 } };
+    const { travel: alone, sent } = travel(state, 'held');
+    alone.considerEscape(state);
+    expect(sent).toEqual(['n']);
+  });
+});
+
+/*
+ * Todo 03: a character hung up hurt, the player turned automation off to log
+ * back in, then sent it to a room to run there. The press turns it back on.
+ */
+describe('a route asked for with automation off', () => {
+  const route: Route = { steps: [], cost: 0, blocked: false };
+  const items = [{ id: 1, name: 'rope' }];
+
+  it('turns automation on, says so, and walks', () => {
+    const master = { on: false, writes: true };
+    const { travel: moving, parts, notices, switched } = travel(beside(), 'none', false, master);
+    vi.mocked(parts.itemErrand.collect).mockImplementation(() => {
+      // Positive control: the walk is asked for after the switch is read back.
+      expect(master.on).toBe(true);
+      return null;
+    });
+    expect(moving.collectThenWalk(items, route)).toBeNull();
+    expect(switched).toEqual([true]);
+    expect(notices).toEqual([t('session.walk.automationOn')]);
+  });
+
+  it('puts the switch back when the walk is refused anyway', () => {
+    const master = { on: false, writes: true };
+    const { travel: moving, parts, notices, switched } = travel(beside(), 'none', false, master);
+    vi.mocked(parts.itemErrand.collect).mockReturnValue('no way there');
+    expect(moving.collectThenWalk(items, route)).toBe('no way there');
+    expect(switched).toEqual([true, false]);
+    expect(master.on).toBe(false);
+    expect(notices).toEqual([]);
+  });
+
+  it('refuses out loud when the file will not take the write', () => {
+    const master = { on: false, writes: false };
+    const { travel: moving, parts, switched } = travel(beside(), 'none', false, master);
+    expect(moving.collectThenWalk(items, route)).toBe(t('session.walk.automationNotOn'));
+    expect(switched).toEqual([true]);
+    expect(parts.itemErrand.collect).not.toHaveBeenCalled();
+  });
+
+  it('touches nothing when automation is already on', () => {
+    const { travel: moving, parts, notices, switched } = travel(beside(), 'none', false);
+    vi.mocked(parts.itemErrand.collect).mockReturnValue(null);
+    expect(moving.collectThenWalk(items, route)).toBeNull();
+    expect(switched).toEqual([]);
+    expect(notices).toEqual([]);
   });
 });
