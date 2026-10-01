@@ -26,6 +26,7 @@ import type { CharacterState } from '../../shared/character';
 import type { HealthConfig, HuntingAutomationConfig, WalkConfig } from '../../shared/config';
 import {
   huntLoop,
+  shortOfCash,
   type HuntingAdvice,
   type HuntingSpot,
   type HuntWait
@@ -81,6 +82,8 @@ type Phase =
       name: string;
       /** What the survey said this lair would pay, to measure the gap against. */
       expected: number | null;
+      /** The copper an hour it said, against the cash floor (todo 64). */
+      copper: number | null;
       /**
        * Where the measurement runs from: the moment the lap started, or the
        * moment a stranger walked in.
@@ -426,7 +429,17 @@ export class AutoHunt implements SessionModule {
      * candidate would be — which is where a contested lair is halved.
      */
     const here = measured ?? this.pricedRate(this.phase.key, expected);
-    if (here !== null && worth <= here * (1 + tuning().hunting.moveMargin)) return;
+    // A cash floor outranks exp: never off a lair paying it for one that does not, and off one
+    // short of it for one that pays it whatever the exp says (todo 64).
+    const cash = this.config.cashPerHour;
+    const hereShort = shortOfCash(this.phase.copper, cash);
+    const thereShort = shortOfCash(best.estimate.copperPerHour, cash);
+    if (!hereShort && thereShort) return;
+    // Both short: the one paying more copper, as the survey ranks them; the same copper, by exp.
+    const copper = (best.estimate.copperPerHour ?? 0) - (this.phase.copper ?? 0);
+    if (hereShort && thereShort && copper < 0) return;
+    const forCash = hereShort && (!thereShort || copper > 0);
+    if (!forCash && here !== null && worth <= here * (1 + tuning().hunting.moveMargin)) return;
 
     this.events.notice?.(
       t('automation.hunt.movingOn', {
@@ -549,11 +562,15 @@ export class AutoHunt implements SessionModule {
     return this.pick(advice.spots.filter((spot) => spot.key !== not));
   }
 
-  /** The highest priced lair over the floor, or undefined. */
+  /**
+   * The highest priced lair over the floor, or undefined. Under a cash floor
+   * a lair paying it comes first, and among those short of it the most copper
+   * (todo 64), as the survey ranks them.
+   */
   private pick(spots: readonly HuntingSpot[]): HuntingSpot | null {
     const floor = this.walkConfig.minExpPerHour;
-    let best: HuntingSpot | null = null;
-    let value = -1;
+    const cash = this.config.cashPerHour;
+    let best: { spot: HuntingSpot; worth: number; short: boolean; copper: number } | null = null;
     for (const spot of spots) {
       if (this.steered !== undefined && spot.key !== this.steered) continue;
       const worth = this.priced(spot);
@@ -565,12 +582,16 @@ export class AutoHunt implements SessionModule {
        */
       if (worth === null && typeof this.steered === 'string') return spot;
       if (worth === null || (floor > 0 && worth < floor)) continue;
-      if (worth > value) {
-        best = spot;
-        value = worth;
-      }
+      const short = shortOfCash(spot.estimate.copperPerHour, cash);
+      const copper = spot.estimate.copperPerHour ?? 0;
+      const better =
+        best === null ||
+        (best.short && !short) ||
+        (best.short === short &&
+          (short && copper !== best.copper ? copper > best.copper : worth > best.worth));
+      if (better) best = { spot, worth, short, copper };
     }
-    return best;
+    return best?.spot ?? null;
   }
 
   /** The best spot with a rate worth walking to, or null with the reason said. */
@@ -696,6 +717,7 @@ export class AutoHunt implements SessionModule {
       name: loop.name,
       // What the survey said, so the gap can be measured against it (todo 06).
       expected: spot.estimate.expPerHour,
+      copper: spot.estimate.copperPerHour,
       from: anchor(state, this.now()),
       saidCompany: false
     };

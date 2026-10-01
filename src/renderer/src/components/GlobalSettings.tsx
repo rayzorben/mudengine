@@ -4,6 +4,7 @@ import AlertList from './AlertList';
 import BlessingList from './BlessingList';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
+import HuntingFields from './HuntingFields';
 import PartyFields from './PartyFields';
 import { partyFormOf, partyOf } from '../lib/characterForm';
 import FleeGotoFields from './FleeGotoFields';
@@ -1662,37 +1663,32 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="hunting">
               <legend>{t('settings.hunting.legend')}</legend>
               <p className="settings-note">{t('settings.hunting.note')}</p>
-              <div className="settings-inline">
-                <CheckField
-                  checked={draft.automation.hunting.enabled}
-                  hint={t('settings.hunting.autoHint')}
-                  label={t('settings.hunting.auto')}
-                  name="global-hunt-auto"
-                  onChange={(value) =>
-                    automation({ hunting: { ...draft.automation.hunting, enabled: value } })
-                  }
-                />
-                {draft.automation.hunting.enabled && (
-                  <NumberField
-                    hint={t('settings.hunting.radiusHint')}
-                    label={t('settings.hunting.radius')}
-                    name="global-hunt-radius"
-                    onChange={(value) =>
-                      automation({
-                        hunting: {
-                          ...draft.automation.hunting,
-                          radius: Math.max(0, Number.parseInt(value, 10) || 0)
-                        }
+              <HuntingFields
+                cash={
+                  draft.automation.hunting.cashPerHour > 0
+                    ? String(draft.automation.hunting.cashPerHour)
+                    : ''
+                }
+                enabled={draft.automation.hunting.enabled}
+                namePrefix="global-"
+                onChange={(change) =>
+                  automation({
+                    hunting: {
+                      ...draft.automation.hunting,
+                      ...(change.enabled !== undefined && { enabled: change.enabled }),
+                      ...(change.radius !== undefined && {
+                        radius: Math.max(0, Number.parseInt(change.radius, 10) || 0)
+                      }),
+                      ...(change.cash !== undefined && {
+                        cashPerHour: Math.max(0, Number.parseInt(change.cash, 10) || 0)
                       })
                     }
-                    value={
-                      draft.automation.hunting.radius > 0
-                        ? String(draft.automation.hunting.radius)
-                        : ''
-                    }
-                  />
-                )}
-              </div>
+                  })
+                }
+                radius={
+                  draft.automation.hunting.radius > 0 ? String(draft.automation.hunting.radius) : ''
+                }
+              />
             </fieldset>
 
             {/*

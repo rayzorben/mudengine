@@ -1486,9 +1486,15 @@ automation:
   # whose worst spawn would take too much of the bar, one too trivial to pay --
   # are the safety. Two names for one question is how somebody sets one and
   # wonders why the other still decides.
+  #
+  # `cashPerHour` is copper an hour the hunt should earn; 0 is exp alone. A
+  # spot paying it ranks above every spot that does not, and a loop short of it
+  # takes in a nearby lair whose monsters carry coin, even at a cost in exp:
+  # for a character whose next level waits on the trainer's fee.
   hunting:
     enabled: false
     radius: 0
+    cashPerHour: 0
 
   # Casting -- MegaMUD's Spells tab, at its smallest useful size.
   #

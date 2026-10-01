@@ -1839,6 +1839,14 @@ export interface HuntingAutomationConfig {
    * should not leave its area. A number here is that player's answer.
    */
   radius: number;
+  /**
+   * Copper an hour the hunt should earn; 0 is exp alone (todo 64).
+   *
+   * A spot paying it ranks above every spot that does not, by exp; a loop
+   * short of it takes a nearby lair whose monsters carry coin, even at a cost
+   * in exp.
+   */
+  cashPerHour: number;
 }
 
 /**
@@ -2807,7 +2815,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
     hunting: {
       enabled: false,
-      radius: 0
+      radius: 0,
+      cashPerHour: 0
     },
     train: {
       stats: false,
@@ -4038,7 +4047,8 @@ export function normalizeHuntingAutomation(value: unknown): HuntingAutomationCon
   const d = DEFAULT_CONFIG.automation.hunting;
   return {
     enabled: bool(raw['enabled'], d.enabled),
-    radius: int(raw['radius'], d.radius, 0, 9_999)
+    radius: int(raw['radius'], d.radius, 0, 9_999),
+    cashPerHour: int(raw['cashPerHour'], d.cashPerHour, 0, 100_000_000)
   };
 }
 

@@ -20,6 +20,7 @@ import {
   normalizeGear,
   normalizeQuests,
   type GearConfig,
+  type HuntingAutomationConfig,
   normalizeTrain,
   type RewritesUiConfig,
   type Cure,
@@ -490,7 +491,7 @@ export interface ProfileDraft {
    * Going hunting on its own — `automation.hunting`. See
    * `HuntingAutomationConfig`.
    */
-  hunting: { enabled: boolean; radius: number };
+  hunting: HuntingAutomationConfig;
   /** Spending character points on the stat screen — `automation.train`. See `TrainConfig`. */
   train: {
     stats: boolean;

@@ -110,7 +110,9 @@ function mobClock(regenSeconds: number): string {
 
 /** Every lair the survey kept, measured or not, in one order. */
 function everySpot(advice: HuntingAdvice): HuntingSpot[] {
-  return [...advice.spots, ...advice.unmeasured].sort(compareSpots);
+  return [...advice.spots, ...advice.unmeasured].sort((a, b) =>
+    compareSpots(a, b, advice.cashPerHour)
+  );
 }
 
 export function huntingCopyText(advice: HuntingAdvice | null): string {
