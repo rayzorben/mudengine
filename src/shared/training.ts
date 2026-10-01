@@ -1,3 +1,4 @@
+import type { CharacterState } from './character';
 import { lairsAlong, type RouteStep } from './world';
 
 /**
@@ -137,6 +138,116 @@ export function wantsMore(
     const now = current[attribute];
     return now !== null && now !== undefined && wanted[attribute] > now;
   });
+}
+
+/* -------------------------------------------------- points where they pay */
+
+/**
+ * The two terms of `Player.MaxHP` that read health (`Player.cs:4804`): half
+ * of it, and `(health − 50) × level / 16`, each an integer division.
+ */
+function healthHp(health: number, level: number): number {
+  return Math.trunc(health / 2) + Math.trunc(((health - 50) * level) / 16);
+}
+
+/** What strength lets a character carry before gear (`Player.cs:2545`): 48 a point, 84 past 100. */
+function strengthCarry(strength: number): number {
+  return strength * 48 + (strength > 100 ? strength * 36 - 3600 : 0);
+}
+
+/**
+ * The same character with `points` more in one stat, or none: the sheet
+ * figure, and what the server derives from it that the client otherwise
+ * reads off the wire — maximum health from health, what can be carried from
+ * strength. What `stat all` said is dropped, since it was read for the old
+ * sheet; the baseline drops it too (`attribute` null), so the two compare on
+ * the arithmetic alone.
+ */
+export function raisedBy(
+  state: CharacterState,
+  attribute: TrainedAttribute | null,
+  points: number
+): CharacterState {
+  const progress = { ...state.progress };
+  const vitals = { ...state.vitals };
+  const inventory = { ...state.inventory };
+  const now = attribute === null ? null : progress[attribute];
+  if (attribute !== null && now !== null) {
+    const to = now + points;
+    progress[attribute] = to;
+    const level = progress.level;
+    if (attribute === 'health' && level !== null && vitals.hpMax !== null) {
+      const more = healthHp(to, level) - healthHp(now, level);
+      vitals.hpMax += more;
+      if (vitals.hp !== null) vitals.hp += more;
+    }
+    if (attribute === 'strength' && inventory.encumbranceMax !== null) {
+      inventory.encumbranceMax = Math.trunc(
+        (inventory.encumbranceMax * strengthCarry(to)) / Math.max(1, strengthCarry(now))
+      );
+    }
+  }
+  return { ...state, progress, vitals, inventory, stated: null };
+}
+
+/** One stat's worth: the exp an hour `points` more of it would add, and what they cost. */
+export interface StatGain {
+  attribute: TrainedAttribute;
+  points: number;
+  cost: number;
+  /** Exp an hour over the baseline; null where the survey could not say. */
+  gain: number | null;
+}
+
+/**
+ * How many points of each stat to weigh, and their price: `horizon` points,
+ * or what is left under the race's ceiling. A stat at its ceiling is not
+ * weighed. A horizon rather than one point, because most of what a stat does
+ * moves in steps of three, five or ten points (`accuracy`'s agility over 3,
+ * charm over 10): one point of charm alone moves nothing, ten do.
+ */
+export function statSteps(
+  current: Record<TrainedAttribute, number>,
+  limits: Record<TrainedAttribute, StatLimits>,
+  horizon: number
+): Array<{ attribute: TrainedAttribute; points: number; cost: number }> {
+  return TRAINED_ATTRIBUTES.flatMap((attribute) => {
+    const points = Math.min(horizon, limits[attribute].max - current[attribute]);
+    if (points <= 0) return [];
+    const cost = raiseCost(limits[attribute].base, current[attribute], current[attribute] + points);
+    return [{ attribute, points, cost }];
+  });
+}
+
+/**
+ * The figures to aim at: the one stat whose weighed points add the most exp
+ * an hour per character point, raised by them, and that stat's weighing;
+ * every other stat left. None where no stat adds anything, which leaves the
+ * points for a later level rather than spending them on nothing. Ties go to
+ * the cheaper. The aim stands where its next point costs more than is
+ * unspent: the points wait for the best stat rather than going to a worse.
+ */
+export function wantedByGain(
+  current: Record<TrainedAttribute, number>,
+  gains: readonly StatGain[]
+): { wanted: Record<TrainedAttribute, number>; chose: StatGain | null } {
+  const wanted = Object.fromEntries(
+    TRAINED_ATTRIBUTES.map((attribute) => [attribute, 0])
+  ) as Record<TrainedAttribute, number>;
+  let best: { gain: StatGain; worth: number } | null = null;
+  for (const gain of gains) {
+    if (gain.gain === null || gain.gain <= 0 || gain.cost <= 0) continue;
+    const worth = gain.gain / gain.cost;
+    if (
+      best === null ||
+      worth > best.worth ||
+      (worth === best.worth && gain.cost < best.gain.cost)
+    ) {
+      best = { gain, worth };
+    }
+  }
+  if (best !== null) wanted[best.gain.attribute] = current[best.gain.attribute] + best.gain.points;
+  return { wanted, chose: best?.gain ?? null };
 }
 
 /* -------------------------------------------------------------- the trainer */

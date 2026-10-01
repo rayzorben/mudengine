@@ -38,6 +38,7 @@ import LoopSection, { type LoopShelf } from './LoopSection';
 import PlayerGrants from './PlayerGrants';
 import RemoteList from './RemoteList';
 import RemoteSwitches from './RemoteSwitches';
+import TrainStatFields from './TrainStatFields';
 import RewritesDesigner from './RewriteDesigner';
 
 import { keepFocus } from '../lib/focus';
@@ -1071,53 +1072,15 @@ export default function CharacterForm({
               name="train-stats"
               onChange={(value) => patch({ trainStats: value })}
             />
-            <p className="settings-note">{t('settings.train.wantedNote')}</p>
-            <div className="settings-inline">
-              <NumberField
-                label={t('settings.train.strength')}
-                name="train-strength"
-                onChange={(value) =>
-                  patch({ trainWanted: { ...form.trainWanted, strength: value } })
-                }
-                value={form.trainWanted.strength}
-              />
-              <NumberField
-                label={t('settings.train.intellect')}
-                name="train-intellect"
-                onChange={(value) =>
-                  patch({ trainWanted: { ...form.trainWanted, intellect: value } })
-                }
-                value={form.trainWanted.intellect}
-              />
-              <NumberField
-                label={t('settings.train.willpower')}
-                name="train-willpower"
-                onChange={(value) =>
-                  patch({ trainWanted: { ...form.trainWanted, willpower: value } })
-                }
-                value={form.trainWanted.willpower}
-              />
-              <NumberField
-                label={t('settings.train.agility')}
-                name="train-agility"
-                onChange={(value) =>
-                  patch({ trainWanted: { ...form.trainWanted, agility: value } })
-                }
-                value={form.trainWanted.agility}
-              />
-              <NumberField
-                label={t('settings.train.health')}
-                name="train-health"
-                onChange={(value) => patch({ trainWanted: { ...form.trainWanted, health: value } })}
-                value={form.trainWanted.health}
-              />
-              <NumberField
-                label={t('settings.train.charm')}
-                name="train-charm"
-                onChange={(value) => patch({ trainWanted: { ...form.trainWanted, charm: value } })}
-                value={form.trainWanted.charm}
-              />
-            </div>
+            <TrainStatFields
+              name="train"
+              onPick={(pick) => patch({ trainPick: pick })}
+              onWanted={(attribute, value) =>
+                patch({ trainWanted: { ...form.trainWanted, [attribute]: value } })
+              }
+              pick={form.trainPick}
+              wanted={form.trainWanted}
+            />
           </fieldset>
         </SettingsSection>
       )}

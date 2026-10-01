@@ -118,7 +118,7 @@ import {
 } from '../../shared/verdict';
 import type { RealmFamily } from '../../shared/realm';
 import type { Survival } from '../../shared/survival';
-import { dodge } from '../../shared/prowess';
+import { dodge, type ProwessAttack } from '../../shared/prowess';
 import { attacksOnSight } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
@@ -524,6 +524,8 @@ export class AutoCombat implements SessionModule {
       combat: number | null;
       magery: number | null;
       family: RealmFamily | null;
+      /** The attack typed, as the class makes it; the plain one where absent. */
+      attack?: ProwessAttack;
     } = () => ({
       combat: null,
       magery: null,
@@ -1468,7 +1470,7 @@ export class AutoCombat implements SessionModule {
     menaces: ReadonlyArray<Menace | null>,
     entities: ReadonlyArray<MobEntity | undefined>
   ): Verdict[] {
-    const { combat, magery, family } = this.realmClass();
+    const { combat, magery, family, attack } = this.realmClass();
     /*
      * The sheet and the target are read by the shared functions the Room card's
      * appraisal reads (`Appraisal.verdict`), so the figure the
@@ -1479,7 +1481,7 @@ export class AutoCombat implements SessionModule {
     const sheet = prowessSheetOf(state, { combat, magery });
     const weapon = wieldedWeapon(state.inventory.items);
     return menaces.map((menace, index) =>
-      verdictFor(menace, targetOf(entities[index]), sheet, weapon, family)
+      verdictFor(menace, targetOf(entities[index]), sheet, weapon, family, attack)
     );
   }
 

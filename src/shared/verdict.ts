@@ -7,7 +7,14 @@ import {
   REALM_ARMOUR_SCALE,
   weighRoom
 } from './menace';
-import { swing, type ProwessSheet, type ProwessWeapon, type Reckoning } from './prowess';
+import {
+  PLAIN_ATTACK,
+  swing,
+  type ProwessAttack,
+  type ProwessSheet,
+  type ProwessWeapon,
+  type Reckoning
+} from './prowess';
 import type { RealmFamily } from './realm';
 // Type only: `survival.ts` imports this module's values, and a value the other
 // way would be the cycle `module-cycle.test.ts` exists to refuse.
@@ -95,7 +102,8 @@ export function verdictFor(
   subject: { armourClass?: number; damageResist?: number; dodge?: number; hp?: number },
   sheet: ProwessSheet,
   weapon: ProwessWeapon | null,
-  family: RealmFamily | null
+  family: RealmFamily | null,
+  how: ProwessAttack = PLAIN_ATTACK
 ): Verdict {
   const attack = swing(
     sheet,
@@ -108,7 +116,8 @@ export function verdictFor(
       // the realm cannot name the monster it is what the lore has learned.
       health: menace?.hp ?? subject.hp ?? null
     },
-    family
+    family,
+    how
   );
   const rounds = attack?.rounds ?? null;
   const cost =
@@ -209,11 +218,12 @@ export function weighVerdicts(
   weights: MenaceWeights,
   sheet: ProwessSheet,
   weapon: ProwessWeapon | null,
-  family: RealmFamily | null
+  family: RealmFamily | null,
+  attack: ProwessAttack = PLAIN_ATTACK
 ): Verdict[] {
   const menaces = weighRoom(subjects, player, weights);
   return subjects.map((subject, index) =>
-    verdictFor(menaces[index] ?? null, targetOf(subject), sheet, weapon, family)
+    verdictFor(menaces[index] ?? null, targetOf(subject), sheet, weapon, family, attack)
   );
 }
 
@@ -271,7 +281,8 @@ export function appraiseRoom(
   weights: MenaceWeights,
   sheet: ProwessSheet,
   weapon: ProwessWeapon | null,
-  family: RealmFamily | null
+  family: RealmFamily | null,
+  attack: ProwessAttack = PLAIN_ATTACK
 ): RoomVerdict {
   const monsters = occupants.filter((who) => who.kind !== 'player');
   if (monsters.length === 0) return EMPTY_ROOM_VERDICT;
@@ -281,7 +292,8 @@ export function appraiseRoom(
     weights,
     sheet,
     weapon,
-    family
+    family,
+    attack
   );
   let total = 0;
   let complete = true;

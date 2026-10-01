@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   accuracy,
+  BARE_HAND,
   castOdds,
+  critChance,
   dodge,
   regeneration,
+  martialRoundDamage,
   roundDamage,
   REGEN_TICK_SECONDS,
   swing,
@@ -340,7 +343,11 @@ describe('what the server stated', () => {
   it('takes the blow’s range off the sheet, and still rolls only on GreaterMUD', () => {
     const target = { armourClass: 0, damageResist: 0, dodge: null, health: 100 };
     const hit = swing(STATED, null, target, 'greatermud')!;
-    expect(hit.damage).toEqual({ value: 16.5, from: 'stated' });
+    // The stated range's mean, and a critical's share at three times its top.
+    const crit = critChance(STATED, 'attack', 'greatermud')!.value;
+    const top = STATED.stated!.damage!.max;
+    expect(hit.damage.value).toBeCloseTo((1 - crit) * 16.5 + crit * 3 * top, 6);
+    expect(hit.damage.from).toBe('stated');
     expect(hit.swings).toEqual({ value: 3.584, from: 'stated' });
     // The hit roll is GreaterMUD's arithmetic, whoever stated the accuracy.
     expect(swing(STATED, null, target, 'majormud')).toBeNull();
@@ -385,5 +392,89 @@ describe('damage a round, by how the weapon is swung', () => {
 
   it('answers nothing outside GreaterMUD', () => {
     expect(roundDamage(SHEET, blade, 'attack', 'majormud')).toBeNull();
+  });
+});
+
+describe('a martial-arts round', () => {
+  const bare = { ...SHEET, stated: null };
+
+  it('takes its range from the level and its blows from the attack’s own speed', () => {
+    // Level 10: a punch is 10/8 + 2 = 3 to (10 + 3)/4 + 6 = 9, at speed 1150.
+    const swings = swingsPerRound(bare, { min: 3, max: 9, speed: 1150 }, 'greatermud')!.value;
+    const punch = martialRoundDamage(bare, 'punch', 0, 'greatermud');
+    expect(punch?.value).toBeCloseTo((Math.min(6, swings) * 12) / 2, 6);
+    expect(punch?.from).toBe('bound');
+  });
+
+  it('adds the attack’s damage ability to both ends and multiplies a kick by 1.33', () => {
+    // Level 10: a kick is 3 to 10/5 + 7 = 9, plus 2 at each end.
+    const swings = swingsPerRound(bare, { min: 5, max: 11, speed: 1400 }, 'greatermud')!.value;
+    const kick = martialRoundDamage(bare, 'kick', 2, 'greatermud')!.value;
+    expect(kick).toBeCloseTo((Math.min(6, swings) * 16 * 1.33) / 2, 6);
+  });
+
+  it('knows nothing without a level or off the GreaterMUD lineage', () => {
+    expect(martialRoundDamage({ ...bare, level: null }, 'jumpkick', 0, 'greatermud')).toBeNull();
+    expect(martialRoundDamage(bare, 'jumpkick', 0, 'majormud')).toBeNull();
+  });
+});
+
+/*
+ * 2026-10-01: Soul, a Mystic who lost the staff in a death, kicked for 28 a
+ * round while every hunting spot read unpriced, because a swing without a
+ * weapon had no range.
+ */
+describe('a fight without a weapon', () => {
+  const bare = { ...SHEET, stated: null };
+  const target = { armourClass: 0, damageResist: 0, dodge: null, health: 60 };
+
+  it('swings the bare hand, 1–3 at speed 1200, when nothing is wielded', () => {
+    const fist = swing(bare, null, target, 'greatermud')!;
+    const blows = Math.min(6, swingsPerRound(bare, BARE_HAND, 'greatermud')!.value);
+    const crit = critChance(bare, 'attack', 'greatermud')!.value;
+    expect(fist.range).toEqual({ low: 1, high: 3 });
+    expect(fist.damage.value).toBeCloseTo((1 - crit) * 2 + crit * 9, 6);
+    expect(fist.rounds?.value).toBeCloseTo(60 / (fist.lands.value * fist.damage.value * blows), 6);
+  });
+
+  it('prices a kick by its own range and multiplier, not the weapon in hand', () => {
+    const kick = swing(bare, SWORD, target, 'greatermud', { kind: 'kick', bonus: 0 })!;
+    const plain = swing(bare, null, target, 'greatermud')!;
+    expect(kick.rounds!.value).toBeLessThan(plain.rounds!.value);
+    // `KickCombatRound.AttackTypeAccMod`: a kick rolls at ten less accuracy.
+    const armoured = { ...target, armourClass: 25 };
+    const kicked = swing(bare, null, armoured, 'greatermud', { kind: 'kick', bonus: 0 })!;
+    expect(kicked.lands.value).toBeLessThan(swing(bare, null, armoured, 'greatermud')!.lands.value);
+    // Level 10: 3–9, times 1.33 and floored: 3–11, a mean of 7 and a critical of 33.
+    const crit = critChance(bare, 'kick', 'greatermud')!.value;
+    expect(kick.range).toEqual({ low: 3, high: 11 });
+    expect(kick.damage.value).toBeCloseTo((1 - crit) * 7 + crit * 33, 6);
+  });
+});
+
+describe('a critical blow', () => {
+  it('is the stats’ share and a poor fighter’s bonus, capped at 65%', () => {
+    // Level 10, intellect 50, agility 60, charm 55: 1 from the stats; combat 4 adds 3.
+    expect(critChance(SHEET, 'attack', 'greatermud')).toEqual({ value: 0.04, from: 'bound' });
+    const sharp = { ...SHEET, intellect: 400, combatLevel: 7 };
+    expect(critChance(sharp, 'kick', 'greatermud')?.value).toBe(0.36);
+    expect(critChance({ ...sharp, intellect: 900 }, 'kick', 'greatermud')?.value).toBe(0.65);
+  });
+
+  it('never comes of a bash or a smash, and is unknown off GreaterMUD', () => {
+    expect(critChance(SHEET, 'bash', 'greatermud')).toEqual({ value: 0, from: 'source' });
+    expect(critChance(SHEET, 'attack', 'majormud')).toBeNull();
+  });
+});
+
+describe('strength in the blow', () => {
+  it('raises the top of every range a point each ten over 50, and the bottom over 100', () => {
+    const target = { armourClass: 0, damageResist: 0, dodge: null, health: 60 };
+    const strong = { ...SHEET, stated: null, strength: 115 };
+    expect(swing(strong, SWORD, target, 'greatermud')!.range).toEqual({ low: 6, high: 18 });
+    expect(swing({ ...strong, strength: null }, SWORD, target, 'greatermud')!.range).toEqual({
+      low: 5,
+      high: 12
+    });
   });
 });

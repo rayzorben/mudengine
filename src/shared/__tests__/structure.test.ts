@@ -44,7 +44,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // party's (831).
   // Lowered by the remotes switches it shares with the Global page (`RemoteSwitches`, todo 07).
   // Lowered by the attack spell's fields, shared with the Global page (`AttackFields`, todo 841).
-  'src/renderer/src/components/CharacterForm.tsx': 1630
+  'src/renderer/src/components/CharacterForm.tsx': 1593
 };
 
 /**

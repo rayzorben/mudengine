@@ -598,3 +598,50 @@ describe('going to collect the level', () => {
     expect(decisions.at(-1)?.acted).toBe(false);
   });
 });
+
+/*
+ * 2026-10-01: the planner was told training costs 450 copper while the only
+ * trainer a route reached for the level asked 45,445. A plan reads the price
+ * the trip would pay.
+ */
+describe('the trainer each level ahead goes to', () => {
+  const SYSOP: TrainerChoice = { ...TITAN, shop: 1, name: 'Sysop', room: 1, cost: 450 };
+
+  it('is the one a route reaches, not the cheapest the realm lists', () => {
+    const errand = make(train(), {
+      trainers: () => [SYSOP, TITAN],
+      routeTo: (room) => (room === '3/1' ? 'no route' : ROUTE)
+    });
+    expect(errand.trainersAhead([30])).toEqual([{ level: 30, trainer: TITAN, reachable: true }]);
+  });
+
+  it('says the cheapest is out of reach when no route reaches any, and nothing for a level none takes', () => {
+    const errand = make(train(), {
+      trainers: (level) => (level === 31 ? [] : [SYSOP, TITAN]),
+      routeTo: () => 'no route'
+    });
+    expect(errand.trainersAhead([30, 31])).toEqual([
+      { level: 30, trainer: SYSOP, reachable: false },
+      null
+    ]);
+  });
+
+  it('plans each trainer room once, however many levels share it', () => {
+    let planned = 0;
+    const errand = make(train(), {
+      routeTo: () => {
+        planned += 1;
+        return ROUTE;
+      }
+    });
+    errand.trainersAhead([30, 31, 32]);
+    expect(planned).toBe(2);
+  });
+
+  it('is only the chosen trainer where the player chose one', () => {
+    const errand = make(train({ trainer: AMAZON.shop }));
+    expect(errand.trainersAhead([30])[0]?.trainer).toEqual(AMAZON);
+    const gone = make(train({ trainer: 999 }));
+    expect(gone.trainersAhead([30])).toEqual([null]);
+  });
+});

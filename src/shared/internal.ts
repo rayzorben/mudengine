@@ -927,7 +927,14 @@ const TUNING_DEFAULTS = {
      * this (todo 69): one unanswered attempt was the level refused for good,
      * and a character with levels banked stood under them for an hour.
      */
-    retryMs: 60_000
+    retryMs: 60_000,
+    /**
+     * How many points of each stat are weighed when points go where they raise
+     * the exp rate most (`train.pick: exp`, todo 83). Most of what a stat does
+     * moves in steps of three to ten points, so one point alone mostly shows
+     * nothing; ten cross every step but crits' charm (thirty).
+     */
+    statHorizon: 10
   },
   /** Going back for the kit after a death — `GearRecovery`. */
   gearRecovery: {

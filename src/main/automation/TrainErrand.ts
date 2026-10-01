@@ -28,8 +28,8 @@ import type { SessionModule } from './Module';
 export interface TrainPlanner {
   /** Where the character stands, or null while unplaced. */
   here(): RoomId | null;
-  /** The trainers the realm says will take this character, cheapest first. */
-  trainers(): TrainerChoice[];
+  /** The trainers the realm says will take this character at a level (now's by default), cheapest first. */
+  trainers(level?: number): TrainerChoice[];
   /** A route to a room, or the reason there is none. */
   routeTo(room: RoomId): Route | string;
   /** Hands the route to the walker as a leg. Returns its refusal, or null. */
@@ -53,6 +53,20 @@ export interface TrainEvents {
 
 /** How to reach a trainer: standing in its room, a route, or the reason there is none. */
 type Way = { kind: 'here' } | { kind: 'route'; route: Route } | { kind: 'none'; why: string };
+
+/** A trainer some way reaches, with the walk there (none where the character stands in it). */
+interface Reached {
+  trainer: TrainerChoice;
+  way: Way;
+  route: Pick<Route, 'cost' | 'steps'>;
+}
+
+/** The trainer a level would be taken to, as the trip would choose it, and whether a route reaches it. */
+export interface TrainerAhead {
+  level: number;
+  trainer: TrainerChoice;
+  reachable: boolean;
+}
 
 type Phase =
   | { kind: 'idle' }
@@ -263,31 +277,7 @@ export class TrainErrand implements SessionModule {
       (this.refusedFrom.room === here || this.now() - this.refusedFrom.at < tuning().train.reaskMs)
     )
       return;
-    const skipped: string[] = [];
-    // Standing in a trainer's room is a walk of nothing, weighed with the rest: a large markup still loses.
-    const reached: Array<{
-      trainer: TrainerChoice;
-      way: Way;
-      route: Pick<Route, 'cost' | 'steps'>;
-    }> = [];
-    for (const candidate of taking) {
-      const way = this.routeFor(candidate);
-      if (way.kind === 'here') {
-        reached.push({ trainer: candidate, way, route: { cost: 0, steps: [] } });
-        continue;
-      }
-      if (way.kind === 'route') {
-        reached.push({ trainer: candidate, way, route: way.route });
-        continue;
-      }
-      skipped.push(
-        t('automation.train.skippedOne', {
-          trainer: candidate.name,
-          room: candidate.roomName,
-          why: way.why
-        })
-      );
-    }
+    const { reached, skipped } = this.reach(taking);
     const best = bestTrainer(reached, tuning().train.costSlack);
     if (best !== null) {
       if (skipped.length > 0) {
@@ -310,6 +300,66 @@ export class TrainErrand implements SessionModule {
     if (this.saidUnreachable === sentence) return;
     this.saidUnreachable = sentence;
     this.refuse(sentence);
+  }
+
+  /**
+   * Which of these trainers a route reaches, and why each other one is out of
+   * reach. Standing in a trainer's room is a walk of nothing, weighed with the
+   * rest: a large markup still loses. `ways` holds each room's answer, so a
+   * room several levels share is planned once.
+   */
+  private reach(
+    taking: readonly TrainerChoice[],
+    ways: Map<RoomId, Way> = new Map()
+  ): { reached: Reached[]; skipped: string[] } {
+    const reached: Reached[] = [];
+    const skipped: string[] = [];
+    for (const candidate of taking) {
+      const room = roomId(candidate.map, candidate.room);
+      const way = ways.get(room) ?? this.routeFor(candidate);
+      ways.set(room, way);
+      if (way.kind === 'here') {
+        reached.push({ trainer: candidate, way, route: { cost: 0, steps: [] } });
+        continue;
+      }
+      if (way.kind === 'route') {
+        reached.push({ trainer: candidate, way, route: way.route });
+        continue;
+      }
+      skipped.push(
+        t('automation.train.skippedOne', {
+          trainer: candidate.name,
+          room: candidate.roomName,
+          why: way.why
+        })
+      );
+    }
+    return { reached, skipped };
+  }
+
+  /**
+   * The trainer each of these levels would be taken to, and what it charges,
+   * walked to from where the character stands now: the one the player chose,
+   * else the one the trip would choose (`bestTrainer`), else the cheapest no
+   * route reaches, said as such. Null for a level nothing takes, or the
+   * chosen trainer does not. Asks nothing of the server and walks nowhere:
+   * a plan reads the price the trip would pay, not the cheapest row the realm
+   * lists (2026-10-01: 450 copper planned, 45,445 asked at the Hydra Trainer).
+   */
+  trainersAhead(levels: readonly number[]): Array<TrainerAhead | null> {
+    const ways = new Map<RoomId, Way>();
+    return levels.map((level) => {
+      const taking = this.planner.trainers(level);
+      // The chosen trainer, where it no longer takes the level, is a refusal on the trip too.
+      const pool =
+        this.config.trainer > 0
+          ? taking.filter((entry) => entry.shop === this.config.trainer)
+          : taking;
+      const best = bestTrainer(this.reach(pool, ways).reached, tuning().train.costSlack);
+      if (best !== null) return { level, trainer: best.trainer, reachable: true };
+      const cheapest = pool[0];
+      return cheapest === undefined ? null : { level, trainer: cheapest, reachable: false };
+    });
   }
 
   /**

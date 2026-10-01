@@ -21,7 +21,8 @@ import {
   type PvpAction,
   type RetreatStrategy,
   type RewritesUiConfig,
-  type SearchConfig
+  type SearchConfig,
+  type TrainPick
 } from '@shared/config';
 import type { MobRule } from '@shared/mobRules';
 import type { ProfileAccent } from '@shared/profiles';
@@ -261,6 +262,8 @@ export interface CharacterFields {
   huntCash: string;
   /** Spending character points on the stat screen — `automation.train`. */
   trainStats: boolean;
+  /** How the points are spent: by the exp rate, or toward `trainWanted`. */
+  trainPick: TrainPick;
   trainLevels: boolean;
   /** The chosen trainer's shop row, as text, or '' for the cheapest. */
   trainTrainer: string;
@@ -500,6 +503,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     huntRadius: entry.hunting.radius > 0 ? String(entry.hunting.radius) : '',
     huntCash: entry.hunting.cashPerHour > 0 ? String(entry.hunting.cashPerHour) : '',
     trainStats: entry.train.stats,
+    trainPick: entry.train.pick,
     trainLevels: entry.train.levels,
     trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
     trainWanted: wantedStrings(entry.train.wanted),
@@ -692,6 +696,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     },
     train: {
       stats: form.trainStats,
+      pick: form.trainPick,
       wanted: wantedNumbers(form.trainWanted),
       levels: form.trainLevels,
       // 0 is *the cheapest that will take me*, which is what the picker's
@@ -973,6 +978,7 @@ export function emptyForm(
     huntRadius: hunting.radius > 0 ? String(hunting.radius) : '',
     huntCash: hunting.cashPerHour > 0 ? String(hunting.cashPerHour) : '',
     trainStats: train.stats,
+    trainPick: train.pick,
     trainLevels: train.levels,
     trainTrainer: train.trainer > 0 ? String(train.trainer) : '',
     trainWanted: wantedStrings(train.wanted),

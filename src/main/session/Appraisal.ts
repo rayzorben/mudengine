@@ -121,7 +121,7 @@ export class Appraisal {
   get verdict(): RoomVerdict {
     const state = this.tracker.current;
     if (state.phase !== 'in-game' || state.room.occupants.length === 0) return EMPTY_ROOM_VERDICT;
-    const { combat, magery, family } = this.errands.realmClass();
+    const { combat, magery, family, attack } = this.errands.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery });
     const weapon = wieldedWeapon(state.inventory.items);
     const appraisal = appraiseRoom(
@@ -130,7 +130,8 @@ export class Appraisal {
       tuning().menace,
       sheet,
       weapon,
-      family
+      family,
+      attack
     );
     // And the row's word beside the realm's, where one says it does not attack first.
     const rules = this.session.config().combat.mobRules;
@@ -154,7 +155,7 @@ export class Appraisal {
    */
   appraise(names: readonly string[]): Record<string, Verdict> {
     const state = this.tracker.current;
-    const { combat, magery, family } = this.errands.realmClass();
+    const { combat, magery, family, attack } = this.errands.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery });
     const weapon = wieldedWeapon(state.inventory.items);
     const player = this.errands.menacePlayer(state);
@@ -169,7 +170,15 @@ export class Appraisal {
     for (const name of names) {
       const entity = this.world?.buildMobEntity(name, { at });
       if (entity === undefined || entity.source === 'wire') continue;
-      const [verdict] = weighVerdicts([entity], player, tuning().menace, sheet, weapon, family);
+      const [verdict] = weighVerdicts(
+        [entity],
+        player,
+        tuning().menace,
+        sheet,
+        weapon,
+        family,
+        attack
+      );
       if (verdict !== undefined) verdicts[name] = verdict;
     }
     return verdicts;
