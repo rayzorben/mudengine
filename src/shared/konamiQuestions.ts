@@ -159,6 +159,7 @@ function goalQuestion(brief: KonamiBrief): {
       instructions:
         `${AIM} What should the character do next? The state lists every spot with each monster's stats, ` +
         `the damage arithmetic, the simulated fight and the walk there with the lairs it passes, and the gear per slot. ` +
+        `Every spot offered passed the survival check; a death loses everything carried, so prefer the spot whose fight and walk are safest, and among the safe ones the most exp an hour. ` +
         `Its history is what past plans near this level came to, and the monsters there the character ran from: do not choose again what killed the character, what it ran from, or what the player said no to.`,
       criteria
     },

@@ -156,8 +156,14 @@ export interface BriefSpot {
   mobs: BriefMob[];
 }
 
-/** Why a surveyed spot was not offered. */
-export type LeftOutReason = 'damage-unknown' | 'rate-unknown';
+/**
+ * Why a surveyed spot was not offered. `unsafe`: its own simulated fight, at
+ * full health, is survived under the
+ * share opening one needs (`tuning.combat.openAbove`); `deadly-walk`: the walk
+ * there is expected to kill. Left out rather than offered with a warning, so
+ * the provider ranks only spots the character would fight in.
+ */
+export type LeftOutReason = 'damage-unknown' | 'rate-unknown' | 'unsafe' | 'deadly-walk';
 
 export interface KonamiBrief {
   at: number;
@@ -227,6 +233,8 @@ export interface BriefInput {
   walk(spot: HuntingSpot): BriefRoute | null;
   /** The simulator's run of a spot's fight. */
   simulated(spot: HuntingSpot): BriefFight | null;
+  /** Why a spot is too dangerous to offer, or null (`unsafeWhy`). */
+  unsafe(spot: HuntingSpot): LeftOutReason | null;
   now: number;
 }
 
@@ -330,15 +338,32 @@ export function leftOutWhy(spot: HuntingSpot): LeftOutReason | null {
   return null;
 }
 
+/**
+ * Whether a spot is too dangerous to offer at all: its fight is run by the
+ * same rule opening a fight there would be (`openingRefusal`'s `openAbove`),
+ * at full health, and its walk is not expected to kill. An unrun fight is not
+ * a reason; the estimate's worst room already answered for it.
+ */
+export function unsafeWhy(
+  fight: BriefFight | null,
+  route: BriefRoute | null,
+  openAbove: number
+): LeftOutReason | null {
+  if (route !== null && route.deadly !== null) return 'deadly-walk';
+  if (fight !== null && openAbove > 0 && fight.survives < openAbove) return 'unsafe';
+  return null;
+}
+
 /** The spots the brief offers, best first, at most `maxSpots`; the rest left out with why. */
 export function offeredSpots(
   advice: HuntingAdvice,
-  maxSpots: number
+  maxSpots: number,
+  unsafe: (spot: HuntingSpot) => LeftOutReason | null
 ): { offered: HuntingSpot[]; leftOut: KonamiBrief['hunting']['leftOut'] } {
   const offered: HuntingSpot[] = [];
   const leftOut: KonamiBrief['hunting']['leftOut'] = [];
   for (const spot of advice.spots) {
-    const why = leftOutWhy(spot);
+    const why = leftOutWhy(spot) ?? unsafe(spot);
     if (why !== null) leftOut.push({ key: spot.key, name: primaryMob(spot), why });
     else if (offered.length < maxSpots) offered.push(spot);
   }
@@ -348,7 +373,7 @@ export function offeredSpots(
 export function buildBrief(input: BriefInput): KonamiBrief {
   const { state, advice } = input;
   const { progress, vitals, inventory } = state;
-  const { offered: chosen, leftOut } = offeredSpots(advice, input.maxSpots);
+  const { offered: chosen, leftOut } = offeredSpots(advice, input.maxSpots, input.unsafe);
   const offered = chosen.map((spot) => briefSpot(spot, input.entities.get(spot.key) ?? [], input));
   const banks = state.banks.map((bank) => ({ name: bank.name, copper: bank.copper }));
   const onHand = inventory.wealth;

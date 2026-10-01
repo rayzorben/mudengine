@@ -19,12 +19,14 @@ import type { HuntingAdvice, HuntingSpot } from '../../shared/hunting';
 import {
   buildBrief,
   offeredSpots,
+  unsafeWhy,
   type BookSpell,
   type BriefFight,
   type BriefLairPassed,
   type BriefRoute,
   type GearEffect,
   type KonamiBrief,
+  type LeftOutReason,
   type SlotUpgrade
 } from '../../shared/konamiBrief';
 import type { KonamiLesson } from '../../shared/konamiLessons';
@@ -284,7 +286,21 @@ export function konamiBrief(
   );
 
   const maxSpots = tuning().konami.maxSpots;
-  const best = offeredSpots(advice, maxSpots).offered[0];
+  // Each spot's walk and fight once: the offer, the gear's effect and the brief all read them.
+  const walks = new Map<string, BriefRoute | null>();
+  const fights = new Map<string, BriefFight | null>();
+  const walk = (spot: HuntingSpot): BriefRoute | null => {
+    if (!walks.has(spot.key))
+      walks.set(spot.key, walkTo(parts, world, here, firstRoom(world, spot), state));
+    return walks.get(spot.key) ?? null;
+  };
+  const fight = (spot: HuntingSpot): BriefFight | null => {
+    if (!fights.has(spot.key)) fights.set(spot.key, simulated(parts, firstRoom(world, spot)));
+    return fights.get(spot.key) ?? null;
+  };
+  const unsafe = (spot: HuntingSpot): LeftOutReason | null =>
+    unsafeWhy(fight(spot), walk(spot), tuning().combat.openAbove);
+  const best = offeredSpots(advice, maxSpots, unsafe).offered[0];
   const capabilities = parts.capabilities();
   const weapon = wieldedWeapon(state.inventory.items);
   const canHide = holdsAbility(capabilities, CLASS_STEALTH_ABILITY);
@@ -316,8 +332,9 @@ export function konamiBrief(
           now
         }) !== null
     ),
-    walk: (spot) => walkTo(parts, world, here, firstRoom(world, spot), state),
-    simulated: (spot) => simulated(parts, firstRoom(world, spot)),
+    walk,
+    simulated: fight,
+    unsafe,
     now
   });
 }

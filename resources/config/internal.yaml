@@ -446,10 +446,12 @@ tuning:
     # whatever the odds.
     openAbove: 0.95
 
-    # Run once this many of the fight's worst rounds could take the health
-    # left, and open nothing that would have to run at once. 0 leaves running
-    # to safety.retreat.belowHealth alone.
-    runRounds: 2
+    # Run once the share of the room's simulated fights the character is dead
+    # in within runRounds rounds, from the health it has now, is over runRisk;
+    # and open nothing that would have to run at once. runRisk 0 leaves
+    # running to safety.retreat.belowHealth alone.
+    runRounds: 3
+    runRisk: 0.05
 
     # Hang up once this many of the fight's worst rounds could kill, where the
     # realm's charge for hanging up would not: a hangup costs some items, a

@@ -13,7 +13,14 @@ import {
   type KonamiQuestion,
   type KonamiReply
 } from '../konami';
-import { buildBrief, leftOutWhy, type KonamiBrief, type SlotUpgrade } from '../konamiBrief';
+import {
+  buildBrief,
+  leftOutWhy,
+  unsafeWhy,
+  type BriefFight,
+  type KonamiBrief,
+  type SlotUpgrade
+} from '../konamiBrief';
 import type { KonamiLesson } from '../konamiLessons';
 import { nextUpgradePrice, planQuestions, readPlan, samePlan } from '../konamiQuestions';
 import type { ProwessSheet } from '../prowess';
@@ -199,7 +206,8 @@ const HELM: SlotUpgrade = {
 function brief(
   over: Partial<CharacterState> = {},
   lessons: KonamiLesson[] = [],
-  fled: FledEntry[] = []
+  fled: FledEntry[] = [],
+  fights: Record<string, BriefFight> = {}
 ): KonamiBrief {
   const base = structuredClone(EMPTY_CHARACTER);
   const state: CharacterState = {
@@ -242,11 +250,37 @@ function brief(
     fled,
     walk: () => null,
     simulated: () => null,
+    unsafe: (offered) => unsafeWhy(fights[offered.key] ?? null, null, 0.95),
     now: 1
   });
 }
 
 describe('the brief', () => {
+  it('offers only spots whose own fight is survived well enough, with the rest named', () => {
+    const made = brief({}, [], [], {
+      'lair:a': { level: 'risky', survives: 0.8, hpLeft: 4, rounds: 5 }
+    });
+    expect(made.hunting.spots).toEqual([]);
+    expect(made.hunting.leftOut).toContainEqual(
+      expect.objectContaining({ key: 'lair:a', why: 'unsafe' })
+    );
+  });
+
+  it('leaves out a spot the walk to is expected to die on', () => {
+    const route = {
+      steps: 9,
+      lairs: 2,
+      damage: null,
+      unweighed: 0,
+      deadly: 'Main Road',
+      worst: []
+    };
+    expect(unsafeWhy(null, route, 0.95)).toBe('deadly-walk');
+    expect(
+      unsafeWhy({ level: 'safe', survives: 0.99, hpLeft: 30, rounds: 3 }, null, 0.95)
+    ).toBeNull();
+  });
+
   it('tells each spot which of its monsters the character ran from', () => {
     const made = brief({}, [], [{ name: 'fierce zombie', level: 2, at: 1 }]);
     expect(made.hunting.spots[0]?.history).toEqual(['at level 2, ran from fierce zombie here']);

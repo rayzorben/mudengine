@@ -4517,7 +4517,7 @@ session:
     pvpNoGangReason: the who list shows no gang to tell
     whyHealth: health at {percent}
     whyNextRound: 'the next round could do {worst} and you have {hp} HP'
-    whyRounds: 'the next {rounds} rounds could do {worst} and you have {hp} HP'
+    whyRisk: 'at {hp} HP this fight kills you {risk} of the time within {rounds} rounds'
     whyMana: mana at {percent}
     whyAttackers: '{count} attackers'
     whyCompany: Player present in room (PvP abort)
@@ -4873,8 +4873,12 @@ automation:
     refusedFledUnknown: you ran from {target}; it is left alone until your level is read
     refusedOdds: 'you survive a fight with {target} here {survives} of the time at {hp} HP;
       attacking needs {needs}'
-    refusedHealth: 'at {hp} HP, the next {rounds} worst rounds with {target} could kill you; resting
-      to {needs} HP first'
+    refusedRisk: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within
+      {rounds} rounds, so you would have to run at once'
+    refusedRiskResting: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within
+      {rounds} rounds, so you would have to run at once; resting to {needs} HP first'
+    refusedOddsResting: 'you survive a fight with {target} here {survives} of the time at {hp} HP;
+      attacking needs {needs}; resting to {rest} HP first'
     refusedMaxMobs: '{here} monsters here, over the Max Monsters in Room of {max}'
     refusedMinMobs: only {here} monsters here, under the Min Monsters in Room of {min}
     refusedTooRich: '{target} is worth {exp} exp, over the Max Monster Exp of {cap}'

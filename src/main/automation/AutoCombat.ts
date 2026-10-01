@@ -2099,28 +2099,44 @@ export class AutoCombat implements SessionModule {
     const key = mobKey(target);
     if (state.combat.attackers.some((name) => mobKey(name) === key)) return null;
     const { hp, hpMax } = state.vitals;
-    const { openAbove, runRounds } = tuning().combat;
+    const { openAbove, runRounds, runRisk } = tuning().combat;
     const fight = this.guard.opening(target);
     if (fight === undefined) return null;
-    const refusal = openingRefusal(fight, hp, hpMax, { openAbove, runRounds });
+    const refusal = openingRefusal(fight, hp, hpMax, { openAbove, runRounds, runRisk });
     if (refusal === null) return null;
     // Every refusal that resting would answer is rested towards, so it is never a wander.
     if (refusal.needs !== null && hp !== null && hp < refusal.needs) this.owed = refusal.needs;
     switch (refusal.kind) {
       case 'odds':
-        return t('automation.combat.refusedOdds', {
-          target,
-          survives: percentText(refusal.survives),
-          needs: percentText(openAbove),
-          hp: hp ?? 0
-        });
-      case 'health':
-        return t('automation.combat.refusedHealth', {
-          target,
-          rounds: runRounds,
-          hp: hp ?? 0,
-          needs: refusal.needs
-        });
+        return refusal.needs === null
+          ? t('automation.combat.refusedOdds', {
+              target,
+              survives: percentText(refusal.survives),
+              needs: percentText(openAbove),
+              hp: hp ?? 0
+            })
+          : t('automation.combat.refusedOddsResting', {
+              target,
+              survives: percentText(refusal.survives),
+              needs: percentText(openAbove),
+              hp: hp ?? 0,
+              rest: refusal.needs
+            });
+      case 'risk':
+        return refusal.needs === null
+          ? t('automation.combat.refusedRisk', {
+              target,
+              rounds: runRounds,
+              risk: percentText(refusal.risk),
+              hp: hp ?? 0
+            })
+          : t('automation.combat.refusedRiskResting', {
+              target,
+              rounds: runRounds,
+              risk: percentText(refusal.risk),
+              hp: hp ?? 0,
+              needs: refusal.needs
+            });
       default: {
         const never: never = refusal;
         return never;

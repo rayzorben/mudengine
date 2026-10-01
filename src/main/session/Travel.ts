@@ -28,7 +28,7 @@ import { healthFraction, percentText, type SafetyDecision } from '../../shared/a
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import { roundsCouldKill } from '../../shared/danger';
+import { runDue } from '../../shared/danger';
 import { withFled, type FledEntry } from '../../shared/fled';
 import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
@@ -893,9 +893,10 @@ export class Travel implements SessionModule {
 
     const fraction = healthFraction(state);
     const fight = this.session.fight();
-    const { runRounds } = tuning().combat;
-    // The fight's own worst rounds, which a share of maximum health is not (`danger.ts`).
-    const outmatched = roundsCouldKill(state.vitals.hp, fight, runRounds);
+    const { runRounds, runRisk } = tuning().combat;
+    // The fight's own risk from here, which a share of maximum health is not (`danger.ts`).
+    const risk = runDue(fight, { runRounds, runRisk });
+    const outmatched = risk !== null;
     const hurt = (fraction !== null && fraction <= safety.belowHealth) || outmatched;
     const outnumbered =
       safety.whenOutnumbered > 0 && state.combat.attackers.length >= safety.whenOutnumbered;
@@ -911,9 +912,9 @@ export class Travel implements SessionModule {
     if (!hurt && !outnumbered && !drained && dread === null) return;
 
     const why = outmatched
-      ? t('session.safety.whyRounds', {
+      ? t('session.safety.whyRisk', {
           rounds: runRounds,
-          worst: Math.round((fight?.worstRound ?? 0) * runRounds),
+          risk: percentText(risk ?? 0),
           hp: state.vitals.hp ?? 0
         })
       : hurt

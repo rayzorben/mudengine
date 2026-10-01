@@ -1,16 +1,15 @@
 /**
  * When a fight is too dangerous to start, to stay in, or to stay connected
- * through, read off the room's simulated fight (`simulateFight`): how often
- * the character walks out, and the most health any one round of it took.
- * One simulation answers all three:
+ * through, read off the room's simulated fight (`simulateFight`) from the
+ * health the character has now:
  *
- * - Open a fight only when it is survived at least `openAbove` of the time
- *   from the health the character has now, and when the next `runRounds`
- *   worst rounds would not already have it running. A fight nobody can work
- *   out is not refused here; the run and the hang-up act on it.
- * - Run once the next `runRounds` worst rounds could take what is left. A
- *   share of maximum health is the same figure at every level; this is not:
- *   two thugs that can land 22 in a round make 10 HP of 34 a corpse.
+ * - Open a fight only when it is survived at least `openAbove` of the time,
+ *   and when it would not already have the character running. A fight nobody
+ *   can work out is not refused here; the run and the hang-up act on it.
+ * - Run once the share of fights the character is dead in within `runRounds`
+ *   rounds is over `runRisk`. The worst round doubled was tried first: a cave
+ *   bear's worst blow is 18, so a 34-HP character at full health ran from one
+ *   that had missed.
  * - Hang up when the next `hangUpRounds` worst rounds could kill, where the
  *   realm's charge for hanging up would not kill first (`Player.Disconnects`:
  *   an unclean hang-up on a PvP realm takes `PVPHangHPHit`% of maximum
@@ -20,12 +19,14 @@
  */
 import type { Survival } from './survival';
 
-/** `tuning.combat`'s figures for opening a fight. */
+/** `tuning.combat`'s figures for opening a fight and running from one. */
 export interface DangerTuning {
   /** The share of fights survived from here that opening one needs; 0 never refuses for it. */
   openAbove: number;
-  /** Run once this many worst rounds could take the health left; 0 leaves it to the share. */
+  /** The rounds the run looks ahead over. */
   runRounds: number;
+  /** The share of fights dead within `runRounds` that runs; 0 never runs for it. */
+  runRisk: number;
 }
 
 /**
@@ -36,7 +37,27 @@ export interface DangerTuning {
 export type OpeningRefusal =
   | { kind: 'odds'; survives: number; needs: number | null }
   /** Opened now, it would have to run at once. */
-  | { kind: 'health'; needs: number };
+  | { kind: 'risk'; risk: number; needs: number | null };
+
+/**
+ * The share of fights the character is dead in by `rounds` rounds from now,
+ * read at the first horizon the simulation kept at or past it; null where it
+ * kept none.
+ */
+export function deathRisk(fight: Survival | null, rounds: number): number | null {
+  const at = fight?.horizons.find((horizon) => horizon.rounds >= rounds);
+  return at === undefined ? null : 1 - at.standing;
+}
+
+/** The death risk that makes the run due (dead too often within `runRounds`), or null. */
+export function runDue(
+  fight: Survival | null,
+  tune: Pick<DangerTuning, 'runRounds' | 'runRisk'>
+): number | null {
+  if (tune.runRisk <= 0) return null;
+  const risk = deathRisk(fight, tune.runRounds);
+  return risk !== null && risk > tune.runRisk ? risk : null;
+}
 
 /** Whether the next `count` worst rounds could take what is left; 0 never. */
 export function roundsCouldKill(hp: number | null, fight: Survival | null, count: number): boolean {
@@ -53,13 +74,11 @@ export function openingRefusal(
   tune: DangerTuning
 ): OpeningRefusal | null {
   if (fight === null || hp === null) return null;
-  if (roundsCouldKill(hp, fight, tune.runRounds)) {
-    const wanted = Math.floor(fight.worstRound * tune.runRounds) + 1;
-    return { kind: 'health', needs: hpMax === null ? wanted : Math.min(hpMax, wanted) };
-  }
+  const needs = hpMax === null || hp >= hpMax ? null : hpMax;
+  const risk = runDue(fight, tune);
+  if (risk !== null) return { kind: 'risk', risk, needs };
   if (tune.openAbove > 0 && fight.survives < tune.openAbove) {
-    const rested = hpMax === null || hp >= hpMax;
-    return { kind: 'odds', survives: fight.survives, needs: rested ? null : hpMax };
+    return { kind: 'odds', survives: fight.survives, needs };
   }
   return null;
 }

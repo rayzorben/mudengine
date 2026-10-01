@@ -178,7 +178,12 @@ describe('escaping a monster its row names, out of a fight', () => {
  */
 describe('running from a fight that could kill', () => {
   const plain: AutomationConfig = { ...config, combat: { ...config.combat, mobRules: [] } };
-  const thug = { survives: 0.4, worstRound: 11 } as unknown as Survival;
+  // Dead within three rounds a third of the time from here.
+  const thug = {
+    survives: 0.4,
+    worstRound: 11,
+    horizons: [{ rounds: 3, standing: 0.66, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
+  } as unknown as Survival;
   const hit = (hp: number, name: string, number: number): CharacterState => {
     const state = beside();
     return {
@@ -190,7 +195,7 @@ describe('running from a fight that could kill', () => {
     };
   };
 
-  it('runs once two worst rounds could take what is left, above the share of health', () => {
+  it('runs once the fight kills too often within three rounds, above the share of health', () => {
     const state = hit(20, 'Dank Room', 1);
     const kept: FledEntry[][] = [];
     const { travel: moving, sent } = travel(state, 'none', true, {

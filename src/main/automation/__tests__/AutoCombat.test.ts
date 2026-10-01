@@ -3964,8 +3964,12 @@ describe('opening only a fight it walks out of', () => {
     opening: () => survival,
     fled: () => fled
   });
-  const odds = (survives: number, worstRound: number): Survival =>
-    ({ survives, worstRound }) as unknown as Survival;
+  const odds = (survives: number, worstRound: number, standing = 1): Survival =>
+    ({
+      survives,
+      worstRound,
+      horizons: [{ rounds: 3, standing, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
+    }) as unknown as Survival;
 
   it('opens a fight survived from here (the control)', () => {
     const auto = make(
@@ -4014,7 +4018,21 @@ describe('opening only a fight it walks out of', () => {
     expect(sent).toEqual(['a thug']);
   });
 
-  it('wants the health two worst rounds take before opening, and rests towards it', () => {
+  it('opens on a monster whose worst blow is half its health, at full health (the cave bear)', () => {
+    make(
+      combat(),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard(odds(0.99, 18, 0.999))
+    ).onCharacter(at(34));
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
+  it('does not open what it would have to run from at once, and rests to full first', () => {
     const auto = make(
       combat(),
       true,
@@ -4022,13 +4040,13 @@ describe('opening only a fight it walks out of', () => {
       undefined,
       undefined,
       undefined,
-      guard(odds(1, 11))
+      guard(odds(0.75, 11, 0.8))
     );
     auto.onCharacter(at(20));
     drain();
     expect(sent).toEqual([]);
-    expect(auto.restingFor).toBe(23);
-    auto.onCharacter(at(23));
+    expect(auto.restingFor).toBe(34);
+    auto.onCharacter(at(34));
     expect(auto.restingFor).toBeNull();
   });
 
