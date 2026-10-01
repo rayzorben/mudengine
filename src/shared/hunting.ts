@@ -996,12 +996,17 @@ export function sizeLoop(
  * the adding — beyond the wait every filler is walked at the primary's
  * expense. Never past `maxRooms` rooms in all, and never on a spot whose
  * rate is unknown, since there is nothing to improve.
+ *
+ * Under a cash floor (`automation.hunting.cashPerHour`, todo 64) a lair that
+ * raises the copper is taken too while the loop pays less than the floor, past
+ * the wait and at the exp's expense: that is what the floor asks for.
  */
 export function addFiller(
   input: SpotInput,
   candidates: readonly FillerInput[],
   maxRooms: number,
-  c: HuntingConstants
+  c: HuntingConstants,
+  cashPerHour = 0
 ): { input: SpotInput; estimate: SpotEstimate; taken: number[] } {
   let current = input;
   let estimate = estimateSpot(current, c);
@@ -1009,10 +1014,14 @@ export function addFiller(
   if (estimate.expPerHour === null) return { input: current, estimate, taken };
   for (const [index, candidate] of candidates.entries()) {
     if (current.rooms + current.filler.length >= maxRooms) break;
-    if ((estimate.waitSeconds ?? 0) <= 0) break;
+    const short = shortOfCash(estimate.copperPerHour, cashPerHour);
+    if ((estimate.waitSeconds ?? 0) <= 0 && !short) break;
     const next: SpotInput = { ...current, filler: [...current.filler, candidate] };
     const priced = estimateSpot(next, c);
-    if (priced.expPerHour === null || priced.expPerHour <= estimate.expPerHour!) continue;
+    if (priced.expPerHour === null) continue;
+    const moreExp = priced.expPerHour > estimate.expPerHour!;
+    const moreCash = short && (priced.copperPerHour ?? 0) > (estimate.copperPerHour ?? 0);
+    if (!moreExp && !moreCash) continue;
     current = next;
     estimate = priced;
     taken.push(index);
@@ -1116,6 +1125,8 @@ export interface HuntingAdvice {
    */
   excluded: HuntExclusions;
   assumptions: HuntingAssumptions;
+  /** The copper an hour the spots were ranked against (`automation.hunting.cashPerHour`). */
+  cashPerHour: number;
   /** Why there is no answer, said out loud. */
   refusal: string | null;
 }
@@ -1151,7 +1162,7 @@ export function fightUnpriced(
  * the most dangerous room in reach. Nearest is the one fact the character
  * has about every one of them.
  */
-export function compareSpots(a: HuntingSpot, b: HuntingSpot): number {
+export function compareSpots(a: HuntingSpot, b: HuntingSpot, cashPerHour = 0): number {
   const rank = (spot: HuntingSpot): number =>
     spot.estimate.deadly
       ? 3
@@ -1164,6 +1175,14 @@ export function compareSpots(a: HuntingSpot, b: HuntingSpot): number {
   const rb = rank(b);
   if (ra !== rb) return ra - rb;
   if (ra === 0) {
+    // Under a cash floor, a spot paying it comes first, and among those short of it the most copper.
+    const sa = shortOfCash(a.estimate.copperPerHour, cashPerHour);
+    const sb = shortOfCash(b.estimate.copperPerHour, cashPerHour);
+    if (sa !== sb) return sa ? 1 : -1;
+    if (sa) {
+      const cash = (b.estimate.copperPerHour ?? 0) - (a.estimate.copperPerHour ?? 0);
+      if (cash !== 0) return cash;
+    }
     const d = b.estimate.expPerHour! - a.estimate.expPerHour!;
     if (d !== 0) return d;
   } else if (ra !== 2) {
@@ -1182,6 +1201,14 @@ export function compareSpots(a: HuntingSpot, b: HuntingSpot): number {
     if (ceiling !== 0) return ceiling;
   }
   return (a.rooms[0]?.steps ?? 0) - (b.rooms[0]?.steps ?? 0);
+}
+
+/**
+ * Whether a spot paying `copperPerHour` pays less than the hunt is asked for. No
+ * floor (0) is never short; an unknown copper figure is none.
+ */
+export function shortOfCash(copperPerHour: number | null, cashPerHour: number): boolean {
+  return cashPerHour > 0 && (copperPerHour ?? 0) < cashPerHour;
 }
 
 /**

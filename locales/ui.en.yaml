@@ -3641,6 +3641,8 @@ settings:
       pick without a click.
     radius: Look Within (Steps)
     radiusHint: How far to look for a lair, in steps. Blank is everywhere the exits reach.
+    cash: Cash an Hour (Copper)
+    cashHint: Copper an hour the hunt should earn; blank is exp alone.
   train:
     legend: Training
     warning: A point bought here is permanent, and the screen it is bought on renames the character

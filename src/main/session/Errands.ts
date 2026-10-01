@@ -1293,6 +1293,8 @@ export class Errands implements SessionModule {
       measured: null,
       constants: c
     };
+    const cashPerHour = this.automationConfig.hunting.cashPerHour;
+    const order = (a: HuntingSpot, b: HuntingSpot): number => compareSpots(a, b, cashPerHour);
     const refused = (refusal: string): HuntingAdvice => ({
       from: null,
       radius,
@@ -1301,6 +1303,7 @@ export class Errands implements SessionModule {
       unmeasured: [],
       excluded: { ...NO_EXCLUSIONS },
       assumptions,
+      cashPerHour,
       refusal
     });
     if (!world || world.size === 0) return refused(t('session.hunt.noRealmData'));
@@ -1556,7 +1559,7 @@ export class Errands implements SessionModule {
         estimate
       });
     }
-    survey.sort(compareSpots);
+    survey.sort(order);
     /*
      * Only the best are measured: a bounded sweep from each of a ring's rooms
      * is under a millisecond and there are thousands of groups, so the survey
@@ -1583,7 +1586,7 @@ export class Errands implements SessionModule {
         world
       )
     );
-    spots.sort(compareSpots);
+    spots.sort(order);
     return {
       from: { id: from, name: start.name },
       radius,
@@ -1592,6 +1595,7 @@ export class Errands implements SessionModule {
       unmeasured: opened === -1 ? rest : rest.filter((_, at) => at !== opened),
       excluded,
       assumptions: { ...assumptions, measured },
+      cashPerHour,
       refusal: null
     };
   }
@@ -1688,7 +1692,8 @@ export class Errands implements SessionModule {
       base(sized.rooms),
       offers.map((offer) => offer.input),
       c.maxLoopRooms,
-      c
+      c,
+      this.automationConfig.hunting.cashPerHour
     );
     const taken = filled.taken.map((index) => offers[index]!);
     const walk: HuntingRoom[] = [];
