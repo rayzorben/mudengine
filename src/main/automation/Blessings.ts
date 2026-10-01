@@ -50,7 +50,8 @@ import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
 import type { ActiveBuff, CharacterState } from '../../shared/character';
-import type { BlessingConfig, SpellsConfig } from '../../shared/config';
+import type { BlessingConfig } from '../../shared/blessings';
+import type { SpellsConfig } from '../../shared/config';
 import type { Block } from '../../shared/blocks';
 import {
   OPEN_CAST_GATE,

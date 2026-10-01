@@ -2,12 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Blessings } from '../Blessings';
 import { CommandQueue } from '../CommandQueue';
-import {
-  DEFAULT_CONFIG,
-  type AutomationConfig,
-  type BlessingConfig,
-  type SpellsConfig
-} from '../../../shared/config';
+import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
+import type { BlessingConfig } from '../../../shared/blessings';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 

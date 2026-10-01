@@ -22,7 +22,6 @@ import {
   type GearConfig,
   normalizeTrain,
   type RewritesUiConfig,
-  type BlessingTarget,
   type Cure,
   type DensityPreference,
   type EngagePolicy,
@@ -36,6 +35,7 @@ import {
   type EncumbranceGate,
   type TabsPreference
 } from './config';
+import type { BlessingTarget } from './blessings';
 import { normalizeMobRules, type MobRule } from './mobRules';
 import { DENOMINATIONS, type Denomination } from './character';
 import {
