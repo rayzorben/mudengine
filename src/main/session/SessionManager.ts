@@ -54,7 +54,6 @@ import {
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand } from '../automation/ItemErrand';
 import { QuestRunner } from '../automation/QuestRunner';
-import { AFTER_WORD } from '../automation/PackAfter';
 import { EquipmentManager } from '../automation/EquipmentManager';
 import { Wards } from '../automation/Wards';
 import { RealmMenu } from './RealmMenu';
@@ -67,7 +66,6 @@ import { Events } from '../automation/Events';
 import type { SessionModule } from '../automation/Module';
 import type { Loop } from '../../shared/loops';
 import {
-  nameAnswersTo,
   roomAddress,
   roomId,
   landingRooms,
@@ -102,10 +100,8 @@ import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
+import { itemPlanner } from './itemPlanner';
 
-/** The item errand's phrase and the listing asked after it, so both can be taken back. */
-const COLLECT_SAY_KEY = 'collect:say';
-const COLLECT_AFTER_KEY = 'collect:after';
 import { NO_LORE, type RealmLoreView } from '../../shared/lore';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
 import { NO_SHIPPED_SENTENCES, type ShippedSentences } from '../../shared/sentences';
@@ -781,7 +777,6 @@ export class SessionManager {
     // Walking a route is an outbound action: it proposes to the arbiter like
     // everything else, a verified step at a time.
     this.walker = new Walker(automation, this.queue, {
-      // A loop walks through the walker, so this is how it hears a leg end.
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         this.loops.onWalkEnded(arrived, reason, this.tracker.current);
@@ -815,17 +810,13 @@ export class SessionManager {
         this.tracker.hintMove(command, direction);
       },
       refused: (from, direction, why) => this.errands.noteRefused(from, direction, why),
-      // Where the player asked to go. Every walk goes through the walker — a route from the palette
-      // and a loop's own leg alike — which is why the record is taken here and not at the IPC
-      // handler the loop never reaches. And a new walk supersedes a journey still owed from a lost
-      // connection, whoever started it — the walker replaces a walk silently, and picking the old
-      // one up later would replace the new one the same way.
+      // Where the player asked to go, taken here because every walk comes through the walker;
+      // and a new walk supersedes a journey still owed from a lost connection, whoever started it.
       destination: (room, name) => {
         this.travel.supersedeJourney();
         this.sink.destination?.(room, name);
       },
-      // The tracker's queue, not the walker's: it counts a typed direction and a leg left over
-      // from a walk combat stopped, the moves a route cannot see and is desynchronised by.
+      // The tracker's queue: it counts the typed moves and leftover legs a route cannot see.
       pendingMoves: () => this.tracker.pendingMoves,
       // A rest, or a floor read after a kill, asked a moment ago and unanswered: a move
       // in flight's kind of fact (`Recovery.restInFlight`, todo 14; `AutoLoot`, 814).
@@ -833,20 +824,12 @@ export class SessionManager {
       floorInFlight: () => this.loot.floorInFlight,
       onTheGround,
       /*
-       * A route that stood still for a fight plans again from wherever the
-       * fight left the character. Answered here for the reason `holdAt` and
-       * `lightSource` are: the answer needs the realm graph, the character's
-       * purse and the edges this session has seen refused, and the walker
-       * holds a route and a queue and deliberately not the world.
+       * A route that stood still for a fight plans again from wherever the fight left the
+       * character: the answer needs the realm graph, the purse and the refused edges.
        */
       replan: (to, shortest) => this.travel.replan(to, shortest),
       moveOnly,
-      /*
-       * And where a draw put the character, when the room's own name and
-       * exits cannot say. The same ask the lap makes and the same one
-       * command; see `WalkerEvents.locate` for why a scatter maze is the
-       * case that needs it.
-       */
+      // Where a draw put the character, when the room cannot say (`WalkerEvents.locate`).
       locate: () => this.claims.askWhereIAm(),
       /*
        * What the realm says opens a step the server refused, and where it is
@@ -1239,14 +1222,7 @@ export class SessionManager {
          * errand waiting for the level to move), during which a hunt would
          * otherwise survey and walk the character away from what it came for.
          */
-        busy: () =>
-          this.travel.isRetreating() ||
-          this.travel.retreatArmed ||
-          this.travel.escapeUnanswered ||
-          this.supplies.current !== null ||
-          this.trainLevel.busy ||
-          this.itemErrand.running ||
-          this.questRunner.running
+        busy: () => this.errandHeld()
       },
       reports
     );
@@ -1256,73 +1232,29 @@ export class SessionManager {
      * the player asked for walked once the pack holds it.
      */
     this.itemErrand = new ItemErrand(
-      {
-        here: () => roomAddress(this.tracker.current.room),
-        sourcesOf: (item, to) => this.errands.itemSources(item, to),
-        buy: (row) => this.supplies.fetch(row, this.tracker.current),
-        buying: () => this.supplies.current !== null,
-        runLoop: (loop) => {
-          // `startLoop` replaces whatever lap was running, which is right — one
-          // movement at a time — and worth saying, because the lap it replaces
-          // is the player's and it is not coming back on its own.
-          if (this.loops.progress.status === 'running') {
-            this.sink.notice(
-              t('automation.collect.replacingLap', { loopName: this.loops.progress.name ?? '' })
-            );
-          }
-          const answer = this.travel.startLoop(loop);
-          return 'refused' in answer ? answer.refused : null;
-        },
-        looping: () => this.loops.progress.status === 'running',
-        stopLoop: stopLap,
-        alsoTake: (name) => this.loot.alsoTake(name),
-        stopTaking: (name) => this.loot.stopTaking(name),
-        walk: (route, run) => this.travel.walkAfterCollecting(route, run),
-        // The player's own list is what makes a found key worth keeping.
-        kept: (name) =>
-          this.automationConfig.supplies.items.some((row) => nameAnswersTo(name, row.name)),
-        walkTo: (room) => this.travel.walkLegTo(room),
-        walking: () => this.walker.walking,
-        // The phrase in the `probe` band, as the quest run's act, and seen by
-        // the quest book like any act this client sends for the player.
-        say: (command, onSent) =>
-          this.queue.enqueue({
-            command,
-            priority: 'probe',
-            coalesceKey: COLLECT_SAY_KEY,
-            // Lapses as the quest run's act does, so a phrase that never goes
-            // out ends the errand rather than holding it (`saying`).
-            expiresAt: Date.now() + tuning().quests.expiresMs,
-            reason: t('automation.collect.reasonSay', { command }),
-            onSent: () => {
-              onSent();
-              this.questWatch.noteSaid(command);
-            }
-          }),
-        listPack: (onSent) =>
-          this.queue.enqueue({
-            command: AFTER_WORD,
-            priority: 'probe',
-            coalesceKey: COLLECT_AFTER_KEY,
-            expiresAt: Date.now() + tuning().quests.expiresMs,
-            reason: t('automation.collect.reasonPackAfter'),
-            onSent
-          }),
-        saying: () => this.queue.queued((intent) => intent.coalesceKey === COLLECT_SAY_KEY),
-        takeBack: () =>
-          this.queue.cancel(
-            (intent) =>
-              intent.coalesceKey === COLLECT_SAY_KEY || intent.coalesceKey === COLLECT_AFTER_KEY
-          )
-      },
+      itemPlanner({
+        modules: () => ({
+          tracker: this.tracker,
+          errands: this.errands,
+          supplies: this.supplies,
+          loops: this.loops,
+          travel: this.travel,
+          loot: this.loot,
+          walker: this.walker,
+          queue: this.queue,
+          questWatch: this.questWatch
+        }),
+        stopLap,
+        config: () => this.automationConfig,
+        notice: (message) => this.sink.notice(message)
+      }),
       reports
     );
     /*
-     * And carrying a quest's plan (todos 102–103): the errands above, the
-     * walker and auto-combat, driven one step at a time by the plan the card
-     * drew. Its legs are an errand's — quiet, held for health, not owed
-     * across a lost connection — and it holds the lap as the errands do.
-     */
+     * And carrying a quest's plan (todos 102–103): the errands above, the walker
+     * and auto-combat, driven a step at a time by the plan the card drew. Its
+     * legs are an errand's (quiet, held for health, not owed across a lost
+     * connection) and it holds the lap as the errands do. */
     this.questRunner = new QuestRunner(
       automation.quests,
       automation.enabled,
@@ -3254,9 +3186,7 @@ export class SessionManager {
         fighting: this.combat.willFight
       });
       if (!moveOnly) {
-        // Shopping, which yields to every one of the above: not while running
-        // away, not while walking home, not while anything else has the
-        // character. See `Supplies.consider`.
+        // Shopping, which yields to every one of the above (`Supplies.consider`).
         this.supplies.onCharacter(state);
         // And the kit after a death, on the same terms as the errand.
         this.recoverGear.onCharacter(state);
@@ -3415,6 +3345,25 @@ export class SessionManager {
     return this.world.spellOver(here);
   }
 
+  /**
+   * Nothing else in the middle of something: the escapes, and **the errands**,
+   * each of which has phases where nothing is walking and nothing is looping (a
+   * shop errand waiting for its listing, a trainer errand waiting for the level
+   * to move), during which a hunt or a plan would walk the character away from
+   * what it came for.
+   */
+  private errandHeld(): boolean {
+    return (
+      this.travel.isRetreating() ||
+      this.travel.retreatArmed ||
+      this.travel.escapeUnanswered ||
+      this.supplies.current !== null ||
+      this.trainLevel.busy ||
+      this.itemErrand.running ||
+      this.questRunner.running
+    );
+  }
+
   /** The passage last said, so going in and coming out are each said once. */
   private passageSaid: Corridor | null = null;
 
@@ -3444,8 +3393,7 @@ export class SessionManager {
      * other; a held walk is standing still precisely so this can happen, and
      * refusing there would recreate the reported bug from the other side, with
      * the walk waiting for a rest that was waiting for the walk.
-     */
-    /*
+     *
      * And a held walk answers for the loop too: a leg standing still before a
      * trap (`Holds.holdForTrap`, 2026-09-10) is a lap that is not marching,
      * and the loop's own holds cannot see inside a leg — read the loop's
