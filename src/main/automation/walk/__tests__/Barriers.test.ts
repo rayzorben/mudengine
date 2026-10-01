@@ -149,8 +149,53 @@ describe('what the ladder remembers, let go', () => {
     expect(notices.filter((line) => line === holding)).toHaveLength(2);
   });
 
-  // Mutant: a new walk keeps the last one's lock.
-  it('asks a door to open on a new walk, whatever the last walk was told', () => {
+  /*
+   * Todo 74, the capture's shape: the room prints the door closed, so the lap
+   * opened it first. Heard locked once, the next lap bashes in the step's place.
+   */
+  it('bashes a door the room calls shut that this session heard was locked', () => {
+    const shut = { ...skilled(60, 0), room: printing(1, [['e', 'closed door']]).room };
+    const { walker, sent } = walkerOn(
+      { stateNow: () => shut },
+      configWith({ movement: { openDoors: true, openTries: 1, bashDoors: true, bashTries: 1 } })
+    );
+    walker.onCharacter(shut);
+    walker.start(GATED, shut);
+    vi.advanceTimersByTime(50);
+    walker.onBlock(wire('open-failed', { barrier: 'door', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    walker.stop('asked to');
+    settle();
+    sent.length = 0;
+
+    walker.start(GATED, shut);
+    vi.advanceTimersByTime(50);
+    expect(moves(sent)[0]).toBe('bas e');
+    expect(moves(sent)).not.toContain('open e');
+  });
+
+  it('asks a remembered door to open again once nothing can force it', () => {
+    const shut = { ...skilled(0, 0), room: printing(1, [['e', 'closed door']]).room };
+    const { walker, sent } = walkerOn(
+      { stateNow: () => shut },
+      configWith({ movement: { openDoors: true, openTries: 1, bashDoors: true, bashTries: 1 } })
+    );
+    walker.onCharacter(shut);
+    walker.start(GATED, shut);
+    vi.advanceTimersByTime(50);
+    walker.onBlock(wire('open-failed', { barrier: 'door', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    walker.stop('asked to');
+    settle();
+    sent.length = 0;
+
+    walker.start(GATED, shut);
+    vi.advanceTimersByTime(50);
+    expect(moves(sent)[0]).toBe('open e');
+  });
+
+  // Mutant: a new connection keeps the last one's locks.
+  it('asks a door to open again on a new connection', () => {
     const { walker, sent } = walkerOn(
       {},
       configWith({ movement: { openDoors: true, openTries: 3 } })
@@ -160,6 +205,7 @@ describe('what the ladder remembers, let go', () => {
     vi.advanceTimersByTime(200);
     walker.onBlock(wire('open-failed', { barrier: 'door', reason: 'locked' }));
     walker.stop('asked to');
+    walker.reset();
     settle();
 
     walker.start(ROUTE, at(1, 1));
