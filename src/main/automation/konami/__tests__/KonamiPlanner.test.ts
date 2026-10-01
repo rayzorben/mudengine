@@ -439,6 +439,20 @@ describe('the planner', () => {
     it.dispose();
   });
 
+  it('pauses when the player stops the walk, rather than planning the next one', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.playerStopped();
+    expect(it.snapshot().paused).toBe(true);
+    it.onCharacter(state);
+    await settle();
+    expect(global.__konamiAsked).toBe(1);
+    it.dispose();
+  });
+
   it('takes its settings off, and gives the hunt back, when paused', async () => {
     const it = planner();
     it.configure(on(providerFile()));

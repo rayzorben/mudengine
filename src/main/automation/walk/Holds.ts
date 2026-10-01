@@ -54,6 +54,7 @@ export type HoldsEvents = Pick<
   | 'pendingMoves'
   | 'spellsHold'
   | 'onTheGround'
+  | 'restFor'
 >;
 
 export class Holds {
@@ -907,6 +908,9 @@ export class Holds {
   /** Which vital this character is below the figure it may travel at, health first, or null. */
   private wantsVitalHold(state: CharacterState): 'health' | 'mana' | null {
     if (!this.holdWhenHurt) return null;
+    const owed = this.events.restFor?.() ?? null;
+    const hp = state.vitals.hp;
+    if (owed !== null && hp !== null && hp < owed) return 'health';
     const { health } = this.config;
     const margin = tuning().loop.resumeMarginWhenUncapped;
     for (const vital of ['health', 'mana'] as const) {

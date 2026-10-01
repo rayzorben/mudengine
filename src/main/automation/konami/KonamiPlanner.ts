@@ -261,6 +261,17 @@ export class KonamiPlanner implements SessionModule {
     return this.paused;
   }
 
+  /**
+   * The player pressed Stop on a walk or a lap: the character is to stay
+   * put, so the planner pauses rather than taking the stop for a goal done
+   * and planning the next walk a second later.
+   */
+  playerStopped(): void {
+    if (!this.running) return;
+    this.events.notice(t('automation.konami.pausedByStop'));
+    this.togglePause();
+  }
+
   /** The player's *ask again*. */
   askNow(): void {
     this.log.say('button', 'the player asked again');

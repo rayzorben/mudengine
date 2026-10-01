@@ -28,11 +28,13 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
  */
 const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the wearer join, shared with the pack's query (`world/wearer.ts`).
-  'src/main/session/SessionManager.ts': 3830,
+  // And by the fight's wiring folded beside the danger checks (2026-09-30).
+  'src/main/session/SessionManager.ts': 3825,
   'src/main/world/WorldGraph.ts': 2549,
   'src/main/parse/CharacterTracker.ts': 2539,
   'src/renderer/src/App.tsx': 1786,
-  'src/main/automation/Walker.ts': 2039,
+  // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
+  'src/main/automation/Walker.ts': 1986,
   'src/renderer/src/components/SettingsScreen.tsx': 1282,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the

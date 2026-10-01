@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { FledEntry } from '../fled';
 
 import { attackOptions } from '../attackOptions';
 import { EMPTY_CHARACTER, type CharacterState } from '../character';
@@ -195,7 +196,11 @@ const HELM: SlotUpgrade = {
   ]
 };
 
-function brief(over: Partial<CharacterState> = {}, lessons: KonamiLesson[] = []): KonamiBrief {
+function brief(
+  over: Partial<CharacterState> = {},
+  lessons: KonamiLesson[] = [],
+  fled: FledEntry[] = []
+): KonamiBrief {
   const base = structuredClone(EMPTY_CHARACTER);
   const state: CharacterState = {
     ...base,
@@ -234,6 +239,7 @@ function brief(over: Partial<CharacterState> = {}, lessons: KonamiLesson[] = [])
     },
     maxSpots: 10,
     lessons,
+    fled,
     walk: () => null,
     simulated: () => null,
     now: 1
@@ -241,6 +247,11 @@ function brief(over: Partial<CharacterState> = {}, lessons: KonamiLesson[] = [])
 }
 
 describe('the brief', () => {
+  it('tells each spot which of its monsters the character ran from', () => {
+    const made = brief({}, [], [{ name: 'fierce zombie', level: 2, at: 1 }]);
+    expect(made.hunting.spots[0]?.history).toEqual(['at level 2, ran from fierce zombie here']);
+  });
+
   it('gives each spot what choosing it came to before, and every lesson whole', () => {
     const died: KonamiLesson = {
       at: 5,

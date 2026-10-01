@@ -40,6 +40,7 @@ import type { BelongingsSink, StatsRecord } from '../../shared/belongings';
 import type { CharacterIdentity } from '../../shared/reset';
 import { isCombatTally, settleClocks, type CombatTally } from '../../shared/tally';
 import type { Loadout, WornSlot } from '../../shared/gear';
+import { isFledList, type FledEntry } from '../../shared/fled';
 import { sameItem } from '../../shared/items';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
@@ -70,6 +71,8 @@ interface BelongingsFile {
   spellbook?: KnownSpell[];
   /** Observed cast→wear-off seconds per spell (lowercased). See the sink. */
   spellDurations?: Record<string, number>;
+  /** The monsters run from, and at what level. Absent is none. */
+  fled?: FledEntry[];
   /**
    * What `abil` last summed, under the same absence allowance as the
    * spellbook: **absent means never read, not "the realm counts none"**. The
@@ -106,6 +109,7 @@ export class Belongings implements BelongingsSink {
   private loadout: WornSlot[] = [];
   private spellbook: KnownSpell[] | null = null;
   private durations: Record<string, number> = {};
+  private fled: FledEntry[] = [];
   /** Null is *never read*, never "the realm counts none". See the sink. */
   private abilities: AbilitySums | null = null;
   /** Null is *never read*. See `recallIdentity`. */
@@ -180,6 +184,16 @@ export class Belongings implements BelongingsSink {
     return this.durations;
   }
 
+  recallFled(): readonly FledEntry[] {
+    return this.fled;
+  }
+
+  rememberFled(entries: readonly FledEntry[]): void {
+    if (this.suspended) return;
+    this.fled = entries.map((entry) => ({ ...entry }));
+    this.schedule();
+  }
+
   recallAbilities(): AbilitySums | null {
     return this.abilities;
   }
@@ -230,6 +244,7 @@ export class Belongings implements BelongingsSink {
     this.loadout = [];
     this.spellbook = null;
     this.durations = {};
+    this.fled = [];
     this.abilities = null;
     this.identity = null;
     this.stats = null;
@@ -310,6 +325,7 @@ export class Belongings implements BelongingsSink {
       // Absent is *never read*, and stays null — not normalised to [].
       this.spellbook = parsed.spellbook ?? null;
       this.durations = parsed.spellDurations ?? {};
+      this.fled = parsed.fled ?? [];
       // Absent is *never read*, and stays null — the spellbook's rule.
       this.abilities = parsed.abilities ?? null;
       this.identity = parsed.identity ?? null;
@@ -355,6 +371,7 @@ export class Belongings implements BelongingsSink {
       // Omitted while never read, so the absence survives the round trip.
       ...(this.spellbook !== null ? { spellbook: this.spellbook } : {}),
       ...(Object.keys(this.durations).length > 0 ? { spellDurations: this.durations } : {}),
+      ...(this.fled.length > 0 ? { fled: this.fled } : {}),
       // Omitted while never read, so the absence survives the round trip.
       ...(this.abilities !== null ? { abilities: this.abilities } : {}),
       ...(this.identity !== null ? { identity: this.identity } : {}),
@@ -474,6 +491,7 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.spellbook !== undefined && !Array.isArray(file.spellbook)) return false;
   if (file.spellbook !== undefined && !file.spellbook.every(isKnownSpell)) return false;
   if (file.spellDurations !== undefined && !isDurationRecord(file.spellDurations)) return false;
+  if (file.fled !== undefined && !isFledList(file.fled)) return false;
   if (file.abilities !== undefined && !isAbilitySums(file.abilities)) return false;
   if (file.identity !== undefined && !isIdentity(file.identity)) return false;
   if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;

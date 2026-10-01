@@ -159,7 +159,7 @@ function goalQuestion(brief: KonamiBrief): {
       instructions:
         `${AIM} What should the character do next? The state lists every spot with each monster's stats, ` +
         `the damage arithmetic, the simulated fight and the walk there with the lairs it passes, and the gear per slot. ` +
-        `Its history is what past plans near this level came to: do not choose again what killed the character or what the player said no to.`,
+        `Its history is what past plans near this level came to, and the monsters there the character ran from: do not choose again what killed the character, what it ran from, or what the player said no to.`,
       criteria
     },
     labels

@@ -9,6 +9,7 @@
  * not how you escape*.
  */
 import { t } from '../app/i18n';
+import { tuning } from '../app/tuning';
 import { PVP_WINDOW_MS, playersHere, type HangUpWatch } from '../automation/HangUp';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
@@ -21,13 +22,15 @@ import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import { hangUpCost, roundsCouldKill } from '../../shared/danger';
 import { stanceHere } from '../../shared/mobRules';
+import type { Survival } from '../../shared/survival';
 import type { ConnectionEnd } from '../../shared/types';
 
 /** What the two decisions read, and the one escape they hand on. */
 export interface SafetyParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
-  readonly hangUp: Pick<HangUpWatch, 'assess'>;
+  readonly hangUp: Pick<HangUpWatch, 'assess' | 'clean'>;
   readonly realmMenu: Pick<RealmMenu, 'penalty' | 'noteCommand'>;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly travel: Pick<Travel, 'runFromPlayer'>;
@@ -41,6 +44,8 @@ export interface SafetyParts {
 export interface SafetySession {
   /** The automation settings as last loaded. */
   config(): AutomationConfig;
+  /** The room's fight as it stands, simulated (`Appraisal.fight`). */
+  fight(): Survival | null;
   /** Hang up, and record who asked. See `SessionManager.disconnect`. */
   disconnect(by: ConnectionEnd): void;
   notice(message: string): void;
@@ -63,6 +68,8 @@ export class Safety implements SessionModule {
   private readonly pvpSaid = new Map<string, number>();
   /** The last refusal reported, so it is said once rather than per status line. */
   private lastHangUpRefusal: string | null = null;
+  /** Said once a fight: the hang-up before death would itself kill. */
+  private costlySaid = false;
   /**
    * The monster a `hangup` row names that the switch left standing in the
    * room, by key, so the refusal is said once while it stays (818).
@@ -92,6 +99,68 @@ export class Safety implements SessionModule {
     this.pvpSaid.clear();
     this.lastHangUpRefusal = null;
     this.stalkerSaid = null;
+    this.costlySaid = false;
+  }
+
+  /**
+   * The last resort, ahead of running (`tuning.combat.hangUpRounds`): the
+   * next worst round of the fight could take what is left, so the
+   * character leaves the realm rather than the fight. Death drops everything
+   * carried in the room it happened in, a life or no life (`Player.Killed`);
+   * an unclean hang-up on a realm that charges takes a share of maximum
+   * health and some random items, and dies of it only where the share is
+   * more than is left (`Player.Disconnects`). So it hangs up wherever the
+   * charge leaves the character standing, charged or clean, and says why not
+   * where it would not. True when it hung up.
+   */
+  beforeDeath(state: CharacterState): boolean {
+    const count = tuning().combat.hangUpRounds;
+    if (!this.automationConfig.enabled || count <= 0) return false;
+    if (state.phase !== 'in-game' || !this.client.connected) return false;
+    if (this.publisher.state.phase === 'closing') return false;
+    const fighting = state.inCombat || state.combat.attackers.length > 0;
+    const { hp, hpMax } = state.vitals;
+    // Down already, the realm kills a disconnect as surely as the next blow.
+    if (!fighting || hp === null || hp <= 0) {
+      if (!fighting) this.costlySaid = false;
+      return false;
+    }
+    const fight = this.session.fight();
+    if (!roundsCouldKill(hp, fight, count)) return false;
+    const menu = this.realmMenu.penalty;
+    const charged =
+      menu !== null ? menu.percent > 0 : this.automationConfig.safety.hangUp.penalties;
+    // `clean`, which words nothing: this runs per status line while the round could kill.
+    const unclean = charged && !this.hangUp.clean(state, Date.now());
+    const cost = unclean ? hangUpCost(hpMax, menu?.percent ?? null) : 0;
+    const why = t('session.safety.whyNextRound', {
+      worst: Math.round((fight?.worstRound ?? 0) * count),
+      hp
+    });
+    if (cost !== null && cost >= hp) {
+      if (!this.costlySaid) {
+        this.costlySaid = true;
+        this.session.notice(t('session.safety.beforeDeathCostly', { why, cost }));
+        this.publisher.noteSafety({
+          at: Date.now(),
+          action: 'hang up',
+          because: why,
+          acted: false,
+          refused: t('session.safety.beforeDeathCostlyReason', { cost })
+        });
+      }
+      return false;
+    }
+    this.session.notice(
+      cost === null
+        ? t('session.safety.beforeDeathUnknownCharge', { why })
+        : cost > 0
+          ? t('session.safety.beforeDeathCharged', { why, cost })
+          : t('session.safety.beforeDeath', { why })
+    );
+    this.publisher.noteSafety({ at: Date.now(), action: 'hang up', because: why, acted: true });
+    this.session.disconnect('client');
+    return true;
   }
 
   /**

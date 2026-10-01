@@ -225,6 +225,12 @@ export interface WalkerEvents {
    */
   onTheGround?(): boolean;
   /**
+   * Hit points a fight turned down for health wants first, or null
+   * (`AutoCombat.restingFor`): the walk stands still below it, as it does
+   * below `restBelow`, so the rest that follows can happen.
+   */
+  restFor?(): number | null;
+  /**
    * A fresh route from where the character is *now* to where it was going.
    *
    * Asked when a fight the route stood still for is over and the character is

@@ -112,6 +112,7 @@ import {
   type RealmPlayers
 } from '../../shared/players';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
+import type { FledEntry } from '../../shared/fled';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
@@ -406,7 +407,7 @@ export class SessionManager {
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
-  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise'>;
+  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'fight' | 'opening'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'reset' | 'dispose'>;
   private automationConfig: AutomationConfig;
@@ -742,6 +743,7 @@ export class SessionManager {
     });
 
     const onTheGround = (): boolean => this.grounded.down;
+    const fled = (): readonly FledEntry[] => this.belongings.recallFled();
     // Under a timed spell the way in cast, the walk moves and nothing else does (todo 104).
     const moveOnly = (state: CharacterState): boolean => this.underTimedSpell(state) !== null;
     this.routines = new Routines(automation, this.queue, {
@@ -786,7 +788,6 @@ export class SessionManager {
     // read every switch as on and would never lend (todo 00).
     this.combatLease.configure(automation);
     this.walker = new Walker(automation, this.queue, {
-      // A loop walks through the walker, so this is how it hears a leg end.
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         this.loops.onWalkEnded(arrived, reason, this.tracker.current);
@@ -820,39 +821,27 @@ export class SessionManager {
         this.tracker.hintMove(command, direction);
       },
       refused: (from, direction, why) => this.errands.noteRefused(from, direction, why),
-      // Where the player asked to go. Every walk goes through the walker — a route from the palette
-      // and a loop's own leg alike — which is why the record is taken here and not at the IPC
-      // handler the loop never reaches. And a new walk supersedes a journey still owed from a lost
-      // connection, whoever started it — the walker replaces a walk silently, and picking the old
-      // one up later would replace the new one the same way.
+      // Where the player asked to go, taken here because every walk comes through the walker;
+      // and a new walk supersedes a journey still owed from a lost connection, whoever started it.
       destination: (room, name) => {
         this.travel.supersedeJourney();
         this.sink.destination?.(room, name);
       },
-      // The tracker's queue, not the walker's own idea of one: it counts a
-      // typed direction and a leg left over from a walk combat stopped, which
-      // are the moves a route cannot see and is desynchronised by.
+      // The tracker's queue: it counts the typed moves and leftover legs a route cannot see.
       pendingMoves: () => this.tracker.pendingMoves,
       // A rest, or a floor read after a kill, asked a moment ago and unanswered: a move
       // in flight's kind of fact (`Recovery.restInFlight`, todo 14; `AutoLoot`, 814).
       restInFlight: () => this.recovery.restInFlight,
       floorInFlight: () => this.loot.floorInFlight,
       onTheGround,
+      restFor: () => this.combat.restingFor,
       /*
-       * A route that stood still for a fight plans again from wherever the
-       * fight left the character. Answered here for the reason `holdAt` and
-       * `lightSource` are: the answer needs the realm graph, the character's
-       * purse and the edges this session has seen refused, and the walker
-       * holds a route and a queue and deliberately not the world.
+       * A route that stood still for a fight plans again from wherever the fight left the
+       * character: the answer needs the realm graph, the purse and the refused edges.
        */
       replan: (to, shortest) => this.travel.replan(to, shortest),
       moveOnly,
-      /*
-       * And where a draw put the character, when the room's own name and
-       * exits cannot say. The same ask the lap makes and the same one
-       * command; see `WalkerEvents.locate` for why a scatter maze is the
-       * case that needs it.
-       */
+      // Where a draw put the character, when the room cannot say (`WalkerEvents.locate`).
       locate: () => this.claims.askWhereIAm(),
       /*
        * What the realm says opens a step the server refused, and where it is
@@ -977,7 +966,8 @@ export class SessionManager {
        * configuration they do.
        */
       () => this.errands.realmClass(),
-      lore
+      lore,
+      { opening: (name) => (this.world ? this.appraisal.opening(name) : undefined), fled }
     );
 
     /*
@@ -1281,6 +1271,7 @@ export class SessionManager {
       supplies: this.supplies,
       queue: this.queue,
       config: () => this.automationConfig,
+      fled,
       busy: () => this.errandHeld() || this.tracker.pendingMoves > 0 || this.walker.walking,
       safety: () => this.publisher.automation.safety,
       target: () => this.state.target,
@@ -1722,6 +1713,9 @@ export class SessionManager {
         movement: () => this.movement,
         loopNamed: (name) => this.loopNamed(name),
         dropTyped: (died) => this.dropTyped(died),
+        fight: () => this.appraisal.fight(),
+        fled,
+        keepFled: (entries) => this.belongings.rememberFled(entries),
         ...reports
       }
     );
@@ -1776,6 +1770,7 @@ export class SessionManager {
     };
     const safetySession = {
       config: () => this.automationConfig,
+      fight: () => this.appraisal.fight(),
       disconnect: (by: ConnectionEnd) => this.disconnect(by),
       notice: (message: string) => this.sink.notice(message)
     };
@@ -3243,8 +3238,9 @@ export class SessionManager {
       // Telling a leader this character sat down or stood up; and, leading, whom to wait for.
       this.remotes.onCharacter(state);
       this.travel.watchParty(state);
-      // Running away first, walked and then the realm's teleport (todo 813): both cost
-      // nothing, where an unclean disconnect is penalised and can kill outright.
+      // The next round could kill: leave the realm, where the charge does not kill first.
+      if (this.safety.beforeDeath(state)) return;
+      // Then running away, walked and then the realm's teleport (todo 813): both free.
       this.travel.considerEscape(state);
       this.fleeGoto.consider(state);
       // And the walk home a `safe-haven` escape armed, once the fight is over.
@@ -3471,8 +3467,7 @@ export class SessionManager {
      * other; a held walk is standing still precisely so this can happen, and
      * refusing there would recreate the reported bug from the other side, with
      * the walk waiting for a rest that was waiting for the walk.
-     */
-    /*
+     *
      * And a held walk answers for the loop too: a leg standing still before a
      * trap (`Holds.holdForTrap`, 2026-09-10) is a lap that is not marching,
      * and the loop's own holds cannot see inside a leg — read the loop's
@@ -3533,13 +3528,12 @@ export class SessionManager {
   }
 
   /**
-   * `Recovery`, told first what the walk is waiting for: a route standing
-   * still before a trap names the health it wants (`Walker.restingFor`), and
-   * that figure is above the resting floor, so the rest that ends the hold
-   * has to be asked for by the module that owns resting.
+   * `Recovery`, told first the health a walk standing before a trap or a fight turned down for
+   * health wants (`restingFor`): above the resting floor, so only the resting module asks for it.
    */
   private restNow(state: CharacterState): void {
-    this.recovery.needAtLeast(this.walker.restingFor);
+    const owed = [this.walker.restingFor, this.combat.restingFor].filter((hp) => hp !== null);
+    this.recovery.needAtLeast(owed.length === 0 ? null : Math.max(...owed));
     this.recovery.onCharacter(state);
   }
 
@@ -3689,6 +3683,7 @@ export class SessionManager {
   /** The one stop, whichever of the two is running. See `Travel.stopMoving`. */
   stopMoving(): void {
     this.travel.stopMoving();
+    this.konami.playerStopped();
   }
 
   /** The named loop, or whatever was stopped. See `Travel.startMoving`. */

@@ -3,6 +3,7 @@
  * to and reads facts from, so `SessionManager` composes it in one call.
  */
 import { t } from '../app/i18n';
+import type { FledEntry } from '../../shared/fled';
 import { tuning } from '../app/tuning';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
@@ -36,6 +37,8 @@ export interface KonamiWiring {
   supplies: Pick<Supplies, 'fetch' | 'current'>;
   queue: Pick<CommandQueue, 'enqueue'>;
   config(): AutomationConfig;
+  /** The monsters this character ran from. */
+  fled(): readonly FledEntry[];
   /** An escape, a move out, a walk, a trip: the character is someone else's for now. */
   busy(): boolean;
   /** The safety trace, newest first: what the modules said they would not do. */
@@ -66,7 +69,8 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
             traveller: (state) => errands.travellerNow(state),
             priceAt: (name, shop) => errands.priceAt(name, shop),
             lairOdds: (room) => wiring.odds.lair(room),
-            menacePlayer: (state) => errands.menacePlayer(state)
+            menacePlayer: (state) => errands.menacePlayer(state),
+            fled: wiring.fled
           },
           tracker.current,
           now,

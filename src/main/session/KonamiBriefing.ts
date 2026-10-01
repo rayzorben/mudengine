@@ -8,6 +8,7 @@
  * `buildBrief`, pure; this is the join.
  */
 import { t } from '../app/i18n';
+import { avoided, type FledEntry } from '../../shared/fled';
 import { tuning } from '../app/tuning';
 import { CLASS_STEALTH_ABILITY, holdsAbility, type Capabilities } from '../../shared/abilities';
 import { attackOptions } from '../../shared/attackOptions';
@@ -75,6 +76,8 @@ export interface BriefingParts {
   lairOdds(room: WorldRoom): Odds;
   /** What a monster's blows are measured against (`Errands.menacePlayer`). */
   menacePlayer(state: CharacterState): MenacePlayer;
+  /** The monsters this character ran from (`Belongings.recallFled`). */
+  fled(): readonly FledEntry[];
 }
 
 /** `Abil` ids that make a lasting spell something other than a blessing. */
@@ -305,6 +308,14 @@ export function konamiBrief(
     settings: settingsOf(config),
     maxSpots,
     lessons,
+    fled: parts.fled().filter(
+      (entry) =>
+        avoided([entry], entry.name, state.progress.level, {
+          band: tuning().combat.fledLevels,
+          forgetMs: tuning().combat.fledForgetMs,
+          now
+        }) !== null
+    ),
     walk: (spot) => walkTo(parts, world, here, firstRoom(world, spot), state),
     simulated: (spot) => simulated(parts, firstRoom(world, spot)),
     now

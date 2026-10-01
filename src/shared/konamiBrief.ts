@@ -17,9 +17,10 @@ import type { MobEntity } from './entities';
 import { primaryMob, type HuntingAdvice, type HuntingSpot } from './hunting';
 import { wornItems } from './items';
 import type { KonamiLayer } from './konami';
+import type { FledEntry } from './fled';
 import { goalKey, lessonText, type KonamiLesson } from './konamiLessons';
 import type { SurvivalLevel } from './survival';
-import type { MobAttack } from './world';
+import { mobKey, type MobAttack } from './world';
 
 /** One better item for a slot, and where it is sold. */
 export interface GearOffer {
@@ -220,6 +221,8 @@ export interface BriefInput {
   maxSpots: number;
   /** Past plans near this level (`lessonsFor`). */
   lessons: KonamiLesson[];
+  /** The monsters this character ran from and is still kept off (`avoided`). */
+  fled: readonly FledEntry[];
   /** The walk to a spot offered. */
   walk(spot: HuntingSpot): BriefRoute | null;
   /** The simulator's run of a spot's fight. */
@@ -294,9 +297,18 @@ function briefSpot(
     },
     fight: input.simulated(spot),
     route: input.walk(spot),
-    history: input.lessons
-      .filter((lesson) => goalKey(lesson.goal) === key)
-      .map((lesson) => lessonText(lesson)),
+    history: [
+      ...input.lessons
+        .filter((lesson) => goalKey(lesson.goal) === key)
+        .map((lesson) => lessonText(lesson)),
+      ...input.fled
+        .filter((entry) => spot.mobs.some((mob) => mobKey(mob.name) === entry.name))
+        .map((entry) =>
+          entry.level === null
+            ? `ran from ${entry.name} here`
+            : `at level ${entry.level}, ran from ${entry.name} here`
+        )
+    ],
     mobs: spot.mobs.map((mob) =>
       briefMob(
         entities.find((entity) => entity.name.toLowerCase() === mob.name.toLowerCase()),

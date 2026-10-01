@@ -28,15 +28,19 @@ import { healthFraction, percentText, type SafetyDecision } from '../../shared/a
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import { roundsCouldKill } from '../../shared/danger';
+import { withFled, type FledEntry } from '../../shared/fled';
 import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { PartyWait } from './PartyWait';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
+import type { Survival } from '../../shared/survival';
 import { landed, stillFled, type FledRoom } from '../../shared/walk';
 import {
   asDirection,
   crossedWords,
   DIRECTION_NAME,
+  mobKey,
   newDemands,
   OPPOSITE,
   roomAddress,
@@ -164,6 +168,11 @@ export interface TravelSession {
   notice(message: string): void;
   /** A safety decision, for the trace. */
   decided(decision: SafetyDecision): void;
+  /** The room's fight as it stands, simulated (`Appraisal.fight`). */
+  fight(): Survival | null;
+  /** The monsters this character ran from, and the list as it stands after a run (`Belongings`). */
+  fled(): readonly FledEntry[];
+  keepFled(entries: readonly FledEntry[]): void;
 }
 
 export class Travel implements SessionModule {
@@ -185,6 +194,19 @@ export class Travel implements SessionModule {
    * spammed. Armed whether or not a way out was found.
    */
   private lastAskedToEscape = 0;
+  /**
+   * When an escape last landed in another room. A monster that follows is
+   * run from again at once rather than after `cooldownMs`, which exists for
+   * a way out that failed: the thug that killed Soul followed and landed two
+   * blows inside the three seconds the cooldown held the second run.
+   */
+  private landedAt = 0;
+  /**
+   * This fight has been run from: the character is going somewhere until it
+   * is over, so a second run is not refused for a walk the first one stopped
+   * (`goingSomewhere`).
+   */
+  private ranThisFight = false;
   /**
    * When a move was last actually sent to get out of a fight. Zero for never.
    *
@@ -375,6 +397,8 @@ export class Travel implements SessionModule {
    */
   reset(): void {
     this.lastAskedToEscape = 0;
+    this.landedAt = 0;
+    this.ranThisFight = false;
     this.lastEscapeSent = 0;
     this.dreadSaid = null;
     this.escapeAwaiting = null;
@@ -825,11 +849,13 @@ export class Travel implements SessionModule {
     if (dread === null && !fighting) {
       this.forgetRanFrom(Date.now());
       this.escapeRefusalSaid = null;
+      this.ranThisFight = false;
       return;
     }
 
     const now = Date.now();
-    if (now - this.lastAskedToEscape < safety.cooldownMs) return;
+    const landedSince = this.landedAt > 0 && this.landedAt >= this.lastAskedToEscape;
+    if (now - this.lastAskedToEscape < safety.cooldownMs && !landedSince) return;
     /*
      * And not while the escape already chosen is waiting for its answer.
      *
@@ -862,7 +888,11 @@ export class Travel implements SessionModule {
     if (this.tracker.pendingMoves > 0) return;
 
     const fraction = healthFraction(state);
-    const hurt = fraction !== null && fraction <= safety.belowHealth;
+    const fight = this.session.fight();
+    const { runRounds } = tuning().combat;
+    // The fight's own worst rounds, which a share of maximum health is not (`danger.ts`).
+    const outmatched = roundsCouldKill(state.vitals.hp, fight, runRounds);
+    const hurt = (fraction !== null && fraction <= safety.belowHealth) || outmatched;
     const outnumbered =
       safety.whenOutnumbered > 0 && state.combat.attackers.length >= safety.whenOutnumbered;
     /*
@@ -876,13 +906,19 @@ export class Travel implements SessionModule {
       safety.belowMana > 0 && manaFraction !== null && manaFraction <= safety.belowMana;
     if (!hurt && !outnumbered && !drained && dread === null) return;
 
-    const why = hurt
-      ? t('session.safety.whyHealth', { percent: percentText(fraction) })
-      : drained
-        ? t('session.safety.whyMana', { percent: percentText(manaFraction) })
-        : outnumbered || dread === null
-          ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
-          : t('session.safety.whyDreaded', { mob: dread });
+    const why = outmatched
+      ? t('session.safety.whyRounds', {
+          rounds: runRounds,
+          worst: Math.round((fight?.worstRound ?? 0) * runRounds),
+          hp: state.vitals.hp ?? 0
+        })
+      : hurt
+        ? t('session.safety.whyHealth', { percent: percentText(fraction ?? 0) })
+        : drained
+          ? t('session.safety.whyMana', { percent: percentText(manaFraction) })
+          : outnumbered || dread === null
+            ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
+            : t('session.safety.whyDreaded', { mob: dread });
     /*
      * **Only a character the client is taking somewhere runs** (todo 03): a
      * route that has arrived is where the player wanted to be. Said once a
@@ -919,7 +955,18 @@ export class Travel implements SessionModule {
     }
 
     this.lastAskedToEscape = now;
-    this.escape(state, why, now);
+    this.escape(state, why, now, undefined, hurt);
+  }
+
+  /** The monsters swinging at the character as it runs for its health (`src/shared/fled.ts`). */
+  private noteFled(state: CharacterState): void {
+    const fled = state.combat.attackers.filter((name) =>
+      state.room.occupants.some((who) => who.kind === 'mob' && mobKey(who.name) === mobKey(name))
+    );
+    if (fled.length === 0) return;
+    const { level } = state.progress;
+    const forgetMs = tuning().combat.fledForgetMs;
+    this.session.keepFled(withFled(this.session.fled(), fled, level, Date.now(), forgetMs));
   }
 
   /**
@@ -951,6 +998,7 @@ export class Travel implements SessionModule {
    */
   private goingSomewhere(): boolean {
     return (
+      this.ranThisFight ||
       this.session.movement().moving ||
       this.partyWait.holding ||
       this.retreat !== null ||
@@ -1122,7 +1170,9 @@ export class Travel implements SessionModule {
     state: CharacterState,
     why: string,
     now: number,
-    tried: ReadonlySet<Direction> = new Set()
+    tried: ReadonlySet<Direction> = new Set(),
+    /** A run for health: what is swinging is kept off at this level, once a way out goes. */
+    forHealth = false
   ): void {
     const safety = this.automationConfig.safety.retreat;
     const here =
@@ -1178,6 +1228,8 @@ export class Travel implements SessionModule {
       return;
     }
     this.escapeRefusalSaid = null;
+    // Not a run for mana, numbers or a row: those are not the monster's doing.
+    if (forHealth) this.noteFled(state);
     this.leaving(here, now);
     if (safety.strategy === 'safe-haven' && safety.safeHavenRoom.length > 0) {
       this.retreat = { room: safety.safeHavenRoom, armedAt: now, from: here };
@@ -1337,6 +1389,8 @@ export class Travel implements SessionModule {
       return;
     }
     if (landed(state.room, before)) {
+      this.landedAt = now;
+      this.ranThisFight = true;
       settle(true);
       return;
     }

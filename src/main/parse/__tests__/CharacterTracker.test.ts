@@ -10901,6 +10901,8 @@ describe('the spellbook and the belongings record', () => {
         rememberSpellDuration: (spell: string, seconds: number) => {
           state.durations[spell.toLowerCase()] = Math.round(seconds);
         },
+        recallFled: () => [],
+        rememberFled: () => {},
         recallAbilities: () => state.abilities,
         rememberAbilities: (abilities: AbilitySums) => {
           state.abilities = { ...abilities, sums: { ...abilities.sums } };

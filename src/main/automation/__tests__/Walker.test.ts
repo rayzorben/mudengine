@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 import { Walker } from '../Walker';
 import type { WalkerEvents } from '../walk/ports';
 import { CONFIG as config, ROUTE, at, moves, useRigs } from '../walk/__tests__/walking';
@@ -1794,6 +1795,29 @@ describe('sneaking before a route', () => {
     walk.onCharacter({ ...noSkill, room: { ...noSkill.room, number: 2 } });
     vi.advanceTimersByTime(200);
     expect(notices.filter((line) => line === t('automation.walk.sneakNoSkill'))).toHaveLength(1);
+    walk.dispose();
+  });
+
+  /*
+   * A low Stealth refuses where the sheet cannot show it (the roll counts
+   * what is in the room too), so the answers decide: after `sneakGiveUp`
+   * refusals in a row the walk stops asking, said once.
+   */
+  it('stops asking after too many sneaks refused in a row, and says so once', () => {
+    const walk = sneaking();
+    const base = at(1, 1);
+    walk.start(ROUTE, base);
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn', 'e']);
+    for (let i = 0; i < tuning().walk.sneakGiveUp; i += 1) {
+      walk.onBlock(block('user-sneak-failed'));
+    }
+    walk.onCharacter({ ...base, room: { ...base.room, number: 2 } });
+    vi.advanceTimersByTime(200);
+    expect(sent.length).toBeGreaterThan(2);
+    expect(sent.slice(2)).not.toContain('sn');
+    const said = t('automation.walk.sneakGaveUp', { count: tuning().walk.sneakGiveUp });
+    expect(notices.filter((line) => line === said)).toHaveLength(1);
     walk.dispose();
   });
 
