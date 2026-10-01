@@ -7438,6 +7438,98 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(goblin?.estimate.unknown).not.toContain('rounds');
   });
 
+  /*
+   * Todo 71: a dungeon whose only way in is a stair for levels up to 10.
+   * Standing inside it at level 10 with a level ready, every lair in it is one
+   * the character could not get back to from the trainer once trained.
+   */
+  it('leaves out what the next level would shut it out of, with that level ready', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-gate-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const rooms = [
+      {
+        m: 1,
+        r: 1,
+        n: 'Town Square',
+        s: 26,
+        x: { d: { m: 1, r: 2, i: 'Level: 0 to 10' } }
+      },
+      {
+        m: 1,
+        r: 2,
+        n: 'Goblin Warren',
+        x: { u: { m: 1, r: 1 }, e: { m: 1, r: 3 } },
+        lair: '(Max 1): 7,',
+        dl: 2
+      },
+      { m: 1, r: 3, n: 'Orc Pit', x: { w: { m: 1, r: 2 } }, lair: '(Max 1): 8,', dl: 2 }
+    ];
+    const mob = (n: string, id: number) => ({
+      n,
+      hp: 200,
+      i: [id],
+      d: 'h',
+      ac: 20,
+      xp: 300,
+      pf: [{ a: [[1, 1, 200, 3, 9, 1000, 0]], c: [] }]
+    });
+    const header = {
+      v: 32,
+      source: 'test',
+      rooms: rooms.length,
+      generatedAt: 'x',
+      mobs: [mob('goblin', 7), mob('orc', 8)],
+      shops: [{ id: 26, n: 'Training Room', items: [], t: 8, min: 1, max: 99, markup: 0 }]
+    };
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [JSON.stringify(header), ...rooms.map((room) => JSON.stringify(room))].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    const { sink } = collect();
+    manager = build(sink, {
+      world,
+      automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      fights: record().fights
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    socket.write(
+      'Name: Festus Marcus                    Lives/CP:      9/1\r\n' +
+        'Race: Kang        Exp: 792666          Perception:     62\r\n' +
+        'Class: Paladin    Level: 10            Stealth:         0\r\n' +
+        'Hits:   148/148   Armour Class:  46/5  Thievery:        0\r\n' +
+        'Mana:     5/26    Spellcasting: 66     Traps:           0\r\n'
+    );
+    socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
+    socket.write('Location:            1,3\r\nOrc Pit\r\nObvious exits: west\r\n');
+    await until(
+      () => manager!.character.progress.level === 10 && manager!.character.room.number === 3
+    );
+    // Experience still owed: the dungeon is the character's to hunt.
+    socket.write(
+      'Exp: 792666 Level: 10 Exp needed for next level: 500 (800000) [99%]\r\n[HP=148/MA=5]:' +
+        PROMPT_REPAINT
+    );
+    await until(() => manager!.character.progress.expNeeded === 500);
+    let advice = await settled();
+    expect(advice.excluded.gated).toBe(0);
+    expect(advice.spots.length + advice.unmeasured.length).toBe(2);
+    // A level ready: from the trainer at 11 the stair is shut, and so is every lair below it.
+    socket.write(
+      'Exp: 800100 Level: 10 Exp needed for next level: 0 (800000) [100%]\r\n[HP=148/MA=5]:' +
+        PROMPT_REPAINT
+    );
+    await until(() => manager!.character.progress.expNeeded === 0);
+    advice = await settled();
+    expect(advice.excluded.gated).toBe(2);
+    expect(advice.spots).toHaveLength(0);
+  });
+
   it('lists past the measured few rather than cutting the realm at them', async () => {
     setTuning({
       ...DEFAULT_INTERNAL.tuning,

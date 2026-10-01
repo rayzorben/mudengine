@@ -1091,6 +1091,8 @@ export interface HuntExclusions {
   unsurvivable: number;
   unsimulated: number;
   evil: number;
+  /** Behind a gate the next level shuts, with that level ready to train (todo 71). */
+  gated: number;
 }
 
 /** Nothing left out. */
@@ -1099,7 +1101,8 @@ export const NO_EXCLUSIONS: Readonly<HuntExclusions> = {
   beneath: 0,
   unsurvivable: 0,
   unsimulated: 0,
-  evil: 0
+  evil: 0,
+  gated: 0
 };
 
 export interface HuntingAdvice {
@@ -1125,8 +1128,8 @@ export interface HuntingAdvice {
    */
   excluded: HuntExclusions;
   assumptions: HuntingAssumptions;
-  /** The copper an hour the spots were ranked against (`automation.hunting.cashPerHour`). */
-  cashPerHour: number;
+  /** The cash floor the spots were ranked against (`automation.hunting.cashPerHour`, `cashFloor`). */
+  floor: CashFloor;
   /** Why there is no answer, said out loud. */
   refusal: string | null;
 }
@@ -1162,7 +1165,7 @@ export function fightUnpriced(
  * the most dangerous room in reach. Nearest is the one fact the character
  * has about every one of them.
  */
-export function compareSpots(a: HuntingSpot, b: HuntingSpot, cashPerHour = 0): number {
+export function compareSpots(a: HuntingSpot, b: HuntingSpot, floor: CashFloor = NO_FLOOR): number {
   const rank = (spot: HuntingSpot): number =>
     spot.estimate.deadly
       ? 3
@@ -1175,11 +1178,16 @@ export function compareSpots(a: HuntingSpot, b: HuntingSpot, cashPerHour = 0): n
   const rb = rank(b);
   if (ra !== rb) return ra - rb;
   if (ra === 0) {
-    // Under a cash floor, a spot paying it comes first, and among those short of it the most copper.
-    const sa = shortOfCash(a.estimate.copperPerHour, cashPerHour);
-    const sb = shortOfCash(b.estimate.copperPerHour, cashPerHour);
-    if (sa !== sb) return sa ? 1 : -1;
-    if (sa) {
+    /*
+     * Under a cash floor: a spot paying it first, then those short of it by
+     * copper, then the rest by exp. Copper counts only where the exp is within
+     * `expAtLeast` of the best (todo 71): a floor nothing paid ranked the realm
+     * by copper alone and dropped a cave bear earning 56k an hour.
+     */
+    const ta = cashTier(a.estimate.expPerHour, a.estimate.copperPerHour, floor);
+    const tb = cashTier(b.estimate.expPerHour, b.estimate.copperPerHour, floor);
+    if (ta !== tb) return ta - tb;
+    if (ta === 1) {
       const cash = (b.estimate.copperPerHour ?? 0) - (a.estimate.copperPerHour ?? 0);
       if (cash !== 0) return cash;
     }
@@ -1201,6 +1209,48 @@ export function compareSpots(a: HuntingSpot, b: HuntingSpot, cashPerHour = 0): n
     if (ceiling !== 0) return ceiling;
   }
   return (a.rooms[0]?.steps ?? 0) - (b.rooms[0]?.steps ?? 0);
+}
+
+/**
+ * The copper an hour the hunt is asked for, and the least exp an hour a spot
+ * must pay for its copper to count: `expShare` of the best rate offered.
+ */
+export interface CashFloor {
+  copperPerHour: number;
+  expAtLeast: number;
+}
+
+/** No floor: spots rank by exp alone. */
+export const NO_FLOOR: Readonly<CashFloor> = { copperPerHour: 0, expAtLeast: 0 };
+
+/**
+ * Where a spot stands under a floor: 0 paying it (or no floor), 1 short of it
+ * with exp enough for its copper to count, 2 too little exp for copper to count.
+ * Within 0 and 2 the exp decides; within 1 the copper.
+ */
+export function cashTier(exp: number | null, copper: number | null, floor: CashFloor): 0 | 1 | 2 {
+  if (floor.copperPerHour <= 0) return 0;
+  if ((exp ?? 0) < floor.expAtLeast) return 2;
+  return shortOfCash(copper, floor.copperPerHour) ? 1 : 0;
+}
+
+/** The floor against a best exp rate: copper counts only within `expShare` of it. */
+export function floorFor(copperPerHour: number, bestExp: number, expShare: number): CashFloor {
+  return copperPerHour <= 0 ? NO_FLOOR : { copperPerHour, expAtLeast: bestExp * expShare };
+}
+
+/** The floor over these spots, against the best exp rate among them. */
+export function cashFloor(
+  spots: readonly HuntingSpot[],
+  copperPerHour: number,
+  expShare: number
+): CashFloor {
+  let best = 0;
+  for (const spot of spots) {
+    const exp = spot.estimate.expPerHour;
+    if (!spot.estimate.deadly && exp !== null && exp > best) best = exp;
+  }
+  return floorFor(copperPerHour, best, expShare);
 }
 
 /**

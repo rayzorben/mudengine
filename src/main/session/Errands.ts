@@ -31,7 +31,9 @@ import type { FightSink } from '../../shared/fights';
 import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
+  cashFloor,
   compareSpots,
+  NO_FLOOR,
   estimateSpot,
   moveDelayMs,
   orderRing,
@@ -749,10 +751,9 @@ export class Errands implements SessionModule {
    * would offer a room the server refuses — the walk across two maps this
    * whole query exists to avoid.
    */
-  trainers(): TrainerChoice[] {
+  trainers(level: number | null = this.tracker.current.progress.level): TrainerChoice[] {
     const state = this.tracker.current;
     const world = this.world;
-    const level = state.progress.level;
     if (world === null || world === undefined || level === null) return [];
     const classId = state.className ? (world.classNamed(state.className)?.id ?? null) : null;
     return world.trainersTaking(level, classId).map((found) => ({
@@ -765,6 +766,39 @@ export class Errands implements SessionModule {
       minLevel: found.trainer.minLevel ?? null,
       maxLevel: found.trainer.maxLevel ?? null
     }));
+  }
+
+  /**
+   * With a level ready to train, the rooms reachable at the level it is about
+   * to be from wherever it may train (todo 71): the trainer the player chose,
+   * else any that takes the level and is reached from here, since which one
+   * the trip picks is weighed then. A ground behind an exit for levels up to
+   * this one is reachable from inside it now and shut once trained: the cave
+   * bear's dungeon is entered by a `Level: 0 to 5` stair, and Soul hunted it
+   * from inside at 5. Null with no level ready, or no trainer reached.
+   */
+  private reachAfterTraining(
+    state: CharacterState,
+    reach: ReadonlyMap<RoomId, number>
+  ): ReadonlyMap<RoomId, number> | null {
+    const { level, expNeeded } = state.progress;
+    const world = this.world;
+    if (!world || level === null || expNeeded === null || expNeeded > 0) return null;
+    const chosen = this.automationConfig.train.trainer;
+    const trainers = this.trainers(level).filter(
+      (each) => (chosen <= 0 || each.shop === chosen) && reach.has(roomId(each.map, each.room))
+    );
+    if (trainers.length === 0) return null;
+    const traveller = { ...this.travellerNow(state), level: level + 1 };
+    // A room counts while any trainer the trip might walk to gets back to it.
+    const union = new Map<RoomId, number>();
+    for (const trainer of trainers) {
+      const from = roomId(trainer.map, trainer.room);
+      for (const [id, steps] of world.withinSteps(from, Number.POSITIVE_INFINITY, traveller)) {
+        union.set(id, Math.min(steps, union.get(id) ?? steps));
+      }
+    }
+    return union;
   }
 
   /**
@@ -1219,7 +1253,8 @@ export class Errands implements SessionModule {
       clusterRadius,
       fillerRadius,
       sizeTolerance,
-      measuredFightsMin
+      measuredFightsMin,
+      cashExpShare
     } = tuning().hunting;
     const c: HuntingConstants = {
       roundSeconds,
@@ -1294,7 +1329,6 @@ export class Errands implements SessionModule {
       constants: c
     };
     const cashPerHour = this.automationConfig.hunting.cashPerHour;
-    const order = (a: HuntingSpot, b: HuntingSpot): number => compareSpots(a, b, cashPerHour);
     const refused = (refusal: string): HuntingAdvice => ({
       from: null,
       radius,
@@ -1303,7 +1337,7 @@ export class Errands implements SessionModule {
       unmeasured: [],
       excluded: { ...NO_EXCLUSIONS },
       assumptions,
-      cashPerHour,
+      floor: NO_FLOOR,
       refusal
     });
     if (!world || world.size === 0) return refused(t('session.hunt.noRealmData'));
@@ -1472,7 +1506,13 @@ export class Errands implements SessionModule {
     const priced = new Map<string, HuntPriced>();
     const excluded = { ...NO_EXCLUSIONS };
     const survey: HuntingSpot[] = [];
+    const afterTraining = this.reachAfterTraining(state, reach);
     for (const [key, group] of groups) {
+      // Behind a gate the next level shuts, with that level about to be trained (todo 71).
+      if (afterTraining !== null && !group.rooms.some((room) => afterTraining.has(room.id))) {
+        excluded.gated += 1;
+        continue;
+      }
       // A `seen` room's monsters and clock move as it is stood in, so they are part of what is priced.
       const cached =
         group.seen === undefined ? key : `${key}|${group.seen.names.join(',')}|${group.seen.clock}`;
@@ -1559,7 +1599,8 @@ export class Errands implements SessionModule {
         estimate
       });
     }
-    survey.sort(order);
+    // Cut on exp alone; the cash floor orders only the measured spots below (todo 71).
+    survey.sort((a, b) => compareSpots(a, b));
     /*
      * Only the best are measured: a bounded sweep from each of a ring's rooms
      * is under a millisecond and there are thousands of groups, so the survey
@@ -1586,7 +1627,8 @@ export class Errands implements SessionModule {
         world
       )
     );
-    spots.sort(order);
+    const floor = cashFloor(spots, cashPerHour, cashExpShare);
+    spots.sort((a, b) => compareSpots(a, b, floor));
     return {
       from: { id: from, name: start.name },
       radius,
@@ -1595,7 +1637,7 @@ export class Errands implements SessionModule {
       unmeasured: opened === -1 ? rest : rest.filter((_, at) => at !== opened),
       excluded,
       assumptions: { ...assumptions, measured },
-      cashPerHour,
+      floor,
       refusal: null
     };
   }

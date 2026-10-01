@@ -666,6 +666,9 @@ tuning:
     clusterRadius: 30
     fillerRadius: 8
     sizeTolerance: 0.05
+    # Under a cash floor, a spot's copper counts only while its exp an hour is
+    # at least this share of the best spot's.
+    cashExpShare: 0.5
 
     # Where the world database states no lair clock (a MegaMUD export has no
     # Delay column) or no lair at all (an arena), the client times the gap

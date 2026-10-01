@@ -24,7 +24,14 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { HealthConfig, HuntingAutomationConfig, WalkConfig } from '../../shared/config';
-import { huntLoop, shortOfCash, type HuntingAdvice, type HuntingSpot } from '../../shared/hunting';
+import {
+  cashTier,
+  floorFor,
+  huntLoop,
+  shortOfCash,
+  type HuntingAdvice,
+  type HuntingSpot
+} from '../../shared/hunting';
 import type { Loop } from '../../shared/loops';
 import type { RoomId, Route } from '../../shared/world';
 import type { SessionModule } from './Module';
@@ -343,7 +350,8 @@ export class AutoHunt implements SessionModule {
      */
     const here = measured ?? this.pricedRate(this.phase.key, expected);
     // A cash floor outranks exp: never off a lair paying it for one that does not, and off one
-    // short of it for one that pays it whatever the exp says (todo 64).
+    // short of it for one that pays it (todo 64), unless it earns under `cashExpShare` of the exp
+    // here (todo 71).
     const cash = this.config.cashPerHour;
     const hereShort = shortOfCash(this.phase.copper, cash);
     const thereShort = shortOfCash(best.estimate.copperPerHour, cash);
@@ -351,7 +359,9 @@ export class AutoHunt implements SessionModule {
     // Both short: the one paying more copper, as the survey ranks them; the same copper, by exp.
     const copper = (best.estimate.copperPerHour ?? 0) - (this.phase.copper ?? 0);
     if (hereShort && thereShort && copper < 0) return;
-    const forCash = hereShort && (!thereShort || copper > 0);
+    const against = floorFor(cash, here ?? 0, tuning().hunting.cashExpShare);
+    const affords = cashTier(worth, best.estimate.copperPerHour, against) !== 2;
+    const forCash = hereShort && (!thereShort || copper > 0) && affords;
     if (!forCash && here !== null && worth <= here * (1 + tuning().hunting.moveMargin)) return;
 
     this.events.notice?.(
@@ -477,24 +487,28 @@ export class AutoHunt implements SessionModule {
 
   /**
    * The highest priced lair over the floor, or undefined. Under a cash floor
-   * a lair paying it comes first, and among those short of it the most copper
-   * (todo 64), as the survey ranks them.
+   * a lair paying it comes first, then those short of it by copper, as the
+   * survey ranks them (todos 64, 71); copper counts only within
+   * `cashExpShare` of the best priced rate.
    */
   private pick(spots: readonly HuntingSpot[]): HuntingSpot | null {
     const floor = this.walkConfig.minExpPerHour;
-    const cash = this.config.cashPerHour;
-    let best: { spot: HuntingSpot; worth: number; short: boolean; copper: number } | null = null;
-    for (const spot of spots) {
+    const priced = spots.flatMap((spot) => {
       const worth = this.priced(spot);
-      if (worth === null || (floor > 0 && worth < floor)) continue;
-      const short = shortOfCash(spot.estimate.copperPerHour, cash);
+      return worth === null || (floor > 0 && worth < floor) ? [] : [{ spot, worth }];
+    });
+    const most = priced.reduce((top, each) => Math.max(top, each.worth), 0);
+    const cash = floorFor(this.config.cashPerHour, most, tuning().hunting.cashExpShare);
+    let best: { spot: HuntingSpot; worth: number; tier: number; copper: number } | null = null;
+    for (const { spot, worth } of priced) {
       const copper = spot.estimate.copperPerHour ?? 0;
+      const tier = cashTier(worth, spot.estimate.copperPerHour, cash);
       const better =
         best === null ||
-        (best.short && !short) ||
-        (best.short === short &&
-          (short && copper !== best.copper ? copper > best.copper : worth > best.worth));
-      if (better) best = { spot, worth, short, copper };
+        tier < best.tier ||
+        (tier === best.tier &&
+          (tier === 1 && copper !== best.copper ? copper > best.copper : worth > best.worth));
+      if (better) best = { spot, worth, tier, copper };
     }
     return best?.spot ?? null;
   }
