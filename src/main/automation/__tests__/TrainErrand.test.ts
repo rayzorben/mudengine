@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { tuning } from '../../app/tuning';
 import { TrainErrand, type TrainPlanner } from '../TrainErrand';
 import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type TrainConfig } from '../../../shared/config';
@@ -496,6 +497,89 @@ describe('going to collect the level', () => {
     expect(held).toBe(1);
     errand.onWalkEnded(false, 'stopped', owed());
     expect(released).toBe(1);
+  });
+
+  /*
+   * Todo 69: after a level the stat screen opens, and its hold drops what is
+   * queued, the next level's train with it. The attempt goes back, and the
+   * level is asked for again once the hold lifts.
+   */
+  it('asks again for a train the stat screen dropped, saying nothing', () => {
+    // A queue that takes the intent and never sends it: the hold dropped it.
+    const taken: Array<{ command: string; onSent?: () => void }> = [];
+    const errand = new TrainErrand(
+      train(),
+      true,
+      {
+        offer: (intent: { command: string; onSent?: () => void }) => {
+          taken.push(intent);
+          return 'queued';
+        }
+      } as unknown as CommandQueue,
+      planner(),
+      { notice: (message) => notices.push(message) }
+    );
+    here = '3/542';
+    errand.onCharacter(owed());
+    expect(taken.map((intent) => intent.command)).toEqual(['train']);
+    vi.advanceTimersByTime(11_000);
+    errand.onCharacter(owed());
+    expect(notices).not.toContain(t('automation.train.refusalUnanswered', { trainer: TITAN.name }));
+    errand.onCharacter(owed());
+    expect(taken.map((intent) => intent.command)).toEqual(['train', 'train']);
+  });
+
+  it('tries a level again a while after its train moved nothing', () => {
+    const errand = make();
+    errand.onCharacter(owed());
+    here = '3/542';
+    errand.onWalkEnded(true, null, owed());
+    drain();
+    vi.advanceTimersByTime(11_000);
+    errand.onCharacter(owed());
+    sent.length = 0;
+    errand.onCharacter(owed());
+    drain();
+    expect(sent).not.toContain('train');
+    vi.advanceTimersByTime(tuning().train.retryMs);
+    errand.onCharacter(owed());
+    drain();
+    expect(sent).toContain('train');
+    // Moving nothing again is recorded, and said only the once.
+    vi.advanceTimersByTime(11_000);
+    errand.onCharacter(owed());
+    const unanswered = t('automation.train.refusalUnanswered', { trainer: TITAN.name });
+    expect(notices.filter((notice) => notice === unanswered)).toHaveLength(1);
+    expect(decisions.filter((decision) => decision.refused === unanswered)).toHaveLength(2);
+  });
+
+  it('keeps waiting on a train that joins the one still queued, and times it from its send', () => {
+    // Held behind a half-typed line: the second offer joins the first.
+    const taken: Array<{ command: string; onSent?: () => void }> = [];
+    const errand = new TrainErrand(
+      train(),
+      true,
+      {
+        offer: (intent: { command: string; onSent?: () => void }) => {
+          taken.push(intent);
+          return taken.length === 1 ? 'queued' : 'joined';
+        }
+      } as unknown as CommandQueue,
+      planner(),
+      { notice: (message) => notices.push(message) }
+    );
+    here = '3/542';
+    errand.onCharacter(owed());
+    vi.advanceTimersByTime(11_000);
+    errand.onCharacter(owed());
+    errand.onCharacter(owed());
+    expect(taken).toHaveLength(2);
+    expect(errand.busy).toBe(true);
+    // Enter: the line goes, and the joined proposal speaks for it.
+    taken.at(-1)?.onSent?.();
+    vi.advanceTimersByTime(11_000);
+    errand.onCharacter(owed());
+    expect(notices).toContain(t('automation.train.refusalUnanswered', { trainer: TITAN.name }));
   });
 
   /*

@@ -903,7 +903,13 @@ const TUNING_DEFAULTS = {
      * generous: the answer arrives with the next status line, and a realm
      * under load is still seconds rather than tens of them.
      */
-    confirmMs: 10_000
+    confirmMs: 10_000,
+    /**
+     * A level whose `train` went out and moved nothing is tried again after
+     * this (todo 69): one unanswered attempt was the level refused for good,
+     * and a character with levels banked stood under them for an hour.
+     */
+    retryMs: 60_000
   },
   /** Going back for the kit after a death — `GearRecovery`. */
   gearRecovery: {
