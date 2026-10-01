@@ -372,6 +372,47 @@ describe('the planner', () => {
     it.dispose();
   });
 
+  /* Soul, 2026-10-01: asked every 50 seconds, each same answer had ended a hunt of a minute. */
+  it('learns one stretch from a goal given back, not one per ask', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    it.onCharacter(state);
+    await asked(1);
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    it.onBlock(block('user-levels'));
+    await asked(2);
+    expect(learned).toEqual([]);
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    global.__konamiGoal = 'wait';
+    it.onBlock(block('user-levels'));
+    await asked(3);
+    vi.useRealTimers();
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({ outcome: 'replaced', goal: { key: 'lair:a' }, minutes: 20 });
+    it.dispose();
+  });
+
+  it('learns the whole stretch of a goal given back when it ends in a death', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+    it.onCharacter(state);
+    await asked(1);
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    it.onBlock(block('user-levels'));
+    await asked(2);
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    it.onBlock(block('user-dies'));
+    await asked(3);
+    vi.useRealTimers();
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({ outcome: 'died', minutes: 20 });
+    it.dispose();
+  });
+
   it('shows the odds on every goal offered, with what it was told about each spot', async () => {
     const it = planner();
     it.configure(on(providerFile()));
@@ -586,6 +627,22 @@ describe('the planner', () => {
     it.onCharacter(state);
     await asked(1);
     activity = { doing: { kind: 'hunt', walking: false, place: 'Small Cavern' }, walk: null };
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.stuckMs + 1 });
+    (it as unknown as { tick(): void }).tick();
+    vi.useRealTimers();
+    await settle();
+    expect(global.__konamiAsked).toBe(1);
+    it.dispose();
+  });
+
+  /* Soul, 2026-10-01: a lap the hunt waited on, asked about every 50 seconds for six hours. */
+  it('is not stuck while a lap runs that the hunt waits on', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    activity = { doing: { kind: 'waiting', on: 'lap' }, walk: null };
     vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.stuckMs + 1 });
     (it as unknown as { tick(): void }).tick();
     vi.useRealTimers();

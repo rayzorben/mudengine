@@ -26,7 +26,8 @@ export function lessonOf(input: LessonInput): KonamiLesson | null {
   const goal = decision.plan?.goal;
   if (goal === undefined || goal.kind === 'wait') return null;
   // Asked again at once (a trigger folded in, the same plan back): nothing happened yet.
-  if (outcome === 'replaced' && input.now - decision.at < input.lessonMinMs) return null;
+  const since = decision.goalSince;
+  if (outcome === 'replaced' && input.now - since.at < input.lessonMinMs) return null;
   const character = decision.brief.character;
   const died = outcome === 'died';
   const killers = died ? killersOf(input.blows, input.fightGapMs) : [];
@@ -36,9 +37,7 @@ export function lessonOf(input: LessonInput): KonamiLesson | null {
       : undefined;
   const own = new Set(spot?.mobs.map((mob) => mob.name.toLowerCase()) ?? []);
   const exp =
-    character.exp === null || state.progress.exp === null
-      ? null
-      : state.progress.exp - character.exp;
+    since.exp === null || state.progress.exp === null ? null : state.progress.exp - since.exp;
   return {
     at: input.now,
     goal,
@@ -56,6 +55,6 @@ export function lessonOf(input: LessonInput): KonamiLesson | null {
         : null,
     // A death takes experience; what it cost is not what the plan earned.
     expGained: died ? null : exp,
-    minutes: Math.round((input.now - decision.at) / 60_000)
+    minutes: Math.round((input.now - since.at) / 60_000)
   };
 }

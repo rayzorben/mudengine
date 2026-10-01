@@ -482,7 +482,8 @@ export class KonamiPlanner implements SessionModule {
       plan: chosen,
       outcome: 'applied',
       outcomeWhy: null,
-      settledAt: null
+      settledAt: null,
+      goalSince: { at: now, exp: this.facts.state().progress.exp }
     });
     this.apply(chosen);
   }
@@ -558,10 +559,12 @@ export class KonamiPlanner implements SessionModule {
         this.trigger('review');
       }
     }
-    // A hunt lap standing at a stop waits for respawns; the review clock reconsiders it.
+    // A hunt lap standing at a stop waits for respawns, and a lap the hunt waits on is still
+    // moving the character; the review clock reconsiders either.
     const activity = this.facts.activity();
     const camping =
-      activity?.doing.kind === 'hunt' && !activity.doing.walking && activity.walk === null;
+      (activity?.doing.kind === 'hunt' && !activity.doing.walking && activity.walk === null) ||
+      (activity?.doing.kind === 'waiting' && activity.doing.on === 'lap');
     if (this.plan !== null && !fightIsRunning(state) && !camping) {
       if (Date.now() - this.markedAt >= tuning().konami.stuckMs && this.pending === null) {
         // Measured again from now, so a plan that changes nothing is not asked every tick.
@@ -674,10 +677,10 @@ export class KonamiPlanner implements SessionModule {
           this.finish('done', null);
           return;
         }
-        // The trip would not go (no cash, no trainer reached) since this plan: it ends refused.
-        // One said before the plan is about a trip that is not this one.
+        // The trip would not go (no cash, no trainer reached) since training was the goal: it ends
+        // refused. One said before is about a trip that is not this one.
         const refused = this.facts.trainRefusal();
-        const since = this.journal.latest?.at ?? 0;
+        const since = this.journal.latest?.goalSince.at ?? 0;
         if (refused !== null && refused.at >= since) {
           this.finish('refused', refused.why);
           return;
@@ -716,9 +719,9 @@ export class KonamiPlanner implements SessionModule {
    * What became of the plan in hand: the journal's outcome, and the lesson it
    * leaves under the same word.
    */
-  private settle(outcome: LessonOutcome, why: string | null): void {
+  private settle(outcome: LessonOutcome, why: string | null, learn = true): void {
     const decision = this.journal.latest;
-    if (decision?.outcome === 'applied') this.learn(decision, outcome, why);
+    if (learn && decision?.outcome === 'applied') this.learn(decision, outcome, why);
     this.journal.settle(outcome, why);
     this.events.changed();
   }
@@ -811,6 +814,12 @@ export class KonamiPlanner implements SessionModule {
     }
     const plan = 'refusal' in answer ? null : readPlan(answer.reply, asked);
     const previous = this.plan;
+    const latest = this.journal.latest;
+    const continues =
+      plan !== null &&
+      latest?.outcome === 'applied' &&
+      latest.plan !== null &&
+      goalKey(latest.plan.goal) === goalKey(plan.goal);
     const decision: KonamiDecision = {
       id: decisionId(now),
       at: now,
@@ -824,9 +833,11 @@ export class KonamiPlanner implements SessionModule {
       refusal: 'refusal' in answer ? answer.refusal : null,
       outcome: plan === null ? 'failed' : 'applied',
       outcomeWhy: null,
-      settledAt: null
+      settledAt: null,
+      goalSince: continues ? latest.goalSince : { at: now, exp: brief.character.exp }
     };
-    this.settle('replaced', null);
+    // The same goal back is the same stretch: learned from when it ends, not now.
+    this.settle('replaced', null, !continues);
     this.journal.add(decision);
     this.upgradeAt = nextUpgradePrice(brief);
     if (plan === null) {

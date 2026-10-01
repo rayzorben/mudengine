@@ -33,6 +33,11 @@ export interface KonamiDecision {
   outcome: KonamiOutcome;
   outcomeWhy: string | null;
   settledAt: number | null;
+  /**
+   * When the goal was taken up, and the experience then. A reply giving the same goal back
+   * continues it, so the lesson covers the whole stretch rather than the last ask's.
+   */
+  goalSince: { at: number; exp: number | null };
 }
 
 /** One ask as the card's terminal shows it: what went, what came back. */
