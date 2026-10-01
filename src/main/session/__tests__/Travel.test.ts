@@ -8,6 +8,8 @@ import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { NO_LOOP } from '../../../shared/loops';
 import { NOT_MOVING } from '../../../shared/movement';
 import { classifyOccupant } from '../../../shared/mobs';
+import type { FledEntry } from '../../../shared/fled';
+import type { Survival } from '../../../shared/survival';
 import { IDLE_WALK } from '../../../shared/walk';
 import type { Route } from '../../../shared/world';
 
@@ -58,7 +60,8 @@ function travel(
   state: CharacterState,
   walk: 'stepping' | 'held' | 'none',
   going = true,
-  master = { on: true, writes: true }
+  master = { on: true, writes: true },
+  overrides: Partial<TravelSession> & { settings?: AutomationConfig } = {}
 ) {
   const sent: string[] = [];
   const switched: boolean[] = [];
@@ -117,12 +120,17 @@ function travel(
     questRunner: { running: false, abandon: vi.fn() }
   };
   const session: TravelSession = {
-    config: () => ({ ...config, enabled: master.on }),
-    movement: () => (going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING }),
+    config: () => ({ ...(overrides.settings ?? config), enabled: master.on }),
+    movement:
+      overrides.movement ??
+      (() => (going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING })),
     loopNamed: () => undefined,
     dropTyped: vi.fn(),
     notice: (message) => void notices.push(message),
     decided: (decision) => void decisions.push(decision),
+    fight: overrides.fight ?? (() => null),
+    fled: overrides.fled ?? (() => []),
+    keepFled: overrides.keepFled ?? (() => {}),
     switchAutomation: (on) => {
       switched.push(on);
       if (master.writes) master.on = on;
@@ -167,6 +175,87 @@ describe('escaping a monster its row names, out of a fight', () => {
         then: t('session.safety.escapeNotOpening')
       })
     ]);
+  });
+});
+
+/*
+ * Soul's first death: two thugs took 28 to 10 in a round; it ran one room, the
+ * thug followed and took it to 6, and the cooldown held the second run until
+ * the next blow had killed it. A share of maximum health (30%) also ran too
+ * late for blows that size.
+ */
+describe('running from a fight that could kill', () => {
+  const plain: AutomationConfig = { ...config, combat: { ...config.combat, mobRules: [] } };
+  // Dead within three rounds a third of the time from here.
+  const thug = {
+    survives: 0.4,
+    worstRound: 11,
+    horizons: [{ rounds: 3, standing: 0.66, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
+  } as unknown as Survival;
+  const hit = (hp: number, name: string, number: number): CharacterState => {
+    const state = beside();
+    return {
+      ...state,
+      inCombat: true,
+      vitals: { ...state.vitals, hp, hpMax: 34 },
+      room: { ...state.room, name, map: 1, number },
+      combat: { ...state.combat, attackers: ['black ooze'] }
+    };
+  };
+
+  it('runs once the fight kills too often within three rounds, above the share of health', () => {
+    const state = hit(20, 'Dank Room', 1);
+    const kept: FledEntry[][] = [];
+    const { travel: moving, sent } = travel(state, 'none', true, undefined, {
+      settings: plain,
+      fight: () => thug,
+      keepFled: (entries) => void kept.push([...entries])
+    });
+    moving.considerEscape(state);
+    expect(sent).toEqual(['n']);
+    expect(kept.map((list) => list.map((entry) => entry.name))).toEqual([['black ooze']]);
+  });
+
+  it('runs again at once from a monster that follows, though nothing walks any more', () => {
+    const first = hit(10, 'Dank Room', 1);
+    let going = true;
+    const {
+      travel: moving,
+      sent,
+      parts
+    } = travel(first, 'none', true, undefined, {
+      settings: plain,
+      fight: () => thug,
+      movement: () =>
+        going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING }
+    });
+    moving.considerEscape(first);
+    expect(sent).toEqual(['n']);
+    // Landed next door, the walk the fight stopped is gone, and the thug follows.
+    const next = hit(6, 'Sewer Tunnel', 2);
+    going = false;
+    (parts.tracker as { current: CharacterState }).current = next;
+    moving.settleEscape({ type: 'room' } as never, first.room);
+    moving.considerEscape(next);
+    expect(sent).toEqual(['n', 'n']);
+  });
+
+  it('waits out the cooldown in a room nothing followed it into', () => {
+    const first = hit(10, 'Dank Room', 1);
+    const {
+      travel: moving,
+      sent,
+      parts
+    } = travel(first, 'none', true, undefined, {
+      settings: plain,
+      fight: () => thug
+    });
+    moving.considerEscape(first);
+    const empty = { ...hit(6, 'Weapons Shop', 2), combat: { ...first.combat, attackers: [] } };
+    (parts.tracker as { current: CharacterState }).current = empty;
+    moving.settleEscape({ type: 'room' } as never, first.room);
+    moving.considerEscape(empty);
+    expect(sent).toEqual(['n']);
   });
 });
 

@@ -515,7 +515,34 @@ const TUNING_DEFAULTS = {
      */
     breakStandoffMs: 30_000,
     /** How old a sighting of the leader's target may be before it is nobody's. */
-    assistFreshMs: 60_000
+    assistFreshMs: 60_000,
+    /**
+     * The share of the room's simulated fights survived, from the health the
+     * character has now, that opening one needs (`src/shared/danger.ts`).
+     * Unknown refuses. 0 opens whatever the odds.
+     */
+    openAbove: 0.95,
+    /**
+     * Run once the share of the room's simulated fights the character is dead
+     * in within `runRounds` rounds, from the health it has now, is over
+     * `runRisk`; and open nothing that would have to run at once. `runRisk` 0
+     * leaves running to `safety.retreat.belowHealth` alone.
+     */
+    runRounds: 3,
+    runRisk: 0.05,
+    /**
+     * Hang up once the next round kills more than this share of the room's
+     * simulated fights, where the realm's charge for hanging up would not
+     * (`Safety.beforeDeath`): a hangup costs some items, a death everything
+     * carried. The worst round was tried first: two thugs' worst together is
+     * 22, and a character at 21 hung up on a round that almost never comes.
+     * 0 never.
+     */
+    hangUpRisk: 0.25,
+    /** A monster run from is not attacked again until the character is this many levels past it… */
+    fledLevels: 2,
+    /** …or this long has passed, so a loop whose one monster was run from goes on earning. */
+    fledForgetMs: 1_800_000
   },
   /**
    * How a monster's hazards are priced when auto-combat decides what to hit
@@ -1054,6 +1081,11 @@ const TUNING_DEFAULTS = {
   },
   /** Walking a planned route — `Walker`. */
   walk: {
+    /**
+     * Sneaking stops being asked for after this many failures in a row
+     * (`You don't think you're sneaking.`), until the next connection or level.
+     */
+    sneakGiveUp: 4,
     /** How long one hold lasts before the walk tries the step again. */
     holdMs: 1_500,
     /** How many holds run back to back before it walks on regardless. */

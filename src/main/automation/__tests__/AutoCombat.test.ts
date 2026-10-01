@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { AutoCombat } from '../AutoCombat';
+import { AutoCombat, type OpeningGuard } from '../AutoCombat';
+import type { FledEntry } from '../../../shared/fled';
+import type { Survival } from '../../../shared/survival';
 import type { EngageDecision } from '../../../shared/automation';
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
@@ -157,7 +159,9 @@ function make(
   /** Whether the class can get into the shadows; undefined is unknown (todo 28). */
   canHide?: () => boolean | null,
   /** What the realm's wire taught about its attack spells (todo 820). */
-  instants?: InstantSpellLore
+  instants?: InstantSpellLore,
+  /** What opening a fight is weighed against (`OpeningGuard`). */
+  guard?: OpeningGuard
 ): AutoCombat {
   return new AutoCombat(
     config,
@@ -172,7 +176,9 @@ function make(
     spells ?? DEFAULT_CONFIG.automation.spells,
     undefined,
     realmClass,
-    instants
+    instants,
+    undefined,
+    guard ?? null
   );
 }
 
@@ -4020,6 +4026,129 @@ describe('what follows a cast’s Off', () => {
     auto.onCharacter(standing());
     drain();
     expect(sent).toEqual(['a tall kobold thief', 'a tall kobold thief']);
+  });
+});
+
+/*
+ * Soul walked into two thugs at 28 of 34 and opened on them, took 18 in the
+ * first round, and died; it went back at a mad wizard four times. A fight is
+ * opened only where it is survived, from the health there is now.
+ */
+describe('opening only a fight it walks out of', () => {
+  const thug = fighter('thug', 28, [bite(2, 11)]);
+  const at = (hp: number): CharacterState =>
+    state({
+      vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 34 },
+      progress: { ...EMPTY_CHARACTER.progress, level: 1 },
+      room: { ...EMPTY_CHARACTER.room, occupants: [thug] }
+    });
+  const guard = (survival: Survival | null, fled: FledEntry[] = []): OpeningGuard => ({
+    opening: () => survival,
+    fled: () => fled
+  });
+  const odds = (survives: number, worstRound: number, standing = 1): Survival =>
+    ({
+      survives,
+      worstRound,
+      horizons: [{ rounds: 3, standing, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
+    }) as unknown as Survival;
+
+  it('opens a fight survived from here (the control)', () => {
+    const auto = make(
+      combat(),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard(odds(1, 11))
+    );
+    auto.onCharacter(at(34));
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
+  it('does not open a fight survived too seldom, and rests to full first', () => {
+    const auto = make(
+      combat(),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard(odds(0.6, 5))
+    );
+    auto.onCharacter(at(30));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toHaveLength(1);
+    expect(auto.restingFor).toBe(34);
+  });
+
+  it('leaves a fight nobody can work out to the run and the hang-up', () => {
+    make(combat(), true, undefined, undefined, undefined, undefined, guard(null)).onCharacter(
+      at(34)
+    );
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
+  it('opens as before on a realm with no world database to weigh against', () => {
+    const blind: OpeningGuard = { opening: () => undefined, fled: () => [] };
+    make(combat(), true, undefined, undefined, undefined, undefined, blind).onCharacter(at(34));
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
+  it('opens on a monster whose worst blow is half its health, at full health (the cave bear)', () => {
+    make(
+      combat(),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard(odds(0.99, 18, 0.999))
+    ).onCharacter(at(34));
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
+  it('does not open what it would have to run from at once, and rests to full first', () => {
+    const auto = make(
+      combat(),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard(odds(0.75, 11, 0.8))
+    );
+    auto.onCharacter(at(20));
+    drain();
+    expect(sent).toEqual([]);
+    expect(auto.restingFor).toBe(34);
+    auto.onCharacter(at(34));
+    expect(auto.restingFor).toBeNull();
+  });
+
+  it('leaves alone a monster it ran from, until it is two levels past it', () => {
+    const fled = [{ name: 'thug', level: 1, at: Date.now() }];
+    const auto = make(
+      combat(),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard(odds(1, 11), fled)
+    );
+    auto.onCharacter(at(34));
+    drain();
+    expect(sent).toEqual([]);
+    auto.onCharacter({ ...at(34), progress: { ...EMPTY_CHARACTER.progress, level: 3 } });
+    drain();
+    expect(sent).toEqual(['a thug']);
   });
 });
 

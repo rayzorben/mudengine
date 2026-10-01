@@ -8,6 +8,7 @@ import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../.
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { classifyOccupant } from '../../../shared/mobs';
 import type { MobRule } from '../../../shared/mobRules';
+import type { Survival } from '../../../shared/survival';
 import type { ConnectionEnd, ConnectionState } from '../../../shared/types';
 
 const LINK: ConnectionState = {
@@ -58,15 +59,22 @@ function automation(
 function build(
   config: AutomationConfig,
   state: CharacterState,
-  assessment: HangUpAssessment = { clean: true, reasons: [], clearInMs: null }
+  assessment: HangUpAssessment = { clean: true, reasons: [], clearInMs: null },
+  danger: { fight?: Survival | null; percent?: number | null } = {}
 ) {
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
   const hungUp: ConnectionEnd[] = [];
   const parts: SafetyParts = {
     tracker: { current: state },
-    hangUp: { assess: () => assessment },
-    realmMenu: { penalty: null, noteCommand: () => null },
+    hangUp: { assess: () => assessment, clean: () => assessment.clean },
+    realmMenu: {
+      penalty:
+        danger.percent === undefined || danger.percent === null
+          ? null
+          : { realm: 'Paradigm', percent: danger.percent },
+      noteCommand: () => null
+    },
     queue: { enqueue: () => true },
     travel: { runFromPlayer: () => undefined },
     client: { connected: true },
@@ -75,6 +83,7 @@ function build(
   };
   const safety = new Safety(parts, {
     config: () => config,
+    fight: () => danger.fight ?? null,
     disconnect: (by) => void hungUp.push(by),
     notice: (message) => void notices.push(message)
   });
@@ -142,5 +151,86 @@ describe('hanging up on a monster its row names', () => {
     safety.considerHangingUp(state);
     expect(hungUp).toEqual([]);
     expect(notices).toEqual([]);
+  });
+});
+
+/*
+ * The last resort ahead of running: the next worst round could kill, so the
+ * character leaves the realm, unless the realm's charge for an unclean hangup
+ * would kill it first. Death drops everything carried (`Player.Killed`).
+ */
+describe('hanging up before the next round could kill', () => {
+  /** Dead within the next round `dead` of the time. */
+  const odds = (dead: number): Survival =>
+    ({
+      survives: 0.4,
+      worstRound: 22,
+      horizons: [{ rounds: 1, standing: 1 - dead, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
+    }) as unknown as Survival;
+  const thugs = odds(0.5);
+  const hit = (hp: number): CharacterState => {
+    const state = standing([stalker]);
+    return {
+      ...state,
+      vitals: { ...state.vitals, hp, hpMax: 34 },
+      combat: { ...state.combat, attackers: ['stalker'] }
+    };
+  };
+  const dirty: HangUpAssessment = { clean: false, reasons: ['a mob targets you'], clearInMs: null };
+
+  it('hangs up, the hang-up switch off or on, when the next round could take what is left', () => {
+    const state = hit(10);
+    const { safety, hungUp, decisions } = build(automation({ enabled: false }, []), state, dirty, {
+      fight: thugs,
+      percent: 25
+    });
+    expect(safety.beforeDeath(state)).toBe(true);
+    expect(hungUp).toEqual(['client']);
+    expect(decisions.at(-1)).toMatchObject({ action: 'hang up', acted: true });
+  });
+
+  it('stays connected where the charge would kill, and says so once', () => {
+    const state = hit(6);
+    const { safety, hungUp, notices } = build(automation({}, []), state, dirty, {
+      fight: thugs,
+      percent: 25
+    });
+    expect(safety.beforeDeath(state)).toBe(false);
+    expect(safety.beforeDeath(state)).toBe(false);
+    expect(hungUp).toEqual([]);
+    expect(notices).toHaveLength(1);
+  });
+
+  it('hangs up even below the charge where the hangup is clean', () => {
+    const state = hit(6);
+    const { safety, hungUp } = build(automation({}, []), state, undefined, {
+      fight: thugs,
+      percent: 25
+    });
+    expect(safety.beforeDeath(state)).toBe(true);
+    expect(hungUp).toEqual(['client']);
+  });
+
+  it('stays connected for a round that could kill but almost never does (two thugs at 21)', () => {
+    const state = hit(21);
+    const { safety, hungUp } = build(automation({}, []), state, dirty, {
+      fight: odds(0.01),
+      percent: 25
+    });
+    expect(safety.beforeDeath(state)).toBe(false);
+    expect(hungUp).toEqual([]);
+  });
+
+  it('does nothing while the next round could not kill, out of a fight, or with nothing known', () => {
+    const healthy = hit(20);
+    const idle = { ...hit(5), combat: { ...hit(5).combat, attackers: [] } };
+    expect(
+      build(automation({}, []), healthy, dirty, { fight: odds(0) }).safety.beforeDeath(healthy)
+    ).toBe(false);
+    expect(build(automation({}, []), idle, dirty, { fight: thugs }).safety.beforeDeath(idle)).toBe(
+      false
+    );
+    const unknown = hit(5);
+    expect(build(automation({}, []), unknown, dirty, {}).safety.beforeDeath(unknown)).toBe(false);
   });
 });
