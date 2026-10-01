@@ -224,6 +224,65 @@ describe('a quiet command', () => {
   });
 
   /*
+   * The prompt was painted before the command went out, so the realm's echo
+   * lands on the prompt's row and the two frame as one status line. That line
+   * is the command's echo, not its acknowledgement (the smoke's fake host and
+   * captures/007, `[HP=78/KAI=9]:l`).
+   */
+  it('takes a prompt with its own echo glued on for the echo, not the acknowledgement', () => {
+    const h = harness();
+    expect(h.chunk(PROMPT + ' ')).toBe(PROMPT + ' ');
+    h.feed.sent('rm', 'automation');
+    expect(h.chunk('rm\r\n')).toBe('');
+    expect(h.chunk('Location: 1,2147\r\n\r\n')).toBe('');
+    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + PROMPT);
+    expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\nSomeone walks in.\r\n');
+  });
+
+  it('still closes the first of two alike when the prompt that ends it carries the second’s echo', () => {
+    const h = harness();
+    h.chunk(PROMPT);
+    h.flush();
+    h.feed.sent('rm', 'automation');
+    h.feed.sent('rm', 'automation');
+    expect(
+      h.chunk('rm\r\nLocation: 1,2147\r\n\r\n' + PROMPT + 'rm\r\nLocation: 1,2148\r\n\r\n')
+    ).toBe(PROMPT);
+    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + PROMPT);
+    expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\nSomeone walks in.\r\n');
+  });
+
+  /*
+   * A prompt the realm repaints between the send and the answer (a broadcast,
+   * the fake host's login burst read in two pieces) pops the command before
+   * its echo. The echo is the realm saying it is on that command now.
+   */
+  it('opens the window again when the echo comes after a repainted prompt popped it', () => {
+    const h = harness();
+    h.chunk(PROMPT);
+    h.flush();
+    h.feed.sent('rm', 'automation');
+    expect(h.chunk('Bob gossips: hi\r\n' + PROMPT)).toBe('Bob gossips: hi\r\n' + PROMPT);
+    expect(h.chunk('rm\r\n')).toBe('');
+    expect(h.chunk('Location: 1,2147\r\n\r\n')).toBe('');
+    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + PROMPT);
+    expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\nSomeone walks in.\r\n');
+  });
+
+  it('closes the command ahead when the prompt carries the next one’s echo', () => {
+    const h = harness();
+    h.chunk(PROMPT);
+    h.flush();
+    h.feed.sent('l', 'automation');
+    h.feed.sent('dance', 'user');
+    h.chunk('l\r\nA hall.\r\n');
+    // The prompt ending `l`'s answer, with `dance` echoed after it: `l` is
+    // answered, and what follows is the player's own and shown.
+    expect(h.chunk(PROMPT + 'dance\r\n')).toBe(PROMPT + 'dance\r\n');
+    expect(h.chunk('You dance.\r\n')).toBe('You dance.\r\n');
+  });
+
+  /*
    * A server does not always acknowledge: a menu answers with no prompt, and
    * a fixture may answer nothing at all. The echo of the quiet command is
    * the server saying it has moved on to it, whatever came before.

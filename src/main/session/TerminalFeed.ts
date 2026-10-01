@@ -49,7 +49,7 @@ import { stripAnsi } from '../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../net/stream-quirks';
 import { tuning } from '../app/tuning';
 import type { Block, BlockType } from '../../shared/blocks';
-import type { BatchBlock } from '../parse/Classifier';
+import { tailAfterPrompt, type BatchBlock } from '../parse/Classifier';
 import type { LineTerminator, TerminalMark } from '../../shared/types';
 
 /**
@@ -288,6 +288,8 @@ interface Sent {
   at: number;
   /** How many packets had arrived when it was sent: see `arrived`. */
   after: number;
+  /** The realm has echoed it, so a later echo of the same text is another send's. */
+  echoed: boolean;
 }
 
 /** One thing to paint, with the marks that decorate the lines in it. */
@@ -298,6 +300,8 @@ export interface Emitted {
 
 export class TerminalFeed {
   private queue: Sent[] = [];
+  /** Popped by a prompt before the realm echoed them, for an echo that comes late: see `moveUpTo`. */
+  private popped: Sent[] = [];
   /** How much of the tokenizer's pending tail has already been emitted. */
   private forwarded = 0;
   /** Whether the last thing emitted left the cursor at the start of a row. */
@@ -316,6 +320,8 @@ export class TerminalFeed {
   private held: { type: BlockType; lines: HeldLine[]; timer: NodeJS.Timeout | null } | null = null;
   /** Packets read so far, counted as each one starts: see `arrived`. */
   private received = 0;
+  /** The packet the unframed tail began in, or null with no tail. */
+  private tailSince: number | null = null;
 
   constructor(
     private readonly source: FeedSource,
@@ -344,8 +350,52 @@ export class TerminalFeed {
     // room read — so it answers to `BARE_ENTER` rather than to nothing.
     const word = typed.length === 0 ? BARE_ENTER : (typed.split(SPACES)[0]?.toLowerCase() ?? '');
     const quiet = from === 'automation' && this.source.isQuiet(word);
-    this.queue.push({ command, quiet, at: this.source.now(), after: this.received });
+    this.queue.push({ command, quiet, at: this.source.now(), after: this.received, echoed: false });
     this.expire();
+  }
+
+  /**
+   * The realm echoed `echo`: the queue moves up to the command it repeats,
+   * past any ahead of it that were answered without a status line or never
+   * answered. False when nothing queued and answerable is that command.
+   */
+  private moveUpTo(echo: string): boolean {
+    this.expire();
+    const echoes = (sent: Sent): boolean =>
+      this.received > sent.after && sent.command.trim() === echo.trim();
+    const index = this.queue.findIndex(echoes);
+    if (index > 0) this.queue.splice(0, index);
+    if (index >= 0) {
+      this.queue[0]!.echoed = true;
+      return true;
+    }
+    /*
+     * Popped before it was echoed: a prompt the realm repainted between the
+     * send and the answer (a broadcast, a login burst read in two pieces)
+     * closed it early. The echo is the realm starting on it, so it is put
+     * back at the head and its answer is withheld as it would have been.
+     */
+    const late = this.popped.findIndex((sent) => !sent.echoed && echoes(sent));
+    if (late < 0) return false;
+    const [sent] = this.popped.splice(late, 1);
+    this.queue.unshift({ ...sent!, echoed: true });
+    return true;
+  }
+
+  /** The head was acknowledged by a prompt. */
+  private acknowledge(): void {
+    const head = this.queue.shift();
+    if (head !== undefined && head.quiet && !head.echoed) this.popped.push(head);
+  }
+
+  /**
+   * Whether a prompt that began arriving in packet `began` is the head's
+   * acknowledgement: only if the head went out before it. A prompt painted
+   * before the command went out is not its answer, whatever is glued on.
+   */
+  private answersHead(began: number): boolean {
+    const head = this.queue[0];
+    return head !== undefined && head.after < began;
   }
 
   /** Whether a quiet command's window is open: the next packet's lines answer it. */
@@ -379,8 +429,11 @@ export class TerminalFeed {
   ): void {
     this.cancelHold();
     const already = this.forwarded;
+    // The packet this line began in: an earlier one's when it was the tail.
+    const began = this.tailSince ?? this.received;
     this.forwarded = 0;
     this.tail = '';
+    this.tailSince = null;
 
     /*
      * A listing the client draws itself. Its lines are withheld from the
@@ -423,21 +476,30 @@ export class TerminalFeed {
      * command the server did not acknowledge sat at the head until it was
      * written off, and the quiet command behind it was shown in full.
      */
-    if (type === 'command-echo') {
-      const index = this.queue.findIndex(
-        (sent) => this.received > sent.after && sent.command.trim() === plain.trim()
-      );
-      if (index > 0) this.queue.splice(0, index);
-    }
+    if (type === 'command-echo') this.moveUpTo(plain);
 
     // The acknowledgement: pops the command it answers, and is always shown —
     // as the client's own line where one is designed and none of it has been
     // painted yet, which is the prompt arriving whole with its terminator.
     if (type === 'status-line') {
-      if (!this.acknowledged && this.answerable()) this.queue.shift();
+      /*
+       * A prompt painted before the command went out takes the command's
+       * echo on its own row, so the two frame as one line (`]: rm`). The
+       * prompt acknowledges only a head sent before it began (`answersHead`),
+       * and the echo moves the queue up to the command it repeats, leaving
+       * that window open for its answer: two `rm` in flight are told apart.
+       * The echo of a quiet command is withheld; the prompt is still shown.
+       */
+      if (!this.acknowledged && this.answersHead(began)) this.acknowledge();
       this.acknowledged = false;
-      const drawn = already === 0 ? this.designed(text, plain) : null;
-      this.emit(drawn ?? text.slice(already), terminator, mark);
+      const echo = tailAfterPrompt(plain);
+      const echoed = echo !== null && this.moveUpTo(echo);
+      // Where the prompt ends in `plain`, when the echo after it is withheld.
+      const end = echoed && this.answeringQuiet ? plain.length - echo.length : null;
+      const shown = end === null ? text : text.slice(0, afterStyling(text, rawIndexOf(text, end)));
+      const drawn = already === 0 ? this.designed(shown, plain.slice(0, end ?? undefined)) : null;
+      this.emit(drawn ?? shown.slice(already), terminator, mark);
+      if (end !== null) this.swallowed = true;
       return;
     }
     this.acknowledged = false;
@@ -510,6 +572,8 @@ export class TerminalFeed {
    */
   partial(pending: string): void {
     this.tail = pending;
+    if (pending.length === 0) this.tailSince = null;
+    else this.tailSince ??= this.received;
     if (pending.length <= this.forwarded) return;
 
     /*
@@ -520,8 +584,8 @@ export class TerminalFeed {
      */
     const plain = stripAnsi(pending);
     const status = this.source.isStatus(plain.trimStart());
-    if (this.answeringQuiet && status) {
-      this.queue.shift();
+    if (this.answeringQuiet && status && this.answersHead(this.tailSince ?? this.received)) {
+      this.acknowledge();
       this.acknowledged = true;
     }
 
@@ -646,9 +710,11 @@ export class TerminalFeed {
     this.cancelHold();
     this.dropHeld();
     this.queue = [];
+    this.popped = [];
     this.forwarded = 0;
     this.atLineStart = true;
     this.tail = '';
+    this.tailSince = null;
     this.out = { text: '', marks: [] };
     this.acknowledged = false;
     this.swallowed = false;
@@ -734,6 +800,7 @@ export class TerminalFeed {
   private expire(): void {
     const now = this.source.now();
     while (this.queue.length > 0 && now - this.queue[0]!.at > ABANDON_MS) this.queue.shift();
+    this.popped = this.popped.filter((sent) => now - sent.at <= ABANDON_MS);
   }
 
   private cancelHold(): void {
