@@ -20,6 +20,8 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
+import { REFRESH } from '../../shared/staleness';
+import { bestTrainer } from '../../shared/training';
 import { roomId, type RoomId, type Route, type TrainerChoice } from '../../shared/world';
 import type { SessionModule } from './Module';
 
@@ -70,6 +72,8 @@ export class TrainErrand implements SessionModule {
    * of grinding, which is the right price for not spending commands in a loop.
    */
   private attempted: number | null = null;
+  /** The level `exp` was last asked at for an unread `expNeeded`, so it is asked once. */
+  private askedOwed: number | null = null;
   /** Whether the *nowhere to go* refusal has been said for this level. */
   private saidNowhere: number | null = null;
   /**
@@ -115,6 +119,7 @@ export class TrainErrand implements SessionModule {
   reset(): void {
     this.phase = { kind: 'idle' };
     this.attempted = null;
+    this.askedOwed = null;
     this.saidNowhere = null;
   }
 
@@ -167,8 +172,15 @@ export class TrainErrand implements SessionModule {
      * it is null until an `exp` or a sheet has been read — and `null <= 0` is
      * false in JavaScript only because the comparison is written this way
      * round, which is exactly the mistake this client keeps a rule about.
-     * Unknown is never the answer that sends a character across the realm.
+     * Unknown is never the answer that sends a character across the realm, so
+     * an unread figure is asked for, once a level: `st` states the experience
+     * and not what is needed, and a character logged in with a level waiting
+     * otherwise waits for ever.
      */
+    if (level !== null && owed === null) {
+      this.askOwed(level);
+      return;
+    }
     if (level === null || owed === null || owed > 0) return;
     if (this.expStaleSince !== null) {
       if (this.now() - this.expStaleSince < tuning().train.confirmMs) return;
@@ -215,8 +227,8 @@ export class TrainErrand implements SessionModule {
     this.saidNowhere = null;
 
     /*
-     * **Cheapest first, and reach is the filter, not the tiebreak.** A trainer
-     * no route reaches is not a cheaper trainer; it is not a trainer. The
+     * **Reach is the filter; the walk and the price choose** (`bestTrainer`). A
+     * trainer no route reaches is not a cheaper trainer; it is not a trainer. The
      * realm on the test server files two Sysop rooms (1/289, 4/1) that take
      * every level at no markup and that nothing a player walks can enter, so
      * the cheapest-first order alone chose them, said *0 steps* for a route
@@ -236,14 +248,21 @@ export class TrainErrand implements SessionModule {
     )
       return;
     const skipped: string[] = [];
+    // Standing in a trainer's room is a walk of nothing, weighed with the rest: a large markup still loses.
+    const reached: Array<{
+      trainer: TrainerChoice;
+      way: Way;
+      route: Pick<Route, 'cost' | 'steps'>;
+    }> = [];
     for (const candidate of taking) {
       const way = this.routeFor(candidate);
-      if (way.kind !== 'none') {
-        if (skipped.length > 0) {
-          this.events.notice?.(t('automation.train.skipping', { skipped: skipped.join('; ') }));
-        }
-        this.go(state, level, candidate, way);
-        return;
+      if (way.kind === 'here') {
+        reached.push({ trainer: candidate, way, route: { cost: 0, steps: [] } });
+        continue;
+      }
+      if (way.kind === 'route') {
+        reached.push({ trainer: candidate, way, route: way.route });
+        continue;
       }
       skipped.push(
         t('automation.train.skippedOne', {
@@ -252,6 +271,14 @@ export class TrainErrand implements SessionModule {
           why: way.why
         })
       );
+    }
+    const best = bestTrainer(reached, tuning().train.costSlack);
+    if (best !== null) {
+      if (skipped.length > 0) {
+        this.events.notice?.(t('automation.train.skipping', { skipped: skipped.join('; ') }));
+      }
+      this.go(state, level, best.trainer, best.way);
+      return;
     }
     this.refusedFrom = { level, room: here, at: this.now() };
     /*
@@ -340,6 +367,18 @@ export class TrainErrand implements SessionModule {
     }
     if (this.planner.looping()) this.planner.hold();
     this.phase = { kind: 'walking', to: roomId(chosen.map, chosen.room), trainer: chosen };
+  }
+
+  /** Asks `exp` once per level, for the figure the trip is decided on. */
+  private askOwed(level: number): void {
+    if (this.askedOwed === level) return;
+    // A refused enqueue is *not now*: marked only once the queue takes it.
+    const taken = this.queue.enqueue({
+      ...REFRESH.experience,
+      priority: 'probe',
+      reason: t('automation.train.reasonAskOwed')
+    });
+    if (taken) this.askedOwed = level;
   }
 
   /** The experience figure said again: the next banked level may be asked about. */

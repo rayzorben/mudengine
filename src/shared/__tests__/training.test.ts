@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  bestTrainer,
   nextPointCost,
   planTraining,
   raiseCost,
@@ -10,6 +11,7 @@ import {
   wantsMore,
   type TrainerRow
 } from '../training';
+import type { RouteStep } from '../world';
 
 /*
  * Vaelor, a Nekojin (`Races`: mSTR 40 / xSTR 140, mAGL 60 / xAGL 170,
@@ -198,5 +200,41 @@ describe('choosing a trainer', () => {
 
   it('answers with nothing where no trainer takes this character', () => {
     expect(trainersFor([NINJA_ROOM, BARD_76], 30, 7)).toEqual([]);
+  });
+});
+
+describe('which reachable trainer is walked to', () => {
+  const reached = (name: string, cost: number, steps: number, danger = 0, deadly = false) => ({
+    name,
+    trainer: { cost },
+    route: {
+      cost: steps,
+      steps: Array.from(
+        { length: steps },
+        (_, at) =>
+          ({
+            to: `1/${at}`,
+            name: `room ${at}`,
+            danger: at === 0 ? danger : 0,
+            deadly
+          }) as unknown as RouteStep
+      )
+    }
+  });
+
+  it('takes the nearest when every one is free, as at level 1', () => {
+    const near = reached('newhaven', 0, 12);
+    expect(bestTrainer([reached('far', 0, 140), near], 0.25)).toBe(near);
+  });
+
+  it('takes the safer walk before the shorter one, and never a deadly one while another exists', () => {
+    const quiet = reached('quiet', 0, 40);
+    expect(bestTrainer([reached('bandits', 0, 20, 0.6), quiet], 0.25)).toBe(quiet);
+    expect(bestTrainer([reached('deadly', 0, 5, 1.2, true), quiet], 0.25)).toBe(quiet);
+  });
+
+  it('still pays the cheaper price where the markups differ by more than the slack', () => {
+    const cheap = reached('sixty seven', 33_150, 90);
+    expect(bestTrainer([reached('hydra', 257_524, 10), cheap], 0.25)).toBe(cheap);
   });
 });

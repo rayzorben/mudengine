@@ -877,6 +877,11 @@ const TUNING_DEFAULTS = {
      * to learn nothing (todo 103).
      */
     reaskMs: 60000,
+    /**
+     * Trainers priced within this share of the cheapest count as one price,
+     * and the nearest, safest walk among them is taken (`bestTrainer`).
+     */
+    costSlack: 0.25,
     /** A `train stats` still queued after this is for a moment that has passed. */
     expiresMs: 8000,
     /**
