@@ -12,13 +12,7 @@ import { goalKey, type KonamiLesson } from './konamiLessons';
  * from the card.
  */
 export type KonamiOutcome =
-  | 'applied'
-  | 'done'
-  | 'refused'
-  | 'replaced'
-  | 'failed'
-  | 'died'
-  | 'vetoed';
+  'applied' | 'done' | 'refused' | 'replaced' | 'failed' | 'died' | 'vetoed';
 
 /** One ask of the provider, whole: what was sent, what came back, what was made of it. */
 export interface KonamiDecision {
