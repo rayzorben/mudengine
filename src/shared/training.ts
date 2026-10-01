@@ -1,3 +1,5 @@
+import { lairsAlong, type RouteStep } from './world';
+
 /**
  * Spending character points: what a point costs and which to buy (todo 10,
  * 2026-09-12). The cost is `StatField.Validate`'s own loop, transcribed —
@@ -198,9 +200,11 @@ export function trainingCost(level: number, markup: number | undefined): number 
 }
 
 /**
- * The trainers that will take this character, cheapest first.
+ * The trainers that will take this character, cheapest first: the order the
+ * picker lists them in. Which one is walked to is `bestTrainer`'s, which
+ * weighs the walk as well and counts prices within `costSlack` as one.
  *
- * **Cost leads, and it is not close.** The bands overlap heavily — 21–50,
+ * **Why the price still counts.** The bands overlap heavily — 21–50,
  * 31–52, 41–54, 51–75 — so a level 52 character matches several, and the
  * markups across them span a factor of eight: `Hydra Trainer` (51–75) charges
  * 9,999% and quotes 257,524 copper at level 52, where `Sixty Seven` (1–67)
@@ -231,4 +235,32 @@ export function trainersFor(
         (b.maxLevel ?? Number.MAX_SAFE_INTEGER) - (a.maxLevel ?? Number.MAX_SAFE_INTEGER) ||
         a.id - b.id
     );
+}
+
+/** A trainer the route planner reaches, with the walk there (no steps where it stands). */
+export interface ReachedTrainer {
+  trainer: { cost: number };
+  route: { cost: number; steps: readonly RouteStep[] };
+}
+
+/**
+ * Which reachable trainer to walk to: a walk not expected to kill first;
+ * then the price, every trainer within `slack` of the cheapest counted as
+ * equal (at level 1 every one is free); then the walk itself, its lairs'
+ * expected toll and then its length. The cheapest alone sent a level-1
+ * character past the Newhaven trainer and down a road of bandits.
+ */
+export function bestTrainer<R extends ReachedTrainer>(
+  reached: readonly R[],
+  slack: number
+): R | null {
+  if (reached.length === 0) return null;
+  const deadly = (each: R): boolean => lairsAlong(each.route.steps).deadly !== null;
+  const toll = (each: R): number =>
+    each.route.steps.reduce((sum, step) => sum + (step.danger ?? 0), 0);
+  const safe = reached.filter((each) => !deadly(each));
+  const pool = safe.length > 0 ? safe : [...reached];
+  const cheapest = Math.min(...pool.map((each) => each.trainer.cost));
+  const near = pool.filter((each) => each.trainer.cost <= cheapest * (1 + slack));
+  return [...near].sort((a, b) => toll(a) - toll(b) || a.route.cost - b.route.cost)[0] ?? null;
 }

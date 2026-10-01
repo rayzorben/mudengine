@@ -4892,6 +4892,7 @@ automation:
     going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
     levelled: Welcome to level {level}.
     reasonLevel: 'training: the experience for a level is there'
+    reasonAskOwed: 'reading the experience needed, to see if a level is ready'
     abandonedDied: 'Died: the walk to the trainer is canceled. The level is still waiting.'
     becauseOwed: a level was earned and not collected
     whyStopped: the walk stopped before it arrived
