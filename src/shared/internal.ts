@@ -525,11 +525,14 @@ const TUNING_DEFAULTS = {
     runRounds: 3,
     runRisk: 0.05,
     /**
-     * Hang up once this many of the fight's worst rounds could kill, where the
-     * realm's charge for hanging up would not (`Safety.beforeDeath`): a hangup
-     * costs some items, a death everything carried. 0 never hangs up for it.
+     * Hang up once the next round kills more than this share of the room's
+     * simulated fights, where the realm's charge for hanging up would not
+     * (`Safety.beforeDeath`): a hangup costs some items, a death everything
+     * carried. The worst round was tried first: two thugs' worst together is
+     * 22, and a character at 21 hung up on a round that almost never comes.
+     * 0 never.
      */
-    hangUpRounds: 1,
+    hangUpRisk: 0.25,
     /** A monster run from is not attacked again until the character is this many levels past it… */
     fledLevels: 2,
     /** …or this long has passed, so a loop whose one monster was run from goes on earning. */
@@ -914,6 +917,11 @@ const TUNING_DEFAULTS = {
      * to learn nothing (todo 103).
      */
     reaskMs: 60000,
+    /**
+     * Trainers priced within this share of the cheapest count as one price,
+     * and the nearest, safest walk among them is taken (`bestTrainer`).
+     */
+    costSlack: 0.25,
     /** A `train stats` still queued after this is for a moment that has passed. */
     expiresMs: 8000,
     /**

@@ -215,6 +215,22 @@ export class AutoHunt implements SessionModule {
     return this.phase.kind !== 'idle';
   }
 
+  /** Where the hunt is walking to, or the lap it is hunting on, for the Konami card. */
+  get heading(): { walking: boolean; place: string } | null {
+    switch (this.phase.kind) {
+      case 'idle':
+        return null;
+      case 'walking':
+        return { walking: true, place: this.phase.spot.walk[0]?.name ?? this.phase.loop.name };
+      case 'hunting':
+        return { walking: false, place: this.phase.name };
+      default: {
+        const never: never = this.phase;
+        return never;
+      }
+    }
+  }
+
   /**
    * The player stopped the lap.
    *

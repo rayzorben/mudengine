@@ -20,6 +20,7 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
+import { bestTrainer } from '../../shared/training';
 import { roomId, type RoomId, type Route, type TrainerChoice } from '../../shared/world';
 import type { SessionModule } from './Module';
 
@@ -130,6 +131,18 @@ export class TrainErrand implements SessionModule {
     return this.phase.kind !== 'idle';
   }
 
+  /** Which trainer the errand is walking to or training with, for the Konami card. */
+  get heading(): { trainer: string; room: string; copper: number; training: boolean } | null {
+    if (this.phase.kind === 'idle') return null;
+    const { trainer } = this.phase;
+    return {
+      trainer: trainer.name,
+      room: trainer.roomName,
+      copper: trainer.cost,
+      training: this.phase.kind === 'training'
+    };
+  }
+
   /**
    * A death: the trainer is several maps away now.
    *
@@ -215,8 +228,8 @@ export class TrainErrand implements SessionModule {
     this.saidNowhere = null;
 
     /*
-     * **Cheapest first, and reach is the filter, not the tiebreak.** A trainer
-     * no route reaches is not a cheaper trainer; it is not a trainer. The
+     * **Reach is the filter; the walk and the price choose** (`bestTrainer`). A
+     * trainer no route reaches is not a cheaper trainer; it is not a trainer. The
      * realm on the test server files two Sysop rooms (1/289, 4/1) that take
      * every level at no markup and that nothing a player walks can enter, so
      * the cheapest-first order alone chose them, said *0 steps* for a route
@@ -236,14 +249,21 @@ export class TrainErrand implements SessionModule {
     )
       return;
     const skipped: string[] = [];
+    // Standing in a trainer's room is a walk of nothing, weighed with the rest: a large markup still loses.
+    const reached: Array<{
+      trainer: TrainerChoice;
+      way: Way;
+      route: Pick<Route, 'cost' | 'steps'>;
+    }> = [];
     for (const candidate of taking) {
       const way = this.routeFor(candidate);
-      if (way.kind !== 'none') {
-        if (skipped.length > 0) {
-          this.events.notice?.(t('automation.train.skipping', { skipped: skipped.join('; ') }));
-        }
-        this.go(state, level, candidate, way);
-        return;
+      if (way.kind === 'here') {
+        reached.push({ trainer: candidate, way, route: { cost: 0, steps: [] } });
+        continue;
+      }
+      if (way.kind === 'route') {
+        reached.push({ trainer: candidate, way, route: way.route });
+        continue;
       }
       skipped.push(
         t('automation.train.skippedOne', {
@@ -252,6 +272,14 @@ export class TrainErrand implements SessionModule {
           why: way.why
         })
       );
+    }
+    const best = bestTrainer(reached, tuning().train.costSlack);
+    if (best !== null) {
+      if (skipped.length > 0) {
+        this.events.notice?.(t('automation.train.skipping', { skipped: skipped.join('; ') }));
+      }
+      this.go(state, level, best.trainer, best.way);
+      return;
     }
     this.refusedFrom = { level, room: here, at: this.now() };
     /*

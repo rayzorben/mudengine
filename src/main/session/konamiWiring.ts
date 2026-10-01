@@ -8,11 +8,13 @@ import { tuning } from '../app/tuning';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
 import { KonamiPlanner, type PlannerEvents } from '../automation/konami/KonamiPlanner';
-import type { Supplies } from '../automation/Supplies';
+import type { ErrandStage, Supplies } from '../automation/Supplies';
+import type { TrainErrand } from '../automation/TrainErrand';
+import type { Walker } from '../automation/Walker';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { SafetyDecision } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
-import type { KonamiRecords } from '../../shared/konamiRecords';
+import type { KonamiActivity, KonamiDoing, KonamiRecords } from '../../shared/konamiRecords';
 import type { ConnectionTarget } from '../../shared/types';
 import type { Errands } from './Errands';
 import { konamiBrief, type BriefingWorld } from './KonamiBriefing';
@@ -33,8 +35,11 @@ export interface KonamiWiring {
   /** The simulator's run of each lair's fight. */
   odds: Pick<OddsReader, 'lair'>;
   world: BriefingWorld | undefined;
-  hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal'>;
+  hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
+  /** The trainer a training trip is bound for, and the walk under way, for the card. */
+  trainLevel: Pick<TrainErrand, 'heading'>;
+  walker: Pick<Walker, 'progress'>;
   queue: Pick<CommandQueue, 'enqueue'>;
   config(): AutomationConfig;
   /** The monsters this character ran from. */
@@ -52,6 +57,45 @@ export interface KonamiWiring {
 
 /** The `wear` proposed for a bought item, coalesced so a second status line adds nothing. */
 const WEAR_KEY = 'konami:wear';
+
+/** A shop trip's stage as the card says it: on the way, at the bank, at the counter. */
+function tripStage(stage: ErrandStage): 'walking' | 'bank' | 'shop' {
+  switch (stage) {
+    case 'walking':
+      return 'walking';
+    case 'balance':
+    case 'withdrawing':
+      return 'bank';
+    case 'waiting':
+    case 'listing':
+    case 'buying':
+      return 'shop';
+    default: {
+      const never: never = stage;
+      return never;
+    }
+  }
+}
+
+/** The goal at work, read off whichever module carries it: training, a shop trip, the hunt. */
+function activityOf(wiring: KonamiWiring): KonamiActivity | null {
+  const train = wiring.trainLevel.heading;
+  const buy = wiring.supplies.current;
+  const hunt = wiring.hunt.heading;
+  const doing: KonamiDoing | null =
+    train !== null
+      ? { kind: 'train', ...train }
+      : buy !== null
+        ? { kind: 'buy', item: buy.item.name, shop: buy.shopName, stage: tripStage(buy.stage) }
+        : hunt !== null
+          ? { kind: 'hunt', ...hunt }
+          : null;
+  if (doing === null) return null;
+  const progress = wiring.walker.progress;
+  const walk =
+    progress.status === 'walking' ? { done: progress.done, total: progress.total } : null;
+  return { doing, walk };
+}
 
 export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
   const { tracker, errands, supplies } = wiring;
@@ -78,6 +122,7 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
         ),
       busy: wiring.busy,
       hunting: () => wiring.hunt.hunting,
+      activity: () => activityOf(wiring),
       buying: () => supplies.current !== null,
       huntRefusal: () => wiring.hunt.refusal,
       refusals: () =>

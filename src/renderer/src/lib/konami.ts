@@ -9,7 +9,7 @@ import { percent } from './outlook';
 import { compact } from './rates';
 import type { KonamiGoal, KonamiLayer, KonamiTrigger } from '@shared/konami';
 import type { KonamiLesson } from '@shared/konamiLessons';
-import type { KonamiIncidentKind, KonamiOutcome } from '@shared/konamiRecords';
+import type { KonamiDoing, KonamiIncidentKind, KonamiOutcome } from '@shared/konamiRecords';
 
 /** A goal in one line, for a list. */
 export function goalText(goal: KonamiGoal): string {
@@ -204,6 +204,43 @@ export function incidentText(kind: KonamiIncidentKind): string {
       return t('cards.konami.incident.stuck');
     default: {
       const never: never = kind;
+      return never;
+    }
+  }
+}
+
+/** What the goal is doing now, in full: which trainer and where, which shop, which room. */
+export function doingText(doing: KonamiDoing): string {
+  switch (doing.kind) {
+    case 'train':
+      return doing.training
+        ? t('cards.konami.doing.training', { trainer: doing.trainer, room: doing.room })
+        : doing.copper === 0
+          ? t('cards.konami.doing.toTrainerFree', { trainer: doing.trainer, room: doing.room })
+          : t('cards.konami.doing.toTrainer', {
+              trainer: doing.trainer,
+              room: doing.room,
+              copper: doing.copper.toLocaleString()
+            });
+    case 'buy':
+      switch (doing.stage) {
+        case 'walking':
+          return t('cards.konami.doing.toShop', { item: doing.item, shop: doing.shop });
+        case 'bank':
+          return t('cards.konami.doing.toBank', { item: doing.item });
+        case 'shop':
+          return t('cards.konami.doing.buying', { item: doing.item, shop: doing.shop });
+        default: {
+          const never: never = doing.stage;
+          return never;
+        }
+      }
+    case 'hunt':
+      return doing.walking
+        ? t('cards.konami.doing.toSpot', { place: doing.place })
+        : t('cards.konami.doing.hunting', { place: doing.place });
+    default: {
+      const never: never = doing;
       return never;
     }
   }

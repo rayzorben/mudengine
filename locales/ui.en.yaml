@@ -1829,6 +1829,15 @@ cards:
     goalName:
       train: Train the level that is ready
       wait: Stay here
+    doing:
+      toTrainer: 'Walking to {trainer} in {room}, {copper} copper a level'
+      toTrainerFree: 'Walking to {trainer} in {room}, free at this level'
+      training: 'Training with {trainer} in {room}'
+      toShop: 'Walking to {shop} for {item}'
+      toBank: 'Fetching cash from the bank for {item}'
+      buying: 'Buying {item} at {shop}'
+      toSpot: 'Walking to {place}'
+      hunting: 'Hunting at {place}'
     buyAt: 'at {shop} · {copper} copper'
     buyFree: 'at {shop} · free'
     headings:
@@ -4518,7 +4527,7 @@ session:
     pvpNoGang: 'Not telling anyone about {attacker}: the who list shows you in no gang.'
     pvpNoGangReason: the who list shows no gang to tell
     whyHealth: health at {percent}
-    whyNextRound: 'the next round could do {worst} and you have {hp} HP'
+    whyNextRound: 'at {hp} HP the next round kills you {risk} of the time'
     whyRisk: 'at {hp} HP this fight kills you {risk} of the time within {rounds} rounds'
     whyMana: mana at {percent}
     whyAttackers: '{count} attackers'

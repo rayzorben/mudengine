@@ -453,10 +453,10 @@ tuning:
     runRounds: 3
     runRisk: 0.05
 
-    # Hang up once this many of the fight's worst rounds could kill, where the
-    # realm's charge for hanging up would not: a hangup costs some items, a
-    # death everything carried. 0 never hangs up for it.
-    hangUpRounds: 1
+    # Hang up once the next round kills more than this share of the room's
+    # simulated fights, where the realm's charge for hanging up would not: a
+    # hangup costs some items, a death everything carried. 0 never.
+    hangUpRisk: 0.25
 
     # A monster run from is not attacked again until the character is this
     # many levels past the level it ran at, or this long has passed, so a loop
@@ -741,6 +741,9 @@ tuning:
     # Once every trainer was out of reach, how long before the routes are
     # planned again, and only from a different room (todo 103).
     reaskMs: 60000
+    # Trainers priced within this share of the cheapest count as one price,
+    # and the nearest, safest walk among them is taken.
+    costSlack: 0.25
     expiresMs: 8000
     # How long a sent `train` has to move the level before the errand gives up
     # on it and says so. The level moving is the confirmation -- the server

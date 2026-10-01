@@ -168,6 +168,19 @@ export interface KonamiIncidentRow {
   path: string | null;
 }
 
+/** What the goal in hand is doing now, as the module doing it says. */
+export type KonamiDoing =
+  | { kind: 'train'; trainer: string; room: string; copper: number; training: boolean }
+  /** `bank`: fetching the cash first; `shop`: at the counter, listing or buying. */
+  | { kind: 'buy'; item: string; shop: string; stage: 'walking' | 'bank' | 'shop' }
+  | { kind: 'hunt'; walking: boolean; place: string };
+
+/** The goal at work, and how far the walk it is on has got, where it is walking. */
+export interface KonamiActivity {
+  doing: KonamiDoing;
+  walk: { done: number; total: number } | null;
+}
+
 /** What the Konami card is shown. */
 export interface KonamiSnapshot {
   /** `automation.superKonamiMode`. */
@@ -187,6 +200,8 @@ export interface KonamiSnapshot {
   log: string | null;
   /** The plan in force: experience made since it was chosen, null before the sheet says. */
   expSince: number | null;
+  /** What the plan's goal is doing right now; null while nothing is at work on it. */
+  activity: KonamiActivity | null;
   /** Lessons on record, newest first, at most `tuning.konami.lessonsShown`. */
   lessons: KonamiLessonRow[];
   /** Every lesson on record, shown or not. */
@@ -208,6 +223,7 @@ export const EMPTY_KONAMI: KonamiSnapshot = {
   incidents: [],
   log: null,
   expSince: null,
+  activity: null,
   lessons: [],
   lessonsKept: 0,
   level: null,

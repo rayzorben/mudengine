@@ -6,6 +6,7 @@ import { clock } from '../lib/clock';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {
+  doingText,
   goalDetail,
   goalIcon,
   goalName,
@@ -116,6 +117,30 @@ function KonamiNow({ konami, onChoose, onOpenDecision, onSeeLessons }: KonamiNow
                 {goalName(plan.goal)}
               </div>
               {detail !== null && <div className="konami-goal-detail">{detail}</div>}
+              {konami.activity !== null && (
+                <div className="konami-doing">
+                  <span className="konami-pulse" data-tone="on" />
+                  <span>{doingText(konami.activity.doing)}</span>
+                  {konami.activity.walk !== null && konami.activity.walk.total > 0 && (
+                    <>
+                      <span
+                        aria-hidden
+                        className="konami-bar walk"
+                        style={
+                          {
+                            '--fill': konami.activity.walk.done / konami.activity.walk.total
+                          } as CSSProperties
+                        }
+                      >
+                        <span />
+                      </span>
+                      <span className="konami-when">
+                        {t('cards.navigation.route.meterLabel', konami.activity.walk)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
               {current !== undefined && (
                 <div className="konami-meta">
                   <span className="konami-meta-item">

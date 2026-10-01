@@ -10,8 +10,8 @@
  *   rounds is over `runRisk`. The worst round doubled was tried first: a cave
  *   bear's worst blow is 18, so a 34-HP character at full health ran from one
  *   that had missed.
- * - Hang up when the next `hangUpRounds` worst rounds could kill, where the
- *   realm's charge for hanging up would not kill first (`Player.Disconnects`:
+ * - Hang up when the next round kills more than `hangUpRisk` of the time,
+ *   where the realm's charge for hanging up would not kill first (`Player.Disconnects`:
  *   an unclean hang-up on a PvP realm takes `PVPHangHPHit`% of maximum
  *   health, and dies of it where that is more than is left).
  *
@@ -57,13 +57,6 @@ export function runDue(
   if (tune.runRisk <= 0) return null;
   const risk = deathRisk(fight, tune.runRounds);
   return risk !== null && risk > tune.runRisk ? risk : null;
-}
-
-/** Whether the next `count` worst rounds could take what is left; 0 never. */
-export function roundsCouldKill(hp: number | null, fight: Survival | null, count: number): boolean {
-  if (hp === null || fight === null || count <= 0) return false;
-  const could = fight.worstRound * count;
-  return could > 0 && hp <= could;
 }
 
 /** Whether to open the fight this simulation is of. */

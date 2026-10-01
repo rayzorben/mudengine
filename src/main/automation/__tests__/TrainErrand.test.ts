@@ -143,6 +143,31 @@ describe('going to collect the level', () => {
   });
 
   /*
+   * At level 1 training is free everywhere, and the cheapest-first order alone
+   * sent Soul past the Newhaven trainer down a road of bandits: the walk decides.
+   */
+  it('walks to the nearer trainer where the prices are the same', () => {
+    const near: Route = { ...ROUTE, cost: 5 };
+    const far: Route = { ...ROUTE, cost: 140 };
+    make(train(), {
+      trainers: () => [
+        { ...TITAN, cost: 0 },
+        { ...AMAZON, cost: 0 }
+      ],
+      routeTo: (room) => (room === '16/384' ? near : far)
+    }).onCharacter(owed());
+    expect(notices).toContain(going({ ...AMAZON, cost: 0 }));
+  });
+
+  it('walks to a much cheaper trainer rather than training in the dear one it stands in', () => {
+    here = '16/384';
+    make().onCharacter(
+      owed({ room: { ...EMPTY_CHARACTER.room, map: 16, number: 384, name: 'x' } })
+    );
+    expect(notices).toContain(going(TITAN));
+  });
+
+  /*
    * The trigger is `expNeeded <= 0` and **both figures must be stated**.
    * `expNeeded` is null until an `exp` or a sheet has been read, and unknown
    * is never the answer that sends a character across the realm.

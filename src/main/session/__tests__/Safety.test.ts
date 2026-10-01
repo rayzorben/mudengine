@@ -160,7 +160,14 @@ describe('hanging up on a monster its row names', () => {
  * would kill it first. Death drops everything carried (`Player.Killed`).
  */
 describe('hanging up before the next round could kill', () => {
-  const thugs = { survives: 0.4, worstRound: 11 } as unknown as Survival;
+  /** Dead within the next round `dead` of the time. */
+  const odds = (dead: number): Survival =>
+    ({
+      survives: 0.4,
+      worstRound: 22,
+      horizons: [{ rounds: 1, standing: 1 - dead, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
+    }) as unknown as Survival;
+  const thugs = odds(0.5);
   const hit = (hp: number): CharacterState => {
     const state = standing([stalker]);
     return {
@@ -204,11 +211,21 @@ describe('hanging up before the next round could kill', () => {
     expect(hungUp).toEqual(['client']);
   });
 
+  it('stays connected for a round that could kill but almost never does (two thugs at 21)', () => {
+    const state = hit(21);
+    const { safety, hungUp } = build(automation({}, []), state, dirty, {
+      fight: odds(0.01),
+      percent: 25
+    });
+    expect(safety.beforeDeath(state)).toBe(false);
+    expect(hungUp).toEqual([]);
+  });
+
   it('does nothing while the next round could not kill, out of a fight, or with nothing known', () => {
     const healthy = hit(20);
     const idle = { ...hit(5), combat: { ...hit(5).combat, attackers: [] } };
     expect(
-      build(automation({}, []), healthy, dirty, { fight: thugs }).safety.beforeDeath(healthy)
+      build(automation({}, []), healthy, dirty, { fight: odds(0) }).safety.beforeDeath(healthy)
     ).toBe(false);
     expect(build(automation({}, []), idle, dirty, { fight: thugs }).safety.beforeDeath(idle)).toBe(
       false

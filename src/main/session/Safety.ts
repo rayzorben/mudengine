@@ -22,7 +22,7 @@ import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import { hangUpCost, roundsCouldKill } from '../../shared/danger';
+import { deathRisk, hangUpCost } from '../../shared/danger';
 import { stanceHere } from '../../shared/mobRules';
 import type { Survival } from '../../shared/survival';
 import type { ConnectionEnd } from '../../shared/types';
@@ -103,8 +103,8 @@ export class Safety implements SessionModule {
   }
 
   /**
-   * The last resort, ahead of running (`tuning.combat.hangUpRounds`): the
-   * next worst round of the fight could take what is left, so the
+   * The last resort, ahead of running (`tuning.combat.hangUpRisk`): the
+   * next round of the fight kills too often from here, so the
    * character leaves the realm rather than the fight. Death drops everything
    * carried in the room it happened in, a life or no life (`Player.Killed`);
    * an unclean hang-up on a realm that charges takes a share of maximum
@@ -114,8 +114,8 @@ export class Safety implements SessionModule {
    * where it would not. True when it hung up.
    */
   beforeDeath(state: CharacterState): boolean {
-    const count = tuning().combat.hangUpRounds;
-    if (!this.automationConfig.enabled || count <= 0) return false;
+    const limit = tuning().combat.hangUpRisk;
+    if (!this.automationConfig.enabled || limit <= 0) return false;
     if (state.phase !== 'in-game' || !this.client.connected) return false;
     if (this.publisher.state.phase === 'closing') return false;
     const fighting = state.inCombat || state.combat.attackers.length > 0;
@@ -126,17 +126,15 @@ export class Safety implements SessionModule {
       return false;
     }
     const fight = this.session.fight();
-    if (!roundsCouldKill(hp, fight, count)) return false;
+    const risk = deathRisk(fight, 1);
+    if (risk === null || risk <= limit) return false;
     const menu = this.realmMenu.penalty;
     const charged =
       menu !== null ? menu.percent > 0 : this.automationConfig.safety.hangUp.penalties;
     // `clean`, which words nothing: this runs per status line while the round could kill.
     const unclean = charged && !this.hangUp.clean(state, Date.now());
     const cost = unclean ? hangUpCost(hpMax, menu?.percent ?? null) : 0;
-    const why = t('session.safety.whyNextRound', {
-      worst: Math.round((fight?.worstRound ?? 0) * count),
-      hp
-    });
+    const why = t('session.safety.whyNextRound', { risk: percentText(risk), hp });
     if (cost !== null && cost >= hp) {
       if (!this.costlySaid) {
         this.costlySaid = true;

@@ -1269,6 +1269,8 @@ export class SessionManager {
       world,
       hunt: this.hunt,
       supplies: this.supplies,
+      trainLevel: this.trainLevel,
+      walker: this.walker,
       queue: this.queue,
       config: () => this.automationConfig,
       fled,
@@ -3258,9 +3260,7 @@ export class SessionManager {
         fighting: this.combat.willFight
       });
       if (!moveOnly) {
-        // Shopping, which yields to every one of the above: not while running
-        // away, not while walking home, not while anything else has the
-        // character. See `Supplies.consider`.
+        // Shopping, which yields to every one of the above (`Supplies.consider`).
         this.supplies.onCharacter(state);
         // And the kit after a death, on the same terms as the errand.
         this.recoverGear.onCharacter(state);

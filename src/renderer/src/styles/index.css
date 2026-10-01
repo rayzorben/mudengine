@@ -12874,6 +12874,29 @@ tr:hover .row-action.worn,
   font-size: var(--font-micro);
 }
 
+.konami-doing {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 4px 8px;
+  margin-top: 2px;
+}
+
+.konami-pulse[data-tone='on'] {
+  background: var(--accent);
+}
+
+/* How far the walk the goal is on has got: the odds bar, in the accent. */
+.konami-bar.walk {
+  width: 64px;
+}
+
+.konami-bar.walk > span {
+  background: var(--accent);
+}
+
 .konami-meta {
   display: flex;
   flex-wrap: wrap;
@@ -12974,7 +12997,7 @@ tr:hover .row-action.worn,
   }
 }
 
-/* A dot that breathes: the planner is waiting on something. */
+/* A dot that breathes: the planner waiting on something, or (`data-tone='on'`) at work. */
 .konami-pulse {
   animation: dot-pulse 1.6s var(--ease-inout) infinite;
   background: var(--pending);

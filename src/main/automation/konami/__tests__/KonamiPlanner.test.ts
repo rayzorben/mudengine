@@ -11,7 +11,7 @@ import { DEFAULT_CONFIG, type AutomationConfig } from '../../../../shared/config
 import type { KonamiBrief } from '../../../../shared/konamiBrief';
 import { NO_EXCLUSIONS } from '../../../../shared/hunting';
 import type { KonamiLesson } from '../../../../shared/konamiLessons';
-import type { KonamiRecords } from '../../../../shared/konamiRecords';
+import type { KonamiActivity, KonamiRecords } from '../../../../shared/konamiRecords';
 import { damageReport, lastFight } from '../incident';
 import { KonamiPlanner, type PlannerFacts, type PlannerHands } from '../KonamiPlanner';
 
@@ -102,6 +102,7 @@ let briefRefusal: string | null;
 let learned: KonamiLesson[];
 let unsimulated: number;
 let briefLessons: KonamiLesson[][];
+let activity: KonamiActivity | null;
 
 function planner(): KonamiPlanner {
   const facts: PlannerFacts = {
@@ -118,7 +119,8 @@ function planner(): KonamiPlanner {
     buying: () => false,
     huntRefusal: () => null,
     refusals: () => ['hunt: no route'],
-    realm: () => 'orohost:2427'
+    realm: () => 'orohost:2427',
+    activity: () => activity
   };
   const hands: PlannerHands = {
     steerHunt: (key) => steered.push(key),
@@ -185,6 +187,7 @@ beforeEach(() => {
   learned = [];
   unsimulated = 0;
   briefLessons = [];
+  activity = null;
   global.__konamiGoal = 'hunt_0';
   global.__konamiAsked = 0;
 });
@@ -438,6 +441,22 @@ describe('the planner', () => {
     await asked(2);
     expect(incidents.map((row) => row.kind)).toEqual(['stuck']);
     expect(JSON.parse(incidents[0]!.files['refusals.json']!)).toEqual(['hunt: no route']);
+    it.dispose();
+  });
+
+  it('shows what the goal is doing, trainer and room named, while the plan runs', async () => {
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    activity = {
+      doing: { kind: 'train', trainer: 'Gyrd', room: 'Newhaven Guild', copper: 0, training: false },
+      walk: { done: 3, total: 12 }
+    };
+    expect(it.snapshot().activity).toEqual(activity);
+    it.togglePause();
+    expect(it.snapshot().activity).toBeNull();
     it.dispose();
   });
 

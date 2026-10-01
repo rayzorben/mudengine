@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deathRisk, hangUpCost, openingRefusal, roundsCouldKill, runDue } from '../danger';
+import { deathRisk, hangUpCost, openingRefusal, runDue } from '../danger';
 import type { Survival } from '../survival';
 
 /** A fight survived `survives` of the time, still standing `standing` of the time at round 3. */
@@ -25,12 +25,6 @@ describe('the danger a fight is', () => {
     expect(runDue(null, TUNE)).toBeNull();
     expect(runDue(fight(0.5, 22, 0.66), { ...TUNE, runRisk: 0 })).toBeNull();
     expect(deathRisk(fight(0.5, 22, 0.66), 2)).toBeCloseTo(0.34);
-  });
-
-  it('says when the next round alone could kill', () => {
-    expect(roundsCouldKill(10, fight(0.5, 11), 1)).toBe(true);
-    expect(roundsCouldKill(12, fight(0.5, 11), 1)).toBe(false);
-    expect(roundsCouldKill(1, fight(0.5, 11), 0)).toBe(false);
   });
 
   it('opens only a fight survived well enough, leaving an unknown one to the run', () => {

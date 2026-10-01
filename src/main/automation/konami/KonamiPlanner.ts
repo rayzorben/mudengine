@@ -56,6 +56,7 @@ import {
 } from '../../../shared/konamiQuestions';
 import {
   decisionRow,
+  type KonamiActivity,
   type KonamiDecision,
   type KonamiExchange,
   type KonamiIncidentKind,
@@ -91,6 +92,8 @@ export interface PlannerFacts {
   /** What the modules last said they would not do, newest first. */
   refusals(): string[];
   realm(): string | null;
+  /** What the module carrying the goal is doing now, for the card. */
+  activity(): KonamiActivity | null;
 }
 
 /** What the planner does, each through the module that owns it. */
@@ -389,6 +392,7 @@ export class KonamiPlanner implements SessionModule {
       incidents: [...this.incidents].reverse(),
       log: this.log.path,
       expSince: since === null || state.progress.exp === null ? null : state.progress.exp - since,
+      activity: this.running && this.plan !== null ? this.facts.activity() : null,
       lessons: this.lessons
         .slice(-lessonsShown)
         .reverse()
