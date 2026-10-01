@@ -4700,6 +4700,7 @@ automation:
   hunt:
     becauseBetter: this lair pays {here} an hour and another is worth about {rate}
     becauseRate: 'the best lair within reach pays about {rate} an hour'
+    becauseFilled: the lair waits on its regen, and lairs nearby fill the wait
     becauseSwitch: automatic hunting is on
     company: '{who} is hunting this lair too, so it pays half as much. {loopName} is rated that way
       from now on.'
@@ -4717,6 +4718,11 @@ automation:
     refusalNotReached: 'Did not reach {room}: {why}'
     started: Hunting {loopName}, for about {rate} exp an hour.
     stoppedForBetter: '{mob} pays better'
+    stoppedForFiller: adding lairs nearby while it regens
+    # The lair being hunted is now planned with lairs nearby, fought while it regens.
+    filled:
+      one: '{loopName} waits on its regen, so the loop now takes in a lair nearby.'
+      many: '{loopName} waits on its regen, so the loop now takes in {count} lairs nearby.'
     stoodDown: You stopped {loopName}, so Auto-Hunt is paused until this character levels, changes
       gear, or a loop stops for paying too little.
     whyStopped: the walk stopped
