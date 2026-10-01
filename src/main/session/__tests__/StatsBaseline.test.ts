@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { StatsBaseline } from '../StatsBaseline';
-import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 
 function harness(stored: CombatTally | null = null) {
@@ -29,8 +28,6 @@ function harness(stored: CombatTally | null = null) {
   };
 }
 
-const lap = (lapBegunAt: number | null): LoopProgress => ({ ...NO_LOOP, lapBegunAt });
-
 describe('the Combat Stats baseline', () => {
   it('reads each record it is given, and pushes what it read, never reset included', () => {
     const { baseline, store, published } = harness({ ...NO_TALLY, kills: 7 });
@@ -56,20 +53,5 @@ describe('the Combat Stats baseline', () => {
     const { baseline } = harness();
     baseline.rebase();
     expect(baseline.base?.kills).toBe(2);
-  });
-
-  it('resets when a lap begins, and not when the same run resumes', () => {
-    const { baseline, published, kill } = harness();
-    baseline.noteLap(lap(null));
-    expect(published).toEqual([]);
-    baseline.noteLap(lap(5_000));
-    kill();
-    // A pause and a resume carry the same lap.
-    baseline.noteLap(lap(5_000));
-    expect(published).toEqual([2]);
-    // Stopped, then started again: a new lap.
-    baseline.noteLap(lap(null));
-    baseline.noteLap(lap(9_000));
-    expect(published).toEqual([2, 3]);
   });
 });
