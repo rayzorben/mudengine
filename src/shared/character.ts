@@ -834,8 +834,8 @@ export type { Alignment } from './alignment';
  * `alignment` and `title` come from a `who` listing and are **null when not
  * known**, which is the ordinary case for somebody who has walked in since the
  * last one: the arrival broadcast carries a name and nothing else. Null is not
- * `Neutral` — guessing an alignment is exactly the guess that gets somebody
- * killed on a PvP realm, so the card says "unknown" and means it.
+ * `Neutral`, so the card says "unknown". A blank column on the who list is
+ * how the realm prints Neutral, and is read as such (`alignmentOf`).
  */
 export interface Adventurer {
   name: string;

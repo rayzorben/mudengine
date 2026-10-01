@@ -10,7 +10,6 @@
  * of one is no party: `mudengine-wire` › `parts/character.md`.
  */
 import {
-  ALIGNMENTS,
   NO_PARTY,
   ownGang,
   partyActivity,
@@ -21,6 +20,7 @@ import {
   type PartyMember,
   type RoomOccupant
 } from '../../shared/character';
+import { asAlignment } from '../../shared/alignment';
 import { parseRemoteReply } from '../../shared/remotes';
 import { observe, type PlayerRegistry, type WornItem } from '../../shared/players';
 import { figure } from '../../shared/values';
@@ -34,9 +34,16 @@ export interface PresenceFold {
   players: PlayerRegistry;
 }
 
-/** The listing's alignment column, or null for anything unrecognised. */
-function isAlignment(value: string | undefined): value is Alignment {
-  return value !== undefined && (ALIGNMENTS as readonly string[]).includes(value);
+/**
+ * The who list's alignment column. A blank column is `Neutral`: GreaterMUD's
+ * `who` asks `GetAlignmentTitle` for the non-technical word, which is empty
+ * for the Neutral band (`GMUDServer.cs:1429`), and capture 076's `sc` prints
+ * 13 blank rows among 24 and never the word. The row pattern reads a word it
+ * does not know as a name, so null is only for a caller outside it.
+ */
+export function alignmentOf(value: string | undefined): Alignment | null {
+  const word = value?.trim() ?? '';
+  return word.length === 0 ? 'Neutral' : asAlignment(word);
 }
 
 /** `62%` as a fraction in [0, 1]; null when the listing printed none. */
@@ -97,10 +104,9 @@ export function rosterFrom(rows: Array<Record<string, string>> | undefined): Adv
     .map((row): Adventurer | null => {
       const name = row['name'];
       if (!name) return null;
-      const alignment = row['alignment'];
       return {
         name,
-        alignment: isAlignment(alignment) ? alignment : null,
+        alignment: alignmentOf(row['alignment']),
         title: row['title']?.trim() || null,
         flags: row['flags']?.trim() || null,
         // `None` is read as no gang; see `gangOf` for the one row that says so.
