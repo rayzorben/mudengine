@@ -81,6 +81,15 @@ const unknownWords = (parts: readonly HuntingUnknown[]): string =>
 const hours = (rate: number | null): string =>
   rate === null ? '?' : Math.round(rate).toLocaleString();
 const seconds = (value: number | null): string => (value === null ? '?' : `${Math.round(value)}s`);
+
+/** A spot's regen, said with where its clock came from (`HuntingSpot.clock`). */
+const REGEN: Record<NonNullable<HuntingSpot['clock']>, (value: number) => string> = {
+  delay: seconds,
+  regenTime: (value) =>
+    t('cards.hunting.detail.respawnHours', { hours: Math.round(value / 360) / 10 }),
+  timed: (value) => t('cards.hunting.detail.respawnTimed', { time: seconds(value) }),
+  usual: (value) => t('cards.hunting.detail.respawnUsual', { time: seconds(value) })
+};
 const percent = (share: number | null): string =>
   share === null ? '?' : `${Math.round(share * 100)}%`;
 /** A floor, marked as one: the least the room can cost where a spawn's rounds are unknown. */
@@ -419,13 +428,7 @@ function SpotDetail({
           <dd>{spot.spawns ?? 1}</dd>
           <dt>{t('cards.hunting.detail.respawn')}</dt>
           <dd>
-            {spot.respawnSeconds === null
-              ? '?'
-              : spot.clock === 'regenTime'
-                ? t('cards.hunting.detail.respawnHours', {
-                    hours: Math.round(spot.respawnSeconds / 360) / 10
-                  })
-                : seconds(spot.respawnSeconds)}
+            {spot.respawnSeconds === null ? '?' : REGEN[spot.clock ?? 'delay'](spot.respawnSeconds)}
           </dd>
           <dt>{t('cards.hunting.detail.rounds')}</dt>
           <dd>

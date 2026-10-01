@@ -1395,6 +1395,8 @@ cards:
       spawns: Up at once
       respawn: Regen
       respawnHours: '{hours} h'
+      respawnTimed: '{time}, timed here'
+      respawnUsual: '{time}, timed at other lairs'
       rounds: A kill
       roundsValue: 'about {rounds} rounds'
       openerCredited: (opener credited)

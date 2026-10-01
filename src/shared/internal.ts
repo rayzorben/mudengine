@@ -815,6 +815,14 @@ const TUNING_DEFAULTS = {
      */
     sizeTolerance: 0.05,
     /**
+     * How many refills a room must have been timed over before its timed
+     * clock prices it, where the world database states none
+     * (`src/shared/spawns.ts`). One gap is a wanderer as often as a refill.
+     */
+    refillsLeast: 3,
+    /** How many of each room's newest timed refills are kept. */
+    refillsKept: 12,
+    /**
      * How often automatic hunting may ask the survey — `AutoHunt`.
      *
      * A sweep is every room the exits reach and every lair in them priced, and

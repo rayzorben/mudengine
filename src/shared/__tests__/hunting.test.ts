@@ -692,6 +692,7 @@ describe('the order the reader wants', () => {
       key,
       mobs: [],
       clock: 'delay',
+      via: 'lair',
       boss: false,
       respawnSeconds: 30,
       spawns: 1,

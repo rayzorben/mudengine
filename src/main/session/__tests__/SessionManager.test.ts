@@ -35,6 +35,8 @@ import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
+import { NO_LORE } from '../../../shared/lore';
+import type { LearnedSpawns } from '../../../shared/spawns';
 import type { QuestWatched } from '../../../shared/quests';
 import { NO_BELONGINGS } from '../../../shared/belongings';
 import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
@@ -7127,11 +7129,26 @@ describe('stepping back the way the character came', () => {
  * cannot: damage a round, against the monster's health.
  */
 describe('the hunting survey prices a kill off the fight record', () => {
-  /** A town and two lairs in a line, from a realm that names no family; a dragon's third. */
-  const lairs = (dragon = false, goodOrc = false): WorldGraph => {
+  /**
+   * A town and two lairs in a line, from a realm that names no family; a
+   * dragon's third. `untimed`: the lairs' `Delay` left out, as a MegaMUD
+   * export leaves it, and an arena north of the square with no lair at all.
+   */
+  const lairs = (dragon = false, goodOrc = false, untimed = false): WorldGraph => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-hunt-'));
     const file = path.join(dir, 'rooms.jsonl.gz');
-    const rooms = [
+    const timed = (rooms: Array<Record<string, unknown>>): Array<Record<string, unknown>> =>
+      untimed
+        ? [
+            ...rooms.map(({ dl: _dl, ...room }) =>
+              room['r'] === 1
+                ? { ...room, x: { ...(room['x'] as object), n: { m: 1, r: 5 } } }
+                : room
+            ),
+            { m: 1, r: 5, n: 'Arena', x: { s: { m: 1, r: 1 } } }
+          ]
+        : rooms;
+    const rooms = timed([
       { m: 1, r: 1, n: 'Town Square', x: { e: { m: 1, r: 2 } } },
       {
         m: 1,
@@ -7152,7 +7169,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
       ...(dragon
         ? [{ m: 1, r: 4, n: 'Dragon Lair', x: { w: { m: 1, r: 3 } }, lair: '(Max 1): 9,', dl: 2 }]
         : [])
-    ];
+    ]);
     const mob = (n: string, id: number, hp: number, xp: number, dr = 0) => ({
       n,
       hp,
@@ -7231,13 +7248,24 @@ describe('the hunting survey prices a kill off the fight record', () => {
     fights: FightSink | undefined,
     sheet: string[] = [],
     dragon = false,
-    goodOrc = false
+    goodOrc = false,
+    spawns?: Map<string, LearnedSpawns>
   ): Promise<void> {
     const { sink } = collect();
     manager = build(sink, {
-      world: lairs(dragon, goodOrc),
+      world: lairs(dragon, goodOrc, spawns !== undefined),
       automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
-      fights
+      fights,
+      ...(spawns === undefined
+        ? {}
+        : {
+            lore: {
+              ...NO_LORE,
+              spawnsAt: (room: string) => spawns.get(room) ?? null,
+              allSpawns: () => spawns,
+              observeRefill: () => {}
+            }
+          })
     });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
@@ -7295,6 +7323,46 @@ describe('the hunting survey prices a kill off the fight record', () => {
     const opened = manager!.huntingGrounds(null, rough);
     expect(opened.spots.map((spot) => spot.key)).toContain(rough);
     expect(opened.unmeasured).toHaveLength(0);
+  });
+
+  /*
+   * The local realm's `gmud.mdb` states no `Delay`, so no lair had a clock,
+   * no spot a rate, and nothing was ever added to the cave bear's wait. What
+   * the wire timed stands in: the goblin's own rooms, the orc's borrowed from
+   * the realm's usual, and the arena that has no lair a spot of its own.
+   */
+  it('prices a lair the database gives no clock by what the wire timed', async () => {
+    const gaps = (refills: number[], seen: Record<string, number>): LearnedSpawns => ({
+      refills,
+      seen,
+      at: 1
+    });
+    await surveyed(
+      record().fights,
+      [],
+      false,
+      false,
+      new Map([
+        ['1/2', gaps([20, 30, 40], { goblin: 3 })],
+        ['1/5', gaps([10, 12, 14], { goblin: 3 })]
+      ])
+    );
+    const advice = await settled();
+    const rows = [...advice.spots, ...advice.unmeasured];
+    const goblin = rows.find(
+      (spot) => spot.key.startsWith('lair:') && spot.mobs[0]?.name === 'goblin'
+    );
+    expect(goblin).toMatchObject({ clock: 'timed', respawnSeconds: 30 });
+    expect(goblin?.estimate.unknown).not.toContain('respawn');
+    // The arena is not a lair, so it is not the realm's usual lair clock.
+    expect(rows.find((spot) => spot.mobs[0]?.name === 'orc')).toMatchObject({
+      clock: 'usual',
+      respawnSeconds: 30
+    });
+    expect(rows.find((spot) => spot.key === 'seen:1/5')).toMatchObject({
+      clock: 'timed',
+      respawnSeconds: 12
+    });
   });
 
   /*

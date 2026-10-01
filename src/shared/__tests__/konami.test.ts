@@ -163,6 +163,7 @@ const spot = (key: string, over: Partial<SpotEstimate> = {}): HuntingSpot =>
     rooms: [{ id: '1/2', map: 1, room: 2, name: 'Graveyard', steps: 5 }],
     walk: [],
     loopSteps: 6,
+    via: 'lair',
     boss: false,
     respawnSeconds: 60,
     estimate: estimate(over)

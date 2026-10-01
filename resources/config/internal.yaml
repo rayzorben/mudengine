@@ -663,6 +663,13 @@ tuning:
     fillerRadius: 8
     sizeTolerance: 0.05
 
+    # Where the world database states no lair clock (a MegaMUD export has no
+    # Delay column) or no lair at all (an arena), the client times the gap
+    # from the kill that emptied the room to the next monster in. A room's
+    # timed clock prices it after this many refills; this many are kept.
+    refillsLeast: 3
+    refillsKept: 12
+
     # How often automatic hunting (`automation.hunting`) may ask the survey. A
     # sweep prices every lair the exits reach and a status line arrives every
     # few seconds, so this is the floor under it. What re-opens a settled

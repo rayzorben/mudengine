@@ -46,12 +46,14 @@ import {
 import { gearUpgrades } from '../world/gearUpgrades';
 import { wearerOf } from '../world/wearer';
 import type { Traveller, WorldGraph } from '../world/WorldGraph';
+import { GROUNDS } from './huntGrounds';
 import type { RealmClass } from './Errands';
 
 /** What of the realm the brief reads. */
 export type BriefingWorld = Pick<
   WorldGraph,
   | 'size'
+  | 'buildMobEntity'
   | 'byId'
   | 'lairEntities'
   | 'residentEntities'
@@ -192,12 +194,20 @@ function walkTo(
   );
 }
 
-/** A spot's monsters as the realm states them, the ones auto-combat would fight. */
+/**
+ * A spot's monsters, read as the survey read them (`GROUNDS`), the ones
+ * auto-combat would fight.
+ */
 function spotEntities(world: BriefingWorld, spot: HuntingSpot): MobEntity[] {
   const room = firstRoom(world, spot);
   if (room === undefined) return [];
   return fightable(
-    spot.key.startsWith('lair:') ? world.lairEntities(room) : world.residentEntities(room)
+    GROUNDS[spot.via].entities(world, {
+      room,
+      at: spot.rooms[0]?.id ?? null,
+      came: spot.mobs.map((mob) => mob.name),
+      timed: spot.respawnSeconds
+    })
   );
 }
 

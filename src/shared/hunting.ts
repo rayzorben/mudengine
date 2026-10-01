@@ -986,14 +986,26 @@ export function addFiller(
   return { input: current, estimate, taken };
 }
 
+/**
+ * What makes a room a hunting ground: a lair the world database states, a
+ * placed monster (`Rooms.NPC`), or refills timed on the wire in a room the
+ * database gives neither (`spawns.ts`).
+ */
+export type HuntVia = 'lair' | 'resident' | 'seen';
+
 /** One suggestion: a lair, the rooms that hold it, and what it is worth. */
 export interface HuntingSpot {
   /** The lair's signature, stable across asks. */
   key: string;
+  via: HuntVia;
   /** The monsters, as the realm names them. */
   mobs: SpotMob[];
-  /** Where the clock came from: the room's `Delay`, or a placed monster's `RegenTime`. */
-  clock: 'delay' | 'regenTime' | null;
+  /**
+   * Where the clock came from: the room's `Delay`, a placed monster's
+   * `RegenTime`, its refills timed on the wire (`timed`), or, for a lair not
+   * yet timed, the realm's usual timed lair clock (`usual`). See `spawns.ts`.
+   */
+  clock: 'delay' | 'regenTime' | 'timed' | 'usual' | null;
   /** A placed monster on its own clock — a boss, whose kill is not repeatable within it. */
   boss: boolean;
   respawnSeconds: number | null;
