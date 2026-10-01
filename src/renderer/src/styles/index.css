@@ -1931,6 +1931,52 @@ kbd {
   background: color-mix(in srgb, var(--ok) 50%, transparent);
 }
 
+/* The Time face's split: one bar of the time in the realm, its slices in
+   MegaMUD's `Time Analysis` order, each row's swatch the legend. Tonal, like
+   every condition the chrome reports. */
+.time-split {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-weak), transparent);
+  border-radius: var(--r-chip);
+  display: flex;
+  gap: 1px;
+  height: max(18px, calc(var(--font-micro) * 1.5));
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.time-split > span {
+  flex: 1 1 0;
+  min-width: 2px;
+}
+
+.time-swatch {
+  border-radius: 2px;
+  display: inline-block;
+  height: 0.7em;
+  margin-right: 6px;
+  width: 0.7em;
+}
+
+[data-time='attacking'] {
+  background: color-mix(in srgb, var(--danger) 60%, transparent);
+}
+
+[data-time='moving'] {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+[data-time='resting'] {
+  background: color-mix(in srgb, var(--ok) 60%, transparent);
+}
+
+[data-time='meditating'] {
+  background: color-mix(in srgb, var(--marker) 60%, transparent);
+}
+
+[data-time='other'] {
+  background: color-mix(in srgb, var(--text-lo) 45%, transparent);
+}
+
 /* The room's fight, run: green is safe, and the two graver hues are the
    meter's own `data-level` rules below. */
 .meter.survival[data-level='ok'] .fill {

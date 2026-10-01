@@ -22,6 +22,11 @@ import {
   turnedAside,
   withArrival,
   withBlow,
+  withPastime,
+  spentOn,
+  otherTime,
+  shareOfOnline,
+  critShare,
   type CombatTally
 } from '../tally';
 
@@ -511,5 +516,86 @@ describe('experience sampled for the rate graph', () => {
     };
     const baseline = { ...now, at: 100, experience: 20, samples: [at(20, 50)] };
     expect(sinceBaseline(now, baseline).samples).toEqual([at(0, 100), at(30, 150)]);
+  });
+});
+
+/*
+ * MegaMUD's `Time Analysis` beside `Attacking`: one pastime at a time, its
+ * stretches added up, read from a baseline like every other clock, and the
+ * rest of the time in the realm is `Other`.
+ */
+describe('time spent moving, resting and meditating', () => {
+  const inRealm: CombatTally = { ...NO_TALLY, since: 0, at: 0, onlineSince: 0 };
+
+  it('closes one pastime into its total when the next begins', () => {
+    const resting = withPastime(inRealm, 'resting', 1_000);
+    const meditating = withPastime(resting, 'meditating', 4_000);
+    expect(meditating.spent).toEqual({ moving: 0, resting: 3_000, meditating: 0 });
+    expect(meditating.doing).toEqual({ what: 'meditating', since: 4_000 });
+    expect(spentOn(meditating, 'meditating', 6_000)).toBe(2_000);
+    expect(spentOn(meditating, 'resting', 6_000)).toBe(3_000);
+  });
+
+  it('is the same tally when the pastime has not changed', () => {
+    const resting = withPastime(inRealm, 'resting', 1_000);
+    expect(withPastime(resting, 'resting', 2_000)).toBe(resting);
+    expect(withPastime(inRealm, null, 2_000)).toBe(inRealm);
+  });
+
+  it('counts what no clock covers as other', () => {
+    let tally = withPastime(inRealm, 'moving', 0);
+    tally = withPastime(tally, null, 2_000);
+    tally = { ...tally, engagedMs: 3_000 };
+    tally = withPastime(tally, 'resting', 5_000);
+    // 10s in the realm: 2 moving, 3 fighting, 5 resting so far, none other.
+    expect(otherTime(tally, 10_000)).toBe(0);
+    tally = withPastime(tally, null, 8_000);
+    expect(otherTime(tally, 10_000)).toBe(2_000);
+    expect(shareOfOnline(spentOn(tally, 'resting', 10_000), tally, 10_000)).toBeCloseTo(0.3);
+  });
+
+  it('closes the pastime with the other clocks, without moving the tally', () => {
+    const tally = withPastime({ ...inRealm, at: 500 }, 'resting', 1_000);
+    const settled = settleClocks({ ...tally, at: 500 }, 4_000);
+    expect(settled.doing).toBeNull();
+    expect(settled.spent.resting).toBe(3_000);
+    expect(settled.at).toBe(500);
+  });
+
+  it('reads from a baseline, an open stretch clamped to the reset', () => {
+    const resting = withPastime(inRealm, 'resting', 1_000);
+    const baseline = { ...resting, at: 3_000 };
+    const now = withPastime(resting, 'moving', 5_000);
+    const scope = sinceBaseline(now, baseline);
+    // Of the rest from 1s to 5s, only the 2s after the reset are this scope's.
+    expect(scope.spent.resting).toBe(2_000);
+    expect(scope.doing).toEqual({ what: 'moving', since: 5_000 });
+    const still = sinceBaseline(resting, baseline);
+    expect(still.doing).toEqual({ what: 'resting', since: 3_000 });
+    expect(still.spent.resting).toBe(0);
+  });
+
+  it('refuses a record without the clocks or with a pastime it does not know', () => {
+    expect(isCombatTally({ ...NO_TALLY, spent: undefined })).toBe(false);
+    expect(isCombatTally({ ...NO_TALLY, spent: { moving: 0, resting: 0 } })).toBe(false);
+    expect(isCombatTally({ ...NO_TALLY, doing: { what: 'sleeping', since: 1 } })).toBe(false);
+    expect(isCombatTally({ ...NO_TALLY, doing: { what: 'resting', since: 1 } })).toBe(true);
+  });
+});
+
+describe('crit rate', () => {
+  it('is crits over the swings that landed, and nothing before one has', () => {
+    expect(critShare(NO_TALLY)).toBeNull();
+    const tally: CombatTally = {
+      ...NO_TALLY,
+      missed: 10,
+      dealt: {
+        ...NO_TALLY.dealt,
+        melee: { hits: 6, damage: 60, least: 5, most: 15 },
+        critical: { hits: 2, damage: 60, least: 25, most: 35 },
+        spell: { hits: 4, damage: 40, least: 10, most: 10 }
+      }
+    };
+    expect(critShare(tally)).toBe(0.25);
   });
 });

@@ -86,6 +86,21 @@ export function isStatsGraph(value: unknown): value is StatsGraph {
   return typeof value === 'string' && (STATS_GRAPHS as readonly string[]).includes(value);
 }
 
+/**
+ * MegaMUD's `Time Analysis` rows beside `Attacking` (`engagedMs`) that this
+ * client can state: `(Resting)` and `(Meditating)` are the prompt's own
+ * words, and `Moving` is a route being walked. Fighting outranks all three,
+ * so the clocks never overlap; what none of them covers is `Other`.
+ */
+export type Pastime = 'moving' | 'resting' | 'meditating';
+export const PASTIMES: readonly Pastime[] = ['moving', 'resting', 'meditating'];
+
+/** The pastime now running and when it began. */
+export interface Doing {
+  what: Pastime;
+  since: number;
+}
+
 /** A stretch spent off the realm: from leaving it to arriving again. */
 export interface AwaySpell {
   from: number;
@@ -187,6 +202,10 @@ export interface CombatTally {
   engagedMs: number;
   /** When the fight now running began, or null when none is. */
   engagedSince: number | null;
+  /** Milliseconds spent on each pastime, over the stretches that have ended. */
+  spent: Record<Pastime, number>;
+  /** The stretch now running, or null while fighting, off the realm or doing none. */
+  doing: Doing | null;
   /**
    * Milliseconds this character has stood in the realm, over the visits that
    * have **ended** — the rates' denominator, and what makes a tally that
@@ -230,6 +249,8 @@ export const NO_TALLY: CombatTally = {
   experience: 0,
   engagedMs: 0,
   engagedSince: null,
+  spent: { moving: 0, resting: 0, meditating: 0 },
+  doing: null,
   onlineMs: 0,
   onlineSince: null,
   away: [],
@@ -313,6 +334,11 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
     { settled: baseline.onlineMs, since: baseline.onlineSince },
     since
   );
+  const pastimes = PASTIMES.map((what) => ({
+    what,
+    clock: clockSince(pastimeClock(now, what), pastimeClock(baseline, what), since)
+  }));
+  const running = pastimes.find((entry) => entry.clock.since !== null);
   return {
     since,
     at: now.at,
@@ -345,6 +371,11 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
     experience: now.experience - baseline.experience,
     engagedMs: engaged.settled,
     engagedSince: engaged.since,
+    spent: Object.fromEntries(pastimes.map((entry) => [entry.what, entry.clock.settled])) as Record<
+      Pastime,
+      number
+    >,
+    doing: running?.clock.since == null ? null : { what: running.what, since: running.clock.since },
     onlineMs: online.settled,
     onlineSince: online.since,
     // The stretches away that reach into the scope, cut at the reset.
@@ -362,6 +393,14 @@ export function sinceBaseline(now: CombatTally, baseline: CombatTally | null): C
 interface Clock {
   settled: number;
   since: number | null;
+}
+
+/** One pastime's time as a `Clock`: open only while it is the one running. */
+function pastimeClock(tally: CombatTally, what: Pastime): Clock {
+  return {
+    settled: tally.spent[what],
+    since: tally.doing?.what === what ? tally.doing.since : null
+  };
 }
 
 /**
@@ -490,6 +529,45 @@ export function engagedFor(tally: CombatTally, now: number): number {
   return tally.engagedMs + open;
 }
 
+/** Time on one pastime including the stretch still running — `engagedFor`'s shape. */
+export function spentOn(tally: CombatTally, what: Pastime, now: number): number {
+  const open = tally.doing?.what === what ? Math.max(0, now - tally.doing.since) : 0;
+  return tally.spent[what] + open;
+}
+
+/**
+ * MegaMUD's `Other`: time in the realm that was neither a fight nor a
+ * pastime. Waiting for a regen, a trip to the shop, standing at the keyboard.
+ */
+export function otherTime(tally: CombatTally, now: number): number {
+  const counted = PASTIMES.reduce(
+    (total, what) => total + spentOn(tally, what, now),
+    engagedFor(tally, now)
+  );
+  return Math.max(0, onlineFor(tally, now) - counted);
+}
+
+/**
+ * The tally with `what` as the pastime from `at`: the one running closed into
+ * `spent`, and the new one opened. The same tally when nothing changed, so a
+ * status line that restates `(Resting)` costs nothing. Opening one moves `at`,
+ * for the reason the online clock's does (`clockSince` clamps to it).
+ */
+export function withPastime(tally: CombatTally, what: Pastime | null, at: number): CombatTally {
+  const was = tally.doing;
+  if ((was?.what ?? null) === what) return tally;
+  const spent =
+    was === null
+      ? tally.spent
+      : { ...tally.spent, [was.what]: tally.spent[was.what] + Math.max(0, at - was.since) };
+  return {
+    ...tally,
+    at,
+    spent,
+    doing: what === null ? null : { what, since: at }
+  };
+}
+
 /** Time in the realm including the visit still running — `engagedFor`'s shape. */
 export function onlineFor(tally: CombatTally, now: number): number {
   const open = tally.onlineSince === null ? 0 : Math.max(0, now - tally.onlineSince);
@@ -503,9 +581,12 @@ export function onlineFor(tally: CombatTally, now: number): number {
  * hours the client sat disconnected as time in the realm, or in a fight.
  */
 export function settleClocks(tally: CombatTally, at: number): CombatTally {
-  if (tally.engagedSince === null && tally.onlineSince === null) return tally;
+  if (tally.engagedSince === null && tally.onlineSince === null && tally.doing === null) {
+    return tally;
+  }
   return {
-    ...tally,
+    ...withPastime(tally, null, at),
+    at: tally.at,
     engagedMs:
       tally.engagedMs + (tally.engagedSince === null ? 0 : Math.max(0, at - tally.engagedSince)),
     engagedSince: null,
@@ -542,6 +623,9 @@ export function isCombatTally(value: unknown): value is CombatTally {
   if (!Array.isArray(tally['samples']) || !tally['samples'].every(isSample)) return false;
   if (!Array.isArray(tally['away']) || !tally['away'].every(isAwaySpell)) return false;
   if (!isBlowTally(tally['taken'])) return false;
+  if (!isSpent(tally['spent']) || !(tally['doing'] === null || isDoing(tally['doing']))) {
+    return false;
+  }
   const dealt = tally['dealt'];
   if (typeof dealt !== 'object' || dealt === null) return false;
   return BLOW_KINDS.every((kind) => isBlowTally((dealt as Record<string, unknown>)[kind]));
@@ -549,6 +633,17 @@ export function isCombatTally(value: unknown): value is CombatTally {
 
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isSpent(value: unknown): value is Record<Pastime, number> {
+  if (typeof value !== 'object' || value === null) return false;
+  return PASTIMES.every((what) => isCount((value as Record<string, unknown>)[what]));
+}
+
+function isDoing(value: unknown): value is Doing {
+  if (typeof value !== 'object' || value === null) return false;
+  const doing = value as Partial<Doing>;
+  return (PASTIMES as readonly unknown[]).includes(doing.what) && isCount(doing.since);
 }
 
 function isAwaySpell(value: unknown): value is AwaySpell {
@@ -677,9 +772,14 @@ export function mean(total: number, count: number): number | null {
  * fought: a DPR of zero is a claim about a character that has not swung.
  */
 export function perRound(tally: CombatTally, now: number, roundMs: number): number | null {
+  const rounds = roundsFought(tally, now, roundMs);
+  return rounds === null ? null : damageDealt(tally) / rounds;
+}
+
+/** Engaged time in five-second rounds, or null before any fight. */
+export function roundsFought(tally: CombatTally, now: number, roundMs: number): number | null {
   const engaged = engagedFor(tally, now);
-  if (engaged <= 0 || roundMs <= 0) return null;
-  return damageDealt(tally) / (engaged / roundMs);
+  return engaged <= 0 || roundMs <= 0 ? null : engaged / roundMs;
 }
 
 /**
@@ -696,17 +796,22 @@ export function hitsDealt(tally: CombatTally): number {
   return BLOW_KINDS.reduce((total, kind) => total + tally.dealt[kind].hits, 0);
 }
 
-/**
- * How much of the time in the realm was spent in a fight.
- *
- * The only slice of MegaMUD's time analysis this client can state: the server
- * announces engagement and announces nothing about resting, walking or idling
- * that could be added up the same way. One honest figure beats four where three
- * are invented — see the card, which says what the rest of the time was *not*
- * accounted as rather than splitting it.
- */
-export function engagedShare(tally: CombatTally, now: number): number | null {
+/** A stretch of time as a share of the time in the realm, or null before any. */
+export function shareOfOnline(ms: number, tally: CombatTally, now: number): number | null {
   const elapsed = onlineFor(tally, now);
   if (elapsed <= 0) return null;
-  return Math.min(1, engagedFor(tally, now) / elapsed);
+  return Math.min(1, ms / elapsed);
+}
+
+/** How much of the time in the realm was spent in a fight: MegaMUD's `Attacking`. */
+export function engagedShare(tally: CombatTally, now: number): number | null {
+  return shareOfOnline(engagedFor(tally, now), tally, now);
+}
+
+/**
+ * Landed criticals as a share of the swings that landed, the figure a player
+ * asks about a weapon or a crit stat. Spells and procs are not swings.
+ */
+export function critShare(tally: CombatTally): number | null {
+  return share(tally.dealt.critical.hits, swings(tally) - tally.missed);
 }

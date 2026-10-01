@@ -10,8 +10,7 @@ import {
   DEFAULT_STATS_GRAPH,
   DEFAULT_STATS_HOURS,
   damageDealt,
-  engagedFor,
-  engagedShare,
+  critShare,
   experienceRate,
   hitsDealt,
   mean,
@@ -33,6 +32,8 @@ import {
 import type { SessionId } from '@shared/ipc';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
+import { duration, figure, percent } from '../lib/stats';
+import TimeFace, { timeCopyText } from './TimeFace';
 
 export interface StatsCardProps extends CardChrome {
   character: CharacterState;
@@ -46,16 +47,6 @@ export interface StatsCardProps extends CardChrome {
   baseline: CombatTally | null;
   /** Re-base to the totals as they stand now. */
   onReset(): void;
-}
-
-/** A figure the realm has not made yet reads as a dash, never as zero. */
-function figure(value: number | null, digits = 0): string {
-  return value === null ? '—' : value.toLocaleString(undefined, { maximumFractionDigits: digits });
-}
-
-/** A share as a percentage, or a dash. `share` already returns null for 0/0. */
-function percent(value: number | null): string {
-  return value === null ? '—' : t('cards.stats.percent', { value: (value * 100).toFixed(1) });
 }
 
 /**
@@ -81,19 +72,6 @@ function span(blows: BlowTally): string {
   return blows.least === blows.most
     ? String(blows.least)
     : t('cards.stats.span', { least: blows.least, most: blows.most });
-}
-
-/**
- * A stretch of time on the clock, `h:mm:ss` — MegaMUD's own `Duration:` shape.
- *
- * It was `3m` / `51s`, and the badge these go in is uppercased, so a three
- * minute count read `3M`. One unbroken format also means the badge and the
- * Attacking row cannot disagree about what counts as a long time.
- */
-function clock(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 1000));
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
 }
 
 /** A quiet `avg 4.4`, or nothing where nothing has landed. */
@@ -173,10 +151,10 @@ const KIND_LABEL: Record<BlowKind, string> = {
  *   lashworm lunges at you!` and says nothing about why it did no damage.
  *   Calling *that* a dodge would be a claim read off a sentence that makes
  *   none — which is exactly why the dodges it does state are counted apart.
- * - **One time figure, not four.** The server announces engagement and
- *   announces nothing that could add up resting, walking or idling the same
- *   way. `Attacking 41%` is true; a pie of four slices where three were
- *   guessed is not.
+ * - **No time slice the client cannot state.** `Attacking` is the server's
+ *   `*Combat Engaged*`, `Resting` and `Meditating` the prompt's own suffixes,
+ *   and `Moving` a route being walked; what none covers is `Other`, never
+ *   split by guessing (the `Time` face, `TimeFace`).
  * - **No coin banked or sold, and no item count.** MegaMUD's `Deposit/Sold`
  *   and `Stashed` are totals of what *it* did, and this client is not the only
  *   thing spending a purse. Its `Items` column has no frame at all: the server
@@ -191,18 +169,19 @@ const KIND_LABEL: Record<BlowKind, string> = {
  * card: this is a readout of what already happened.
  */
 /*
- * Two faces (todo 08): the card, with what decides an evening — the level
- * meter, the rates and the damage — and *More*, with what qualifies it. The
- * face is remembered per character, as the Self card's is.
+ * Three faces: the card, with what decides an evening (the level meter, the
+ * rates and the damage), *Time*, with where the hours went and what each kill
+ * cost, and *More*, with what qualifies it. The face is remembered per
+ * character, as the Self card's is.
  */
-const FACE_IDS = ['stats', 'more'] as const;
+const FACE_IDS = ['stats', 'time', 'more'] as const;
 const MORE_ROWS: ReadonlySet<string> = new Set([
   'deflected',
   'dodged',
   'sneak',
   'coins',
   'income',
-  'attacking'
+  'crit'
 ]);
 
 interface LevelReading {
@@ -509,7 +488,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         label: t('cards.stats.willLevelLabel'),
         value: (() => {
           const ms = levelIn(owed.value, expRate);
-          return ms === null ? '—' : clock(ms);
+          return ms === null ? '—' : duration(ms);
         })()
       },
       { key: 'killed', label: t('cards.stats.killedLabel'), value: figure(shown.kills) },
@@ -574,10 +553,14 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         when: everHappened(tally.coins)
       },
       {
-        key: 'attacking',
-        label: t('cards.stats.attackingLabel'),
-        value: clock(engagedFor(shown, now)),
-        second: percent(engagedShare(shown, now))
+        key: 'crit',
+        label: t('cards.stats.critRateLabel'),
+        value: percent(critShare(shown)),
+        second: t('cards.stats.critsOfHits', {
+          crits: figure(shown.dealt.critical.hits),
+          landed: figure(swings(shown) - shown.missed)
+        }),
+        when: everHappened(tally.dealt.critical.hits)
       }
     ].filter((row) => row.when !== false);
 
@@ -621,6 +604,8 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
           ])
     ].join('\n');
   }, [moreRows, exchange, dealt, shown.taken.damage]);
+
+  const copyTime = useCallback((): string => timeCopyText(shown, Date.now()), [shown]);
 
   const empty = shown.since === null ? <div className="empty">{t('cards.stats.empty')}</div> : null;
   const pairs = (list: typeof readout): React.JSX.Element[] =>
@@ -669,6 +654,17 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
               />
             </>
           )}
+        </div>
+      )
+    },
+    {
+      id: 'time',
+      label: t('cards.stats.faceTime'),
+      paned: true,
+      copyText: copyTime,
+      content: (
+        <div className="scroller">
+          {empty ?? <TimeFace now={now} session={session} shown={shown} />}
         </div>
       )
     },
@@ -726,7 +722,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
         shown.since === null ? (
           <span className="chip off">{t('cards.stats.badge.nothingYet')}</span>
         ) : (
-          <span className="chip off">{clock(elapsed)}</span>
+          <span className="chip off">{duration(elapsed)}</span>
         )
       }
       className="stats-card"

@@ -16,7 +16,16 @@
 import type { Block } from '../../shared/blocks';
 import { coinNamed, type CharacterState } from '../../shared/character';
 import { COPPER_PER } from '../../shared/coins';
-import { blowKind, withArrival, withBlow, withSample, type CombatTally } from '../../shared/tally';
+import {
+  NO_TALLY,
+  blowKind,
+  withArrival,
+  withBlow,
+  withPastime,
+  withSample,
+  type CombatTally,
+  type Pastime
+} from '../../shared/tally';
 import { figure } from '../../shared/values';
 import { tuning } from '../app/tuning';
 
@@ -72,7 +81,9 @@ export function trackTally(
    * neither is anywhere near here. Decided once so the ledger and this table
    * cannot disagree about the same blow.
    */
-  proc = false
+  proc = false,
+  /** Whether a route is being walked: the walker's fact, handed in (`noteMoving`). */
+  moving = false
 ): CombatTally {
   const g = block.groups ?? {};
   let next = tally;
@@ -244,5 +255,36 @@ export function trackTally(
     };
   }
 
-  return next;
+  return withPastime(next, pastimeOf(after, moving), block.at);
+}
+
+/**
+ * Which of MegaMUD's `Time Analysis` rows this moment belongs to, beyond
+ * `Attacking`. A fight outranks everything, since a route fights on its way
+ * and a rest ends when one starts; `(Resting)` and `(Meditating)` are the
+ * prompt's own suffixes (`parse/sheet.ts`), and a rest taken during a route
+ * is a rest.
+ */
+export function pastimeOf(state: CharacterState, moving: boolean): Pastime | null {
+  if (state.phase !== 'in-game' || state.inCombat) return null;
+  if (state.vitals.resting) return 'resting';
+  if (state.vitals.meditating) return 'meditating';
+  return moving ? 'moving' : null;
+}
+
+/**
+ * A new series for a character standing where `state` says, at `at`: the
+ * clocks that were running start again now. For a record thrown away while
+ * the character is in the realm (`forgetBelongings`).
+ */
+export function freshTally(state: CharacterState, at: number, moving: boolean): CombatTally {
+  if (state.phase !== 'in-game') return NO_TALLY;
+  const opened: CombatTally = {
+    ...NO_TALLY,
+    since: at,
+    at,
+    onlineSince: at,
+    engagedSince: state.inCombat ? at : null
+  };
+  return withPastime(opened, pastimeOf(state, moving), at);
 }

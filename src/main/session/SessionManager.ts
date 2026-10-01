@@ -901,9 +901,8 @@ export class SessionManager {
       notice: (message) => this.sink.notice(message),
       progress: (progress) => {
         /*
-         * Auto-combat is told whether a route is running, rather than reaching
-         * into the walker for it: the walker is the only thing that knows a
-         * route is in progress.
+         * Auto-combat and the Combat Stats' `Moving` clock are told whether a
+         * route is running: only the walker knows one is in progress.
          *
          * **A route fights**, whatever the switch says (todo 00) — the player
          * asked to go somewhere, and what lives between here and there is the
@@ -925,6 +924,7 @@ export class SessionManager {
         }
         this.wasWalking = walking;
         this.combat.noteWalking(walking);
+        this.tracker.noteMoving(walking);
         this.sink.walk?.(progress);
       }
     });

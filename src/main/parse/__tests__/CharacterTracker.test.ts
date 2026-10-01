@@ -41,6 +41,7 @@ import {
 } from '../../../shared/spell-messages';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { NO_TALLY, swings, type CombatTally } from '../../../shared/tally';
+import { pastimeOf } from '../tally';
 import { statedNow } from '../../../shared/stated';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
@@ -213,6 +214,31 @@ describe('vitals', () => {
     expect(play(['[HP=50 (Resting) ]: ']).current.vitals.resting).toBe(true);
     expect(play(['[HP=50]: (Meditating)']).current.vitals.meditating).toBe(true);
     expect(play(['[HP=50]: ']).current.vitals.resting).toBe(false);
+  });
+
+  /* The Combat Stats card's `Time` face, read off the prompt's own suffix. */
+  it('times a rest from the prompt that says it to the one that stops saying it', () => {
+    const tracker = play(['[HP=50]: ', '[HP=50 (Resting) ]: ', { wait: 3_000 }, '[HP=60]: ']);
+    expect(tracker.current.tally.spent.resting).toBe(3_001);
+    expect(tracker.current.tally.doing).toBeNull();
+  });
+
+  it('times a route as moving', () => {
+    const tracker = play(['[HP=50]: ']);
+    const start = tracker.current.updatedAt ?? 0;
+    tracker.noteMoving(true, start + 1_000);
+    expect(tracker.current.tally.doing).toEqual({ what: 'moving', since: start + 1_000 });
+    tracker.noteMoving(false, start + 5_000);
+    expect(tracker.current.tally.spent.moving).toBe(4_000);
+    expect(tracker.current.tally.doing).toBeNull();
+  });
+
+  it('counts a fight on the way, or a rest, as that rather than moving', () => {
+    const here = play(['[HP=50]: ']).current;
+    expect(pastimeOf(here, true)).toBe('moving');
+    expect(pastimeOf({ ...here, inCombat: true }, true)).toBeNull();
+    expect(pastimeOf({ ...here, vitals: { ...here.vitals, resting: true } }, true)).toBe('resting');
+    expect(pastimeOf({ ...here, phase: 'unknown' }, true)).toBeNull();
   });
 
   it('takes maxima from the stat sheet, which the status line never carries', () => {
