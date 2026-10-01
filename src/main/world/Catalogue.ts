@@ -58,10 +58,15 @@ import {
   type ReferredTable
 } from '../../shared/abilities';
 import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
-import { counterPriceInCopper, currencyOfCode } from '../../shared/coins';
+import {
+  counterPriceInCopper,
+  currencyOfCode,
+  coinMaximaOf,
+  type CoinMaxima
+} from '../../shared/coins';
 import { respawnSeconds } from '../../shared/hunting';
 import type { ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
-import type { AttributeSpans } from '../../shared/character';
+import { DENOMINATIONS, type AttributeSpans, type Denomination } from '../../shared/character';
 import type { SpellOption } from '../../shared/ipc';
 import type { RealmFamily } from '../../shared/realm';
 import type { RealmHeader } from './realmHeader';
@@ -546,6 +551,7 @@ export class Catalogue {
       // Format 36. Written only where every row of the name agrees, so where
       // it is here it answers for the fold as exactly as a row would.
       mob.regenHours = positive('rt');
+      mob.coins = readCoins(record['cs'], version);
       mob.follows = positive('fol');
       if (record['und'] === 1) mob.undead = true;
       const drops = Array.isArray(record['drops'])
@@ -619,6 +625,7 @@ export class Catalogue {
         kept.experience = stated('xp');
         kept.regen = stated('rgn');
         kept.regenHours = stated('rt');
+        kept.coins = readCoins(row['cs'], version);
         kept.follows = stated('fol');
         kept.averageDamage = stated('dmg');
         kept.charmLevel = stated('chl');
@@ -1044,6 +1051,7 @@ export class Catalogue {
     if (known.experience !== undefined) entity.experience = known.experience;
     if (known.regen !== undefined) entity.regen = known.regen;
     if (known.regenHours !== undefined) entity.regenHours = known.regenHours;
+    if (known.coins !== undefined) entity.coins = known.coins;
     if (known.follows !== undefined) entity.follows = known.follows;
     if (known.undead !== undefined) entity.undead = known.undead;
     if (known.abilities !== undefined) entity.abilities = known.abilities;
@@ -1902,6 +1910,23 @@ const PROFILES_SINCE = 20;
 /** The realm format that states the coin a price is counted in (`BuiltItem.cur`). */
 const CURRENCY_SINCE = 47;
 
+/** The realm format that states a monster's coins (`BuiltMob.cs`). */
+const COINS_SINCE = 49;
+
+/**
+ * `BuiltMob.cs` / `BuiltMobRow.cs` back into coin maxima. Absent from a file
+ * that has them is a monster carrying none; absent before format 49 is unknown.
+ */
+function readCoins(raw: unknown, version: number): CoinMaxima | undefined {
+  const figures = Array.isArray(raw) ? raw.map(Number) : [];
+  const at = (coin: Denomination): number => {
+    const value = figures[DENOMINATIONS.indexOf(coin)];
+    return value !== undefined && Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  if (figures.length === 0 && version < COINS_SINCE) return undefined;
+  return coinMaximaOf(at);
+}
+
 /**
  * A monster entity, re-answered by one of the realm's rows rather than by the
  * fold of every row sharing its name.
@@ -1925,6 +1950,7 @@ function overlayRow(entity: MobEntity, row: WorldMobRow | undefined): void {
   entity.experience = row.experience;
   entity.regen = row.regen;
   entity.regenHours = row.regenHours;
+  entity.coins = row.coins;
   entity.follows = row.follows;
   entity.averageDamage = row.averageDamage;
   entity.charmLevel = row.charmLevel;
@@ -1969,6 +1995,7 @@ export function mobAsRow(mob: WorldMob, row: WorldMobRow, choice: MobRowChoice):
   resolved.experience = row.experience;
   resolved.regen = row.regen;
   resolved.regenHours = row.regenHours;
+  resolved.coins = row.coins;
   resolved.follows = row.follows;
   resolved.averageDamage = row.averageDamage;
   resolved.charmLevel = row.charmLevel;

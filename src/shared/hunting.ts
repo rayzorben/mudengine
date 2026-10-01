@@ -51,6 +51,11 @@ export interface SpotMob {
   name: string;
   /** `Monsters.EXP`, or null where the realm states none. */
   experience: number | null;
+  /**
+   * The copper a kill is expected to carry (`expectedCopper`), or null on a
+   * realm file built before monsters' coins were read (format 49).
+   */
+  copper: number | null;
   /** Rounds to bring one down — `Verdict.rounds`, a bound. Null when unknowable. */
   rounds: number | null;
   /** Hit points a round beside it costs — `Menace.perRound`. Null when unknowable. */
@@ -169,6 +174,13 @@ export interface SpotEstimate {
   expPerCycle: number | null;
   /** What the filler rooms add to a cycle's experience, at the share of visits that find them up. */
   fillerExpPerCycle: number;
+  /**
+   * The copper a cycle's kills are expected to carry, weighed exactly as the
+   * exp is, and an hour of it. Null where a monster's coins are unknown, and
+   * the hour also while the cycle is. Nothing is ranked by it.
+   */
+  copperPerCycle: number | null;
+  copperPerHour: number | null;
   cycleSeconds: number | null;
   combatSeconds: number | null;
   restSeconds: number | null;
@@ -465,6 +477,11 @@ function refilled(input: SpotInput): SpotInput {
   };
 }
 
+/** What one kill of a row pays, in the unit being weighed; null where unknown. */
+type Worth = (mob: SpotMob) => number | null;
+const EXPERIENCE: Worth = (mob) => mob.experience;
+const COPPER: Worth = (mob) => mob.copper;
+
 /**
  * One spot, estimated.
  *
@@ -488,7 +505,7 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   const fillers = input.filler.map((room) => ({
     ...roomCycle(room.spawns, room.mobs, ch, c),
     // Kept beside the fold so a filler's rows are weighed by their own clocks
-    // exactly as the ring's are — see `weighedExp`.
+    // exactly as the ring's are — see `weighed`.
     mobs: room.mobs,
     respawn: room.respawnSeconds,
     detour: Math.max(0, room.detourSteps)
@@ -554,21 +571,24 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
    * Every room goes through here, the ring's and the fillers' alike. Weighing
    * only `input.mobs` left the very failure this exists to end alive on the
    * filler path — and `addFiller` adds candidates by the rate they produce, so
-   * those were the first rooms it reached for.
+   * those were the first rooms it reached for. A kill's copper is weighed the
+   * same way (`worth`).
    */
-  const weighedExp = (
+  const weighed = (
     mobs: readonly SpotMob[],
     spawns: number,
-    window: number | null
+    window: number | null,
+    worth: Worth
   ): number | null => {
     const seen = window ?? unworked;
     const each = mean(
       mobs.map((mob) => {
-        if (mob.experience === null) return null;
+        const paid = worth(mob);
+        if (paid === null) return null;
         if (mob.regenSeconds === null || mob.regenSeconds <= 0 || seen === null) {
-          return mob.experience;
+          return paid;
         }
-        return mob.experience * Math.min(1, seen / mob.regenSeconds);
+        return paid * Math.min(1, seen / mob.regenSeconds);
       })
     );
     // However many the lair spawns at once.
@@ -587,17 +607,17 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
     return seen === null ? null : Math.max(seen, filler.respawn);
   };
 
-  const primaryExpFor = (cycle: number | null): number | null => {
-    const each = weighedExp(input.mobs, primary.spawns, cycle);
+  const primaryFor = (cycle: number | null, worth: Worth = EXPERIENCE): number | null => {
+    const each = weighed(input.mobs, primary.spawns, cycle, worth);
     // Over every room of the ring — `roomCycle`'s own arithmetic, re-run with
     // the weights.
     return each === null ? null : each * rooms;
   };
 
   /** What the fillers add to one cycle, each paid at the share it is found up. */
-  const fillerExpFor = (window: number | null): number =>
+  const fillerFor = (window: number | null, worth: Worth = EXPERIENCE): number =>
     fillers.reduce((sum, filler) => {
-      const paid = weighedExp(filler.mobs, filler.spawns, visitWindow(filler, window));
+      const paid = weighed(filler.mobs, filler.spawns, visitWindow(filler, window), worth);
       return paid === null ? sum : sum + paid * shareOf(filler, window);
     }, 0);
 
@@ -755,8 +775,8 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
      * A filler pays the share of laps it is found up — the same share its
      * detour and its fight were charged at above.
      */
-    const fillerExp = fillerExpFor(window);
-    const primaryExp = primaryExpFor(window);
+    const fillerExp = fillerFor(window);
+    const primaryExp = primaryFor(window);
 
     let cycleSeconds: number | null = null;
     let waitSeconds: number | null = null;
@@ -808,22 +828,36 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   /*
    * The spawn-rate bound: what the lair pays if every kill were free, so the
    * cycle is the clock itself. `null` is the primary's clock throughout —
-   * `shareOf` and `weighedExp` both read it that way — so a filler is credited
+   * `shareOf` and `weighed` both read it that way — so a filler is credited
    * the laps that clock allows and no more. Credited whole, the bound came out
    * above the rate its own estimate called reachable, which is not a bound.
    */
-  const ceilingExp = primaryExpFor(null);
-  const ceilingFiller = fillerExpFor(null);
+  const ceilingExp = primaryFor(null);
+  const ceilingFiller = fillerFor(null);
   const ceilingPerHour =
     ceilingExp === null || input.respawnSeconds === null || input.respawnSeconds <= 0
       ? null
       : ((ceilingExp + ceilingFiller) * 3600) / input.respawnSeconds;
+
+  /*
+   * The copper the same cycle's kills carry: the ring's and the fillers' rows
+   * weighed by the window the exp was, a filler at the share it is found up.
+   */
+  const primaryCopper = primaryFor(first.cycleSeconds, COPPER);
+  const copperPerCycle =
+    primaryCopper === null ? null : primaryCopper + fillerFor(first.cycleSeconds, COPPER);
+  const copperPerHour =
+    copperPerCycle === null || pass.cycleSeconds === null || pass.cycleSeconds <= 0
+      ? null
+      : (copperPerCycle * 3600) / pass.cycleSeconds;
 
   return {
     expPerHour: pass.expPerHour,
     ceilingPerHour,
     expPerCycle: pass.expPerCycle,
     fillerExpPerCycle: pass.fillerExpPerCycle,
+    copperPerCycle,
+    copperPerHour,
     cycleSeconds: pass.cycleSeconds,
     combatSeconds: pass.combatSeconds,
     restSeconds: pass.restSeconds,

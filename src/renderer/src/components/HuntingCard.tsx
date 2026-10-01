@@ -424,6 +424,15 @@ function SpotDetail({
           </dd>
           <dt>{t('cards.hunting.detail.ceiling')}</dt>
           <dd>{t('cards.hunting.detail.rateValue', { rate: hours(estimate.ceilingPerHour) })}</dd>
+          {/* Only where its monsters carry coin: most lairs pay none. */}
+          {estimate.copperPerHour !== null && estimate.copperPerHour > 0 ? (
+            <>
+              <dt>{t('cards.hunting.detail.cash')}</dt>
+              <dd>
+                {t('cards.hunting.detail.cashValue', { copper: hours(estimate.copperPerHour) })}
+              </dd>
+            </>
+          ) : null}
           <dt>{t('cards.hunting.detail.spawns')}</dt>
           <dd>{spot.spawns ?? 1}</dd>
           <dt>{t('cards.hunting.detail.respawn')}</dt>
