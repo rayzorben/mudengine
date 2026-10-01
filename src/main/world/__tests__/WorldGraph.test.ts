@@ -4223,6 +4223,7 @@ describe('describeBlock', () => {
       name: 'Negative Power Plane',
       word: 'Negative Power Plane'
     },
+    ranFrom: { kind: 'ranFrom', at: '1/1', to: '1/2', name: 'Narrow Stone Tunnel' },
     unreachable: { kind: 'unreachable' }
   };
 
@@ -7431,5 +7432,36 @@ describe('a monster’s coins', () => {
   it('knows nothing of coins on a file that predates them', () => {
     const graph = makeWorld(rooms, { mobs }, 48);
     expect(graph.lairEntities(graph.byId('1/2')!)[0]?.coins).toBeUndefined();
+  });
+});
+
+/*
+ * Todo 73: a room run out of for health is kept out of. Soul ran from a mad
+ * wizard, rested next door, and walked back into him twice.
+ */
+describe('a room the character ran out of', () => {
+  const world = (): WorldGraph => makeWorld(corridor(4));
+  const traveller: Traveller = { level: 5, packKnown: true, keys: [], shunned: new Set(['1/3']) };
+
+  it('is no step on a route through it, and says so in its own words', () => {
+    const through = world().route(roomId(1, 1), roomId(1, 4), traveller);
+    expect(through.blocked).toBe(true);
+    expect(through.blocks?.map((block) => block.kind)).toContain('ranFrom');
+    expect(world().route(roomId(1, 1), roomId(1, 2), traveller).blocked).toBe(false);
+  });
+
+  it('is no walk an unwatched leg takes back into, though the player may ask for it', () => {
+    expect(world().route(roomId(1, 1), roomId(1, 3), traveller).blocked).toBe(true);
+    const asked = world().route(roomId(1, 1), roomId(1, 3), traveller, { alternatives: true });
+    expect(asked.blocked).toBe(false);
+  });
+
+  it('lets the character walk out of it', () => {
+    expect(world().route(roomId(1, 3), roomId(1, 4), traveller).blocked).toBe(false);
+  });
+
+  it('is not reached by the sweep the hunting survey makes, nor anything beyond it', () => {
+    const reach = world().withinSteps(roomId(1, 1), 10, traveller);
+    expect([...reach.keys()]).toEqual(['1/1', '1/2']);
   });
 });

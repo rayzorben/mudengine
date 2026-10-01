@@ -542,7 +542,9 @@ const TUNING_DEFAULTS = {
     /** A monster run from is not attacked again until the character is this many levels past it… */
     fledLevels: 2,
     /** …or this long has passed, so a loop whose one monster was run from goes on earning. */
-    fledForgetMs: 1_800_000
+    fledForgetMs: 1_800_000,
+    /** A room run out of for health is kept out of, by routes and the hunting survey, for this long (todo 73). */
+    shunRoomMs: 900_000
   },
   /**
    * How a monster's hazards are priced when auto-combat decides what to hit
