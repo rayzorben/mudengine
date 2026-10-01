@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { AutoCombat, type OpeningGuard } from '../AutoCombat';
+import { AutoCombat, canStillHit, type OpeningGuard } from '../AutoCombat';
 import type { FledEntry } from '../../../shared/fled';
 import type { Survival } from '../../../shared/survival';
 import type { EngageDecision } from '../../../shared/automation';
@@ -4358,5 +4358,35 @@ describe('draining when hurt', () => {
       expect(sent).toEqual(['fjet giant rat']);
       expect(notices).not.toContain(starts);
     });
+  });
+});
+
+/*
+ * Todo 74: an attack queued before a death went out in the temple
+ * (*Your command had no effect.*), and one while mortally wounded was refused.
+ */
+describe('an attack asked again at the send', () => {
+  const here = (
+    hp: number | null,
+    occupants: string[],
+    attackers: string[] = []
+  ): CharacterState => ({
+    ...EMPTY_CHARACTER,
+    vitals: { ...EMPTY_CHARACTER.vitals, hp },
+    room: {
+      ...EMPTY_CHARACTER.room,
+      occupants: occupants.map((name) => ({ name, kind: 'mob' }) as never)
+    },
+    combat: { ...EMPTY_CHARACTER.combat, attackers }
+  });
+
+  it('still goes with the monster in the room, or swinging at the character', () => {
+    expect(canStillHit(here(40, ['mad wizard']), 'mad wizard')).toBe(true);
+    expect(canStillHit(here(40, [], ['mad wizard']), 'mad wizard')).toBe(true);
+  });
+
+  it('is dropped once the character is down or the monster is not here', () => {
+    expect(canStillHit(here(-4, ['mad wizard']), 'mad wizard')).toBe(false);
+    expect(canStillHit(here(57, []), 'mad wizard')).toBe(false);
   });
 });

@@ -118,6 +118,15 @@ export class Barriers {
   private keyed = false;
   private locked = false;
   /**
+   * The doors this session has heard `The door is locked.` at, by `from|direction`
+   * (todo 74). A door the realm locks again on its own timer is locked the next
+   * lap too, so `open` there is the command the lap before already spent: Soul
+   * sent `open n`, read the word, then `bas n`, thirty-one laps running. What
+   * clears one is a fact: the door unlocked or opened by this walk's own rung,
+   * no rung left that could force it (`open` is asked again), or the connection.
+   */
+  private readonly lockedDoors = new Set<string>();
+  /**
    * How many times the whole ladder has been run again at the barrier the step
    * in flight is standing at.
    *
@@ -215,6 +224,7 @@ export class Barriers {
     this.strength = null;
     this.picklocks = null;
     this.barrierRounds = 0;
+    this.lockedDoors.clear();
     this.forget();
     /*
      * `locked` is here rather than left to `forget`: it stopped being part of
@@ -290,9 +300,11 @@ export class Barriers {
   onOpenRefused(block: Block): void {
     if (this.forcing !== 'open') return;
     this.forcing = null;
-    if (block.groups['reason'] === 'locked') this.locked = true;
-
     const step = this.walk.step();
+    if (block.groups['reason'] === 'locked') {
+      this.locked = true;
+      if (step !== undefined) this.lockedDoors.add(doorOf(step));
+    }
     if (step === undefined) return;
     const barrier = block.groups['barrier'] ?? t('automation.walk.fallbackBarrier');
     if (this.force(step, barrier)) return;
@@ -339,7 +351,7 @@ export class Barriers {
        * cannot get past.
        */
       if (
-        !this.locked &&
+        !this.lockedAt(step) &&
         this.config.movement.openDoors &&
         this.opened < this.config.movement.openTries
       ) {
@@ -347,6 +359,12 @@ export class Barriers {
         return;
       }
       if (this.force(step, barrier)) return;
+      // Remembered locked, and nothing left to force it with: the door may since have been
+      // unlocked, so `open` is asked rather than standing here for the session (todo 74).
+      if (!this.locked && this.lockedDoors.delete(doorOf(step)) && this.config.movement.openDoors) {
+        this.sendOpen(step, barrier);
+        return;
+      }
       /*
        * Every rung spent and the way still shut. It waits and runs the ladder
        * again rather than ending the journey — see `holdAtBarrier`.
@@ -646,10 +664,20 @@ export class Barriers {
    * `onRefusedStep` reaches the forcing rungs exactly as it did before.
    */
   openShutWayFirst(step: RouteStep, state: CharacterState): boolean {
-    if (this.locked || !this.config.movement.openDoors) return false;
-    if (this.opened >= this.config.movement.openTries) return false;
     const barrier = this.shutAhead(state, step);
     if (barrier === null) return false;
+    /*
+     * A door this session heard was locked is forced in the step's place
+     * (todo 74): the room calls it shut, and `open` there is the word the lap
+     * before was already told. With no rung left to force it, the memory goes
+     * and `open` is asked, since the door may since have been unlocked.
+     */
+    if (!this.locked && this.lockedDoors.has(doorOf(step))) {
+      if (this.force(step, barrier)) return true;
+      this.lockedDoors.delete(doorOf(step));
+    }
+    if (this.locked || !this.config.movement.openDoors) return false;
+    if (this.opened >= this.config.movement.openTries) return false;
     this.sendOpen(step, barrier);
     return true;
   }
@@ -684,6 +712,7 @@ export class Barriers {
     if (block.groups['state2'] === 'unlocked') {
       this.forcing = null;
       this.forgetLock();
+      this.lockedDoors.delete(doorOf(step));
       this.queue.enqueue({
         command: `open ${step.direction}`,
         priority: 'movement',
@@ -698,6 +727,7 @@ export class Barriers {
     if (block.groups['state'] === 'open') {
       this.forcing = null;
       this.forgetLock();
+      this.lockedDoors.delete(doorOf(step));
       this.walk.stepAgain();
     }
   }
@@ -1054,10 +1084,16 @@ export class Barriers {
    * to be told twice over what the first two already said.
    *
    * What clears it is a fact: the door changing state (`onBarrierChanged`), a
-   * confirmed step — the character got past — or a fresh walk.
+   * confirmed step — the character got past — or a fresh walk. The session's
+   * memory of the door (`lockedDoors`, todo 74) outlives a walk, and is cleared
+   * by the door's own state changing or by no rung being left to force it.
    */
   forgetLock(): void {
     this.locked = false;
+  }
+  /** Whether the door ahead is locked: said so on this step, or at this door earlier in the session. */
+  private lockedAt(step: RouteStep): boolean {
+    return this.locked || this.lockedDoors.has(doorOf(step));
   }
 }
 
@@ -1098,4 +1134,9 @@ function meetsBarrier(
  */
 function shutRatherThanMissing(step: RouteStep): 'missing' | 'shut' {
   return step.requirement?.kind === 'hidden' ? 'shut' : 'missing';
+}
+
+/** A door as the session remembers it: the room it is left from, and the way. */
+function doorOf(step: RouteStep): string {
+  return `${step.from}|${step.direction}`;
 }

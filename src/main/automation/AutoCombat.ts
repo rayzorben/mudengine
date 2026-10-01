@@ -2325,6 +2325,8 @@ export class AutoCombat implements SessionModule {
       // Worthless if it arrives late: by then the thing has moved, died, or is
       // already fighting somebody else, and the command opens a *new* fight.
       expiresAt: now + tuning().combat.engageCooldownMs,
+      // Asked again at the send (todo 74): queued before a death, it went out in the temple.
+      stillWanted: () => this.state === null || canStillHit(this.state, key),
       reason: proposal.reason,
       onSent: () => this.attackSent(proposal)
     });
@@ -2758,4 +2760,18 @@ export class AutoCombat implements SessionModule {
       (who: RoomOccupant) => who.kind === 'player' && who.name.toLowerCase() === key
     );
   }
+}
+
+/**
+ * Whether an attack queued on `key` still has somebody to hit (todo 74): the
+ * character standing, and the monster in the room it is in or swinging at it. The server refuses
+ * the rest (*You may not do that while you are mortally wounded!*, *Your
+ * command had no effect.*), and both went out after Soul died to a mad wizard.
+ */
+export function canStillHit(state: CharacterState, key: string): boolean {
+  if (state.mortallyWounded || (state.vitals.hp !== null && state.vitals.hp <= 0)) return false;
+  return (
+    state.room.occupants.some((who) => mobKey(who.name) === key) ||
+    state.combat.attackers.some((name) => mobKey(name) === key)
+  );
 }
