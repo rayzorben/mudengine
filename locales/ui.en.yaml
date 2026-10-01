@@ -2845,15 +2845,22 @@ cards:
     coinsLabel: Coins collected
     column:
       count: Count
+      doing: Activity
       kind: Attack Type
       mean: Avg
+      perKill: Per Kill
       share: Share
       span: Min-Max
+      time: Time
+    # Landed criticals over the swings that landed, beside the two counts.
+    critRateLabel: Crit rate
+    critsOfHits: '{crits} of {landed} hits'
     dealtLabel: Damage dealt
     deflectedLabel: Deflected
     dodgedLabel: Dodged
     empty: Nothing has been fought yet.
     expMadeLabel: Exp. made
+    expPerKillLabel: Exp. per kill
     expNeededLabel: Exp. needed
     # Named with its level where the table can say which: the next level is
     # often already paid for, and `Exp. needed` alone read as though it were not.
@@ -2862,6 +2869,7 @@ cards:
     exchangeFigure: '{dealt} dealt · {taken} taken'
     exchangeLabel: Dealt against taken
     faceMore: More
+    faceTime: Time
     graphEmpty: nothing measured in this window yet
     graphLabel: 'Exp. rate, last {hours} h'
     graphNow: 'now {rate}'
@@ -2870,6 +2878,7 @@ cards:
     levelOver: '{over} over'
     incomeRateLabel: Income rate
     killRateLabel: Kill rate
+    killEveryLabel: Time per kill
     killedLabel: Killed
     kind:
       backstab: Backstab
@@ -2886,10 +2895,22 @@ cards:
     perRoundLabel: Damage a round
     ratePerHour: '{value}/hr'
     resetAction: Reset Combat Statistics
+    roundsPerKillLabel: Rounds per kill
     sneakLabel: Sneak
+    swingsPerKillLabel: Swings per kill
     span: '{least}–{most}'
     tableCaption: Accuracy
     takenLabel: Damage taken
+    takenPerKillLabel: Damage taken per kill
+    # MegaMUD's `Time Analysis` rows beside `Attacking`. `Other` is time in the
+    # realm none of the four covers: waiting for a regen, a trip to the shop,
+    # standing at the keyboard.
+    time:
+      meditating: Meditating
+      moving: Moving
+      other: Other
+      resting: Resting
+    timeCaption: Time Analysis
     title: Combat Stats
     willLevelLabel: Will level in
   standby:

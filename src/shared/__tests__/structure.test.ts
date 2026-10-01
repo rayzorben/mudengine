@@ -30,7 +30,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the wearer join, shared with the pack's query (`world/wearer.ts`).
   'src/main/session/SessionManager.ts': 3819,
   'src/main/world/WorldGraph.ts': 2549,
-  'src/main/parse/CharacterTracker.ts': 2539,
+  'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
   'src/main/automation/Walker.ts': 2039,
   'src/renderer/src/components/SettingsScreen.tsx': 1219,
