@@ -74,6 +74,7 @@ import type { SessionModule } from './Module';
 import { WalkClock } from './walk/clock';
 import type { WalkerEvents, WalkInFlight } from './walk/ports';
 import { Holds } from './walk/Holds';
+import { SneakBeforeStep } from './walk/Sneak';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 
@@ -186,8 +187,8 @@ export class Walker implements SessionModule {
    * because that is a new connection and possibly a different server.
    */
   private answers: number[] = [];
-  /** Whether *Stealth 0, not sneaking* has been said this session. */
-  private saidNoStealth = false;
+  /** The `sn` before each step, and when not to ask (`walk/Sneak.ts`). */
+  private readonly sneak: SneakBeforeStep;
   /**
    * Whether this walk is owed back after the connection is lost and regained.
    *
@@ -270,6 +271,7 @@ export class Walker implements SessionModule {
       stop: (reason) => this.stop(reason),
       stepAgain: () => this.sendCurrent(false)
     };
+    this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere);
     this.holds = new Holds(
       config,
       events,
@@ -804,6 +806,7 @@ export class Walker implements SessionModule {
     this.holds.reset();
     this.barriers.reset();
     this.levers.reset();
+    this.sneak.reset();
     this.publish();
   }
 
@@ -858,6 +861,7 @@ export class Walker implements SessionModule {
    */
   onBlock(block: Block): void {
     if (this.status !== 'walking') return;
+    if (block.type === 'user-sneak-failed') this.sneak.refused();
 
     /*
      * The character died, so the route is over and it is over for a *reason*.
@@ -1540,63 +1544,6 @@ export class Walker implements SessionModule {
   }
 
   /**
-   * Ahead of the next step, when the character is meant to be sneaking and is
-   * not.
-   *
-   * **Immediately before the step, every step, and that is the whole point.**
-   * What it decides is whether the things in the *next* room notice the
-   * arrival, so the only moment it can be decided from is the one the step
-   * goes out in. This used to be asked in two places — once before a route's
-   * first step and once when a hold let go — and that left the two cases the
-   * walk provokes itself uncovered:
-   *
-   * - **A retry behind a door.** Picking or opening a barrier breaks stealth
-   *   silently (`Door.cs`; the client now reads it, see
-   *   `StealthReceipt.broke`), and the retry is not a fresh send, so
-   *   nothing asked again. Reported 2026-09-11 as a character that sneaked,
-   *   walked into a shut door, picked it, opened it and stepped through in
-   *   plain sight.
-   * - **Every ordinary step after the first.** A fight, a rest and equipping
-   *   all break stealth, and a route's second step inherited whatever the
-   *   first believed.
-   *
-   * Called from `sendCurrent` after `beforeStep`, so a torch readied for the
-   * next room cannot break the stealth this just asked for: the two share the
-   * `movement` band and the arbiter keeps a band in order. Coalesced, so a
-   * retry that asks again while the first `sn` is still queued is one
-   * command.
-   *
-   * `Stealth` is three-state for the reason this needs: `unknown` means nobody
-   * has said, which is not `sneaking`, and a character that believes it is
-   * hidden and is not walks into a lair in the open.
-   */
-  private sneakFirst(state: CharacterState): void {
-    if (!this.config.movement.sneak || state.stealth === 'sneaking') return;
-    /*
-     * **A sheet that says `Stealth: 0` is never asked to sneak** (todo 104).
-     * `SneakCommand.cs` rolls `Stealth − (players − 1 + mobs) ≥ rand(1,100)`,
-     * so a figure of zero never passes — and a Mage rerolled from a Ninja
-     * kept `movement.sneak` and spent one refused `sn` on every step of every
-     * lap. The figure is the sheet's own column; an unread sheet (null) never
-     * refuses, and a Ninja whose figure is low is still asked every step.
-     */
-    if (state.progress.stealthSkill === 0) {
-      if (!this.saidNoStealth) {
-        this.saidNoStealth = true;
-        this.events.notice?.(t('automation.walk.sneakNoSkill'));
-      }
-      return;
-    }
-    if (cannotSneakHere(state)) return;
-    this.queue.enqueue({
-      command: 'sn',
-      priority: 'movement',
-      coalesceKey: 'sneak',
-      reason: t('automation.walk.reasonSneak')
-    });
-  }
-
-  /**
    * `from` is the state the caller was deciding on, for the two callers that
    * hold one before the tracker has pushed it — `start` and `carryOn`. Read
    * *after* `stateNow`, which is the fresher answer wherever it exists, and
@@ -1616,7 +1563,7 @@ export class Walker implements SessionModule {
      * retry behind a door is the same step into the same room.
      *
      * The sneak is asked on **every** send and after the light, which is the
-     * one thing here that is not per-step-per-room: see `sneakFirst`.
+     * one thing here that is not per-step-per-room: see `SneakBeforeStep.ask`.
      */
     const now = this.events.stateNow?.() ?? from;
     if (now !== undefined) this.noteRoomBehind(now);
@@ -1640,7 +1587,7 @@ export class Walker implements SessionModule {
        */
       if (this.levers.pullLeversFirst(step, now)) return;
     }
-    if (now !== undefined) this.sneakFirst(now);
+    if (now !== undefined) this.sneak.ask(now, this.config.movement.sneak);
     /*
      * And where the realm's own spell will put the character, for an exit
      * whose cast moves them — a draw *or* an address. Both answer with two
@@ -1952,29 +1899,6 @@ export class Walker implements SessionModule {
 }
 
 /**
- * Whether a fight is running around this character right now.
- *
- * The server's own flag, **or** anything this client has recorded as swinging.
- * The second half is what makes it a walk's question rather than a repeat of
- * `state.inCombat`: `CharacterTracker` files an attacker the moment a blow
- * names one, which is a round before `*Combat Engaged*` on a monster that
- * opened the fight — and a step sent in that round walks the character out of
- * a fight it is in, which `cancelQueued` cannot recall.
- *
- * It is deliberately *not* `Recovery.fightIsHere`, which asks the narrower
- * question resting needs — that one falls back to "is anybody standing here"
- * to explain a flag with nothing behind it, and for a walk a monster standing
- * in the room is not by itself a reason to stop. What the two share is the
- * measured fact underneath: the flag outlives an escape by a median 3,493ms
- * and `attackers`/`target` are cleared by a confirmed move, so a character that
- * got away
- * reads as fighting for about three seconds and then walks on.
- */
-export function fightIsRunning(state: CharacterState): boolean {
-  return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
-}
-
-/**
  * Whether the server would refuse a `sn` sent from this room, so that none is
  * sent.
  *
@@ -2004,6 +1928,29 @@ export function fightIsRunning(state: CharacterState): boolean {
 export function cannotSneakHere(state: CharacterState): boolean {
   if (fightIsRunning(state)) return true;
   return state.room.occupants.some((occupant) => occupant.kind === 'mob');
+}
+
+/**
+ * Whether a fight is running around this character right now.
+ *
+ * The server's own flag, **or** anything this client has recorded as swinging.
+ * The second half is what makes it a walk's question rather than a repeat of
+ * `state.inCombat`: `CharacterTracker` files an attacker the moment a blow
+ * names one, which is a round before `*Combat Engaged*` on a monster that
+ * opened the fight — and a step sent in that round walks the character out of
+ * a fight it is in, which `cancelQueued` cannot recall.
+ *
+ * It is deliberately *not* `Recovery.fightIsHere`, which asks the narrower
+ * question resting needs — that one falls back to "is anybody standing here"
+ * to explain a flag with nothing behind it, and for a walk a monster standing
+ * in the room is not by itself a reason to stop. What the two share is the
+ * measured fact underneath: the flag outlives an escape by a median 3,493ms
+ * and `attackers`/`target` are cleared by a confirmed move, so a character that
+ * got away
+ * reads as fighting for about three seconds and then walks on.
+ */
+export function fightIsRunning(state: CharacterState): boolean {
+  return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
 }
 
 /**

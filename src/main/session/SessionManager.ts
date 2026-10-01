@@ -112,6 +112,7 @@ import {
   type RealmPlayers
 } from '../../shared/players';
 import { NO_RECORD, type CharacterRecord } from '../../shared/belongings';
+import type { FledEntry } from '../../shared/fled';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
@@ -402,7 +403,7 @@ export class SessionManager {
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
-  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise'>;
+  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'fight' | 'opening'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'reset' | 'dispose'>;
   private automationConfig: AutomationConfig;
@@ -736,6 +737,7 @@ export class SessionManager {
     });
 
     const onTheGround = (): boolean => this.grounded.down;
+    const fled = (): readonly FledEntry[] => this.belongings.recallFled();
     // Under a timed spell the way in cast, the walk moves and nothing else does (todo 104).
     const moveOnly = (state: CharacterState): boolean => this.underTimedSpell(state) !== null;
     this.routines = new Routines(automation, this.queue, {
@@ -823,6 +825,7 @@ export class SessionManager {
       restInFlight: () => this.recovery.restInFlight,
       floorInFlight: () => this.loot.floorInFlight,
       onTheGround,
+      restFor: () => this.combat.restingFor,
       /*
        * A route that stood still for a fight plans again from wherever the fight left the
        * character: the answer needs the realm graph, the purse and the refused edges.
@@ -955,7 +958,8 @@ export class SessionManager {
        */
       () => this.errands.realmClass(),
       lore,
-      (id) => this.world?.spellById(id) ?? null
+      (id) => this.world?.spellById(id) ?? null,
+      { opening: (name) => (this.world ? this.appraisal.opening(name) : undefined), fled }
     );
 
     /*
@@ -1672,6 +1676,9 @@ export class SessionManager {
         movement: () => this.movement,
         loopNamed: (name) => this.loopNamed(name),
         dropTyped: (died) => this.dropTyped(died),
+        fight: () => this.appraisal.fight(),
+        fled,
+        keepFled: (entries) => this.belongings.rememberFled(entries),
         switchAutomation: (on) => this.sink.switchAutomationNow?.('automation', on) ?? false,
         ...reports
       }
@@ -1728,6 +1735,7 @@ export class SessionManager {
     };
     const safetySession = {
       config: () => this.automationConfig,
+      fight: () => this.appraisal.fight(),
       disconnect: (by: ConnectionEnd) => this.disconnect(by),
       notice: (message: string) => this.sink.notice(message)
     };
@@ -3167,8 +3175,9 @@ export class SessionManager {
       // Telling a leader this character sat down or stood up; and, leading, whom to wait for.
       this.remotes.onCharacter(state);
       this.travel.watchParty(state);
-      // Running away first, walked and then the realm's teleport (todo 813): both cost
-      // nothing, where an unclean disconnect is penalised and can kill outright.
+      // The next round could kill: leave the realm, where the charge does not kill first.
+      if (this.safety.beforeDeath(state)) return;
+      // Then running away, walked and then the realm's teleport (todo 813): both free.
       this.travel.considerEscape(state);
       this.fleeGoto.consider(state);
       // And the walk home a `safe-haven` escape armed, once the fight is over.
@@ -3454,13 +3463,12 @@ export class SessionManager {
   }
 
   /**
-   * `Recovery`, told first what the walk is waiting for: a route standing
-   * still before a trap names the health it wants (`Walker.restingFor`), and
-   * that figure is above the resting floor, so the rest that ends the hold
-   * has to be asked for by the module that owns resting.
+   * `Recovery`, told first the health a walk standing before a trap or a fight turned down for
+   * health wants (`restingFor`): above the resting floor, so only the resting module asks for it.
    */
   private restNow(state: CharacterState): void {
-    this.recovery.needAtLeast(this.walker.restingFor);
+    const owed = [this.walker.restingFor, this.combat.restingFor].filter((hp) => hp !== null);
+    this.recovery.needAtLeast(owed.length === 0 ? null : Math.max(...owed));
     this.recovery.onCharacter(state);
   }
 

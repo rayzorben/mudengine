@@ -28,10 +28,10 @@ afterEach(() => {
 });
 
 describe('the walker puts its units down', () => {
-  // Mutants: the order reversed; any one of the three left out.
+  // Mutants: the order reversed; any one of the four left out.
   it('resets them in the order their fields were cleared before the carve', () => {
     const resets = [...body(/^ {2}reset\(\): void/).matchAll(/this\.(\w+)\.reset\(\)/g)];
-    expect(resets.map((call) => call[1])).toEqual(['holds', 'barriers', 'levers']);
+    expect(resets.map((call) => call[1])).toEqual(['holds', 'barriers', 'levers', 'sneak']);
   });
 
   // Mutant: stop keeps the errand.

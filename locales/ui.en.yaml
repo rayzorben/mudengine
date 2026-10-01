@@ -4432,6 +4432,13 @@ session:
     hangUpRefused: 'Not hanging up: {why}. {reasons}. Disconnecting now would be penalized; walk out
       instead.'
     hangingUpClean: 'Hanging up: {why}.'
+    beforeDeath: 'Hanging up: {why}. Dying would drop everything you carry.'
+    beforeDeathCharged: 'Hanging up: {why}. The hangup costs {cost} HP and some items; dying
+      would drop everything you carry.'
+    beforeDeathUnknownCharge: 'Hanging up: {why}. This realm charges for a hangup and its menu
+      has not said how much; dying would drop everything you carry.'
+    beforeDeathCostly: 'Not hanging up: {why}, but the hangup would cost {cost} HP and kill you.'
+    beforeDeathCostlyReason: the hangup would cost {cost} HP and kill
     hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hangup penalty."
     hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hangup
       penalty.'
@@ -4442,6 +4449,8 @@ session:
     pvpNoGang: 'Not telling anyone about {attacker}: the who list shows you in no gang.'
     pvpNoGangReason: the who list shows no gang to tell
     whyHealth: health at {percent}
+    whyNextRound: 'at {hp} HP the next round kills you {risk} of the time'
+    whyRisk: 'at {hp} HP this fight kills you {risk} of the time within {rounds} rounds'
     whyMana: mana at {percent}
     whyAttackers: '{count} attackers'
     whyCompany: Player present in room (PvP abort)
@@ -4771,6 +4780,16 @@ automation:
     refusedCostly: Attacking {target} costs alignment (-10).
     refusedEngageNone: Attack Target Selection is Retaliate Only, so no fight is started
     refusedTooTough: '{target} has {hp} health, over the Max Target Health of {cap}'
+    refusedFled: 'you ran from {target} at level {level}; it is left alone until level {until}'
+    refusedFledUnknown: you ran from {target}; it is left alone until your level is read
+    refusedOdds: 'you survive a fight with {target} here {survives} of the time at {hp} HP;
+      attacking needs {needs}'
+    refusedRisk: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within
+      {rounds} rounds, so you would have to run at once'
+    refusedRiskResting: 'at {hp} HP, a fight with {target} here kills you {risk} of the time within
+      {rounds} rounds, so you would have to run at once; resting to {needs} HP first'
+    refusedOddsResting: 'you survive a fight with {target} here {survives} of the time at {hp} HP;
+      attacking needs {needs}; resting to {rest} HP first'
     refusedMaxMobs: '{here} monsters here, over the Max Monsters in Room of {max}'
     refusedMinMobs: only {here} monsters here, under the Min Monsters in Room of {min}
     refusedTooRich: '{target} is worth {exp} exp, over the Max Monster Exp of {cap}'
@@ -5340,6 +5359,8 @@ automation:
       staying put until it is found.
     reasonSneak: sneaking before the route
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
+    sneakGaveUp: 'Not sneaking before steps: the last {count} tries failed. Trying again after
+      a level or a reconnect.'
     sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the stats say 0), so
       the game refuses every attempt. Auto-Sneak on Move is ignored for this session.'
     reasonStepping: walking to {stepName}

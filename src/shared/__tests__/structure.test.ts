@@ -29,12 +29,14 @@ const sources = (dir: string): string[] => sourceFiles(dir).map(repoPath).sort()
 const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the wearer join, shared with the pack's query (`world/wearer.ts`),
   // and by the close handler once every close carries the lap (todo 01).
-  // And by the item trip's wiring, out whole (`itemPlanner.ts`, todo 21).
-  'src/main/session/SessionManager.ts': 3752,
+  // And by the item trip's wiring, out whole (`itemPlanner.ts`, todo 21),
+  // the room the danger checks then took (todo 22).
+  'src/main/session/SessionManager.ts': 3760,
   'src/main/world/WorldGraph.ts': 2549,
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
-  'src/main/automation/Walker.ts': 2039,
+  // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
+  'src/main/automation/Walker.ts': 1986,
   'src/renderer/src/components/SettingsScreen.tsx': 1219,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
