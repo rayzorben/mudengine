@@ -821,6 +821,12 @@ const TUNING_DEFAULTS = {
      */
     sizeTolerance: 0.05,
     /**
+     * Under a cash floor, a spot's copper counts only while its exp an hour is
+     * at least this share of the best spot's (todo 71). A floor set above what
+     * any ground pays would otherwise rank grounds by copper alone.
+     */
+    cashExpShare: 0.5,
+    /**
      * How many refills a room must have been timed over before its timed
      * clock prices it, where the world database states none
      * (`src/shared/spawns.ts`). One gap is a wanderer as often as a refill.

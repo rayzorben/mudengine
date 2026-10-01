@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  cashFloor,
   addFiller,
   huntLoop,
   lapClock,
@@ -816,7 +817,8 @@ describe('the order the reader wants', () => {
       paying('rats', 8_000, 40),
       paying('dragon', 90_000, 9_000, true)
     ];
-    expect([...spots].sort((a, b) => compareSpots(a, b, 200)).map((s) => s.key)).toEqual([
+    const floor = cashFloor(spots, 200, 0);
+    expect([...spots].sort((a, b) => compareSpots(a, b, floor)).map((s) => s.key)).toEqual([
       'kobold',
       'rats',
       'cave bear',
@@ -827,6 +829,30 @@ describe('the order the reader wants', () => {
       'rats',
       'kobold',
       'dragon'
+    ]);
+  });
+
+  /*
+   * Todo 71: a floor nothing paid (14,225 copper an hour, the best ground 5,944)
+   * ranked the realm by copper alone, and the cave bear earning 56k an hour
+   * fell out of the measured list. Copper counts only within half the best exp.
+   */
+  it('never trades more than half the best exp for copper', () => {
+    const paying = (key: string, exp: number, copper: number): HuntingSpot => {
+      const s = spot(key, exp, exp);
+      return { ...s, estimate: { ...s.estimate, copperPerHour: copper } };
+    };
+    const spots = [
+      paying('thug', 4_353, 5_944),
+      paying('cave bear', 8_935, 1_907),
+      paying('azure slime', 7_500, 2_417)
+    ];
+    const floor = cashFloor(spots, 14_225, 0.5);
+    expect(floor.expAtLeast).toBeCloseTo(4_467.5);
+    expect([...spots].sort((a, b) => compareSpots(a, b, floor)).map((s) => s.key)).toEqual([
+      'azure slime',
+      'cave bear',
+      'thug'
     ]);
   });
 

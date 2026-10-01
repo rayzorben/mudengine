@@ -1353,6 +1353,8 @@ cards:
     unsimulated: '{count} more not yet simulated.'
     # Every monster there costs evil points to attack, so auto-combat never would.
     evil: '{count} where attacking costs evil points.'
+    # A level is ready, and the way back from the trainer is an exit for levels up to this one.
+    gated: '{count} you could not get back to once the next level is trained.'
     # The fight itself unpriced -- the rounds to kill, or the blows, unknown --
     # so the row is ordered by distance and never by what it pays.
     unpricedOne: The fight in one of them could not be rated, so it is listed by distance.
