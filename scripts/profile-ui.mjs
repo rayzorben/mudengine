@@ -49,6 +49,7 @@ import { analyse, loadMapper, spread } from './lib/cpuprofile.mjs';
 // The palette row is typed for by its dictionary key, never its wording (run
 // under `scripts/lib/register.mjs`); a key the dictionary lacks throws.
 import { copyOf } from '../src/main/app/copyMatch.ts';
+import { holdPort } from './lib/port-lock.mjs';
 
 /** The palette's row that shows the Talk card, as the palette labels it. */
 const SHOW_TALK = copyOf('palette.layout.showCardLabel', {
@@ -68,6 +69,7 @@ const OPT_ECHO = 1,
   OPT_NAWS = 31;
 
 const CDP_PORT = 9334;
+await holdPort(CDP_PORT, 'profile-ui');
 const SESSION = 'alpha';
 const keepOpen = process.argv.includes('--keep-open');
 const wantsWindow = process.argv.includes('--windowed');

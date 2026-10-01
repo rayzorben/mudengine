@@ -27,11 +27,13 @@ import YAML from 'yaml';
 
 import { HOST, PORT, isLocalRealm } from './lib/local-realm.mjs';
 import { homePaths } from './lib/home.mjs';
+import { holdPort } from './lib/port-lock.mjs';
 
 /** Fixed before launch, so only files this run produced are examined later. */
 const startedAt = Date.now();
 
 const CDP_PORT = 9777;
+await holdPort(CDP_PORT, 'live check');
 /**
  * The character this harness drives. Resolved from the profiles directory below.
  *

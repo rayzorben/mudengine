@@ -33,6 +33,7 @@ import {
   sentence
 } from '../src/main/app/copyMatch.ts';
 import { escapeRegExp } from '../src/shared/regex.ts';
+import { holdPort } from './lib/port-lock.mjs';
 
 /*
  * Every pattern here is case-blind: a CSS `text-transform` reaches
@@ -88,6 +89,7 @@ const OPT_ECHO = 1,
   OPT_NAWS = 31;
 
 const CDP_PORT = 9333;
+await holdPort(CDP_PORT, 'smoke');
 /**
  * The session this harness drives.
  *
@@ -546,8 +548,7 @@ const server = net.createServer((socket) => {
          */
         Buffer.from('\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n', 'latin1'),
         // A `who` listing, verbatim in shape from `npm run probe:who`. The
-        // alignment column is the PvP-relevant one and is present only for
-        // characters that have a standing.
+        // alignment column is the PvP-relevant one.
         Buffer.from('\x1b[0;36m         Current Adventurers\x1b[0m\r\n', 'latin1'),
         Buffer.from('\x1b[0;36m         ===================\x1b[0m\r\n', 'latin1'),
         Buffer.from(
@@ -565,6 +566,10 @@ const server = net.createServer((socket) => {
          * would glue the status line to the party header and match neither.
          */
         Buffer.from('\x1b[1;32m[HP=98/MA=50]:\x1b[0m\r\n', 'latin1'),
+        // Somebody who walks in after the listing, and so is a name and nothing
+        // else: the Realm card's unknown. Soul's arrival above comes before the
+        // listing, which drops her as gone.
+        Buffer.from('\x1b[0;33mVaga just entered the Realm.\x1b[0m\r\n', 'latin1'),
         // A travel party, verbatim in shape from `npm run probe:party` with two
         // characters on the local server. The mana column is present only for a
         // class that has any -- exactly as in the status line.
@@ -15545,17 +15550,24 @@ if (logFiles[0]) {
     'and pressing it sends one rm to the realm',
     `${rmBefore} -> ${rmAfter}`
   );
-  check(/Location: 1,2140/.test(body), 'the log still holds the answer to a quiet command');
-  const fed = await evaluate(`window.mudengine.attach('${SESSION}').then((s) => s.backscroll.text)`);
-  check(
-    typeof fed === 'string' && fed.length > 0 && !fed.includes('Location: 1,2140'),
-    'and the console was never shown it',
-    typeof fed === 'string' ? `${fed.length} chars` : String(fed)
+  const answer = 'Location: 1,2140';
+  check(body.includes(answer), 'the log still holds the answer to a quiet command');
+  const fed = await evaluate(
+    `window.mudengine.attach('${SESSION}').then((s) => s.backscroll.text)`
   );
-  // The echo follows the prompt's repaint marker, not a newline, so the
-  // test is for `rm` at the start of a row however the row was started.
+  const leak = typeof fed === 'string' ? fed.indexOf(answer) : -1;
   check(
-    typeof fed === 'string' && !/(?:\n|\[K)rm\r\n/.test(fed),
+    typeof fed === 'string' && fed.length > 0 && leak < 0,
+    'and the console was never shown it',
+    leak < 0
+      ? String(fed)
+      : `${JSON.stringify(fed.slice(Math.max(0, leak - 300), leak + 60))} (${rmAfter} rm sent)`
+  );
+  // The echo follows the prompt's repaint marker, not a newline, or lands
+  // after the colon of a prompt painted before it went out, so the test is
+  // for `rm` however its row was started.
+  check(
+    typeof fed === 'string' && !/(?:\n|\[K|\]:(?:\x1b\[[0-9;]*m)*\s?)rm\r\n/.test(fed),
     'nor the echo of the command that asked'
   );
   check(

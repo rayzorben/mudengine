@@ -41,6 +41,7 @@ import { judgeFailures } from './lib/smoke-baseline.mjs';
 // `scripts/lib/register.mjs`): a row is typed for by its key, never its wording,
 // and a key the dictionary lacks throws rather than being typed as itself.
 import { copyOf } from '../src/main/app/copyMatch.ts';
+import { holdPort } from './lib/port-lock.mjs';
 
 const IAC = 255,
   WILL = 251,
@@ -56,6 +57,7 @@ const OPT_ECHO = 1,
   OPT_NAWS = 31;
 
 const CDP_PORT = 9555;
+await holdPort(CDP_PORT, 'web smoke');
 const HOME = path.resolve('out/web-smoke-home');
 const BROWSER_PROFILE = path.resolve('out/web-smoke-browser');
 const LOG_DIR = path.resolve('out/web-smoke-logs');
