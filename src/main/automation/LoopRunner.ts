@@ -32,7 +32,9 @@
  *   whatever was in the room — and the lap it was walking is none of the three
  *   things that end one either. It holds (`noteOffline`) until the character
  *   is back in the realm and placed, and then plans on from wherever that is
- *   (`noteOnline`), the same recovery a fight gets.
+ *   (`noteOnline`), the same recovery a fight gets. Disconnect and quit hold
+ *   it the same way; a relaunch takes it up from the character's record
+ *   (`carry`).
  */
 import {
   dueStop,
@@ -57,6 +59,7 @@ import {
   type WalkConfig
 } from '../../shared/config';
 import { afflictionHolding, type AfflictionHold } from '../../shared/walk';
+import type { CarriedLap } from '../../shared/underway';
 import type { RoomId, Route } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -659,11 +662,12 @@ export class LoopRunner implements SessionModule {
   }
 
   /**
-   * The connection went, and this client did not ask it to.
+   * The connection went, lost or closed by this client: Disconnect and quit
+   * are not Stop (todo 01).
    *
    * The lap is held, not ended, for `noteEscaped`'s reason: a loop runs until
    * the player stops it, the character dies, or its stops fail wholesale, and
-   * a link dropping is none of those. The character is still standing
+   * a link closing is none of those. The character is still standing
    * wherever the socket went — on this server family a disconnect is not a
    * pause, and whatever was in the room is still there — so the lap picks up
    * from there when the character is back (`noteOnline`).
@@ -745,6 +749,48 @@ export class LoopRunner implements SessionModule {
     // Said only when the lap will in fact walk on. Under the health floor it
     // goes on holding, and `mended` says so on the line it does.
     if (!this.hurt) this.events.notice?.(t('automation.loops.walkingOnAfterReconnect'));
+    this.publish();
+  }
+
+  /** The lap and its place, for the character's record; null with no lap. See `CarriedLap`. */
+  get place(): CarriedLap | null {
+    if (this.loop === null || (this.status !== 'running' && this.status !== 'stopped')) return null;
+    return {
+      loop: this.loop,
+      index: this.index,
+      forward: this.forward,
+      laps: this.laps,
+      running: this.status === 'running',
+      reason: this.reason,
+      startedAt: this.startedAt,
+      lapBegunAt: this.lapBegunAt,
+      expAtStart: this.expAtStart
+    };
+  }
+
+  /**
+   * A lap the app was running when it last closed, taken up as one a lost
+   * connection left: held `offline` until `noteOnline`, which plans the leg to
+   * the stop it was heading for from wherever the character is placed. Only
+   * into an idle runner; a lap this launch already holds outranks the record.
+   */
+  carry(lap: CarriedLap): void {
+    if (this.status !== 'idle') return;
+    this.loop = lap.loop;
+    this.stopRooms = lap.loop.stops.map((stop) => this.planner.roomOf(splitStop(stop)));
+    this.index = lap.index;
+    this.forward = lap.forward;
+    this.laps = lap.laps;
+    this.status = lap.running ? 'running' : 'stopped';
+    this.reason = lap.reason;
+    this.startedAt = lap.startedAt;
+    this.lapBegunAt = lap.lapBegunAt;
+    this.expAtStart = lap.expAtStart;
+    this.offline = true;
+    this.waiting = lap.running;
+    if (lap.running) {
+      this.events.notice?.(t('automation.loops.carriedOver', { loopName: lap.loop.name }));
+    }
     this.publish();
   }
 

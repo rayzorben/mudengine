@@ -58,7 +58,7 @@ import {
   UNKNOWN_WEARER
 } from '../shared/gear';
 import { Belongings, peekSpellbook } from './session/Belongings';
-import type { BelongingsSink } from '../shared/belongings';
+import type { CharacterRecord } from '../shared/belongings';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
 import {
   SpellMessageBook,
@@ -638,7 +638,7 @@ function talkFor(id: SessionId): TalkSink {
  */
 const belongings = new Map<SessionId, Belongings>();
 
-function belongingsAt(id: SessionId, target: ConnectionTarget): BelongingsSink {
+function belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord {
   const realm = realmAddress(target);
   const existing = belongings.get(id);
   if (existing) {

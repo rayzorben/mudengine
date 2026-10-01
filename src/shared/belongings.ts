@@ -32,6 +32,7 @@ import type { AbilitySums, BankBalance, KnownSpell } from './character';
 import type { Loadout } from './gear';
 import type { CharacterIdentity } from './reset';
 import type { CombatTally } from './tally';
+import { NO_UNDERWAY, type UnderwaySink } from './underway';
 
 /**
  * The running totals as last handed over, and when. The moment is
@@ -187,3 +188,9 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberStatsBase: () => {},
   forget: () => false
 };
+
+/** The whole of a character's record, as the session holds it; each reader takes its own half. */
+export type CharacterRecord = BelongingsSink & UnderwaySink;
+
+/** `NO_BELONGINGS`, and nothing underway either. */
+export const NO_RECORD: CharacterRecord = { ...NO_BELONGINGS, ...NO_UNDERWAY };

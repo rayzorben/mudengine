@@ -32,6 +32,7 @@ import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { PartyWait } from './PartyWait';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
+import type { CarriedRoute } from '../../shared/underway';
 import { landed, stillFled, type FledRoom } from '../../shared/walk';
 import {
   asDirection,
@@ -275,17 +276,17 @@ export class Travel implements SessionModule {
    */
   private homeward: string | null = null;
   /**
-   * Where a route the player was walking still owes them, across a lost
-   * connection. See `pickUpAfterLoss`.
+   * Where a route the player was walking still owes them, across a closed
+   * connection or a relaunch. See `pickUpAfterLoss`.
    *
-   * Taken from `Walker.journey` at the moment the socket goes and only for a
-   * loss — a deliberate disconnect is the player ending the session — and
+   * Taken from `Walker.journey` at the moment the socket goes, or from the
+   * character's record at the first dial (`owe`), and
    * spent the first time the character is back in the realm and placed, or
    * dropped when anything supersedes it: a new walk, leaving the realm, a dial
    * to a different realm. The loop keeps its own place (`LoopRunner.carried`);
    * this is the one journey with nobody else holding its destination.
    */
-  private journey: { to: RoomId; name: string; run: boolean } | null = null;
+  private journey: CarriedRoute | null = null;
   /**
    * The kept-out words the player chose to cross to reach one room (todo 806):
    * a route asked for through a way `movement.keepOutOf` names, picked on the
@@ -426,14 +427,24 @@ export class Travel implements SessionModule {
   }
 
   /**
-   * The socket went. A loss keeps the route the player was walking, a close
-   * this client asked for keeps nothing; read before the walk is stopped,
-   * because a stopped walk owes nothing. See `pickUpAfterLoss`.
+   * The socket went, whoever closed it: the route the player was walking is
+   * kept. Read before the walk is stopped, because a stopped walk owes
+   * nothing. See `pickUpAfterLoss`.
    */
-  carryJourney(lost: boolean): void {
-    const journey = lost ? this.walker.journey : null;
+  carryJourney(): void {
+    this.journey = this.owed;
+  }
+
+  /** The route the player asked for and is owed, walking or carried, for the character's record. */
+  get owed(): CarriedRoute | null {
+    const walking = this.walker.journey;
     // With how it was asked for: a run picked up again is still a run.
-    this.journey = journey === null ? null : { ...journey, run: this.walkRun };
+    return this.journey ?? (walking === null ? null : { ...walking, run: this.walkRun });
+  }
+
+  /** A route the record says the app was walking when it closed; one this launch carries stands. */
+  owe(route: CarriedRoute): void {
+    this.journey ??= route;
   }
 
   /** A walk started, whoever started it, so nothing owed from a lost connection outlives it. */

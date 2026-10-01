@@ -2,7 +2,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { NO_FIGHTS } from '../../../shared/fights';
 import { NO_TALK } from '../TalkLog';
 import { NO_REALM_PLAYERS } from '../../../shared/players';
-import { NO_BELONGINGS } from '../../../shared/belongings';
+import { NO_RECORD } from '../../../shared/belongings';
 import { NO_LORE } from '../../../shared/lore';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
@@ -98,7 +98,7 @@ beforeEach(async () => {
       return NO_REALM_PLAYERS;
     },
     // Nowhere to write, like every other record in these runs.
-    belongingsAt: () => NO_BELONGINGS,
+    belongingsAt: () => NO_RECORD,
     internal: () => DEFAULT_INTERNAL,
     publishRoster: () => {
       rosterPublishes += 1;
