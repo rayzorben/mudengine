@@ -89,6 +89,8 @@ export interface PlannerFacts {
   buying(): boolean;
   /** What `AutoHunt` last said it would not do for the steered spot, or null. */
   huntRefusal(): string | null;
+  /** What the training trip last said it would not do, and when, or null. */
+  trainRefusal(): { why: string; at: number } | null;
   /** What the modules last said they would not do, newest first. */
   refusals(): string[];
   realm(): string | null;
@@ -652,11 +654,26 @@ export class KonamiPlanner implements SessionModule {
         }
         return;
       }
-      case 'train':
+      case 'train': {
         if (state.progress.expNeeded !== null && state.progress.expNeeded > 0) {
           this.finish('done', null);
+          return;
+        }
+        // The trip would not go (no cash, no trainer reached) since this plan: it ends refused.
+        // One said before the plan is about a trip that is not this one.
+        const refused = this.facts.trainRefusal();
+        const since = this.journal.latest?.at ?? 0;
+        if (refused !== null && refused.at >= since) {
+          this.finish('refused', refused.why);
+          return;
+        }
+        // And a trip that never set off, whatever it said before or did not say at all.
+        const going = this.facts.activity()?.doing.kind === 'train';
+        if (!going && Date.now() - since >= tuning().konami.trainStartMs) {
+          this.finish('refused', refused?.why ?? t('automation.konami.trainDidNotGo'));
         }
         return;
+      }
       case 'wait':
         return;
       default: {

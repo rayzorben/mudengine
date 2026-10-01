@@ -4778,6 +4778,7 @@ automation:
     vetoed: you said no on the card
     pausedByStop: 'Konami: paused, because you pressed Stop. Resume it on the Konami card.'
     chose: 'you chose {goal} instead'
+    trainDidNotGo: the training trip did not set off
     notBought: '{item} was not bought'
     reasonWear: 'wearing {item}, which the plan bought'
     goal:

@@ -132,7 +132,15 @@ function goalQuestion(brief: KonamiBrief): {
     (lesson) =>
       lesson.goal.kind === 'train' && lesson.outcome === 'refused' && lesson.level === level
   );
-  if (brief.character.levelReady === true && !trainRefused) {
+  // Only while the cash carried covers the trainer (the trip draws on no bank): level 1 is
+  // free, level 2 is not.
+  const { trainCost } = brief.character;
+  const carried = brief.character.cash.onHand;
+  const cash = brief.character.cash.total;
+  const affordable =
+    trainCost !== null && (trainCost === 0 || (carried !== null && trainCost <= carried));
+  const ready = brief.character.levelReady === true && affordable;
+  if (ready && !trainRefused) {
     offerTraining(labels, criteria);
     return {
       question: {
@@ -152,7 +160,6 @@ function goalQuestion(brief: KonamiBrief): {
       `${rateText(spot.exp)}; ${fightText(spot.fight)}; worst room takes ${percent(spot.survival.worstShare)} of max HP. ` +
       `Getting there: ${routeText(spot, brief.character.hpMax)}${before}`;
   });
-  const cash = brief.character.cash.total;
   for (const slot of brief.gear) {
     slot.offers.forEach((offer, index) => {
       if (offer.copper === null || cash === null || offer.copper > cash) return;
@@ -173,7 +180,7 @@ function goalQuestion(brief: KonamiBrief): {
         `${gainText(slot, offer)}.`;
     });
   }
-  if (brief.character.levelReady === true) offerTraining(labels, criteria);
+  if (ready) offerTraining(labels, criteria);
   labels['wait'] = { kind: 'wait' };
   criteria['wait'] = 'Nothing offered is worth doing; stay where you are.';
   return {
@@ -288,7 +295,10 @@ export function planQuestions(brief: KonamiBrief): KonamiQuestions {
   }
   questions['trainFirst'] = {
     type: 'choice',
-    instructions: `${AIM} Which stat should character points go to first, for this class and race?`,
+    instructions:
+      `${AIM} Which stat should character points go to first, for this class and race? ` +
+      `The spots chosen are ones where the character takes little damage, so hitting, doing damage and not being hit ` +
+      `matter more than hit points; health should not fall far behind, but it is not the first choice.`,
     criteria: trainCriteria
   };
 

@@ -175,6 +175,8 @@ export interface KonamiBrief {
     exp: number | null;
     expNeeded: number | null;
     levelReady: boolean | null;
+    /** What the cheapest trainer that takes this level charges, in copper; null where none does. */
+    trainCost: number | null;
     lives: number | null;
     stats: Record<string, number | null>;
     armourClass: number | null;
@@ -227,6 +229,8 @@ export interface BriefInput {
   maxSpots: number;
   /** Past plans near this level (`lessonsFor`). */
   lessons: KonamiLesson[];
+  /** What the cheapest trainer for this level charges (`BriefingParts.trainCost`). */
+  trainCost: number | null;
   /** The monsters this character ran from and is still kept off (`avoided`). */
   fled: readonly FledEntry[];
   /** The walk to a spot offered. */
@@ -389,6 +393,7 @@ export function buildBrief(input: BriefInput): KonamiBrief {
       exp: progress.exp,
       expNeeded: progress.expNeeded,
       levelReady: levelReady(progress),
+      trainCost: input.trainCost,
       lives: progress.lives,
       stats,
       armourClass: progress.armourClass,

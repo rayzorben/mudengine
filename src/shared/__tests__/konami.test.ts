@@ -208,7 +208,8 @@ function brief(
   over: Partial<CharacterState> = {},
   lessons: KonamiLesson[] = [],
   fled: FledEntry[] = [],
-  fights: Record<string, BriefFight> = {}
+  fights: Record<string, BriefFight> = {},
+  trainCost: number | null = 0
 ): KonamiBrief {
   const base = structuredClone(EMPTY_CHARACTER);
   const state: CharacterState = {
@@ -248,6 +249,7 @@ function brief(
     },
     maxSpots: 10,
     lessons,
+    trainCost,
     fled,
     walk: () => null,
     simulated: () => null,
@@ -355,6 +357,17 @@ describe('the questions and the plan their answers make', () => {
         Object.entries(yes).map(([name, noul]) => [name, { type: 'noul' as const, noul }])
       )
     }
+  });
+
+  it('offers no training while the purse does not cover the cheapest trainer', () => {
+    const goal = planQuestions(brief({}, [], [], {}, 50_000)).questions['goal'];
+    expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).not.toContain('train');
+  });
+
+  it('counts only the cash carried towards training, since the trip draws on no bank', () => {
+    // 1,000 carried and 2,000 banked against 1,500: not offered.
+    const goal = planQuestions(brief({}, [], [], {}, 1_500)).questions['goal'];
+    expect(Object.keys(goal?.type === 'choice' ? goal.criteria : {})).not.toContain('train');
   });
 
   it('offers training alone while a level is ready', () => {

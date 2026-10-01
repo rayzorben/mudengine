@@ -103,6 +103,8 @@ let learned: KonamiLesson[];
 let unsimulated: number;
 let briefLessons: KonamiLesson[][];
 let activity: KonamiActivity | null;
+let trainRefusal: { why: string; at: number } | null;
+let trainReady: boolean;
 
 function planner(): KonamiPlanner {
   const facts: PlannerFacts = {
@@ -112,12 +114,14 @@ function planner(): KonamiPlanner {
       if (briefRefusal !== null) return { refusal: briefRefusal };
       const made = structuredClone(BRIEF);
       made.hunting.excluded = { ...NO_EXCLUSIONS, unsimulated };
+      if (trainReady) Object.assign(made.character, { levelReady: true, trainCost: 0 });
       return made;
     },
     busy: () => false,
     hunting: () => hunting,
     buying: () => false,
     huntRefusal: () => null,
+    trainRefusal: () => trainRefusal,
     refusals: () => ['hunt: no route'],
     realm: () => 'orohost:2427',
     activity: () => activity
@@ -188,6 +192,8 @@ beforeEach(() => {
   unsimulated = 0;
   briefLessons = [];
   activity = null;
+  trainRefusal = null;
+  trainReady = false;
   global.__konamiGoal = 'hunt_0';
   global.__konamiAsked = 0;
 });
@@ -457,6 +463,56 @@ describe('the planner', () => {
     expect(it.snapshot().activity).toEqual(activity);
     it.togglePause();
     expect(it.snapshot().activity).toBeNull();
+    it.dispose();
+  });
+
+  it('ends a training plan the trip refuses, and asks again', async () => {
+    global.__konamiGoal = 'train';
+    trainReady = true;
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    expect(it.snapshot().plan?.goal).toEqual({ kind: 'train' });
+    trainRefusal = { why: 'the purse does not cover it', at: Date.now() };
+    global.__konamiGoal = 'wait';
+    it.onCharacter(state);
+    await asked(2);
+    expect(it.snapshot().decisions[1]?.outcome).toBe('refused');
+    expect(learned.at(-1)).toMatchObject({ outcome: 'refused', goal: { kind: 'train' } });
+    it.dispose();
+  });
+
+  it('keeps a training plan whose trip refused before it was chosen', async () => {
+    global.__konamiGoal = 'train';
+    trainReady = true;
+    trainRefusal = { why: 'no cash, an hour ago', at: Date.now() - 3_600_000 };
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    it.onCharacter(state);
+    await settle();
+    expect(it.snapshot().decisions[0]?.outcome).toBe('applied');
+    it.dispose();
+  });
+
+  it('ends a training plan whose trip never sets off, saying nothing', async () => {
+    global.__konamiGoal = 'train';
+    trainReady = true;
+    const it = planner();
+    it.configure(on(providerFile()));
+    await loaded(it);
+    it.onCharacter(state);
+    await asked(1);
+    global.__konamiGoal = 'wait';
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + tuning().konami.trainStartMs + 1 });
+    it.onCharacter(state);
+    vi.useRealTimers();
+    await asked(2);
+    expect(it.snapshot().decisions[1]?.outcome).toBe('refused');
     it.dispose();
   });
 

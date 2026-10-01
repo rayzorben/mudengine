@@ -707,6 +707,8 @@ tuning:
     stuckMs: 30000
     # A plan still running is asked about again after this long; 0 never.
     reviewMs: 600000
+    # A training plan whose trip has not set off after this long ends refused.
+    trainStartMs: 15000
     journal: 100
     logLines: 10000
     wearExpiresMs: 8000

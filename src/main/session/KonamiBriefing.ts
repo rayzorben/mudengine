@@ -80,6 +80,8 @@ export interface BriefingParts {
   menacePlayer(state: CharacterState): MenacePlayer;
   /** The monsters this character ran from (`Belongings.recallFled`). */
   fled(): readonly FledEntry[];
+  /** What the cheapest trainer that takes this level charges, or null where none does. */
+  trainCost(): number | null;
 }
 
 /** `Abil` ids that make a lasting spell something other than a blessing. */
@@ -324,6 +326,7 @@ export function konamiBrief(
     settings: settingsOf(config),
     maxSpots,
     lessons,
+    trainCost: parts.trainCost(),
     fled: parts.fled().filter(
       (entry) =>
         avoided([entry], entry.name, state.progress.level, {

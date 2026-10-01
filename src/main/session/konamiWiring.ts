@@ -30,7 +30,13 @@ export interface KonamiWiring {
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<
     Errands,
-    'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'menacePlayer'
+    | 'huntingGrounds'
+    | 'realmClass'
+    | 'capabilities'
+    | 'travellerNow'
+    | 'priceAt'
+    | 'menacePlayer'
+    | 'trainers'
   >;
   /** The simulator's run of each lair's fight. */
   odds: Pick<OddsReader, 'lair'>;
@@ -38,7 +44,7 @@ export interface KonamiWiring {
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
   /** The trainer a training trip is bound for, and the walk under way, for the card. */
-  trainLevel: Pick<TrainErrand, 'heading'>;
+  trainLevel: Pick<TrainErrand, 'heading' | 'refusal'>;
   walker: Pick<Walker, 'progress'>;
   queue: Pick<CommandQueue, 'enqueue'>;
   config(): AutomationConfig;
@@ -116,7 +122,15 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
             priceAt: (name, shop) => errands.priceAt(name, shop),
             lairOdds: (room) => wiring.odds.lair(room),
             menacePlayer: (state) => errands.menacePlayer(state),
-            fled: wiring.fled
+            fled: wiring.fled,
+            // The trainer the player chose, else the cheapest (listed first). Reach is the trip's
+            // to judge (`bestTrainer`), so a trainer no route reaches can price lower than it pays.
+            trainCost: () => {
+              const chosen = wiring.config().train.trainer;
+              const taking = errands.trainers();
+              const trainer = chosen > 0 ? taking.find((each) => each.shop === chosen) : taking[0];
+              return trainer?.cost ?? null;
+            }
           },
           tracker.current,
           now,
@@ -127,6 +141,7 @@ export function konamiPlanner(wiring: KonamiWiring): KonamiPlanner {
       activity: () => activityOf(wiring),
       buying: () => supplies.current !== null,
       huntRefusal: () => wiring.hunt.refusal,
+      trainRefusal: () => wiring.trainLevel.refusal,
       refusals: () =>
         wiring
           .safety()

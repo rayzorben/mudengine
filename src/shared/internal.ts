@@ -872,6 +872,8 @@ const TUNING_DEFAULTS = {
     stuckMs: 30000,
     /** A plan still running is asked about again after this long; 0 never. */
     reviewMs: 600_000,
+    /** A training plan whose trip has not set off after this long ends refused. */
+    trainStartMs: 15_000,
     journal: 100,
     logLines: 10000,
     /** A `wear` for a bought item still queued after this is for a moment that has passed. */
