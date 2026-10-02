@@ -9,7 +9,6 @@ import { NO_LOOP } from '../../../shared/loops';
 import { NOT_MOVING } from '../../../shared/movement';
 import { classifyOccupant } from '../../../shared/mobs';
 import type { FledEntry } from '../../../shared/fled';
-import type { Survival } from '../../../shared/survival';
 import { IDLE_WALK } from '../../../shared/walk';
 import type { Route } from '../../../shared/world';
 
@@ -132,7 +131,6 @@ function travel(
     dropTyped: vi.fn(),
     notice: (message) => void notices.push(message),
     decided: (decision) => void decisions.push(decision),
-    fight: overrides.fight ?? (() => null),
     fled: overrides.fled ?? (() => []),
     keepFled: overrides.keepFled ?? (() => {}),
     switchAutomation: (on) => {
@@ -185,17 +183,12 @@ describe('escaping a monster its row names, out of a fight', () => {
 /*
  * Soul's first death: two thugs took 28 to 10 in a round; it ran one room, the
  * thug followed and took it to 6, and the cooldown held the second run until
- * the next blow had killed it. A share of maximum health (30%) also ran too
- * late for blows that size.
+ * the next blow had killed it. The run is the player's rule, the share of
+ * health (2026-10-02, the user: a fight is tried, never given up on what the
+ * simulator predicts).
  */
-describe('running from a fight that could kill', () => {
+describe('running from a fight', () => {
   const plain: AutomationConfig = { ...config, combat: { ...config.combat, mobRules: [] } };
-  // Dead within three rounds a third of the time from here.
-  const thug = {
-    survives: 0.4,
-    worstRound: 11,
-    horizons: [{ rounds: 3, standing: 0.66, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
-  } as unknown as Survival;
   const hit = (hp: number, name: string, number: number): CharacterState => {
     const state = beside();
     return {
@@ -207,25 +200,31 @@ describe('running from a fight that could kill', () => {
     };
   };
 
-  it('runs once the fight kills too often within three rounds, above the share of health', () => {
-    const state = hit(20, 'Dank Room', 1);
+  it('runs below the share of health set, and not above it', () => {
+    const healthy = hit(20, 'Dank Room', 1);
     const kept: FledEntry[][] = [];
-    const { travel: moving, sent } = travel(state, 'none', true, undefined, {
+    const {
+      travel: moving,
+      sent,
+      parts
+    } = travel(healthy, 'none', true, undefined, {
       settings: plain,
-      fight: () => thug,
       keepFled: (entries) => void kept.push([...entries])
     });
-    moving.considerEscape(state);
+    moving.considerEscape(healthy);
+    expect(sent).toEqual([]);
+    const hurt = hit(8, 'Dank Room', 1);
+    (parts.tracker as { current: CharacterState }).current = hurt;
+    moving.considerEscape(hurt);
     expect(sent).toEqual(['n']);
     expect(kept.map((list) => list.map((entry) => entry.name))).toEqual([['black ooze']]);
   });
 
   /* Todo 73: and the room it ran out of is kept out of, so nothing walks it back in. */
   it('keeps the room it ran out of off every route for a while', () => {
-    const state = hit(20, 'Dank Room', 1);
+    const state = hit(8, 'Dank Room', 1);
     const { travel: moving, parts } = travel(state, 'none', true, undefined, {
-      settings: plain,
-      fight: () => thug
+      settings: plain
     });
     moving.considerEscape(state);
     expect(parts.errands.shun).toHaveBeenCalledWith('1/1');
@@ -240,7 +239,6 @@ describe('running from a fight that could kill', () => {
       parts
     } = travel(first, 'none', true, undefined, {
       settings: plain,
-      fight: () => thug,
       movement: () =>
         going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING }
     });
@@ -262,8 +260,7 @@ describe('running from a fight that could kill', () => {
       sent,
       parts
     } = travel(first, 'none', true, undefined, {
-      settings: plain,
-      fight: () => thug
+      settings: plain
     });
     moving.considerEscape(first);
     const empty = { ...hit(6, 'Weapons Shop', 2), combat: { ...first.combat, attackers: [] } };

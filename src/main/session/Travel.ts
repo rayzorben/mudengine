@@ -30,13 +30,11 @@ import { anotherLoop, refusesToPlay, type PlayReading } from './Play';
 import { healthFraction, percentText, type SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { AutomationConfig } from '../../shared/config';
-import { runDue } from '../../shared/danger';
 import { withFled, type FledEntry } from '../../shared/fled';
 import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { PartyWait } from './PartyWait';
 import type { Movement, MovementStart, WalkStart } from '../../shared/movement';
-import type { Survival } from '../../shared/survival';
 import type { CarriedRoute } from '../../shared/underway';
 import { landed, stillFled, type FledRoom } from '../../shared/walk';
 import {
@@ -177,8 +175,6 @@ export interface TravelSession {
   notice(message: string): void;
   /** A safety decision, for the trace. */
   decided(decision: SafetyDecision): void;
-  /** The room's fight as it stands, simulated (`Appraisal.fight`). */
-  fight(): Survival | null;
   /** The monsters this character ran from, and the list as it stands after a run (`Belongings`). */
   fled(): readonly FledEntry[];
   keepFled(entries: readonly FledEntry[]): void;
@@ -920,12 +916,7 @@ export class Travel implements SessionModule {
     if (this.tracker.pendingMoves > 0) return;
 
     const fraction = healthFraction(state);
-    const fight = this.session.fight();
-    const { runRounds, runRisk } = tuning().combat;
-    // The fight's own risk from here, which a share of maximum health is not (`danger.ts`).
-    const risk = runDue(fight, { runRounds, runRisk });
-    const outmatched = risk !== null;
-    const hurt = (fraction !== null && fraction <= safety.belowHealth) || outmatched;
+    const hurt = fraction !== null && fraction <= safety.belowHealth;
     const outnumbered =
       safety.whenOutnumbered > 0 && state.combat.attackers.length >= safety.whenOutnumbered;
     /*
@@ -939,19 +930,13 @@ export class Travel implements SessionModule {
       safety.belowMana > 0 && manaFraction !== null && manaFraction <= safety.belowMana;
     if (!hurt && !outnumbered && !drained && dread === null) return;
 
-    const why = outmatched
-      ? t('session.safety.whyRisk', {
-          rounds: runRounds,
-          risk: percentText(risk ?? 0),
-          hp: state.vitals.hp ?? 0
-        })
-      : hurt
-        ? t('session.safety.whyHealth', { percent: percentText(fraction ?? 0) })
-        : drained
-          ? t('session.safety.whyMana', { percent: percentText(manaFraction) })
-          : outnumbered || dread === null
-            ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
-            : t('session.safety.whyDreaded', { mob: dread });
+    const why = hurt
+      ? t('session.safety.whyHealth', { percent: percentText(fraction ?? 0) })
+      : drained
+        ? t('session.safety.whyMana', { percent: percentText(manaFraction) })
+        : outnumbered || dread === null
+          ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
+          : t('session.safety.whyDreaded', { mob: dread });
     /*
      * **A follower leaves running to its leader**: a member that walks out
      * alone leaves the party in the fight and is no longer beside it when the
