@@ -5,7 +5,7 @@ import { tuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
 import { notesOf } from '../../app/copyMatch';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
-import type { SafetyDecision } from '../../../shared/automation';
+import { percentText, type SafetyDecision } from '../../../shared/automation';
 import type { SupplyItem } from '../../../shared/config';
 import type { Loop } from '../../../shared/loops';
 import type { BuyingPlace, DropPlace, Route } from '../../../shared/world';
@@ -138,12 +138,15 @@ beforeEach(() => {
 });
 
 /** Lairs as `WorldGraph.droppingPlaces` hands them over: each dropper named beside them. */
-function dropped(lairs: DropPlace[]): Pick<ItemSources, 'droppers' | 'lairs' | 'asks'> {
+function dropped(
+  lairs: DropPlace[]
+): Pick<ItemSources, 'droppers' | 'lairs' | 'asks' | 'unfought'> {
   const mobs = [...new Set(lairs.map((lair) => lair.mob))];
   return {
     droppers: mobs.map((mob) => ({ mob, placed: lairs.filter((lair) => lair.mob === mob).length })),
     lairs,
-    asks: []
+    asks: [],
+    unfought: []
   };
 }
 
@@ -308,7 +311,8 @@ describe('collecting what a route needs', () => {
       shops: [],
       asks: [],
       droppers: [{ mob: 'saracen raider', placed: 16 }],
-      lairs: []
+      lairs: [],
+      unfought: []
     };
     const refused = errand().collect([KEY], OWED, ready());
     expect(refused).toBe(
@@ -320,9 +324,20 @@ describe('collecting what a route needs', () => {
   });
 
   it('says a dropper the realm only summons is not somewhere to go', () => {
-    sources = { shops: [], asks: [], droppers: [{ mob: 'dao lord', placed: 0 }], lairs: [] };
+    sources = {
+      shops: [],
+      asks: [],
+      droppers: [{ mob: 'dao lord', placed: 0 }],
+      lairs: [],
+      unfought: []
+    };
     const refused = errand().collect([KEY], OWED, ready());
-    expect(refused).toBe(t('automation.collect.refusalDropperUnplaced', { mobs: 'dao lord' }));
+    expect(refused).toBe(
+      t('automation.collect.refusalNoWayToGet', {
+        item: KEY.name,
+        why: t('automation.collect.refusalDropperUnplaced', { mobs: 'dao lord' })
+      })
+    );
     expect(loops).toHaveLength(0);
   });
 
@@ -334,13 +349,80 @@ describe('collecting what a route needs', () => {
         { mob: 'ghost of the tomb', placed: 0 },
         { mob: 'saracen raider', placed: 16 }
       ],
-      lairs: []
+      lairs: [],
+      unfought: []
     };
     const refused = errand().collect([KEY], OWED, ready());
     expect(refused).toBe(
       t('automation.collect.refusalDropperUnreachable', { mobs: 'saracen raider' })
     );
     expect(refused).not.toContain('ghost of the tomb');
+  });
+
+  /*
+   * 2026-10-02: the stone key's ogre was a loop that waited in front of it for
+   * ever, since combat would not open on it at full health.
+   */
+  it('names the dropper combat would not fight, with the share it survives', () => {
+    sources = {
+      shops: [],
+      asks: [],
+      droppers: [{ mob: 'ogre', placed: 1 }],
+      lairs: [],
+      unfought: [{ mob: 'ogre', survives: 0.4 }]
+    };
+    const refused = errand().collect([KEY], OWED, ready());
+    const why = t('automation.collect.refusalDropperUnfought', {
+      mobs: t('automation.collect.survivedShare', { mob: 'ogre', survives: percentText(0.4) }),
+      needs: percentText(tuning().combat.openAbove)
+    });
+    expect(refused).toBe(t('automation.collect.refusalNoWayToGet', { item: KEY.name, why }));
+    expect(loops).toHaveLength(0);
+  });
+
+  it('checks every item before fetching the first', () => {
+    const auto = errand({
+      sourcesOf: (item) =>
+        item.id === KEY.id
+          ? { shops: [counter()], ...dropped([]) }
+          : {
+              shops: [],
+              ...dropped([]),
+              droppers: [{ mob: 'ogre', placed: 1 }],
+              unfought: [{ mob: 'ogre', survives: null }]
+            }
+    });
+    const refused = auto.collect([KEY, ROPE], OWED, ready());
+    const why = t('automation.collect.refusalDropperUnworked', { mobs: 'ogre' });
+    expect(refused).toBe(t('automation.collect.refusalNoWayToGet', { item: ROPE.name, why }));
+    expect(bought).toHaveLength(0);
+    expect(auto.running).toBe(false);
+  });
+
+  it('refuses before setting off where a later item drops only from a monster the realm summons', () => {
+    const auto = errand({
+      sourcesOf: (item) =>
+        item.id === KEY.id
+          ? { shops: [counter()], ...dropped([]) }
+          : { shops: [], ...dropped([]), droppers: [{ mob: 'dao lord', placed: 0 }] }
+    });
+    const why = t('automation.collect.refusalDropperUnplaced', { mobs: 'dao lord' });
+    expect(auto.collect([KEY, ROPE], OWED, ready())).toBe(
+      t('automation.collect.refusalNoWayToGet', { item: ROPE.name, why })
+    );
+    expect(bought).toHaveLength(0);
+  });
+
+  /* The Large Chamber guardian drops the stone key behind the bone key's door. */
+  it('sets off for the first item where the second drops from a monster it opens the way to', () => {
+    const auto = errand({
+      sourcesOf: (item) =>
+        item.id === KEY.id
+          ? { shops: [counter()], ...dropped([]) }
+          : { shops: [], ...dropped([]), droppers: [{ mob: 'ogre', placed: 1 }] }
+    });
+    expect(auto.collect([KEY, ROPE], OWED, ready())).toBeNull();
+    expect(bought).toHaveLength(1);
   });
 
   /* Zero and one are facts, not figures: three literal sentences. */

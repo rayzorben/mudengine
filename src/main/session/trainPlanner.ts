@@ -27,7 +27,7 @@ export interface TrainPlannerModules {
   walker: Pick<Walker, 'start' | 'walking'>;
   loops: Pick<LoopRunner, 'progress' | 'noteErrand'>;
   travel: Pick<Travel, 'isRetreating' | 'retreatArmed' | 'escapeUnanswered'>;
-  itemErrand: Pick<ItemErrand, 'collect' | 'running'>;
+  itemErrand: Pick<ItemErrand, 'collect' | 'running' | 'unobtainable'>;
   light: Pick<LightAhead, 'wanted' | 'settle'>;
   world:
     | Pick<WorldGraph, 'byId' | 'item' | 'classNamed' | 'raceId' | 'namedClasses' | 'namedRaces'>
@@ -49,6 +49,7 @@ export function trainPlanner(parts: TrainPlannerParts): TrainPlanner {
     routeTo: (room) => m().errands.planFromHere(room, { unlocks: true }),
     walk: (route) => m().walker.start(route, m().tracker.current, ERRAND_LEG),
     fetch: (items, then) => m().itemErrand.collect(items, then, m().tracker.current),
+    unobtainable: (items) => m().itemErrand.unobtainable(items, m().tracker.current),
     fetching: () => m().itemErrand.running,
     lightFor: (route) => m().light.wanted(route, m().tracker.current),
     lightSettled: (light, refused) => m().light.settle(light, refused),

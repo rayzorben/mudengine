@@ -16,6 +16,7 @@ import type { RestAwayPlanner } from '../automation/RestAway';
 import type { WardSources } from '../automation/Wards';
 import type { WalkerEvents } from '../automation/walk/ports';
 import type { ItemSources } from '../automation/ItemErrand';
+import type { OddsReader } from './OddsBook';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { LairCosts } from '../world/LairCosts';
@@ -59,6 +60,7 @@ import {
   type SpotInput,
   type SpotMob
 } from '../../shared/hunting';
+import { unfoughtShare } from '../../shared/danger';
 import type { Odds } from '../../shared/survival';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
@@ -230,8 +232,8 @@ export interface ErrandsSession {
   family(): RealmFamily | null;
   /** The rank each quest has been seen to reach this session. */
   watched(): QuestWatched;
-  /** A lair's fight for this character rested (`OddsBook`). */
-  lairOdds(room: WorldRoom): Odds;
+  /** A lair's fight, or one monster's, for this character rested (`OddsBook`). */
+  odds(): OddsReader;
   /** What hunting each spot paid this character (`Belongings`, todo 70). */
   rates(): ReadonlyMap<string, MeasuredRate>;
   /** The one `abil` of the session (`Routines.askAbilities`). */
@@ -1302,14 +1304,42 @@ export class Errands implements SessionModule {
     const state = this.tracker.current;
     const here = roomAddress(state.room);
     if (world === undefined || here === null)
-      return { shops: [], asks: [], droppers: [], lairs: [] };
+      return { shops: [], asks: [], droppers: [], lairs: [], unfought: [] };
     const traveller = this.travellerNow(state);
     const shops = world.buyingPlaces(item.id, here, to, traveller);
     // And where saying something gets it, walked as the counter is (todo 806).
     const asks = world.itemAsks(item.id, here, traveller);
     const { maxLoopRooms, clusterRadius } = tuning().hunting;
     const ring = { rooms: maxLoopRooms, radius: clusterRadius };
-    return { shops, asks, ...world.droppingPlaces(item, here, this.lapTraveller(state), ring) };
+    const drops = world.droppingPlaces(item, here, this.lapTraveller(state), ring);
+    // A lair whose monster combat will not open on is a loop that waits there
+    // for ever (2026-10-02: a stone key off an ogre, behind a one-way wall).
+    // Every dropper is weighed, reached from here or not: one behind an earlier
+    // key's door is reached on the way (`ItemErrand.unobtainable`).
+    const { openAbove } = tuning().combat;
+    const odds = this.session.odds();
+    const unfought = new Map<string, ItemSources['unfought'][number]>();
+    const weigh = (fight: Odds, mob: string, via?: string): boolean => {
+      const survives = unfoughtShare(fight, openAbove);
+      if (survives === undefined) return true;
+      unfought.set(
+        `${via ?? ''}>${mob}`,
+        via === undefined ? { mob, survives } : { mob, survives, via }
+      );
+      return false;
+    };
+    for (const dropper of drops.droppers) weigh(odds.mob(dropper.mob), dropper.mob);
+    const lairs = drops.lairs.filter((place) => {
+      if (place.via !== undefined) {
+        return (
+          weigh(odds.mob(place.via), place.mob, place.via) && weigh(odds.mob(place.mob), place.mob)
+        );
+      }
+      // A lair is weighed whole, at its cap, as combat meets it there.
+      const room = world.byId(place.id);
+      return weigh(room?.lair === undefined ? odds.mob(place.mob) : odds.lair(room), place.mob);
+    });
+    return { shops, asks, droppers: drops.droppers, lairs, unfought: [...unfought.values()] };
   }
 
   /**
@@ -1691,7 +1721,7 @@ export class Errands implements SessionModule {
        * figures, is not known to be: both are left out and counted. A fight
        * `simulateFight` cannot run is left to the estimate.
        */
-      const odds = kind.lair ? this.session.lairOdds(group.sample) : null;
+      const odds = kind.lair ? this.session.odds().lair(group.sample) : null;
       if (odds?.kind === 'pending' || odds?.kind === 'unread') {
         excluded.unsimulated += 1;
         continue;

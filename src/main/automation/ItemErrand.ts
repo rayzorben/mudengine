@@ -22,7 +22,7 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { SafetyDecision } from '../../shared/automation';
+import { percentText, type SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { SupplyItem } from '../../shared/config';
 import type { Loop } from '../../shared/loops';
@@ -52,6 +52,13 @@ export interface ItemSources extends DropSources {
    * or a room script that summons a dropper (todo 806). `WorldGraph.itemAsks`.
    */
   asks: readonly ItemAsk[];
+  /**
+   * The droppers left out of `lairs`, each once: combat would not open on
+   * them even rested (`refusedRested`), with the share survived, or their
+   * fight is still being worked out (`survives` null). `via` is the monster
+   * whose death summons the dropper, where that is the fight refused.
+   */
+  unfought: readonly { mob: string; survives: number | null; via?: string }[];
 }
 
 export interface ItemPlanner {
@@ -113,6 +120,46 @@ function wantedFor(item: Wanted): string {
   return item.dark === true
     ? t('automation.collect.becauseDark', { item: item.name })
     : t('automation.collect.becauseDoor', { item: item.name });
+}
+
+/**
+ * Why no lair gets the item, where no counter or ask does either. Which of
+ * them it is, since each sends the player somewhere different
+ * (`mudengine-automation` › *A route that needs an item goes and gets it*). A
+ * sentence about placement names only the droppers the realm places;
+ * *nowhere* is never said of a monster it does.
+ */
+function whyNoLair(sources: ItemSources): string {
+  const named = ({ mob, via }: ItemSources['unfought'][number]): string =>
+    via === undefined ? mob : t('automation.collect.summonedBy', { mob, summoner: via });
+  const known = sources.unfought.flatMap((each) =>
+    each.survives === null
+      ? []
+      : [
+          t('automation.collect.survivedShare', {
+            mob: named(each),
+            survives: percentText(each.survives)
+          })
+        ]
+  );
+  if (known.length > 0) {
+    return t('automation.collect.refusalDropperUnfought', {
+      mobs: known.join(', '),
+      needs: percentText(tuning().combat.openAbove)
+    });
+  }
+  if (sources.unfought.length > 0) {
+    const mobs = sources.unfought.map(named).join(', ');
+    return t('automation.collect.refusalDropperUnworked', { mobs });
+  }
+  if (sources.droppers.length === 0) return t('automation.collect.refusalNoSource');
+  const placed = sources.droppers.filter((dropper) => dropper.placed > 0);
+  const mobs = (placed.length > 0 ? placed : sources.droppers)
+    .map((dropper) => dropper.mob)
+    .join(', ');
+  return placed.length > 0
+    ? t('automation.collect.refusalDropperUnreachable', { mobs })
+    : t('automation.collect.refusalDropperUnplaced', { mobs });
 }
 
 /** Whether the pack holds fewer of `item` than are wanted. */
@@ -209,6 +256,10 @@ export class ItemErrand implements SessionModule {
       const refused = this.planner.walk(owes, run);
       return refused ?? null;
     }
+    // Every item checked before the first is fetched: a way walked for the
+    // first can leave the character where only the second gets it out.
+    const unobtainable = this.firstUnobtainable(missing, state);
+    if (unobtainable !== null) return this.refuse(unobtainable.item, unobtainable.why);
     // Said once, up front, where there is more than one: the errand is then a
     // list, and a player watching it fetch the first thing should know it is
     // not the last.
@@ -218,6 +269,40 @@ export class ItemErrand implements SessionModule {
       );
     }
     return this.fetch(first, missing.slice(1), owes, run);
+  }
+
+  /**
+   * Why the first of `items` the pack lacks cannot be got, or null where each
+   * has a counter, an ask, or a placed dropper combat would fight. A dropper out of
+   * reach from here still counts: an earlier item can open the way to it
+   * (2026-10-01: the Large Chamber guardian, behind the bone key's door, drops
+   * the stone key). Asks nothing of the server.
+   */
+  unobtainable(items: readonly Wanted[], state: CharacterState): string | null {
+    return this.firstUnobtainable(items, state)?.why ?? null;
+  }
+
+  private firstUnobtainable(
+    items: readonly Wanted[],
+    state: CharacterState
+  ): { item: Wanted; why: string } | null {
+    for (const item of items) {
+      if (!short(state, item)) continue;
+      const sources = this.planner.sourcesOf(item, null);
+      if (sources.shops.length + sources.asks.length + sources.lairs.length > 0) continue;
+      // Placed, so somewhere a route can reach; a summoned one's summoner may be out of reach for good.
+      const fought = sources.droppers.some(
+        (dropper) =>
+          dropper.placed > 0 &&
+          !sources.unfought.some((each) => each.via === undefined && each.mob === dropper.mob)
+      );
+      if (fought) continue;
+      return {
+        item,
+        why: t('automation.collect.refusalNoWayToGet', { item: item.name, why: whyNoLair(sources) })
+      };
+    }
+    return null;
   }
 
   /** Start on one item, with `rest` still to come after it. */
@@ -307,27 +392,7 @@ export class ItemErrand implements SessionModule {
       return null;
     }
     const lair = sources.lairs[0];
-    if (lair === undefined) {
-      /*
-       * Which of three it is, since each sends the player somewhere different
-       * (`mudengine-automation` › *A route that needs an item goes and gets
-       * it*). A sentence about placement names only the droppers the realm
-       * places; *nowhere* is never said of a monster it does.
-       */
-      if (sources.droppers.length === 0) {
-        return this.refuse(item, t('automation.collect.refusalNoSource'));
-      }
-      const placed = sources.droppers.filter((dropper) => dropper.placed > 0);
-      const mobs = (placed.length > 0 ? placed : sources.droppers)
-        .map((dropper) => dropper.mob)
-        .join(', ');
-      return this.refuse(
-        item,
-        placed.length > 0
-          ? t('automation.collect.refusalDropperUnreachable', { mobs })
-          : t('automation.collect.refusalDropperUnplaced', { mobs })
-      );
-    }
+    if (lair === undefined) return this.refuse(item, whyNoLair(sources));
     /*
      * The loop is built from the realm's own rooms for those monsters, as the
      * Hunting card builds one, and filed nowhere. Its stops are every room
