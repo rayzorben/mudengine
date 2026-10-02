@@ -357,10 +357,10 @@ describe('a step that rolls after a delay', () => {
   it('carries the roll as a gate and the delay onto the step, and neither onto a step without them', () => {
     const quest = indexQuests(fake(BOOKS), naming).find((each) => each.id === 134);
     const red = quest?.steps.find((step) => step.to === 7);
-    expect(red?.needs).toContainEqual({ kind: 'skill', stat: 'intellect', value: 30 });
+    expect(red?.needs).toContainEqual({ kind: 'roll', stat: 'intellect', value: 30 });
     expect(red?.delaySeconds).toBe(10);
     const blue = quest?.steps.find((step) => step.to === 6);
-    expect(blue?.needs.some((gate) => gate.kind === 'skill')).toBe(false);
+    expect(blue?.needs.some((gate) => gate.kind === 'roll')).toBe(false);
     expect(blue?.delaySeconds).toBeUndefined();
   });
 });

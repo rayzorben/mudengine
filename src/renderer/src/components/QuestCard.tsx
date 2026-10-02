@@ -1,5 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
 
+import type { Gate } from '@shared/gates';
+import { gateWords } from '../lib/gates';
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
@@ -27,7 +29,6 @@ import {
   type QuestBar,
   type QuestDoer,
   type QuestErrand,
-  type QuestGate,
   type QuestGroup,
   type PlanCash,
   type QuestPlan,
@@ -360,75 +361,6 @@ export function questStepsText(quest: Quest): string {
   ].join('\n');
 }
 
-/** One gate, in words. The realm's own numbers; nothing is rounded or ranked. */
-export function gateWords(gate: QuestGate): string {
-  switch (gate.kind) {
-    case 'ability':
-      // The pair that means *exactly* is one sentence, not two bounds.
-      if (gate.atLeast !== undefined && gate.atLeast === gate.atMost) {
-        return t('cards.quests.gate.abilityExact', {
-          name: gate.name ?? String(gate.id),
-          rank: gate.atLeast
-        });
-      }
-      if (gate.atMost !== undefined) {
-        return t('cards.quests.gate.abilityAtMost', {
-          name: gate.name ?? String(gate.id),
-          rank: gate.atMost
-        });
-      }
-      // `>= -1` is the server's spelling of *has it at all*.
-      if (gate.atLeast !== undefined && gate.atLeast >= 0) {
-        return t('cards.quests.gate.abilityAtLeast', {
-          name: gate.name ?? String(gate.id),
-          rank: gate.atLeast
-        });
-      }
-      return t('cards.quests.gate.abilityAny', { name: gate.name ?? String(gate.id) });
-    case 'ability-absent':
-      return t('cards.quests.gate.abilityAbsent', { name: gate.name ?? String(gate.id) });
-    case 'item':
-      return t('cards.quests.gate.item', { name: gate.name ?? `#${gate.id}` });
-    case 'item-absent':
-      return t('cards.quests.gate.itemAbsent', { name: gate.name ?? `#${gate.id}` });
-    case 'spell':
-      return t('cards.quests.gate.spell', { name: gate.name ?? `#${gate.id}` });
-    case 'class':
-      return t('cards.quests.gate.klass', { name: gate.name ?? `#${gate.id}` });
-    case 'race':
-      return t('cards.quests.gate.race', { name: gate.name ?? `#${gate.id}` });
-    case 'level':
-      if (gate.min !== undefined && gate.max !== undefined) {
-        return t('cards.quests.gate.levelBetween', { min: gate.min, max: gate.max });
-      }
-      if (gate.max !== undefined) return t('cards.quests.gate.levelAtMost', { level: gate.max });
-      return t('cards.quests.gate.levelAtLeast', { level: gate.min ?? 0 });
-    case 'alignment':
-      // Lower is better on this lineage, which is why the two read backwards
-      // from the opcodes that produced them. **Both bounds is a band**, and
-      // stating only the upper one drew `NeutralQuest`'s 48 gates as
-      // `alignment 29 or lower` — which a paladin at -1000 satisfies, so the
-      // chip said Neutral and the words said the good end qualified.
-      if (gate.atMost !== undefined && gate.atLeast !== undefined) {
-        return t('cards.quests.gate.alignmentBetween', {
-          low: gate.atLeast,
-          high: gate.atMost
-        });
-      }
-      if (gate.atMost !== undefined) {
-        return t('cards.quests.gate.alignmentGood', { value: gate.atMost });
-      }
-      return t('cards.quests.gate.alignmentEvil', { value: gate.atLeast ?? 0 });
-    case 'lives':
-      return t('cards.quests.gate.livesBelow', { count: gate.below });
-    case 'price':
-      return t('cards.quests.gate.price', { amount: gate.amount.toLocaleString() });
-    case 'skill':
-      // A roll, not a gate: the stat less the value is the chance in percent.
-      return t('cards.quests.gate.skill', { stat: gate.stat, value: gate.value });
-  }
-}
-
 /**
  * One thing that shuts this character out, in the realm's own gate words.
  *
@@ -587,17 +519,17 @@ export function rewardWords(reward: QuestReward): string {
  * kept: `Crits +1` beside the counter is a second thing the step pays.
  */
 function ownCounter(entry: { kind: string; id?: number }, quest: number): boolean {
-  return (entry.kind === 'ability' || entry.kind === 'ability-absent') && entry.id === quest;
+  return entry.kind === 'ability' && entry.id === quest;
 }
 
 /** What the step demands, less the counter and less the items it lists separately. */
-function gatesOf(step: QuestStep, quest: number): QuestGate[] {
-  // `item` only: `bringOf` states those and states them better. An
-  // `item-absent` gate — *not carrying this* — has no row of its own, and
+function gatesOf(step: QuestStep, quest: number): Gate[] {
+  // `carry` only: `bringOf` states those and states them better. A `lack`
+  // gate — *not carrying this* — has no row of its own, and
   // filtering it out with its sibling left six of the realm's eight parsed,
   // joined in main and drawn nowhere, so a step refused a player holding the
   // wrong thing and the card had nothing to say about why.
-  return step.needs.filter((gate) => !ownCounter(gate, quest) && gate.kind !== 'item');
+  return step.needs.filter((gate) => !ownCounter(gate, quest) && gate.kind !== 'carry');
 }
 
 /** What a step or one of its routes pays, less the counter it advances. */
@@ -613,7 +545,7 @@ function rewardsOf(way: { gives: QuestReward[] }, quest: number): QuestReward[] 
  * itself names one class, and wrong where each row *is* one of the choices.
  * Everything else reads the same either way.
  */
-function routeWords(gate: QuestGate): string {
+function routeWords(gate: Gate): string {
   if (gate.kind === 'class' || gate.kind === 'race') return gate.name ?? `#${gate.id}`;
   return gateWords(gate);
 }

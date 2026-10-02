@@ -1564,26 +1564,6 @@ cards:
       sets: to {rank}
       step: '{from} → {to}'
       title: The quest counter this step changes, as the game counts it
-    gate:
-      abilityAbsent: never started {name}
-      abilityAny: has {name}
-      abilityAtLeast: '{name} at {rank} or more'
-      abilityAtMost: '{name} at {rank} or less'
-      abilityExact: '{name} at exactly {rank}'
-      alignmentBetween: alignment {low} to {high}
-      alignmentEvil: alignment {value} or higher
-      alignmentGood: alignment {value} or lower
-      item: carrying {name}
-      itemAbsent: not carrying {name}
-      klass: '{name} only'
-      levelAtLeast: level {level}+
-      levelAtMost: level {level} or under
-      levelBetween: level {min}–{max}
-      livesBelow: fewer than {count} lives
-      price: costs {amount}
-      skill: rolls {stat} against {value}
-      race: '{name} only'
-      spell: under {name}
     gives: Gives
     # The book's three shelves, in reading order. One word each, because a
     # head is a label; the sentence is its hover text. `Shut` rather than
@@ -4634,7 +4614,8 @@ automation:
     refusalDropperUnreachable: Dropped only by {mobs}, which the world data places nowhere this
       character can reach from here.
     refusalDropperUnfought: 'Dropped only by {mobs}; attacking needs {needs}, even at full HP.'
-    refusalDropperUnworked: Dropped only by {mobs}, and the odds of that fight are still being worked
+    refusalDropperUnworked:
+      Dropped only by {mobs}, and the odds of that fight are still being worked
       out. Try again in a moment.
     refusalNoWayToGet: 'No way to get {item}: {why}'
     survivedShare: '{mob} (you survive {survives})'
@@ -5679,3 +5660,30 @@ browser:
   empty: Nothing here.
   use: use this file
   realmChip: realm
+# One gate in words (`lib/gates.ts`).
+gates:
+  abilityAbsent: never started {name}
+  abilityAny: has {name}
+  abilityAtLeast: '{name} at {rank} or more'
+  abilityAtMost: '{name} at {rank} or less'
+  abilityExact: '{name} at exactly {rank}'
+  alignmentBetween: alignment {low} to {high}
+  alignmentEvil: alignment {value} or higher
+  alignmentGood: alignment {value} or lower
+  carry: carrying {name}
+  emptyRoom: no monsters in the room
+  floor: '{name} in the room'
+  floorAbsent: no {name} in the room
+  lack: not carrying {name}
+  levelAtLeast: level {level}+
+  levelAtMost: level {level} or under
+  levelBetween: level {min}–{max}
+  livesBelow: fewer than {count} lives
+  monsterHere: a {name} in the room
+  not: not {name}
+  occupied: a monster in the room
+  only: '{name} only'
+  price: costs {amount}
+  roll: rolls {stat} against {value}
+  spellOff: not under {name}
+  standing: '{low} to {high} only'

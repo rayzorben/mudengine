@@ -8,6 +8,7 @@
  * Dependency-free: the graph is built in the main process, routes are rendered
  * in the renderer.
  */
+import { abilityHeld, type AbilityBounds, type GateFacts } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellchoice';
 import type { FightSummary } from './fights';
@@ -354,7 +355,7 @@ export interface Requirement {
    * The id alone, so the realm's empty slot can be told from a real gate: `0`
    * means no gate, the server builds a plain exit for it (case 23), and that
    * exit costs nothing. **The window is on `abilities`**, as the one
-   * `AbilityGate` this exit states — the field that had no reader when this
+   * `AbilityBounds` this exit states — the field that had no reader when this
    * gate was first parsed, and has had one since `abil` began stating the
    * counters.
    */
@@ -495,7 +496,7 @@ export interface Requirement {
    * counters for exactly as before — an unread listing is *nobody has said*,
    * which is never the reassuring answer and never the alarming one either.
    */
-  abilities?: readonly AbilityGate[];
+  abilities?: readonly AbilityBounds[];
   /**
    * A timed passage this way in opens — resolved at load (`WorldGraph
    * .linkPortals`, todo 104), never written to the file. The room command's
@@ -532,33 +533,6 @@ export interface ItemUseGate {
 }
 
 /**
- * One ability gate an edge states, as the server compares it.
- *
- * A scripted way through writes it with one of three verbs; the exit table
- * writes it as a window (`Ability: 204 w/value 1 to 999`, `AbilityExit`
- * reading `GetAbility(id).Sum` between two ints), which is `atLeast` and
- * `atMost` already and needs no fourth spelling.
- *
- * The three verbs are one subject and three comparisons against
- * `Player.GetAbility(id).Sum` (`TextBlockPart.Execute`, transcribed in
- * `main/world/questScript.ts`): `checkability N [V]` is `>= V` with V
- * defaulting to −1, `testability N V` is `<= V`, and the pair together is
- * *exactly V* — which is how every chained quest in both databases is written.
- * `failability N` is its own kind: not held at all.
- *
- * Kept as bounds rather than as the verbs, because what a reader asks is
- * whether a number is inside them.
- */
-export interface AbilityGate {
-  /** The realm's own ability id — a quest counter, in every case seen. */
-  id: number;
-  atLeast?: number;
-  atMost?: number;
-  /** `failability`: the sum must be nothing at all. */
-  absent?: boolean;
-}
-
-/**
  * The ability verbs, and how many words of the step each takes.
  *
  * `CONDITION_WORDS` states the same figures for the same reason — a trailing
@@ -579,7 +553,7 @@ const ABILITY_VERBS: ReadonlySet<string> = new Set([
  * existed answers these gates the moment they open the client, with no format
  * bump and no rebuild.
  */
-export function readAbilityGate(condition: string): AbilityGate | null {
+export function readAbilityGate(condition: string): AbilityBounds | null {
   const parts = condition.trim().split(/\s+/);
   const verb = (parts[0] ?? '').toLowerCase();
   if (!ABILITY_VERBS.has(verb)) return null;
@@ -607,23 +581,15 @@ export function readAbilityGate(condition: string): AbilityGate | null {
  * the guess it is, never refused and never preferred.
  */
 export function abilityGatesMet(
-  gates: readonly AbilityGate[] | undefined,
-  counters: { sums: Readonly<Record<number, number>>; complete: boolean } | null | undefined
+  gates: readonly AbilityBounds[] | undefined,
+  counters: GateFacts['counters']
 ): boolean | null {
   if (gates === undefined || gates.length === 0) return null;
-  if (counters === null || counters === undefined) return null;
   let known = false;
   for (const gate of gates) {
-    const stated = counters.sums[gate.id];
-    if (stated === undefined && !counters.complete) continue;
-    known = true;
-    const held = stated ?? 0;
-    if (gate.absent === true) {
-      if (held !== 0) return false;
-      continue;
-    }
-    if (gate.atLeast !== undefined && held < gate.atLeast) return false;
-    if (gate.atMost !== undefined && held > gate.atMost) return false;
+    const held = abilityHeld(gate, counters);
+    if (held === false) return false;
+    if (held === true) known = true;
   }
   return known ? true : null;
 }

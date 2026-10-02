@@ -6,15 +6,16 @@
  *
  * `testability N V` and `checkability N V` on one line ask for rank exactly V,
  * which is how every chained quest is written, so the pair is folded into one
- * gate. `testskill` is a roll, kept as a `skill` gate; `adddelay` is the line's
+ * gate. `testskill` is a roll, kept as a `roll` gate; `adddelay` is the line's
  * `delay` (todo 106).
  */
-import type { QuestGate, QuestReward } from '../../shared/quests';
+import type { Gate } from '../../shared/gates';
+import type { QuestReward } from '../../shared/quests';
 import type { TbStep } from './navigation/textblock';
 
 /** What one line of a script says, before anything is joined to anything. */
 export interface QuestScript {
-  needs: QuestGate[];
+  needs: Gate[];
   takes: number[];
   gives: QuestReward[];
   /**
@@ -38,7 +39,7 @@ export interface QuestScript {
  * is not a script at all.
  */
 export function readQuestScript(steps: readonly TbStep[]): QuestScript {
-  const needs: QuestGate[] = [];
+  const needs: Gate[] = [];
   const takes: number[] = [];
   const gives: QuestReward[] = [];
   const granted: Array<{ id: number; value: number }> = [];
@@ -79,22 +80,37 @@ export function readQuestScript(steps: readonly TbStep[]): QuestScript {
         break;
       }
       case 'failability':
-        needs.push({ kind: 'ability-absent', id: step.ability });
+        needs.push({ kind: 'ability', id: step.ability, absent: true });
         break;
       case 'checkitem':
-        needs.push({ kind: 'item', id: step.item });
+        needs.push({ kind: 'carry', item: step.item });
         break;
       case 'failitem':
-        needs.push({ kind: 'item-absent', id: step.item });
+        needs.push({ kind: 'lack', item: step.item });
         break;
+      // Both fail while the spell is on the character (`TextBlockPart.cs:471`).
       case 'checkspell':
-        needs.push({ kind: 'spell', id: step.spell });
+      case 'failspell':
+        needs.push({ kind: 'spell-off', spell: step.spell });
         break;
       case 'class':
-        needs.push({ kind: 'class', id: step.classId });
+        needs.push({ kind: 'class', id: step.classId, is: true });
         break;
       case 'race':
-        needs.push({ kind: 'race', id: step.raceId });
+        needs.push({ kind: 'race', id: step.raceId, is: true });
+        break;
+      case 'roomitem':
+      case 'failroomitem':
+        needs.push({ kind: 'floor', item: step.item, lying: step.verb === 'roomitem' });
+        break;
+      case 'nomonsters':
+        needs.push({ kind: 'empty-room' });
+        break;
+      case 'needmonster':
+        needs.push({ kind: 'monster-here', monster: step.monster });
+        break;
+      case 'monsters':
+        needs.push({ kind: 'occupied' });
         break;
       case 'minlevel':
         level = { ...(level ?? {}), min: step.level };
@@ -113,13 +129,10 @@ export function readQuestScript(steps: readonly TbStep[]): QuestScript {
         needs.push({ kind: 'lives', below: CHECKLIVES_BELOW });
         break;
       case 'price':
-        if (step.copper !== null) needs.push({ kind: 'price', amount: step.copper });
+        if (step.copper !== null) needs.push({ kind: 'copper', copper: step.copper });
         break;
       case 'testskill':
-        // `current_hp` is compared as it stands, with no roll, so it is left out.
-        if (step.stat !== 'current_hp') {
-          needs.push({ kind: 'skill', stat: step.stat, value: step.value });
-        }
+        needs.push({ kind: 'roll', stat: step.stat, value: step.value });
         break;
       case 'delay':
         // Several on one line add up: the server holds at each in turn.
@@ -163,13 +176,7 @@ export function readQuestScript(steps: readonly TbStep[]): QuestScript {
       case 'cast':
       case 'clearitem':
       case 'droproomitem':
-      case 'roomitem':
-      case 'failroomitem':
       case 'removeability':
-      case 'failspell':
-      case 'needmonster':
-      case 'nomonsters':
-      case 'monsters':
       case 'random':
       case 'remoteaction':
       case 'summon':

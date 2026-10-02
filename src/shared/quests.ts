@@ -53,53 +53,10 @@
  * evidence about a counter the server only moves upward. `questReading` is
  * that rule, in one place, for the card and for main alike.
  */
+import { abilityHeld, type Gate, type TbStat } from './gates';
 // Type-only, so no value cycle: see `module-cycle.test.ts`.
 import type { AbilitySums, Denomination } from './character';
 import type { ApproachGate, ItemHandover } from './world';
-
-/**
- * One thing a step demands before the server will run it.
- *
- * Structured rather than composed into a sentence here, because the card wants
- * to filter on the parts — *which quests can my race do* is a question about
- * `race`, not about the words a description happened to use.
- */
-export type QuestGate =
-  /**
-   * The quest counter itself, or any other granted ability.
-   *
-   * `checkability` is `sum >= atLeast`, `testability` is `sum <= atMost`, and
-   * a step that states both is asking for an **exact** rank — which is how
-   * every chained quest is written, so that doing step five twice is not a way
-   * to skip step six.
-   */
-  | { kind: 'ability'; id: number; name?: string; atLeast?: number; atMost?: number }
-  /** `failability` — the step runs only for somebody who has never had it. */
-  | { kind: 'ability-absent'; id: number; name?: string }
-  | { kind: 'item'; id: number; name?: string }
-  | { kind: 'item-absent'; id: number; name?: string }
-  | { kind: 'spell'; id: number; name?: string }
-  | { kind: 'class'; id: number; name?: string }
-  | { kind: 'race'; id: number; name?: string }
-  | { kind: 'level'; min?: number; max?: number }
-  /**
-   * `goodaligned L` is `alignment <= L` and `evilaligned L` is `>= L`.
-   *
-   * Lower is better on this lineage, which is why the two read backwards from
-   * their names. Kept as the server's own numbers rather than as the words
-   * *good* and *evil*, because a realm is free to put the line anywhere.
-   */
-  | { kind: 'alignment'; atMost?: number; atLeast?: number }
-  /** `checklives`: fewer than `below` lives, which the server sets at nine. */
-  | { kind: 'lives'; below: number }
-  | { kind: 'price'; amount: number }
-  /**
-   * `testskill <stat> <value>` — a roll, not a gate: the chance is the stat
-   * less the value, clamped to 2..98% (`TextBlockPart.cs:1139`), so with
-   * Intellect 45 against 30 the red book answers one try in seven. `stat` is
-   * the script's own word (`intellect`, `perception`, `strength`).
-   */
-  | { kind: 'skill'; stat: string; value: number };
 
 /** One thing a step hands over when it runs. */
 export type QuestReward =
@@ -162,7 +119,7 @@ export interface QuestSource {
  * step, so a step with one route has no `ways` and reads exactly as before.
  */
 export interface QuestWay {
-  needs: QuestGate[];
+  needs: Gate[];
   takes: Array<{ id: number; name?: string }>;
   gives: QuestReward[];
 }
@@ -209,7 +166,7 @@ export interface QuestStep {
   /** And the rank it advances **to**. */
   to?: number;
   /** What **every** route through this step demands. */
-  needs: QuestGate[];
+  needs: Gate[];
   /**
    * `adddelay N` — how long the server holds the rest of the block before
    * it runs (`ContinueTextblockCommand`, seconds). The runner waits this long
@@ -320,16 +277,16 @@ export interface QuestErrand {
  * class's route, which is the right answer for *where does this come from* —
  * an item on one route is still an item somebody has to find. It is the wrong
  * answer for a walk: a Warrior does not fetch the Mage's component, and a
- * route's own items are drawn under the route that wants them. `item-absent`
+ * route's own items are drawn under the route that wants them. A `lack` gate
  * is out for the plainer reason that there is nowhere to go for a thing the
  * step wants you **not** to be carrying.
  */
 export function itemsBrought(step: QuestStep): Array<{ id: number; name?: string; hand: boolean }> {
   const wanted = new Map<number, { id: number; name?: string; hand: boolean }>();
   for (const gate of step.needs) {
-    if (gate.kind !== 'item') continue;
-    wanted.set(gate.id, {
-      id: gate.id,
+    if (gate.kind !== 'carry') continue;
+    wanted.set(gate.item, {
+      id: gate.item,
       ...(gate.name === undefined ? {} : { name: gate.name }),
       hand: false
     });
@@ -556,26 +513,17 @@ function theOneReached(
 /**
  * Whether the quest counters `abil` stated satisfy this step's own gates.
  *
- * `ability` and `ability-absent` only: those two are what the chained quests
- * are told apart by, and they are the two the listing states outright. An id a
+ * The ability gates only, held or never started: those are what the chained
+ * quests are told apart by, and they are the two the listing states outright. An id a
  * **complete** listing does not name is zero (the coin rule, and
  * `AbilitySums`' own); an incomplete listing settles nothing, so it narrows
  * nothing.
  */
 function countersMet(step: QuestStep, abilities: AbilitySums): boolean {
   if (!abilities.complete) return false;
-  const sum = (id: number): number => abilities.sums[id] ?? 0;
-  for (const need of step.needs ?? []) {
-    if (need.kind === 'ability-absent') {
-      if (sum(need.id) !== 0) return false;
-      continue;
-    }
-    if (need.kind !== 'ability') continue;
-    const held = sum(need.id);
-    if (need.atLeast !== undefined && held < need.atLeast) return false;
-    if (need.atMost !== undefined && held > need.atMost) return false;
-  }
-  return true;
+  return (step.needs ?? []).every(
+    (need) => need.kind !== 'ability' || abilityHeld(need, abilities) !== false
+  );
 }
 
 /**
@@ -635,7 +583,7 @@ export type QuestSide = 'good' | 'neutral' | 'evil' | 'any';
  * paladin they could do it. Two of the three great chains classified, one of
  * them wrongly, and the reassuring way round.
  */
-function gateSide(gate: QuestGate): QuestSide | null {
+function gateSide(gate: Gate): QuestSide | null {
   if (gate.kind !== 'alignment') return null;
   const low = gate.atLeast !== undefined;
   const high = gate.atMost !== undefined;
@@ -876,7 +824,7 @@ export function countersNow(
  * Four kinds, and they are what the realm gates on that the client holds a
  * matching fact for. **Alignment is deliberately not one**: the gate is a
  * number and the only standing the client has is the `who` roster's *word*,
- * and `QuestGate` has already written down that a realm is free to put the
+ * and the `alignment` gate has already written down that a realm is free to put the
  * line anywhere — so placing the word on the realm's axis would be the guess
  * this project refuses. The card's own side chips are where that question is
  * asked, by the player, who knows.
@@ -926,7 +874,7 @@ function stated(mine: string | null): boolean {
  * advances, which is the bookkeeping that makes it a chain and never a reason
  * anybody is shut out of it.
  */
-function gatesBar(needs: readonly QuestGate[], who: QuestDoer, counter: number): QuestBar | null {
+function gatesBar(needs: readonly Gate[], who: QuestDoer, counter: number): QuestBar | null {
   const sums = who.counters;
   for (const gate of needs) {
     if (gate.kind === 'class' && gate.name !== undefined && stated(who.className)) {
@@ -937,8 +885,14 @@ function gatesBar(needs: readonly QuestGate[], who: QuestDoer, counter: number):
     }
     // Only a complete listing enumerates, so only a complete one can say that
     // a counter the step demands you have never had is one you have.
-    if (gate.kind === 'ability-absent' && gate.id !== counter && sums !== null && sums.complete) {
-      if ((sums.sums[gate.id] ?? 0) !== 0) {
+    if (
+      gate.kind === 'ability' &&
+      gate.absent === true &&
+      gate.id !== counter &&
+      sums !== null &&
+      sums.complete
+    ) {
+      if (abilityHeld(gate, sums) === false) {
         return { kind: 'counter', names: [gate.name ?? String(gate.id)] };
       }
     }
@@ -1229,10 +1183,10 @@ export interface PlanStep {
   /**
    * The roll the step makes, where it makes one (`stepRoll`): a step that
    * can fail and be asked again. `chance` is the odds of one try in percent
-   * off this character's sheet (`rollChance`), absent where the stat is
+   * off this character's sheet (`rollPercent`), absent where the stat is
    * unread or is not one the sheet prints.
    */
-  roll?: { stat: string; value: number; chance?: number };
+  roll?: { stat: TbStat; value: number; chance?: number };
 }
 
 /**
@@ -1287,26 +1241,16 @@ export interface PlanCash {
 }
 
 /**
- * The roll a step makes, where it makes one — the first `skill` gate on the
+ * The roll a step makes, where it makes one — the first `roll` gate on the
  * step's own line. A step's roll is on the step, never on a route: the realm
  * writes the red book's one line, and a roll per class would be a shape
  * neither shipped realm has.
  */
-export function stepRoll(step: QuestStep): { stat: string; value: number } | null {
+export function stepRoll(step: QuestStep): { stat: TbStat; value: number } | null {
   for (const gate of step.needs) {
-    if (gate.kind === 'skill') return { stat: gate.stat, value: gate.value };
+    if (gate.kind === 'roll') return { stat: gate.stat, value: gate.value };
   }
   return null;
-}
-
-/**
- * The chance one try passes a `testskill` roll, in percent, or null where the
- * stat is unread. The server's own arithmetic (`TextBlockPart.cs:1235`): the
- * stat less the value, clamped between 2 and 98, against a roll of 1–100.
- */
-export function rollChance(stat: number | null, value: number): number | null {
-  if (stat === null) return null;
-  return Math.min(98, Math.max(2, stat - value));
 }
 
 /**
@@ -1607,7 +1551,7 @@ export function packHolds(carrying: readonly number[] | null, id: number): boole
 /**
  * The items a step demands that a listed pack does not hold, by name.
  *
- * Only `item` gates, never `item-absent`: *not carrying this* is not an errand
+ * Only `carry` gates, never `lack`: *not carrying this* is not an errand
  * and drawing it as one would send somebody to fetch the thing that stops the
  * step. Only the gates every route shares, for the same reason the Quest card
  * keeps a route's own demands on the route: a chip is one line and a class's
@@ -1620,8 +1564,8 @@ function maybeWants(
   if (carrying === null) return {};
   const missing: string[] = [];
   for (const gate of step.needs) {
-    if (gate.kind !== 'item' || packHolds(carrying, gate.id) !== false) continue;
-    missing.push(gate.name ?? String(gate.id));
+    if (gate.kind !== 'carry' || packHolds(carrying, gate.item) !== false) continue;
+    missing.push(gate.name ?? String(gate.item));
   }
   return missing.length === 0 ? {} : { wants: missing };
 }

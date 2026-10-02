@@ -141,8 +141,8 @@ describe('when one line reaches several steps', () => {
           from: 24,
           to: 25,
           needs: [
-            { kind: 'ability-absent', id: 127 },
-            { kind: 'ability-absent', id: 128 },
+            { kind: 'ability', id: 127, absent: true },
+            { kind: 'ability', id: 128, absent: true },
             { kind: 'ability', id: 126, atLeast: 24, atMost: 24 }
           ],
           takes: [],
@@ -162,8 +162,8 @@ describe('when one line reaches several steps', () => {
           from: 20,
           to: 21,
           needs: [
-            { kind: 'ability-absent', id: 126 },
-            { kind: 'ability-absent', id: 127 },
+            { kind: 'ability', id: 126, absent: true },
+            { kind: 'ability', id: 127, absent: true },
             { kind: 'ability', id: 128, atLeast: 20, atMost: 20 }
           ],
           takes: [],
