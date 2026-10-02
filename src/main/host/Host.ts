@@ -24,6 +24,7 @@
  * it exactly as a window does.
  */
 import type { HostKind, SessionId } from '../../shared/ipc';
+import type { ProfilerPort } from '../../shared/profiler';
 import type { Home } from '../app/home';
 import type { QuitAnswer, QuitGuard } from '../app/quit';
 import type { WindowRegistry } from '../windows/WindowRegistry';
@@ -129,6 +130,11 @@ export interface ClientHooks {
    * sentence that says why and skips the teardown.
    */
   abort(reason: string): void;
+  /**
+   * Samples a thread for stalls (`FlightRecorder`) until the handle is
+   * disposed: each window's renderer, through its debugger.
+   */
+  record(thread: string, port: ProfilerPort): { dispose(): void };
 }
 
 /**

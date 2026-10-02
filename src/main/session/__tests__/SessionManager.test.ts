@@ -6274,20 +6274,24 @@ describe('what this character costs to move', () => {
   });
 
   /*
-   * 2026-10-01: the trainer routes a plan prices are kept while this stands
-   * still, so it is the whole traveller, the sets included, and nothing else.
+   * 2026-10-01: the trainer routes a plan prices are kept while this stays
+   * the same, so it is the whole traveller, the sets included, but the copper
+   * and the buffs, which move on every kill and cast.
    */
-  it('says what a route is planned on in one key that moves with the traveller', () => {
+  it('says what decides where a route can go in one key that moves with the traveller', () => {
     const { sink } = collect();
     manager = build(sink, { world: tabled() });
     const errands = manager['errands'];
-    const key = errands.routeKey(manager.character);
-    expect(errands.routeKey(manager.character)).toBe(key);
+    const base = manager.character;
+    const state = { ...base, inventory: { ...base.inventory, wealth: 10 } };
+    const key = errands.reachKey(state);
+    expect(errands.reachKey(state)).toBe(key);
+    // Copper that pays no toll it did not pay before moves nothing.
+    expect(errands.reachKey({ ...state, inventory: { ...state.inventory, wealth: 11 } })).toBe(key);
     errands.shun('1/2');
-    const shunned = errands.routeKey(manager.character);
+    const shunned = errands.reachKey(state);
     expect(shunned).not.toBe(key);
-    const state = manager.character;
-    expect(errands.routeKey({ ...state, progress: { ...state.progress, level: 31 } })).not.toBe(
+    expect(errands.reachKey({ ...state, progress: { ...state.progress, level: 31 } })).not.toBe(
       shunned
     );
   });

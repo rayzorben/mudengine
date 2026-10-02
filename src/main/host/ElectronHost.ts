@@ -25,6 +25,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { SessionId } from '../../shared/ipc';
+import type { CpuProfile, ProfilerPort } from '../../shared/profiler';
 import { t } from '../app/i18n';
 import { ownTheProfile } from '../app/instance';
 import type { QuitAnswer } from '../app/quit';
@@ -41,6 +42,22 @@ export function createElectronHost(layout: Layout): Host {
       privileges: { standard: true, secure: true, supportFetchAPI: true }
     }
   ]);
+
+  /** A window's renderer thread, sampled through its debugger. */
+  function rendererProfiler(contents: Electron.WebContents): ProfilerPort {
+    return {
+      start: async (intervalUs) => {
+        if (!contents.debugger.isAttached()) contents.debugger.attach('1.3');
+        await contents.debugger.sendCommand('Profiler.enable');
+        await contents.debugger.sendCommand('Profiler.setSamplingInterval', {
+          interval: intervalUs
+        });
+        await contents.debugger.sendCommand('Profiler.start');
+      },
+      stop: async () =>
+        ((await contents.debugger.sendCommand('Profiler.stop')) as { profile: CpuProfile }).profile
+    };
+  }
 
   /** Who sent this, as the client wants to know it. */
   const callerOf = (sender: Electron.WebContents): Caller => ({
@@ -128,6 +145,8 @@ export function createElectronHost(layout: Layout): Host {
 
     if (!popped) mainWindow = window;
     window.once('ready-to-show', () => window.show());
+    // Sampled from its first frame: the lag on switching tabs or pressing Enter may be here.
+    const recording = client.record(`window${window.id}`, rendererProfiler(window.webContents));
 
     /*
      * A window is a view onto sessions, and the registry is what routes output
@@ -165,6 +184,7 @@ export function createElectronHost(layout: Layout): Host {
     });
 
     window.on('closed', () => {
+      recording.dispose();
       client.windows.remove(window.id);
       /*
        * Its characters go back to the main window rather than with it. Closing

@@ -275,6 +275,8 @@ const PORT = server.address().port;
 // --------------------------------------------------------------------- files
 
 fs.mkdirSync(path.join(HOME, 'global'), { recursive: true });
+// The client's own flight recorder off: its profiler would share the renderer with this one.
+fs.writeFileSync(path.join(HOME, 'internal.yaml'), 'tuning:\n  diagnostics:\n    chunkMs: 0\n');
 fs.writeFileSync(
   path.join(HOME, 'global', 'default.yaml'),
   [

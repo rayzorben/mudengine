@@ -183,6 +183,7 @@ export type ErrandsWorld = Pick<
   | 'cashPlaces'
   | 'classNamed'
   | 'droppingPlaces'
+  | 'everyRoom'
   | 'errand'
   | 'findByName'
   | 'get'
@@ -248,6 +249,8 @@ export class Errands implements SessionModule {
   private fitted: { state: CharacterState; key: string } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
   private readonly lairCosts = new LairCosts((room) => this.weighLair(room));
+  /** Every toll the realm's exits charge, in copper, cheapest first; read once. */
+  private tolls: number[] | null = null;
   /**
    * The hunting survey's pricing pass, remembered until the character's
    * fitness moves (todo 00, 2026-09-13). Weighing 1,260 groups costs main
@@ -559,19 +562,39 @@ export class Errands implements SessionModule {
   }
 
   /**
-   * What a route from here is planned on, as one string: every stated field
-   * of `travellerNow`, so a field added there is in it. Its readers (`danger`,
-   * `hazard`) are asked live and are not. `TrainErrand.trainersAhead` keeps
-   * its routes while this and the room stay the same.
+   * What decides whether a route reaches a room, as one string: every stated
+   * field of `travellerNow`, so a field added there is in it. The copper
+   * carried is there only as how many of the realm's tolls it covers, since
+   * a toll is the one exit it opens and the figure itself moves on every kill.
+   * Its readers (`danger`, `hazard`) are asked live and are not.
+   * `TrainErrand.trainersAhead` keeps its routes while this stays the same.
    */
-  routeKey(state: CharacterState = this.tracker.current): string {
-    return JSON.stringify(this.travellerNow(state), (_key, value: unknown) =>
+  reachKey(state: CharacterState = this.tracker.current): string {
+    const { wealth, ...reach } = this.travellerNow(state);
+    const tollsPaid =
+      wealth === null || wealth === undefined
+        ? null
+        : this.tollPrices().filter((toll) => toll <= wealth).length;
+    return JSON.stringify({ ...reach, tollsPaid }, (_key, value: unknown) =>
       typeof value === 'function'
         ? undefined
         : value instanceof Set || value instanceof Map
           ? [...value]
           : value
     );
+  }
+  /** The tolls the realm's exits charge (`Requirement.tollCopper`), cheapest first. */
+  private tollPrices(): number[] {
+    if (this.tolls !== null) return this.tolls;
+    const prices = new Set<number>();
+    for (const room of this.world?.everyRoom() ?? []) {
+      for (const exit of room.exits) {
+        const toll = exit.requirement?.tollCopper;
+        if (toll !== undefined) prices.add(toll);
+      }
+    }
+    this.tolls = [...prices].sort((a, b) => a - b);
+    return this.tolls;
   }
 
   /**

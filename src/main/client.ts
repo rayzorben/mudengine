@@ -87,6 +87,8 @@ import { SessionHost, type SessionSlot } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
 import { Workspace } from './windows/Workspace';
 import { quitGuard, type QuitAnswer } from './app/quit';
+import { FlightRecorder, mainThreadProfiler } from './app/FlightRecorder';
+import type { ProfilerPort } from '../shared/profiler';
 import { t } from './app/i18n';
 import { listHome } from './app/browse';
 import { handleCharacterTransfer } from './app/transfer';
@@ -278,6 +280,8 @@ const windows = new WindowRegistry();
 let host: SessionHost | null = null;
 /** The extensions found in the home at startup (todo 84). */
 let extensions: readonly LoadedExtension[] = [];
+/** Main's flight recorder and each window's (`FlightRecorder`), stopped at teardown. */
+const recorders = new Set<FlightRecorder>();
 
 /**
  * The realm knowledge base, loaded once.
@@ -3207,6 +3211,8 @@ function build(): void {
   loops = createLoops();
   publishTree();
   internal = createInternal();
+  // As soon as the tuning is read, so the start of the client is sampled under the player's numbers.
+  record('main', mainThreadProfiler());
   lore = createLore();
   playerBook = createPlayerBook();
   destinations = createDestinations();
@@ -3252,8 +3258,27 @@ function build(): void {
     publishRosters,
     quitting,
     appIcon,
-    abort
+    abort,
+    record
   });
+}
+
+/** Where the flight recorders keep what stalled: `stalls/` under the log directory. */
+function stallsDirectory(): string {
+  return path.join(logDirectory(), 'stalls');
+}
+
+/** A thread sampled for stalls from now until it is disposed or the client quits. */
+function record(thread: string, port: ProfilerPort): { dispose(): void } {
+  const recorder = new FlightRecorder({ thread, port, directory: stallsDirectory });
+  recorders.add(recorder);
+  recorder.start();
+  return {
+    dispose: () => {
+      recorder.dispose();
+      recorders.delete(recorder);
+    }
+  };
 }
 
 /**
@@ -3296,6 +3321,8 @@ function teardown(): void {
   // stopped somewhere, and this is the line that says where.
   console.log('shutdown: disconnecting and flushing what is deferred…');
   settle('workspace', () => workspace?.save());
+  for (const recorder of recorders) settle('flight recorder', () => recorder.dispose());
+  recorders.clear();
   settle('internal', () => internal?.dispose());
   // Written before the sessions go: what the last fight taught is scheduled
   // lazily, and quitting is exactly when that schedule has not fired yet.

@@ -910,12 +910,18 @@ const TUNING_DEFAULTS = {
      */
     reaskMs: 60000,
     /**
-     * How long the routes `trainersAhead` planned stay its answer while the
-     * character stands in the same room. A trainer nothing reaches costs a
-     * search of the whole realm, about four seconds on Paradigm, and a plan
-     * asked every few seconds asked it every time (2026-10-01).
+     * How long the routes `trainersAhead` planned stay its answer, wherever
+     * the character walks. A trainer nothing reaches costs a search of the
+     * whole realm, about four seconds on Paradigm, and the routes were planned
+     * again on every step of a walk: 54 s of main's 240 s (2026-10-01).
      */
-    aheadMs: 60000,
+    aheadMs: 300_000,
+    /**
+     * Trainer rooms `trainersAhead` plans a route to in one call, the level in
+     * hand always planned: the levels further ahead are filled in over later
+     * calls, so no one call freezes the client.
+     */
+    aheadPlans: 2,
     /**
      * Trainers priced within this share of the cheapest count as one price,
      * and the nearest, safest walk among them is taken (`bestTrainer`).
@@ -2190,6 +2196,22 @@ const TUNING_DEFAULTS = {
      * exiting at all.
      */
     exitDrainMs: 500
+  },
+  /**
+   * The flight recorder (`FlightRecorder`): each thread sampled in chunks, and
+   * a chunk kept under the log directory's `stalls/` only when the thread was
+   * busy without a break for `stallMs` (2026-10-01, lag at startup nobody
+   * could catch afterwards).
+   */
+  diagnostics: {
+    /** How long one sampled chunk runs before it is read and kept or dropped; 0 samples nothing. */
+    chunkMs: 60_000,
+    /** Microseconds between samples: 5 ms costs little and still shows a 250 ms stall. */
+    sampleUs: 5_000,
+    /** The busy stretch that keeps a chunk: about what a click feels as lag. */
+    stallMs: 250,
+    /** Kept profiles; `stalls.log` keeps every line. */
+    kept: 30
   },
   /** Watching the files the client owns. */
   files: {
