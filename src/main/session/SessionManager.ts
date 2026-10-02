@@ -414,7 +414,7 @@ export class SessionManager {
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
-  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'fight' | 'opening'>;
+  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'opening'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'lairsLeft' | 'reset' | 'dispose'>;
   private automationConfig: AutomationConfig;
@@ -1661,7 +1661,6 @@ export class SessionManager {
         movement: () => this.movement,
         loopNamed: (name) => this.loopNamed(name),
         dropTyped: (died) => this.dropTyped(died),
-        fight: () => this.appraisal.fight(),
         fled,
         keepFled: (entries) => this.belongings.rememberFled(entries),
         switchAutomation: (on) => this.sink.switchAutomationNow?.('automation', on) ?? false,
@@ -1745,7 +1744,6 @@ export class SessionManager {
     };
     const safetySession = {
       config: () => this.automationConfig,
-      fight: () => this.appraisal.fight(),
       disconnect: (by: ConnectionEnd) => this.disconnect(by),
       notice: (message: string) => this.sink.notice(message)
     };
@@ -3141,8 +3139,6 @@ export class SessionManager {
       // Telling a leader this character sat down or stood up; and, leading, whom to wait for.
       this.remotes.onCharacter(state);
       this.travel.watchParty(state);
-      // The next round could kill: leave the realm, where the charge does not kill first.
-      if (this.safety.beforeDeath(state)) return;
       // Then running away, walked and then the realm's teleport (todo 813): both free.
       this.travel.considerEscape(state);
       this.fleeGoto.consider(state);

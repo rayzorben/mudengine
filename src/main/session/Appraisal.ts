@@ -185,15 +185,6 @@ export class Appraisal {
   }
 
   /**
-   * The room's fight as it stands, for the run and the hang-up to read
-   * (`src/shared/danger.ts`): `verdict`'s survival, without the rest of it.
-   */
-  fight(): Survival | null {
-    const state = this.tracker.current;
-    return state.phase === 'in-game' ? this.survivalOf(state) : null;
-  }
-
-  /**
    * The fight opening on `target` would make: the room's, with the target in
    * it whether or not it would have started one. What `AutoCombat` asks
    * before it swings (`openingRefusal`).
