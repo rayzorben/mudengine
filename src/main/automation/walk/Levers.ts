@@ -82,10 +82,24 @@ export class Levers {
    * counter could never bound this. Once is the whole budget that makes sense:
    * a lever pulled that did not open the gate is not a lever that opens it,
    * and walking back for it again is a lap of a corridor spent on the same
-   * refusal. Cleared by `begin`, so the next leg of a loop may try again — the
-   * gate may have shut behind the character.
+   * refusal. Cleared by `begin` for a new journey, so the next leg of a loop may
+   * try again — the gate may have shut behind the character; kept with an
+   * errand a fight interrupted (`suspended`), whose gate is still being opened.
    */
   private detoured = new Set<string>();
+  /**
+   * The errands a stopped walk was on, and the journey's own destination, kept
+   * for the next walk there. A loop's leg ends at every fight and the loop
+   * plans a fresh one to the same stop; dropped with the leg, the errand was
+   * started again from the shut gate and never reached its levers (2026-10-01:
+   * 1/1056's two levers, 37 refusals in eight minutes).
+   */
+  private suspended: {
+    destination: RoomId;
+    errands: Levers['errands'];
+    detoured: Set<string>;
+    at: number;
+  } | null = null;
   /** Whether this step's unreachable levers have been reported. Said once. */
   private leverSaid = false;
 
@@ -96,23 +110,70 @@ export class Levers {
   ) {}
 
   /**
-   * A new walk. A lever errand belongs to the journey that was interrupted,
-   * which this replaces, and a gate may have shut behind the character since
-   * the last leg tried it.
+   * A new walk. A lever errand belongs to the journey that was interrupted, so
+   * a walk anywhere else starts with none; a walk to the journey a stopped
+   * errand was for takes it back (`suspended`). Whether it did.
    */
-  begin(): void {
+  begin(destination: RoomId | undefined): boolean {
+    const kept = this.suspended;
+    this.suspended = null;
     this.errands = [];
     this.detoured.clear();
     this.leverSaid = false;
+    if (kept === null || destination === undefined || kept.destination !== destination)
+      return false;
+    if (Date.now() - kept.at > tuning().walk.leverResumeMs) return false;
+    this.errands = kept.errands;
+    this.detoured = kept.detoured;
+    return true;
   }
 
   /**
-   * The walk stopped. The errand dies with the journey it was for: left
-   * standing, the next walk's arrival would pull a lever for a gate nobody is
-   * going through.
+   * The walk stopped. The errand is kept for a walk to the same journey
+   * (`begin`), and only for that one: left armed, another walk's arrival would
+   * pull a lever for a gate nobody is going through.
    */
   drop(): void {
+    const journey = this.errands[0]?.back;
+    this.suspended =
+      journey === undefined
+        ? null
+        : {
+            destination: journey,
+            errands: this.errands,
+            detoured: new Set(this.detoured),
+            at: Date.now()
+          };
     this.errands = [];
+  }
+
+  /**
+   * Walks on with an errand `begin` took back: to its next lever room, or back
+   * to where it was going. Whether it took the walk over.
+   */
+  resume(state: CharacterState): boolean {
+    const errand = this.errand;
+    if (errand === null) return false;
+    const to = errand.rooms[0]?.at ?? errand.back;
+    const on = this.events.replan?.(to, this.walk.shortest());
+    if (on === undefined || typeof on === 'string' || on.blocked) {
+      /*
+       * The way on is gone: the errand is given up as a fresh walk would hold
+       * it, gates and all, so the gate can send the walk for its levers again
+       * rather than be spent on refusals; and said, quiet leg or not.
+       */
+      this.errands = [];
+      this.detoured.clear();
+      const why = typeof on === 'string' ? on : (on?.reason ?? t('automation.walk.refusalNoRoute'));
+      this.events.notice?.(t('automation.walk.leverResumeRefused', { reason: why }));
+      return false;
+    }
+    if (!this.walk.quiet()) {
+      this.events.notice?.(t('automation.walk.leverResumed', { roomCount: errand.rooms.length }));
+    }
+    if (on.steps.length === 0) return this.finishErrand(state);
+    this.walk.detour(on, state);
+    return true;
   }
 
   /**
@@ -133,6 +194,7 @@ export class Levers {
   reset(): void {
     this.levered = 0;
     this.errands = [];
+    this.suspended = null;
     this.detoured.clear();
     this.leverSaid = false;
   }

@@ -5426,6 +5426,8 @@ automation:
     leverFetching: The way to {stepName} is opened by "{phrase}" in {roomName}. Going there to pull
       it, then continuing.
     leverNext: Lever pulled; {roomCount} more to go.
+    leverResumed: Back to the levers the fight interrupted; {roomCount} to go.
+    leverResumeRefused: 'Not going back for the levers the fight interrupted: {reason}'
     leverPulled: Lever pulled; walking on to {destination}.
     leverRun: The way to {stepName} needs levers in {roomCount} rooms. Walking to them in the game's
       own order, then continuing.
