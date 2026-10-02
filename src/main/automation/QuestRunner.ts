@@ -23,11 +23,10 @@ import {
   packCheck,
   type PackCheck
 } from './PackAfter';
-import { fightIsRunning } from './Walker';
+import { fightIsRunning, packRows, type CharacterState } from '../../shared/character';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
-import { packRows, type CharacterState } from '../../shared/character';
 import type { QuestsConfig, SupplyItem } from '../../shared/config';
 import {
   IDLE_QUEST_RUN,

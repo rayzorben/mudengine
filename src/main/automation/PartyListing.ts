@@ -8,10 +8,9 @@
  * `par`. See `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
-import { inAParty, type CharacterState } from '../../shared/character';
+import { fightIsRunning, inAParty, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { CommandQueue, Intent } from './CommandQueue';
-import { fightIsRunning } from './Walker';
 
 /** Every ask for the party listing shares it, so asks that meet in the queue are one `par`. */
 export const PARTY_LISTING_KEY = 'probe:party';

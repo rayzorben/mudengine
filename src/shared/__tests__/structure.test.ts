@@ -40,7 +40,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
-  'src/main/automation/Walker.ts': 1986,
+  'src/main/automation/Walker.ts': 1963,
   'src/renderer/src/components/SettingsScreen.tsx': 1219,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the

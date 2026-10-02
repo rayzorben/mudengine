@@ -64,7 +64,7 @@ import {
 } from '../../shared/world';
 import type { Block } from '../../shared/blocks';
 import { REREAD_ROOM } from '../../shared/commands';
-import { isBlinding, type CharacterState } from '../../shared/character';
+import { fightIsRunning, isBlinding, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { t } from '../app/i18n';
 import type { CommandQueue } from './CommandQueue';
@@ -1928,29 +1928,6 @@ export class Walker implements SessionModule {
 export function cannotSneakHere(state: CharacterState): boolean {
   if (fightIsRunning(state)) return true;
   return state.room.occupants.some((occupant) => occupant.kind === 'mob');
-}
-
-/**
- * Whether a fight is running around this character right now.
- *
- * The server's own flag, **or** anything this client has recorded as swinging.
- * The second half is what makes it a walk's question rather than a repeat of
- * `state.inCombat`: `CharacterTracker` files an attacker the moment a blow
- * names one, which is a round before `*Combat Engaged*` on a monster that
- * opened the fight — and a step sent in that round walks the character out of
- * a fight it is in, which `cancelQueued` cannot recall.
- *
- * It is deliberately *not* `Recovery.fightIsHere`, which asks the narrower
- * question resting needs — that one falls back to "is anybody standing here"
- * to explain a flag with nothing behind it, and for a walk a monster standing
- * in the room is not by itself a reason to stop. What the two share is the
- * measured fact underneath: the flag outlives an escape by a median 3,493ms
- * and `attackers`/`target` are cleared by a confirmed move, so a character that
- * got away
- * reads as fighting for about three seconds and then walks on.
- */
-export function fightIsRunning(state: CharacterState): boolean {
-  return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
 }
 
 /**

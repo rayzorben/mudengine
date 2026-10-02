@@ -58,14 +58,12 @@
  * is kept stocked*.
  */
 import type { CommandQueue } from './CommandQueue';
-import { fightIsRunning } from './Walker';
+import { balanceOf, fightIsRunning, type CharacterState } from '../../shared/character';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import type { SafetyDecision } from '../../shared/automation';
-import type { CharacterState } from '../../shared/character';
 import { chargedInCopper, quotedInCopper } from '../../shared/coins';
-import { balanceOf } from '../../shared/character';
 import type { SuppliesConfig, SupplyItem } from '../../shared/config';
 import { bareName } from '../../shared/items';
 import { carriedCount } from '../../shared/supplies';
