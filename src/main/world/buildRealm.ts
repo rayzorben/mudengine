@@ -13,6 +13,7 @@ import type { Quest } from '../../shared/quests';
 import { blocksInReach, indexQuests, itemsInReach, landingsOfItems } from './indexQuests';
 import type { BuiltItemFrom, ItemLanding } from './indexQuests';
 import { indexSpellHazards } from './spellHazard';
+import { readTextblocks } from './navigation/textblock';
 import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
 import {
@@ -101,8 +102,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 48 | **What a class may wield and wear.** `Classes.WeaponType` and `ArmourType` were in every class row and read by nothing, so the client could not say that a Mage wears cloth (1) and a Priest swings a staff (9): `ItemType.CanPlayerUseItem` refuses armour heavier than the class's `Armour` and a weapon kind the class's `Weapon` rules out (4 one-handed, 7 blunt, 9 none but what the item names the class for), and a slot's quick view listed plate first for a Mage. `BuiltClass.wpn` and `arm` carry the codes |
  * | 49 | **What a monster carries.** `Monsters.R`, `P`, `G`, `S` and `C`, the most of each coin it is made with, were read by nothing, so the Hunting grounds could say what a lair pays in exp and never in cash. `BuiltMob.cs` and `BuiltMobRow.cs` carry them, and `expectedCopper` (`src/shared/coins.ts`) reads them as the server rolls them — todo 62 |
  * | 50 | **A shelf that sells, and one that only buys.** `Shops.Max-n`, `Amount-n` and `%-n` were never read, so a counter that only buys was offered as a place to buy: every Recycler Shop (all type 0, every `Max` zero) and the idle slots of 39 more in MajorMUD's data and 100 more in Paradigm's. `Shop.FillShop` stocks a slot only where `RegenAmount` is above zero and `Regen` refills it by chance, so a slot with any of the three at zero holds only what a player sold it; a gang house shop never refills and a deed shop always does (`slotRestocks`). `BuiltShop.idle` names the items on no restocking slot; `WorldShopItem.restocks` is false for them, buying looks only at the rest and selling at every counter |
+ * | 51 | **One reader of the text blocks** (`navigation/textblock.ts`). The room commands, the quest steps, the levers, the item landings and the room spells each split `TBInfo` themselves and disagreed with the server. Two corrections in the output: `roomitem` is the server checking that an item already lies in the room, never a place to get one, so scenery such as the huge broken willow and the frozen hydra loses an invented source and each dragon carving names only the fang that drops it (`droproomitem` is the step that puts one down); and a room spell whose chain holds `takeitem`, `roomitem` or the server's no-op `check` is no longer unread on that account |
  */
-export const REALM_FORMAT = 50;
+export const REALM_FORMAT = 51;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1247,22 +1249,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * where to start. See `roomScript.ts` for what this table is and why the
    * router is deliberately not given its thousand teleports yet.
    */
-  const scripts = new Map<number, string>();
-  /*
-   * And what each block runs on next, which a room's script never needs and a
-   * monster's greeting always does: a greeting is a keyword table, and the
-   * lever behind it is a block or two further down the chain (`leversAsked`).
-   */
-  const chains = new Map<number, number>();
-  for (const row of source.table('TBInfo')?.rows ?? []) {
-    const id = number(row['Number']);
-    // A `TBInfo` action is stored with trailing NULs; they are padding, not text.
-    const action = text(row['Action']).replaceAll('\u0000', '').trim();
-    if (id === null) continue;
-    if (action.length > 0) scripts.set(id, action);
-    const linkTo = number(row['LinkTo']);
-    if (linkTo !== null && linkTo > 0) chains.set(id, linkTo);
-  }
+  const blocks = readTextblocks(source);
   // Where a script's `cast` lands, for the phrases whose only movement is a
   // spell (format 29). Read here, once, because the spell index is built
   // after the rooms and a room's commands are converted inside the room loop.
@@ -1270,9 +1257,10 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   const scriptedRooms = new Set<number>();
   for (const row of rooms.rows) {
     const cmd = number(row['CMD']);
-    if (cmd !== null && cmd > 0 && scripts.has(cmd)) scriptedRooms.add(cmd);
+    if (cmd !== null && cmd > 0 && (blocks.get(cmd)?.action.length ?? 0) > 0)
+      scriptedRooms.add(cmd);
   }
-  for (const id of itemsInScripts([...scriptedRooms].map((id) => scripts.get(id) ?? ''))) {
+  for (const id of itemsInScripts([...scriptedRooms].flatMap((id) => blocks.get(id) ?? []))) {
     neededItems.add(id);
   }
   let withExits = 0;
@@ -1391,7 +1379,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
      * in from here and never from the script.
      */
     const script = number(row['CMD']);
-    for (const lever of leversInScript(script === null ? '' : (scripts.get(script) ?? ''))) {
+    for (const lever of leversInScript(script === null ? '' : (blocks.get(script)?.action ?? ''))) {
       levers.push({
         in: { map, room: roomNumber },
         at: { map, room: lever.room ?? roomNumber },
@@ -1427,17 +1415,12 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     const greet = number(row['GreetTXT']);
     const who = text(row['Name']).trim();
     if (greet === null || greet <= 0 || who.length === 0) continue;
-    const asked = leversAsked(greet, who, (id) => {
-      const action = scripts.get(id);
-      const linkTo = chains.get(id) ?? 0;
-      /*
-       * A block with **no action at all** is still a link in the chain: 1435,
-       * between the shadow guard's keyword table and the `remoteaction` that
-       * opens the door, holds nothing but a `LinkTo`. Reading it as absent
-       * ends the walk one block short of every lever there is.
-       */
-      return action === undefined && linkTo === 0 ? undefined : { action: action ?? '', linkTo };
-    });
+    /*
+     * A block with **no action at all** is still a link in the chain: 1435,
+     * between the shadow guard's keyword table and the `remoteaction` that
+     * opens the door, holds nothing but a `LinkTo`.
+     */
+    const asked = leversAsked(greet, who, (id) => blocks.get(id));
     if (asked.length === 0) continue;
 
     const places: Array<{ map: number; room: number }> = [];
@@ -1508,14 +1491,14 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * saying where to go. See `itemsInReach`.
    */
   const spells = indexSpells(source);
-  const blocks = blocksInReach(source, spells);
-  const fromScripts = itemsInReach(blocks);
+  const reach = blocksInReach(source, spells, blocks);
+  const fromScripts = itemsInReach(reach);
   /*
    * And which items are *doors* — format 40. An item that casts a spell whose
    * text block teleports you is a way into somewhere, exactly as a key on a
    * corridor is, and no column says so. See `landingsOfItems`.
    */
-  const itemLandings = landingsOfItems(source, spells, blocks);
+  const itemLandings = landingsOfItems(source, spells, reach);
   for (const id of fromScripts.named) neededItems.add(id);
 
   /*
@@ -1526,7 +1509,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * hundred and forty-five times down the Silver River is a megabyte for
    * nothing. The rooms already carry the id.
    */
-  const hazards = indexSpellHazards(source);
+  const hazards = indexSpellHazards(source, blocks);
   for (const spell of spells) {
     const hazard = hazards.get(spell.id);
     if (hazard !== undefined) spell.hz = hazard;
@@ -1592,7 +1575,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   let ambiguousLevers = 0;
   let openableHere = 0;
   for (const { room, cmd } of drafts) {
-    const action = cmd === null ? undefined : scripts.get(cmd);
+    const action = cmd === null ? undefined : blocks.get(cmd)?.action;
     const answers =
       action === undefined
         ? []
@@ -1690,7 +1673,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * second opinion about the same rows. The walk itself was made before the
    * item index, which needs it too — see `blocks` above.
    */
-  const quests = indexQuests(source, { classes, races, spells }, blocks);
+  const quests = indexQuests(source, { classes, races, spells }, reach);
 
   return {
     lines,

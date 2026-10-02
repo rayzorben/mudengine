@@ -1,161 +1,25 @@
 /**
- * `Rooms.CMD` → `TBInfo.Action`: the words a room answers, and what they do.
+ * `Rooms.CMD` → `TBInfo.Action`: the words a room answers, where each leads,
+ * what it wants, and the levers it pulls. The steps come typed from the one
+ * reader (`navigation/textblock.ts`); this keeps a room's view of them.
  *
- * The largest thing this client did not know about the realm it routes through.
- * `Rooms.CMD` is an id into `TBInfo`, and every one of the 389 distinct values
- * on the shipped realm carries a script — a colon-delimited line per command
- * phrase, over 1,080 rooms and 3,992 phrases:
- *
- * ```
- * go vortex:adddelay 5:minlevel 20 1220:message 1205:teleport 681 3:message 1221
- * go portal:roomitem 3389 1373:minlevel 40 2594:message 1375:teleport 1041 8
- * dive pool:message 1943:teleport 121 12:cast 512
- * give minotaur horn to orfeo:check class:class 9 2682:takeitem 1359:giveitem 1422
- * ```
- *
- * **1,068 of those steps are `teleport <room> <map>`, and only 8 of their
- * destinations are an exit the room already records.** That is on the order of
- * a thousand ways through the realm the exit table does not have — which is why
- * this is read at all.
- *
- * What is built here is the **fact, not the route**. A phrase, where it leads,
- * and what it wants; the router is deliberately not given these edges yet, for
- * the reason written down in `mme.md` §6: a thousand new edges is a change to
- * every route the client plans, and the failure mode is a character walked
- * somewhere it cannot get back from. The Room card states them so a player can
- * act on them, and the routing work has this to start from.
- *
- * **The guards are kept in the realm's own words.** `minlevel 20`, `price
- * 10000`, `nomonsters` — the same treatment `Requirement.raw` gets and for the
- * same reason: a verb this does not model is still a thing the room wants, and
- * dropping it would show a portal as free when it is not. Only the item ids are
- * resolved, because `roomitem 3389` tells nobody anything and `roomitem
- * shimmering key` does.
+ * `need` is the conditions in the realm's own words (`minlevel 20`, `price
+ * 10000`, `nomonsters`), item ids resolved to names, the narration and the
+ * trailing message ids left off: a verb nothing here models is still a thing
+ * the room wants. `to` is the `teleport` step, written room first, or the
+ * landing of a `cast` step's spell.
  */
 import type { ParsedAction } from './instructions';
-import { readKeywordTable } from './questScript';
-import { number } from './values';
+import {
+  itemOf,
+  keywordTable,
+  phrasedSteps,
+  phraseOf,
+  readLines,
+  type TbStep,
+  type Textblock
+} from './navigation/textblock';
 import type { RoomCommand } from '../../shared/world';
-
-/**
- * The shape is `RoomCommand` in `src/shared/world.ts`, because the renderer
- * reads it and `src/shared` is the boundary both sides import. What is worth
- * saying here is how each field is *filled*:
- *
- * - **`say` collapses spellings.** A script writes one line per phrasing — `go
- *   portal`, `go black portal`, `enter portal`, `enter black portal` — with
- *   byte-identical steps, and those are one command with four names. Compared
- *   on the steps rather than on a normalised phrase: two spellings of one
- *   portal have identical tails, and two genuinely different things in one room
- *   do not.
- * - **`to` is the `teleport` step**, and the realm writes it `teleport <room>
- *   <map>` — room first, which is the opposite of the `map/room` every id in
- *   this client is written as. Or, where the phrase has no such step, the
- *   landing of a `cast` step whose spell carries one (`spellLanding`).
- * - **`need` is the conditions, verbatim**, minus the steps that are only the
- *   server talking to itself (`message`, `text`, `random`, `delay`, `adddelay`,
- *   `cast`) and minus the trailing message id every guard carries. Verbatim on
- *   purpose: a verb this does not model is still a thing the room wants, and
- *   dropping it would show a portal as free when it is not — the same rule
- *   `Requirement.raw` follows.
- */
-
-/**
- * How many of a step's arguments are the **condition**, where that is not one.
- *
- * Every guard trails an optional message id — `minlevel 20 1220` prints 1220
- * on failing it — so the arguments that say what is wanted have to be told
- * from the one that says what is printed, and the count is per verb. Taken
- * from the server's own reader (`TextBlockPart.cs`) and checked against how
- * the two databases on this machine actually write each verb:
- *
- * | verb | server | written as |
- * |---|---|---|
- * | `nomonsters` | `args[1]` is the message | 174 bare, 582 with one |
- * | `monsters` | the same | 292 bare |
- * | `testskill` | `args[1]` skill, `args[2]` value, `args[3]` message | 8 without a message, 520 with |
- * | `checkability` | id, then the rank; one argument is *has it at all* | 1 and 929 |
- * | `testability` | id, then the rank | 1 and 790 |
- *
- * **One is the default and the table is the exceptions**, because one is what
- * `minlevel`, `class`, `price`, `roomitem`, `checkitem`, `race`, `needmonster`
- * and the rest are. A verb read wrongly here is not a cosmetic slip: a chip
- * saying `testskill perception` asks *can you perceive at all* about a gate
- * the realm rates at a number, and `nomonsters 1093` puts a message id in
- * front of a reader as though it were part of the condition.
- *
- * `checkabilityexact` is in the table on `questScript.ts`' grammar rather than
- * on a row — neither database holds one — because it is the third spelling of
- * the same comparison and leaving it out would be a rule that agrees with the
- * other two by accident.
- */
-const CONDITION_WORDS = new Map([
-  ['nomonsters', 0],
-  ['monsters', 0],
-  ['testskill', 2],
-  ['checkability', 2],
-  ['checkabilityexact', 2],
-  ['testability', 2],
-  /*
-   * And four the server reads two arguments of with no message after them
-   * (lines 652, 671, 687, 707): `givecoins 400 G` is four hundred **gold**,
-   * and shown as `givecoins 400` it is an unqualified number that could be
-   * copper — a ten-thousandfold ambiguity in the one figure a reader acts on.
-   */
-  ['givecoins', 2],
-  ['giveability', 2],
-  ['addability', 2],
-  ['setability', 2]
-]);
-
-/**
- * Steps that are the server narrating rather than a condition on the player.
- *
- * `check` and `levelcheck` are here on the server's own word rather than on a
- * reading of them: `TextBlockPart.cs:98` matches both and returns straight
- * away, with the comment *filler per DC, "blocks" after this do the actual
- * check so no need to do anything*. 62 and 60 of Paradigm's `need` entries
- * were presenting a no-op to a reader as something the room wants.
- */
-const NARRATION = new Set([
-  'message',
-  'text',
-  'random',
-  'delay',
-  'adddelay',
-  'cast',
-  'check',
-  'levelcheck'
-]);
-
-/**
- * Steps whose argument is an item number.
- *
- * `check`/`fail` variants included: a room that refuses without an item wants
- * the item just as much as one that checks for it, and a player reading the
- * card is asking the same question either way.
- */
-const ITEM_STEPS = new Set([
-  'checkitem',
-  'roomitem',
-  'takeitem',
-  'giveitem',
-  'failitem',
-  'failroomitem',
-  'clearitem'
-]);
-
-/**
- * The ten directions in the order the server numbers them, so a `remoteaction`
- * can name one.
- *
- * `Exits.GetExitNameID` (a reading of the server's own source, not a guess):
- * north 0, south 1, east 2, west 3, northeast 4, northwest 5, southeast 6,
- * southwest 7, up 8, down 9 — which is the same order `buildRealm.DIRECTIONS`
- * reads the room table's ten columns in, and the same order for the same
- * reason: both are the realm's own numbering of an exit slot.
- */
-const EXIT_IDS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd'] as const;
 
 /**
  * The levers a room's script pulls — `remoteaction`, which is a lever in the
@@ -170,8 +34,8 @@ const EXIT_IDS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd'] as const
  *
  * `TextBlockPart` reads that as `remoteaction <room> <message> <ordinal>
  * <exit>`: the room is looked up **on the map the player is standing on**
- * (`new RoomID(player.Room.RoomID.Map, roomid)`), the exit by the numbering
- * above, and a `Door` is opened outright while a `HiddenExit` performs its
+ * (`new RoomID(player.Room.RoomID.Map, roomid)`), the exit by the server's
+ * numbering, and a `Door` is opened outright while a `HiddenExit` performs its
  * `ordinal`-th action. So the portcullis in 8/909 is lifted by saying so, and
  * the west exit it lifts is stated in the exit table as `Door [1000
  * picklocks/strength]` — a wall to every character in the realm.
@@ -187,16 +51,12 @@ const EXIT_IDS = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw', 'u', 'd'] as const
  * the same fact in a second spelling, not a second kind of thing.
  */
 export function leversInScript(action: string): ParsedAction[] {
-  /*
-   * A room script's every line is `<phrase> : <step> : <step>`, so the first
-   * field is what somebody types and the rest is what it does.
-   */
+  // A room script's every line is `<phrase> : <step> : <step>`.
   return foldLevers(
-    action.split('\n').map((line) => {
-      const parts = line.split(':');
-      const say = (parts[0] ?? '').trim();
-      return { say, steps: parts.slice(1) };
-    })
+    readLines(action).map((line) => ({
+      say: (line.fields[0] ?? '').trim(),
+      steps: phrasedSteps(line)
+    }))
   );
 }
 
@@ -204,7 +64,7 @@ export function leversInScript(action: string): ParsedAction[] {
  * One line's `remoteaction` and the item the pack must hold to say it, or
  * undefined where the line pulls nothing.
  */
-function leverInSteps(steps: readonly string[]):
+function leverInSteps(steps: readonly TbStep[]):
   | {
       room: number;
       ordinal: number;
@@ -215,18 +75,8 @@ function leverInSteps(steps: readonly string[]):
   let opens: { room: number; ordinal: number; direction: string } | undefined;
   let item: number | undefined;
   for (const step of steps) {
-    const words = step.trim().split(/\s+/);
-    if (words[0] === 'remoteaction') {
-      const room = number(words[1]);
-      const ordinal = number(words[3]);
-      const exit = number(words[4]);
-      // A step whose exit id is not one of the ten names no exit. Refused
-      // rather than folded onto north, which is what `Number(undefined)`
-      // would have done.
-      const direction = exit === null ? undefined : EXIT_IDS[exit];
-      if (room !== null && direction !== undefined) {
-        opens = { room, ordinal: ordinal ?? 0, direction };
-      }
+    if (step.verb === 'remoteaction') {
+      opens = { room: step.room, ordinal: step.ordinal, direction: step.exit };
       continue;
     }
     /*
@@ -236,10 +86,7 @@ function leverInSteps(steps: readonly string[]):
      * `roomitem` is deliberately not read: that is an item lying in the room,
      * which is not something the pack can answer for.
      */
-    if (words[0] === 'checkitem') {
-      const id = number(words[1]);
-      if (id !== null && id > 0) item = id;
-    }
+    if (step.verb === 'checkitem' && step.item > 0) item = step.item;
   }
   return opens === undefined ? undefined : { ...opens, ...(item === undefined ? {} : { item }) };
 }
@@ -253,7 +100,7 @@ function leverInSteps(steps: readonly string[]):
  * collapses them.
  */
 function foldLevers(
-  lines: ReadonlyArray<{ say: string; steps: readonly string[] }>
+  lines: ReadonlyArray<{ say: string; steps: readonly TbStep[] }>
 ): ParsedAction[] {
   const byLever = new Map<string, ParsedAction & { room: number }>();
 
@@ -319,7 +166,7 @@ function foldLevers(
 export function leversAsked(
   greet: number,
   who: string,
-  block: (id: number) => { action: string; linkTo: number } | undefined
+  block: (id: number) => Pick<Textblock, 'lines' | 'linkTo'> | undefined
 ): ParsedAction[] {
   const found: ParsedAction[] = [];
   const seen = new Set<number>();
@@ -348,28 +195,26 @@ export function leversAsked(
     if (next.words.length > 0) {
       const phrases = next.words.map((word) => `ask ${who} ${word}`);
       for (const lever of foldLevers(
-        here.action.split('\n').map((line) => ({ say: phrases[0]!, steps: line.split(':') }))
+        here.lines.map((line) => ({ say: phrases[0]!, steps: line.steps }))
       )) {
         found.push({ ...lever, say: phrases });
       }
     }
-    if (here.linkTo > 0) queue.push({ id: here.linkTo, words: next.words });
-    for (const [target, words] of readKeywordTable(here.action)) {
+    if (here.linkTo !== null && here.linkTo > 0) queue.push({ id: here.linkTo, words: next.words });
+    for (const [target, words] of keywordTable(here)) {
       queue.push({ id: target, words });
     }
   }
   return found;
 }
 
-/** Every item id a script mentions, so the item index can name them. */
-export function itemsInScripts(actions: Iterable<string>): Set<number> {
+/** Every item id a room's script mentions, so the item index can name them. */
+export function itemsInScripts(blocks: Iterable<Pick<Textblock, 'lines'>>): Set<number> {
   const found = new Set<number>();
-  for (const action of actions) {
-    for (const phrase of action.split('\n')) {
-      for (const step of phrase.split(':').slice(1)) {
-        const [verb, first] = step.trim().split(/\s+/);
-        if (verb === undefined || !ITEM_STEPS.has(verb)) continue;
-        const id = number(first);
+  for (const block of blocks) {
+    for (const line of block.lines) {
+      for (const step of phrasedSteps(line)) {
+        const id = itemOf(step);
         if (id !== null && id > 0) found.add(id);
       }
     }
@@ -392,12 +237,11 @@ export function parseRoomScript(
 ) {
   const bySteps = new Map<string, RoomCommand>();
 
-  for (const phrase of action.split('\n')) {
-    const parts = phrase.split(':');
-    const say = (parts[0] ?? '').trim();
-    if (say.length === 0 || parts.length < 2) continue;
-    const steps = parts.slice(1).map((step) => step.trim());
-    const key = steps.join(':');
+  for (const line of readLines(action)) {
+    const say = phraseOf(line);
+    if (say === null) continue;
+    const steps = phrasedSteps(line);
+    const key = steps.map((step) => step.text).join(':');
 
     const held = bySteps.get(key);
     if (held !== undefined) {
@@ -408,73 +252,81 @@ export function parseRoomScript(
     const command: RoomCommand = { say: [say] };
     const need: string[] = [];
     for (const step of steps) {
-      const words = step.split(/\s+/);
-      const verb = words[0];
-      if (verb === undefined || verb.length === 0) continue;
-      if (verb === 'teleport') {
-        // `teleport <room> <map>` — room first, which is the opposite of the
-        // `map/room` every id in this client is written as.
-        const room = number(words[1]);
-        const map = number(words[2]);
-        if (room !== null && map !== null) command.to = `${map}/${room}`;
-        continue;
+      switch (step.verb) {
+        case 'teleport':
+          command.to = `${step.map}/${step.room}`;
+          break;
+        case 'cast': {
+          /*
+           * `cast <spell>` moves the character as surely as `teleport` does
+           * when the spell carries a landing: the holes down from Dragon's
+           * Teeth Hills are `cast 336` and nothing else (format 29). A
+           * `teleport` step in the same phrase is the realm's own word and
+           * wins. And what it puts on the character either way (format 43):
+           * the dive's `cast 512` is *holding breath*.
+           */
+          const landing = spellLanding(step.spell);
+          if (landing !== undefined && command.to === undefined) command.to = landing;
+          if (step.spell > 0 && command.casts === undefined) command.casts = step.spell;
+          break;
+        }
+        // What the phrase does to the world (`RoomCommand.opens` holds the
+        // lever) or the server talking to itself: not conditions on the player.
+        case 'remoteaction':
+        case 'nothing':
+        case 'show':
+        case 'message':
+        case 'delay':
+        case 'random':
+          break;
+        // Every other step is something the room wants, in its own words.
+        case 'checkitem':
+        case 'failitem':
+        case 'takeitem':
+        case 'giveitem':
+        case 'droproomitem':
+        case 'roomitem':
+        case 'failroomitem':
+        case 'clearitem':
+        case 'addexp':
+        case 'addevil':
+        case 'addlife':
+        case 'checklives':
+        case 'learnspell':
+        case 'checkability':
+        case 'checkabilityexact':
+        case 'testability':
+        case 'failability':
+        case 'removeability':
+        case 'checkspell':
+        case 'failspell':
+        case 'class':
+        case 'race':
+        case 'evilaligned':
+        case 'goodaligned':
+        case 'giveability':
+        case 'setability':
+        case 'addability':
+        case 'givecoins':
+        case 'minlevel':
+        case 'maxlevel':
+        case 'needmonster':
+        case 'nomonsters':
+        case 'monsters':
+        case 'price':
+        case 'summon':
+        case 'testskill':
+        case 'unknown': {
+          const item = itemOf(step);
+          // `clearitem 0` clears every item, and item 0 has no name.
+          need.push(item === null ? step.said : `${step.verb} ${itemName(item) ?? item}`.trim());
+          break;
+        }
+        default: {
+          const never: never = step;
+          return never;
+        }
       }
-      if (verb === 'cast') {
-        /*
-         * `cast <spell>` moves the character as surely as `teleport` does when
-         * the spell carries `TeleportRoom`/`TeleportMap` — the three holes down
-         * from Dragon's Teeth Hills into the Stone Tunnel are `cast 336`
-         * ("fall") and nothing else, so the way down was a room command with
-         * no landing while the way back up was a `teleport` (format 29). A
-         * `teleport` step in the same phrase is the realm's own word and wins.
-         */
-        const id = number(words[1]);
-        const landing = id === null ? undefined : spellLanding(id);
-        if (landing !== undefined && command.to === undefined) command.to = landing;
-        // And what it puts on the character, whether or not it moves them
-        // (format 43): the dive's `cast 512` is *holding breath*, the only
-        // statement anywhere that the passage below is a timed one.
-        if (id !== null && id > 0 && command.casts === undefined) command.casts = id;
-        continue;
-      }
-      /*
-       * `remoteaction 909 1360 0 3` is what the phrase *does* — it raises the
-       * portcullis — and `RoomCommand.opens` is where that goes
-       * (`leversInScript`). Kept out of `need` for `teleport`'s reason: a step
-       * that moves the world is not a condition on the player, and printing
-       * `remoteaction 909` on a card names nothing anybody can act on.
-       */
-      if (verb === 'remoteaction') continue;
-      /*
-       * A step that is nothing but a number is a **text block to print**:
-       * `TextBlockPart.cs:1255` looks it up, displays it and succeeds. So
-       * `woohoo:666` in 1/193 is a room answering a word with a sentence, and
-       * it was on the card as *saying woohoo requires 666*.
-       */
-      if (/^\d+$/.test(verb)) continue;
-      if (NARRATION.has(verb)) continue;
-      if (ITEM_STEPS.has(verb)) {
-        const id = number(words[1]);
-        const named = id === null ? undefined : itemName(id);
-        // The id when nothing can name it — the item index carries only what
-        // some exit, shop, monster or script asked for, and a derivative may
-        // reference one it has retired. The number is worse than a name and
-        // better than dropping a condition the room genuinely has. Either way
-        // the trailing message id goes, like every other guard's.
-        need.push(`${verb} ${named ?? words[1] ?? ''}`.trim());
-        continue;
-      }
-      /*
-       * Everything else verbatim, and only its *arguments that are conditions*
-       * — `CONDITION_WORDS` above says how many, and the trailing message id
-       * every guard carries is what is left off.
-       */
-      need.push(
-        words
-          .slice(0, 1 + (CONDITION_WORDS.get(verb) ?? 1))
-          .join(' ')
-          .trim()
-      );
     }
     if (need.length > 0) command.need = [...new Set(need)];
     bySteps.set(key, command);

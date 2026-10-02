@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { readLines } from '../navigation/textblock';
 import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from '../roomScript';
+
+/** A hand-written block, read the way the realm's are. */
+const asBlock = (block: { action: string; linkTo: number } | undefined) =>
+  block === undefined ? undefined : { lines: readLines(block.action), linkTo: block.linkTo };
 
 /*
  * `Rooms.CMD` → `TBInfo.Action`, verbatim from `gmud20230902.mdb`. Every
@@ -174,7 +179,11 @@ describe('what a room answers to', () => {
    * built rather than looked up after.
    */
   it('finds the item ids a script mentions', () => {
-    expect([...itemsInScripts([PORTAL, ORFEO])].sort((a, b) => a - b)).toEqual([1359, 1422, 3389]);
+    expect(
+      [...itemsInScripts([PORTAL, ORFEO].map((action) => ({ lines: readLines(action) })))].sort(
+        (a, b) => a - b
+      )
+    ).toEqual([1359, 1422, 3389]);
   });
 
   /*
@@ -255,7 +264,7 @@ describe('the levers a script pulls', () => {
       1435: { action: '', linkTo: 1436 },
       1436: { action: 'checkability 133 4:remoteaction 1423 66 0 3:message 1841', linkTo: 0 }
     };
-    const [lever, ...rest] = leversAsked(1433, 'shadow guard', (id) => blocks[id]);
+    const [lever, ...rest] = leversAsked(1433, 'shadow guard', (id) => asBlock(blocks[id]));
     expect(rest).toEqual([]);
     expect(lever).toMatchObject({ room: 1423, direction: 'w' });
     // The whole typed line, because that is what a lever's `say` is.
@@ -274,7 +283,7 @@ describe('the levers a script pulls', () => {
       1: { action: 'sun:2', linkTo: 0 },
       2: { action: 'remoteaction 2001 0 0 8', linkTo: 0 }
     };
-    const [lever] = leversAsked(1, 'stone sphinx', (id) => blocks[id]);
+    const [lever] = leversAsked(1, 'stone sphinx', (id) => asBlock(blocks[id]));
     expect(lever).toMatchObject({ room: 2001, direction: 'u' });
     expect(lever?.say).toEqual(['ask stone sphinx sun']);
   });
@@ -284,6 +293,6 @@ describe('the levers a script pulls', () => {
     const blocks: Record<number, { action: string; linkTo: number }> = {
       1: { action: 'pull lever:remoteaction 909 0 0 3', linkTo: 0 }
     };
-    expect(leversAsked(1, 'shadow guard', (id) => blocks[id])).toEqual([]);
+    expect(leversAsked(1, 'shadow guard', (id) => asBlock(blocks[id]))).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { readLines } from '../navigation/textblock';
 import { resolveHazard } from '../spellHazard';
 import { HAZARD_ABILITY } from '../../../shared/abilities';
 
@@ -22,7 +23,12 @@ const spells = (
   );
 
 const blocks = (rows: Record<number, string>) =>
-  new Map(Object.entries(rows).map(([id, action]) => [Number(id), action]));
+  new Map(
+    Object.entries(rows).map(([id, action]) => [
+      Number(id),
+      { lines: readLines(action), linkTo: null }
+    ])
+  );
 
 describe('what a room’s spell does to whoever stands in it', () => {
   it('reads a plain magnitude off the spell’s own columns', () => {
@@ -68,13 +74,13 @@ describe('what a room’s spell does to whoever stands in it', () => {
     expect(hazard.unread).toBe(false);
   });
 
-  it('follows a random branch to the block behind it, both spellings', () => {
+  // `random` reads its first argument as the block (`TextBlockPart.cs:903`).
+  it('follows a random branch to the block behind it', () => {
     const table = spells({
       1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] },
       2: { abilities: [[HAZARD_ABILITY.poison, 25]] }
     });
-    expect(resolveHazard(1, table, blocks({ 10: 'random 11', 11: 'cast 2' })).damage).toBe(25);
-    expect(resolveHazard(1, table, blocks({ 10: 'random 90 11', 11: 'cast 2' })).damage).toBe(25);
+    expect(resolveHazard(1, table, blocks({ 10: 'random 11', 11: '100:cast 2' })).damage).toBe(25);
   });
 
   it('records a spell that stops it without ever pricing on one', () => {
@@ -175,7 +181,7 @@ describe('what a room’s spell does to whoever stands in it', () => {
     const hazard = resolveHazard(
       1,
       spells({ 1: { abilities: [[HAZARD_ABILITY.textBlock, 10]] } }),
-      blocks({ 10: 'nomonsters:testskill 34 4021' })
+      blocks({ 10: 'nomonsters:testskill strength 34 4021' })
     );
     expect(hazard).toMatchObject({ damage: 0, unread: true });
   });
