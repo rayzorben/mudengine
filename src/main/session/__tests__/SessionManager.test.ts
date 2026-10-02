@@ -2721,7 +2721,7 @@ describe('asking for the quest counters', () => {
         r: 2,
         n: 'Pool Edge',
         x: { w: { m: 1, r: 1 } },
-        cmd: [{ say: ['go portal'], to: '2/1', need: ['checkability 133 5'] }]
+        cmd: [{ say: ['go portal'], to: '2/1', gates: [{ kind: 'ability', id: 133, atLeast: 5 }] }]
       },
       { m: 2, r: 1, n: 'Far Cavern', x: {} }
     ];

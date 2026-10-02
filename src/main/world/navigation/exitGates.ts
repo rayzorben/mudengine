@@ -62,9 +62,11 @@ function read(requirement: Requirement): readonly Gate[] | null {
       return (requirement.actions ?? []).flatMap((act): Gate[] =>
         act.item === undefined ? [] : [{ kind: 'carry', item: act.item }]
       );
+    case 'text':
+      // A room script's conditions (`linkPortals`); a `Text:` exit has none.
+      return requirement.gates ?? [];
     case 'key':
     case 'door':
-    case 'text':
     case 'cast':
     case 'spell':
     case 'trap':
@@ -73,6 +75,53 @@ function read(requirement: Requirement): readonly Gate[] | null {
       return [];
     default: {
       const never: never = requirement.kind;
+      return never;
+    }
+  }
+}
+
+/**
+ * A gate as the exit-table instruction that states it, for a way a room
+ * script walls: the route's block reads the same fields off either. `base` is
+ * the way's own requirement, for its command and words.
+ */
+export function gateRequirement(gate: Gate, base: Requirement): Requirement {
+  const { raw, commands } = base;
+  const said = { raw, ...(commands === undefined ? {} : { commands }) };
+  switch (gate.kind) {
+    case 'level':
+      return {
+        ...said,
+        kind: 'level',
+        ...(gate.min === undefined ? {} : { minLevel: gate.min }),
+        ...(gate.max === undefined ? {} : { maxLevel: gate.max })
+      };
+    case 'class':
+      return { ...said, kind: 'class', ...(gate.is ? { classOk: gate.id } : { classNo: gate.id }) };
+    case 'race':
+      return { ...said, kind: 'race', ...(gate.is ? { raceOk: gate.id } : { raceNo: gate.id }) };
+    case 'standing':
+      return { ...said, kind: 'alignment', minAlignment: gate.low, maxAlignment: gate.high };
+    case 'ability': {
+      const { kind: _kind, name: _name, ...bounds } = gate;
+      return { ...said, kind: 'ability', abilityId: gate.id, abilities: [bounds] };
+    }
+    case 'copper':
+      return { ...said, kind: 'toll', tollCopper: gate.copper };
+    case 'carry':
+      return { ...said, kind: 'item', keyId: gate.item };
+    case 'alignment':
+    case 'lack':
+    case 'floor':
+    case 'spell-off':
+    case 'lives':
+    case 'roll':
+    case 'empty-room':
+    case 'monster-here':
+    case 'occupied':
+      return base;
+    default: {
+      const never: never = gate;
       return never;
     }
   }

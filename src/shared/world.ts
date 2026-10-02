@@ -8,7 +8,7 @@
  * Dependency-free: the graph is built in the main process, routes are rendered
  * in the renderer.
  */
-import { abilityHeld, type AbilityBounds, type GateFacts } from './gates';
+import type { AbilityBounds, Gate } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellchoice';
 import type { FightSummary } from './fights';
@@ -458,44 +458,11 @@ export interface Requirement {
    */
   actions?: RequirementAction[];
   /**
-   * Conditions the realm states on this edge that this client cannot evaluate,
-   * in the realm's own words — `nomonsters`, `roomitem shimmering key`,
-   * `testskill perception 20`.
-   *
-   * A room script states *several* conditions on one phrase and `kind` holds
-   * one, so the guards that have a kind are read into the fields beside this
-   * (`minLevel`, `maxLevel`) and the rest are kept here whole. They are priced
-   * rather than obeyed: `edgePenalty` adds the unevaluable figure once on top
-   * of whatever else the edge costs, so a scripted way through is offered,
-   * never preferred, and the chip carries the instruction for a person to
-   * judge by.
-   *
-   * **Set only by `linkPortals`**, because a room script is the only place in
-   * the realm where one edge carries conditions of several kinds. Absent is an
-   * edge whose every condition is read, which is every exit out of the
-   * direction columns.
+   * A room script's conditions (`linkPortals`), in the one vocabulary
+   * (`src/shared/gates.ts`) and judged by the router as any exit's are.
    */
-  unread?: readonly string[];
-  /**
-   * Every ability comparison this edge makes, read into the form the server
-   * compares in — whichever of the realm's two shapes wrote it.
-   *
-   * A room script writes `checkability 133 5` among its `unread` conditions,
-   * and the exit table writes `Ability: 204 w/value 1 to 999` in the direction
-   * column itself. They are one subject: the server makes the same comparison
-   * against `Player.GetAbility(id).Sum` for both, so they are read into one
-   * field and answered in one place, and the two cannot drift into agreeing
-   * differently about the same character.
-   *
-   * For a script these are the subset of `unread` the *client* can answer, and
-   * they are kept beside those rather than taken out of them: `checkability
-   * 133 5` is still worth showing whether or not this character passes it.
-   *
-   * **Read, not obeyed, until the counters arrive.** `edgePenalty` refuses an
-   * edge whose gate this character fails and prices one nobody has the
-   * counters for exactly as before — an unread listing is *nobody has said*,
-   * which is never the reassuring answer and never the alarming one either.
-   */
+  gates?: readonly Gate[];
+  /** An `Ability:` exit's comparison, as the server makes it (`exitGates`). */
   abilities?: readonly AbilityBounds[];
   /**
    * A timed passage this way in opens — resolved at load (`WorldGraph
@@ -530,68 +497,6 @@ export interface ItemUseGate {
   classes?: readonly number[];
   races?: readonly number[];
   minLevel?: number;
-}
-
-/**
- * The ability verbs, and how many words of the step each takes.
- *
- * `CONDITION_WORDS` states the same figures for the same reason — a trailing
- * message id is only trailing on a verb that takes one argument.
- */
-const ABILITY_VERBS: ReadonlySet<string> = new Set([
-  'checkability',
-  'checkabilityexact',
-  'testability',
-  'failability'
-]);
-
-/**
- * The ability gates one room-script condition states, or nothing.
- *
- * Read at load rather than at build (`WorldGraph.linkPortals`), because the
- * strings are already in the file: a realm somebody converted before this
- * existed answers these gates the moment they open the client, with no format
- * bump and no rebuild.
- */
-export function readAbilityGate(condition: string): AbilityBounds | null {
-  const parts = condition.trim().split(/\s+/);
-  const verb = (parts[0] ?? '').toLowerCase();
-  if (!ABILITY_VERBS.has(verb)) return null;
-  const id = Number(parts[1]);
-  if (!Number.isInteger(id)) return null;
-  if (verb === 'failability') return { id, absent: true };
-  const value = Number(parts[2]);
-  if (verb === 'checkability') {
-    // One argument is *has it at all*, which the server spells as `>= -1`.
-    return { id, atLeast: Number.isInteger(value) ? value : -1 };
-  }
-  if (!Number.isInteger(value)) return null;
-  return verb === 'testability' ? { id, atMost: value } : { id, atLeast: value, atMost: value };
-}
-
-/**
- * Whether the counters `abil` stated satisfy these gates — or null for nobody
- * having said.
- *
- * `countersMet`'s reading, one subject across: a **complete** listing
- * enumerates, so an id it does not name is zero; an incomplete one settles
- * nothing about an id it is silent on, and the answer is *unknown* rather than
- * the zero. Before any listing there is no answer at all, which is not the
- * same as the gate passing — an edge nobody has the counters for is priced as
- * the guess it is, never refused and never preferred.
- */
-export function abilityGatesMet(
-  gates: readonly AbilityBounds[] | undefined,
-  counters: GateFacts['counters']
-): boolean | null {
-  if (gates === undefined || gates.length === 0) return null;
-  let known = false;
-  for (const gate of gates) {
-    const held = abilityHeld(gate, counters);
-    if (held === false) return false;
-    if (held === true) known = true;
-  }
-  return known ? true : null;
 }
 
 /**
@@ -2416,8 +2321,10 @@ export interface RoomCommand {
    * free corridor to the router and the plan. Read by `WorldGraph.corridorsOn`.
    */
   casts?: number;
-  /** What it wants, in the realm's own words. */
-  need?: string[];
+  /** What it wants (`src/shared/gates.ts`). */
+  gates?: Gate[];
+  /** The monster rows it summons (`summon N`). */
+  summons?: number[];
   /**
    * The exit this opens — a lever, from a direction column that is not an exit
    * (`parseAction`).

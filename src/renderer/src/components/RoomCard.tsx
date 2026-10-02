@@ -24,6 +24,7 @@ import type { SessionId } from '@shared/ipc';
 import type { Alignment, CharacterState, RoomExit, RoomOccupant } from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import type { RoomAsk } from '@shared/quests';
+import { gatesWords } from '@shared/gateWords';
 import { attacksOnSight, DISPOSITION_WORD } from '@shared/mobs';
 import { countedLabel } from '@shared/items';
 
@@ -1166,11 +1167,11 @@ function AnswersFace({
                       })}
                 </span>
               )}
-              {answer.need !== undefined && (
-                <span className="quiet"> {answer.need.join(', ')}</span>
+              {answer.gates !== undefined && (
+                <span className="quiet"> {gatesWords(answer.gates, t)}</span>
               )}
               {answer.to === undefined &&
-                answer.need === undefined &&
+                answer.gates === undefined &&
                 answer.opens === undefined && (
                   <span className="quiet">{t('cards.room.answers.noEffectKnown')}</span>
                 )}
@@ -1191,7 +1192,7 @@ function answersCopyText(answers: RoomCommand[]): string {
       if (answer.opens !== undefined) {
         parts.push(`(opens ${answer.opens.direction} of ${answer.opens.room})`);
       }
-      if (answer.need !== undefined) parts.push(`(${answer.need.join(', ')})`);
+      if (answer.gates !== undefined) parts.push(`(${gatesWords(answer.gates, t)})`);
       return parts.join(' ');
     })
     .join('\n');

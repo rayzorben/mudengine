@@ -11,6 +11,7 @@
  *
  * Three lengths per obstacle; see `MapObstacle` for what each is for.
  */
+import { gateWords, gatesWords } from '../../shared/gateWords';
 import {
   openableHere,
   roomId,
@@ -335,44 +336,23 @@ export function describeObstacle(
   })();
 
   /*
-   * And the conditions the realm states on this edge that nothing here can
-   * check (`Requirement.unread`, written only for a room-script portal).
-   *
-   * Said, rather than folded into the price and left there: `edgePenalty`
-   * charges them the unevaluable figure so a scripted way through is offered
-   * and never preferred, and a reader who is offered it has to be able to see
-   * why. 186 of Paradigm's landings and 106 of stock's carry at least one, and
-   * they are not all conditions — `takeitem multicoloured sceptre` and `summon
-   * 1009` are what the step *does*, which is exactly the half a plan reading
-   * `Level 65+` withheld.
-   *
-   * In the realm's own words, because that is the rule for every instruction
-   * this client does not model, and a word invented for a chip would be a
-   * claim the data does not make.
+   * And what a room script asks on this edge (`Requirement.gates`), said
+   * rather than left in the price, so a reader offered the way can see why.
+   * The chip says how many, because `detail` is hover-only on every surface
+   * that draws one and the script's order is not a ranking: `17/3231`'s
+   * portal wants the nexus portal in the room and the multicoloured sceptre.
    */
-  const unread = requirement.unread ?? [];
-  if (unread.length === 0) return { kind, label, detail, raw: requirement.raw };
-  /*
-   * **The chip says how many, because the first is not the worst.** `detail`
-   * is hover-only on every surface that draws one (a `title` attribute on the
-   * route panel, the loop builder, the map plan and the room quick view), so
-   * a chip naming `unread[0]` and stopping hides the rest from anybody who
-   * does not hover — and the realm's script order is not a ranking. 37 of
-   * Paradigm's 186 and 28 of stock's 106 state more than one: `17/3231`'s
-   * portal leads with `roomitem nexus portal` and goes on to take the
-   * multicoloured sceptre and summon monster 1009.
-   *
-   * A count rather than a reordering, because ordering them would be a
-   * severity the data does not state.
-   */
-  const more = unread.length - 1;
+  const gates = requirement.gates ?? [];
+  const first = gates[0];
+  if (first === undefined) return { kind, label, detail, raw: requirement.raw };
+  const more = gates.length - 1;
   return {
     kind,
     label:
       more === 0
-        ? t('map.obstacle.alsoLabel', { label, condition: unread[0]! })
-        : t('map.obstacle.alsoLabelMore', { label, condition: unread[0]!, more }),
-    detail: t('map.obstacle.alsoDetail', { detail, conditions: unread.join(', ') }),
+        ? t('map.obstacle.alsoLabel', { label, condition: gateWords(first, t) })
+        : t('map.obstacle.alsoLabelMore', { label, condition: gateWords(first, t), more }),
+    detail: t('map.obstacle.alsoDetail', { detail, conditions: gatesWords(gates, t) }),
     raw: requirement.raw
   };
 }

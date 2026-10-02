@@ -1,7 +1,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { Gate } from '@shared/gates';
-import { gateWords } from '../lib/gates';
+import { gateWords as gateWordsIn } from '@shared/gateWords';
 import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
@@ -43,6 +43,11 @@ import type { AbilitySums } from '@shared/character';
 import { errorMessage } from '@shared/values';
 import type { ApproachGate, ItemHandover, RoomId } from '@shared/world';
 import type { SessionId } from '@shared/ipc';
+
+/** One gate in the window's own words. */
+function gateWords(gate: Gate): string {
+  return gateWordsIn(gate, t);
+}
 
 /**
  * The realm's quests, and which of them this character cares about.

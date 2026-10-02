@@ -148,12 +148,11 @@ describe('edgePenalty', () => {
    * than in `9/1424`, two maps from where the plan believed it was.
    */
   describe('a room script gated on a quest counter', () => {
-    const gated = {
-      kind: 'text' as const,
-      raw: 'go portal; checkability 133 5',
+    const gated: Requirement = {
+      kind: 'text',
+      raw: 'go portal',
       commands: ['go portal'],
-      unread: ['checkability 133 5'],
-      abilities: [{ id: 133, atLeast: 5 }]
+      gates: [{ kind: 'ability', id: 133, atLeast: 5 }]
     };
 
     it('refuses the way through when the counters say this character fails it', () => {
@@ -175,20 +174,16 @@ describe('edgePenalty', () => {
       expect(edgePenalty(gated, { counters: { sums: {}, complete: false } })).toBe(60);
     });
 
-    /* Passing the gate does not make the rest of the script readable. */
-    it('still discourages a gate this character passes', () => {
-      expect(edgePenalty(gated, { counters: { sums: { 133: 5 }, complete: true } })).toBe(60);
+    /* Every step of a script is read, so one whose gates all pass costs nothing. */
+    it('costs nothing once the counters say this character passes', () => {
+      expect(edgePenalty(gated, { counters: { sums: { 133: 5 }, complete: true } })).toBe(0);
     });
 
     /* `failability` is its own comparison: held at all is the refusal. */
     it('refuses a failability gate the character has a rank of', () => {
-      const never = {
-        ...gated,
-        unread: ['failability 127'],
-        abilities: [{ id: 127, absent: true }]
-      };
+      const never: Requirement = { ...gated, gates: [{ kind: 'ability', id: 127, absent: true }] };
       expect(edgePenalty(never, { counters: { sums: { 127: 1 }, complete: true } })).toBeNull();
-      expect(edgePenalty(never, { counters: { sums: { 127: 0 }, complete: true } })).toBe(60);
+      expect(edgePenalty(never, { counters: { sums: { 127: 0 }, complete: true } })).toBe(0);
     });
   });
 
@@ -4696,6 +4691,29 @@ describe('routing through room-script teleports', () => {
       { m: 2, r: 1, n: 'Far Cavern', x: {} }
     ]);
 
+  /*
+   * A way a room script walls is named by the gate that shut it, with its
+   * figures: the route block reads them as it reads an exit table's.
+   */
+  it('names the gate that walls a scripted way, with its figures', () => {
+    const blocksFor = (gates: unknown[], traveller: Traveller) =>
+      portalWorld({ say: ['go vortex'], to: '2/1', gates }).route('1/1', '2/1', traveller).blocks;
+    expect(blocksFor([{ kind: 'level', min: 20 }], { level: 10 })).toContainEqual(
+      expect.objectContaining({ kind: 'level', minLevel: 20 })
+    );
+    expect(blocksFor([{ kind: 'copper', copper: 10000 }], { wealth: 50 })).toContainEqual(
+      expect.objectContaining({ kind: 'toll', tollCopper: 10000, purseCopper: 50 })
+    );
+    expect(
+      blocksFor([{ kind: 'ability', id: 133, atLeast: 5 }], {
+        counters: { sums: { 133: 4 }, complete: true }
+      })
+    ).toContainEqual(expect.objectContaining({ kind: 'quest', abilityId: 133, atLeast: 5 }));
+    expect(blocksFor([{ kind: 'carry', item: 7 }], { keys: [], packKnown: true })).toContainEqual(
+      expect.objectContaining({ kind: 'carry', itemId: 7 })
+    );
+  });
+
   it('routes across a teleport no exit records, sending the phrase', () => {
     const graph = portalWorld({ say: ['dive pool', 'enter pool'], to: '2/1' });
     const route = graph.route('1/1', '2/1');
@@ -4718,7 +4736,7 @@ describe('routing through room-script teleports', () => {
   });
 
   it('reads a level gate exactly as an exit level gate, and explains a refusal', () => {
-    const gated = { say: ['go vortex'], to: '2/1', need: ['minlevel 20'] };
+    const gated = { say: ['go vortex'], to: '2/1', gates: [{ kind: 'level', min: 20 }] };
     expect(portalWorld(gated).route('1/1', '2/1', { level: 25 }).blocked).toBe(false);
     const refused = portalWorld(gated).route('1/1', '2/1', { level: 10 });
     expect(refused.blocked).toBe(true);
@@ -4780,12 +4798,12 @@ describe('routing through room-script teleports', () => {
    * the person reading the chip.
    */
   it('prices a script whose conditions it cannot read, and never prunes it', () => {
-    const graph = portalWorld({ say: ['go vortex'], to: '2/1', need: ['nomonsters'] });
+    const graph = portalWorld({ say: ['go vortex'], to: '2/1', gates: [{ kind: 'empty-room' }] });
     const route = graph.route('1/1', '2/1');
     expect(route.blocked).toBe(false);
     const portal = route.steps.at(-1)!;
     expect(portal.command).toBe('go vortex');
-    expect(portal.requirement?.unread).toEqual(['nomonsters']);
+    expect(portal.requirement?.gates).toEqual([{ kind: 'empty-room' }]);
     // Discouraged, not free: an ordinary two-step walk would cost 2.
     expect(route.cost).toBeGreaterThan(60);
   });
@@ -4796,7 +4814,11 @@ describe('routing through room-script teleports', () => {
    * free, and a level gate that refuses is a refusal whatever else it says.
    */
   it('adds the unreadable price to the gate it can read, and still refuses on it', () => {
-    const both = { say: ['go vortex'], to: '2/1', need: ['minlevel 20', 'nomonsters'] };
+    const both = {
+      say: ['go vortex'],
+      to: '2/1',
+      gates: [{ kind: 'level', min: 20 }, { kind: 'empty-room' }]
+    };
     const passed = portalWorld(both).route('1/1', '2/1', { level: 25 });
     expect(passed.blocked).toBe(false);
     expect(passed.cost).toBeGreaterThan(60);
@@ -4811,14 +4833,19 @@ describe('routing through room-script teleports', () => {
    * 4, the Caves of Chaos, two maps away.
    */
   it('refuses a scripted way through whose quest counter this character fails', () => {
-    const quest = { say: ['go portal'], to: '2/1', need: ['checkability 133 5'] };
+    const quest = {
+      say: ['go portal'],
+      to: '2/1',
+      gates: [{ kind: 'ability', id: 133, atLeast: 5 }]
+    };
     const walked = portalWorld(quest).route('1/1', '2/1', {
       counters: { sums: { 133: 5 }, complete: true }
     });
     expect(walked.blocked).toBe(false);
-    expect(walked.steps.at(-1)!.requirement?.abilities).toEqual([{ id: 133, atLeast: 5 }]);
-    // The realm's own words are still on the step for the chip to state.
-    expect(walked.steps.at(-1)!.requirement?.unread).toEqual(['checkability 133 5']);
+    // The gate is still on the step for the chip to state.
+    expect(walked.steps.at(-1)!.requirement?.gates).toEqual([
+      { kind: 'ability', id: 133, atLeast: 5 }
+    ]);
 
     const refused = portalWorld(quest).route('1/1', '2/1', {
       counters: { sums: { 133: 4 }, complete: true }

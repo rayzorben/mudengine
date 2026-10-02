@@ -3,19 +3,19 @@
  * what it wants, and the levers it pulls. The steps come typed from the one
  * reader (`navigation/textblock.ts`); this keeps a room's view of them.
  *
- * `need` is the conditions in the realm's own words (`minlevel 20`, `price
- * 10000`, `nomonsters`), item ids resolved to names, the narration and the
- * trailing message ids left off: a verb nothing here models is still a thing
- * the room wants. `to` is the `teleport` step, written room first, or the
- * landing of a `cast` step's spell.
+ * `gates` is what a command wants, in the one vocabulary (`gatesOf`); a line
+ * stops at the first step the server cannot run. `to` is the `teleport` step,
+ * written room first, or the landing of a `cast` step's spell.
  */
 import type { ParsedAction } from './instructions';
+import { gatesOf, nameGate, type GateNames } from './navigation/stepGates';
 import {
   itemOf,
   keywordTable,
   phrasedSteps,
   phraseOf,
   readLines,
+  untilUnrun,
   type TbStep,
   type Textblock
 } from './navigation/textblock';
@@ -55,7 +55,7 @@ export function leversInScript(action: string): ParsedAction[] {
   return foldLevers(
     readLines(action).map((line) => ({
       say: (line.fields[0] ?? '').trim(),
-      steps: phrasedSteps(line)
+      steps: untilUnrun(phrasedSteps(line))
     }))
   );
 }
@@ -195,7 +195,7 @@ export function leversAsked(
     if (next.words.length > 0) {
       const phrases = next.words.map((word) => `ask ${who} ${word}`);
       for (const lever of foldLevers(
-        here.lines.map((line) => ({ say: phrases[0]!, steps: line.steps }))
+        here.lines.map((line) => ({ say: phrases[0]!, steps: untilUnrun(line.steps) }))
       )) {
         found.push({ ...lever, say: phrases });
       }
@@ -232,7 +232,7 @@ export function itemsInScripts(blocks: Iterable<Pick<Textblock, 'lines'>>): Set<
  */
 export function parseRoomScript(
   action: string,
-  itemName: (id: number) => string | undefined,
+  names: GateNames,
   spellLanding: (id: number) => string | undefined = () => undefined
 ) {
   const bySteps = new Map<string, RoomCommand>();
@@ -240,7 +240,7 @@ export function parseRoomScript(
   for (const line of readLines(action)) {
     const say = phraseOf(line);
     if (say === null) continue;
-    const steps = phrasedSteps(line);
+    const steps = untilUnrun(phrasedSteps(line));
     const key = steps.map((step) => step.text).join(':');
 
     const held = bySteps.get(key);
@@ -250,85 +250,26 @@ export function parseRoomScript(
     }
 
     const command: RoomCommand = { say: [say] };
-    const need: string[] = [];
+    const summons: number[] = [];
     for (const step of steps) {
-      switch (step.verb) {
-        case 'teleport':
-          command.to = `${step.map}/${step.room}`;
-          break;
-        case 'cast': {
-          /*
-           * `cast <spell>` moves the character as surely as `teleport` does
-           * when the spell carries a landing: the holes down from Dragon's
-           * Teeth Hills are `cast 336` and nothing else (format 29). A
-           * `teleport` step in the same phrase is the realm's own word and
-           * wins. And what it puts on the character either way (format 43):
-           * the dive's `cast 512` is *holding breath*.
-           */
-          const landing = spellLanding(step.spell);
-          if (landing !== undefined && command.to === undefined) command.to = landing;
-          if (step.spell > 0 && command.casts === undefined) command.casts = step.spell;
-          break;
-        }
-        // What the phrase does to the world (`RoomCommand.opens` holds the
-        // lever) or the server talking to itself: not conditions on the player.
-        case 'remoteaction':
-        case 'nothing':
-        case 'show':
-        case 'message':
-        case 'delay':
-        case 'random':
-          break;
-        // Every other step is something the room wants, in its own words.
-        case 'checkitem':
-        case 'failitem':
-        case 'takeitem':
-        case 'giveitem':
-        case 'droproomitem':
-        case 'roomitem':
-        case 'failroomitem':
-        case 'clearitem':
-        case 'addexp':
-        case 'addevil':
-        case 'addlife':
-        case 'checklives':
-        case 'learnspell':
-        case 'checkability':
-        case 'checkabilityexact':
-        case 'testability':
-        case 'failability':
-        case 'removeability':
-        case 'checkspell':
-        case 'failspell':
-        case 'class':
-        case 'race':
-        case 'evilaligned':
-        case 'goodaligned':
-        case 'giveability':
-        case 'setability':
-        case 'addability':
-        case 'givecoins':
-        case 'minlevel':
-        case 'maxlevel':
-        case 'needmonster':
-        case 'nomonsters':
-        case 'monsters':
-        case 'price':
-        case 'summon':
-        case 'testskill':
-        case 'unknown': {
-          const item = itemOf(step);
-          // `clearitem 0` clears every item, and item 0 has no name.
-          need.push(item === null ? step.said : `${step.verb} ${itemName(item) ?? item}`.trim());
-          break;
-        }
-        default: {
-          const never: never = step;
-          return never;
-        }
-      }
+      if (step.verb === 'teleport') command.to = `${step.map}/${step.room}`;
+      if (step.verb === 'summon') summons.push(step.monster);
+      if (step.verb !== 'cast') continue;
+      /*
+       * `cast <spell>` moves the character as surely as `teleport` does when
+       * the spell carries a landing: the holes down from Dragon's Teeth Hills
+       * are `cast 336` and nothing else (format 29). A `teleport` step in the
+       * same phrase is the realm's own word and wins. And what it puts on the
+       * character either way (format 43): the dive's `cast 512` is *holding
+       * breath*.
+       */
+      const landing = spellLanding(step.spell);
+      if (landing !== undefined && command.to === undefined) command.to = landing;
+      if (step.spell > 0 && command.casts === undefined) command.casts = step.spell;
     }
-    if (need.length > 0) command.need = [...new Set(need)];
+    const gates = gatesOf(steps).map((gate) => nameGate(gate, names));
+    if (gates.length > 0) command.gates = gates;
+    if (summons.length > 0) command.summons = summons;
     bySteps.set(key, command);
   }
 

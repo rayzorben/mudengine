@@ -485,6 +485,15 @@ export function phraseOf(line: TbLine): string | null {
   return phrase.length > 0 ? phrase : null;
 }
 
+/**
+ * The steps a run reaches: up to and including the first the server cannot
+ * run, after which nothing on the line happens.
+ */
+export function untilUnrun(steps: readonly TbStep[]): readonly TbStep[] {
+  const stop = steps.findIndex((step) => step.verb === 'unknown');
+  return stop === -1 ? steps : steps.slice(0, stop + 1);
+}
+
 /** The steps a typed phrase runs: every field after the phrase. */
 export function phrasedSteps(line: TbLine): readonly TbStep[] {
   return line.steps.slice(1);

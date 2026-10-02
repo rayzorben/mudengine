@@ -61,12 +61,13 @@
  *   confidently-wrong answer this project refuses everywhere else.
  */
 import { ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
-import type { Gate } from '../../shared/gates';
 import type { Quest, QuestStep, QuestWay } from '../../shared/quests';
 import { abilityPairs } from './buildRealm';
 import { readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
 import { itemsInScripts } from './roomScript';
+import type { Gate } from '../../shared/gates';
+import { gateNames, nameGate, type GateNames } from './navigation/stepGates';
 import {
   itemOf,
   keywordTable,
@@ -476,15 +477,14 @@ function sayOf(owner: Owner | null, words: string[], phrases: string[]): string[
 export function indexQuests(
   source: RealmSource,
   naming: QuestNaming,
-  read: BlocksInReach = blocksInReach(source, naming.spells)
+  read: BlocksInReach = blocksInReach(source, naming.spells),
+  names: GateNames = gateNames(source, naming)
 ): Quest[] {
   const { blocks, reached } = read;
   if (blocks.size === 0) return [];
 
   const counters = chainedCounters(blocks);
   if (counters.size === 0) return [];
-
-  const names = nameTables(source, naming);
 
   /** Every step of every counter, before they are grouped and ordered. */
   const steps = new Map<number, QuestStep[]>();
@@ -827,9 +827,9 @@ function shareRoutes(routes: BlockWay[]): BlockWay & { ways?: BlockWay[] } {
 }
 
 /** One route's gates, items and rewards with the realm's own names on them. */
-function nameWay(way: BlockWay, names: NameTables): QuestWay {
+function nameWay(way: BlockWay, names: GateNames): QuestWay {
   return {
-    needs: way.needs.map((gate) => named(gate, names)),
+    needs: way.needs.map((gate) => nameGate(gate, names)),
     takes: way.takes.map((item) => ({ id: item, ...maybe('name', names.item(item)) })),
     gives: way.gives.map((reward) => namedReward(reward, names))
   };
@@ -844,80 +844,9 @@ function maybe<K extends string, V>(key: K, value: V | undefined): Record<K, V> 
   return value === undefined ? {} : ({ [key]: value } as Record<K, V>);
 }
 
-interface NameTables {
-  item(id: number): string | undefined;
-  spell(id: number): string | undefined;
-  klass(id: number): string | undefined;
-  race(id: number): string | undefined;
-  ability(id: number): string | undefined;
-  monster(id: number): string | undefined;
-  classCount: number;
-  raceCount: number;
-}
-
-function nameTables(source: RealmSource, naming: QuestNaming): NameTables {
-  const items = new Map<number, string>();
-  for (const row of source.table('Items')?.rows ?? []) {
-    const id = number(row['Number']);
-    const name = text(row['Name']).trim();
-    if (id !== null && name.length > 0) items.set(id, name);
-  }
-  const monsters = new Map<number, string>();
-  for (const row of source.table('Monsters')?.rows ?? []) {
-    const id = number(row['Number']);
-    const name = text(row['Name']).trim();
-    if (id !== null && name.length > 0) monsters.set(id, name);
-  }
-  const spells = new Map(naming.spells.map((entry) => [entry.id, entry.n]));
-  const classes = new Map(naming.classes.map((entry) => [entry.id, entry.n]));
-  const races = new Map(naming.races.map((entry) => [entry.id, entry.n]));
-  return {
-    item: (id) => items.get(id),
-    spell: (id) => spells.get(id),
-    klass: (id) => classes.get(id),
-    race: (id) => races.get(id),
-    ability: (id) => ABILITY[id]?.name,
-    monster: (id) => monsters.get(id),
-    classCount: classes.size,
-    raceCount: races.size
-  };
-}
-
-function named(gate: Gate, names: NameTables): Gate {
-  switch (gate.kind) {
-    case 'carry':
-    case 'lack':
-    case 'floor':
-      return { ...gate, ...maybe('name', names.item(gate.item)) };
-    case 'monster-here':
-      return { ...gate, ...maybe('name', names.monster(gate.monster)) };
-    case 'ability':
-      return { ...gate, ...maybe('name', names.ability(gate.id)) };
-    case 'spell-off':
-      return { ...gate, ...maybe('name', names.spell(gate.spell)) };
-    case 'class':
-      return { ...gate, ...maybe('name', names.klass(gate.id)) };
-    case 'race':
-      return { ...gate, ...maybe('name', names.race(gate.id)) };
-    case 'level':
-    case 'standing':
-    case 'alignment':
-    case 'lives':
-    case 'copper':
-    case 'roll':
-    case 'empty-room':
-    case 'occupied':
-      return gate;
-    default: {
-      const never: never = gate;
-      return never;
-    }
-  }
-}
-
 function namedReward(
   reward: ReturnType<typeof readQuestScript>['gives'][number],
-  names: NameTables
+  names: GateNames
 ): ReturnType<typeof readQuestScript>['gives'][number] {
   switch (reward.kind) {
     case 'item':

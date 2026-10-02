@@ -13,6 +13,7 @@ import type { Quest } from '../../shared/quests';
 import { blocksInReach, indexQuests, itemsInReach, landingsOfItems } from './indexQuests';
 import type { BuiltItemFrom, ItemLanding } from './indexQuests';
 import { indexSpellHazards } from './spellHazard';
+import { gateNames } from './navigation/stepGates';
 import { readTextblocks } from './navigation/textblock';
 import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
@@ -104,8 +105,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 50 | **A shelf that sells, and one that only buys.** `Shops.Max-n`, `Amount-n` and `%-n` were never read, so a counter that only buys was offered as a place to buy: every Recycler Shop (all type 0, every `Max` zero) and the idle slots of 39 more in MajorMUD's data and 100 more in Paradigm's. `Shop.FillShop` stocks a slot only where `RegenAmount` is above zero and `Regen` refills it by chance, so a slot with any of the three at zero holds only what a player sold it; a gang house shop never refills and a deed shop always does (`slotRestocks`). `BuiltShop.idle` names the items on no restocking slot; `WorldShopItem.restocks` is false for them, buying looks only at the rest and selling at every counter |
  * | 51 | **One reader of the text blocks** (`navigation/textblock.ts`). The room commands, the quest steps, the levers, the item landings and the room spells each split `TBInfo` themselves and disagreed with the server. Two corrections in the output: `roomitem` is the server checking that an item already lies in the room, never a place to get one, so scenery such as the huge broken willow and the frozen hydra loses an invented source and each dragon carving names only the fang that drops it (`droproomitem` is the step that puts one down); and a room spell whose chain holds `takeitem`, `roomitem` or the server's no-op `check` is no longer unread on that account |
  * | 52 | **One gate vocabulary** (`src/shared/gates.ts`). A quest step's conditions are the gates an exit's instruction states and the router judges, so `QuestGate` is gone: `item` is `carry`, `item-absent` is `lack`, `ability-absent` is an ability gate marked `absent`, `skill` is `roll`, `price` is `copper`, and `checkspell`/`failspell` are `spell-off`, the server failing both while the spell is on (read before as being *under* it). A step's room checks are kept: an item lying in the room, no monsters, a named monster present |
+ * | 53 | **A room's commands ship their gates typed** (`RoomCommand.gates`, by the one `gatesOf`), and a portal's conditions are judged by the router as any exit's: a script's level, class, race, alignment, ability, carried item or price walls the way when it shuts, and what only standing there settles (an empty room, an item on the floor, a roll) is priced, never pruned. `need` strings, `Requirement.unread` and the runtime string readers (`readAbilityGate`, the summons pattern) are gone. A line stops at a step the server cannot run, so `17/10747`'s misspelt `nononsters` lever no longer opens anything. What a command summons is `summons` |
  */
-export const REALM_FORMAT = 52;
+export const REALM_FORMAT = 53;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1519,6 +1521,10 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   const items = indexItems(source, neededItems, fromScripts.from, itemLandings);
   const named = new Map(items.map((item) => [item.id, item.n]));
   const mobs = indexMobs(source, named);
+  // Every row a gate names, said by its name: a room's commands and the quests.
+  const races = indexRaces(source);
+  const classes = indexClasses(source);
+  const names = gateNames(source, { classes, races, spells });
 
   /*
    * And now the rooms, with the words each one answers attached — format 13.
@@ -1578,13 +1584,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   for (const { room, cmd } of drafts) {
     const action = cmd === null ? undefined : blocks.get(cmd)?.action;
     const answers =
-      action === undefined
-        ? []
-        : parseRoomScript(
-            action,
-            (id) => named.get(id),
-            (id) => landings.get(id)
-          );
+      action === undefined ? [] : parseRoomScript(action, names, (id) => landings.get(id));
     if (answers.length > 0) scripted += 1;
 
     const here = `${room['m'] as number}/${room['r'] as number}`;
@@ -1659,8 +1659,6 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     lines.push(JSON.stringify(room));
   }
 
-  const races = indexRaces(source);
-  const classes = indexClasses(source);
   const itemNames = indexItemNames(source);
   const build = indexBuild(source);
   const family = familyOfBuild(build);
@@ -1674,7 +1672,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * second opinion about the same rows. The walk itself was made before the
    * item index, which needs it too — see `blocks` above.
    */
-  const quests = indexQuests(source, { classes, races, spells }, reach);
+  const quests = indexQuests(source, { classes, races, spells }, reach, names);
 
   return {
     lines,
