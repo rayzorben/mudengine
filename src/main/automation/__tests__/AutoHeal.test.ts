@@ -17,6 +17,7 @@ const spells = (over: Partial<SpellsConfig> = {}): SpellsConfig => ({
   heal: 'minor healing',
   healBelow: 0.5,
   minMana: 0,
+  healMinMana: 0,
   ...over
 });
 const member = (name: string, health: number | null): PartyMember => ({
@@ -94,9 +95,15 @@ describe('healing by a number', () => {
   });
 
   it('keeps the mana floor', () => {
-    make(spells({ minMana: 0.5 })).onCharacter(state({ hp: 10, mana: 10 }));
+    make(spells({ healMinMana: 0.5 })).onCharacter(state({ hp: 10, mana: 10 }));
     drain();
     expect(sent).toEqual([]);
+  });
+
+  it("heals under the attack spell's floor when its own is lower", () => {
+    make(spells({ minMana: 0.5, healMinMana: 0.05 })).onCharacter(state({ hp: 10, mana: 10 }));
+    drain();
+    expect(sent).toEqual(['minor healing']);
   });
 
   it('heals a listed party member, and never one with no listing', () => {
@@ -498,7 +505,7 @@ describe('a member asking for a heal', () => {
   });
 
   it('lets a request lapse that nothing could answer in time', () => {
-    const auto = healer({ minMana: 0.5 });
+    const auto = healer({ healMinMana: 0.5 });
     const dry = state({ mana: 10 }, [member('Yang', 0.95)]);
     auto.request('Yang', dry);
     auto.onCharacter(dry);

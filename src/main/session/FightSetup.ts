@@ -160,6 +160,7 @@ export class FightSetup {
       spells.heal,
       spells.healTo,
       spells.minMana,
+      spells.healMinMana,
       healFloor(spells, true),
       spells.attack,
       spells.autoChoose,
@@ -195,7 +196,7 @@ export class FightSetup {
       to: spells.healTo,
       restores: scaledPower(realm, state.progress.level ?? 0),
       cost,
-      minMana: spells.minMana
+      minMana: spells.healMinMana
     };
   }
 

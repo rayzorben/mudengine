@@ -275,6 +275,7 @@ export interface GlobalDraft {
       /** Derive the heal, single or party-wide, from the book. See `SpellsConfig`. */
       autoChooseHeal: boolean;
       minMana: number;
+      healMinMana: number;
       cures: CuresDraft;
       blessings: BlessingDraft[];
       notifyPartyOnWearOff: boolean;
@@ -587,6 +588,7 @@ export interface ProfileDraft {
     /** Derive the heal, single or party-wide, from the book. See `SpellsConfig`. */
     autoChooseHeal: boolean;
     minMana: number;
+    healMinMana: number;
     cures: CuresDraft;
     blessings: BlessingDraft[];
     notifyPartyOnWearOff: boolean;
@@ -1153,6 +1155,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       healParty: spells['healParty'] === true,
       autoChooseHeal: spells['autoChooseHeal'] === true,
       minMana: unit(spells['minMana']),
+      healMinMana: unit(spells['healMinMana']),
       cures: asCures(spells['cures']),
       blessings: asBlessings(spells['blessings']),
       notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
@@ -1355,6 +1358,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         healParty: spells['healParty'] === true,
         autoChooseHeal: spells['autoChooseHeal'] === true,
         minMana: unit(spells['minMana']),
+        healMinMana: unit(spells['healMinMana']),
         cures: asCures(spells['cures']),
         blessings: asBlessings(spells['blessings']),
         notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,

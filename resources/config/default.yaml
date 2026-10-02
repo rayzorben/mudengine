@@ -1129,7 +1129,7 @@ automation:
   # your own configuration. The third, @heal, is a member asking for one party
   # heal: nothing at all while `spells.healParty` is off, and while it is on,
   # one cast per request, no oftener than the heal's cooldown and never below
-  # `minMana`. Deny it by name to refuse one member.
+  # `healMinMana`. Deny it by name to refuse one member.
   #
   # @where, @status, @wait and @ok were on this list and were taken off. @where
   # names the room and its exits and @status names the walk's destination and
@@ -1619,7 +1619,7 @@ automation:
 
     # Heal if below -- MegaMUD's Health tab, kept beside the attack spell
     # because it is the same mechanism: one cast, chosen by a number, under
-    # the same `minMana` floor.
+    # a mana floor of its own, `healMinMana`.
     #
     # Two spells, because the realm distinguishes them. `Spells.Targets` marks
     # `way of the swan` castable on the caster alone and `minor healing`
@@ -1692,8 +1692,17 @@ automation:
     # Do not cast below this fraction of maximum mana. 0 always casts.
     #
     # The setting MegaMUD's own documentation warns about most: set too high and
-    # the character silently never casts, and reads as broken.
+    # the character silently never casts, and reads as broken. The attack
+    # spells and the cures keep this floor; the heals keep `healMinMana`.
     minMana: 0.15
+
+    # Do not heal below this fraction of maximum mana. 0 always heals.
+    #
+    # Apart from `minMana` because the two usually want different numbers: a
+    # healer keeps a little back for the round spell and spends the rest on
+    # mending, and one floor for both either holds the heals back or empties
+    # the pool on attacks. A member's @heal stops here too.
+    healMinMana: 0.15
 
     # Curative spells, one per condition the client can see -- each is a pair
     # of sentences in the capture corpus, on and off: `You are blind.` /

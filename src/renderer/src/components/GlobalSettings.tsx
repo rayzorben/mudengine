@@ -1302,7 +1302,7 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="spells-heal">
               <legend>{t('settings.spells.healLegend')}</legend>
               <HealFields
-                bands={draft.ui.vitals.hp}
+                bands={draft.ui.vitals}
                 namePrefix="global-"
                 onChange={(field, value) =>
                   automation({
@@ -1321,7 +1321,8 @@ export default function GlobalSettings({
                   ...draft.automation.spells,
                   healBelow: percent(draft.automation.spells.healBelow),
                   healBelowInCombat: percent(draft.automation.spells.healBelowInCombat),
-                  healTo: percent(draft.automation.spells.healTo)
+                  healTo: percent(draft.automation.spells.healTo),
+                  healMinMana: percent(draft.automation.spells.healMinMana)
                 }}
               />
               <CheckField

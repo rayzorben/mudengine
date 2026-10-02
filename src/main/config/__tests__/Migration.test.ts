@@ -6580,3 +6580,56 @@ describe('buying a light is stated', () => {
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
   });
 });
+
+describe('the heal kept its own mana floor', () => {
+  const said: string[] = [];
+  let dir: string;
+  let home: Home;
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-heal-floor-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it("copies each file's minMana after it, once, and leaves a file stating neither alone", () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  spells:\n    minMana: 0.2\n    healParty: false\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  spells:\n    heal: mend\n', 'utf8');
+    const yang = home.profile('yang').file;
+    fs.mkdirSync(path.dirname(yang), { recursive: true });
+    fs.writeFileSync(yang, 'name: Yang\nautomation:\n  spells:\n    minMana: 0.4\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const spells = (parse(text).automation as Record<string, Record<string, unknown>>)['spells']!;
+    const keys = Object.keys(spells);
+    expect(keys[keys.indexOf('minMana') + 1]).toBe('healMinMana');
+    expect(spells['healMinMana']).toBe(0.2);
+    expect(text).toContain('# Do not heal below this fraction of maximum mana.');
+    expect(fs.readFileSync(soul, 'utf8')).not.toContain('healMinMana');
+    const own = (parse(fs.readFileSync(yang, 'utf8')).automation as Record<string, unknown>)[
+      'spells'
+    ] as Record<string, unknown>;
+    expect(own['healMinMana']).toBe(0.4);
+    expect(
+      notesOf(said, 'notices.migration.healMinMana.one', 'notices.migration.healMinMana.many')
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
