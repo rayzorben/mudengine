@@ -97,6 +97,7 @@ import { QuestWatch } from './QuestWatch';
 import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
+import { trainPlanner } from './trainPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
@@ -1184,19 +1185,18 @@ export class SessionManager {
       automation.train,
       automation.enabled,
       this.queue,
-      {
-        here: () => roomAddress(this.tracker.current.room),
-        trainers: (level) => this.errands.trainers(level),
-        routeTo: (room) => this.errands.planFromHere(room),
-        walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
-        moveInFlight: () => this.tracker.pendingMoves > 0,
-        walking: () => this.walker.walking,
-        busy: () =>
-          this.travel.isRetreating() || this.travel.retreatArmed || this.travel.escapeUnanswered,
-        looping: () => this.loops.progress.status === 'running',
-        hold: () => this.loops.noteErrand(),
+      trainPlanner({
+        modules: () => ({
+          tracker: this.tracker,
+          errands: this.errands,
+          walker: this.walker,
+          loops: this.loops,
+          travel: this.travel,
+          itemErrand: this.itemErrand,
+          world: this.world
+        }),
         release: releaseErrand
-      },
+      }),
       reports
     );
     /*

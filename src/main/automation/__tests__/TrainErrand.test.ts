@@ -72,15 +72,24 @@ let here: string | null;
 let walked: Route[];
 let held: number;
 let released: number;
+let fetched: Array<{ items: string[]; then: Route }>;
+let fetchingNow: boolean;
 
 const planner = (over: Partial<TrainPlanner> = {}): TrainPlanner => ({
   here: () => here,
   trainers: () => [TITAN, AMAZON],
   routeTo: () => ROUTE,
+  keyedRouteTo: () => null,
   walk: (route) => {
     walked.push(route);
     return null;
   },
+  fetch: (items, then) => {
+    fetched.push({ items: items.map((item) => item.name), then });
+    return null;
+  },
+  fetching: () => fetchingNow,
+  prize: () => null,
   moveInFlight: () => false,
   walking: () => false,
   busy: () => false,
@@ -98,6 +107,8 @@ beforeEach(() => {
   walked = [];
   held = 0;
   released = 0;
+  fetched = [];
+  fetchingNow = false;
   here = '8/915';
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
 });
@@ -596,6 +607,141 @@ describe('going to collect the level', () => {
     errand.onCharacter(owed());
     expect(notices).toContain(t('automation.train.refusalUnanswered', { trainer: TITAN.name }));
     expect(decisions.at(-1)?.acted).toBe(false);
+  });
+});
+
+/*
+ * 2026-10-01: the Super Mystic Trainer in 1/2240 is behind a Large Chamber
+ * door whose guardian drops the key, and the trip fell back to a trainer at
+ * 45,445 copper. The key is fetched on the way.
+ */
+describe('a trainer behind a keyed door', () => {
+  const BLOCKED = { steps: [], cost: 0, blocked: true, reason: 'locked' } as unknown as Route;
+  const KEYED = {
+    ...ROUTE,
+    needs: [{ id: 338, name: 'iron key' }]
+  } as Route;
+  const keyed = (over: Partial<TrainPlanner> = {}): TrainErrand =>
+    make(train(), {
+      trainers: () => [TITAN],
+      routeTo: () => BLOCKED,
+      keyedRouteTo: () => KEYED,
+      ...over
+    });
+
+  it('hands the key to the item errand, with the walk to the trainer owed', () => {
+    keyed().onCharacter(owed());
+    expect(fetched).toEqual([{ items: ['iron key'], then: KEYED }]);
+    expect(walked).toEqual([]);
+    expect(notices).toContain(
+      t('automation.train.goingKeyed', {
+        room: TITAN.roomName,
+        items: 'iron key',
+        cost: TITAN.cost.toLocaleString()
+      })
+    );
+  });
+
+  it('counts the trainer as reached when the levels ahead are priced', () => {
+    const [ahead] = keyed().trainersAhead([30], 'k');
+    expect(ahead).toMatchObject({ trainer: TITAN, reachable: true });
+  });
+
+  it('lets the fetch walk round the lair, then trains on arrival', () => {
+    const errand = keyed();
+    errand.onCharacter(owed());
+    fetchingNow = true;
+    here = '1/2224';
+    errand.onWalkEnded(false, 'lap leg', owed());
+    errand.onCharacter(owed());
+    // Still the trip's: the lap leg ending is the fetch's own.
+    expect(errand.busy).toBe(true);
+    expect(released).toBe(0);
+    fetchingNow = false;
+    here = '3/542';
+    errand.onWalkEnded(true, null, owed());
+    drain();
+    expect(sent).toEqual(['train']);
+  });
+
+  it('ends the trip out loud when the fetch ends without getting there', () => {
+    const errand = keyed();
+    errand.onCharacter(owed());
+    fetchingNow = true;
+    errand.onCharacter(owed());
+    expect(errand.busy).toBe(true);
+    fetchingNow = false;
+    errand.onCharacter(owed());
+    expect(errand.busy).toBe(false);
+    expect(notices).toContain(
+      t('automation.train.refusalNotReached', {
+        room: TITAN.roomName,
+        why: t('automation.train.whyFetch')
+      })
+    );
+  });
+
+  it('says the walk stopped, not the key, when the key is in the pack', () => {
+    const errand = keyed();
+    errand.onCharacter(owed());
+    const base = owed();
+    const holding: CharacterState = {
+      ...base,
+      inventory: {
+        ...base.inventory,
+        items: [{ name: 'iron key' } as CharacterState['inventory']['items'][number]]
+      }
+    };
+    errand.onCharacter(holding);
+    expect(notices).toContain(
+      t('automation.train.refusalNotReached', {
+        room: TITAN.roomName,
+        why: t('automation.train.whyStopped')
+      })
+    );
+  });
+
+  it('is out of reach when no key the realm names opens the way', () => {
+    keyed({ keyedRouteTo: () => null }).onCharacter(owed());
+    expect(fetched).toEqual([]);
+    expect(notices).toContain(
+      t('automation.train.refusalUnreachable', { level: 30, skipped: skippedOne(TITAN, 'locked') })
+    );
+  });
+});
+
+/* Every class's Super trainer tomb puts out that class's reward: clawed gloves for a Mystic. */
+describe("the trainer's reward for the class", () => {
+  const inTheRoom = (floor: string[]): CharacterState => {
+    const base = owed();
+    return {
+      ...base,
+      room: {
+        ...base.room,
+        map: 3,
+        number: 542,
+        name: 'Training Area',
+        items: floor.map((name) => ({ name }) as CharacterState['room']['items'][number])
+      }
+    };
+  };
+
+  it('is picked up before the train where the floor shows it', () => {
+    here = '3/542';
+    make(train(), { prize: () => ({ name: 'clawed gloves' }) }).onCharacter(
+      inTheRoom(['clawed gloves'])
+    );
+    drain();
+    expect(sent).toEqual(['get clawed gloves', 'train']);
+    expect(notices).toContain(t('automation.train.takingPrize', { item: 'clawed gloves' }));
+  });
+
+  it('is said to be gone where the floor does not show it, and the train still goes', () => {
+    here = '3/542';
+    make(train(), { prize: () => ({ name: 'clawed gloves' }) }).onCharacter(inTheRoom([]));
+    drain();
+    expect(sent).toEqual(['train']);
+    expect(notices).toContain(t('automation.train.prizeGone', { item: 'clawed gloves' }));
   });
 });
 

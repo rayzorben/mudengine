@@ -21,8 +21,15 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
 import { REFRESH } from '../../shared/staleness';
+import { carriedCount } from '../../shared/supplies';
 import { bestTrainer } from '../../shared/training';
-import { roomId, type RoomId, type Route, type TrainerChoice } from '../../shared/world';
+import {
+  nameAnswersTo,
+  roomId,
+  type RoomId,
+  type Route,
+  type TrainerChoice
+} from '../../shared/world';
 import type { SessionModule } from './Module';
 
 export interface TrainPlanner {
@@ -32,8 +39,22 @@ export interface TrainPlanner {
   trainers(level?: number): TrainerChoice[];
   /** A route to a room, or the reason there is none. */
   routeTo(room: RoomId): Route | string;
+  /**
+   * The way to a room no plain route reaches through a door whose key the
+   * realm says where to get (`Route.unlocks`, with its `needs`), or null.
+   */
+  keyedRouteTo(room: RoomId): Route | null;
   /** Hands the route to the walker as a leg. Returns its refusal, or null. */
   walk(route: Route): string | null;
+  /** Gets each item (`ItemErrand.collect`), then walks `then`. Returns its refusal, or null. */
+  fetch(items: ReadonlyArray<{ id: number; name: string }>, then: Route): string | null;
+  /** Whether that fetch is still under way. */
+  fetching(): boolean;
+  /**
+   * What this room puts out for this character's class that the pack does not
+   * hold (`trainerPrize`), or null.
+   */
+  prize(room: RoomId): { name: string } | null;
   /** A move outstanding, a walk running, an escape in flight: not now. */
   moveInFlight(): boolean;
   walking(): boolean;
@@ -51,8 +72,15 @@ export interface TrainEvents {
   decided?(decision: SafetyDecision): void;
 }
 
-/** How to reach a trainer: standing in its room, a route, or the reason there is none. */
-type Way = { kind: 'here' } | { kind: 'route'; route: Route } | { kind: 'none'; why: string };
+/**
+ * How to reach a trainer: standing in its room, a route, a route through a
+ * door whose key is fetched on the way (`needs`), or the reason there is none.
+ */
+type Way =
+  | { kind: 'here' }
+  | { kind: 'route'; route: Route }
+  | { kind: 'keyed'; route: Route; needs: ReadonlyArray<{ id: number; name: string }> }
+  | { kind: 'none'; why: string };
 
 /** A trainer some way reaches, with the walk there (none where the character stands in it). */
 interface Reached {
@@ -70,7 +98,16 @@ export interface TrainerAhead {
 
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'walking'; to: RoomId; trainer: TrainerChoice }
+  /**
+   * `fetching`: the keys the item errand is getting, which has the character
+   * until they are in the pack and the walk on has begun; null on a plain walk.
+   */
+  | {
+      kind: 'walking';
+      to: RoomId;
+      trainer: TrainerChoice;
+      fetching: ReadonlyArray<{ id: number; name: string }> | null;
+    }
   /** `sentAt` null while the `train` waits in the queue: the screen's hold can still drop it. */
   | { kind: 'training'; trainer: TrainerChoice; queuedAt: number; sentAt: number | null };
 
@@ -225,6 +262,10 @@ export class TrainErrand implements SessionModule {
       this.settle(state);
       return;
     }
+    if (this.phase.kind === 'walking' && this.phase.fetching !== null) {
+      this.watchFetch(this.phase, this.phase.fetching, state);
+      return;
+    }
     if (this.phase.kind !== 'idle') return;
 
     const level = state.progress.level;
@@ -358,7 +399,7 @@ export class TrainErrand implements SessionModule {
         reached.push({ trainer: candidate, way, route: { cost: 0, steps: [] } });
         continue;
       }
-      if (way.kind === 'route') {
+      if (way.kind === 'route' || way.kind === 'keyed') {
         reached.push({ trainer: candidate, way, route: way.route });
         continue;
       }
@@ -431,10 +472,19 @@ export class TrainErrand implements SessionModule {
     if (this.planner.here() === to) return { kind: 'here' };
     const route = this.planner.routeTo(to);
     if (typeof route === 'string') return { kind: 'none', why: route };
-    if (route.blocked) {
-      return { kind: 'none', why: route.reason ?? t('automation.walk.refusalNoRoute') };
+    if (!route.blocked) return { kind: 'route', route };
+    /*
+     * A door whose key a monster on the way drops is walked through once the
+     * item errand has fetched the key (2026-10-01: the Super Mystic Trainer in 1/2240 is behind a
+     * Large Chamber door whose guardian drops the key, and the trip fell back
+     * to a trainer at 45,445 copper). The item errand kills the guardian,
+     * takes the key and walks on.
+     */
+    const keyed = this.planner.keyedRouteTo(to);
+    if (keyed !== null && !keyed.blocked && (keyed.needs ?? []).length > 0) {
+      return { kind: 'keyed', route: keyed, needs: keyed.needs ?? [] };
     }
-    return { kind: 'route', route };
+    return { kind: 'none', why: route.reason ?? t('automation.walk.refusalNoRoute') };
   }
 
   /** The purse, then the walk or the verb. One level is one attempt from here on. */
@@ -468,7 +518,7 @@ export class TrainErrand implements SessionModule {
 
     this.attempted = level;
     if (way.kind === 'here') {
-      this.send(chosen);
+      this.arrive(chosen, state);
       return;
     }
     if (way.kind === 'none') {
@@ -478,6 +528,24 @@ export class TrainErrand implements SessionModule {
       return;
     }
     const { route } = way;
+    const to = roomId(chosen.map, chosen.room);
+    if (way.kind === 'keyed') {
+      const items = way.needs.map((item) => item.name).join(', ');
+      this.events.notice?.(
+        t('automation.train.goingKeyed', {
+          room: chosen.roomName,
+          items,
+          cost: chosen.cost.toLocaleString()
+        })
+      );
+      const refused = this.planner.fetch(way.needs, route);
+      if (refused !== null) {
+        this.refuse(t('automation.train.refusalNoRoute', { room: chosen.roomName, why: refused }));
+        return;
+      }
+      this.phase = { kind: 'walking', to, trainer: chosen, fetching: way.needs };
+      return;
+    }
     this.events.notice?.(
       t('automation.train.going', {
         room: chosen.roomName,
@@ -491,7 +559,30 @@ export class TrainErrand implements SessionModule {
       return;
     }
     if (this.planner.looping()) this.planner.hold();
-    this.phase = { kind: 'walking', to: roomId(chosen.map, chosen.room), trainer: chosen };
+    this.phase = { kind: 'walking', to, trainer: chosen, fetching: null };
+  }
+
+  /**
+   * The key fetch has ended without the walk to the trainer arriving: the
+   * item errand said why, so the trip ends with it, saying which half failed:
+   * a key not in the pack, or the walk on after it stopping short.
+   */
+  private watchFetch(
+    phase: Extract<Phase, { kind: 'walking' }>,
+    keys: ReadonlyArray<{ name: string }>,
+    state: CharacterState
+  ): void {
+    if (this.planner.fetching() || this.planner.walking()) return;
+    if (this.planner.here() === phase.to) return;
+    const fetched = keys.every((key) => carriedCount(state, key.name) > 0);
+    this.phase = { kind: 'idle' };
+    this.planner.release();
+    this.refuse(
+      t('automation.train.refusalNotReached', {
+        room: phase.trainer.roomName,
+        why: fetched ? t('automation.train.whyStopped') : t('automation.train.whyFetch')
+      })
+    );
   }
 
   /** Asks `exp` once per level, for the figure the trip is decided on. */
@@ -512,9 +603,11 @@ export class TrainErrand implements SessionModule {
   }
 
   /** The walker's report: the errand's own leg ended, or somebody else's walk did. */
-  onWalkEnded(arrived: boolean, reason: string | null, _state: CharacterState): void {
+  onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     if (this.phase.kind !== 'walking') return;
-    const { to, trainer } = this.phase;
+    const { to, trainer, fetching } = this.phase;
+    // The fetch's own walks (the lap round the guardian's lair) end on the way.
+    if (fetching !== null && this.planner.here() !== to) return;
     if (!arrived || this.planner.here() !== to) {
       this.phase = { kind: 'idle' };
       this.planner.release();
@@ -525,6 +618,31 @@ export class TrainErrand implements SessionModule {
         })
       );
       return;
+    }
+    this.arrive(trainer, state);
+  }
+
+  /**
+   * In the trainer's room: the reward it puts out for this class first, where
+   * the floor shows it, then the `train`. Every class's Super trainer tomb
+   * places one, and the user asked for it to be collected on the trip
+   * (2026-10-01).
+   */
+  private arrive(trainer: TrainerChoice, state: CharacterState): void {
+    const here = this.planner.here();
+    const prize = here === null ? null : this.planner.prize(here);
+    if (prize !== null) {
+      if (state.room.items.some((item) => nameAnswersTo(item.name, prize.name))) {
+        this.events.notice?.(t('automation.train.takingPrize', { item: prize.name }));
+        this.queue.enqueue({
+          command: `get ${prize.name}`,
+          priority: 'probe',
+          coalesceKey: 'train:prize',
+          reason: t('automation.train.reasonPrize', { item: prize.name })
+        });
+      } else {
+        this.events.notice?.(t('automation.train.prizeGone', { item: prize.name }));
+      }
     }
     this.send(trainer);
   }
