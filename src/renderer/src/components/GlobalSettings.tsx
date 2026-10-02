@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import Advanced from './Advanced';
 import AlertList from './AlertList';
-import BlessingList from './BlessingList';
+import BlessingFields from './BlessingFields';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
 import HuntingFields from './HuntingFields';
@@ -1350,33 +1350,16 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="spells-blessings">
               <legend>{t('settings.spells.blessingsLegend')}</legend>
               <p className="settings-note">{t('settings.spells.blessingsNote')}</p>
-              <CheckField
-                checked={draft.automation.spells.autoBless}
-                hint={t('settings.spells.autoBlessHint')}
-                label={t('settings.spells.autoBlessLabel')}
-                name="global-auto-bless"
-                onChange={(value) =>
-                  automation({ spells: { ...draft.automation.spells, autoBless: value } })
-                }
-              />
-              <BlessingList
-                blessings={draft.automation.spells.blessings}
-                namePrefix="global-blessing"
-                onChange={(blessings) =>
+              <BlessingFields
+                namePrefix="global-"
+                onBlessings={(blessings) =>
                   automation({ spells: { ...draft.automation.spells, blessings } })
                 }
-                spells={realmSpells}
-              />
-              <CheckField
-                checked={draft.automation.spells.notifyPartyOnWearOff}
-                hint={t('settings.spells.notifyWearOffHint')}
-                label={t('settings.spells.notifyWearOffLabel')}
-                name="global-notify-wear-off"
-                onChange={(value) =>
-                  automation({
-                    spells: { ...draft.automation.spells, notifyPartyOnWearOff: value }
-                  })
+                onToggle={(field, value) =>
+                  automation({ spells: { ...draft.automation.spells, [field]: value } })
                 }
+                spells={realmSpells}
+                values={draft.automation.spells}
               />
             </fieldset>
           </SettingsSection>

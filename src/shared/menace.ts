@@ -285,7 +285,8 @@ export function landsOn(accuracy: number, player: MenacePlayer): number {
  * (`Mob.DoCombat`, `ActionFigure.GetPartyRankACBonus`): 5 in the middle rank
  * of a party and 10 at the back, and the `Prev` and `Prgd` sums of the effects
  * up — each buff's realm row, its stated figure or the low end of its power at
- * this level; a buff that could be several spells counts the least of them.
+ * this level, its rows summed as `Ability.Sum` sums them (`abilityValueAt`); a
+ * buff that could be several spells counts the least of them.
  * Items and the class row are not read, so this is a floor.
  */
 export function protectionOf(
@@ -299,9 +300,7 @@ export function protectionOf(
     state.buffs.reduce((total, buff: ActiveBuff) => {
       const each = [buff.spell, ...(buff.candidates ?? [])].map((name) => {
         const spell = spellOf(name);
-        const row = spell?.abilities?.find(([id]) => id === ability);
-        if (spell === null || spell === undefined || row === undefined) return 0;
-        return row[1] !== 0 ? row[1] : scaledPower(spell, level)[0];
+        return spell === null ? 0 : (abilityValueAt(spell, ability, level) ?? 0);
       });
       return total + Math.max(0, Math.min(...each));
     }, 0);
@@ -315,6 +314,22 @@ export function protectionOf(
     versusEvil: sum(PROTECTION_ABILITY.evil),
     versusGood: sum(PROTECTION_ABILITY.good)
   };
+}
+
+/**
+ * What one of a spell's abilities is worth at a cast level, or null where the
+ * spell carries none: the row's stated figure, or, where the row states 0,
+ * the low end of the spell's power at that level (`scaledPower`), as
+ * `Spell.RollAndApplySpellAbilities` fills a zero from the rolled power.
+ * Several rows of one ability are summed, as `Ability.Sum` is.
+ */
+export function abilityValueAt(spell: WorldSpell, ability: number, level: number): number | null {
+  const rows = (spell.abilities ?? []).filter(([id]) => id === ability);
+  if (rows.length === 0) return null;
+  return rows.reduce(
+    (total, [, value]) => total + (value !== 0 ? value : scaledPower(spell, level)[0]),
+    0
+  );
 }
 
 /**

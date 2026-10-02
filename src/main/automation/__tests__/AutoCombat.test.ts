@@ -1897,6 +1897,7 @@ describe('casting in a fight', () => {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
+      autoChooseBlessings: false,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -1953,6 +1954,7 @@ describe('casting in a fight', () => {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
+      autoChooseBlessings: false,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -1990,6 +1992,7 @@ describe('casting in a fight', () => {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
+      autoChooseBlessings: false,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -2026,6 +2029,7 @@ describe('casting in a fight', () => {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
+      autoChooseBlessings: false,
       autoChoose: false
     });
     auto.onCharacter(
@@ -2070,6 +2074,7 @@ describe('casting in a fight', () => {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
+      autoChooseBlessings: false,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -2120,6 +2125,7 @@ describe('casting in a fight', () => {
       blessings: [],
       notifyPartyOnWearOff: false,
       autoBless: true,
+      autoChooseBlessings: false,
       autoChoose: false,
       ...over
     });

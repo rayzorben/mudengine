@@ -42,6 +42,7 @@ import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import type { RemoteGrant, RemoteName } from '@shared/remotes';
 import { fractionOf, percentOf } from './form';
 import type { AttackField, AttackFieldsProps } from '../components/AttackFields';
+import type { BlessingFieldsProps, BlessingSwitch } from '../components/BlessingFields';
 import type { DrainField, DrainFieldsProps } from '../components/DrainFields';
 import type { HealField, HealFieldsProps, HealSwitch } from '../components/HealFields';
 import { sameJson } from './history';
@@ -229,6 +230,7 @@ export interface CharacterFields {
   spellBlessings: BlessingDraft[];
   spellNotifyWearOff: boolean;
   spellAutoBless: boolean;
+  spellAutoChooseBlessings: boolean;
   spellInvokeItems: boolean;
   /** Movement — what a route may do on the way. */
   openDoors: boolean;
@@ -384,6 +386,21 @@ export function drainValuesOf(form: CharacterFields): DrainFieldsProps['values']
   return valuesOf(DRAIN_KEYS, form) as DrainFieldsProps['values'];
 }
 
+/** Where each of `BlessingFields`' switches lives on this form. */
+export const BLESSING_KEYS = {
+  autoBless: 'spellAutoBless',
+  autoChooseBlessings: 'spellAutoChooseBlessings',
+  notifyPartyOnWearOff: 'spellNotifyWearOff'
+} as const satisfies Record<BlessingSwitch, keyof CharacterFields>;
+
+/** The form's blessings, in the shape `BlessingFields` draws. */
+export function blessingValuesOf(form: CharacterFields): BlessingFieldsProps['values'] {
+  return {
+    ...(valuesOf(BLESSING_KEYS, form) as Record<BlessingSwitch, boolean>),
+    blessings: form.spellBlessings
+  };
+}
+
 /** A shared field set's values, read off the form: complete, since each key table satisfies a record over its fields. */
 function valuesOf(
   keys: Readonly<Record<string, keyof CharacterFields>>,
@@ -479,6 +496,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     spellBlessings: entry.spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: entry.spells.notifyPartyOnWearOff,
     spellAutoBless: entry.spells.autoBless,
+    spellAutoChooseBlessings: entry.spells.autoChooseBlessings,
     spellInvokeItems: entry.spells.invokeItems,
     openDoors: entry.movement.openDoors,
     openTries: String(entry.movement.openTries),
@@ -664,6 +682,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       })),
       notifyPartyOnWearOff: form.spellNotifyWearOff,
       autoBless: form.spellAutoBless,
+      autoChooseBlessings: form.spellAutoChooseBlessings,
       invokeItems: form.spellInvokeItems
     },
     movement: {
@@ -954,6 +973,7 @@ export function emptyForm(
     spellBlessings: spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: spells.notifyPartyOnWearOff,
     spellAutoBless: spells.autoBless,
+    spellAutoChooseBlessings: spells.autoChooseBlessings,
     spellInvokeItems: spells.invokeItems,
     openDoors: movement.openDoors,
     openTries: String(movement.openTries),

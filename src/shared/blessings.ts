@@ -6,6 +6,7 @@
  *
  * Dependency-free like everything in `shared/`.
  */
+import type { CharacterState } from './character';
 import { bool, fraction, int, isRecord, str } from './values';
 
 /** Whom a blessing is cast on: this character, or every listed party member. */
@@ -95,4 +96,17 @@ export function normalizeBlessings(value: unknown): BlessingConfig[] {
     });
   }
   return blessings;
+}
+
+/**
+ * Where the self rows kept up under `autoChooseBlessings` come from
+ * (`BlessingChoice`): the port `Blessings` composes, refreshed and put down
+ * with it.
+ */
+export interface BlessingSource {
+  /** The chosen self rows, or null where nothing was chosen and the list stands. */
+  chosen(): readonly BlessingConfig[] | null;
+  /** Every character change: what is hunted may have moved. */
+  refresh(state: CharacterState): void;
+  reset(): void;
 }

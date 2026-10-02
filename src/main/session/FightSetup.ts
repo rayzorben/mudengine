@@ -10,6 +10,7 @@ import { tuning } from '../app/tuning';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import { HAZARD_ABILITY } from '../../shared/abilities';
+import { blessedPlayer, type BlessingEffect } from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { ROUND_SECONDS, scaledPower } from '../../shared/menace';
@@ -62,12 +63,38 @@ export class FightSetup {
    * monster and lair are run at. Null while the health is unread.
    */
   character(state: CharacterState, at: 'now' | 'rested'): FightCharacter | null {
-    const { hp, hpMax, mana, manaMax } = state.vitals;
-    if (hpMax === null || hpMax <= 0) return null;
+    return this.build(state, at, undefined);
+  }
+
+  /**
+   * The bare character (`bareStateOf`: what the sheet prints less what is up)
+   * rested, with `set` up and nothing else, on the formula sheet: a `stat all`
+   * figure carries what was up when it was read. The choice of blessings runs
+   * both sides of every comparison through it.
+   */
+  blessed(bare: CharacterState, set: BlessingEffect | null): FightCharacter | null {
+    return this.build(bare, 'rested', set);
+  }
+
+  /** `set` undefined is the character as it stands; null or an effect is `blessed`'s. */
+  private build(
+    state: CharacterState,
+    at: 'now' | 'rested',
+    set: BlessingEffect | null | undefined
+  ): FightCharacter | null {
+    const { hp, mana, manaMax } = state.vitals;
+    if (state.vitals.hpMax === null) return null;
+    const { combat, magery, family, attack } = this.errands.realmClass();
+    const read = prowessSheetOf(state, { combat, magery });
+    const blessed = set !== undefined && set !== null;
+    const player = blessed
+      ? blessedPlayer(this.errands.menacePlayer(state), set)
+      : this.errands.menacePlayer(state);
+    const hpMax = state.vitals.hpMax + (blessed ? set.maxHp : 0);
+    const sheet = set === undefined ? read : { ...read, stated: null, effects: set };
+    if (hpMax <= 0) return null;
     const health = at === 'rested' ? hpMax : hp;
     if (health === null) return null;
-    const { combat, magery, family, attack } = this.errands.realmClass();
-    const sheet = prowessSheetOf(state, { combat, magery });
     const regen = regeneration(sheet, null, family);
     const roundCap = tuning().menace.survivalRoundCap;
     return {
@@ -75,7 +102,7 @@ export class FightSetup {
       hpMax,
       mana: at === 'rested' ? manaMax : mana,
       manaMax,
-      player: this.errands.menacePlayer(state),
+      player,
       sheet,
       weapon: wieldedWeapon(state.inventory.items),
       attack,

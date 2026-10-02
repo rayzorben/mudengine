@@ -592,6 +592,23 @@ tuning:
     # this much after the buff should have ended, so the wear-off frame —
     # the honest signal — always gets to speak first.
     blessSlack: 0.25
+    # The least a blessing chosen by autoChooseBlessings must add for its
+    # upkeep: survival in shares of fights, the health a fight costs in shares
+    # of the bar, or the exp rate as a share of the rate without it.
+    blessMinGain: 0.02
+    # Heal casts a chosen blessing's mana floor keeps affordable after its own
+    # cast.
+    blessHealReserve: 2
+    # Runs of the hunted fight, bare and with each set of blessings, kept for
+    # the choice.
+    blessChoiceRuns: 256
+    # Seconds of mana rising out of combat, standing, watched before a
+    # measured regeneration is trusted (a kai pool's, which stat all does not
+    # state truly).
+    manaRegenLeastSeconds: 360
+    # Two statlines further apart than this are not one stretch of
+    # regeneration.
+    manaRegenGapSeconds: 45
     # How soon after a cast an onset line (`You feel safe from evil!`) is
     # learned as that spell's, so the `st` timer can be attributed to it.
     onsetWindowMs: 3000

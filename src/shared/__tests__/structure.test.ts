@@ -31,8 +31,9 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // and by the close handler once every close carries the lap (todo 01).
   // And by the item trip's wiring, out whole (`itemPlanner.ts`, todo 21),
   // the room the danger checks then took (todo 22). Lowered by the macro queue, out whole
-  // (`macros.ts`), less the extensions' hooks (todo 84).
-  'src/main/session/SessionManager.ts': 3738,
+  // (`macros.ts`), less the extensions' hooks (todo 84). Lowered by the
+  // blessings' construction, out with its choice (`BlessingChoice.ts`, todo 10).
+  'src/main/session/SessionManager.ts': 3737,
   'src/main/world/WorldGraph.ts': 2549,
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
@@ -45,7 +46,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // party's (831).
   // Lowered by the remotes switches it shares with the Global page (`RemoteSwitches`, todo 07).
   // Lowered by the attack spell's fields, shared with the Global page (`AttackFields`, todo 841).
-  'src/renderer/src/components/CharacterForm.tsx': 1593
+  // Lowered by the blessings' fields, shared with the Global page (`BlessingFields`, todo 10).
+  'src/renderer/src/components/CharacterForm.tsx': 1582
 };
 
 /**

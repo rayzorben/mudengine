@@ -30,6 +30,13 @@
  * their say. Self blessings outrank party ones, always: the caster that
  * keeps its own shield up is the one still standing to bless anybody else.
  *
+ * ## Chosen rather than listed
+ *
+ * Under `spells.autoChooseBlessings` the self rows come from a
+ * `BlessingSource` (`BlessingChoice`, todo 10) where it has chosen, and the
+ * list's party rows are cast as they are (`entries`); the source is refreshed
+ * on every character change and put down with this module.
+ *
  * ## The peer protocol
  *
  * A blessing cast on a party member wears off on *their* screen, not this
@@ -50,7 +57,7 @@ import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
 import { t } from '../app/i18n';
 import type { ActiveBuff, CharacterState } from '../../shared/character';
-import type { BlessingConfig } from '../../shared/blessings';
+import type { BlessingConfig, BlessingSource } from '../../shared/blessings';
 import type { SpellsConfig } from '../../shared/config';
 import type { Block } from '../../shared/blocks';
 import {
@@ -114,6 +121,12 @@ export interface BlessingsDeps {
   readonly onTheGround: () => boolean;
   /** The one heal, blessing or cure a round, asked at the send (`CastRound`); omitted, none. */
   readonly castGate?: CastGate;
+  /**
+   * The self rows `autoChooseBlessings` chose (`BlessingChoice`), refreshed on
+   * every character change and put down with this module; omitted, the list
+   * always.
+   */
+  readonly source?: BlessingSource;
 }
 
 export class Blessings implements SessionModule {
@@ -138,6 +151,7 @@ export class Blessings implements SessionModule {
   private readonly realmSpell: (name: string) => WorldSpell | null;
   private readonly onTheGround: () => boolean;
   private readonly gate: CastGate;
+  private readonly source: BlessingSource | null;
 
   constructor(
     private config: SpellsConfig,
@@ -150,9 +164,21 @@ export class Blessings implements SessionModule {
     this.realmSpell = deps.realmSpell ?? (() => null);
     this.onTheGround = deps.onTheGround;
     this.gate = deps.castGate ?? OPEN_CAST_GATE;
+    this.source = deps.source ?? null;
     // The toolbar's Auto-Bless switch, under the master one — as `configure`
     // folds it, so the first pass and every later one agree.
     this.enabled = enabled && config.autoBless;
+  }
+
+  /**
+   * The rows kept up: with `autoChooseBlessings` on and a choice made, the
+   * chosen self rows and the list's party rows as they are; otherwise the
+   * list. The chosen self rows replace the list's, which were candidates.
+   */
+  entries(): readonly BlessingConfig[] {
+    const picked = this.config.autoChooseBlessings ? (this.source?.chosen() ?? null) : null;
+    if (picked === null) return this.config.blessings;
+    return [...picked, ...this.config.blessings.filter((row) => row.target !== 'self')];
   }
 
   /**
@@ -176,6 +202,7 @@ export class Blessings implements SessionModule {
     this.castAt.clear();
     this.dueNow.clear();
     this.lastProposalAt = 0;
+    this.source?.reset();
     this.stop();
   }
 
@@ -205,7 +232,7 @@ export class Blessings implements SessionModule {
     if (block.type === 'spell-failed') {
       const spell = block.groups['spell']?.trim();
       if (spell === undefined || block.groups['target'] !== undefined) return;
-      for (const entry of this.config.blessings) {
+      for (const entry of this.entries()) {
         if (entry.target === 'self' && this.same(spell, entry.spell)) {
           this.proposedAt.delete(clockKey(entry, '@self'));
         }
@@ -225,7 +252,7 @@ export class Blessings implements SessionModule {
       const own = before.name?.toLowerCase() ?? null;
       const lower = target.toLowerCase();
       if (lower === 'yourself' || lower === 'you' || lower === own) return;
-      for (const entry of this.config.blessings) {
+      for (const entry of this.entries()) {
         if (entry.target !== 'party' || !this.same(spell, entry.spell)) continue;
         const key = clockKey(entry, target);
         this.castAt.set(key, block.at);
@@ -242,7 +269,7 @@ export class Blessings implements SessionModule {
    */
   onPeerExpired(from: string, spell: string): void {
     if (!this.enabled) return;
-    for (const entry of this.config.blessings) {
+    for (const entry of this.entries()) {
       if (entry.target !== 'party') continue;
       if (!this.same(spell, entry.spell)) continue;
       const key = clockKey(entry, from);
@@ -270,6 +297,7 @@ export class Blessings implements SessionModule {
 
   onCharacter(state: CharacterState): void {
     this.state = state;
+    this.source?.refresh(state);
     if (state.phase !== 'in-game') {
       this.stop();
       return;
@@ -279,6 +307,7 @@ export class Blessings implements SessionModule {
   }
 
   dispose(): void {
+    this.source?.reset();
     this.stop();
   }
 
@@ -311,7 +340,7 @@ export class Blessings implements SessionModule {
     const now = this.now();
     if (now - this.lastProposalAt < tuning().spells.blessCooldownMs) return;
 
-    for (const entry of this.config.blessings) {
+    for (const entry of this.entries()) {
       if (entry.prioritizeOverHeal !== prioritized) continue;
       if (entry.target !== 'self') continue;
       if (this.castSelf(entry, state, now)) return;
@@ -322,7 +351,7 @@ export class Blessings implements SessionModule {
      * have found nothing to do, which the normal pass is the tail of.
      */
     if (prioritized) return;
-    for (const entry of this.config.blessings) {
+    for (const entry of this.entries()) {
       if (entry.target !== 'party') continue;
       if (this.castParty(entry, state, now)) return;
     }
@@ -485,7 +514,7 @@ export class Blessings implements SessionModule {
 
   private arm(): void {
     if (this.timer !== null) return;
-    if (!this.enabled || this.config.blessings.length === 0) return;
+    if (!this.enabled || this.entries().length === 0) return;
     this.timer = setInterval(() => {
       /*
        * The clock tick runs both passes back to back — an idle character gets

@@ -681,6 +681,25 @@ const TUNING_DEFAULTS = {
      */
     blessSlack: 0.25,
     /**
+     * The least a blessing chosen by `autoChooseBlessings` must add for its
+     * upkeep: survival in shares of fights, the health a fight costs in
+     * shares of the bar, or the exp rate as a share of the rate without it
+     * (`chooseBlessings`).
+     */
+    blessMinGain: 0.02,
+    /** Heal casts a chosen blessing's mana floor keeps affordable after its own cast. */
+    blessHealReserve: 2,
+    /** Runs of the hunted fight, bare and with each set of blessings, kept for the choice. */
+    blessChoiceRuns: 256,
+    /**
+     * Seconds of mana rising out of combat, standing, the choice must have
+     * watched before it trusts a regeneration it measured (a kai pool's,
+     * which `stat all` does not state truly).
+     */
+    manaRegenLeastSeconds: 360,
+    /** Two statlines further apart than this (the realm repaints every 30s) are not one stretch. */
+    manaRegenGapSeconds: 45,
+    /**
      * How soon after this character's own cast an onset sentence must arrive
      * to be learned as that spell's — `You feel safe from evil!` lands the
      * same tick, so this only has to reject an unrelated `You feel …!` a room

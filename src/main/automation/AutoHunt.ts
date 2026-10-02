@@ -88,6 +88,8 @@ type Phase =
   | {
       kind: 'hunting';
       key: string;
+      /** The spot as the survey priced it, for what reads the fight being hunted. */
+      spot: HuntingSpot;
       name: string;
       /** What the survey said this lair would pay, to measure the gap against. */
       expected: number | null;
@@ -270,6 +272,11 @@ export class AutoHunt implements SessionModule {
   /** Whether a hunt this module started is what the character is doing. */
   get hunting(): boolean {
     return this.phase.kind !== 'idle';
+  }
+
+  /** The spot this module is walking to or hunting, as the survey priced it; null idle. */
+  get quarry(): HuntingSpot | null {
+    return this.phase.kind === 'idle' ? null : this.phase.spot;
   }
 
   /** Where the hunt is walking to, or the lap it is hunting on, for an extension's card. */
@@ -810,6 +817,7 @@ export class AutoHunt implements SessionModule {
     this.phase = {
       kind: 'hunting',
       key: spot.key,
+      spot,
       name: loop.name,
       // What the survey said, so the gap can be measured against it (todo 06).
       expected: spot.estimate.expPerHour,

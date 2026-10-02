@@ -38,7 +38,7 @@ import { Afk } from '../automation/Afk';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
 import { AutoInvoke } from '../automation/AutoInvoke';
-import { Blessings } from '../automation/Blessings';
+import type { Blessings } from '../automation/Blessings';
 import { CastRound } from '../automation/CastRound';
 import { CombatLease } from '../automation/CombatLease';
 import { Cures } from '../automation/Cures';
@@ -131,6 +131,7 @@ import { TerminalFeed } from './TerminalFeed';
 import { Paint } from './Paint';
 import { Appraisal } from './Appraisal';
 import { fightBook, type OddsBook } from './OddsBook';
+import { blessingsFor } from './BlessingChoice';
 import { Publisher } from './Publisher';
 import { Rewriter } from './Rewriter';
 import {
@@ -1480,19 +1481,6 @@ export class SessionManager {
       { notice: (message) => this.sink.notice(message) },
       this.castRound
     );
-    this.blessings = new Blessings(automation.spells, automation.enabled, this.queue, {
-      /*
-       * The measured duration of this character's own cast, read at the point
-       * of use so the store that arrives with `useRealm` is the one answering.
-       * Null before any measurement — the shipped watchdog covers that. The one
-       * fact here that is not the realm's, which is why it is still its own.
-       */
-      learnedDuration: (spell) =>
-        this.belongings.recallSpellDurations()[spell.trim().toLowerCase()] ?? null,
-      realmSpell,
-      onTheGround,
-      castGate: this.castRound
-    });
     /*
      * And the blessing a carried item can give, which is not a cast at all:
      * the realm names a spell on the item and the server lets an unlimited one
@@ -1712,6 +1700,16 @@ export class SessionManager {
       { config: () => this.automationConfig, ran: () => this.publisher.publishVerdict() }
     );
     this.odds = book.odds;
+    this.blessings = blessingsFor(
+      { tracker: this.tracker, world, errands: this.errands, setup: book.setup, hunt: this.hunt },
+      { queue: this.queue, realmSpell, onTheGround, castGate: this.castRound },
+      {
+        ...reports,
+        config: () => this.automationConfig,
+        durations: () => this.belongings.recallSpellDurations()
+      },
+      automation
+    );
     this.appraisal = new Appraisal(
       { tracker: this.tracker, world, errands: this.errands, ...book },
       { config: () => this.automationConfig, watched: () => this.questWatch.watched }
@@ -1730,6 +1728,7 @@ export class SessionManager {
     this.grounded = new Grounded(this.publisher, sink);
     this.extensions = sessionExtensions({
       ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },
+      blessings: this.blessings,
       ...{ supplies: this.supplies, trainLevel: this.trainLevel, queue: this.queue, fled },
       world: () => this.world,
       lairOdds: (room) => this.odds.lair(room),
