@@ -1818,3 +1818,26 @@ export function leaderOf(state: CharacterState): PartyMember | undefined {
   if (leader === undefined) return undefined;
   return state.party.members.find((member) => member.name.toLowerCase() === leader);
 }
+
+/**
+ * Whether a fight is running around this character right now: the server's
+ * own flag, or anything this client has recorded as swinging.
+ *
+ * The second half makes it a walk's question and not a repeat of
+ * `state.inCombat`. `CharacterTracker` files an attacker the moment a blow
+ * names one, a round before `*Combat Engaged*` on a monster that opened the
+ * fight, and a step sent in that round walks the character out of a fight it
+ * is in, which `cancelQueued` cannot recall.
+ *
+ * `Recovery.fightIsHere` asks the narrower question resting needs: it falls
+ * back to "is anybody standing here" to explain a flag with nothing behind
+ * it, and for a walk a monster standing in the room is not by itself a reason
+ * to stop. Both rest on the same measurement: the flag outlives an escape by a
+ * median 3,493ms and a confirmed move clears `attackers` and `target`, so a
+ * character that got away reads as fighting for about three seconds and then
+ * walks on. Kept beside the state it reads, so every module and an extension
+ * ask one way.
+ */
+export function fightIsRunning(state: CharacterState): boolean {
+  return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
+}

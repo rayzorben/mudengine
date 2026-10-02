@@ -55,10 +55,9 @@
  */
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
-import type { CharacterState } from '../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { SearchConfig } from '../../shared/config';
 import { tuning } from '../app/tuning';
-import { fightIsRunning } from './Walker';
 import type { SessionModule } from './Module';
 
 /**

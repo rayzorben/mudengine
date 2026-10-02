@@ -2238,7 +2238,7 @@ export class CharacterTracker {
          * **The room listing is not the gate.** It used to be — `gone.length
          * === 0` returned early — so a monster the room had *already* dropped
          * kept its place in `attackers` for ever, and that is the state a
-         * client cannot get out of on its own: `fightIsRunning` (`Walker.ts`)
+         * client cannot get out of on its own: `fightIsRunning` (`shared/character.ts`)
          * reads `attackers`, so the walk stops and books a failed leg, three
          * of which end the lap; `retaliation` re-proposes the attack on every
          * state change; and every one of them comes back here to be refused by

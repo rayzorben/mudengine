@@ -48,8 +48,7 @@ import {
 
 export { NO_LOOP, type LoopProgress, type LoopStatus };
 import { isSaidBy, t } from '../app/i18n';
-import { fightIsRunning } from './Walker';
-import type { CharacterState } from '../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../shared/character';
 import {
   DEFAULT_CONFIG,
   stillFor,
