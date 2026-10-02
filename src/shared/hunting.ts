@@ -11,7 +11,7 @@
 import { median } from './median';
 import type { MeasuredOutput } from './fights';
 import type { UiLookup } from './i18n';
-import type { Loop } from './loops';
+import type { Loop, LoopStop } from './loops';
 import type { MobAffliction } from './menace';
 import type { RealmFamily } from './realm';
 import type { RoomId } from './world';
@@ -1392,14 +1392,31 @@ export function huntLoop(spot: HuntingSpot, t: UiLookup): Loop {
      * earns. A room the realm states no clock for gets none, and a stop with
      * no clock is always due.
      */
-    stops: spot.walk.map((room) => {
-      const clock = room.respawnSeconds ?? spot.respawnSeconds;
-      return {
-        room: `${room.name} ${room.map}/${room.room}`,
-        ...(clock === null || clock === undefined || clock <= 0 ? {} : { every: Math.round(clock) })
-      };
-    })
+    stops: spot.walk.map((room) => huntStop(room, room.respawnSeconds ?? spot.respawnSeconds))
   };
+}
+
+/** A room as a loop stop, with its clock where it has one: a stop with no clock is always due. */
+export function huntStop(room: HuntingRoom, clock: number | null | undefined): LoopStop {
+  return {
+    room: `${room.name} ${room.map}/${room.room}`,
+    ...(clock === null || clock === undefined || clock <= 0 ? {} : { every: Math.round(clock) })
+  };
+}
+
+/**
+ * A hunt planned outside the survey's own choice (an extension's): the loop
+ * to run, the room it starts in, the spot whose fight it mostly is, and what
+ * it was priced at. `key` is what the order is known by: the same key again
+ * is the same hunt.
+ */
+export interface HuntOrder {
+  key: string;
+  loop: Loop;
+  start: HuntingRoom;
+  spot: HuntingSpot;
+  expPerHour: number | null;
+  copperPerHour: number | null;
 }
 
 /**

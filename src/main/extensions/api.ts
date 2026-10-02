@@ -24,10 +24,10 @@ import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
-import type { HuntingAdvice, HuntWait } from '../../shared/hunting';
+import type { HuntingAdvice, HuntOrder, HuntWait } from '../../shared/hunting';
 import type { TuningConfig } from '../../shared/internal';
 import type { Odds } from '../../shared/survival';
-import type { SlotUpgrade } from '../../shared/upgrades';
+import type { SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
 import type { RoomId, WorldRoom } from '../../shared/world';
 import type { WalkProgress } from '../../shared/walk';
 import type { Intent, Offered } from '../automation/CommandQueue';
@@ -40,6 +40,7 @@ export type ExtensionWorld = Pick<
   WorldGraph,
   | 'size'
   | 'buildMobEntity'
+  | 'buildItemEntity'
   | 'byId'
   | 'lairEntities'
   | 'residentEntities'
@@ -75,8 +76,14 @@ export interface ExtensionSessionHost {
   realm(): string | null;
   world(): ExtensionWorld | undefined;
 
-  /** The hunting survey (`Errands.huntingGrounds`), everywhere the exits reach. */
-  huntingGrounds(): HuntingAdvice;
+  /**
+   * The hunting survey (`Errands.huntingGrounds`), everywhere the exits
+   * reach, for the character as it stands or as `as` (the same character
+   * wearing other gear, `wearing`, or at another level). A survey of `as` is
+   * priced afresh each time, so it is one piece of an extension's work, never
+   * several in a turn.
+   */
+  huntingGrounds(as?: CharacterState): HuntingAdvice;
   realmClass(): RealmClass;
   capabilities(): Capabilities;
   traveller(state: CharacterState): Traveller;
@@ -102,6 +109,17 @@ export interface ExtensionSessionHost {
    * the character as it stands or as `as` (the same character at a later level).
    */
   gearUpgrades(perSlot: number, as?: CharacterState): SlotUpgrade[];
+  /**
+   * The best the character can wear per slot from anywhere, better than what
+   * is worn and none above its level: each item with the counter selling it
+   * and the monsters dropping it.
+   */
+  bestInSlot(perSlot: number, as?: CharacterState): SlotBest[];
+  /**
+   * The character (or `as`) wearing these items instead of the weakest worn
+   * in each one's slot, and which went on: none without a world.
+   */
+  wearing(items: readonly string[], as?: CharacterState): Wearing;
   /** The attacks the class can make and a round of each. */
   attacks(): AttackOption[];
   /** The safety trace, newest first. */
@@ -112,8 +130,13 @@ export interface ExtensionSessionHost {
   backscroll(lines: number): string;
 
   hunt: {
-    /** The spot to hunt by key, nowhere (null), or the hunt's own choice (undefined). */
-    steer(key: string | null | undefined): void;
+    /**
+     * The spot to hunt by key, a loop planned here and run as given (an
+     * order: never moved off for a better spot, and what it pays is the
+     * extension's to measure), nowhere (null), or the hunt's own choice
+     * (undefined).
+     */
+    steer(key: string | HuntOrder | null | undefined): void;
     readonly hunting: boolean;
     readonly refusal: string | null;
     readonly heading: { walking: boolean; place: string } | null;

@@ -31,7 +31,9 @@ import {
   huntLoop,
   shortOfCash,
   type HuntingAdvice,
+  type HuntingRoom,
   type HuntingSpot,
+  type HuntOrder,
   type HuntWait,
   type MeasuredRate
 } from '../../shared/hunting';
@@ -82,9 +84,26 @@ export interface HuntEvents {
 /** The hunting phase: a lap running on a lair. */
 type Hunting = Extract<Phase, { kind: 'hunting' }>;
 
+/**
+ * What a hunt sets off on: the survey's spot with its own loop, or an order
+ * an extension planned (`HuntOrder`), which is run as given and never moved
+ * off for a better spot, since the plan is the extension's.
+ */
+interface Target {
+  key: string;
+  spot: HuntingSpot;
+  loop: Loop;
+  start: HuntingRoom;
+  expected: number | null;
+  copper: number | null;
+}
+
+/** What the spot to hunt is: a survey key, an order, nowhere, or this module's own choice. */
+type Steer = string | HuntOrder | null | undefined;
+
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'walking'; to: RoomId; spot: HuntingSpot; loop: Loop }
+  | { kind: 'walking'; to: RoomId; target: Target }
   | {
       kind: 'hunting';
       key: string;
@@ -142,7 +161,7 @@ export class AutoHunt implements SessionModule {
    */
   private judgedFor: string | null = null;
   /** See `steer`. */
-  private steered: string | null | undefined = undefined;
+  private steered: Steer = undefined;
   /**
    * Lairs somebody else was seen working, and when.
    *
@@ -224,23 +243,25 @@ export class AutoHunt implements SessionModule {
   }
 
   /**
-   * The spot an extension names (todo 84): only that key,
-   * nowhere (null), or this module's own choice (undefined). Every guard
-   * below still holds; what changes is which spots are candidates. A lap this
-   * module started for another spot is ended, since the plan has moved on.
+   * The spot an extension names (todo 84): only that key, an order it
+   * planned itself (`HuntOrder`, run as given), nowhere (null), or this
+   * module's own choice (undefined). Every guard below still holds; what
+   * changes is which spots are candidates. A lap this module started for
+   * another spot is ended, since the plan has moved on.
    */
-  steer(key: string | null | undefined): void {
-    if (key === this.steered) {
+  steer(key: Steer): void {
+    if (keyOf(key) === keyOf(this.steered)) {
+      this.steered = key;
       // The same spot planned again: whatever was refused before is asked again now.
-      if (typeof key === 'string' && this.phase.kind === 'idle') this.rejudge();
+      if (named(key) && this.phase.kind === 'idle') this.rejudge();
       return;
     }
     this.steered = key;
     // A lap running now, and not this module's, is left over from before the steer.
     const running = this.planner.runningLoop();
-    this.inherited = typeof key === 'string' && running !== null && !this.mine() ? running : null;
+    this.inherited = named(key) && running !== null && !this.mine() ? running : null;
     this.rejudge();
-    if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === key) return;
+    if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === keyOf(key)) return;
     if (this.mine()) this.planner.stopLoop(t('automation.hunt.steeredAway'));
     this.phase = { kind: 'idle' };
   }
@@ -262,7 +283,7 @@ export class AutoHunt implements SessionModule {
    * extension's card, so a hunt that does not set off says why.
    */
   get waiting(): HuntWait | null {
-    return typeof this.steered === 'string' ? this.waitingOn : null;
+    return named(this.steered) ? this.waitingOn : null;
   }
 
   private wait(why: HuntWait | null): void {
@@ -276,7 +297,18 @@ export class AutoHunt implements SessionModule {
 
   /** The spot this module is walking to or hunting, as the survey priced it; null idle. */
   get quarry(): HuntingSpot | null {
-    return this.phase.kind === 'idle' ? null : this.phase.spot;
+    switch (this.phase.kind) {
+      case 'idle':
+        return null;
+      case 'walking':
+        return this.phase.target.spot;
+      case 'hunting':
+        return this.phase.spot;
+      default: {
+        const never: never = this.phase;
+        return never;
+      }
+    }
   }
 
   /** Where the hunt is walking to, or the lap it is hunting on, for an extension's card. */
@@ -285,7 +317,7 @@ export class AutoHunt implements SessionModule {
       case 'idle':
         return null;
       case 'walking':
-        return { walking: true, place: this.phase.spot.walk[0]?.name ?? this.phase.loop.name };
+        return { walking: true, place: this.phase.target.start.name };
       case 'hunting':
         return { walking: false, place: this.phase.name };
       default: {
@@ -314,7 +346,7 @@ export class AutoHunt implements SessionModule {
     // nothing here will choose differently until something does.
     this.events.notice?.(
       t('automation.hunt.stoodDown', {
-        loopName: was.kind === 'hunting' ? was.name : was.loop.name
+        loopName: was.kind === 'hunting' ? was.name : was.target.loop.name
       })
     );
   }
@@ -378,7 +410,7 @@ export class AutoHunt implements SessionModule {
     // player started since is the player's, and the hunt waits for it.
     const running = this.planner.runningLoop();
     if (running !== null) {
-      if (typeof this.steered === 'string' && running === this.inherited) {
+      if (named(this.steered) && running === this.inherited) {
         this.inherited = null;
         this.planner.stopLoop(t('automation.hunt.takingOver', { loopName: running }));
       }
@@ -386,6 +418,17 @@ export class AutoHunt implements SessionModule {
     }
     // Steered to hunt nowhere for now: it is somewhere else's turn.
     if (this.steered === null) return this.wait(null);
+    this.waitingOn = null;
+    // An order is run as given: no survey, asked again only for a changed character or a re-steer.
+    if (typeof this.steered === 'object') {
+      const judged = this.judgement(state);
+      if (judged === this.judgedFor) return;
+      this.judgedFor = judged;
+      const target = orderTarget(this.steered);
+      if (target === null) this.refuse(t('automation.hunt.refusalNoRooms'));
+      else this.go(state, target);
+      return;
+    }
     this.waitingOn = this.heldBySimulator();
 
     const judged = this.judgement(state);
@@ -429,10 +472,20 @@ export class AutoHunt implements SessionModule {
   private keepHonest(state: CharacterState): void {
     if (this.phase.kind !== 'hunting') return;
     this.noteCompany(state);
+    /*
+     * An order is the extension's plan: what it pays is the extension's to
+     * measure, under keys the survey does not know, and it is never moved off
+     * here. Read from the steer, not the lap, so an order handed back
+     * (`steer(undefined)`) is kept honest from the next line.
+     */
+    if (typeof this.steered === 'object' && this.steered !== null) return;
     const measured = this.measure(state);
     const level = state.progress.level;
     // Kept from a stay long enough to say, so a short visit never replaces an hour's figure.
+    // Kept under a survey spot's key only: a lap an order started and handed back is the order's.
+    const surveyed = this.phase.key === this.phase.spot.key;
     if (
+      surveyed &&
       measured !== null &&
       level !== null &&
       measured.minutes >= tuning().hunting.measuredMinutesLeast
@@ -460,7 +513,7 @@ export class AutoHunt implements SessionModule {
      * correction.
      */
     const expected = this.phase.expected;
-    if (measured !== null && expected !== null && expected > 0) {
+    if (surveyed && measured !== null && expected !== null && expected > 0) {
       this.correction.set(this.phase.key, clampCorrection(measured.perHour / expected));
     }
 
@@ -565,7 +618,9 @@ export class AutoHunt implements SessionModule {
     this.phase = { kind: 'idle' };
     this.planner.stopLoop(stop);
     // The spot the comparison was made on, not a second sweep of the realm.
-    this.go(state, spot);
+    const target = spotTarget(spot);
+    if (target === null) this.refuse(t('automation.hunt.refusalNoRooms'));
+    else this.go(state, target);
   }
 
   /**
@@ -689,8 +744,8 @@ export class AutoHunt implements SessionModule {
     return best?.spot ?? null;
   }
 
-  /** The best spot with a rate worth walking to, or null with the reason said. */
-  private best(state: CharacterState): HuntingSpot | null {
+  /** The best spot with a rate worth walking to, set off on with its loop; or null with the reason said. */
+  private best(state: CharacterState): Target | null {
     const advice = this.planner.survey(this.config.radius > 0 ? this.config.radius : null);
     if (advice.refusal !== null) {
       this.simulating = false;
@@ -723,8 +778,13 @@ export class AutoHunt implements SessionModule {
       );
       return null;
     }
+    const target = spotTarget(best);
+    if (target === null) {
+      this.refuse(t('automation.hunt.refusalNoRooms'));
+      return null;
+    }
     this.said = null;
-    return best;
+    return target;
   }
 
   /**
@@ -734,17 +794,12 @@ export class AutoHunt implements SessionModule {
    * same tick would price the whole realm twice to reach the answer already in
    * hand.
    */
-  private go(state: CharacterState, chosen: HuntingSpot | null = null): void {
-    const best = chosen ?? this.best(state);
-    if (best === null) return;
-    const loop = huntLoop(best, t);
-    const first = best.walk[0];
-    if (first === undefined) {
-      this.refuse(t('automation.hunt.refusalNoRooms'));
-      return;
-    }
+  private go(state: CharacterState, chosen: Target | null = null): void {
+    const target = chosen ?? this.best(state);
+    if (target === null) return;
+    const first = target.start;
     if (this.planner.here() === first.id) {
-      this.start(best, loop, state);
+      this.start(target, state);
       return;
     }
     const route = this.planner.routeTo(first.id);
@@ -772,7 +827,7 @@ export class AutoHunt implements SessionModule {
       this.refuse(t('automation.hunt.refusalNoRoute', { room: first.name, why: refused }));
       return;
     }
-    this.phase = { kind: 'walking', to: first.id, spot: best, loop };
+    this.phase = { kind: 'walking', to: first.id, target };
     // Said once the walk is actually going: a refusal used to arrive under
     // *Walking 40 steps to …*, which is the client narrating what it did not do.
     const far = route.steps.length > tuning().walk.resumeAskSteps;
@@ -781,12 +836,12 @@ export class AutoHunt implements SessionModule {
         ? t('automation.hunt.goingFar', {
             room: first.name,
             steps: route.steps.length,
-            rate: rateOf(best)
+            rate: rateOf(target.expected)
           })
         : t('automation.hunt.going', {
             room: first.name,
             steps: route.steps.length,
-            rate: rateOf(best)
+            rate: rateOf(target.expected)
           })
     );
   }
@@ -794,21 +849,22 @@ export class AutoHunt implements SessionModule {
   /** The walker's report: this module's own journey ended, or somebody else's. */
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     if (this.phase.kind !== 'walking') return;
-    const { to, spot, loop } = this.phase;
+    const { to, target } = this.phase;
     this.phase = { kind: 'idle' };
     if (!arrived || this.planner.here() !== to) {
       this.refuse(
         t('automation.hunt.refusalNotReached', {
-          room: spot.walk[0]?.name ?? '',
+          room: target.start.name,
           why: reason ?? t('automation.hunt.whyStopped')
         })
       );
       return;
     }
-    this.start(spot, loop, state);
+    this.start(target, state);
   }
 
-  private start(spot: HuntingSpot, loop: Loop, state: CharacterState): void {
+  private start(target: Target, state: CharacterState): void {
+    const { spot, loop } = target;
     const refused = this.planner.runLoop(loop);
     if (refused !== null) {
       this.refuse(t('automation.hunt.refusalLoop', { loopName: loop.name, why: refused }));
@@ -816,21 +872,22 @@ export class AutoHunt implements SessionModule {
     }
     this.phase = {
       kind: 'hunting',
-      key: spot.key,
+      key: target.key,
       spot,
       name: loop.name,
       // What the survey said, so the gap can be measured against it (todo 06).
-      expected: spot.estimate.expPerHour,
-      copper: spot.estimate.copperPerHour,
+      expected: target.expected,
+      copper: target.copper,
       from: anchor(state, this.now()),
       saidCompany: false,
       filler: spot.filler.length
     };
-    this.events.notice?.(t('automation.hunt.started', { loopName: loop.name, rate: rateOf(spot) }));
+    const rate = rateOf(target.expected);
+    this.events.notice?.(t('automation.hunt.started', { loopName: loop.name, rate }));
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
-      because: t('automation.hunt.becauseRate', { rate: rateOf(spot) }),
+      because: t('automation.hunt.becauseRate', { rate }),
       acted: true
     });
   }
@@ -867,9 +924,45 @@ function clampCorrection(ratio: number): number {
 }
 
 /** The estimate's own figure, as the card prints it. `?` for an unknown one. */
-function rateOf(spot: HuntingSpot): string {
-  const rate = spot.estimate.expPerHour;
+function rateOf(rate: number | null): string {
   return rate === null ? '?' : Math.round(rate).toLocaleString();
+}
+
+/** The key a steer names, or null and undefined as they are. */
+function keyOf(steer: Steer): string | null | undefined {
+  return typeof steer === 'object' && steer !== null ? steer.key : steer;
+}
+
+/** Whether a steer names a hunt: a survey key or an order. */
+function named(steer: Steer): steer is string | HuntOrder {
+  return steer !== null && steer !== undefined;
+}
+
+/** The survey's spot, set off on with its own loop; null for a spot with no rooms. */
+function spotTarget(spot: HuntingSpot): Target | null {
+  const start = spot.walk[0];
+  if (start === undefined) return null;
+  return {
+    key: spot.key,
+    spot,
+    loop: huntLoop(spot, t),
+    start,
+    expected: spot.estimate.expPerHour,
+    copper: spot.estimate.copperPerHour
+  };
+}
+
+/** An extension's order, set off on as given; null for a loop with no stops. */
+function orderTarget(order: HuntOrder): Target | null {
+  if (order.loop.stops.length === 0) return null;
+  return {
+    key: order.key,
+    spot: order.spot,
+    loop: order.loop,
+    start: order.start,
+    expected: order.expPerHour,
+    copper: order.copperPerHour
+  };
 }
 
 /**

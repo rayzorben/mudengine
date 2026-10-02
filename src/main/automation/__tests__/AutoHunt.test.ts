@@ -9,7 +9,9 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import type { SafetyDecision } from '../../../shared/automation';
 import {
   NO_EXCLUSIONS,
+  huntStop,
   type HuntingAdvice,
+  type HuntOrder,
   type HuntingSpot,
   type SpotEstimate
 } from '../../../shared/hunting';
@@ -770,6 +772,85 @@ describe('a spot an outside plan names (todo 54)', () => {
     auto.onCharacter(ready());
     expect(started).toHaveLength(1);
     auto.steer('lair:b');
+    expect(stops).toHaveLength(1);
+    expect(auto.hunting).toBe(false);
+  });
+});
+
+/* An extension's own plan: a loop it built, run as given and never moved off. */
+describe('a hunt order', () => {
+  const order = (key = 'joined:a+b'): HuntOrder => {
+    const a = spot('lair:a', 12_000);
+    const b = spot('lair:b', 9_000, 'Sewer', 920);
+    return {
+      key,
+      loop: {
+        name: 'Graveyard and Sewer',
+        stops: [...a.walk, ...b.walk].map((room) => huntStop(room, 60))
+      },
+      start: a.walk[0]!,
+      spot: a,
+      expPerHour: 18_000,
+      copperPerHour: 400
+    };
+  };
+  const at = (exp: number) => ready({ progress: { ...EMPTY_CHARACTER.progress, level: 12, exp } });
+
+  it('walks to its first room and runs its loop, without a survey', () => {
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    expect(walked).toHaveLength(1);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at(1_000));
+    expect(started.map((loop) => loop.name)).toEqual(['Graveyard and Sewer']);
+    expect(surveys).toBe(0);
+    expect(auto.heading).toEqual({ walking: false, place: 'Graveyard and Sewer' });
+  });
+
+  it('stays put where the survey has a better spot, and keeps no rate of its own', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    expect(started).toHaveLength(1);
+    answer = advice([spot('lair:c', 90_000, 'Crypt', 930)]);
+    clock += 900_000;
+    auto.onCharacter(at(6_000));
+    expect(noted).toEqual([]);
+    expect(stops).toEqual([]);
+    expect(walked).toHaveLength(0);
+  });
+
+  it('refuses an order with no stops, and says so', () => {
+    const auto = hunt();
+    auto.steer({ ...order(), loop: { name: 'nowhere', stops: [] } });
+    auto.onCharacter(at(1_000));
+    expect(walked).toHaveLength(0);
+    expect(auto.refusal).toBe(t('automation.hunt.refusalNoRooms'));
+  });
+
+  it('is kept honest again once the order is handed back', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    auto.steer(undefined);
+    answer = advice([spot('lair:c', 90_000, 'Crypt', 930)]);
+    clock += 900_000;
+    auto.onCharacter(at(6_000));
+    expect(stops).toHaveLength(1);
+    expect(walked).toHaveLength(1);
+  });
+
+  it('ends its lap when steered to another order, and keeps it for the same key', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    auto.steer(order());
+    expect(stops).toEqual([]);
+    auto.steer(order('joined:a+c'));
     expect(stops).toHaveLength(1);
     expect(auto.hunting).toBe(false);
   });

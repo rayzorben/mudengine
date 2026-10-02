@@ -2,9 +2,12 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import { useExtensions } from '../hooks/useExtensions';
+import { writeClipboard } from '../lib/clipboard';
 import { t } from '../lib/i18n';
 import {
   extensionMessage,
+  ROOT_ATTRIBUTES,
+  rootAttributes,
   themeTokens,
   type ExtensionToCard,
   type CardToExtension
@@ -39,7 +42,8 @@ function ExtensionCard({ session, views, ...chrome }: ExtensionCardProps) {
       type: 'mudengine:view',
       session,
       view,
-      theme: themeTokens(document.documentElement)
+      theme: themeTokens(document.documentElement),
+      attributes: rootAttributes(document.documentElement)
     };
     // The page is its own origin and sandboxed; it is addressed by its window.
     target.postMessage(message, '*');
@@ -52,7 +56,7 @@ function ExtensionCard({ session, views, ...chrome }: ExtensionCardProps) {
     const watch = new MutationObserver(send);
     watch.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-theme', 'style', 'class']
+      attributeFilter: [...ROOT_ATTRIBUTES, 'style', 'class']
     });
     return () => watch.disconnect();
   }, [send]);
@@ -81,6 +85,10 @@ function ExtensionCard({ session, views, ...chrome }: ExtensionCardProps) {
       if (asked === null) return;
       if (asked.type === 'mudengine:ready') {
         send();
+        return;
+      }
+      if (asked.type === 'mudengine:copy') {
+        void writeClipboard(asked.text);
         return;
       }
       void window.mudengine

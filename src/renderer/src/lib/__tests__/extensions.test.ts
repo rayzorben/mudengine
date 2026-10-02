@@ -16,6 +16,14 @@ describe('what an extension’s page may say', () => {
     });
   });
 
+  it('is text for the clipboard, which the sandbox does not give it', () => {
+    expect(extensionMessage({ type: 'mudengine:copy', text: 'a plan' })).toEqual({
+      type: 'mudengine:copy',
+      text: 'a plan'
+    });
+    expect(extensionMessage({ type: 'mudengine:copy', text: 3 })).toBeNull();
+  });
+
   it('is nothing else', () => {
     expect(extensionMessage('pause')).toBeNull();
     expect(extensionMessage({ type: 'mudengine:action', id: '3', action: 'pause' })).toBeNull();
