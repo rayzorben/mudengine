@@ -436,6 +436,87 @@ describe('one step at a time', () => {
     walk.dispose();
   });
 
+  /*
+   * 2026-10-01 (festus): the rest step went nw out of a lair while the lap
+   * stood held there; once it landed, the lap sent its lair step `e` from the
+   * rest room. The walk is planned again from where the rest put it.
+   */
+  it('plans again from where another mover’s step landed', () => {
+    let pending = 0;
+    let now = at(1, 2);
+    const replanned: string[] = [];
+    const walk = new Walker(config, queue, {
+      pendingMoves: () => pending,
+      stateNow: () => now,
+      replan: (to) => {
+        replanned.push(to);
+        return {
+          cost: 1,
+          blocked: false,
+          steps: [{ ...ROUTE.steps[1]!, from: '1/9', command: 'se', direction: 'se' }]
+        };
+      }
+    });
+    walk.start(ROUTE, at(1, 1));
+    pending = 1;
+    walk.onCharacter(at(1, 2));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['e']);
+    pending = 0;
+    now = at(1, 9);
+    vi.advanceTimersByTime(tuning().walk.holdMs + 50);
+    expect(replanned).toEqual(['1/3']);
+    expect(sent).toEqual(['e', 'se']);
+    walk.dispose();
+  });
+
+  it('sends its own step when another mover’s step left the character where it was', () => {
+    let pending = 0;
+    const replanned: string[] = [];
+    const walk = new Walker(config, queue, {
+      pendingMoves: () => pending,
+      stateNow: () => at(1, 2),
+      replan: (to) => {
+        replanned.push(to);
+        return 'no route';
+      }
+    });
+    walk.start(ROUTE, at(1, 1));
+    pending = 1;
+    walk.onCharacter(at(1, 2));
+    vi.advanceTimersByTime(50);
+    pending = 0;
+    vi.advanceTimersByTime(tuning().walk.holdMs + 50);
+    expect(replanned).toEqual([]);
+    expect(sent).toEqual(['e', 'e']);
+    walk.dispose();
+  });
+
+  it('waits on a landing it cannot place, then stops rather than send a stale step', () => {
+    let pending = 0;
+    let now = at(1, 2);
+    const ends: Array<string | null> = [];
+    const walk = new Walker(config, queue, {
+      pendingMoves: () => pending,
+      stateNow: () => now,
+      ended: (_arrived, reason) => ends.push(reason)
+    });
+    walk.start(ROUTE, at(1, 1));
+    pending = 1;
+    walk.onCharacter(at(1, 2));
+    vi.advanceTimersByTime(50);
+    pending = 0;
+    now = at(null, null);
+    vi.advanceTimersByTime(tuning().walk.holdMs + 50);
+    expect(sent).toEqual(['e']);
+    expect(walk.walking).toBe(true);
+    vi.advanceTimersByTime(config.walk.stepTimeoutMs + tuning().walk.holdMs);
+    expect(sent).toEqual(['e']);
+    expect(walk.walking).toBe(false);
+    expect(ends).toContain(t('automation.walk.reasonLostAfterOtherStep'));
+    walk.dispose();
+  });
+
   it('sends the next step only once the room confirms the last one', () => {
     walker.start(ROUTE, at(1, 1));
     expect(sent).toEqual(['e']);

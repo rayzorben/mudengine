@@ -1307,7 +1307,7 @@ export class Walker implements SessionModule {
      * while held is a command spent to be refused.
      */
     if (this.events.moveOnly?.(state) === true) return this.holds.holdForAffliction(state);
-    if ((this.movesInFlight() ?? 0) > 0) return this.holds.holdForOtherMove(state); // one mover
+    if (this.holds.holdForOtherMove(state, this.movesInFlight() ?? 0)) return true; // one mover
     /*
      * A rest this client has just asked for, first of all and outside the
      * beat's budget — and the floor read after a kill (`Holds.holdForFloor`).

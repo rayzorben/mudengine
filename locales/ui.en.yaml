@@ -5509,6 +5509,7 @@ automation:
     reasonDied: you were killed, and the game has moved you
     reasonFightUnending: nothing here is ending the fight, so the route is not waiting any longer
     reasonLostAfterFight: the fight ended somewhere the client could not place
+    reasonLostAfterOtherStep: another step ended somewhere the client could not place
     reasonMoveUnanswered: the fight ended with {command} still unanswered, so there is nowhere to plan from
     reasonNotQueued: the client refused to send {command}
     # A walk that ended inside `Walker.start` with no reason recorded (todo 06, on review).
