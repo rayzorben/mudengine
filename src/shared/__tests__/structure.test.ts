@@ -34,7 +34,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // (`macros.ts`), less the extensions' hooks (todo 84). Lowered by the
   // blessings' construction, out with its choice (`BlessingChoice.ts`, todo 10).
   'src/main/session/SessionManager.ts': 3737,
-  'src/main/world/WorldGraph.ts': 2549,
+  'src/main/world/WorldGraph.ts': 2547,
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
@@ -47,7 +47,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the remotes switches it shares with the Global page (`RemoteSwitches`, todo 07).
   // Lowered by the attack spell's fields, shared with the Global page (`AttackFields`, todo 841).
   // Lowered by the blessings' fields, shared with the Global page (`BlessingFields`, todo 10).
-  'src/renderer/src/components/CharacterForm.tsx': 1582
+  // Lowered by the carried blocks handed to `CarrySections` whole (todo 12).
+  'src/renderer/src/components/CharacterForm.tsx': 1574
 };
 
 /**

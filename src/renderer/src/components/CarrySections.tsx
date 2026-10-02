@@ -10,13 +10,14 @@ import type {
   DropConfig,
   EncumbranceGate,
   LootConfig,
+  OutgrownConfig,
   SearchConfig
 } from '@shared/config';
 
 /**
- * What the character picks up, puts back down, searches for and banks.
+ * What the character picks up, puts back down, gets rid of, searches for and banks.
  *
- * Four fieldsets and one component, for two reasons that point the same way.
+ * Five fieldsets and one component, for two reasons that point the same way.
  *
  * **They are one subject.** Every one of them is a decision about the pack and
  * the purse — bend down for this, shed that, look for what the room did not
@@ -37,11 +38,17 @@ import type {
  * names differently (`global-loot-coins` against `loot-coins`) and a `name` is
  * what `aria-describedby` is built from.
  */
-export interface CarrySectionsProps {
+/** The blocks these fieldsets edit, as both forms hold them. */
+export interface CarryBlocks {
   loot: LootConfig;
   drop: DropConfig;
+  outgrown: OutgrownConfig;
   search: SearchConfig;
   banking: BankingConfig;
+}
+
+export interface CarrySectionsProps {
+  blocks: CarryBlocks;
   /**
    * The bank counters this realm places, for the *which vault* picker — null
    * while the answer has not arrived, and on the Global page, which has no
@@ -49,29 +56,24 @@ export interface CarrySectionsProps {
    * reading *whichever counter* is a control that does nothing.
    */
   banks?: readonly BankChoice[] | null;
-  /** Prefix for every control name on these four fieldsets. */
+  /** Prefix for every control name on these five fieldsets. */
   idPrefix: string;
   /** One block at a time, merged by the caller into whatever it holds them in. */
-  onChange(patch: {
-    loot?: LootConfig;
-    drop?: DropConfig;
-    search?: SearchConfig;
-    banking?: BankingConfig;
-  }): void;
+  onChange(patch: Partial<CarryBlocks>): void;
 }
 
 export default function CarrySections({
-  loot,
-  drop,
-  search,
-  banking,
+  blocks,
   banks = null,
   idPrefix,
   onChange
 }: CarrySectionsProps): React.JSX.Element {
+  const { loot, drop, outgrown, search, banking } = blocks;
   const id = (suffix: string): string => `${idPrefix}${suffix}`;
   const setLoot = (patch: Partial<LootConfig>): void => onChange({ loot: { ...loot, ...patch } });
   const setDrop = (patch: Partial<DropConfig>): void => onChange({ drop: { ...drop, ...patch } });
+  const setOutgrown = (patch: Partial<OutgrownConfig>): void =>
+    onChange({ outgrown: { ...outgrown, ...patch } });
 
   return (
     <>
@@ -255,6 +257,27 @@ export default function CarrySections({
           label={t('settings.movement.dropWorthlessLabel')}
           name={id('drop-worthless')}
           onChange={(value) => setDrop({ worthless: value })}
+        />
+      </fieldset>
+
+      {/* Outgrown gear, beside the junk: both are what the pack puts down (todo 12). */}
+      <fieldset className="settings-menus">
+        <legend>{t('settings.movement.outgrownLegend')}</legend>
+        <CheckField
+          checked={outgrown.enabled}
+          hint={t('settings.movement.outgrownEnabledHint')}
+          label={t('settings.movement.outgrownEnabledLabel')}
+          name={id('outgrown-enabled')}
+          onChange={(value) => setOutgrown({ enabled: value })}
+        />
+        <TextField
+          hint={t('settings.movement.outgrownRoomHint')}
+          label={t('settings.movement.outgrownRoomLabel')}
+          name={id('outgrown-room')}
+          onChange={(value) => setOutgrown({ ganghouseRoom: value })}
+          placeholder={t('settings.movement.outgrownRoomPlaceholder')}
+          value={outgrown.ganghouseRoom}
+          wide
         />
       </fieldset>
 

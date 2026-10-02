@@ -19,7 +19,10 @@ import {
   type SlotGearRow,
   type SlotRanking
 } from '../../shared/slotGear';
+import type { CharacterState } from '../../shared/character';
+import { prowessSheetOf } from '../../shared/verdict';
 import type { WorldItem } from '../../shared/world';
+import { wearerOf, type WearerRealm } from './wearer';
 
 /** Who is asking, and how they swing. */
 export interface SlotAsker {
@@ -28,6 +31,21 @@ export interface SlotAsker {
   family: RealmFamily | null;
   /** `combat.attack`, the verb the character opens a fight with. */
   attack: string;
+}
+
+/** The asker for a character: who it is in the realm's rows, its sheet, and how it swings. */
+export function slotAskerOf(
+  state: CharacterState,
+  world: WearerRealm | null,
+  cls: { combat: number | null; magery: number | null; family: RealmFamily | null },
+  attack: string
+): SlotAsker {
+  return {
+    wearer: wearerOf(state, world),
+    sheet: prowessSheetOf(state, cls),
+    family: cls.family,
+    attack
+  };
 }
 
 /** The swing a verb makes, by the realm's command table. */

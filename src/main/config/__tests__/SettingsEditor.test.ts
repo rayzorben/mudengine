@@ -71,6 +71,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   gear: { ...DEFAULT_CONFIG.automation.gear },
   loot: structuredClone(DEFAULT_CONFIG.automation.loot),
   drop: structuredClone(DEFAULT_CONFIG.automation.drop),
+  outgrown: { ...DEFAULT_CONFIG.automation.outgrown },
   search: { ...DEFAULT_CONFIG.automation.search },
   banking: { ...DEFAULT_CONFIG.automation.banking },
   // Empty is what OPTIONS below gives a character: the options file states no

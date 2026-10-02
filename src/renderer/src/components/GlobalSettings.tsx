@@ -1619,14 +1619,7 @@ export default function GlobalSettings({
               />
             </fieldset>
 
-            <CarrySections
-              banking={draft.automation.banking}
-              drop={draft.automation.drop}
-              idPrefix="global-"
-              loot={draft.automation.loot}
-              onChange={automation}
-              search={draft.automation.search}
-            />
+            <CarrySections blocks={draft.automation} idPrefix="global-" onChange={automation} />
 
             <LoopSection
               catalogue={catalogue}

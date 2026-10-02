@@ -1307,6 +1307,22 @@ export interface DropConfig {
 }
 
 /**
+ * Getting rid of gear the character has outgrown (todo 12): an unworn item no
+ * better than what is worn in a full slot, and not kept by the supply list, a
+ * gear set, a key, `LoyalItem` or the ganghouse deed, emblem and keys, is
+ * stashed in the ganghouse, sold, or dropped, one at a time. Off by default.
+ */
+export interface OutgrownConfig {
+  enabled: boolean;
+  /**
+   * The ganghouse room to `hide` things in, as a loop stop names a room
+   * (`Silver House Vault 15/921`). The world database does not say which rooms
+   * belong to which house. Empty stashes nothing.
+   */
+  ganghouseRoom: string;
+}
+
+/**
  * Banking the purse, unasked — MegaMUD's StashCoin.
  *
  * Coins carried are coins a death can scatter and an encumbrance the walker
@@ -2361,6 +2377,8 @@ export interface AutomationConfig {
   loot: LootConfig;
   /** Dropping named junk back onto it — the other half of MegaMUD's drop list. */
   drop: DropConfig;
+  /** Stashing, selling or dropping gear the character has outgrown. */
+  outgrown: OutgrownConfig;
   /** Looking for what the room does not print — see `SearchConfig`. */
   search: SearchConfig;
   /** Banking the purse at a counter — MegaMUD's StashCoin. */
@@ -2779,6 +2797,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       convertAt: 'never'
     },
     drop: { enabled: false, items: [], whenEncumbered: false, worthless: false },
+    outgrown: { enabled: false, ganghouseRoom: '' },
     search: { enabled: false, tries: 1 },
     // 500 gold and 5 gold, on the measured ladder: 100 copper to the gold.
     banking: { autoDeposit: false, depositThresholdCopper: 50_000, keepCopper: 500, bank: 0 },
@@ -3721,6 +3740,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
     health: normalizeHealth(raw['health']),
     loot: normalizeLoot(raw['loot']),
     drop: normalizeDrop(raw['drop']),
+    outgrown: normalizeOutgrown(raw['outgrown']),
     search: normalizeSearch(raw['search']),
     banking: normalizeBanking(raw['banking']),
     supplies: normalizeSupplies(raw['supplies']),
@@ -3969,6 +3989,15 @@ function normalizeDrop(value: unknown): DropConfig {
     items,
     whenEncumbered: bool(raw['whenEncumbered'], d.whenEncumbered),
     worthless: bool(raw['worthless'], d.worthless)
+  };
+}
+
+function normalizeOutgrown(value: unknown): OutgrownConfig {
+  const raw = isRecord(value) ? value : {};
+  const d = DEFAULT_CONFIG.automation.outgrown;
+  return {
+    enabled: bool(raw['enabled'], d.enabled),
+    ganghouseRoom: str(raw['ganghouseRoom'], d.ganghouseRoom).trim()
   };
 }
 

@@ -52,6 +52,7 @@ import {
 } from '../../shared/movement';
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand } from '../automation/ItemErrand';
+import type { OutgrownGear } from '../automation/OutgrownGear';
 import { QuestRunner } from '../automation/QuestRunner';
 import { EquipmentManager } from '../automation/EquipmentManager';
 import { Wards } from '../automation/Wards';
@@ -98,6 +99,7 @@ import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
 import { trainPlanner } from './trainPlanner';
+import { outgrownTrip } from './outgrownPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
@@ -432,6 +434,8 @@ export class SessionManager {
   private readonly recoverGear: GearRecovery;
   /** Going to collect the level when the experience is there — todo 18. */
   private readonly trainLevel: TrainErrand;
+  /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
+  private readonly outgrown: OutgrownGear;
   /** Where this character should be at all, and the lap that puts it there — todo 05. */
   private readonly hunt: AutoHunt;
   /** Going to get the item a route's door wants — todo 07. */
@@ -793,12 +797,9 @@ export class SessionManager {
     this.walker = new Walker(automation, this.queue, {
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
-        this.loops.onWalkEnded(arrived, reason, this.tracker.current);
-        this.supplies.onWalkEnded(arrived, reason, this.tracker.current);
-        this.recoverGear.onWalkEnded(arrived, reason, this.tracker.current);
-        this.trainLevel.onWalkEnded(arrived, reason, this.tracker.current);
-        this.hunt.onWalkEnded(arrived, reason, this.tracker.current);
-        this.questRunner.onWalkEnded(arrived, reason, this.tracker.current);
+        const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
+        for (const each of [...trips, this.hunt, this.questRunner])
+          each.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to, landing) => {
         this.remotes.stepping(command, direction, to, this.tracker.current);
@@ -1177,29 +1178,27 @@ export class SessionManager {
       reports
     );
     /*
-     * And going to collect the level, which is the one thing an unattended
-     * client has to do (todo 18). The errand's own planner, with the same
-     * refusals and a leg's options — and the lap held rather than ended, as
-     * a supply errand holds it.
+     * And the trips to collect the level (todo 18) and to get rid of outgrown
+     * gear (todo 12), the one thing an unattended client has to do and the
+     * pack it fills: a leg's options, and the lap held rather than ended.
      */
+    const legs = () => ({
+      ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
+      ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world }
+    });
+    const trip = { modules: legs, release: releaseErrand };
     this.trainLevel = new TrainErrand(
       automation.train,
       automation.enabled,
       this.queue,
-      trainPlanner({
-        modules: () => ({
-          tracker: this.tracker,
-          errands: this.errands,
-          walker: this.walker,
-          loops: this.loops,
-          travel: this.travel,
-          itemErrand: this.itemErrand,
-          world: this.world
-        }),
-        release: releaseErrand
-      }),
+      trainPlanner(trip),
       reports
     );
+    this.outgrown = outgrownTrip(automation, this.queue, reports, {
+      ...trip,
+      config: () => this.automationConfig,
+      busy: () => this.errandHeld()
+    });
     /*
      * And where the character should be at all (todo 05): the survey's best
      * lair within reach, walked to as a journey the card draws and then run as
@@ -1660,6 +1659,7 @@ export class SessionManager {
         combatLease: this.combatLease,
         supplies: this.supplies,
         trainLevel: this.trainLevel,
+        outgrown: this.outgrown,
         hunt: this.hunt,
         itemErrand: this.itemErrand,
         questRunner: this.questRunner
@@ -1785,10 +1785,7 @@ export class SessionManager {
       { module: this.rules, configure: (a) => this.rules.load(a.rules, a.combat.mobRules) },
       { module: this.walker, configure: (a) => this.walker.configure(a) },
       { module: this.combat },
-      {
-        module: this.recovery,
-        configure: (a) => this.recovery.configure(a)
-      },
+      { module: this.recovery, configure: (a) => this.recovery.configure(a) },
       { module: this.loot, configure: (a) => this.loot.configure(a.loot, a.supplies, a.enabled) },
       { module: this.drop, configure: (a) => this.drop.configure(a.drop, a.enabled) },
       { module: this.search, configure: (a) => this.search.configure(a.search, a.enabled) },
@@ -1802,6 +1799,7 @@ export class SessionManager {
         configure: (a) => this.recoverGear.configure(a.movement, a.enabled)
       },
       { module: this.trainLevel, configure: (a) => this.trainLevel.configure(a.train, a.enabled) },
+      { module: this.outgrown, configure: (a) => this.outgrown.configure(a.outgrown, a.enabled) },
       {
         module: this.hunt,
         configure: (a) => this.hunt.configure(a.hunting, a.walk, a.health, a.enabled)
@@ -3176,6 +3174,7 @@ export class SessionManager {
         // And the kit after a death, on the same terms as the errand.
         this.recoverGear.onCharacter(state);
         this.trainLevel.onCharacter(state);
+        this.outgrown.onCharacter(state);
         /*
          * And where the character should be at all, which is the last of the
          * *going somewhere* decisions and rightly so: it only ever acts when
@@ -3344,6 +3343,7 @@ export class SessionManager {
       this.travel.escapeUnanswered ||
       this.supplies.current !== null ||
       this.trainLevel.busy ||
+      this.outgrown.busy ||
       this.itemErrand.running ||
       this.questRunner.running
     );

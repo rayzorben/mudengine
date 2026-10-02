@@ -345,6 +345,28 @@ export const MIN_LEVEL_ABILITY = 135;
  */
 export const CONFUSE_MESSAGE_ABILITY = 101;
 
+/** `LoyalItem`: the item stays with its owner. A claim by presence (see `abilityIsUnread`). */
+export const LOYAL_ITEM_ABILITY = 100;
+
+/**
+ * The ganghouse gear (deed, emblem, keys), each valued with the house number (`gmud.mdb`, 2026-10-02):
+ * `GHouseDeed` on a deed, `GHouseItem` on the house's emblem, keys, keyring and
+ * banners, `GShopItem` on the key that runs its shop. The nightly cleanup takes
+ * the emblem and keys of anyone whose gang no longer owns that house
+ * (`Player.RemoveGangItems`).
+ */
+export const GANG_HOUSE_DEED_ABILITY = 181;
+export const GANG_HOUSE_ITEM_ABILITY = 183;
+export const GANG_SHOP_ITEM_ABILITY = 184;
+
+/** Whether a row's pairs carry an ability at all, whatever its value. */
+export function carriesAbility(
+  pairs: ReadonlyArray<readonly [number, number]> | null | undefined,
+  id: number
+): boolean {
+  return pairs?.some(([which]) => which === id) ?? false;
+}
+
 /**
  * `DescMsg` — the `Messages` row a spell's start, stop and `st` sentences come
  * from, the numbering `spell-messages.csv` keys as `desc_msg_id` (todo 824).
