@@ -728,6 +728,9 @@ tuning:
     # Once every trainer was out of reach, how long before the routes are
     # planned again, and only from a different room (todo 103).
     reaskMs: 60000
+    # How long the routes to each trainer, planned for a plan's prices, are
+    # kept while the character stands in the same room.
+    aheadMs: 60000
     # Trainers priced within this share of the cheapest count as one price,
     # and the nearest, safest walk among them is taken.
     costSlack: 0.25

@@ -904,6 +904,13 @@ const TUNING_DEFAULTS = {
      */
     reaskMs: 60000,
     /**
+     * How long the routes `trainersAhead` planned stay its answer while the
+     * character stands in the same room. A trainer nothing reaches costs a
+     * search of the whole realm, about four seconds on Paradigm, and a plan
+     * asked every few seconds asked it every time (2026-10-01).
+     */
+    aheadMs: 60000,
+    /**
      * Trainers priced within this share of the cheapest count as one price,
      * and the nearest, safest walk among them is taken (`bestTrainer`).
      */

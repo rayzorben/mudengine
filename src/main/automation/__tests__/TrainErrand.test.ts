@@ -605,6 +605,7 @@ describe('going to collect the level', () => {
  * the trip would pay.
  */
 describe('the trainer each level ahead goes to', () => {
+  const KEY = 'level 30';
   const SYSOP: TrainerChoice = { ...TITAN, shop: 1, name: 'Sysop', room: 1, cost: 450 };
 
   it('is the one a route reaches, not the cheapest the realm lists', () => {
@@ -612,7 +613,9 @@ describe('the trainer each level ahead goes to', () => {
       trainers: () => [SYSOP, TITAN],
       routeTo: (room) => (room === '3/1' ? 'no route' : ROUTE)
     });
-    expect(errand.trainersAhead([30])).toEqual([{ level: 30, trainer: TITAN, reachable: true }]);
+    expect(errand.trainersAhead([30], KEY)).toEqual([
+      { level: 30, trainer: TITAN, reachable: true }
+    ]);
   });
 
   it('says the cheapest is out of reach when no route reaches any, and nothing for a level none takes', () => {
@@ -620,7 +623,7 @@ describe('the trainer each level ahead goes to', () => {
       trainers: (level) => (level === 31 ? [] : [SYSOP, TITAN]),
       routeTo: () => 'no route'
     });
-    expect(errand.trainersAhead([30, 31])).toEqual([
+    expect(errand.trainersAhead([30, 31], KEY)).toEqual([
       { level: 30, trainer: SYSOP, reachable: false },
       null
     ]);
@@ -634,14 +637,57 @@ describe('the trainer each level ahead goes to', () => {
         return ROUTE;
       }
     });
-    errand.trainersAhead([30, 31, 32]);
+    errand.trainersAhead([30, 31, 32], KEY);
     expect(planned).toBe(2);
+  });
+
+  /*
+   * 2026-10-01: a plan asked for the price every few seconds while Soul stood
+   * still, and the one level-10 trainer no route reached cost a search of the
+   * whole realm, about four seconds, every time.
+   */
+  it('keeps the routes while the character stands in the room, and plans again elsewhere or once stale', () => {
+    let planned = 0;
+    const errand = make(train(), {
+      routeTo: () => {
+        planned += 1;
+        return 'no route';
+      }
+    });
+    errand.trainersAhead([30], KEY);
+    errand.trainersAhead([30, 31], KEY);
+    expect(planned).toBe(2);
+    here = '8/916';
+    errand.trainersAhead([30], KEY);
+    expect(planned).toBe(4);
+    vi.advanceTimersByTime(tuning().train.aheadMs);
+    errand.trainersAhead([30], KEY);
+    expect(planned).toBe(6);
+  });
+
+  it('plans again in the same room once what a route is planned on, or the settings, move', () => {
+    let planned = 0;
+    const errand = make(train(), {
+      routeTo: () => {
+        planned += 1;
+        return ROUTE;
+      }
+    });
+    errand.trainersAhead([30], KEY);
+    errand.trainersAhead([30], KEY);
+    expect(planned).toBe(2);
+    // A level trained by hand, a key bought, an exit refused: the traveller is another.
+    errand.trainersAhead([30], 'level 31');
+    expect(planned).toBe(4);
+    errand.configure(train(), true);
+    errand.trainersAhead([30], 'level 31');
+    expect(planned).toBe(6);
   });
 
   it('is only the chosen trainer where the player chose one', () => {
     const errand = make(train({ trainer: AMAZON.shop }));
-    expect(errand.trainersAhead([30])[0]?.trainer).toEqual(AMAZON);
+    expect(errand.trainersAhead([30], KEY)[0]?.trainer).toEqual(AMAZON);
     const gone = make(train({ trainer: 999 }));
-    expect(gone.trainersAhead([30])).toEqual([null]);
+    expect(gone.trainersAhead([30], KEY)).toEqual([null]);
   });
 });

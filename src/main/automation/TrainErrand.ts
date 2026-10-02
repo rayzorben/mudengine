@@ -109,6 +109,19 @@ export class TrainErrand implements SessionModule {
    * a lap changes room every three seconds).
    */
   private refusedFrom: { level: number; room: RoomId | null; at: number } | null = null;
+  /**
+   * The routes `trainersAhead` planned, from which room, on what
+   * (`Errands.routeKey`), and when: kept for `tuning.train.aheadMs` while the
+   * character stands there and nothing a route is planned on has moved, since a plan
+   * asks for the prices every few seconds and a trainer nothing reaches costs
+   * a search of the whole realm each time.
+   */
+  private ahead: {
+    room: RoomId | null;
+    key: string;
+    at: number;
+    ways: Map<RoomId, Way>;
+  } | null = null;
   /** The last *none reachable* sentence said, so the same outcome is said once. */
   private saidUnreachable: string | null = null;
   /**
@@ -140,6 +153,8 @@ export class TrainErrand implements SessionModule {
   configure(config: TrainConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
+    // The doors a walk may force and the places it keeps out of are settings too.
+    this.ahead = null;
   }
 
   reset(): void {
@@ -150,6 +165,7 @@ export class TrainErrand implements SessionModule {
     this.askedOwed = null;
     this.said = null;
     this.saidNowhere = null;
+    this.ahead = null;
   }
 
   /**
@@ -366,8 +382,12 @@ export class TrainErrand implements SessionModule {
    * a plan reads the price the trip would pay, not the cheapest row the realm
    * lists (2026-10-01: 450 copper planned, 45,445 asked at the Hydra Trainer).
    */
-  trainersAhead(levels: readonly number[]): Array<TrainerAhead | null> {
-    const ways = new Map<RoomId, Way>();
+  trainersAhead(
+    levels: readonly number[],
+    /** What a route from here is planned on (`Errands.routeKey`): a change plans them again. */
+    routeKey: string
+  ): Array<TrainerAhead | null> {
+    const ways = this.waysFromHere(routeKey);
     return levels.map((level) => {
       const taking = this.planner.trainers(level);
       // The chosen trainer, where it no longer takes the level, is a refusal on the trip too.
@@ -380,6 +400,24 @@ export class TrainErrand implements SessionModule {
       const cheapest = pool[0];
       return cheapest === undefined ? null : { level, trainer: cheapest, reachable: false };
     });
+  }
+
+  /**
+   * The routes `trainersAhead` keeps (`ahead`), started again from another
+   * room, once stale, or when what a route is planned on moved.
+   */
+  private waysFromHere(key: string): Map<RoomId, Way> {
+    const room = this.planner.here();
+    const at = this.now();
+    if (
+      this.ahead === null ||
+      this.ahead.room !== room ||
+      this.ahead.key !== key ||
+      at - this.ahead.at >= tuning().train.aheadMs
+    ) {
+      this.ahead = { room, key, at, ways: new Map() };
+    }
+    return this.ahead.ways;
   }
 
   /**
