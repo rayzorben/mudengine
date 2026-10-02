@@ -399,11 +399,15 @@ export class Barriers {
        * with the room number in it (`1/1056`), and the exit is in the file,
        * with both its levers.
        */
-      if (this.levers.blameable(step)) {
+      // A toll refusal on an exit the realm data records as a toll says the purse was short,
+      // and the router prices that toll against the purse (`Router` `toll`). Written into
+      // `refusedEdges`, the gate stayed out of every route after the character could pay (2026-10-02).
+      const pricedToll = block.groups['toll'] !== undefined && step.requirement?.kind === 'toll';
+      if (this.levers.blameable(step) && !pricedToll) {
         this.events.refused?.(step.from, step.direction, shutRatherThanMissing(step));
       }
     }
-    this.stopRefused(step, barrier);
+    this.stopRefused(step, barrier, block.groups['toll']);
   }
 
   /**
@@ -1006,8 +1010,16 @@ export class Barriers {
   }
 
   /** Ends the walk at a barrier, saying what the realm asked for and what this character has. */
-  private stopRefused(step: RouteStep | undefined, barrier: string | undefined): void {
+  private stopRefused(
+    step: RouteStep | undefined,
+    barrier: string | undefined,
+    toll?: string
+  ): void {
     const command = step?.command ?? t('automation.walk.fallbackMove');
+    if (toll !== undefined) {
+      this.walk.stop(t('automation.walk.reasonToll', { command, toll }));
+      return;
+    }
     if (step === undefined || barrier === undefined) {
       this.walk.stop(t('automation.walk.reasonRefused', { command }));
       return;

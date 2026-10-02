@@ -5522,6 +5522,7 @@ automation:
     reasonPicking: picking the {barrier} to {stepName}
     reasonPlayerTookOver: you moved the character yourself
     reasonRefused: the game refused {command}
+    reasonToll: '{command}: the toll is {toll} and the purse does not cover it'
     reasonUnlocking: unlocking the {barrier} to {stepName} with the key you are carrying
     reasonLever: '"{phrase}" to open the hidden way to {stepName}'
     reasonRereading: reading the room again for the hidden way to {stepName}
