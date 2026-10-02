@@ -87,6 +87,7 @@ const planner = (over: Partial<TrainPlanner> = {}): TrainPlanner => ({
     fetched.push({ items: items.map((item) => item.name), then });
     return null;
   },
+  unobtainable: () => null,
   fetching: () => fetchingNow,
   lightFor: () => null,
   lightSettled: () => {},
@@ -698,6 +699,15 @@ describe('a trainer behind a keyed door', () => {
         room: TITAN.roomName,
         why: t('automation.train.whyStopped')
       })
+    );
+  });
+
+  it('is out of reach when a key cannot be got, and nothing is fetched', () => {
+    const why = 'no stone key';
+    keyed({ unobtainable: () => why }).onCharacter(owed());
+    expect(fetched).toEqual([]);
+    expect(notices).toContain(
+      t('automation.train.refusalUnreachable', { level: 30, skipped: skippedOne(TITAN, why) })
     );
   });
 

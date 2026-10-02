@@ -558,7 +558,7 @@ export class SessionManager {
         rates: () => this.belongings.recallHuntRates(),
         family: () => this.vocabulary.family,
         watched: () => this.questWatch.watched,
-        lairOdds: (room) => this.odds.lair(room),
+        odds: () => this.odds,
         askAbilities: (state) => this.routines.askAbilities(state),
         notice: (message) => this.sink.notice(message)
       }

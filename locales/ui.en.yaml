@@ -4635,6 +4635,11 @@ automation:
       anywhere.
     refusalDropperUnreachable: Dropped only by {mobs}, which the world data places nowhere this
       character can reach from here.
+    refusalDropperUnfought: 'Dropped only by {mobs}; attacking needs {needs}, even at full HP.'
+    refusalDropperUnworked: Dropped only by {mobs}, and the odds of that fight are still being worked
+      out. Try again in a moment.
+    refusalNoWayToGet: 'No way to get {item}: {why}'
+    survivedShare: '{mob} (you survive {survives})'
     refusalNotBought: '{item} was not bought, so the route is not being walked.'
     refusalNotInRealm: This character is not in the realm.
     refusalRouteRefused: 'The way is open now, but the route did not start: {why}'

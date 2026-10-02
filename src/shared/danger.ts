@@ -11,7 +11,7 @@
  *
  * Dependency-free like everything in `shared/`.
  */
-import type { Survival } from './survival';
+import type { Odds, Survival } from './survival';
 
 /**
  * Why a fight is not opened, with the health to rest to first, or null when
@@ -29,8 +29,22 @@ export function openingRefusal(
 ): OpeningRefusal | null {
   if (fight === null || hp === null) return null;
   const needs = hpMax === null || hp >= hpMax ? null : hpMax;
-  if (openAbove > 0 && fight.survives < openAbove) {
-    return { kind: 'odds', survives: fight.survives, needs };
-  }
-  return null;
+  return refusedRested(fight, openAbove) ? { kind: 'odds', survives: fight.survives, needs } : null;
+}
+
+/** Whether this fight is refused even at full health: resting first would not open it. */
+export function refusedRested(fight: Survival, openAbove: number): boolean {
+  return openAbove > 0 && fight.survives < openAbove;
+}
+
+/**
+ * Undefined where combat opens on this fight rested, else the share of it
+ * survived, or null while it is still being worked out: an unknown fight is
+ * not one to walk somewhere and wait for. A fight the simulator cannot run is
+ * left to combat, which opens on it (`openingRefusal`).
+ */
+export function unfoughtShare(fight: Odds, openAbove: number): number | null | undefined {
+  if (openAbove === 0 || fight.kind === 'unrun') return undefined;
+  if (fight.kind !== 'run') return null;
+  return refusedRested(fight.survival, openAbove) ? fight.survival.survives : undefined;
 }

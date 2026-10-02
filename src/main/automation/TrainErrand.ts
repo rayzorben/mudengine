@@ -49,6 +49,8 @@ export interface TrainPlanner {
   walk(route: Route): string | null;
   /** Gets each item (`ItemErrand.collect`), then walks `then`. Returns its refusal, or null. */
   fetch(items: ReadonlyArray<Wanted>, then: Route): string | null;
+  /** Why one of these items cannot be got (`ItemErrand.unobtainable`), or null. */
+  unobtainable(items: ReadonlyArray<Wanted>): string | null;
   /** The light `route`'s dark rooms want bought first (`LightAhead.wanted`), or null. */
   lightFor(route: Route): LightFetch | null;
   /** What became of fetching that light, said (`LightAhead.settle`). */
@@ -505,6 +507,11 @@ export class TrainErrand implements SessionModule {
      */
     const keyed = route.unlocks;
     if (keyed !== undefined && !keyed.blocked && (keyed.needs ?? []).length > 0) {
+      // Every key, before setting off: the first can lead somewhere only the
+      // second gets out of (2026-10-02: a one-way wall, then an ogre combat
+      // would not fight in front of the stone key's door).
+      const why = this.planner.unobtainable(keyed.needs ?? []);
+      if (why !== null) return { kind: 'none', why };
       return { kind: 'keyed', route: keyed, needs: keyed.needs ?? [] };
     }
     return { kind: 'none', why: route.reason ?? t('automation.walk.refusalNoRoute') };
