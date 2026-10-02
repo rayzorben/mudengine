@@ -3686,7 +3686,7 @@ describe('the per-line order in act()', () => {
     ...DEFAULT_CONFIG.automation.spells,
     heal: 'mend',
     healBelow: 0.5,
-    minMana: 0
+    healMinMana: 0
   };
   /** Auto-combat on and opening on nothing: the only swing is hitting back. */
   const hittingBack = (

@@ -891,8 +891,8 @@ export default function CharacterForm({
           <fieldset className="settings-menus" data-fieldset="spells-heal">
             <legend>{t('settings.spells.healLegend')}</legend>
             <HealFields
-              bands={bands.hp}
-              hpMax={maxima.hpMax}
+              bands={bands}
+              maxima={maxima}
               namePrefix=""
               onChange={(field, value) => patch({ [HEAL_KEYS[field]]: value })}
               onToggle={(field, value) => patch({ [HEAL_KEYS[field]]: value })}

@@ -252,6 +252,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheBlessingChoice(home, note, options.template);
   statedTheOutgrownGear(home, note, options.template);
   statedBuyingALight(home, note, options.template);
+  theHealKeptItsOwnFloor(home, note, options.template);
 }
 
 /**
@@ -3734,6 +3735,46 @@ function statedBuyingALight(
     stated.length === 1
       ? t('notices.migration.buyLight.one', params)
       : t('notices.migration.buyLight.many', params)
+  );
+}
+
+/**
+ * `automation.spells.healMinMana` (2026-10-02): the heal's own mana floor,
+ * which used to be `minMana`, the attack spell's. Into every file that states
+ * `minMana` without it, at that file's `minMana`, so nobody's heals change
+ * until they set the new field. A file stating no `minMana` inherits both and
+ * is left alone. Idempotent: a key stays added whatever its value.
+ */
+function theHealKeptItsOwnFloor(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get('automation.spells.healMinMana');
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const stated: string[] = [];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      const spells = document.getIn([...SPELLS_BLOCK], true);
+      if (!isMap(spells) || spells.has('healMinMana')) return false;
+      const floor = spells.get('minMana');
+      if (typeof floor !== 'number') return false;
+      const pair = document.createPair('healMinMana', floor) as Pair;
+      if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const at = spells.items.findIndex((item) => keyText(item as Pair) === 'minMana');
+      spells.items.splice(at + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.healMinMana.one', params)
+      : t('notices.migration.healMinMana.many', params)
   );
 }
 

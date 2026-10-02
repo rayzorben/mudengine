@@ -272,7 +272,7 @@ describe('a character', () => {
         ...good,
         health: { restBelow: 0.5, meditateBelow: 0.25, meditateTo: 0.6 },
         movement: { openDoors: true, openTries: 2, sneak: true },
-        spells: { attack: 'ice blade', minMana: 0.2 }
+        spells: { attack: 'ice blade', minMana: 0.2, healMinMana: 0.1 }
       });
       expect(draft?.health).toEqual({
         restBelow: 0.5,
@@ -345,6 +345,7 @@ describe('a character', () => {
         healParty: false,
         autoChooseHeal: false,
         minMana: 0.2,
+        healMinMana: 0.1,
         cures: { blindness: '', poison: '', disease: '', freedom: '' },
         blessings: [],
         notifyPartyOnWearOff: false,
@@ -443,6 +444,7 @@ describe('a character', () => {
         healParty: false,
         autoChooseHeal: false,
         minMana: 0,
+        healMinMana: 0,
         attackFallback: '',
         autoChoose: false,
         attackCasts: 0,

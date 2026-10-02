@@ -538,6 +538,10 @@ notices:
         is on: {fileList}'
       one: 'Auto Choose Best Heal was added to {fileList}, turned on where Auto Choose Best Spell is
         on.'
+    healMinMana:
+      many: "Healing got its own mana floor, set to each file's attack spell floor, in {count}
+        files: {fileList}"
+      one: 'Healing got its own mana floor, set to the attack spell floor, in {fileList}.'
     autoJoin:
       many: 'Join When Invited was added, off, to {count} files: {fileList}'
       one: 'Join When Invited was added, off, to {fileList}'
@@ -4159,6 +4163,9 @@ settings:
     healHint: Cast on this character with no target. Only spells you can cast on yourself are shown.
     healLabel: Self Healing Spell
     healLegend: Healing
+    healMinManaHint: No heal goes out, on you or a member, below this share of your mana. 0 always
+      heals.
+    healMinManaLabel: Not Below Mana %
     healNoSelfCast: This spell cannot be cast on yourself.
     healNoPartyCast: This spell cannot be cast on another character.
     healParty: Auto-Heal Party Members
@@ -4170,7 +4177,8 @@ settings:
     healToHint: Keep healing that target until it is back to this. 0 casts once at the threshold.
     healToLabel: Heal Up To HP %
     legend: Attack Spells
-    minManaHint: Below this, your regular attacks take over. 0 always casts.
+    minManaHint: Below this, your regular attacks take over. Heals have their own setting. 0 always
+      casts.
     minManaLabel: Not Below Mana %
     note: Buffs, heals and anything conditional are set in automation.rules in the options file.
     rulesPointerNote: One spell, cast by a number, on the mid-round tick, which is the one thing a
@@ -4998,7 +5006,8 @@ automation:
     # Going to collect the level -- `TrainErrand` (todo 18). Every sentence
     # names a figure the player can act on: the cost, the purse, the room.
     going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
-    goingKeyed: 'A level is waiting. Going to {room} to train ({cost} copper): getting {items} for the
+    goingKeyed:
+      'A level is waiting. Going to {room} to train ({cost} copper): getting {items} for the
       door on the way first.'
     goingFetching: 'A level is waiting. Going to {room} to train ({cost} copper): getting {items}
       first.'

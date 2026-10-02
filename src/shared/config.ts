@@ -1073,7 +1073,7 @@ export interface RemotesConfig {
    * - `@heal` (2026-09-19) does do something: one party heal, for a member the
    *   thresholds had not reached. Nothing while `healParty` or `healBelow` is
    *   off; while on, what it adds is that a member — the uninvited follower
-   *   below included — can spend this character's mana down to `minMana`, one
+   *   below included — can spend this character's mana down to `healMinMana`, one
    *   cast per `healCooldownMs`, by asking. A `deny` by name takes it back.
    *
    * **Four more were on this list and were taken off** (2026-09-02, review),
@@ -2151,10 +2151,22 @@ export interface SpellsConfig {
    *
    * MegaMUD's min-mana on the attack spell, and the setting its own
    * documentation warns about most: set too high, the character silently never
-   * casts and reads as broken. An *unknown* maximum never blocks it, for the
-   * reason an unknown maximum never starts a retreat.
+   * casts and reads as broken. An *unknown* maximum never blocks the attack
+   * spell, for the reason an unknown maximum never starts a retreat.
+   *
+   * The attack spells and the cures keep this floor; the heal keeps
+   * `healMinMana`.
    */
   minMana: number;
+  /**
+   * Do not heal below this fraction of maximum mana. 0 always heals.
+   *
+   * Apart from `minMana` because the two want different numbers: a healer
+   * keeps a reserve for the round spell and spends the rest on mending, and
+   * one floor for both either starves the heals or empties the pool on
+   * attacks. An unknown maximum holds the heal back (`manaAtLeast`).
+   */
+  healMinMana: number;
   /**
    * One curative spell per affliction the client can see. Cast bare once per
    * onset (a targetless cast lands on the caster), and again after thirty seconds while the server
@@ -2888,6 +2900,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       healParty: false,
       invokeItems: false,
       minMana: 0.15,
+      healMinMana: 0.15,
       cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
@@ -4226,6 +4239,7 @@ function normalizeSpells(value: unknown): SpellsConfig {
     healParty: bool(raw['healParty'], d.healParty),
     invokeItems: bool(raw['invokeItems'], d.invokeItems),
     minMana: fraction(raw['minMana'], d.minMana),
+    healMinMana: fraction(raw['healMinMana'], d.healMinMana),
     cures: normalizeCures(raw['cures']),
     blessings: normalizeBlessings(raw['blessings']),
     notifyPartyOnWearOff: bool(raw['notifyPartyOnWearOff'], d.notifyPartyOnWearOff),

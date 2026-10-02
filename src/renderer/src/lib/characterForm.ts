@@ -226,6 +226,8 @@ export interface CharacterFields {
   spellHealTo: string;
   spellHealParty: boolean;
   spellMinMana: string;
+  /** The heal's own mana floor, apart from the attack spell's. */
+  spellHealMinMana: string;
   /** Cures by affliction, and the blessings kept up by events. */
   spellCures: CuresDraft;
   spellBlessings: BlessingDraft[];
@@ -349,6 +351,7 @@ export const HEAL_KEYS = {
   healBelow: 'spellHealBelow',
   healBelowInCombat: 'spellHealBelowInCombat',
   healTo: 'spellHealTo',
+  healMinMana: 'spellHealMinMana',
   autoChooseHeal: 'spellAutoChooseHeal',
   healParty: 'spellHealParty'
 } as const satisfies Record<HealField | HealSwitch, keyof CharacterFields>;
@@ -495,6 +498,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     spellHealParty: entry.spells.healParty,
     spellAutoChooseHeal: entry.spells.autoChooseHeal,
     spellMinMana: percent(entry.spells.minMana),
+    spellHealMinMana: percent(entry.spells.healMinMana),
     spellCures: { ...entry.spells.cures },
     spellBlessings: entry.spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: entry.spells.notifyPartyOnWearOff,
@@ -675,6 +679,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       healParty: form.spellHealParty,
       autoChooseHeal: form.spellAutoChooseHeal,
       minMana: fractionOf(form.spellMinMana),
+      healMinMana: fractionOf(form.spellHealMinMana),
       cures: {
         blindness: form.spellCures.blindness.trim(),
         poison: form.spellCures.poison.trim(),
@@ -977,6 +982,7 @@ export function emptyForm(
     spellHealParty: spells.healParty,
     spellAutoChooseHeal: spells.autoChooseHeal,
     spellMinMana: percent(spells.minMana),
+    spellHealMinMana: percent(spells.healMinMana),
     spellCures: { ...spells.cures },
     spellBlessings: spells.blessings.map((blessing) => ({ ...blessing })),
     spellNotifyWearOff: spells.notifyPartyOnWearOff,

@@ -58,8 +58,9 @@
  *   character, or a member with no listing yet, produces nothing — the same
  *   rule every threshold in this client follows, and it holds for *continuing*
  *   a heal as well as for starting one.
- * - **Cast below the mana floor.** The same `minMana` the attack spell keeps;
- *   a healer at empty is a healer that cannot heal the next one either.
+ * - **Cast below the mana floor.** `healMinMana`, the heal's own, apart from
+ *   the attack spell's `minMana`; a healer at empty is a healer that cannot
+ *   heal the next one either.
  * - **Ask twice while the last cast is still in flight.** One proposal per
  *   target, coalesced, and not again for `tuning.spells.healCooldownMs` — a
  *   status line arrives several times a second under pressure and a `party`
@@ -92,7 +93,7 @@ import {
   spellTargeting,
   type CastGate
 } from '../../shared/spellcraft';
-import { canPayFor } from './mana';
+import { canPayFor, manaAtLeast } from './mana';
 import { chooseHealSpell, type HealAim, type HealChoice } from '../../shared/spellchoice';
 import { healTargets, planHeal } from '../../shared/healplan';
 import { prowessSheetOf } from '../../shared/verdict';
@@ -538,10 +539,7 @@ export class AutoHeal implements SessionModule {
   }
 
   private hasMana(state: CharacterState): boolean {
-    const { mana, manaMax } = state.vitals;
-    if (this.config.minMana <= 0) return true;
-    if (mana === null || manaMax === null || manaMax <= 0) return false;
-    return mana / manaMax >= this.config.minMana;
+    return manaAtLeast(state, this.config.healMinMana);
   }
 
   /**
