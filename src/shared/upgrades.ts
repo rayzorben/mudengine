@@ -23,8 +23,14 @@ export interface GearOffer {
 /** One slot: what is worn and what the realm sells that is better. */
 export interface SlotUpgrade {
   slot: string;
+  /** The weakest worn there, which an upgrade replaces; null where nothing is worn. */
   worn: string | null;
   wornFigure: number | null;
+  /**
+   * Places in the slot nothing is worn in (a second ring finger): an offer
+   * there fills one and replaces nothing.
+   */
+  free: number;
   /** The worn item's damage resistance as the realm states it; null where it does not. */
   wornDr: number | null;
   ranking: 'armour' | 'weapon';

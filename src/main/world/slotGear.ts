@@ -12,7 +12,13 @@ import { equipBlock, type Wearer } from '../../shared/gear';
 import { WEAPON_CLASS, WEAPON_WORN, WORN_SLOT } from '../../shared/items';
 import { roundDamage, type ProwessSheet, type SwingMethod } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
-import { meanBlow, type SlotGear, type SlotGearRow, type SlotRanking } from '../../shared/slotGear';
+import {
+  meanBlow,
+  type SlotFigures,
+  type SlotGear,
+  type SlotGearRow,
+  type SlotRanking
+} from '../../shared/slotGear';
 import type { WorldItem } from '../../shared/world';
 
 /** Who is asking, and how they swing. */
@@ -36,18 +42,32 @@ function swingOf(verb: string): SwingMethod {
   }
 }
 
+/**
+ * An item's own figures, where no round is reckoned: a row's, or a worn item
+ * the list does not hold.
+ */
+export function figuresOfItem(item: Pick<WorldItem, 'armour' | 'weapon'>): SlotFigures {
+  return {
+    // The realm omits a zero, and armour stating none has none.
+    ac: item.armour === undefined ? null : (item.armour.ac ?? 0),
+    dr: item.armour === undefined ? null : (item.armour.dr ?? 0),
+    damage: item.weapon === undefined ? null : { min: item.weapon.min, max: item.weapon.max },
+    perRound: null
+  };
+}
+
 function rowOf(item: WorldItem, asker: SlotAsker, method: SwingMethod | null): SlotGearRow {
   const weapon = item.weapon;
+  const { ac, dr, damage } = figuresOfItem(item);
   return {
     id: item.id,
     name: item.name,
     minLevel: item.minLevel ?? null,
-    // The realm omits a zero, and armour stating none has none.
-    ac: item.armour === undefined ? null : (item.armour.ac ?? 0),
-    dr: item.armour === undefined ? null : (item.armour.dr ?? 0),
+    ac,
+    dr,
     weight: item.encumbrance ?? 0,
     weaponClass: weapon?.kind === undefined ? null : (WEAPON_CLASS[weapon.kind] ?? null),
-    damage: weapon === undefined ? null : { min: weapon.min, max: weapon.max },
+    damage,
     speed: weapon?.speed ?? null,
     perRound:
       weapon === undefined || method === null
@@ -64,17 +84,25 @@ function descending(a: number | null, b: number | null): number {
   return b - a;
 }
 
-function better(ranking: SlotRanking): (a: SlotGearRow, b: SlotGearRow) => number {
-  const tie = (a: SlotGearRow, b: SlotGearRow): number =>
-    a.name.localeCompare(b.name) || a.id - b.id;
+/**
+ * Which of two rows gives more in the slot, by its figures alone: negative
+ * where `a` does, 0 where they give the same. An upgrade is a row this puts
+ * ahead of what is worn; two that tie are not upgrades over each other
+ * (2026-10-01: sandals and cloth shoes, 10 AC each, bought in turn).
+ */
+export function outranks(ranking: SlotRanking): (a: SlotFigures, b: SlotFigures) => number {
   if (ranking.by === 'armour') {
-    return (a, b) => descending(a.ac, b.ac) || descending(a.dr, b.dr) || tie(a, b);
+    return (a, b) => descending(a.ac, b.ac) || descending(a.dr, b.dr);
   }
   // Where no round can be reckoned, the mean blow still orders the weapons.
   return (a, b) =>
     descending(a.perRound?.value ?? null, b.perRound?.value ?? null) ||
-    descending(meanBlow(a.damage), meanBlow(b.damage)) ||
-    tie(a, b);
+    descending(meanBlow(a.damage), meanBlow(b.damage));
+}
+
+function better(ranking: SlotRanking): (a: SlotGearRow, b: SlotGearRow) => number {
+  const figures = outranks(ranking);
+  return (a, b) => figures(a, b) || a.name.localeCompare(b.name) || a.id - b.id;
 }
 
 /** One `Items.Worn` slot (`wornOfWord`), ranked for this character. */
