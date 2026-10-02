@@ -35,6 +35,7 @@ import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
+import type { Errands } from '../Errands';
 import { NO_LORE } from '../../../shared/lore';
 import type { LearnedSpawns } from '../../../shared/spawns';
 import type { QuestWatched } from '../../../shared/quests';
@@ -7823,5 +7824,34 @@ describe('running from a monster its row names', () => {
       acted: false,
       refused: reason
     });
+  });
+});
+
+/* 2026-10-02: every settings reload planned the preferred loops' legs again, 184ms each time. */
+describe('the corridors this character prefers', () => {
+  it('are planned again when the loops change, not on every reload', () => {
+    const world = haven();
+    const preferring: AutomationConfig = {
+      ...DEFAULT_CONFIG.automation,
+      loops: [
+        {
+          name: 'hall',
+          stops: [{ room: 'Haven Hall 1/1' }, { room: 'Rat Lair 1/3' }],
+          bounce: true,
+          prefer: true
+        }
+      ]
+    };
+    manager = build(collect().sink, { world, automation: preferring });
+    const errands = (manager as unknown as { errands: Errands }).errands;
+    const route = vi.spyOn(world, 'route');
+    expect(errands.preferredEdges().size).toBeGreaterThan(0);
+    const planned = route.mock.calls.length;
+    expect(planned).toBeGreaterThan(0);
+    manager.configure(structuredClone(preferring), DEFAULT_CONFIG.connection.login);
+    errands.preferredEdges();
+    expect(route.mock.calls.length).toBe(planned);
+    manager.configure({ ...preferring, loops: [] }, DEFAULT_CONFIG.connection.login);
+    expect(errands.preferredEdges().size).toBe(0);
   });
 });

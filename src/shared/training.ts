@@ -367,7 +367,7 @@ export function bestTrainer<R extends ReachedTrainer>(
   slack: number
 ): R | null {
   if (reached.length === 0) return null;
-  const deadly = (each: R): boolean => lairsAlong(each.route.steps).deadly !== null;
+  const deadly = (each: R): boolean => !walkSurvived(each);
   const toll = (each: R): number =>
     each.route.steps.reduce((sum, step) => sum + (step.danger ?? 0), 0);
   const safe = reached.filter((each) => !deadly(each));
@@ -375,6 +375,23 @@ export function bestTrainer<R extends ReachedTrainer>(
   const cheapest = Math.min(...pool.map((each) => each.trainer.cost));
   const near = pool.filter((each) => each.trainer.cost <= cheapest * (1 + slack));
   return [...near].sort((a, b) => toll(a) - toll(b) || a.route.cost - b.route.cost)[0] ?? null;
+}
+
+/** Whether the walk to a reached trainer is not expected to kill: what `bestTrainer` asks first. */
+export function walkSurvived(each: ReachedTrainer): boolean {
+  return lairsAlong(each.route.steps).deadly === null;
+}
+
+/**
+ * Whether a trainer at `cost` can no longer be `bestTrainer`'s choice, the
+ * trainers being weighed cheapest first: `safe` is the first reached whose
+ * walk survives, so the cheapest it compares against is `safe`'s price, and
+ * a dearer trainer past the slack is never within it. Planning stops there;
+ * each trainer left was a route of its own (2026-10-02: three at 45,445
+ * copper planned, about 1.5 seconds each, behind one at 2,700).
+ */
+export function pricedOut(safe: ReachedTrainer, cost: number, slack: number): boolean {
+  return cost > safe.trainer.cost * (1 + slack);
 }
 
 /** An item a trainer's room puts on its floor, as far as `trainerPrize` reads it. */

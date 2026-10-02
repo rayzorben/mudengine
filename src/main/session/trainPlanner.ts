@@ -45,13 +45,8 @@ export function trainPlanner(parts: TrainPlannerParts): TrainPlanner {
   return {
     here: () => roomAddress(m().tracker.current.room),
     trainers: (level) => m().errands.trainers(level),
-    routeTo: (room) => m().errands.planFromHere(room),
-    // The ways round a refusal, of which the keyed one is read: asked only for a trainer
-    // no plain route reaches, since the alternatives are searches of their own.
-    keyedRouteTo: (room) => {
-      const route = m().errands.planFromHere(room, { alternatives: true });
-      return typeof route === 'string' ? null : (route.unlocks ?? null);
-    },
+    // A blocked plan carries its keyed way, planned in the same pass.
+    routeTo: (room) => m().errands.planFromHere(room, { unlocks: true }),
     walk: (route) => m().walker.start(route, m().tracker.current, ERRAND_LEG),
     fetch: (items, then) => m().itemErrand.collect(items, then, m().tracker.current),
     fetching: () => m().itemErrand.running,

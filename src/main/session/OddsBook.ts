@@ -19,7 +19,7 @@ import {
   type FightSetupSession
 } from './FightSetup';
 import type { CharacterState } from '../../shared/character';
-import { simulateFight, type Odds } from '../../shared/survival';
+import { startFight, type FightTrials, type Odds } from '../../shared/survival';
 import { lairKey, parseLair, type WorldRoom } from '../../shared/world';
 
 export type OddsWorld = Pick<
@@ -74,6 +74,8 @@ export class OddsBook implements SessionModule {
   private readonly asked = new Set<string>();
   private readonly told = new Set<string>();
   private slice: NodeJS.Immediate | null = null;
+  /** The fight part way through its trials, carried into the next slice. */
+  private running: { job: Job; trials: FightTrials } | null = null;
 
   constructor(
     parts: OddsBookParts,
@@ -137,6 +139,14 @@ export class OddsBook implements SessionModule {
     return PENDING;
   }
 
+  /** The lairs not yet run for the character as it stands: those queued and the one part way. */
+  get lairsLeft(): number {
+    const running = this.running?.job.kind === 'lair' ? 1 : 0;
+    return (
+      running + this.queue.filter((job) => job.kind === 'lair' && !this.lairs.has(job.key)).length
+    );
+  }
+
   reset(): void {
     this.cancel();
     this.key = null;
@@ -164,7 +174,7 @@ export class OddsBook implements SessionModule {
   }
 
   private schedule(): void {
-    if (this.slice !== null || this.queue.length === 0) return;
+    if (this.slice !== null || (this.queue.length === 0 && this.running === null)) return;
     this.slice = setImmediate(() => {
       this.slice = null;
       this.work();
@@ -174,34 +184,53 @@ export class OddsBook implements SessionModule {
   private cancel(): void {
     if (this.slice !== null) clearImmediate(this.slice);
     this.slice = null;
+    this.running = null;
   }
 
-  /** Fights until the slice is spent, then yields; a key that moved stops it for `refresh`. */
+  /**
+   * Fights until the slice is spent, then yields, a fight's trials included:
+   * one carries on in the next slice. A key that moved stops it for `refresh`.
+   */
   private work(): void {
     const began = performance.now();
     const budget = tuning().menace.survivalSliceMs;
+    const spent = (): boolean => performance.now() - began >= budget;
     let told = false;
-    while (this.queue.length > 0 && performance.now() - began < budget) {
+    const record = (job: Job, odds: Odds): void => {
+      if (job.kind === 'mob') this.mobs.set(job.name, odds);
+      else this.lairs.set(job.key, odds);
+      if (this.told.delete(job.kind === 'mob' ? `mob:${job.name}` : `lair:${job.key}`)) told = true;
+    };
+    while ((this.running !== null || this.queue.length > 0) && !spent()) {
       const state = this.tracker.current;
       // The character moved under the book: start it again for the one there now.
       if (this.keyOf(state) !== this.key) {
         this.refresh(state);
         return;
       }
-      const job = this.queue.shift()!;
-      const id = job.kind === 'mob' ? `mob:${job.name}` : `lair:${job.key}`;
-      const done = job.kind === 'mob' ? this.mobs.has(job.name) : this.lairs.has(job.key);
-      if (done) continue;
-      const odds = this.run(state, job);
-      if (job.kind === 'mob') this.mobs.set(job.name, odds);
-      else this.lairs.set(job.key, odds);
-      if (this.told.delete(id)) told = true;
+      if (this.running === null) {
+        const job = this.queue.shift()!;
+        const done = job.kind === 'mob' ? this.mobs.has(job.name) : this.lairs.has(job.key);
+        if (done) continue;
+        const started = this.start(state, job);
+        if ('kind' in started) {
+          record(job, started);
+          continue;
+        }
+        this.running = { job, trials: started };
+      }
+      const { job, trials } = this.running;
+      trials.run(spent);
+      if (!trials.done) break;
+      this.running = null;
+      record(job, { kind: 'run', survival: trials.result() });
     }
     if (told) this.session.ran();
     this.schedule();
   }
 
-  private run(state: CharacterState, job: Job): Odds {
+  /** The job's fight set up for its trials, or what it comes to where none can be run. */
+  private start(state: CharacterState, job: Job): Odds | FightTrials {
     const world = this.world;
     const character = this.setup.character(state, 'rested');
     if (world === undefined || character === null) return UNRUN;
@@ -217,11 +246,12 @@ export class OddsBook implements SessionModule {
       draw = parseLair(job.room.lair ?? '').max ?? 1;
     }
     if (met.length === 0) return UNRUN;
-    const survival = simulateFight({
-      ...character,
-      ...this.setup.foes(state, character, met),
-      ...(draw === undefined ? {} : { draw })
-    });
-    return survival === null ? UNRUN : { kind: 'run', survival };
+    return (
+      startFight({
+        ...character,
+        ...this.setup.foes(state, character, met),
+        ...(draw === undefined ? {} : { draw })
+      }) ?? UNRUN
+    );
   }
 }

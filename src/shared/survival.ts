@@ -170,6 +170,28 @@ interface FoeSide {
  * never the alarming one.
  */
 export function simulateFight(input: SurvivalInput): Survival | null {
+  const fight = startFight(input);
+  if (fight === null) return null;
+  fight.run(() => false);
+  return fight.result();
+}
+
+/**
+ * A `simulateFight` run a few trials at a time: `run` goes on until `stop`
+ * says so after a trial, and the next call carries on the same draws, so the
+ * result is the one a single call gives. One lair's fight was 250 to 800ms
+ * of main in one piece, past every slice the odds book keeps (2026-10-02).
+ */
+export interface FightTrials {
+  readonly done: boolean;
+  /** Runs trials until all are run or `stop` answers true after one. */
+  run(stop: () => boolean): void;
+  /** What the trials run so far came to; read once `done`. */
+  result(): Survival;
+}
+
+/** The fight set up for its trials, or null where `simulateFight` would answer null. */
+export function startFight(input: SurvivalInput): FightTrials | null {
   const { foes, hpMax } = input;
   if (foes.length === 0 || input.hp <= 0 || hpMax <= 0) return null;
   if (foes.some((foe) => foe.subject.profiles === undefined || foe.subject.profiles.length === 0)) {
@@ -244,7 +266,8 @@ export function simulateFight(input: SurvivalInput): Survival | null {
   let worstRound = 0;
   const leftovers: number[] = [];
 
-  for (let trial = 0; trial < trials; trial += 1) {
+  let ran = 0;
+  const trial = (): void => {
     const met =
       count === null
         ? order
@@ -379,32 +402,46 @@ export function simulateFight(input: SurvivalInput): Survival | null {
       }
       return 0;
     }
-  }
+  };
 
-  const survives = survived / trials;
-  leftovers.sort((a, b) => a - b);
   return {
-    survives,
-    level: survivalLevel(survives, input.levels),
-    rounds: { value: roundsTotal / trials, from: 'measured' },
-    hpLeft: leftovers.length === 0 ? null : leftovers[Math.floor(leftovers.length / 2)]!,
-    heals: healsTotal / trials,
-    lostMean: downTotal / trials,
-    worstRound,
-    horizons: horizons.map((rounds, at) => {
-      const { standing, won, lost } = reads[at]!;
+    get done() {
+      return ran >= trials;
+    },
+    run(stop) {
+      while (ran < trials) {
+        trial();
+        ran += 1;
+        if (stop()) return;
+      }
+    },
+    result() {
+      const survives = survived / trials;
+      leftovers.sort((a, b) => a - b);
       return {
-        rounds,
-        standing: standing / trials,
-        won: won / trials,
-        lost: {
-          least: lost.length === 0 ? 0 : Math.min(...lost),
-          mean: lost.length === 0 ? 0 : lost.reduce((sum, each) => sum + each, 0) / lost.length,
-          most: lost.length === 0 ? 0 : Math.max(...lost)
-        }
+        survives,
+        level: survivalLevel(survives, input.levels),
+        rounds: { value: roundsTotal / trials, from: 'measured' },
+        hpLeft: leftovers.length === 0 ? null : leftovers[Math.floor(leftovers.length / 2)]!,
+        heals: healsTotal / trials,
+        lostMean: downTotal / trials,
+        worstRound,
+        horizons: horizons.map((rounds, at) => {
+          const { standing, won, lost } = reads[at]!;
+          return {
+            rounds,
+            standing: standing / trials,
+            won: won / trials,
+            lost: {
+              least: lost.length === 0 ? 0 : Math.min(...lost),
+              mean: lost.length === 0 ? 0 : lost.reduce((sum, each) => sum + each, 0) / lost.length,
+              most: lost.length === 0 ? 0 : Math.max(...lost)
+            }
+          };
+        }),
+        trials
       };
-    }),
-    trials
+    }
   };
 }
 

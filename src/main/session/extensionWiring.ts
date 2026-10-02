@@ -23,9 +23,9 @@ import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
 import type { ConnectionTarget } from '../../shared/types';
 import { prowessSheetOf, wieldedWeapon } from '../../shared/verdict';
-import { roomAddress, type WorldRoom } from '../../shared/world';
-import type { Odds } from '../../shared/survival';
+import { roomAddress } from '../../shared/world';
 import type { Errands } from './Errands';
+import type { OddsBook } from './OddsBook';
 
 /** What the client's host hands a session for its extensions. */
 export interface ExtensionDeps {
@@ -47,7 +47,7 @@ export interface ExtensionWiring {
     'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'reachKey'
   >;
   world(): ExtensionWorld | undefined;
-  lairOdds(room: WorldRoom): Odds;
+  odds: Pick<OddsBook, 'lair' | 'lairsLeft'>;
   blessings: Pick<Blessings, 'entries'>;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
@@ -106,7 +106,8 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       capabilities: () => errands.capabilities(),
       traveller: (state) => errands.travellerNow(state),
       priceAt: (name, shop) => errands.priceAt(name, shop),
-      lairOdds: wiring.lairOdds,
+      lairOdds: (room) => wiring.odds.lair(room),
+      lairsUnrun: () => wiring.odds.lairsLeft,
       blessings: () => wiring.blessings.entries(),
       fled: wiring.fled,
       trainersAhead: (levels) => wiring.trainLevel.trainersAhead(levels, errands.reachKey()),

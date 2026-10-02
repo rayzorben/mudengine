@@ -85,6 +85,11 @@ export interface ExtensionSessionHost {
   /** The simulator's run of a lair's fight. */
   lairOdds(room: WorldRoom): Odds;
   /**
+   * The lairs, realm-wide, whose fight the simulator has not run yet: a count
+   * read while waiting on it, where the survey cost a third of a second a tick.
+   */
+  lairsUnrun(): number;
+  /**
    * The blessings kept up now: under `autoChooseBlessings` the chosen self
    * rows and the list's party rows, otherwise the list (`Blessings.entries`).
    */

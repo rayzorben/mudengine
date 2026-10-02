@@ -416,7 +416,7 @@ export class SessionManager {
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
   readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'fight' | 'opening'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
-  readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'reset' | 'dispose'>;
+  readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'lairsLeft' | 'reset' | 'dispose'>;
   private automationConfig: AutomationConfig;
   /** What `configure` was last handed, so an extension's layer is laid again over it. */
   private configured: Parameters<SessionManager['configure']>;
@@ -1723,7 +1723,7 @@ export class SessionManager {
       blessings: this.blessings,
       ...{ supplies: this.supplies, trainLevel: this.trainLevel, queue: this.queue, fled },
       world: () => this.world,
-      lairOdds: (room) => this.odds.lair(room),
+      odds: this.odds,
       config: () => this.automationConfig,
       busy: () => this.errandHeld() || this.tracker.pendingMoves > 0 || this.walker.walking,
       safety: () => this.publisher.automation.safety,
