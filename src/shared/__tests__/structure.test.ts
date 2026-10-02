@@ -36,11 +36,11 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the hunt's wiring, out whole (`huntPlanner.ts`, todo 11).
   'src/main/session/SessionManager.ts': 3725,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
-  'src/main/world/WorldGraph.ts': 2544,
+  'src/main/world/WorldGraph.ts': 2510,
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
-  'src/main/automation/Walker.ts': 1963,
+  'src/main/automation/Walker.ts': 1958,
   'src/renderer/src/components/SettingsScreen.tsx': 1219,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the

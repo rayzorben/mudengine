@@ -1,11 +1,17 @@
 /**
- * One gate (`@shared/gates`) in words, the one place the chrome turns a gate
- * into words. The realm's own numbers; nothing is rounded or ranked.
+ * One gate (`gates.ts`) in words, the one place a gate becomes words, for main
+ * and the window alike: each passes its own lookup. The realm's own numbers;
+ * nothing is rounded or ranked.
  */
-import type { Gate } from '@shared/gates';
-import { t } from './i18n';
+import type { Gate } from './gates';
+import type { UiLookup } from './i18n';
 
-export function gateWords(gate: Gate): string {
+/** A way's gates in words, in the realm's order. */
+export function gatesWords(gates: readonly Gate[], t: UiLookup): string {
+  return gates.map((gate) => gateWords(gate, t)).join(', ');
+}
+
+export function gateWords(gate: Gate, t: UiLookup): string {
   switch (gate.kind) {
     case 'ability': {
       const name = gate.name ?? String(gate.id);

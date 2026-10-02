@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { Gate } from '../../../shared/gates';
+import { gateWords } from '../../../shared/gateWords';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -209,50 +211,39 @@ describe('an exit that wants something in the pack', () => {
 describe('the conditions a scripted way states and nothing can check', () => {
   const graph = world();
 
-  it('says the realm’s own words beside the gate it could read', () => {
+  it('says what a room script asks beside the command', () => {
+    const gates: Gate[] = [
+      { kind: 'floor', item: 3391, lying: true, name: 'nexus portal' },
+      { kind: 'level', min: 65 },
+      { kind: 'carry', item: 7, name: 'multicoloured sceptre' }
+    ];
     const chip = describeObstacle(
-      {
-        kind: 'level',
-        raw: 'enter portal; minlevel 65; takeitem multicoloured sceptre; summon 1009',
-        minLevel: 65,
-        commands: ['enter portal'],
-        // The realm's own order, unrearranged: the harmless one leads.
-        unread: ['roomitem nexus portal', 'takeitem multicoloured sceptre', 'summon 1009']
-      },
+      { kind: 'text', raw: 'enter portal', commands: ['enter portal'], gates },
       graph
     );
-    expect(chip.kind).toBe('level');
-    // The chip stays short: the gate, the first of them, and how many are left
-    // — because `detail` is hover-only and the first is not the worst.
-    expect(chip.label).toContain('65');
-    expect(chip.label).toContain('nexus portal');
+    // The chip stays short: the command, the first condition, and how many are
+    // left, because `detail` is hover-only and the first is not the worst.
     expect(chip.label).toBe(
       t('map.obstacle.alsoLabelMore', {
-        label: t('map.obstacle.levelMinimum', { minLevel: 65 }),
-        condition: 'roomitem nexus portal',
+        label: t('map.obstacle.sayCommand', { command: 'enter portal' }),
+        condition: gateWords(gates[0]!, t),
         more: 2
       })
     );
-    // The line has room for all of them, which is where `summon` is readable.
-    expect(chip.detail).toContain('multicoloured sceptre');
-    expect(chip.detail).toContain('summon 1009');
+    // The line has room for all of them.
+    expect(chip.detail).toContain(gateWords(gates[2]!, t));
   });
 
   /* One of them needs no count, and must not read `+0 more`. */
   it('says nothing about a count when there is only one', () => {
     const chip = describeObstacle(
-      {
-        kind: 'text',
-        raw: 'go portal; nomonsters',
-        commands: ['go portal'],
-        unread: ['nomonsters']
-      },
+      { kind: 'text', raw: 'go portal', commands: ['go portal'], gates: [{ kind: 'empty-room' }] },
       graph
     );
     expect(chip.label).toBe(
       t('map.obstacle.alsoLabel', {
         label: t('map.obstacle.sayCommand', { command: 'go portal' }),
-        condition: 'nomonsters'
+        condition: gateWords({ kind: 'empty-room' }, t)
       })
     );
   });

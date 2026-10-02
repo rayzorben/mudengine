@@ -7,6 +7,7 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
+import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import { t } from '../app/i18n';
@@ -114,6 +115,7 @@ import {
   roomAddress,
   roomId,
   type BuyingPlace,
+  type Requirement,
   type RoomId,
   type Route,
   type TrainerChoice,
@@ -467,9 +469,9 @@ export class Errands implements SessionModule {
    * counters are read, and reads *nobody has said* as the old price; this is
    * what turns the second into the first.
    *
-   * **A gate, whichever of the realm's two shapes wrote it.** `Requirement.
-   * abilities` holds the exit table's `Ability: 204 w/value 1 to 999` as well
-   * as the script's verbs, so this reads both by reading one field. An
+   * **A gate, whichever of the realm's two shapes wrote it.** `exitGates`
+   * reads the exit table's `Ability: 204 w/value 1 to 999` and a script's
+   * verbs into the one ability gate, so this reads both one way. An
    * `AbilityExit` does not misplace the character — the server simply refuses
    * the step — but it stops the walk exactly as dead, nine exits' worth, and
    * the listing is what turns a 286-step plan into a refusal with a reason.
@@ -488,7 +490,10 @@ export class Errands implements SessionModule {
   askCountersFor(route: Route): void {
     const state = this.tracker.current;
     if (state.abilities !== null) return;
-    if (!route.steps.some((step) => (step.requirement?.abilities?.length ?? 0) > 0)) return;
+    const asksCounters = (requirement: Requirement | null): boolean =>
+      requirement !== null &&
+      (exitGates(requirement) ?? []).some((gate) => gate.kind === 'ability');
+    if (!route.steps.some((step) => asksCounters(step.requirement))) return;
     this.session.askAbilities(state);
   }
 

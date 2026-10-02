@@ -12,15 +12,14 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { describeObstacle, leverOpening } from './obstacle';
-import { exitGates } from './navigation/exitGates';
+import { exitGates, gateRequirement } from './navigation/exitGates';
 import { RealmJoins } from './RealmJoins';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
 import type { Alignment } from '../../shared/alignment';
 import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
-import { judgeAll, type Verdict } from '../../shared/gates';
+import { judge, type Gate, type GateKind, type Verdict } from '../../shared/gates';
 import {
-  abilityGatesMet,
   blockItem,
   describeBlock,
   DIRECTION_COMMAND,
@@ -513,7 +512,10 @@ export function edgeBlock(
       // exit is a price, never a block.
       const shut = gatedShut(requirement, traveller);
       if (shut === null) return null;
-      const missing = shut !== 'fail' && shut.needs.kind === 'item' ? shut.needs.item : null;
+      const missing =
+        shut.verdict !== 'fail' && shut.verdict.needs.kind === 'item'
+          ? shut.verdict.needs.item
+          : null;
       return { kind: 'item', requirement, ...(missing === null ? {} : { itemId: missing }) };
     }
     case 'key': {
@@ -538,8 +540,21 @@ export function edgeBlock(
       return gatedShut(requirement, traveller) === null
         ? null
         : { kind: requirement.kind, requirement };
+    case 'text': {
+      // A room script's wall is named by the gate that shut it.
+      const shut = gatedShut(requirement, traveller);
+      if (shut === null) return null;
+      const missing =
+        shut.verdict !== 'fail' && shut.verdict.needs.kind === 'item'
+          ? shut.verdict.needs.item
+          : null;
+      return {
+        kind: shut.wall,
+        requirement: gateRequirement(shut.gate, requirement),
+        ...(missing === null ? {} : { itemId: missing })
+      };
+    }
     case 'door':
-    case 'text':
     case 'cast':
     case 'spell':
     case 'trap':
@@ -566,7 +581,7 @@ export function edgeBlock(
 const UNEVALUATED = 60;
 
 /** The exit kinds whose instruction is gates the one judge answers (`exitGates`). */
-type GatedKind = 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'ability' | 'item';
+type GatedKind = 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'ability' | 'item' | 'text';
 
 /**
  * What a gated exit costs once its gates pass, and while nobody has said.
@@ -580,40 +595,77 @@ const GATED_PRICE: Record<GatedKind, { pass: number; unknown: number }> = {
   race: { pass: 0, unknown: UNEVALUATED },
   alignment: { pass: 0, unknown: UNEVALUATED },
   ability: { pass: 0, unknown: UNEVALUATED },
-  item: { pass: 0, unknown: UNEVALUATED }
+  item: { pass: 0, unknown: UNEVALUATED },
+  // A room script's conditions: the way is offered, never preferred, while any is unread.
+  text: { pass: 0, unknown: UNEVALUATED }
 };
 
-/** The judge's verdict on a gated exit, or null for one whose instruction gives no figure. */
-function gatedVerdict(requirement: Requirement, traveller: Traveller): Verdict | null {
+/** The route block a gate kind names when it shuts a way; a kind not here is priced, never a wall. */
+type WallKind = 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'item' | 'ability';
+
+/**
+ * Which gates wall a way, by the block that names them: a fact about the
+ * character that a route can state. What only standing there settles (what
+ * lies or stands in the room, a roll, a spell wearing off), carrying something
+ * to drop, evil points nobody reads and a ninth life are offered at the unread
+ * price: *a scripted way through is priced, never pruned* (realm format 38).
+ */
+const WALLS: Partial<Record<GateKind, WallKind>> = {
+  level: 'level',
+  class: 'class',
+  race: 'race',
+  standing: 'alignment',
+  carry: 'item',
+  ability: 'ability',
+  copper: 'toll'
+};
+
+/** A gated way for this character: open, unread, or walled by a gate and what would open it. */
+type Way =
+  | 'pass'
+  | 'unknown'
+  | { wall: WallKind; gate: Gate; verdict: Exclude<Verdict, 'pass' | 'unknown'> };
+
+/** The way a gated exit makes for this character, or null for one whose instruction gives no figure. */
+function wayOf(requirement: Requirement, traveller: Traveller): Way | null {
   const gates = exitGates(requirement);
-  return gates === null ? null : judgeAll(gates, traveller);
+  if (gates === null) return null;
+  let unknown = false;
+  for (const gate of gates) {
+    const verdict = judge(gate, traveller);
+    if (verdict === 'pass') continue;
+    const wall = WALLS[gate.kind];
+    if (verdict !== 'unknown' && wall !== undefined) return { wall, gate, verdict };
+    unknown = true;
+  }
+  return unknown ? 'unknown' : 'pass';
 }
 
 /**
- * A gated exit's price from the judge: a gate that fails, or wants something
- * this character has not got, is a wall (`null`); one nobody has read is the
- * unread price. Unknown never prunes: a character whose sheet nobody has read
- * must still be given a route (todo 03: the crypt's fifteen class doors).
+ * A gated exit's price: a gate that walls is `null`; one nobody has read, or
+ * one only being there settles, is the unread price. Unknown never prunes: a
+ * character whose sheet nobody has read must still be given a route (todo 03:
+ * the crypt's fifteen class doors).
  */
 function gatedPrice(
   requirement: Requirement,
   kind: GatedKind,
   traveller: Traveller
 ): number | null {
-  const verdict = gatedVerdict(requirement, traveller);
-  if (verdict === null) return UNEVALUATED;
-  if (verdict === 'pass') return GATED_PRICE[kind].pass;
-  if (verdict === 'unknown') return GATED_PRICE[kind].unknown;
+  const way = wayOf(requirement, traveller);
+  if (way === null) return UNEVALUATED;
+  if (way === 'pass') return GATED_PRICE[kind].pass;
+  if (way === 'unknown') return GATED_PRICE[kind].unknown;
   return null;
 }
 
-/** What shuts a gated exit to this character, on the verdict `gatedPrice` reads: null when it is open or unread. */
+/** What walls a gated exit to this character, on the way `gatedPrice` reads: null when it is open or unread. */
 function gatedShut(
   requirement: Requirement,
   traveller: Traveller
-): Exclude<Verdict, 'pass' | 'unknown'> | null {
-  const verdict = gatedVerdict(requirement, traveller);
-  return verdict === null || verdict === 'pass' || verdict === 'unknown' ? null : verdict;
+): Exclude<Way, 'pass' | 'unknown'> | null {
+  const way = wayOf(requirement, traveller);
+  return way === null || way === 'pass' || way === 'unknown' ? null : way;
 }
 
 /**
@@ -649,48 +701,21 @@ export function dangerPenalty(share: number | null): number {
 }
 
 /**
- * What this edge costs, the conditions the client cannot read included.
+ * What this edge costs: its kind's price (`statedPenalty`, which judges any
+ * gates through `wayOf`), plus a timed corridor's rooms. `null` is impassable.
  *
- * Two halves because an edge may carry conditions of two kinds at once, which
- * is true of a room script and of nothing else: `go portal` states `minlevel
- * 40` and `nomonsters` in one breath, and `Requirement.kind` holds one of
- * them. So the kind is priced by the switch below and every guard without a
- * kind is priced here, once, at the unevaluable figure — added rather than
- * taken as the worse of the two, because a level gate that lets this character
- * through does not make the rest of the script free.
- *
- * `null` still means impassable and nothing is added to it: a refusal is a
- * refusal whatever else the edge says.
- *
- * **And a gate the counters answer is answered rather than priced** (2026-09-15).
- * `abil` states the quest counters outright on GreaterMUD, and the three
- * ability verbs are the only guards here the client holds a matching fact for,
- * so an edge whose `checkability` this character *fails* is not a way through
- * at all. Priced as merely discouraged it was still walked when it was the
- * only way — live, `9/1291 go portal` (gated `checkability 133 5`) put a
- * character with rank 4 into the Caves of Chaos instead of `9/1424`, two maps
- * from where the plan believed it was. Nobody having said stays the old price:
- * an unread listing is not a failing gate, and the discouragement is still
- * added on top of a gate that passes, because the rest of the script — the
- * `nomonsters` and the `takeitem` beside it — is no more readable than it was.
+ * A gate the counters answer is answered (2026-09-15): live, `9/1291 go
+ * portal` (gated `checkability 133 5`) put a character at rank 4 into the
+ * Caves of Chaos instead of `9/1424`, two maps from where the plan believed it
+ * was, so a failing ability gate walls the edge and nobody having said is the
+ * unread price.
  */
 export function edgePenalty(requirement: Requirement | null, traveller: Traveller): number | null {
-  /*
-   * **Ahead of everything else, because a refusal is a refusal.** This sat
-   * under the `unread` guard below, where it answered a room script's
-   * `checkability` and never saw the exit table's own `Ability: 204 w/value 1
-   * to 999` — which carries no `unread`, having nothing unread about it. Live,
-   * 2026-09-21: a 286-step plan walked into `2/9458 sw` and the realm answered
-   * *You realize that you need more information for the task at hand!*
-   */
-  if (abilityGatesMet(requirement?.abilities, traveller.counters) === false) return null;
   const priced = statedPenalty(requirement, traveller);
   if (priced === null) return null;
   const under = corridorCost(requirement);
   if (under === null) return null;
-  const total = priced + under;
-  if (requirement?.unread === undefined) return total;
-  return total + UNEVALUATED;
+  return priced + under;
 }
 
 /** Whether this traveller ran out of the room for its health a short while ago (todo 73). */
@@ -726,8 +751,8 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
 
   switch (requirement.kind) {
     case 'text':
-      // Not an obstacle, just a different command. No penalty at all.
-      return 0;
+      // A different command and no obstacle; a room script's conditions are judged.
+      return gatedPrice(requirement, requirement.kind, traveller);
 
     case 'door':
       return forcedDoorCost(requirement, traveller, 12);
@@ -766,7 +791,7 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * reason. Todo 13: a route was planned through *hold up talisman* at
        * the cost of a free lever, and the character had no talisman.
        */
-      const levers = gatedVerdict(requirement, traveller);
+      const levers = wayOf(requirement, traveller);
       if (levers === 'unknown') return UNEVALUATED;
       if (levers !== null && levers !== 'pass') return null;
       /*
@@ -2853,10 +2878,10 @@ export class Router {
           /*
            * The counter, the window and what the character holds.
            *
-           * `held` is never a guess: this block exists only where
-           * `abilityGatesMet` answered *false*, which it does only against a
-           * listing, so an id the listing did not name is zero because a
-           * complete listing enumerates — the same reading `countersMet` uses.
+           * `held` is never a guess: this block exists only where the ability
+           * gate failed (`abilityHeld`), which it does only against a listing,
+           * so an id the listing did not name is zero because a complete
+           * listing enumerates.
            *
            * **Named as GreaterMUD's**, because `abil` is GreaterMUD's command:
            * a listing is the one thing that puts a block here, so a realm that

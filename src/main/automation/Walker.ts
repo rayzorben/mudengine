@@ -53,6 +53,7 @@
  * the question and two answers to one question disagree the moment one is
  * edited.
  */
+import { gatesWords } from '../../shared/gateWords';
 import type { WalkHold, WalkProgress, WalkStatus } from '../../shared/walk';
 import { portalLeftUnseen } from '../../shared/walk';
 import {
@@ -1111,7 +1112,7 @@ export class Walker implements SessionModule {
      * could not predict. Live, that was the Caves of Chaos, two maps from
      * `9/1424`, reported as *That is not where the route says you should be*.
      */
-    if ((step.scatter !== undefined || unreadGate(step)) && here !== step.to) {
+    if ((step.scatter !== undefined || scriptGated(step)) && here !== step.to) {
       this.stepAnswered();
       this.scattered(state, step, here);
       return;
@@ -1420,10 +1421,9 @@ export class Walker implements SessionModule {
       this.events.notice?.(
         step.scatter !== undefined
           ? t('automation.walk.scattered', { spellName: step.scatter.landing.name, roomName })
-          : // The realm's own words for the condition, because the whole of
-            // what the client can say is that it could not read them.
+          : // What the script asked, because that is all the client knows of why.
             t('automation.walk.gateMissed', {
-              condition: (step.requirement?.unread ?? []).join(', '),
+              condition: gatesWords(step.requirement?.gates ?? [], t),
               roomName
             })
       );
@@ -1931,20 +1931,15 @@ export function cannotSneakHere(state: CharacterState): boolean {
 }
 
 /**
- * Whether this step's way through carries a condition the router could not
- * evaluate — and so whether landing somewhere else is a surprise the plan
- * already allowed for.
- *
- * `Requirement.unread` is written by `WorldGraph.linkPortals` alone, for a
- * room script, which is the one place in the realm where an edge's *landing*
- * depends on a branch: the script names a room on the branch it can and
- * nothing on the branches it cannot, and the router takes the landing it has
- * with the guard on `unread`. So this is not "the step failed" — a condition
- * that stops the move outright leaves the character where it was, which the
- * `here === step.from` line above already reads as *not landed yet*.
+ * Whether this step is a room script with conditions, and so whether landing
+ * somewhere else is a surprise the plan already allowed for: a script's
+ * *landing* depends on a branch (`WorldGraph.linkPortals`; live, `9/1291`'s
+ * portal put a character at rank 4 two maps away), and the router takes the
+ * landing it has. A condition that stops the move outright leaves the
+ * character where it was, which `here === step.from` reads as *not landed yet*.
  */
-function unreadGate(step: RouteStep): boolean {
-  return (step.requirement?.unread?.length ?? 0) > 0;
+function scriptGated(step: RouteStep): boolean {
+  return (step.requirement?.gates?.length ?? 0) > 0;
 }
 
 /**

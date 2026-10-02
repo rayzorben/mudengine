@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { gateWords } from '../../../shared/gateWords';
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -3144,9 +3145,9 @@ describe('a gate the router could not read', () => {
         command: 'go portal',
         requirement: {
           kind: 'text',
-          raw: 'go portal; checkability 133 5',
+          raw: 'go portal',
           commands: ['go portal'],
-          unread: ['checkability 133 5']
+          gates: [{ kind: 'ability', id: 133, atLeast: 5 }]
         }
       },
       ROUTE.steps[1]!
@@ -3245,7 +3246,7 @@ describe('a gate the router could not read', () => {
     expect(asked).toEqual(['1/3']);
     expect(walk.progress.status).toBe('walking');
     expect(moves(sent)).toEqual(['go portal', 'e']);
-    expect(notices.join(' ')).toContain('checkability 133 5');
+    expect(notices.join(' ')).toContain(gateWords({ kind: 'ability', id: 133, atLeast: 5 }, t));
     walk.dispose();
   });
 

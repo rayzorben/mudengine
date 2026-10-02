@@ -16,11 +16,9 @@ import zlib from 'node:zlib';
 import { describeObstacle, leverOpening } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
-import type { AbilityBounds } from '../../shared/gates';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
-  readAbilityGate,
   asRoomReference,
   DIRECTIONS,
   roomId,
@@ -1653,43 +1651,14 @@ export class WorldGraph {
         const phrase = command.say[0]?.trim();
         if (!phrase) continue;
 
-        let minLevel: number | undefined;
-        let maxLevel: number | undefined;
-        const unread: string[] = [];
-        /*
-         * And the ability gates among them, read into the comparison the
-         * server makes. Still `unread` as well — the chip states every
-         * condition in the realm's words — because this is what the client can
-         * *answer* once `abil` has stated the counters, not a different fact.
-         */
-        const gates: AbilityBounds[] = [];
-        for (const entry of command.need ?? []) {
-          const [verb, value] = entry.trim().split(/\s+/);
-          const figure = Number(value);
-          if (verb === 'minlevel' && Number.isInteger(figure)) minLevel = figure;
-          else if (verb === 'maxlevel' && Number.isInteger(figure)) maxLevel = figure;
-          // The realm's own words, kept whole: the price is the same for every
-          // one of them and the chip is what a person reads to decide.
-          else {
-            unread.push(entry.trim());
-            const gate = readAbilityGate(entry);
-            if (gate !== null) gates.push(gate);
-          }
-        }
-
-        const gated = minLevel !== undefined || maxLevel !== undefined;
         const corridor = this.corridorFrom(command, command.to);
+        // A `Text:` exit in everything but the table it came from: a different
+        // command, its conditions judged as any exit's (`exitGates`).
         const requirement: Requirement = {
-          // A level gate prices and blocks exactly as an exit's `Level:` does;
-          // an unguarded portal is a `Text:` exit in everything but the table
-          // it came from — a different command, no obstacle.
-          kind: gated ? 'level' : 'text',
-          raw: [phrase, ...(command.need ?? [])].join('; '),
+          kind: 'text',
+          raw: phrase,
           commands: [...command.say],
-          ...(minLevel !== undefined ? { minLevel } : {}),
-          ...(maxLevel !== undefined ? { maxLevel } : {}),
-          ...(unread.length > 0 ? { unread } : {}),
-          ...(gates.length > 0 ? { abilities: gates } : {}),
+          ...(command.gates === undefined ? {} : { gates: command.gates }),
           ...(corridor === null ? {} : { corridor })
         };
         const edge: PortalExit = {
@@ -2012,12 +1981,9 @@ export class WorldGraph {
       for (const [room, known] of this.rooms) {
         for (const command of known.commands ?? []) {
           const say = command.say[0];
-          const need = command.need ?? [];
-          if (say === undefined || need.length === 0) continue;
-          const summons = need.map((line) => /^summon\s+(\d+)$/i.exec(line.trim()));
-          if (summons.some((match) => match === null)) continue;
-          for (const match of summons) {
-            const id = Number(match![1]);
+          // A command that summons, asks nothing of whoever says it and moves nobody.
+          if (say === undefined || command.gates !== undefined || command.to) continue;
+          for (const id of command.summons ?? []) {
             const held = index.get(id);
             if (held === undefined) index.set(id, [{ room, say }]);
             else held.push({ room, say });

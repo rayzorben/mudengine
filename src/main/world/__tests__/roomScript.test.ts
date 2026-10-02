@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { readLines } from '../navigation/textblock';
+import type { GateNames } from '../navigation/stepGates';
 import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from '../roomScript';
 
 /** A hand-written block, read the way the realm's are. */
@@ -27,8 +28,20 @@ const ORFEO =
 
 const CASINO = 'roll dice:price 10000 1560:random 998\nplay dice:price 10000 1560:random 998';
 
-const named = (id: number): string | undefined =>
-  ({ 3389: 'shimmering key', 1359: 'minotaur horn', 1422: 'orfeo token' })[id];
+const ITEMS: Record<number, string> = {
+  3389: 'shimmering key',
+  1359: 'minotaur horn',
+  1422: 'orfeo token'
+};
+const nobody = (): undefined => undefined;
+const named: GateNames = {
+  item: (id) => ITEMS[id],
+  spell: nobody,
+  klass: (id) => (id === 9 ? 'Warlock' : undefined),
+  race: nobody,
+  ability: nobody,
+  monster: nobody
+};
 
 describe('what a room answers to', () => {
   /*
@@ -59,9 +72,9 @@ describe('what a room answers to', () => {
    * refusal text as part of the requirement.
    */
   it('keeps the conditions and drops the message ids', () => {
-    expect(parseRoomScript(PORTAL, named)[0]?.need).toEqual([
-      'roomitem shimmering key',
-      'minlevel 40'
+    expect(parseRoomScript(PORTAL, named)[0]?.gates).toEqual([
+      { kind: 'floor', item: 3389, lying: true, name: 'shimmering key' },
+      { kind: 'level', min: 40 }
     ]);
   });
 
@@ -72,7 +85,7 @@ describe('what a room answers to', () => {
    */
   it('names an item it can and keeps the number it cannot', () => {
     const answer = parseRoomScript('go door:roomitem 9999 1:teleport 1 1', named)[0];
-    expect(answer?.need).toEqual(['roomitem 9999']);
+    expect(answer?.gates).toEqual([{ kind: 'floor', item: 9999, lying: true }]);
   });
 
   /*
@@ -83,7 +96,7 @@ describe('what a room answers to', () => {
   it('drops the steps that are only the server narrating', () => {
     const answer = parseRoomScript('dive pool:message 1943:teleport 121 12:cast 512', named)[0];
     expect(answer?.to).toBe('12/121');
-    expect(answer?.need).toBeUndefined();
+    expect(answer?.gates).toBeUndefined();
     // But the spell it puts on you is kept (format 43): *holding breath* is
     // the only statement anywhere that the passage below is a timed one.
     expect(answer?.casts).toBe(512);
@@ -109,7 +122,7 @@ describe('what a room answers to', () => {
     expect(rest).toEqual([]);
     expect(answer?.say).toEqual(['go hole', 'enter hole', 'crawl hole']);
     expect(answer?.to).toBe('2/1306');
-    expect(answer?.need).toBeUndefined();
+    expect(answer?.gates).toBeUndefined();
     // Nothing to land: the same phrase stays a command that moves nobody.
     expect(parseRoomScript(HOLE, named)[0]?.to).toBeUndefined();
     // The realm's own `teleport` is the word, whichever side of the cast it sits.
@@ -125,7 +138,7 @@ describe('what a room answers to', () => {
     const [answer] = parseRoomScript(CASINO, named);
     expect(answer?.say).toEqual(['roll dice', 'play dice']);
     expect(answer?.to).toBeUndefined();
-    expect(answer?.need).toEqual(['price 10000']);
+    expect(answer?.gates).toEqual([{ kind: 'copper', copper: 10000 }]);
   });
 
   it('reads a quest hand-in as the thing it wants and gives', () => {
@@ -138,33 +151,43 @@ describe('what a room answers to', () => {
      * is the gate; the filler was on the card as a second thing the room
      * wanted, 62 times over in Paradigm.
      */
-    expect(answer?.need).toEqual(['class 9', 'takeitem minotaur horn', 'giveitem orfeo token']);
+    // What it gives is not a condition: the gates are the class and the horn.
+    expect(answer?.gates).toEqual([
+      { kind: 'class', id: 9, is: true, name: 'Warlock' },
+      { kind: 'carry', item: 1359, name: 'minotaur horn' }
+    ]);
   });
 
   /* A bare number is a text block to print, not a condition. */
   it('drops a step that is only a text block to display', () => {
-    expect(parseRoomScript('woohoo:666', named)[0]?.need).toBeUndefined();
+    expect(parseRoomScript('woohoo:666', named)[0]?.gates).toBeUndefined();
+  });
+
+  /* What a step does is no condition; a roll and an empty room are. */
+  it('keeps the conditions and leaves what a step does out', () => {
+    expect(parseRoomScript('pay toll:givecoins 400 G', named)[0]?.gates).toBeUndefined();
+    expect(parseRoomScript('ask elder:giveability 126 7', named)[0]?.gates).toBeUndefined();
+    expect(parseRoomScript('go door:testskill agility -10 601', named)[0]?.gates).toEqual([
+      { kind: 'roll', stat: 'agility', value: -10 }
+    ]);
+    expect(parseRoomScript('go portal:nomonsters 503', named)[0]?.gates).toEqual([
+      { kind: 'empty-room' }
+    ]);
   });
 
   /*
-   * Four verbs the server reads two arguments of with no message after them.
-   * `givecoins 400 G` is four hundred **gold**; shown as `givecoins 400` it is
-   * a number that could be copper, which is a ten-thousandfold difference in
-   * the one figure a reader acts on. And `testskill` is the same shape, which
-   * is what the first cut of the arity rule got wrong.
+   * A step the server cannot run fails the line, so nothing after it happens:
+   * `17/10747`'s `pull lever` misspells `nomonsters`, and its lever never moves.
    */
-  it('keeps the second argument of a step that has no message id', () => {
-    expect(parseRoomScript('pay toll:givecoins 400 G', named)[0]?.need).toEqual([
-      'givecoins 400 G'
-    ]);
-    expect(parseRoomScript('ask elder:giveability 126 7', named)[0]?.need).toEqual([
-      'giveability 126 7'
-    ]);
-    expect(parseRoomScript('go door:testskill agility -10 601', named)[0]?.need).toEqual([
-      'testskill agility -10'
-    ]);
-    // And one that takes none at all, whose only argument is the message.
-    expect(parseRoomScript('go portal:nomonsters 503', named)[0]?.need).toEqual(['nomonsters']);
+  it('stops a line at a step the server cannot run', () => {
+    const [answer] = parseRoomScript('go door:nononsters 503:teleport 1 1', named);
+    expect(answer?.to).toBeUndefined();
+    expect(leversInScript('pull lever:nononsters 503:remoteaction 909 0 0 3')).toEqual([]);
+  });
+
+  /* The summons a command makes, for a monster only it puts in the room. */
+  it('reads what a command summons', () => {
+    expect(parseRoomScript('ring bell:summon 1009', named)[0]?.summons).toEqual([1009]);
   });
 
   /* A line with no steps is not a command; a blank one is not anything. */
@@ -194,9 +217,11 @@ describe('what a room answers to', () => {
    */
   it('keeps the rank an ability gate names', () => {
     const script = 'go portal:checkability 133 5:cast 620';
-    expect(parseRoomScript(script, named)[0]?.need).toEqual(['checkability 133 5']);
-    expect(parseRoomScript('go vortex:minlevel 20 1220:teleport 681 3', named)[0]?.need).toEqual([
-      'minlevel 20'
+    expect(parseRoomScript(script, named)[0]?.gates).toEqual([
+      { kind: 'ability', id: 133, atLeast: 5 }
+    ]);
+    expect(parseRoomScript('go vortex:minlevel 20 1220:teleport 681 3', named)[0]?.gates).toEqual([
+      { kind: 'level', min: 20 }
     ]);
   });
 });

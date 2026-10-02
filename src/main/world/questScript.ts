@@ -1,16 +1,12 @@
 /**
  * What one text block line states for a quest: the gates it puts on the
- * player, what it takes, what it gives and the counter it advances. The steps
- * come typed from the one reader (`navigation/textblock.ts`), which holds the
- * server's semantics; this keeps only the quest's view of them.
- *
- * `testability N V` and `checkability N V` on one line ask for rank exactly V,
- * which is how every chained quest is written, so the pair is folded into one
- * gate. `testskill` is a roll, kept as a `roll` gate; `adddelay` is the line's
- * `delay` (todo 106).
+ * player (`gatesOf`), what it takes, what it gives and the counter it
+ * advances. The steps come typed from the one reader (`navigation/textblock.ts`);
+ * `adddelay` is the line's `delay` (todo 106).
  */
 import type { Gate } from '../../shared/gates';
 import type { QuestReward } from '../../shared/quests';
+import { gatesOf } from './navigation/stepGates';
 import type { TbStep } from './navigation/textblock';
 
 /** What one line of a script says, before anything is joined to anything. */
@@ -39,101 +35,13 @@ export interface QuestScript {
  * is not a script at all.
  */
 export function readQuestScript(steps: readonly TbStep[]): QuestScript {
-  const needs: Gate[] = [];
   const takes: number[] = [];
   const gives: QuestReward[] = [];
   const granted: Array<{ id: number; value: number }> = [];
-
-  /*
-   * An ability gate is accumulated rather than pushed, because the pair that
-   * means "exactly" arrives as two opcodes and has to come out as one fact.
-   * Keyed by ability id, in the order first seen.
-   */
-  const abilities = new Map<number, { atLeast?: number; atMost?: number }>();
-  const order: number[] = [];
-  const gate = (id: number): { atLeast?: number; atMost?: number } => {
-    let held = abilities.get(id);
-    if (held === undefined) {
-      held = {};
-      abilities.set(id, held);
-      order.push(id);
-    }
-    return held;
-  };
-
-  let level: { min?: number; max?: number } | null = null;
-  let alignment: { atMost?: number; atLeast?: number } | null = null;
   let delay: number | null = null;
 
   for (const step of steps) {
     switch (step.verb) {
-      case 'checkability':
-        gate(step.ability).atLeast = step.value;
-        break;
-      case 'testability':
-        gate(step.ability).atMost = step.value;
-        break;
-      case 'checkabilityexact': {
-        const held = gate(step.ability);
-        held.atLeast = step.value;
-        held.atMost = step.value;
-        break;
-      }
-      case 'failability':
-        needs.push({ kind: 'ability', id: step.ability, absent: true });
-        break;
-      case 'checkitem':
-        needs.push({ kind: 'carry', item: step.item });
-        break;
-      case 'failitem':
-        needs.push({ kind: 'lack', item: step.item });
-        break;
-      // Both fail while the spell is on the character (`TextBlockPart.cs:471`).
-      case 'checkspell':
-      case 'failspell':
-        needs.push({ kind: 'spell-off', spell: step.spell });
-        break;
-      case 'class':
-        needs.push({ kind: 'class', id: step.classId, is: true });
-        break;
-      case 'race':
-        needs.push({ kind: 'race', id: step.raceId, is: true });
-        break;
-      case 'roomitem':
-      case 'failroomitem':
-        needs.push({ kind: 'floor', item: step.item, lying: step.verb === 'roomitem' });
-        break;
-      case 'nomonsters':
-        needs.push({ kind: 'empty-room' });
-        break;
-      case 'needmonster':
-        needs.push({ kind: 'monster-here', monster: step.monster });
-        break;
-      case 'monsters':
-        needs.push({ kind: 'occupied' });
-        break;
-      case 'minlevel':
-        level = { ...(level ?? {}), min: step.level };
-        break;
-      case 'maxlevel':
-        level = { ...(level ?? {}), max: step.level };
-        break;
-      case 'goodaligned':
-        alignment = { ...(alignment ?? {}), atMost: step.value };
-        break;
-      case 'evilaligned':
-        alignment = { ...(alignment ?? {}), atLeast: step.value };
-        break;
-      case 'checklives':
-        // Fails at nine lives or more (`TextBlockPart.cs:268`); its argument is a message.
-        needs.push({ kind: 'lives', below: CHECKLIVES_BELOW });
-        break;
-      case 'price':
-        if (step.copper !== null) needs.push({ kind: 'copper', copper: step.copper });
-        break;
-      case 'testskill':
-        needs.push({ kind: 'roll', stat: step.stat, value: step.value });
-        break;
       case 'delay':
         // Several on one line add up: the server holds at each in turn.
         if (step.seconds > 0) delay = (delay ?? 0) + step.seconds;
@@ -168,8 +76,30 @@ export function readQuestScript(steps: readonly TbStep[]): QuestScript {
       case 'addevil':
         if (step.amount !== 0) gives.push({ kind: 'alignment', amount: step.amount });
         break;
-      // Narration, flow, world effects and conditions on the room: nothing a
-      // quest step demands of the player or pays them.
+      // The conditions are `gatesOf`'s; the rest is narration, flow and what
+      // the step does to the world rather than pays the player.
+      case 'checkability':
+      case 'testability':
+      case 'checkabilityexact':
+      case 'failability':
+      case 'checkitem':
+      case 'failitem':
+      case 'checkspell':
+      case 'failspell':
+      case 'class':
+      case 'race':
+      case 'roomitem':
+      case 'failroomitem':
+      case 'nomonsters':
+      case 'needmonster':
+      case 'monsters':
+      case 'minlevel':
+      case 'maxlevel':
+      case 'goodaligned':
+      case 'evilaligned':
+      case 'checklives':
+      case 'price':
+      case 'testskill':
       case 'nothing':
       case 'message':
       case 'show':
@@ -190,14 +120,5 @@ export function readQuestScript(steps: readonly TbStep[]): QuestScript {
     }
   }
 
-  for (const id of order) {
-    needs.push({ kind: 'ability', id, ...abilities.get(id)! });
-  }
-  if (level !== null) needs.push({ kind: 'level', ...level });
-  if (alignment !== null) needs.push({ kind: 'alignment', ...alignment });
-
-  return { needs, takes, gives, granted, ...(delay === null ? {} : { delay }) };
+  return { needs: gatesOf(steps), takes, gives, granted, ...(delay === null ? {} : { delay }) };
 }
-
-/** `checklives` fails at this many lives. */
-const CHECKLIVES_BELOW = 9;
