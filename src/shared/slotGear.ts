@@ -38,6 +38,9 @@ export interface SlotGearRow {
   perRound: Reckoning<number> | null;
 }
 
+/** What a slot's items are ranked by: armour's class and resistance, a weapon's blow and round. */
+export type SlotFigures = Pick<SlotGearRow, 'ac' | 'dr' | 'perRound' | 'damage'>;
+
 export interface SlotGear {
   /** The slot as `WORN_SLOT` spells it. */
   slot: string;

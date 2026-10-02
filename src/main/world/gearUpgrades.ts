@@ -10,13 +10,18 @@
  * best alone offered a level-10 character two weapons at 3.6M and 3.9M
  * copper and nothing it could buy (2026-10-01).
  */
-import { USED_NOT_WORN, WORN_SLOT } from '../../shared/items';
+import { USED_NOT_WORN, WORN_SLOT, WORN_SLOT_HOLDS } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
 import type { ItemEntity } from '../../shared/entities';
 import type { GearOffer, SlotUpgrade } from '../../shared/upgrades';
-import { meanBlow, type SlotGearRow } from '../../shared/slotGear';
+import {
+  meanBlow,
+  type SlotFigures,
+  type SlotGearRow,
+  type SlotRanking
+} from '../../shared/slotGear';
 import { roomId, type BuyingPlace, type RoomId, type WorldItem } from '../../shared/world';
-import { slotGear, type SlotAsker } from './slotGear';
+import { figuresOfItem, outranks, slotGear, type SlotAsker } from './slotGear';
 
 export interface UpgradeRealm {
   itemsWornIn(worn: number): readonly WorldItem[];
@@ -37,31 +42,63 @@ function figureOf(row: SlotGearRow): number | null {
 }
 
 /** What is worn in each `Items.Worn` slot, by the realm's code the pack carries. */
-function wornBySlot(state: CharacterState): Map<number, ItemEntity> {
-  const worn = new Map<number, ItemEntity>();
+function wornBySlot(state: CharacterState): Map<number, ItemEntity[]> {
+  const worn = new Map<number, ItemEntity[]>();
   for (const item of state.inventory.items) {
-    if (item.equipped && item.wornSlotCode !== undefined) worn.set(item.wornSlotCode, item);
+    if (!item.equipped || item.wornSlotCode === undefined) continue;
+    worn.set(item.wornSlotCode, [...(worn.get(item.wornSlotCode) ?? []), item]);
   }
   return worn;
 }
 
-/**
- * The rows better than what is worn. Rows are best first, so that is what
- * comes before the worn one; an item the list does not hold (one this
- * character could not otherwise use, a unique) is weighed by its own figure,
- * the mean blow for a weapon and armour class otherwise.
- */
-function betterThan(rows: readonly SlotGearRow[], worn: ItemEntity | undefined): SlotGearRow[] {
-  if (worn === undefined) return [...rows];
-  const name = worn.name.toLowerCase();
-  const at = rows.findIndex((row) => row.name.toLowerCase() === name);
-  if (at !== -1) return rows.slice(0, at);
-  if (worn.weapon !== undefined) {
-    const own = meanBlow({ min: worn.weapon.min, max: worn.weapon.max }) ?? 0;
-    return rows.filter((row) => (meanBlow(row.damage) ?? 0) > own);
+/** A worn item as a row of the slot: its own row where the list holds it, else its own figures. */
+function figuresOf(rows: readonly SlotGearRow[], item: ItemEntity): SlotFigures {
+  const name = item.name.toLowerCase();
+  return rows.find((each) => each.name.toLowerCase() === name) ?? figuresOfItem(item);
+}
+
+/** The weakest of what is worn in a slot, which an upgrade there replaces; null where none is. */
+function weakestWorn(
+  rows: readonly SlotGearRow[],
+  worn: readonly ItemEntity[],
+  ranking: SlotRanking
+): { item: ItemEntity; figures: SlotFigures } | null {
+  const figures = outranks(ranking);
+  let weakest: { item: ItemEntity; figures: SlotFigures } | null = null;
+  for (const item of worn) {
+    const own = figuresOf(rows, item);
+    if (weakest === null || figures(own, weakest.figures) > 0) weakest = { item, figures: own };
   }
-  const own = worn.armour?.ac ?? 0;
-  return rows.filter((row) => (row.ac ?? 0) > own);
+  return weakest;
+}
+
+/**
+ * The rows better than what is worn: anything, where the slot has room for
+ * one more (a second ring); else what gives strictly more than the weakest
+ * worn there, which is what it would replace. A row only as good is not an
+ * upgrade.
+ */
+function betterThan(
+  rows: readonly SlotGearRow[],
+  weakest: SlotFigures | null,
+  free: number,
+  ranking: SlotRanking
+): SlotGearRow[] {
+  if (free > 0 || weakest === null) return [...rows];
+  const figures = outranks(ranking);
+  // A worn item the list does not rank is weighed by its blow alone, as nothing reckons its round.
+  const versus = (row: SlotGearRow): number =>
+    weakest.perRound === null && row.perRound !== null
+      ? figures({ ...row, perRound: null }, weakest)
+      : figures(row, weakest);
+  return rows.filter((row) => versus(row) < 0);
+}
+
+/** The names of what the pack holds and does not wear: never bought again. */
+function carriedUnworn(state: CharacterState): Set<string> {
+  return new Set(
+    state.inventory.items.filter((item) => !item.equipped).map((item) => item.name.toLowerCase())
+  );
 }
 
 /**
@@ -78,11 +115,24 @@ export function gearUpgrades(
 ): SlotUpgrade[] {
   const level = state.progress.level;
   const worn = wornBySlot(state);
-  const slots: Array<{ worn: number; gear: ReturnType<typeof slotGear>; better: SlotGearRow[] }> =
-    [];
+  // An item the pack already holds is not bought again (2026-10-01: two leather belts, two cloth shoes).
+  const carried = carriedUnworn(state);
+  const slots: Array<{
+    worn: number;
+    gear: ReturnType<typeof slotGear>;
+    better: SlotGearRow[];
+    weakest: ItemEntity | null;
+    free: number;
+  }> = [];
   for (const code of WEAR_SLOTS) {
     const gear = slotGear(code, realm, asker);
-    slots.push({ worn: code, gear, better: betterThan(gear.rows, worn.get(code)) });
+    const wornHere = worn.get(code) ?? [];
+    const free = Math.max(0, (WORN_SLOT_HOLDS[code] ?? 1) - wornHere.length);
+    const weakest = weakestWorn(gear.rows, wornHere, gear.ranking);
+    const better = betterThan(gear.rows, weakest?.figures ?? null, free, gear.ranking).filter(
+      (row) => !carried.has(row.name.toLowerCase())
+    );
+    slots.push({ worn: code, gear, better, weakest: weakest?.item ?? null, free });
   }
   const wanted = [...new Set(slots.flatMap((slot) => slot.better.map((row) => row.id)))];
   const nearest = new Map<number, BuyingPlace>();
@@ -91,7 +141,7 @@ export function gearUpgrades(
     if (known === undefined || place.detour < known.detour) nearest.set(place.item, place);
   }
   const upgrades: SlotUpgrade[] = [];
-  for (const { worn: code, gear, better } of slots) {
+  for (const { gear, better, weakest, free } of slots) {
     const sold: GearOffer[] = [];
     for (const row of better) {
       const place = nearest.get(row.id);
@@ -112,7 +162,7 @@ export function gearUpgrades(
     const offers = sold.slice(0, perSlot);
     const cheapest = cheapestWearable(sold, level);
     if (cheapest !== null && !offers.includes(cheapest)) offers.push(cheapest);
-    const current = worn.get(code)?.name ?? null;
+    const current = weakest?.name ?? null;
     const wornRow = gear.rows.find((row) => row.name.toLowerCase() === current?.toLowerCase());
     if (offers.length === 0 && current === null) continue;
     upgrades.push({
@@ -121,6 +171,7 @@ export function gearUpgrades(
       wornFigure: wornRow === undefined ? null : figureOf(wornRow),
       wornDr: wornRow?.dr ?? null,
       ranking: gear.ranking.by,
+      free,
       offers
     });
   }

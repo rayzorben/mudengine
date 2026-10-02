@@ -100,6 +100,82 @@ describe('the better gear the realm sells, per slot', () => {
  * 2026-10-01: the weapon slot offered a level-10 character a 3.6M and a 3.9M
  * copper weapon, and nothing it could buy.
  */
+/* 2026-10-01: Soul bought sandals and cloth shoes in turn, two leather belts, and a ring it never wore. */
+describe('what counts as an upgrade', () => {
+  it('is not an item only as good as the worn one', () => {
+    const state = wearing({ name: 'padded helm', equipped: true, wornSlotCode: 2 });
+    const twin = helm(4, 'felt helm', 2);
+    const head = gearUpgrades(
+      state,
+      { ...realm(), itemsWornIn: (worn) => [...ITEMS, twin].filter((item) => item.worn === worn) },
+      asker,
+      3
+    ).find((slot) => slot.slot === 'Head');
+    expect(head?.offers.map((offer) => offer.name)).not.toContain('felt helm');
+  });
+
+  it('is never something the pack already holds', () => {
+    const state = wearing(
+      { name: 'leather cap', equipped: true, wornSlotCode: 2 },
+      { name: 'padded helm', equipped: false }
+    );
+    const head = gearUpgrades(state, realm(), asker, 3).find((slot) => slot.slot === 'Head');
+    expect(head?.offers.map((offer) => offer.name)).not.toContain('padded helm');
+  });
+
+  it('weighs a worn weapon the list does not rank by its blow', () => {
+    const weapon = (id: number, name: string, min: number, max: number): WorldItem =>
+      ({
+        id,
+        name,
+        worn: 1,
+        kind: 'weapon',
+        weapon: { min, max, kind: 0, speed: 1000 }
+      }) as WorldItem;
+    const arms = [weapon(21, 'club', 1, 4), weapon(22, 'mace', 3, 9)];
+    const armRealm = {
+      ...realm(),
+      itemsWornIn: (worn: number) => arms.filter((item) => item.worn === worn)
+    };
+    const state = wearing({
+      name: 'odd stick',
+      equipped: true,
+      wornSlotCode: 1,
+      weapon: { min: 2, max: 6 } as ItemEntity['weapon']
+    });
+    const hand = gearUpgrades(state, armRealm, asker, 3).find(
+      (slot) => slot.slot === 'Weapon Hand'
+    );
+    expect(hand?.offers.map((offer) => offer.name)).toEqual(['mace']);
+  });
+
+  it('is anything for a slot with room for one more, and else better than the weakest worn', () => {
+    const ring = (id: number, name: string, ac: number): WorldItem =>
+      ({ id, name, worn: 4, kind: 'armour', armour: { ac } }) as WorldItem;
+    const rings = [
+      ring(11, 'copper ring', 2),
+      ring(12, 'silver ring', 3),
+      ring(13, 'gold ring', 5)
+    ];
+    const ringRealm = {
+      ...realm(),
+      itemsWornIn: (worn: number) => rings.filter((item) => item.worn === worn)
+    };
+    const fingers = (state: CharacterState) =>
+      gearUpgrades(state, ringRealm, asker, 3).find((slot) => slot.slot === 'Finger');
+    const one = wearing({ name: 'silver ring', equipped: true, wornSlotCode: 4 });
+    expect(fingers(one)?.offers.map((offer) => offer.name)).toEqual(
+      expect.arrayContaining(['gold ring', 'silver ring', 'copper ring'])
+    );
+    const two = wearing(
+      { name: 'silver ring', equipped: true, wornSlotCode: 4 },
+      { name: 'copper ring', equipped: true, wornSlotCode: 4 }
+    );
+    expect(fingers(two)?.worn).toBe('copper ring');
+    expect(fingers(two)?.offers.map((offer) => offer.name)).toEqual(['gold ring', 'silver ring']);
+  });
+});
+
 describe('the cheapest upgrade in each slot', () => {
   const dear = (): UpgradeRealm => ({
     ...realm(),

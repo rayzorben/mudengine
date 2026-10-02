@@ -69,6 +69,13 @@ export const ITEM_KIND_WORD: Record<ItemKind, string> = {
 };
 
 /**
+ * How many items a worn slot holds where it is more than one: two rings and
+ * two bracelets (`RealmEquippedItemManager.cs:17,26`, `Finger` and `Wrist` at 2;
+ * every other slot 1).
+ */
+export const WORN_SLOT_HOLDS: Readonly<Record<number, number>> = { 4: 2, 14: 2 };
+
+/**
  * `Items.Worn`: where an item goes when it is worn or held.
  *
  * The same twelve-and-some slots the legacy client enumerated, which is the
