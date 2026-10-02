@@ -43,7 +43,7 @@ export interface ExtensionWiring {
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<
     Errands,
-    'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'routeKey'
+    'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'reachKey'
   >;
   world(): ExtensionWorld | undefined;
   lairOdds(room: WorldRoom): Odds;
@@ -106,7 +106,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       priceAt: (name, shop) => errands.priceAt(name, shop),
       lairOdds: wiring.lairOdds,
       fled: wiring.fled,
-      trainersAhead: (levels) => wiring.trainLevel.trainersAhead(levels, errands.routeKey()),
+      trainersAhead: (levels) => wiring.trainLevel.trainersAhead(levels, errands.reachKey()),
       gearUpgrades: (perSlot, as) => {
         const world = wiring.world();
         const state = as ?? tracker.current;

@@ -792,7 +792,8 @@ describe('the trainer each level ahead goes to', () => {
    * still, and the one level-10 trainer no route reached cost a search of the
    * whole realm, about four seconds, every time.
    */
-  it('keeps the routes while the character stands in the room, and plans again elsewhere or once stale', () => {
+  /* 2026-10-01: planned again on every step of a walk, 54 s of main's 240 s. */
+  it('keeps the routes wherever the character walks, and plans again once stale', () => {
     let planned = 0;
     const errand = make(train(), {
       routeTo: () => {
@@ -805,10 +806,30 @@ describe('the trainer each level ahead goes to', () => {
     expect(planned).toBe(2);
     here = '8/916';
     errand.trainersAhead([30], KEY);
-    expect(planned).toBe(4);
+    expect(planned).toBe(2);
     vi.advanceTimersByTime(tuning().train.aheadMs);
     errand.trainersAhead([30], KEY);
-    expect(planned).toBe(6);
+    expect(planned).toBe(4);
+  });
+
+  it('plans the level in hand, and leaves the levels past the budget not yet known', () => {
+    let planned = 0;
+    const errand = make(train(), {
+      trainers: (level = 30) =>
+        level === 30 ? [TITAN] : level === 31 ? [AMAZON] : [{ ...AMAZON, map: 9, room: level }],
+      routeTo: () => {
+        planned += 1;
+        return ROUTE;
+      }
+    });
+    const levels = Array.from({ length: tuning().train.aheadPlans + 2 }, (_, i) => 30 + i);
+    const first = errand.trainersAhead(levels, KEY);
+    expect(first[0]).toMatchObject({ trainer: TITAN, reachable: true });
+    expect(first.at(-1)).toMatchObject({ reachable: null });
+    expect(planned).toBe(tuning().train.aheadPlans);
+    // The next call fills in what the last one left.
+    const second = errand.trainersAhead(levels, KEY);
+    expect(second.every((ahead) => ahead?.reachable === true)).toBe(true);
   });
 
   it('plans again in the same room once what a route is planned on, or the settings, move', () => {

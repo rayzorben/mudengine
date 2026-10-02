@@ -93,7 +93,8 @@ interface Reached {
 export interface TrainerAhead {
   level: number;
   trainer: TrainerChoice;
-  reachable: boolean;
+  /** Null while no route has been planned to its rooms yet (`aheadPlans`): not known. */
+  reachable: boolean | null;
 }
 
 type Phase =
@@ -147,14 +148,14 @@ export class TrainErrand implements SessionModule {
    */
   private refusedFrom: { level: number; room: RoomId | null; at: number } | null = null;
   /**
-   * The routes `trainersAhead` planned, from which room, on what
-   * (`Errands.routeKey`), and when: kept for `tuning.train.aheadMs` while the
-   * character stands there and nothing a route is planned on has moved, since a plan
-   * asks for the prices every few seconds and a trainer nothing reaches costs
-   * a search of the whole realm each time.
+   * The routes `trainersAhead` planned, on what (`Errands.reachKey`), and
+   * when: kept for `tuning.train.aheadMs` wherever the character walks, while
+   * nothing that decides where a route can go has moved, since a plan asks
+   * for the prices every few seconds and a trainer nothing reaches costs a
+   * search of the whole realm each time. The routes are from where they were
+   * planned; only which trainer and whether one is reached are read off them.
    */
   private ahead: {
-    room: RoomId | null;
     key: string;
     at: number;
     ways: Map<RoomId, Way>;
@@ -422,20 +423,34 @@ export class TrainErrand implements SessionModule {
    * chosen trainer does not. Asks nothing of the server and walks nowhere:
    * a plan reads the price the trip would pay, not the cheapest row the realm
    * lists (2026-10-01: 450 copper planned, 45,445 asked at the Hydra Trainer).
+   *
+   * At most `tuning.train.aheadPlans` trainer rooms are planned in one call,
+   * the first level always: a level past that is `reachable: null`, not yet
+   * known, and is planned on a later call.
    */
   trainersAhead(
     levels: readonly number[],
-    /** What a route from here is planned on (`Errands.routeKey`): a change plans them again. */
-    routeKey: string
+    /** What decides where a route can go (`Errands.reachKey`): a change plans them again. */
+    reachKey: string
   ): Array<TrainerAhead | null> {
-    const ways = this.waysFromHere(routeKey);
-    return levels.map((level) => {
+    const ways = this.waysKept(reachKey);
+    let budget = tuning().train.aheadPlans;
+    return levels.map((level, index) => {
       const taking = this.planner.trainers(level);
       // The chosen trainer, where it no longer takes the level, is a refusal on the trip too.
       const pool =
         this.config.trainer > 0
           ? taking.filter((entry) => entry.shop === this.config.trainer)
           : taking;
+      const unplanned = new Set(
+        pool.map((entry) => roomId(entry.map, entry.room)).filter((room) => !ways.has(room))
+      );
+      // The level in hand is always planned; another only where its rooms fit what is left.
+      if (unplanned.size > 0 && index > 0 && unplanned.size > budget) {
+        const cheapest = pool[0];
+        return cheapest === undefined ? null : { level, trainer: cheapest, reachable: null };
+      }
+      budget -= unplanned.size;
       const best = bestTrainer(this.reach(pool, ways).reached, tuning().train.costSlack);
       if (best !== null) return { level, trainer: best.trainer, reachable: true };
       const cheapest = pool[0];
@@ -444,19 +459,17 @@ export class TrainErrand implements SessionModule {
   }
 
   /**
-   * The routes `trainersAhead` keeps (`ahead`), started again from another
-   * room, once stale, or when what a route is planned on moved.
+   * The routes `trainersAhead` keeps (`ahead`), started again once stale or
+   * when what decides where a route can go moved.
    */
-  private waysFromHere(key: string): Map<RoomId, Way> {
-    const room = this.planner.here();
+  private waysKept(key: string): Map<RoomId, Way> {
     const at = this.now();
     if (
       this.ahead === null ||
-      this.ahead.room !== room ||
       this.ahead.key !== key ||
       at - this.ahead.at >= tuning().train.aheadMs
     ) {
-      this.ahead = { room, key, at, ways: new Map() };
+      this.ahead = { key, at, ways: new Map() };
     }
     return this.ahead.ways;
   }

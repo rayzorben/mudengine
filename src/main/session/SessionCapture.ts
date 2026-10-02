@@ -20,6 +20,7 @@
  *     {"t":119,"k":"text","s":"[1;36mBank of Godfrey[0m\r\n"}
  *     {"t":121,"k":"line","s":"Bank of Godfrey","term":"newline"}
  *     {"t":900,"k":"out","s":"who"}
+ *     {"t":950,"k":"notice","s":"Did not reach Large Tomb to train: …"}
  *
  * `raw` is the bytes *after* Telnet framing is stripped but *before* decoding,
  * so an encoding bug is reproducible from the file alone.
@@ -137,6 +138,11 @@ export class SessionCapture {
   /** A command the client sent, whoever decided to send it. */
   out(command: string, source: 'user' | 'automation' = 'user'): void {
     this.record({ k: 'out', s: command, src: source });
+  }
+
+  /** What the client said in the console: a refusal, a fallback, a trip set off. */
+  notice(message: string): void {
+    this.record({ k: 'notice', s: message });
   }
 
   /**
