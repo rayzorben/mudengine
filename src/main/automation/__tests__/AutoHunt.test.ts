@@ -1,12 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AutoHunt, type HuntPlanner } from '../AutoHunt';
+import { t } from '../../app/i18n';
 import { setTuning } from '../../app/tuning';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { DEFAULT_CONFIG, type HuntingAutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
-import type { HuntingAdvice, HuntingSpot, SpotEstimate } from '../../../shared/hunting';
+import {
+  NO_EXCLUSIONS,
+  type HuntingAdvice,
+  type HuntingSpot,
+  type SpotEstimate
+} from '../../../shared/hunting';
 import type { Loop } from '../../../shared/loops';
 import type { Route } from '../../../shared/world';
 
@@ -57,8 +63,17 @@ const spot = (key: string, rate: number | null, room = 'Graveyard', at = 816): H
   } as unknown as HuntingSpot;
 };
 
-const advice = (spots: HuntingSpot[], refusal: string | null = null): HuntingAdvice =>
-  ({ from: { id: '1/1', name: 'Town Gates' }, spots, refusal }) as unknown as HuntingAdvice;
+const advice = (
+  spots: HuntingSpot[],
+  refusal: string | null = null,
+  unsimulated = 0
+): HuntingAdvice =>
+  ({
+    from: { id: '1/1', name: 'Town Gates' },
+    spots,
+    refusal,
+    excluded: { ...NO_EXCLUSIONS, unsimulated }
+  }) as unknown as HuntingAdvice;
 
 const ROUTE: Route = {
   steps: [{ from: '1/1', to: '1/816' }] as unknown as Route['steps'],
@@ -699,6 +714,46 @@ describe('a spot an outside plan names (todo 54)', () => {
     auto.onCharacter(ready());
     expect(walked).toHaveLength(0);
     expect(started).toHaveLength(0);
+  });
+
+  /*
+   * 2026-10-01: the plan laid `kic` over `aa`, the attack is part of what every
+   * fight is run on, so every lair waited on the simulator again and the spot
+   * just chosen was refused as gone. It waits for its fight instead.
+   */
+  it('waits for the simulator when the named spot is missing while lairs are not yet run', () => {
+    answer = advice([], null, 40);
+    here = '1/816';
+    const auto = hunt();
+    auto.steer('lair:a');
+    auto.onCharacter(ready());
+    expect(auto.refusal).toBeNull();
+    expect(auto.waiting).toBe('simulating');
+    answer = advice([spot('lair:a', 5_000)]);
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(0);
+    clock += DEFAULT_INTERNAL.tuning.hunting.simulatingMs;
+    auto.onCharacter(ready());
+    expect(started).toHaveLength(1);
+    expect(auto.waiting).toBeNull();
+  });
+
+  it('refuses the named spot once every lair is run and it is still missing, and waits again when re-steered', () => {
+    answer = advice([], null, 40);
+    const auto = hunt();
+    auto.steer('lair:a');
+    auto.onCharacter(ready());
+    expect(auto.waiting).toBe('simulating');
+    answer = advice([]);
+    clock += DEFAULT_INTERNAL.tuning.hunting.simulatingMs;
+    auto.onCharacter(ready());
+    expect(auto.refusal).toBe(t('automation.hunt.refusalSteeredGone'));
+    expect(auto.waiting).toBeNull();
+    answer = advice([], null, 40);
+    auto.steer('lair:b');
+    auto.onCharacter(ready());
+    expect(auto.refusal).toBeNull();
+    expect(auto.waiting).toBe('simulating');
   });
 
   it('refuses out loud when the named spot is no longer surveyed', () => {

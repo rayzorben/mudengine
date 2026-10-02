@@ -858,6 +858,12 @@ const TUNING_DEFAULTS = {
      */
     resurveyMs: 60_000,
     /**
+     * The same floor while a steered spot waits on the simulator: its lair
+     * is left out until its fight is run, which a settings change starts
+     * again from the top: 18 s for Soul on Paradigm, from its planner's run log (2026-10-01).
+     */
+    simulatingMs: 5000,
+    /**
      * What a lair pays while somebody else is working it — `AutoHunt`.
      *
      * Experience divides among everybody who hit the kill (`Mob.cs:2270`), so
