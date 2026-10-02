@@ -43,14 +43,14 @@ const ALTAR = {
     {
       Number: 4703,
       Action: [
-        'touch gem : minlevel 12 : giveability 129 2 : addexp 250000',
-        'touch black gem : minlevel 12 : giveability 129 2 : addexp 250000'
+        'touch gem:minlevel 12:giveability 129 2:addexp 250000',
+        'touch black gem:minlevel 12:giveability 129 2:addexp 250000'
       ].join('\n'),
       LinkTo: 0
     },
     // The other end of the chain: something that demands the counter, which is
     // the test that makes 129 a quest counter rather than a one-off grant.
-    { Number: 4800, Action: 'ask druid : checkability 129 2 : giveability 129 3', LinkTo: 0 }
+    { Number: 4800, Action: 'ask druid:checkability 129 2:giveability 129 3', LinkTo: 0 }
   ]
 };
 
@@ -93,21 +93,21 @@ describe('a quest step the realm scripts onto a room', () => {
         {
           Number: 4355,
           Action: [
-            'pledge good : giveability 126 6',
-            'pledge neutral : giveability 127 7',
-            'pledge evil : giveability 128 3',
+            'pledge good:giveability 126 6',
+            'pledge neutral:giveability 127 7',
+            'pledge evil:giveability 128 3',
             // And a line beside them that is not a quest at all, which must
             // reach none of the three.
-            'buy healing : addexp 10'
+            'buy healing:addexp 10'
           ].join('\n'),
           LinkTo: 0
         },
         {
           Number: 4400,
           Action: [
-            'ask elder : checkability 126 6 : giveability 126 7',
-            'ask elder : checkability 127 7 : giveability 127 8',
-            'ask elder : checkability 128 3 : giveability 128 4'
+            'ask elder:checkability 126 6:giveability 126 7',
+            'ask elder:checkability 127 7:giveability 127 8',
+            'ask elder:checkability 128 3:giveability 128 4'
           ].join('\n'),
           LinkTo: 0
         }
@@ -341,14 +341,14 @@ describe('a step that rolls after a delay', () => {
       {
         Number: 2605,
         Action: [
-          'read red : checkability 134 6 : adddelay 10 : testskill intellect 30 2607 : giveability 134 7',
-          'read blue : checkability 134 5 : giveability 134 6'
+          'read red:checkability 134 6:adddelay 10:testskill intellect 30 2607:giveability 134 7',
+          'read blue:checkability 134 5:giveability 134 6'
         ].join('\n'),
         LinkTo: 0
       },
       {
         Number: 2700,
-        Action: 'ask seeress head : checkability 134 7 : giveability 134 8',
+        Action: 'ask seeress head:checkability 134 7:giveability 134 8',
         LinkTo: 0
       }
     ]

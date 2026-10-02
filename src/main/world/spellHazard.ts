@@ -6,7 +6,7 @@
  * followed here at build time and the answer written onto the spell. A plain
  * magnitude prices as `resolveSpells` prices an exit; `failitem` names what
  * stops the script; a roll table is dice; `summon` is a fact; a gate on who
- * the character is (`GATES`) is followed at full weight, since what stands
+ * the character is (a `gate` step) is followed at full weight, since what stands
  * behind it happens to somebody. A chain this cannot follow is `unread`,
  * never harmless.
  *
@@ -15,8 +15,9 @@
 import { HAZARD_ABILITY } from '../../shared/abilities';
 import type { LevelBand } from '../../shared/world';
 import type { BuiltSpellHazard } from './buildRealm';
-import { number, text } from './values';
+import { number } from './values';
 import type { RealmSource } from './RealmSource';
+import { linesRun, roleOf, stepsRun, type Textblock } from './navigation/textblock';
 
 /**
  * The abilities that take hit points off whoever the spell lands on.
@@ -41,37 +42,6 @@ const pair = (band: LevelBand): [number | null, number | null] => [
 
 /** How deep a chain of blocks and spells is followed before it is called unread. */
 const DEPTH = 8;
-
-/**
- * Steps that only decide whether the rest of the line runs — for *this*
- * character (the sheet: `checkitem` at `TextBlockPart.cs:103`, `checkability`
- * 394, `checkabilityexact` 416, `testability` 437 — `Sum <= value`, the
- * mirror of `checkability` and not a roll — `failability` 459, `class` 523,
- * the alignment pair 590/604, `maxlevel` 748, `minlevel` 774, `race` 891) or
- * at *this* moment (`checklives` 268, `needmonster` 800, `monsters` 852).
- * Each answers `Succeeded` or `Failed` and nothing else, so what stands behind
- * one happens to somebody, and the pessimistic reading — the one this reader
- * owes — is to follow it at full weight, as `random` already is. Format 43:
- * the oasis pools' `checkspell 512 4099:cast 515` — which removes a spell and
- * hurts nobody — was a hazard on every route to the Golden Spire. A roll
- * (`testskill`) stays unread: it is not a fact about anybody.
- */
-const GATES: ReadonlySet<string> = new Set([
-  'checkitem',
-  'checkability',
-  'checkabilityexact',
-  'testability',
-  'failability',
-  'minlevel',
-  'maxlevel',
-  'class',
-  'race',
-  'goodaligned',
-  'evilaligned',
-  'checklives',
-  'monsters',
-  'needmonster'
-]);
 
 /** One `Spells` row, in the two forms this reader needs it. */
 interface SpellFacts {
@@ -131,7 +101,10 @@ export interface SpellHazardFacts {
  * over 13,603 rooms, so following every chain is a few hundred lookups rather
  * than a walk of the whole spell table.
  */
-export function indexSpellHazards(source: RealmSource): Map<number, BuiltSpellHazard> {
+export function indexSpellHazards(
+  source: RealmSource,
+  blocks: ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>
+): Map<number, BuiltSpellHazard> {
   const rooms = source.table('Rooms');
   const spells = source.table('Spells');
   if (rooms === null || spells === null) return new Map();
@@ -150,17 +123,6 @@ export function indexSpellHazards(source: RealmSource): Map<number, BuiltSpellHa
       abilities,
       power: [number(row['MinBase']) ?? 0, number(row['MaxBase']) ?? 0]
     });
-  }
-
-  const blocks = new Map<number, string>();
-  for (const row of source.table('TBInfo')?.rows ?? []) {
-    const id = number(row['Number']);
-    // Stored with trailing NULs; they are padding, not text — the same strip
-    // `buildRealm` makes when it reads a room's own script.
-    const action = text(row['Action']).replaceAll('\u0000', '').trim();
-    // An empty block the realm holds is kept as empty: run, it does nothing.
-    // Only an id the table lacks is a chain this cannot follow (`walkBlock`).
-    if (id !== null) blocks.set(id, action);
   }
 
   const cast = new Set<number>();
@@ -203,7 +165,7 @@ export function indexSpellHazards(source: RealmSource): Map<number, BuiltSpellHa
 export function resolveHazard(
   id: number,
   facts: ReadonlyMap<number, SpellFacts>,
-  blocks: ReadonlyMap<number, string>
+  blocks: ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>
 ): SpellHazardFacts {
   const avoidedBy: number[] = [];
   const avoidedBySpell: number[] = [];
@@ -283,7 +245,7 @@ export function resolveHazard(
     for (const [ability, value] of row.abilities) {
       if (ability === HAZARD_ABILITY.textBlock) {
         // `TextBlock 0` is the realm's *no script*, not a script it lost.
-        if (value > 0) walkBlock(value, depth + 1);
+        if (value > 0) walkBlock(value, depth + 1, 'steps');
         continue;
       }
       if (ability === HAZARD_ABILITY.endCast) {
@@ -319,14 +281,14 @@ export function resolveHazard(
     }
   };
 
-  const walkBlock = (block: number, depth: number): void => {
+  const walkBlock = (block: number, depth: number, use: 'steps' | 'roll'): void => {
     if (depth > DEPTH) return void (unread = true);
     const key = visit(block);
     if (seenBlocks.has(key)) return;
     seenBlocks.add(key);
-    const action = blocks.get(block);
-    if (action === undefined) return void (unread = true);
-    for (const line of action.split('\n')) {
+    const read = blocks.get(block);
+    if (read === undefined) return void (unread = true);
+    for (const line of linesRun(read, use)) {
       /*
        * A gate governs the rest of *its own line* and nothing else, so the
        * band is taken back at the end of each one — `86:maxlevel 19:cast 713`
@@ -335,113 +297,60 @@ export function resolveHazard(
        * still inside that gate.
        */
       const outer = band;
-      for (const [index, step] of line.split(':').entries()) {
-        const [verb, first, second] = step.trim().split(/\s+/);
-        if (verb === undefined || verb.length === 0) continue;
-        /*
-         * A roll table. A block reached by `random` is a list of lines each
-         * led by a cumulative threshold — `77:addexp 0`, `81:message 2645`,
-         * … `100:message 2650` — and one roll of a hundred picks the first
-         * line at or under it (the Silvermere spell, todo 01: 77% nothing,
-         * then four percent for one message, two for the next). The number is
-         * the roll, not a verb, and reading it as one called every roll table
-         * in the realm unread — 29 rooms of scenery priced as a hazard.
-         * Every line is followed at full weight, as `random` already is.
-         */
-        if (index === 0 && /^\d+$/.test(verb)) continue;
-        switch (verb) {
+      // A roll table's lines are all followed at full weight, as `random` is.
+      walkLine: for (const step of stepsRun(line, use)) {
+        switch (step.verb) {
           case 'failitem':
-          case 'failroomitem': {
+          case 'failroomitem':
             /*
              * *Stop if they have this.* The raft on the Silver River: the
              * script goes no further, so the cast at the end of it never
              * happens. This is the client's whole answer to "unless of course
              * you have the item".
              */
-            const item = number(first);
-            if (item === null || item <= 0) unread = true;
-            else if (!avoidedBy.includes(item)) avoidedBy.push(item);
+            if (step.item <= 0) unread = true;
+            else if (!avoidedBy.includes(step.item)) avoidedBy.push(step.item);
             break;
-          }
-          case 'failspell': {
-            const spell = number(first);
-            if (spell === null || spell <= 0) unread = true;
-            else if (!avoidedBySpell.includes(spell)) avoidedBySpell.push(spell);
+          case 'checkspell':
+          case 'failspell':
             /*
-             * The second operand is a **block**, not a message id as
-             * `failitem`'s is: `TextBlockPart.cs:485` runs it for a character
-             * *without* the spell and hands back its status, and the line goes
-             * on from there. So it is what such a character gets, followed at
-             * full weight — the oasis pools' 4099 is empty, and a derivative
-             * that put a wound there would otherwise read as scenery.
+             * The same code in the server (`TextBlockPart.cs:471`, `:497`):
+             * fails while the spell is on the character, otherwise runs the
+             * second operand's block and takes its answer. So the spell is
+             * what stops the room, and the block is what a character without
+             * it gets, followed at full weight. Live, 2026-09-22: the
+             * Scorching Desert is `checkspell 711 2654:random 2655`; festus
+             * took the heat 24 times, typed `drink water` (which casts 711),
+             * and crossed 26 more desert rooms without it.
              */
-            const fallback = number(second);
-            if (fallback !== null && fallback > 0) walkBlock(fallback, depth + 1);
+            if (step.spell <= 0) unread = true;
+            else if (!avoidedBySpell.includes(step.spell)) avoidedBySpell.push(step.spell);
+            if (step.otherwise !== undefined && step.otherwise > 0) {
+              walkBlock(step.otherwise, depth + 1, 'steps');
+            }
             break;
-          }
-          case 'checkspell': {
-            /*
-             * **The spell half of `failspell` after all** (2026-09-22). The
-             * claim it is not was dated to the two servers disagreeing, and
-             * the capture that dissolves it has arrived.
-             *
-             * `TextBlockPart.cs:479` returns `Failed` *unconditionally* and
-             * runs the second operand's block only for a character the spell
-             * is **not** on; `ExecuteOnMatch` breaks the line on `Failed`
-             * (`TextBlockPart.cs:1358`), so the rest of the line never runs
-             * for anybody and the whole of what the room does is inside that
-             * block. Which is `failspell`'s shape exactly: *without this
-             * spell, here is what happens to you*.
-             *
-             * Live (`logs/2026-09-22_08-02-35_festus.mudcap.jsonl`): the
-             * Scorching Desert is `checkspell 711 2654:random 2655`, and
-             * `2654` is `failitem 1180:cast 712:…`. Festus took *You
-             * suffer in the desert heat…* 24 times, typed `drink water`
-             * — which casts 711 — and crossed 26 more desert rooms with
-             * the sentence never printed again. Wire beats the server's
-             * source; `GreaterMUD2`'s inverted reading would have the
-             * waterskin *cause* the harm and would never run the block at
-             * all, which is not the game anybody plays.
-             */
-            const spell = number(first);
-            if (spell === null || spell <= 0) unread = true;
-            else if (!avoidedBySpell.includes(spell)) avoidedBySpell.push(spell);
-            const fallback = number(second);
-            if (fallback !== null && fallback > 0) walkBlock(fallback, depth + 1);
-            break;
-          }
           case 'cast':
-            walkSpell(number(first) ?? 0, depth + 1);
+            walkSpell(step.spell, depth + 1);
             break;
           case 'random':
-            /*
-             * `random <block>` and `random <chance> <block>` are both written.
-             * Followed at full weight either way: the chance is how often the
-             * room hurts you and a route is walked more than once, so pricing
-             * a one-in-ten drowning at a tenth would be a number the realm
-             * never gave about a walk nobody makes once.
-             */
-            walkBlock(number(second) ?? number(first) ?? 0, depth + 1);
+            // Followed at full weight: a route is walked more than once, and a
+            // one-in-ten drowning priced at a tenth is a number the realm never gave.
+            walkBlock(step.block, depth + 1, 'roll');
             break;
+          case 'show': {
+            // Showing a block runs what it links to (`TextBlock.Display`).
+            const linked = blocks.get(step.block)?.linkTo ?? null;
+            if (linked !== null && linked > 0) walkBlock(linked, depth + 1, 'steps');
+            break;
+          }
           case 'teleport':
             relocates = true;
             widen('relocates');
             break;
           case 'summon':
-            // A monster put in the room: a lair by another name, and read as
-            // one rather than as a verb this cannot follow. See `summons`.
+            // A monster put in the room: a lair by another name. See `summons`.
             summons = true;
             widen('summons');
-            break;
-          case 'message':
-          case 'text':
-          case 'delay':
-          case 'adddelay':
-          case 'addexp':
-          case 'nomonsters':
-            // The server narrating, a gift of experience (`addexp 0` is the
-            // roll table's *nothing happens*), or a condition on the room
-            // rather than on the person standing in it. None of them is harm.
             break;
           case 'minlevel':
           case 'maxlevel': {
@@ -451,30 +360,38 @@ export function resolveHazard(
              * what stands behind it happens to somebody — but the band is
              * recorded with whatever is recorded under it, so `hazardFor` can
              * drop it for a character the realm has already excluded.
-             *
-             * A figure the reader cannot make sense of is the ordinary unread
-             * case: the gate stands, and nothing claims to know its band.
              */
-            const level = number(first);
-            if (level === null) {
-              unread = true;
-              break;
-            }
-            const edge: LevelBand = verb === 'minlevel' ? { min: level } : { max: level };
+            const edge: LevelBand =
+              step.verb === 'minlevel' ? { min: step.level } : { max: step.level };
             band = band === null ? edge : { ...band, ...edge };
             break;
           }
-          default:
-            // A gate on the character: the line goes on, at full weight.
-            if (GATES.has(verb)) break;
-            /*
-             * Everything else this reader holds and has not looked up —
-             * `takeitem`, `remoteaction`, `testskill`, `addevil`. Each of them
-             * can lead somewhere unpleasant and none of them is a number this
-             * can price, so the room is discouraged rather than priced at
-             * nothing.
-             */
+          // An unknown verb fails its line; arguments the server cannot read
+          // throw and abandon the block. Nothing after either happens.
+          case 'unknown':
+            if (step.why === 'arguments') {
+              band = outer;
+              return;
+            }
+            break walkLine;
+          case 'testskill':
+            // A roll is not a fact about anybody, and what it leads to is unread.
             unread = true;
+            break;
+          default: {
+            /*
+             * A gate, or a gate that pays, decides whether the rest of the line
+             * runs for somebody, so the line goes on at full weight (format 43:
+             * the oasis pools' `checkspell 512 4099:cast 515` was a hazard on
+             * every route to the Golden Spire). Narration and a gift of
+             * experience are no harm. Any other effect is one this cannot
+             * price, so the room is discouraged rather than priced at nothing.
+             */
+            const role = roleOf(step);
+            if (role === 'gate' || role === 'pays' || role === 'say' || role === 'flow') break;
+            if (step.verb === 'addexp') break;
+            unread = true;
+          }
         }
       }
       band = outer;

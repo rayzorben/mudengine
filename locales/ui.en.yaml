@@ -1579,9 +1579,7 @@ cards:
       levelAtLeast: level {level}+
       levelAtMost: level {level} or under
       levelBetween: level {min}–{max}
-      lives:
-        many: '{count} lives or more'
-        one: '{count} life or more'
+      livesBelow: fewer than {count} lives
       price: costs {amount}
       skill: rolls {stat} against {value}
       race: '{name} only'

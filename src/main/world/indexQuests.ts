@@ -63,9 +63,17 @@
 import { ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
 import type { Quest, QuestGate, QuestStep, QuestWay } from '../../shared/quests';
 import { abilityPairs } from './buildRealm';
-import { readKeywordTable, readQuestScript } from './questScript';
+import { readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
 import { itemsInScripts } from './roomScript';
+import {
+  itemOf,
+  keywordTable,
+  phraseOf,
+  readTextblocks,
+  type TbLine,
+  type Textblock
+} from './navigation/textblock';
 import { number, text } from './values';
 
 /** What the caller already has, so nothing here re-reads a table for a name. */
@@ -146,12 +154,15 @@ export interface Reached {
  * twice. `buildRealm` holds it across the item index and the quest index.
  */
 export interface BlocksInReach {
-  blocks: Map<number, { action: string; linkTo: number | null }>;
+  blocks: ReadonlyMap<number, Textblock>;
   reached: Map<number, Reached>;
 }
 
-export function blocksInReach(source: RealmSource, spells: QuestNaming['spells']): BlocksInReach {
-  const blocks = readBlocks(source);
+export function blocksInReach(
+  source: RealmSource,
+  spells: QuestNaming['spells'],
+  blocks: ReadonlyMap<number, Textblock> = readTextblocks(source)
+): BlocksInReach {
   return { blocks, reached: traverse(source, blocks, spells) };
 }
 
@@ -199,21 +210,21 @@ export function itemsInReach(read: BlocksInReach): {
   named: Set<number>;
   from: Map<number, BuiltItemFrom[]>;
 } {
-  const reachedActions: string[] = [];
+  const reachedBlocks: Textblock[] = [];
   const from = new Map<number, BuiltItemFrom[]>();
 
   // Sorted by block, so a realm converted at runtime and one built by the
   // script produce byte-identical output — the traversal's map is in queue
   // order, which is the row order of three different tables.
   for (const id of [...read.reached.keys()].sort((a, b) => a - b)) {
-    const action = read.blocks.get(id)?.action ?? '';
-    if (action.length === 0) continue;
-    reachedActions.push(action);
+    const block = read.blocks.get(id);
+    if (block === undefined || block.action.length === 0) continue;
+    reachedBlocks.push(block);
 
     const found = read.reached.get(id)!;
     const owner = found.owner;
     if (owner === null) continue;
-    for (const line of action.split('\n')) {
+    for (const line of block.lines) {
       const given = itemsGivenInLine(line);
       if (given.length === 0) continue;
       /*
@@ -221,12 +232,11 @@ export function itemsInReach(read: BlocksInReach): {
        * table that reached the block, a room's from this line's own first
        * field, and a death has none.
        */
-      const parts = line.split(':');
-      const phrase = parts.length > 1 ? (parts[0] ?? '').trim() : '';
+      const phrase = phraseOf(line);
       const say =
         owner.kind === 'npc'
           ? found.words
-          : owner.kind === 'room' && phrase.length > 0
+          : owner.kind === 'room' && phrase !== null
             ? [phrase]
             : [];
       const place: BuiltItemFrom = {
@@ -258,7 +268,7 @@ export function itemsInReach(read: BlocksInReach): {
       }
     }
   }
-  return { named: itemsInScripts(reachedActions), from };
+  return { named: itemsInScripts(reachedBlocks), from };
 }
 
 /**
@@ -412,20 +422,17 @@ function teleportInChain(
   let at: number | null = start;
   const needsItems: number[] = [];
   for (let depth = 0; depth < LINK_DEPTH && at !== null && at > 0; depth += 1) {
-    const block: { action: string; linkTo: number | null } | undefined = read.blocks.get(at);
+    const block: Textblock | undefined = read.blocks.get(at);
     if (block === undefined) return null;
-    for (const line of block.action.split('\n')) {
-      for (const step of line.split(':')) {
-        const [verb, first, second] = step.trim().split(/\s+/);
-        if (verb === 'roomitem') {
-          const wanted = number(first);
-          if (wanted !== null && wanted > 0) needsItems.push(wanted);
+    for (const line of block.lines) {
+      for (const step of line.steps) {
+        if (step.verb === 'roomitem') {
+          if (step.item > 0) needsItems.push(step.item);
           continue;
         }
-        if (verb !== 'teleport') continue;
-        const room = number(first);
-        const map = number(second);
-        if (room !== null && map !== null && room > 0) return { to: `${map}/${room}`, needsItems };
+        if (step.verb === 'teleport' && step.room > 0) {
+          return { to: `${step.map}/${step.room}`, needsItems };
+        }
       }
     }
     at = block.linkTo;
@@ -435,30 +442,17 @@ function teleportInChain(
 
 /**
  * The items one script line **hands over**: `giveitem` into the pack,
- * `roomitem` onto the floor.
+ * `droproomitem` onto the floor. `roomitem` is a guard that the item already
+ * lies in the room (the potion of levitation's waterfall), never a source.
  *
- * Read here rather than off `readQuestScript`, which knows `giveitem` and not
- * `roomitem`: that reader answers *what does this step pay a player*, and an
- * item dropped in the room is not paid to anybody. Both are places to get the
- * thing, which is the question this file's second half asks.
- *
- * **Every field, including the first** (2026-09-15, todo 02). A line was read
- * as `phrase:steps` and its first field dropped, which is true of a *room*'s
- * script and of nothing else — `readQuestScript` beside this reads the whole
- * line and lets a phrase fall out as an unknown verb, and that is the rule.
- * The cost was every block whose line is one step: the gnome inventor answers
- * `ask inventor fork` with block 1427, which links to 1428, whose entire
- * action is `giveitem 983` — so the titanium fork the Catacombs are locked
- * behind was placed by nothing at all, and the Reference card said *Named in
- * the world data, with no further detail*. 26 items in Paradigm and 15 in
- * stock were losing their only source this way.
+ * Every step of the line, the first field included: a block whose whole
+ * action is `giveitem 983` is the gnome inventor's titanium fork (todo 02).
  */
-function itemsGivenInLine(line: string): number[] {
+function itemsGivenInLine(line: TbLine): number[] {
   const given: number[] = [];
-  for (const step of line.split(':')) {
-    const [verb, first] = step.trim().split(/\s+/);
-    if (verb !== 'giveitem' && verb !== 'roomitem') continue;
-    const id = number(first);
+  for (const step of line.steps) {
+    if (step.verb !== 'giveitem' && step.verb !== 'droproomitem') continue;
+    const id = itemOf(step);
     if (id !== null && id > 0) given.push(id);
   }
   return given;
@@ -496,7 +490,7 @@ export function indexQuests(
 
   for (const [id, block] of blocks) {
     const found = reached.get(id);
-    const merged = stepsInBlock(block.action, counters);
+    const merged = stepsInBlock(block.lines, counters);
     for (const step of merged) {
       const owner = found?.owner ?? null;
       const built: QuestStep = {
@@ -535,43 +529,17 @@ export function indexQuests(
 }
 
 /**
- * Every block that has a script, with its `LinkTo`.
- *
- * A `TBInfo` action is stored with trailing NULs; they are padding, not text —
- * the same trimming `buildRealm` already does where it reads room scripts.
- */
-function readBlocks(source: RealmSource): Map<number, { action: string; linkTo: number | null }> {
-  const blocks = new Map<number, { action: string; linkTo: number | null }>();
-  for (const row of source.table('TBInfo')?.rows ?? []) {
-    const id = number(row['Number']);
-    if (id === null) continue;
-    /*
-     * NULs, not spaces. Access pads this column and `buildRealm` strips the
-     * same padding where it reads room scripts. The **spaces** are load-bearing:
-     * they separate an opcode from its arguments and hold `Commander Markus`
-     * together as one thing somebody says, so stripping those would turn
-     * `checkability 126 5` into a single meaningless token.
-     */
-    const action = text(row['Action']).replaceAll('\u0000', '').trim();
-    blocks.set(id, { action, linkTo: number(row['LinkTo']) });
-  }
-  return blocks;
-}
-
-/**
  * The abilities this realm actually uses as quest counters.
  *
  * Granted by one script and demanded by another — see the header for why this
  * is derived rather than read off a list of names.
  */
-function chainedCounters(
-  blocks: Map<number, { action: string; linkTo: number | null }>
-): Set<number> {
+function chainedCounters(blocks: ReadonlyMap<number, Textblock>): Set<number> {
   const granted = new Set<number>();
   const demanded = new Set<number>();
-  for (const { action } of blocks.values()) {
-    for (const line of action.split('\n')) {
-      const script = readQuestScript(line);
+  for (const { lines } of blocks.values()) {
+    for (const line of lines) {
+      const script = readQuestScript(line.steps);
       for (const grant of script.granted) granted.add(grant.id);
       for (const gate of script.needs) {
         if (gate.kind === 'ability' || gate.kind === 'ability-absent') demanded.add(gate.id);
@@ -599,7 +567,7 @@ function chainedCounters(
  */
 function traverse(
   source: RealmSource,
-  blocks: Map<number, { action: string; linkTo: number | null }>,
+  blocks: ReadonlyMap<number, Textblock>,
   spells: QuestNaming['spells']
 ): Map<number, Reached> {
   const reached = new Map<number, Reached>();
@@ -670,7 +638,7 @@ function traverse(
     if (block.linkTo !== null && block.linkTo > 0) {
       queue.push({ id: block.linkTo, owner: next.owner, words: next.words });
     }
-    for (const [target, words] of readKeywordTable(block.action)) {
+    for (const [target, words] of keywordTable(block)) {
       // The words that reach a step are the ones said *at* it, not the ones
       // said to get to the menu above it — so they replace rather than
       // accumulate down the chain.
@@ -744,7 +712,7 @@ interface BlockStep extends BlockWay {
  * A block that advances nothing yields nothing, which is the great majority:
  * most blocks are dialogue.
  */
-function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
+function stepsInBlock(lines: readonly TbLine[], counters: Set<number>): BlockStep[] {
   const merged = new Map<
     string,
     {
@@ -756,8 +724,8 @@ function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
       delay?: number;
     }
   >();
-  for (const line of action.split('\n')) {
-    const script = readQuestScript(line);
+  for (const line of lines) {
+    const script = readQuestScript(line.steps);
     const grant = script.granted.find((entry) => counters.has(entry.id));
     // A line that only *gates* on a counter without advancing it is a refusal
     // branch or a piece of dialogue, not a step: the step is the one that pays.
@@ -773,10 +741,8 @@ function stepsInBlock(action: string, counters: Set<number>): BlockStep[] {
       takes: [...script.takes],
       gives: [...script.gives]
     };
-    // The line's own phrase: everything before the first `:`, which is what a
-    // room's script answers to. Empty where the line states none.
-    const parts = line.split(':');
-    const phrase = parts.length > 1 ? (parts[0] ?? '').trim() : '';
+    // The line's own phrase, which is what a room's script answers to.
+    const phrase = phraseOf(line) ?? '';
     const held = merged.get(key);
     if (held === undefined) {
       merged.set(key, {

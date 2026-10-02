@@ -420,9 +420,7 @@ export function gateWords(gate: QuestGate): string {
       }
       return t('cards.quests.gate.alignmentEvil', { value: gate.atLeast ?? 0 });
     case 'lives':
-      return gate.atLeast === 1
-        ? t('cards.quests.gate.lives.one', { count: gate.atLeast })
-        : t('cards.quests.gate.lives.many', { count: gate.atLeast });
+      return t('cards.quests.gate.livesBelow', { count: gate.below });
     case 'price':
       return t('cards.quests.gate.price', { amount: gate.amount.toLocaleString() });
     case 'skill':

@@ -90,7 +90,8 @@ export type QuestGate =
    * *good* and *evil*, because a realm is free to put the line anywhere.
    */
   | { kind: 'alignment'; atMost?: number; atLeast?: number }
-  | { kind: 'lives'; atLeast: number }
+  /** `checklives`: fewer than `below` lives, which the server sets at nine. */
+  | { kind: 'lives'; below: number }
   | { kind: 'price'; amount: number }
   /**
    * `testskill <stat> <value>` — a roll, not a gate: the chance is the stat
