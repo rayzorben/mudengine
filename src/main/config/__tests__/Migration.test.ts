@@ -5482,6 +5482,33 @@ describe('choosing the spell is stated', () => {
     expect(spells()['drainBelow']).toBe(0.7);
   });
 
+  // Auto Choose Blessings (todo 10): off after autoBless, in every file stating spells, once.
+  it('writes the blessing choice off after autoBless, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  spells:\n    autoBless: true\n    healParty: false\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(
+      soul,
+      'name: Soul\nautomation:\n  spells:\n    autoChooseBlessings: true\n',
+      'utf8'
+    );
+    migrate();
+    const keys = Object.keys(spells());
+    expect(keys[keys.indexOf('autoBless') + 1]).toBe('autoChooseBlessings');
+    expect(spells()['autoChooseBlessings']).toBe(false);
+    expect(fs.readFileSync(soul, 'utf8')).toContain('autoChooseBlessings: true');
+    expect(
+      notesOf(said, 'notices.migration.blessingChoice.one', 'notices.migration.blessingChoice.many')
+    ).toHaveLength(1);
+    const text = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+
   it('writes the heal switch off where the spell choice was off, and leaves a stated one', () => {
     fs.writeFileSync(home.options, 'automation:\n  spells:\n    autoChoose: false\n', 'utf8');
     migrate();

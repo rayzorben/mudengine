@@ -1717,6 +1717,19 @@ automation:
     # cast for you; the cures and the heal are untouched.
     autoBless: true
 
+    # Auto Choose Blessings: keep up the bless spells on yourself that make the
+    # fight you are hunting go better. Each spell in your book that you can
+    # cast on yourself is tried in the fight (the lair you are hunting, or the
+    # one in the room) and kept up if it adds enough: fights survived where the
+    # fight is not safe, otherwise the exp rate, counting the time its mana
+    # takes to meditate back. The mana your heals need is kept back first.
+    # Your own self rows in the list above may be dropped; party rows are cast
+    # as listed. While nothing is hunted the last choice is kept. It needs to
+    # know how fast your mana comes back: the stat all sheet's figure, or, for
+    # kai, the rise watched while you stand out of combat. Until then the list
+    # above is cast as written, and the client says so.
+    autoChooseBlessings: false
+
   # Fighting for you, rather than keeping you alive.
   #
   # The thing MegaMUD was actually for, and the last part of this client you

@@ -1,3 +1,4 @@
+import type { BlessingEffect } from './blessingeffects';
 import { dodgedFraction, hitChance } from './menace';
 import type { RealmFamily } from './realm';
 import type { StatedProwess } from './stated';
@@ -106,6 +107,12 @@ export interface ProwessSheet {
    * outranks every formula here. Absent or null is *not stated*.
    */
   stated?: StatedProwess | null;
+  /**
+   * Blessings counted on the formula paths only (`blessingeffects.ts`): a
+   * figure `stat all` stated already carries what was up. Absent or null is
+   * none.
+   */
+  effects?: BlessingEffect | null;
 }
 
 /** What of a class the sheet cannot state. See `ProwessSheet.combatLevel`. */
@@ -183,7 +190,9 @@ export function accuracy(
     number
   ];
 
-  let acc = 1;
+  // The `Accuracy` rows' sum, or 1 where they sum to nothing.
+  const blessed = sheet.effects?.accuracy ?? 0;
+  let acc = blessed !== 0 ? blessed : 1;
   const enc = sheet.encumbrancePercent;
   if (enc !== null && enc < LIGHT_LOAD) acc += Math.trunc(15 - enc / 10);
   const levelValue = Math.floor(Math.sqrt(level));
@@ -236,6 +245,7 @@ export function dodge(sheet: ProwessSheet, family: RealmFamily | null): Reckonin
   let value = Math.trunc((charm - 50) / 5) + Math.trunc(level / 5) + Math.trunc((agility - 50) / 3);
   const enc = sheet.encumbrancePercent;
   if (enc !== null && enc < LIGHT_LOAD) value += Math.trunc(10 - enc / 10);
+  value += sheet.effects?.dodge ?? 0;
   return { value: Math.max(0, value), from: 'bound' };
 }
 
@@ -467,13 +477,14 @@ function blowOf(
   attack: ProwessAttack,
   family: RealmFamily | null
 ): Blow | null {
-  const strong = strengthBonus(sheet.strength);
+  const strong = strengthBonus(sheet.strength, sheet.effects?.maxDamage ?? 0);
   if (isMartial(attack.kind)) {
     const level = sheet.level;
     if (level === null) return null;
     const how = MARTIAL[attack.kind];
-    const low = how.low(level) + attack.bonus + strong.low;
-    const high = how.high(level) + attack.bonus + strong.high;
+    const bonus = attack.bonus + (sheet.effects?.martialDamage[attack.kind] ?? 0);
+    const low = how.low(level) + bonus + strong.low;
+    const high = how.high(level) + bonus + strong.high;
     const perSwing = energyPerSwing(sheet, { min: low, max: high, speed: how.speed }, family);
     if (perSwing === null || high < low) return null;
     const blows = Math.min(MAX_SWINGS, swingsFor(perSwing.value));
@@ -494,15 +505,16 @@ function blowOf(
 
 /**
  * `Player.MinDamage` and `MaxDamage`: strength's bonus to the low end above
- * 100 and to the high end above 50, a point each ten, on every attack. An
- * unread strength adds nothing, and the `MaxDamage` gear and spells may add
- * is not seen, so a figure carrying it is a floor.
+ * 100 and to the high end above 50, a point each ten, on every attack, and
+ * the `MaxDamage` rows of what is blessed (`ProwessSheet.effects`). An unread
+ * strength adds nothing, and the `MaxDamage` gear may add is not seen, so a
+ * figure carrying it is a floor.
  */
-function strengthBonus(strength: number | null): { low: number; high: number } {
-  if (strength === null) return { low: 0, high: 0 };
+function strengthBonus(strength: number | null, maxDamage: number): { low: number; high: number } {
+  if (strength === null) return { low: 0, high: maxDamage };
   return {
     low: Math.max(0, Math.trunc((strength - 100) / 10)),
-    high: Math.max(0, Math.trunc((strength - 50) / 10))
+    high: Math.max(0, Math.trunc((strength - 50) / 10)) + maxDamage
   };
 }
 
@@ -556,7 +568,7 @@ export function critChance(
       Math.trunc((agility - 50) / 20) +
       Math.trunc((charm - 50) / 30)
   );
-  const crits = fromStats + Math.max(0, 7 - combat);
+  const crits = fromStats + (sheet.effects?.crits ?? 0) + Math.max(0, 7 - combat);
   return { value: Math.min(CRIT_MAX, Math.max(0, crits)) / 100, from: 'bound' };
 }
 
@@ -628,7 +640,10 @@ export function swing(
   const acc = accuracy(sheet, weapon, family);
   if (acc === null) return null;
   // The roll is made at the accuracy the attack itself moves (`fixedAcc`).
-  const aim = acc.value + ACCURACY_MOD[attack.kind];
+  const aim =
+    acc.value +
+    ACCURACY_MOD[attack.kind] +
+    (isMartial(attack.kind) ? (sheet.effects?.martialAccuracy[attack.kind] ?? 0) : 0);
 
   const hit = hitChance(aim, target.armourClass);
   const dodged = dodgedFraction(target.dodge, aim);
@@ -813,7 +828,9 @@ export function regeneration(
   if (held === null) return null;
   const [level, health] = held as [number, number];
 
-  const hp = Math.max(1, Math.trunc(((level + 20) * health) / 750));
+  const base = Math.max(1, Math.trunc(((level + 20) * health) / 750));
+  // `Player.HPRegen`: the `HPRegen` rows are a percentage of the tick.
+  const hp = base + Math.trunc(((sheet.effects?.hpRegen ?? 0) * base) / 100);
   const magery = sheet.mageryLevel;
   const mana =
     magery === null || manaStat === null

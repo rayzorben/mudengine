@@ -249,6 +249,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheHealChoice(home, note, options.template);
   statedTheAutoJoin(home, note);
   statedTheDrain(home, note, options.template);
+  statedTheBlessingChoice(home, note, options.template);
 }
 
 /**
@@ -2832,6 +2833,33 @@ function statedTheHealChoice(
     stated.length === 1
       ? t('notices.migration.healChoice.one', params)
       : t('notices.migration.healChoice.many', params)
+  );
+}
+
+/**
+ * `automation.spells.autoChooseBlessings` into every file that states
+ * `spells:` without it, off as the template ships it, after `autoBless` and
+ * with the template's comment (todo 10, 2026-10-01).
+ */
+function statedTheBlessingChoice(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    SPELLS_BLOCK,
+    'autoChooseBlessings',
+    false,
+    'autoBless',
+    templateComments(template, 'automation').get('automation.spells.autoChooseBlessings')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.blessingChoice.one', params)
+      : t('notices.migration.blessingChoice.many', params)
   );
 }
 

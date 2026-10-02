@@ -432,6 +432,9 @@ export const ATTACK_ABILITY = { bash: 31, smash: 32, punch: 29, kick: 30, jumpki
 /** Each martial attack's damage bonus (`Player.PunchDamage` and the rest). */
 export const MARTIAL_DAMAGE_ABILITY = { punch: 92, kick: 93, jumpkick: 94 } as const;
 
+/** Each martial attack's accuracy bonus (`Player.PunchAcc` and the rest). */
+export const MARTIAL_ACCURACY_ABILITY = { punch: 89, kick: 90, jumpkick: 91 } as const;
+
 /**
  * `ShadowHome` (the server's spelling; `ShadowRest` above is this client's).
  *
@@ -654,6 +657,25 @@ export const DODGE_ABILITY = 34;
  * monster swings at, ten internal points for each (`menace.protectionOf`).
  */
 export const PROTECTION_ABILITY = { evil: 24, good: 25 } as const;
+
+/**
+ * The rows a blessing up moves on the character, as the server reads each
+ * (`blessingeffects.ts`): `ActionFigure.AC`/`DR`, `Player.MaxDamage`,
+ * `CalcAccuracy`, `DodgeBonus`, `MRes`, `Crits`, `BonusMaxHP`, `HPRegen`; and
+ * `RemovesSpell`, which takes another spell off.
+ */
+export const EFFECT_ABILITY = {
+  armourClass: 2,
+  maxDamage: 4,
+  damageResist: 7,
+  accuracy: 22,
+  dodge: DODGE_ABILITY,
+  magicRes: 36,
+  crits: 58,
+  maxHp: 88,
+  removesSpell: 122,
+  hpRegen: 123
+} as const;
 
 /**
  * The abilities worth putting on a card, and what each one *is*.

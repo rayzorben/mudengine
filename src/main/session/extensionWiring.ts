@@ -5,6 +5,7 @@
  */
 import { tuning } from '../app/tuning';
 import type { AutoHunt } from '../automation/AutoHunt';
+import type { Blessings } from '../automation/Blessings';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { ErrandStage, Supplies } from '../automation/Supplies';
 import type { TrainErrand } from '../automation/TrainErrand';
@@ -47,6 +48,7 @@ export interface ExtensionWiring {
   >;
   world(): ExtensionWorld | undefined;
   lairOdds(room: WorldRoom): Odds;
+  blessings: Pick<Blessings, 'entries'>;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
   trainLevel: Pick<TrainErrand, 'heading' | 'refusal' | 'trainersAhead'>;
@@ -105,6 +107,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       traveller: (state) => errands.travellerNow(state),
       priceAt: (name, shop) => errands.priceAt(name, shop),
       lairOdds: wiring.lairOdds,
+      blessings: () => wiring.blessings.entries(),
       fled: wiring.fled,
       trainersAhead: (levels) => wiring.trainLevel.trainersAhead(levels, errands.reachKey()),
       gearUpgrades: (perSlot, as) => {

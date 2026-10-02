@@ -347,6 +347,7 @@ describe('a character', () => {
         blessings: [],
         notifyPartyOnWearOff: false,
         autoBless: true,
+        autoChooseBlessings: false,
         invokeItems: false
       });
     });
@@ -450,6 +451,7 @@ describe('a character', () => {
         blessings: [],
         notifyPartyOnWearOff: false,
         autoBless: true,
+        autoChooseBlessings: false,
         invokeItems: false
       });
     });

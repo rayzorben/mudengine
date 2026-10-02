@@ -2167,6 +2167,15 @@ export interface SpellsConfig {
    * cures and the heal are untouched.
    */
   autoBless: boolean;
+  /**
+   * *Auto Choose Blessings* (todo 10). On, the self blessings kept up are the
+   * ones that pay for the fight being hunted, chosen from the spellbook and
+   * the realm's figures within the mana left after the heals; the list's own
+   * self rows are candidates like any other, and its party rows are cast as
+   * they are. A choice that cannot be made keeps the last one, or the list,
+   * and says so (`chooseBlessings`).
+   */
+  autoChooseBlessings: boolean;
 }
 
 export interface SafetyConfig {
@@ -2853,7 +2862,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       cures: { blindness: '', poison: '', disease: '', freedom: '' },
       blessings: [],
       notifyPartyOnWearOff: false,
-      autoBless: true
+      autoBless: true,
+      autoChooseBlessings: false
     }
   }
 };
@@ -4179,7 +4189,8 @@ function normalizeSpells(value: unknown): SpellsConfig {
     cures: normalizeCures(raw['cures']),
     blessings: normalizeBlessings(raw['blessings']),
     notifyPartyOnWearOff: bool(raw['notifyPartyOnWearOff'], d.notifyPartyOnWearOff),
-    autoBless: bool(raw['autoBless'], d.autoBless)
+    autoBless: bool(raw['autoBless'], d.autoBless),
+    autoChooseBlessings: bool(raw['autoChooseBlessings'], d.autoChooseBlessings)
   };
 }
 

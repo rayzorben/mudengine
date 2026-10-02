@@ -24,7 +24,7 @@ import FormField, {
 } from './FormField';
 import Advanced from './Advanced';
 import CarrySections from './CarrySections';
-import BlessingList from './BlessingList';
+import BlessingFields from './BlessingFields';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
 import HuntingFields from './HuntingFields';
@@ -55,6 +55,8 @@ import {
 } from '../lib/form';
 import {
   ATTACK_KEYS,
+  BLESSING_KEYS,
+  blessingValuesOf,
   attackValuesOf,
   DRAIN_KEYS,
   drainValuesOf,
@@ -913,25 +915,12 @@ export default function CharacterForm({
           <fieldset className="settings-menus" data-fieldset="spells-blessings">
             <legend>{t('settings.spells.blessingsLegend')}</legend>
             <p className="settings-note">{t('settings.spells.blessingsNote')}</p>
-            <CheckField
-              checked={form.spellAutoBless}
-              hint={t('settings.spells.autoBlessHint')}
-              label={t('settings.spells.autoBlessLabel')}
-              name="auto-bless"
-              onChange={(value) => patch({ spellAutoBless: value })}
-            />
-            <BlessingList
-              blessings={form.spellBlessings}
-              namePrefix="blessing"
-              onChange={(spellBlessings) => patch({ spellBlessings })}
+            <BlessingFields
+              namePrefix=""
+              onBlessings={(spellBlessings) => patch({ spellBlessings })}
+              onToggle={(field, value) => patch({ [BLESSING_KEYS[field]]: value })}
               spells={shownBook.spells}
-            />
-            <CheckField
-              checked={form.spellNotifyWearOff}
-              hint={t('settings.spells.notifyWearOffHint')}
-              label={t('settings.spells.notifyWearOffLabel')}
-              name="notify-wear-off"
-              onChange={(value) => patch({ spellNotifyWearOff: value })}
+              values={blessingValuesOf(form)}
             />
             {/*
               Beside the blessings this character *casts*, because

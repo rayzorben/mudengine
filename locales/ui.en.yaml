@@ -539,6 +539,9 @@ notices:
     drainStated:
       many: 'Drain When Hurt was added, off, to {count} files: {fileList}'
       one: 'Drain When Hurt was added, off, to {fileList}'
+    blessingChoice:
+      many: 'Auto Choose Blessings was added, off, to {count} files: {fileList}'
+      one: 'Auto Choose Blessings was added, off, to {fileList}'
     meditateCeiling:
       many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
       one: 'Keep Meditating To Mana % was added, off, to {fileList}'
@@ -4060,6 +4063,10 @@ settings:
     autoBlessLabel: Auto-Bless
     autoBlessHint: Cast the bless spells below automatically. When off, mana is saved for healing
       through a fight without clearing the list. The toolbar has the same switch.
+    autoChooseBlessingsLabel: Auto Choose Blessings
+    autoChooseBlessingsHint: 'Keeps up the bless spells on yourself that make the fight you are
+      hunting go better, picked from your spellbook and the world data, with the mana your heals
+      need kept back. Your own self blesses below may be dropped; party blesses are cast as listed.'
     invokeItemsLabel: Bless From an Item
     invokeItemsHint: Use a carried item to cast the bless it grants, when that bless is not up. Only
       items the world data says have unlimited uses; nine weapons in the built-in world bless this
@@ -4919,6 +4926,35 @@ automation:
   blessing:
     reason: 'bless: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
+    # Auto Choose Blessings (todo 10): what is kept up for the fight being
+    # hunted, and why; a refusal names what is cast instead.
+    chose: 'Auto Choose Blessings, for the fight at {room}: {picks}.'
+    choseNone: 'Auto Choose Blessings, for the fight at {room}: no bless spell pays for its mana
+      there, so none is kept up.'
+    pickExp: '{spell}, about {gain} more exp an hour for {upkeep} mana an hour ({lasts})'
+    pickSurvival: '{spell}, {gain} more fights in 100 survived for {upkeep} mana an hour ({lasts})'
+    pickHealth: '{spell}, a fight costs {gain}% of maximum health less for {upkeep} mana an hour
+      ({lasts})'
+    lastsMeasured: 'up {seconds}s, as measured'
+    lastsRealm: "up {seconds}s by the world data's duration"
+    passed: 'Not cast: {passed}.'
+    passedOne: '{spell} ({why})'
+    refused: 'Auto Choose Blessings, for the fight at {room}: {why}. Keeping {kept}.'
+    refusedNoFight: 'Auto Choose Blessings: {why}. Keeping {kept}.'
+    keptLast: the last choice
+    keptList: the bless spells listed in settings
+    because: Auto Choose Blessings is on
+    whyNoFight: nothing is being hunted and no lair is here
+    whyUnrun: the fight cannot be worked out for this character yet
+    whyPending: the fight is still being worked out
+    whyUnknownMana: how fast mana comes back is not known yet; it is measured while you stand out of
+      combat short of full
+    whyNoCandidates: nothing in the spellbook is a bless spell the fight is weighed on
+    whyUnknownCost: its chance to cast cannot be worked out
+    whyUnknownDuration: how long it lasts is not known
+    whyExclusive: it cancels a spell already chosen
+    whyNoGain: not worth its mana here
+    whyOverBudget: the heals would run short of mana
   castRound:
     held: a heal, blessing or cure already went this round; casting it next round
   cure:

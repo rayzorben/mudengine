@@ -18,6 +18,7 @@
 import type { AttackOption } from '../../shared/attackOptions';
 import type { SafetyDecision } from '../../shared/automation';
 import type { Capabilities } from '../../shared/abilities';
+import type { BlessingConfig } from '../../shared/blessings';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
@@ -83,6 +84,11 @@ export interface ExtensionSessionHost {
   priceAt(name: string, shop: RoomId): number | null;
   /** The simulator's run of a lair's fight. */
   lairOdds(room: WorldRoom): Odds;
+  /**
+   * The blessings kept up now: under `autoChooseBlessings` the chosen self
+   * rows and the list's party rows, otherwise the list (`Blessings.entries`).
+   */
+  blessings(): readonly BlessingConfig[];
   fled(): readonly FledEntry[];
   /** What the trip would pay each level, at the trainer it would walk to. */
   trainersAhead(levels: readonly number[]): Array<TrainerAhead | null>;

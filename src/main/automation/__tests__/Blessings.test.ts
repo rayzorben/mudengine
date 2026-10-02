@@ -601,3 +601,82 @@ describe('a cast that failed', () => {
     blessings.dispose();
   });
 });
+
+/*
+ * Todo 10: under `autoChooseBlessings` the self rows kept up are the ones the
+ * choice made, the list's party rows as they are; off, or with no choice made,
+ * the list.
+ */
+describe('casting what the choice chose', () => {
+  const tiger: BlessingConfig = { ...armour, spell: 'way of the tiger', minMana: 0 };
+  const shield: BlessingConfig = { ...armour, spell: 'shield', target: 'party', inCombat: false };
+  const source = (rows: readonly BlessingConfig[] | null) => {
+    const refreshed: CharacterState[] = [];
+    let resets = 0;
+    return {
+      refreshed,
+      resets: () => resets,
+      port: {
+        chosen: () => rows,
+        refresh: (each: CharacterState) => refreshed.push(each),
+        reset: () => {
+          resets += 1;
+        }
+      }
+    };
+  };
+  const auto = (blessings: BlessingConfig[]): SpellsConfig => ({
+    ...spells(blessings),
+    autoChooseBlessings: true
+  });
+
+  it('casts the chosen rows in place of the list’s self rows, and keeps its party rows', () => {
+    const chosen = source([tiger]);
+    const blessings = new Blessings(auto([armour, shield]), true, queue, {
+      ...standing,
+      source: chosen.port
+    });
+    expect(blessings.entries()).toEqual([tiger, shield]);
+    blessings.onCharacter(state());
+    expect(sent).toEqual(['way of the tiger']);
+    expect(chosen.refreshed).toHaveLength(1);
+  });
+
+  it('arms its clock from the chosen rows when the list is empty', () => {
+    const blessings = new Blessings(auto([]), true, queue, {
+      ...standing,
+      source: source([tiger]).port
+    });
+    blessings.onCharacter(state());
+    expect(sent).toEqual(['way of the tiger']);
+    // Up and lapsed on the watchdog: the tick recasts it with no state change.
+    blessings.onCharacter(
+      state({ buffs: [{ spell: 'way of the tiger', by: null, appliedAt: Date.now() }] })
+    );
+    vi.advanceTimersByTime(301_000);
+    expect(sent).toEqual(['way of the tiger', 'way of the tiger']);
+  });
+
+  it('keeps the list while nothing is chosen, and with the switch off', () => {
+    expect(
+      new Blessings(auto([armour]), true, queue, {
+        ...standing,
+        source: source(null).port
+      }).entries()
+    ).toEqual([armour]);
+    expect(
+      new Blessings(spells([armour]), true, queue, {
+        ...standing,
+        source: source([tiger]).port
+      }).entries()
+    ).toEqual([armour]);
+  });
+
+  it('puts the choice down with itself', () => {
+    const chosen = source([tiger]);
+    const blessings = new Blessings(auto([]), true, queue, { ...standing, source: chosen.port });
+    blessings.reset();
+    blessings.dispose();
+    expect(chosen.resets()).toBe(2);
+  });
+});

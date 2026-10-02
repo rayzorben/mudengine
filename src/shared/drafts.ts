@@ -279,6 +279,8 @@ export interface GlobalDraft {
       blessings: BlessingDraft[];
       notifyPartyOnWearOff: boolean;
       autoBless: boolean;
+      /** Keep up the self blessings that pay for the hunt. See `SpellsConfig`. */
+      autoChooseBlessings: boolean;
       invokeItems: boolean;
     };
     loot: ProfileDraft['loot'];
@@ -585,6 +587,8 @@ export interface ProfileDraft {
     blessings: BlessingDraft[];
     notifyPartyOnWearOff: boolean;
     autoBless: boolean;
+    /** Keep up the self blessings that pay for the hunt. See `SpellsConfig`. */
+    autoChooseBlessings: boolean;
     invokeItems: boolean;
   };
   /**
@@ -1143,6 +1147,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
       // `!== false`: on unless it was turned off. See the field.
       autoBless: spells['autoBless'] !== false,
+      autoChooseBlessings: spells['autoChooseBlessings'] === true,
       invokeItems: spells['invokeItems'] === true
     },
     alerts: {
@@ -1343,6 +1348,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         blessings: asBlessings(spells['blessings']),
         notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
         autoBless: spells['autoBless'] !== false,
+        autoChooseBlessings: spells['autoChooseBlessings'] === true,
         invokeItems: spells['invokeItems'] === true
       },
       // Read by the function that already knows how, like the blocks above.

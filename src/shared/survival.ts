@@ -125,6 +125,11 @@ export interface Survival {
   hpLeft: number | null;
   /** Heals cast a fight, on average. */
   heals: number;
+  /**
+   * Health down when a fight ended, heals and regeneration counted, the mean
+   * over every fight: what resting has to give back.
+   */
+  lostMean: number;
   /** The most health lost in any one round of any fight. */
   worstRound: number;
   horizons: SurvivalHorizon[];
@@ -235,6 +240,7 @@ export function simulateFight(input: SurvivalInput): Survival | null {
   let survived = 0;
   let roundsTotal = 0;
   let healsTotal = 0;
+  let downTotal = 0;
   let worstRound = 0;
   const leftovers: number[] = [];
 
@@ -322,6 +328,7 @@ export function simulateFight(input: SurvivalInput): Survival | null {
 
     roundsTotal += round;
     healsTotal += heals;
+    downTotal += input.hp - Math.max(0, hp);
     if (!dead) {
       survived += 1;
       leftovers.push(Math.max(0, hp));
@@ -382,6 +389,7 @@ export function simulateFight(input: SurvivalInput): Survival | null {
     rounds: { value: roundsTotal / trials, from: 'measured' },
     hpLeft: leftovers.length === 0 ? null : leftovers[Math.floor(leftovers.length / 2)]!,
     heals: healsTotal / trials,
+    lostMean: downTotal / trials,
     worstRound,
     horizons: horizons.map((rounds, at) => {
       const { standing, won, lost } = reads[at]!;
