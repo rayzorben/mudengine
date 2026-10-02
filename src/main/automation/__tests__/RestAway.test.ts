@@ -129,6 +129,21 @@ describe('resting in a lair with a short clock', () => {
     expect(decisions.at(-1)).toMatchObject({ action: 'rest away', acted: true });
   });
 
+  /*
+   * 2026-10-01: a loop's leg sent `n` while this step was still on the wire,
+   * and the walk read the room the step reached as its own: a location mismatch.
+   */
+  it('lets a walk that began during the look keep the character', () => {
+    let walking = false;
+    const auto = make(health(), { walking: () => walking });
+    auto.consider(hurtInTheLair(), true);
+    drain();
+    walking = true;
+    expect(auto.consider(peeked(hurtInTheLair(), 'n', [], Date.now()), true)).toBe('took-over');
+    drain();
+    expect(sent).toEqual(['l n']);
+  });
+
   /* The reviewer's case: somebody dragged the room full and hung up. */
   it('does not step into a room something is standing in, and tries the next neighbour', () => {
     const auto = make();

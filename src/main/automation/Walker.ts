@@ -638,11 +638,11 @@ export class Walker implements SessionModule {
     this.leftMobsBehind = false;
     /*
      * A door another walk found locked says nothing about this one's, which
-     * may not even pass the same room — and the errand belongs to the journey
-     * that was interrupted, which this replaces.
+     * may not even pass the same room; a lever errand is kept only for a walk
+     * to the journey a fight interrupted (`Levers.begin`).
      */
     this.barriers.passed();
-    this.levers.begin();
+    const errand = this.levers.begin(route.steps.at(-1)?.to); // taken back after a fight
     // No step of this walk is on the wire any more, whatever was when it ended.
     this.stepSent = false;
     // After the refusals, so a walk that was declined does not leave the next
@@ -751,6 +751,7 @@ export class Walker implements SessionModule {
      * Not stepping out of a room that still holds a quarry is the only place
      * the decision is still revisable.
      */
+    if (errand && this.levers.resume(from)) return null;
     if (this.holdBeforeSending(from)) return null;
     this.sendCurrent(true, from);
     return null;
@@ -766,9 +767,7 @@ export class Walker implements SessionModule {
     this.cancelQueued();
     this.status = 'stopped';
     this.reason = reason;
-    // The errand dies with the journey it was for: `start` clears it too, and
-    // both are here because a stopped walk that is never restarted must leave
-    // nothing armed.
+    // Put by for a walk to the same journey only (`Levers.drop`).
     this.levers.drop();
     // `this.quiet` is the whole walk's silence and `quiet` is this stop's; a
     // loop's leg ending is already reported by the loop, which says what it
@@ -1308,6 +1307,7 @@ export class Walker implements SessionModule {
      * while held is a command spent to be refused.
      */
     if (this.events.moveOnly?.(state) === true) return this.holds.holdForAffliction(state);
+    if ((this.movesInFlight() ?? 0) > 0) return this.holds.holdForOtherMove(state); // one mover
     /*
      * A rest this client has just asked for, first of all and outside the
      * beat's budget — and the floor read after a kill (`Holds.holdForFloor`).

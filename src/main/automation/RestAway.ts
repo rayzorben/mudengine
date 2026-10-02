@@ -129,9 +129,7 @@ export class RestAway implements SessionModule {
     if (this.allowedIn === here) return 'rest-here';
     // `Recovery` refuses these itself; nothing steps out of a fight either.
     if (fightIsHere(state) || countThreats(state, this.mobRules) > 0) return 'took-over';
-    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) {
-      return 'took-over';
-    }
+    if (this.walkedOn()) return 'took-over';
 
     const tried = this.tried.get(here) ?? new Set<Direction>();
     const next = this.planner.neighbours(here).find((way) => !tried.has(way.direction));
@@ -171,6 +169,15 @@ export class RestAway implements SessionModule {
     return 'took-over';
   }
 
+  /**
+   * Something else has the character: a move on the wire, a walk, an escape.
+   * Two steps on the wire together are read as each other's answers
+   * (2026-10-01: a lap's `n` read the room a rest step reached).
+   */
+  private walkedOn(): boolean {
+    return this.planner.moveInFlight() || this.planner.walking() || this.planner.busy();
+  }
+
   /** The peek's answer: a room read as a different room, and whether anything is in it. */
   private peeking(state: CharacterState, here: RoomId | null): RestAwayVerdict {
     if (this.phase.kind !== 'peeking') return 'not-mine';
@@ -183,6 +190,11 @@ export class RestAway implements SessionModule {
     if (peeked !== null && peeked.at >= since && peeked.direction === direction) {
       const present = peeked.room.occupants.map((who) => who.name);
       if (present.length === 0) {
+        // A walk that began while the room was looked into has the character.
+        if (this.walkedOn()) {
+          this.phase = { kind: 'idle' };
+          return 'took-over';
+        }
         this.events.notice?.(t('automation.restAway.stepping', { direction, name }));
         this.queue.enqueue({
           command: direction,

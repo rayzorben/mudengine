@@ -1506,6 +1506,12 @@ const TUNING_DEFAULTS = {
      */
     leverErrandDepth: 8,
     /**
+     * How long a lever errand a fight interrupted is kept for the next walk to
+     * the same place (`Levers.drop`). A loop plans its next leg within seconds
+     * of the fight; a walk much later finds levers that may have reset.
+     */
+    leverResumeMs: 120_000,
+    /**
      * How long a walk stands at a shut door it could not force before running
      * the whole ladder again.
      *

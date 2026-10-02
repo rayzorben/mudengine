@@ -228,6 +228,18 @@ export class Holds {
   }
 
   /**
+   * Another mover's step (a rest taken next door) is unanswered: the walk
+   * waits a beat, then asks again. Two steps on the wire together are read as
+   * each other's answers (2026-10-01: a lap's `n` read the room a rest step
+   * reached, a location mismatch, three times in one lap). The move the
+   * tracker is owed expires on its own (`Expectations.expire`), which bounds this.
+   */
+  holdForOtherMove(state: CharacterState): boolean {
+    this.walk.retryAfter(tuning().walk.holdMs, state);
+    return true;
+  }
+
+  /**
    * A fight the walk goes on through, found while it stands still for health
    * or mana: the step goes now, since standing still until the hold's next
    * beat takes the blows (`holdForHealth`). True when it went.

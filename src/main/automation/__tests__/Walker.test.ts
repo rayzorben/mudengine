@@ -413,6 +413,29 @@ describe('one step at a time', () => {
     expect(moves(sent)).toEqual(['e']);
   });
 
+  /*
+   * 2026-10-01: a rest stepped next door while a lap's walk stood held, and
+   * the walk's next step went out behind it; the walk read the room the rest
+   * reached as its own, a location mismatch.
+   */
+  it('holds its next step while another mover’s step is unanswered', () => {
+    let pending = 0;
+    const walk = new Walker(config, queue, {
+      pendingMoves: () => pending,
+      stateNow: () => at(1, 2)
+    });
+    walk.start(ROUTE, at(1, 1));
+    expect(sent).toEqual(['e']);
+    pending = 1;
+    walk.onCharacter(at(1, 2));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['e']);
+    pending = 0;
+    vi.advanceTimersByTime(tuning().walk.holdMs + 50);
+    expect(sent).toEqual(['e', 'e']);
+    walk.dispose();
+  });
+
   it('sends the next step only once the room confirms the last one', () => {
     walker.start(ROUTE, at(1, 1));
     expect(sent).toEqual(['e']);
@@ -5153,6 +5176,77 @@ describe('a way something else opens', () => {
       vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
       expect(moves(sent)).toEqual(['e', 'n', 'pull lever', 'e', 'pull lever', 'e']);
       expect(walk.progress.status).toBe('walking');
+      walk.dispose();
+    });
+
+    /*
+     * 2026-10-01: a fight ends a loop's leg and the loop plans the same stop
+     * again. The errand went with the leg, so every new leg walked back to the
+     * shut gate (1/1056, 37 refusals in eight minutes) and no lever was pulled.
+     */
+    it('takes the errand back for a walk to the same journey after a fight ends the leg', () => {
+      const { walk, arrive } = withLevers(LEVERS, WALKABLE);
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+      expect(moves(sent)).toEqual(['e', 'n']);
+      walk.stop('combat', true);
+
+      walk.start(SET, at(1, 1));
+      vi.advanceTimersByTime(200);
+      // On to the first lever room, not the gate again.
+      expect(moves(sent)).toEqual(['e', 'n', 'n']);
+      arrive(8);
+      vi.advanceTimersByTime(config.pacing.ackTimeoutMs + 200);
+      expect(moves(sent)).toEqual(['e', 'n', 'n', 'pull lever', 'e']);
+      walk.dispose();
+    });
+
+    it('says so, and lets the gate send for its levers again, when the way back to them is gone', () => {
+      const ways: Record<string, Route | string> = { ...WALKABLE };
+      const { walk } = withLevers(LEVERS, ways);
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+      walk.stop('combat', true);
+      delete ways['1/8'];
+
+      walk.start(SET, at(1, 1));
+      vi.advanceTimersByTime(200);
+      expect(notices).toContain(t('automation.walk.leverResumeRefused', { reason: 'no route' }));
+      // The gate again, as a fresh walk would take it.
+      expect(moves(sent)).toEqual(['e', 'n', 'e']);
+      walk.dispose();
+    });
+
+    it('does not take back an errand kept too long', () => {
+      const { walk } = withLevers(LEVERS, WALKABLE);
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+      walk.stop('combat', true);
+      vi.advanceTimersByTime(tuning().walk.leverResumeMs + 1);
+
+      walk.start(SET, at(1, 1));
+      vi.advanceTimersByTime(200);
+      expect(moves(sent)).toEqual(['e', 'n', 'e']);
+      walk.dispose();
+    });
+
+    it('drops the errand for a walk anywhere else', () => {
+      const { walk } = withLevers(LEVERS, WALKABLE);
+      walk.start(SET, at(1, 1));
+      walk.onBlock(block('direction-failed'));
+      vi.advanceTimersByTime(200);
+      walk.stop('combat', true);
+
+      walk.start(WALKABLE['1/8'], at(1, 1));
+      vi.advanceTimersByTime(200);
+      walk.stop('combat', true);
+      walk.start(SET, at(1, 1));
+      vi.advanceTimersByTime(200);
+      // The gate first again: the errand was dropped by the walk to somewhere else.
+      expect(moves(sent)).toEqual(['e', 'n', 'n', 'e']);
       walk.dispose();
     });
 
