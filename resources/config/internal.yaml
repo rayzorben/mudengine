@@ -829,6 +829,15 @@ tuning:
   drop:
     expiresMs: 5000
 
+  # Getting rid of outgrown gear — `OutgrownGear`. An item worth stashFromCopper
+  # or more (the realm's price, in copper) goes to the ganghouse; sellFromCopper
+  # or more is walked to a counter that buys it; anything less is dropped. A
+  # hide, sell or drop the pack does not confirm within confirmMs is refused.
+  outgrown:
+    stashFromCopper: 10000
+    sellFromCopper: 1000
+    confirmMs: 8000
+
   # Looking for what a room did not print — `AutoSearch`. Shorter than the
   # loot's on purpose: a search is about the room the character is standing in,
   # so one still queued after it has walked out would look somewhere else.

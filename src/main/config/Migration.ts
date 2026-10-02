@@ -250,6 +250,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheAutoJoin(home, note);
   statedTheDrain(home, note, options.template);
   statedTheBlessingChoice(home, note, options.template);
+  statedTheOutgrownGear(home, note, options.template);
 }
 
 /**
@@ -3650,28 +3651,61 @@ function statedTheTeleport(
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const source = templateOf(template)?.getIn(['automation', 'safety'], true);
+  if (stateTemplateBlock(home, template, ['automation', 'safety'], 'fleeGoto', 'retreat')) {
+    note(t('notices.migration.teleportStated', { file: home.options }));
+  }
+}
+
+/**
+ * A block the template states under `parent`, comments and all, into the
+ * options file after `after` (or last), where the file states the parent and
+ * not the block; whether it was written. `reconcileWithTemplate` reaches no
+ * deeper than a top-level block.
+ */
+function stateTemplateBlock(
+  home: Home,
+  template: string | undefined,
+  parent: readonly string[],
+  key: string,
+  after: string
+): boolean {
+  const source = templateOf(template)?.getIn(parent, true);
   const shipped = isMap(source)
-    ? source.items.find((item) => keyText(item as Pair) === 'fleeGoto')
+    ? source.items.find((item) => keyText(item as Pair) === key)
     : undefined;
-  if (shipped === undefined || !isMap(shipped.value)) return;
+  if (shipped === undefined || !isMap(shipped.value)) return false;
 
   let stated = false;
   edit(home.options, (document) => {
-    const safety = document.getIn(['automation', 'safety'], true);
-    if (!isMap(safety) || safety.has('fleeGoto')) return false;
-    const pair = document.createPair('fleeGoto', null) as Pair;
+    const block = document.getIn(parent, true);
+    if (!isMap(block) || block.has(key)) return false;
+    const pair = document.createPair(key, null) as Pair;
     pair.value = (shipped.value as YAMLMap).clone();
     const comment = isScalar(shipped.key) ? shipped.key.commentBefore : undefined;
     if (typeof comment === 'string' && isScalar(pair.key)) pair.key.commentBefore = comment;
-    const at = safety.items.findIndex((item) => keyText(item as Pair) === 'retreat');
-    if (at === -1) safety.items.push(pair);
-    else safety.items.splice(at + 1, 0, pair);
+    const at = block.items.findIndex((item) => keyText(item as Pair) === after);
+    if (at === -1) block.items.push(pair);
+    else block.items.splice(at + 1, 0, pair);
     stated = true;
     return true;
   });
+  return stated;
+}
 
-  if (stated) note(t('notices.migration.teleportStated', { file: home.options }));
+/**
+ * Getting rid of outgrown gear (2026-10-02, todo 12): the template's
+ * `automation.outgrown` block, comments and all, into the options file after
+ * `drop`, off as shipped. Profiles overlay the options file and need nothing.
+ * Idempotent: a block already there is left alone.
+ */
+function statedTheOutgrownGear(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  if (stateTemplateBlock(home, template, ['automation'], 'outgrown', 'drop')) {
+    note(t('notices.migration.outgrownStated', { file: home.options }));
+  }
 }
 
 /**

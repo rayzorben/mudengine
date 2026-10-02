@@ -32,7 +32,7 @@ export interface UpgradeRealm {
 }
 
 /** The slots worn for what they stop or swing. */
-const WEAR_SLOTS = Object.keys(WORN_SLOT)
+export const WEAR_SLOTS = Object.keys(WORN_SLOT)
   .map(Number)
   .filter((worn) => !USED_NOT_WORN.has(worn));
 
@@ -42,7 +42,7 @@ function figureOf(row: SlotGearRow): number | null {
 }
 
 /** What is worn in each `Items.Worn` slot, by the realm's code the pack carries. */
-function wornBySlot(state: CharacterState): Map<number, ItemEntity[]> {
+export function wornBySlot(state: CharacterState): Map<number, ItemEntity[]> {
   const worn = new Map<number, ItemEntity[]>();
   for (const item of state.inventory.items) {
     if (!item.equipped || item.wornSlotCode === undefined) continue;
@@ -51,14 +51,14 @@ function wornBySlot(state: CharacterState): Map<number, ItemEntity[]> {
   return worn;
 }
 
-/** A worn item as a row of the slot: its own row where the list holds it, else its own figures. */
-function figuresOf(rows: readonly SlotGearRow[], item: ItemEntity): SlotFigures {
+/** A carried item as a row of the slot: its own row where the list holds it, else its own figures. */
+export function figuresOf(rows: readonly SlotGearRow[], item: ItemEntity): SlotFigures {
   const name = item.name.toLowerCase();
   return rows.find((each) => each.name.toLowerCase() === name) ?? figuresOfItem(item);
 }
 
 /** The weakest of what is worn in a slot, which an upgrade there replaces; null where none is. */
-function weakestWorn(
+export function weakestWorn(
   rows: readonly SlotGearRow[],
   worn: readonly ItemEntity[],
   ranking: SlotRanking
@@ -85,13 +85,19 @@ function betterThan(
   ranking: SlotRanking
 ): SlotGearRow[] {
   if (free > 0 || weakest === null) return [...rows];
+  return rows.filter((row) => versusWorn(ranking, row, weakest) < 0);
+}
+
+/**
+ * How an item weighs against the weakest worn in its slot: negative where it
+ * gives strictly more. A worn item the list does not rank is weighed by its
+ * blow alone, as nothing reckons its round.
+ */
+export function versusWorn(ranking: SlotRanking, item: SlotFigures, worn: SlotFigures): number {
   const figures = outranks(ranking);
-  // A worn item the list does not rank is weighed by its blow alone, as nothing reckons its round.
-  const versus = (row: SlotGearRow): number =>
-    weakest.perRound === null && row.perRound !== null
-      ? figures({ ...row, perRound: null }, weakest)
-      : figures(row, weakest);
-  return rows.filter((row) => versus(row) < 0);
+  return worn.perRound === null && item.perRound !== null
+    ? figures({ ...item, perRound: null }, worn)
+    : figures(item, worn);
 }
 
 /** The names of what the pack holds and does not wear: never bought again. */

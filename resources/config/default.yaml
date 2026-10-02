@@ -1005,6 +1005,24 @@ automation:
     # Nothing marked Not Droppable is ever dropped by it, and nothing equipped.
     worthless: false
 
+  # Getting rid of gear the character has outgrown, MegaMUD's "Auto-sell (or
+  # stash)". An unworn item for a slot that is full and holds something at
+  # least as good goes, one at a time, when nothing else is going on: worth
+  # enough (tuning.outgrown in internal.yaml), it is hidden in the ganghouse
+  # with `hide`; else sold at the nearest counter that buys it; else dropped.
+  # Never anything worn, a key, an item on the supply list or in a gear set, a
+  # loyal item or the ganghouse deed, emblem and keys, and nothing while a
+  # quest run or a trip to fetch an item is under way.
+  #
+  # Stashing needs the gang known (`bg` or `who`), the house's emblem worn and
+  # a key to it carried, and `ganghouseRoom` set: the world database does not
+  # say which rooms belong to which house, so name the room as a loop stop
+  # does (`Silver House Vault 15/921`). Missing any of that, the item is sold
+  # or dropped instead, and the client says why once. Off by default.
+  outgrown:
+    enabled: false
+    ganghouseRoom: ''
+
   # Searching every room you arrive in, unasked. The realm hides exits -- 249
   # of the shipped realm's are Hidden/Searchable -- and the router already
   # prices one of those at "costs the search", so a route may be planned

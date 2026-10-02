@@ -246,6 +246,8 @@ notices:
     teleportStated: '"automation.safety.fleeGoto" was added to {file}, turned off. It is a
       last-resort teleport used after Auto-Run. The command is set per realm, on the realm''s
       settings page.'
+    outgrownStated: '"automation.outgrown" was added to {file}, turned off. It stashes outgrown gear
+      in the ganghouse, or sells or drops it.'
     markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -3819,6 +3821,15 @@ settings:
     dropWorthlessHint: 'Drops anything the world data values at zero: only an explicit zero, never
       an item with no value listed, and never one marked Not Droppable.'
     dropWorthlessLabel: Auto-Drop Worthless Items
+    outgrownLegend: Auto-Sell (or Stash)
+    outgrownEnabledLabel: Get Rid of Outgrown Gear
+    outgrownEnabledHint: 'Gear you carry that is no better than what you wear in a full slot is
+      hidden in the ganghouse when it is worth enough, else sold at the nearest shop that buys it,
+      else dropped. Never anything worn, a key, a supply, a gear set item or a loyal item.'
+    outgrownRoomLabel: Ganghouse Room
+    outgrownRoomHint: 'Where to hide gear worth keeping, named as a loop stop names a room. The
+      world data does not say which rooms belong to which ganghouse. Empty hides nothing.'
+    outgrownRoomPlaceholder: Silver House Vault 15/921
     searchEnabledHint: The game hides exits, and a route may be planned through one nobody has found
       yet. Never in combat or while resting, and once per room, not once per status line.
     searchEnabledLabel: Auto-Search Rooms
@@ -5187,6 +5198,33 @@ automation:
   drop:
     reasonJunk: 'drop: {item} is on the junk list'
     reasonWorthless: 'drop: the world data values {item} at nothing'
+  # Getting rid of outgrown gear -- `OutgrownGear` (todo 12). {verb} is the
+  # command sent: hide, sell or drop.
+  outgrown:
+    reason: '{item} is outgrown: {worn} is worn on {slot} instead'
+    going: 'Walking to {place} to {verb} {item} ({steps} steps): {worn} is worn instead.'
+    done: 'Sent {verb} {item}, and it is gone from your inventory: {worn} is worn instead.'
+    refused: 'Could not {verb} {item}: {why}.'
+    whyStopped: the walk stopped before it arrived
+    whyUnanswered: it is still in your inventory after the {verb}
+    abandonedDied: 'Died: the walk to get rid of outgrown gear is canceled.'
+    keptTwin: 'Keeping {item}: you wear one by that name, and the game would take the worn one too.'
+    keptUnpriced: 'Keeping {item}, though {worn} is worn instead: the world data has no single price
+      for it.'
+    keptNoWay: 'Keeping {item}: it cannot be dropped, and no shop that buys it can be reached.'
+    noStashGangUnread: 'Not stashing in the ganghouse: your gang is not known yet (bg or who says).
+      Selling or dropping instead.'
+    noStashNoGang: 'Not stashing in the ganghouse: you are not in a gang. Selling or dropping
+      instead.'
+    noStashEmblem: 'Not stashing in the {gang} ganghouse: no ganghouse emblem is worn. Selling or
+      dropping instead.'
+    noStashKey: 'Not stashing in the {gang} ganghouse: you carry no key to it. Selling or dropping
+      instead.'
+    noStashRoom: "Not stashing in ganghouse {house}: no Ganghouse Room is set, and the world data
+      does not say which rooms are the house's. Selling or dropping instead."
+    noStashRoomUnfound:
+      'Not stashing in the ganghouse: {room} could not be found ({why}). Selling or
+      dropping instead.'
   light:
     reasonLook: looking at the room by the light of {item}
     becauseDark: '{room} is too dark to read'

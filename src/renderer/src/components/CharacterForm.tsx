@@ -1508,15 +1508,7 @@ export default function CharacterForm({
             profile states, so a character could hold its own
             answers all along and no screen could write one.
           */}
-          <CarrySections
-            banking={form.banking}
-            banks={banks}
-            drop={form.drop}
-            idPrefix=""
-            loot={form.loot}
-            onChange={patch}
-            search={form.search}
-          />
+          <CarrySections banks={banks} blocks={form} idPrefix="" onChange={patch} />
 
           {/*
             Where the character should be at all (todo 05), beside

@@ -15,7 +15,7 @@ import type { LoadedExtension } from '../extensions/ExtensionLoader';
 import { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import { gearUpgrades } from '../world/gearUpgrades';
-import { wearerOf } from '../world/wearer';
+import { slotAskerOf } from '../world/slotGear';
 import { attackOptions } from '../../shared/attackOptions';
 import type { SafetyDecision } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
@@ -115,7 +115,6 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         const state = as ?? tracker.current;
         const here = roomAddress(state.room);
         if (world === undefined || here === null) return [];
-        const { combat, magery, family } = errands.realmClass();
         const traveller = errands.travellerNow(state);
         return gearUpgrades(
           state,
@@ -124,12 +123,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
             stockingPlaces: (items) => world.stockingPlaces(items, here, null, traveller),
             priceAt: (name, at) => errands.priceAt(name, at)
           },
-          {
-            wearer: wearerOf(state, world),
-            sheet: prowessSheetOf(state, { combat, magery }),
-            family,
-            attack: wiring.config().combat.attack
-          },
+          slotAskerOf(state, world, errands.realmClass(), wiring.config().combat.attack),
           perSlot
         );
       },

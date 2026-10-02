@@ -9,7 +9,7 @@
  * row offers nothing but the plain attack, since a refused attack is a round
  * spent doing nothing.
  */
-import { ATTACK_ABILITY, MARTIAL_DAMAGE_ABILITY } from './abilities';
+import { ATTACK_ABILITY, carriesAbility, MARTIAL_DAMAGE_ABILITY } from './abilities';
 import { commandOf, type CommandName } from './commands';
 import { abilitySum } from './light';
 import {
@@ -56,9 +56,6 @@ const KIND_OF: Partial<Record<CommandName, AttackKind>> = {
   Jumpkick: 'jumpkick'
 };
 
-const holds = (abilities: Abilities, id: number): boolean =>
-  abilities?.some(([which]) => which === id) ?? false;
-
 /** A martial attack's own damage ability, summed off the class and race rows. */
 const bonusOf = (kind: AttackKind, abilities: Abilities): number =>
   isMartial(kind) && abilities !== null ? abilitySum(abilities, MARTIAL_DAMAGE_ABILITY[kind]) : 0;
@@ -71,7 +68,7 @@ export function attackOptions(
 ): AttackOption[] {
   const options: AttackOption[] = [];
   for (const { verb, kind } of ATTACKS) {
-    if (kind !== 'attack' && !holds(abilities, ATTACK_ABILITY[kind])) continue;
+    if (kind !== 'attack' && !carriesAbility(abilities, ATTACK_ABILITY[kind])) continue;
     const perRound = isMartial(kind)
       ? martialRoundDamage(sheet, kind, bonusOf(kind, abilities), family)
       : roundDamage(sheet, weapon ?? BARE_HAND, kind, family);
@@ -91,6 +88,6 @@ export function attackFor(verb: string, abilities: Abilities): ProwessAttack {
   const command = commandOf(verb);
   const kind = command === null ? undefined : KIND_OF[command];
   if (kind === undefined || kind === 'attack') return PLAIN_ATTACK;
-  if (!holds(abilities, ATTACK_ABILITY[kind])) return PLAIN_ATTACK;
+  if (!carriesAbility(abilities, ATTACK_ABILITY[kind])) return PLAIN_ATTACK;
   return { kind, bonus: bonusOf(kind, abilities) };
 }

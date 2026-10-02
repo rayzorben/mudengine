@@ -45,6 +45,7 @@ import type {
   MovementConfig,
   LootConfig,
   DropConfig,
+  OutgrownConfig,
   SearchConfig,
   BankingConfig,
   HuntingAutomationConfig,
@@ -479,6 +480,7 @@ export interface ProfileEditable {
    */
   loot: LootConfig;
   drop: DropConfig;
+  outgrown: OutgrownConfig;
   search: SearchConfig;
   banking: BankingConfig;
   /**

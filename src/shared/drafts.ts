@@ -285,6 +285,7 @@ export interface GlobalDraft {
     };
     loot: ProfileDraft['loot'];
     drop: ProfileDraft['drop'];
+    outgrown: ProfileDraft['outgrown'];
     search: ProfileDraft['search'];
     banking: ProfileDraft['banking'];
     remotes: ProfileDraft['remotes'];
@@ -523,6 +524,8 @@ export interface ProfileDraft {
   };
   /** What to put back down — `automation.drop`. See `DropConfig`. */
   drop: { enabled: boolean; items: string[]; whenEncumbered: boolean; worthless: boolean };
+  /** Getting rid of outgrown gear — `automation.outgrown`. See `OutgrownConfig`. */
+  outgrown: { enabled: boolean; ganghouseRoom: string };
   /** Looking for what a room did not print — `automation.search`. See `SearchConfig`. */
   search: { enabled: boolean; tries: number };
   /** Banking the purse — `automation.banking`. See `BankingConfig`. */
@@ -810,6 +813,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
   const spells = isRecord(value['spells']) ? value['spells'] : {};
   const loot = isRecord(value['loot']) ? value['loot'] : {};
   const drop = isRecord(value['drop']) ? value['drop'] : {};
+  const outgrown = isRecord(value['outgrown']) ? value['outgrown'] : {};
   const search = isRecord(value['search']) ? value['search'] : {};
   const banking = isRecord(value['banking']) ? value['banking'] : {};
   const alerts = isRecord(value['alerts']) ? value['alerts'] : {};
@@ -1083,6 +1087,10 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       whenEncumbered: drop['whenEncumbered'] === true,
       worthless: drop['worthless'] === true
     },
+    outgrown: {
+      enabled: outgrown['enabled'] === true,
+      ganghouseRoom: text(outgrown['ganghouseRoom']).slice(0, 80)
+    },
     search: {
       enabled: search['enabled'] === true,
       // Floored at one for the reason `normalizeSearch` states: `enabled` is
@@ -1354,6 +1362,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       // Read by the function that already knows how, like the blocks above.
       loot: asIf.loot,
       drop: asIf.drop,
+      outgrown: asIf.outgrown,
       search: asIf.search,
       banking: asIf.banking,
       remotes: remotesDraft(remotes),

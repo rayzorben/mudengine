@@ -1101,6 +1101,15 @@ const TUNING_DEFAULTS = {
   drop: {
     expiresMs: 5000
   },
+  /** Getting rid of outgrown gear — `OutgrownGear` (todo 12). */
+  outgrown: {
+    /** Worth this much copper or more (the realm's price), it is stashed in the ganghouse. */
+    stashFromCopper: 10_000,
+    /** Worth this much or more, it is walked to a counter that buys it; under it, dropped. */
+    sellFromCopper: 1_000,
+    /** A `hide`, `sell` or `drop` that leaves the pack holding as many after this is refused. */
+    confirmMs: 8000
+  },
   /**
    * Looking for what a room did not print — `AutoSearch`.
    *

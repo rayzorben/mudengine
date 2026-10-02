@@ -14,6 +14,7 @@ import {
   RETREAT_STRATEGIES,
   type BankingConfig,
   type DropConfig,
+  type OutgrownConfig,
   type EngagePolicy,
   type LootConfig,
   type PartyConfig,
@@ -289,6 +290,7 @@ export interface CharacterFields {
    */
   loot: LootConfig;
   drop: DropConfig;
+  outgrown: OutgrownConfig;
   search: SearchConfig;
   banking: BankingConfig;
   /**
@@ -533,6 +535,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
       entry.gear.offRound.everyRounds > 0 ? String(entry.gear.offRound.everyRounds) : '',
     loot: structuredClone(entry.loot),
     drop: structuredClone(entry.drop),
+    outgrown: { ...entry.outgrown },
     search: { ...entry.search },
     banking: { ...entry.banking },
     // This character's *own* loops. What it inherits is shown beside them and
@@ -740,6 +743,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     },
     loot: form.loot,
     drop: form.drop,
+    outgrown: form.outgrown,
     search: form.search,
     banking: form.banking,
     loops: form.loops,
@@ -862,6 +866,7 @@ export function emptyForm(
   const pvp = defaults?.automation.pvp ?? DEFAULT_CONFIG.automation.safety.pvp;
   const loot = defaults?.automation.loot ?? DEFAULT_CONFIG.automation.loot;
   const drop = defaults?.automation.drop ?? DEFAULT_CONFIG.automation.drop;
+  const outgrown = defaults?.automation.outgrown ?? DEFAULT_CONFIG.automation.outgrown;
   const search = defaults?.automation.search ?? DEFAULT_CONFIG.automation.search;
   const banking = defaults?.automation.banking ?? DEFAULT_CONFIG.automation.banking;
 
@@ -1009,6 +1014,7 @@ export function emptyForm(
     gearOffRoundEvery: gear.offRound.everyRounds > 0 ? String(gear.offRound.everyRounds) : '',
     loot: structuredClone(loot),
     drop: structuredClone(drop),
+    outgrown: { ...outgrown },
     search: { ...search },
     banking: { ...banking },
     loops: [],
