@@ -100,8 +100,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 47 | **The coin a price is counted in.** `Items.Currency` was never read, so the realm's `Price` was a number in no unit and a counter's charge could not be known before `list` was spent on it: a quest run walked to the General Store for two waterskins, was quoted 50 silver nobles each against an empty purse, and stood there with 8.6 million copper in the Bank of Godfrey. `BuiltItem.cur` carries the code (0 copper … 4 runic, `BuyCommand.GetCopperValue`) where it is not copper, and `WorldGraph.priceAt` multiplies it through the shop's markup exactly as the server does, so the supplies errand knows what to withdraw before it walks — todo 00 |
  * | 48 | **What a class may wield and wear.** `Classes.WeaponType` and `ArmourType` were in every class row and read by nothing, so the client could not say that a Mage wears cloth (1) and a Priest swings a staff (9): `ItemType.CanPlayerUseItem` refuses armour heavier than the class's `Armour` and a weapon kind the class's `Weapon` rules out (4 one-handed, 7 blunt, 9 none but what the item names the class for), and a slot's quick view listed plate first for a Mage. `BuiltClass.wpn` and `arm` carry the codes |
  * | 49 | **What a monster carries.** `Monsters.R`, `P`, `G`, `S` and `C`, the most of each coin it is made with, were read by nothing, so the Hunting grounds could say what a lair pays in exp and never in cash. `BuiltMob.cs` and `BuiltMobRow.cs` carry them, and `expectedCopper` (`src/shared/coins.ts`) reads them as the server rolls them — todo 62 |
+ * | 50 | **A shelf that sells, and one that only buys.** `Shops.Max-n`, `Amount-n` and `%-n` were never read, so a counter that only buys was offered as a place to buy: every Recycler Shop (all type 0, every `Max` zero) and the idle slots of 39 more in MajorMUD's data and 100 more in Paradigm's. `Shop.FillShop` stocks a slot only where `RegenAmount` is above zero and `Regen` refills it by chance, so a slot with any of the three at zero holds only what a player sold it; a gang house shop never refills and a deed shop always does (`slotRestocks`). `BuiltShop.idle` names the items on no restocking slot; `WorldShopItem.restocks` is false for them, buying looks only at the rest and selling at every counter |
  */
-export const REALM_FORMAT = 49;
+export const REALM_FORMAT = 50;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -383,6 +384,13 @@ export interface BuiltShop {
    * same numbers. Kept as the number; `WorldGraph` turns it into a word.
    */
   t?: number;
+  /**
+   * Format 50: the items only on slots the realm never restocks (`Max`,
+   * `Amount` or `%` zero; `Shop.FillShop` stocks only a slot whose
+   * `RegenAmount` is above zero). The counter buys them and sells only what a
+   * player sold it: every Recycler Shop is all of these.
+   */
+  idle?: number[];
 }
 
 /**
@@ -1737,6 +1745,25 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
  * Sorted by id, like every other index here, so a realm converted at runtime
  * and one built by the script produce byte-identical output.
  */
+/**
+ * Whether the realm refills a shop slot (format 50). By the shop's kind first:
+ * a gang house shop never regenerates (`Shop.Regen`, "don't do any regen in gh
+ * shops") and a deed shop (12) is filled to each deed's game limit whatever
+ * its slot says (`Shop.FillShop`). Otherwise a slot is filled only where
+ * `Max`, `Amount` and `%` are all above zero; a database that states none of
+ * them is read as it was before, restocked.
+ */
+export function slotRestocks(
+  kind: number | null,
+  figure: (field: 'Max' | 'Amount' | '%') => number | null
+): boolean {
+  if (kind === 11) return false;
+  if (kind === 12) return true;
+  const figures = (['Max', 'Amount', '%'] as const).map(figure);
+  if (figures.every((value) => value === null)) return true;
+  return figures.every((value) => (value ?? 0) > 0);
+}
+
 export function indexShops(source: RealmSource): BuiltShop[] {
   const shops = source.table('Shops');
   if (shops === null) return [];
@@ -1746,14 +1773,18 @@ export function indexShops(source: RealmSource): BuiltShop[] {
     const id = number(row['Number']);
     if (id === null || id <= 0) continue;
 
+    const kind = number(row['ShopType']);
     const items: number[] = [];
+    const restocked = new Set<number>();
     for (const [column, value] of Object.entries(row)) {
-      if (!/^Item-\d+$/.test(column)) continue;
+      const slot = /^Item-(\d+)$/.exec(column)?.[1];
+      if (slot === undefined) continue;
       const item = number(value);
       // Zero is the realm's empty slot, not item zero.
-      if (item !== null && item > 0) items.push(item);
+      if (item === null || item <= 0) continue;
+      items.push(item);
+      if (slotRestocks(kind, (field) => number(row[`${field}-${slot}`]))) restocked.add(item);
     }
-    const kind = number(row['ShopType']);
     /*
      * A shop with nothing on its shelves is a placeholder — unless it is a
      * bank, a temple, an inn or a training room, which stock nothing and are
@@ -1767,6 +1798,8 @@ export function indexShops(source: RealmSource): BuiltShop[] {
     const markup = number(row['Markup%']);
     if (markup !== null && markup > 0) entry.markup = markup;
     if (kind !== null && kind > 0) entry.t = kind;
+    const idle = [...new Set(items.filter((item) => !restocked.has(item)))].sort((a, b) => a - b);
+    if (idle.length > 0) entry.idle = idle;
     /*
      * Who this place serves and what it charges to — format 35.
      *

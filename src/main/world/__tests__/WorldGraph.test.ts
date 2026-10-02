@@ -1273,6 +1273,36 @@ describe('the real realm data', () => {
  * refused for the ambiguity. What a person wants is the question this answers:
  * how far off the road is the stop, and is the cheaper one worth the extra.
  */
+/*
+ * Format 50: a Recycler Shop buys everything and restocks nothing, and was
+ * offered as the nearest place to buy a lantern.
+ */
+describe('a shelf that only buys', () => {
+  const town = (): WorldGraph =>
+    makeWorld(
+      [
+        { m: 1, r: 1, n: 'Square', x: { e: { m: 1, r: 2 } } },
+        { m: 1, r: 2, n: 'Recycler', x: { w: { m: 1, r: 1 }, e: { m: 1, r: 3 } }, s: 1 },
+        { m: 1, r: 3, n: 'General Store', x: { w: { m: 1, r: 2 } }, s: 2 }
+      ],
+      {
+        items: [{ id: 12, n: 'lantern' }],
+        shops: [
+          { id: 1, n: 'Recycler Shop', items: [12], idle: [12] },
+          { id: 2, n: 'General Store', items: [12] }
+        ]
+      }
+    );
+
+  it('is never offered as a place to buy, and is a place to sell', () => {
+    const world = town();
+    const buy = world.stockingPlaces([12], roomId(1, 1), null, {});
+    expect(buy.map((place) => place.shop)).toEqual(['General Store']);
+    const sell = world.stockingPlaces([12], roomId(1, 1), null, {}, true);
+    expect(sell.map((place) => place.shop).sort()).toEqual(['General Store', 'Recycler Shop']);
+  });
+});
+
 describe('where to buy a thing, on the way to somewhere', () => {
   /**
    * A twenty-one room corridor east, with counters hung off it.

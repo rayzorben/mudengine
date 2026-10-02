@@ -62,7 +62,8 @@ import {
   type Corridor,
   type RemoteLever,
   type WorldRoom,
-  type ShopKind
+  type ShopKind,
+  sells
 } from '../../shared/world';
 import { trainersFor, type TrainerRow } from '../../shared/training';
 import { HAZARD_ABILITY, abilityShape, type ReferredNames } from '../../shared/abilities';
@@ -323,7 +324,7 @@ export class WorldGraph {
    * needs the rooms, and re-deriving them per ask is the scan over 57,511
    * rooms this file refuses everywhere else.
    */
-  private stocking: Map<number, WorldRoom[]> | null = null;
+  private stocking: Record<'sold' | 'taken', Map<number, WorldRoom[]>> | null = null;
   /** Monster row → the room scripts that summon it and nothing else — `itemAsks`. */
   private summonScripts: Map<number, Array<{ room: RoomId; say: string }>> | null = null;
   /**
@@ -896,27 +897,28 @@ export class WorldGraph {
     items: readonly number[],
     from: RoomId,
     to: RoomId | null,
-    traveller: Traveller
+    traveller: Traveller,
+    taking = false
   ): Array<BuyingPlace & { item: number }> {
-    return this.buyingPlacesFor(items, from, to, traveller);
+    return this.buyingPlacesFor(items, from, to, traveller, taking);
   }
 
   /**
-   * The same for several items at once, on one pair of sweeps: every counter
-   * stocking any of them, priced together, each place saying which item it
-   * is for. `QuestPlanner.supplyFor` asks about the two to four things the
-   * realm says stop one spell, and a sweep pair per item was eight Dijkstras
-   * on the socket's thread for a river crossing (review, 2026-09-21).
+   * The same for several items at once, on one pair of sweeps (a sweep pair
+   * per item was eight Dijkstras for a river crossing, 2026-09-21). `taking`:
+   * every counter that takes the item in, where to sell it; else only a shelf
+   * the realm restocks, where to buy it.
    */
   private buyingPlacesFor(
     items: readonly number[],
     from: RoomId,
     to: RoomId | null,
-    traveller: Traveller
+    traveller: Traveller,
+    taking = false
   ): Array<BuyingPlace & { item: number }> {
     const candidates: Array<{ item: number; room: WorldRoom }> = [];
     for (const item of items) {
-      for (const room of this.stockRooms(item)) candidates.push({ item, room });
+      for (const room of this.stockRooms(item, taking)) candidates.push({ item, room });
     }
     if (candidates.length === 0) return [];
     const wanted = new Set(candidates.map(({ room }) => roomId(room.map, room.room)));
@@ -991,32 +993,27 @@ export class WorldGraph {
     );
   }
 
-  /**
-   * Item id -> the rooms whose counter stocks it, built once.
-   *
-   * By **id**, like `Catalogue.stockedBy` and for the same reason: a shop
-   * stocks rows, and the realm repeats item names across rows.
-   */
-  private stockRooms(item: number): readonly WorldRoom[] {
+  /** Item id -> the rooms selling it (`sells`) or taking it in (any), built once; by id, as shops stock rows. */
+  private stockRooms(item: number, taking: boolean): readonly WorldRoom[] {
     if (this.stocking === null) {
-      const index = new Map<number, WorldRoom[]>();
+      const sold = new Map<number, WorldRoom[]>();
+      const taken = new Map<number, WorldRoom[]>();
+      const add = (index: Map<number, WorldRoom[]>, id: number, room: WorldRoom): void => {
+        const held = index.get(id);
+        if (held === undefined) index.set(id, [room]);
+        else if (held.at(-1) !== room) held.push(room);
+      };
       for (const room of this.rooms.values()) {
-        if (room.shop === undefined) continue;
-        const shop = this.catalogue.shop(room.shop);
-        if (shop === undefined) continue;
+        const shop = room.shop === undefined ? undefined : this.catalogue.shop(room.shop);
         // A shelf may list one row twice; the room is still one place to go.
-        const seen = new Set<number>();
-        for (const line of shop.items) {
-          if (seen.has(line.id)) continue;
-          seen.add(line.id);
-          const held = index.get(line.id);
-          if (held === undefined) index.set(line.id, [room]);
-          else held.push(room);
+        for (const line of shop?.items ?? []) {
+          add(taken, line.id, room);
+          if (sells(line)) add(sold, line.id, room);
         }
       }
-      this.stocking = index;
+      this.stocking = { sold, taken };
     }
-    return this.stocking.get(item) ?? [];
+    return (taking ? this.stocking.taken : this.stocking.sold).get(item) ?? [];
   }
 
   /**
@@ -1025,7 +1022,8 @@ export class WorldGraph {
    * it — what `Router.fetchPrice` prices the walk to the nearest of.
    */
   private sourceRooms(item: number): ReadonlySet<RoomId> {
-    const rooms = new Set<RoomId>(this.stockRooms(item).map((room) => roomId(room.map, room.room)));
+    const sold = this.stockRooms(item, false);
+    const rooms = new Set<RoomId>(sold.map((room) => roomId(room.map, room.room)));
     for (const name of this.sourcesOf({ id: item }).mobs) {
       const mob = this.mob(name);
       if (mob === undefined) continue;

@@ -909,6 +909,16 @@ export interface WorldShopItem {
   name: string;
   price?: number;
   encumbrance?: number;
+  /**
+   * False where the realm never restocks the item here (format 50): the
+   * counter buys it and has only what a player sold it. Absent is restocked.
+   */
+  restocks?: false;
+}
+
+/** Whether a counter sells this line: the realm restocks it, so it is there to buy. */
+export function sells(line: WorldShopItem): boolean {
+  return line.restocks !== false;
 }
 
 /**

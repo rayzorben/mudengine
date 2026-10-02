@@ -123,7 +123,8 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
       const id = found.item.row?.id ?? found.item.id;
       if (world === undefined || here === null || id === undefined) return null;
       const traveller = errands.travellerNow(tracker.current);
-      const places = world.stockingPlaces([id], here, null, traveller);
+      // Any counter that takes it in, a recycler's too: this is selling.
+      const places = world.stockingPlaces([id], here, null, traveller, true);
       return places.reduce<(typeof places)[number] | null>(
         (best, place) => (best === null || place.moves < best.moves ? place : best),
         null

@@ -8,6 +8,7 @@ import {
   indexItems,
   indexMobs,
   indexShops,
+  slotRestocks,
   indexSpells,
   indexRaces,
   indexItemNames,
@@ -659,8 +660,15 @@ describe('naming what a shop stocks', () => {
             Name: 'General Store',
             'Markup%': 250,
             'Item-0': 12,
+            'Max-0': 5,
+            'Amount-0': 1,
+            '%-0': 50,
             'Item-1': 0,
-            'Item-2': 34
+            // Never restocked: the counter takes it and sells only what a player sold it.
+            'Item-2': 34,
+            'Max-2': 0,
+            'Amount-2': 1,
+            '%-2': 50
           },
           // 175 of the 283 rows in the real table sell something; the rest are
           // placeholders, and one of them is literally called "Leave this blank".
@@ -670,12 +678,23 @@ describe('naming what a shop stocks', () => {
     );
 
   it('keeps the stocked slots and drops the empty ones', () => {
-    expect(shops()).toEqual([{ id: 4, n: 'General Store', items: [12, 34], markup: 250 }]);
+    expect(shops()).toEqual([
+      { id: 4, n: 'General Store', items: [12, 34], markup: 250, idle: [34] }
+    ]);
   });
 
   it('leaves out a shop that stocks nothing, rather than carrying it empty', () => {
     // A card saying "sells nothing" states a fact the realm data does not have.
     expect(shops().some((shop) => shop.n === 'Leave this blank')).toBe(false);
+  });
+
+  /* A gang house shop never refills and a deed shop always does, whatever the slot says. */
+  it('decides by the kind of shop first, and reads a slot stating nothing as restocked', () => {
+    const none = () => null;
+    expect(slotRestocks(11, () => 5)).toBe(false);
+    expect(slotRestocks(12, () => 0)).toBe(true);
+    expect(slotRestocks(0, none)).toBe(true);
+    expect(slotRestocks(0, (field) => (field === 'Max' ? 0 : 5))).toBe(false);
   });
 
   it('survives a realm with no Shops table at all', () => {
@@ -747,7 +766,9 @@ describe('naming what a shop stocks', () => {
     const built = buildRealm(
       fake({
         Rooms: [room({ Shop: 4 })],
-        Shops: [{ Number: 4, Name: 'General Store', 'Item-0': 12 }],
+        Shops: [
+          { Number: 4, Name: 'General Store', 'Item-0': 12, 'Max-0': 3, 'Amount-0': 1, '%-0': 100 }
+        ],
         Items: [{ Number: 12, Name: 'lantern', Price: 2, Encum: 30 }]
       }),
       '2026-01-01'
@@ -1175,8 +1196,24 @@ describe('what kind of shop a shop is', () => {
     const [bank, blank] = indexShops(
       fake({
         Shops: [
-          { Number: 7, Name: 'Bank of Godfrey', ShopType: 7, 'Item-1': 12 },
-          { Number: 8, Name: 'Leave this blank', ShopType: 0, 'Item-1': 12 }
+          {
+            Number: 7,
+            Name: 'Bank of Godfrey',
+            ShopType: 7,
+            'Item-1': 12,
+            'Max-1': 1,
+            'Amount-1': 1,
+            '%-1': 1
+          },
+          {
+            Number: 8,
+            Name: 'Leave this blank',
+            ShopType: 0,
+            'Item-1': 12,
+            'Max-1': 1,
+            'Amount-1': 1,
+            '%-1': 1
+          }
         ]
       })
     );
