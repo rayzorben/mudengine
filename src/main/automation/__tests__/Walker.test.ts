@@ -5,7 +5,15 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { Walker } from '../Walker';
 import type { WalkerEvents } from '../walk/ports';
-import { CONFIG as config, ROUTE, at, moves, useRigs } from '../walk/__tests__/walking';
+import {
+  CONFIG as config,
+  ROUTE,
+  at,
+  moves,
+  routeOf,
+  stepOf,
+  useRigs
+} from '../walk/__tests__/walking';
 import {
   EMPTY_CHARACTER,
   NO_AFFLICTIONS,
@@ -2376,6 +2384,42 @@ describe('an exit the realm data promised and the server refused', () => {
     walker.onBlock(block('direction-failed'));
     expect(refused).toEqual(['1/1|e']);
     expect(walker.progress.status).toBe('stopped');
+  });
+
+  /*
+   * 2026-10-02: a toll the purse did not cover banned the gate for the session.
+   * A toll the realm data records is priced against the purse, so it is left
+   * out; one it does not record is still written down.
+   */
+  it('says nothing for a recorded toll the purse did not cover, and names the toll in the stop', () => {
+    const refused: string[] = [];
+    const reasons: string[] = [];
+    walker = new Walker(config, queue, {
+      refused: (from, direction) => refused.push(`${from}|${direction}`),
+      ended: (_arrived, reason) => void reasons.push(reason ?? '')
+    });
+    const gate = routeOf(
+      stepOf(1, 2, 'e', {
+        name: 'Toll Gate',
+        requirement: { kind: 'toll', tollCopper: 500, raw: 'Toll: 5' }
+      })
+    );
+    walker.start(gate, at(1, 1));
+    vi.advanceTimersByTime(50);
+    walker.onBlock(block('direction-failed', { toll: '5 gold crowns' }));
+    expect(refused).toEqual([]);
+    expect(walker.progress.status).toBe('stopped');
+    expect(reasons.at(-1)).toBe(
+      t('automation.walk.reasonToll', { command: 'e', toll: '5 gold crowns' })
+    );
+
+    walker = new Walker(config, queue, {
+      refused: (from, direction) => refused.push(`${from}|${direction}`)
+    });
+    walker.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(50);
+    walker.onBlock(block('direction-failed', { toll: '5 gold crowns' }));
+    expect(refused).toEqual(['1/1|e']);
   });
 
   it('says nothing for a closed door, which open can still answer', () => {
