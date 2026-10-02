@@ -81,9 +81,11 @@ export interface ExtensionSessionHost {
    * reach, for the character as it stands or as `as` (the same character
    * wearing other gear, `wearing`, or at another level). A survey of `as` is
    * priced afresh each time, so it is one piece of an extension's work, never
-   * several in a turn.
+   * several in a turn. `beneath` keeps the spots beneath this level, marked
+   * `estimate.trivial`, which the hunt's own survey leaves out, so steer one
+   * with an order.
    */
-  huntingGrounds(as?: CharacterState): HuntingAdvice;
+  huntingGrounds(options?: { as?: CharacterState; beneath?: boolean }): HuntingAdvice;
   realmClass(): RealmClass;
   capabilities(): Capabilities;
   traveller(state: CharacterState): Traveller;
@@ -169,6 +171,7 @@ export interface ExtensionSession {
   onCharacter?(state: CharacterState): void;
   /** The player pressed Stop. */
   playerStopped?(): void;
+  /** The character's own settings, every extension's layer left off: what to lay is worked out from them. */
   configure?(config: AutomationConfig): void;
   reset?(): void;
   dispose?(): void;

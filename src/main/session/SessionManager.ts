@@ -1815,7 +1815,7 @@ export class SessionManager {
       { module: this.cures, configure: (a) => this.cures.configure(a.spells, a.enabled) },
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
       { module: this.combatLease },
-      { module: this.extensions, configure: (a) => this.extensions.configure(a) },
+      { module: this.extensions, configure: () => this.extensions.configure(this.configured[0]) },
       {
         module: this.invoke,
         configure: (a) => this.invoke.configure(a.enabled && a.spells.invokeItems)

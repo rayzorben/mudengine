@@ -117,7 +117,8 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         return target === null ? null : `${target.host}:${target.port}`;
       },
       world: wiring.world,
-      huntingGrounds: (as) => errands.huntingGrounds(null, null, as),
+      huntingGrounds: (options) =>
+        errands.huntingGrounds(null, null, options?.as, options?.beneath ?? false),
       realmClass: () => errands.realmClass(),
       capabilities: () => errands.capabilities(),
       traveller: (state) => errands.travellerNow(state),

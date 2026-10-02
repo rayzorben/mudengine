@@ -35,6 +35,7 @@ import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
 import type { RewritesUiConfig } from '../../../shared/config';
 import type { Route } from '../../../shared/world';
+import type { ExtensionSessionHost } from '../../extensions/api';
 import type { Errands } from '../Errands';
 import { NO_LORE } from '../../../shared/lore';
 import type { LearnedSpawns } from '../../../shared/spawns';
@@ -7853,5 +7854,49 @@ describe('the corridors this character prefers', () => {
     expect(route.mock.calls.length).toBe(planned);
     manager.configure({ ...preferring, loops: [] }, DEFAULT_CONFIG.connection.login);
     expect(errands.preferredEdges().size).toBe(0);
+  });
+});
+
+/*
+ * 2026-10-02: an extension was configured with its own layer already over the
+ * character's settings, so a floor it raised from the character's value was
+ * raised from its own last value instead, every reload.
+ */
+describe('an extension configured', () => {
+  it("is handed the character's own settings, its layer left off", () => {
+    const seen: string[] = [];
+    let lay: ((writes: Array<readonly [readonly string[], unknown]> | null) => void) | null = null;
+    const { sink } = collect();
+    manager = build(sink, {
+      extensions: {
+        extensions: [
+          {
+            manifest: { name: 'probe', title: 'Probe', main: 'main.mjs' },
+            dir: '/nowhere',
+            module: {
+              session: (host: ExtensionSessionHost) => {
+                lay = (writes) => host.layer(writes);
+                return {
+                  view: () => null,
+                  configure: (config: AutomationConfig) => void seen.push(config.combat.attack)
+                };
+              }
+            }
+          }
+        ],
+        home: '/nowhere',
+        records: () => '/nowhere',
+        keep: () => null,
+        backscroll: () => ''
+      }
+    } as unknown as SessionDeps);
+    const own = {
+      ...DEFAULT_CONFIG.automation,
+      combat: { ...DEFAULT_CONFIG.automation.combat, attack: 'a' }
+    };
+    manager.configure(own, DEFAULT_CONFIG.connection.login);
+    lay!([[['combat', 'attack'], 'kic']]);
+    expect(seen.at(-1)).toBe('a');
+    expect(seen.length).toBeGreaterThan(1);
   });
 });

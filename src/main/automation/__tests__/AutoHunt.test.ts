@@ -822,6 +822,22 @@ describe('a hunt order', () => {
     expect(walked).toHaveLength(0);
   });
 
+  it("keeps a single spot's order measured under the spot's key", () => {
+    here = '1/816';
+    const auto = hunt();
+    const a = spot('lair:a', 12_000);
+    auto.steer({
+      ...order('lair:a'),
+      spot: a,
+      loop: { name: 'Graveyard', stops: a.walk.map((room) => huntStop(room, 60)) }
+    });
+    auto.onCharacter(at(1_000));
+    clock += 900_000;
+    auto.onCharacter(at(6_000));
+    expect(noted).toEqual([{ key: 'lair:a', perHour: 20_000 }]);
+    expect(stops).toEqual([]);
+  });
+
   it('refuses an order with no stops, and says so', () => {
     const auto = hunt();
     auto.steer({ ...order(), loop: { name: 'nowhere', stops: [] } });

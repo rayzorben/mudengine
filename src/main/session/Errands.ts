@@ -1329,11 +1329,16 @@ export class Errands implements SessionModule {
    * `as` surveys a character other than the one on the wire: the same one
    * with a stat raised, to see what a point would buy (`StatGains`). Its
    * prices are kept apart, so the live survey's are not thrown away for it.
+   *
+   * `beneath` keeps the rooms beneath this level (`SpotEstimate.trivial`):
+   * nothing there can scratch an unarmoured character, which is what a
+   * character with nothing on needs while it earns its gear back.
    */
   huntingGrounds(
     radius: number | null,
     measure: string | null = null,
-    as: CharacterState = this.tracker.current
+    as: CharacterState = this.tracker.current,
+    beneath = false
   ): HuntingAdvice {
     const state = as;
     const world = this.world;
@@ -1699,7 +1704,7 @@ export class Errands implements SessionModule {
         excluded.dangerous += 1;
         continue;
       }
-      if (estimate.trivial) {
+      if (estimate.trivial && !beneath) {
         excluded.beneath += 1;
         continue;
       }

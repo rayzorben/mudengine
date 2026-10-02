@@ -472,13 +472,6 @@ export class AutoHunt implements SessionModule {
   private keepHonest(state: CharacterState): void {
     if (this.phase.kind !== 'hunting') return;
     this.noteCompany(state);
-    /*
-     * An order is the extension's plan: what it pays is the extension's to
-     * measure, under keys the survey does not know, and it is never moved off
-     * here. Read from the steer, not the lap, so an order handed back
-     * (`steer(undefined)`) is kept honest from the next line.
-     */
-    if (typeof this.steered === 'object' && this.steered !== null) return;
     const measured = this.measure(state);
     const level = state.progress.level;
     // Kept from a stay long enough to say, so a short visit never replaces an hour's figure.
@@ -497,6 +490,16 @@ export class AutoHunt implements SessionModule {
         at: this.now()
       });
     }
+
+    /*
+     * An order is the extension's plan and is never moved off here. What it
+     * paid is kept above where its key is a survey spot's (a joined loop's key
+     * is one the survey cannot read), and nothing else: the correction below
+     * is the survey's own estimate against the lap, and an order is priced by
+     * the extension. Read from the steer, not the lap, so an order handed back
+     * (`steer(undefined)`) is kept honest from the next line.
+     */
+    if (typeof this.steered === 'object' && this.steered !== null) return;
 
     const judged = this.judgement(state);
     const changed = judged !== this.judgedFor;
