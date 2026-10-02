@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { SessionHost } from '../SessionHost';
+import { t } from '../../app/i18n';
 import { Push, type Addressed, type Notice, type SessionId } from '../../../shared/ipc';
 import { DEFAULT_CONFIG, type AppConfig } from '../../../shared/config';
 import type { ConnectionTarget, StreamChunk } from '../../../shared/types';
@@ -25,6 +26,7 @@ import type { ConnectionTarget, StreamChunk } from '../../../shared/types';
 let server: net.Server;
 let port: number;
 let host: SessionHost | null = null;
+let options: ConstructorParameters<typeof SessionHost>[0];
 let accepted: net.Socket[] = [];
 /** What each accepted socket received, in the order they were accepted. */
 let received: string[] = [];
@@ -83,7 +85,7 @@ beforeEach(async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   port = (server.address() as net.AddressInfo).port;
 
-  host = new SessionHost({
+  options = {
     worldFor: () => undefined,
     loreFor: () => NO_LORE,
     // Nothing to learn against without a realm, which is what these run with.
@@ -118,7 +120,8 @@ beforeEach(async () => {
       }
     },
     notice: (notice) => notices.push(notice)
-  });
+  };
+  host = new SessionHost(options);
 });
 
 afterEach(async () => {
@@ -151,6 +154,39 @@ function textFor(session: SessionId): string {
 }
 
 describe('SessionHost', () => {
+  /*
+   * 2026-10-01: a session says things while it is being built (an extension
+   * whose session would not start), and the notice reached for the capture
+   * through a slot not yet made: the client stopped with a ReferenceError.
+   */
+  it('says what a session says while it is being built', () => {
+    host?.disposeAll();
+    host = new SessionHost({
+      ...options,
+      extensions: {
+        loaded: () => [
+          {
+            manifest: { name: 'broken', title: 'Broken', main: 'main.mjs' },
+            dir: backscrollDir,
+            module: {
+              session: () => {
+                throw new Error('no start');
+              }
+            }
+          }
+        ],
+        home: backscrollDir,
+        records: () => backscrollDir,
+        keep: () => null
+      }
+    });
+    expect(() => host?.ensure('soul')).not.toThrow();
+    expect(notices).toContainEqual({
+      session: 'soul',
+      message: t('extensions.failed', { name: 'broken', hook: 'session', error: 'no start' })
+    });
+  });
+
   /*
    * The backscroll outlives the process (todo 06, 2026-09-17): what the
    * console showed is written down per character, and the next launch's
