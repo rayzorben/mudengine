@@ -7,11 +7,13 @@ import {
   raiseCost,
   trainersFor,
   trainingCost,
+  trainerPrize,
   trainsLevel,
   wantsMore,
   type TrainerRow
 } from '../training';
 import type { RouteStep } from '../world';
+import { UNKNOWN_WEARER, type Wearer } from '../gear';
 
 /*
  * Vaelor, a Nekojin (`Races`: mSTR 40 / xSTR 140, mAGL 60 / xAGL 170,
@@ -236,5 +238,37 @@ describe('which reachable trainer is walked to', () => {
   it('still pays the cheaper price where the markups differ by more than the slack', () => {
     const cheap = reached('sixty seven', 33_150, 90);
     expect(bestTrainer([reached('hydra', 257_524, 10), cheap], 0.25)).toBe(cheap);
+  });
+});
+
+/* Each class's Super trainer tomb puts out its own reward (2026-10-01, `Rooms.Placed`). */
+describe("a trainer room's reward for the class", () => {
+  const MYSTIC: Wearer = { ...UNKNOWN_WEARER, classId: 15, level: 10 };
+  const GLOVES = { id: 357, name: 'clawed gloves', slot: 'hands', classes: [15], minLevel: 10 };
+  const PORTAL = { id: 1636, name: 'blue portal', gettable: false };
+  const AXE = { id: 339, name: 'golden battleaxe', classes: [1] };
+
+  it("is the item that names this character's class, and nothing fixed or another class's", () => {
+    expect(trainerPrize([PORTAL, AXE, GLOVES], MYSTIC)).toBe(GLOVES);
+    expect(trainerPrize([PORTAL, AXE], MYSTIC)).toBeNull();
+  });
+
+  it('counts a class the item allows by a ClassOk pair', () => {
+    const knife = {
+      id: 9,
+      name: 'knife',
+      classes: [1],
+      abilities: [[59, 15]] as Array<[number, number]>
+    };
+    expect(trainerPrize([knife], MYSTIC)).toBe(knife);
+  });
+
+  it('is nothing for an item that names no class, or for a class not read yet', () => {
+    expect(trainerPrize([{ id: 1, name: 'torch' }], MYSTIC)).toBeNull();
+    expect(trainerPrize([GLOVES], UNKNOWN_WEARER)).toBeNull();
+  });
+
+  it('is nothing the character could not wear yet', () => {
+    expect(trainerPrize([GLOVES], { ...MYSTIC, level: 9 })).toBeNull();
   });
 });

@@ -353,6 +353,12 @@ export const UNKNOWN_WEARER: Wearer = {
 /** `GMUDAbilityType.ClassOK`: a class the item is allowed to beside its `ClassRest` list. */
 const CLASS_OK = 59;
 
+/** The classes an item names as allowed it: its `ClassRest` list and its `ClassOk` pairs. */
+export function classesAllowed(item: Pick<EquipRestrictions, 'classes' | 'abilities'>): number[] {
+  const classOk = (item.abilities ?? []).filter(([id]) => id === CLASS_OK).map(([, v]) => v);
+  return [...(item.classes ?? []), ...classOk];
+}
+
 /**
  * The item gates on evil points, `ItemType.CanPlayerUseItem` (`ItemType.cs:280`):
  * each refuses the points it names. `Good` and `Evil` take their threshold from
@@ -470,8 +476,7 @@ export function equipBlock(item: EquipRestrictions, wearer: Wearer): EquipBlock 
    * pairs extend the list (`knife` names the Mage and the Mystic that way).
    */
   const classes = item.classes ?? [];
-  const classOk = abilities.filter(([id]) => id === CLASS_OK).map(([, value]) => value);
-  const classNamed = names([...classes, ...classOk], wearer.classId);
+  const classNamed = names(classesAllowed(item), wearer.classId);
   if (classes.length > 0 && classNamed === false) {
     return { kind: 'class', allowed: classes };
   }

@@ -1,4 +1,5 @@
 import type { CharacterState } from './character';
+import { classesAllowed, equipBlock, type EquipRestrictions, type Wearer } from './gear';
 import { lairsAlong, type RouteStep } from './world';
 
 /**
@@ -374,4 +375,33 @@ export function bestTrainer<R extends ReachedTrainer>(
   const cheapest = Math.min(...pool.map((each) => each.trainer.cost));
   const near = pool.filter((each) => each.trainer.cost <= cheapest * (1 + slack));
   return [...near].sort((a, b) => toll(a) - toll(b) || a.route.cost - b.route.cost)[0] ?? null;
+}
+
+/** An item a trainer's room puts on its floor, as far as `trainerPrize` reads it. */
+export interface PlacedItem extends EquipRestrictions {
+  id: number;
+  name: string;
+  /** False where the realm will not let it be picked up. */
+  gettable?: boolean;
+}
+
+/**
+ * The reward a trainer's room puts out for this character's class
+ * (`Rooms.Placed`): one the realm lets be picked up, that names this class
+ * among the classes allowed it (`classesAllowed`), and that nothing else stops this character
+ * wearing. Each class's Super trainer tomb places its own (2026-10-01:
+ * clawed gloves for a Mystic in 1/2240, the golden battleaxe for a Warrior in
+ * 1/2231). An unread class finds nothing.
+ */
+export function trainerPrize<T extends PlacedItem>(placed: readonly T[], wearer: Wearer): T | null {
+  const { classId } = wearer;
+  if (classId === null) return null;
+  return (
+    placed.find(
+      (item) =>
+        item.gettable !== false &&
+        classesAllowed(item).includes(classId) &&
+        equipBlock(item, wearer) === null
+    ) ?? null
+  );
 }

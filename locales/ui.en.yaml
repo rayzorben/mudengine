@@ -4942,12 +4942,19 @@ automation:
     # Going to collect the level -- `TrainErrand` (todo 18). Every sentence
     # names a figure the player can act on: the cost, the purse, the room.
     going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
+    goingKeyed: 'A level is waiting. Going to {room} to train ({cost} copper): getting {items} for the
+      door on the way first.'
+    takingPrize: 'Taking {item}: this trainer puts it out for your class.'
+    prizeGone: '{item} is not on the floor here: someone took it, and it is put back at the nightly
+      cleanup.'
+    reasonPrize: '{item}, put out here for your class'
     levelled: Welcome to level {level}.
     reasonLevel: 'training: the experience for a level is there'
     reasonAskOwed: 'reading the experience needed, to see if a level is ready'
     abandonedDied: 'Died: the walk to the trainer is canceled. The level is still waiting.'
     becauseOwed: a level was earned and not collected
     whyStopped: the walk stopped before it arrived
+    whyFetch: the key for the door on the way was not fetched
     refusalNowhere: A level is waiting, and the world data names no trainer that will train this
       character at level {level}. Nothing walked.
     refusalTrainerStale: A level is waiting, and the trainer chosen in settings no longer trains
