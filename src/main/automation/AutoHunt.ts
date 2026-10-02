@@ -120,6 +120,13 @@ export class AutoHunt implements SessionModule {
   private phase: Phase = { kind: 'idle' };
   /** When the survey was last asked for, so a status line is not a sweep. */
   private surveyedAt = 0;
+  /**
+   * The steered spot is not on the list while lairs wait on the simulator:
+   * a settings change runs every fight again, so the spot a plan chose under
+   * the old settings is missing until its own is run. Surveyed again every
+   * `tuning.hunting.simulatingMs` until it is there or the book is done.
+   */
+  private simulating = false;
   /** The refusal last said, so one situation is said once. */
   private said: string | null = null;
   /**
@@ -202,6 +209,7 @@ export class AutoHunt implements SessionModule {
         ? { ...this.phase, from: null, saidCompany: false }
         : { kind: 'idle' };
     this.said = null;
+    this.simulating = false;
     this.judgedFor = null;
     this.surveyedAt = 0;
     this.contested.clear();
@@ -237,6 +245,7 @@ export class AutoHunt implements SessionModule {
 
   private rejudge(): void {
     this.said = null;
+    this.simulating = false;
     this.judgedFor = null;
     this.surveyedAt = 0;
   }
@@ -247,8 +256,7 @@ export class AutoHunt implements SessionModule {
   }
 
   /**
-   * What is holding the hunt this line, where something is: a fight, a walk,
-   * another errand, low health, a lap that is not this module's. Said on an
+   * What is holding the hunt this line, where something is (`HuntWait`). Said on an
    * extension's card, so a hunt that does not set off says why.
    */
   get waiting(): HuntWait | null {
@@ -371,14 +379,21 @@ export class AutoHunt implements SessionModule {
     }
     // Steered to hunt nowhere for now: it is somewhere else's turn.
     if (this.steered === null) return this.wait(null);
-    this.waitingOn = null;
+    this.waitingOn = this.heldBySimulator();
 
     const judged = this.judgement(state);
-    if (judged === this.judgedFor) return;
-    if (this.now() - this.surveyedAt < tuning().hunting.resurveyMs) return;
+    if (judged === this.judgedFor && !this.simulating) return;
+    const floor = this.simulating ? tuning().hunting.simulatingMs : tuning().hunting.resurveyMs;
+    if (this.now() - this.surveyedAt < floor) return;
     this.surveyedAt = this.now();
     this.judgedFor = judged;
     this.go(state);
+    this.waitingOn = this.heldBySimulator();
+  }
+
+  /** `simulating`, as the wait the card says. */
+  private heldBySimulator(): HuntWait | null {
+    return this.simulating ? 'simulating' : null;
   }
 
   /** Whether the lap running is the one this module started. */
@@ -671,6 +686,7 @@ export class AutoHunt implements SessionModule {
   private best(state: CharacterState): HuntingSpot | null {
     const advice = this.planner.survey(this.config.radius > 0 ? this.config.radius : null);
     if (advice.refusal !== null) {
+      this.simulating = false;
       this.refuse(advice.refusal);
       return null;
     }
@@ -682,10 +698,17 @@ export class AutoHunt implements SessionModule {
      * rate under the floor the player set for a lap is not worth a walk.
      */
     const best = this.pick(advice.spots) ?? undefined;
+    const steered = this.steered;
+    const gone = typeof steered === 'string' && !advice.spots.some((spot) => spot.key === steered);
+    this.simulating = gone && advice.excluded.unsimulated > 0;
+    if (this.simulating) {
+      // Waiting is not a refusal: one said before it no longer stands.
+      this.said = null;
+      return null;
+    }
     if (best === undefined) {
-      const steered = this.steered;
       this.refuse(
-        typeof steered === 'string' && !advice.spots.some((spot) => spot.key === steered)
+        gone
           ? t('automation.hunt.refusalSteeredGone')
           : advice.spots.length === 0
             ? t('automation.hunt.refusalNothingReachable')

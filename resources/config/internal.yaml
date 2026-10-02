@@ -693,6 +693,9 @@ tuning:
     # answer is a level, the kit changing, or the lap stopping for earning too
     # little -- this only bounds how often those may be acted on.
     resurveyMs: 60000
+    # The same floor while a spot the planner chose waits for its lair's fight
+    # to be simulated.
+    simulatingMs: 5000
 
     # What a lair pays while somebody else is working it. Experience divides
     # among everybody who hit the kill, so a second player in the lair is this
