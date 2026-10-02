@@ -5451,6 +5451,8 @@ automation:
     reasonTrained: trained, so your stats, the exp needed for the next level and your cash have all
       changed
     reasonStatsTrained: stats were trained, so the stat display changed
+    reasonLevelled: a new level, so your stats and the exp needed for the next level have changed
+    reasonDied: you died, which dropped what you carried; reading what is left
     reasonBuffEnding: an unrecognized message may have ended a buff; the stats will show which
     reasonStatline: setting the status line so every prompt shows maximum health and mana, exp and
       cash

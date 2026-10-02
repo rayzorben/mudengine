@@ -48,6 +48,21 @@ describe('one character’s extensions', () => {
     expect(extensions.over(DEFAULT_CONFIG.automation)).toBe(DEFAULT_CONFIG.automation);
   });
 
+  it('drives the character while any one extension says it is, and stops when it says so', () => {
+    let first: ExtensionHostKit['drive'] = () => {};
+    let second: ExtensionHostKit['drive'] = () => {};
+    const a = loaded('a', (kit) => ((first = kit.drive), { view: () => null }));
+    const b = loaded('b', (kit) => ((second = kit.drive), { view: () => null }));
+    const { extensions } = make([a, b]);
+    expect(extensions.driving).toBe(false);
+    first(true);
+    second(true);
+    first(false);
+    expect(extensions.driving).toBe(true);
+    second(false);
+    expect(extensions.driving).toBe(false);
+  });
+
   it('sends what it hears, and gathers each view by name', () => {
     const heard: string[] = [];
     const planner = loaded('planner', () => ({

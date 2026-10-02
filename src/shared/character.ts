@@ -661,7 +661,9 @@ export interface Inventory {
    * `65 runic coins, 51 platinum pieces, 118 gold crowns` → `65521800`, which
    * is exact at 1 000 000 / 10 000 / 100. Nothing here recomputes it; it is one
    * more thing the listing states, and like every maintained listing it is the
-   * figure from the last one until the next.
+   * figure from the last one until the next. One exception: a death empties
+   * it to 0 (`Player.Killed` gives the purse to the corpse) until the next
+   * listing says otherwise.
    */
   wealth: number | null;
   /** How many of each coin, as the listing counted them. See {@link Coins}. */

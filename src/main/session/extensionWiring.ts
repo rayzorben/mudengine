@@ -201,6 +201,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       walk: () => wiring.walker.progress,
       offer: (intent) => wiring.queue.offer(intent),
       layer: kit.layer,
+      drive: kit.drive,
       keep: (writes) => deps?.keep(writes) ?? null,
       notice: kit.notice,
       changed: kit.changed

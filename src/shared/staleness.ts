@@ -77,21 +77,32 @@ export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }
  *   else says so. Both sentences rather than one, because they are two facts —
  *   a train that was refused prints neither, and a level reached by a kill
  *   prints only the welcome.
+ * - **`user-dies`** — the pack: the death dropped it and the purse
+ *   (`Player.Killed`), the tracker empties both, and only a listing says what
+ *   loyal or cursed item stayed.
  * - **`user-stats-assigned`** — the sheet, and only the sheet. It is the exit
  *   from the stat-assignment screen, which rewrites six attributes and
  *   recalculates the maximum hit points (`AssignStatsState`, `SetStats` then
  *   `BaseMaxHP = CalcMaxHP()`); it spends character points and no coin, and
  *   the experience curve is untouched.
  */
-export const STALE_AFTER: Partial<Record<BlockType, readonly StaleFact[]>> = {
+export const STALE_AFTER = {
   'user-levels': ['sheet', 'experience'],
   'user-trains': ['sheet', 'experience', 'pack'],
+  'user-dies': ['pack'],
   'user-stats-assigned': ['sheet']
-};
+} as const satisfies Partial<Record<BlockType, readonly StaleFact[]>>;
+
+/** A sentence that makes a fact stale: a closed union, so whatever words the ask gets is a switch over it. */
+export type StaleSentence = keyof typeof STALE_AFTER;
+
+export function isStaleSentence(type: BlockType): type is StaleSentence {
+  return Object.hasOwn(STALE_AFTER, type);
+}
 
 /** What this sentence made stale — empty for the ones that made nothing stale. */
 export function staleAfter(type: BlockType): readonly StaleFact[] {
-  return STALE_AFTER[type] ?? [];
+  return isStaleSentence(type) ? STALE_AFTER[type] : [];
 }
 
 /**

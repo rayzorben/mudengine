@@ -190,9 +190,8 @@ export function editorInput(data: string): string {
   for (let i = 0; i < data.length; i += 1) {
     const ch = data[i]!;
     if (ch === '\x1b') {
-      // The whole sequence, dropped as one. Dropping only the introducer
-      // would leave `[A` behind, which is the same bug wearing the arrow
-      // key's hat.
+      // The whole sequence, dropped as one: dropping only the introducer
+      // left `[A` behind, the same bug wearing the arrow key's hat.
       i = endOfEscape(data, i);
       continue;
     }
@@ -1663,6 +1662,7 @@ export class SessionManager {
         dropTyped: (died) => this.dropTyped(died),
         fled,
         keepFled: (entries) => this.belongings.rememberFled(entries),
+        driven: () => this.extensions.driving,
         switchAutomation: (on) => this.sink.switchAutomationNow?.('automation', on) ?? false,
         ...reports
       }

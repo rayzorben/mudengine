@@ -52,8 +52,16 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
 import type { CharacterState } from '../../shared/character';
-import type { Block, BlockType } from '../../shared/blocks';
-import { READ, REFRESH, staleAfter, unread, type StaleFact } from '../../shared/staleness';
+import type { Block } from '../../shared/blocks';
+import {
+  isStaleSentence,
+  READ,
+  REFRESH,
+  staleAfter,
+  unread,
+  type StaleFact,
+  type StaleSentence
+} from '../../shared/staleness';
 import { SET_STATLINE } from '../../shared/statline';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -621,8 +629,8 @@ export class Routines implements SessionModule {
      * in, and this is that same ask staying true rather than a new one nobody
      * chose.
      */
-    const stale = staleAfter(block.type);
-    if (stale.length > 0) this.refresh(stale, this.whyStale(block.type));
+    if (isStaleSentence(block.type))
+      this.refresh(staleAfter(block.type), this.whyStale(block.type));
   }
 
   /** Asks for each stale fact once, in the words of whatever made it stale. */
@@ -638,11 +646,23 @@ export class Routines implements SessionModule {
    *
    * The words stay here and the table stays data, because `locales/ui.en.yaml`
    * is the only place copy lives and a key looked up through a variable is a
-   * key `i18n-coverage.test.ts` cannot check. Two literal calls instead.
+   * key `i18n-coverage.test.ts` cannot check. A literal call per sentence instead.
    */
-  private whyStale(type: BlockType): string {
-    if (type === 'user-stats-assigned') return t('automation.routines.reasonStatsTrained');
-    return t('automation.routines.reasonTrained');
+  private whyStale(type: StaleSentence): string {
+    switch (type) {
+      case 'user-levels':
+        return t('automation.routines.reasonLevelled');
+      case 'user-trains':
+        return t('automation.routines.reasonTrained');
+      case 'user-dies':
+        return t('automation.routines.reasonDied');
+      case 'user-stats-assigned':
+        return t('automation.routines.reasonStatsTrained');
+      default: {
+        const never: never = type;
+        return never;
+      }
+    }
   }
 
   /**
