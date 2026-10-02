@@ -6274,6 +6274,25 @@ describe('what this character costs to move', () => {
   });
 
   /*
+   * 2026-10-01: the trainer routes a plan prices are kept while this stands
+   * still, so it is the whole traveller, the sets included, and nothing else.
+   */
+  it('says what a route is planned on in one key that moves with the traveller', () => {
+    const { sink } = collect();
+    manager = build(sink, { world: tabled() });
+    const errands = manager['errands'];
+    const key = errands.routeKey(manager.character);
+    expect(errands.routeKey(manager.character)).toBe(key);
+    errands.shun('1/2');
+    const shunned = errands.routeKey(manager.character);
+    expect(shunned).not.toBe(key);
+    const state = manager.character;
+    expect(errands.routeKey({ ...state, progress: { ...state.progress, level: 31 } })).not.toBe(
+      shunned
+    );
+  });
+
+  /*
    * And the ways and places routes keep out of (todo 806), from the file, with
    * nothing allowed: only a route the player chose on the panel may cross one,
    * and never a lap's leg.

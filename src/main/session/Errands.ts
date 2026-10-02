@@ -559,6 +559,22 @@ export class Errands implements SessionModule {
   }
 
   /**
+   * What a route from here is planned on, as one string: every stated field
+   * of `travellerNow`, so a field added there is in it. Its readers (`danger`,
+   * `hazard`) are asked live and are not. `TrainErrand.trainersAhead` keeps
+   * its routes while this and the room stay the same.
+   */
+  routeKey(state: CharacterState = this.tracker.current): string {
+    return JSON.stringify(this.travellerNow(state), (_key, value: unknown) =>
+      typeof value === 'function'
+        ? undefined
+        : value instanceof Set || value instanceof Map
+          ? [...value]
+          : value
+    );
+  }
+
+  /**
    * What a lap's leg costs to move: the distance, and whether each way can be
    * passed at all — never what is waiting on it.
    *
