@@ -166,6 +166,37 @@ describe('the odds book', () => {
     control.odds.dispose();
   });
 
+  /* 2026-10-02: a planner waiting on the simulator read the whole survey every 5 s for this. */
+  it('counts the lairs it has still to run', async () => {
+    const { odds, tracker } = book();
+    expect(odds.lairsLeft).toBe(0);
+    odds.refresh(tracker.current);
+    expect(odds.lairsLeft).toBe(1);
+    await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
+    expect(odds.lairsLeft).toBe(0);
+    odds.dispose();
+  });
+
+  /* 2026-10-02: one lair's fight held main 250 to 800ms in one piece, past the slice. */
+  it('carries a fight part way through its trials into the next slice', async () => {
+    const { odds, tracker } = book();
+    const slices = vi.spyOn(globalThis, 'setImmediate');
+    // Each reading 5ms past the last, against an 8ms slice: one trial a slice.
+    let clock = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => (clock += 5));
+    try {
+      odds.refresh(tracker.current);
+      await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
+    } finally {
+      now.mockRestore();
+    }
+    expect(slices.mock.calls.length).toBeGreaterThan(CHARACTER.trials);
+    slices.mockRestore();
+    const run = odds.lair(lairRoom);
+    expect(run.kind === 'run' && run.survival.trials).toBe(CHARACTER.trials);
+    odds.dispose();
+  });
+
   /* Caught on review: a slice that found the key moved stopped, and nothing started it again. */
   it('starts again for the character there now when it moves mid-run', async () => {
     const { odds, tracker } = book();

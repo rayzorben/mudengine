@@ -12,6 +12,7 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { describeObstacle, leverOpening } from './obstacle';
+import { RealmJoins } from './RealmJoins';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
 import { alignmentRank, type Alignment } from '../../shared/alignment';
@@ -275,10 +276,32 @@ export interface RouteOptions {
    * a walk home are walked, not read, and do not pay for it.
    */
   alternatives?: boolean;
+  /**
+   * Whether a blocked plan carries the way once the keys it names are fetched
+   * (`Route.unlocks`) without the other alternatives: what a trainer's price
+   * reads, which asked the whole blocked plan twice to get it (2026-10-02).
+   * Implied by `alternatives`.
+   */
+  unlocks?: boolean;
 }
 
 /** Handed back for the realm that scatters nobody, so no caller allocates to say "none". */
 const EMPTY_COSTS: ReadonlyMap<number, number> = new Map();
+
+/** Why there is no plan between two rooms no path joins. */
+const unjoinedBlocks = (): RouteBlock[] => [{ kind: 'unreachable' }];
+
+/** The refusal for two rooms no path joins, gates open or not: what the exhaustive searches said. */
+function unjoined(): Route {
+  const blocks = unjoinedBlocks();
+  return {
+    steps: [],
+    cost: 0,
+    blocked: true,
+    reason: blocks.map(describeBlock).join('; '),
+    blocks
+  };
+}
 
 /**
  * Nobody in particular, for the one solve that is about the realm rather than
@@ -1155,6 +1178,8 @@ export class Router {
    * ordinary path, which it does not touch.
    */
   private landingReachable: ReadonlySet<RoomId> | null = null;
+  /** Which rooms the realm joins at all, gates ignored: built on first ask. See `joins`. */
+  private realmJoins: RealmJoins | null = null;
   /** Each door's lever detour, per traveller, so a search sweeps a door once. See `leverDetour`. */
   private readonly leverDetours = new WeakMap<Traveller, Map<string, LeverWalk | null>>();
   /** Whether a lever detour is being swept, so the sweep prices none of its own. */
@@ -1431,6 +1456,14 @@ export class Router {
     others: Traveller
   ): Route {
     /*
+     * **A room nothing joins is answered before any search.** Every search
+     * below, the explanation's gates-open one included, would walk all the
+     * character can reach to find nothing: four to six exhaustive passes,
+     * 1.1 to 2 seconds on gmud for each of the two Sysop trainers nobody
+     * walks into, on every trainer price (2026-10-02).
+     */
+    if (!this.joins().joined(from, to)) return unjoined();
+    /*
      * **The way that always arrives first, and only then the one that gambles.**
      *
      * A draw is the last resort by construction — a maze is a maze because
@@ -1599,7 +1632,7 @@ export class Router {
             (block) => !seen.has(blockKey(block))
           );
     const named = [...blocks, ...spent];
-    const reasons = named.length > 0 ? named : ([{ kind: 'unreachable' }] as RouteBlock[]);
+    const reasons = named.length > 0 ? named : unjoinedBlocks();
     /*
      * And what fetching would open: the way once the pack holds what the
      * refusal names, where those items alone are enough — else the realm asked
@@ -1613,7 +1646,7 @@ export class Router {
       (block) => block.kind === 'key' || block.kind === 'door' || block.kind === 'carry'
     );
     const unlocks =
-      options.alternatives === true && doors
+      (options.alternatives === true || options.unlocks === true) && doors
         ? (this.unlocked(from, to, goal, others, blocks, walkable.drawsAhead) ??
           this.keyedWay(from, to, goal, null, others, walkable.drawsAhead))
         : null;
@@ -2253,7 +2286,10 @@ export class Router {
     const best = new Map<RoomId, number>([[from, 0]]);
     const moves = new Map<RoomId, number>([[from, 0]]);
     const settled = new Set<RoomId>();
-    const outstanding = new Set(wanted);
+    // A room the realm does not join to `from` is never settled, and waiting on one swept the
+    // whole of what the character can reach (2026-10-02: the gear upgrades' shops, every brief).
+    const joins = this.joins();
+    const outstanding = new Set([...wanted].filter((id) => joins.joined(from, id)));
     const open = new MinHeap<RoomId>();
     open.push(0, from);
     const ceiling = tuning().world.errandSweepRooms;
@@ -2703,14 +2739,18 @@ export class Router {
       : exit.direction === 'portal'
         ? tuning().world.portalPenalty
         : 0;
-    const wall = traveller.refused?.has(`${from}|${exit.direction}`) ? 100_000 : 0;
+    // Sizes first: these keys are strings built per edge, and the sets are nearly always empty.
+    const wall =
+      (traveller.refused?.size ?? 0) > 0 && traveller.refused!.has(`${from}|${exit.direction}`)
+        ? 100_000
+        : 0;
     // The whole step — the door's price and the portal's with it — is
     // discounted along a saved route: the player chose that door. A refusal is
     // not, because the server said no this session.
     const along =
       into !== null &&
-      traveller.preferred?.has(`${from}|${roomId(into.map, into.room)}`) === true &&
-      discount !== 1
+      discount !== 1 &&
+      traveller.preferred?.has(`${from}|${roomId(into.map, into.room)}`) === true
         ? discount
         : 1;
     // And what is waiting in the room being stepped into: a lair priced
@@ -2729,7 +2769,9 @@ export class Router {
     // And a step along the plan a different way is being asked for, priced
     // over rather than pruned (`another`). Never for a walk.
     const dearer =
-      into !== null && traveller.penalised?.has(`${from}|${roomId(into.map, into.room)}`) === true
+      into !== null &&
+      (traveller.penalised?.size ?? 0) > 0 &&
+      traveller.penalised!.has(`${from}|${roomId(into.map, into.room)}`)
         ? tuning().world.anotherWayPenalty
         : 1;
     return (1 + penalty + surcharge + risk + room) * along * dearer + wall;
@@ -3542,6 +3584,30 @@ export class Router {
   private legCost(start: RoomId, end: RoomId, traveller: Traveller): number | null {
     if (start === end) return 0;
     return this.sweepTo(start, new Set([end]), traveller).get(end)?.cost ?? null;
+  }
+
+  /**
+   * The realm's moves with every gate open (`RealmJoins`): the exits and
+   * portals as `search` follows them, a draw as each room its range holds,
+   * and the item landings. A superset of every search, so a no is final.
+   */
+  private joins(): RealmJoins {
+    if (this.realmJoins !== null) return this.realmJoins;
+    const draws = this.scatterDoors();
+    this.realmJoins = new RealmJoins({
+      rooms: () => this.rooms.keys(),
+      next: (id) => {
+        const room = this.rooms.get(id);
+        if (room === undefined) return [];
+        return [...room.exits, ...this.portalsFrom(id)].flatMap((exit) => {
+          const landing = exit.requirement?.landing;
+          if (exit.requirement?.spellEffect !== 'scatters') return [this.beyond(exit)];
+          return landing === undefined ? [] : (draws.get(landing.spell)?.rooms ?? []);
+        });
+      },
+      landings: () => this.index.itemLandings().map((exit) => roomId(exit.map, exit.room))
+    });
+    return this.realmJoins;
   }
 
   /**

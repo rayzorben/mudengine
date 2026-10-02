@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { simulateFight, type SurvivalInput } from '../survival';
+import { simulateFight, startFight, type SurvivalInput } from '../survival';
 import type { MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
 import type { MobProfile, WorldSpell } from '../world';
@@ -170,6 +170,24 @@ describe('the room’s fight, run', () => {
     const other = simulateFight(fight({ foes, casting: [null, null], seed: 7 }))!;
     // Not asserted unequal — two seeds may agree — but a different seed runs.
     expect(other.trials).toBe(once.trials);
+  });
+
+  /* 2026-10-02: one lair's fight held main 250 to 800ms in one piece; the odds book runs it in slices. */
+  it('comes to the same run when its trials are run a few at a time', () => {
+    const foes = [1, 2].map((n) => ({
+      name: `orc ${n}`,
+      subject: { hp: 80, profiles: [biter(70, 6, 12)] }
+    }));
+    const input = fight({ foes, casting: [null, null], draw: 2 });
+    const pieces = startFight(input)!;
+    let slices = 0;
+    while (!pieces.done) {
+      let left = 7;
+      pieces.run(() => --left === 0);
+      slices += 1;
+    }
+    expect(slices).toBeGreaterThan(1);
+    expect(pieces.result()).toEqual(simulateFight(input));
   });
 
   it('lets a caster fight where the swing says nothing', () => {

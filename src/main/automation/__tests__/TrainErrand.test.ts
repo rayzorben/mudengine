@@ -6,7 +6,7 @@ import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type TrainConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
-import type { Route, TrainerChoice } from '../../../shared/world';
+import { roomId, type Route, type TrainerChoice } from '../../../shared/world';
 import { t } from '../../app/i18n';
 
 const automation: AutomationConfig = {
@@ -79,7 +79,6 @@ const planner = (over: Partial<TrainPlanner> = {}): TrainPlanner => ({
   here: () => here,
   trainers: () => [TITAN, AMAZON],
   routeTo: () => ROUTE,
-  keyedRouteTo: () => null,
   walk: (route) => {
     walked.push(route);
     return null;
@@ -626,8 +625,7 @@ describe('a trainer behind a keyed door', () => {
   const keyed = (over: Partial<TrainPlanner> = {}): TrainErrand =>
     make(train(), {
       trainers: () => [TITAN],
-      routeTo: () => BLOCKED,
-      keyedRouteTo: () => KEYED,
+      routeTo: () => ({ ...BLOCKED, unlocks: KEYED }),
       ...over
     });
 
@@ -704,7 +702,7 @@ describe('a trainer behind a keyed door', () => {
   });
 
   it('is out of reach when no key the realm names opens the way', () => {
-    keyed({ keyedRouteTo: () => null }).onCharacter(owed());
+    keyed({ routeTo: () => BLOCKED }).onCharacter(owed());
     expect(fetched).toEqual([]);
     expect(notices).toContain(
       t('automation.train.refusalUnreachable', { level: 30, skipped: skippedOne(TITAN, 'locked') })
@@ -780,6 +778,7 @@ describe('the trainer each level ahead goes to', () => {
   it('plans each trainer room once, however many levels share it', () => {
     let planned = 0;
     const errand = make(train(), {
+      trainers: () => [TITAN, { ...AMAZON, cost: TITAN.cost }],
       routeTo: () => {
         planned += 1;
         return ROUTE;
@@ -834,9 +833,10 @@ describe('the trainer each level ahead goes to', () => {
     expect(second.every((ahead) => ahead?.reachable === true)).toBe(true);
   });
 
-  it('plans again in the same room once what a route is planned on, or the settings, move', () => {
+  it('plans again in the same room once what a route is planned on moves, and not on a reload', () => {
     let planned = 0;
     const errand = make(train(), {
+      trainers: () => [TITAN, { ...AMAZON, cost: TITAN.cost }],
       routeTo: () => {
         planned += 1;
         return ROUTE;
@@ -848,9 +848,39 @@ describe('the trainer each level ahead goes to', () => {
     // A level trained by hand, a key bought, an exit refused: the traveller is another.
     errand.trainersAhead([30], 'level 31');
     expect(planned).toBe(4);
+    // A reload keeps them: what it could change about a route is in the key (2026-10-02).
     errand.configure(train(), true);
     errand.trainersAhead([30], 'level 31');
-    expect(planned).toBe(6);
+    expect(planned).toBe(4);
+  });
+
+  /* 2026-10-02: three trainers at 45,445 copper planned, about 1.5 s each, behind one at 2,700. */
+  it('plans no dearer trainer once a cheaper one is reached by a walk that survives', () => {
+    const planned: string[] = [];
+    const errand = make(train(), {
+      routeTo: (room) => {
+        planned.push(room);
+        return ROUTE;
+      }
+    });
+    expect(errand.trainersAhead([30], KEY)[0]).toMatchObject({ trainer: TITAN, reachable: true });
+    expect(planned).toEqual([roomId(TITAN.map, TITAN.room)]);
+  });
+
+  it('plans on past a cheaper trainer whose walk is expected to kill', () => {
+    const planned: string[] = [];
+    const deadly = {
+      ...ROUTE,
+      steps: [{ from: '8/915', to: '3/542', name: 'Lair', deadly: true }]
+    } as unknown as Route;
+    const errand = make(train(), {
+      routeTo: (room) => {
+        planned.push(room);
+        return room === roomId(TITAN.map, TITAN.room) ? deadly : ROUTE;
+      }
+    });
+    expect(errand.trainersAhead([30], KEY)[0]).toMatchObject({ trainer: AMAZON, reachable: true });
+    expect(planned).toHaveLength(2);
   });
 
   it('is only the chosen trainer where the player chose one', () => {

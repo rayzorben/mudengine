@@ -22,7 +22,7 @@ import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
 import { REFRESH } from '../../shared/staleness';
 import { carriedCount } from '../../shared/supplies';
-import { bestTrainer } from '../../shared/training';
+import { bestTrainer, pricedOut, walkSurvived } from '../../shared/training';
 import {
   nameAnswersTo,
   roomId,
@@ -39,13 +39,12 @@ export interface TrainPlanner {
   here(): RoomId | null;
   /** The trainers the realm says will take this character at a level (now's by default), cheapest first. */
   trainers(level?: number): TrainerChoice[];
-  /** A route to a room, or the reason there is none. */
-  routeTo(room: RoomId): Route | string;
   /**
-   * The way to a room no plain route reaches through a door whose key the
-   * realm says where to get (`Route.unlocks`, with its `needs`), or null.
+   * A route to a room, or the reason there is none. A blocked one carries the
+   * way through a door whose key the realm says where to get (`Route.unlocks`,
+   * with its `needs`), where there is one.
    */
-  keyedRouteTo(room: RoomId): Route | null;
+  routeTo(room: RoomId): Route | string;
   /** Hands the route to the walker as a leg. Returns its refusal, or null. */
   walk(route: Route): string | null;
   /** Gets each item (`ItemErrand.collect`), then walks `then`. Returns its refusal, or null. */
@@ -197,8 +196,7 @@ export class TrainErrand implements SessionModule {
   configure(config: TrainConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
-    // The doors a walk may force and the places it keeps out of are settings too.
-    this.ahead = null;
+    // `ahead` stays: the doors a walk may force and the places it keeps out of are in its key.
   }
 
   reset(): void {
@@ -390,7 +388,8 @@ export class TrainErrand implements SessionModule {
    * Which of these trainers a route reaches, and why each other one is out of
    * reach. Standing in a trainer's room is a walk of nothing, weighed with the
    * rest: a large markup still loses. `ways` holds each room's answer, so a
-   * room several levels share is planned once.
+   * room several levels share is planned once. A trainer `bestTrainer` could
+   * no longer choose (`pricedOut`) is neither planned nor named.
    */
   private reach(
     taking: readonly TrainerChoice[],
@@ -398,16 +397,21 @@ export class TrainErrand implements SessionModule {
   ): { reached: Reached[]; skipped: string[] } {
     const reached: Reached[] = [];
     const skipped: string[] = [];
+    let safe: Reached | null = null;
+    // Cheapest first, so once a reached trainer's walk survives the dearer past the slack are not planned.
     for (const candidate of taking) {
+      if (safe !== null && pricedOut(safe, candidate.cost, tuning().train.costSlack)) break;
       const room = roomId(candidate.map, candidate.room);
       const way = ways.get(room) ?? this.routeFor(candidate);
       ways.set(room, way);
-      if (way.kind === 'here') {
-        reached.push({ trainer: candidate, way, route: { cost: 0, steps: [] } });
-        continue;
-      }
-      if (way.kind === 'route' || way.kind === 'keyed') {
-        reached.push({ trainer: candidate, way, route: way.route });
+      if (way.kind === 'here' || way.kind === 'route' || way.kind === 'keyed') {
+        const each: Reached = {
+          trainer: candidate,
+          way,
+          route: way.kind === 'here' ? { cost: 0, steps: [] } : way.route
+        };
+        reached.push(each);
+        if (safe === null && walkSurvived(each)) safe = each;
         continue;
       }
       skipped.push(
@@ -499,8 +503,8 @@ export class TrainErrand implements SessionModule {
      * to a trainer at 45,445 copper). The item errand kills the guardian,
      * takes the key and walks on.
      */
-    const keyed = this.planner.keyedRouteTo(to);
-    if (keyed !== null && !keyed.blocked && (keyed.needs ?? []).length > 0) {
+    const keyed = route.unlocks;
+    if (keyed !== undefined && !keyed.blocked && (keyed.needs ?? []).length > 0) {
       return { kind: 'keyed', route: keyed, needs: keyed.needs ?? [] };
     }
     return { kind: 'none', why: route.reason ?? t('automation.walk.refusalNoRoute') };

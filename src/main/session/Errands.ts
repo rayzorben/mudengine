@@ -290,6 +290,8 @@ export class Errands implements SessionModule {
   private readonly shunned = new Map<RoomId, number>();
   /** The corridors of this character's preferred routes; null until asked, and after the loops change. */
   private preferred: ReadonlySet<string> | null = null;
+  /** The loops and movement settings `preferred` was derived under, as one string. */
+  private preferredFor: string | null = null;
   /** Which ask for a plan is current; an earlier chain stops at its next leg. */
   private planAsked = 0;
 
@@ -338,10 +340,18 @@ export class Errands implements SessionModule {
 
   /**
    * The loops may have changed, and with them the routes this character
-   * prefers; derived again the next time a route is planned.
+   * prefers; derived again the next time a route is planned. Only when the
+   * loops or the movement settings their legs are planned under did move:
+   * every settings reload asked, a plan's layer landing among them, and the
+   * legs cost 184ms of planning each time (2026-10-02).
    */
   forgetPreferred(): void {
-    this.preferred = null;
+    if (this.preferredKey() !== this.preferredFor) this.preferred = null;
+  }
+
+  private preferredKey(): string {
+    const { loops, movement } = this.automationConfig;
+    return JSON.stringify([loops, movement]);
   }
 
   /**
@@ -2090,6 +2100,7 @@ export class Errands implements SessionModule {
   preferredEdges(): ReadonlySet<string> {
     if (this.preferred !== null) return this.preferred;
     if (!this.world) return NO_EDGES;
+    this.preferredFor = this.preferredKey();
     const found = preferredEdges(
       this.world,
       this.automationConfig.loops,
