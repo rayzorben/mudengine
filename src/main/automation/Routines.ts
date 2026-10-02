@@ -73,8 +73,10 @@ export interface RoutineEvents {
 }
 
 export class Routines implements SessionModule {
-  /** Whether the realm-entry probe has already run this session. */
+  /** Whether the character has been in the realm this session: the login menus are behind it. */
   private probed = false;
+  /** Whether the entry batch went this session; it waits for automation to be on. */
+  private entryAsked = false;
   /** What an answer has read this session (todo 835): `READ`, whatever it said. */
   private readonly read = new Set<StaleFact>();
   /** When the entry commands were last asked, or null before entering or once given up. See `askUnread`. */
@@ -128,9 +130,9 @@ export class Routines implements SessionModule {
   private lookedAtAt = 0;
   /**
    * Which listing the spellbook ask sent this session, or null while it has
-   * not — a second one-shot latch beside `probed`, and separate from it
-   * because the two fire at different moments: the entry probe fires on the
-   * first status line, and which book to ask for is not known until the wire
+   * not — a one-shot latch beside `entryAsked`, and separate from it
+   * because the two fire at different moments: the entry batch goes on the
+   * first status line with automation on, and which book to ask for is not known until the wire
    * has said `KAI=` or `MA=` (the prompt, the stat sheet, or a listing).
    */
   private askedBook: 'spells' | 'powers' | null = null;
@@ -161,6 +163,7 @@ export class Routines implements SessionModule {
   reset(): void {
     this.sheetAskedAt = null;
     this.probed = false;
+    this.entryAsked = false;
     this.read.clear();
     this.askedAt = null;
     this.unreadAsks = 0;
@@ -223,9 +226,10 @@ export class Routines implements SessionModule {
   /**
    * Called whenever character state changes.
    *
-   * The probe fires on the transition into the realm, once. `phase` becoming
-   * `in-game` is the status line arriving, which is also the moment the server
-   * is ready to answer questions.
+   * The entry batch goes on the first status line in the realm with
+   * automation on, once per connection. `phase` becoming `in-game` is the
+   * status line arriving, which is also the moment the server is ready to
+   * answer questions.
    */
   onCharacter(state: CharacterState): void {
     if (state.phase !== 'in-game') {
@@ -258,11 +262,19 @@ export class Routines implements SessionModule {
        */
       this.armIdle();
     }
-    if (!this.probed) {
-      this.probed = true;
+    /*
+     * Only once automation is on: a character that entered with it off sent
+     * nothing, and the first status line after it is switched on is when the
+     * entry batch goes. Before, the first status line used up the one chance
+     * with automation off, the batch never went, and the inventory stayed
+     * unknown all session (2026-10-02).
+     */
+    this.probed = true;
+    if (!this.entryAsked && this.config.enabled) {
+      this.entryAsked = true;
 
       const commands = this.config.onEnterRealm;
-      if (this.config.enabled && commands.length > 0) {
+      if (commands.length > 0) {
         for (const command of commands) {
           this.queue.enqueue({
             command,

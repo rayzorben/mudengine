@@ -5453,7 +5453,7 @@ automation:
     askingAgain: 'No answer yet to {commands} from entering the realm; asking again.'
     unreadGaveUp: 'Still no answer to {commands} from entering the realm; not asking again.'
     reasonAbilities: reading the quest counters the game's quest requirements use
-    reasonEnterRealm: entering the realm
+    reasonEnterRealm: entering the realm, or automation switched on
     reasonUnread: 'no answer yet from entering the realm'
     reasonIdle: idle
     reasonPartyChanged: the party changed
