@@ -37,7 +37,8 @@ import {
   type WorldRoom,
   type WorldShop,
   type WorldShopItem,
-  type WorldSpell
+  type WorldSpell,
+  sells
 } from '../../shared/world';
 import type { TrainerRow } from '../../shared/training';
 import { servesOf, spellServes, spellTargeting, type SpellServes } from '../../shared/spellcraft';
@@ -1156,6 +1157,7 @@ export class Catalogue {
       const id = Number(record['id']);
       if (!Number.isInteger(id)) continue;
       const ids = Array.isArray(record['items']) ? record['items'] : [];
+      const idle = new Set((Array.isArray(record['idle']) ? record['idle'] : []).map(Number));
 
       const stock: WorldShopItem[] = [];
       for (const raw of ids) {
@@ -1166,6 +1168,7 @@ export class Catalogue {
         const line: WorldShopItem = { id: item.id, name: item.name };
         if (item.price !== undefined) line.price = item.price;
         if (item.encumbrance !== undefined) line.encumbrance = item.encumbrance;
+        if (idle.has(item.id)) line.restocks = false;
         stock.push(line);
       }
       const kind = shopKind(Number(record['t']));
@@ -1249,7 +1252,9 @@ export class Catalogue {
       for (const shop of this.shops.values()) {
         const name = shop.name.trim();
         if (name.length === 0) continue;
+        // Sold at: a shelf the realm restocks, never one that only buys.
         for (const line of shop.items) {
+          if (!sells(line)) continue;
           const held = index.get(line.id);
           if (held === undefined) index.set(line.id, [name]);
           else if (!held.includes(name)) held.push(name);
