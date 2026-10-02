@@ -89,6 +89,8 @@ const planner = (over: Partial<TrainPlanner> = {}): TrainPlanner => ({
     return null;
   },
   fetching: () => fetchingNow,
+  lightFor: () => null,
+  lightSettled: () => {},
   prize: () => null,
   moveInFlight: () => false,
   walking: () => false,
@@ -856,5 +858,42 @@ describe('the trainer each level ahead goes to', () => {
     expect(errand.trainersAhead([30], KEY)[0]?.trainer).toEqual(AMAZON);
     const gone = make(train({ trainer: 999 }));
     expect(gone.trainersAhead([30], KEY)).toEqual([null]);
+  });
+});
+
+/* A trainer through rooms too dark to see in: the light is fetched first (todo 11). */
+describe('a trainer through the dark', () => {
+  const LIGHT = { items: [{ id: 175, name: 'torch', count: 1, dark: true }], said: 'buying' };
+
+  it('hands the light to the item errand, with the walk to the trainer owed', () => {
+    const settled: Array<string | null> = [];
+    make(train(), {
+      trainers: () => [TITAN],
+      lightFor: () => LIGHT,
+      lightSettled: (_, refused) => void settled.push(refused)
+    }).onCharacter(owed());
+    expect(fetched).toEqual([{ items: ['torch'], then: ROUTE }]);
+    expect(walked).toEqual([]);
+    expect(settled).toEqual([null]);
+    expect(notices).toContain(
+      t('automation.train.goingFetching', {
+        room: TITAN.roomName,
+        items: 'torch',
+        cost: TITAN.cost.toLocaleString()
+      })
+    );
+  });
+
+  it('walks on without it when it cannot be fetched, the refusal handed back', () => {
+    const settled: Array<string | null> = [];
+    make(train(), {
+      trainers: () => [TITAN],
+      lightFor: () => LIGHT,
+      lightSettled: (_, refused) => void settled.push(refused),
+      fetch: () => 'Auto-Buy is off'
+    }).onCharacter(owed());
+    expect(walked).toEqual([ROUTE]);
+    expect(settled).toEqual(['Auto-Buy is off']);
+    expect(notices).toContain(going(TITAN));
   });
 });

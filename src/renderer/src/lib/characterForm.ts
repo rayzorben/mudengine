@@ -248,6 +248,7 @@ export interface CharacterFields {
   recoverGearFloor: string;
   lightDimRooms: boolean;
   extinguishInLight: boolean;
+  buyLight: boolean;
   /** Conditions as waits, inverted: off waits blindness / poison / confusion out. */
   walkWhileBlind: boolean;
   walkWhilePoisoned: boolean;
@@ -513,6 +514,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     recoverGearFloor: String(entry.movement.recoverGearFloor),
     lightDimRooms: entry.movement.lightDimRooms,
     extinguishInLight: entry.movement.extinguishInLight,
+    buyLight: entry.movement.buyLight,
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
     walkWhileConfused: entry.movement.walkWhileConfused,
@@ -702,6 +704,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       recoverGearFloor: Number.parseInt(form.recoverGearFloor, 10) || 0,
       lightDimRooms: form.lightDimRooms,
       extinguishInLight: form.extinguishInLight,
+      buyLight: form.buyLight,
       walkWhileBlind: form.walkWhileBlind,
       walkWhilePoisoned: form.walkWhilePoisoned,
       walkWhileConfused: form.walkWhileConfused,
@@ -993,6 +996,7 @@ export function emptyForm(
     recoverGearFloor: String(movement.recoverGearFloor),
     lightDimRooms: movement.lightDimRooms,
     extinguishInLight: movement.extinguishInLight,
+    buyLight: movement.buyLight,
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
     walkWhileConfused: movement.walkWhileConfused,

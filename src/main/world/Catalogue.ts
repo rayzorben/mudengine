@@ -378,6 +378,11 @@ export class Catalogue {
     return [...this.items.values()].filter((item) => item.worn === worn);
   }
 
+  /** Every item row the realm files as one kind, in header order: the lights a walk could buy. */
+  itemsOfKind(kind: NonNullable<WorldItem['kind']>): WorldItem[] {
+    return [...this.items.values()].filter((item) => item.kind === kind);
+  }
+
   /**
    * The items the realm says would serve a condition — the picker's list
    * (todo 19).

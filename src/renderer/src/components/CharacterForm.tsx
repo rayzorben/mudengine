@@ -31,6 +31,7 @@ import HuntingFields from './HuntingFields';
 import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
+import LightFields from './LightFields';
 import AttackFields from './AttackFields';
 import DrainFields from './DrainFields';
 import HealFields from './HealFields';
@@ -1407,31 +1408,7 @@ export default function CharacterForm({
 
           <fieldset className="settings-menus" data-fieldset="movement-light">
             <legend>{t('settings.movement.lightLegend')}</legend>
-            <CheckField
-              checked={form.provideLight}
-              hint={t('settings.movement.provideLightHint')}
-              label={t('settings.movement.provideLight')}
-              name="provide-light"
-              onChange={(value) => patch({ provideLight: value })}
-            />
-            {form.provideLight && (
-              <>
-                <CheckField
-                  checked={form.lightDimRooms}
-                  hint={t('settings.movement.lightDimRoomsHint')}
-                  label={t('settings.movement.lightDimRooms')}
-                  name="light-dim-rooms"
-                  onChange={(value) => patch({ lightDimRooms: value })}
-                />
-                <CheckField
-                  checked={form.extinguishInLight}
-                  hint={t('settings.movement.extinguishInLightHint')}
-                  label={t('settings.movement.extinguishInLight')}
-                  name="extinguish-in-light"
-                  onChange={(value) => patch({ extinguishInLight: value })}
-                />
-              </>
-            )}
+            <LightFields namePrefix="" onChange={patch} value={form} />
           </fieldset>
 
           <fieldset className="settings-menus" data-fieldset="movement-afflictions">

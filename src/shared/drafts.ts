@@ -474,6 +474,7 @@ export interface ProfileDraft {
     provideLight: boolean;
     lightDimRooms: boolean;
     extinguishInLight: boolean;
+    buyLight: boolean;
     /** Go back for the kit after a death. See `MovementConfig`. */
     recoverGear: boolean;
     /** How many journeys in a row may fail before it stops. 0 never gives up. */
@@ -1030,6 +1031,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         : [...DEFAULT_CONFIG.automation.movement.keepOutOf],
       lightDimRooms: movement['lightDimRooms'] === true,
       extinguishInLight: movement['extinguishInLight'] === true,
+      // On unless it was turned off, as shipped. See the field.
+      buyLight: movement['buyLight'] !== false,
       // Off unless said: it walks the character back to where it died.
       recoverGear: movement['recoverGear'] === true,
       // Bounded low: a recovery that has failed five times will not work on

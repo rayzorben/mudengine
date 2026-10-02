@@ -231,8 +231,7 @@ export function chooseLight(
   lights: ReadonlyArray<CarriedLight>,
   dim = false
 ): LightChoice {
-  const enough = (reach: number): boolean =>
-    dim ? lightPhrase(level + vision + reach) === null : canSeeAt(level + vision + reach);
+  const enough = (reach: number): boolean => reach >= reachWanted(level, vision, dim);
   if (enough(0)) return { kind: 'unneeded' };
   const lit = lights.find((light) => light.lit && lightIsUsable(light));
   if (lit !== undefined && (lit.reach === null || enough(lit.reach))) return { kind: 'lit' };
@@ -256,5 +255,14 @@ export function chooseLight(
  * already burning is counted by `chooseLight` rather than assumed here.
  */
 export function needsLightAt(level: number, vision: number, dim = false): boolean {
-  return dim ? lightPhrase(level + vision) !== null : !canSeeAt(level + vision);
+  return reachWanted(level, vision, dim) > 0;
+}
+
+/**
+ * The least reach that lets this character read a room at `level`: the room
+ * described (`CAN_SEE_FROM`), or with `dim` no dark phrase at all (the
+ * `dimly lit` band's top). Zero or less wants no light.
+ */
+export function reachWanted(level: number, vision: number, dim = false): number {
+  return (dim ? LIGHT_BANDS['dimly lit'] : CAN_SEE_FROM) - level - vision;
 }

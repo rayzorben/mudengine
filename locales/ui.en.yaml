@@ -248,6 +248,9 @@ notices:
       settings page.'
     outgrownStated: '"automation.outgrown" was added to {file}, turned off. It stashes outgrown gear
       in the ganghouse, or sells or drops it.'
+    buyLight:
+      many: 'Buy a Light First was added, on, to {count} files: {fileList}'
+      one: 'Buy a Light First was added, on, to {fileList}'
     markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -3739,6 +3742,10 @@ settings:
     extinguishInLightHint: Removes a lit torch in a room that does not need it, when nothing is
       moving the character, so the torch lasts through the sewer instead of burning out on the way
       there.
+    buyLight: Buy a Light First
+    buyLightHint: Before a route, loop or trip to a trainer through rooms too dark to see in, buys a
+      torch or lantern at the shop least out of the way when your inventory has no light that would
+      do.
     recoverGear: Recover Your Gear After Death
     recoverGearFloorLabel: Keep at least (lives)
     recoverGearFloorHint: Stop going back once you are down to this many lives. Lives are limited,
@@ -4611,10 +4618,12 @@ automation:
   collect:
     abandoned: 'Gave up collecting {item}: {why}'
     becauseDoor: 'the way needs {item}'
+    becauseDark: 'the way is too dark to see without {item}'
     buying: Going to buy {item} at {shop} in {room} first, {detour} steps off the way.
     buyingOnTheWay: 'Going to buy {item} at {shop} in {room} first; the way there goes past it.'
     gotAndKept: '{item} is in your inventory and on the keep list, so it stays.'
     gotForTheDoor: '{item} is in your inventory: picked up for this door, not kept.'
+    gotForTheDark: '{item} is in your inventory, to light the dark rooms ahead.'
     hunting: 'Looking for {item}: {mob} drops it, starting at {room}, {steps} steps away.'
     huntingHere: 'Looking for {item}: {mob} drops it, starting here in {room}.'
     huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'
@@ -4991,6 +5000,8 @@ automation:
     going: A level is waiting. Going to {room} to train ({steps} steps, {cost} copper).
     goingKeyed: 'A level is waiting. Going to {room} to train ({cost} copper): getting {items} for the
       door on the way first.'
+    goingFetching: 'A level is waiting. Going to {room} to train ({cost} copper): getting {items}
+      first.'
     takingPrize: 'Taking {item}: this trainer puts it out for your class.'
     prizeGone: '{item} is not on the floor here: someone took it, and it is put back at the nightly
       cleanup.'
@@ -5236,6 +5247,21 @@ automation:
     refusalNothingCarried: no light source in your inventory
     refusalNothingUsable: 'every light you carry is burned out: {items}'
     refusalNothingReaches: 'no light you carry makes it bright enough: {items}'
+  lightAhead:
+    because: rooms on the way are too dark to see in
+    buying: 'Dark rooms on the way: {dark}, and nothing in your inventory lights them. Buying {item}
+      ×{count} first.'
+    buyingShort: 'Dark rooms on the way: {dark}, and nothing in your inventory lights them. Buying
+      {item} ×{count} first; still too dark even with it: {unlit}.'
+    refusalUnlisted: 'Dark rooms on the way: {dark}. Your inventory has not been read, so no light
+      is bought; walking on.'
+    refusalNothingSold: 'Dark rooms on the way: {dark}, and no shop sells a light. Walking on
+      without one.'
+    refusalNothingReaches: 'Dark rooms on the way: {dark}, and no light a shop sells is bright
+      enough for them. Walking on without one.'
+    refusalNoShop: 'Dark rooms on the way: {dark}, and no shop selling {items} can be reached.
+      Walking on without one.'
+    refusalCollect: 'Not buying a light, walking on without one: {why}'
   supplies:
     abandonedPlayerMoved: you took over
     refusalBusy: already on a detour to a shop

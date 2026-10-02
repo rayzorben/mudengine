@@ -251,6 +251,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheDrain(home, note, options.template);
   statedTheBlessingChoice(home, note, options.template);
   statedTheOutgrownGear(home, note, options.template);
+  statedBuyingALight(home, note, options.template);
 }
 
 /**
@@ -3706,6 +3707,34 @@ function statedTheOutgrownGear(
   if (stateTemplateBlock(home, template, ['automation'], 'outgrown', 'drop')) {
     note(t('notices.migration.outgrownStated', { file: home.options }));
   }
+}
+
+/**
+ * `automation.movement.buyLight` (2026-10-02, todo 11) into every file that
+ * states `movement:` without it, on as the template ships it, after
+ * `extinguishInLight` and with the template's paragraph. Idempotent: a key
+ * stays added whatever its value.
+ */
+function statedBuyingALight(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    ['automation', 'movement'],
+    'buyLight',
+    DEFAULT_CONFIG.automation.movement.buyLight,
+    'extinguishInLight',
+    templateComments(template, 'automation').get('automation.movement.buyLight')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.buyLight.one', params)
+      : t('notices.migration.buyLight.many', params)
+  );
 }
 
 /**
