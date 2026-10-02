@@ -181,6 +181,11 @@ export class Holds {
    */
   private escaped = false;
   private escapedAt = 0;
+  /**
+   * The walk stood for another mover's step (`holdForOtherMove`) and has not
+   * yet planned from where it landed; once answered, when it was.
+   */
+  private otherMove: { landedAt: number | null } | null = null;
 
   constructor(
     private config: AutomationConfig,
@@ -233,10 +238,51 @@ export class Holds {
    * each other's answers (2026-10-01: a lap's `n` read the room a rest step
    * reached, a location mismatch, three times in one lap). The move the
    * tracker is owed expires on its own (`Expectations.expire`), which bounds this.
+   *
+   * Once it is answered the walk is planned again from wherever it put the
+   * character. Sent unchanged, a lair's `e` went out of the room the rest
+   * step reached and its answer read as a location mismatch (2026-10-01,
+   * festus, 17/7002 to 17/17). A landing the client cannot place is waited
+   * on, as after a fight (`placed`).
    */
-  holdForOtherMove(state: CharacterState): boolean {
-    this.walk.retryAfter(tuning().walk.holdMs, state);
+  holdForOtherMove(state: CharacterState, inFlight: number): boolean {
+    const retry = () => this.walk.retryAfter(tuning().walk.holdMs, state);
+    if (inFlight > 0) {
+      this.otherMove = { landedAt: null };
+      retry();
+      return true;
+    }
+    if (this.otherMove === null) return false;
+    this.otherMove.landedAt ??= Date.now();
+    const lost = t('automation.walk.reasonLostAfterOtherStep');
+    const here = this.placed(state, this.otherMove.landedAt, lost, retry);
+    if (here === null) return true;
+    this.otherMove = null;
+    const step = this.walk.step();
+    if (step === undefined || here === step.from) return false;
+    this.walk.onward(state, here);
     return true;
+  }
+
+  /**
+   * Where the character stands, or null with the walk stopped or asked again:
+   * a room several namesakes could be stops it, and one the client cannot
+   * place is waited on for `walk.stepTimeoutMs` from `since`, then stops it
+   * for `lost`. Shared by the two holds that plan from wherever another move
+   * left the character (`resumeFromFight`, `holdForOtherMove`).
+   */
+  private placed(
+    state: CharacterState,
+    since: number,
+    lost: string,
+    reask: () => void
+  ): RoomId | null {
+    const here = roomAddress(state.room);
+    if (here !== null) return here;
+    if (state.room.ambiguous > 1) this.walk.stop(t('automation.walk.reasonAmbiguous'));
+    else if (Date.now() - since >= this.config.walk.stepTimeoutMs) this.walk.stop(lost);
+    else reask();
+    return null;
   }
 
   /**
@@ -285,6 +331,7 @@ export class Holds {
     // An escape belongs to the walk that ran away. A fresh route is the player
     // asking again, from here, with that already taken into account.
     this.escaped = false;
+    this.otherMove = null;
     this.holdWhenHurt = holdWhenHurt;
     this.resumeAfterFight = resumeAfterFight;
     this.leavingAFight = fighting && (!this.resumeAfterFight || !this.canEndAFight());
@@ -301,6 +348,7 @@ export class Holds {
     this.onsetAnsweredStep = null;
     this.floorHeld = false;
     this.escaped = false;
+    this.otherMove = null;
     this.holdWhenHurt = true;
     this.resumeAfterFight = true;
     // One more of the same group: `begin` writes it unconditionally, but
@@ -612,16 +660,9 @@ export class Holds {
       } else this.reaskAfter();
       return;
     }
-    const here = roomAddress(state.room);
-    if (here === null) {
-      if (state.room.ambiguous > 1) {
-        this.walk.stop(t('automation.walk.reasonAmbiguous'));
-        return;
-      }
-      if (spent >= patience) this.walk.stop(t('automation.walk.reasonLostAfterFight'));
-      else this.reaskAfter();
-      return;
-    }
+    const lost = t('automation.walk.reasonLostAfterFight');
+    const here = this.placed(state, this.fightClearedAt, lost, () => this.reaskAfter());
+    if (here === null) return;
 
     /*
      * And the beat after running away, which is `LoopRunner.noteEscaped`'s in
