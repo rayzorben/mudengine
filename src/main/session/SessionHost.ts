@@ -368,10 +368,11 @@ export class SessionHost {
      *
      * It also closes over `slot`, declared below it: the manager and the slot
      * need each other, and the closures are the side of that cycle that can
-     * wait. None of them runs until bytes arrive or a command goes out, and
-     * neither can happen before `connect` — so the manager is built first and
-     * the slot is then built complete, rather than mutating a hole in it
-     * through a cast.
+     * wait. The wire's closures run only once bytes arrive or a command goes
+     * out, after `connect`. The manager can say something, and an extension
+     * can call its host, while the manager is being built (2026-10-01: a
+     * notice reaching for the capture stopped the client), so those look the
+     * slot up in `slots` instead.
      */
     /*
      * Built before the sink that feeds it, like `reconnect` above. The push
@@ -498,7 +499,7 @@ export class SessionHost {
         notice: (message) => {
           debug.notice(message);
           // In the capture too: a refusal said only on screen left nothing to read afterwards.
-          slot.capture?.notice(message);
+          this.slots.get(id)?.capture?.notice(message);
           this.options.notice({ session: id, message });
         },
         learned: (discoveries) =>
@@ -529,7 +530,7 @@ export class SessionHost {
         finds: this.options.findsFor?.(id),
         sentences: this.options.sentences?.(),
         words: () => this.options.wordsFor(id),
-        extensions: this.extensionsFor(id, () => slot)
+        extensions: this.extensionsFor(id)
       }
     );
 
@@ -654,8 +655,8 @@ export class SessionHost {
     return slot.manager.connect(target);
   }
 
-  /** What one character's extensions are handed: the slot's backscroll is read once it exists. */
-  private extensionsFor(id: SessionId, slot: () => SessionSlot): ExtensionDeps | undefined {
+  /** What one character's extensions are handed: the slot's backscroll, empty until it exists. */
+  private extensionsFor(id: SessionId): ExtensionDeps | undefined {
     const given = this.options.extensions;
     if (given === undefined) return undefined;
     return {
@@ -663,7 +664,7 @@ export class SessionHost {
       home: given.home,
       records: (name) => given.records(name, id),
       keep: (writes) => given.keep(id, writes),
-      backscroll: (lines) => slot().backscroll.page(lines).text
+      backscroll: (lines) => this.slots.get(id)?.backscroll.page(lines).text ?? ''
     };
   }
 
