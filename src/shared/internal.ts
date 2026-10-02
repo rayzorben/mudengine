@@ -995,7 +995,13 @@ const TUNING_DEFAULTS = {
   /** Readying a light before a dark step — `AutoLight`. */
   light: {
     /** A `light`/`remove` still queued after this is for a room already left. */
-    expiresMs: 4000
+    expiresMs: 4000,
+    /**
+     * The fewest lights bought before a dark way (`LightAhead`, todo 11): what
+     * is bought where the realm states no uses, and the floor under the count
+     * the uses give.
+     */
+    carryAtLeast: 1
   },
   /** Keeping the pack stocked — `Supplies`. */
   supplies: {

@@ -3472,7 +3472,6 @@ describe('lairs', () => {
         },
         32
       );
-      expect(graph.mobRow(224)).toBeUndefined();
       expect(graph.lairEntities(graph.byId('1/1')!)[0]?.hp).toBe(830);
     });
 

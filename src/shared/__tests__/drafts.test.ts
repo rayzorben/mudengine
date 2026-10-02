@@ -303,6 +303,8 @@ describe('a character', () => {
         provideLight: false,
         lightDimRooms: false,
         extinguishInLight: false,
+        // Absent above, and on as shipped, `collectKeys`' rule below.
+        buyLight: true,
         // Absent above, and off: it walks the character back to where it died.
         recoverGear: false,
         // The bounds on trying again; absent in the payload, so zero.
@@ -411,6 +413,8 @@ describe('a character', () => {
         provideLight: false,
         lightDimRooms: false,
         extinguishInLight: false,
+        // Absent above, and on as shipped, `collectKeys`' rule below.
+        buyLight: true,
         // Absent above, and off: it walks the character back to where it died.
         recoverGear: false,
         // The bounds on trying again; absent in the payload, so zero.

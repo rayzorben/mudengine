@@ -14,6 +14,7 @@ import type { AutoHunt } from '../automation/AutoHunt';
 import type { CombatLease } from '../automation/CombatLease';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { ItemErrand } from '../automation/ItemErrand';
+import type { LightAhead } from '../automation/LightAhead';
 import type { LoopRunner } from '../automation/LoopRunner';
 import type { SessionModule } from '../automation/Module';
 import type { QuestRunner } from '../automation/QuestRunner';
@@ -145,6 +146,7 @@ export interface TravelParts {
     | 'carried'
     | 'heading'
     | 'strayedFrom'
+    | 'place'
   >;
   readonly combat: Pick<AutoCombat, 'willFight' | 'declineWhileTravelling'>;
   readonly combatLease: Pick<CombatLease, 'lending' | 'run' | 'onWalkEnded'>;
@@ -154,6 +156,8 @@ export interface TravelParts {
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
   readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
   readonly questRunner: Pick<QuestRunner, 'running' | 'abandon'>;
+  /** A light bought before a dark route or lap (todo 11). */
+  readonly light: Pick<LightAhead, 'beforeRoute' | 'beforeLap'>;
 }
 
 /** What the session that built this answers for it. */
@@ -200,6 +204,7 @@ export class Travel implements SessionModule {
   private readonly hunt: TravelParts['hunt'];
   private readonly itemErrand: TravelParts['itemErrand'];
   private readonly questRunner: TravelParts['questRunner'];
+  private readonly light: TravelParts['light'];
   /**
    * When an escape was last *asked for*, so a failed one is retried rather than
    * spammed. Armed whether or not a way out was found.
@@ -389,6 +394,7 @@ export class Travel implements SessionModule {
     this.hunt = parts.hunt;
     this.itemErrand = parts.itemErrand;
     this.questRunner = parts.questRunner;
+    this.light = parts.light;
     this.partyWait = new PartyWait({
       pauseLap: (why) => this.pauseLap(why),
       lapStopped: () => this.loops.progress.status === 'stopped',
@@ -1850,6 +1856,16 @@ export class Travel implements SessionModule {
   }
 
   /**
+   * The player's route, after a light its dark rooms want is bought (todo 11):
+   * the item trip walks it once the light is in the inventory, or it is walked now.
+   */
+  private startLit(route: Route, run: boolean): string | null {
+    return this.light.beforeRoute(route, this.tracker.current, run)
+      ? null
+      : this.startAsked(route, run);
+  }
+
+  /**
    * A route the player asked for, with the supply list consulted first.
    *
    * The one path a person's own route takes (`Invoke.walkRoute`), and the
@@ -1885,7 +1901,7 @@ export class Travel implements SessionModule {
     }
     this.errandOwes = null;
     const errand = this.supplies.considerBeforeRoute(this.tracker.current);
-    if (errand === null) return this.startAsked(route, run);
+    if (errand === null) return this.startLit(route, run);
     const last = route.steps.at(-1);
     if (last !== undefined) {
       this.errandOwes = { to: last.to, name: last.name, run, crossing: crossedWords(route) };
@@ -2072,7 +2088,9 @@ export class Travel implements SessionModule {
     this.journey = null;
     this.errandOwes = null;
     const refused = this.loops.start(loop, this.tracker.current);
-    return refused === null ? { started: true } : { refused };
+    if (refused !== null) return { refused };
+    this.light.beforeLap(loop, this.tracker.current);
+    return { started: true };
   }
 
   /**
@@ -2122,7 +2140,10 @@ export class Travel implements SessionModule {
       }
     }
     const refused = this.loops.resume(state);
-    return refused === null ? { started: true } : { refused };
+    if (refused !== null) return { refused };
+    const lap = this.loops.place;
+    if (lap !== null) this.light.beforeLap(lap.loop, state);
+    return { started: true };
   }
 
   /**
@@ -2196,7 +2217,7 @@ export class Travel implements SessionModule {
     if (owed === null) return;
     this.errandOwes = null;
     const route = this.errands.planFromHere(owed.to, {}, false, owed.crossing);
-    const refused = typeof route === 'string' ? route : this.startAsked(route, owed.run);
+    const refused = typeof route === 'string' ? route : this.startLit(route, owed.run);
     this.session.notice(
       refused === null || refused === undefined
         ? t('session.walk.resumed', { destination: owed.name })

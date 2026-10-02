@@ -99,9 +99,25 @@ export interface ItemEvents {
   decided?(decision: SafetyDecision): void;
 }
 
-interface Wanted {
+/** An item to fetch: one, or `count` in the pack (a light for a long dark way, todo 11). */
+export interface Wanted {
   id: number;
   name: string;
+  count?: number;
+  /** Fetched to see by on a dark way rather than for a door, which the sentences say. */
+  dark?: boolean;
+}
+
+/** What the trace says the item was wanted for. */
+function wantedFor(item: Wanted): string {
+  return item.dark === true
+    ? t('automation.collect.becauseDark', { item: item.name })
+    : t('automation.collect.becauseDoor', { item: item.name });
+}
+
+/** Whether the pack holds fewer of `item` than are wanted. */
+function short(state: CharacterState, item: Wanted): boolean {
+  return carriedCount(state, item.name) < (item.count ?? 1);
 }
 
 /**
@@ -184,8 +200,8 @@ export class ItemErrand implements SessionModule {
   ): string | null {
     if (this.phase.kind !== 'idle') return t('automation.collect.refusalBusy');
     if (state.phase !== 'in-game') return t('automation.collect.refusalNotInRealm');
-    const missing = [...new Map(items.map((item) => [item.id, item])).values()].filter(
-      (item) => carriedCount(state, item.name) === 0
+    const missing = [...new Map(items.map((item) => [item.id, item])).values()].filter((item) =>
+      short(state, item)
     );
     const first = missing[0];
     if (first === undefined) {
@@ -229,8 +245,8 @@ export class ItemErrand implements SessionModule {
        */
       const row: SupplyItem = {
         name: item.name,
-        min: 1,
-        max: 1,
+        min: item.count ?? 1,
+        max: item.count ?? 1,
         shop: counter.shop,
         at: { map: counter.map, room: counter.room }
       };
@@ -321,12 +337,15 @@ export class ItemErrand implements SessionModule {
     const loop: Loop = { name: t('automation.collect.loopName', { item: item.name }), stops };
     // Picked up while the errand runs, and only while it runs.
     this.planner.alsoTake(item.name);
+    // Running before the lap starts, so what a starting lap sets off (a light
+    // bought for its rooms, `LightAhead.beforeLap`) sees this trip under way.
+    this.phase = { kind: 'hunting', item, rest, owes, run };
     const refused = this.planner.runLoop(loop);
     if (refused !== null) {
       this.planner.stopTaking(item.name);
+      this.phase = { kind: 'idle' };
       return this.refuse(item, refused);
     }
-    this.phase = { kind: 'hunting', item, rest, owes, run };
     // Three literal calls, as `buying` above: *0 steps away* is a number
     // where the reader wants a fact, and *1 steps* is not English. A dropper
     // only ever summoned is named with what summons it (todo 806).
@@ -388,7 +407,7 @@ export class ItemErrand implements SessionModule {
       this.phase = { ...this.phase, why: refused };
       return;
     }
-    if (carriedCount(state, item.name) > 0) {
+    if (!short(state, item)) {
       this.deliver(item, owes, run, state);
       return;
     }
@@ -436,18 +455,20 @@ export class ItemErrand implements SessionModule {
     this.events.notice?.(
       this.planner.kept(item.name)
         ? t('automation.collect.gotAndKept', { item: item.name })
-        : t('automation.collect.gotForTheDoor', { item: item.name })
+        : item.dark === true
+          ? t('automation.collect.gotForTheDark', { item: item.name })
+          : t('automation.collect.gotForTheDoor', { item: item.name })
     );
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
-      because: t('automation.collect.becauseDoor', { item: item.name }),
+      because: wantedFor(item),
       acted: true
     });
     // What the way still wants and the pack still lacks: something the last
     // errand picked up along the way is not fetched twice. A refusal there is
     // said by `fetch`, and the way is not walked.
-    const still = rest.filter((next) => carriedCount(state, next.name) === 0);
+    const still = rest.filter((next) => short(state, next));
     const next = still[0];
     if (next !== undefined) {
       this.fetch(next, still.slice(1), owes, run);
@@ -586,7 +607,7 @@ export class ItemErrand implements SessionModule {
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
-      because: t('automation.collect.becauseDoor', { item: item.name }),
+      because: wantedFor(item),
       acted: false,
       refused: why
     });

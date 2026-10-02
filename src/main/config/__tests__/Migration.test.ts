@@ -6530,3 +6530,53 @@ describe('the party settings are stated', () => {
     expect(fs.readFileSync(profile, 'utf8')).toBe(text);
   });
 });
+
+// Buy a light first (todo 11): on after extinguishInLight, with the template's paragraph, once.
+describe('buying a light is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-buy-light-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch on after extinguishInLight, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    provideLight: true\n    extinguishInLight: true\n    sneak: false\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  movement:\n    buyLight: false\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const movement = (parse(text).automation as Record<string, Record<string, unknown>>)[
+      'movement'
+    ]!;
+    const keys = Object.keys(movement);
+    expect(keys[keys.indexOf('extinguishInLight') + 1]).toBe('buyLight');
+    expect(movement['buyLight']).toBe(true);
+    expect(text).toContain('# Buy a light before the dark.');
+    expect(fs.readFileSync(soul, 'utf8')).toContain('buyLight: false');
+    expect(
+      notesOf(said, 'notices.migration.buyLight.one', 'notices.migration.buyLight.many')
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});

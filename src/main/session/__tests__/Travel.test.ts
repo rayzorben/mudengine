@@ -110,7 +110,8 @@ function travel(
       noteOnline: vi.fn(),
       carried: false,
       heading: null,
-      strayedFrom: null
+      strayedFrom: null,
+      place: null
     },
     combat: { willFight: true, declineWhileTravelling: vi.fn() },
     combatLease: { lending: false, run: vi.fn(), onWalkEnded: vi.fn() },
@@ -119,7 +120,8 @@ function travel(
     outgrown: { busy: false, abandon: vi.fn() },
     hunt: { noteStopped: vi.fn(), noteLapStopped: vi.fn() },
     itemErrand: { running: false, collect: vi.fn(), abandon: vi.fn() },
-    questRunner: { running: false, abandon: vi.fn() }
+    questRunner: { running: false, abandon: vi.fn() },
+    light: { beforeRoute: () => false, beforeLap: vi.fn() }
   };
   const session: TravelSession = {
     config: () => ({ ...(overrides.settings ?? config), enabled: master.on }),
@@ -350,5 +352,40 @@ describe('a route asked for with automation off', () => {
     expect(moving.collectThenWalk(items, route)).toBeNull();
     expect(switched).toEqual([]);
     expect(notices).toEqual([]);
+  });
+});
+
+/* Todo 11: a light the dark rooms want is bought before the route and the lap. */
+describe('a light bought before the dark', () => {
+  const ROUTE = {
+    steps: [{ from: '1/1', to: '1/2' }],
+    cost: 1,
+    blocked: false
+  } as unknown as Route;
+
+  it('hands the route to the light, and walks it now only when nothing is bought', () => {
+    const state = beside();
+    const { travel: moving, parts } = travel(state, 'none', false);
+    parts.supplies.considerBeforeRoute = () => null;
+    const beforeRoute = vi.fn(() => true);
+    parts.light.beforeRoute = beforeRoute;
+    expect(moving.walkRoute(ROUTE, true)).toBeNull();
+    expect(beforeRoute).toHaveBeenCalledWith(ROUTE, state, true);
+    expect(parts.walker.start).not.toHaveBeenCalled();
+    parts.light.beforeRoute = () => false;
+    moving.walkRoute(ROUTE);
+    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, state);
+  });
+
+  it('asks for a lap once it has started, and not for one refused', () => {
+    const state = beside();
+    const { travel: looping, parts } = travel(state, 'none', false);
+    const loop = { name: 'crypt', stops: [{ room: 'Crypt 1/3' }] };
+    parts.loops.start = () => 'no';
+    looping.startLoop(loop);
+    expect(parts.light.beforeLap).not.toHaveBeenCalled();
+    parts.loops.start = () => null;
+    expect(looping.startLoop(loop)).toEqual({ started: true });
+    expect(parts.light.beforeLap).toHaveBeenCalledWith(loop, state);
   });
 });

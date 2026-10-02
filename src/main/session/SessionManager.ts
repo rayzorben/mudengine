@@ -26,6 +26,7 @@ import { AutoDrop } from '../automation/AutoDrop';
 import { AutoSearch } from '../automation/AutoSearch';
 import { AutoLoot } from '../automation/AutoLoot';
 import { AutoLight } from '../automation/AutoLight';
+import { LightAhead } from '../automation/LightAhead';
 import { AutoStealth } from '../automation/AutoStealth';
 import { GearRecovery } from '../automation/GearRecovery';
 import { TrainErrand } from '../automation/TrainErrand';
@@ -99,6 +100,8 @@ import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
 import { trainPlanner } from './trainPlanner';
+import { huntPlanner } from './huntPlanner';
+import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
@@ -1177,6 +1180,12 @@ export class SessionManager {
       },
       reports
     );
+    // And a light bought before the dark (todo 11), for a route, a lap or a trainer's trip.
+    const light: LightAhead = new LightAhead(
+      () => this.automationConfig,
+      lightPlanner(() => legs()),
+      reports
+    );
     /*
      * And the trips to collect the level (todo 18) and to get rid of outgrown
      * gear (todo 12), the one thing an unattended client has to do and the
@@ -1184,7 +1193,7 @@ export class SessionManager {
      */
     const legs = () => ({
       ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
-      ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world }
+      ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light }
     });
     const trip = { modules: legs, release: releaseErrand };
     this.trainLevel = new TrainErrand(
@@ -1208,31 +1217,13 @@ export class SessionManager {
      * journey and a journey drawn as nothing is a character crossing the realm
      * under a card that says *stopped*.
      */
+    const hunting = { modules: () => ({ ...legs(), belongings: this.belongings }), stopLap };
     this.hunt = new AutoHunt(
       automation.hunting,
       automation.walk,
       automation.health,
       automation.enabled,
-      {
-        here: () => roomAddress(this.tracker.current.room),
-        survey: (radius) => this.errands.huntingGrounds(radius),
-        noteRate: (key, rate) => this.belongings.rememberHuntRate(key, rate),
-        routeTo: (room) => this.errands.planFromHere(room),
-        walk: (route) => this.walker.start(route, this.tracker.current),
-        runLoop: (loop) => {
-          const answer = this.travel.startLoop(loop);
-          return 'refused' in answer ? answer.refused : null;
-        },
-        // The lap's **name**, so the hunt can tell its own from one the player
-        // started while it was running. See `HuntPlanner.runningLoop`.
-        runningLoop: () =>
-          this.loops.progress.status === 'running' ? (this.loops.progress.name ?? null) : null,
-        stopLoop: stopLap,
-        moveInFlight: () => this.tracker.pendingMoves > 0,
-        walking: () => this.walker.walking,
-        // Nothing else in the middle of something: see `errandHeld`.
-        busy: () => this.errandHeld()
-      },
+      huntPlanner({ ...hunting, busy: () => this.errandHeld() }),
       reports
     );
     /*
@@ -1662,7 +1653,8 @@ export class SessionManager {
         outgrown: this.outgrown,
         hunt: this.hunt,
         itemErrand: this.itemErrand,
-        questRunner: this.questRunner
+        questRunner: this.questRunner,
+        light
       },
       {
         config: () => this.automationConfig,

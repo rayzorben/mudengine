@@ -782,9 +782,12 @@ tuning:
     expiresMs: 5000
 
   # Readying a light before a dark step — `AutoLight`. A `light` or `remove`
-  # still queued after this is for a room already left.
+  # still queued after this is for a room already left. `carryAtLeast` is the
+  # fewest lights bought before a dark way (`LightAhead`): what is bought where
+  # the realm states no uses, and the floor under the count the uses give.
   light:
     expiresMs: 4000
+    carryAtLeast: 1
 
   # Keeping the pack stocked — `Supplies`. `buyTimeoutMs` is how long a `buy`
   # may go unanswered by `You just bought …` before it is taken as refused;

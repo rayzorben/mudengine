@@ -9,6 +9,7 @@ import PartyFields from './PartyFields';
 import { partyFormOf, partyOf } from '../lib/characterForm';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
+import LightFields from './LightFields';
 import MobRuleList from './MobRuleList';
 import GearSetList from './GearSetList';
 import PotionList from './PotionList';
@@ -1520,44 +1521,13 @@ export default function GlobalSettings({
 
             <fieldset className="settings-menus" data-fieldset="movement-light">
               <legend>{t('settings.movement.lightLegend')}</legend>
-              <CheckField
-                checked={draft.automation.movement.provideLight}
-                hint={t('settings.movement.provideLightHint')}
-                label={t('settings.movement.provideLight')}
-                name="global-provide-light"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, provideLight: value } })
+              <LightFields
+                namePrefix="global-"
+                onChange={(light) =>
+                  automation({ movement: { ...draft.automation.movement, ...light } })
                 }
+                value={draft.automation.movement}
               />
-              {/* Both depend on the switch above, and are disclosed behind it on
-                this page exactly as on a character's — one setting, one shape,
-                on every page that shows it. */}
-              {draft.automation.movement.provideLight && (
-                <>
-                  <CheckField
-                    checked={draft.automation.movement.lightDimRooms}
-                    hint={t('settings.movement.lightDimRoomsHint')}
-                    label={t('settings.movement.lightDimRooms')}
-                    name="global-light-dim-rooms"
-                    onChange={(value) =>
-                      automation({
-                        movement: { ...draft.automation.movement, lightDimRooms: value }
-                      })
-                    }
-                  />
-                  <CheckField
-                    checked={draft.automation.movement.extinguishInLight}
-                    hint={t('settings.movement.extinguishInLightHint')}
-                    label={t('settings.movement.extinguishInLight')}
-                    name="global-extinguish-in-light"
-                    onChange={(value) =>
-                      automation({
-                        movement: { ...draft.automation.movement, extinguishInLight: value }
-                      })
-                    }
-                  />
-                </>
-              )}
             </fieldset>
 
             <fieldset className="settings-menus" data-fieldset="movement-afflictions">

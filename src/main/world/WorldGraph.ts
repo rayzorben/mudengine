@@ -56,7 +56,6 @@ import {
   type WorldSpell,
   type WorldClass,
   type WorldMob,
-  type WorldMobRow,
   type MobRowChoice,
   type WorldNames,
   type RoomCommand,
@@ -440,6 +439,10 @@ export class WorldGraph {
     return this.catalogue.itemsCasting(spell);
   }
 
+  itemsOfKind(kind: Parameters<Catalogue['itemsOfKind']>[0]): WorldItem[] {
+    return this.catalogue.itemsOfKind(kind);
+  }
+
   sourcesOf(item: Parameters<Catalogue['sourcesOf']>[0]): ReturnType<Catalogue['sourcesOf']> {
     return this.catalogue.sourcesOf(item);
   }
@@ -462,10 +465,6 @@ export class WorldGraph {
 
   mobById(id: number): WorldMob | undefined {
     return this.catalogue.mobById(id);
-  }
-
-  mobRow(id: number): WorldMobRow | undefined {
-    return this.catalogue.mobRow(id);
   }
 
   lair(room: WorldRoom, family: RealmFamily | null): WorldLair | null {

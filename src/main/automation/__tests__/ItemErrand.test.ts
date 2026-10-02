@@ -256,6 +256,37 @@ describe('collecting what a route needs', () => {
     expect(notices).toContain(t('automation.collect.gotAndKept', { item: 'black star key' }));
   });
 
+  /* A light for a long dark way is a count, and says what it is for (todo 11). */
+  it('buys as many as are wanted, and walks once the pack holds them all', () => {
+    sources = { shops: [counter()], ...dropped([]) };
+    const auto = errand();
+    const torch = { id: 175, name: 'torch', count: 2, dark: true };
+    expect(auto.collect([torch], OWED, carrying('torch'))).toBeNull();
+    expect(bought).toMatchObject([{ name: 'torch', min: 2, max: 2 }]);
+    auto.onCharacter(carrying('torch'));
+    expect(walked).toHaveLength(0);
+    auto.onCharacter(carrying('torch', 'torch'));
+    expect(walked).toEqual([OWED]);
+    expect(notices).toContain(t('automation.collect.gotForTheDark', { item: 'torch' }));
+    expect(decisions.at(-1)?.because).toBe(t('automation.collect.becauseDark', { item: 'torch' }));
+  });
+
+  it('is under way while the lap it hunts on starts', () => {
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }])
+    };
+    let runningAtStart: boolean | null = null;
+    const auto: ItemErrand = errand({
+      runLoop: () => {
+        runningAtStart = auto.running;
+        return null;
+      }
+    });
+    auto.collect([KEY], OWED, ready());
+    expect(runningAtStart).toBe(true);
+  });
+
   it('refuses out loud where the realm names no source', () => {
     const auto = errand();
     const refused = auto.collect([KEY], OWED, ready());

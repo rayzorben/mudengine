@@ -1767,6 +1767,15 @@ export interface MovementConfig {
    */
   extinguishInLight: boolean;
   /**
+   * Buy a light before a route, a loop or a trip to a trainer that crosses
+   * rooms this character cannot see in, when the inventory holds no usable
+   * light that would do (todo 11). The shop least out of the way, as many as
+   * burn for the dark stretch where the realm states the uses, else
+   * `tuning.light.carryAtLeast`. On by default under `provideLight`, which
+   * readies what it buys.
+   */
+  buyLight: boolean;
+  /**
    * Walk on while the server says this character is blind. Off, a route or a
    * loop stands still until sight returns — MegaMUD's `IgnoreBlind`, whose
    * default (`0`) waits, and inverted here so that off means wait. A blind
@@ -2832,6 +2841,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       provideLight: true,
       lightDimRooms: false,
       extinguishInLight: true,
+      buyLight: true,
       recoverGear: false,
       recoverGearTries: 2,
       recoverGearFloor: 2,
@@ -4062,6 +4072,7 @@ function normalizeMovement(value: unknown): MovementConfig {
     provideLight: bool(raw['provideLight'], d.provideLight),
     lightDimRooms: bool(raw['lightDimRooms'], d.lightDimRooms),
     extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight),
+    buyLight: bool(raw['buyLight'], d.buyLight),
     recoverGear: bool(raw['recoverGear'], d.recoverGear),
     // Bounded low: a recovery that has failed five times is not going to work
     // on the sixth, and the figures are lives on the other end of it.

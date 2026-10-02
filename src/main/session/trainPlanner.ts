@@ -1,11 +1,13 @@
 /**
  * What the trip to collect a level (`TrainErrand`, todo 18) is handed: the
  * trainers the realm lists, routes from here, the walker, the lap it holds,
- * the item errand that fetches a key a trainer's door wants, and the reward
- * the trainer's room puts out for this class. Out of `SessionManager`'s
- * constructor whole, so the session composes it in one call.
+ * the item errand that fetches a key a trainer's door wants or a light its
+ * dark rooms do, and the reward the trainer's room puts out for this class.
+ * Out of `SessionManager`'s constructor whole, so the session composes it in
+ * one call.
  */
 import type { ItemErrand } from '../automation/ItemErrand';
+import type { LightAhead } from '../automation/LightAhead';
 import type { LoopRunner } from '../automation/LoopRunner';
 import type { TrainPlanner } from '../automation/TrainErrand';
 import type { Walker } from '../automation/Walker';
@@ -26,6 +28,7 @@ export interface TrainPlannerModules {
   loops: Pick<LoopRunner, 'progress' | 'noteErrand'>;
   travel: Pick<Travel, 'isRetreating' | 'retreatArmed' | 'escapeUnanswered'>;
   itemErrand: Pick<ItemErrand, 'collect' | 'running'>;
+  light: Pick<LightAhead, 'wanted' | 'settle'>;
   world:
     | Pick<WorldGraph, 'byId' | 'item' | 'classNamed' | 'raceId' | 'namedClasses' | 'namedRaces'>
     | undefined;
@@ -52,6 +55,8 @@ export function trainPlanner(parts: TrainPlannerParts): TrainPlanner {
     walk: (route) => m().walker.start(route, m().tracker.current, ERRAND_LEG),
     fetch: (items, then) => m().itemErrand.collect(items, then, m().tracker.current),
     fetching: () => m().itemErrand.running,
+    lightFor: (route) => m().light.wanted(route, m().tracker.current),
+    lightSettled: (light, refused) => m().light.settle(light, refused),
     prize: (room) => {
       const world = m().world;
       const state = m().tracker.current;
