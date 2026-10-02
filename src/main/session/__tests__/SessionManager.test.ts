@@ -6288,6 +6288,10 @@ describe('what this character costs to move', () => {
     expect(errands.reachKey(state)).toBe(key);
     // Copper that pays no toll it did not pay before moves nothing.
     expect(errands.reachKey({ ...state, inventory: { ...state.inventory, wealth: 11 } })).toBe(key);
+    // Nor does an item no exit asks for (2026-10-02: a staff bought every 12 s).
+    expect(errands.reachKey({ ...state, inventory: { ...state.inventory, rows: [999_999] } })).toBe(
+      key
+    );
     errands.shun('1/2');
     const shunned = errands.reachKey(state);
     expect(shunned).not.toBe(key);

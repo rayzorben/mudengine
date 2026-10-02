@@ -2087,7 +2087,7 @@ export class Router {
   }
 
   /** Every item id the realm demands on an exit and names — built once. */
-  private namedExitItems(): readonly number[] {
+  namedExitItems(): readonly number[] {
     if (this.exitItems !== null) return this.exitItems;
     const ids = new Set<number>();
     for (const room of this.rooms.values()) {

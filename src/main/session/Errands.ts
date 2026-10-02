@@ -184,6 +184,7 @@ export type ErrandsWorld = Pick<
   | 'classNamed'
   | 'droppingPlaces'
   | 'everyRoom'
+  | 'namedExitItems'
   | 'errand'
   | 'findByName'
   | 'get'
@@ -565,17 +566,22 @@ export class Errands implements SessionModule {
    * What decides whether a route reaches a room, as one string: every stated
    * field of `travellerNow`, so a field added there is in it. The copper
    * carried is there only as how many of the realm's tolls it covers, since
-   * a toll is the one exit it opens and the figure itself moves on every kill.
+   * a toll is the one exit it opens and the figure itself moves on every kill;
+   * the pack only as the items an exit asks for.
    * Its readers (`danger`, `hazard`) are asked live and are not.
    * `TrainErrand.trainersAhead` keeps its routes while this stays the same.
    */
   reachKey(state: CharacterState = this.tracker.current): string {
-    const { wealth, ...reach } = this.travellerNow(state);
+    const { wealth, keys, ...reach } = this.travellerNow(state);
     const tollsPaid =
       wealth === null || wealth === undefined
         ? null
         : this.tollPrices().filter((toll) => toll <= wealth).length;
-    return JSON.stringify({ ...reach, tollsPaid }, (_key, value: unknown) =>
+    // Only what the pack holds that an exit asks for: loot and purchases open no way (2026-10-02:
+    // a staff bought every 12 s planned every trainer route again each time).
+    const opens = new Set(this.world?.namedExitItems() ?? []);
+    const carried = keys?.filter((id) => opens.has(id));
+    return JSON.stringify({ ...reach, keys: carried, tollsPaid }, (_key, value: unknown) =>
       typeof value === 'function'
         ? undefined
         : value instanceof Set || value instanceof Map
