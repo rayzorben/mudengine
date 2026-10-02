@@ -13,7 +13,7 @@
 import { USED_NOT_WORN, WORN_SLOT, WORN_SLOT_HOLDS } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
 import type { ItemEntity } from '../../shared/entities';
-import type { GearOffer, SlotUpgrade } from '../../shared/upgrades';
+import type { GearCounter, GearOffer, GearRow, SlotUpgrade, SlotWorn } from '../../shared/upgrades';
 import {
   meanBlow,
   type SlotFigures,
@@ -39,6 +39,58 @@ export const WEAR_SLOTS = Object.keys(WORN_SLOT)
 /** A row's figure: damage a round (or the mean blow) for a weapon, armour class otherwise. */
 function figureOf(row: SlotGearRow): number | null {
   return row.damage === null ? row.ac : (row.perRound?.value ?? meanBlow(row.damage));
+}
+
+/** A slot's row as a planner reads it. */
+export function gearRowOf(row: SlotGearRow): GearRow {
+  return {
+    item: row.id,
+    name: row.name,
+    figure: figureOf(row),
+    ac: row.ac,
+    dr: row.dr,
+    minLevel: row.minLevel
+  };
+}
+
+/** One worn slot as scanned: the realm's rows for it, the better ones, and the weakest worn. */
+export interface SlotScan {
+  worn: SlotWorn;
+  gear: ReturnType<typeof slotGear>;
+  better: SlotGearRow[];
+}
+
+/**
+ * Every slot this character wears, with the rows better than the weakest worn
+ * there (`betterThan`), best first. What `gearUpgrades` and `bestInSlot` each
+ * join to their own sources.
+ */
+export function scanSlots(
+  state: CharacterState,
+  realm: Pick<UpgradeRealm, 'itemsWornIn'>,
+  asker: SlotAsker
+): SlotScan[] {
+  const worn = wornBySlot(state);
+  return WEAR_SLOTS.map((code) => {
+    const gear = slotGear(code, realm, asker);
+    const wornHere = worn.get(code) ?? [];
+    const free = Math.max(0, (WORN_SLOT_HOLDS[code] ?? 1) - wornHere.length);
+    const weakest = weakestWorn(gear.rows, wornHere, gear.ranking);
+    const current = weakest?.item.name ?? null;
+    const wornRow = gear.rows.find((row) => row.name.toLowerCase() === current?.toLowerCase());
+    return {
+      worn: {
+        slot: gear.slot,
+        worn: current,
+        wornFigure: wornRow === undefined ? null : figureOf(wornRow),
+        wornDr: wornRow?.dr ?? null,
+        ranking: gear.ranking.by,
+        free
+      },
+      gear,
+      better: betterThan(gear.rows, weakest?.figures ?? null, free, gear.ranking)
+    };
+  });
 }
 
 /** What is worn in each `Items.Worn` slot, by the realm's code the pack carries. */
@@ -120,68 +172,60 @@ export function gearUpgrades(
   perSlot: number
 ): SlotUpgrade[] {
   const level = state.progress.level;
-  const worn = wornBySlot(state);
   // An item the pack already holds is not bought again (2026-10-01: two leather belts, two cloth shoes).
   const carried = carriedUnworn(state);
-  const slots: Array<{
-    worn: number;
-    gear: ReturnType<typeof slotGear>;
-    better: SlotGearRow[];
-    weakest: ItemEntity | null;
-    free: number;
-  }> = [];
-  for (const code of WEAR_SLOTS) {
-    const gear = slotGear(code, realm, asker);
-    const wornHere = worn.get(code) ?? [];
-    const free = Math.max(0, (WORN_SLOT_HOLDS[code] ?? 1) - wornHere.length);
-    const weakest = weakestWorn(gear.rows, wornHere, gear.ranking);
-    const better = betterThan(gear.rows, weakest?.figures ?? null, free, gear.ranking).filter(
-      (row) => !carried.has(row.name.toLowerCase())
-    );
-    slots.push({ worn: code, gear, better, weakest: weakest?.item ?? null, free });
-  }
+  const slots = scanSlots(state, realm, asker).map((slot) => ({
+    ...slot,
+    better: slot.better.filter((row) => !carried.has(row.name.toLowerCase()))
+  }));
   const wanted = [...new Set(slots.flatMap((slot) => slot.better.map((row) => row.id)))];
-  const nearest = new Map<number, BuyingPlace>();
-  for (const place of realm.stockingPlaces(wanted)) {
-    const known = nearest.get(place.item);
-    if (known === undefined || place.detour < known.detour) nearest.set(place.item, place);
-  }
+  const nearest = nearestCounters(realm.stockingPlaces(wanted));
   const upgrades: SlotUpgrade[] = [];
-  for (const { gear, better, weakest, free } of slots) {
+  for (const { worn, better } of slots) {
     const sold: GearOffer[] = [];
     for (const row of better) {
       const place = nearest.get(row.id);
       if (place === undefined) continue;
-      sold.push({
-        item: row.id,
-        name: row.name,
-        figure: figureOf(row),
-        ac: row.ac,
-        dr: row.dr,
-        minLevel: row.minLevel,
-        shop: place.shop,
-        at: { map: place.map, room: place.room },
-        moves: place.moves,
-        copper: realm.priceAt(row.name, roomId(place.map, place.room))
-      });
+      sold.push({ ...gearRowOf(row), ...counterOf(place, row.name, realm) });
     }
     const offers = sold.slice(0, perSlot);
     const cheapest = cheapestWearable(sold, level);
     if (cheapest !== null && !offers.includes(cheapest)) offers.push(cheapest);
-    const current = weakest?.name ?? null;
-    const wornRow = gear.rows.find((row) => row.name.toLowerCase() === current?.toLowerCase());
-    if (offers.length === 0 && current === null) continue;
-    upgrades.push({
-      slot: gear.slot,
-      worn: current,
-      wornFigure: wornRow === undefined ? null : figureOf(wornRow),
-      wornDr: wornRow?.dr ?? null,
-      ranking: gear.ranking.by,
-      free,
-      offers
-    });
+    if (offers.length === 0 && worn.worn === null) continue;
+    upgrades.push({ ...worn, offers });
   }
   return upgrades;
+}
+
+/** The counter least out of the way for each item among the places stocking them. */
+export function nearestCounters(
+  places: ReadonlyArray<BuyingPlace & { item: number }>
+): Map<number, BuyingPlace> {
+  const nearest = new Map<number, BuyingPlace>();
+  for (const place of places) {
+    const known = nearest.get(place.item);
+    if (known === undefined || place.detour < known.detour) nearest.set(place.item, place);
+  }
+  return nearest;
+}
+
+/** A buying place as a planner reads it, with the item's price at its counter. */
+export function counterOf(
+  place: BuyingPlace,
+  name: string,
+  realm: Pick<UpgradeRealm, 'priceAt'>
+): GearCounter {
+  return {
+    shop: place.shop,
+    at: { map: place.map, room: place.room },
+    moves: place.moves,
+    copper: realm.priceAt(name, roomId(place.map, place.room))
+  };
+}
+
+/** Whether a row's level is one a character of this level wears; a row stating none is worn by any. */
+export function wearableAt(minLevel: number | null, level: number): boolean {
+  return (minLevel ?? 0) <= level;
 }
 
 /** The cheapest priced offer a character of this level may wear; none while the level is unread. */
@@ -189,7 +233,7 @@ function cheapestWearable(offers: readonly GearOffer[], level: number | null): G
   if (level === null) return null;
   let best: GearOffer | null = null;
   for (const offer of offers) {
-    if (offer.copper === null || (offer.minLevel ?? 0) > level) continue;
+    if (offer.copper === null || !wearableAt(offer.minLevel, level)) continue;
     if (best === null || offer.copper < (best.copper ?? Infinity)) best = offer;
   }
   return best;

@@ -5,7 +5,9 @@ import type { ItemEntity } from '../../../shared/entities';
 import { UNKNOWN_WEARER } from '../../../shared/gear';
 import type { ProwessSheet } from '../../../shared/prowess';
 import type { BuyingPlace, WorldItem } from '../../../shared/world';
+import { bestInSlot } from '../bestInSlot';
 import { gearUpgrades, type UpgradeRealm } from '../gearUpgrades';
+import { wearing as wearingItems } from '../wearing';
 
 const SHEET: ProwessSheet = {
   level: 20,
@@ -211,5 +213,107 @@ describe('the cheapest upgrade in each slot', () => {
     ]);
     const unread = gearUpgrades(wearing(), dear(), asker, 1).find((slot) => slot.slot === 'Head');
     expect(unread?.offers.map((offer) => offer.name)).toEqual(['iron helm']);
+  });
+});
+
+describe('the best a slot takes from anywhere', () => {
+  const drops = (item: string) => (item === 'iron helm' ? ['cave troll'] : []);
+
+  it('lists what is better than the worn item, sold or dropped, with where it comes from', () => {
+    const state = wearing({ name: 'leather cap', equipped: true, wornSlotCode: 2 });
+    const head = bestInSlot(state, { ...realm(), dropsOf: drops }, asker, 3).find(
+      (slot) => slot.slot === 'Head'
+    );
+    expect(
+      head?.items.map((item) => [item.name, item.sold?.copper ?? null, item.droppedBy])
+    ).toEqual([
+      ['iron helm', null, ['cave troll']],
+      ['padded helm', 400, []]
+    ]);
+  });
+
+  it('leaves out what the level cannot wear yet', () => {
+    const level = (row: WorldItem) => (row.name === 'iron helm' ? { ...row, minLevel: 30 } : row);
+    const gated = { ...realm(), dropsOf: drops };
+    const rows = ITEMS.map(level);
+    gated.itemsWornIn = (worn) => rows.filter((item) => item.worn === worn);
+    const base = wearing({ name: 'leather cap', equipped: true, wornSlotCode: 2 });
+    const state = { ...base, progress: { ...base.progress, level: 20 } };
+    const head = bestInSlot(state, gated, asker, 3).find((slot) => slot.slot === 'Head');
+    expect(head?.items.map((item) => item.name)).toEqual(['padded helm']);
+  });
+});
+
+describe('the character wearing other gear', () => {
+  const entity = (name: string): ItemEntity => {
+    const row = ITEMS.find((item) => item.name === name);
+    return {
+      name,
+      source: 'realm',
+      slot: null,
+      equipped: false,
+      charges: null,
+      ...(row === undefined
+        ? {}
+        : { id: row.id, wornSlotCode: row.worn, armour: row.armour, encumbrance: 5 })
+    } as unknown as ItemEntity;
+  };
+  const gear = { itemsWornIn: realm().itemsWornIn, buildItemEntity: entity };
+
+  it('puts the item on over the worn one and moves the sheet by the difference at its scale', () => {
+    const base = wearing({
+      name: 'leather cap',
+      equipped: true,
+      wornSlotCode: 2,
+      armour: { ac: 10 }
+    });
+    const state = {
+      ...base,
+      progress: { ...base.progress, armourClass: 3, damageResist: 0 },
+      inventory: { ...base.inventory, encumbrance: 100 }
+    };
+    const { state: after, worn } = wearingItems(state, ['iron helm'], gear, asker);
+    expect(worn).toEqual(['iron helm']);
+    // Both read from the slot's rows, as the rankings read them: the cap's row
+    // states ac 1 whatever the pack's copy says, the iron helm 6: (6 - 1) / 10.
+    expect(after.progress.armourClass).toBeCloseTo(3.5);
+    expect(after.inventory.encumbrance).toBe(105);
+    expect(after.inventory.items.map((item) => [item.name, item.equipped])).toEqual([
+      ['leather cap', false],
+      ['iron helm', true]
+    ]);
+  });
+
+  it('changes nothing for a name the realm does not hold', () => {
+    const state = wearing({ name: 'leather cap', equipped: true, wornSlotCode: 2 });
+    expect(wearingItems(state, ['glass jug'], gear, asker)).toEqual({ state, worn: [] });
+  });
+
+  it('puts on a copy the pack already carries, adding no weight', () => {
+    const base = wearing(
+      { name: 'leather cap', equipped: true, wornSlotCode: 2 },
+      { name: 'iron helm', equipped: false, wornSlotCode: 2 }
+    );
+    const state = { ...base, inventory: { ...base.inventory, encumbrance: 100 } };
+    const { state: after } = wearingItems(state, ['iron helm'], gear, asker);
+    expect(after.inventory.encumbrance).toBe(100);
+    expect(after.inventory.items.map((item) => [item.name, item.equipped])).toEqual([
+      ['leather cap', false],
+      ['iron helm', true]
+    ]);
+  });
+
+  it('keeps the armour class known when an item with no armour comes off', () => {
+    const base = wearing({ name: 'leather cap', equipped: true, wornSlotCode: 2, id: 1 });
+    const state = { ...base, progress: { ...base.progress, armourClass: 3, damageResist: 0 } };
+    const bare = {
+      ...gear,
+      itemsWornIn: () =>
+        [helm(1, 'leather cap', 0), helm(3, 'iron helm', 6)].map((row) =>
+          row.id === 1 ? { ...row, armour: undefined } : row
+        ) as WorldItem[]
+    };
+    const { state: after } = wearingItems(state, ['iron helm'], bare, asker);
+    expect(after.progress.armourClass).toBeCloseTo(3.6);
   });
 });
