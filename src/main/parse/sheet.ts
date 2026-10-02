@@ -183,6 +183,22 @@ export function died(s: CharacterState, at: number): CharacterState {
     // is standing, and the status line two lines away will say so anyway.
     // Cleared here so nothing is held between the two (todo 20).
     mortallyWounded: false,
+    /*
+     * The pack goes with the death: `Player.Killed` drops every item that is
+     * neither loyal nor major-cursed and the purse goes to the corpse
+     * (`DropAllItems`, `playerCorpse.Money`). So the purse is none from here,
+     * never the figure carried into the fight: a route priced on it walked a
+     * dead character to a toll gate it could not pay (2026-10-02). The `i`
+     * asked after (`STALE_AFTER`, while routines are on) puts back anything
+     * loyal.
+     */
+    inventory: {
+      ...s.inventory,
+      items: [],
+      keys: [],
+      wealth: 0,
+      coins: { runic: 0, platinum: 0, gold: 0, silver: 0, copper: 0 }
+    },
     // Where it died, kept for the kit lying there (`GearRecovery`): the
     // room the character was standing in when the sentence arrived.
     lastDeath: {

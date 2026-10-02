@@ -133,6 +133,7 @@ function travel(
     decided: (decision) => void decisions.push(decision),
     fled: overrides.fled ?? (() => []),
     keepFled: overrides.keepFled ?? (() => {}),
+    driven: overrides.driven ?? (() => false),
     switchAutomation: (on) => {
       switched.push(on);
       if (master.writes) master.on = on;
@@ -160,6 +161,16 @@ describe('escaping a monster its row names, out of a fight', () => {
     moving.considerEscape(state);
     expect(sent).toEqual([]);
     expect(notices).toEqual([]);
+  });
+
+  /* 2026-10-02: scripted, standing in a fight at login before its first step, and killed. */
+  it('runs where an extension is scripting the character, standing still between steps', () => {
+    const state = beside();
+    const { travel: scripted, sent } = travel(state, 'none', false, undefined, {
+      driven: () => true
+    });
+    scripted.considerEscape(state);
+    expect(sent).toEqual(['n']);
   });
 
   /*

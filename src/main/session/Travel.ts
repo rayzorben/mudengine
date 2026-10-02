@@ -162,6 +162,8 @@ export interface TravelParts {
 export interface TravelSession {
   /** The automation settings as last loaded. */
   config(): AutomationConfig;
+  /** An extension is scripting the character (`SessionExtensions.driving`). */
+  driven(): boolean;
   /**
    * What the character is doing about going anywhere, read through the
    * session's own getter: one door onto the fact, the one every reader and
@@ -1048,12 +1050,15 @@ export class Travel implements SessionModule {
   /**
    * Whether the client is taking this character anywhere: a walk under way or
    * held, a running lap or one a follower's `@wait` paused, a walk to the safe
-   * room armed, or an errand or quest run whose leg a fight has ended — each
-   * walks on once the fight is over.
+   * room armed, an errand or quest run whose leg a fight has ended (each
+   * walks on once the fight is over), or an extension scripting the character
+   * (2026-10-02: one stood in a fight at login before its first step and was
+   * killed with the run set at 30%).
    */
   private goingSomewhere(): boolean {
     return (
       this.ranThisFight ||
+      this.session.driven() ||
       this.session.movement().moving ||
       this.partyWait.holding ||
       this.retreat !== null ||

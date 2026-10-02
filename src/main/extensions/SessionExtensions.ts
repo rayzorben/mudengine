@@ -22,6 +22,8 @@ import type { LoadedExtension } from './ExtensionLoader';
 export interface ExtensionHostKit {
   /** Lays this extension's settings, or lifts them (null), and configures the session again. */
   layer(writes: readonly LayerWrite[] | null): void;
+  /** Whether this extension is taking the character somewhere (`driving`). */
+  drive(on: boolean): void;
   /** Sent to the console, as every module's notices are. */
   notice(message: string): void;
   /** The view moved: the window is sent it, once the sessions are all made. */
@@ -41,6 +43,7 @@ interface Running {
   extension: LoadedExtension;
   session: ExtensionSession;
   writes: readonly LayerWrite[];
+  driving: boolean;
   /** The hooks whose failure has been said, so a hook failing every line is said once. */
   said: Set<string>;
 }
@@ -63,12 +66,16 @@ export class SessionExtensions implements SessionModule {
         extension,
         session: { view: () => null },
         writes: [],
+        driving: false,
         said: new Set()
       };
       const kit: ExtensionHostKit = {
         layer: (writes) => {
           entry.writes = writes ?? [];
           if (this.ready) this.parts.relayer();
+        },
+        drive: (on) => {
+          entry.driving = on;
         },
         notice: (message) => this.parts.notice(message),
         changed: () => {
@@ -83,6 +90,15 @@ export class SessionExtensions implements SessionModule {
       this.running.push(entry);
     }
     this.ready = true;
+  }
+
+  /**
+   * Whether an extension is taking this character somewhere: scripting it,
+   * standing still between steps included, so the character runs from a
+   * fight at the run setting as on any walk (`Travel.goingSomewhere`).
+   */
+  get driving(): boolean {
+    return this.running.some((entry) => entry.driving);
   }
 
   /** The character's own settings with every extension's laid over them, in folder order. */

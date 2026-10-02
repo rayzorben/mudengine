@@ -424,6 +424,19 @@ describe('room assembly', () => {
     expect(tracker.trail).toEqual([]);
   });
 
+  /* 2026-10-02: the purse carried into a fatal fight sent the dead character to a toll gate. */
+  it('empties the pack and the purse on a death, the listing before it notwithstanding', () => {
+    const tracker = play([
+      ...room,
+      'You are carrying 6 gold crowns, 38 silver nobles, 101 copper farthings',
+      'Wealth: 1081 copper farthings',
+      'You have been killed!'
+    ]);
+    expect(tracker.current.inventory.wealth).toBe(0);
+    expect(tracker.current.inventory.items).toEqual([]);
+    expect(tracker.current.inventory.coins.gold).toBe(0);
+  });
+
   it('does not leak a fragment of one room into the next', () => {
     // The failure mode in megamind-client's roomHandler: mutable fields carried
     // across, so a missed line put the wrong occupants in the new room.

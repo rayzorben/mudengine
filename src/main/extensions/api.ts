@@ -158,6 +158,13 @@ export interface ExtensionSessionHost {
   offer(intent: Intent): Offered;
   /** Settings laid over the character's own while this extension runs; null lifts them. */
   layer(writes: readonly LayerWrite[] | null): void;
+  /**
+   * This extension is taking the character somewhere while it runs (true), or
+   * no longer (false): the character runs from a fight at the run setting,
+   * even while it stands between steps, as on a walk or a lap. The extension
+   * lifts it when it stops; nothing else does.
+   */
+  drive(on: boolean): void;
   /** Writes settings into the character's file; the error, or null. */
   keep(writes: readonly LayerWrite[]): string | null;
   notice(message: string): void;
