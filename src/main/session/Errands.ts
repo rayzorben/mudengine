@@ -7,6 +7,7 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
+import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -79,7 +80,6 @@ import {
   countersNow,
   planSpan,
   questReading,
-  rollChance,
   type PlanCash,
   type PlanItem,
   type PlanStep,
@@ -1129,7 +1129,11 @@ export class Errands implements SessionModule {
       const chance =
         planned.roll === undefined
           ? null
-          : rollChance(statFigure(state, planned.roll.stat), planned.roll.value);
+          : rollPercent(
+              planned.roll.stat,
+              statFigure(state, planned.roll.stat),
+              planned.roll.value
+            );
       steps.push(
         planned.roll === undefined || chance === null
           ? planned
@@ -2530,15 +2534,14 @@ export class Errands implements SessionModule {
 }
 
 /**
- * The sheet's figure for a stat a `testskill` names, or null where the sheet
- * has not said or prints no such figure (todo 106). The script's words are
- * `TextBlockPart.cs`'s own switch: `wisdom` reads the sheet's Willpower,
- * `stealth` its Stealth figure, `magicresistance` its MR. Anything else —
- * `current_hp`, a word a derivative invents — is unknown, never zero.
+ * The character's figure for a stat a `testskill` names, or null where nothing
+ * has said (todo 106). The words are `TextBlockPart.cs`'s own switch: `wisdom`
+ * reads the sheet's Willpower, `magicresistance` its MR, `current_hp` the
+ * health the statline last printed.
  */
-function statFigure(state: CharacterState, stat: string): number | null {
+function statFigure(state: CharacterState, stat: TbStat): number | null {
   const sheet = state.progress;
-  switch (stat.toLowerCase()) {
+  switch (stat) {
     case 'intellect':
       return sheet.intellect;
     case 'strength':
@@ -2567,8 +2570,12 @@ function statFigure(state: CharacterState, stat: string): number | null {
       return sheet.tracking;
     case 'magicresistance':
       return sheet.magicRes;
-    default:
-      return null;
+    case 'current_hp':
+      return state.vitals.hp;
+    default: {
+      const never: never = stat;
+      return never;
+    }
   }
 }
 

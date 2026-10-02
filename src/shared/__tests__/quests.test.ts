@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { Gate } from '../gates';
 import {
   asksHere,
   earlierHandover,
@@ -11,14 +12,12 @@ import {
   questGroup,
   questLevel,
   questSide,
-  rollChance,
   stepDone,
   stepRoll,
   stepsDone,
   QUEST_GROUPS,
   type Quest,
   type QuestDoer,
-  type QuestGate,
   type QuestReward,
   type QuestStep
 } from '../quests';
@@ -41,7 +40,7 @@ function quest(steps: QuestStep[]): Quest {
  * every one of its 47 alignment gates, came to be offered to a paladin.
  */
 describe('which side of the line a quest is for', () => {
-  const gate = (part: Partial<Extract<QuestGate, { kind: 'alignment' }>>): QuestGate => ({
+  const gate = (part: Partial<Extract<Gate, { kind: 'alignment' }>>): Gate => ({
     kind: 'alignment',
     ...part
   });
@@ -92,11 +91,11 @@ describe('which side of the line a quest is for', () => {
 describe('summaries read a step’s routes as well as what it shares', () => {
   const routed = quest([
     step({
-      needs: [{ kind: 'ability-absent', id: 32 }],
+      needs: [{ kind: 'ability', id: 32, absent: true }],
       ways: [
         {
           needs: [
-            { kind: 'class', id: 1 },
+            { kind: 'class', id: 1, is: true },
             { kind: 'level', min: 22 }
           ],
           takes: [],
@@ -104,7 +103,7 @@ describe('summaries read a step’s routes as well as what it shares', () => {
         },
         {
           needs: [
-            { kind: 'class', id: 2 },
+            { kind: 'class', id: 2, is: true },
             { kind: 'level', min: 20 }
           ],
           takes: [],
@@ -182,7 +181,7 @@ describe('which steps a counter leaves behind', () => {
 
   it('holds a rank-zero step until the counter is held at all', () => {
     // PerfectStealth's whole shape: never had it, then granted at zero.
-    const flag = quest([step({ to: 0, needs: [{ kind: 'ability-absent', id: 186 }] })]);
+    const flag = quest([step({ to: 0, needs: [{ kind: 'ability', id: 186, absent: true }] })]);
     expect(stepsDone(flag, 0, false)).toBe(0);
     expect(stepsDone(flag, 0, true)).toBe(1);
   });
@@ -343,17 +342,23 @@ describe('what a character cannot do', () => {
   const asked = (part: Partial<QuestStep> = {}): QuestStep => step({ who: 'Aldreth', ...part });
 
   it('bars a quest whose one step names another class', () => {
-    const only = quest([asked({ to: 1, needs: [{ kind: 'class', id: 8, name: 'Thief' }] })]);
+    const only = quest([
+      asked({ to: 1, needs: [{ kind: 'class', id: 8, is: true, name: 'Thief' }] })
+    ]);
     expect(questBars(only, paladin, START)).toEqual([{ kind: 'class', names: ['Thief'] }]);
   });
 
   it('bars on race the same way, by the word the realm states', () => {
-    const only = quest([asked({ to: 1, needs: [{ kind: 'race', id: 9, name: 'Gaunt One' }] })]);
+    const only = quest([
+      asked({ to: 1, needs: [{ kind: 'race', id: 9, is: true, name: 'Gaunt One' }] })
+    ]);
     expect(questBars(only, paladin, START)).toEqual([{ kind: 'race', names: ['Gaunt One'] }]);
   });
 
   it('matches the sheet against the realm case-insensitively', () => {
-    const mine = quest([asked({ to: 1, needs: [{ kind: 'class', id: 1, name: 'paladin' }] })]);
+    const mine = quest([
+      asked({ to: 1, needs: [{ kind: 'class', id: 1, is: true, name: 'paladin' }] })
+    ]);
     expect(questBars(mine, paladin, START)).toEqual([]);
   });
 
@@ -368,7 +373,7 @@ describe('what a character cannot do', () => {
       asked({
         to: 1,
         needs: [
-          { kind: 'class', id: 8, name: 'Thief' },
+          { kind: 'class', id: 8, is: true, name: 'Thief' },
           { kind: 'level', min: 40 }
         ]
       })
@@ -377,7 +382,7 @@ describe('what a character cannot do', () => {
   });
 
   it('says nothing about a gate the realm names no word for', () => {
-    const only = quest([asked({ to: 1, needs: [{ kind: 'class', id: 8 }] })]);
+    const only = quest([asked({ to: 1, needs: [{ kind: 'class', id: 8, is: true }] })]);
     expect(questBars(only, paladin, START)).toEqual([]);
   });
 
@@ -385,16 +390,16 @@ describe('what a character cannot do', () => {
   // other way round — so one of them being open is the quest being open.
   it('keeps a quest whose rank is reachable by one of its alternative steps', () => {
     const chain = quest([
-      asked({ block: 1, to: 1, needs: [{ kind: 'class', id: 8, name: 'Thief' }] }),
-      asked({ block: 2, to: 1, needs: [{ kind: 'class', id: 1, name: 'Paladin' }] })
+      asked({ block: 1, to: 1, needs: [{ kind: 'class', id: 8, is: true, name: 'Thief' }] }),
+      asked({ block: 2, to: 1, needs: [{ kind: 'class', id: 1, is: true, name: 'Paladin' }] })
     ]);
     expect(questBars(chain, paladin, START)).toEqual([]);
   });
 
   it('bars a quest when every step setting one rank is shut', () => {
     const chain = quest([
-      asked({ block: 1, to: 1, needs: [{ kind: 'class', id: 8, name: 'Thief' }] }),
-      asked({ block: 2, to: 1, needs: [{ kind: 'class', id: 7, name: 'Ninja' }] })
+      asked({ block: 1, to: 1, needs: [{ kind: 'class', id: 8, is: true, name: 'Thief' }] }),
+      asked({ block: 2, to: 1, needs: [{ kind: 'class', id: 7, is: true, name: 'Ninja' }] })
     ]);
     expect(questBars(chain, paladin, START)).toEqual([
       { kind: 'class', names: ['Thief', 'Ninja'] }
@@ -411,10 +416,10 @@ describe('what a character cannot do', () => {
       asked({
         to: 1,
         ways: [
-          { needs: [{ kind: 'class', id: 2, name: 'Cleric' }], takes: [], gives: [] },
+          { needs: [{ kind: 'class', id: 2, is: true, name: 'Cleric' }], takes: [], gives: [] },
           {
             needs: [
-              { kind: 'class', id: 1, name: 'Paladin' },
+              { kind: 'class', id: 1, is: true, name: 'Paladin' },
               { kind: 'level', min: 27 }
             ],
             takes: [],
@@ -440,10 +445,10 @@ describe('what a character cannot do', () => {
     const routed = quest([
       asked({
         to: 1,
-        needs: [{ kind: 'race', id: 9, name: 'Gaunt One' }],
+        needs: [{ kind: 'race', id: 9, is: true, name: 'Gaunt One' }],
         ways: [
-          { needs: [{ kind: 'class', id: 1, name: 'Paladin' }], takes: [], gives: [] },
-          { needs: [{ kind: 'class', id: 8, name: 'Thief' }], takes: [], gives: [] }
+          { needs: [{ kind: 'class', id: 1, is: true, name: 'Paladin' }], takes: [], gives: [] },
+          { needs: [{ kind: 'class', id: 8, is: true, name: 'Thief' }], takes: [], gives: [] }
         ]
       })
     ]);
@@ -510,7 +515,7 @@ describe('what a character cannot do', () => {
    */
   it('bars a chain whose counter this character has already spent elsewhere', () => {
     const chain = quest([
-      asked({ to: 1, needs: [{ kind: 'ability-absent', id: 127, name: 'NeutralQuest' }] })
+      asked({ to: 1, needs: [{ kind: 'ability', id: 127, absent: true, name: 'NeutralQuest' }] })
     ]);
     const started = { ...paladin, counters: { sums: { 127: 3 }, complete: true, at: 1 } };
     expect(questBars(chain, started, START)).toEqual([
@@ -522,7 +527,7 @@ describe('what a character cannot do', () => {
   // one can say a counter the step demands you have never had is one you have.
   it('says nothing from a listing that did not run to its end', () => {
     const chain = quest([
-      asked({ to: 1, needs: [{ kind: 'ability-absent', id: 127, name: 'NeutralQuest' }] })
+      asked({ to: 1, needs: [{ kind: 'ability', id: 127, absent: true, name: 'NeutralQuest' }] })
     ]);
     const half = { ...paladin, counters: { sums: {}, complete: false, at: 1 } };
     expect(questBars(chain, half, START)).toEqual([]);
@@ -535,7 +540,7 @@ describe('what a character cannot do', () => {
    */
   it('never reads a quest own counter as a bar on itself', () => {
     const chain = quest([
-      asked({ to: 1, needs: [{ kind: 'ability-absent', id: 126, name: 'TestQuest' }] })
+      asked({ to: 1, needs: [{ kind: 'ability', id: 126, absent: true, name: 'TestQuest' }] })
     ]);
     const under = { ...paladin, counters: { sums: { 126: 2 }, complete: true, at: 1 } };
     expect(questBars(chain, under, START)).toEqual([]);
@@ -544,7 +549,9 @@ describe('what a character cannot do', () => {
   // An empty class is nobody's class. `ownWay` guards the same field for the
   // same reason: answering *false* would bar every class-gated quest off a blank.
   it('bars nothing off a blank class', () => {
-    const only = quest([asked({ to: 1, needs: [{ kind: 'class', id: 8, name: 'Thief' }] })]);
+    const only = quest([
+      asked({ to: 1, needs: [{ kind: 'class', id: 8, is: true, name: 'Thief' }] })
+    ]);
     expect(questBars(only, { ...paladin, className: '  ' }, START)).toEqual([]);
   });
 
@@ -587,8 +594,8 @@ describe('what the room’s occupants can be asked', () => {
         say: ['components'],
         needs: [
           { kind: 'ability', id: 133, atLeast: 5, atMost: 5 },
-          { kind: 'item', id: 966, name: 'acid gland' },
-          { kind: 'item', id: 995, name: 'cave roots' }
+          { kind: 'carry', item: 966, name: 'acid gland' },
+          { kind: 'carry', item: 995, name: 'cave roots' }
         ],
         takes: [],
         gives: [],
@@ -672,7 +679,9 @@ describe('what the room’s occupants can be asked', () => {
   it('offers nothing this character is shut out of', () => {
     const gated: Quest = {
       ...MORUKAI,
-      steps: [{ ...MORUKAI.steps[0]!, needs: [{ kind: 'class', id: 1, name: 'Warrior' }] }]
+      steps: [
+        { ...MORUKAI.steps[0]!, needs: [{ kind: 'class', id: 1, is: true, name: 'Warrior' }] }
+      ]
     };
     const mage = { ...anybody, className: 'Mage' };
     expect(asksHere([gated], ['Morukai'], mage, null, [])).toEqual([]);
@@ -684,7 +693,7 @@ describe('what the room’s occupants can be asked', () => {
 });
 
 /*
- * A step that rolls (todo 106): the first `skill` gate on the step's own
+ * A step that rolls (todo 106): the first `roll` gate on the step's own
  * line, and the odds of one try as the server computes them —
  * `TextBlockPart.cs:1235`, the stat less the value clamped to 2..98.
  */
@@ -695,7 +704,7 @@ describe('a step that rolls', () => {
     say: ['read red'],
     needs: [
       { kind: 'ability', id: 134, atLeast: 6 },
-      { kind: 'skill', stat: 'intellect', value: 30 }
+      { kind: 'roll', stat: 'intellect', value: 30 }
     ],
     takes: [],
     gives: [],
@@ -705,13 +714,5 @@ describe('a step that rolls', () => {
   it('names the roll, and none for a step without one', () => {
     expect(stepRoll(rolling)).toEqual({ stat: 'intellect', value: 30 });
     expect(stepRoll({ ...rolling, needs: [] })).toBeNull();
-  });
-
-  it('gives the odds off the sheet, clamped as the server clamps them', () => {
-    expect(rollChance(45, 30)).toBe(15);
-    expect(rollChance(30, 30)).toBe(2);
-    expect(rollChance(200, 30)).toBe(98);
-    // An unread stat is unknown, never a chance.
-    expect(rollChance(null, 30)).toBeNull();
   });
 });

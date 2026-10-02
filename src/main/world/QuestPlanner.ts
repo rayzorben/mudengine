@@ -233,7 +233,7 @@ export class QuestPlanner {
    *
    * The gates and `takes` overlap almost entirely — a step that consumes an
    * item states `checkitem` beside its `takeitem` — so they are merged here
-   * rather than looked up twice. `item-absent` is deliberately included: *not
+   * rather than looked up twice. A `lack` gate is deliberately included: *not
    * carrying this* is still a sentence about an item, and knowing where the
    * thing comes from is how somebody avoids picking it up.
    */
@@ -244,9 +244,9 @@ export class QuestPlanner {
     // still an item somebody has to go and find.
     for (const way of [step, ...(step.ways ?? [])]) {
       for (const gate of way.needs) {
-        if (gate.kind !== 'item' && gate.kind !== 'item-absent') continue;
-        if (!wanted.has(gate.id) || wanted.get(gate.id) === undefined) {
-          wanted.set(gate.id, gate.name);
+        if (gate.kind !== 'carry' && gate.kind !== 'lack') continue;
+        if (!wanted.has(gate.item) || wanted.get(gate.item) === undefined) {
+          wanted.set(gate.item, gate.name);
         }
       }
       for (const item of way.takes) {

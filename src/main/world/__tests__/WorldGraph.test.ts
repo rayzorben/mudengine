@@ -4072,6 +4072,18 @@ describe('naming what blocked a route', () => {
    * rooms were not joined in the data. Every kind now has to appear, and the
    * assertion below fails the build for one that does not.
    */
+  /*
+   * `Class: 0 OK, 3 NO` bars one class and admits the rest. It cost an unread
+   * condition's price for everybody else until the gates were judged in one
+   * place (2026-10-02); a gate that is read and passes costs nothing.
+   */
+  it('lets a class gate that names only the class it bars through for free', () => {
+    const barsThree: Requirement = { kind: 'class', raw: 'Class: 0 OK, 3 NO', classNo: 3 };
+    expect(edgePenalty(barsThree, { classId: 5 })).toBe(0);
+    expect(edgePenalty(barsThree, { classId: 3 })).toBeNull();
+    expect(edgePenalty(barsThree, {})).toBeGreaterThan(0);
+  });
+
   it('agrees with edgePenalty about what is impassable', () => {
     const requirements: Requirement[] = [
       { kind: 'key', raw: 'Key: 1', keyId: 1 },
@@ -5204,7 +5216,7 @@ describe('the quest book’s item and room joins', () => {
   it('finds the shop that stocks an item the step demands', () => {
     const graph = questWorld({
       ...bare,
-      needs: [{ kind: 'item', id: 10, name: 'adamant ore' }],
+      needs: [{ kind: 'carry', item: 10, name: 'adamant ore' }],
       takes: [{ id: 10, name: 'adamant ore' }]
     });
     const sources = graph.quests()[0]?.steps[0]?.sources;
@@ -5237,7 +5249,7 @@ describe('the quest book’s item and room joins', () => {
   it('states an item once when the step both checks it and takes it', () => {
     const graph = questWorld({
       ...bare,
-      needs: [{ kind: 'item', id: 10, name: 'adamant ore' }],
+      needs: [{ kind: 'carry', item: 10, name: 'adamant ore' }],
       takes: [{ id: 10, name: 'adamant ore' }],
       gives: []
     });
@@ -5271,15 +5283,15 @@ describe('the quest book’s item and room joins', () => {
         for (const step of quest.steps) {
           /*
            * Counted the way `itemsDemanded` counts — every route's, and
-           * `item-absent` with the rest. Reading the step's own `needs` for
-           * `item` alone counted 73 against 82 sources, which is two different
+           * `lack` with the rest. Reading the step's own `needs` for
+           * `carry` alone counted 73 against 82 sources, which is two different
            * sets compared as one: the ceiling below is an arithmetic check on
            * the join, and it can only hold while both sides ask one question.
            */
           const ids = new Set<number>();
           for (const way of [step, ...(step.ways ?? [])]) {
             for (const gate of way.needs) {
-              if (gate.kind === 'item' || gate.kind === 'item-absent') ids.add(gate.id);
+              if (gate.kind === 'carry' || gate.kind === 'lack') ids.add(gate.item);
             }
             for (const item of way.takes) ids.add(item.id);
           }
@@ -5464,8 +5476,8 @@ describe('the order a step fetches its items in', () => {
     block: 1,
     say: [],
     needs: [
-      { kind: 'item', id: 10, name: 'near thing' },
-      { kind: 'item', id: 11, name: 'far thing' }
+      { kind: 'carry', item: 10, name: 'near thing' },
+      { kind: 'carry', item: 11, name: 'far thing' }
     ],
     takes: [],
     gives: [],
@@ -6036,7 +6048,7 @@ describe('the order a step fetches its items in', () => {
   it('leaves a thing the realm places nowhere out of the walk and says so', () => {
     const graph = errandWorld({
       ...both,
-      needs: [...both.needs, { kind: 'item', id: 12, name: 'thing from nowhere' }]
+      needs: [...both.needs, { kind: 'carry', item: 12, name: 'thing from nowhere' }]
     });
     const errand = graph.errand(stepOf(graph), '1/4', {});
     expect(errand?.left).toEqual([{ id: 12, name: 'thing from nowhere', why: 'unplaced' }]);

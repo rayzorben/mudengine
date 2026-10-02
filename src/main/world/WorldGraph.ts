@@ -16,10 +16,10 @@ import zlib from 'node:zlib';
 import { describeObstacle, leverOpening } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
+import type { AbilityBounds } from '../../shared/gates';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
-  type AbilityGate,
   readAbilityGate,
   asRoomReference,
   DIRECTIONS,
@@ -1662,7 +1662,7 @@ export class WorldGraph {
          * condition in the realm's words — because this is what the client can
          * *answer* once `abil` has stated the counters, not a different fact.
          */
-        const gates: AbilityGate[] = [];
+        const gates: AbilityBounds[] = [];
         for (const entry of command.need ?? []) {
           const [verb, value] = entry.trim().split(/\s+/);
           const figure = Number(value);

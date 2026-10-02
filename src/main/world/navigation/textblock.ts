@@ -11,6 +11,7 @@
  * abandons the whole block. `mudengine-world` › *There is one navigation engine*.
  */
 import type { Denomination } from '../../../shared/character';
+import { TB_STATS, type TbStat } from '../../../shared/gates';
 import { DIRECTIONS, type Direction } from '../../../shared/world';
 import type { RealmSource } from '../RealmSource';
 import { number, text } from '../values';
@@ -73,27 +74,6 @@ export const SERVER_LINE = {
 export type TbVerb = keyof typeof SERVER_LINE;
 
 export const TB_VERBS = Object.keys(SERVER_LINE) as readonly TbVerb[];
-
-/** What `testskill` reads (`TextBlockPart.cs:1155`); `wisdom` is willpower. */
-export const TB_STATS = [
-  'intellect',
-  'strength',
-  'health',
-  'charm',
-  'agility',
-  'wisdom',
-  'current_hp',
-  'traps',
-  'thievery',
-  'spellcasting',
-  'perception',
-  'stealth',
-  'picklocks',
-  'tracking',
-  'magicresistance'
-] as const;
-
-export type TbStat = (typeof TB_STATS)[number];
 
 /** `givecoins`' letters; anything else is gold (`TextBlockPart.cs:728`). */
 const COINS: Record<string, Denomination> = {

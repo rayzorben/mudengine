@@ -212,7 +212,7 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
      * `Ability: 0 w/value 0 to 0` — the realm's empty slot, which the server
      * builds as a plain exit (case 23) — was the only case this parse could
      * settle. `abil` states the sums, so the window is the comparison the
-     * server makes and it goes on `abilities` as the one `AbilityGate` this
+     * server makes and it goes on `abilities` as the one `AbilityBounds` this
      * exit states, in the same shape a room script's `checkability` takes.
      * One field, one reader, and the two shapes cannot answer differently
      * about the same character.

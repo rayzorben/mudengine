@@ -51,8 +51,8 @@ const QUEST: Quest = {
       room: '1/3',
       say: ['forge'],
       needs: [
-        { kind: 'item', id: 55, name: 'torch' },
-        { kind: 'skill', stat: 'intellect', value: 30 }
+        { kind: 'carry', item: 55, name: 'torch' },
+        { kind: 'roll', stat: 'intellect', value: 30 }
       ],
       takes: [{ id: 55, name: 'torch' }],
       gives: [],

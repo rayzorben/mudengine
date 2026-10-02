@@ -61,7 +61,8 @@
  *   confidently-wrong answer this project refuses everywhere else.
  */
 import { ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
-import type { Quest, QuestGate, QuestStep, QuestWay } from '../../shared/quests';
+import type { Gate } from '../../shared/gates';
+import type { Quest, QuestStep, QuestWay } from '../../shared/quests';
 import { abilityPairs } from './buildRealm';
 import { readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
@@ -542,7 +543,7 @@ function chainedCounters(blocks: ReadonlyMap<number, Textblock>): Set<number> {
       const script = readQuestScript(line.steps);
       for (const grant of script.granted) granted.add(grant.id);
       for (const gate of script.needs) {
-        if (gate.kind === 'ability' || gate.kind === 'ability-absent') demanded.add(gate.id);
+        if (gate.kind === 'ability') demanded.add(gate.id);
       }
     }
   }
@@ -650,7 +651,7 @@ function traverse(
 
 /** One route through a block's step: the whole of what one line states. */
 interface BlockWay {
-  needs: QuestGate[];
+  needs: Gate[];
   takes: number[];
   gives: ReturnType<typeof readQuestScript>['gives'];
 }
@@ -732,7 +733,7 @@ function stepsInBlock(lines: readonly TbLine[], counters: Set<number>): BlockSte
     if (grant === undefined) continue;
 
     const gate = script.needs.find((need) => need.kind === 'ability' && need.id === grant.id) as
-      Extract<QuestGate, { kind: 'ability' }> | undefined;
+      Extract<Gate, { kind: 'ability' }> | undefined;
     const from = gate?.atMost ?? gate?.atLeast;
 
     const key = `${grant.id}/${grant.value}/${from ?? ''}`;
@@ -849,6 +850,7 @@ interface NameTables {
   klass(id: number): string | undefined;
   race(id: number): string | undefined;
   ability(id: number): string | undefined;
+  monster(id: number): string | undefined;
   classCount: number;
   raceCount: number;
 }
@@ -860,6 +862,12 @@ function nameTables(source: RealmSource, naming: QuestNaming): NameTables {
     const name = text(row['Name']).trim();
     if (id !== null && name.length > 0) items.set(id, name);
   }
+  const monsters = new Map<number, string>();
+  for (const row of source.table('Monsters')?.rows ?? []) {
+    const id = number(row['Number']);
+    const name = text(row['Name']).trim();
+    if (id !== null && name.length > 0) monsters.set(id, name);
+  }
   const spells = new Map(naming.spells.map((entry) => [entry.id, entry.n]));
   const classes = new Map(naming.classes.map((entry) => [entry.id, entry.n]));
   const races = new Map(naming.races.map((entry) => [entry.id, entry.n]));
@@ -869,27 +877,41 @@ function nameTables(source: RealmSource, naming: QuestNaming): NameTables {
     klass: (id) => classes.get(id),
     race: (id) => races.get(id),
     ability: (id) => ABILITY[id]?.name,
+    monster: (id) => monsters.get(id),
     classCount: classes.size,
     raceCount: races.size
   };
 }
 
-function named(gate: QuestGate, names: NameTables): QuestGate {
+function named(gate: Gate, names: NameTables): Gate {
   switch (gate.kind) {
-    case 'item':
-    case 'item-absent':
-      return { ...gate, ...maybe('name', names.item(gate.id)) };
+    case 'carry':
+    case 'lack':
+    case 'floor':
+      return { ...gate, ...maybe('name', names.item(gate.item)) };
+    case 'monster-here':
+      return { ...gate, ...maybe('name', names.monster(gate.monster)) };
     case 'ability':
-    case 'ability-absent':
       return { ...gate, ...maybe('name', names.ability(gate.id)) };
-    case 'spell':
-      return { ...gate, ...maybe('name', names.spell(gate.id)) };
+    case 'spell-off':
+      return { ...gate, ...maybe('name', names.spell(gate.spell)) };
     case 'class':
       return { ...gate, ...maybe('name', names.klass(gate.id)) };
     case 'race':
       return { ...gate, ...maybe('name', names.race(gate.id)) };
-    default:
+    case 'level':
+    case 'standing':
+    case 'alignment':
+    case 'lives':
+    case 'copper':
+    case 'roll':
+    case 'empty-room':
+    case 'occupied':
       return gate;
+    default: {
+      const never: never = gate;
+      return never;
+    }
   }
 }
 

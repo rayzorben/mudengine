@@ -12,11 +12,13 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { describeObstacle, leverOpening } from './obstacle';
+import { exitGates } from './navigation/exitGates';
 import { RealmJoins } from './RealmJoins';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
-import { alignmentRank, type Alignment } from '../../shared/alignment';
+import type { Alignment } from '../../shared/alignment';
 import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
+import { judgeAll, type Verdict } from '../../shared/gates';
 import {
   abilityGatesMet,
   blockItem,
@@ -507,10 +509,12 @@ export function edgeBlock(
   if (!requirement) return null;
   switch (requirement.kind) {
     case 'hidden': {
-      // The mirror of `edgePenalty`'s wall: a listed pack lacking the lever's
-      // item. Everything else about a hidden exit is a price, never a block.
-      const itemId = actionItemMissing(requirement, traveller);
-      return itemId === null ? null : { kind: 'item', requirement, itemId };
+      // A listed pack lacking a lever's item; anything else about a hidden
+      // exit is a price, never a block.
+      const shut = gatedShut(requirement, traveller);
+      if (shut === null) return null;
+      const missing = shut !== 'fail' && shut.needs.kind === 'item' ? shut.needs.item : null;
+      return { kind: 'item', requirement, ...(missing === null ? {} : { itemId: missing }) };
     }
     case 'key': {
       const has = requirement.keyId !== undefined && traveller.keys?.includes(requirement.keyId);
@@ -519,102 +523,33 @@ export function edgeBlock(
       // not block — the mirror of the price above.
       return traveller.packKnown === true ? { kind: 'key', requirement } : null;
     }
-
     case 'item': {
-      const wanted = requirement.keyId;
-      if (wanted === undefined) return null;
-      // The mirror of `edgePenalty`'s first refusal: an item the character
-      // may not use blocks whatever the pack holds, and says which half.
+      // An item the character may not use blocks whatever the pack holds, and says which half.
       const gate = useGateShut(requirement, traveller);
       if (gate !== null) return { kind: gate, requirement };
-      if (traveller.keys?.includes(wanted)) return null;
-      return traveller.packKnown === true ? { kind: 'item', requirement } : null;
+      return gatedShut(requirement, traveller) === null ? null : { kind: 'item', requirement };
     }
-    case 'level': {
-      const level = traveller.level;
-      if (level === null || level === undefined) return null;
-      if (requirement.minLevel !== undefined && level < requirement.minLevel) {
-        return { kind: 'level', requirement };
-      }
-      if (requirement.maxLevel !== undefined && level > requirement.maxLevel) {
-        return { kind: 'level', requirement };
-      }
-      return null;
-    }
-    case 'toll': {
-      const purse = traveller.wealth;
-      // Nobody has said what the character has. Unknown never blocks — the
-      // reassuring answer is the dangerous one only when it *permits* harm,
-      // and refusing to route on an unread purse would strand every character
-      // whose inventory has not been listed yet.
-      if (purse === null || purse === undefined) return null;
-      const price = requirement.tollCopper;
-      // A gate whose price the realm did not record: the old behaviour, which
-      // is all that can be said without a number.
-      if (price === undefined) return purse <= 0 ? { kind: 'toll', requirement } : null;
-      return purse < price ? { kind: 'toll', requirement } : null;
-    }
-    /*
-     * The three the character *is*. Each is a mirror of its `edgePenalty`
-     * case, and each was a `null` with nothing to say about it until now:
-     * `class` shipped that way with todo 03, and `race` and `alignment` would
-     * have shipped that way with this one. A pruned edge nothing can explain
-     * reports *the two rooms are not joined in the data*, which is untrue and
-     * unactionable at the same time.
-     */
-    case 'class': {
-      const mine = traveller.classId;
-      if (mine === null || mine === undefined) return null;
-      if (requirement.classNo !== undefined && requirement.classNo === mine) {
-        return { kind: 'class', requirement };
-      }
-      if (requirement.classOk !== undefined && requirement.classOk !== mine) {
-        return { kind: 'class', requirement };
-      }
-      return null;
-    }
-
-    case 'race': {
-      const mine = traveller.raceId;
-      if (mine === null || mine === undefined) return null;
-      if (requirement.raceNo !== undefined && requirement.raceNo === mine) {
-        return { kind: 'race', requirement };
-      }
-      if (requirement.raceOk !== undefined && requirement.raceOk !== mine) {
-        return { kind: 'race', requirement };
-      }
-      return null;
-    }
-
-    case 'alignment': {
-      const mine = traveller.alignment;
-      const window = requirement.minAlignment;
-      if (mine === null || mine === undefined || window === undefined) return null;
-      const rank = alignmentRank(mine);
-      const low = alignmentRank(window);
-      const high = alignmentRank(requirement.maxAlignment ?? window);
-      if (rank === null || low === null || high === null) return null;
-      return rank >= low && rank <= high ? null : { kind: 'alignment', requirement };
-    }
-
-    /*
-     * The mirror of `edgePenalty`'s one refusal on the counters, and the only
-     * gate here a player can go away and *open*. `abilityGatesMet` is asked
-     * rather than the window compared again: three copies of *does this
-     * character pass* agree exactly until one is edited, which is the reason
-     * `openableHere` exists one kind across.
-     *
-     * Null on *nobody has said*, which is the rule every case above follows —
-     * an unread listing is discouraged and never pruned, so a block of this
-     * kind always names a counter the realm stated.
-     */
+    case 'level':
+    case 'toll':
+    case 'class':
+    case 'race':
+    case 'alignment':
     case 'ability':
-      return abilityGatesMet(requirement.abilities, traveller.counters) === false
-        ? { kind: 'ability', requirement }
-        : null;
-
-    default:
+      return gatedShut(requirement, traveller) === null
+        ? null
+        : { kind: requirement.kind, requirement };
+    case 'door':
+    case 'text':
+    case 'cast':
+    case 'spell':
+    case 'trap':
+    case 'timed':
+    case 'unknown':
       return null;
+    default: {
+      const never: never = requirement.kind;
+      return never;
+    }
   }
 }
 
@@ -630,33 +565,55 @@ export function edgeBlock(
  */
 const UNEVALUATED = 60;
 
+/** The exit kinds whose instruction is gates the one judge answers (`exitGates`). */
+type GatedKind = 'level' | 'toll' | 'class' | 'race' | 'alignment' | 'ability' | 'item';
+
 /**
- * Whether a hidden exit's levers want an item the pack does not hold.
- *
- * `missing` once the pack has been listed and lacks one; `unlisted` while
- * nobody has listed it and a lever wants something; null for a lever that
- * wants nothing or an item that is carried. Every lever is asked, wherever it
- * is pulled: a lever two rooms away that needs the talisman needs it there.
+ * What a gated exit costs once its gates pass, and while nobody has said.
+ * A level gate on an unread level is cheaper than an unread condition, and a
+ * toll costs its small price either way.
  */
-function actionItemLacking(
-  requirement: Requirement,
-  traveller: Traveller
-): 'missing' | 'unlisted' | null {
-  const wanted = (requirement.actions ?? [])
-    .map((act) => act.item)
-    .filter((item): item is number => item !== undefined);
-  if (wanted.length === 0) return null;
-  if (traveller.packKnown !== true) return 'unlisted';
-  return wanted.every((item) => traveller.keys?.includes(item)) ? null : 'missing';
+const GATED_PRICE: Record<GatedKind, { pass: number; unknown: number }> = {
+  level: { pass: 0, unknown: 20 },
+  toll: { pass: 8, unknown: 8 },
+  class: { pass: 0, unknown: UNEVALUATED },
+  race: { pass: 0, unknown: UNEVALUATED },
+  alignment: { pass: 0, unknown: UNEVALUATED },
+  ability: { pass: 0, unknown: UNEVALUATED },
+  item: { pass: 0, unknown: UNEVALUATED }
+};
+
+/** The judge's verdict on a gated exit, or null for one whose instruction gives no figure. */
+function gatedVerdict(requirement: Requirement, traveller: Traveller): Verdict | null {
+  const gates = exitGates(requirement);
+  return gates === null ? null : judgeAll(gates, traveller);
 }
 
-/** The first item a hidden exit's levers want that the listed pack lacks, for the refusal. */
-function actionItemMissing(requirement: Requirement, traveller: Traveller): number | null {
-  if (traveller.packKnown !== true) return null;
-  for (const act of requirement.actions ?? []) {
-    if (act.item !== undefined && !traveller.keys?.includes(act.item)) return act.item;
-  }
+/**
+ * A gated exit's price from the judge: a gate that fails, or wants something
+ * this character has not got, is a wall (`null`); one nobody has read is the
+ * unread price. Unknown never prunes: a character whose sheet nobody has read
+ * must still be given a route (todo 03: the crypt's fifteen class doors).
+ */
+function gatedPrice(
+  requirement: Requirement,
+  kind: GatedKind,
+  traveller: Traveller
+): number | null {
+  const verdict = gatedVerdict(requirement, traveller);
+  if (verdict === null) return UNEVALUATED;
+  if (verdict === 'pass') return GATED_PRICE[kind].pass;
+  if (verdict === 'unknown') return GATED_PRICE[kind].unknown;
   return null;
+}
+
+/** What shuts a gated exit to this character, on the verdict `gatedPrice` reads: null when it is open or unread. */
+function gatedShut(
+  requirement: Requirement,
+  traveller: Traveller
+): Exclude<Verdict, 'pass' | 'unknown'> | null {
+  const verdict = gatedVerdict(requirement, traveller);
+  return verdict === null || verdict === 'pass' || verdict === 'unknown' ? null : verdict;
 }
 
 /**
@@ -795,33 +752,9 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
       return traveller.packKnown === true ? null : UNEVALUATED;
     }
 
-    case 'level': {
-      const level = traveller.level;
-      if (level === null || level === undefined) return 20;
-      if (requirement.minLevel !== undefined && level < requirement.minLevel) return null;
-      if (requirement.maxLevel !== undefined && level > requirement.maxLevel) return null;
-      return 0;
-    }
-
-    case 'toll': {
-      /*
-       * The data **does** carry the amount, and the comment here used to say it
-       * did not — so a toll was pruned only for a character with exactly zero,
-       * and a character 495 copper short of a 5-gold gate was routed straight
-       * into it. That is the reported failure: the walk stopped at the gate,
-       * the refusal went unread, and the pending move it left disabled
-       * retaliation while a wild dog beat on a character that never swung back.
-       *
-       * `tollCopper` is the realm's own figure in copper (see `instructions.ts`
-       * for why it is gold on the way in). Unaffordable is a wall; affordable
-       * costs the small penalty a gate deserves for taking money.
-       */
-      const purse = traveller.wealth;
-      if (purse === null || purse === undefined) return 8;
-      const price = requirement.tollCopper;
-      if (price === undefined) return purse <= 0 ? null : 8;
-      return purse < price ? null : 8;
-    }
+    case 'level':
+    case 'toll':
+      return gatedPrice(requirement, requirement.kind, traveller);
 
     case 'hidden': {
       /*
@@ -833,9 +766,9 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * reason. Todo 13: a route was planned through *hold up talisman* at
        * the cost of a free lever, and the character had no talisman.
        */
-      const lacking = actionItemLacking(requirement, traveller);
-      if (lacking === 'missing') return null;
-      if (lacking === 'unlisted') return UNEVALUATED;
+      const levers = gatedVerdict(requirement, traveller);
+      if (levers === 'unknown') return UNEVALUATED;
+      if (levers !== null && levers !== 'pass') return null;
       /*
        * Searchable costs the search — `Barriers.searchFor` sends it.
        *
@@ -862,99 +795,11 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
       // Proportional to the hurt, floored so any trap is worth avoiding.
       return 20 + (requirement.damage ?? 0);
 
-    case 'class': {
-      /*
-       * **A class gate is as hard as a level gate, and the realm states it in
-       * numbers** (todo 03, 2026-09-06, reported as *"route from 1, 1377 to 1,
-       * 2260 took the wrong route ... it tried to go east at 1, 1422 which is
-       * the wrong class, it should have tried at 1, 1423"*).
-       *
-       * The shipped realm's crypt is fifteen rooms all called `Crypt, Shadowed
-       * Hall`, whose east exits read `Class: 1 OK` through `Class: 15 OK` —
-       * one class each. Priced as an unevaluable condition, every one of them
-       * cost the same, so A* took whichever lay on the shortest path: a
-       * Paladin (class 3) was routed through 1/1422's `Class: 6 OK` and
-       * answered `You may not go through this exit!`. The walk stopped, and
-       * `Errands.refusedEdges` then wrote a **real** corridor off for
-       * the rest of the session — the second cost, and the worse one.
-       *
-       * Nothing had to be learned to fix it: `WorldGraph.classId` already
-       * joined the sheet's word to the realm's row id for item restrictions,
-       * and the exit's own numbers were sitting in `raw`. What was missing was
-       * anybody asking.
-       *
-       * **Unknown stays discouraged, never pruned.** A character whose sheet
-       * nobody has read, or a realm converted before the class table, must
-       * still be given a route — the reassuring guess here is *I can pass*,
-       * and the cost of it is one refusal, where refusing to route at all
-       * strands the character. That is the same direction `level` takes for an
-       * unknown level.
-       */
-      const mine = traveller.classId;
-      if (mine === null || mine === undefined) return UNEVALUATED;
-      if (requirement.classNo !== undefined && requirement.classNo === mine) return null;
-      if (requirement.classOk !== undefined) return requirement.classOk === mine ? 0 : null;
-      // A gate that names neither side is one this reading cannot evaluate.
-      return UNEVALUATED;
-    }
-
-    case 'race': {
-      /*
-       * The class gate one column across, and priced identically because the
-       * server prices it identically: `RaceRestrictedExit` is
-       * `ClassRestrictedExit` with `Races` in place of `Classes`, down to the
-       * refusal it prints. Unknown stays discouraged rather than pruned, for
-       * the reason the class case gives at length.
-       */
-      const mine = traveller.raceId;
-      if (mine === null || mine === undefined) return UNEVALUATED;
-      if (requirement.raceNo !== undefined && requirement.raceNo === mine) return null;
-      if (requirement.raceOk !== undefined) return requirement.raceOk === mine ? 0 : null;
-      return UNEVALUATED;
-    }
-
-    case 'alignment': {
-      /*
-       * A window on the standing scale, and the one gate whose answer changes
-       * while the character stands still — evil points move with what it
-       * kills.
-       *
-       * That is why the *unknown* case matters more here than anywhere else:
-       * the standing comes off the `who` roster and nothing else, so for the
-       * first seconds of every session there is no answer at all. Discouraged,
-       * never pruned. A window the parse could not read leaves both ends
-       * absent and lands here too.
-       */
-      const mine = traveller.alignment;
-      const window = requirement.minAlignment;
-      if (mine === null || mine === undefined || window === undefined) return UNEVALUATED;
-      const rank = alignmentRank(mine);
-      const low = alignmentRank(window);
-      const high = alignmentRank(requirement.maxAlignment ?? window);
-      if (rank === null || low === null || high === null) return UNEVALUATED;
-      return rank >= low && rank <= high ? 0 : null;
-    }
-
+    case 'class':
+    case 'race':
+    case 'alignment':
     case 'ability':
-      /*
-       * `Ability: 0 w/value 0 to 0` is the realm's empty slot, and the server
-       * builds a plain exit for it — the parse drops the zero, so an absent id
-       * here *is* that exit and it costs nothing.
-       *
-       * Every other ability gate names a quest counter (`DaoLordQuest`,
-       * `Rune`, `Mandos Quest`, `GuildmasterQuest`), and `abil` states those
-       * outright. A gate this character **fails** never reaches here — it is
-       * refused a layer up, where a script's gate is — so the two answers left
-       * are *settled and passing*, which is a plain corridor and costs
-       * nothing, and *nobody has said*, which stays discouraged with the chip
-       * carrying the realm's own words for a person to judge by.
-       *
-       * Nothing is added to a gate that passes, unlike the script beside it: a
-       * room script has a `nomonsters` and a `takeitem` left unread after its
-       * gate is answered, and an `AbilityExit` is the gate and nothing else.
-       */
-      if (requirement.abilityId === undefined) return 0;
-      return abilityGatesMet(requirement.abilities, traveller.counters) === true ? 0 : UNEVALUATED;
+      return gatedPrice(requirement, requirement.kind, traveller);
 
     case 'cast':
       /*
@@ -1023,41 +868,10 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        */
       return 20 + (requirement.damage ?? 0);
 
-    case 'item': {
-      /*
-       * `Item: 191` — `rope and grapple`, on 157 of the shipped realm's exits.
-       * The server walks `Inventory.ItemStacks` for it, so the pack answers,
-       * and the pack is a maintained listing: `i` establishes it and every
-       * pick-up and drop keeps it true (`CharacterTracker.replayPack`).
-       *
-       * The three answers are the three states the pack can be in, and the
-       * middle one is the whole reason `packKnown` exists. Carried is free.
-       * **Listed and not in it is a wall** — the server refuses outright, and
-       * pricing that as merely discouraged is what walks a character into a
-       * refusal and has `Errands.refusedEdges` write a real corridor off
-       * for the session, which was todo 03's second and worse cost. Never
-       * listed is *nobody has looked*, which is discouraged and never pruned.
-       *
-       * An absent id is `Item: 0`, the realm's empty slot, which the server
-       * builds as a plain exit.
-       */
-      const wanted = requirement.keyId;
-      if (wanted === undefined) return 0;
-      /*
-       * **And whether the server will let it be used at all**, which the pack
-       * cannot answer: the token of Silvermere sat in a level-21 pack, the
-       * walk out of the Sandbar wanted a rope and grapple the pack lacked, so
-       * the last-resort landing planned `use token of Silvermere` and the
-       * server said *You are not experienced enough to make that trip!*
-       * (2026-09-21). The item row states level 25. Refused, not discouraged:
-       * a level is not something a detour fetches. Unknown never refuses,
-       * exactly as `equipBlock` never greys a row out on a sheet nobody has
-       * read.
-       */
+    case 'item':
+      // An item its holder may not use is a wall whatever the pack holds.
       if (useGateShut(requirement, traveller) !== null) return null;
-      if (traveller.keys?.includes(wanted)) return 0;
-      return traveller.packKnown === true ? null : UNEVALUATED;
-    }
+      return gatedPrice(requirement, requirement.kind, traveller);
 
     case 'timed':
       /*
@@ -1076,8 +890,11 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
       return UNEVALUATED;
 
     case 'unknown':
-    default:
       return 40;
+    default: {
+      const never: never = requirement.kind;
+      return never;
+    }
   }
 }
 
