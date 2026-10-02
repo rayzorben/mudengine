@@ -859,15 +859,8 @@ export class WorldGraph {
   }
 
   /**
-   * Where to buy a thing on the way to somewhere — best first (2026-09-16).
-   *
-   * Reported: a character in the Alchemist's Hut, asked to fetch a `log raft`
-   * for the Silver River, was told *nowhere to buy log raft: 2 rooms hold a
-   * shop called Boat Launch* — while standing on a route that walks **through**
-   * one of the two. Three separate mistakes met there, and this answers all
-   * three: the client ranked shops it could only address by **name**, priced
-   * that name at infinity the moment it stood in two rooms, and then asked
-   * `shopPlace` to resolve it and was refused for the ambiguity it had created.
+   * Where to buy a thing on the way to somewhere — best first (2026-09-16;
+   * a counter is addressed by room, never by its shop's name, which two rooms share).
    *
    * **The detour is the quantity.** Not the distance from here, which is what
    * this replaced: with the character's real pack, the nearest raft counter by
@@ -2455,6 +2448,11 @@ export class WorldGraph {
       }
     }
     return results;
+  }
+
+  /** Every item an exit demands, named — `Router.namedExitItems`. */
+  namedExitItems(): readonly number[] {
+    return this.router.namedExitItems();
   }
 
   /** A* from one room to another — `Router.route`. */
