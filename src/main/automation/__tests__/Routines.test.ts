@@ -922,6 +922,24 @@ describe('asking again for what entering the realm never read', () => {
     expect(sent).toEqual(['st', 'i', 'i']);
   });
 
+  it('sends the entry batch once automation is switched on, when it entered with it off', () => {
+    const { routines, sent } = sending(['st', 'i']);
+    const off = { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: ['st', 'i'] };
+    routines.configure(off);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+    routines.configure({ ...off, enabled: true });
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['st', 'i']);
+    // And the clock for asking again started with it.
+    vi.advanceTimersByTime(RETRY);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['st', 'i', 'st', 'i']);
+  });
+
   it('never sends what entering the realm does not ask for', () => {
     const { routines, sent } = sending(['who']);
     routines.onCharacter(inRealm);

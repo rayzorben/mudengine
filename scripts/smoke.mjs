@@ -1018,6 +1018,20 @@ async function waitFor(probe, tries = 60, every = 50) {
 }
 
 /**
+ * Waits for the room panel to hold the realm's answer. It opens before the
+ * lookup answers, its heading the pending name till then, and a read in
+ * between finds "This room" for any room (2026-10-02).
+ */
+const peekAnswered = () =>
+  waitFor(
+    async () =>
+      await evaluate(`(() => {
+        const heading = document.querySelector('.room-peek .popover-head h2');
+        return heading !== null && !${copyWhole('cards.roomPeek.pendingName')}.test(heading.innerText.trim());
+      })()`)
+  );
+
+/**
  * Waits until reading the page answers `want`, and hands back the last answer.
  *
  * The shape most of this file wanted: do a thing, wait for the page to say what
@@ -2689,7 +2703,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     })()
   `);
   check(clicked !== null, 'the map draws a room to point at', String(clicked));
-  await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+  await peekAnswered();
   const peek = await evaluate(`
     (() => {
       const panel = document.querySelector('.room-peek');
@@ -3256,7 +3270,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+  await peekAnswered();
   const planPeek = await evaluate(`
     (() => {
       const panel = document.querySelector('.room-peek');
@@ -3318,7 +3332,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       })()
     `);
     if (clicked === null) return null;
-    await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+    await peekAnswered();
     const read = await evaluate(`
       (() => {
         const panel = document.querySelector('.room-peek');
@@ -13489,7 +13503,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     buttons: 0,
     pointerType: 'mouse'
   });
-  await waitFor(async () => await evaluate(`!!document.querySelector('.room-peek')`));
+  await peekAnswered();
   const builderPeek = JSON.parse(
     await evaluate(`
       JSON.stringify((() => {
