@@ -19,6 +19,7 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import {
   clearWords,
+  planFights,
   plannedFetches,
   planRefusalsWords,
   type Plan,
@@ -34,6 +35,7 @@ import { bestTrainer, pricedOut, walkSurvived } from '../../shared/training';
 import {
   nameAnswersTo,
   roomId,
+  type PlanFight,
   type RoomId,
   type Route,
   type TrainerChoice
@@ -93,7 +95,13 @@ export interface TrainEvents {
  */
 type Way =
   | { kind: 'here' }
-  | { kind: 'route'; route: Route; needs: readonly PlannedFetch[]; then: Route }
+  | {
+      kind: 'route';
+      route: Route;
+      needs: readonly PlannedFetch[];
+      then: Route;
+      fights: readonly PlanFight[];
+    }
   | { kind: 'none'; why: string };
 
 /** A trainer some way reaches, with the walk there (none where the character stands in it). */
@@ -109,6 +117,12 @@ export interface TrainerAhead {
   trainer: TrainerChoice;
   /** Null while no route has been planned to its rooms yet (`aheadPlans`): not known. */
   reachable: boolean | null;
+  /**
+   * The fights the trip takes, with this character's odds: a key's dropper,
+   * a room to clear. They never make a trainer unreachable; whether to go is
+   * the caller's (the user, 2026-10-03). Empty where none, or not planned.
+   */
+  fights: readonly PlanFight[];
 }
 
 type Phase =
@@ -467,13 +481,20 @@ export class TrainErrand implements SessionModule {
       // The level in hand is always planned; another only where its rooms fit what is left.
       if (unplanned.size > 0 && index > 0 && unplanned.size > budget) {
         const cheapest = pool[0];
-        return cheapest === undefined ? null : { level, trainer: cheapest, reachable: null };
+        return cheapest === undefined
+          ? null
+          : { level, trainer: cheapest, reachable: null, fights: [] };
       }
       budget -= unplanned.size;
       const best = bestTrainer(this.reach(pool, ways).reached, tuning().train.costSlack);
-      if (best !== null) return { level, trainer: best.trainer, reachable: true };
+      if (best !== null) {
+        const fights = best.way.kind === 'route' ? best.way.fights : [];
+        return { level, trainer: best.trainer, reachable: true, fights };
+      }
       const cheapest = pool[0];
-      return cheapest === undefined ? null : { level, trainer: cheapest, reachable: false };
+      return cheapest === undefined
+        ? null
+        : { level, trainer: cheapest, reachable: false, fights: [] };
     });
   }
 
@@ -525,7 +546,7 @@ export class TrainErrand implements SessionModule {
     const lastFetch = made.steps.findLastIndex((step) => step.kind !== 'walk');
     const then = walked(made.steps.slice(lastFetch + 1));
     const route: Route = { ...walked(made.steps), cost: made.cost };
-    return { kind: 'route', route, needs: plannedFetches(made), then };
+    return { kind: 'route', route, needs: plannedFetches(made), then, fights: planFights(made) };
   }
 
   /** The purse, then the walk or the verb. One level is one attempt from here on. */

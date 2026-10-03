@@ -2714,6 +2714,7 @@ cards:
     stepKeptOutTitle: On your Places to Avoid list
     collectRequiredTooltip: This way assumes you carry it, so it is fetched first.
     fetchThenWalk: 'Get {itemName}, then walk'
+    fightsAlong: 'Fights on the way, with your odds:'
     fetchThenWalkTooltip: The way that opens once you carry this, walked after fetching it.
     stopShort: Stop before entering
     stopShortTooltip: Walk as far as {roomName} and stop there
@@ -5655,11 +5656,12 @@ gates:
   roll: rolls {stat} against {value}
   spellOff: not under {name}
   standing: '{low} to {high} only'
-# Why a plan to get somewhere has no way (`shared/navigation.ts`).
+# A plan to get somewhere: why it has no way, and the fights it takes (`shared/navigation.ts`).
 navigation:
   clearFirst: '{monsters} must be killed in {roomName} before the way on opens'
-  fightForItem: '{item} comes from {monster}, which you survive {survives} of the time'
-  fightInTheWay: '{monster} stands in the way, and you survive {survives} of the time'
+  fightForItem: '{item}: kill {monster} in {roomName} (you survive {survives} of the time)'
+  fightInTheWay: '{monster} in {roomName} stands in the way (you survive {survives} of the time)'
+  fightUnweighed: the fight with {monster} cannot be worked out from the world data
   noSource: nothing in the world data gives {item}
   noWay: no way there
   noWayBecause: 'no way there: {why}'

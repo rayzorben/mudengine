@@ -7,7 +7,7 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
-import { fetchAct, type FightOdds, type Plan, type PlannedFetch } from '../../shared/navigation';
+import { fetchAct, type Plan, type PlannedFetch } from '../../shared/navigation';
 import { fightOdds, Navigation } from './navigation';
 import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
@@ -117,6 +117,7 @@ import {
   roomId,
   type BuyingPlace,
   type Requirement,
+  type FightOdds,
   type RoomId,
   type Route,
   type TrainerChoice,

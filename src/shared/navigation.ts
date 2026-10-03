@@ -6,14 +6,7 @@
  * `mudengine-world` › *There is one navigation engine*.
  */
 import type { UiLookup } from './i18n';
-import type { RoomId, Route } from './world';
-
-/** Whether this character wins a fight, as combat would weigh it before opening. */
-export type FightOdds =
-  | { kind: 'win' }
-  | { kind: 'lose'; survives: number }
-  /** The simulator has not finished the fight yet. */
-  | { kind: 'unread' };
+import type { FightOdds, PlanFight, RoomId, Route } from './world';
 
 /** What the plan asks of the session about this character, beyond the route. */
 export interface NavigationOracle {
@@ -32,13 +25,15 @@ export type PlanStep =
   | { kind: 'walk'; route: Route }
   | { kind: 'buy'; item: PlannedItem; room: RoomId }
   | { kind: 'ask'; item: PlannedItem; room: RoomId; say: string }
-  /** Kill `monster` here for the item; `summon` brings it first. */
+  /** Kill `monster` here for the item; `summon` brings it first. `odds` is the worse of the two. */
   | {
       kind: 'kill';
       item: PlannedItem;
       monster: string;
       room: RoomId;
+      roomName: string;
       summon?: { say: string } | { by: string };
+      odds: FightOdds;
     }
   /** Kill what stands in this room, which a way through it wants empty (`nomonsters`). */
   | ClearStep;
@@ -48,6 +43,54 @@ export interface ClearStep {
   room: RoomId;
   name: string;
   monsters: string[];
+  /** The worst of the fights with them. */
+  odds: FightOdds;
+}
+
+/**
+ * The worse of two fights: the lower share walked out of, and a fight not
+ * worked out yet worse than any, since unknown is the unsafe case.
+ */
+export function worseOdds(a: FightOdds, b: FightOdds): FightOdds {
+  return shareOf(b) < shareOf(a) ? b : a;
+}
+
+/** A fight's share walked out of for ranking: unread is none, an unweighable win is all. */
+export function shareOf(odds: FightOdds): number {
+  return odds.kind === 'unread' ? -1 : (odds.survives ?? 1);
+}
+
+/** The fights a plan takes, in order: each key's dropper and each room it clears. */
+export function planFights(plan: Plan): PlanFight[] {
+  if (plan.kind === 'refused') return [];
+  return plan.steps.flatMap((step): PlanFight[] => {
+    if (step.kind === 'kill') {
+      const summoner = step.summon !== undefined && 'by' in step.summon ? [step.summon.by] : [];
+      const monsters = [...summoner, step.monster];
+      return [{ monsters, roomName: step.roomName, item: step.item.name, odds: step.odds }];
+    }
+    if (step.kind === 'clear') {
+      return [{ monsters: step.monsters, roomName: step.name, item: null, odds: step.odds }];
+    }
+    return [];
+  });
+}
+
+/** One fight on a planned way, in words, with the odds (`Route.fights`). */
+export function fightWords(fight: PlanFight, t: UiLookup): string {
+  const { odds } = fight;
+  const monster = fight.monsters.join(', ');
+  if (odds.kind === 'unread') return t('navigation.oddsUnread', { monster });
+  if (odds.survives === null) return t('navigation.fightUnweighed', { monster });
+  const survives = `${Math.round(odds.survives * 100)}%`;
+  return fight.item === null
+    ? t('navigation.fightInTheWay', { monster, survives, roomName: fight.roomName })
+    : t('navigation.fightForItem', {
+        item: fight.item,
+        monster,
+        survives,
+        roomName: fight.roomName
+      });
 }
 
 /** What a room to clear asks, in words. */
@@ -106,10 +149,6 @@ export type PlanRefusal =
   | { kind: 'no-source'; item: PlannedItem }
   /** Every source is somewhere this character cannot reach with what it holds by then. */
   | { kind: 'out-of-reach'; item: PlannedItem }
-  /** The only sources are fights this character loses. */
-  | { kind: 'fight'; item: PlannedItem | null; monster: string; survives: number }
-  /** A fight the simulator has not finished; asked again shortly. */
-  | { kind: 'odds-unread'; item: PlannedItem | null; monster: string }
   /** The only sources are counters the purse does not cover. */
   | { kind: 'purse'; item: PlannedItem };
 
@@ -142,18 +181,6 @@ export function planRefusalWords(refusal: PlanRefusal, t: UiLookup): string {
       return t('navigation.noSource', { item: refusal.item.name });
     case 'out-of-reach':
       return t('navigation.outOfReach', { item: refusal.item.name });
-    case 'fight': {
-      const survives = `${Math.round(refusal.survives * 100)}%`;
-      return refusal.item === null
-        ? t('navigation.fightInTheWay', { monster: refusal.monster, survives })
-        : t('navigation.fightForItem', {
-            item: refusal.item.name,
-            monster: refusal.monster,
-            survives
-          });
-    }
-    case 'odds-unread':
-      return t('navigation.oddsUnread', { monster: refusal.monster });
     case 'purse':
       return t('navigation.purse', { item: refusal.item.name });
     default: {

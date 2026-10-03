@@ -42,6 +42,12 @@ export interface OddsBookSession {
 /** What a reader asks the book: one monster alone, or a lair. */
 export type OddsReader = Pick<OddsBook, 'mob' | 'lair'>;
 
+/** What the session holds of the book: the readers, the what-if, and its life. */
+export type SessionOdds = Pick<
+  OddsBook,
+  'refresh' | 'mob' | 'mobAs' | 'lair' | 'lairsLeft' | 'reset' | 'dispose'
+>;
+
 /**
  * The book and the character half it runs with, built together: `Appraisal`
  * runs the room as it stands with the same `FightSetup`.
@@ -126,6 +132,18 @@ export class OddsBook implements SessionModule {
     if (known !== undefined) return known;
     this.promote(`mob:${name}`, { kind: 'mob', name }, true);
     return PENDING;
+  }
+
+  /**
+   * One monster fought alone by `as` (the character in other gear, or at
+   * another level), run now rather than queued and kept nowhere: one whole
+   * fight, so a caller asks for one at a time.
+   */
+  mobAs(name: string, as: CharacterState): Odds {
+    const started = this.start(as, { kind: 'mob', name });
+    if ('kind' in started) return started;
+    started.run(() => false);
+    return { kind: 'run', survival: started.result() };
   }
 
   /** A lair's fight: as many as it holds at its cap, drawn from its rows. */

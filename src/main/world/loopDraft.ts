@@ -42,7 +42,10 @@ import type { Traveller, WorldGraph } from './WorldGraph';
  * and the lap weighs that fight when it walks there. Keys and walls are the
  * engine's either way.
  */
-const DRAFTED: NavigationOracle = { fight: () => ({ kind: 'win' }), affords: () => null };
+const DRAFTED: NavigationOracle = {
+  fight: () => ({ kind: 'win', survives: null }),
+  affords: () => null
+};
 
 /** One leg as a lap walks it (`leg`), for a draft. */
 function lapLeg(graph: PlanWorld, from: RoomId, to: RoomId, traveller: Traveller): Route {

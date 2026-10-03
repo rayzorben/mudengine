@@ -651,9 +651,10 @@ export class AutoCombat implements SessionModule {
   }
 
   /**
-   * A monster a quest step wants dead, fought by name whatever the policy
-   * says about it — `engage: none`, a disposition the realm does not call
-   * hostile, a cap on health or experience. Not past the three refusals that
+   * A monster a quest step or a planned key wants dead, fought by name
+   * whatever the policy says about it — `engage: none`, a disposition the
+   * realm does not call hostile, a cap on health or experience, the odds
+   * `openAbove` asks for. Not past the three refusals that
    * are not settings (a player, something unplaced, a monster the realm is
    * sure is good), not past a stance row, and not past somebody else's
    * claim on it. Session-scoped, like `AutoLoot.alsoTake`.
@@ -1498,8 +1499,15 @@ export class AutoCombat implements SessionModule {
       return;
     }
 
-    // A fight it would not walk out of is not opened. A party's is the leader's call.
-    const odds = joined === null ? this.wontSurvive(state, choice.target) : null;
+    /*
+     * A fight it would not walk out of is not opened. A party's is the
+     * leader's call, and a planned one the plan's: the player or the planner
+     * chose to go on those odds (the user, 2026-10-03).
+     */
+    const odds =
+      joined === null && !this.isWanted(choice.target)
+        ? this.wontSurvive(state, choice.target)
+        : null;
     if (odds !== null) {
       this.decline(choice.target, odds);
       return;

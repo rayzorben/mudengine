@@ -3848,6 +3848,27 @@ describe('opening only a fight it walks out of', () => {
     expect(auto.restingFor).toBe(34);
   });
 
+  /*
+   * A planned kill (a key's dropper, a quest's) is opened on any odds: the
+   * plan showed them and the player, or the planner, chose to go (the user,
+   * 2026-10-03). The same fight the test above refuses.
+   */
+  it('opens a fight survived too seldom where the plan asked for it', () => {
+    const auto = make(
+      combat(),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard(odds(0.6, 5))
+    );
+    auto.alsoFight('thug');
+    auto.onCharacter(at(30));
+    drain();
+    expect(sent).toEqual(['a thug']);
+  });
+
   it('leaves a fight nobody can work out to the run and the hang-up', () => {
     make(combat(), true, undefined, undefined, undefined, undefined, guard(null)).onCharacter(
       at(34)

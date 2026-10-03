@@ -21,12 +21,14 @@ import {
   roomId,
   trapsAlong,
   type Direction,
+  type PlanFight,
   type RoomId,
   type Route,
   type RouteBlock,
   type RouteStep,
   type WorldRoom
 } from '@shared/world';
+import { fightWords } from '@shared/navigation';
 import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
 import type { Replanned, WalkStart } from '@shared/movement';
@@ -95,6 +97,26 @@ function roundWay(route: Route): Route | null {
 }
 
 /** Every item's name, for the one sentence that names what is fetched. */
+/**
+ * The fights a planned way takes, with the odds: shown, and the player
+ * decides (the user, 2026-10-03). Nothing where it takes none.
+ */
+function PlanFights({ fights }: { fights: readonly PlanFight[] | undefined }) {
+  if (fights === undefined || fights.length === 0) return null;
+  return (
+    <div className="route-needs" data-route-fights={fights.length}>
+      {t('cards.route.fightsAlong')}
+      <ul className="route-blocked">
+        {fights.map((fight, index) => (
+          <li data-odds={fight.odds.kind} key={`${fight.monsters.join()}-${index}`}>
+            {fightWords(fight, t)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function named(items: ReadonlyArray<{ name: string }>): string {
   return items.map((item) => item.name).join(', ');
 }
@@ -992,24 +1014,27 @@ export default function RoutePanel({
                     const wanted = unlocks === undefined ? [] : itemsWanted(unlocks);
                     if (unlocks === undefined || wanted.length === 0) return null;
                     return (
-                      <div className="route-fetch">
-                        <button
-                          className="primary"
-                          onClick={() => {
-                            void onCollectThenWalk(wanted, unlocks, false)
-                              .then((reason) => {
-                                setRefused(reason);
-                                if (reason === null) onClose();
-                              })
-                              .catch((error) => setRefused(errorMessage(error)));
-                          }}
-                          onMouseDown={keepFocus}
-                          title={t('cards.route.fetchThenWalkTooltip')}
-                          type="button"
-                        >
-                          {t('cards.route.fetchThenWalk', { itemName: named(wanted) })}
-                        </button>
-                      </div>
+                      <>
+                        <PlanFights fights={unlocks.fights} />
+                        <div className="route-fetch">
+                          <button
+                            className="primary"
+                            onClick={() => {
+                              void onCollectThenWalk(wanted, unlocks, false)
+                                .then((reason) => {
+                                  setRefused(reason);
+                                  if (reason === null) onClose();
+                                })
+                                .catch((error) => setRefused(errorMessage(error)));
+                            }}
+                            onMouseDown={keepFocus}
+                            title={t('cards.route.fetchThenWalkTooltip')}
+                            type="button"
+                          >
+                            {t('cards.route.fetchThenWalk', { itemName: named(wanted) })}
+                          </button>
+                        </div>
+                      </>
                     );
                   })()}
                 </>
@@ -1021,6 +1046,7 @@ export default function RoutePanel({
                   way round it, side by side (todo 806): steps and what each
                   is expected to cost, and nothing walks until one is picked.
                   A choice the client would otherwise make for them. */}
+                  <PlanFights fights={route.fights} />
                   {route.keptOut !== undefined &&
                     (() => {
                       const { words, round } = route.keptOut;

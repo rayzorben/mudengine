@@ -3349,6 +3349,27 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
   }
 }
 
+/**
+ * This character's odds in one fight, as combat weighs it before opening:
+ * `win` opens by combat's rule, `lose` does not. `survives` is the simulator's
+ * share of fights walked out of, null on a `win` the simulator cannot run.
+ */
+export type FightOdds =
+  | { kind: 'win'; survives: number | null }
+  | { kind: 'lose'; survives: number }
+  /** The simulator has not finished the fight yet. */
+  | { kind: 'unread' };
+
+/** A fight a planned way takes: a key's dropper (`item`), or a room it wants empty. */
+export interface PlanFight {
+  /** Who is fought: the dropper, its summoner first where one brings it, or a room's monsters. */
+  monsters: string[];
+  roomName: string;
+  /** The item the fight is for; null for a room the way wants empty. */
+  item: string | null;
+  odds: FightOdds;
+}
+
 export interface Route {
   steps: RouteStep[];
   /** Total A* cost, not step count: a door costs more than a corridor. */
@@ -3463,6 +3484,13 @@ export interface Route {
    * press that walks it collects them first (`itemsWanted`).
    */
   needs?: Array<{ id: number; name: string }>;
+  /**
+   * The fights this way takes, each with this character's odds: on an
+   * `unlocks` route a key's dropper and a room it wants empty, on a walk the
+   * rooms it wants empty. Shown, and a walk the player asks for fights them on
+   * any odds; never a reason to refuse the way (the user, 2026-10-03).
+   */
+  fights?: PlanFight[];
   /**
    * What this way crosses that `movement.keepOutOf` names, and the way round
    * it (todo 806) — set on a route planned for a reader whose way through

@@ -20,8 +20,23 @@ function walk(count: number): PlanStep {
 
 describe('the fetches of a plan', () => {
   it('counts the moves to each from where the one before it left off', () => {
-    const troll = { kind: 'kill', item: KEY, monster: 'troll', room: '1/3' } as const;
-    const mummy = { kind: 'kill', item: BONE, monster: 'mummy', room: '1/9' } as const;
+    const won = { kind: 'win', survives: null } as const;
+    const troll = {
+      kind: 'kill',
+      item: KEY,
+      monster: 'troll',
+      room: '1/3',
+      roomName: 'Cave',
+      odds: won
+    } as const;
+    const mummy = {
+      kind: 'kill',
+      item: BONE,
+      monster: 'mummy',
+      room: '1/9',
+      roomName: 'Tomb',
+      odds: won
+    } as const;
     const plan: Plan = {
       kind: 'plan',
       steps: [walk(3), troll, walk(4), walk(2), mummy, walk(5)],

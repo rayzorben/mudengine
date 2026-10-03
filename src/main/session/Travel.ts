@@ -153,7 +153,7 @@ export interface TravelParts {
     | 'strayedFrom'
     | 'place'
   >;
-  readonly combat: Pick<AutoCombat, 'willFight'>;
+  readonly combat: Pick<AutoCombat, 'willFight' | 'alsoFight' | 'stopFighting'>;
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon'>;
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
@@ -378,6 +378,12 @@ export class Travel implements SessionModule {
   private walkRun = false;
   /** True only inside `startAsked`'s own `Walker.start`. See `walkStarted`. */
   private startingAsked = false;
+  /**
+   * The monsters of the rooms the asked walk must empty (`Route.fights`),
+   * fought whatever the odds while it runs: the panel showed them and the
+   * player chose to go (the user, 2026-10-03). See `clearFor`.
+   */
+  private clearing: readonly string[] = [];
   /** Who the party waits for, and the one clock on it (todo 831). See `PartyWait`. */
   private readonly partyWait: PartyWait;
 
@@ -501,6 +507,16 @@ export class Travel implements SessionModule {
     if (this.startingAsked) return;
     this.walkAsked = false;
     this.walkRun = false;
+    this.clearFor(null);
+  }
+
+  /** The rooms this asked route must empty, fought on any odds; null lets them go. */
+  private clearFor(route: Route | null): void {
+    for (const mob of this.clearing) this.combat.stopFighting(mob);
+    this.clearing = (route?.fights ?? []).flatMap((fight) =>
+      fight.item === null ? fight.monsters : []
+    );
+    for (const mob of this.clearing) this.combat.alsoFight(mob);
   }
 
   /**
@@ -538,6 +554,7 @@ export class Travel implements SessionModule {
     // Arrived, the choice to cross is spent: see `crossing`.
     if (arrived && this.walkAsked) this.crossing = null;
     if (arrived && this.walkAsked && this.walkRun) this.combatOnAfterRun();
+    this.clearFor(null);
     this.walkAsked = false;
     this.walkRun = false;
     this.settleStepBack(arrived);
@@ -1858,6 +1875,7 @@ export class Travel implements SessionModule {
     // it on the panel over the way round: planned again the same way later.
     const last = route.steps.at(-1);
     this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
+    this.clearFor(route);
     if (!run || !this.session.config().combat.enabled) return null;
     if (!this.session.switchAutomation('combat', false)) {
       const reason = t('automation.combat.runRefused');

@@ -11,9 +11,10 @@ import { leg, plan } from '../world/navigation/plan';
 import { planRealmOf } from '../world/navigation/realm';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { unfoughtShare } from '../../shared/danger';
-import type { FightOdds, NavigationOracle, Plan } from '../../shared/navigation';
+import type { NavigationOracle, Plan } from '../../shared/navigation';
 import {
   roomAddress,
+  type FightOdds,
   type Requirement,
   type RoomId,
   type Route,
@@ -128,7 +129,8 @@ export function worldNearest(
 
 /**
  * Whether combat would open on a monster where it stands, by the rule it opens
- * by (`unfoughtShare` against `openAbove`): one of the room's lair is weighed
+ * by (`unfoughtShare` against `openAbove`), with the share walked out of
+ * wherever the simulator ran it: one of the room's lair is weighed
  * with the whole lair at its cap, as combat meets it there; any other monster
  * (a resident, a summoner, one met away from its lair) on its own.
  */
@@ -141,7 +143,11 @@ export function fightOdds(
   const known = room === null ? undefined : world.byId(room);
   const inLair = known !== undefined && world.lairOf(known).some((mob) => mob.name === monster);
   const fight = inLair ? odds.lair(known) : odds.mob(monster);
+  // Not run yet is unread whatever `openAbove` says; only one nobody can run is a win unweighed.
+  if (fight.kind === 'pending' || fight.kind === 'unread') return { kind: 'unread' };
   const survives = unfoughtShare(fight, tuning().combat.openAbove);
-  if (survives === undefined) return { kind: 'win' };
+  if (survives === undefined) {
+    return { kind: 'win', survives: fight.kind === 'run' ? fight.survival.survives : null };
+  }
   return survives === null ? { kind: 'unread' } : { kind: 'lose', survives };
 }

@@ -7791,6 +7791,13 @@ button.quest-plan-back {
   padding-top: 4px;
 }
 
+/* A fight on a planned way that combat would not open by its own rule: still
+   shown and still walkable, the odds marked tonally. */
+.route-blocked > li[data-odds='lose'],
+.route-blocked > li[data-odds='unread'] {
+  color: color-mix(in srgb, var(--warn) 70%, var(--text-lo));
+}
+
 /*
  * The way through what the player keeps out of and the way round it (todo
  * 806): two cards side by side, one question, the pick drawn tonal — never a

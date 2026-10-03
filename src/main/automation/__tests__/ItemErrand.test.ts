@@ -80,6 +80,8 @@ function errand(over: Partial<ItemPlanner> = {}, now?: () => number): ItemErrand
       looping = false;
     },
     combatOn: () => true,
+    fightFor: () => {},
+    stopFighting: () => {},
     alsoTake: (name) => taking.push(name),
     stopTaking: (name) => {
       taking = taking.filter((entry) => entry !== name);
@@ -441,7 +443,14 @@ describe('collecting what a route needs', () => {
   });
 
   it('fetches a planned item where the plan gets it, without judging its sources again', () => {
-    const step: FetchStep = { kind: 'kill', item: KEY, monster: 'troll', room: '1/2678' };
+    const step: FetchStep = {
+      kind: 'kill',
+      item: KEY,
+      monster: 'troll',
+      room: '1/2678',
+      roomName: 'A Muddy Cave',
+      odds: { kind: 'win', survives: null }
+    };
     const planned: PlannedFetch = { step, moves: 39 };
     const asked: PlannedFetch[] = [];
     const auto = errand({
@@ -464,6 +473,45 @@ describe('collecting what a route needs', () => {
     expect(loops).toHaveLength(1);
     const where = { item: KEY.name, mob: 'troll', room: 'Troll Den', steps: 39 };
     expect(notices).toContain(t('automation.collect.hunting', where));
+  });
+
+  /* The plan chose the dropper on its odds, so combat fights it whatever they are, and only while this runs. */
+  it('has combat fight a planned dropper while the hunt runs, and lets go when it ends', () => {
+    const step: FetchStep = {
+      kind: 'kill',
+      item: KEY,
+      monster: 'troll',
+      room: '1/2678',
+      roomName: 'Troll Den',
+      odds: { kind: 'lose', survives: 0.4 }
+    };
+    const fought: string[] = [];
+    const auto = errand({
+      sourcesFrom: () => ({
+        shops: [],
+        ...dropped([{ id: '1/2678', name: 'Troll Den', mob: 'troll', steps: 3 }])
+      }),
+      fightFor: (mob) => void fought.push(mob),
+      stopFighting: (mob) => {
+        fought.splice(fought.indexOf(mob), 1);
+      }
+    });
+    expect(auto.collect([{ ...KEY, from: { step, moves: 3 } }], OWED, ready())).toBeNull();
+    expect(fought).toEqual(['troll']);
+    auto.abandon('test');
+    expect(fought).toEqual([]);
+  });
+
+  it("leaves an unplanned dropper to combat's own rule", () => {
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'zombie', steps: 4 }])
+    };
+    const fought: string[] = [];
+    const auto = errand({ fightFor: (mob) => void fought.push(mob) });
+    expect(auto.collect([KEY], OWED, ready())).toBeNull();
+    expect(loops).toHaveLength(1);
+    expect(fought).toEqual([]);
   });
 
   it('refuses before setting off where the room a plan went to is gone', () => {

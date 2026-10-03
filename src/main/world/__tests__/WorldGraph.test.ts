@@ -36,7 +36,10 @@ import type { QuestStep } from '../../../shared/quests';
 import type { NavigationOracle } from '../../../shared/navigation';
 
 /** Every fight won and every counter paid: what a quest plan's way is weighed on here. */
-const WINS: NavigationOracle = { fight: () => ({ kind: 'win' }), affords: () => true };
+const WINS: NavigationOracle = {
+  fight: () => ({ kind: 'win', survives: null }),
+  affords: () => true
+};
 
 /** Writes a throwaway world file in the format `build-world.mjs` emits. */
 function makeWorld(

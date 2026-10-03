@@ -114,7 +114,7 @@ function travel(
       strayedFrom: null,
       place: null
     },
-    combat: { willFight: true },
+    combat: { willFight: true, alsoFight: vi.fn(), stopFighting: vi.fn() },
     supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn() },
     trainLevel: { busy: false, abandon: vi.fn() },
     outgrown: { busy: false, abandon: vi.fn() },
@@ -384,7 +384,9 @@ describe('collecting before a walk', () => {
       kind: 'kill',
       item: { id: 1, name: 'rope' },
       monster: 'troll',
-      room: '1/9'
+      room: '1/9',
+      roomName: 'Cave',
+      odds: { kind: 'win', survives: null }
     } as const;
     const route: Route = {
       steps: [
@@ -462,6 +464,23 @@ describe('a route run with auto-combat off', () => {
     moving.walkStarted();
     moving.walkEnded(true);
     expect(combat.flips).toEqual([false]);
+  });
+
+  /* A room the way must empty is fought on any odds while the asked walk runs (2026-10-03). */
+  it('fights the rooms the asked route must empty, and lets them go when it ends', () => {
+    const { travel: moving, parts } = running(config);
+    const clearing: Route = {
+      ...ROUTE,
+      fights: [
+        { monsters: ['hydra'], roomName: 'Pit', item: null, odds: { kind: 'lose', survives: 0.2 } },
+        { monsters: ['troll'], roomName: 'Cave', item: 'iron key', odds: { kind: 'unread' } }
+      ]
+    };
+    expect(moving.walkRoute(clearing)).toBeNull();
+    expect(parts.combat.alsoFight).toHaveBeenCalledWith('hydra');
+    expect(parts.combat.alsoFight).not.toHaveBeenCalledWith('troll');
+    moving.walkEnded(true);
+    expect(parts.combat.stopFighting).toHaveBeenCalledWith('hydra');
   });
 
   it('leaves it off when the run stops short', () => {

@@ -2,18 +2,20 @@
  * The plan to get from one room to another, whole before the first step: the
  * keys the way wants (`keysWanted`), each fetched from where the realm gives
  * it (`sources.ts`) in the order they can be had, so a key behind an earlier
- * key's door comes after it; the fights it takes, weighed as combat weighs
- * them; and the rooms a way wants empty, cleared. A route that crosses a wall
- * is never a way, and every leg is planned before the first is walked, so a
- * one-way move is only planned where the plan from its far side exists.
+ * key's door comes after it; the fights it takes, each carrying this
+ * character's odds and never a reason to refuse (the user, 2026-10-03); and
+ * the rooms a way wants empty, cleared. A route that crosses a wall is never
+ * a way, and every leg is planned before the first is walked, so a one-way
+ * move is only planned where the plan from its far side exists.
  * `mudengine-world` › *There is one navigation engine*.
  */
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import {
   isFetch,
+  planFights,
   planRefusalsWords,
-  type FightOdds,
+  worseOdds,
   type NavigationOracle,
   type Plan,
   type PlannedItem,
@@ -24,6 +26,7 @@ import {
   blockItem,
   describeBlock,
   itemDemanded,
+  type FightOdds,
   type RoomId,
   type Route
 } from '../../../shared/world';
@@ -141,7 +144,7 @@ type Leg =
 /**
  * The walk from one room to another holding these items, split at every way
  * through that wants its room empty (`nomonsters`): walk there, clear it,
- * walk on. Every monster standing there is a fight weighed first.
+ * walk on. The clear carries the worst of its fights.
  */
 function walk(
   realm: PlanRealm,
@@ -172,12 +175,9 @@ function walk(
     const monsters = [...realm.standing(room)];
     // Nobody standing there: the way is open as it is.
     if (monsters.length === 0) continue;
-    for (const monster of monsters) {
-      const refusal = refusedFight(oracle.fight(monster, room), monster, null);
-      if (refusal !== null) return { kind: 'refused', refusal };
-    }
+    const odds = oddsOf(oracle, monsters, room);
     if (index > start) steps.push(part(start, index));
-    steps.push({ kind: 'clear', room, name: realm.roomName(room), monsters });
+    steps.push({ kind: 'clear', room, name: realm.roomName(room), monsters, odds });
     cost += tuning().world.fightCost;
     start = index;
   }
@@ -186,31 +186,16 @@ function walk(
   return { kind: 'leg', steps, cost };
 }
 
-/** A fight that stops the plan, or null where this character wins it. */
-function refusedFight(
-  odds: FightOdds,
-  monster: string,
-  item: PlannedItem | null
-): PlanRefusal | null {
-  switch (odds.kind) {
-    case 'win':
-      return null;
-    case 'lose':
-      return { kind: 'fight', item, monster, survives: odds.survives };
-    case 'unread':
-      return { kind: 'odds-unread', item, monster };
-    default: {
-      const never: never = odds;
-      return never;
-    }
-  }
+/** The worst of these fights where they stand. */
+function oddsOf(oracle: NavigationOracle, monsters: readonly string[], room: RoomId): FightOdds {
+  return monsters
+    .map((monster) => oracle.fight(monster, room))
+    .reduce((worst, odds) => worseOdds(worst, odds));
 }
 
 /** How telling a refusal is, so the one said for an item is the most useful. */
 function weight(refusal: PlanRefusal): number {
   switch (refusal.kind) {
-    case 'fight':
-    case 'odds-unread':
     case 'purse':
       return 3;
     case 'out-of-reach':
@@ -226,8 +211,13 @@ function weight(refusal: PlanRefusal): number {
   }
 }
 
-/** The step that gets the item at a source. */
-function actionAt(source: ItemSource, item: PlannedItem): PlanStep {
+/** The step that gets the item at a source; a kill carries the odds of its fights. */
+function actionAt(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  source: ItemSource,
+  item: PlannedItem
+): PlanStep {
   switch (source.kind) {
     case 'buy':
       return { kind: 'buy', item, room: source.room };
@@ -239,7 +229,9 @@ function actionAt(source: ItemSource, item: PlannedItem): PlanStep {
         item,
         monster: source.monster,
         room: source.room,
-        ...(source.summon === undefined ? {} : { summon: source.summon })
+        roomName: realm.roomName(source.room),
+        ...(source.summon === undefined ? {} : { summon: source.summon }),
+        odds: oddsOf(oracle, fightsOf(source), source.room)
       };
     default: {
       const never: never = source;
@@ -262,10 +254,10 @@ export function plan(
 
 /**
  * The walk from one room to another with what is held now: the direct route,
- * where the plan fetches nothing. A room on it that wants emptying is walked
- * into as any lair is, once the plan has weighed the fight there and it is
- * won. A plan that fetches first is no walk yet: refused, with the planned way
- * and its keys in order (`unlocks`) for whoever fetches them.
+ * where the plan fetches nothing, carrying the fights of the rooms it wants
+ * emptied (`fights`) for the panel to show and the walk to fight. A plan that
+ * fetches first is no walk yet: refused, with the planned way, its keys in
+ * order and its fights (`unlocks`) for whoever fetches them.
  */
 export function leg(
   realm: PlanRealm,
@@ -280,6 +272,8 @@ export function leg(
   if (made.kind === 'refused') return refusedLeg(direct, planRefusalsWords(made.refusals, t));
   const keyed = keyedRoute(made);
   if (keyed !== null) return { ...refusedLeg(direct, noWayWords(direct)), unlocks: keyed };
+  const fights = planFights(made);
+  const fought = fights.length === 0 ? direct : { ...direct, fights };
   // Fetching nothing, the plan walked the direct route as it was. For a
   // reader, the way round what the player keeps out of is planned as a walk
   // too, and a way through a door the walk went round is weighed.
@@ -289,9 +283,9 @@ export function leg(
     options.alternatives === true && direct.keysAhead === true
       ? keyedOffer(realm, oracle, from, to, traveller, direct)
       : null;
-  if (round === null && offered === null) return direct;
+  if (round === null && offered === null) return fought;
   return {
-    ...direct,
+    ...fought,
     ...(round === null || keptOut === undefined ? {} : { keptOut: { ...keptOut, round } }),
     ...(offered === null ? {} : { unlocks: offered })
   };
@@ -301,11 +295,13 @@ export function leg(
 function keyedRoute(made: Extract<Plan, { kind: 'plan' }>): Route | null {
   const needs = made.steps.flatMap((step) => (isFetch(step) ? [step.item] : []));
   if (needs.length === 0) return null;
+  const fights = planFights(made);
   return {
     steps: made.steps.flatMap((step) => (step.kind === 'walk' ? step.route.steps : [])),
     cost: made.cost,
     blocked: false,
-    needs
+    needs,
+    ...(fights.length === 0 ? {} : { fights })
   };
 }
 
@@ -434,7 +430,12 @@ function acquire(
     };
     // Every source priced with one sweep; the full leg is planned only for the
     // cheapest that this character can have, in price order.
-    const candidates: Array<{ item: PlannedItem; source: ItemSource; price: number }> = [];
+    const candidates: Array<{
+      item: PlannedItem;
+      source: ItemSource;
+      price: number;
+      step: PlanStep;
+    }> = [];
     // In a fixed order, the item at the position of how many are fetched so far.
     const fetched = needs.length - wanted.length;
     const next = order === null ? wanted : wanted.filter((item) => item.id === order[fetched]?.id);
@@ -448,27 +449,28 @@ function acquire(
           refuse({ kind: 'out-of-reach', item });
           continue;
         }
-        const lost = fightsOf(source)
-          .map((monster) => refusedFight(oracle.fight(monster, source.room), monster, item))
-          .find((refusal) => refusal !== null);
-        if (lost !== undefined && lost !== null) {
-          refuse({ ...lost, item });
-          continue;
-        }
         if (source.kind === 'buy' && oracle.affords(item.id, source.room) === false) {
           refuse({ kind: 'purse', item });
           continue;
         }
         const price = priced.cost + fightsOf(source).length * tuning().world.fightCost;
-        candidates.push({ item, source, price });
+        candidates.push({ item, source, price, step: actionAt(realm, oracle, source, item) });
       }
     }
-    candidates.sort((a, b) => a.price - b.price);
+    /*
+     * A source whose fight opens by combat's rule ahead of one whose does not,
+     * then the cheaper: a losing fight is planned where it is the only way,
+     * never chosen over a winnable one further off.
+     */
+    const opens = (step: PlanStep): number =>
+      step.kind !== 'kill' || step.odds.kind === 'win' ? 0 : 1;
+    candidates.sort((a, b) => opens(a.step) - opens(b.step) || a.price - b.price);
     let best: {
       item: PlannedItem;
       source: ItemSource;
       leg: Extract<Leg, { kind: 'leg' }>;
       price: number;
+      step: PlanStep;
     } | null = null;
     for (const candidate of candidates) {
       const leg = walk(realm, oracle, at, candidate.source.room, holding);
@@ -477,11 +479,7 @@ function acquire(
         best = { ...candidate, leg, price: leg.cost + fights };
         break;
       }
-      // A fight in the way is said as the fight; a way that is not there is out of reach.
-      const blocking = leg.refusal;
-      if (blocking.kind === 'fight' || blocking.kind === 'odds-unread') {
-        refuse({ ...blocking, item: candidate.item });
-      } else refuse({ kind: 'out-of-reach', item: candidate.item });
+      refuse({ kind: 'out-of-reach', item: candidate.item });
     }
     if (best === null) {
       return {
@@ -490,7 +488,7 @@ function acquire(
       };
     }
     const chosen = best;
-    steps.push(...chosen.leg.steps, actionAt(chosen.source, chosen.item));
+    steps.push(...chosen.leg.steps, chosen.step);
     cost += chosen.price;
     held.push(chosen.item.id);
     at = chosen.source.room;
