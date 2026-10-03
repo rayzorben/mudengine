@@ -265,6 +265,13 @@ function MapCard({
         </span>
         {count}
       </>
+    ) : character.room.resolvedBy === 'remembered' ? (
+      <>
+        <span className="chip off map-remembered" title={t('cards.map.lastKnownTooltip')}>
+          {t('cards.map.lastKnown')}
+        </span>
+        {count}
+      </>
     ) : (
       count
     );
