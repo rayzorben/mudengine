@@ -14,9 +14,10 @@
  * needs a canvas to observe is a decision nothing can test.
  */
 
+import { SGR_RESET } from '@shared/template';
+
 /** The gutter bar and the ink, in one place so a notice cannot be drawn twice. */
 const CYAN = '\x1b[36m';
-const RESET = '\x1b[0m';
 const BAR = '│';
 
 /**
@@ -41,7 +42,7 @@ const BAR = '│';
  */
 export function noticeSequence(message: string, atLineStart: boolean): string {
   const lead = atLineStart ? '' : '\r\n';
-  return `${lead}${CYAN}${BAR}${RESET} ${CYAN}${message}${RESET}\r\n`;
+  return `${lead}${CYAN}${BAR}${SGR_RESET} ${CYAN}${message}${SGR_RESET}\r\n`;
 }
 
 /** The part of a terminal a writer drives: bytes in, and a word when they land. */
