@@ -64,6 +64,7 @@ import {
   type SpotInput,
   type SpotMob
 } from '../../shared/hunting';
+import { matchStop, type RoomMatch } from '../../shared/loops';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { attacksOnSight, fightable } from '../../shared/mobs';
@@ -2239,20 +2240,30 @@ export class Errands implements SessionModule {
     name: string;
     at: { map: number; room: number } | null;
   }): { map: number; room: number } | string {
-    if (stop.at) return stop.at;
-    const found = this.world?.findByName(stop.name) ?? [];
-    if (found.length === 0) return t('session.loop.unknownStopName', { name: stop.name });
-    // Thirteen rooms are called Town Gates; a loop that guessed which would
-    // walk somewhere the player did not mean.
-    if (found.length > 1) {
-      return t('session.loop.ambiguousStopName', {
-        count: found.length,
-        name: stop.name,
-        map: found[0]!.map,
-        room: found[0]!.room
-      });
+    const match = this.matchStop(stop);
+    switch (match.kind) {
+      case 'one':
+        return match.at;
+      case 'none':
+        return t('session.loop.unknownStopName', { name: stop.name });
+      // A loop that guessed which Town Gates would walk somewhere the player did not mean.
+      case 'several':
+        return t('session.loop.ambiguousStopName', {
+          count: match.rooms.length,
+          name: stop.name,
+          map: match.rooms[0]!.map,
+          room: match.rooms[0]!.room
+        });
+      default: {
+        const never: never = match;
+        return never;
+      }
     }
-    return { map: found[0]!.map, room: found[0]!.room };
+  }
+
+  /** Every room a stop could be, by its address or its name. See `matchStop`. */
+  matchStop(stop: Parameters<Errands['findStop']>[0]): RoomMatch {
+    return matchStop(stop, (name) => this.world?.findByName(name) ?? []);
   }
 
   /** A loop's stop as a room, or null where `findStop` cannot settle it. */

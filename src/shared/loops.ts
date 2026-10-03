@@ -29,7 +29,7 @@
  */
 
 import { fileSlug } from './files';
-import { asRoomReference, type RoomId } from './world';
+import { asRoomReference, type RoomId, type RoomReference } from './world';
 import type { AfflictionHold } from './walk';
 
 /** One place a loop visits, named the way a person would say it. */
@@ -385,6 +385,34 @@ export function splitStop(stop: LoopStop): {
     name: (match[1] ?? '').trim(),
     at: { map: Number(match[2]), room: Number(match[3]) }
   };
+}
+
+/** What a stop's room name or address picks out: one room, several, or none. */
+export type RoomMatch =
+  | { kind: 'one'; at: RoomReference }
+  | { kind: 'several'; rooms: RoomReference[] }
+  | { kind: 'none' };
+
+/**
+ * The room a stop names: its `map/room` when it has one, otherwise every room
+ * the world database calls `name`. Thirteen rooms are called Town Gates, so
+ * several are kept, never one picked.
+ */
+export function matchStop(
+  stop: { name: string; at: RoomReference | null },
+  named: (name: string) => readonly RoomReference[]
+): RoomMatch {
+  if (stop.at !== null) return { kind: 'one', at: stop.at };
+  const rooms = named(stop.name).map(({ map, room }) => ({ map, room }));
+  const [only] = rooms;
+  if (only === undefined) return { kind: 'none' };
+  return rooms.length === 1 ? { kind: 'one', at: only } : { kind: 'several', rooms };
+}
+
+/** A room asked for the way a stop is written (`Name`, `Name map/room`), or a bare `map/room`. */
+export function readStop(request: string): { name: string; at: RoomReference | null } {
+  const at = asRoomReference(request);
+  return at === null ? splitStop({ room: request.trim() }) : { name: request.trim(), at };
 }
 
 /** What a spoken loop name or start room picks out: one loop, several, or none. */

@@ -296,7 +296,7 @@ describe('only an actionable remote is worth granting', () => {
     expect(ACTIONABLE_REMOTES).toContain('health');
     expect(ACTIONABLE_REMOTES).toContain('do');
     expect(ACTIONABLE_REMOTES).not.toContain('kill');
-    expect(ACTIONABLE_REMOTES).not.toContain('goto');
+    expect(ACTIONABLE_REMOTES).not.toContain('looponce');
   });
 
   it('grants one when it is granted, so the list is not merely decorative', () => {

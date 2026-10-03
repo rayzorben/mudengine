@@ -293,6 +293,12 @@ export interface RemoteEvents {
    * decides the `{ok}`; the session says why when none did.
    */
   startLoop?(from: string, request: string): boolean;
+  /**
+   * `@goto`: walk to the room `request` names as a loop stop names one, as
+   * the player's own route walks. Returns whether the walk started, which
+   * decides the `{ok}`; the session says why when none did.
+   */
+  goTo?(from: string, request: string): boolean;
 }
 
 /** What a `@stop` stopped and is still waiting for a `@rego`, for `@status`. */
@@ -1328,6 +1334,16 @@ export class Remotes implements SessionModule {
         if (this.events.startLoop?.(from, command.argument) === true) {
           this.reply(from, '{ok}', prefix);
         }
+        return;
+      }
+
+      case 'goto': {
+        // `{ok}` only for a walk that started, the rule `@loop` follows.
+        if (command.argument === null) {
+          this.events.notice?.(t('automation.remotes.gotoUnnamed', { from }));
+          return;
+        }
+        if (this.events.goTo?.(from, command.argument) === true) this.reply(from, '{ok}', prefix);
         return;
       }
 
