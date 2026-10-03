@@ -42,7 +42,10 @@ beforeEach(() => {
   put(path.join(from.profile('festus').loops, 'sewers.yaml'), 'name: Sewers\n');
   put(from.server('paradigm').file, 'name: Paradigm\nhost: example.test\nport: 23\n');
   put(from.record('memory', 'festus'), '{"exits":[]}');
-  put(from.record('fights', 'festus'), 'gz bytes');
+  // The fight log is a directory: each segment and fold travels, a fold being written does not.
+  put(path.join(from.record('fights', 'festus'), '0001.jsonl.gz'), 'gz bytes');
+  put(path.join(from.record('fights', 'festus'), '0001.folds.json'), '{}');
+  put(path.join(from.record('fights', 'festus'), '.0002.folds.json.1-1.tmp'), '{}');
 });
 
 afterEach(() => {
@@ -66,7 +69,13 @@ describe('a character exported and imported', () => {
     expect(fs.existsSync(path.join(to.profile('festus').loops, 'sewers.yaml'))).toBe(true);
     expect(fs.existsSync(to.server('paradigm').file)).toBe(true);
     expect(fs.readFileSync(to.record('memory', 'festus'), 'utf8')).toBe('{"exits":[]}');
-    expect(fs.readFileSync(to.record('fights', 'festus'), 'utf8')).toBe('gz bytes');
+    expect(fs.readdirSync(to.record('fights', 'festus')).sort()).toEqual([
+      '0001.folds.json',
+      '0001.jsonl.gz'
+    ]);
+    expect(fs.readFileSync(path.join(to.record('fights', 'festus'), '0001.jsonl.gz'), 'utf8')).toBe(
+      'gz bytes'
+    );
   });
 
   it('leaves the password out unless asked, and says it must be typed', async () => {
@@ -110,7 +119,8 @@ describe('a character exported and imported', () => {
       'profiles/festus/loops/sewers.yaml',
       'servers/paradigm/server.yaml',
       'memory/festus.json',
-      'fights/festus.jsonl.gz'
+      'fights/festus/0001.folds.json',
+      'fights/festus/0001.jsonl.gz'
     ]);
   });
 
@@ -123,6 +133,17 @@ describe('a character exported and imported', () => {
       { name: 'profiles/festus/profile.yaml', data: Buffer.from(PROFILE) },
       { name: 'profiles/festus/../../escape.yaml', data: Buffer.from('x') }
     ]);
+    const climbing = await packTarball([
+      {
+        name: 'mudengine-character.json',
+        data: Buffer.from('{"format":"mudengine-character","character":"festus","realm":null}')
+      },
+      { name: 'profiles/festus/profile.yaml', data: Buffer.from(PROFILE) },
+      { name: 'fights/festus/../../escape.yaml', data: Buffer.from('x') }
+    ]);
+    expect((await importCharacter(to, climbing, { maxBytes: MAX, taken: () => false })).kind).toBe(
+      'refused'
+    );
     const result = await importCharacter(to, bytes, { maxBytes: MAX, taken: () => false });
     expect(result.kind).toBe('refused');
     expect(fs.existsSync(to.profilesDir)).toBe(false);

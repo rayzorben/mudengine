@@ -1400,6 +1400,11 @@ tuning:
     # character's record is first read back, so the socket is read between slices.
     fightsFoldSlice: 500
 
+    # How many fights one file of a character's fight log holds before the next
+    # is started. A read holds one file's worth in memory at a time, and each
+    # full file's totals are saved beside it so they are not added up again.
+    fightsPerSegment: 10000
+
     # How long the conversation log holds lines before writing them.
     talkFlushMs: 2000
 

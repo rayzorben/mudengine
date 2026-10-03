@@ -6580,6 +6580,8 @@ function theTuningBlockGainedKeys(
     addKey('reconnect', 'silentForMs', DEFAULT_INTERNAL.tuning.reconnect.silentForMs);
     /* How much of a realm's find log is kept (2026-09-07, todo 04). */
     addKey('records', 'findLimit', DEFAULT_INTERNAL.tuning.records.findLimit);
+    /* How many fights one segment of the fight log holds (todo 13). */
+    addKey('records', 'fightsPerSegment', DEFAULT_INTERNAL.tuning.records.fightsPerSegment);
     /* When a character stops looking like the same character (todo 11). */
     addKey('session', 'resetExpDropShare', DEFAULT_INTERNAL.tuning.session.resetExpDropShare);
     /* A prompt the server writes in two pieces (2026-09-10, todo 01): how long the second may take. */

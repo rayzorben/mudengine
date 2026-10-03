@@ -134,7 +134,32 @@ notices:
     unavailable: Desktop notifications are on, but nothing here can show them. Alerts are still kept
       on the Alerts card.
     untitled: MudEngine
+  fights:
+    refolded:
+      one: '{count} file of the fight log in {dir} was added up again: its saved totals were
+        missing or from an older version.'
+      many: '{count} files of the fight log in {dir} were added up again: their saved totals were
+        missing or from an older version.'
+    unfolded: 'The totals for {file} could not be saved: {error}. They are added up again on the
+      next read.'
+    unreadable: 'The fight log in {dir} could not be listed: {error}'
+    unreadableSegment: '{file} could not be read: {error}. Its fights are left out.'
+    unwritable: 'Fights could not be written to {dir}: {error}'
   migration:
+    fightsSegmented:
+      one: '{file} was moved into {dir} as one file of up to {per} fights, {fights} fights in
+        all. The old file is kept as {backup}.'
+      many: '{file} was split into {segments} files of up to {per} fights in {dir}, {fights}
+        fights in all. The old file is kept as {backup}.'
+    fightsDamaged: '{file} stopped being readable after {fights} fights. Those were kept, and the
+      whole file is still in {backup}.'
+    fightsNotSegmented: 'Splitting {file} into smaller files stopped: {error}. Its fights are kept,
+      and the split is tried again at the next launch.'
+    fightsSkipped:
+      one: 'One line of {file} was not a fight and was left out. The whole file is still in
+        {backup}.'
+      many: '{count} lines of {file} were not fights and were left out. The whole file is still
+        in {backup}.'
     talkHold: The Talk card now holds its place for 45 seconds after you scroll, instead of 15.
       {file} was updated to match.
     hunting: Auto-Hunt is now a setting, off by default. It was added to {file} with a comment
