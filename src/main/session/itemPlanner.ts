@@ -28,7 +28,7 @@ const COLLECT_AFTER_KEY = 'collect:after';
 /** The modules, read when the errand asks: several are built after it. */
 export interface ItemPlannerModules {
   tracker: Pick<CharacterTracker, 'current'>;
-  errands: Pick<Errands, 'itemSources'>;
+  errands: Pick<Errands, 'itemSources' | 'plannedSources'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
   loops: Pick<LoopRunner, 'progress'>;
   travel: Pick<Travel, 'startLoop' | 'walkAfterCollecting' | 'walkLegTo'>;
@@ -50,6 +50,7 @@ export function itemPlanner(parts: ItemPlannerParts): ItemPlanner {
   return {
     here: () => roomAddress(m().tracker.current.room),
     sourcesOf: (item, to) => m().errands.itemSources(item, to),
+    sourcesFrom: (planned) => m().errands.plannedSources(planned),
     buy: (row) => m().supplies.fetch(row, m().tracker.current),
     buying: () => m().supplies.current !== null,
     runLoop: (loop) => {

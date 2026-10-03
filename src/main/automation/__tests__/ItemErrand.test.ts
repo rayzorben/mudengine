@@ -9,6 +9,7 @@ import { percentText, type SafetyDecision } from '../../../shared/automation';
 import type { SupplyItem } from '../../../shared/config';
 import type { Loop } from '../../../shared/loops';
 import type { BuyingPlace, DropPlace, Route } from '../../../shared/world';
+import type { FetchStep, PlannedFetch } from '../../../shared/navigation';
 
 const KEY = { id: 4211, name: 'black star key' };
 
@@ -62,6 +63,7 @@ function errand(over: Partial<ItemPlanner> = {}, now?: () => number): ItemErrand
   const planner: ItemPlanner = {
     here: () => '1/1',
     sourcesOf: () => sources,
+    sourcesFrom: () => sources,
     buy: (row) => {
       bought.push(row);
       buying = true;
@@ -423,6 +425,42 @@ describe('collecting what a route needs', () => {
     });
     expect(auto.collect([KEY, ROPE], OWED, ready())).toBeNull();
     expect(bought).toHaveLength(1);
+  });
+
+  it('fetches a planned item where the plan gets it, without judging its sources again', () => {
+    const step: FetchStep = { kind: 'kill', item: KEY, monster: 'troll', room: '1/2678' };
+    const planned: PlannedFetch = { step, moves: 39 };
+    const asked: PlannedFetch[] = [];
+    const auto = errand({
+      sourcesOf: () => ({
+        shops: [],
+        ...dropped([]),
+        droppers: [{ mob: 'ogre', placed: 1 }],
+        unfought: [{ mob: 'ogre', survives: 0.4 }]
+      }),
+      sourcesFrom: (from) => {
+        asked.push(from);
+        return {
+          shops: [],
+          ...dropped([{ id: '1/2678', name: 'Troll Den', mob: 'troll', steps: 39 }])
+        };
+      }
+    });
+    expect(auto.collect([{ ...KEY, from: planned }], OWED, ready())).toBeNull();
+    expect(asked[0]).toBe(planned);
+    expect(loops).toHaveLength(1);
+    const where = { item: KEY.name, mob: 'troll', room: 'Troll Den', steps: 39 };
+    expect(notices).toContain(t('automation.collect.hunting', where));
+  });
+
+  it('refuses before setting off where the room a plan went to is gone', () => {
+    const step: FetchStep = { kind: 'buy', item: ROPE, room: '1/42' };
+    sources = { shops: [counter()], ...dropped([]) };
+    const auto = errand({ sourcesFrom: () => null });
+    const refused = auto.collect([KEY, { ...ROPE, from: { step, moves: 3 } }], OWED, ready());
+    const why = t('automation.collect.plannedSourceGone');
+    expect(refused).toBe(t('automation.collect.refusalNoWayToGet', { item: ROPE.name, why }));
+    expect(bought).toHaveLength(0);
   });
 
   /* Zero and one are facts, not figures: three literal sentences. */

@@ -43,6 +43,19 @@ export type PlanStep =
   /** Kill what stands in this room, which a way through it wants empty (`nomonsters`). */
   | { kind: 'clear'; room: RoomId; name: string; monsters: string[] };
 
+/** A step that gets an item: where the plan fetches it, and how. */
+export type FetchStep = Extract<PlanStep, { kind: 'buy' | 'ask' | 'kill' }>;
+
+export function isFetch(step: PlanStep): step is FetchStep {
+  return step.kind === 'buy' || step.kind === 'ask' || step.kind === 'kill';
+}
+
+/** A fetch, with the moves the plan walks to it from where the last one left off. */
+export interface PlannedFetch {
+  step: FetchStep;
+  moves: number;
+}
+
 /** Why there is no plan: each thing the way wants that cannot be had, and why. */
 export type PlanRefusal =
   /** No way there at all, holding every key the realm names. */
@@ -61,12 +74,19 @@ export type PlanRefusal =
 export type Plan =
   { kind: 'plan'; steps: PlanStep[]; cost: number } | { kind: 'refused'; refusals: PlanRefusal[] };
 
-/** The items a plan fetches, in the order it fetches them. */
-export function plannedItems(plan: Plan): PlannedItem[] {
+/** The steps that get an item, in the order the plan takes them. */
+export function plannedFetches(plan: Plan): PlannedFetch[] {
   if (plan.kind === 'refused') return [];
-  return plan.steps.flatMap((step) =>
-    step.kind === 'buy' || step.kind === 'ask' || step.kind === 'kill' ? [step.item] : []
-  );
+  const fetches: PlannedFetch[] = [];
+  let moves = 0;
+  for (const step of plan.steps) {
+    if (step.kind === 'walk') moves += step.route.steps.length;
+    else if (isFetch(step)) {
+      fetches.push({ step, moves });
+      moves = 0;
+    }
+  }
+  return fetches;
 }
 
 /** Why there is no plan, in words: each refusal, as a sentence fragment. */

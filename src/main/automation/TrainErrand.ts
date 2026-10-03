@@ -18,10 +18,10 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import {
-  plannedItems,
+  plannedFetches,
   planRefusalsWords,
   type Plan,
-  type PlannedItem,
+  type PlannedFetch,
   type PlanStep
 } from '../../shared/navigation';
 import type { Block } from '../../shared/blocks';
@@ -87,12 +87,12 @@ export interface TrainEvents {
 /**
  * How to reach a trainer: standing in its room; a plan, as the whole walk
  * (`route`, priced at the plan's cost), the keys it fetches on the way in the
- * order it fetches them (`needs`) and the last leg walked after them
+ * order it fetches them and where (`needs`) and the last leg walked after them
  * (`then`); or the reason there is none.
  */
 type Way =
   | { kind: 'here' }
-  | { kind: 'route'; route: Route; needs: readonly PlannedItem[]; then: Route }
+  | { kind: 'route'; route: Route; needs: readonly PlannedFetch[]; then: Route }
   | { kind: 'none'; why: string };
 
 /** A trainer some way reaches, with the walk there (none where the character stands in it). */
@@ -527,7 +527,7 @@ export class TrainErrand implements SessionModule {
     const lastFetch = made.steps.findLastIndex((step) => step.kind !== 'walk');
     const then = walked(made.steps.slice(lastFetch + 1));
     const route: Route = { ...walked(made.steps), cost: made.cost };
-    return { kind: 'route', route, needs: plannedItems(made), then };
+    return { kind: 'route', route, needs: plannedFetches(made), then };
   }
 
   /** The purse, then the walk or the verb. One level is one attempt from here on. */
@@ -576,17 +576,14 @@ export class TrainErrand implements SessionModule {
     const light = this.planner.lightFor(route);
     const keyed = way.needs.length > 0;
     if (keyed || light !== null) {
-      const needs = [...way.needs, ...(light?.items ?? [])];
+      // Each key fetched where the plan gets it, which the plan has already judged.
+      const planned = way.needs.map((need): Wanted => ({ ...need.step.item, from: need }));
+      const needs = [...planned, ...(light?.items ?? [])];
       const where = {
         room: chosen.roomName,
         items: needs.map((item) => item.name).join(', '),
         cost: chosen.cost.toLocaleString()
       };
-      /*
-       * The plan's keys, in its order. Exemption, 2026-10-02: the item trip
-       * still checks each item itself (`ItemErrand.firstUnobtainable`) until
-       * it walks the planned steps.
-       */
       const refused = this.planner.fetch(needs, way.then);
       // A refused keyed trip is said as the trip's refusal: nothing walks on.
       if (light !== null && (refused === null || !keyed)) {

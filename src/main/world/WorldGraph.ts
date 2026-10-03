@@ -62,7 +62,8 @@ import {
   type RemoteLever,
   type WorldRoom,
   type ShopKind,
-  sells
+  sells,
+  counterIn
 } from '../../shared/world';
 import { trainersFor, type TrainerRow } from '../../shared/training';
 import { HAZARD_ABILITY, abilityShape, type ReferredNames } from '../../shared/abilities';
@@ -935,8 +936,8 @@ export class WorldGraph {
       // Nothing the router can walk leads there, so there is no detour to
       // state. Left out rather than ranked last: a figure would be a fiction.
       if (reach === undefined) continue;
-      const shop = room.shop === undefined ? undefined : this.catalogue.shop(room.shop);
-      if (shop === undefined) continue;
+      const counter = counterIn(room, (shop) => this.catalogue.shop(shop));
+      if (counter === undefined) continue;
       let detour = reach.cost;
       if (back !== null && base !== undefined) {
         const tail = back.get(id);
@@ -946,11 +947,7 @@ export class WorldGraph {
         detour = reach.cost + tail - base;
       }
       places.push({
-        map: room.map,
-        room: room.room,
-        roomName: room.name,
-        shop: shop.name,
-        markup: shop.markup ?? 0,
+        ...counter,
         /*
          * Never negative, and the two legs are deliberately priced on
          * *different* graphs: the way there without the thing, the way on with

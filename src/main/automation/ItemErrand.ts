@@ -20,6 +20,7 @@
  * Every refusal is said and traced (`SafetyDecision`, action `collect`). See
  * `mudengine-automation` § *A route that needs an item goes and gets it*.
  */
+import type { PlannedFetch } from '../../shared/navigation';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { percentText, type SafetyDecision } from '../../shared/automation';
@@ -70,6 +71,11 @@ export interface ItemPlanner {
    */
   sourcesOf(item: { id: number; name: string }, to: RoomId | null): ItemSources;
   /**
+   * The one source a plan chose for an item, in the same shape; null where the
+   * world database no longer has the room or counter the plan went to.
+   */
+  sourcesFrom(planned: PlannedFetch): ItemSources | null;
+  /**
    * Hand a one-off supply row to the shopping errand. Returns its refusal, or
    * null once it is walking. The row is never written to the player's file.
    */
@@ -113,6 +119,8 @@ export interface Wanted {
   count?: number;
   /** Fetched to see by on a dark way rather than for a door, which the sentences say. */
   dark?: boolean;
+  /** Where the navigation engine planned to get it: the errand goes there and nowhere else. */
+  from?: PlannedFetch;
 }
 
 /** What the trace says the item was wanted for. */
@@ -257,9 +265,17 @@ export class ItemErrand implements SessionModule {
       return refused ?? null;
     }
     // Every item checked before the first is fetched: a way walked for the
-    // first can leave the character where only the second gets it out.
-    const unobtainable = this.firstUnobtainable(missing, state);
+    // first can leave the character where only the second gets it out. A
+    // planned item was judged by the plan, which is the one judge of it.
+    const unobtainable = this.firstUnobtainable(
+      missing.filter((item) => item.from === undefined),
+      state
+    );
     if (unobtainable !== null) return this.refuse(unobtainable.item, unobtainable.why);
+    const gone = missing.find(
+      (item) => item.from !== undefined && this.planner.sourcesFrom(item.from) === null
+    );
+    if (gone !== undefined) return this.refusePlanGone(gone);
     // Said once, up front, where there is more than one: the errand is then a
     // list, and a player watching it fetch the first thing should know it is
     // not the last.
@@ -301,12 +317,21 @@ export class ItemErrand implements SessionModule {
     return null;
   }
 
+  /**
+   * Where to get an item: the plan's source, else the realm's, chosen by how
+   * far off the road the errand walks afterwards is rather than by how near
+   * each is to where the character happens to be standing.
+   */
+  private sourcesFor(item: Wanted, owes: Route | null): ItemSources | null {
+    return item.from === undefined
+      ? this.planner.sourcesOf(item, owes?.steps.at(-1)?.to ?? null)
+      : this.planner.sourcesFrom(item.from);
+  }
+
   /** Start on one item, with `rest` still to come after it. */
   private fetch(item: Wanted, rest: Wanted[], owes: Route | null, run: boolean): string | null {
-    // Where the errand is taking this character afterwards, so the counter is
-    // chosen by how far off *that* road it is rather than by how near it is to
-    // where the character happens to be standing.
-    const sources = this.planner.sourcesOf(item, owes?.steps.at(-1)?.to ?? null);
+    const sources = this.sourcesFor(item, owes);
+    if (sources === null) return this.refusePlanGone(item);
     /*
      * **Bought before found**, where both are known: a counter is a fixed
      * price and a walk, and a drop is a fight and a chance. The player's own
@@ -661,6 +686,12 @@ export class ItemErrand implements SessionModule {
   private give(): void {
     if (this.phase.kind === 'idle') return;
     this.planner.stopTaking(this.phase.item.name);
+  }
+
+  /** A plan's source the world database no longer has. */
+  private refusePlanGone(item: Wanted): string {
+    const why = t('automation.collect.plannedSourceGone');
+    return this.refuse(item, t('automation.collect.refusalNoWayToGet', { item: item.name, why }));
   }
 
   private refuse(item: Wanted, why: string): string {
