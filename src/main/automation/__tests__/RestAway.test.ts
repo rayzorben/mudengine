@@ -79,6 +79,7 @@ const planner = (over: Partial<RestAwayPlanner> = {}): RestAwayPlanner => ({
   walking: () => false,
   looping: () => looping,
   busy: () => false,
+  stayingReason: () => null,
   ...over
 });
 
@@ -209,6 +210,41 @@ describe('resting in a lair with a short clock', () => {
     drain();
     here = '8/914';
     auto.consider(hurtInTheLair(), true);
+    auto.consider(hurtInTheLair({ vitals: { ...hurtInTheLair().vitals, hp: 250 } }), false);
+    drain();
+    expect(sent).toEqual(['l n', 'n']);
+  });
+});
+
+/*
+ * The user, 2026-10-03: festus joined Headcase's party with automation off,
+ * turned it on, and stepped ne out of the lair to rest, which left the party.
+ * Stepping out is moving: never for a follower, never while nothing takes the
+ * character anywhere.
+ */
+describe('a character the client is taking nowhere', () => {
+  it('rests in the lair, says why once, and looks into nothing', () => {
+    const why = t('session.safety.escapeFollowingReason', { leader: 'Headcase' });
+    const auto = make(undefined, { stayingReason: () => why });
+    expect(auto.consider(hurtInTheLair(), true)).toBe('rest-here');
+    expect(auto.consider(hurtInTheLair(), true)).toBe('rest-here');
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([t('automation.restAway.staying', { seconds: 30, why })]);
+  });
+
+  it('does not step back into the lair once nothing takes it anywhere', () => {
+    let staying: string | null = null;
+    const auto = make(undefined, { stayingReason: () => staying });
+    auto.consider(hurtInTheLair(), true);
+    drain();
+    auto.consider(peeked(hurtInTheLair(), 'n', [], Date.now()), true);
+    drain();
+    here = '8/914';
+    auto.consider(hurtInTheLair(), true);
+    expect(sent).toEqual(['l n', 'n']);
+    // Rested, as the step-back test is; the positive control there sends `s`.
+    staying = t('session.safety.escapeStayingReason');
     auto.consider(hurtInTheLair({ vitals: { ...hurtInTheLair().vitals, hp: 250 } }), false);
     drain();
     expect(sent).toEqual(['l n', 'n']);

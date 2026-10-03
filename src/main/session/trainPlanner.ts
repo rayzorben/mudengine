@@ -26,7 +26,7 @@ export interface TrainPlannerModules {
   errands: Pick<Errands, 'trainers' | 'planTo'>;
   walker: Pick<Walker, 'start' | 'walking'>;
   loops: Pick<LoopRunner, 'progress' | 'noteErrand'>;
-  travel: Pick<Travel, 'isRetreating' | 'retreatArmed' | 'escapeUnanswered'>;
+  travel: Pick<Travel, 'escaping'>;
   itemErrand: Pick<ItemErrand, 'collect' | 'running'>;
   light: Pick<LightAhead, 'wanted' | 'settle'>;
   world:
@@ -64,10 +64,7 @@ export function trainPlanner(parts: TrainPlannerParts): TrainPlanner {
     },
     moveInFlight: () => m().tracker.pendingMoves > 0,
     walking: () => m().walker.walking,
-    busy: () => {
-      const { travel } = m();
-      return travel.isRetreating() || travel.retreatArmed || travel.escapeUnanswered;
-    },
+    busy: () => m().travel.escaping,
     looping: () => m().loops.progress.status === 'running',
     hold: () => m().loops.noteErrand(),
     release: parts.release

@@ -4452,7 +4452,7 @@ session:
     # A follower leaves running away to the party leader it follows, {leader}.
     escapeFollowing: 'Not running: {why}, but {leader} is leading the party and decides when to run.
       {then}'
-    escapeFollowingReason: following {leader}, who decides when to run
+    escapeFollowingReason: following {leader}, who decides when to move
     escapeNotFighting: 'Not fighting: auto-combat is off.'
     escapeNoExitReason: no exit known from this room
     escapeOpening: 'The {barrier} to the {direction} is closed: opening it and running again.'
@@ -5374,6 +5374,7 @@ automation:
     noSafeRoom: 'Resting here after all: this room spawns monsters every {seconds}s and no
       neighboring room is safe to rest in.'
     refusalNoSafeRoom: no neighboring room is empty and free of lairs
+    staying: 'Resting here though this room spawns monsters every {seconds}s: {why}.'
     becauseClock: the room spawns monsters every {seconds}s
     becauseStepped: 'stepped {direction} out of the lair to rest'
     notSafe: 'Not resting in {name}: {who} standing there.'
