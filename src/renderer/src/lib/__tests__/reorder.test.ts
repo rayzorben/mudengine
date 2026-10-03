@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { insertionIndex, reordered } from '../reorder';
+import { insertionIndex, reordered, wrappedInsertionIndex } from '../reorder';
 
 /*
  * The arithmetic both rails drag by. It lived in `useCardDrag` alone and was
@@ -68,5 +68,52 @@ describe('moving one entry to a gap', () => {
     const one = ['vaelor'];
     expect(reordered(one, 'vaelor', 0)).toBe(one);
     expect(reordered(one, 'vaelor', 1)).toBe(one);
+  });
+});
+
+/*
+ * The rail's cards stand side by side in rows (todo 00), so the gap is found
+ * in the row the pointer is in, and every card in an earlier row comes before
+ * it. A one-card row is the old stacked rule.
+ */
+describe('which gap the pointer is in, when the lane wraps', () => {
+  const box = (left: number, top: number, w = 100, h = 100) => ({
+    left,
+    right: left + w,
+    top,
+    bottom: top + h
+  });
+  /* Two cards side by side, then one below the first. */
+  const rows = [box(0, 0), box(110, 0), box(0, 110)];
+
+  it('is the plain gap along a strip', () => {
+    const strip = [box(0, 0, 20), box(20, 0, 20), box(40, 0, 20)];
+    for (const at of [0, 11, 31, 999]) {
+      expect(wrappedInsertionIndex(strip, at, 5, false)).toBe(insertionIndex([10, 30, 50], at));
+    }
+  });
+
+  it('is the stacked rule when every row holds one card', () => {
+    const stack = [box(0, 0), box(0, 110), box(0, 220)];
+    expect(wrappedInsertionIndex(stack, 50, 10, true)).toBe(0);
+    expect(wrappedInsertionIndex(stack, 50, 90, true)).toBe(1);
+    expect(wrappedInsertionIndex(stack, 50, 105, true)).toBe(1);
+    expect(wrappedInsertionIndex(stack, 50, 300, true)).toBe(3);
+  });
+
+  it('counts every card in the rows above the pointer’s', () => {
+    expect(wrappedInsertionIndex(rows, 50, 120, true)).toBe(2);
+    expect(wrappedInsertionIndex(rows, 50, 190, true)).toBe(3);
+  });
+
+  it('finds the gap within the pointer’s own row', () => {
+    expect(wrappedInsertionIndex(rows, 50, 10, true)).toBe(0);
+    expect(wrappedInsertionIndex(rows, 50, 90, true)).toBe(1);
+    expect(wrappedInsertionIndex(rows, 105, 10, true)).toBe(1);
+    expect(wrappedInsertionIndex(rows, 150, 90, true)).toBe(2);
+  });
+
+  it('is the one gap of an empty lane', () => {
+    expect(wrappedInsertionIndex([], 10, 10, true)).toBe(0);
   });
 });

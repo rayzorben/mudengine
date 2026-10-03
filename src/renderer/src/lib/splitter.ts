@@ -1,25 +1,18 @@
 /**
- * The arithmetic behind a draggable pane edge, kept pure so the rules can be
- * tested without a DOM.
+ * The arithmetic behind a draggable pane edge and the console's fixed width,
+ * kept pure so the rules can be tested without a DOM.
  *
- * Three rules, in the order they win:
+ * The console is eighty measured columns, no more and no fewer: the server
+ * formats to 80 and never negotiates NAWS, so a narrower console shears every
+ * map and stat column and a wider one is width the game never prints into.
+ * The card rail takes what is left of the window (todo 00, 2026-10-03), so it
+ * has no handle of its own. The tab rail and the docked strips keep a handle
+ * and a range, and when the window cannot honour the eighty columns the
+ * console is reported narrow rather than rearranged. The width is the live
+ * cell width times 80. See `mudengine-ui` ›
+ * `parts/cards.md`, *The console is eighty columns wide*.
  *
- * 1. **The console never drops under 80 measured columns.** docs/ui-design.md
- *    §1 and §3.8: the server formats to 80 and never negotiates NAWS, so a
- *    narrower console shears every map and stat column client-side. The floor
- *    is *measured* — the live terminal's cell width times 80 — never a pixel
- *    constant, for the same reasons `columnsIfSplit` gives.
- * 2. **A pane has a comfortable range of its own.** The card rail is unreadable
- *    under ~260px (the map's legend, an inventory row with its slot) and past
- *    ~560px it is spending width the console wants for nothing a card needs; the
- *    tab rail wants a name and a health figure and no more. Ranges, not
- *    points, so a player can tune within them.
- * 3. **When the window cannot honour both, the pane sits at its minimum and the
- *    console is *reported* narrow** — never rearranged under someone's hands,
- *    which §4 rejects. So a ceiling below the floor collapses onto the floor.
- *
- * Handle size follows WCAG 2.5.8 (24×24 CSS px minimum target): the visible
- * seam is a hairline, the hit area is 24px wide whatever the density's gap.
+ * Handle size follows WCAG 2.5.8 (24×24 CSS px minimum target).
  */
 
 /** How the panes divide the slate: stacked, or side by side. */
@@ -32,8 +25,6 @@ export interface SplitRange {
   max: number;
 }
 
-/** The card rail beside the console. */
-export const RAIL_RANGE: SplitRange = { min: 260, max: 560 };
 /** The tab rail on the left edge. */
 export const TAB_RAIL_RANGE: SplitRange = { min: 140, max: 320 };
 /**
@@ -66,23 +57,47 @@ export function clampWidth(value: number, range: SplitRange): number {
 }
 
 /**
+ * How wide the console's track must be for each pane across it to hold
+ * exactly `keep` columns, or null before anything has been measured.
+ *
+ * `track` is the track as laid out now, `cols` what the terminal fitted into
+ * it, `cell` what one column costs. Whatever the track holds besides cells
+ * (padding, the scrollbar, the gaps between panes) is in `track` already and
+ * does not change with it, so the answer is a fixed point: the track it gives
+ * fits `keep` columns, and measured again it gives itself. Rounded up, because
+ * a track a fraction short fits one column fewer.
+ */
+export function consoleTrack(
+  track: number,
+  cols: number,
+  cell: number,
+  across: number,
+  keep = CONSOLE_COLUMNS
+): number | null {
+  if (![track, cols, cell, across].every((n) => Number.isFinite(n) && n > 0)) return null;
+  return Math.ceil(track + (keep - cols) * cell * across);
+}
+
+/**
  * The widest a pane may be, given how much slack the console has right now.
  *
- * `consoleWidth` is the terminal box as laid out; `cellWidth` is what one
- * column costs on this display at this font. Whatever the console holds beyond
- * eighty columns is the only width a pane may take, on top of what it has.
+ * `room` is the width the console could have: its own box plus whatever
+ * yields to it first (the card rail, beside a fixed console). `cellWidth` is
+ * what one column costs on this display at this font. Whatever that holds
+ * beyond eighty columns is the only width a pane may take, on top of what it
+ * has.
  */
 export function ceilingFor(
   range: SplitRange,
   current: number,
-  consoleWidth: number,
+  room: number,
   cellWidth: number,
   keep = CONSOLE_COLUMNS
 ): SplitRange {
-  if (!Number.isFinite(cellWidth) || cellWidth <= 0 || !Number.isFinite(consoleWidth)) {
+  if (!Number.isFinite(cellWidth) || cellWidth <= 0 || !Number.isFinite(room)) {
     return range;
   }
-  const slack = consoleWidth - cellWidth * keep;
+  const slack = room - cellWidth * keep;
   const ceiling = Math.floor(current + slack);
   return { min: range.min, max: Math.min(range.max, ceiling) };
 }

@@ -34,19 +34,14 @@ import { useConnection } from './hooks/useConnection';
 import { useDiagnosticFeeds } from './hooks/useDiagnosticFeeds';
 import { useNameIndexes } from './hooks/useNameIndexes';
 import { useNavigationVisible } from './hooks/useNavigationVisible';
-import {
-  measureAbove,
-  measureBelow,
-  measureRail,
-  measureTabs,
-  usePaneRanges
-} from './hooks/usePaneRanges';
+import { measureAbove, measureBelow, measureTabs, usePaneRanges } from './hooks/usePaneRanges';
 import { useCardLayout } from './hooks/useCardLayout';
 import { cardLabel, type Lane } from './lib/cards';
 import { useCardChrome } from './hooks/useCardChrome';
 import { useCardContext } from './hooks/useCardContext';
 import { useCardRenderers } from './hooks/useCardRenderers';
 import { usePaneWidths } from './hooks/usePaneWidths';
+import { useConsoleWidth } from './hooks/useConsoleWidth';
 import { useLoopBuilder } from './hooks/useLoopBuilder';
 import { useLoopsModal } from './hooks/useLoopsModal';
 import { useMovement } from './hooks/useMovement';
@@ -368,12 +363,18 @@ export default function App() {
   const cards = useCardLayout(session);
 
   /*
-   * The rails' widths, dragged and remembered per client. The range a drag may
+   * The tab rail's width, dragged and remembered per client. The range a drag may
    * move within is computed when the gesture starts, from the console as laid
    * out and the terminal's measured cell width — so the floor is eighty
    * *measured* columns, never a pixel constant (docs/ui-design.md §3.8).
    */
   const widths = usePaneWidths();
+  /* The console is eighty columns a pane across; the card rail takes the rest. */
+  const consoleWidth = useConsoleWidth(size.cols, paneFlow === 'columns' ? panes.length : 1);
+  const workspaceStyle = useMemo(
+    () => ({ ...widths.style, ...consoleWidth }) as CSSProperties,
+    [widths.style, consoleWidth]
+  );
   const [resizing, setResizing] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const drag = useCardDrag(cards, workspaceRef);
@@ -383,15 +384,8 @@ export default function App() {
   const resize = useCardResize(cards);
 
   /** What each splitter measures, and the range a drag of it may move within. */
-  const {
-    rangeForTabs,
-    rangeForRail,
-    rangeForAbove,
-    rangeForBelow,
-    resetTabs,
-    resetAbove,
-    resetBelow
-  } = usePaneRanges(layersRef, size, widths);
+  const { rangeForTabs, rangeForAbove, rangeForBelow, resetTabs, resetAbove, resetBelow } =
+    usePaneRanges(layersRef, size, widths);
 
   const { pressure, meter, record, reset } = useStreamPressure();
 
@@ -1028,7 +1022,6 @@ export default function App() {
     turnPanes,
     cards,
     widths: {
-      rail: widths.rail,
       tabs: widths.tabs,
       above: widths.above,
       below: widths.below,
@@ -1324,7 +1317,7 @@ export default function App() {
         ref={workspaceRef}
         data-rail-side={railSide}
         data-tabs={showTabs ? tabSide : 'none'}
-        style={widths.style as React.CSSProperties}
+        style={workspaceStyle}
       >
         {/*
           Shown as soon as there are characters: with one it still names who is
@@ -1509,18 +1502,6 @@ export default function App() {
           )}
         </div>
 
-        {railVisible && (
-          <Splitter
-            edge={railSide}
-            label={t('splitter.aria.cardRailWidth')}
-            measure={measureRail}
-            onChange={widths.setRail}
-            onDragging={setResizing}
-            onReset={widths.reset}
-            pane="rail"
-            rangeFor={rangeForRail}
-          />
-        )}
         {railVisible && (
           <div className="rail">
             {/*
