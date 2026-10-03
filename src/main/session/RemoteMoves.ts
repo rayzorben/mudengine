@@ -4,15 +4,24 @@
  * sender as the reason, and the resume takes the distance it measures as
  * agreed. Only what a `@stop` stopped is resumed, while it is still stopped
  * for that reason. `@loop` (todo 16) starts the loop a name or start room
- * picks out (`matchLoop`) as the palette starts one; several or none start
- * nothing and are said. See `mudengine-automation` › `parts/remotes.md`.
+ * picks out (`matchLoop`) as the palette starts one. `@goto` (todo 17) and
+ * `@comeback-room` walk to a room as the player's own route does; several
+ * or none walk nothing and are said. See `mudengine-automation` ›
+ * `parts/remotes.md`.
  */
 import { t } from '../app/i18n';
 import { personStop } from '../automation/personStop';
 import type { RemoteEvents, StoppedByRemote } from '../automation/Remotes';
-import { matchLoop, type Loop, type LoopProgress } from '../../shared/loops';
+import {
+  matchLoop,
+  readStop,
+  type Loop,
+  type LoopProgress,
+  type RoomMatch
+} from '../../shared/loops';
 import type { Movement, MovementKind, MovementStart } from '../../shared/movement';
 import type { WalkProgress } from '../../shared/walk';
+import { roomId, type RoomId, type RoomReference, type Route } from '../../shared/world';
 
 /** The session's own doors a remote stop and resume go through. */
 export interface RemoteMovesSession {
@@ -24,6 +33,14 @@ export interface RemoteMovesSession {
   /** The loops this character can run, as its options define them. */
   readonly loopsDefined: readonly Loop[];
   startLoop(loop: Loop): MovementStart;
+  /** The player's own route, the supply list consulted first; the refusal, or null. */
+  walkRoute(route: Route): string | null;
+}
+
+/** Where a room is and the way there from here (`Errands`). */
+export interface RemoteRooms {
+  matchStop(stop: { name: string; at: RoomReference | null }): RoomMatch;
+  planFromHere(to: RoomId): Route | string;
 }
 
 export class RemoteMoves {
@@ -32,12 +49,16 @@ export class RemoteMoves {
 
   constructor(
     private readonly session: RemoteMovesSession,
+    private readonly rooms: RemoteRooms,
     private readonly notice: (message: string) => void
   ) {}
 
-  /** What `Remotes` asks: `@status`, `@stop`, `@rego` and `@loop`. */
+  /** What `Remotes` asks: `@status` and the remotes that move this character. */
   readonly events: Required<
-    Pick<RemoteEvents, 'progress' | 'stopMoving' | 'resumeMoving' | 'startLoop'>
+    Pick<
+      RemoteEvents,
+      'progress' | 'stopMoving' | 'resumeMoving' | 'startLoop' | 'goTo' | 'comeBack'
+    >
   > = {
     progress: () => ({
       walk: this.session.walker.progress,
@@ -46,7 +67,9 @@ export class RemoteMoves {
     }),
     stopMoving: (from) => this.stop(from),
     resumeMoving: (from) => this.resume(from),
-    startLoop: (from, request) => this.loop(from, request)
+    startLoop: (from, request) => this.loop(from, request),
+    goTo: (from, request) => this.goTo(from, request),
+    comeBack: (from, map, room) => this.comeBack(from, { map, room })
   };
 
   private stop(from: string): boolean {
@@ -107,8 +130,7 @@ export class RemoteMoves {
 
   /** Starts `loop` as the palette does, saying who asked and what it took over from. */
   private startNamed(from: string, loop: Loop): boolean {
-    const { kind, moving } = this.session.movement;
-    const replacing = kind !== null && moving ? this.progressOf(kind).name : null;
+    const replacing = this.running();
     const answer = this.session.startLoop(loop);
     if (!('started' in answer)) {
       this.notice(
@@ -122,6 +144,82 @@ export class RemoteMoves {
         : t('session.remotes.loopReplaced', { who: from, name: loop.name, was: replacing })
     );
     return true;
+  }
+
+  private goTo(from: string, request: string): boolean {
+    const match = this.rooms.matchStop(readStop(request));
+    switch (match.kind) {
+      case 'none':
+        this.notice(t('session.remotes.gotoNone', { who: from, request }));
+        return false;
+      case 'several':
+        this.notice(
+          t('session.remotes.gotoSeveral', {
+            who: from,
+            request,
+            count: match.rooms.length,
+            addresses: match.rooms.map(({ map, room }) => roomId(map, room)).join(', ')
+          })
+        );
+        return false;
+      case 'one': {
+        const replacing = this.running();
+        const walk = this.walkTo(match.at);
+        if (typeof walk === 'string') {
+          this.notice(t('session.remotes.gotoRefused', { who: from, request, reason: walk }));
+          return false;
+        }
+        const room = { who: from, ...walk, address: roomId(match.at.map, match.at.room) };
+        this.notice(
+          replacing === null
+            ? t('session.remotes.gotoWalking', room)
+            : t('session.remotes.gotoReplaced', { ...room, was: replacing })
+        );
+        return true;
+      }
+      default: {
+        const never: never = match;
+        return never;
+      }
+    }
+  }
+
+  /** `@comeback-room`: the address the sender stated. */
+  private comeBack(from: string, at: RoomReference): boolean {
+    const walk = this.walkTo(at);
+    if (typeof walk === 'string') {
+      this.notice(t('session.remotes.comebackRefused', { who: from, reason: walk }));
+      return false;
+    }
+    this.notice(
+      t('session.remotes.comebackWalking', {
+        who: from,
+        stepCount: walk.stepCount,
+        address: roomId(at.map, at.room)
+      })
+    );
+    return true;
+  }
+
+  /**
+   * The player's own route to `at`, through `walkRoute` so a running lap is
+   * stopped for it and the supply list gets its say. The refusal, or the walk.
+   */
+  private walkTo(at: RoomReference): { stepCount: number; room: string } | string {
+    const plan = this.rooms.planFromHere(roomId(at.map, at.room));
+    if (typeof plan === 'string') return plan;
+    const refused = this.session.walkRoute(plan);
+    if (refused !== null) return refused;
+    return {
+      stepCount: plan.steps.length,
+      room: plan.steps.at(-1)?.name ?? roomId(at.map, at.room)
+    };
+  }
+
+  /** The name of the route or lap walking now, which a new start takes over from. */
+  private running(): string | null {
+    const { kind, moving } = this.session.movement;
+    return kind !== null && moving ? this.progressOf(kind).name : null;
   }
 
   /**

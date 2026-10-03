@@ -5,7 +5,9 @@ import {
   dueStop,
   loopCategory,
   matchLoop,
+  matchStop,
   nextStop,
+  readStop,
   sameLoops,
   splitStop,
   UNCATEGORISED,
@@ -393,5 +395,40 @@ describe('picking a loop out of what somebody said', () => {
   it('finds nothing for words no loop holds, or for no words at all', () => {
     expect(matchLoop(loops, 'Sewer')).toEqual({ kind: 'none' });
     expect(matchLoop(loops, ' : ')).toEqual({ kind: 'none' });
+  });
+});
+
+/* Todo 17: `@goto` reads a room the way a loop stop names one. */
+describe('reading a room asked for', () => {
+  const gates = [
+    { map: 1, room: 2150 },
+    { map: 1, room: 2151 }
+  ];
+  const named = (name: string) =>
+    name.toLowerCase() === 'town gates' ? gates : name === 'Newhaven, Arena' ? [gates[0]!] : [];
+
+  it('reads a name, a name with its map/room, and a bare map/room', () => {
+    expect(readStop('Newhaven, Arena')).toEqual({ name: 'Newhaven, Arena', at: null });
+    expect(readStop('Town Gates 1/2150')).toEqual({
+      name: 'Town Gates',
+      at: { map: 1, room: 2150 }
+    });
+    expect(readStop(' 17/16 ')).toEqual({ name: '17/16', at: { map: 17, room: 16 } });
+  });
+
+  it('takes the map/room over the name, and one room by its name', () => {
+    expect(matchStop(readStop('Town Gates 1/2151'), named)).toEqual({
+      kind: 'one',
+      at: { map: 1, room: 2151 }
+    });
+    expect(matchStop(readStop('Newhaven, Arena'), named)).toEqual({
+      kind: 'one',
+      at: { map: 1, room: 2150 }
+    });
+  });
+
+  it('keeps every room a shared name could be, and finds none for a name nothing has', () => {
+    expect(matchStop(readStop('town gates'), named)).toEqual({ kind: 'several', rooms: gates });
+    expect(matchStop(readStop('BFOT'), named)).toEqual({ kind: 'none' });
   });
 });

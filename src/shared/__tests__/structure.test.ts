@@ -36,7 +36,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the hunt's wiring, out whole (`huntPlanner.ts`, todo 11).
   // Lowered by the item bless's reading, out to `shared/invoke.ts` (todo 03).
   // Lowered by the gear recovery's wiring, out with the stash fetch's (`collectPlanner.ts`, todo 05).
-  'src/main/session/SessionManager.ts': 3636,
+  // Lowered by `@comeback-room`'s walk, out to `RemoteMoves` beside `@goto` (todo 17).
+  'src/main/session/SessionManager.ts': 3635,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2433,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
