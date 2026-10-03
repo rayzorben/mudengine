@@ -108,9 +108,10 @@ export interface ProwessSheet {
    */
   stated?: StatedProwess | null;
   /**
-   * Blessings counted on the formula paths only (`blessingeffects.ts`): a
-   * figure `stat all` stated already carries what was up. Absent or null is
-   * none.
+   * Blessings up, and the martial rows of what is worn (`gearEffect`),
+   * counted on the formula paths only (`blessingeffects.ts`): a figure
+   * `stat all` stated already carries what was up, and it states no punch or
+   * kick. Absent or null is none.
    */
   effects?: BlessingEffect | null;
 }

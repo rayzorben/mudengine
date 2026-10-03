@@ -97,6 +97,7 @@ import {
   type SpellChoiceInput
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
+import { gearEffect } from '../../shared/blessingeffects';
 import { carriedCount } from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import {
@@ -105,6 +106,7 @@ import {
   prowessSheetOf,
   weighVerdicts,
   wieldedWeapon,
+  backstabsWith,
   type LairPass
 } from '../../shared/verdict';
 import {
@@ -796,6 +798,8 @@ export class Errands implements SessionModule {
       progress.strength,
       state.className,
       JSON.stringify(wieldedWeapon(state.inventory.items)),
+      // The martial rows of what is worn (`gearEffect`): gloves move a punch and leave the printed sheet as it is.
+      JSON.stringify(gearEffect(state.inventory.items)),
       this.serverFamily,
       JSON.stringify(statedNow(state)),
       this.automationConfig.combat.attack
@@ -1487,7 +1491,17 @@ export class Errands implements SessionModule {
     const { combat, magery, family, attack } = this.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery });
     const regen = regeneration(sheet, null, family);
-    const backstab = commandOf(this.automationConfig.combat.opener.trim()) === 'BackStab';
+    /*
+     * The opener is `bs` and the weapon in hand lets it land: a weapon the
+     * server will not backstab with (`backstabsWith`, a pig on a spit) is
+     * refused every time, and crediting the opener anyway priced every
+     * single-monster lair as a one-round kill whatever the stats (2026-10-03,
+     * a level-11 Mystic). An empty hand lands; a weapon of unknown kind is
+     * credited, as before.
+     */
+    const backstab =
+      commandOf(this.automationConfig.combat.opener.trim()) === 'BackStab' &&
+      backstabsWith(state.inventory.items) !== false;
     /*
      * One step is the server's own movement delay from the pack's weight
      * (`MoveCommand.cs:40`), where the family states one; the measured round
@@ -1661,6 +1675,7 @@ export class Errands implements SessionModule {
       this.automationConfig.spells.attack,
       this.automationConfig.spells.autoChoose,
       this.automationConfig.combat.opener,
+      backstab,
       this.automationConfig.combat.attack,
       state.spellbook?.length ?? -1,
       state.vitals.manaMax,

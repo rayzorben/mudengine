@@ -159,8 +159,8 @@ describe('what is being swung', () => {
   });
 
   it('is nothing for a character fighting unarmed', () => {
-    // Honest rather than convenient: martial arts is on the sheet and its
-    // conversion to a damage range is not in hand.
+    // A punch or a kick swings no weapon: its range is the martial attack's
+    // own (`prowess.blowOf`), never a weapon's.
     expect(wieldedWeapon([helm, spare])).toBeNull();
     expect(wieldedWeapon([])).toBeNull();
   });
@@ -579,8 +579,8 @@ describe('opening with a backstab', () => {
     expect(backstabsWith([held({ min: 2, max: 12, kind: 1 }, [[116, 5]])])).toBe(true);
   });
 
-  it('is not known with nothing wielded or a weapon of no stated kind', () => {
-    expect(backstabsWith([])).toBeNull();
+  it('lets an empty hand through, and is not known for a weapon of no stated kind', () => {
+    expect(backstabsWith([])).toBe(true);
     expect(backstabsWith([held({ min: 2, max: 12 })])).toBeNull();
   });
 });

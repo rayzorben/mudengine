@@ -11,18 +11,28 @@
  * `Player.Crits`, `MaxHP` to `BonusMaxHP` and `HPRegen` is a percentage of
  * the regeneration tick. `Speed`, stealth and backstab rows, and a poison
  * immunity are not weighed. See mudengine-automation › *Recovery*.
+ * `gearEffect` reads the martial rows of the gear worn into the same shape.
  *
  * Dependency-free, like everything in `shared/`.
  */
 import { EFFECT_ABILITY, MARTIAL_ACCURACY_ABILITY, MARTIAL_DAMAGE_ABILITY } from './abilities';
 import type { CharacterState } from './character';
+import { abilitySum } from './light';
 import { abilityValueAt, REALM_ARMOUR_SCALE, type MenacePlayer } from './menace';
 import type { WorldSpell } from './world';
 
 /** The three martial attacks, as the ability table names their rows. */
 export type MartialKind = keyof typeof MARTIAL_DAMAGE_ABILITY;
 
-/** What blessings up add to the character, in the units each reader takes. */
+/** Each martial attack's figure from its row in `rows`, read by `read`. */
+function martialRows(
+  rows: Readonly<Record<MartialKind, number>>,
+  read: (id: number) => number
+): Record<MartialKind, number> {
+  return { punch: read(rows.punch), kick: read(rows.kick), jumpkick: read(rows.jumpkick) };
+}
+
+/** What blessings up, or the martial rows of worn gear, add to the character, in the units each reader takes. */
 export interface BlessingEffect {
   /** Sheet armour class: the `AC` rows over ten. */
   armourClass: number;
@@ -65,11 +75,6 @@ export const NO_EFFECT: Readonly<BlessingEffect> = {
  */
 export function effectOf(spell: WorldSpell, level: number): BlessingEffect | null {
   const at = (ability: number): number => abilityValueAt(spell, ability, level) ?? 0;
-  const martial = (rows: Readonly<Record<MartialKind, number>>): Record<MartialKind, number> => ({
-    punch: at(rows.punch),
-    kick: at(rows.kick),
-    jumpkick: at(rows.jumpkick)
-  });
   const effect: BlessingEffect = {
     armourClass: at(EFFECT_ABILITY.armourClass) / REALM_ARMOUR_SCALE,
     damageResist: at(EFFECT_ABILITY.damageResist) / REALM_ARMOUR_SCALE,
@@ -77,8 +82,8 @@ export function effectOf(spell: WorldSpell, level: number): BlessingEffect | nul
     dodge: at(EFFECT_ABILITY.dodge),
     accuracy: at(EFFECT_ABILITY.accuracy),
     maxDamage: at(EFFECT_ABILITY.maxDamage),
-    martialAccuracy: martial(MARTIAL_ACCURACY_ABILITY),
-    martialDamage: martial(MARTIAL_DAMAGE_ABILITY),
+    martialAccuracy: martialRows(MARTIAL_ACCURACY_ABILITY, at),
+    martialDamage: martialRows(MARTIAL_DAMAGE_ABILITY, at),
     crits: at(EFFECT_ABILITY.crits),
     maxHp: at(EFFECT_ABILITY.maxHp),
     hpRegen: at(EFFECT_ABILITY.hpRegen)
@@ -108,6 +113,29 @@ export function sumEffects(effects: ReadonlyArray<BlessingEffect>): BlessingEffe
     ...Object.values(total.martialDamage)
   ].some((value) => value !== 0);
   return moves ? total : null;
+}
+
+/**
+ * What the gear worn adds to a martial attack: the `PunchDmg`, `KickDmg`,
+ * `JumpKDmg` rows and their accuracy rows on every equipped item, summed as
+ * `Player.GetAbility` sums `WornItemAbilities` beside the class and race rows.
+ * Only the martial rows: `stat all` states no punch or kick, so nothing else
+ * carries them, where the plain attack's figures it prints carry the rest of
+ * the gear already. Clawed gloves are +3 and +3 (2026-10-03, a Mystic whose
+ * punches were priced bare-handed). Null where nothing worn has one.
+ */
+export function gearEffect(
+  items: ReadonlyArray<{ equipped: boolean; abilities?: ReadonlyArray<readonly [number, number]> }>
+): BlessingEffect | null {
+  const worn = items.filter((item) => item.equipped).flatMap((item) => item.abilities ?? []);
+  const sum = (id: number): number => abilitySum(worn, id);
+  return sumEffects([
+    {
+      ...NO_EFFECT,
+      martialAccuracy: martialRows(MARTIAL_ACCURACY_ABILITY, sum),
+      martialDamage: martialRows(MARTIAL_DAMAGE_ABILITY, sum)
+    }
+  ]);
 }
 
 /**

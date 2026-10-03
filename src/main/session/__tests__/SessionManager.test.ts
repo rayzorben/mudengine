@@ -7450,12 +7450,19 @@ describe('the hunting survey prices a kill off the fight record', () => {
     sheet: string[] = [],
     dragon = false,
     goodOrc = false,
-    spawns?: Map<string, LearnedSpawns>
+    spawns?: Map<string, LearnedSpawns>,
+    opener = ''
   ): Promise<void> {
     const { sink } = collect();
     manager = build(sink, {
       world: lairs(dragon, goodOrc, spawns !== undefined),
-      automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      automation: {
+        ...DEFAULT_CONFIG.automation,
+        enabled: false,
+        onEnterRealm: [],
+        rules: [],
+        combat: { ...DEFAULT_CONFIG.automation.combat, opener }
+      },
       fights,
       ...(spawns === undefined
         ? {}
@@ -7599,6 +7606,28 @@ describe('the hunting survey prices a kill off the fight record', () => {
     advice = await settled();
     expect(advice.excluded.gated).toBe(2);
     expect(advice.spots).toHaveLength(0);
+  });
+
+  /*
+   * A `bs` opener is credited only where the weapon in hand lets it land: the
+   * pig on a spit is refused every time, and crediting it priced every
+   * single-monster lair as a one-round kill (2026-10-03).
+   */
+  it('credits a backstab opener only with a weapon the server lets backstab', async () => {
+    await surveyed(record().fights, [], false, false, undefined, 'bs');
+    const holding = (weapon: { min: number; max: number; kind: number }): CharacterState => ({
+      ...manager!.character,
+      inventory: {
+        ...manager!.character.inventory,
+        items: [{ name: 'weapon', equipped: true, kind: 'weapon', weapon } as never]
+      }
+    });
+    const survey = (as: CharacterState): HuntingAdvice =>
+      manager!['errands'].huntingGrounds(null, null, as);
+    expect(survey(holding({ min: 2, max: 12, kind: 1 })).assumptions.backstab).toBe(false);
+    expect(survey(holding({ min: 2, max: 8, kind: 2 })).assumptions.backstab).toBe(true);
+    // An empty hand backstabs (`AttackCommand.cs:115`).
+    expect(survey(manager!.character).assumptions.backstab).toBe(true);
   });
 
   it('lists past the measured few rather than cutting the realm at them', async () => {

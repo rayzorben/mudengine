@@ -21,6 +21,7 @@ import type { RealmFamily } from './realm';
 import type { Odds, Survival } from './survival';
 import { BACKSTAB_ABILITY, DODGE_ABILITY, carriesAbility } from './abilities';
 import { statedNow } from './stated';
+import { gearEffect } from './blessingeffects';
 import type { CharacterState, RoomOccupant } from './character';
 import type { MobEntity } from './entities';
 import {
@@ -200,7 +201,8 @@ export function prowessSheetOf(
       encumbrance === null || encumbranceMax === null || encumbranceMax <= 0
         ? null
         : (100 * encumbrance) / encumbranceMax,
-    stated: statedNow(state)
+    stated: statedNow(state),
+    effects: gearEffect(state.inventory.items)
   };
 }
 
@@ -476,10 +478,11 @@ export function wieldedWeapon(
 }
 
 /**
- * Whether the weapon in hand can open with a backstab, as GreaterMUD's
- * `Item.CanBackstab` rules it: a weapon of `WeaponType` 2, or one carrying a
- * backstab ability. The server refuses any other (*You may not backstab with
- * this weapon!*). Null where nothing is wielded or its kind is not known.
+ * Whether the hand can open with a backstab, as GreaterMUD's `Item.CanBackstab`
+ * rules it: a weapon of `WeaponType` 2, or one carrying a backstab ability.
+ * The server refuses any other weapon (*You may not backstab with this
+ * weapon!*) and lets an empty hand through (`AttackCommand.cs:115`). Null
+ * where the weapon's kind is not known.
  */
 export function backstabsWith(
   items: ReadonlyArray<{
@@ -490,7 +493,7 @@ export function backstabsWith(
   }>
 ): boolean | null {
   const found = items.find((item) => item.equipped && item.kind === 'weapon' && item.weapon);
-  if (found?.weapon === undefined) return null;
+  if (found?.weapon === undefined) return true;
   const abilities = found.abilities;
   if (Object.values(BACKSTAB_ABILITY).some((id) => carriesAbility(abilities, id))) return true;
   return found.weapon.kind === undefined ? null : found.weapon.kind === 2;
