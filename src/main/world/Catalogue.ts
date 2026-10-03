@@ -158,8 +158,8 @@ export class Catalogue {
       // after — a script hands over 46 of the stock realm's items.
       const from = readHandovers(record['from']);
       if (from.length > 0) item.from = from;
-      // Where using it puts you — format 40, and a way into somewhere for
-      // `WorldGraph.approachItems`. A handful of items per realm.
+      // Where using it puts you — format 40, and a way into somewhere the
+      // router walks. A handful of items per realm.
       const lands = String(record['lands'] ?? '').trim();
       if (lands.length > 0) item.lands = lands as RoomId;
       // And where using it works — format 41. Absent is *wherever you

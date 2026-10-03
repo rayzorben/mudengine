@@ -1483,13 +1483,6 @@ cards:
     copyRow: '{mobs}: {rate} exp/hr, {rooms} rooms, {steps} steps'
   quests:
     anyOf: Any one of
-    # What every way into the place a step happens, or a thing is got, demands
-    # be carried — the realm's own item gates on the corridors in. A frontier
-    # with two doors is drawn `or`, because either one opens it.
-    approach:
-      or: or
-      title: What you must carry to enter this place
-      verb: To enter, carry
     badge:
       many: '{count} quests'
       one: '{count} quest'

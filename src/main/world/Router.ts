@@ -2146,7 +2146,7 @@ export class Router {
    * keep's three doors and the cave roots behind the iron door, both of them
    * *routable* and both reported as no way there. So a wall is priced, which
    * orders a walk crossing two of them behind one crossing none, and what the
-   * way itself wants is already drawn under the item (`QuestStep.approach`).
+   * way itself wants is planned by the navigation engine.
    */
   sweepTo(
     from: RoomId,

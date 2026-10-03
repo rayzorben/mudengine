@@ -31,6 +31,10 @@ import { tuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
 import { questLevel } from '../../../shared/quests';
 import type { QuestStep } from '../../../shared/quests';
+import type { NavigationOracle } from '../../../shared/navigation';
+
+/** Every fight won and every counter paid: what a quest plan's way is weighed on here. */
+const WINS: NavigationOracle = { fight: () => ({ kind: 'win' }), affords: () => true };
 
 /** Writes a throwaway world file in the format `build-world.mjs` emits. */
 function makeWorld(
@@ -5576,10 +5580,42 @@ describe('the order a step fetches its items in', () => {
       room: '1/7'
     };
 
+    it('gathers the key the way to the step wants, where the navigation engine gets it', () => {
+      const step = { ...asker, takes: [] };
+      const locked = makeWorld(
+        street(7).map((room) =>
+          room['r'] === 3
+            ? { ...room, s: 1 }
+            : room['r'] === 6
+              ? { ...room, x: { w: { m: 1, r: 5 }, e: { m: 1, r: 7, i: 'Key: 10', k: 10 } } }
+              : room
+        ),
+        {
+          items: [{ id: 10, n: 'near thing' }],
+          shops: [{ id: 1, n: 'Near Shop', items: [10], t: 0 }],
+          quests: [{ id: 131, name: 'ErrandQuest', steps: [step] }]
+        },
+        25
+      );
+      const quest = locked.quests()[0]!;
+      const traveller: Traveller = { keys: [], packKnown: true };
+      const planned = locked.planStep(quest, stepOf(locked), '1/1', [], traveller, WINS);
+      expect(planned.reachable).toBe(true);
+      expect(planned.items).toEqual([
+        {
+          id: 10,
+          name: 'near thing',
+          held: false,
+          hand: false,
+          source: { how: 'buy', shops: ['Near Shop'], at: { room: '1/3', place: 'Room 3' } }
+        }
+      ]);
+    });
+
     it('buys a stocked item at the counter least off the road, and prices the way there', () => {
       const graph = errandWorld(asker);
       const quest = graph.quests()[0]!;
-      const planned = graph.planStep(quest, stepOf(graph), '1/1', null, {});
+      const planned = graph.planStep(quest, stepOf(graph), '1/1', null, {}, WINS);
       expect(planned.act).toEqual({ verb: 'ask', who: 'Morukai', say: 'box' });
       expect(planned.at).toEqual({ room: '1/7', place: 'Room 7' });
       expect(planned.reachable).toBe(true);
@@ -5597,21 +5633,21 @@ describe('the order a step fetches its items in', () => {
 
     it('says an item is carried, and asks for nothing else about it', () => {
       const graph = errandWorld(asker);
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [10], {});
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [10], {}, WINS);
       expect(planned.items[0]?.held).toBe(true);
       expect(planned.items[0]?.source).toEqual({ how: 'carried' });
     });
 
     it('names an item the realm places nowhere as a snag, never a guess', () => {
       const graph = errandWorld({ ...asker, takes: [{ id: 12, name: 'thing from nowhere' }] });
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {});
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {}, WINS);
       expect(planned.items[0]?.source).toEqual({ how: 'unplaced' });
       expect(planned.snags).toEqual([{ kind: 'unplaced', item: 'thing from nowhere' }]);
     });
 
     it('leaves the way unpriced for a character nobody has placed', () => {
       const graph = errandWorld(asker);
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), null, null, {});
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), null, null, {}, WINS);
       expect(planned.reachable).toBeNull();
       expect(planned.moves).toBeUndefined();
       // The counter is still named: the plan says how, only not how far.
@@ -5627,14 +5663,14 @@ describe('the order a step fetches its items in', () => {
         },
         25
       );
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {});
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {}, WINS);
       expect(planned.reachable).toBe(false);
       expect(planned.snags[0]).toMatchObject({ kind: 'unreachable' });
     });
 
     it('leaves a room the realm no longer holds unpriced, since the router cannot say', () => {
       const graph = errandWorld({ ...asker, room: '9/9', takes: [] });
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {});
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', null, {}, WINS);
       expect(planned.reachable).toBeNull();
       expect(planned.at).toEqual({ room: '9/9' });
     });
@@ -5689,7 +5725,14 @@ describe('the order a step fetches its items in', () => {
 
     it('buys what stops a spell on the way, and says the way is safe with it', () => {
       const graph = desertWorld();
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [],
+        priced(graph),
+        WINS
+      );
       expect(planned.reachable).toBe(true);
       expect(planned.items).toEqual([
         {
@@ -5765,7 +5808,14 @@ describe('the order a step fetches its items in', () => {
         },
         43
       );
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [],
+        priced(graph),
+        WINS
+      );
       expect(planned.reachable).toBe(true);
       expect(planned.items.map((item) => item.name)).toEqual(['waterskin', 'saracen head']);
       expect(planned.items[0]).toMatchObject({
@@ -5850,14 +5900,14 @@ describe('the order a step fetches its items in', () => {
       };
       const lap: Traveller = { packKnown: true, keys: [] };
       const step = stepOf(graph);
-      const read = graph.planStep(graph.quests()[0]!, step, '1/1', [], plan, [], lap);
+      const read = graph.planStep(graph.quests()[0]!, step, '1/1', [], plan, WINS, [], lap);
       expect(read.items.map((item) => item.name)).toEqual(['waterskin', 'saracen head']);
       expect(read.items[1]?.source).toMatchObject({ how: 'kill', at: { room: '1/5' } });
       expect(read.snags).toEqual([
         expect.objectContaining({ kind: 'hazard', spell: 'desert spell', safeWith: 'waterskin' })
       ]);
       // Read on the plan's own traveller, the clean road wins and nothing is bought.
-      const misread = graph.planStep(graph.quests()[0]!, step, '1/1', [], plan);
+      const misread = graph.planStep(graph.quests()[0]!, step, '1/1', [], plan, WINS);
       expect(misread.items.map((item) => item.name)).toEqual(['saracen head']);
       expect(misread.items[0]?.source).toMatchObject({ at: { room: '1/10' } });
     });
@@ -5870,6 +5920,7 @@ describe('the order a step fetches its items in', () => {
         '1/1',
         [],
         priced(graph),
+        WINS,
         [283]
       );
       expect(planned.items).toEqual([]);
@@ -5903,7 +5954,14 @@ describe('the order a step fetches its items in', () => {
         },
         43
       );
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [],
+        priced(graph),
+        WINS
+      );
       expect(planned.items.map((item) => item.name)).toEqual(['log raft']);
       expect(planned.snags.map((snag) => snag.kind === 'hazard' && snag.safeWith)).toEqual([
         'log raft',
@@ -5942,7 +6000,14 @@ describe('the order a step fetches its items in', () => {
         },
         43
       );
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], priced(graph));
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [],
+        priced(graph),
+        WINS
+      );
       expect(planned.items[0]?.source).toMatchObject({
         how: 'buy',
         at: { room: '1/8' },
@@ -5958,19 +6023,33 @@ describe('the order a step fetches its items in', () => {
      */
     it('names a spell with a figure when nothing prices the room', () => {
       const graph = desertWorld();
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {
-        packKnown: true,
-        keys: []
-      });
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [],
+        {
+          packKnown: true,
+          keys: []
+        },
+        WINS
+      );
       expect(planned.snags.map((snag) => snag.kind)).toEqual(['hazard']);
     });
 
     it('reads a waterskin already in the pack as what makes the desert safe', () => {
       const graph = desertWorld();
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [283], {
-        packKnown: true,
-        keys: [283]
-      });
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [283],
+        {
+          packKnown: true,
+          keys: [283]
+        },
+        WINS
+      );
       expect(planned.items).toEqual([]);
       expect(planned.snags[0]).toMatchObject({ kind: 'hazard', safeWith: 'waterskin' });
     });
@@ -5985,10 +6064,17 @@ describe('the order a step fetches its items in', () => {
         },
         43
       );
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {
-        packKnown: true,
-        keys: []
-      });
+      const planned = graph.planStep(
+        graph.quests()[0]!,
+        stepOf(graph),
+        '1/1',
+        [],
+        {
+          packKnown: true,
+          keys: []
+        },
+        WINS
+      );
       expect(planned.items).toEqual([]);
       expect(planned.snags).toEqual([
         {
@@ -6044,7 +6130,7 @@ describe('the order a step fetches its items in', () => {
         },
         43
       );
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {});
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {}, WINS);
       expect(planned.reachable).toBe(true);
       expect(planned.snags).toEqual([
         {
@@ -6083,7 +6169,7 @@ describe('the order a step fetches its items in', () => {
         },
         43
       );
-      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {});
+      const planned = graph.planStep(graph.quests()[0]!, stepOf(graph), '1/1', [], {}, WINS);
       expect(planned.snags[0]).toMatchObject({ kind: 'corridor', rooms: 2, ends: false });
     });
   });
@@ -6918,195 +7004,9 @@ describe('the wards the realm itself writes', () => {
   });
 });
 
-/**
- * What every way into a place demands be carried.
- *
- * Reported 2026-09-15 (todo 02): the quest book said *golden egg — kill
- * necromancer in Amethyst Cave* and stopped, and reaching that cave takes a
- * potion of levitation, a titanium fork and a magical quartz rod.
- */
-describe('approachItems', () => {
-  /**
-   * A pocket behind `gates`, reached from an **open realm** big enough that
-   * the sweep gives up on it — which is the ordinary shape and the one a
-   * three-room fixture cannot produce. Map 2 is the open realm; map 1 holds
-   * the doorsteps and the pocket.
-   */
-  const realm = (
-    rooms: Array<Record<string, unknown>>,
-    items: Array<Record<string, unknown>>
-  ): WorldGraph => {
-    const open = tuning().world.approachRooms + 50;
-    return makeWorld(
-      [
-        ...rooms,
-        // One long open corridor running east into `1/1`, the doorstep.
-        ...Array.from({ length: open }, (_, i) => ({
-          m: 2,
-          r: i + 1,
-          n: `Open ${i + 1}`,
-          x: { e: i === 0 ? { m: 1, r: 1 } : { m: 2, r: i } }
-        }))
-      ],
-      { items },
-      6
-    );
-  };
-
-  const named = (graph: WorldGraph, room: string): string[][] =>
-    graph.approachItems(room as RoomId).map((gate) => gate.anyOf.map((item) => item.name));
-
-  it('names every item the way in wants, in the order they are used', () => {
-    // Doorstep 1/1, then a brass door, then an iron one: both have to be
-    // crossed, and the brass one first.
-    const graph = realm(
-      [
-        { m: 1, r: 1, n: 'Doorstep', x: { e: { m: 1, r: 2, i: 'Key: 7', k: 7 } } },
-        { m: 1, r: 2, n: 'Hall', x: { e: { m: 1, r: 3, i: 'Key: 9', k: 9 } } },
-        { m: 1, r: 3, n: 'Vault', x: {} }
-      ],
-      [
-        { id: 7, n: 'brass key' },
-        { id: 9, n: 'iron key' }
-      ]
-    );
-    expect(named(graph, '1/3')).toEqual([['brass key'], ['iron key']]);
-    // And the room in front of the second door wants only the first.
-    expect(named(graph, '1/2')).toEqual([['brass key']]);
-  });
-
-  it('says nothing about a room the realm leaves open', () => {
-    const graph = realm([{ m: 1, r: 1, n: 'Doorstep', x: {} }], []);
-    expect(named(graph, '1/1')).toEqual([]);
-    expect(named(graph, '2/5')).toEqual([]);
-  });
-
-  it('drops a door the way there never passes', () => {
-    // A skeleton key opens a room in the same pocket that the vault is not
-    // behind — stock's Fine Mansion study, which a count of frontiers read as
-    // *either key* and the flood reads as the one that actually gets there.
-    const graph = realm(
-      [
-        {
-          m: 1,
-          r: 1,
-          n: 'Doorstep',
-          x: { e: { m: 1, r: 2, i: 'Key: 7', k: 7 }, n: { m: 1, r: 4, i: 'Key: 9', k: 9 } }
-        },
-        { m: 1, r: 2, n: 'Vault', x: {} },
-        { m: 1, r: 4, n: 'Larder', x: {} }
-      ],
-      [
-        { id: 7, n: 'brass key' },
-        { id: 9, n: 'iron key' }
-      ]
-    );
-    expect(named(graph, '1/2')).toEqual([['brass key']]);
-    expect(named(graph, '1/4')).toEqual([['iron key']]);
-  });
-
-  it('names two doors into one place as alternatives, never as a pair', () => {
-    // Either key opens the way in, so naming both as needed would send
-    // somebody on an errand the realm does not ask for, and naming one would
-    // send them on the wrong one.
-    const graph = realm(
-      [
-        {
-          m: 1,
-          r: 1,
-          n: 'Doorstep',
-          x: { e: { m: 1, r: 2, i: 'Key: 7', k: 7 }, n: { m: 1, r: 2, i: 'Key: 9', k: 9 } }
-        },
-        { m: 1, r: 2, n: 'Vault', x: {} }
-      ],
-      [
-        { id: 7, n: 'brass key' },
-        { id: 9, n: 'iron key' }
-      ]
-    );
-    const wanted = named(graph, '1/2');
-    expect(wanted).toHaveLength(1);
-    expect([...(wanted[0] ?? [])].sort()).toEqual(['brass key', 'iron key']);
-  });
-
-  it('reads the item a hidden exit action wants, not only a lock', () => {
-    const graph = realm(
-      [
-        {
-          m: 1,
-          r: 1,
-          n: 'Doorstep',
-          x: {
-            e: {
-              m: 1,
-              r: 2,
-              i: 'Hidden/Needs 1 Actions, any order',
-              a: [{ say: ['use fork east'], item: 7 }]
-            }
-          }
-        },
-        { m: 1, r: 2, n: 'Cave', x: {} }
-      ],
-      [{ id: 7, n: 'titanium fork' }]
-    );
-    expect(named(graph, '1/2')).toEqual([['titanium fork']]);
-  });
-
-  /*
-   * An item can be a door — format 40. The potion of levitation is the only
-   * entrance the Catacombs have, and no corridor mentions it at all: a client
-   * reading only exits calls the whole region unreachable and says nothing
-   * about how to get there.
-   */
-  it('names an item that is itself the way in', () => {
-    const graph = realm(
-      [
-        { m: 1, r: 1, n: 'Doorstep', x: {} },
-        // Sealed: nothing leads in, and the potion lands you at 1/2.
-        { m: 1, r: 2, n: 'Waterfall', x: { e: { m: 1, r: 3, i: 'Key: 9', k: 9 } } },
-        { m: 1, r: 3, n: 'Cave', x: {} }
-      ],
-      [
-        { id: 7, n: 'potion of levitation', lands: '1/2' },
-        { id: 9, n: 'iron key' }
-      ]
-    );
-    expect(named(graph, '1/3')).toEqual([['potion of levitation'], ['iron key']]);
-    expect(named(graph, '1/2')).toEqual([['potion of levitation']]);
-  });
-
-  it('says nothing where what the realm offers does not get there', () => {
-    // A sealed room with no way in at all. An account the client cannot
-    // complete is not one to send somebody out on.
-    const graph = realm(
-      [
-        { m: 1, r: 1, n: 'Doorstep', x: {} },
-        { m: 1, r: 2, n: 'Sealed Vault', x: {} }
-      ],
-      []
-    );
-    expect(named(graph, '1/2')).toEqual([]);
-  });
-
-  /*
-   * And the shipped realm, end to end: the report this was written for. The
-   * fixtures above hold each rule; this holds that the rules add up to the
-   * realm's own answer.
-   */
-  it('answers the Amethyst Cave with the three things the realm wants', () => {
-    const graph = WorldGraph.load('resources/world/paradigm.jsonl.gz');
-    expect(named(graph, '9/1431')).toEqual([
-      ['potion of levitation'],
-      ['titanium fork'],
-      ['magical quartz rod']
-    ]);
-  });
-});
-
 /*
- * And the other direction, which is the half that was missing: `lands` fed the
- * backwards sweep above and nothing else, so the client could say what the way
- * into the Catacombs wanted and then refuse to walk there.
+ * An item that lands somewhere is a way in: the Catacombs have no corridor in,
+ * and the potion of levitation is how the router reaches them.
  */
 describe('an item that teleports is an edge the router may walk', () => {
   /*

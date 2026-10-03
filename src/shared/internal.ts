@@ -2124,23 +2124,6 @@ const TUNING_DEFAULTS = {
      */
     mobRowRooms: 20_000,
     /**
-     * How enclosed a place has to be before the client will say what the way
-     * into it wants (`WorldGraph.approachItems`).
-     *
-     * The sweep runs backwards from a room over every way in that demands no
-     * item, so what it collects is a region with **no ungated entrance at
-     * all** — and every item-gated edge into that region is therefore a
-     * genuine way in. That reasoning holds only while the region stays a
-     * pocket: let it out into the open realm and the gates it then meets are
-     * other pockets' doors, which this room's way in has nothing to do with.
-     * So the sweep gives the question up the moment it has walked this many
-     * rooms, and the answer is silence rather than a list of every key in the
-     * realm. Three hundred is an order of magnitude above the largest pocket
-     * either shipped world holds behind a gate (the Catacombs, at 98 rooms
-     * across two of them) and two orders below the open component.
-     */
-    approachRooms: 300,
-    /**
      * How many of a quest step's items the errand solver will put in order
      * (`WorldGraph.errand`).
      *

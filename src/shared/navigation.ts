@@ -62,6 +62,36 @@ export function isFetch(step: PlanStep): step is FetchStep {
   return step.kind === 'buy' || step.kind === 'ask' || step.kind === 'kill';
 }
 
+/**
+ * What carrying out a fetch asks: buy at the counter; say the words, a
+ * handover or the summons of the dropper (`summons`); or kill the dropper,
+ * its summoner first where a death brings it (`summoner`).
+ */
+export type FetchAct =
+  | { kind: 'buy' }
+  | { kind: 'say'; say: string; summons?: string }
+  | { kind: 'kill'; dropper: string; summoner?: string };
+
+export function fetchAct(step: FetchStep): FetchAct {
+  switch (step.kind) {
+    case 'buy':
+      return { kind: 'buy' };
+    case 'ask':
+      return { kind: 'say', say: step.say };
+    case 'kill': {
+      const summon = step.summon;
+      if (summon === undefined) return { kind: 'kill', dropper: step.monster };
+      return 'say' in summon
+        ? { kind: 'say', say: summon.say, summons: step.monster }
+        : { kind: 'kill', dropper: step.monster, summoner: summon.by };
+    }
+    default: {
+      const never: never = step;
+      return never;
+    }
+  }
+}
+
 /** A fetch, with the moves the plan walks to it from where the last one left off. */
 export interface PlannedFetch {
   step: FetchStep;
