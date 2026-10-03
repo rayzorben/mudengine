@@ -21,6 +21,7 @@ import { SessionManager } from '../src/main/session/SessionManager.ts';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 import { OPPOSITE } from '../src/shared/world.ts';
+import { worldLeg } from '../src/main/session/navigation.ts';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const pairArg = process.argv[process.argv.indexOf('--pair') + 1];
@@ -125,7 +126,8 @@ async function main() {
   // Walk the victim to the attacker over open steps, and remember the way back.
   const back = [];
   if (roomOf(attacker).map !== null && roomOf(victim).map !== null) {
-    const route = world.route(
+    const route = worldLeg(
+      world,
       `${roomOf(victim).map}/${roomOf(victim).number}`,
       `${roomOf(attacker).map}/${roomOf(attacker).number}`,
       { level: victim.session.character.progress.level ?? null }

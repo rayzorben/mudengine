@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { importsOf, resolveImport, type Import } from './imports';
-import { repoPath, sourceFiles } from './sources';
+import { filesUnder, repoPath, sourceFiles } from './sources';
 
 /**
  * The shape of the tree, held the way a closed union's two halves are: a
@@ -371,5 +371,52 @@ describe('dependencies point down', () => {
     expect(resolveImport('@main/session/SessionManager', 'src/main/automation/Walker.ts')).toBe(
       'src/main/session/SessionManager.ts'
     );
+  });
+});
+
+/*
+ * One navigation engine (the user, 2026-10-02): every way, reach and key is
+ * planned by `world/navigation/` over the router. Outside the world only the
+ * engine's session half calls a search; inside it, the router itself, the
+ * graph that composes it (its delegations, and the counters, banks and asks
+ * it prices) and the quest planner's sweeps (an item order and a drop ring),
+ * each at the count pinned here, as a ceiling is: a new call in one of them
+ * fails until it goes through the engine. Read as text, so a probe in
+ * `scripts/` is held too; a search written by hand is the reviewer's to find.
+ */
+describe('one navigation engine', () => {
+  const search = /\.(route|sweepTo|withinSteps|nearest)\(/;
+  const searchG = new RegExp(search.source, 'g');
+  const calls = (file: string): number => read(file).match(searchG)?.length ?? 0;
+  const callers: Readonly<Record<string, number>> = {
+    'src/main/session/navigation.ts': 2,
+    'src/main/world/Router.ts': 2,
+    'src/main/world/WorldGraph.ts': 7,
+    'src/main/world/QuestPlanner.ts': 4
+  };
+  const engine = 'src/main/world/navigation/';
+  const scripts = filesUnder('scripts', /\.m?[jt]s$/).map(repoPath);
+
+  it('lets nothing but the engine and what composes it call a route search', () => {
+    const out = [...sources('src'), ...scripts].filter(
+      (file) => !(file in callers) && !file.startsWith(engine) && search.test(read(file))
+    );
+    expect(out, out.join('\n')).toEqual([]);
+    const counted = Object.fromEntries(Object.keys(callers).map((file) => [file, calls(file)]));
+    expect(counted).toEqual(callers);
+    // The rule finds what it rules on: the engine's own halves call the router.
+    expect(search.test(read('src/main/session/navigation.ts'))).toBe(true);
+    expect(search.test(read(`${engine}realm.ts`))).toBe(true);
+  });
+
+  it('lets nothing outside the world import the router, import type included', () => {
+    const router = 'src/main/world/Router.ts';
+    const out = sources('src')
+      .filter((file) => !file.startsWith('src/main/world/'))
+      .flatMap(importsOf)
+      .filter((imp) => imp.target === router)
+      .map(describeImport);
+    expect(out, out.join('\n')).toEqual([]);
+    expect(importsOf(`${engine}plan.ts`).map((imp) => imp.target)).toContain(router);
   });
 });

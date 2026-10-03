@@ -915,7 +915,7 @@ export class Errands implements SessionModule {
     const union = new Map<RoomId, number>();
     for (const trainer of trainers) {
       const from = roomId(trainer.map, trainer.room);
-      for (const [id, steps] of world.withinSteps(from, Number.POSITIVE_INFINITY, traveller)) {
+      for (const [id, steps] of this.navigation.within(from, Number.POSITIVE_INFINITY, traveller)) {
         union.set(id, Math.min(steps, union.get(id) ?? steps));
       }
     }
@@ -1412,7 +1412,7 @@ export class Errands implements SessionModule {
   /**
    * Where this character should hunt (todo 05; revamped 2026-09-13, todo 00).
    *
-   * Every lair and placed monster the exits reach — `WorldGraph.withinSteps`,
+   * Every lair and placed monster the exits reach — `Navigation.within`,
    * unbounded unless `radius` says otherwise; a sweep, never a route per
    * room — grouped by what spawns and each group priced once with the Room
    * card's arithmetic (`weighVerdicts`) and the realm's own clock through
@@ -1563,7 +1563,7 @@ export class Errands implements SessionModule {
      * stands still. The sweep is still one pass over the rooms; what changed
      * is that an impassable exit is not an exit.
      */
-    const reach = world.withinSteps(
+    const reach = this.navigation.within(
       from,
       radius ?? Number.POSITIVE_INFINITY,
       this.travellerNow(state)
@@ -1920,13 +1920,13 @@ export class Errands implements SessionModule {
       ? own.rooms.slice(0, c.maxLoopRooms)
       : own.rooms.slice(0, 1);
     if (candidates.length === 0) return spot;
-    const sweeps = new Map<RoomId, Map<RoomId, number>>();
+    const sweeps = new Map<RoomId, ReadonlyMap<RoomId, number>>();
     // Priced by the traveller, as the survey's own sweep is: a ring whose
     // rooms are separated by a door this character cannot open is not a ring
     // it can walk, and the step count would be a fiction either way.
     const priced = this.travellerNow(this.tracker.current);
     for (const room of candidates) {
-      sweeps.set(room.id, world.withinSteps(room.id, c.clusterRadius, priced));
+      sweeps.set(room.id, this.navigation.within(room.id, c.clusterRadius, priced));
     }
     const distance = (a: RoomId, b: RoomId): number | null =>
       sweeps.get(a)?.get(b) ?? sweeps.get(b)?.get(a) ?? null;

@@ -26,7 +26,7 @@ import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
 import type { ConnectionTarget } from '../../shared/types';
 import { prowessSheetOf, wieldedWeapon } from '../../shared/verdict';
-import { roomAddress } from '../../shared/world';
+import { roomAddress, unrouted } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { OddsBook } from './OddsBook';
 
@@ -47,7 +47,13 @@ export interface ExtensionWiring {
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<
     Errands,
-    'huntingGrounds' | 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'reachKey'
+    | 'huntingGrounds'
+    | 'realmClass'
+    | 'capabilities'
+    | 'travellerNow'
+    | 'routeBetween'
+    | 'priceAt'
+    | 'reachKey'
   >;
   world(): ExtensionWorld | undefined;
   odds: Pick<OddsBook, 'lair' | 'lairsLeft'>;
@@ -121,7 +127,10 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         errands.huntingGrounds(null, null, options?.as, options?.beneath ?? false),
       realmClass: () => errands.realmClass(),
       capabilities: () => errands.capabilities(),
-      traveller: (state) => errands.travellerNow(state),
+      leg: (from, to) => {
+        const way = errands.routeBetween(from, to, false);
+        return typeof way === 'string' ? unrouted(way) : way;
+      },
       priceAt: (name, shop) => errands.priceAt(name, shop),
       lairOdds: (room) => wiring.odds.lair(room),
       lairsUnrun: () => wiring.odds.lairsLeft,

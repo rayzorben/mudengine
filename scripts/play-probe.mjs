@@ -23,6 +23,7 @@ import { commandOf } from '../src/shared/commands.ts';
 import { homePaths } from './lib/home.mjs';
 import { HOST, PORT, configPath, localProfile, skip, target } from './lib/local-realm.mjs';
 import { OPPOSITE } from '../src/shared/world.ts';
+import { worldLeg, worldNearest } from '../src/main/session/navigation.ts';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 /** The YAML files in this character's own loops directory, or none. */
@@ -203,7 +204,7 @@ async function walkTo(name, limit = 40) {
   }
   const destination = world.findByName(name)[0];
   if (from === null || destination === undefined) return `no route to ${name}`;
-  const route = world.route(from, `${destination.map}/${destination.room}`);
+  const route = worldLeg(world, from, `${destination.map}/${destination.room}`);
   if (route.blocked) return route.reason ?? `no route to ${name}`;
   if (route.steps.length > limit) return `${name} is ${route.steps.length} steps away`;
   // Sneak first: a Missionary can, and whether the realm agrees is the point.
@@ -300,7 +301,8 @@ async function shop() {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const here = hereId();
     if (here === null) break;
-    const route = world.nearest(
+    const route = worldNearest(
+      world,
       here,
       (room) => !visited.has(`${room.map}/${room.room}`) && wanted(room),
       20,
@@ -376,7 +378,8 @@ function nearestLair(exclude, through = passable) {
   if (from === null) return null;
   const level = me().progress.level ?? 1;
   const ceiling = 8 + level * 6;
-  return world.nearest(
+  return worldNearest(
+    world,
     from,
     (room) => {
       if (room.name === exclude) return false;

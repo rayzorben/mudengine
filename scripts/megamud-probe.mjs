@@ -58,6 +58,7 @@ import path from 'node:path';
 
 import { SessionManager } from '../src/main/session/SessionManager.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
+import { worldLeg } from '../src/main/session/navigation.ts';
 import {
   configPath,
   HOST,
@@ -246,7 +247,7 @@ async function walkTo(name, limit = 40) {
   if (from === to) return null;
   // As the client routes: what this character can pass, so a level-gated room
   // is priced out rather than walked up to and refused.
-  const route = world.route(from, to, {
+  const route = worldLeg(world, from, to, {
     level: session.character.progress.level,
     wealth: session.character.inventory.wealth
   });

@@ -29,6 +29,7 @@ import { SessionManager } from '../src/main/session/SessionManager.ts';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 import { OPPOSITE } from '../src/shared/world.ts';
+import { worldLeg } from '../src/main/session/navigation.ts';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -134,7 +135,8 @@ async function main() {
   const back = [];
   const plan = (from, to) => {
     if (roomOf(from).map === null || roomOf(to).map === null) return null;
-    const route = world.route(
+    const route = worldLeg(
+      world,
       `${roomOf(from).map}/${roomOf(from).number}`,
       `${roomOf(to).map}/${roomOf(to).number}`,
       { level: from.session.character.progress.level ?? null }

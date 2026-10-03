@@ -40,6 +40,7 @@ import path from 'node:path';
 import { SessionManager } from '../src/main/session/SessionManager.ts';
 import { FightLog } from '../src/main/session/FightLog.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
+import { worldLeg } from '../src/main/session/navigation.ts';
 import { HOST, PORT, configPath, localProfile, skip, target } from './lib/local-realm.mjs';
 import { creditEveryBatch, isBatch } from './lib/batches.mjs';
 
@@ -229,7 +230,7 @@ async function walkTo(name) {
   const from = hereId();
   const destination = world.findByName(name)[0];
   if (from === null || destination === undefined) return `no route to ${name}`;
-  const route = world.route(from, `${destination.map}/${destination.room}`);
+  const route = worldLeg(world, from, `${destination.map}/${destination.room}`);
   if (route.blocked) return route.reason ?? `no route to ${name}`;
 
   for (const step of route.steps) {

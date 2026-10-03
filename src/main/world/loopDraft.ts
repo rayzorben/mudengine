@@ -2,7 +2,7 @@
  * Planning a loop that is being built by hand on the map.
  *
  * The builder's picks are rooms clicked in order. Every pair is planned by
- * `WorldGraph.route` with the traveller a lap walks by
+ * the navigation engine's `leg` with the traveller a lap walks by
  * (`SessionManager.lapTraveller`: distance and passability, nothing waiting
  * on the way priced), so a detour clicked round a lair stays a waypoint where
  * the lap would otherwise walk through it — and then the picks are
@@ -29,9 +29,25 @@ import {
   EMPTY_LOOP_DRAFT,
   type LoopDraft,
   type LoopDraftLeg,
-  type RoomId
+  type RoomId,
+  type Route
 } from '../../shared/world';
+import type { NavigationOracle } from '../../shared/navigation';
+import { leg } from './navigation/plan';
+import { planRealmOf, type PlanWorld } from './navigation/realm';
 import type { Traveller, WorldGraph } from './WorldGraph';
+
+/**
+ * A draft weighs no fight: a room a way wants emptied is drawn as cleared,
+ * and the lap weighs that fight when it walks there. Keys and walls are the
+ * engine's either way.
+ */
+const DRAFTED: NavigationOracle = { fight: () => ({ kind: 'win' }), affords: () => null };
+
+/** One leg as a lap walks it (`leg`), for a draft. */
+function lapLeg(graph: PlanWorld, from: RoomId, to: RoomId, traveller: Traveller): Route {
+  return leg(planRealmOf(graph), DRAFTED, from, to, traveller);
+}
 
 /**
  * The reduction's working state, so a longer path can carry on from where a
@@ -61,7 +77,7 @@ function reduceMore(
   let anchor = state.anchor;
   let index = state.next;
   for (; index < path.length; index += 1) {
-    const route = graph.route(path[anchor]!, path[index]!, traveller);
+    const route = lapLeg(graph, path[anchor]!, path[index]!, traveller);
     const walked = route.blocked ? null : route.steps.map((step) => step.to);
     const recorded = path.slice(anchor + 1, index + 1);
     const same =
@@ -139,7 +155,7 @@ function extend(
   for (let index = base.picks.length; index < picks.length && !blocked; index += 1) {
     const from = picks[index - 1]!;
     const to = picks[index]!;
-    const route = graph.route(from, to, traveller);
+    const route = lapLeg(graph, from, to, traveller);
     legs.push({ from, to, route });
     if (route.blocked) blocked = true;
     else for (const step of route.steps) path.push(step.to);
@@ -292,7 +308,7 @@ export type StopPlace = ReturnType<typeof splitStop>;
  * work.
  */
 export function preferredEdges(
-  graph: Pick<WorldGraph, 'route'>,
+  graph: PlanWorld,
   loops: readonly Loop[],
   resolve: (stop: StopPlace) => RoomId | null,
   traveller: Traveller
@@ -321,7 +337,7 @@ export function preferredEdges(
     const legs: Array<[RoomId, RoomId]> = rooms.slice(1).map((to, at) => [rooms[at]!, to]);
     if (loop.bounce !== true) legs.push([rooms[rooms.length - 1]!, rooms[0]!]);
     for (const [from, to] of legs) {
-      const route = graph.route(from, to, plain);
+      const route = lapLeg(graph, from, to, plain);
       if (route.blocked) continue;
       for (const step of route.steps) {
         edges.add(`${step.from}|${step.to}`);

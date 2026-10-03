@@ -46,6 +46,7 @@ import { FightLog } from '../src/main/session/FightLog.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
 import { commandOf } from '../src/shared/commands.ts';
 import { isBlinding } from '../src/shared/character.ts';
+import { worldLeg, worldNearest } from '../src/main/session/navigation.ts';
 import { HOST, PORT, configPath, localProfiles, skip, target } from './lib/local-realm.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -616,7 +617,7 @@ class Driver {
     }
     const destination = this.world.findByName(name)[0];
     if (from === null || destination === undefined) return `no route to ${name}`;
-    const route = this.world.route(from, `${destination.map}/${destination.room}`);
+    const route = worldLeg(this.world, from, `${destination.map}/${destination.room}`);
     if (route.blocked) return route.reason ?? `no route to ${name}`;
     if (route.steps.length > limit) return `${name} is ${route.steps.length} steps away`;
 
@@ -733,7 +734,8 @@ function nearestLair(driver, exclude) {
   const level = driver.me.progress.level ?? 1;
   const ceiling = 8 + level * 6;
   const floor = Math.max(3, level - 4);
-  return driver.world.nearest(
+  return worldNearest(
+    driver.world,
     from,
     (room) => {
       if (room.name === exclude) return false;
