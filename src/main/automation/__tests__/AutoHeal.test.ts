@@ -750,6 +750,49 @@ describe('choosing between one heal and a party heal', () => {
     expect(sent).toEqual([]);
   });
 
+  /*
+   * festus, 2026-10-02: no party, and a rain as good as his major heal for
+   * the mana went out on him alone. No listing read is the same as alone.
+   */
+  describe('with nobody joined', () => {
+    const STRONG_RAIN: WorldSpell = { ...RAIN, power: [40, 60] };
+    const rainy = () =>
+      new AutoHeal(
+        spells({
+          autoChooseHeal: true,
+          heal: '',
+          healParty: true,
+          healPartyWith: 'minor healing',
+          healBelow: 0.5,
+          healTo: 0.9
+        }),
+        true,
+        queue,
+        undefined,
+        (name) => (name === 'healing rain' ? STRONG_RAIN : (HEAL_ROWS[name] ?? null))
+      );
+
+    it('casts the cheaper rain on itself while somebody has joined', () => {
+      rainy().onCharacter(party([hurt('Ann', 150)], 60));
+      drain();
+      expect(sent).toEqual(['rain']);
+    });
+
+    it('never casts a party heal with nobody joined or no listing read', () => {
+      rainy().onCharacter(party([], 60));
+      drain();
+      expect(sent).toEqual(['mahe']);
+    });
+
+    it('never casts one with only an invitation outstanding', () => {
+      const invited = hurt('Cy', 150);
+      invited.invited = true;
+      rainy().onCharacter(party([invited], 60));
+      drain();
+      expect(sent).toEqual(['mahe']);
+    });
+  });
+
   /* Unknown is the unsafe case: the lowest bar first, figures or none. */
   it('heals a lower member with no figures first, with the configured spell', () => {
     healer().onCharacter(party([hurt('Ann', 68), hurt('Cy', null, 0.2)]));
