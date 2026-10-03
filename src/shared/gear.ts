@@ -21,6 +21,7 @@ import type { UiLookup } from './i18n';
 import {
   ARMOUR_TYPE,
   OFF_HAND,
+  READIED,
   sameItem,
   WEAPON_CLASS,
   WEAPON_HAND,
@@ -120,7 +121,7 @@ const NOTHING: GearPlan = { commands: [], missing: [], overflow: 0 };
  * Only what is **carried and not in use**. A slot already filled by the right
  * item is left alone — re-wearing it earns `You are already wearing …`, a
  * command spent to be told so — and an item the pack does not hold at all is
- * reported instead of asked for.
+ * reported instead of asked for. The light's slot is left out (`kitOf`).
  *
  * `wear` is the server's own `Equip` verb and covers wielding and holding as
  * well (docs/greatermud/commands.md: `ready`, `arm` and `wear` are one
@@ -134,7 +135,7 @@ export function restorePlan(
   const wanted: string[] = [];
   const missing: string[] = [];
 
-  for (const worn of loadout) {
+  for (const worn of kitOf(loadout)) {
     const held = items.filter((item) => sameItem(item.name, worn.item));
     if (held.length === 0) {
       missing.push(worn.item);
@@ -209,14 +210,24 @@ export function unequip(item: string): string {
 }
 
 /**
- * Whether anything on this pack could be put back where it was.
+ * Whether any worn slot but the light's is recorded.
  *
- * The renderer asks so a button that would do nothing is drawn as unavailable
- * rather than as a control that shrugs. Same function as the plan, so the
- * button and the action cannot disagree about it.
+ * The button is pressed to make sure the gear is on (user, 2026-10-03, todo
+ * 18), so it is lit with everything already on, and a press with nothing to
+ * do says so. Greyed that way, it read as a button that never worked.
  */
-export function canRestore(loadout: Loadout, items: readonly CarriedItem[]): boolean {
-  return restorePlan(loadout, items, Number.MAX_SAFE_INTEGER).commands.length > 0;
+export function canRestore(loadout: Loadout): boolean {
+  return kitOf(loadout).length > 0;
+}
+
+/**
+ * The recorded slots re-equipping puts back, which is all of them but
+ * `Readied`: the light is `AutoLight`'s, which lights one only when the room
+ * needs it (user, 2026-10-03, todo 18). Re-equipping would light a torch in
+ * daylight.
+ */
+function kitOf(loadout: Loadout): Loadout {
+  return loadout.filter((worn) => worn.slot.toLowerCase() !== READIED.toLowerCase());
 }
 
 /**
