@@ -54,6 +54,7 @@ import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { NO_BELONGINGS, type BelongingsSink, type KeptRoom } from '../../shared/belongings';
 import { bareName, WORN_SLOT } from '../../shared/items';
 import { learnLoadout } from '../../shared/gear';
+import { placeOf, withHidden, withTaken } from '../../shared/stash';
 import { isWoundBand } from '../../shared/wounds';
 import { FightTracker, playerDies } from './combat';
 import { Expectations, MOVE_COMMANDS, type LapsedClaim } from './expectations';
@@ -563,41 +564,7 @@ export class CharacterTracker {
     this.company.reset();
     this.state = {
       ...structuredClone(EMPTY_CHARACTER),
-      /*
-       * What the banks said before this session, restored with the times they
-       * said it. Not merged through `withBankBalance`: the list came out of
-       * that function on the way to disk, so merging it against an empty state
-       * would only re-run a decision already made — and `at` is carried so the
-       * card draws a stale figure as stale rather than as current.
-       */
-      banks: this.belongings.recallBanks().map((bank) => ({ ...bank })),
-      /*
-       * What was in each slot before this session, restored beside the
-       * balances. Not a claim that any of it is *on* — a death may be exactly
-       * why the client was restarted — which is why it is its own field and
-       * not a seeding of `inventory.items`.
-       */
-      loadout: this.belongings.recallLoadout().map((worn) => ({ ...worn })),
-      /*
-       * What the book held last session on this realm, so the settings screen
-       * and the asking routine start from knowledge rather than a dash. The
-       * next `sp`/`pow` replaces it whole; null stays null, because *never
-       * read* must survive a restart as itself.
-       */
-      spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
-      /*
-       * And what `abil` last summed, with the clock it was read on.
-       *
-       * Nothing on the wire reports a quest counter moving, which was the
-       * argument for dropping this and is not one for forgetting it: the same
-       * is true of a bank balance three lines up, and the answer there is the
-       * one taken here — keep the figure, keep `at` beside it, and let the card
-       * draw a stale number as stale. The quest book already draws the clock
-       * and names `abil` as its source. Null stays null: *never read* has to
-       * survive a restart as itself, or an unasked book reads as a character
-       * the realm counts nothing for.
-       */
-      abilities: this.belongings.recallAbilities(),
+      ...this.recalled(),
       /*
        * And what the fighting has added up to, so the Combat Stats card and
        * its rate graph open where they were left. A reconnect within one
@@ -965,6 +932,7 @@ export class CharacterTracker {
     // The book, written down from the same single commit point as the gear.
     if (this.state.spellbook !== before.spellbook && this.state.spellbook !== null)
       this.belongings.rememberSpellbook(this.state.spellbook);
+    if (this.state.stash !== before.stash) this.belongings.rememberStash(this.state.stash);
     return this.state !== before;
   }
 
@@ -1077,12 +1045,32 @@ export class CharacterTracker {
   forgetBelongings(at = Date.now()): void {
     this.state = {
       ...this.state,
-      banks: this.belongings.recallBanks().map((bank) => ({ ...bank })),
-      loadout: this.belongings.recallLoadout().map((worn) => ({ ...worn })),
-      spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
-      abilities: this.belongings.recallAbilities(),
+      ...this.recalled(),
       // And the totals, which were somebody gone's.
       tally: freshTally(this.state, at, this.moving)
+    };
+  }
+
+  /**
+   * What the character's record supplies, seeded by `reset()` and
+   * `forgetBelongings` alike. Restored, never merged or re-derived: each
+   * figure keeps the `at` it was read on, so a card draws a stale one as
+   * stale. The loadout is not a claim anything is *on* (a death may be why
+   * the client restarted), so it is its own field, not `inventory.items`. A
+   * spellbook or `abil` never read stays null across a restart, or an unasked
+   * book reads as a character the realm counts nothing for.
+   */
+  private recalled(): Pick<
+    CharacterState,
+    'banks' | 'loadout' | 'stash' | 'spellbook' | 'abilities'
+  > {
+    return {
+      banks: this.belongings.recallBanks().map((bank) => ({ ...bank })),
+      loadout: this.belongings.recallLoadout().map((worn) => ({ ...worn })),
+      // Held as it is: `shared/stash.ts` replaces rather than mutates.
+      stash: this.belongings.recallStash(),
+      spellbook: this.belongings.recallSpellbook()?.map((spell) => ({ ...spell })) ?? null,
+      abilities: this.belongings.recallAbilities()
     };
   }
 
@@ -1207,6 +1195,7 @@ export class CharacterTracker {
       phase: 'authenticating',
       banks: s.banks.map((bank) => ({ ...bank })),
       loadout: s.loadout.map((worn) => ({ ...worn })),
+      stash: s.stash,
       // And where it died: a reconnect after a death is when the kit is fetched.
       lastDeath: s.lastDeath === null ? null : { ...s.lastDeath },
       // And where it stood, unless the menu has named another realm.
@@ -1746,7 +1735,8 @@ export class CharacterTracker {
          * entry at all, so this was documented as an approximation that
          * cleared the entry and waited for the room to restate it.
          */
-        return withoutRoomItem(withItem(s, item, count), item, count);
+        const stash = withTaken(s.stash, placeOf(s.room), item, count);
+        return { ...withoutRoomItem(withItem(s, item, count), item, count), stash };
       }
 
       /* Bought: into the pack, the purse down by the quote, and the stock checked. */
@@ -1803,14 +1793,15 @@ export class CharacterTracker {
        * concerned: a hidden item is exactly what `You notice` does not show,
        * and putting it on the floor list would show an item nobody can pick up
        * without a search that may well fail — the capture's own `sea` found
-       * nothing. Where it went is not modelled; that it is gone is.
+       * nothing. Where it went is the stash record's (`shared/stash.ts`).
        */
       case 'user-hides': {
         const item = g['item'];
         if (!item) return null;
         const hidden = figure(g['count']) ?? 1;
         this.notePack(block.seq, item, false, hidden);
-        return withoutItem(s, item, hidden);
+        const stash = withHidden(s.stash, placeOf(s.room), item, hidden, block.at);
+        return { ...withoutItem(s, item, hidden), stash };
       }
       /*
        * The cleanup took a `Remove@Maint` item out of the pack: one instance

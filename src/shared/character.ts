@@ -12,6 +12,7 @@
 import type { Sight } from './light';
 import type { Alignment } from './alignment';
 import type { Loadout } from './gear';
+import type { Stash } from './stash';
 import type { AlignmentCost, MobDisposition } from './mobs';
 import type {
   CurrencyEntity,
@@ -1430,6 +1431,12 @@ export interface CharacterState {
    */
   loadout: Loadout;
   /**
+   * What the character hid, where and when, seeded from its record at
+   * `reset()` like the loadout and kept by `You hid` / `You took`. See
+   * `src/shared/stash.ts`.
+   */
+  stash: Stash;
+  /**
    * Where the character last died, and when (todo 07, 2026-09-12).
    *
    * Written at `user-dies` from the room the character was standing in,
@@ -1611,6 +1618,7 @@ export const EMPTY_CHARACTER: CharacterState = {
   gangListing: null,
   banks: [],
   loadout: [],
+  stash: [],
   mortallyWounded: false,
   lastDeath: null,
   peeked: null,

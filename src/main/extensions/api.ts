@@ -26,11 +26,13 @@ import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
 import type { HuntingAdvice, HuntOrder, HuntWait } from '../../shared/hunting';
 import type { TuningConfig } from '../../shared/internal';
+import type { Stash } from '../../shared/stash';
 import type { Odds } from '../../shared/survival';
 import type { SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
 import type { RoomId, Route, WorldRoom } from '../../shared/world';
 import type { WalkProgress } from '../../shared/walk';
 import type { Intent, Offered } from '../automation/CommandQueue';
+import type { StashFetchAsk, StashTrip } from '../automation/StashFetch';
 import type { TrainerAhead } from '../automation/TrainErrand';
 import type { RealmClass } from '../session/Errands';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -164,6 +166,17 @@ export interface ExtensionSessionHost {
     /** One trip for a row; its refusal, or null once under way. */
     fetch(row: SupplyItem): string | null;
     readonly current: ShopTrip | null;
+  };
+  stash: {
+    /** What this character hid, where and when (`CharacterState.stash`). */
+    record(): Stash;
+    /**
+     * One trip to `room` (`map/room`) for the named items, searching first
+     * where `search` is set, since a hidden pile is listed only by a search;
+     * its refusal, or null once under way. Every refusal and ending is said.
+     */
+    fetch(ask: StashFetchAsk): string | null;
+    readonly current: StashTrip | null;
   };
   walk(): WalkProgress;
   /** A command proposed to the queue, like any module's. */

@@ -13,6 +13,7 @@ import { coinText } from '../lib/coins';
 import { type CarriedItem, type CharacterState, type Coins } from '@shared/character';
 import { countedList, ITEM_KIND_WORD, type ItemKind } from '@shared/items';
 import type { SessionId } from '@shared/ipc';
+import { stashRooms } from '@shared/stash';
 import type { WorldItem } from '@shared/world';
 
 /**
@@ -280,6 +281,7 @@ export function InventoryBody({
   onFindDismiss
 }: InventoryBodyProps) {
   const { items, keys, wealth, coins, encumbrance, encumbranceMax } = character.inventory;
+  const stash = stashRooms(character.stash);
   /**
    * Who the realm thinks this character is.
    *
@@ -566,6 +568,32 @@ export function InventoryBody({
                 the pack answers a different question from this one. */}
                 <dt>{t('cards.inventory.keysLabel')}</dt>
                 <dd>{countedList(keys).join(', ')}</dd>
+              </>
+            )}
+            {stash.length > 0 && (
+              <>
+                {/* What `hide` put where no `You notice` lists it: the client's
+                record, kept until a `get` in that room takes it back. */}
+                <dt>{t('cards.inventory.stashLabel')}</dt>
+                <dd className="stash">
+                  {stash.map((room) => (
+                    <div
+                      key={`${room.map ?? '?'}/${room.room ?? '?'}`}
+                      title={t('cards.inventory.stashTooltip', {
+                        when: new Date(room.at).toLocaleString()
+                      })}
+                    >
+                      {t('cards.inventory.stashRoom', {
+                        items: room.items.join(', '),
+                        room:
+                          room.name ??
+                          (room.map === null || room.room === null
+                            ? t('cards.inventory.stashUnplaced')
+                            : `${room.map}/${room.room}`)
+                      })}
+                    </div>
+                  ))}
+                </dd>
               </>
             )}
           </dl>
