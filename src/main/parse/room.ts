@@ -44,6 +44,7 @@ import { RoomDraft } from './draft';
 import { isPortalClaim, MOVE_COMMANDS, type Expectations } from './expectations';
 import { itemList, list, parseCoinEntry } from './inventory';
 import { leavesRoom } from './departs';
+import { confirmedBy } from './lastRoom';
 
 /** What the wire observed about one thing, beside its name (`WorldGraph.buildItemEntity`). */
 export type ItemObservation = Parameters<WorldGraph['buildItemEntity']>[1];
@@ -753,7 +754,7 @@ export class RoomTracker {
       if (sameRoomAgain) {
         room.map = s.room.map;
         room.number = s.room.number;
-        room.resolvedBy = s.room.resolvedBy;
+        room.resolvedBy = confirmedBy(s.room.resolvedBy, 'exit-signature');
         room.confidence = s.room.confidence;
         room.ambiguous = 1;
         room.candidates = s.room.candidates;

@@ -416,6 +416,48 @@ describe('what abil last summed', () => {
  * character and made a new one on the same login — and `forget` is the one
  * destructive call on this seam, reached only from a player answering.
  */
+/* The room last stood in, so a relaunch starts the map from it. See `parse/lastRoom.ts`. */
+describe('the room this character last stood in', () => {
+  it('starts null, because no room was ever placed', () => {
+    expect(new Belongings({ file, realm: REALM }).recallRoom()).toBeNull();
+  });
+
+  it('survives a restart', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberRoom({ map: 1, room: 2147, confidence: 1 });
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallRoom()).toEqual({
+      map: 1,
+      room: 2147,
+      confidence: 1
+    });
+  });
+
+  it('goes with the rest when the player says this is somebody else', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberRoom({ map: 1, room: 2147, confidence: 1 });
+    expect(store.forget()).toBe(true);
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallRoom()).toBeNull();
+  });
+
+  it('refuses a file whose room is not two whole numbers, and writes nothing over it', () => {
+    const body = {
+      version: 1,
+      realm: REALM,
+      banks: [],
+      room: { map: '1', room: 2147, confidence: 1 }
+    };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(body));
+    const store = new Belongings({ file, realm: REALM });
+    expect(store.recallRoom()).toBeNull();
+    store.rememberRoom({ map: 1, room: 2146, confidence: 1 });
+    store.close();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(body);
+  });
+});
+
 describe('who the record is about', () => {
   const identity = {
     race: 'Human',

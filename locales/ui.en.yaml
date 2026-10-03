@@ -1947,7 +1947,7 @@ cards:
     roomUnknown: Room unknown
     roomUnknownTooltip: The client does not know which room this character is in.
     lastKnown: Last known room
-    lastKnownTooltip: Where this character stood when it left the realm. The first room the server prints after login replaces it.
+    lastKnownTooltip: Where this character last stood. The first room the server prints after login confirms or replaces it.
     # The finder over the map: a start and a destination, opened from the
     # search glyph in the action column beside the button back to the
     # character's room.

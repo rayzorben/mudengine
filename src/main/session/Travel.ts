@@ -21,7 +21,7 @@ import type { QuestRunner } from '../automation/QuestRunner';
 import type { Supplies } from '../automation/Supplies';
 import type { OutgrownGear } from '../automation/OutgrownGear';
 import type { TrainErrand } from '../automation/TrainErrand';
-import { fightIsRunning, type CharacterState } from '../../shared/character';
+import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
 import type { Walker } from '../automation/Walker';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -812,7 +812,8 @@ export class Travel implements SessionModule {
     const journey = this.journey;
     if (journey === null && !this.loops.carried) return;
     if (state.phase !== 'in-game') return;
-    if (state.room.map === null || state.room.number === null) {
+    // A remembered room is where the character was, not where the server put it.
+    if (!placedByServer(state.room)) {
       // Said once and not on every line: the entry probe is what asks where
       // the character is, and this is only ever waiting for the answer. And
       // only when something will in fact walk on — a stopped lap is carried

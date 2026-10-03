@@ -37,7 +37,7 @@ import path from 'node:path';
 
 import type { AbilitySums, BankBalance, KnownSpell } from '../../shared/character';
 import { bankKey } from '../../shared/character';
-import type { BelongingsSink, StatsRecord } from '../../shared/belongings';
+import type { BelongingsSink, KeptRoom, StatsRecord } from '../../shared/belongings';
 import type { CharacterIdentity } from '../../shared/reset';
 import {
   asUnderway,
@@ -100,6 +100,8 @@ interface BelongingsFile {
    */
   stats?: StatsRecord;
   statsBase?: CombatTally;
+  /** The room last stood in. Absent means none was ever placed. */
+  room?: KeptRoom;
   /** The lap and the route the app last saw. Parsed by `asUnderway`; absent is nothing. */
   underway?: unknown;
 }
@@ -132,6 +134,8 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   private stats: StatsRecord | null = null;
   /** Null is *never reset*. See `recallStatsBase`. */
   private statsBase: CombatTally | null = null;
+  /** Null is *never placed*. See `recallRoom`. */
+  private room: KeptRoom | null = null;
   private underway: Underway = NOTHING_UNDERWAY;
   private timer: NodeJS.Timeout | null = null;
   /** When the armed timer fires, so a sooner request can replace a later one. */
@@ -298,9 +302,24 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     this.identity = null;
     this.stats = null;
     this.statsBase = null;
+    this.room = null;
     this.underway = NOTHING_UNDERWAY;
     this.schedule();
     return true;
+  }
+
+  recallRoom(): KeptRoom | null {
+    return this.room;
+  }
+
+  rememberRoom(place: KeptRoom): void {
+    if (this.suspended) return;
+    const { map, room, confidence } = place;
+    if (this.room?.map === map && this.room.room === room && this.room.confidence === confidence)
+      return;
+    this.room = { map, room, confidence };
+    // Every step moves it, so it waits with the totals; `close()` writes the last one.
+    this.schedule(tuning().records.statsWriteDelayMs);
   }
 
   rememberIdentity(identity: CharacterIdentity): void {
@@ -384,6 +403,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       this.identity = parsed.identity ?? null;
       this.stats = parsed.stats ?? null;
       this.statsBase = parsed.statsBase ?? null;
+      this.room = parsed.room ?? null;
       this.underway = asUnderway(parsed.underway);
     } catch (error) {
       /*
@@ -437,6 +457,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       ...(this.identity !== null ? { identity: this.identity } : {}),
       ...(this.stats !== null ? { stats: this.stats } : {}),
       ...(this.statsBase !== null ? { statsBase: this.statsBase } : {}),
+      ...(this.room !== null ? { room: this.room } : {}),
       ...(this.underway.lap === null && this.underway.route === null
         ? {}
         : { underway: this.underway })
@@ -561,7 +582,16 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (file.identity !== undefined && !isIdentity(file.identity)) return false;
   if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;
   if (file.statsBase !== undefined && !isCombatTally(file.statsBase)) return false;
+  if (file.room !== undefined && !isKeptRoom(file.room)) return false;
   return file.banks.every(isBankBalance);
+}
+
+/** A room by its realm numbers, two whole numbers, and a confidence from 0 to 1. */
+function isKeptRoom(value: unknown): value is KeptRoom {
+  if (typeof value !== 'object' || value === null) return false;
+  const { map, room, confidence } = value as Record<string, unknown>;
+  if (!Number.isInteger(map) || !Number.isInteger(room)) return false;
+  return typeof confidence === 'number' && confidence >= 0 && confidence <= 1;
 }
 
 /** Each spot's measured rate: four finite figures. */

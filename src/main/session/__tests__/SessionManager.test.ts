@@ -40,7 +40,7 @@ import type { Errands } from '../Errands';
 import { NO_LORE } from '../../../shared/lore';
 import type { LearnedSpawns } from '../../../shared/spawns';
 import type { QuestWatched } from '../../../shared/quests';
-import { NO_RECORD, type CharacterRecord } from '../../../shared/belongings';
+import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../../shared/belongings';
 import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
 import { SHIPPED_WORLD_LABEL } from '../../../shared/worlds';
 
@@ -5550,6 +5550,48 @@ describe('picking up after a lost connection', () => {
     await until(() => manager!.loops.progress.hold === null);
     expect(manager.loops.progress).toMatchObject({ status: 'running', name: 'lap', stop: 1 });
     expect(notices).toContain(t('automation.loops.walkingOnAfterReconnect'));
+  });
+
+  /* The last room outlives the socket, but it is where the character was, not where the server put it. */
+  it('does not walk on from a remembered room, only from one the server placed', async () => {
+    let room: KeptRoom | null = null;
+    let kept: Underway = NOTHING_UNDERWAY;
+    const record: CharacterRecord = {
+      ...NO_RECORD,
+      recallRoom: () => room,
+      rememberRoom: (place) => {
+        room = place;
+      },
+      recallUnderway: () => kept,
+      rememberUnderway: (underway) => {
+        kept = underway;
+      }
+    };
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: automation() });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect(dial());
+    const first = await client();
+    await placed(first);
+    expect(room).toMatchObject({ map: 1, room: 2140 });
+    expect(
+      manager.loops.start({ name: 'lap', stops: [{ room: 'Home 1/2140' }] }, manager.character)
+    ).toBeNull();
+    first.destroy();
+    await until(() => manager!.loops.progress.hold === 'offline');
+
+    await manager.connect(dial());
+    const second = await client(1);
+    second.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+    // The positive control: the record's room is standing, as remembered.
+    expect(manager.character.room).toMatchObject({ number: 2140, resolvedBy: 'remembered' });
+    await until(() => notices.includes(t('session.reconnect.waitingToBePlaced')));
+    expect(manager.loops.progress.hold).toBe('offline');
+
+    second.write('Location: 1,2140\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.loops.progress.hold === null);
+    expect(manager.character.room.resolvedBy).not.toBe('remembered');
   });
 
   /* Disconnect and quit are not Stop (todo 01): the lap is held as a loss holds it. */

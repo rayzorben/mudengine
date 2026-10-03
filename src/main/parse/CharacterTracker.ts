@@ -15,7 +15,6 @@
  */
 import {
   EMPTY_CHARACTER,
-  emptyRoom,
   NO_COMBAT,
   NO_PARTY,
   type CarriedItem,
@@ -49,6 +48,7 @@ import { NO_LORE, type MobLore } from '../../shared/lore';
 import type { RealmFamily } from '../../shared/realm';
 import { NO_SPELL_LORE, type SpellLore } from '../../shared/spell-messages';
 import { PLAYER_STATUS_HEADER } from './patterns';
+import * as lastRoom from './lastRoom';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
@@ -608,7 +608,8 @@ export class CharacterTracker {
        * launch hands back the tally `leaveRealm` settled; a launch hands back
        * the file's, with any clock it left open closed at the write.
        */
-      tally: this.recalledTally()
+      tally: this.recalledTally(),
+      room: lastRoom.recalledRoom(this.belongings.recallRoom(), this.world)
     };
     this.room.discard();
     this.expect.forget();
@@ -648,17 +649,9 @@ export class CharacterTracker {
    * Not a full reset: who they are — the name, race, class and level from the
    * stat sheet — is still the last true thing known about them, and it is what
    * the tab rail and the offline card have to show. What stops being true is
-   * everything about *standing somewhere*.
-   *
-   * The room is cleared rather than kept, because a stale room is worse than
-   * none: the map keeps drawing a place the character is not, and a route
-   * planned on reconnect starts from it. The pending queue goes for the same
-   * reason — a move sent before the socket died can never be answered now, and
-   * holding it would let the *next* session's first room consume it.
-   *
-   * Without this the phase stayed `in-game` after a disconnect, so the HUD went
-   * on reporting vitals for a character that was gone. It only became visible
-   * once the rail stopped disappearing along with the connection.
+   * everything about *standing somewhere* except where: the room is kept as
+   * remembered (`lastRoom.ts`). The pending queue goes, since a move sent
+   * before the socket died would let the next session's first room consume it.
    */
   leaveRealm(at = Date.now()): boolean {
     this.expect.dropHint();
@@ -671,11 +664,12 @@ export class CharacterTracker {
     // A kill nobody read before the socket closed, or a sneak, can no longer be acted on.
     this.kills.forget();
     this.stealth.forget();
-    if (this.state.phase === 'unknown' && this.state.room.name === null) return settled;
+    const { phase, room } = this.state;
+    if (phase === 'unknown' && lastRoom.nothingToRemember(room)) return settled;
     this.state = {
       ...this.state,
       phase: 'unknown',
-      room: emptyRoom(),
+      room: lastRoom.rememberedRoom(room),
       inCombat: false,
       // A character on the ground in a realm it is no longer in is not a fact
       // about anything; the next status line states it afresh.
@@ -854,6 +848,7 @@ export class CharacterTracker {
      * own coordinates is not a move, and must not throw the listing away.
      */
     const moved = reduced !== null && leftRoom(before.room, reduced.room);
+    if (reduced !== null) lastRoom.keepPlacement(this.belongings, reduced.room);
     // A quotation and a vault both belong to the room they were given in.
     let next = reduced !== null && moved ? this.ledger.roomChanged(reduced) : reduced;
     // And so does what other people were fighting: a monster spoken for in the
@@ -1217,7 +1212,9 @@ export class CharacterTracker {
       banks: s.banks.map((bank) => ({ ...bank })),
       loadout: s.loadout.map((worn) => ({ ...worn })),
       // And where it died: a reconnect after a death is when the kit is fetched.
-      lastDeath: s.lastDeath === null ? null : { ...s.lastDeath }
+      lastDeath: s.lastDeath === null ? null : { ...s.lastDeath },
+      // And where it stood, unless the menu has named another realm.
+      ...(realm === null || realm === s.realm ? { room: lastRoom.rememberedRoom(s.room) } : {})
     };
   }
 
@@ -1281,7 +1278,7 @@ export class CharacterTracker {
 
       /*
        * Leaving on purpose. The realm is left exactly as a closed socket
-       * leaves it — no room, no fight, no party — except that the connection
+       * leaves it (no fight, no party, the room remembered), except that the connection
        * is still up and the menu is about to be printed. `phase` goes to
        * `authenticating` so nothing automated sends into the menu, and
        * `LoginAutomator` reads this block to stand down until reconnect.
@@ -1432,7 +1429,10 @@ export class CharacterTracker {
             ...s.room,
             map,
             number,
-            resolvedBy: located?.room ? 'coordinates' : s.room.resolvedBy,
+            resolvedBy: lastRoom.confirmedBy(
+              located?.room ? 'coordinates' : s.room.resolvedBy,
+              null
+            ),
             confidence: located?.room ? 1 : s.room.confidence,
             ambiguous: located?.room ? 1 : s.room.ambiguous,
             // Nothing was weighed: the game stated it. One candidate, chosen.

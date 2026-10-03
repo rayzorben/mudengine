@@ -29,7 +29,12 @@ import { ActionBook, parseActionsCsv } from '../../../shared/actions';
 import { DeathBook, parseDeathMessagesCsv } from '../../../shared/death-messages';
 import { NO_MESSAGES } from '../../../shared/messages';
 import type { PlayerFacts, RealmPlayers } from '../../../shared/players';
-import { NO_BELONGINGS, type StatsRecord } from '../../../shared/belongings';
+import {
+  NO_BELONGINGS,
+  type BelongingsSink,
+  type KeptRoom,
+  type StatsRecord
+} from '../../../shared/belongings';
 import {
   effectKey,
   SpellMessageBook,
@@ -1015,6 +1020,146 @@ describe('a second look at the same room', () => {
 });
 
 /*
+ * The room the character stood in outlives the socket, the account menu and a
+ * relaunch, so the map goes on drawing it. The first room the server prints
+ * after login keeps it when it is that room and replaces it when it is not.
+ */
+describe('the last room outlives the socket', () => {
+  const GUILD = { m: 1, r: 2147, n: "Newhaven, Adventurer's Guild", x: { s: { m: 1, r: 2146 } } };
+  const ROAD = { m: 1, r: 2146, n: 'Newhaven, Narrow Road', x: { n: { m: 1, r: 2147 } } };
+  const GUILD_LINES = [
+    "Newhaven, Adventurer's Guild",
+    'Also here: kobold thief.',
+    'Obvious exits: south'
+  ];
+  const ROAD_LINES = ['Newhaven, Narrow Road', 'Obvious exits: north'];
+
+  function session(record: BelongingsSink = NO_BELONGINGS): {
+    tracker: CharacterTracker;
+    feed: (lines: string[]) => void;
+  } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-tracker-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = JSON.stringify({ v: 1, source: 'test', rooms: 2, generatedAt: 'x' });
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync([header, JSON.stringify(GUILD), JSON.stringify(ROAD)].join('\n') + '\n')
+    );
+    const graph = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    const classifier = new Classifier();
+    const tracker = new CharacterTracker(graph);
+    tracker.useBelongings(record);
+    let seq = 0;
+    const feed = (lines: string[]): void => {
+      for (const plain of lines) {
+        seq += 1;
+        const at = 1_700_000_000_000 + seq;
+        const { block, batch } = classifier.classify({
+          seq,
+          at,
+          text: plain,
+          plain,
+          terminator: 'newline'
+        });
+        tracker.apply(block);
+        if (batch) tracker.apply(batch);
+      }
+    };
+    return { tracker, feed };
+  }
+
+  it('keeps the room when the socket closes, without who was in it', () => {
+    const { tracker, feed } = session();
+    feed(['Location:            1,2147', ...GUILD_LINES]);
+    expect(tracker.current.room.occupants).not.toEqual([]);
+    tracker.leaveRealm();
+    expect(tracker.current.room).toMatchObject({
+      name: GUILD.n,
+      map: 1,
+      number: 2147,
+      resolvedBy: 'remembered',
+      occupants: [],
+      items: []
+    });
+  });
+
+  it('keeps the room at the account menu', () => {
+    const { tracker, feed } = session();
+    feed(['[HP=98/MA=50]:', 'Location:            1,2147', ...GUILD_LINES]);
+    expect(tracker.current.phase).toBe('in-game');
+    feed(['Please select a character:']);
+    expect(tracker.current.phase).toBe('authenticating');
+    expect(tracker.current.room).toMatchObject({ map: 1, number: 2147, resolvedBy: 'remembered' });
+  });
+
+  it('confirms the remembered room when the first room after login is that room', () => {
+    const { tracker, feed } = session();
+    feed(['Location:            1,2147', ...GUILD_LINES]);
+    tracker.leaveRealm();
+    expect(tracker.current.room.resolvedBy).toBe('remembered');
+    feed(GUILD_LINES);
+    // Carried and confirmed rather than re-derived: the realm alone would say unique name.
+    expect(tracker.current.room).toMatchObject({
+      map: 1,
+      number: 2147,
+      resolvedBy: 'exit-signature',
+      confidence: 1
+    });
+    expect(tracker.current.room.occupants).not.toEqual([]);
+  });
+
+  it('places the first room afresh when it is another', () => {
+    const { tracker, feed } = session();
+    feed(['Location:            1,2147', ...GUILD_LINES]);
+    tracker.leaveRealm();
+    feed(ROAD_LINES);
+    expect(tracker.current.room.number).toBe(2146);
+    expect(tracker.current.room.resolvedBy).not.toBe('remembered');
+  });
+
+  it('starts a connection from the room the record kept', () => {
+    const { tracker } = session({
+      ...NO_BELONGINGS,
+      recallRoom: () => ({ map: 1, room: 2147, confidence: 1 })
+    });
+    tracker.reset();
+    expect(tracker.current.room).toMatchObject({
+      name: GUILD.n,
+      map: 1,
+      number: 2147,
+      resolvedBy: 'remembered'
+    });
+  });
+
+  it('places nothing from a record naming a room the realm does not have', () => {
+    const { tracker } = session({
+      ...NO_BELONGINGS,
+      recallRoom: () => ({ map: 9, room: 9, confidence: 1 })
+    });
+    tracker.reset();
+    expect(tracker.current.room.map).toBeNull();
+  });
+
+  it('writes each newly placed room to the record, and never a remembered one', () => {
+    const kept: KeptRoom[] = [];
+    const { tracker, feed } = session({
+      ...NO_BELONGINGS,
+      recallRoom: () => ({ map: 1, room: 2146, confidence: 0.5 }),
+      rememberRoom: (place) => kept.push(place)
+    });
+    tracker.reset();
+    // The positive control: a remembered room is standing, and nothing was written for it.
+    expect(tracker.current.room.resolvedBy).toBe('remembered');
+    expect(kept).toEqual([]);
+    feed(['Location:            1,2147', ...GUILD_LINES]);
+    expect(kept.at(-1)).toEqual({ map: 1, room: 2147, confidence: 1 });
+    tracker.leaveRealm();
+    expect(kept.every((place) => place.map === 1 && place.room === 2147)).toBe(true);
+  });
+});
+
+/*
  * These use the real realm data. Which room you are in is entirely a question
  * of how ambiguous real names are, and a hand-made world of three rooms cannot
  * express a city with four streets called "Guild Street".
@@ -1461,9 +1606,9 @@ describe('leaving the realm', () => {
     expect(tracker.current.phase).not.toBe('in-game');
   });
 
-  /* A stale room is worse than none: the map draws a place the character is
-     not, and a route planned on reconnect starts from it. */
-  it('forgets where they were standing', () => {
+  /* A room never placed has nothing to remember; a placed one is kept (see
+   *the last room outlives the socket*). */
+  it('forgets a room it never placed', () => {
     const tracker = arrive();
     expect(tracker.current.room.name).not.toBeNull();
     tracker.leaveRealm();
@@ -11007,7 +11152,8 @@ describe('the spellbook and the belongings record', () => {
       }> | null,
       durations: {} as Record<string, number>,
       abilities: null as AbilitySums | null,
-      stats: null as StatsRecord | null
+      stats: null as StatsRecord | null,
+      room: null as KeptRoom | null
     };
     return {
       state,
@@ -11040,6 +11186,10 @@ describe('the spellbook and the belongings record', () => {
         },
         recallStatsBase: () => null,
         rememberStatsBase: () => {},
+        recallRoom: () => state.room,
+        rememberRoom: (place: KeptRoom) => {
+          state.room = { ...place };
+        },
         forget: () => false
       }
     };

@@ -460,6 +460,8 @@ export interface Room {
   /**
    * How the location was arrived at, and how much to trust it.
    * `null` when the room has not been matched to the realm data at all.
+   * `remembered` is where the character stood before the socket closed or the
+   * client was restarted, until the server prints a room (`parse/lastRoom.ts`).
    */
   resolvedBy:
     | 'coordinates'
@@ -469,6 +471,7 @@ export interface Room {
     | 'exit-signature'
     | 'dead-reckoning'
     | 'scattered'
+    | 'remembered'
     | null;
   confidence: number;
   /** Rooms still consistent with the evidence, when it is ambiguous. */
@@ -1819,6 +1822,14 @@ export function leaderOf(state: CharacterState): PartyMember | undefined {
   const leader = state.party.following?.toLowerCase();
   if (leader === undefined) return undefined;
   return state.party.members.find((member) => member.name.toLowerCase() === leader);
+}
+
+/**
+ * Whether the server has placed this room since login, rather than the client
+ * remembering where the character stood before (`resolvedBy: 'remembered'`).
+ */
+export function placedByServer(room: Pick<Room, 'map' | 'number' | 'resolvedBy'>): boolean {
+  return room.map !== null && room.number !== null && room.resolvedBy !== 'remembered';
 }
 
 /**

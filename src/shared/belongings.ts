@@ -32,6 +32,7 @@ import type { MeasuredRate } from './hunting';
 import type { AbilitySums, BankBalance, KnownSpell } from './character';
 import type { FledEntry } from './fled';
 import type { Loadout } from './gear';
+import type { RoomReference } from './world';
 import type { CharacterIdentity } from './reset';
 import type { CombatTally } from './tally';
 import { NO_UNDERWAY, type UnderwaySink } from './underway';
@@ -45,6 +46,11 @@ import { NO_UNDERWAY, type UnderwaySink } from './underway';
 export interface StatsRecord {
   savedAt: number;
   tally: CombatTally;
+}
+
+/** A room the character's record keeps, with how sure the placement was. */
+export interface KeptRoom extends RoomReference {
+  confidence: number;
 }
 
 export interface BelongingsSink {
@@ -163,6 +169,14 @@ export interface BelongingsSink {
   /** The card was reset: by its button, by a lap beginning, or by `@reset`. */
   rememberStatsBase(base: CombatTally): void;
   /**
+   * The room this character last stood in, or null when none was ever placed.
+   * Read at `reset()`, so a connection after a relaunch starts from it until
+   * the server prints a room (`parse/lastRoom.ts`).
+   */
+  recallRoom(): KeptRoom | null;
+  /** A room was placed; keep where. */
+  rememberRoom(place: KeptRoom): void;
+  /**
    * Throws the whole record away, because the player says this is not the same
    * character.
    *
@@ -200,6 +214,8 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberStats: () => {},
   recallStatsBase: () => null,
   rememberStatsBase: () => {},
+  recallRoom: () => null,
+  rememberRoom: () => {},
   forget: () => false
 };
 
