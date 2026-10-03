@@ -9578,6 +9578,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
             const b = c.getBoundingClientRect();
             return {
               id: c.dataset.railCard,
+              size: c.querySelector(':scope > .card')?.dataset.cardSize ?? null,
               x: (b.left - g.left) / cell,
               y: (b.top - g.top) / cell,
               w: b.width / cell,
@@ -9903,6 +9904,76 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       apart(lower?.cards ?? []),
       'still with no two cards sharing a cell',
       JSON.stringify(lower)
+    );
+  }
+
+  /*
+   * Auto layout (todo 01): every card sized to what it draws and packed from
+   * the top, in view where they fit and stepped down a size before any is
+   * left to scroll; the arrangement it replaced comes back on its undo.
+   */
+  {
+    await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
+    /** The rail cards whose box runs past the bottom of the rail as it is on screen. */
+    const pastView = async () =>
+      JSON.parse(
+        await evaluate(`
+          (() => {
+            const rail = document.querySelector('.rail');
+            const bottom = rail.getBoundingClientRect().top + rail.clientTop + rail.clientHeight;
+            return JSON.stringify(
+              [...rail.querySelectorAll('.rail-grid > .rail-cell > .card')]
+                .filter((card) => card.getBoundingClientRect().bottom > bottom + 0.5)
+                .map((card) => ({
+                  id: card.dataset.card,
+                  size: card.dataset.cardSize ?? null,
+                  rolled: card.dataset.rolled === 'true'
+                }))
+            );
+          })()
+        `)
+      );
+    const keyed = (shape) =>
+      JSON.stringify(
+        [...(shape?.cards ?? [])]
+          .map(({ id, x, y, w, h }) => [
+            id,
+            Math.round(x),
+            Math.round(y),
+            Math.round(w),
+            Math.round(h)
+          ])
+          .sort()
+      );
+    const beforeAuto = await stable(grid);
+    await evaluate(
+      `(document.querySelector('.card-rail-head [data-action="auto-layout"]').click(), true)`
+    );
+    const undoShown = await shown('.card-rail-head [data-action="undo-auto-layout"]');
+    const auto = await stable(grid, 6, 80);
+    await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
+    const past = await pastView();
+    check(
+      undoShown && onCells(auto?.cards ?? []) && apart(auto?.cards ?? []),
+      'auto layout stands every card on whole cells, no two sharing one, and offers its undo',
+      JSON.stringify(auto)
+    );
+    check(
+      // Any card not rolled can step down to small, so only a small or a
+      // rolled card is ever left past the fold.
+      past.every((card) => card.size === 'small' || card.rolled),
+      'and keeps every card in view, or steps a card down to small before leaving it to scroll',
+      JSON.stringify({ past, auto })
+    );
+    await evaluate(
+      `(document.querySelector('.card-rail-head [data-action="undo-auto-layout"]').click(), true)`
+    );
+    const undone = await readUntil(grid, (now) => keyed(now) === keyed(beforeAuto));
+    check(
+      keyed(undone) === keyed(beforeAuto) &&
+        (await gone('.card-rail-head [data-action="undo-auto-layout"]')),
+      'and its undo puts the rail back as it was',
+      JSON.stringify({ before: beforeAuto, undone })
     );
   }
 

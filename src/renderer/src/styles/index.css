@@ -8709,9 +8709,9 @@ button.lookup:focus-visible {
 }
 
 /*
- * The head of the card rail: the put-away chip at the left, the client's mark
- * at the right. One band tall (`--topbar-h`), the band the chip already fills,
- * so the mark adds no height while anything is put away.
+ * The head of the card rail: the put-away chip, auto layout and its undo at
+ * the left, the client's mark at the right. One band tall (`--topbar-h`), the
+ * band the chips fill, so the mark adds no height.
  */
 .card-rail-head {
   align-items: center;
@@ -8768,7 +8768,7 @@ button.lookup:focus-visible {
   display: flex;
 }
 
-.card-picker .chip {
+.card-rail-head .chip {
   /*
    * One control, and the third of the three bands across the top of the
    * window. It fills the band so the row lines up with the rail head and the
@@ -8786,20 +8786,22 @@ button.lookup:focus-visible {
   padding: 0 10px;
   border: 0;
   cursor: pointer;
+  flex: none;
   font: inherit;
   font-size: var(--font-micro);
+  white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.card-picker .chip .icon {
+.card-rail-head .chip .icon {
   height: 12px;
   stroke-width: 1.9;
   width: 12px;
 }
 
-.card-picker .chip:hover,
-.card-picker .chip:focus-visible {
+.card-rail-head .chip:hover,
+.card-rail-head .chip:focus-visible {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--accent);
 }

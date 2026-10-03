@@ -45,7 +45,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by handing the settings screen its api whole (todo 03).
   // Lowered by the strips' cards and the drag's marks, out whole (`StripCards`,
   // `DragMarks`), and the rail's grid (`RailGrid`, todo 09).
-  'src/renderer/src/App.tsx': 1667,
+  // Lowered by the palette taking the pane widths whole (todo 01).
+  'src/renderer/src/App.tsx': 1665,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
   'src/main/automation/Walker.ts': 1957,
   'src/renderer/src/components/SettingsScreen.tsx': 1215,

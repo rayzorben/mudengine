@@ -14,6 +14,7 @@ import {
   cardLabel,
   hidesWhenEmpty,
   HIDES_WHEN_EMPTY,
+  type AutoLayoutApi,
   type CardId,
   type CardLayoutApi
 } from './cards';
@@ -92,6 +93,7 @@ export interface PaletteDeps {
     CardLayoutApi,
     'show' | 'away' | 'isShown' | 'settingsOf' | 'setSettings' | 'floats' | 'rolled' | 'reset'
   >;
+  autoLayout: AutoLayoutApi;
   widths: {
     columns: number | null;
     tabs: number | null;
@@ -157,6 +159,7 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
     showTabs,
     connected,
     cards,
+    autoLayout,
     widths,
     panes,
     paneFlow,
@@ -841,6 +844,28 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
             hint: t('palette.layout.resetCardsHint'),
             group: 'layout' as const,
             run: () => cards.reset()
+          }
+        ]
+      : []),
+    {
+      id: 'cards:auto-layout',
+      icon: 'layout' as const,
+      label: t('palette.layout.autoLayoutLabel'),
+      hint: t('palette.layout.autoLayoutHint'),
+      keywords: ['auto', 'layout', 'arrange', 'fit', 'tidy', 'rail', 'cards', 'size'],
+      group: 'layout' as const,
+      run: autoLayout.run
+    },
+    ...(autoLayout.canUndo
+      ? [
+          {
+            id: 'cards:auto-layout-undo',
+            icon: 'undo' as const,
+            label: t('cards.autoLayout.undo'),
+            hint: t('palette.layout.autoLayoutUndoHint'),
+            keywords: ['undo', 'auto', 'layout', 'rail', 'cards'],
+            group: 'layout' as const,
+            run: autoLayout.undo
           }
         ]
       : []),

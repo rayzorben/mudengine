@@ -7,6 +7,7 @@
  */
 import { useCallback, useMemo, useRef, useState } from 'react';
 
+import { cardSizeBounds } from '../lib/cardSize';
 import type { CardId, RailGridView } from '../lib/cards';
 import type { GridBox } from '../lib/railGrid';
 
@@ -27,6 +28,11 @@ const NOTHING: ReadonlyMap<CardId, GridBox> = new Map();
 /** A grid cell in px, from the token the stylesheet holds; 0 where it is not set. */
 export function gridCell(element: Element): number {
   return parseFloat(getComputedStyle(element).getPropertyValue('--grid-cell')) || 0;
+}
+
+/** The gap a card's box leaves on its right and under it, in px; 0 where it is not set. */
+export function gridGap(element: Element): number {
+  return parseFloat(getComputedStyle(element).getPropertyValue('--gap')) || 0;
 }
 
 export function useRailGrid(): RailGrid {
@@ -80,10 +86,30 @@ export function useRailGrid(): RailGrid {
         const cell = gridCell(grid);
         if (cell <= 0) return null;
         const { left, top } = grid.getBoundingClientRect();
-        return { left, top, cell, columns: Math.max(1, Math.floor(grid.clientWidth / cell)) };
+        return {
+          left,
+          top,
+          cell,
+          gap: gridGap(grid),
+          columns: Math.max(1, Math.floor(grid.clientWidth / cell))
+        };
       },
+      bounds: () => (element.current ? cardSizeBounds(element.current) : null),
       drawn: () => drawn.current,
-      scroller: () => element.current?.parentElement ?? null
+      scroller: () => element.current?.parentElement ?? null,
+      card: (id) =>
+        element.current?.querySelector<HTMLElement>(`[data-rail-card="${id}"] > .card`) ?? null,
+      room: () => {
+        const grid = element.current;
+        const rail = grid?.parentElement;
+        const cell = grid ? gridCell(grid) : 0;
+        if (!grid || !rail || cell <= 0) return null;
+        // The grid's top as it would be with the rail at its top: what is
+        // above it (the head, the standby card) stays in view.
+        const top = grid.getBoundingClientRect().top + rail.scrollTop;
+        const bottom = rail.getBoundingClientRect().top + rail.clientTop + rail.clientHeight;
+        return Math.max(0, Math.floor((bottom - top) / cell));
+      }
     }),
     []
   );
