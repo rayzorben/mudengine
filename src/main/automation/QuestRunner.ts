@@ -49,6 +49,7 @@ import {
   type Route
 } from '../../shared/world';
 import type { SessionModule } from './Module';
+import { stoppedByPerson } from './personStop';
 
 export interface QuestRunPlanner {
   /** Where the character stands, or null while unplaced. */
@@ -423,13 +424,13 @@ export class QuestRunner implements SessionModule {
     const run = this.run;
     if (run === null) return;
     /*
-     * The player pressed Stop: compared against the copy itself, which is the
-     * loop's and the supply errand's own rule — and read **whatever the run
-     * is doing**, since an errand's leg is walking too and a run that took
-     * that for a setback would start the same errand again in twenty seconds.
+     * A person pressed Stop or sent `@stop` (`stoppedByPerson`, the supply
+     * trip's reading too). It is read whatever the run is doing, since a
+     * trip's leg is walking too, and a run that took that for a setback would
+     * start the same trip again in twenty seconds.
      */
-    if (reason === t('session.walk.stoppedByPlayer')) {
-      this.abandon(t('automation.quests.whyStopped'));
+    if (stoppedByPerson(reason)) {
+      this.abandon(reason);
       return;
     }
     if (run.phase.kind !== 'walking') return;

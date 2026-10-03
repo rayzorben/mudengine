@@ -4608,6 +4608,13 @@ session:
     comebackWalking: '{who} asked this character to come to {address}; walking {stepCount} steps.'
     comebackRefused: '{who} asked this character to come to them, and the route was refused:
       {reason}'
+    stopNothing: '{who} sent @stop, and this character was not walking or looping. Nothing was sent
+      back.'
+    regoNothing: '{who} sent @rego, and nothing stopped by @stop is waiting. Nothing was sent back.'
+    regoResumed: '{who} sent @rego; resuming {name} from here.'
+    regoRefused: '{who} sent @rego, and {name} could not be resumed: {reason}'
+    regoTooFar: it is {stepCount} steps away
+    theRoute: the route
   statline:
     exact: The game reports the status line as {statline}; every prompt is read by it exactly.
     full: The game reports the status line as full; the prompt is read by the usual pattern.
@@ -4651,6 +4658,7 @@ session:
     readLapsedSeveral: Nothing answered the last {count} re-reads in {seconds}s, so the client
       stopped waiting for them. Nothing was held up.
     stoppedByPlayer: you asked it to
+    stoppedByRemote: '{who} sent @stop'
     stoppedConnectionClosed: the connection closed
     stoppedLeftRealm: you left the realm
     resumed: Back in the realm; resuming the walk to {destination} from here.
