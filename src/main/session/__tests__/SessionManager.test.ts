@@ -4,6 +4,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import iconv from 'iconv-lite';
 
 import {
   BUSY_PHASES,
@@ -1063,8 +1064,51 @@ describe('a person at the keyboard', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(Buffer.concat(chunks).toString('latin1')).toBe(before + 'train stats\r\n');
 
-    // Back at a prompt, whichever way the screen was left.
+    // Back at a prompt after the ask's echo: here the realm refusing it.
+    socket.write('train stats\r\nYour command had no effect.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => !manager!.automation.queue.suppressed);
+  });
+
+  /*
+   * Todo 02b, from `2026-10-03_17-51-16_soul.mudcap.jsonl`: `train` then
+   * `train stats` went out together, and the prompts the server printed before
+   * it reached `train stats` (the room's repaint, then the one closing the
+   * level's answer) each released the hold. The `st` and `exp` the level asked
+   * for were then typed into the screen, and `st` replaced the family name.
+   * Only a prompt after the `train stats` echo is the command line coming back.
+   */
+  it('keeps automation stood down from train stats until the screen it opened is left', async () => {
+    const { sink, lines } = collect();
+    manager = build(sink);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    const seen = (): string => Buffer.concat(chunks).toString('latin1');
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    // The positive control: the entry probe is really sending, more queued.
+    await until(() => seen().includes('rm\r\n') && manager!.automation.queue.depth > 0);
+
+    manager.send('train\r');
+    manager.send('train stats\r');
+    expect(manager.automation.queue.suppressed).toBe(true);
+    await until(() => seen().endsWith('train\r\ntrain stats\r\n'));
+    const before = seen();
+    const capture = JSON.parse(
+      fs.readFileSync(path.join(__dirname, 'fixtures/paradigm-train-then-stat-screen.json'), 'utf8')
+    ) as { chunks: Array<{ s: string }> };
+    for (const { s } of capture.chunks) socket.write(iconv.encode(s, 'cp437'));
+
+    // Every chunk was read: the screen itself has been framed.
+    await until(() => lines.some((line) => line.text.includes('Point Cost Chart')));
+    expect(manager.automation.queue.suppressed).toBe(true);
+    expect(seen()).toBe(before);
+
+    // Leaving the screen (`SAVE`) gives the command line back.
+    socket.write(
+      '\x1b[23;1HTo prevent accidental suicide or reroll, these commands\r\n' +
+        'have been password protected.\r\n[HP=74/KAI=9]:'
+    );
     await until(() => !manager!.automation.queue.suppressed);
   });
 
