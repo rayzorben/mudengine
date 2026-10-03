@@ -138,6 +138,9 @@ function PlayersCard({
     {
       id: 'where',
       label: t('cards.player.detail.where'),
+      // Small, a person is a name and when they were last seen; large adds
+      // what the client has learned of them (`lib/cardSize.ts`).
+      from: 'medium',
       value: (record) => record.lastRoomName ?? record.lastRoom,
       cell: (record) => <span className="player-where">{place(record)}</span>
     },
@@ -168,6 +171,21 @@ function PlayersCard({
         ) : (
           <span className="player-seen">{ago(record.lastRoomAt, now)}</span>
         )
+    },
+    {
+      id: 'level',
+      label: t('cards.player.detail.level'),
+      numeric: true,
+      from: 'large',
+      value: (record) => record.level,
+      cell: (record) => record.level ?? <span className="quiet-note">—</span>
+    },
+    {
+      id: 'class',
+      label: t('cards.player.detail.class'),
+      from: 'large',
+      value: (record) => record.className,
+      cell: (record) => record.className ?? <span className="quiet-note">—</span>
     }
   ];
 

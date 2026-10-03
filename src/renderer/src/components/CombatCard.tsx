@@ -2,6 +2,7 @@ import { memo } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
 import FightOutlook from './FightOutlook';
+import MobFactRow from './MobFactRow';
 import RowPeaceChip from './RowPeaceChip';
 import type { CharacterState, TargetHealth } from '@shared/character';
 import type { PlayerRegistry } from '@shared/players';
@@ -237,7 +238,7 @@ function SurvivalMeter({ verdict, hp }: { verdict: RoomVerdict; hp: number | nul
           {survival !== null && <span className="meter-state">{levelWord(level)}</span>}
         </span>
       </div>
-      <span className="hint">
+      <span className="hint from-medium">
         {survival === null || survives === null
           ? t('cards.combat.survival.unknown')
           : [
@@ -300,7 +301,11 @@ function CombatCard({
         {verdict.monsters.length > 0 && (
           <>
             <SurvivalMeter hp={character.vitals.hp} verdict={verdict} />
-            <FightOutlook verdict={verdict} />
+            {/* Small, the card is the odds and the target's bar; the working
+                behind them waits for a bigger box (`lib/cardSize.ts`). */}
+            <div className="from-medium">
+              <FightOutlook verdict={verdict} />
+            </div>
           </>
         )}
         {!combat.engaged && combat.attackers.length === 0 ? (
@@ -325,10 +330,12 @@ function CombatCard({
                     onSelect={onSelect}
                   />
                   <RowPeaceChip character={character} name={combat.health.name} verdict={verdict} />
-                  <Provenance health={combat.health} />
+                  <span className="from-medium">
+                    <Provenance health={combat.health} />
+                  </span>
                 </div>
                 <TargetMeter health={combat.health} />
-                <div className="combat-damage">
+                <div className="combat-damage from-medium">
                   <span className="damage-key mine">
                     {t('cards.combat.damage.mine', { damage: combat.health.damage.mine })}
                   </span>
@@ -343,7 +350,7 @@ function CombatCard({
               </div>
             )}
 
-            <dl className="readout">
+            <dl className="readout from-medium">
               {/* The one hard reading there is, and only when there is one: the
                   server states a monster's health nowhere else. Absent rather
                   than "not looked at", which would be a row that is empty for
@@ -390,6 +397,10 @@ function CombatCard({
                       </dd>
                     </>
                   )}
+                  {/* Large, the rest of what the realm says about it. */}
+                  <MobFactRow className="from-large" fact="experience" mob={combat.targetEntity} />
+                  <MobFactRow className="from-large" fact="magicResist" mob={combat.targetEntity} />
+                  <MobFactRow className="from-large" fact="undead" mob={combat.targetEntity} />
                   {combat.targetEntity.deathSpell !== undefined && (
                     <>
                       <dt>{t('cards.combat.readout.onDeathLabel')}</dt>

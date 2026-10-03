@@ -57,7 +57,7 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
           <div className="trace">
             {queue.pending.map((intent, index) => (
               <div className="row" key={`${intent.command}-${index}`}>
-                <span className="trace-priority">{intent.priority}</span>
+                <span className="trace-priority from-medium">{intent.priority}</span>
                 <span className="trace-command">{intent.command}</span>
                 <span className="trace-reason">{intent.reason ?? ''}</span>
               </div>
@@ -73,7 +73,7 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
         ) : (
           sent.slice(0, 12).map((entry, index) => (
             <div className="row" key={`${entry.at}-${index}`}>
-              <span className="trace-at">{clock(entry.at)}</span>
+              <span className="trace-at from-medium">{clock(entry.at)}</span>
               <span className="trace-command">{entry.command}</span>
               <span className="trace-reason">{entry.reason ?? entry.priority}</span>
             </div>
@@ -97,7 +97,7 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
                 className={`row${decision.acted ? '' : ' blocked'}`}
                 key={`${decision.at}-${index}`}
               >
-                <span className="trace-at">{clock(decision.at)}</span>
+                <span className="trace-at from-medium">{clock(decision.at)}</span>
                 <span className="trace-command">{decision.action}</span>
                 <span className="trace-reason">
                   {decision.acted
@@ -132,7 +132,7 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
                 className={`row${decision.acted ? '' : ' blocked'}`}
                 key={`${decision.at}-${index}`}
               >
-                <span className="trace-at">{clock(decision.at)}</span>
+                <span className="trace-at from-medium">{clock(decision.at)}</span>
                 <span className="trace-command">{decision.target}</span>
                 <span className="trace-reason">
                   {decision.acted
@@ -158,7 +158,7 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
                 className={`row${firing.blockedBy === undefined ? '' : ' blocked'}`}
                 key={`${firing.at}-${index}`}
               >
-                <span className="trace-at">{clock(firing.at)}</span>
+                <span className="trace-at from-medium">{clock(firing.at)}</span>
                 <span className="trace-command">{firing.rule}</span>
                 <span className="trace-reason">
                   {/* A blocked rule names the guard that rejected it, which is

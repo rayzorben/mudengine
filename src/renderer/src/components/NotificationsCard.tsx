@@ -121,6 +121,8 @@ function NotificationsCard({
        */
       id: 'at',
       label: t('cards.alerts.columns.when'),
+      // Small, an alert is its level and its sentence (`lib/cardSize.ts`).
+      from: 'medium',
       value: (notice) => clock(notice.at)
     },
     {
@@ -135,6 +137,7 @@ function NotificationsCard({
     {
       id: 'channel',
       label: t('cards.alerts.columns.channel'),
+      from: 'medium',
       value: (notice) => notice.channel,
       cell: (notice) => <span className="alert-channel">{notice.channel}</span>
     },

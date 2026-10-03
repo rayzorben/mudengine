@@ -5,6 +5,8 @@ import ClearField from './ClearField';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { useRemembered, useRememberedChoice } from '../hooks/useRemembered';
+import { useCardSize } from '../hooks/useCardSize';
+import { drawnAt, type CardSize } from '../lib/cardSize';
 import {
   matches,
   narrowed,
@@ -60,6 +62,12 @@ export interface Column<Row> {
   unsearchable?: boolean;
   /** Nothing to sort by — a bar, a control. */
   unsortable?: boolean;
+  /**
+   * The smallest card size this column is drawn at (`lib/cardSize.ts`); absent
+   * means every size. A column not drawn is not searched, and a sort on it
+   * stands, so shrinking a card never throws away the order somebody chose.
+   */
+  from?: CardSize;
 }
 
 /**
@@ -309,7 +317,7 @@ export function FindField({
  */
 export default function CardTable<Row>({
   rows,
-  columns,
+  columns: declared,
   keyOf,
   session,
   name,
@@ -330,6 +338,8 @@ export default function CardTable<Row>({
   onFindDismiss
 }: CardTableProps<Row>): React.JSX.Element {
   const [query, setQuery] = useState('');
+  const size = useCardSize();
+  const columns = declared.filter((column) => drawnAt(size, column.from ?? 'small'));
 
   /*
    * A find row that is put away takes its query with it.
@@ -352,7 +362,7 @@ export default function CardTable<Row>({
    * because a card that states its columns inline hands over a new array on
    * every render and the storage would be re-read on each one.
    */
-  const columnIds = columns.map((column) => column.id).join('|');
+  const columnIds = declared.map((column) => column.id).join('|');
   const sortable = useMemo(() => columnIds.split('|'), [columnIds]);
   const sortChoices = useMemo(
     () => ['none', ...sortable.flatMap((id) => [`${id}:up`, `${id}:down`])],
@@ -394,7 +404,7 @@ export default function CardTable<Row>({
       )
   );
   const shown = sortRows(kept, sort, (row, id) => {
-    const column = columns.find((entry) => entry.id === id);
+    const column = declared.find((entry) => entry.id === id);
     return column === undefined ? null : column.value(row);
   });
 
@@ -441,13 +451,21 @@ export default function CardTable<Row>({
    * `12 of 40` line above exists to stop being silent.
    */
   const present = facets.filter((facet) => (counts.get(facet.id) ?? 0) > 0);
-  const tools = (find !== undefined && findOpen !== false) || present.length > 1 || count !== null;
+  /*
+   * A small card keeps its rows: a find field that stands open, and the chips,
+   * are left to a bigger box. One somebody opened stays, and so does the
+   * `n of m` line, which is what says the rows are narrowed.
+   */
+  const roomy = size !== 'small';
+  const finding = find !== undefined && (roomy ? findOpen !== false : findOpen === true);
+  const chips = roomy && present.length > 1;
+  const tools = finding || chips || count !== null;
 
   return (
     <>
       {tools && (
         <div className="table-tools">
-          {find !== undefined && findOpen !== false && (
+          {finding && find !== undefined && (
             <FindField
               // Only when the row came out because somebody asked for it; a
               // field that stands open never takes the caret on its own.
@@ -460,7 +478,7 @@ export default function CardTable<Row>({
             />
           )}
 
-          {present.length > 1 && (
+          {chips && (
             <div className="table-facets">
               {present.map((facet) => (
                 <button

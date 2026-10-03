@@ -330,7 +330,7 @@ function NavigationCard({
         quest's steps read the same way as this.
       */}
       {walking && walk.ahead.length > 0 && (
-        <div className="progression-scroller">
+        <div className="progression-scroller from-medium">
           <ol className="progression">
             {walk.ahead.map((name, index) => (
               <li data-progress={index === 0 ? 'now' : 'left'} key={`${name}-${index}`}>
@@ -342,7 +342,7 @@ function NavigationCard({
       )}
 
       {walking && walk.step && (
-        <dl className="readout">
+        <dl className="readout from-medium">
           <dt>{t('cards.navigation.route.sendingLabel')}</dt>
           <dd>
             <span className="step-command">{walk.step.command}</span>
@@ -366,7 +366,7 @@ function NavigationCard({
           this card's one grid, and a second would be two label columns of
           different widths inside one card. */}
       {walk.reason !== null && (
-        <div className="walk-reason">
+        <div className="walk-reason from-medium">
           {t('cards.navigation.route.endedReason', { reason: walk.reason })}
         </div>
       )}
@@ -417,7 +417,7 @@ function NavigationCard({
         for — the lap they wrote is the lap they want to read.
       */}
       {loop.stopNames.length > 0 && (
-        <div className="progression-scroller">
+        <div className="progression-scroller from-medium">
           <ol className="progression">
             {loop.stopNames.map((name, index) => (
               <li
@@ -439,7 +439,9 @@ function NavigationCard({
         </div>
       )}
 
-      <dl className="readout">
+      {/* Small, a lap is its name, its bar and the transport; the stops and
+          the figures wait for a bigger box (`lib/cardSize.ts`). */}
+      <dl className="readout from-medium">
         {loop.bounce && live && (
           <>
             <dt>{t('cards.navigation.loop.directionLabel')}</dt>
