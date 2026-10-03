@@ -14,6 +14,7 @@ import {
 import type { BatchBlock } from '../../parse/Classifier';
 import type { Block } from '../../../shared/blocks';
 import type { LineTerminator } from '../../../shared/types';
+import { SGR_RESET } from '../../../shared/template';
 import { LineTokenizer, plainText } from '../../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../../net/stream-quirks';
 import { STATUS_LINE } from '../../parse/patterns';
@@ -390,6 +391,53 @@ describe('a status line the client draws itself', () => {
     expect(h.chunk('n')).toBe('n');
   });
 
+  /*
+   * The other half of the above: the ending colours the typed line and
+   * nothing after it. The realm's reset was taken with the prompt, so the
+   * feed paints one before the first thing after the row ends, or game text
+   * that sets no colour of its own came out in the design's ending.
+   */
+  describe('puts the ink back once the typed line is sent', () => {
+    const ending = '\x1b[0;1mHP 34/?\x1b[0;36m';
+    const cyan: FeedSource['design'] = (plain) => {
+      const match = STATUS_LINE.exec(plain);
+      return match ? { rendered: ending, from: 0, to: match[0].length } : null;
+    };
+
+    it.each(['user', 'automation'] as const)('after a line %s sent', (from) => {
+      const h = harness(['rm'], cyan);
+      expect(h.chunk('\x1b[0;36m[HP=34/MA=12]:\x1b[0m')).toBe(ending);
+      h.feed.sent('dance', from);
+      expect(h.chunk('dance')).toBe('dance');
+      expect(h.chunk('\r\n')).toBe('\r\n');
+      expect(h.chunk('You dance about.\r\n')).toBe(SGR_RESET + 'You dance about.\r\n');
+      // Once: what follows is painted as sent.
+      expect(h.chunk('A hall.\r\n')).toBe('A hall.\r\n');
+    });
+
+    it('when the echo and its answer come in one packet', () => {
+      const h = harness(['rm'], cyan);
+      h.chunk('[HP=34/MA=12]:');
+      h.feed.sent('dance', 'user');
+      expect(h.chunk('dance\r\nYou dance about.\r\n')).toBe(
+        'dance\r\n' + SGR_RESET + 'You dance about.\r\n'
+      );
+    });
+
+    it('when the prompt is repainted before anything is sent', () => {
+      const h = harness(['rm'], cyan);
+      h.chunk('[HP=34/MA=12]:');
+      expect(h.chunk(PROMPT_REPAINT + '[HP=33/MA=12]:')).toBe(PROMPT_REPAINT + SGR_RESET + ending);
+    });
+
+    it('never while the row is still being typed on', () => {
+      const h = harness(['rm'], cyan);
+      h.chunk('[HP=34/MA=12]:');
+      expect(h.chunk('da')).toBe('da');
+      expect(h.chunk('nce')).toBe('nce');
+    });
+  });
+
   it('holds a prompt split across two chunks and draws it once', () => {
     const h = harness(['rm'], designer);
     expect(h.chunk('\x1b[1;32m[HP=3')).toBe('');
@@ -434,7 +482,8 @@ describe('a status line the client draws itself', () => {
     expect(h.chunk(PROMPT_REPAINT + '\x1b[1;32m[HP=3')).toBe(PROMPT_REPAINT);
     vi.advanceTimersByTime(PARTIAL_DELAY_MS + 1);
     expect(h.released).toEqual([]);
-    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(DRAWN);
+    // The first prompt's row ended inside the window, so the next row opens on its reset.
+    expect(h.chunk('4/MA=12]:\x1b[0m')).toBe(SGR_RESET + DRAWN);
   });
 
   it('holds a prompt cut between its bracket and its colon, and draws it once the colon lands', () => {
@@ -463,8 +512,8 @@ describe('a status line the client draws itself', () => {
     h.flush();
     h.feed.sent('rm', 'automation');
     expect(h.chunk('rm\r\nLocation: 1,2147\r\n')).toBe('');
-    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + DRAWN);
-    expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\nSomeone walks in.\r\n');
+    expect(h.chunk(PROMPT_REPAINT + PROMPT)).toBe(PROMPT_REPAINT + SGR_RESET + DRAWN);
+    expect(h.chunk('\r\nSomeone walks in.\r\n')).toBe('\r\n' + SGR_RESET + 'Someone walks in.\r\n');
   });
 
   it('finds a plain character past the escapes the plain text lost', () => {
