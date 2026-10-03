@@ -76,6 +76,13 @@ export const ITEM_KIND_WORD: Record<ItemKind, string> = {
 export const WORN_SLOT_HOLDS: Readonly<Record<number, number>> = { 4: 2, 14: 2 };
 
 /**
+ * `Worn` code 17, the listing's word for the lit light's slot (`torch
+ * (Readied/79)`). Named because re-equipping leaves it to `AutoLight`, which
+ * decides when a light is lit (user, 2026-10-03, todo 18).
+ */
+export const READIED = 'Readied';
+
+/**
  * `Items.Worn`: where an item goes when it is worn or held.
  *
  * The same twelve-and-some slots the legacy client enumerated, which is the
@@ -108,7 +115,7 @@ export const WORN_SLOT: Readonly<Record<number, string>> = {
   14: 'Wrist',
   15: 'Ears',
   16: 'Worn',
-  17: 'Readied',
+  17: READIED,
   19: 'Face'
 };
 

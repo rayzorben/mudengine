@@ -613,22 +613,32 @@ const COUNTS = [
 
 /** Parsed, not trusted: a tally read back from disk, where anything may have edited it. */
 export function isCombatTally(value: unknown): value is CombatTally {
-  if (typeof value !== 'object' || value === null) return false;
+  return combatTallyFault(value) === null;
+}
+
+/**
+ * The first field of a tally that does not read, `''` for the value itself,
+ * or null when it all reads. Named so a record refused on load says which
+ * field, when a check here gets stricter (todo 18).
+ */
+export function combatTallyFault(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return '';
   const tally = value as Record<string, unknown>;
   const moment = (entry: unknown): boolean => entry === null || isCount(entry);
-  if (!moment(tally['since']) || !moment(tally['at'])) return false;
-  if (!moment(tally['engagedSince']) || !moment(tally['onlineSince'])) return false;
-  if (!moment(tally['leftAt'])) return false;
-  if (!COUNTS.every((key) => isCount(tally[key]))) return false;
-  if (!Array.isArray(tally['samples']) || !tally['samples'].every(isSample)) return false;
-  if (!Array.isArray(tally['away']) || !tally['away'].every(isAwaySpell)) return false;
-  if (!isBlowTally(tally['taken'])) return false;
-  if (!isSpent(tally['spent']) || !(tally['doing'] === null || isDoing(tally['doing']))) {
-    return false;
-  }
+  const moments = ['since', 'at', 'engagedSince', 'onlineSince', 'leftAt'] as const;
+  const late = moments.find((key) => !moment(tally[key]));
+  if (late !== undefined) return late;
+  const count = COUNTS.find((key) => !isCount(tally[key]));
+  if (count !== undefined) return count;
+  if (!Array.isArray(tally['samples']) || !tally['samples'].every(isSample)) return 'samples';
+  if (!Array.isArray(tally['away']) || !tally['away'].every(isAwaySpell)) return 'away';
+  if (!isBlowTally(tally['taken'])) return 'taken';
+  if (!isSpent(tally['spent'])) return 'spent';
+  if (!(tally['doing'] === null || isDoing(tally['doing']))) return 'doing';
   const dealt = tally['dealt'];
-  if (typeof dealt !== 'object' || dealt === null) return false;
-  return BLOW_KINDS.every((kind) => isBlowTally((dealt as Record<string, unknown>)[kind]));
+  if (typeof dealt !== 'object' || dealt === null) return 'dealt';
+  const kind = BLOW_KINDS.find((blow) => !isBlowTally((dealt as Record<string, unknown>)[blow]));
+  return kind === undefined ? null : `dealt.${kind}`;
 }
 
 function isCount(value: unknown): value is number {

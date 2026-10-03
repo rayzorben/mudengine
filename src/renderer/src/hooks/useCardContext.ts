@@ -591,13 +591,8 @@ export function useCardContext({
           // card, so the button and the card cannot disagree about whether
           // this character is going anywhere.
           movement: movementOf(v.walk, v.loop),
-          /*
-           * The same function main will run when the button is pressed, over
-           * the same two facts — so a button that is lit is a button that will
-           * do something, and one that is greyed is greyed because there is
-           * nothing in the pack to put back.
-           */
-          canRestoreGear: canRestore(v.character.loadout, v.character.inventory.items),
+          // Lit while any slot is recorded; a press with nothing off says so (todo 18).
+          canRestoreGear: canRestore(v.character.loadout),
           restoreGear: () => void api.gear(sid, 'restore'),
           setSwitch: (name, on) =>
             void api.setAutomationSwitch(sid, name, on).then(sayRefusal(sid)),

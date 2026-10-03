@@ -754,8 +754,10 @@ notices:
       upgraded: "{fileName} now counts searches, so each find's chance starts counting from the next
         search of its room. The old file is kept as {fileName}.bak."
     belongings:
-      invalidFile: '{fileName} is not a record file. Bank balances and worn slots are not saved
-        until it is fixed or removed; what this session sees is still shown.'
+      invalidFile: '{fileName} is not a record file. {notSaved}'
+      invalidField: '{fileName} has a {field} this version cannot read. {notSaved}'
+      notSaved: Bank balances and worn slots are not saved until it is fixed or removed; what this
+        session sees is still shown.
       readError: Could not read {fileName} ({message}). Bank balances and worn slots are not saved
         until it can be read; what this session sees is still shown.
       saveError: 'Could not save {fileName}: {message}'
@@ -5197,6 +5199,9 @@ automation:
     capped: Only {max} were sent; {more} more were left. Each is a command from the same budget as
       fighting.
     missing: 'Your inventory no longer has {count}: {items}.'
+    allOn: Everything you were last seen wearing is already on.
+    noneRecorded: No worn slot is recorded yet, so there is nothing to put back on. Type i to list
+      what you are wearing.
     wearing: 'Changing into {set}.'
     missingFromSet: '{item} is in an equipment set but not in your inventory.'
     offRound: 'Using {item} on {target} between rounds.'
@@ -5451,6 +5456,7 @@ automation:
     ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
     dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
     dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
+    ranEquipAll: '{from} sent @equip-all; putting your gear back on.'
     getAllCapped: '{from} sent @get-all; took the first {max} of {total} listed.'
     getAllEmpty: '{from} sent @get-all and nothing is listed on the floor.'
     healthUnknown: "{from} asked @health, but this character's maximum health is not known yet, so
@@ -5481,6 +5487,7 @@ automation:
     reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'
     reasonDo: '@do from {from}'
     reasonDropAll: '@drop-all from {from}'
+    reasonEquipAll: '@equip-all from {from}'
     reasonForget: '@forget from {from}'
     reasonGetAll: '@get-all from {from}'
     reasonInvite: '@invite from {from}'
