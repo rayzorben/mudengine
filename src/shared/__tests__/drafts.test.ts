@@ -284,6 +284,8 @@ describe('a character', () => {
         restNextDoor: true,
         meditateBelow: 0.25,
         meditateTo: 0.6,
+        // Absent above, and off: resting comes first unless said.
+        meditateFirst: false,
         // The rules list, empty where the payload states none.
         potions: [],
         // And the realm's own half of them: absent above, and on, on the
@@ -398,6 +400,7 @@ describe('a character', () => {
         restNextDoor: true,
         meditateBelow: 0,
         meditateTo: 0,
+        meditateFirst: false,
         // The rules list, empty where the payload states none.
         potions: [],
         useWards: true

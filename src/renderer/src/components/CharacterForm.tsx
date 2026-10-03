@@ -668,21 +668,14 @@ export default function CharacterForm({
           <fieldset className="settings-menus" data-fieldset="health-recover">
             <legend>{t('settings.health.recoverLegend')}</legend>
             <p className="settings-note">{t('settings.health.restingNote')}</p>
-            <div className="settings-inline">
-              <RestFields
-                bands={bands}
-                maxima={maxima}
-                namePrefix=""
-                onChange={(field, value) => patch({ [field]: value })}
-                values={form}
-              />
-            </div>
-            <CheckField
-              checked={form.restNextDoor}
-              hint={t('settings.health.restNextDoorHint')}
-              label={t('settings.health.restNextDoor')}
-              name="rest-next-door"
-              onChange={(value) => patch({ restNextDoor: value })}
+            <RestFields
+              bands={bands}
+              checks={form}
+              maxima={maxima}
+              namePrefix=""
+              onChange={(field, value) => patch({ [field]: value })}
+              onCheck={(field, value) => patch({ [field]: value })}
+              values={form}
             />
           </fieldset>
 

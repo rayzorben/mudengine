@@ -610,10 +610,82 @@ describe('meditating', () => {
     expect(sent).toEqual([]);
   });
 
-  /* Health first: the one that decides whether the character is alive. */
+  /* Health first unless the player says otherwise: the one that decides whether the character is alive. */
   it('rests rather than meditating when both are low', () => {
     make(health({ restBelow: 0.5, meditateBelow: 0.5 })).onCharacter(
       state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100 })
+    );
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  /* The user, 2026-10-03: Meditate Before Resting puts mana first. */
+  it('meditates first when both are low and meditating comes first', () => {
+    make(health({ restBelow: 0.5, meditateBelow: 0.5, meditateFirst: true })).onCharacter(
+      state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100 })
+    );
+    drain();
+    expect(sent).toEqual(['med']);
+  });
+
+  it('switches from resting to meditating once health is back, without standing up', () => {
+    const recovery = make(health({ restBelow: 0.5, restTo: 0.9, meditateBelow: 0.5 }));
+    recovery.onCharacter(state({ hp: 50, hpMax: 100, mana: 10, manaMax: 100, resting: true }));
+    drain();
+    // Positive control: still short of restTo, the rest goes on.
+    expect(sent).toEqual([]);
+    recovery.onCharacter(state({ hp: 95, hpMax: 100, mana: 10, manaMax: 100, resting: true }));
+    drain();
+    expect(sent).toEqual(['med']);
+  });
+
+  it('sends the switch once, not on every line while it is unanswered', () => {
+    const recovery = make(health({ restBelow: 0.5, restTo: 0.9, meditateBelow: 0.5 }));
+    const back = state({ hp: 95, hpMax: 100, mana: 10, manaMax: 100, resting: true });
+    recovery.onCharacter(back);
+    recovery.onCharacter(back);
+    recovery.onCharacter(back);
+    drain();
+    expect(sent).toEqual(['med']);
+  });
+
+  it('does not switch with something in the room that attacks on sight', () => {
+    const recovery = make(health({ restBelow: 0.5, restTo: 0.9, meditateBelow: 0.5 }));
+    const back = state({ hp: 95, hpMax: 100, mana: 10, manaMax: 100, resting: true });
+    const threat = {
+      name: 'giant rat',
+      kind: 'mob' as const,
+      disposition: 'hostile' as const,
+      uncertain: false,
+      costly: 'never' as const,
+      charmed: false,
+      hidden: false,
+      free: false
+    };
+    recovery.onCharacter({ ...back, room: { ...back.room, occupants: [threat] } });
+    drain();
+    expect(sent).toEqual([]);
+    // Positive control: the rat gone, the switch goes.
+    recovery.onCharacter(back);
+    drain();
+    expect(sent).toEqual(['med']);
+  });
+
+  it('switches from meditating to resting once mana is back', () => {
+    const recovery = make(
+      health({ restBelow: 0.5, meditateBelow: 0.5, meditateTo: 0.9, meditateFirst: true })
+    );
+    recovery.onCharacter(state({ hp: 10, hpMax: 100, mana: 50, manaMax: 100, meditating: true }));
+    drain();
+    expect(sent).toEqual([]);
+    recovery.onCharacter(state({ hp: 10, hpMax: 100, mana: 95, manaMax: 100, meditating: true }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  it('meditating with health still low and resting first switches to the rest at once', () => {
+    make(health({ restBelow: 0.5, meditateBelow: 0.5 })).onCharacter(
+      state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100, meditating: true })
     );
     drain();
     expect(sent).toEqual(['rest']);

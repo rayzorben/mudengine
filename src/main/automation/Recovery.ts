@@ -421,12 +421,29 @@ export class Recovery implements SessionModule {
      * what this module does about a character that is already resting.
      */
     if (resting || meditating) {
-      // The postcondition met: what was asked for has happened, so the memory
-      // of having asked has nothing left to suppress. A rest broken on the
-      // very next line is re-proposed on it.
-      this.askedUntil = 0;
       if (resting) this.sitting = true;
       if (meditating) this.meditatingOn = true;
+      /*
+       * Down, and the one thing still done is switching over: health back
+       * with mana still short goes to `med`, and the other way round, in the
+       * order `meditateFirst` says (the user, 2026-10-03). Neither stands the
+       * character up.
+       */
+      const other = this.switchTo(state, resting);
+      if (other === null) {
+        // The postcondition met: what was asked for has happened, so the memory
+        // of having asked has nothing left to suppress. A rest broken on the
+        // very next line is re-proposed on it.
+        this.askedUntil = 0;
+        return;
+      }
+      // Not with something here that attacks on sight: the switch would be broken by it.
+      if (Date.now() < this.askedUntil || countThreats(state, this.mobRules) > 0) return;
+      const reason =
+        other === 'med'
+          ? t('automation.recovery.reasonMana')
+          : t('automation.recovery.reasonHealth');
+      this.propose(other, reason);
       return;
     }
     /*
@@ -442,7 +459,26 @@ export class Recovery implements SessionModule {
      */
     if (countThreats(state, this.mobRules) > 0) return;
 
-    if (this.wantsRest(hp, hpMax) && !this.refused.has('rest')) {
+    const restWanted = this.wantsRest(hp, hpMax) && !this.refused.has('rest');
+    // A rest the poison refuses does not stand in mana's way.
+    const restTakes = restWanted && !this.restIsPoisoned(state);
+    /*
+     * Mana, and only for a class that has any. A warrior's status line carries
+     * no `MA=` at all — `manaMax` is null, `below` refuses, and `med` is never
+     * sent to be answered `Your command had no effect.` in the room. A class
+     * that *has* a figure and is still refused — a mystic's Kai, measured
+     * 2026-09-04 — is what `refused` is for. First where `meditateFirst` says,
+     * else once health needs no rest.
+     */
+    if (
+      this.wantsMed(mana, manaMax) &&
+      !this.refused.has('med') &&
+      (this.config.meditateFirst || !restTakes)
+    ) {
+      this.propose('med', t('automation.recovery.reasonMana'));
+      return;
+    }
+    if (restWanted) {
       /*
        * **A poisoned character cannot rest at all on this engine.**
        * `RestCommand.cs:28` tests `GetAbility(Poison)` before anything else
@@ -469,17 +505,6 @@ export class Recovery implements SessionModule {
         return;
       }
       this.propose('rest', t('automation.recovery.reasonHealth'));
-      return;
-    }
-    /*
-     * Mana, and only for a class that has any. A warrior's status line carries
-     * no `MA=` at all — `manaMax` is null, `below` refuses, and `med` is never
-     * sent to be answered `Your command had no effect.` in the room. A class
-     * that *has* a figure and is still refused — a mystic's Kai, measured
-     * 2026-09-04 — is what `refused` is for.
-     */
-    if (this.wantsMed(mana, manaMax) && !this.refused.has('med')) {
-      this.propose('med', t('automation.recovery.reasonMana'));
       return;
     }
 
@@ -563,6 +588,22 @@ export class Recovery implements SessionModule {
     if (this.below(hp, hpMax, restTo)) return true;
     this.sitting = false;
     return false;
+  }
+
+  /**
+   * Down already: the other of `rest` and `med` to switch to, or null to stay
+   * as it is. Resting goes to `med` once health needs no more rest, or at once
+   * under `meditateFirst`; meditating goes to `rest` once mana is back, or at
+   * once without it. A poisoned character is not switched to a rest it cannot
+   * take.
+   */
+  private switchTo(state: CharacterState, resting: boolean): 'rest' | 'med' | null {
+    const { hp, hpMax, mana, manaMax } = state.vitals;
+    const rest =
+      this.wantsRest(hp, hpMax) && !this.refused.has('rest') && !this.restIsPoisoned(state);
+    const med = this.wantsMed(mana, manaMax) && !this.refused.has('med');
+    if (resting) return med && (!rest || this.config.meditateFirst) ? 'med' : null;
+    return rest && (!med || !this.config.meditateFirst) ? 'rest' : null;
   }
 
   /** `wantsRest` for mana: `meditateBelow` starts a stretch and `meditateTo` carries it (todo 825). */

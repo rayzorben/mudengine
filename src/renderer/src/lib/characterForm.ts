@@ -187,6 +187,8 @@ export interface CharacterFields {
   restNextDoor: boolean;
   meditateBelow: string;
   meditateTo: string;
+  /** Meditate before resting. */
+  meditateFirst: boolean;
   /** And where a running loop holds still and walks on again. */
   /** The player's own *use this when that* rules. See `PotionList`. */
   potionRules: PotionRule[];
@@ -472,6 +474,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     restBeforeTraps: percent(entry.health.restBeforeTraps),
     meditateBelow: percent(entry.health.meditateBelow),
     meditateTo: percent(entry.health.meditateTo),
+    meditateFirst: entry.health.meditateFirst,
     restNextDoor: entry.health.restNextDoor,
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
     useWards: entry.health.useWards,
@@ -647,6 +650,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       restBeforeTraps: fractionOf(form.restBeforeTraps),
       meditateBelow: fractionOf(form.meditateBelow),
       meditateTo: fractionOf(form.meditateTo),
+      meditateFirst: form.meditateFirst,
       restNextDoor: form.restNextDoor,
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
       // way a nameless blessing is: a rule naming nothing fires on nothing.
@@ -952,6 +956,7 @@ export function emptyForm(
     restBeforeTraps: percent(health.restBeforeTraps),
     meditateBelow: percent(health.meditateBelow),
     meditateTo: percent(health.meditateTo),
+    meditateFirst: health.meditateFirst,
     restNextDoor: health.restNextDoor,
     potionRules: health.potions.map((rule) => ({ ...rule })),
     useWards: health.useWards,

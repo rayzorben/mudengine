@@ -1,20 +1,25 @@
 /**
- * The rest and meditate thresholds, one set of fields for the character form
+ * The rest and meditate settings, one set of fields for the character form
  * and the options page (todo 825): rest below and to, rest before traps,
- * meditate below and to. Each value is the percent as the page holds it; the
+ * meditate below and to, then the two switches, resting next door to a lair
+ * and meditating before resting. Each value is as the page holds it; the
  * page turns a change back into its own draft. Where a maximum is known the
  * figure it means is drawn beside the field.
  */
-import { NumberField } from './FormField';
+import { CheckField, NumberField } from './FormField';
 import { barOf, figureOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import type { VitalThresholds } from '@shared/character';
 
 export type RestField = 'restBelow' | 'restTo' | 'restBeforeTraps' | 'meditateBelow' | 'meditateTo';
 
+export type RestCheck = 'restNextDoor' | 'meditateFirst';
+
 export interface RestFieldsProps {
   values: Readonly<Record<RestField, number | string>>;
   onChange(field: RestField, value: string): void;
+  checks: Readonly<Record<RestCheck, boolean>>;
+  onCheck(field: RestCheck, value: boolean): void;
   /** The meter bands the bars are drawn against. */
   bands: { hp: VitalThresholds; mana: VitalThresholds };
   /** The character's maxima, for the figure beside a field; absent on the options page. */
@@ -71,31 +76,62 @@ function rows(): readonly Row[] {
   ];
 }
 
+function checks(): ReadonlyArray<{ field: RestCheck; name: string; label: string; hint: string }> {
+  return [
+    {
+      field: 'restNextDoor',
+      name: 'rest-next-door',
+      label: t('settings.health.restNextDoor'),
+      hint: t('settings.health.restNextDoorHint')
+    },
+    {
+      field: 'meditateFirst',
+      name: 'meditate-first',
+      label: t('settings.health.meditateFirst'),
+      hint: t('settings.health.meditateFirstHint')
+    }
+  ];
+}
+
 export default function RestFields({
   values,
   onChange,
+  checks: checked,
+  onCheck,
   bands,
   maxima,
   namePrefix
 }: RestFieldsProps): React.JSX.Element {
   return (
     <>
-      {rows().map((row) => {
-        const typed = Number.parseInt(String(values[row.field]), 10) || 0;
-        const max = row.mana ? maxima?.manaMax : maxima?.hpMax;
-        return (
-          <NumberField
-            key={row.field}
-            hint={row.hint}
-            label={row.label}
-            name={`${namePrefix}${row.name}`}
-            bar={barOf(typed, row.mana ? bands.mana : bands.hp)}
-            {...(maxima === undefined ? {} : { figure: figureOf(typed, max ?? null) })}
-            onChange={(value) => onChange(row.field, value)}
-            value={values[row.field]}
-          />
-        );
-      })}
+      <div className="settings-inline">
+        {rows().map((row) => {
+          const typed = Number.parseInt(String(values[row.field]), 10) || 0;
+          const max = row.mana ? maxima?.manaMax : maxima?.hpMax;
+          return (
+            <NumberField
+              key={row.field}
+              hint={row.hint}
+              label={row.label}
+              name={`${namePrefix}${row.name}`}
+              bar={barOf(typed, row.mana ? bands.mana : bands.hp)}
+              {...(maxima === undefined ? {} : { figure: figureOf(typed, max ?? null) })}
+              onChange={(value) => onChange(row.field, value)}
+              value={values[row.field]}
+            />
+          );
+        })}
+      </div>
+      {checks().map((row) => (
+        <CheckField
+          key={row.field}
+          checked={checked[row.field]}
+          hint={row.hint}
+          label={row.label}
+          name={`${namePrefix}${row.name}`}
+          onChange={(value) => onCheck(row.field, value)}
+        />
+      ))}
     </>
   );
 }

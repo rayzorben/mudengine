@@ -51,7 +51,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the blessings' fields, shared with the Global page (`BlessingFields`, todo 10).
   // Lowered by the carried blocks handed to `CarrySections` whole (todo 12).
   // Lowered by the light switches, shared with the Global page (`LightFields`, todo 11).
-  'src/renderer/src/components/CharacterForm.tsx': 1533
+  'src/renderer/src/components/CharacterForm.tsx': 1526
 };
 
 /**

@@ -1533,6 +1533,13 @@ export interface HealthConfig {
    */
   meditateTo: number;
   /**
+   * With health and mana both below their lines, meditate first and rest
+   * after; off rests first (the user, 2026-10-03). Either way the other goes
+   * on once the first is back, `med` and `rest` switching over while the
+   * character is still down. Meditating ticks mana faster, resting health.
+   */
+  meditateFirst: boolean;
+  /**
    * What to use, and when — *use an item of this name when that is true*
    * (todo 19, 2026-09-12; the only potion setting since todo 00).
    *
@@ -2782,6 +2789,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       restBeforeTraps: 0.45,
       meditateBelow: 0,
       meditateTo: 0,
+      meditateFirst: false,
       potions: [],
       useWards: true
     },
@@ -3857,6 +3865,7 @@ function normalizeHealth(value: unknown): HealthConfig {
     restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
     meditateBelow,
     meditateTo: ceilingOver(fraction(raw['meditateTo'], d.meditateTo), meditateBelow),
+    meditateFirst: bool(raw['meditateFirst'], d.meditateFirst),
     potions: normalizePotionRules(raw['potions']),
     useWards: bool(raw['useWards'], d.useWards)
   };

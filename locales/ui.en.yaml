@@ -558,6 +558,9 @@ notices:
     meditateCeiling:
       many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
       one: 'Keep Meditating To Mana % was added, off, to {fileList}'
+    meditateFirst:
+      many: 'Meditate Before Resting was added, off, to {count} files: {fileList}'
+      one: 'Meditate Before Resting was added, off, to {fileList}'
     freedomCureStated:
       many: 'A Freedom spell, cast when the character is held in place, was added blank to the cures
         in {count} files: {fileList}'
@@ -3526,7 +3529,8 @@ settings:
     outnumberedHint: A health threshold notices being swarmed too late. 0 is off.
     outnumberedLabel: Run If Attackers Exceed
     pvpActionHint: What to do about the fight itself. Running happens as soon as the attack is seen,
-      whatever Auto-Run says, because a player attacking you is not a health threshold.
+      whatever Auto-Run says, but only while a route or loop is moving you and never while you
+      follow a leader.
     pvpActionLabel: PvP Reaction
     pvpLegend: Attacked by a Player
     pvpNotifyHint: Announces it on the gangpath (bg), once per attacker every five minutes, with the
@@ -3580,6 +3584,9 @@ settings:
       any trap at any health.
     restBeforeTrapsLabel: Keep After a Trap HP %
     restNextDoor: Rest Next Door to a Lair
+    meditateFirst: Meditate Before Resting
+    meditateFirstHint: With health and mana both low, meditates for mana and then rests; when off, it
+      rests first and meditates after.
     restNextDoorHint: A room that spawns monsters on a short regen time is not a place to rest. The
       character looks into a neighboring room with no lair, steps in only if it is empty, rests, and
       steps back.

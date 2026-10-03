@@ -457,6 +457,8 @@ export interface ProfileDraft {
     restBeforeTraps: number;
     meditateBelow: number;
     meditateTo: number;
+    /** Meditate before resting. See `HealthConfig`. */
+    meditateFirst: boolean;
     /** The *use this when that* rules. See `PotionRule`. */
     potions: PotionRule[];
     /** The realm's own half of those rules. See `HealthConfig.useWards`. */
@@ -955,6 +957,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       ),
       meditateBelow: unit(health['meditateBelow']),
       meditateTo: unit(health['meditateTo']),
+      meditateFirst: health['meditateFirst'] === true,
       /*
        * The rules, parsed at the boundary like everything else here: a row
        * with no name is dropped (a rule naming nothing fires on nothing), a
