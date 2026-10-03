@@ -986,32 +986,25 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="health-recover">
               <legend>{t('settings.health.recoverLegend')}</legend>
               <p className="settings-note">{t('settings.health.restingNote')}</p>
-              <div className="settings-inline">
-                <RestFields
-                  bands={draft.ui.vitals}
-                  namePrefix="global-"
-                  onChange={(field, value) =>
-                    automation({
-                      health: { ...draft.automation.health, [field]: fraction(value) }
-                    })
-                  }
-                  values={{
-                    restBelow: percent(draft.automation.health.restBelow),
-                    restTo: percent(draft.automation.health.restTo),
-                    restBeforeTraps: percent(draft.automation.health.restBeforeTraps),
-                    meditateBelow: percent(draft.automation.health.meditateBelow),
-                    meditateTo: percent(draft.automation.health.meditateTo)
-                  }}
-                />
-              </div>
-              <CheckField
-                checked={draft.automation.health.restNextDoor}
-                hint={t('settings.health.restNextDoorHint')}
-                label={t('settings.health.restNextDoor')}
-                name="global-rest-next-door"
-                onChange={(value) =>
-                  automation({ health: { ...draft.automation.health, restNextDoor: value } })
+              <RestFields
+                bands={draft.ui.vitals}
+                checks={draft.automation.health}
+                namePrefix="global-"
+                onChange={(field, value) =>
+                  automation({
+                    health: { ...draft.automation.health, [field]: fraction(value) }
+                  })
                 }
+                onCheck={(field, value) =>
+                  automation({ health: { ...draft.automation.health, [field]: value } })
+                }
+                values={{
+                  restBelow: percent(draft.automation.health.restBelow),
+                  restTo: percent(draft.automation.health.restTo),
+                  restBeforeTraps: percent(draft.automation.health.restBeforeTraps),
+                  meditateBelow: percent(draft.automation.health.meditateBelow),
+                  meditateTo: percent(draft.automation.health.meditateTo)
+                }}
               />
             </fieldset>
 

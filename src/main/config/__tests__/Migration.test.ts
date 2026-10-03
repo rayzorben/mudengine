@@ -245,6 +245,8 @@ describe('the "stand up at" health thresholds', () => {
       meditateBelow: 0.3,
       // And by `statedTheMeditateCeiling`, off.
       meditateTo: 0,
+      // And by `statedMeditatingFirst`, off.
+      meditateFirst: false,
       // And by `statedTheNewAutomation`, at the default.
       useWards: true
     });
@@ -4152,7 +4154,9 @@ describe('resting before a trap', () => {
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0
+      meditateTo: 0,
+      // And by `statedMeditatingFirst`, off.
+      meditateFirst: false
     });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(
@@ -4193,7 +4197,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0
+      meditateTo: 0,
+      // And by `statedMeditatingFirst`, off.
+      meditateFirst: false
     });
   });
 
@@ -4215,7 +4221,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0
+      meditateTo: 0,
+      // And by `statedMeditatingFirst`, off.
+      meditateFirst: false
     });
   });
 
@@ -4230,7 +4238,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0
+      meditateTo: 0,
+      // And by `statedMeditatingFirst`, off.
+      meditateFirst: false
     });
   });
 
@@ -4247,7 +4257,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
       // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0
+      meditateTo: 0,
+      // And by `statedMeditatingFirst`, off.
+      meditateFirst: false
     });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(

@@ -254,6 +254,7 @@ function migrateAll(options: MigrationOptions): void {
   statedBuyingALight(home, note, options.template);
   theHealKeptItsOwnFloor(home, note, options.template);
   theCombatOverridesWent(home, note);
+  statedMeditatingFirst(home, note, options.template);
 }
 
 /**
@@ -2978,6 +2979,33 @@ function statedTheMeditateCeiling(
     stated.length === 1
       ? t('notices.migration.meditateCeiling.one', params)
       : t('notices.migration.meditateCeiling.many', params)
+  );
+}
+
+/**
+ * `automation.health.meditateFirst` into every file that states `health:`
+ * without it, off, after `meditateTo` (the user, 2026-10-03): a switch inside
+ * a block the file states is one `reconcileWithTemplate` never reaches.
+ */
+function statedMeditatingFirst(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    HEALTH_BLOCK,
+    'meditateFirst',
+    DEFAULT_CONFIG.automation.health.meditateFirst,
+    'meditateTo',
+    templateComments(template, 'automation').get('automation.health.meditateFirst')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.meditateFirst.one', params)
+      : t('notices.migration.meditateFirst.many', params)
   );
 }
 

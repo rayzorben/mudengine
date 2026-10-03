@@ -1327,6 +1327,12 @@ automation:
     # until mana is back here. 0 meditates once. Never below meditateBelow.
     meditateTo: 0
 
+    # With health and mana both below their lines, meditate first and rest
+    # after. Off rests first. Either way the other follows once the first is
+    # back, switching from one to the other without standing up. Meditating
+    # ticks mana faster; resting ticks health faster.
+    meditateFirst: false
+
     # Potions and anything else, with its own condition -- *use this when that
     # is true*. MegaMUD's Health tab had one row beside "Heal if below" and
     # this client had two named slots; this replaced both, because it says
