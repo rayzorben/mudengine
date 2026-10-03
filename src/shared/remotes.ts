@@ -285,13 +285,13 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   // neither is answered back because no capture shows a reply for either.
   invite: { name: 'invite', support: 'acted' },
   'drop-all': { name: 'drop-all', support: 'acted' },
-  'equip-all': {
-    name: 'equip-all',
-    support: 'unread',
-    because:
-      'the slot a listing has never named is not invented here, so "not already equipped" is a ' +
-      'question this client cannot answer for every item'
-  },
+  /*
+   * The Re-equip Gear button's plan (`restorePlan`): the recorded slots, the
+   * light's left to `AutoLight`, answered `{ok}` as `@do` is (user,
+   * 2026-10-03, todo 18). Not the Inventory card's *Equip all*, which wears
+   * everything the realm says can be worn. Granted by nothing shipped.
+   */
+  'equip-all': { name: 'equip-all', support: 'acted' },
   'deposit-all': {
     name: 'deposit-all',
     support: 'unread',

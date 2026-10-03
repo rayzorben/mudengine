@@ -99,6 +99,8 @@ import {
 } from '../../shared/tally';
 import type { SessionModule } from './Module';
 import { AutoJoin, joinIntent } from './AutoJoin';
+import { restoreNotices } from './gearNotices';
+import { restorePlan } from '../../shared/gear';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
 import type { Direction, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
@@ -1283,6 +1285,28 @@ export class Remotes implements SessionModule {
             })
           );
         }
+        return;
+      }
+
+      case 'equip-all': {
+        /*
+         * The Re-equip Gear button, from another player (user, 2026-10-03,
+         * todo 18): every recorded slot but the light's put back on, what the
+         * pack no longer holds said here. `{ok}` as `@do` answers, since the
+         * request was taken whether or not anything was off.
+         */
+        const plan = restorePlan(state.loadout, state.inventory.items, tuning().spending.maxGear);
+        for (const command of plan.commands) {
+          this.queue.enqueue({
+            command,
+            priority: 'probe',
+            coalesceKey: `remote:wear:${command.toLowerCase()}`,
+            reason: t('automation.remotes.reasonEquipAll', { from })
+          });
+        }
+        this.events.notice?.(t('automation.remotes.ranEquipAll', { from }));
+        for (const message of restoreNotices(plan, state.loadout)) this.events.notice?.(message);
+        this.reply(from, '{ok}', prefix);
         return;
       }
 

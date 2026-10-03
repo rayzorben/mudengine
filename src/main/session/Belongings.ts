@@ -46,12 +46,12 @@ import {
   type Underway,
   type UnderwaySink
 } from '../../shared/underway';
-import { isCombatTally, settleClocks, type CombatTally } from '../../shared/tally';
+import { combatTallyFault, settleClocks, type CombatTally } from '../../shared/tally';
 import type { Loadout, WornSlot } from '../../shared/gear';
 import { isStashEntry, type Stash, type StashEntry } from '../../shared/stash';
 import { isFledList, type FledEntry } from '../../shared/fled';
 import { sameItem } from '../../shared/items';
-import { errorMessage } from '../../shared/values';
+import { errorMessage, faultWithin } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 
@@ -394,34 +394,42 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     try {
       if (!fs.existsSync(this.options.file)) return;
       const parsed: unknown = JSON.parse(fs.readFileSync(this.options.file, 'utf8'));
-      if (!isBelongingsFile(parsed)) {
+      const fault = belongingsFault(parsed);
+      if (fault !== null) {
         this.suspended = true;
+        const fileName = path.basename(this.options.file);
+        const notSaved = t('notices.world.belongings.notSaved');
+        // The field, so a check made stricter is seen at once (todo 18).
         this.options.notify?.(
-          t('notices.world.belongings.invalidFile', { fileName: path.basename(this.options.file) })
+          fault === ''
+            ? t('notices.world.belongings.invalidFile', { fileName, notSaved })
+            : t('notices.world.belongings.invalidField', { fileName, field: fault, notSaved })
         );
         return;
       }
+      // Read through `belongingsFault` just above.
+      const file = parsed as BelongingsFile;
       // A different realm's vaults are not this realm's. Kept on disk, and
       // nothing is written back over them until the character dials home.
-      if (parsed.realm !== this.options.realm) {
+      if (file.realm !== this.options.realm) {
         this.suspended = true;
         return;
       }
-      this.banks = parsed.banks;
-      this.loadout = parsed.loadout ?? [];
-      this.stash = parsed.stash ?? [];
+      this.banks = file.banks;
+      this.loadout = file.loadout ?? [];
+      this.stash = file.stash ?? [];
       // Absent is *never read*, and stays null — not normalised to [].
-      this.spellbook = parsed.spellbook ?? null;
-      this.durations = parsed.spellDurations ?? {};
-      this.fled = parsed.fled ?? [];
-      this.huntRates = new Map(Object.entries(parsed.huntRates ?? {}));
+      this.spellbook = file.spellbook ?? null;
+      this.durations = file.spellDurations ?? {};
+      this.fled = file.fled ?? [];
+      this.huntRates = new Map(Object.entries(file.huntRates ?? {}));
       // Absent is *never read*, and stays null — the spellbook's rule.
-      this.abilities = parsed.abilities ?? null;
-      this.identity = parsed.identity ?? null;
-      this.stats = parsed.stats ?? null;
-      this.statsBase = parsed.statsBase ?? null;
-      this.room = parsed.room ?? null;
-      this.underway = asUnderway(parsed.underway);
+      this.abilities = file.abilities ?? null;
+      this.identity = file.identity ?? null;
+      this.stats = file.stats ?? null;
+      this.statsBase = file.statsBase ?? null;
+      this.room = file.room ?? null;
+      this.underway = asUnderway(file.underway);
     } catch (error) {
       /*
        * Suspended rather than started fresh: this is the only copy of what the
@@ -597,25 +605,40 @@ function peek(file: string, realm: string): BelongingsFile | null {
 
 /** Parsed, not trusted: this file is on disk where anything may have edited it. */
 function isBelongingsFile(value: unknown): value is BelongingsFile {
-  if (typeof value !== 'object' || value === null) return false;
+  return belongingsFault(value) === null;
+}
+
+/** The first field that does not read, `''` for the file itself, or null. See `combatTallyFault`. */
+function belongingsFault(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return '';
   const file = value as Partial<BelongingsFile>;
-  if (file.version !== 1 || typeof file.realm !== 'string') return false;
-  if (!Array.isArray(file.banks)) return false;
-  if (file.loadout !== undefined && !Array.isArray(file.loadout)) return false;
-  if (file.loadout !== undefined && !file.loadout.every(isWornSlot)) return false;
-  if (file.stash !== undefined && !(Array.isArray(file.stash) && file.stash.every(isStashEntry)))
-    return false;
-  if (file.spellbook !== undefined && !Array.isArray(file.spellbook)) return false;
-  if (file.spellbook !== undefined && !file.spellbook.every(isKnownSpell)) return false;
-  if (file.spellDurations !== undefined && !isDurationRecord(file.spellDurations)) return false;
-  if (file.fled !== undefined && !isFledList(file.fled)) return false;
-  if (file.huntRates !== undefined && !isHuntRates(file.huntRates)) return false;
-  if (file.abilities !== undefined && !isAbilitySums(file.abilities)) return false;
-  if (file.identity !== undefined && !isIdentity(file.identity)) return false;
-  if (file.stats !== undefined && !isStatsRecord(file.stats)) return false;
-  if (file.statsBase !== undefined && !isCombatTally(file.statsBase)) return false;
-  if (file.room !== undefined && !isKeptRoom(file.room)) return false;
-  return file.banks.every(isBankBalance);
+  const optional = (entry: unknown, reads: (entry: unknown) => boolean): boolean =>
+    entry === undefined || reads(entry);
+  const listOf =
+    <T>(reads: (entry: unknown) => entry is T) =>
+    (entry: unknown): boolean =>
+      Array.isArray(entry) && entry.every(reads);
+  if (file.version !== 1) return 'version';
+  if (typeof file.realm !== 'string') return 'realm';
+  if (!listOf(isBankBalance)(file.banks)) return 'banks';
+  if (!optional(file.loadout, listOf(isWornSlot))) return 'loadout';
+  if (!optional(file.stash, listOf(isStashEntry))) return 'stash';
+  if (!optional(file.spellbook, listOf(isKnownSpell))) return 'spellbook';
+  if (!optional(file.spellDurations, isDurationRecord)) return 'spellDurations';
+  if (!optional(file.fled, isFledList)) return 'fled';
+  if (!optional(file.huntRates, isHuntRates)) return 'huntRates';
+  if (!optional(file.abilities, isAbilitySums)) return 'abilities';
+  if (!optional(file.identity, isIdentity)) return 'identity';
+  if (file.stats !== undefined) {
+    const fault = faultWithin('stats', statsRecordFault(file.stats));
+    if (fault !== null) return fault;
+  }
+  if (file.statsBase !== undefined) {
+    const fault = faultWithin('statsBase', combatTallyFault(file.statsBase));
+    if (fault !== null) return fault;
+  }
+  if (!optional(file.room, isKeptRoom)) return 'room';
+  return null;
 }
 
 /** A room by its realm numbers, two whole numbers, and a confidence from 0 to 1. */
@@ -639,14 +662,11 @@ function isHuntRates(value: unknown): value is Record<string, MeasuredRate> {
 }
 
 /** The clock is what closes an interval the record left open, so a record without one is refused. */
-function isStatsRecord(value: unknown): value is StatsRecord {
-  if (typeof value !== 'object' || value === null) return false;
+function statsRecordFault(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return '';
   const record = value as Partial<StatsRecord>;
-  return (
-    typeof record.savedAt === 'number' &&
-    Number.isFinite(record.savedAt) &&
-    isCombatTally(record.tally)
-  );
+  if (typeof record.savedAt !== 'number' || !Number.isFinite(record.savedAt)) return 'savedAt';
+  return faultWithin('tally', combatTallyFault(record.tally));
 }
 
 /**

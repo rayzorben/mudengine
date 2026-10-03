@@ -226,13 +226,9 @@ export interface ToolbarSubject {
   /** Routing, looping or stopped, and whether it is going. See `movementOf`. */
   movement: Movement;
   /**
-   * Whether anything the character was wearing is in the pack and off.
-   *
-   * The button is greyed rather than absent when there is nothing to put back
-   * — `MenuItem.disabled`'s rule, and the one the transport controls follow: a
-   * toolbar whose shape changes under the pointer is worse than one with a
-   * dead button on it. It is also the honest answer for a character that has
-   * never been listed, where the client knows of no slot at all.
+   * Whether any worn slot is recorded (`canRestore`), so there is gear to
+   * put back on. Greyed rather than absent otherwise, `MenuItem.disabled`'s
+   * rule: a character never listed has no slot the client knows of.
    */
   canRestoreGear: boolean;
   setSwitch(name: AutomationSwitch, on: boolean): void;

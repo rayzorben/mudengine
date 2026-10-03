@@ -361,6 +361,56 @@ describe('answering the imperative ones', () => {
     expect(notices).toContain(t('automation.remotes.ranDo', { from: 'Sesub', command: 'a ooze' }));
   });
 
+  /*
+   * The Re-equip Gear button from another player (todo 18): the recorded
+   * slots not on are worn, the light's is left to `AutoLight`, and the
+   * request is answered `{ok}` as `@do` is.
+   */
+  describe('@equip-all', () => {
+    const kit = (cross: boolean): CharacterState =>
+      who({
+        loadout: [
+          { slot: 'Off-Hand', item: 'large silvery cross', at: 1 },
+          { slot: 'Readied', item: 'torch', at: 1 }
+        ],
+        inventory: {
+          ...EMPTY_CHARACTER.inventory,
+          items: [
+            {
+              ...wireItem('large silvery cross'),
+              equipped: cross,
+              slot: cross ? 'Off-Hand' : null
+            },
+            { ...wireItem('golden chalice'), equipped: !cross, slot: cross ? null : 'Off-Hand' },
+            wireItem('torch')
+          ]
+        }
+      });
+
+    it('wears the recorded gear, never the light, and answers {ok}', () => {
+      peers.onBlock(said('conversation-telepath', 'Rand', '@equip-all'), kit(false));
+      drain();
+      expect([...sent].sort()).toEqual(['/Rand {ok}', 'wear large silvery cross']);
+      expect(notices).toContain(t('automation.remotes.ranEquipAll', { from: 'Rand' }));
+    });
+
+    /* Nothing recorded is not everything on: the client knows of no slot. */
+    it('says no slot is recorded rather than that everything is on', () => {
+      peers.onBlock(said('conversation-telepath', 'Rand', '@equip-all'), who());
+      drain();
+      expect(sent).toEqual(['/Rand {ok}']);
+      expect(notices).toContain(t('automation.gear.noneRecorded'));
+      expect(notices).not.toContain(t('automation.gear.allOn'));
+    });
+
+    it('says so when everything recorded is already on', () => {
+      peers.onBlock(said('conversation-telepath', 'Rand', '@equip-all'), kit(true));
+      drain();
+      expect(sent).toEqual(['/Rand {ok}']);
+      expect(notices).toContain(t('automation.gear.allOn'));
+    });
+  });
+
   it('joins the sender’s party on @join', () => {
     peers.onBlock(said('conversation-telepath', 'Buster', '@join'), who());
     drain();
@@ -977,6 +1027,24 @@ describe('the gate: who may ask, and for what', () => {
    * ones. `@do` never routes through `reply()`, so a gate that only withheld
    * answers would have left the side effect: a stranger's `@do` would run.
    */
+  it('does not run @equip-all for somebody who was not granted it', () => {
+    peers.configure(grant({}));
+    const state = live({
+      loadout: [{ slot: 'Head', item: 'padded helm', at: 1 }],
+      inventory: { ...EMPTY_CHARACTER.inventory, items: [wireItem('padded helm')] }
+    });
+    peers.onBlock(said('conversation-telepath', 'Rend', '@equip-all'), state);
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Rend',
+        raw: 'equip-all',
+        unresolvedClause: ''
+      })
+    );
+  });
+
   it('does not run @do for somebody who was not granted it', () => {
     peers.configure(grant({}));
     peers.onBlock(said('conversation-telepath', 'Rend', '@do who'), live());

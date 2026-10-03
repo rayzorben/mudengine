@@ -107,3 +107,12 @@ export function timeOfDay(at: number): string {
   const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 }
+
+/**
+ * A fault found inside a field, named from the field: `''` (the value itself)
+ * becomes the field, anything else is joined under it, null stays null.
+ */
+export function faultWithin(field: string, fault: string | null): string | null {
+  if (fault === null) return null;
+  return fault === '' ? field : `${field}.${fault}`;
+}
