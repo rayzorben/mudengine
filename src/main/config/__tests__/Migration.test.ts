@@ -1356,7 +1356,8 @@ describe('owning the status line', () => {
         ['who', false],
         ['shop', false],
         ['party', false],
-        ['experience', true]
+        ['experience', true],
+        ['room', false]
       ]);
       expect(rewrites.designs[0]?.['template']).toBe('HP {hp}> ');
       expect(rewrites.designs[1]?.['template']).toBe(
@@ -1389,6 +1390,33 @@ describe('owning the status line', () => {
     said = [];
     migrate(true);
     expect(notesOf(said, 'notices.migration.rewritesListed')).toEqual([]);
+  });
+
+  it('adds the exits design, off, to a list of designs without one, and only once', () => {
+    const designs = (file: string): Record<string, unknown>[] =>
+      (parse(fs.readFileSync(file, 'utf8')) as { ui: { rewrites: { designs: [] } } }).ui.rewrites
+        .designs;
+    const withoutExits = [
+      'ui:',
+      '  rewrites:',
+      '    designs:',
+      '      - name: Mine',
+      '        entity: inventory',
+      '        enabled: true',
+      "        template: '{item}'",
+      ''
+    ].join('\n');
+    fs.writeFileSync(home.options, withoutExits, 'utf8');
+    migrate();
+    expect(designs(home.options).map((design) => design['entity'])).toEqual(['inventory', 'room']);
+    expect(designs(home.options)[1]).toEqual(
+      DEFAULT_CONFIG.ui.rewrites.designs.find((design) => design.entity === 'room')
+    );
+    expect(notesOf(said, 'notices.migration.exitsDesigned')).toHaveLength(1);
+    said = [];
+    migrate();
+    expect(designs(home.options)).toHaveLength(2);
+    expect(notesOf(said, 'notices.migration.exitsDesigned')).toEqual([]);
   });
 
   it('leaves a file that already answered it alone, twice over', () => {

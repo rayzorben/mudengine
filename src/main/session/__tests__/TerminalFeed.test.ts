@@ -618,6 +618,24 @@ describe('a listing the client draws itself', () => {
     );
     expect(h.chunk('You gain 25 experience.\r\n')).toBe('+25 exp\r\n');
   });
+
+  it('draws that line from what reading it settled, before anything after it', () => {
+    // The session reads a line after the feed has seen it: the room an
+    // `Obvious exits:` line completes is placed only then.
+    let read = 'before';
+    const h = listing(
+      (block) =>
+        block.type === 'user-gain-experience' ? { text: `${read}\r\n`, marks: [] } : null,
+      (type) => type === 'user-gain-experience'
+    );
+    const plain = 'You gain 25 experience.';
+    const said = (text: string, type: BlockType): void =>
+      h.feed.line(`${text}\r\n`, 'newline', text, type, undefined, h.facts(text, type));
+    said(plain, 'user-gain-experience');
+    read = 'after';
+    said('A rat bites you.', 'mob-hits');
+    expect(h.feed.take().text).toBe('after\r\nA rat bites you.\r\n');
+  });
 });
 
 describe('marks', () => {

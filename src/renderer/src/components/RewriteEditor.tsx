@@ -72,7 +72,8 @@ export const ENTITY_WORD: Record<RewriteEntity, string> = {
   who: t('settings.rewrites.entities.who'),
   shop: t('settings.rewrites.entities.shop'),
   party: t('settings.rewrites.entities.party'),
-  experience: t('settings.rewrites.entities.experience')
+  experience: t('settings.rewrites.entities.experience'),
+  room: t('settings.rewrites.entities.room')
 };
 
 const KIND_WORD: Record<FieldSpec['kind'], string> = {
@@ -885,6 +886,20 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
         entity,
         figures,
         gain: { gained: 25, exp: 1386695, need: 14377, level: 12, expSession: 12525 }
+      };
+    case 'room':
+      return {
+        entity,
+        figures,
+        room: {
+          printed: 'north, east, west',
+          exits: [
+            { word: 'north', direction: 'n' },
+            { word: 'east', direction: 'e' },
+            { word: 'west', direction: 'w' }
+          ],
+          hidden: ['s']
+        }
       };
   }
 }

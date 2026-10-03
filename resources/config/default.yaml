@@ -524,6 +524,13 @@ ui:
     #   experience  `You gain N experience.`, one line: {gained}, and beside
     #               it what the client tracks -- {exp} after the gain, {need}
     #               still to {nextLevel}, {level}, {expSession}.
+    #   room        The `Obvious exits:` line, drawn once the client knows
+    #               which room it is: {room.exits} as the game printed
+    #               them, {room.exitsWithHidden} with the world database's
+    #               hidden exits added in the game's order (`north, south
+    #               (hidden), east, west`), {room.hidden} those alone, `?`
+    #               where the client is unsure which room it is, and
+    #               {room.known}.
     designs:
       - name: Status line
         entity: statline
@@ -573,6 +580,10 @@ ui:
         entity: experience
         enabled: false
         template: '{brightYellow}+{gained} exp{/brightYellow}  {exp} total, {need} to level {nextLevel}, {expSession} this session'
+      - name: Hidden exits
+        entity: room
+        enabled: false
+        template: '{green}Obvious exits: {room.exitsWithHidden}{/green}{if not room.known} ?{/if}'
 
   # The diagnostics cards -- Session, Link, Traffic and Stream -- are not
   # configured here on purpose. They are a tool you reach for when something

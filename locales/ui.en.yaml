@@ -516,6 +516,9 @@ notices:
     actionsFamilied: Actions on a carried item are now a set of separate controls. {file} had a
       rewrite using "{action}", which no longer draws anything, so it now uses
       "{action.toggleEquip}". "{action.drop}" adds a drop control next to it.
+    exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
+      exits in it, as "south (hidden)". A design for it, off, was added to the designs in {file};
+      turn it on under Rewrites.'
     lightWaitStated: 'When a walk enters a room too dark to see, it now waits for Auto-Light to
       light a torch and look again, instead of stopping because it cannot tell where the character
       is. "tuning.walk.lightWaitMs" was added to your tuning file: how long it waits before giving
@@ -1185,6 +1188,10 @@ rewrites:
     rows: Rows
     first: First
     last: Last
+    exits: Exits
+    exitsWithHidden: Exits with hidden
+    hidden: Hidden
+    known: Known
   # One sentence per figure, read by the designer's sidebar; keyed by the
   # figure's own name, shared wherever that name is offered.
   # The heading over each list's own figures in the designer's sidebar: what
@@ -1286,6 +1293,12 @@ rewrites:
     level: The level the client last saw.
     nextLevel: The level after it.
     expSession: Experience gained this session.
+    exits: The exits as the game printed them, doors included.
+    exitsWithHidden: The exits with the world database's hidden exits added in the game's own
+      order, each marked hidden.
+    hidden: The hidden exits the game did not print, or ? where the client is unsure which room
+      this is.
+    known: Whether the client knows which room this is, so the hidden exits can be found.
     fullName: Both names, as the stats show them.
     race: The race, as the stats show it.
     hp: Health, in the health colors.
@@ -1306,6 +1319,8 @@ rewrites:
     copper: copper
   shop:
     short: short
+  room:
+    hiddenExit: '{exit} (hidden)'
   party:
     invited: invited
     resting: resting
@@ -4196,6 +4211,7 @@ settings:
       shop: a shop's list
       party: the party
       experience: the experience line
+      room: the exits line
     bandsLegend: Vital Colors
     bandsNote: On every line the client draws, a health or mana number is colored by its share of
       maximum; the first band whose minimum it reaches wins. With no bands, the line keeps its own

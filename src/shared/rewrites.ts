@@ -2,11 +2,12 @@
  * The listings the client draws in place of the realm's.
  *
  * A rewrite is a design the player named: an entity — the prompt row, the
- * pack, the roster, a shop's shelf, the party, the experience line — and one
- * template in the grammar of `template.ts`. Main gathers the facts, this lays
- * them out; every renderer here is pure. `ENTITY_SPECS` is the catalogue the
- * designer's sidebar is built from, so what a template may name and what
- * the console will resolve cannot drift apart. `mudengine-ui` § The console
+ * pack, the roster, a shop's shelf, the party, the experience line, the
+ * room's exits — and one template in the grammar of `template.ts`. Main
+ * gathers the facts, this lays them out; every renderer here is pure.
+ * `ENTITY_SPECS` is the catalogue the designer's sidebar is built from, so
+ * what a template may name and what the console will resolve cannot drift
+ * apart. `mudengine-ui` § The console
  * is rewritten in one grammar, and a listing is rewritten only whole.
  */
 import type { Denomination } from './character';
@@ -33,6 +34,7 @@ import {
 } from './template';
 import type { BlockType } from './blocks';
 import type { MarkIcon, TerminalMark } from './types';
+import { DIRECTION_NAME, inExitOrder, type Direction } from './world';
 
 export const REWRITE_ENTITIES = [
   'statline',
@@ -40,7 +42,8 @@ export const REWRITE_ENTITIES = [
   'who',
   'shop',
   'party',
-  'experience'
+  'experience',
+  'room'
 ] as const;
 export type RewriteEntity = (typeof REWRITE_ENTITIES)[number];
 
@@ -303,6 +306,15 @@ export const ENTITY_SPECS: Readonly<Record<RewriteEntity, EntitySpec>> = {
       number('nextLevel'),
       number('expSession')
     ]
+  },
+  room: {
+    entity: 'room',
+    blocks: ['room-exits'],
+    oneLine: false,
+    self: 'me',
+    fields: [
+      record('room', [text('exits'), text('exitsWithHidden'), text('hidden'), flag('known')])
+    ]
   }
 };
 
@@ -347,7 +359,7 @@ export function columnLabel(t: UiLookup): (path: string) => string {
   };
 }
 
-/* ────────────────────────────────────────────────────── the shipped six */
+/* ──────────────────────────────────────────────────── the shipped seven */
 
 /**
  * The shipped designs, every one off. The pack as a table is the one that
@@ -422,6 +434,12 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     template:
       '{brightYellow}+{gained} exp{/brightYellow}  {exp} total, {need} to level {nextLevel}, ' +
       '{expSession} this session'
+  },
+  {
+    name: 'Hidden exits',
+    entity: 'room',
+    enabled: false,
+    template: '{green}Obvious exits: {room.exitsWithHidden}{/green}{if not room.known} ?{/if}'
   }
 ];
 
@@ -553,6 +571,25 @@ export interface ExperienceFacts {
   expSession: number | null;
 }
 
+/** One exit the server printed: its words as printed, and the direction they name. */
+export interface PrintedExit {
+  word: string;
+  direction: string;
+}
+
+export interface RoomFacts {
+  /** The `Obvious exits:` list verbatim, `None` included. */
+  printed: string;
+  exits: readonly PrintedExit[];
+  /**
+   * The world database's hidden exits (`Hidden/…`) out of this room that the
+   * server did not print, or null where the client cannot say which room it
+   * is: a room it has not placed, or one placed somewhere these exits do not
+   * fit. Null is unknown, never none.
+   */
+  hidden: readonly Direction[] | null;
+}
+
 /** What main gathered for one drawing, by entity; the character's figures come with every one. */
 export type RewriteFacts =
   | { entity: 'statline'; figures: StatlineFigures }
@@ -560,7 +597,8 @@ export type RewriteFacts =
   | { entity: 'who'; figures: StatlineFigures; rows: readonly WhoRow[] }
   | { entity: 'shop'; figures: StatlineFigures; rows: readonly ShopRow[] }
   | { entity: 'party'; figures: StatlineFigures; rows: readonly PartyRow[] }
-  | { entity: 'experience'; figures: StatlineFigures; gain: ExperienceFacts };
+  | { entity: 'experience'; figures: StatlineFigures; gain: ExperienceFacts }
+  | { entity: 'room'; figures: StatlineFigures; room: RoomFacts };
 
 /* ───────────────────────────────────────────────────────── the scopes */
 
@@ -909,6 +947,46 @@ export function experienceScope(gain: ExperienceFacts): Row {
   };
 }
 
+/**
+ * The exits, the printed and the hidden together, in the server's own order:
+ * `north, south (hidden), east, west`. A hidden exit is named the way the
+ * server names a plain one, since it prints none of them.
+ */
+export function roomScope(room: RoomFacts, t: UiLookup): Row {
+  const hidden = room.hidden ?? [];
+  const all = inExitOrder(
+    [
+      ...room.exits.map((exit) => ({ ...exit, hidden: false })),
+      ...hidden.map((direction) => ({
+        word: DIRECTION_NAME[direction],
+        direction,
+        hidden: true
+      }))
+    ],
+    (exit) => exit.direction
+  );
+  return {
+    room: {
+      exits: room.printed,
+      exitsWithHidden:
+        hidden.length === 0
+          ? room.printed
+          : all
+              .map((exit) =>
+                exit.hidden ? t('rewrites.room.hiddenExit', { exit: exit.word }) : exit.word
+              )
+              .join(', '),
+      hidden:
+        room.hidden === null
+          ? null
+          : inExitOrder(hidden, (direction) => direction)
+              .map((direction) => DIRECTION_NAME[direction])
+              .join(', '),
+      known: room.hidden !== null
+    }
+  };
+}
+
 /** Everything a design for this entity may name, the character's figures included. */
 export function scopeOf(facts: RewriteFacts, bands: VitalBands, t: UiLookup): Scope {
   const me = characterScope(facts.figures, bands, t);
@@ -925,6 +1003,8 @@ export function scopeOf(facts: RewriteFacts, bands: VitalBands, t: UiLookup): Sc
       return { ...partyScope(facts.rows, bands, t), me };
     case 'experience':
       return { ...experienceScope(facts.gain), me };
+    case 'room':
+      return { ...roomScope(facts.room, t), me };
   }
 }
 
