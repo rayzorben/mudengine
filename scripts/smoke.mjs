@@ -9721,8 +9721,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * measurement, once the track has settled.
    */
   {
+    // The grid readout alone: the status rail's whole text runs the figure
+    // beside it into this one (`41` then `80×43` read as `4180`).
     const columns = async () => {
-      const text = await evaluate(`document.querySelector('.status-rail').textContent`);
+      const text = await evaluate(
+        `[...document.querySelectorAll('.status-rail .metric b')].map((b) => b.textContent).join(' ')`
+      );
       const m = /(\d+)\u00d7(\d+)/.exec(String(text));
       return m ? Number(m[1]) : null;
     };
@@ -9733,37 +9737,40 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'and the card rail has no handle: it takes what the console leaves'
     );
     /*
-     * Side by side where the rail is wide enough: every column is at least
-     * `--rail-column-min`, so a rail holding two of them and more cards than
-     * one column's height puts a second column beside the first.
+     * Side by side where the rail is wide enough: every card is at least
+     * `--rail-column-min` wide, so a rail with room for two puts two on a
+     * row. The smoke window leaves room for one, so the rail is held wider
+     * for the reading and put back after it.
      */
-    const shape = JSON.parse(
-      await evaluate(`
-        (() => {
-          const rail = document.querySelector('.workspace > .rail');
-          const min = parseFloat(getComputedStyle(rail).getPropertyValue('--rail-column-min'));
-          const cards = [...rail.querySelectorAll(':scope > [data-card]')];
-          const lefts = new Set(cards.map((c) => Math.round(c.getBoundingClientRect().left)));
-          const tall = cards.reduce((sum, c) => sum + c.getBoundingClientRect().height, 0);
-          return JSON.stringify({
-            width: rail.clientWidth,
-            height: rail.clientHeight,
-            min,
-            tall,
-            columns: lefts.size,
-            narrowest: Math.min(...cards.map((c) => c.getBoundingClientRect().width))
-          });
-        })()
-      `)
-    );
-    check(
-      shape.narrowest >= shape.min - 0.5,
-      'no card on the rail is narrower than a column',
-      JSON.stringify(shape)
-    );
-    if (shape.width >= 2 * shape.min && shape.tall > shape.height) {
-      check(shape.columns >= 2, 'and the cards stand side by side', JSON.stringify(shape));
-    }
+    const shape = async () =>
+      JSON.parse(
+        await evaluate(`
+          (() => {
+            const rail = document.querySelector('.workspace > .rail');
+            const cards = [...rail.querySelectorAll(':scope > [data-card]')];
+            const tops = cards.map((c) => Math.round(c.getBoundingClientRect().top));
+            return JSON.stringify({
+              width: rail.clientWidth,
+              sideways: rail.scrollWidth - rail.clientWidth,
+              shared: tops.length - new Set(tops).size
+            });
+          })()
+        `)
+      );
+    const narrow = await shape();
+    check(narrow.sideways <= 0, 'the rail never scrolls sideways', JSON.stringify(narrow));
+    await evaluate(`(() => {
+      const rail = document.querySelector('.workspace > .rail');
+      const min = parseFloat(getComputedStyle(rail).getPropertyValue('--rail-column-min'));
+      rail.style.width = 2 * min + 60 + 'px';
+      return true;
+    })()`);
+    const wide = await readUntil(shape, (wide) => wide.shared > 0);
+    check(wide.shared > 0, 'and with room for two, cards stand side by side', JSON.stringify(wide));
+    check(wide.sideways <= 0, 'still without scrolling sideways', JSON.stringify(wide));
+    await evaluate(`(document.querySelector('.workspace > .rail').style.width = '', true)`);
+    const back = await readUntil(shape, (now) => now.width === narrow.width);
+    check(back.width === narrow.width, 'and the rail is put back', JSON.stringify(back));
   }
 
   /*
@@ -9797,6 +9804,13 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       })()
     `)
     );
+  // The card arrives with `card-enter`, which runs its opacity up from 0, so
+  // the alphas are read once the arrival has finished.
+  await waitFor(async () =>
+    evaluate(
+      `(() => { const c = document.querySelector('.float > .card'); return !!c && c.getAnimations().length === 0; })()`
+    )
+  );
   const alphas = await readAlphas();
   check(
     alphas.card === 1,
@@ -12674,6 +12688,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * `--rail-column-min`: the rail is held to that for the measurement, and
      * every card on it stretches to it.
      */
+    const before = await railWidth();
     await evaluate(`(() => {
       const rail = document.querySelector('.workspace > .rail');
       rail.style.width = getComputedStyle(rail).getPropertyValue('--rail-column-min');
@@ -12716,12 +12731,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     await evaluate(`(document.querySelector('.workspace > .rail').style.width = '', true)`);
     const after = await readUntil(
       () => railWidth(),
-      (after) => after > floor + 2
+      (after) => Math.abs(after - before) < 2
     );
     check(
-      after > floor + 2,
+      Math.abs(after - before) < 2,
       'and the rail is put back for the checks that follow',
-      `${floor} -> ${after}`
+      `${before} -> ${after}`
     );
   }
   /*

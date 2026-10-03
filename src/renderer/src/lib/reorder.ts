@@ -30,36 +30,49 @@ export function insertionIndex(slots: readonly number[], along: number): number 
   return slots.filter((slot) => along > slot).length;
 }
 
-/** A box in a lane that wraps: where its line starts across, its midpoint along. */
-export interface WrappedSlot {
-  /** The start of its line on the cross axis: a column's left edge on the rail. */
-  line: number;
-  /** Its midpoint on the lane's own axis. */
-  along: number;
+/** A box in a lane, as laid out. */
+export interface LaneBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
 }
 
 /**
- * The gap the pointer is in, in a lane whose boxes wrap into lines: the rail,
- * where a column fills to the rail's height and the next card starts the next
- * column (todo 00).
+ * The gap the pointer is in, in a lane whose boxes wrap into rows: the rail,
+ * where cards stand side by side and the next row starts below (todo 00).
  *
- * The pointer's line is the last whose start it has passed, and within it the
- * gap is `insertionIndex` over that line's midpoints; every box in an earlier
- * line comes before it. Boxes are in reading order, so a line's boxes are
- * consecutive. One line is exactly `insertionIndex`.
+ * The pointer's row is the last whose top it has passed, and every box in an
+ * earlier row comes before it. Within its row a box is passed when the
+ * pointer is beyond its right edge, or over it and past its midpoint on the
+ * lane's own axis: down for the rail, so a one-card row is the old stacked
+ * rule, and across for a strip, which is `insertionIndex` over midpoints.
+ * Boxes are in reading order.
  */
 export function wrappedInsertionIndex(
-  slots: readonly WrappedSlot[],
-  along: number,
-  across: number
+  boxes: readonly LaneBox[],
+  x: number,
+  y: number,
+  vertical: boolean
 ): number {
-  const starts = [...new Set(slots.map((slot) => slot.line))].sort((a, b) => a - b);
-  const first = starts[0];
+  const tops = [...new Set(boxes.map((box) => box.top))].sort((a, b) => a - b);
+  const first = tops[0];
   if (first === undefined) return 0;
-  const line = starts.filter((start) => across >= start).pop() ?? first;
-  const before = slots.filter((slot) => slot.line < line).length;
-  const own = slots.filter((slot) => slot.line === line).map((slot) => slot.along);
-  return before + insertionIndex(own, along);
+  const row = tops.filter((top) => y >= top).pop() ?? first;
+  const before = boxes.filter((box) => box.top < row).length;
+  const own = boxes.filter((box) => box.top === row);
+  if (!vertical)
+    return (
+      before +
+      insertionIndex(
+        own.map((box) => (box.left + box.right) / 2),
+        x
+      )
+    );
+  const passed = own.filter(
+    (box) => x > box.right || (x >= box.left && y > (box.top + box.bottom) / 2)
+  ).length;
+  return before + passed;
 }
 
 /**
