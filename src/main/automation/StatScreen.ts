@@ -228,6 +228,15 @@ type Phase =
       stopped: string | null;
     };
 
+/**
+ * Whether the server has echoed a `train stats`: it has reached the ask, so the
+ * next prompt answers it. One sent behind other commands is preceded by their
+ * prompts, which say nothing about the screen (todos 116 and 02b).
+ */
+export function echoesStatScreenAsk(block: Pick<Block, 'type' | 'text'>): boolean {
+  return block.type === 'command-echo' && opensStatScreen(block.text.trim());
+}
+
 export class StatScreen implements SessionModule {
   private phase: Phase = { kind: 'idle' };
   /** The `train stats` this proposed and has not yet seen answered. */
@@ -415,7 +424,7 @@ export class StatScreen implements SessionModule {
           this.phase = { kind: 'reading', text: block.text };
           this.arm();
           this.tryRead();
-        } else if (block.type === 'command-echo' && opensStatScreen(block.text.trim())) {
+        } else if (echoesStatScreenAsk(block)) {
           // The server has reached the ask; the next prompt is its answer.
           this.phase.echoed = true;
         } else if (isPrompt(block.type) && this.phase.echoed) {
