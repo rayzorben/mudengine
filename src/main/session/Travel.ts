@@ -13,7 +13,8 @@ import type { AutoCombat } from '../automation/AutoCombat';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CombatLease } from '../automation/CombatLease';
 import type { CommandQueue } from '../automation/CommandQueue';
-import type { ItemErrand } from '../automation/ItemErrand';
+import { wantedFrom, type ItemErrand } from '../automation/ItemErrand';
+import { plannedFetches } from '../../shared/navigation';
 import type { LightAhead } from '../automation/LightAhead';
 import type { LoopRunner } from '../automation/LoopRunner';
 import type { SessionModule } from '../automation/Module';
@@ -122,10 +123,17 @@ export interface TravelParts {
     CharacterTracker,
     'current' | 'pendingMoves' | 'trail' | 'wayBackFrom' | 'retraced'
   >;
-  readonly world: Pick<WorldGraph, 'byId' | 'route'> | undefined;
+  readonly world: Pick<WorldGraph, 'byId'> | undefined;
   readonly errands: Pick<
     Errands,
-    'planFromHere' | 'travellerNow' | 'lapTraveller' | 'askCountersFor' | 'findStop' | 'shun'
+    | 'planFromHere'
+    | 'planTo'
+    | 'routeBetween'
+    | 'travellerNow'
+    | 'lapTraveller'
+    | 'askCountersFor'
+    | 'findStop'
+    | 'shun'
   >;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly walker: Pick<
@@ -1573,17 +1581,10 @@ export class Travel implements SessionModule {
     }
     // Priced as every other route is — retreating through a gate this
     // character cannot pay is not a retreat.
-    const route = this.world?.route(
-      roomId(state.room.map, state.room.number),
-      roomId(found.map, found.room),
-      this.errands.travellerNow(state)
-    );
-    if (route === undefined) {
+    const route = this.errands.routeBetween(here, roomId(found.map, found.room), false);
+    if (typeof route === 'string') {
       this.session.notice(
-        t('session.safety.retreatRefused', {
-          room: retreat.room,
-          reason: t('session.loop.noRealmData')
-        })
+        t('session.safety.retreatRefused', { room: retreat.room, reason: route })
       );
       return;
     }
@@ -1643,9 +1644,16 @@ export class Travel implements SessionModule {
     route: Route,
     run = false
   ): string | null {
+    // A key the navigation engine plans is fetched where the plan gets it.
+    const to = route.steps.at(-1)?.to;
+    const made = to === undefined ? null : this.errands.planTo(to);
+    const planned = new Map(
+      wantedFrom(made === null ? [] : plannedFetches(made)).map((item) => [item.id, item])
+    );
+    const wanted = items.map((item) => planned.get(item.id) ?? item);
     return (
       this.unchosen(route) ??
-      this.switchedOnFor(() => this.itemErrand.collect(items, route, this.tracker.current, run))
+      this.switchedOnFor(() => this.itemErrand.collect(wanted, route, this.tracker.current, run))
     );
   }
 
@@ -1785,9 +1793,8 @@ export class Travel implements SessionModule {
    * and *what will it cost to walk* cannot disagree.
    */
   private stepsBetween(from: RoomId, to: RoomId): number | null {
-    if (this.world === undefined) return null;
-    const route = this.world.route(from, to, this.errands.travellerNow(this.tracker.current));
-    return route.blocked ? null : route.steps.length;
+    const route = this.errands.routeBetween(from, to, false);
+    return typeof route === 'string' || route.blocked ? null : route.steps.length;
   }
 
   /**
@@ -2189,9 +2196,9 @@ export class Travel implements SessionModule {
    */
   private stepsFromStop(heading: RoomId): number | null {
     const from = this.loops.strayedFrom;
-    if (from === null || this.world === undefined) return null;
-    const route = this.world.route(from, heading, this.errands.lapTraveller(this.tracker.current));
-    return route.blocked ? null : route.steps.length;
+    if (from === null) return null;
+    const route = this.errands.routeBetween(from, heading, true);
+    return typeof route === 'string' || route.blocked ? null : route.steps.length;
   }
 
   /**

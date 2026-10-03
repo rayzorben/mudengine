@@ -71,6 +71,7 @@ import {
   roomId,
   landingRooms,
   type Corridor,
+  type RoomId,
   type Route,
   type WorldSpell
 } from '../../shared/world';
@@ -87,7 +88,7 @@ import {
   type SessionPhase
 } from '../../shared/character';
 import { wireItem } from '../../shared/entities';
-import type { Traveller, WorldGraph } from '../world/WorldGraph';
+import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import type { Wearer } from '../../shared/gear';
 import { wearerOf } from '../world/wearer';
 import { Errands, type RealmClass } from './Errands';
@@ -3426,10 +3427,7 @@ export class SessionManager {
     if (away !== 'took-over' && this.mayRest()) this.restNow(state);
   }
 
-  /**
-   * `Recovery`, told first the health a walk standing before a trap or a fight turned down for
-   * health wants (`restingFor`): above the resting floor, so only the resting module asks for it.
-   */
+  /** `Recovery`, told first the health a walk or a fight held for health wants (`restingFor`). */
   private restNow(state: CharacterState): void {
     const owed = [this.walker.restingFor, this.combat.restingFor].filter((hp) => hp !== null);
     this.recovery.needAtLeast(owed.length === 0 ? null : Math.max(...owed));
@@ -3453,14 +3451,10 @@ export class SessionManager {
   }
 
   /**
-   * The realm said where the character is, and the realm *data* has no such
-   * room: the wrong map is loaded for this server.
-   *
-   * Found by playing: a profile named a Paradigm database while the server
-   * ran stock GreaterMUD, `rm` answered `Location: 1,289`, the data had no
-   * room 1/289, and every route from there failed with nothing to say why.
-   * Said out loud, because "the wrong map" beats "no map" only when it is
-   * announced (CLAUDE.md, "A character can name its own realm").
+   * The realm said where the character is, and the world database has no such
+   * room: the wrong map is loaded for this server. A Paradigm database against
+   * stock GreaterMUD answered `rm` with `Location: 1,289`, a room the data
+   * lacked, and every route from there failed with nothing to say why.
    */
   private noticeRealmMismatch(block: Block): void {
     if (block.type !== 'user-profile' || this.realmMismatchSaid || !this.world) return;
@@ -3493,6 +3487,11 @@ export class SessionManager {
   /** What this character costs to move, as the router prices it. See `Errands.travellerNow`. */
   travellerNow(state: CharacterState): Traveller {
     return this.errands.travellerNow(state);
+  }
+
+  /** The walk between two rooms with what this character holds now. See `Errands.routeBetween`. */
+  leg(from: RoomId, to: RoomId, options: RouteOptions = {}): Route | string {
+    return this.errands.routeBetween(from, to, false, options);
   }
 
   /** What a lap's leg costs to move. See `Errands.lapTraveller`. */

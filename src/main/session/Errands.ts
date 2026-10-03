@@ -473,7 +473,7 @@ export class Errands implements SessionModule {
       ? this.lapTraveller(state)
       : this.travellerNow(state, true, allowing);
     const plan =
-      this.world?.route(roomId(here.map, here.number), to, traveller, options) ??
+      this.navigation.leg(roomId(here.map, here.number), to, traveller, options) ??
       t('session.loop.noRealmData');
     if (typeof plan !== 'string') this.askCountersFor(plan);
     return plan;
@@ -2588,14 +2588,15 @@ export class Errands implements SessionModule {
    * (`WalkerEvents.routeBetween`), priced by the traveller the walk it is
    * asked for is priced by.
    */
-  routeBetween(from: RoomId, to: RoomId, shortest: boolean): Route | string {
-    return (
-      this.world?.route(
-        from,
-        to,
-        shortest ? this.lapTraveller(this.tracker.current) : this.travellerNow(this.tracker.current)
-      ) ?? t('session.loop.noRealmData')
-    );
+  routeBetween(
+    from: RoomId,
+    to: RoomId,
+    shortest: boolean,
+    options: RouteOptions = {}
+  ): Route | string {
+    const state = this.tracker.current;
+    const traveller = shortest ? this.lapTraveller(state) : this.travellerNow(state);
+    return this.navigation.leg(from, to, traveller, options) ?? t('session.loop.noRealmData');
   }
 }
 

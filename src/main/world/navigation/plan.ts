@@ -8,14 +8,17 @@
  * one-way move is only planned where the plan from its far side exists.
  * `mudengine-world` › *There is one navigation engine*.
  */
+import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
-import type {
-  FightOdds,
-  NavigationOracle,
-  Plan,
-  PlannedItem,
-  PlanRefusal,
-  PlanStep
+import {
+  isFetch,
+  planRefusalsWords,
+  type FightOdds,
+  type NavigationOracle,
+  type Plan,
+  type PlannedItem,
+  type PlanRefusal,
+  type PlanStep
 } from '../../../shared/navigation';
 import { describeBlock, type RoomId, type Route } from '../../../shared/world';
 import type { RouteOptions, Traveller } from '../Router';
@@ -44,8 +47,12 @@ function walkable(route: Route): boolean {
 
 /** Why a route is no way: the router's reason, or the walls it crosses in its own words. */
 function noWay(route: Route): PlanRefusal {
-  const why = route.reason ?? (route.walls ?? []).map(describeBlock).join('; ');
-  return { kind: 'no-way', why };
+  return { kind: 'no-way', why: noWayWords(route) };
+}
+
+/** Why a route is no way, in words: the router's reason, or the walls it crosses. */
+function noWayWords(route: Route): string {
+  return route.reason ?? (route.walls ?? []).map(describeBlock).join('; ');
 }
 
 /**
@@ -85,10 +92,11 @@ function walk(
   oracle: NavigationOracle,
   from: RoomId,
   to: RoomId,
-  traveller: Traveller
+  traveller: Traveller,
+  known?: Route
 ): Leg {
   if (from === to) return { kind: 'leg', steps: [], cost: 0 };
-  const route = realm.route(from, to, traveller);
+  const route = known ?? realm.route(from, to, traveller);
   if (!walkable(route)) return { kind: 'refused', refusal: noWay(route) };
   // A slice is its steps and its share of the cost; the walls and hazards are the whole route's.
   const part = (start: number, end: number): PlanStep => ({
@@ -117,7 +125,8 @@ function walk(
     cost += tuning().world.fightCost;
     start = index;
   }
-  steps.push(part(start, route.steps.length));
+  // Unsplit, the walk is the route whole, with its hazards and its alternatives.
+  steps.push(start === 0 ? { kind: 'walk', route } : part(start, route.steps.length));
   return { kind: 'leg', steps, cost };
 }
 
@@ -188,10 +197,68 @@ export function plan(
   oracle: NavigationOracle,
   from: RoomId,
   to: RoomId,
+  traveller: Traveller,
+  options: RouteOptions = {}
+): Plan {
+  const direct = realm.route(from, to, traveller, { ...options, unlocks: true });
+  return planAfter(realm, oracle, direct, from, to, traveller);
+}
+
+/**
+ * The walk from one room to another with what is held now: the direct route,
+ * where the plan fetches nothing. A room on it that wants emptying is walked
+ * into as any lair is, once the plan has weighed the fight there and it is
+ * won. A plan that fetches first is no walk yet: refused, with the planned way
+ * and its keys in order (`unlocks`) for whoever fetches them.
+ */
+export function leg(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller,
+  options: RouteOptions = {}
+): Route {
+  const direct = realm.route(from, to, traveller, { ...options, unlocks: true });
+  const made = planAfter(realm, oracle, direct, from, to, traveller);
+  if (made.kind === 'refused') return refusedLeg(direct, planRefusalsWords(made.refusals, t));
+  const needs = made.steps.flatMap((step) => (isFetch(step) ? [step.item] : []));
+  // Fetching nothing, the plan walked the direct route as it was.
+  if (needs.length === 0) return direct;
+  const unlocks: Route = {
+    steps: made.steps.flatMap((step) => (step.kind === 'walk' ? step.route.steps : [])),
+    cost: made.cost,
+    blocked: false,
+    needs
+  };
+  return { ...refusedLeg(direct, noWayWords(direct)), unlocks };
+}
+
+/**
+ * A walk refused for `reason`, keeping beside it what the router found: why
+ * it was refused, or the walls a walked way crosses, which the reason names.
+ */
+function refusedLeg(direct: Route, reason: string): Route {
+  const blocks = direct.blocked ? direct.blocks : direct.walls;
+  return {
+    steps: [],
+    cost: 0,
+    blocked: true,
+    reason,
+    ...(blocks === undefined ? {} : { blocks })
+  };
+}
+
+/** The plan once the direct way is known. */
+function planAfter(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  direct: Route,
+  from: RoomId,
+  to: RoomId,
   traveller: Traveller
 ): Plan {
-  const direct = realm.route(from, to, traveller, { unlocks: true });
-  if (walkable(direct)) return finish(realm, oracle, from, to, traveller, [], 0);
+  if (walkable(direct)) return finish(realm, oracle, from, to, traveller, [], 0, direct);
   const needs = keysWanted(direct).filter((need) => !(traveller.keys ?? []).includes(need.id));
   if (needs.length === 0) return { kind: 'refused', refusals: [noWay(direct)] };
   const greedy = acquire(realm, oracle, from, to, traveller, needs, null);
@@ -313,7 +380,7 @@ function acquire(
   return finish(realm, oracle, at, to, { ...traveller, keys: held }, steps, cost);
 }
 
-/** The last walk, holding everything fetched. */
+/** The last walk, holding everything fetched; `known` where the router already answered it. */
 function finish(
   realm: PlanRealm,
   oracle: NavigationOracle,
@@ -321,9 +388,10 @@ function finish(
   to: RoomId,
   traveller: Traveller,
   steps: PlanStep[],
-  cost: number
+  cost: number,
+  known?: Route
 ): Plan {
-  const leg = walk(realm, oracle, from, to, traveller);
-  if (leg.kind === 'refused') return { kind: 'refused', refusals: [leg.refusal] };
-  return { kind: 'plan', steps: [...steps, ...leg.steps], cost: cost + leg.cost };
+  const last = walk(realm, oracle, from, to, traveller, known);
+  if (last.kind === 'refused') return { kind: 'refused', refusals: [last.refusal] };
+  return { kind: 'plan', steps: [...steps, ...last.steps], cost: cost + last.cost };
 }

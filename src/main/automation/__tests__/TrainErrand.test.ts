@@ -767,10 +767,8 @@ describe('a trainer behind a keyed door', () => {
     };
     keyed({ plan: () => plan }).onCharacter(owed());
     expect(walked).toEqual([]);
-    const why = t('automation.train.refusalClearing', {
-      roomName: 'Deep Dark Pit',
-      monsters: 'hydra'
-    });
+    const clear = t('navigation.clearFirst', { roomName: 'Deep Dark Pit', monsters: 'hydra' });
+    const why = t('automation.train.refusalClearing', { clear });
     expect(notices).toContain(
       t('automation.train.refusalUnreachable', { level: 30, skipped: skippedOne(TITAN, why) })
     );
