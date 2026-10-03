@@ -96,7 +96,7 @@ const world = loaded.graph;
 const realmSource = loaded.problem ? `${loaded.source} (${loaded.problem})` : loaded.source;
 
 const fights = new FightLog(
-  path.join(path.dirname(configPath()), 'fights', `${profile.id}.jsonl.gz`),
+  path.join(path.dirname(configPath()), 'fights', profile.id),
   { notice: (message) => console.log(`   [fights] ${message}`) }
 );
 
@@ -177,7 +177,7 @@ const session = new SessionManager(
     },
     login: profile.config.connection.login,
     /*
-     * And the fights go in the same file the app writes.
+     * And the fights go in the same record the app writes.
      *
      * The probe drives the real `SessionManager`, so these are real fights by a
      * real character — there is no reason for them to be less of a record than
