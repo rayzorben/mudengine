@@ -6576,12 +6576,6 @@ function theTuningBlockGainedKeys(
     addKey('world', 'anotherWayPenalty', DEFAULT_INTERNAL.tuning.world.anotherWayPenalty);
     addKey('world', 'anotherWayLonger', DEFAULT_INTERNAL.tuning.world.anotherWayLonger);
     addKey('world', 'hazardSupplyCount', DEFAULT_INTERNAL.tuning.world.hazardSupplyCount);
-    /*
-     * What a key's fetch is weighed at against the way round (2026-09-23,
-     * todo 805): the one number that decides whether a locked door is offered
-     * as an errand or left to the long way.
-     */
-    addKey('world', 'keyFetchTrips', DEFAULT_INTERNAL.tuning.world.keyFetchTrips);
     // And what a door's lever in another room may cost to walk to (todo 837).
     addKey('world', 'leverDetourCost', DEFAULT_INTERNAL.tuning.world.leverDetourCost);
     // Where a round's blows begin, and how long a heal, blessing or cure
@@ -6638,6 +6632,13 @@ function theTuningBlockGainedKeys(
      * a figure.
      */
     dropKey('walk', 'searchTries');
+    /*
+     * Retired with the router's own key planning (2026-10-02): the navigation
+     * engine prices a key's fetch as the walks it plans, and the way into a
+     * step's room is its plan rather than a bounded flood.
+     */
+    dropKey('world', 'keyFetchTrips');
+    dropKey('world', 'approachRooms');
     const tallyAt = tuning.items.findIndex((item) => keyText(item) === 'tally');
     if (tallyAt !== -1) {
       tuning.items.splice(tallyAt, 1);

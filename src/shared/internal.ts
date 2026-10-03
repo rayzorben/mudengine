@@ -2066,13 +2066,6 @@ const TUNING_DEFAULTS = {
      */
     anotherWayLonger: 0.5,
     /**
-     * How many times the walk to the nearest place a key is had is counted
-     * when a way through its door is weighed against the way round
-     * (`Route.unlocks`): there and back. A drop is a fight and a chance on
-     * top, so the figure is a floor under the errand, not its cost.
-     */
-    keyFetchTrips: 2,
-    /**
      * The most a walk to a door's lever in another room and back may cost
      * before the door is priced as the wall it was (todo 837). The Grand
      * Stair door's detour to 7/152 prices at about 57, with a hidden exit and

@@ -20,7 +20,6 @@ import type { Alignment } from '../../shared/alignment';
 import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
 import { judge, type Gate, type GateKind, type Verdict } from '../../shared/gates';
 import {
-  blockItem,
   describeBlock,
   DIRECTION_COMMAND,
   hazardAvoided,
@@ -278,12 +277,11 @@ export interface RouteOptions {
    */
   alternatives?: boolean;
   /**
-   * Whether a blocked plan carries the way once the keys it names are fetched
-   * (`Route.unlocks`) without the other alternatives: what a trainer's price
-   * reads, which asked the whole blocked plan twice to get it (2026-10-02).
-   * Implied by `alternatives`.
+   * Only a way cheaper than this is wanted: where none is found, the route is
+   * refused without the searches that explain a refusal (the engine's keyed
+   * offer, bounded by what it would have to beat).
    */
-  unlocks?: boolean;
+  within?: number;
 }
 
 /** Handed back for the realm that scatters nobody, so no caller allocates to say "none". */
@@ -355,8 +353,9 @@ interface SearchResult {
    * Whether a room the pass expanded has an exit demanding an item the
    * traveller does not hold. A* expands every room cheaper than the answer,
    * and holding an item only ever makes its own edges cheaper, so where this
-   * is false no keyed way can beat the plan and `keyedWay` is not asked — the
-   * extra search cost a panel route a fifth again on Paradigm.
+   * is false no keyed way can beat the plan and the engine does not plan one
+   * (`Route.keysAhead`): the extra search cost a panel route a fifth again on
+   * Paradigm.
    */
   keysAhead: boolean;
 }
@@ -438,13 +437,6 @@ interface KeepOutWords {
   all: ReadonlyArray<{ word: string; plain: string }>;
   /** Those not allowed: the ones that prune. */
   pruning: ReadonlyArray<{ word: string; plain: string }>;
-}
-
-/** Whether two routes walk the same rooms in the same order. */
-function sameSteps(a: Route, b: Route): boolean {
-  return (
-    a.steps.length === b.steps.length && a.steps.every((step, i) => step.to === b.steps[i]!.to)
-  );
 }
 
 /** `Traveller.forcing` absent: both skills are the walker's to spend. */
@@ -1295,19 +1287,9 @@ export class Router {
           )
         ];
         if (through.blocked || crossed.length === 0) return through;
-        /*
-         * And where there is no way round without a key the player lacks, the
-         * way round once it is fetched: the Dark-Elf Castle's four-key way by
-         * the moat, against two vortexes and the Plane.
-         */
+        // The way round's keys, where it wants some, are the navigation engine's.
         const round = this.plan(from, to, goal, traveller, {}, traveller);
-        const unlocks = round.blocked
-          ? this.keyedWay(from, to, goal, null, traveller, false)
-          : null;
-        return {
-          ...through,
-          keptOut: { words: crossed, round: unlocks === null ? round : { ...round, unlocks } }
-        };
+        return { ...through, keptOut: { words: crossed, round } };
       }
     }
     return this.plan(from, to, goal, traveller, options, traveller);
@@ -1335,6 +1317,14 @@ export class Router {
      * walks into, on every trainer price (2026-10-02).
      */
     if (!this.joins().joined(from, to)) return unjoined();
+    // Bounded, a way under the bound is all that is wanted, and none is said as that.
+    if (options.within !== undefined) {
+      const under = this.search(from, to, goal, traveller, false, false, false, options.within);
+      if (under.found === null) {
+        return { steps: [], cost: 0, blocked: true, reason: t('cards.route.reasons.noneCheaper') };
+      }
+      return this.buildRoute(under.found.cameFrom, to, under.found.cost, traveller, false);
+    }
     /*
      * **The way that always arrives first, and only then the one that gambles.**
      *
@@ -1406,19 +1396,14 @@ export class Router {
       // See `Route.another`.
       const different =
         options.alternatives === true ? this.another(from, to, goal, route, others, draws) : null;
-      // And the way through a door whose key is worth going to get. See
-      // `Route.unlocks`.
-      const keyed =
-        options.alternatives === true && walkable.keysAhead
-          ? this.keyedWay(from, to, goal, route, others, draws)
-          : null;
       const planned: Route = {
         ...route,
         ...(other === null ? {} : { otherWay: other }),
         ...(equipped === null ? {} : { carrying: equipped }),
         ...(invoked === null ? {} : { viaItem: invoked }),
         ...(different === null ? {} : { another: different }),
-        ...(keyed === null ? {} : { unlocks: keyed })
+        // A door it holds no key for, which the engine may plan a way through.
+        ...(walkable.keysAhead ? { keysAhead: true as const } : {})
       };
       if (found.cost >= tuning().world.wallCost) {
         /*
@@ -1505,23 +1490,6 @@ export class Router {
           );
     const named = [...blocks, ...spent];
     const reasons = named.length > 0 ? named : unjoinedBlocks();
-    /*
-     * And what fetching would open: the way once the pack holds what the
-     * refusal names, where those items alone are enough — else the realm asked
-     * as though every key it names were carried, since the path that explains
-     * a refusal can end at a door no key opens while a keyed way goes round.
-     * Only for a reader, like every other alternative, and only for a refusal
-     * a door or an item explains: an exhaustive search holding every key, for
-     * two rooms nothing joins, was a fifth of the panel's planning time.
-     */
-    const doors = blocks.some(
-      (block) => block.kind === 'key' || block.kind === 'door' || block.kind === 'carry'
-    );
-    const unlocks =
-      (options.alternatives === true || options.unlocks === true) && doors
-        ? (this.unlocked(from, to, goal, others, blocks, walkable.drawsAhead) ??
-          this.keyedWay(from, to, goal, null, others, walkable.drawsAhead))
-        : null;
     return {
       steps: [],
       cost: 0,
@@ -1529,8 +1497,7 @@ export class Router {
       // Still a sentence, because everything that already reads `reason` goes
       // on working; the facts are beside it for anything that wants more.
       reason: reasons.map(describeBlock).join('; '),
-      blocks: reasons,
-      ...(unlocks === null ? {} : { unlocks })
+      blocks: reasons
     };
   }
 
@@ -1879,118 +1846,6 @@ export class Router {
     };
   }
 
-  /**
-   * The way a refused route would take once the pack holds what refused it.
-   *
-   * Only where **every** block is an item the realm names: a key and a level
-   * gate on one way is a key that ends the errand at the gate. Planned for
-   * real, holding them all, rather than assumed from the gates-open path,
-   * because a second lock nobody reached can stand behind the first.
-   */
-  private unlocked(
-    from: RoomId,
-    to: RoomId,
-    goal: WorldRoom,
-    traveller: Traveller,
-    blocks: readonly RouteBlock[],
-    draws: boolean
-  ): Route | null {
-    if (blocks.length === 0) return null;
-    const needs = new Map<number, { id: number; name: string }>();
-    for (const block of blocks) {
-      const item = blockItem(block);
-      if (item === null) return null;
-      needs.set(item.id, item);
-    }
-    for (const id of needs.keys()) {
-      if (this.fetchPrice(id, from, this.holdingOthers(traveller, needs.keys(), id)) === null) {
-        return null;
-      }
-    }
-    const held = [...needs.keys()].reduce((who, item) => this.holding(who, item), traveller);
-    const found = this.search(from, to, goal, held, false, draws).found;
-    if (found === null || found.cost >= tuning().world.wallCost) return null;
-    return {
-      ...this.buildRoute(found.cameFrom, to, found.cost, held, draws),
-      needs: [...needs.values()]
-    };
-  }
-
-  /**
-   * The way through a door this character holds no key for — `Route.unlocks`
-   * (todo 805).
-   *
-   * A locked door the character cannot open is pruned or walled, and either
-   * way it loses to any way round however long: 155 steps against one,
-   * standing at the black star key's door, and the key that opens it was never
-   * weighed. So the journey is planned again as though every item the realm
-   * names on an exit were carried, and what that way uses is what it needs.
-   *
-   * **The fetch is priced, never free**: `keyFetchTrips` times the walk to the
-   * nearest room that stocks each item or places a monster that drops it
-   * (`fetchPrice`). A drop is a fight and a chance, so this is a floor under
-   * the errand rather than its cost — enough to stop the offer sending anybody
-   * further for a key than the way round would have taken. Offered where that
-   * total beats `plan` by `alternativeMinSteps`; for a refused route (`plan`
-   * null) wherever it exists. An item nothing sources is not offered at all.
-   * Never walled or deadly, and never the plan's own steps again.
-   */
-  private keyedWay(
-    from: RoomId,
-    to: RoomId,
-    goal: WorldRoom,
-    plan: Route | null,
-    traveller: Traveller,
-    draws: boolean
-  ): Route | null {
-    const { alternativeMinSteps, keyFetchTrips, wallCost } = tuning().world;
-    // A keyed way costs at least a step, so a plan this cheap cannot be beaten
-    // by the margin — asked before the search, as `viaItem` asks.
-    if (plan !== null && plan.cost <= alternativeMinSteps) return null;
-    const carried = traveller.keys ?? [];
-    const extra = this.namedExitItems().filter((id) => !carried.includes(id));
-    if (extra.length === 0) return null;
-    const equipped: Traveller = { ...traveller, keys: [...carried, ...extra] };
-    // Bounded by what would have to be beaten, which also makes it cheaper
-    // than the plan's own search: it expands only rooms the margin leaves in.
-    const ceiling = plan === null ? Infinity : plan.cost - alternativeMinSteps;
-    const found = this.search(from, to, goal, equipped, false, draws, false, ceiling).found;
-    if (found === null || found.cost >= wallCost) return null;
-    if (plan !== null && found.cost + alternativeMinSteps > plan.cost) return null;
-    const route = this.buildRoute(found.cameFrom, to, found.cost, equipped, draws);
-    if (route.steps.some((step) => step.deadly === true)) return null;
-    const needs = new Map<number, { id: number; name: string }>();
-    for (const step of route.steps) {
-      const id = itemDemanded(step.requirement);
-      if (id === null || carried.includes(id) || needs.has(id)) continue;
-      const name = this.index.item(id)?.name.trim() ?? '';
-      if (name.length === 0) return null;
-      needs.set(id, { id, name });
-    }
-    if (needs.size === 0) return null;
-    if (plan !== null && sameSteps(route, plan)) return null;
-    let fetching = 0;
-    for (const id of needs.keys()) {
-      const price = this.fetchPrice(id, from, this.holdingOthers(traveller, needs.keys(), id));
-      if (price === null) return null;
-      fetching += keyFetchTrips * price;
-    }
-    if (plan !== null && found.cost + fetching + alternativeMinSteps > plan.cost) return null;
-    return { ...route, needs: [...needs.values()] };
-  }
-
-  /**
-   * This traveller holding every one of `needs` but `item` — how the errand,
-   * which fetches them in turn, reaches a key that lies behind another's door.
-   * Never `item` itself: a key behind its own door is not somewhere to go.
-   */
-  private holdingOthers(traveller: Traveller, needs: Iterable<number>, item: number): Traveller {
-    const others = [...needs].filter((id) => id !== item);
-    return others.length === 0
-      ? traveller
-      : { ...traveller, keys: [...(traveller.keys ?? []), ...others] };
-  }
-
   /** Every item id the realm demands on an exit and names — built once. */
   namedExitItems(): readonly number[] {
     if (this.exitItems !== null) return this.exitItems;
@@ -2003,22 +1858,6 @@ export class Router {
     }
     this.exitItems = [...ids];
     return this.exitItems;
-  }
-
-  /**
-   * What reaching the nearest room where this item can be had costs, in the
-   * router's units: any source the one table lists (`navigation/sources.ts`).
-   * Null where the realm names none this traveller can reach, which is not
-   * something to send anybody for.
-   */
-  private fetchPrice(item: number, from: RoomId, traveller: Traveller): number | null {
-    const rooms = this.index.sourceRooms(item);
-    if (rooms.size === 0) return null;
-    let best: number | null = null;
-    for (const { cost } of this.sweepTo(from, rooms, traveller).values()) {
-      if (best === null || cost < best) best = cost;
-    }
-    return best;
   }
 
   /**
@@ -2668,7 +2507,7 @@ export class Router {
     openGates: boolean,
     useDraws: boolean,
     useLandings = false,
-    /** A cost past which no answer is wanted — `keyedWay`'s bound. */
+    /** A cost past which no answer is wanted (`RouteOptions.within`). */
     ceiling = Infinity
   ): SearchResult {
     /*

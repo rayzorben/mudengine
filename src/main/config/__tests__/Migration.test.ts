@@ -5182,6 +5182,41 @@ describe('the hunting survey’s reach', () => {
 });
 
 /*
+ * The router's own key planning retires (2026-10-02): the navigation engine
+ * prices a key's fetch as the walks it plans, and the way into a quest step's
+ * room is its plan, so `tuning.world.keyFetchTrips` and `approachRooms` read
+ * nothing and go.
+ */
+describe('the retired key-planning figures', () => {
+  const retired = `tuning:
+  world:
+    keyFetchTrips: 2
+    approachRooms: 300
+    wallCost: 100000
+`;
+
+  const worldBlock = (): Record<string, unknown> =>
+    (
+      parse(fs.readFileSync(home.internal, 'utf8')) as {
+        tuning: { world: Record<string, unknown> };
+      }
+    ).tuning.world;
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+    fs.writeFileSync(home.internal, retired, 'utf8');
+  });
+
+  it('takes both out, says so, and leaves the rest of the block alone', () => {
+    migrate();
+    expect(worldBlock()['keyFetchTrips']).toBeUndefined();
+    expect(worldBlock()['approachRooms']).toBeUndefined();
+    expect(worldBlock()['wallCost']).toBe(100000);
+    expect(said.join(' ')).toContain('keyFetchTrips');
+  });
+});
+
+/*
  * The search count retires — todo 04, 2026-09-06.
  *
  * A `Hidden/Searchable` exit is one the realm's own data says a search reveals,

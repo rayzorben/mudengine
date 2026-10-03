@@ -57,8 +57,8 @@ describe('every way the realm gives an item', () => {
     ]);
   });
 
-  /* A death that hands a key over is a place to get it, for the router too. */
+  /* A death that hands a key over is a place to get it. */
   it('counts the room of a death that hands the item over', () => {
-    expect(new ItemSources(realm).rooms(7)).toContain('1/6');
+    expect(new ItemSources(realm).of(7).map((source) => source.room)).toContain('1/6');
   });
 });

@@ -151,12 +151,6 @@ export class ItemSources {
     }
     return found;
   }
-
-  /** Every room where the item can be had: what `Router.fetchPrice` prices the walk to. */
-  rooms(item: number): ReadonlySet<RoomId> {
-    return new Set(this.of(item).map((source) => source.room));
-  }
-
   /**
    * A room command that summons a monster, asks nothing of whoever says it
    * and moves nobody: most summoning scripts also want an item or a price,

@@ -20,7 +20,14 @@ export interface NavigationParts {
   world():
     | Pick<
         WorldGraph,
-        'route' | 'sweepTo' | 'itemSources' | 'byId' | 'lairOf' | 'residentEntities' | 'item'
+        | 'route'
+        | 'sweepTo'
+        | 'itemSources'
+        | 'byId'
+        | 'lairOf'
+        | 'residentEntities'
+        | 'item'
+        | 'namedExitItems'
       >
     | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
