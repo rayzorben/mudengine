@@ -233,7 +233,7 @@ export interface RemoteEvents {
    * question rather than pushed: the walker and the loop runner own their
    * progress, and this module proposes and never holds state of its own.
    */
-  progress?(): { walk: WalkProgress; loop: LoopProgress };
+  progress?(): { walk: WalkProgress; loop: LoopProgress; stopped: StoppedByRemote | null };
   /**
    * What the registry holds about somebody, for the wording of a question
    * (`ask`). Asked at the moment, as `progress` is: the registry is the
@@ -280,6 +280,21 @@ export interface RemoteEvents {
    * waits on.
    */
   comeBack?(from: string, map: number, room: number): boolean;
+  /**
+   * `@stop` and `@rego`: the player's own Stop and Play on the sender's word.
+   * Each returns whether anything was stopped or resumed, which decides the
+   * `{ok}` as `comeBack`'s does; the session says why when nothing was.
+   */
+  stopMoving?(from: string): boolean;
+  resumeMoving?(from: string): boolean;
+}
+
+/** What a `@stop` stopped and is still waiting for a `@rego`, for `@status`. */
+export interface StoppedByRemote {
+  /** Who sent the `@stop`. */
+  by: string;
+  /** The loop or the route's destination, as the card names it. */
+  name: string;
 }
 
 /**
@@ -1110,7 +1125,12 @@ export class Remotes implements SessionModule {
           );
           return;
         }
-        this.reply(from, formatStatus('idle', 'waiting for instructions', stealth), prefix);
+        const stopped = progress.stopped;
+        const doing =
+          stopped === null
+            ? 'waiting for instructions'
+            : `${stopped.name} stopped by ${stopped.by}`;
+        this.reply(from, formatStatus('idle', doing, stealth), prefix);
         return;
       }
 
@@ -1274,6 +1294,22 @@ export class Remotes implements SessionModule {
         // on this character arriving, and an acknowledgement for a route the
         // realm data could not plan is a wait that never ends.
         if (walking) this.reply(from, '{ok}', prefix);
+        return;
+      }
+
+      case 'stop':
+      case 'rego': {
+        /*
+         * `{ok}` only for something stopped or resumed, `comeback-room`'s
+         * rule: the user's capture shows the acknowledgement, and none shows
+         * MegaMUD's answer when there was nothing to do, so nothing goes back
+         * and the session says why on this screen.
+         */
+        const done =
+          command.name === 'stop'
+            ? this.events.stopMoving?.(from)
+            : this.events.resumeMoving?.(from);
+        if (done === true) this.reply(from, '{ok}', prefix);
         return;
       }
 

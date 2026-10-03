@@ -10,7 +10,7 @@ import { wireExit, wireItem } from '../../../shared/entities';
 import type { AutomationConfig } from '../../../shared/config';
 import type { Block } from '../../../shared/blocks';
 import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
-import type { WalkProgress } from '../../../shared/walk';
+import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
 import { ACTIONABLE_REMOTES } from '../../../shared/remotes';
 import { NO_PLAYERS, recordOf, type PlayerRegistry } from '../../../shared/players';
 
@@ -318,7 +318,7 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
 
   /* A loop's leg is a walk, so both run at once; the answer is the loop. */
   it('answers @status with the loop over the leg it is on, and the walk otherwise', () => {
-    const progress: { walk: WalkProgress; loop: LoopProgress } = {
+    const progress: { walk: WalkProgress; loop: LoopProgress; stopped: null } = {
       walk: {
         status: 'walking',
         asked: true,
@@ -332,7 +332,8 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
         reason: null,
         hold: null
       },
-      loop: { ...NO_LOOP, status: 'running', name: 'Rats', stop: 2, stops: 4, laps: 1 }
+      loop: { ...NO_LOOP, status: 'running', name: 'Rats', stop: 2, stops: 4, laps: 1 },
+      stopped: null
     };
     const told = new Remotes(config, queue, { progress: () => progress });
     told.onBlock(said('conversation-telepath', 'Rand', '@status'), who({ stealth: 'sneaking' }));
@@ -1760,6 +1761,66 @@ describe('@reset', () => {
       '/Rand {Level: 1  Needed: 4,500  Will level in: 2h 15m}',
       '/Rand {Made: 3,000  Needed: 4,500  Rate: 1.5 k/hr  Will level in: 3h 0m}'
     ]);
+  });
+});
+
+/* Todo 15: the player's own Stop and Play on the sender's word. */
+describe('@stop and @rego', () => {
+  const driven = (answers: boolean) => {
+    const asked: string[] = [];
+    const remotes = new Remotes(config, queue, {
+      stopMoving: (from) => (asked.push(`stop:${from}`), answers),
+      resumeMoving: (from) => (asked.push(`rego:${from}`), answers)
+    });
+    return { asked, remotes };
+  };
+
+  it('answers {ok} on the channel it came in on when something was stopped or resumed', () => {
+    const { asked, remotes } = driven(true);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@stop'), who());
+    drain();
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@rego'), who());
+    drain();
+    expect(asked).toEqual(['stop:Soul', 'rego:Soul']);
+    expect(sent).toEqual(['/Soul {ok}', '/Soul {ok}']);
+  });
+
+  it('sends nothing back when there was nothing to stop or resume', () => {
+    const { asked, remotes } = driven(false);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@stop'), who());
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@rego'), who());
+    drain();
+    expect(asked).toEqual(['stop:Soul', 'rego:Soul']);
+    expect(sent).toEqual([]);
+  });
+
+  it('is not granted by the shipped lists', () => {
+    const shipped: AutomationConfig = {
+      ...config,
+      remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+    };
+    const asked: string[] = [];
+    const remotes = new Remotes(shipped, queue, {
+      stopMoving: (from) => (asked.push(from), true),
+      resumeMoving: (from) => (asked.push(from), true)
+    });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@stop'), who());
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@rego'), who());
+    drain();
+    expect(asked).toEqual([]);
+  });
+
+  it('answers @status with what a @stop stopped and who sent it', () => {
+    const remotes = new Remotes(config, queue, {
+      progress: () => ({
+        walk: IDLE_WALK,
+        loop: { ...NO_LOOP, status: 'stopped', name: 'Overgrown Trail' },
+        stopped: { by: 'Brackle', name: 'Overgrown Trail' }
+      })
+    });
+    remotes.onBlock(said('conversation-telepath', 'Rand', '@status'), who({ stealth: 'seen' }));
+    drain();
+    expect(sent).toEqual(['/Rand {IDLE: Overgrown Trail stopped by Brackle}']);
   });
 });
 

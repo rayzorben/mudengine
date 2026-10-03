@@ -315,18 +315,14 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     because: 'the runner has no one-lap mode, and no capture shows the reply'
   },
   roam: { name: 'roam', support: 'unread', because: 'no such mode' },
-  stop: {
-    name: 'stop',
-    support: 'unread',
-    because:
-      'stopping a walk is one call, but no capture shows the acknowledgement and `@rego` below ' +
-      'has to resume exactly what this stopped'
-  },
-  rego: {
-    name: 'rego',
-    support: 'unread',
-    because: 'the other half of `@stop`'
-  },
+  /*
+   * The player's own Stop and Play on the sender's word, answered `{ok}` as
+   * the user's capture shows (todo 15, 2026-10-02) and only when something was
+   * stopped or resumed, `comeback-room`'s rule. Granted by nothing shipped:
+   * each holds or moves this character on somebody else's word.
+   */
+  stop: { name: 'stop', support: 'acted' },
+  rego: { name: 'rego', support: 'acted' },
   'attack-last': {
     name: 'attack-last',
     support: 'unread',

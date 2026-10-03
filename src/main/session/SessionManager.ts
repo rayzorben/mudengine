@@ -100,6 +100,7 @@ import { QuestWatch } from './QuestWatch';
 import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
+import { RemoteMoves } from './RemoteMoves';
 import { trainPlanner } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { lightPlanner } from './lightPlanner';
@@ -1343,8 +1344,7 @@ export class SessionManager {
     this.afk = new Afk(automation.afk, automation.enabled, this.queue, this.sink);
     this.remotes = new Remotes(automation, this.queue, {
       notice: (message) => this.sink.notice(message),
-      // What the character is doing, for `@status`, at the moment it is asked.
-      progress: () => ({ walk: this.walker.progress, loop: this.loops.progress }),
+      ...new RemoteMoves(this, (message) => this.sink.notice(message)).events,
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
       // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
@@ -3492,8 +3492,8 @@ export class SessionManager {
   }
 
   /** The one stop, whichever of the two is running. See `Travel.stopMoving`. */
-  stopMoving(): void {
-    this.travel.stopMoving();
+  stopMoving(by: string | null = null): void {
+    this.travel.stopMoving(by);
     this.extensions.playerStopped();
   }
 
