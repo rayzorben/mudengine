@@ -69,6 +69,7 @@ import { bareName } from '../../shared/items';
 import { carriedCount } from '../../shared/supplies';
 import { nameAnswersTo, roomId, type CashPlace, type RoomId, type Route } from '../../shared/world';
 import type { SessionModule } from './Module';
+import { stoppedByPerson } from './personStop';
 
 export interface SupplyPlanner {
   /** Where the character is, or null while it is not placed. */
@@ -365,12 +366,12 @@ export class Supplies implements SessionModule {
       return;
     }
     /*
-     * The player pressed Stop. Compared against the copy itself rather than a
-     * word in it, which is `LoopRunner.advance`'s own rule — and the same
-     * decision `notePlayerMoved` makes for a typed direction.
+     * A person pressed Stop or sent `@stop` (`stoppedByPerson`, read from the
+     * copy as `LoopRunner.advance` reads its own). It is the same decision
+     * `notePlayerMoved` makes for a typed direction.
      */
-    if (reason === t('session.walk.stoppedByPlayer')) {
-      this.finish(errand, false, t('automation.supplies.abandonedPlayerMoved'));
+    if (stoppedByPerson(reason)) {
+      this.finish(errand, false, reason);
       return;
     }
     /*

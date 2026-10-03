@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
+import { personStop } from '../personStop';
 import { Supplies, type SupplyPlanner } from '../Supplies';
 import { DEFAULT_CONFIG, type AutomationConfig, type SuppliesConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
@@ -413,11 +414,11 @@ describe('yielding to the person at the keyboard', () => {
     expect(auto.current).toBeNull();
   });
 
-  it('gives it up when the player presses Stop', () => {
+  it.each([null, 'Brackle'])('gives it up when a person stops it (sender %s)', (by) => {
     const { planner: p, log } = planner();
     const auto = make(p);
     auto.onCharacter(character(2));
-    auto.onWalkEnded(false, t('session.walk.stoppedByPlayer'), character(2));
+    auto.onWalkEnded(false, personStop(by), character(2));
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
   });

@@ -4,6 +4,7 @@ import { QuestRunner, type QuestRunPlanner } from '../QuestRunner';
 import { CommandQueue } from '../CommandQueue';
 import { tuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
+import { personStop } from '../personStop';
 import { ANY, composes } from '../../app/copyMatch';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
@@ -490,6 +491,17 @@ describe('running a quest plan', () => {
     expect(runner.running).toBe(false);
     expect(runner.progress.reason).toBe(
       t('automation.quests.abandoned', { why: t('automation.quests.whyStopped') })
+    );
+  });
+
+  /* Todo 15: another player's `@stop` ends it the same way, named. */
+  it('hears another player stop the walk too', () => {
+    const runner = make();
+    expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
+    runner.onWalkEnded(false, personStop('Brackle'), inRealm());
+    expect(runner.running).toBe(false);
+    expect(runner.progress.reason).toBe(
+      t('automation.quests.abandoned', { why: personStop('Brackle') })
     );
   });
 

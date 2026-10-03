@@ -20,6 +20,7 @@ import type { SessionModule } from '../automation/Module';
 import type { QuestRunner } from '../automation/QuestRunner';
 import type { Supplies } from '../automation/Supplies';
 import type { OutgrownGear } from '../automation/OutgrownGear';
+import { personStop } from '../automation/personStop';
 import type { StashFetch } from '../automation/StashFetch';
 import type { TrainErrand } from '../automation/TrainErrand';
 import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
@@ -2080,12 +2081,22 @@ export class Travel implements SessionModule {
    * as what it is.
    *
    * Nothing is forgotten either way: the lap keeps its place and the walker
-   * keeps its route, which is what `startMoving` picks back up.
+   * keeps its route, which is what `startMoving` picks back up. `by` is the
+   * sender of a `@stop`, named in the reason; null is the player's own press.
+   *
+   * The route a shop trip was owed is dropped and a notice says so. The trip
+   * ends on the walk's ending and lets go, and `walkOnAfterErrand` then walked
+   * the character on to the destination, so a stop started a walk (todo 15).
    */
-  stopMoving(): void {
+  stopMoving(by: string | null = null): void {
     // A walk home the player stops is not carried past the fight it stops in.
     this.homeward = null;
-    const reason = t('session.walk.stoppedByPlayer');
+    const reason = personStop(by);
+    const owed = this.errandOwes;
+    this.errandOwes = null;
+    if (owed !== null) {
+      this.session.notice(t('session.walk.notResumed', { destination: owed.name, reason }));
+    }
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
     this.walker.stop(reason);
     // The one door a person's stop comes through, so it is the one place that
