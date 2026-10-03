@@ -786,8 +786,9 @@ tuning:
     expiresMs: 6000
     retryMs: 300000
     maxLegs: 4
-    # The whole errand's deadline, after which it gives the lap back — a leg
-    # superseded by another walk raises no ending of its own.
+    # How long an errand's leg may go unwalked before it gives the lap back: a
+    # leg superseded by another walk raises no ending of its own. A leg still
+    # walking to the shop is never cut short.
     errandTimeoutMs: 300000
     # Choosing which of several counters to stop at: the detour decides and
     # the price breaks the tie. This is what one doubling of the price is

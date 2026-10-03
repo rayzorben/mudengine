@@ -133,8 +133,8 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       },
       priceAt: (name, shop) => errands.priceAt(name, shop),
       lairOdds: (room) => wiring.odds.lair(room),
-      fightOdds: (monster, as) =>
-        as === undefined ? wiring.odds.mob(monster) : wiring.odds.mobAs(monster, as),
+      fightOdds: (monster, as, attack) =>
+        as === undefined ? wiring.odds.mob(monster) : wiring.odds.mobAs(monster, as, attack),
       lairsUnrun: () => wiring.odds.lairsLeft,
       blessings: () => wiring.blessings.entries(),
       fled: wiring.fled,
@@ -164,8 +164,8 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         };
         return wearing(state, items, realm, askerOf(state, world));
       },
-      attacks: () => {
-        const state = tracker.current;
+      attacks: (as) => {
+        const state = as ?? tracker.current;
         const { combat, magery, family } = errands.realmClass();
         return attackOptions(
           prowessSheetOf(state, { combat, magery }),

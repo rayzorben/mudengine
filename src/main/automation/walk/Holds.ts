@@ -22,6 +22,7 @@ import { stillFor, type AutomationConfig } from '../../../shared/config';
 import { splitSpells } from '../../../shared/spell-messages';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
+import { countThreats } from '../RuleEngine';
 import type { WalkClock } from './clock';
 import type { WalkerEvents, WalkInFlight } from './ports';
 
@@ -227,6 +228,17 @@ export class Holds {
     return fighting && (this.leavingAFight || this.nothingEndsIt);
   }
 
+  /**
+   * A monster that attacks on sight stands in this room (`countThreats`, the
+   * count `Recovery` refuses to rest beside). Its first round is the fight,
+   * so the vital holds read it as one already running: on 2026-10-03 a run to
+   * Frozen Cavern stood for health among grey wolves until each bit, one
+   * round per room, from 78% to a hang-up at 32%.
+   */
+  private aboutToFight(state: CharacterState): boolean {
+    return countThreats(state, this.config.combat.mobRules) > 0;
+  }
+
   /** A route that resumes after a fight, in one nothing will end (`canEndAFight`). */
   private get nothingEndsIt(): boolean {
     return this.resumeAfterFight && !this.canEndAFight();
@@ -295,6 +307,11 @@ export class Holds {
     if ((this.events.pendingMoves?.() ?? 0) > 0) return false;
     this.walk.carryOn(state);
     return true;
+  }
+
+  /** `stepOutOfFight` for a monster that attacks on sight and has not swung yet. */
+  stepOutOfThreat(state: CharacterState): boolean {
+    return this.aboutToFight(state) && this.stepOutOfFight(state);
   }
 
   /**
@@ -755,9 +772,10 @@ export class Holds {
    */
   holdForHealth(state: CharacterState, fighting: boolean): boolean {
     // Mana holds a walk on the same terms, from `meditateBelow` to `meditateTo` (todo 825).
-    // Never in a fight the walk goes on through: resting heals nothing while
-    // something swings.
-    const wanted = this.walksThrough(fighting) ? null : this.wantsVitalHold(state);
+    // Never in a fight the walk goes on through, or one about to start: resting
+    // heals nothing while something swings.
+    const through = this.walksThrough(fighting || this.aboutToFight(state));
+    const wanted = through ? null : this.wantsVitalHold(state);
     const mine = this.standingForVitals;
     if (wanted === null) {
       // Only its own hold: a walk standing still blind is not one whose health

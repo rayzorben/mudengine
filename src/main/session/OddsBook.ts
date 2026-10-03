@@ -137,10 +137,11 @@ export class OddsBook implements SessionModule {
   /**
    * One monster fought alone by `as` (the character in other gear, or at
    * another level), run now rather than queued and kept nowhere: one whole
-   * fight, so a caller asks for one at a time.
+   * fight, so a caller asks for one at a time. `attack` is the word it
+   * fights with, where not `combat.attack`'s.
    */
-  mobAs(name: string, as: CharacterState): Odds {
-    const started = this.start(as, { kind: 'mob', name });
+  mobAs(name: string, as: CharacterState, attack?: string): Odds {
+    const started = this.start(as, { kind: 'mob', name }, attack);
     if ('kind' in started) return started;
     started.run(() => false);
     return { kind: 'run', survival: started.result() };
@@ -248,9 +249,9 @@ export class OddsBook implements SessionModule {
   }
 
   /** The job's fight set up for its trials, or what it comes to where none can be run. */
-  private start(state: CharacterState, job: Job): Odds | FightTrials {
+  private start(state: CharacterState, job: Job, attack?: string): Odds | FightTrials {
     const world = this.world;
-    const character = this.setup.character(state, 'rested');
+    const character = this.setup.character(state, 'rested', attack);
     if (world === undefined || character === null) return UNRUN;
     let met: FightFoe[];
     let draw: number | undefined;

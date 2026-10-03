@@ -60,10 +60,11 @@ export class FightSetup {
    * The character as it stands (`now`: its health and mana, the blessings
    * lapsing on their clocks), or as it walks into a fight rested (`rested`:
    * full health and mana, nothing lapsing), which is what the odds for every
-   * monster and lair are run at. Null while the health is unread.
+   * monster and lair are run at. Null while the health is unread. `attack`
+   * is the word fought with where it is not `combat.attack`'s (a what-if).
    */
-  character(state: CharacterState, at: 'now' | 'rested'): FightCharacter | null {
-    return this.build(state, at, undefined);
+  character(state: CharacterState, at: 'now' | 'rested', attack?: string): FightCharacter | null {
+    return this.build(state, at, undefined, attack);
   }
 
   /**
@@ -80,11 +81,12 @@ export class FightSetup {
   private build(
     state: CharacterState,
     at: 'now' | 'rested',
-    set: BlessingEffect | null | undefined
+    set: BlessingEffect | null | undefined,
+    verb?: string
   ): FightCharacter | null {
     const { hp, mana, manaMax } = state.vitals;
     if (state.vitals.hpMax === null) return null;
-    const { combat, magery, family, attack } = this.errands.realmClass();
+    const { combat, magery, family, attack } = this.errands.realmClass(verb);
     const read = prowessSheetOf(state, { combat, magery });
     const blessed = set !== undefined && set !== null;
     const player = blessed

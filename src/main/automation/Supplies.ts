@@ -83,8 +83,8 @@ export interface SupplyPlanner {
   /** Hands the route to the walker; a refusal, or null once walking. */
   walk(route: Route): string | null;
   moveInFlight(): boolean;
-  /** Some other walk has the character — the player's route, a retreat. */
-  walking(): boolean;
+  /** Where the walk that has the character ends, or null while none does. */
+  walkingTo(): RoomId | null;
   /** Anything that outranks shopping: an escape in flight, a haven armed. */
   busy(): boolean;
   /**
@@ -139,6 +139,13 @@ export interface Errand {
   banked: boolean;
 }
 
+/** Where the errand's leg goes: the vault it draws cash from first, else the counter. */
+function legOf(errand: Errand): { room: RoomId; name: string } {
+  return errand.bank === null
+    ? { room: errand.room, name: errand.shopName }
+    : { room: errand.bank.room, name: errand.bank.place.name };
+}
+
 /** What the errand asks a counter or a vault, withdrawn when it walks on before the answer. */
 const ERRAND_ASKS = new Set(['supplies:list', 'supplies:bank', 'supplies:withdraw']);
 
@@ -162,14 +169,16 @@ export class Supplies implements SessionModule {
   private readonly droppedUntil = new Map<string, number>();
   private timer: NodeJS.Timeout | null = null;
   /**
-   * The whole errand's deadline.
+   * The errand's deadline for a leg nothing walks any more.
    *
    * `Walker.start` deliberately raises no `ended` when it *replaces* a running
    * walk, so an errand whose leg is superseded — by the player's own route, or
    * by a `safe-haven` walk home — would otherwise sit at `walking` for ever
    * with no timer armed and no way out, holding the lap with it. A declared
    * postcondition with a bounded deadline on it, which is the shape `Recovery`
-   * had to learn: anything corrective here needs one.
+   * had to learn: anything corrective here needs one. It is armed again while
+   * the errand's own leg is still being walked (`underWay`): a shop 90 rooms
+   * off, through fights, was given up at five minutes on the way there.
    */
   private errandTimer: NodeJS.Timeout | null = null;
 
@@ -351,7 +360,7 @@ export class Supplies implements SessionModule {
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     const errand = this.errand;
     if (errand === null || errand.stage !== 'walking') return;
-    if (arrived && this.planner.here() === (errand.bank?.room ?? errand.room)) {
+    if (arrived && this.planner.here() === legOf(errand).room) {
       this.arrive(errand);
       return;
     }
@@ -381,6 +390,8 @@ export class Supplies implements SessionModule {
      */
     if (fightIsRunning(state)) {
       errand.stage = 'waiting';
+      // The fight gets the whole deadline to itself, as a fresh leg does.
+      this.armErrandTimer(errand);
       return;
     }
     if (errand.legs >= tuning().supplies.maxLegs) {
@@ -388,7 +399,7 @@ export class Supplies implements SessionModule {
         errand,
         false,
         t('automation.supplies.refusalUnreachable', {
-          shop: errand.bank?.place.name ?? errand.shopName,
+          shop: legOf(errand).name,
           why: reason ?? t('automation.loops.fallbackWhy')
         })
       );
@@ -441,7 +452,8 @@ export class Supplies implements SessionModule {
   private consider(state: CharacterState): void {
     if (this.config.items.length === 0) return;
     if (fightIsRunning(state) || state.vitals.resting || state.vitals.meditating) return;
-    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
+    if (this.planner.moveInFlight() || this.planner.walkingTo() !== null || this.planner.busy())
+      return;
     // Nothing is short until the pack has been read: an unlisted pack is not
     // an empty one, and an errand for torches the character is carrying is a
     // walk to the shop for nothing.
@@ -494,7 +506,8 @@ export class Supplies implements SessionModule {
   private considerSurplus(state: CharacterState): void {
     if (this.config.items.length === 0) return;
     if (fightIsRunning(state) || state.vitals.resting || state.vitals.meditating) return;
-    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
+    if (this.planner.moveInFlight() || this.planner.walkingTo() !== null || this.planner.busy())
+      return;
     // An unlisted pack is not an empty one, and it is not an overfull one
     // either: nothing is surplus until the pack has been read.
     if (state.inventory.items.length === 0) return;
@@ -772,8 +785,8 @@ export class Supplies implements SessionModule {
     }
     errand.legs += 1;
     errand.stage = 'walking';
-    const place = errand.bank?.place.name ?? errand.shopName;
-    const route = this.planner.routeTo(errand.bank?.room ?? errand.room);
+    const { name: place, room } = legOf(errand);
+    const route = this.planner.routeTo(room);
     if (typeof route === 'string') {
       this.finish(
         errand,
@@ -881,9 +894,41 @@ export class Supplies implements SessionModule {
     this.errandTimer = setTimeout(() => {
       this.errandTimer = null;
       if (this.errand !== errand) return;
-      this.finish(errand, false, t('automation.supplies.refusalTookTooLong'));
+      if (this.underWay(errand)) {
+        this.armErrandTimer(errand);
+        return;
+      }
+      this.finish(
+        errand,
+        false,
+        t('automation.supplies.refusalTookTooLong', { shop: legOf(errand).name })
+      );
     }, tuning().supplies.errandTimeoutMs);
     this.errandTimer.unref?.();
+  }
+
+  /**
+   * The errand is still getting somewhere: its own leg is the walk that has
+   * the character, or it is at a counter or a vault, whose answers have their
+   * own deadlines (`armTimer`). A fight it waits out has the one deadline,
+   * armed afresh when the fight stopped the leg.
+   */
+  private underWay(errand: Errand): boolean {
+    switch (errand.stage) {
+      case 'walking':
+        return this.planner.walkingTo() === legOf(errand).room;
+      case 'waiting':
+        return false;
+      case 'listing':
+      case 'buying':
+      case 'balance':
+      case 'withdrawing':
+        return true;
+      default: {
+        const never: never = errand.stage;
+        return never;
+      }
+    }
   }
 
   private clearErrandTimer(): void {

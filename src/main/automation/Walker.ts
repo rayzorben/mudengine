@@ -1006,6 +1006,7 @@ export class Walker implements SessionModule {
       if (this.holds.stepOutOfFight(state)) return;
     } else {
       this.holds.nothingFighting();
+      if (this.holds.stepOutOfThreat(state)) return;
     }
 
     /*

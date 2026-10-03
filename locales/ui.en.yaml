@@ -4938,6 +4938,8 @@ automation:
     noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the game for it.
     emptyBook: 'Auto Choose Best Spell: the spellbook is empty; this character has no spells yet.'
     noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
+    kai: 'Auto Choose Best Spell: kai is kept for the ways and blessings; your regular attacks carry
+      the fight.'
     allResisted: 'Auto Choose Best Spell: this target resists every attack spell in the book; your
       regular attacks carry the fight.'
     drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
@@ -5217,7 +5219,7 @@ automation:
     refusalNotInRealm: this character is not in the realm
     refusalNoErrand: the detour could not be started
     abandonedEscape: the character is running away
-    refusalTookTooLong: the detour took too long and the loop resumed
+    refusalTookTooLong: 'another walk took over the way to {shop}'
     abandonedLeftRealm: the realm was left
     abandonedConnectionClosed: the connection closed
     abandonedSwitchedOff: Auto-Buy was turned off

@@ -84,7 +84,11 @@ const CHARACTER: FightCharacter = {
   horizons: [1, 3]
 };
 
-function book(): { odds: OddsBook; tracker: { current: CharacterState }; ran: () => void } {
+function book(character: OddsBookParts['setup']['character'] = () => CHARACTER): {
+  odds: OddsBook;
+  tracker: { current: CharacterState };
+  ran: () => void;
+} {
   const tracker = { current: inGame(10) };
   const world: OddsWorld = {
     mobNames: () => ['ogre'],
@@ -99,7 +103,7 @@ function book(): { odds: OddsBook; tracker: { current: CharacterState }; ran: ()
     world,
     errands: { fitness: (state) => `level ${state.progress.level}` },
     setup: {
-      character: () => CHARACTER,
+      character,
       foes: (_state, _character, met) => ({
         foes: met.map(({ name, subject }) => ({ name, subject })),
         casting: met.map(() => null)
@@ -205,6 +209,19 @@ describe('the odds book', () => {
     tracker.current = inGame(12);
     await vi.waitFor(() => expect(odds.mob('ogre').kind).toBe('run'));
     expect(odds.lair(lairRoom).kind).toBe('run');
+    odds.dispose();
+  });
+
+  /* Konami's trip gear fights each kit with the attack it would lay, not the one in force (2026-10-03). */
+  it('runs a what-if with the attack it is handed', () => {
+    const asked: Array<string | undefined> = [];
+    const { odds, tracker } = book((_state, _at, attack) => {
+      asked.push(attack);
+      return CHARACTER;
+    });
+    expect(odds.mobAs('ogre', tracker.current, 'kic').kind).toBe('run');
+    expect(odds.mobAs('ogre', tracker.current).kind).toBe('run');
+    expect(asked).toEqual(['kic', undefined]);
     odds.dispose();
   });
 });

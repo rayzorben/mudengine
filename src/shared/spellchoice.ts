@@ -83,6 +83,12 @@ export interface SpellChoiceInput {
   mana: number | null;
   sheet: ProwessSheet;
   family: RealmFamily | null;
+  /**
+   * What the book is spent from: the sheet's `Mana:` or `Kai:`. A Mystic's
+   * kai goes to its ways and blessings, and its hands outfight the attack
+   * powers, so a kai book attacks with nothing (the user, 2026-10-03).
+   */
+  pool: 'MA' | 'KAI' | null;
   target: SpellTarget | null;
   /** Spells refused on this target or capped this fight, by the book's spelling. */
   excluded: ReadonlySet<string>;
@@ -104,7 +110,7 @@ export interface SpellCandidate {
 }
 
 export type SpellChoiceRefusal =
-  'no-book' | 'empty-book' | 'no-attack-spells' | 'all-resisted' | 'no-mana';
+  'no-book' | 'empty-book' | 'kai' | 'no-attack-spells' | 'all-resisted' | 'no-mana';
 
 export interface SpellChoice {
   chosen: SpellCandidate | null;
@@ -135,6 +141,7 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
   if (input.book === null) return { chosen: null, why: null, considered: [], refusal: 'no-book' };
   if (input.book.length === 0)
     return { chosen: null, why: null, considered: [], refusal: 'empty-book' };
+  if (input.pool === 'KAI') return { chosen: null, why: null, considered: [], refusal: 'kai' };
 
   const candidates: SpellCandidate[] = [];
   let attackSpells = 0;
