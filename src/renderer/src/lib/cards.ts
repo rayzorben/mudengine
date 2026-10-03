@@ -11,6 +11,7 @@ import { t } from './i18n';
 import type { Appearance, ThemeId } from '@shared/themes';
 import type { TalkLayout, TalkStamp } from '@shared/talk';
 import type { StatsGraph } from '@shared/tally';
+import type { CardSizeBounds } from './cardSize';
 import type { GridBox, GridSize, GridSpot } from './railGrid';
 
 /**
@@ -190,6 +191,11 @@ export const CARDS = [
 ] as const;
 
 export type CardId = (typeof CARDS)[number]['id'];
+
+/** Whether a stored value names a card this build has. */
+export function isCardId(value: unknown): value is CardId {
+  return typeof value === 'string' && CARDS.some((card) => card.id === value);
+}
 
 export function cardLabel(id: CardId): string {
   return CARDS.find((card) => card.id === id)?.label ?? id;
@@ -491,6 +497,12 @@ export interface CardLayoutApi extends CardLayout {
    * one being placed. `box` is free of them: the caller asked `railGrid`.
    */
   placeOnRail(id: CardId, box: GridBox, drawn: ReadonlyMap<CardId, GridBox>): void;
+  /**
+   * Stand every rail card named in `boxes` in its box, at once: auto layout
+   * and its undo. A card not on the rail is left where it is; a rail card not
+   * named gives up its spot and takes the first free one.
+   */
+  placeAll(boxes: ReadonlyMap<CardId, GridBox>): void;
   /** Which lane holds this card, if a lane does. */
   laneOf(id: CardId): Lane | undefined;
   /**
@@ -557,10 +569,30 @@ export interface CardLayoutApi extends CardLayout {
  * Measured when asked, never in a render.
  */
 export interface RailGridView {
-  /** Where the grid's corner cell is on screen, a cell in px and the columns; null while there is no rail. */
-  frame(): { left: number; top: number; cell: number; columns: number } | null;
+  /**
+   * Where the grid's corner cell is on screen, a cell and the gap a card's box
+   * leaves in px, and the columns; null while there is no rail.
+   */
+  frame(): { left: number; top: number; cell: number; gap: number; columns: number } | null;
+  /** The lengths a card's size is read against; null while there is no rail. */
+  bounds(): CardSizeBounds | null;
   /** Every card on the rail, where it is drawn now. */
   drawn(): ReadonlyMap<CardId, GridBox>;
   /** The element that scrolls the grid, for a drag held at its edge. */
   scroller(): HTMLElement | null;
+  /** A rail card's own element, for measuring what it draws. */
+  card(id: CardId): HTMLElement | null;
+  /** Rows of the grid in view with the rail scrolled to its top; null while there is no rail. */
+  room(): number | null;
+}
+
+/**
+ * Auto layout on the rail head and in the palette (todo 01): `run` lays out
+ * every card on the rail, `undo` puts back the arrangement from before auto
+ * layout was first run, and `canUndo` says whether there is one kept.
+ */
+export interface AutoLayoutApi {
+  run(): void;
+  undo(): void;
+  canUndo: boolean;
 }

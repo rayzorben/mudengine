@@ -12,6 +12,11 @@
 export const CARD_SIZES = ['small', 'medium', 'large'] as const;
 export type CardSize = (typeof CARD_SIZES)[number];
 
+/** Whether a value read off the page (`data-card-size`) is one of the three sizes. */
+export function isCardSize(value: unknown): value is CardSize {
+  return CARD_SIZES.includes(value as CardSize);
+}
+
 /** The shorter side, in px, from which a card draws each larger size. */
 export interface CardSizeBounds {
   medium: number;
