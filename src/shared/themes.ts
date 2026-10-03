@@ -20,6 +20,9 @@
 /** Whether a theme reads as light or dark. Drives `color-scheme` and `system`. */
 export type Appearance = 'light' | 'dark';
 
+/** Every `Appearance`, dark first as in `THEME_IDS`. */
+export const APPEARANCES: readonly Appearance[] = ['dark', 'light'];
+
 /** Built-in theme identifiers. Extend by adding to `THEMES` below. */
 export type ThemeId =
   | 'dark'
@@ -719,12 +722,10 @@ export const THEME_PREFERENCES: readonly ThemePreference[] = ['system', ...THEME
  * The themes that read the same way round as a given one, in registration
  * order.
  *
- * A card may wear a palette of its own (`CardSettings.theme`), and the offer
- * has to be *within the mode the client is in*: a Dracula card on a GitHub
- * Light rail is not an accent, it is a hole. Filtering the registry is the
- * whole of it — every entry here is already a popular editor theme with its
- * contrast asserted, so a card palette needs no second colour vocabulary and
- * cannot ship illegible.
+ * The card palette picker shows one half at a time behind a Dark/Light switch,
+ * and the console's dark theme is chosen from the dark half. Every entry is
+ * already a popular editor theme with its contrast asserted, so a card palette
+ * needs no second colour vocabulary and cannot ship illegible.
  */
 export function themesOfAppearance(appearance: Appearance): readonly ThemeId[] {
   return THEME_IDS.filter((id) => THEMES[id].appearance === appearance);

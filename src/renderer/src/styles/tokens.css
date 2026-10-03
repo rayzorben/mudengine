@@ -235,6 +235,16 @@
 }
 
 /*
+ * A card wearing a palette from the other half to the client's sits on the
+ * opposite ground, and the 74% fill mixes with it: the Light theme's
+ * `--text-lo` over the dark rail measured 2.69:1 at 74% and 4.40:1 at 96%,
+ * against 4.77:1 opaque. So such a card is opaque; the blur stays.
+ */
+.card[data-card-theme][data-card-crossed] {
+  --glass-fill: var(--ink-card);
+}
+
+/*
  * Density. Chrome only — the terminal font is user-controlled and independent,
  * because changing it would change the character grid and therefore what the
  * server is told over NAWS.

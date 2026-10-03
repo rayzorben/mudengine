@@ -2777,6 +2777,10 @@ cards:
   settings:
     followsClient: Follow the client's own theme
     followsClientShort: Client
+    halves:
+      dark: Dark
+      light: Light
+    halvesLabel: Show dark or light palettes
     heading: '{cardTitle} · this character'
     hideWhenEmpty: Auto-hide this card.
     paletteLegend: 'Palette: {themeLabel}'

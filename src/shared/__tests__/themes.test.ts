@@ -228,8 +228,8 @@ describe('theme legibility', () => {
 });
 
 /*
- * A card may wear a palette of its own, and the offer has to be within the mode
- * the client is in: a Dracula card on a GitHub Light rail is not an accent.
+ * The card palette picker shows one half at a time, and the console's dark
+ * theme comes from the dark half: between them the halves are the registry.
  */
 describe('themesOfAppearance', () => {
   it('offers only the themes that read the same way round', () => {
