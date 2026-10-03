@@ -55,6 +55,7 @@ import { useCardDrag } from './hooks/useCardDrag';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useHomeBrowser } from './hooks/useHomeBrowser';
 import { useCardResize } from './hooks/useCardResize';
+import { useAutoLayout } from './hooks/useAutoLayout';
 import { useRailGrid } from './hooks/useRailGrid';
 import { useDensity } from './hooks/useDensity';
 import { useAlerts } from './hooks/useAlerts';
@@ -380,6 +381,7 @@ export default function App() {
   const drag = useCardDrag(cards, workspaceRef, railGrid.view);
   // The corner grip on a rail card, the same shape as the float's, in whole cells.
   const resize = useCardResize(cards, railGrid.view);
+  const autoLayout = useAutoLayout(session, cards, railGrid.view);
 
   /** What each splitter measures, and the range a drag of it may move within. */
   const {
@@ -1031,13 +1033,8 @@ export default function App() {
     closePane,
     turnPanes,
     cards,
-    widths: {
-      columns: widths.columns,
-      tabs: widths.tabs,
-      above: widths.above,
-      below: widths.below,
-      reset: widths.reset
-    },
+    autoLayout,
+    widths,
     openSettings,
     manageServers,
     editGlobal,
@@ -1468,6 +1465,7 @@ export default function App() {
               is, beside the client's own mark (`CardRailHead`).
             */}
             <CardRailHead
+              autoLayout={autoLayout}
               away={cards.away}
               dragging={drag.state?.live === true}
               onAdd={cards.show}

@@ -9,30 +9,7 @@ import {
 
 import type { SessionId } from '@shared/ipc';
 
-/**
- * Read what the store holds for a key, or fall back.
- *
- * `parse` runs inside the guard on purpose: a stored value written by an older
- * build is as much an expected failure as private mode or storage disabled,
- * and both hooks answer it the same way — the fallback, never a throw.
- */
-function readStored<T>(key: string, parse: (stored: string) => T, fallback: () => T): T {
-  try {
-    const stored = window.localStorage.getItem(key);
-    return stored === null ? fallback() : parse(stored);
-  } catch {
-    // Private mode, storage disabled, or a value written by an older build.
-    return fallback();
-  }
-}
-
-function writeStored(key: string, value: string): void {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // The choice still applies for as long as the window is open.
-  }
-}
+import { readStored, writeStored } from '../lib/storage';
 
 /** State that re-reads when its key changes: switching character switches instrument. */
 function useStored<T>(read: () => T): [T, Dispatch<SetStateAction<T>>] {
