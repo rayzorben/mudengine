@@ -133,9 +133,9 @@ export const REMOTE_NAMES = [
    * MegaMUD's answers are **prose for a person**: `@where` comes back as
    * `{Town Gates (Exits: N,S)}`, which is the room's *name*, and 83.85% of the
    * realm's edges lead to a namesake (`sameRoomAgain`). So a client that is
-   * asked to walk to a name is asked to guess, which is why `@goto` and
-   * `@comeback` are `unread` here — an ambiguous room is refused rather than
-   * guessed, everywhere in this client.
+   * asked to walk to a name is asked to guess, which is why `@comeback` is
+   * `unread` here and `@goto` walks nothing for a name several rooms share:
+   * an ambiguous room is refused rather than guessed, everywhere in this client.
    *
    * Both ends of a conversation between two mudengine clients have the realm
    * database open, and the realm has an unambiguous address for every room:
@@ -297,13 +297,15 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     support: 'unread',
     because: 'nothing here models a bank, and no capture shows the exchange'
   },
-  goto: {
-    name: 'goto',
-    support: 'unread',
-    because:
-      'the walk itself is one `WorldGraph.route` away, but an ambiguous room name is refused ' +
-      'here rather than guessed, and no capture shows how a refusal is reported back'
-  },
+  /*
+   * A room named as a loop stop is (`readStop`, `matchStop`), walked as the
+   * player's own route is. `{ok}` only when the walk started, `@stop`'s rule
+   * (todo 17, 2026-10-03). A name several rooms share, or none, walks nothing
+   * and is reported only on this character's screen: no capture shows
+   * MegaMUD's answer. MegaMUD's four-letter room codes are not read; a code
+   * is a name the world data does not hold. Granted by nothing shipped.
+   */
+  goto: { name: 'goto', support: 'acted' },
   /*
    * One of this character's loops, by name or start room (`matchLoop`),
    * started as the palette starts it. `{ok}` only when one started, `@stop`'s

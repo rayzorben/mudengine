@@ -1344,7 +1344,7 @@ export class SessionManager {
     this.afk = new Afk(automation.afk, automation.enabled, this.queue, this.sink);
     this.remotes = new Remotes(automation, this.queue, {
       notice: (message) => this.sink.notice(message),
-      ...new RemoteMoves(this, (message) => this.sink.notice(message)).events,
+      ...new RemoteMoves(this, this.errands, (message) => this.sink.notice(message)).events,
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
       // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
@@ -1389,8 +1389,7 @@ export class SessionManager {
           })
         );
         if (this.tracker.noteRemoteRoom(from, room, name, Date.now())) this.publisher.players();
-      },
-      comeBack: (from, map, room) => this.travel.comeBack(from, map, room)
+      }
     });
     // All four casters share one realm lookup, handing over the realm's whole
     // row, read at the point of use because `this.world` arrives with `useRealm`.

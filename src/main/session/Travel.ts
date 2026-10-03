@@ -697,35 +697,6 @@ export class Travel implements SessionModule {
   }
 
   /**
-   * `@comeback-room`: walk to the address the sender stated.
-   *
-   * Through `walkRoute` and not `Walker.start`, so it is one movement at a
-   * time like every other door onto a route — a running lap is stopped for
-   * it, and the supply errand gets its say. Returns whether a walk really
-   * started, which is what decides the `{ok}`.
-   */
-  comeBack(from: string, map: number, room: number): boolean {
-    const plan = this.errands.planFromHere(roomId(map, room));
-    if (typeof plan === 'string') {
-      this.session.notice(t('session.remotes.comebackRefused', { who: from, reason: plan }));
-      return false;
-    }
-    const refused = this.walkRoute(plan);
-    if (refused !== null) {
-      this.session.notice(t('session.remotes.comebackRefused', { who: from, reason: refused }));
-      return false;
-    }
-    this.session.notice(
-      t('session.remotes.comebackWalking', {
-        who: from,
-        stepCount: plan.steps.length,
-        address: `${map}/${room}`
-      })
-    );
-    return true;
-  }
-
-  /**
    * A follower saying it cannot keep up. The loop is what would walk away
    * from them, so the loop is what stops — and `@ok` is the same follower
    * saying it can again, which resumes it. Stopping keeps the loop and its
