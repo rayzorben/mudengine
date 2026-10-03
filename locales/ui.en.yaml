@@ -4621,6 +4621,14 @@ session:
       Nothing was started or sent back.'
     loopSeveral: '{who} sent @loop {request}, and {count} loops match: {names}. Nothing was started
       or sent back.'
+    gotoWalking: '{who} sent @goto; walking {stepCount} steps to {room} ({address}).'
+    gotoReplaced: '{who} sent @goto; stopping {was} and walking {stepCount} steps to {room}
+      ({address}).'
+    gotoRefused: '{who} sent @goto {request}, and the route was refused: {reason}'
+    gotoNone: '{who} sent @goto {request}, and the world database has no room called that. Nothing
+      was walked or sent back.'
+    gotoSeveral: '{who} sent @goto {request}, and {count} rooms are called that: {addresses}.
+      Nothing was walked or sent back.'
     theRoute: the route
   statline:
     exact: The game reports the status line as {statline}; every prompt is read by it exactly.
@@ -5459,6 +5467,7 @@ automation:
     comebackUnreadable: '{from} sent @comeback-room without a readable map/room number, so nothing
       was walked.'
     loopUnnamed: '{from} sent @loop without a loop name or map/room, so nothing was started.'
+    gotoUnnamed: '{from} sent @goto without a room name or map/room, so nothing was walked.'
     reasonAnswering: answering {name}
     reasonAsking: asking {who} {body}
     reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'

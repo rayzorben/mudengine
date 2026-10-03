@@ -6809,7 +6809,8 @@ describe('starting and stopping a movement', () => {
       return {
         m: 1,
         r,
-        n: `Room ${r}`,
+        // Two rooms share a name, as thirteen are called Town Gates.
+        n: r === 25 || r === 27 ? 'Town Gates' : `Room ${r}`,
         x: {
           ...(r < 40 ? { n: { m: 1, r: r + 1 } } : {}),
           ...(r > 1 ? { s: { m: 1, r: r - 1 } } : {})
@@ -7165,7 +7166,7 @@ describe('starting and stopping a movement', () => {
         ...quiet.remotes,
         enabled: true,
         party: [],
-        players: { brackle: { allow: ['stop', 'rego', 'loop'], deny: [] } }
+        players: { brackle: { allow: ['stop', 'rego', 'loop', 'goto', 'comeback-room'], deny: [] } }
       },
       loops: [
         { name: 'Corridor: Middle Rooms', stops: [{ room: 'Room 20 1/20' }, { room: 'Room 22' }] },
@@ -7262,6 +7263,85 @@ describe('starting and stopping a movement', () => {
       await until(() => notices.includes(said));
       expect(manager!.loops.progress.status).toBe('idle');
       expect(sent()).not.toContain('{ok}');
+    });
+
+    /* Todo 17: `@goto` reads a room the way a loop stop names one. */
+    it('walks to a room by name, says who sent it, and @stop and @rego work on it', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      socket.write('Brackle telepaths: @goto Room 36\r\n');
+      await until(() => manager!.walker.progress.status === 'walking');
+      expect(manager!.walker.progress).toMatchObject({ destination: 'Room 36', total: 4 });
+      await until(() => sent().includes('/Brackle {ok}'));
+      expect(notices).toContain(
+        t('session.remotes.gotoWalking', {
+          who: 'Brackle',
+          stepCount: 4,
+          room: 'Room 36',
+          address: '1/36'
+        })
+      );
+      socket.write('Brackle telepaths: @stop\r\n');
+      await until(() => manager!.walker.progress.status === 'stopped');
+      socket.write('Brackle telepaths: @rego\r\n');
+      await until(() => manager!.walker.progress.status === 'walking');
+    });
+
+    it('settles a shared name by its map/room, and takes a running lap off out loud', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      expect(
+        manager!.startLoop({ name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] })
+      ).toEqual({ started: true });
+      socket.write('Brackle telepaths: @goto Town Gates 1/27\r\n');
+      await until(() => manager!.walker.progress.destination === 'Town Gates');
+      expect(manager!.loops.progress.status).toBe('stopped');
+      expect(manager!.walker.progress.total).toBe(13);
+      expect(notices).toContain(
+        t('session.remotes.gotoReplaced', {
+          who: 'Brackle',
+          stepCount: 13,
+          room: 'Town Gates',
+          address: '1/27',
+          was: 'lap'
+        })
+      );
+    });
+
+    it('walks nothing for a name several rooms share, and lists them', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      socket.write('Brackle telepaths: @goto town gates\r\n');
+      const said = t('session.remotes.gotoSeveral', {
+        who: 'Brackle',
+        request: 'town gates',
+        count: 2,
+        addresses: '1/25, 1/27'
+      });
+      await until(() => notices.includes(said));
+      expect(manager!.walker.progress.status).toBe('idle');
+      expect(sent()).not.toContain('{ok}');
+    });
+
+    /* MegaMUD's four-letter room codes are not read: `BFOT` is a name nothing holds. */
+    it('walks nothing for a room nothing is called, a room code included', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      socket.write('Brackle telepaths: @goto BFOT\r\n');
+      const said = t('session.remotes.gotoNone', { who: 'Brackle', request: 'BFOT' });
+      await until(() => notices.includes(said));
+      expect(manager!.walker.progress.status).toBe('idle');
+      expect(sent()).not.toContain('{ok}');
+    });
+
+    it('still walks to the address @comeback-room states', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      socket.write('Brackle telepaths: @comeback-room 1/38\r\n');
+      await until(() => manager!.walker.progress.status === 'walking');
+      await until(() => sent().includes('/Brackle {ok}'));
+      expect(notices).toContain(
+        t('session.remotes.comebackWalking', { who: 'Brackle', stepCount: 2, address: '1/38' })
+      );
     });
 
     it('stops nothing when nothing is moving, and says so', async () => {

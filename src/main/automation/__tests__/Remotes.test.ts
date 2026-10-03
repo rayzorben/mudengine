@@ -1873,6 +1873,55 @@ describe('@loop', () => {
   });
 });
 
+/* Todo 17: a room named as a loop stop names one, on the sender's word. */
+describe('@goto', () => {
+  const driven = (answers: boolean, on: AutomationConfig = config) => {
+    const asked: string[] = [];
+    const notices: string[] = [];
+    const remotes = new Remotes(on, queue, {
+      notice: (message) => notices.push(message),
+      goTo: (from, request) => (asked.push(`${from}:${request}`), answers)
+    });
+    return { asked, notices, remotes };
+  };
+
+  it('hands the room over whole, and answers {ok} when the walk started', () => {
+    const { asked, remotes } = driven(true);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@goto Town Gates 1/2150'), who());
+    drain();
+    expect(asked).toEqual(['Soul:Town Gates 1/2150']);
+    expect(sent).toEqual(['/Soul {ok}']);
+  });
+
+  it('sends nothing back when no walk started', () => {
+    const { asked, remotes } = driven(false);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@goto BFOT'), who());
+    drain();
+    expect(asked).toEqual(['Soul:BFOT']);
+    expect(sent).toEqual([]);
+  });
+
+  it('walks nothing without a room, and says so', () => {
+    const { asked, notices, remotes } = driven(true);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@goto'), who());
+    drain();
+    expect(asked).toEqual([]);
+    expect(notices).toEqual([t('automation.remotes.gotoUnnamed', { from: 'Soul' })]);
+    expect(sent).toEqual([]);
+  });
+
+  it('is not granted by the shipped lists', () => {
+    const shipped: AutomationConfig = {
+      ...config,
+      remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+    };
+    const { asked, remotes } = driven(true, shipped);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@goto 17/16'), who());
+    drain();
+    expect(asked).toEqual([]);
+  });
+});
+
 /* Todo 831: MegaMUD's party settings, on both ends of the party. */
 describe('party pacing', () => {
   let paced: string[];

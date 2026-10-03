@@ -33,13 +33,13 @@ import {
  * The unsettable ones are **drawn and disabled with the reason beside them**
  * rather than hidden. Hiding them would make the list read as the whole
  * vocabulary while silently being a fifth of it, and somebody looking for
- * `@goto` would conclude the client had never heard of it. Disabled with
+ * `@looponce` would conclude the client had never heard of it. Disabled with
  * *no capture shows a reply* beside it says the true thing: this is known, and
  * it is not answerable yet.
  *
  * **Allow all means all the settable ones**, which is `ACTIONABLE_REMOTES`. It
  * writes the names out rather than storing a wildcard, so a later build that
- * makes `@goto` answerable does not silently hand it to everybody who once
+ * makes `@looponce` answerable does not silently hand it to everybody who once
  * pressed a button — the safe direction for a permission is the one that grants
  * less, and a list is auditable in the user's own YAML in a way `*` is not.
  *
