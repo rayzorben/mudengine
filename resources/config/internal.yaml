@@ -735,7 +735,8 @@ tuning:
 
   # Spending character points on the stat screen — `StatScreen`. `echoMs` is
   # how long the screen has to echo a keystroke before the driver lets go of
-  # it; `expiresMs` drops a `train stats` still queued when the moment has
+  # it, and how long a `train stats` has to be echoed before a prompt lifts
+  # the hold it set (`StatScreenHold`); `expiresMs` drops a `train stats` still queued when the moment has
   # passed.
   train:
     echoMs: 4000

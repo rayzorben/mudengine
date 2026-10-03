@@ -132,7 +132,7 @@ import { identityOf, resetSignals } from '../../shared/reset';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
 import type { RealmFamily } from '../../shared/realm';
 import { SHIPPED_WORLD_LABEL, worldOfRealm } from '../../shared/worlds';
-import { opensStatScreen } from '../../shared/commands';
+import { StatScreenHold } from './StatScreenHold';
 import { STATUS_LINE } from '../parse/patterns';
 import { answeringAfter } from '../parse/echo';
 import { TerminalFeed } from './TerminalFeed';
@@ -389,6 +389,8 @@ export class SessionManager {
   private readonly realmMenu = new RealmMenu();
   /** Nothing automated on a character lying mortally wounded. See `Grounded`. */
   private readonly grounded: Grounded;
+  /** The arbiter stood down while the stat screen has the terminal. */
+  private readonly statHold: StatScreenHold;
   private lastSize: TerminalSize = { cols: 80, rows: 24 };
 
   /**
@@ -703,15 +705,10 @@ export class SessionManager {
         } else {
           this.tracker.observeReread();
         }
-        /*
-         * The arbiter's own `train stats` — the stat screen driver's proposal
-         * — arms the hold a round trip early exactly as a typed one does
-         * below, and for the same reason: the server answers it with no
-         * prompt, and the next drain would otherwise send into the form. Safe
-         * from inside this callback: one drain sends one command, and the
-         * hold empties what it would have scheduled next.
-         */
-        if (opensStatScreen(command)) this.holdForStatScreen(t('session.stats.asked'));
+        // The arbiter's own `train stats` arms the hold as a typed one does. Safe
+        // inside this callback: one drain sends one command, and the hold empties
+        // what it would have scheduled next.
+        this.statHold.noteSent(command, Date.now());
         this.statScreen.noteSent(command, 'automation');
         // `intent.secret` is the login's own answer about *this* command; the
         // latch below is about the last prompt, and the queue may hold the two
@@ -1662,6 +1659,7 @@ export class SessionManager {
       sink
     );
     this.grounded = new Grounded(this.publisher, sink);
+    this.statHold = new StatScreenHold(this.queue, this.publisher, sink, () => this.dropTyped());
     this.extensions = sessionExtensions({
       ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },
       blessings: this.blessings,
@@ -2186,20 +2184,8 @@ export class SessionManager {
         this.login.observeCommand(command);
         this.safety.noteRealmChoice(command);
         this.classifier.observeCommand(command);
-        /*
-         * The earliest moment the client can know the command prompt is about
-         * to go away, and it is a whole round trip earlier than the screen
-         * itself. That margin is the point: the server answers `train stats`
-         * with no prompt at all, so the acknowledgement window the queue paces
-         * on is already open and the next drain would send into the form.
-         *
-         * Armed off what the player *typed*, so it is armed before the bytes
-         * this call is about reach the socket. A `train stats` the realm
-         * refuses (not at a trainer, wrong case) is answered with a prompt,
-         * which releases it — so being wrong here costs one round trip of
-         * automation and says so.
-         */
-        if (opensStatScreen(command)) this.holdForStatScreen(t('session.stats.asked'));
+        // Armed off what the player typed, before the bytes reach the socket.
+        this.statHold.noteSent(command, Date.now());
         this.statScreen.noteSent(command, 'user');
         this.noteSent(command, 'user');
         this.questWatch.noteSaid(command);
@@ -2687,24 +2673,8 @@ export class SessionManager {
       this.publisher.expectPassword();
     }
 
-    /*
-     * The telnet field screen, and the way back out of it.
-     *
-     * Ahead of every module, because none of them may propose anything while
-     * it is up and the queue is what stops them. The release is **any** prompt,
-     * not the status line alone: `SAVE` comes back through `Player.Enters` to
-     * the realm's own prompt and `QUIT` comes back to the character menu, and
-     * both mean the same thing — there is a command line again.
-     */
-    if (block.type === 'user-stats-screen') this.holdForStatScreen(t('session.stats.screen'));
-    /*
-     * And the exit sentence releases it too (todo 115): `SAVE` prints the
-     * suicide-password paragraph and the room *before* the prompt, and the
-     * staleness refresh that `user-stats-assigned` triggers (`st` for the
-     * sheet the form rewrote) went to a queue still held and was dropped —
-     * the client kept the old figures for the session.
-     */
-    else if (isPrompt(block.type) || block.type === 'user-stats-assigned') this.releaseStatScreen();
+    // The stat screen's hold, ahead of every module: none may propose while it is up.
+    this.statHold.onBlock(block, Date.now());
     // The one thing that reads the screen, fed every block: the dump, each
     // keystroke's echo, and the sentence the server prints on SAVE alone.
     this.statScreen.onBlock(block);
@@ -3504,38 +3474,6 @@ export class SessionManager {
   /** A lap the player asked for. See `Travel.startLoop`. */
   startLoop(loop: Loop): MovementStart {
     return this.travel.startLoop(loop);
-  }
-
-  /**
-   * Stands the arbiter down for as long as a form has the terminal.
-   *
-   * Cleared rather than paused: what is queued was decided for a character
-   * standing in a room, and the character is not standing in one — the server
-   * has already run `Player.Exits()` on them. The player's own keystrokes are
-   * untouched, as they are everywhere else, and typing into the form is the
-   * whole reason they are there; what is left of a talk-box line, which does
-   * come through the queue, is dropped and said.
-   *
-   * Said out loud, once, with the refusal recorded beside every other one: a
-   * client that silently stops automating looks exactly like a client that has
-   * crashed.
-   */
-  private holdForStatScreen(because: string): void {
-    if (this.queue.holding === null) this.dropTyped();
-    if (!this.queue.hold(because)) return;
-    this.sink.notice(t('session.stats.held'));
-    this.publisher.noteSafety({
-      at: Date.now(),
-      action: 'stat screen',
-      because,
-      acted: true
-    });
-  }
-
-  /** A prompt came back, so there is a command line again. */
-  private releaseStatScreen(): void {
-    if (!this.queue.release()) return;
-    this.sink.notice(t('session.stats.released'));
   }
 
   /** The decision trace, for a renderer that mounted mid-session. See `Publisher.automation`. */

@@ -168,6 +168,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/session/RealmMenu.ts',
       // The realm refusing the teleport (todo 766), and its promise (768, 769).
       'src/main/session/FleeGoto.ts',
+      // The stat screen standing the arbiter down (todo 02b).
+      'src/main/session/StatScreenHold.ts',
       'src/main/parse/expectations.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))
