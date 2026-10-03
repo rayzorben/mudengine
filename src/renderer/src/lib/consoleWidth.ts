@@ -20,17 +20,23 @@ export function consoleCellWidth(cols: number): number | null {
 }
 
 /**
- * The width the console could have: its own box and the card rail's track
- * beside it, which takes only what the console leaves and gives all of it
- * back first. Read off the workspace's resolved tracks rather than the rail's
- * box, because a closed rail has no box and its empty `auto` track still holds
- * that width.
+ * The width the console could have: its own box and what the card rail's
+ * track holds beyond the one card column an open rail keeps. Read off the
+ * workspace's resolved tracks rather than the rail's box, because a closed
+ * rail has no box and its empty `auto` track still holds that width. The
+ * track order is the one `index.css` declares for `.workspace`.
  */
 export function consoleRoom(box: HTMLElement): number {
   const workspace = document.querySelector<HTMLElement>('.workspace');
   if (!workspace) return box.clientWidth;
+  const style = getComputedStyle(workspace);
   // Five tracks in every state; the rail's is the first when mirrored.
-  const tracks = getComputedStyle(workspace).gridTemplateColumns.split(' ').map(parseFloat);
+  const tracks = style.gridTemplateColumns.split(' ').map(parseFloat);
   const rail = workspace.dataset['railSide'] === 'left' ? tracks[0] : tracks[4];
-  return box.clientWidth + (rail !== undefined && Number.isFinite(rail) ? rail : 0);
+  if (rail === undefined || !Number.isFinite(rail)) return box.clientWidth;
+  const kept =
+    workspace.dataset['rail'] === 'open'
+      ? parseFloat(style.getPropertyValue('--rail-column-min')) || 0
+      : 0;
+  return box.clientWidth + Math.max(0, rail - kept);
 }
