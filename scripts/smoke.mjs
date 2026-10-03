@@ -7599,10 +7599,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   /*
    * What a card is set to, opened from its own gear.
    *
-   * The palettes offered are the half of the registry that matches the client's
-   * appearance — a Dracula card on a light rail is not an accent, it is a hole
-   * — and the checkbox is offered only for a card that can be empty. Both are
-   * asserted on the Combat card, which is one of the five that can.
+   * The palettes offered are one half of the registry at a time, the client's
+   * own half first, behind a Dark/Light switch; either half may be worn. The
+   * checkbox is offered only for a card that can be empty. Both are asserted
+   * on the Combat card, which is one of the five that can.
    */
   {
     await evaluate(
@@ -7642,6 +7642,25 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     );
 
     /*
+     * The other half is one press away, and a palette from it is worn as
+     * readily as one from the client's own half (todo 04, 2026-10-03).
+     */
+    const otherHalf = await evaluate(`
+      (() => {
+        const other = document.querySelector('.card-settings .palette-half:not([data-active="true"])');
+        if (!other) return '';
+        other.click();
+        return other.getAttribute('data-half') ?? '';
+      })()
+    `);
+    check(otherHalf.length > 0, 'the panel switches to the other half of the palettes');
+    await waitFor(async () =>
+      evaluate(
+        `document.querySelector('.card-settings .palette-half[data-active="true"]')?.getAttribute('data-half') === ${JSON.stringify(otherHalf)}`
+      )
+    );
+
+    /*
      * Choosing a palette repaints that card and no other. The whole point of a
      * per-card theme is that it is per card: a picker that wrote the root's
      * tokens would repaint the rail and nothing on screen would say why.
@@ -7672,6 +7691,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           const vitals = document.querySelector('.vitals-card');
           return JSON.stringify({
             worn: combat?.getAttribute('data-card-theme') ?? '',
+            scheme: combat ? getComputedStyle(combat).colorScheme : '',
             fill: combat ? getComputedStyle(combat).backgroundColor : '',
             others: vitals ? vitals.getAttribute('data-card-theme') : null,
             othersFill: vitals ? getComputedStyle(vitals).backgroundColor : ''
@@ -7682,6 +7702,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     check(
       scoped.worn.length > 0,
       'and the card says which palette it is wearing',
+      JSON.stringify(scoped)
+    );
+    check(
+      scoped.scheme === otherHalf,
+      "and its controls are painted for the palette's half",
       JSON.stringify(scoped)
     );
     check(

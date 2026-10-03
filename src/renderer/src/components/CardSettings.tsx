@@ -1,7 +1,14 @@
+import { useState } from 'react';
 import Popup, { type MenuAnchor } from './Popup';
 import { hidesWhenEmpty, HIDES_WHEN_EMPTY, type CardId, type CardSettings } from '../lib/cards';
 import { t } from '../lib/i18n';
-import { themesOfAppearance, THEMES, type Appearance, type ThemeId } from '@shared/themes';
+import {
+  APPEARANCES,
+  themesOfAppearance,
+  THEMES,
+  type Appearance,
+  type ThemeId
+} from '@shared/themes';
 import { DEFAULT_MAP_DENSITY } from '@shared/map';
 import {
   DEFAULT_STATS_GRAPH,
@@ -25,7 +32,7 @@ export interface CardSettingsPopupProps {
   cardId: CardId;
   /** The card's own title, so the panel says what it is about. */
   cardTitle: string;
-  /** Which way round the client is: the palettes offered are this half only. */
+  /** Which way round the client is: the slot a pick is remembered in. */
   appearance: Appearance;
   /** What the client's own theme is, for the "follow it" swatch to preview. */
   clientTheme: ThemeId;
@@ -76,6 +83,12 @@ const LAYOUT_LABELS: Record<TalkLayout, string> = {
   'condensed-aligned': t('cards.settings.talk.layouts.condensedAligned')
 };
 
+/** What each half of the registry is called on the switch between them. */
+const HALF_LABELS: Record<Appearance, string> = {
+  dark: t('cards.settings.halves.dark'),
+  light: t('cards.settings.halves.light')
+};
+
 /**
  * What one card is set to, for this character.
  *
@@ -85,10 +98,11 @@ const LAYOUT_LABELS: Record<TalkLayout, string> = {
  * - **A palette of its own**, chosen from the same sixteen the client's own
  *   theme comes from — so every offer is a popular editor theme whose contrast
  *   is already asserted by `themes.test.ts`, and a card cannot be made
- *   illegible from here. Only the half that matches the client's current
- *   appearance is offered, and the choice is remembered per appearance, so
- *   switching the client between light and dark does not leave one card the
- *   wrong way round.
+ *   illegible from here. Either half may be worn whichever way round the
+ *   client is (user, 2026-10-03); the grid shows one half at a time behind a
+ *   Dark/Light switch, so it stays nine swatches. The choice is remembered
+ *   per client appearance, so switching the client between light and dark
+ *   brings back what the card wore the last time it was that way round.
  * - **Whether it holds its place when it has nothing to say**, for the five
  *   cards that can be empty. `HIDES_WHEN_EMPTY` is both the list of which they
  *   are and each one's default, so a card that always has something true to
@@ -115,7 +129,11 @@ export default function CardSettingsPopup({
   onDismiss
 }: CardSettingsPopupProps) {
   const chosen = value.theme?.[appearance];
-  const offered = themesOfAppearance(appearance);
+  // The half shown opens on the one the card wears, else the client's own.
+  const [half, setHalf] = useState<Appearance>(
+    chosen === undefined ? appearance : THEMES[chosen].appearance
+  );
+  const offered = themesOfAppearance(half);
   const emptiable = Object.prototype.hasOwnProperty.call(HIDES_WHEN_EMPTY, cardId);
 
   /**
@@ -140,12 +158,33 @@ export default function CardSettingsPopup({
     >
       <p className="card-settings-head">{t('cards.settings.heading', { cardTitle })}</p>
 
-      <p className="card-settings-legend">
-        {t('cards.settings.paletteLegend', {
-          themeLabel:
-            chosen === undefined ? t('cards.settings.followsClient') : THEMES[chosen].label
-        })}
-      </p>
+      <div className="card-palette-head">
+        <p className="card-settings-legend">
+          {t('cards.settings.paletteLegend', {
+            themeLabel:
+              chosen === undefined ? t('cards.settings.followsClient') : THEMES[chosen].label
+          })}
+        </p>
+        <span
+          aria-label={t('cards.settings.halvesLabel')}
+          className="card-palette-halves"
+          role="group"
+        >
+          {APPEARANCES.map((option) => (
+            <button
+              aria-pressed={half === option}
+              className="palette-half"
+              data-active={half === option ? 'true' : undefined}
+              data-half={option}
+              key={option}
+              onClick={() => setHalf(option)}
+              type="button"
+            >
+              {HALF_LABELS[option]}
+            </button>
+          ))}
+        </span>
+      </div>
       <div className="card-palettes" role="group">
         {/*
           The client's own theme first, previewed as itself, because "follow

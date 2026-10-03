@@ -277,9 +277,9 @@ export interface BentoCardProps {
    * floating: it is stored beside the arrangement, keyed by the same session
    * id, and every card threads it through without reading it.
    *
-   * The client's appearance and theme travel with it because the palette
-   * picker offers only the half that matches what the client is wearing, and
-   * the "follow the client" swatch has to preview the thing it would follow.
+   * The client's appearance and theme travel with it because a pick is
+   * remembered per appearance the client is in, and the "follow the client"
+   * swatch has to preview the thing it would follow.
    * They are per window rather than per card, and are carried here rather than
    * through a context because this is the one surface that wants them.
    */
@@ -660,7 +660,11 @@ export default function BentoCard({
     for (const [token, value] of Object.entries(THEMES[worn].chrome)) {
       (palette as Record<string, string>)[`--${token}`] = value;
     }
+    // The checkboxes, scrollbars and select popups inside follow the palette
+    // the card wears, so a light card on a dark rail gets light ones.
+    palette.colorScheme = THEMES[worn].appearance;
   }
+  const crossed = worn !== undefined && THEMES[worn].appearance !== settings?.appearance;
 
   return (
     <section
@@ -668,6 +672,7 @@ export default function BentoCard({
       data-card={cardId}
       ref={frame}
       data-card-theme={worn}
+      data-card-crossed={crossed ? 'true' : undefined}
       data-dragging={dragging ? 'true' : undefined}
       // The face shown, by id, so a harness reads it without its English.
       data-face={tabs?.[at]?.id}
