@@ -19,6 +19,7 @@ import { floatAlphas } from '../hooks/useCardLayout';
 import type { CardId, CardSettings } from '../lib/cards';
 import { THEMES, type Appearance, type ThemeId } from '@shared/themes';
 import { readable, useCopyMenu } from '../hooks/useCopyMenu';
+import { CardSizeContext, useMeasuredCardSize } from '../hooks/useCardSize';
 
 /**
  * One face of a card.
@@ -512,6 +513,8 @@ export default function BentoCard({
    */
   const frame = useRef<HTMLElement | null>(null);
   const side = useRef<HTMLDivElement | null>(null);
+  // Unmeasured, the card draws the design it ships with.
+  const size = useMeasuredCardSize(frame, rolled === true);
   const [fits, setFits] = useState<number | null>(null);
 
   const measure = useCallback(() => {
@@ -670,6 +673,7 @@ export default function BentoCard({
     <section
       className={`surface card${className ? ` ${className}` : ''}`}
       data-card={cardId}
+      data-card-size={size ?? undefined}
       ref={frame}
       data-card-theme={worn}
       data-card-crossed={crossed ? 'true' : undefined}
@@ -847,7 +851,7 @@ export default function BentoCard({
         className={`body${scroll ? ' scroll' : ''}${paned || face?.paned === true ? ' paned' : ''}`}
         ref={setBody}
       >
-        {shown}
+        <CardSizeContext.Provider value={size ?? 'medium'}>{shown}</CardSizeContext.Provider>
       </div>
 
       {/*

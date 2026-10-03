@@ -125,6 +125,8 @@ export default function TimeFace({
     {
       id: 'time',
       label: t('cards.stats.column.time'),
+      // Small, the face is the bar and each share of it (`lib/cardSize.ts`).
+      from: 'medium',
       numeric: true,
       value: (row) => row.ms,
       cell: (row) => duration(row.ms)
@@ -139,6 +141,7 @@ export default function TimeFace({
     {
       id: 'per-kill',
       label: t('cards.stats.column.perKill'),
+      from: 'medium',
       numeric: true,
       value: (row) => mean(row.ms, shown.kills) ?? -1,
       cell: (row) => perKill(row.ms, shown.kills)
@@ -169,7 +172,7 @@ export default function TimeFace({
         rows={rows}
         session={session}
       />
-      <dl className="readout">
+      <dl className="readout from-medium">
         {killRows(shown, now).map((row) => (
           <Fragment key={row.key}>
             <dt>{row.label}</dt>

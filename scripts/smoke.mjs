@@ -8348,6 +8348,37 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   }
 
   /*
+   * Every card on the rail draws the size its laid-out box is (todo 06),
+   * measured here against the two lengths the stylesheet resolved: the rail as
+   * shipped is medium or larger, so a card small at its shipped height would
+   * be a length in `tokens.css` that no longer fits the cards it was set from.
+   */
+  {
+    const sizes = JSON.parse(
+      await evaluate(`
+        (() => JSON.stringify([...document.querySelectorAll('.rail > .card:not([data-rolled="true"])')].map((card) => {
+          const style = getComputedStyle(card);
+          const medium = parseFloat(style.getPropertyValue('--card-size-medium'));
+          const large = parseFloat(style.getPropertyValue('--card-size-large'));
+          const box = card.getBoundingClientRect();
+          const side = Math.min(box.width, box.height);
+          return {
+            id: card.getAttribute('data-card'),
+            box: Math.round(box.width) + 'x' + Math.round(box.height),
+            drawn: card.getAttribute('data-card-size'),
+            want: side >= large ? 'large' : side >= medium ? 'medium' : 'small'
+          };
+        })))()
+      `)
+    );
+    check(sizes.length > 0, 'the rail has cards to size', JSON.stringify(sizes));
+    const wrong = sizes.filter((card) => card.drawn !== card.want);
+    check(wrong.length === 0, 'every rail card draws the size of its box', JSON.stringify(wrong));
+    const small = sizes.filter((card) => card.drawn === 'small');
+    check(small.length === 0, 'and none is small at the height it ships at', JSON.stringify(sizes));
+  }
+
+  /*
    * Taking something off and putting it back on, which moves an item without
    * moving it anywhere — it was carried before and it is carried after.
    * Captured whole from the live realm:
