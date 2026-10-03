@@ -4,6 +4,7 @@ import {
   asLoops,
   dueStop,
   loopCategory,
+  matchLoop,
   nextStop,
   sameLoops,
   splitStop,
@@ -341,5 +342,56 @@ describe('the area a loop is grouped under', () => {
     const [one] = asLoops([{ name: 'Sewers: A', stops: ['A', 'B'] }]);
     const [two] = asLoops([{ name: 'Sewers: A', stops: ['A', 'B'] }]);
     expect(sameLoops([one as Loop], [two as Loop])).toBe(true);
+  });
+});
+
+/* Todo 16: `@loop` names a loop by its name or by the room it starts in. */
+describe('picking a loop out of what somebody said', () => {
+  const loop = (name: string, first: string): Loop => ({
+    name,
+    stops: [{ room: first }, { room: 'Somewhere 1/1' }]
+  });
+  const trail = loop('Blackwood Forest: Overgrown Forest Trail', 'Overgrown Forest Trail 17/16');
+  const palace = loop('Ancient Fortress: Alabaster Palace NW Loop', 'Alabaster Palace 17/9670');
+  const forest = loop('Forest Trail', 'Forest 3/4');
+  const loops = [trail, palace, forest];
+
+  it('takes the exact name first, over any looser reading', () => {
+    expect(matchLoop(loops, 'Forest Trail')).toEqual({ kind: 'one', loop: forest });
+  });
+
+  it('ignores case and lets the area be left off', () => {
+    expect(matchLoop(loops, 'overgrown forest trail')).toEqual({ kind: 'one', loop: trail });
+    expect(matchLoop(loops, 'BLACKWOOD FOREST: overgrown forest trail')).toEqual({
+      kind: 'one',
+      loop: trail
+    });
+  });
+
+  it('picks the one loop whose name holds every word said', () => {
+    expect(matchLoop(loops, 'Overgrown Trail')).toEqual({ kind: 'one', loop: trail });
+    expect(matchLoop(loops, 'palace nw')).toEqual({ kind: 'one', loop: palace });
+  });
+
+  it('keeps every candidate when the words fit several, and picks none', () => {
+    expect(matchLoop(loops, 'trail')).toEqual({ kind: 'several', loops: [trail, forest] });
+  });
+
+  it('keeps both when two areas have a loop of the same name', () => {
+    const other = loop('Silvermere: Overgrown Forest Trail', 'Overgrown Forest Trail 1/5');
+    expect(matchLoop([trail, other], 'Overgrown Forest Trail')).toEqual({
+      kind: 'several',
+      loops: [trail, other]
+    });
+  });
+
+  it('reads map/room as the first stop, and only the first', () => {
+    expect(matchLoop(loops, '17/16')).toEqual({ kind: 'one', loop: trail });
+    expect(matchLoop(loops, '1/1')).toEqual({ kind: 'none' });
+  });
+
+  it('finds nothing for words no loop holds, or for no words at all', () => {
+    expect(matchLoop(loops, 'Sewer')).toEqual({ kind: 'none' });
+    expect(matchLoop(loops, ' : ')).toEqual({ kind: 'none' });
   });
 });

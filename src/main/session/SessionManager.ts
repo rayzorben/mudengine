@@ -3384,9 +3384,9 @@ export class SessionManager {
     return this.automationConfig.loops.find((entry) => entry.name === name);
   }
 
-  /** Every loop this character can run, for the palette. */
-  get loopNames(): string[] {
-    return this.automationConfig.loops.map((entry) => entry.name);
+  /** Every loop this character can run, for `@loop` to pick from. */
+  get loopsDefined(): readonly Loop[] {
+    return this.automationConfig.loops;
   }
 
   /** The palette's view: each loop by name, with how many stops it visits. */
