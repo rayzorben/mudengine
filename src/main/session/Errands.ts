@@ -7,7 +7,7 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
-import type { FightOdds, Plan } from '../../shared/navigation';
+import type { FightOdds, Plan, PlannedFetch } from '../../shared/navigation';
 import { fightOdds, Navigation } from './navigation';
 import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
@@ -108,6 +108,7 @@ import {
 } from '../../shared/verdict';
 import {
   asDirection,
+  counterIn,
   hazardAvoided,
   nameAnswersTo,
   lairKey,
@@ -121,6 +122,9 @@ import {
   type TrainerChoice,
   type WorldRoom
 } from '../../shared/world';
+
+/** Nowhere to get an item. */
+const NO_SOURCES: ItemSources = { shops: [], asks: [], droppers: [], lairs: [], unfought: [] };
 
 /** No preferred corridors: one value, so a session with none re-renders nothing. */
 const NO_EDGES: ReadonlySet<string> = new Set();
@@ -1301,6 +1305,50 @@ export class Errands implements SessionModule {
   }
 
   /**
+   * The one source the navigation engine chose for an item, in the shape the
+   * item errand fetches from: a counter, a word, or a lair. A planned counter
+   * is on the plan's way, so stopping there adds nothing to it (`detour` 0).
+   * Null where the world database no longer has the room or its counter.
+   */
+  plannedSources({ step, moves }: PlannedFetch): ItemSources | null {
+    const room = this.world?.byId(step.room);
+    if (room === undefined) return null;
+    switch (step.kind) {
+      case 'buy': {
+        const counter = counterIn(room, (shop) => this.world?.shop(shop));
+        return counter === undefined
+          ? null
+          : { ...NO_SOURCES, shops: [{ ...counter, detour: 0, moves }] };
+      }
+      case 'ask':
+        return {
+          ...NO_SOURCES,
+          asks: [{ room: step.room, roomName: room.name, say: step.say, steps: moves }]
+        };
+      case 'kill': {
+        const summon = step.summon;
+        if (summon !== undefined && 'say' in summon) {
+          const ask = { room: step.room, roomName: room.name, say: summon.say, steps: moves };
+          return { ...NO_SOURCES, asks: [{ ...ask, summons: step.monster }] };
+        }
+        const lair = { id: step.room, name: room.name, mob: step.monster, steps: moves };
+        // A dropper only ever summoned is placed nowhere itself (`Dropper.placed`).
+        return summon === undefined
+          ? { ...NO_SOURCES, droppers: [{ mob: step.monster, placed: 1 }], lairs: [lair] }
+          : {
+              ...NO_SOURCES,
+              droppers: [{ mob: step.monster, placed: 0 }],
+              lairs: [{ ...lair, via: summon.by }]
+            };
+      }
+      default: {
+        const never: never = step;
+        return never;
+      }
+    }
+  }
+
+  /**
    * Where the realm says an item comes from, from where the character stands
    * and on the way to `to` (todo 07; re-ranked 2026-09-16): the counters that
    * stock it, least out of the way first, and the rooms anywhere in the realm
@@ -1328,8 +1376,7 @@ export class Errands implements SessionModule {
     const world = this.world;
     const state = this.tracker.current;
     const here = roomAddress(state.room);
-    if (world === undefined || here === null)
-      return { shops: [], asks: [], droppers: [], lairs: [], unfought: [] };
+    if (world === undefined || here === null) return NO_SOURCES;
     const traveller = this.travellerNow(state);
     const shops = world.buyingPlaces(item.id, here, to, traveller);
     // And where saying something gets it, walked as the counter is (todo 806).

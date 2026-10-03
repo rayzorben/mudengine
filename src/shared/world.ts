@@ -1047,6 +1047,25 @@ export interface BuyingPlace {
   moves: number;
 }
 
+/** A counter as its room and shop row, before what reaching it costs. */
+export type Counter = Omit<BuyingPlace, 'detour' | 'moves'>;
+
+/** The counter in a room, or undefined where the room has no shop the realm lists. */
+export function counterIn(
+  room: Pick<WorldRoom, 'map' | 'room' | 'name' | 'shop'>,
+  shopRow: (id: number) => Pick<WorldShop, 'name' | 'markup'> | undefined
+): Counter | undefined {
+  const shop = room.shop === undefined ? undefined : shopRow(room.shop);
+  if (shop === undefined) return undefined;
+  return {
+    map: room.map,
+    room: room.room,
+    roomName: room.name,
+    shop: shop.name,
+    markup: shop.markup ?? 0
+  };
+}
+
 /** One stop of the ring to go and kill in for an item — `WorldGraph.droppingPlaces`. */
 export interface DropPlace {
   id: RoomId;
