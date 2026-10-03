@@ -304,11 +304,13 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
       'the walk itself is one `WorldGraph.route` away, but an ambiguous room name is refused ' +
       'here rather than guessed, and no capture shows how a refusal is reported back'
   },
-  loop: {
-    name: 'loop',
-    support: 'unread',
-    because: 'the same: startable, with no captured way to say the name matched nothing'
-  },
+  /*
+   * One of this character's loops, by name or start room (`matchLoop`),
+   * started as the palette starts it. `{ok}` only when one started, `@stop`'s
+   * rule (todo 16, 2026-10-03). No match, or several, start nothing and are
+   * reported only on this character's screen. Granted by nothing shipped.
+   */
+  loop: { name: 'loop', support: 'acted' },
   looponce: {
     name: 'looponce',
     support: 'unread',

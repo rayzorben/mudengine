@@ -7165,8 +7165,12 @@ describe('starting and stopping a movement', () => {
         ...quiet.remotes,
         enabled: true,
         party: [],
-        players: { brackle: { allow: ['stop', 'rego'], deny: [] } }
-      }
+        players: { brackle: { allow: ['stop', 'rego', 'loop'], deny: [] } }
+      },
+      loops: [
+        { name: 'Corridor: Middle Rooms', stops: [{ room: 'Room 20 1/20' }, { room: 'Room 22' }] },
+        { name: 'Corridor: South Rooms', stops: [{ room: 'Room 2 1/2' }, { room: 'Room 4' }] }
+      ]
     };
 
     it('stops a route, and walks it again from far away on @rego without asking', async () => {
@@ -7210,6 +7214,53 @@ describe('starting and stopping a movement', () => {
       socket.write('Brackle telepaths: @rego\r\n');
       await until(() => notices.includes(t('session.remotes.regoNothing', { who: 'Brackle' })));
       expect(manager!.walker.progress.status).toBe('stopped');
+      expect(sent()).not.toContain('{ok}');
+    });
+
+    /* Todo 16: `@loop` by name or by start room, as the palette starts one. */
+    it('starts a loop by part of its name, says who, and @stop and @rego work on it', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      socket.write('Brackle telepaths: @loop middle rooms\r\n');
+      await until(() => manager!.loops.progress.status === 'running');
+      expect(manager!.loops.progress.name).toBe('Corridor: Middle Rooms');
+      await until(() => sent().includes('/Brackle {ok}'));
+      expect(notices).toContain(
+        t('session.remotes.loopStarted', { who: 'Brackle', name: 'Corridor: Middle Rooms' })
+      );
+      socket.write('Brackle telepaths: @stop\r\n');
+      await until(() => manager!.loops.progress.status === 'stopped');
+      socket.write('Brackle telepaths: @rego\r\n');
+      await until(() => manager!.loops.progress.status === 'running');
+    });
+
+    it('takes a running route off for a loop named by its start room, out loud', async () => {
+      const { socket, world, notices } = await atTheNorthEnd(granted);
+      expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
+      socket.write('Brackle telepaths: @loop 1/2\r\n');
+      await until(() => manager!.loops.progress.status === 'running');
+      expect(manager!.loops.progress.name).toBe('Corridor: South Rooms');
+      expect(notices).toContain(
+        t('session.remotes.loopReplaced', {
+          who: 'Brackle',
+          name: 'Corridor: South Rooms',
+          was: 'Room 38'
+        })
+      );
+    });
+
+    it('starts nothing when several loops match, and lists them', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      socket.write('Brackle telepaths: @loop rooms\r\n');
+      const said = t('session.remotes.loopSeveral', {
+        who: 'Brackle',
+        request: 'rooms',
+        count: 2,
+        names: 'Corridor: Middle Rooms; Corridor: South Rooms'
+      });
+      await until(() => notices.includes(said));
+      expect(manager!.loops.progress.status).toBe('idle');
       expect(sent()).not.toContain('{ok}');
     });
 
