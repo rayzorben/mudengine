@@ -1,70 +1,101 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { CardId, CardLayoutApi } from '../lib/cards';
+import {
+  LEAST_CARD,
+  shippedSize,
+  type CardId,
+  type CardLayoutApi,
+  type RailGridView
+} from '../lib/cards';
+import { resizedWithin, type GridBox, type GridSize } from '../lib/railGrid';
 
 export interface CardResize {
   /** The card being resized, while the grip is held. */
   active: CardId | null;
   /** Put on a rail card's corner grip. */
   begin(id: CardId, event: React.PointerEvent<HTMLElement>): void;
+  /** A double-click on the grip: back to the card's shipped size, as far as there is room. */
+  reset(id: CardId): void;
 }
 
 interface Gesture {
   id: CardId;
-  /** The card's top edge and the rail's height, measured once, when the grip is taken. */
-  top: number;
-  rail: number;
+  /** Where the pointer took the grip, and the card's cells then. */
+  x: number;
+  y: number;
+  box: GridBox;
 }
 
 /**
- * Dragging a rail card's corner to change how tall it is.
+ * Dragging a rail card's corner to change its size, in whole grid cells
+ * (todo 09).
  *
  * A rail card is a fixed box that never resizes with its contents, and this
- * is the one way its box changes: by the person looking at it. The same
- * gesture a float's corner grip makes, with one axis — a rail card's width is
- * the rail's, and the rail has its own splitter.
- *
- * Sized from where the pointer *is* rather than from an accumulated delta, so
- * a drag that overshoots and comes back lands under the pointer instead of
- * drifting away from it — and stored as a **fraction of the rail**, measured
- * when the grip is taken, because nothing in the layout path may hold a pixel
- * figure. The card's top and the rail's height are read once per gesture:
- * neither moves while the grip is held.
+ * is the one way its box changes: by the person looking at it. The size is
+ * the card's cells when the grip was taken plus how many cells the pointer
+ * has travelled since, so a drag that overshoots and comes back lands under
+ * the pointer rather than drifting; and it stops at the card beside or below
+ * it, at the grid's edge and at `LEAST_CARD` (`resizedWithin`), so no two
+ * cards ever share a cell.
  */
-export function useCardResize(layout: CardLayoutApi): CardResize {
+export function useCardResize(layout: CardLayoutApi, rail: RailGridView): CardResize {
   const [active, setActive] = useState<CardId | null>(null);
   const gesture = useRef<Gesture | null>(null);
   /*
    * What the move handler reads, carried outside the effect's dependencies.
-   * Every `sizeRail` produces a new layout api, so an effect depending on
+   * Every placement produces a new layout api, so an effect depending on
    * `layout` would tear its window listeners down and reattach them on every
    * pointermove of the very gesture they serve.
    */
   const live = useRef(layout);
   live.current = layout;
 
-  const begin = useCallback((id: CardId, event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return;
-    const card = event.currentTarget.closest<HTMLElement>('[data-card]');
-    const rail = card?.closest<HTMLElement>('.rail');
-    if (!card || !rail) return;
-    const box = card.getBoundingClientRect();
-    const lane = rail.getBoundingClientRect();
-    if (lane.height <= 0) return;
-    // Refuses the caret as well as the browser's own drag, exactly as the
-    // card header does: a grip is dragged, never typed into.
-    event.preventDefault();
-    event.stopPropagation();
-    gesture.current = { id, top: box.top, rail: lane.height };
-    setActive(id);
-  }, []);
+  /** The card at `wanted` cells, kept off its neighbours, written down. */
+  const size = useCallback(
+    (id: CardId, box: GridBox, wanted: GridSize) => {
+      const frame = rail.frame();
+      if (!frame) return;
+      const drawn = rail.drawn();
+      const others = [...drawn].filter(([other]) => other !== id).map(([, other]) => other);
+      const next = resizedWithin(box, wanted, others, frame.columns, LEAST_CARD);
+      live.current.placeOnRail(id, next, drawn);
+    },
+    [rail]
+  );
+
+  const begin = useCallback(
+    (id: CardId, event: React.PointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return;
+      const box = rail.drawn().get(id);
+      if (!box) return;
+      // Refuses the caret as well as the browser's own drag, exactly as the
+      // card header does: a grip is dragged, never typed into.
+      event.preventDefault();
+      event.stopPropagation();
+      gesture.current = { id, x: event.clientX, y: event.clientY, box };
+      setActive(id);
+    },
+    [rail]
+  );
+
+  const reset = useCallback(
+    (id: CardId) => {
+      const box = rail.drawn().get(id);
+      if (box) size(id, box, shippedSize(id));
+    },
+    [rail, size]
+  );
 
   useEffect(() => {
     if (active === null) return;
     const move = (event: PointerEvent): void => {
       const at = gesture.current;
-      if (!at) return;
-      live.current.sizeRail(at.id, (event.clientY - at.top) / at.rail);
+      const frame = rail.frame();
+      if (!at || !frame) return;
+      size(at.id, at.box, {
+        w: at.box.w + Math.round((event.clientX - at.x) / frame.cell),
+        h: at.box.h + Math.round((event.clientY - at.y) / frame.cell)
+      });
     };
     const stop = (): void => {
       gesture.current = null;
@@ -78,7 +109,7 @@ export function useCardResize(layout: CardLayoutApi): CardResize {
       window.removeEventListener('pointerup', stop);
       window.removeEventListener('pointercancel', stop);
     };
-  }, [active]);
+  }, [active, rail, size]);
 
-  return { active, begin };
+  return { active, begin, reset };
 }

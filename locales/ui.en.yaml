@@ -815,7 +815,7 @@ palette:
     splitStackedHint: stacked
     unsplitLabel: Close this pane
     unsplitPanesHint: '{paneCount} panes'
-    widthsResetHint: the character rail and the strips back to their default sizes
+    widthsResetHint: the console back to {columns} columns, the character rail and the strips to their default sizes
     widthsResetLabel: Reset pane widths
   navigate:
     gotoLabel: 'Goto: {roomName}'
@@ -1049,6 +1049,7 @@ statusRail:
 splitter:
   aria:
     bottomStripHeight: Bottom strip height
+    consoleWidth: Console width, {min} to {max} columns
     tabRailWidth: Character rail width
     topStripHeight: Top strip height
   tooltip: '{paneName}: drag, or use the arrow keys; double-click to reset'
@@ -1843,7 +1844,7 @@ cards:
     resizeTooltip: Resize
   header:
     dragHint: Drag to rearrange, or onto the console to float
-    resizeHint: Drag to change the card's height; double-click to reset it
+    resizeHint: Drag to resize the card on the grid; double-click to reset it
   gang:
     actions:
       askMembersTooltip: Request the gang member list (bg)

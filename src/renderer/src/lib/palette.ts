@@ -93,6 +93,7 @@ export interface PaletteDeps {
     'show' | 'away' | 'isShown' | 'settingsOf' | 'setSettings' | 'floats' | 'rolled' | 'reset'
   >;
   widths: {
+    columns: number | null;
     tabs: number | null;
     above: number | null;
     below: number | null;
@@ -844,14 +845,17 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
         ]
       : []),
     // A rail dragged somewhere awkward, put back to the density's default.
-    ...(widths.tabs !== null || widths.above !== null || widths.below !== null
+    ...(widths.columns !== null ||
+    widths.tabs !== null ||
+    widths.above !== null ||
+    widths.below !== null
       ? [
           {
             id: 'layout:widths-reset',
             icon: 'reset' as const,
             label: t('palette.layout.widthsResetLabel'),
-            hint: t('palette.layout.widthsResetHint'),
-            keywords: ['resize', 'splitter', 'divider', 'width', 'rail', 'column'],
+            hint: t('palette.layout.widthsResetHint', { columns: MIN_COLUMNS }),
+            keywords: ['resize', 'splitter', 'divider', 'width', 'rail', 'column', 'console', '80'],
             group: 'layout' as const,
             run: () => widths.reset()
           }

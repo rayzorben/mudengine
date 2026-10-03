@@ -118,6 +118,17 @@ option {
   grid-row: 2;
 }
 
+/*
+ * Registered as a length so the workspace's computed style holds it in px,
+ * which `consoleRoom` (lib/consoleWidth.ts) reads; unregistered, it would read
+ * back as the `calc()` it is written as.
+ */
+@property --rail-column-min {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
 .workspace {
   display: grid;
   /* The float layer is positioned against this box, and the fractions a
@@ -134,15 +145,23 @@ option {
    * be re-declared per state, three columns in one and five in another, which
    * is also why the width transition could not interpolate between them.
    *
-   * The console's track is eighty measured columns a pane (`--console-w`, set
-   * by `useConsoleWidth`), shrinking only when the window cannot hold it, and
-   * the card rail takes the rest. Before a terminal is measured the console
+   * The console's track is the measured columns the player chose a pane,
+   * eighty to a hundred and twenty (`--console-w`, set by `useConsoleWidth`,
+   * moved by the handle in `rsplit`), shrinking only when the window cannot
+   * hold it, and the card rail takes the rest. Before a terminal is measured the console
    * shares the window with it. An open rail keeps one card column, so on a
    * window too narrow for both the console gives way and is reported narrow.
    * A closed rail's track is `auto`: empty, so it costs nothing while the
    * console shares the window, and stretched over what a fixed console
    * leaves, so the tab rail keeps its edge.
    */
+  /*
+   * The card rail's narrowest: one card at its shipped width, which is
+   * `SHIPPED_COLUMNS` cells (`lib/cards.ts`, set here as `--card-columns`),
+   * and the strip it keeps for its scrollbar. Under it the map's legend and
+   * an inventory row with its slot stop fitting.
+   */
+  --rail-column-min: calc(var(--card-columns) * var(--grid-cell) + var(--scrollbar-w));
   /* `consoleRoom` (lib/consoleWidth.ts) reads the rail's track by this order. */
   --track-tabs: 0;
   --track-tsplit: 0;
@@ -156,9 +175,14 @@ option {
   gap: 0;
   min-height: 0;
   padding: var(--gap);
-  transition:
-    grid-template-columns var(--dur-surface) var(--ease-out),
-    gap var(--dur-control) var(--ease-out);
+  /*
+   * The tracks do not animate. The console's track is a count of measured
+   * columns, and an animated track passes through every width between two
+   * counts: each terminal fitted at each one and told the server over NAWS,
+   * and a split went 80, 38, 78, 80 columns in a quarter of a second (todo 09,
+   * the flake in the smoke's side-by-side check).
+   */
+  transition: gap var(--dur-control) var(--ease-out);
 }
 
 /* No animation while a handle is being dragged: the pointer is the animation. */
@@ -301,16 +325,13 @@ option {
 
 .rail {
   /*
-   * The rail is what the eighty-column console leaves, which on a wide window
-   * is wider than any card needs, so the cards stand side by side in rows
-   * (todo 00, 2026-10-03): each is at least `--rail-column-min` wide and the
-   * row shares the rest out. When there are more cards than fit, the rail scrolls down.
-   * Every card in it is a fixed box; see below.
+   * The rail is what the console leaves, and its cards stand on a grid of
+   * square cells (todo 09, 2026-10-03), placed like icons on a desktop: each
+   * where the player put it, never over another, and the grid runs on down
+   * the rail, which scrolls. The head and the standby card sit above the grid.
    */
   display: flex;
-  flex-flow: row wrap;
-  align-content: flex-start;
-  align-items: flex-start;
+  flex-direction: column;
   gap: var(--gap);
   min-height: 0;
   min-width: 0;
@@ -332,137 +353,62 @@ option {
   scrollbar-gutter: stable;
 }
 
+.rail > * {
+  flex: none;
+}
+
+.rail > .standby-card {
+  height: 152px;
+}
+
+/*
+ * The grid: as many cells across as the rail holds, one row per cell down to
+ * the lowest card, and during a drag a screen more, so a card can be carried
+ * below the rest (`RailGrid`). Its cells are the rail's own: a card's box is
+ * its cells less the gap on its right and under it, so two cards side by side
+ * stand a gap apart and the grid's first cell is the rail's corner.
+ */
+.rail-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--rail-columns, 1), var(--grid-cell));
+  grid-auto-rows: var(--grid-cell);
+  min-height: calc(var(--rail-rows, 0) * var(--grid-cell));
+  position: relative;
+}
+
+.rail-cell {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 var(--gap) var(--gap) 0;
+}
+
 /*
  * A card on the rail is a fixed box, and its contents scroll inside it.
  *
  * Not "mostly fixed". A room with four items and three people in it is taller
  * than an empty one, so the Room card grew as the character walked and every
  * control below it moved -- and **Stop walking** is the one control reached for
- * *while* the thing moving it is running. The same is true of Carrying as loot
- * accumulates, of Talk as people speak, and of Alerts as things go wrong: every
- * card on this rail has content whose size the player does not control.
- *
- * So height is declared per card and never derived from content. A card that
- * has more to say scrolls; it does not push its neighbours around.
+ * *while* the thing moving it is running. So the box is its cells and never
+ * its content (`shippedSize` in `lib/cards.ts` until the corner grip changes
+ * it). A card that has more to say scrolls.
  *
  * A *floating* card is exempt, because its height is dragged by the person
  * looking at it and there is nothing below it to move.
  */
-/*
- * Every item in the rail is a column wide however wide its contents would be:
- * `contain: inline-size` keeps a long line in a card from widening it or
- * pushing a row onto the next line. The rail's head takes a row of its own.
- */
-.rail > * {
+/* `contain: inline-size` keeps a long line in a card from widening it past its cells. */
+.rail-cell > .card {
   contain: inline-size;
-  flex: 1 1 var(--rail-column-min);
-}
-
-.rail > .card-rail-head {
-  flex-basis: 100%;
-}
-
-.rail > .card {
-  /* The fallback is the point: a card added without a declared height still
-     gets a box rather than growing with its contents. */
-  height: var(--card-h, 200px);
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /*
- * Rolled up, a card is its heading and the declared height stands down --
- * including one dragged from the corner grip, which is *kept* and comes back
- * with the card rather than being thrown away by a gesture that only asked to
- * see less of it.
- *
- * This is the one exemption from the rule above, and it does not weaken it:
- * the height still never follows the contents. It follows the one person who
- * is allowed to change a card's box, who has just said they want the heading.
+ * Rolled up, a card is its heading. Its cells stay its own, so nothing on the
+ * grid moves when it rolls and it comes back down into the same box.
  */
-.rail > .card[data-rolled='true'] {
-  height: auto;
-}
-
-.rail > .vitals-card {
-  --card-h: 196px;
-}
-.rail > .room-card {
-  --card-h: 208px;
-}
-.rail > .map-card {
-  --card-h: 380px;
-}
-/* Two faces, and the taller is the loop's: a transport row, the loop's name, the
-   stop bar and four figures. Declared rather than left to the fallback, per the
-   rule above — a card that has more to say scrolls, it does not grow. */
-.rail > .navigation-card {
-  --card-h: 208px;
-}
-.rail > .alert-card {
-  --card-h: 224px;
-}
-.rail > .realm-card {
-  --card-h: 208px;
-}
-/* Matched to the Realm card it sits beside: they are read together, and two
-   heights for two lists of names is a seam nothing in the content justifies. */
-.rail > .players-card {
-  --card-h: 208px;
-}
-.rail > .combat-card {
-  /* A name, a bar, a legend and up to three readout rows. Fixed like every rail
-     card: one that grows with its contents moves every control below it, and
-     **Stop walking** is reached for while the thing moving it is running. */
-  --card-h: 190px;
-}
-.rail > .party-card {
-  /* Two ranks with a member each — the ordinary shape of a party of two, and of
-     a party of one with an invitation out. Grouping by rank costs a heading and
-     a box per rank, and at the old 176px the second group's meters fell under
-     the fold on the commonest listing there is. Fixed, like every rail card:
-     the body scrolls when a third rank arrives. */
-  --card-h: 216px;
-}
-.rail > .inventory-card {
-  --card-h: 208px;
-}
-/*
- * Three faces, and two of them are listings: the sheet is thirty rows, and
- * the pack face carries the meter, the purse, a find field and a row of
- * chips *before* its table. At the 200px fallback the table under those had
- * the height of its own scrollbar and nothing else — which is what a
- * horizontal scrollbar and no rows under `PACK` looked like. Declared, like
- * every rail card; dragged from here by the corner grip.
- */
-.rail > .self-card {
-  --card-h: 320px;
-}
-.rail > .banks-card {
-  /* Two vaults with their balances and a total, which is more banking than most
-     characters do. Fixed like every rail card rather than left to the fallback:
-     the list grows one row per town banked in, and a card that grows moves every
-     control below it. The body scrolls at the third. */
-  --card-h: 176px;
-}
-.rail > .conversation-card {
-  --card-h: 224px;
-}
-.rail > .standby-card {
-  --card-h: 152px;
-}
-.rail > .session-card {
-  --card-h: 196px;
-}
-.rail > .link-card {
-  --card-h: 208px;
-}
-.rail > .automation-card {
-  --card-h: 208px;
-}
-.rail > .extension-card {
-  --card-h: 480px;
-}
-.rail > .stream-card {
-  --card-h: 224px;
+.rail-cell > .card[data-rolled='true'] {
+  align-self: flex-start;
 }
 
 /*
@@ -1073,7 +1019,7 @@ button.quest-banner-dismiss {
  * bottom, and only the list between them moves. Filters and a reply box that
  * scroll away are reached for exactly when they cannot be.
  */
-.rail > .card > .body:not(.paned),
+.rail-cell > .card > .body:not(.paned),
 .float > .card > .body:not(.paned),
 .card > .body.scroll:not(.paned) {
   overflow-y: auto;
@@ -3230,19 +3176,6 @@ kbd {
 /* ========================================================== the quest book */
 
 /*
- * A card with a table above and, when a quest is opened, its track below.
- *
- * The rail's fixed-height rule applies as it does to every card: the table
- * scrolls under its own tools, and the opened track scrolls with it rather than
- * growing the card. A book that grew as quests were opened would move every
- * card under it — and the control that opens one is in the table it would be
- * moving.
- */
-.rail > .quest-card {
-  --card-h: 420px;
-}
-
-/*
  * The track of the opened quest, under the table it was opened from.
  *
  * Under rather than beside: a quest is read *while* deciding whether to do it,
@@ -4205,15 +4138,6 @@ button.quest-plan-back {
 
 /* ======================================================= loop builder card */
 
-/*
- * Taller than the other rail cards, because it is a map with a list under it
- * and controls under that; it ships as a float sized to most of the workspace
- * (`openBuilder`), and this is the box it gets when somebody docks it.
- */
-.rail > .loop-builder-card {
-  --card-h: 520px;
-}
-
 .loop-builder-card > .body.paned {
   gap: 6px;
 }
@@ -5122,8 +5046,8 @@ button.quest-plan-back {
 /* ============================================================== scrollbars */
 
 ::-webkit-scrollbar {
-  height: 10px;
-  width: 10px;
+  height: var(--scrollbar-w);
+  width: var(--scrollbar-w);
 }
 
 ::-webkit-scrollbar-track {
@@ -9181,9 +9105,8 @@ button.lookup:focus-visible {
   pointer-events: none;
 }
 
-.rail > .rail-slot {
-  height: var(--slot-h, var(--card-h, 200px));
-  width: var(--slot-w, var(--rail-column-min));
+.rail-grid > .rail-slot {
+  margin: 0 var(--gap) var(--gap) 0;
 }
 
 /*
@@ -12640,8 +12563,7 @@ tr:hover .row-action.worn,
  * window. It used to be `--control-h` plus a full card's padding either side,
  * which made it half again as tall as either of the other two.
  */
-.dock > .card.toolbar-card,
-.rail > .card.toolbar-card {
+.dock > .card.toolbar-card {
   height: var(--topbar-h);
 }
 

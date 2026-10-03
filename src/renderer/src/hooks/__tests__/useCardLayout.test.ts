@@ -6,10 +6,19 @@ import {
   floatAlphas,
   lifted,
   normalizeLayout,
-  raised,
-  RAIL_HEIGHT
+  placed,
+  raised
 } from '../useCardLayout';
-import { CARDS, hidesWhenEmpty, HIDES_WHEN_EMPTY, type CardId } from '../../lib/cards';
+import {
+  CARDS,
+  hidesWhenEmpty,
+  HIDES_WHEN_EMPTY,
+  LEAST_CARD,
+  shippedSize,
+  type CardId,
+  type CardLayout
+} from '../../lib/cards';
+import type { GridBox } from '../../lib/railGrid';
 
 const ALL: CardId[] = CARDS.map((card) => card.id);
 
@@ -431,26 +440,76 @@ describe("a card's own palette", () => {
 });
 
 /*
- * A rail card dragged taller or shorter keeps that height as a fraction of
- * the rail — never pixels, the floats' own rule — and a figure from outside
- * the range is pulled back rather than honoured, so no card can be stored at
- * a height it cannot be dragged back from.
+ * A rail card's size and spot are whole grid cells (todo 09). A figure under
+ * the least a card may be is raised to it, so no card can be stored at a size
+ * it cannot be dragged back from, and a spot for a card not on the rail is
+ * dropped: a card that leaves the rail gives its spot up.
  */
-describe('a card dragged to a height on the rail', () => {
-  it('keeps the height as a fraction of the rail, clamped', () => {
-    const layout = normalizeLayout({ heights: { room: 0.5, vitals: 5, map: -1 } });
-    expect(layout.heights).toEqual({ room: 0.5, vitals: RAIL_HEIGHT.max, map: RAIL_HEIGHT.min });
+describe('a card sized and placed on the rail', () => {
+  it('keeps its size in whole cells, never under the least', () => {
+    const layout = normalizeLayout({
+      sizes: { room: { w: 20.4, h: 9 }, vitals: { w: 1, h: 1 } }
+    });
+    expect(layout.sizes).toEqual({ room: { w: 20, h: 9 }, vitals: LEAST_CARD });
   });
 
-  it('drops a height that is not a number, and one for a card this build does not have', () => {
-    const stored = { room: 'tall', ghost: 0.5, self: Number.NaN } as unknown as Partial<
-      Record<CardId, number>
-    >;
-    expect(normalizeLayout({ heights: stored }).heights).toEqual({});
+  it('keeps no entry for a size that is the shipped one, or one it cannot read', () => {
+    const stored = {
+      room: shippedSize('room'),
+      map: { w: 'wide' },
+      ghost: { w: 9, h: 9 }
+    } as unknown as CardLayout['sizes'];
+    expect(normalizeLayout({ sizes: stored }).sizes).toEqual({});
   });
 
-  it('reads a layout written before heights existed as none dragged', () => {
-    expect(normalizeLayout({ rail: ['room'] }).heights).toEqual({});
+  it('keeps the spots of the cards on the rail, and only those', () => {
+    const layout = normalizeLayout({
+      rail: ['room'],
+      away: ['map'],
+      spots: { room: { x: 3, y: 40 }, map: { x: 0, y: 0 }, vitals: { x: -2, y: 'top' } } as never
+    });
+    expect(layout.spots).toEqual({ room: { x: 3, y: 40 } });
+  });
+});
+
+/*
+ * Placing a card on the grid writes down every rail card where it is drawn,
+ * so what was on screen is what is kept and the card in hand lands where the
+ * landing box said.
+ */
+describe('placing a card on the rail', () => {
+  const layout = normalizeLayout({ rail: ['vitals', 'room'], away: ['map'] });
+  const drawn = new Map<CardId, GridBox>([
+    ['vitals', { x: 0, y: 0, w: 17, h: 13 }],
+    ['room', { x: 17, y: 0, w: 17, h: 14 }]
+  ]);
+
+  it('stands it in its cells and freezes the rest where they are drawn', () => {
+    const next = placed(layout, 'room', { x: 0, y: 13, w: 17, h: 14 }, drawn);
+    expect(next.spots).toMatchObject({ vitals: { x: 0, y: 0 }, room: { x: 0, y: 13 } });
+    expect(next.sizes).toEqual({});
+  });
+
+  it('keeps a size that is not the shipped one', () => {
+    const next = placed(layout, 'room', { x: 17, y: 0, w: 10, h: 6 }, drawn);
+    expect(next.sizes).toEqual({ room: { w: 10, h: 6 } });
+  });
+
+  it('brings a card from elsewhere onto the rail', () => {
+    const next = placed(layout, 'map', { x: 0, y: 14, w: 17, h: 25 }, drawn);
+    expect(next.rail).toContain('map');
+    expect(next.away).not.toContain('map');
+    expect(next.spots['map']).toEqual({ x: 0, y: 14 });
+  });
+
+  it('writes nothing when nothing moved', () => {
+    const settled = placed(layout, 'room', { x: 17, y: 0, w: 17, h: 14 }, drawn);
+    expect(placed(settled, 'room', { x: 17, y: 0, w: 17, h: 14 }, drawn)).toBe(settled);
+  });
+
+  it('gives the spot up when the card leaves the rail', () => {
+    const settled = placed(layout, 'room', { x: 0, y: 13, w: 17, h: 14 }, drawn);
+    expect(docked(settled, 'room', 'below', 0).spots['room']).toBeUndefined();
   });
 });
 
@@ -504,41 +563,31 @@ describe('a card rolled up to its heading', () => {
 });
 
 /*
- * The gap is counted among the lane's cards as drawn, the dragged one
- * included, so a card moved *down* its own lane lands where the gap was
+ * The gap is counted among the strip's cards as drawn, the dragged one
+ * included, so a card moved along its own strip lands where the gap was
  * drawn and not one slot further. It did land one further, for as long as
  * the rail could be dragged; the smoke run only ever dragged a card up.
  */
 describe('docking a card at a gap', () => {
-  const layout = normalizeLayout({ rail: ['self', 'vitals', 'combat', 'room'] });
+  const layout = normalizeLayout({ below: ['self', 'vitals', 'combat', 'room'] });
 
-  it('lands a card dragged down its own lane where the gap was drawn', () => {
+  it('lands a card dragged along its own strip where the gap was drawn', () => {
     // The gap between vitals and combat is gap 2 of the list as drawn.
-    expect(docked(layout, 'self', 'rail', 2).rail.slice(0, 4)).toEqual([
-      'vitals',
-      'self',
-      'combat',
-      'room'
-    ]);
+    expect(docked(layout, 'self', 'below', 2).below).toEqual(['vitals', 'self', 'combat', 'room']);
   });
 
-  it('lands a card dragged up its own lane at the gap', () => {
-    expect(docked(layout, 'room', 'rail', 0).rail.slice(0, 4)).toEqual([
-      'room',
-      'self',
-      'vitals',
-      'combat'
-    ]);
+  it('lands a card dragged back along its own strip at the gap', () => {
+    expect(docked(layout, 'room', 'below', 0).below).toEqual(['room', 'self', 'vitals', 'combat']);
   });
 
   it('changes nothing for a drop into either of the card’s own gaps', () => {
-    expect(docked(layout, 'vitals', 'rail', 1)).toBe(layout);
-    expect(docked(layout, 'vitals', 'rail', 2)).toBe(layout);
+    expect(docked(layout, 'vitals', 'below', 1)).toBe(layout);
+    expect(docked(layout, 'vitals', 'below', 2)).toBe(layout);
   });
 
   it('puts a card from elsewhere at the raw gap', () => {
-    const away = normalizeLayout({ rail: ['self', 'vitals'], away: ['room'] });
-    expect(docked(away, 'room', 'rail', 1).rail.slice(0, 3)).toEqual(['self', 'room', 'vitals']);
-    expect(docked(away, 'room', 'rail', 1).away).not.toContain('room');
+    const away = normalizeLayout({ below: ['self', 'vitals'], away: ['room'] });
+    expect(docked(away, 'room', 'below', 1).below).toEqual(['self', 'room', 'vitals']);
+    expect(docked(away, 'room', 'below', 1).away).not.toContain('room');
   });
 });

@@ -1,0 +1,90 @@
+/**
+ * The card rail's grid (todo 09): each card in the cells `railGrid` arranges
+ * it in, in reading order, and the dashed landing box where a dragged card
+ * would go. The cards a group has hidden take no cells, so the rest are
+ * arranged around what is drawn. See `mudengine-ui` › `parts/cards.md`,
+ * *The card rail is a grid*.
+ */
+import { memo, useLayoutEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
+
+import type { DragState } from '../hooks/useCardDrag';
+import type { RailGrid as Grid } from '../hooks/useRailGrid';
+import { SHIPPED_COLUMNS, type CardId, type CardLayoutApi } from '../lib/cards';
+import { arrange, bottomOf, sameBox, type GridBox } from '../lib/railGrid';
+
+export interface RailGridProps {
+  layout: Pick<CardLayoutApi, 'rail' | 'spots' | 'sizeOf'>;
+  render(id: CardId): ReactNode;
+  grid: Pick<Grid, 'ref' | 'columns' | 'showing' | 'publish'>;
+  /**
+   * The drag in flight, if any: the grid draws where the card in hand would
+   * land, and offers a screen of empty rows below its cards.
+   */
+  drag: DragState | null;
+}
+
+/** Where a box goes in the CSS grid, which counts lines from one. */
+function area(box: GridBox): CSSProperties {
+  return {
+    gridColumn: `${box.x + 1} / span ${box.w}`,
+    gridRow: `${box.y + 1} / span ${box.h}`
+  };
+}
+
+function RailGrid({ layout, render, grid, drag }: RailGridProps) {
+  const { rail, spots, sizeOf } = layout;
+  // Before the grid is measured it is one shipped card wide, which is what
+  // the rail's narrowest track holds.
+  const columns = grid.columns ?? SHIPPED_COLUMNS;
+
+  const drawn = useMemo(() => {
+    const cards = rail.flatMap((id) => {
+      const element = render(id);
+      return element === null ? [] : [{ id, element }];
+    });
+    const boxes = arrange(
+      cards.map(({ id }) => ({ id, size: sizeOf(id), spot: spots[id] })),
+      columns
+    );
+    const byPlace = (a: CardId, b: CardId): number => {
+      const one = boxes.get(a)!;
+      const two = boxes.get(b)!;
+      return one.y - two.y || one.x - two.x;
+    };
+    return {
+      boxes,
+      // Reading order, so Tab and a screen reader go along the rows as drawn.
+      cards: cards.sort((a, b) => byPlace(a.id, b.id))
+    };
+  }, [rail, spots, sizeOf, render, columns]);
+
+  const { publish } = grid;
+  useLayoutEffect(() => publish(drawn.boxes), [publish, drawn.boxes]);
+
+  const dragging = drag?.live === true;
+  const landing =
+    dragging && drag.target.where === 'grid' ? { id: drag.id, box: drag.target.box } : null;
+  const own = landing ? drawn.boxes.get(landing.id) : undefined;
+  // A drop into the card's own cells changes nothing: the dimmed card is the
+  // landing box, and a second one beside it would read as two places.
+  const slot = landing && !(own && sameBox(own, landing.box)) ? landing.box : null;
+  const bottom = Math.max(bottomOf(drawn.boxes.values()), slot ? slot.y + slot.h : 0);
+  const rows = dragging ? bottom + grid.showing : bottom;
+
+  return (
+    <div
+      className="rail-grid"
+      ref={grid.ref}
+      style={{ '--rail-columns': columns, '--rail-rows': rows } as CSSProperties}
+    >
+      {drawn.cards.map(({ id, element }) => (
+        <div className="rail-cell" data-rail-card={id} key={id} style={area(drawn.boxes.get(id)!)}>
+          {element}
+        </div>
+      ))}
+      {slot && <div className="rail-slot" style={area(slot)} />}
+    </div>
+  );
+}
+
+export default memo(RailGrid);

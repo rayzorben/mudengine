@@ -1,22 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { wrappedInsertionIndex, type LaneBox } from '../lib/reorder';
+import { insertionIndex } from '../lib/reorder';
+import { nearestFree, type GridBox } from '../lib/railGrid';
 import { snapTarget, type SnapBox, type SnapSide } from '../lib/snap';
-import type { CardId, CardLayoutApi, Lane } from '../lib/cards';
+import type { CardId, CardLayoutApi, RailGridView, Strip } from '../lib/cards';
 import { tuning } from '../lib/tuning';
 
 /**
  * Where a card would land if the pointer were released now.
  *
- * A docked target carries its lane and the insertion index, so the indicator
+ * A strip target carries its strip and the insertion index, so the indicator
  * can be drawn *between* two cards rather than on one of them: a drop that
  * lands somewhere the player was not shown is a drop they have to undo. A
- * snap carries the box it would land in, in client pixels, for the same
- * reason — the indicator is drawn as that box, so what is shown is the
- * arrangement itself rather than a hint about it.
+ * rail target carries the free cells it would take on the grid, and a snap
+ * the box it would land in, in client pixels, for the same reason: each
+ * indicator is drawn as that box, so what is shown is the arrangement itself
+ * rather than a hint about it.
  */
 export type DropTarget =
-  | { where: 'lane'; lane: Lane; index: number }
+  | { where: 'lane'; lane: Strip; index: number }
+  | { where: 'grid'; box: GridBox }
   | { where: 'snap'; to: CardId; side: SnapSide; box: SnapBox }
   | { where: 'float' };
 
@@ -52,20 +55,11 @@ export interface CardDrag {
   begin(id: CardId, event: React.PointerEvent, options?: { fromControl?: boolean }): void;
 }
 
-/** One lane's box and the midpoints of the cards in it. */
-interface LaneShape {
-  lane: Lane;
+/** One strip's box and the midpoints of the cards in it, left to right. */
+interface StripShape {
+  lane: Strip;
   box: DOMRect;
-  /**
-   * Each card's box, in reading order.
-   *
-   * The rail's cards stand side by side in rows and its axis is vertical; the
-   * strips run left to right in one row, so theirs is horizontal. The same
-   * shape for all three, which is what lets the insertion index be computed
-   * the same way for each.
-   */
-  vertical: boolean;
-  slots: LaneBox[];
+  slots: number[];
 }
 
 interface Origin {
@@ -82,6 +76,18 @@ interface Origin {
 }
 
 /**
+ * A drag held at the rail's top or bottom edge scrolls it a cell a move, so
+ * a card can be carried to rows the rail is not showing.
+ */
+function scrollAtEdge(scroller: HTMLElement | null, cell: number, y: number): void {
+  if (!scroller) return;
+  const { top, bottom } = scroller.getBoundingClientRect();
+  if (cell <= 0 || y < top || y > bottom) return;
+  if (y > bottom - cell) scroller.scrollTop += cell;
+  else if (y < top + cell) scroller.scrollTop -= cell;
+}
+
+/**
  * Dragging a card from one place on the instrument to another.
  *
  * One machine for both directions, because they are the same gesture: a card is
@@ -95,7 +101,8 @@ interface Origin {
  */
 export function useCardDrag(
   layout: CardLayoutApi,
-  workspaceRef: React.RefObject<HTMLElement>
+  workspaceRef: React.RefObject<HTMLElement>,
+  rail: RailGridView
 ): CardDrag {
   const [state, setState] = useState<DragState | null>(null);
   const origin = useRef<Origin | null>(null);
@@ -105,35 +112,66 @@ export function useCardDrag(
   latest.current = state;
 
   /**
-   * Every lane on screen, measured now.
+   * Both strips on screen, measured now.
    *
-   * Re-measured per move rather than cached at pointerdown, because the lanes
-   * genuinely move during a drag: the docked strips appear as empty drop zones
-   * the moment one starts, so a set measured before that would not include the
-   * two places a card most needs to be droppable into. A handful of rects at
-   * pointer rate is cheap; a drop target that cannot be reached is not.
+   * Re-measured per move rather than cached at pointerdown, because the strips
+   * genuinely move during a drag: they appear as empty drop zones the moment
+   * one starts, so a set measured before that would not include the two places
+   * a card most needs to be droppable into. A handful of rects at pointer rate
+   * is cheap; a drop target that cannot be reached is not.
    */
-  const measure = useCallback((): LaneShape[] => {
-    const lanes: LaneShape[] = [];
-    for (const [selector, lane, vertical] of [
-      ['.rail', 'rail', true],
-      ['.dock-above', 'above', false],
-      ['.dock-below', 'below', false]
+  const measure = useCallback((): StripShape[] => {
+    const strips: StripShape[] = [];
+    for (const [selector, lane] of [
+      ['.dock-above', 'above'],
+      ['.dock-below', 'below']
     ] as const) {
       const element = document.querySelector<HTMLElement>(selector);
       if (!element) continue;
-      lanes.push({
+      strips.push({
         lane,
-        vertical,
         box: element.getBoundingClientRect(),
         slots: Array.from(element.querySelectorAll<HTMLElement>('[data-card]')).map((card) => {
-          const { left, right, top, bottom } = card.getBoundingClientRect();
-          return { left, right, top, bottom };
+          const { left, right } = card.getBoundingClientRect();
+          return (left + right) / 2;
         })
       });
     }
-    return lanes;
+    return strips;
   }, []);
+
+  /**
+   * The free cells on the rail's grid nearest where the card in hand is held,
+   * or null when the pointer is not over the rail.
+   *
+   * The card keeps its rail size wherever it came from (`sizeOf`), and its
+   * corner is where the hold puts it: a card from the rail is held where it
+   * was grabbed, and anything else by its heading, so a float of another
+   * shape does not land far from the pointer.
+   */
+  const gridTarget = useCallback(
+    (at: Origin, x: number, y: number): GridBox | null => {
+      const scroller = rail.scroller();
+      const frame = rail.frame();
+      if (!scroller || !frame) return null;
+      const box = scroller.getBoundingClientRect();
+      if (x < box.left || x > box.right || y < box.top || y > box.bottom) return null;
+      const size = layout.sizeOf(at.id);
+      const dx = Math.min(at.hold.dx, size.w * frame.cell);
+      const dy = Math.min(at.hold.dy, frame.cell);
+      const others = [...rail.drawn()].filter(([id]) => id !== at.id).map(([, other]) => other);
+      return nearestFree(
+        {
+          x: Math.round((x - dx - frame.left) / frame.cell),
+          y: Math.round((y - dy - frame.top) / frame.cell),
+          ...size
+        },
+        others,
+        frame.columns
+      );
+    },
+    [layout, rail]
+  );
 
   /**
    * Every card standing over the console, measured now, except the one in
@@ -172,16 +210,17 @@ export function useCardDrag(
        * overlap the rail's box the nearer intent is the strip: somebody holding a
        * card over the foot of the console means the foot of the console.
        */
-      for (const lane of measure()) {
-        const { box } = lane;
+      for (const strip of measure()) {
+        const { box } = strip;
         if (x < box.left || x > box.right || y < box.top || y > box.bottom) continue;
         // Between the two cards whose midpoints straddle the pointer. The same
         // rule the tab rail drags by, stated once in `lib/reorder.ts`: two
         // copies of it drift into an indicator that points at one gap while the
         // drop lands in another.
-        const index = wrappedInsertionIndex(lane.slots, x, y, lane.vertical);
-        return { where: 'lane', lane: lane.lane, index };
+        return { where: 'lane', lane: strip.lane, index: insertionIndex(strip.slots, x) };
       }
+      const cells = gridTarget(at, x, y);
+      if (cells !== null) return { where: 'grid', box: cells };
       /*
        * Then a card already over the console to line up with.
        *
@@ -213,7 +252,7 @@ export function useCardDrag(
       }
       return { where: 'float' };
     },
-    [measure, neighbours]
+    [gridTarget, measure, neighbours]
   );
 
   const begin = useCallback(
@@ -262,7 +301,7 @@ export function useCardDrag(
         id,
         x: event.clientX,
         y: event.clientY,
-        target: existing ? { where: 'float' } : { where: 'lane', lane: 'rail', index: 0 },
+        target: { where: 'float' },
         live: false,
         shape,
         size,
@@ -287,6 +326,7 @@ export function useCardDrag(
         Math.abs(event.clientX - at.x) > tuning().dragSlop ||
         Math.abs(event.clientY - at.y) > tuning().dragSlop;
       const live = far || (latest.current?.live ?? false);
+      if (live) scrollAtEdge(rail.scroller(), rail.frame()?.cell ?? 0, event.clientY);
       const target = targetFor(event.clientX, event.clientY);
 
       /*
@@ -297,7 +337,7 @@ export function useCardDrag(
        * put it, which is the whole question the indicator answers. Over a
        * lane it stops, because there the opened gap is the indicator.
        */
-      if (live && at.floating && target.where !== 'lane') {
+      if (live && at.floating && (target.where === 'float' || target.where === 'snap')) {
         const workspace = workspaceRef.current?.getBoundingClientRect();
         if (workspace && workspace.width > 0 && workspace.height > 0) {
           const grab = at.grab ?? { dx: 0, dy: 0 };
@@ -329,6 +369,10 @@ export function useCardDrag(
 
       if (dragged.target.where === 'lane') {
         layout.dock(at.id, dragged.target.lane, dragged.target.index);
+        return;
+      }
+      if (dragged.target.where === 'grid') {
+        layout.placeOnRail(at.id, dragged.target.box, rail.drawn());
         return;
       }
 
@@ -382,7 +426,7 @@ export function useCardDrag(
     // Keyed on whether a drag is running rather than on the drag itself: the
     // listeners read the live pointer position through refs, so re-registering
     // them on every move would be churn for nothing.
-  }, [dragging, layout, targetFor, workspaceRef]);
+  }, [dragging, layout, rail, targetFor, workspaceRef]);
 
   // One object for as long as neither half moves: `renderCard` lists this as a
   // dependency, and a fresh object per render rebuilt every card's element on

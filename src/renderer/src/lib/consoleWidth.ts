@@ -5,18 +5,32 @@
  */
 
 /**
- * What one column costs on this display at this font, off the shown
- * terminal: xterm sizes `.xterm-screen` to exactly its columns times the
- * cell, so the quotient has no padding or scrollbar in it. Null before a
- * terminal has been laid out.
+ * The pane the keyboard is in, which holds the shown character's terminal:
+ * the one whose columns the status rail and `useConsoleWidth` are handed.
+ * Null before a terminal is laid out.
  */
-export function consoleCellWidth(cols: number): number | null {
-  if (!(cols > 0)) return null;
-  const screen = document.querySelector<HTMLElement>(
-    '.terminal-layer[data-shown="true"] .xterm-screen'
+export function focusedPane(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(
+    '.terminal-layer[data-shown="true"][data-focused="true"]'
   );
-  const cell = (screen?.getBoundingClientRect().width ?? 0) / cols;
-  return Number.isFinite(cell) && cell > 0 ? cell : null;
+}
+
+/**
+ * The focused pane's terminal as laid out now: the columns it holds, read off
+ * the terminal's own element (`TerminalView` marks it on every resize), and
+ * what one costs on this display at this font. xterm sizes `.xterm-screen` to
+ * exactly its columns times the cell, so the quotient has no padding or
+ * scrollbar in it. Both from the DOM and never from React's copy of the
+ * size, which is a fit behind while a drag or a split is under way. Null
+ * before a terminal has been laid out.
+ */
+export function consoleGrid(): { cols: number; cell: number } | null {
+  const pane = focusedPane();
+  const cols = Number(pane?.querySelector<HTMLElement>('.xterm')?.dataset['cols']);
+  const screen = pane?.querySelector<HTMLElement>('.xterm-screen');
+  if (!(cols > 0) || !screen) return null;
+  const cell = screen.getBoundingClientRect().width / cols;
+  return Number.isFinite(cell) && cell > 0 ? { cols, cell } : null;
 }
 
 /**

@@ -32,10 +32,9 @@ export interface CardChromes {
 }
 
 export function useCardChrome(
-  cards: PinnedLayout &
-    Pick<CardLayoutApi, 'floatOf' | 'laneOf' | 'heightOf' | 'resetHeight' | 'lift' | 'raise'>,
+  cards: PinnedLayout & Pick<CardLayoutApi, 'floatOf' | 'laneOf' | 'lift' | 'raise'>,
   drag: Pick<CardDrag, 'state' | 'begin'>,
-  resize: Pick<CardResize, 'begin'>,
+  resize: Pick<CardResize, 'begin' | 'reset'>,
   returnFocus: () => void,
   theme: Theme
 ): CardChromes {
@@ -102,18 +101,17 @@ export function useCardChrome(
     (id: CardId): CardChrome => {
       const floating = cardsRef.current.floatOf(id);
       const dragging = dragRef.current.state?.id === id && dragRef.current.state.live;
-      // Which lane, and how tall it was dragged there: both part of the key,
-      // because a card docked from a strip onto the rail gains the grip and a
-      // resized one is drawn at its new height on the next commit, not later.
+      // Which lane is part of the key, because a card docked from a strip
+      // onto the rail gains the grip. Its size is not: the rail's grid draws
+      // the box, and the card fills it.
       const lane = cardsRef.current.laneOf(id);
-      const height = cardsRef.current.heightOf(id);
       // Part of the key for the reason the height is: the glyph in the heading
       // states which way the press goes, and a chrome cached across a roll
       // would go on offering the way the card has just come.
       const rolled = cardsRef.current.isRolled(id);
       const key = floating
         ? `float:${floating.solidity}:${floating.pinned === true}:${dragging}:${theme.id}:${rolled}`
-        : `rail:${dragging}:${theme.id}:${lane ?? ''}:${height ?? ''}:${rolled}`;
+        : `rail:${dragging}:${theme.id}:${lane ?? ''}:${rolled}`;
       /*
        * Compared by identity rather than folded into the string key. The store
        * hands back the very object it holds — the shared empty one for a card
@@ -165,15 +163,13 @@ export function useCardChrome(
           : {}),
         /*
          * The corner grip, on the rail only: a float has its own, and a
-         * docked strip is sized by its splitter. The height rides along where
-         * one has been dragged, and its absence means the card's own.
+         * docked strip is sized by its splitter.
          */
         ...(lane === 'rail'
           ? {
-              ...(height !== undefined ? { height } : {}),
               onResize: (event: React.PointerEvent<HTMLElement>) =>
                 resizeRef.current.begin(id, event),
-              onResizeReset: () => cardsRef.current.resetHeight(id)
+              onResizeReset: () => resizeRef.current.reset(id)
             }
           : {})
       };
