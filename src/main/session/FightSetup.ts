@@ -10,7 +10,7 @@ import { tuning } from '../app/tuning';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import { HAZARD_ABILITY } from '../../shared/abilities';
-import { blessedPlayer, type BlessingEffect } from '../../shared/blessingeffects';
+import { blessedPlayer, sumEffects, type BlessingEffect } from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { ROUND_SECONDS, scaledPower } from '../../shared/menace';
@@ -93,7 +93,15 @@ export class FightSetup {
       ? blessedPlayer(this.errands.menacePlayer(state), set)
       : this.errands.menacePlayer(state);
     const hpMax = state.vitals.hpMax + (blessed ? set.maxHp : 0);
-    const sheet = set === undefined ? read : { ...read, stated: null, effects: set };
+    // What is blessed comes on top of what the gear worn adds (`gearEffect`).
+    const sheet =
+      set === undefined
+        ? read
+        : {
+            ...read,
+            stated: null,
+            effects: sumEffects([...(read.effects ? [read.effects] : []), ...(set ? [set] : [])])
+          };
     if (hpMax <= 0) return null;
     const health = at === 'rested' ? hpMax : hp;
     if (health === null) return null;
