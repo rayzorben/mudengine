@@ -64,6 +64,16 @@ describe('which pool the status line states', () => {
     expect(read?.vitals.manaType).toBe('KAI');
   });
 
+  it('keeps the sheet’s kai under the template before `pro` has reported it', () => {
+    const line = new StatusLine();
+    const read = line.prompt(
+      kai(),
+      blockOf('status-line', '[HP=287/287,MA=12/29]:', { manaType: 'MA' }, T)
+    );
+    expect(read?.statline.exact).toBeNull();
+    expect(read?.vitals.manaType).toBe('KAI');
+  });
+
   it('reads the pool off the class default line', () => {
     const line = new StatusLine();
     const s = structuredClone(EMPTY_CHARACTER);

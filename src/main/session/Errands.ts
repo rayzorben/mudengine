@@ -90,6 +90,7 @@ import {
 } from '../../shared/quests';
 import { holdsMovement, spellServes } from '../../shared/spellcraft';
 import {
+  attacksWithNothing,
   castsToKill,
   chooseAttackSpell,
   healPower,
@@ -1639,8 +1640,9 @@ export class Errands implements SessionModule {
     const declines =
       swing(sheet, weapon, blank, family, attack) === null &&
       (casting === null ||
-        chooseAttackSpell({ ...casting, target: null, excluded: new Set() }).refusal ===
-          'no-attack-spells');
+        attacksWithNothing(
+          chooseAttackSpell({ ...casting, target: null, excluded: new Set() }).refusal
+        ));
     const level = state.progress.level;
     const measured =
       !declines || level === null

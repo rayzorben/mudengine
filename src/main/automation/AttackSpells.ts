@@ -668,6 +668,10 @@ export class AttackSpells {
       case 'all-resisted':
         this.events.notice?.(t('automation.spells.allResisted'));
         return;
+      default: {
+        const never: never = refusal;
+        return never;
+      }
     }
   }
 

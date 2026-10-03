@@ -1946,6 +1946,8 @@ cards:
     emptyNoWorldData: The world data has nothing for here.
     roomUnknown: Room unknown
     roomUnknownTooltip: The client does not know which room this character is in.
+    lastKnown: Last known room
+    lastKnownTooltip: Where this character stood when it left the realm. The first room the server prints after login replaces it.
     # The finder over the map: a start and a destination, opened from the
     # search glyph in the action column beside the button back to the
     # character's room.
@@ -4938,8 +4940,8 @@ automation:
     noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the game for it.
     emptyBook: 'Auto Choose Best Spell: the spellbook is empty; this character has no spells yet.'
     noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
-    kai: 'Auto Choose Best Spell: kai is kept for the ways and blessings; your regular attacks carry
-      the fight.'
+    kai: 'Auto Choose Best Spell: kai is not spent on attack powers; your regular attacks carry the
+      fight.'
     allResisted: 'Auto Choose Best Spell: this target resists every attack spell in the book; your
       regular attacks carry the fight.'
     drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
