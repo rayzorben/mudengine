@@ -12,7 +12,13 @@ import { planRealmOf } from '../world/navigation/realm';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { unfoughtShare } from '../../shared/danger';
 import type { FightOdds, NavigationOracle, Plan } from '../../shared/navigation';
-import { roomAddress, type RoomId, type Route } from '../../shared/world';
+import {
+  roomAddress,
+  type Requirement,
+  type RoomId,
+  type Route,
+  type WorldRoom
+} from '../../shared/world';
 import type { Errands } from './Errands';
 import type { OddsReader } from './OddsBook';
 
@@ -28,6 +34,7 @@ export interface NavigationParts {
         | 'residentEntities'
         | 'item'
         | 'namedExitItems'
+        | 'withinSteps'
       >
     | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
@@ -57,6 +64,15 @@ export class Navigation {
     const world = this.parts.world();
     if (world === undefined) return null;
     return leg(planRealmOf(world), this.oracle(world), from, to, traveller, options);
+  }
+
+  /**
+   * Every room a traveller can walk to within `steps` moves, with the fewest
+   * moves to each; an exit it cannot take, or one priced at `wallCost`, is
+   * skipped (`Router.withinSteps`). Empty while worldless.
+   */
+  within(from: RoomId, steps: number, traveller: Traveller): ReadonlyMap<RoomId, number> {
+    return this.parts.world()?.withinSteps(from, steps, traveller) ?? new Map();
   }
 
   /** This character's fights and purse, weighed for a plan made elsewhere; null while worldless. */
@@ -90,9 +106,24 @@ export function worldLeg(
   world: NonNullable<ReturnType<NavigationParts['world']>>,
   from: RoomId,
   to: RoomId,
-  traveller: Traveller
+  traveller: Traveller = {}
 ): Route {
   return leg(planRealmOf(world), UNWEIGHED, from, to, traveller);
+}
+
+/**
+ * The router's unpriced nearest-room search for a probe: the nearest room
+ * `want` accepts over exits with no requirement, as a route; null within
+ * `limit` (`Router.nearest`).
+ */
+export function worldNearest(
+  world: Pick<WorldGraph, 'nearest'>,
+  from: RoomId,
+  want: (room: WorldRoom) => boolean,
+  limit?: number,
+  through?: (requirement: Requirement) => boolean
+): Route | null {
+  return world.nearest(from, want, limit, through);
 }
 
 /**

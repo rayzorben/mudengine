@@ -24,6 +24,7 @@ import path from 'node:path';
 
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { RealmLibrary } from '../src/main/world/RealmLibrary.ts';
+import { worldLeg } from '../src/main/session/navigation.ts';
 
 const source = process.argv[2] ?? path.resolve('mega-paramud/Default');
 const out = process.argv[3] ?? path.resolve('resources/loops/megamud.yaml');
@@ -158,7 +159,7 @@ function waypoints(rooms) {
   const stops = [rooms[0]];
   let anchor = 0;
   for (let i = 2; i < rooms.length; i += 1) {
-    const route = world.route(idOf(rooms[anchor]), idOf(rooms[i]));
+    const route = worldLeg(world, idOf(rooms[anchor]), idOf(rooms[i]));
     const walked = route.blocked ? null : route.steps.map((step) => step.to);
     const recorded = rooms.slice(anchor + 1, i + 1).map(idOf);
     const same =

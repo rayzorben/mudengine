@@ -1658,7 +1658,9 @@ describe('the shipped realm data', () => {
     const head = { id: 1152, name: 'saracen head' };
     const found = realm!.droppingPlaces(head, roomId(12, 59), festus, ring);
     expect(found.droppers).toEqual([{ mob: 'saracen raider', placed: 16 }]);
-    expect(found.lairs).toHaveLength(8);
+    // Half the ring is behind doors this traveller cannot force, with no
+    // strength or picklocks on record, which the sweep skips (2026-10-02).
+    expect(found.lairs).toHaveLength(4);
     for (const lair of found.lairs) {
       expect(lair).toMatchObject({ mob: 'saracen raider' });
       expect(lair.id.startsWith('12/')).toBe(true);

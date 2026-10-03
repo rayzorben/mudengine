@@ -26,6 +26,7 @@ import { SessionManager } from '../src/main/session/SessionManager.ts';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 import { ACTIONABLE_REMOTES } from '../src/shared/remotes.ts';
+import { worldLeg } from '../src/main/session/navigation.ts';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -140,7 +141,7 @@ async function walkBack(who, destination) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const from = roomIdOf(who);
     if (from === null || from === destination) return;
-    const route = world.route(from, destination, {
+    const route = worldLeg(world, from, destination, {
       level: who.session.character.progress.level ?? 1
     });
     if (!route || route.blocked || route.steps.length === 0) return;
@@ -156,7 +157,7 @@ async function walkTogether(one, two) {
   const there = roomIdOf(one);
   const from = roomIdOf(two);
   if (there === null || from === null || there === from) return;
-  const route = world.route(from, there, {
+  const route = worldLeg(world, from, there, {
     level: two.session.character.progress.level ?? 1
   });
   if (!route || route.blocked || route.steps.length === 0 || route.steps.length > 25) {

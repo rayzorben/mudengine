@@ -41,7 +41,7 @@ import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
-import { NO_LOOKUP, nameAnswersTo } from '../shared/world';
+import { NO_LOOKUP, nameAnswersTo, unrouted } from '../shared/world';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import {
   dropAllPlan,
@@ -1689,9 +1689,6 @@ function registerIpc(): void {
     };
     return pagesOf(route, start, draw, packing);
   };
-
-  /** A route refused before any search, in the reader's words. */
-  const unrouted = (reason: string): Route => ({ steps: [], cost: 0, blocked: true, reason });
 
   handle(Invoke.routeTo, async (_caller, session: SessionId, map: number, room: number) => {
     // This character's realm, not the client's: routing against the wrong one

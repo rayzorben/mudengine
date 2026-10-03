@@ -21,6 +21,7 @@ import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
 import { judge, type Gate, type GateKind, type Verdict } from '../../shared/gates';
 import {
   describeBlock,
+  unrouted,
   DIRECTION_COMMAND,
   hazardAvoided,
   itemDemanded,
@@ -1120,6 +1121,12 @@ export class Router {
       const next = this.rooms.get(this.beyond(exit));
       return next === undefined || (this.keptOut(who, exit, next) === null && !ranFrom(who, next));
     };
+    const wall = tuning().world.wallCost;
+    const passable = (requirement: Requirement | null): boolean => {
+      if (traveller === undefined) return true;
+      const penalty = edgePenalty(requirement, traveller);
+      return penalty !== null && penalty < wall;
+    };
     seen.set(from, 0);
     let frontier: RoomId[] = [from];
     for (let depth = 1; depth <= steps && frontier.length > 0; depth += 1) {
@@ -1137,7 +1144,10 @@ export class Router {
            * through, and a loop started on one stood still. `edgePenalty`
            * answers `null` for exactly the conditions that are impassable
            * rather than merely expensive, which is the same test the router
-           * makes one step at a time.
+           * makes one step at a time. The sweep also skips an exit priced
+           * at `wallCost` (2026-10-02): a door this character cannot force,
+           * which the navigation engine refuses as a way, so no spot behind
+           * one is offered.
            */
           ...room.exits
             .filter(
@@ -1150,20 +1160,14 @@ export class Router {
                  * neighbours of the ward outside it.
                  */
                 exit.requirement?.spellEffect !== 'scatters' &&
-                (traveller === undefined ||
-                  edgePenalty(exit.requirement ?? null, traveller) !== null) &&
+                passable(exit.requirement ?? null) &&
                 open(exit)
             )
             .map((exit) => this.beyond(exit)),
           // And the same of a portal, which carries a `level` requirement of
           // its own where the realm gates one (`WorldGraph.linkPortals`).
           ...this.portalsFrom(id)
-            .filter(
-              (portal) =>
-                (traveller === undefined ||
-                  edgePenalty(portal.requirement ?? null, traveller) !== null) &&
-                open(portal)
-            )
+            .filter((portal) => passable(portal.requirement ?? null) && open(portal))
             .map((portal) => roomId(portal.map, portal.room))
         ];
         for (const to of ways) {
@@ -1321,7 +1325,7 @@ export class Router {
     if (options.within !== undefined) {
       const under = this.search(from, to, goal, traveller, false, false, false, options.within);
       if (under.found === null) {
-        return { steps: [], cost: 0, blocked: true, reason: t('cards.route.reasons.noneCheaper') };
+        return unrouted(t('cards.route.reasons.noneCheaper'));
       }
       return this.buildRoute(under.found.cameFrom, to, under.found.cost, traveller, false);
     }

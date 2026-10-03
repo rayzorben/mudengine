@@ -28,12 +28,12 @@ import type { HuntingAdvice, HuntOrder, HuntWait } from '../../shared/hunting';
 import type { TuningConfig } from '../../shared/internal';
 import type { Odds } from '../../shared/survival';
 import type { SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
-import type { RoomId, WorldRoom } from '../../shared/world';
+import type { RoomId, Route, WorldRoom } from '../../shared/world';
 import type { WalkProgress } from '../../shared/walk';
 import type { Intent, Offered } from '../automation/CommandQueue';
 import type { TrainerAhead } from '../automation/TrainErrand';
 import type { RealmClass } from '../session/Errands';
-import type { Traveller, WorldGraph } from '../world/WorldGraph';
+import type { WorldGraph } from '../world/WorldGraph';
 
 /** What of the realm an extension reads: the world database, never edited. */
 export type ExtensionWorld = Pick<
@@ -51,7 +51,6 @@ export type ExtensionWorld = Pick<
   | 'raceId'
   | 'namedClasses'
   | 'namedRaces'
-  | 'route'
 >;
 
 /** A shop trip under way, as the card reads it. */
@@ -88,7 +87,12 @@ export interface ExtensionSessionHost {
   huntingGrounds(options?: { as?: CharacterState; beneath?: boolean }): HuntingAdvice;
   realmClass(): RealmClass;
   capabilities(): Capabilities;
-  traveller(state: CharacterState): Traveller;
+  /**
+   * The walk between two rooms with what the character holds now, as the
+   * navigation engine plans it: refused, with the reason, where a key comes
+   * first, a fight on it is lost or not yet worked out, or there is no realm.
+   */
+  leg(from: RoomId, to: RoomId): Route;
   /** A counter's price in copper at that room, charm aside. */
   priceAt(name: string, shop: RoomId): number | null;
   /** The simulator's run of a lair's fight. */

@@ -23,6 +23,7 @@ import path from 'node:path';
 
 import { SessionManager } from '../src/main/session/SessionManager.ts';
 import { WorldGraph } from '../src/main/world/WorldGraph.ts';
+import { worldLeg } from '../src/main/session/navigation.ts';
 import { HOST, PORT, localProfile, skip, target } from './lib/local-realm.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -83,7 +84,9 @@ async function walkTo(destination) {
     const from = here();
     if (from === null) return 'no idea where the character is';
     if (from === destination) return null;
-    const route = world.route(from, destination, { level: session.character.progress.level ?? 1 });
+    const route = worldLeg(world, from, destination, {
+      level: session.character.progress.level ?? 1
+    });
     if (!route || route.blocked || route.steps.length === 0) return 'no route';
     for (const step of route.steps) await send(step.command);
   }

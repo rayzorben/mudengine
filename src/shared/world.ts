@@ -2538,6 +2538,11 @@ export function asRoomReference(value: string): RoomReference | null {
   return { map, room };
 }
 
+/** A route refused for `reason` before any step, in the reader's words. */
+export function unrouted(reason: string): Route {
+  return { steps: [], cost: 0, blocked: true, reason };
+}
+
 /** One step of a route. */
 export interface RouteStep {
   from: RoomId;

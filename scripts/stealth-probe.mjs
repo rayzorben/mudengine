@@ -25,6 +25,7 @@ import { WorldGraph } from '../src/main/world/WorldGraph.ts';
 import { commandOf } from '../src/shared/commands.ts';
 import { HOST, PORT, localProfiles, skip, target } from './lib/local-realm.mjs';
 import { OPPOSITE } from '../src/shared/world.ts';
+import { worldNearest } from '../src/main/session/navigation.ts';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -148,7 +149,8 @@ async function main() {
   for (let attempt = 0; attempt < 2 && !wielded; attempt += 1) {
     const here = session.character.room;
     if (here.map === null || here.number === null) break;
-    const route = world.nearest(
+    const route = worldNearest(
+      world,
       `${here.map}/${here.number}`,
       (room) =>
         room.shop !== undefined &&
