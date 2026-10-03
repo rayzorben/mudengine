@@ -42,7 +42,28 @@ const BAR = '│';
  */
 export function noticeSequence(message: string, atLineStart: boolean): string {
   const lead = atLineStart ? '' : '\r\n';
-  return `${lead}${CYAN}${BAR}${SGR_RESET} ${CYAN}${message}${SGR_RESET}\r\n`;
+  return `${lead}${noticeRows(message, Infinity).join('')}\r\n`;
+}
+
+/**
+ * One notice cut into rows of `columns` cells, each its own bytes with no
+ * line break, for a notice written row by row into a screen the server drew
+ * (`screenNotices`). The cut is the terminal's own wrap, made by hand so the
+ * last row never wraps past the bottom and scrolls the screen.
+ */
+export function noticeRows(message: string, columns: number): string[] {
+  const width = Math.max(1, columns);
+  const cells = [BAR, ' ', ...Array.from(message)];
+  const rows: string[] = [];
+  for (let at = 0; at < cells.length; at += width) {
+    const text = cells.slice(at, at + width).join('');
+    rows.push(
+      at === 0
+        ? `${CYAN}${BAR}${SGR_RESET} ${CYAN}${text.slice(2)}${SGR_RESET}`
+        : `${CYAN}${text}${SGR_RESET}`
+    );
+  }
+  return rows;
 }
 
 /** The part of a terminal a writer drives: bytes in, and a word when they land. */
