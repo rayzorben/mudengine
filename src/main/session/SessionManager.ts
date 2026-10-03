@@ -1108,7 +1108,7 @@ export class SessionManager {
             resumeAfterLoss: false
           }),
         moveInFlight: () => this.tracker.pendingMoves > 0,
-        walking: () => this.walker.walking,
+        walkingTo: () => this.walker.remaining.at(-1)?.to ?? null,
         busy: () => this.travel.isRetreating() || this.travel.retreatArmed,
         looping: () => this.loops.progress.status === 'running',
         hold: () => this.loops.noteErrand(),

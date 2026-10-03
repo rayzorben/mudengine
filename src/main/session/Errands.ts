@@ -2361,15 +2361,16 @@ export class Errands implements SessionModule {
    * `ErrandsSession.family`) and not the realm data's, deliberately: this
    * decides which *formulas* run, and the formulas are the server's. The two
    * can legitimately differ — see `Vocabulary.noteFamily` — and on the
-   * shipped configuration they do.
+   * shipped configuration they do. `attack` is the word priced:
+   * `combat.attack`'s, unless a what-if names another.
    */
-  realmClass(): RealmClass {
+  realmClass(attack = this.automationConfig.combat.attack): RealmClass {
     const row = this.world?.classNamed(this.tracker.current.className ?? '') ?? null;
     return {
       combat: row?.combat ?? null,
       magery: row?.magery ?? null,
       family: this.serverFamily,
-      attack: attackFor(this.automationConfig.combat.attack, this.capabilities().abilities)
+      attack: attackFor(attack, this.capabilities().abilities)
     };
   }
 
@@ -2431,6 +2432,7 @@ export class Errands implements SessionModule {
       mana: state.vitals.manaMax ?? state.vitals.mana,
       sheet,
       family,
+      pool: state.vitals.manaType,
       killConfidence: tuning().spells.killConfidence
     };
   }

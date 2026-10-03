@@ -605,6 +605,7 @@ export class AttackSpells {
             mana: state.vitals.mana,
             sheet: prowessSheetOf(state, { combat, magery }),
             family,
+            pool: state.vitals.manaType,
             target: {
               remaining: target.remaining,
               magicRes: target.entity?.magicResist ?? null,
@@ -657,6 +658,9 @@ export class AttackSpells {
         return;
       case 'empty-book':
         this.events.notice?.(t('automation.spells.emptyBook'));
+        return;
+      case 'kai':
+        this.events.notice?.(t('automation.spells.kai'));
         return;
       case 'no-attack-spells':
         this.events.notice?.(t('automation.spells.noAttackSpells'));

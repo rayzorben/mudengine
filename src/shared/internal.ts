@@ -997,12 +997,12 @@ const TUNING_DEFAULTS = {
     /** Legs replanned after a fight or a stopped walk, before the errand gives up. */
     maxLegs: 4,
     /**
-     * The whole errand's deadline, after which it gives the lap back.
+     * How long an errand's leg may go unwalked before it gives the lap back.
      *
      * `Walker.start` raises no `ended` when it replaces a running walk, so a
      * leg superseded by the player's own route leaves the errand with nothing
-     * to wake it. Generous: a shop several maps away, walked through fights
-     * and rests, is a legitimate few minutes.
+     * to wake it. Checked again at each lapse while the errand's own leg is
+     * still walking, so a long walk to the shop is never cut short.
      */
     errandTimeoutMs: 300_000,
     /**

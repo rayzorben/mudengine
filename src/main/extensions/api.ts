@@ -101,9 +101,10 @@ export interface ExtensionSessionHost {
    * The simulator's run of one monster fought alone: queued for the character
    * as it stands (pending until run), or run now for `as` (the same character
    * wearing other gear, `wearing`), every trial before it returns, so ask for
-   * one a piece of work.
+   * one a piece of work. With `as`, `attack` is the word fought with where
+   * it is not `combat.attack`'s (the attack a planner would lay).
    */
-  fightOdds(monster: string, as?: CharacterState): Odds;
+  fightOdds(monster: string, as?: CharacterState, attack?: string): Odds;
   /**
    * The lairs, realm-wide, whose fight the simulator has not run yet: a count
    * read while waiting on it, where the survey cost a third of a second a tick.
@@ -133,8 +134,8 @@ export interface ExtensionSessionHost {
    * in each one's slot, and which went on: none without a world.
    */
   wearing(items: readonly string[], as?: CharacterState): Wearing;
-  /** The attacks the class can make and a round of each. */
-  attacks(): AttackOption[];
+  /** The attacks the class can make and a round of each, as it stands or as `as`. */
+  attacks(as?: CharacterState): AttackOption[];
   /** The safety trace, newest first. */
   safety(): readonly SafetyDecision[];
   /** An escape, a move, a walk, an errand: the character is someone else's for now. */

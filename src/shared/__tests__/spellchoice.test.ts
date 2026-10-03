@@ -80,6 +80,7 @@ const input = (over: Partial<SpellChoiceInput> = {}): SpellChoiceInput => ({
   mana: 50,
   sheet: SHEET,
   family: null,
+  pool: 'MA',
   target: { remaining: 100, magicRes: null, abilities: [[66, 100]] },
   excluded: new Set(),
   killConfidence: 0.9,
@@ -127,6 +128,7 @@ describe('choosing the round spell', () => {
   it('says which of five things stopped it, and asks for an unread book', () => {
     expect(chooseAttackSpell({ book: null }).refusal).toBe('no-book');
     expect(chooseAttackSpell(input({ book: [] })).refusal).toBe('empty-book');
+    expect(chooseAttackSpell(input({ pool: 'KAI' })).refusal).toBe('kai');
     expect(chooseAttackSpell(input({ book: [BOOK[3]!] })).refusal).toBe('no-attack-spells');
     expect(chooseAttackSpell(input({ mana: 1 })).refusal).toBe('no-mana');
     expect(
@@ -214,6 +216,7 @@ describe('casts to kill', () => {
     mana: 66,
     sheet,
     family: 'greatermud' as const,
+    pool: 'MA' as const,
     killConfidence: 0.9
   };
 

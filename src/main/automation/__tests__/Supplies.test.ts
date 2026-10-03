@@ -115,7 +115,7 @@ function planner(over: Partial<SupplyPlanner> = {}) {
       return null;
     },
     moveInFlight: () => false,
-    walking: () => false,
+    walkingTo: () => null,
     busy: () => false,
     /*
      * A lap is running unless a test says otherwise: an errand only ever
@@ -210,7 +210,7 @@ describe('noticing the pack is short', () => {
     ).toEqual([]);
     expect(
       (() => {
-        const { planner: p, log } = planner({ walking: () => true });
+        const { planner: p, log } = planner({ walkingTo: () => '1/9' });
         make(p).onCharacter(short);
         return log;
       })()
@@ -448,6 +448,51 @@ describe('yielding to the person at the keyboard', () => {
     expect(auto.current).toBeNull();
     expect(log.at(-1)).toBe('release');
   });
+
+  /*
+   * Festus, 2026-10-02: a lantern from a General Store 90 rooms off, through
+   * fights, was given up at the deadline with the leg still walking.
+   */
+  it('keeps a long walk to the shop going past the deadline', () => {
+    let to: string | null = null;
+    const { planner: p, log } = planner({
+      walkingTo: () => to,
+      walk: () => {
+        to = '1/2147';
+        log.push('walk');
+        return null;
+      }
+    });
+    const auto = make(p);
+    auto.onCharacter(character(2));
+    vi.advanceTimersByTime(3 * TUNING.supplies.errandTimeoutMs);
+    expect(auto.current).not.toBeNull();
+    to = '1/9';
+    vi.advanceTimersByTime(TUNING.supplies.errandTimeoutMs + 1000);
+    expect(auto.current).toBeNull();
+    expect(log.at(-1)).toBe('release');
+  });
+
+  it('does not cut the errand short at the counter', () => {
+    let to: string | null = null;
+    const { planner: p, arrive } = planner({
+      walkingTo: () => to,
+      walk: () => {
+        to = '1/2147';
+        return null;
+      }
+    });
+    const auto = make(p);
+    auto.onCharacter(character(2));
+    vi.advanceTimersByTime(TUNING.supplies.errandTimeoutMs - 1000);
+    arrive();
+    to = null;
+    auto.onWalkEnded(true, null, character(2));
+    expect(auto.current?.stage).toBe('listing');
+    // The deadline lapses with the list asked: the counter's own clock answers for it.
+    vi.advanceTimersByTime(2000);
+    expect(auto.current?.stage).toBe('listing');
+  });
 });
 
 /*
@@ -544,7 +589,7 @@ describe('what the pack holds over the maximum', () => {
 
   it('stands aside for anything else that has the character', () => {
     for (const over of [
-      { walking: () => true },
+      { walkingTo: () => '1/9' },
       { busy: () => true },
       { moveInFlight: () => true }
     ]) {

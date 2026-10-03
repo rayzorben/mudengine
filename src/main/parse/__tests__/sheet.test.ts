@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EMPTY_CHARACTER } from '../../../shared/character';
+import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import { CharacterTracker } from '../CharacterTracker';
 import { StatusLine } from '../sheet';
@@ -44,6 +44,31 @@ describe('the status line’s one ask per report', () => {
     expect(line.reported(s, TEMPLATE)).toBeNull();
     line.prompt(s, prompt('[HP=10/MA=5]:', T + 1));
     expect(line.takeStatlineRequest()).toBe(false);
+  });
+});
+
+describe('which pool the status line states', () => {
+  const kai = (): CharacterState => {
+    const fresh = structuredClone(EMPTY_CHARACTER);
+    return { ...fresh, vitals: { ...fresh.vitals, manaType: 'KAI' } };
+  };
+
+  it('takes the template’s `MA=` as the player’s text, not the pool', () => {
+    const line = new StatusLine();
+    const s = line.reported(kai(), '[HP=%h/%H,MA=%m/%M]:') ?? kai();
+    const read = line.prompt(
+      s,
+      blockOf('status-line', '[HP=287/287,MA=12/29]:', { manaType: 'MA' }, T)
+    );
+    expect(read?.vitals.mana).toBe(12);
+    expect(read?.vitals.manaType).toBe('KAI');
+  });
+
+  it('reads the pool off the class default line', () => {
+    const line = new StatusLine();
+    const s = structuredClone(EMPTY_CHARACTER);
+    const read = line.prompt(s, blockOf('status-line', '[HP=287/KAI=29]:', { manaType: 'KAI' }, T));
+    expect(read?.vitals.manaType).toBe('KAI');
   });
 });
 
