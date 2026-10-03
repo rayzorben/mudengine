@@ -186,7 +186,10 @@ export class LoopRunner implements SessionModule {
    * it was and the stop keeps coming up due. That is the cautious reading and
    * it is deliberate: an empty visit means the clock was wrong or somebody
    * else took the kill, and writing *now* into it would sit the character out
-   * of a lair that is standing.
+   * of a lair that is standing. Except on a clock longer than
+   * `loop.emptyRecheckSeconds` (a boss's hours): that stop is looked at again
+   * after the recheck, since walking out every lap to a boss somebody else
+   * killed costs most of the lap.
    *
    * Kept across a stop and a resume, like the lap's place: the rooms have gone
    * on regenerating while the player was away, and the elapsed time is exactly
@@ -1497,8 +1500,15 @@ export class LoopRunner implements SessionModule {
     this.sawMonster = false;
     const clear = this.roomClear;
     this.roomClear = false;
-    if (stop === undefined || stop.every === undefined || !saw || !clear) return;
-    this.clearedAt.set(stop.room, this.now());
+    if (stop === undefined || stop.every === undefined) return;
+    if (saw && clear) {
+      this.clearedAt.set(stop.room, this.now());
+      return;
+    }
+    const recheck = tuning().loop.emptyRecheckSeconds;
+    if (!saw && stop.every > recheck) {
+      this.clearedAt.set(stop.room, this.now() - (stop.every - recheck) * 1000);
+    }
   }
 
   /** Anything in the room that is not a person. See `noteLeaving`. */

@@ -94,6 +94,15 @@ describe('timing a room’s refill', () => {
     expect(learnRefill(entry, { seconds: 5, names: [] }, 3, 2).refills).toEqual([30, 5]);
   });
 
+  it('counts no gap under the shortest as a refill', () => {
+    const room = (refills: number[]): LearnedSpawns => ({ refills, seen: {}, at: 0 });
+    // orohost's record: a room read empty and full again within a second, now and then a real one.
+    const reread = room([0.55, 0.6, 0.57, 0.6, 22, 0.58, 21, 0.6, 23]);
+    expect(refillClock(reread, 3)).toBeCloseTo(0.6);
+    expect(refillClock(reread, 3, 3)).toBe(22);
+    expect(usualClock([room([0.5, 0.6, 0.55]), room([69, 70, 68])], 3, 3)).toBe(69);
+  });
+
   it('reads the realm’s usual clock over every room that has one', () => {
     const room = (refills: number[]): LearnedSpawns => ({ refills, seen: {}, at: 0 });
     expect(usualClock([room([30, 30, 30]), room([60, 60, 60]), room([1])], 3)).toBe(45);

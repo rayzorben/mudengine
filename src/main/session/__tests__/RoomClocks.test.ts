@@ -33,6 +33,16 @@ describe('the clocks the wire timed', () => {
     expect(subject.lairClock(['1/3'], isLair, true)).toEqual({ seconds: 20, whose: 'usual' });
   });
 
+  it('leaves a lair’s sub-second gaps out of its clock and the usual one', () => {
+    // A lair's second monster, read within a second of the first one's death (orohost, 2026-10-03).
+    const subject = clocks({
+      '1/1': timed([0.5, 0.6, 0.55, 69, 70, 68]),
+      '1/2': timed([0.4, 0.6, 0.5])
+    });
+    expect(subject.lairClock(['1/1'], isLair, false)).toEqual({ seconds: 69, whose: 'timed' });
+    expect(subject.lairClock(['1/3'], isLair, true)).toEqual({ seconds: 69, whose: 'usual' });
+  });
+
   it('lists a room with no lair that kept refilling, with who came', () => {
     const subject = clocks({
       '1/1': timed([20, 20, 20]),

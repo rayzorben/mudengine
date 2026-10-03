@@ -65,10 +65,26 @@ export function learnRefill(
   };
 }
 
-/** A room's timed clock, the median gap, once it has `least` refills; null before. */
-export function refillClock(entry: LearnedSpawns | null | undefined, least: number): number | null {
-  if (!entry || entry.refills.length < Math.max(1, least)) return null;
-  return median(entry.refills);
+/**
+ * A room's timed clock, the median gap, once it has `least` refills; null before.
+ *
+ * A gap under `shortest` seconds is left out: in a lair, the room read empty
+ * and then full again within a second of a kill is the lair's second monster
+ * coming in (the Dungeon Entrance's 0.4 to 0.9 s). An arena's sub-second
+ * refills are real (the Newhaven Arena's 0.005 to 0.8 s), so its reader
+ * passes no floor. On orohost such gaps were half of every lair's
+ * record, and their median, 0.76 s, was the realm's usual clock: every lair
+ * with no clock of its own was priced as filling the moment it emptied
+ * (2026-10-03, a level-11 Mystic stood in an empty Iron Grate for four hours).
+ */
+export function refillClock(
+  entry: LearnedSpawns | null | undefined,
+  least: number,
+  shortest = 0
+): number | null {
+  const refills = entry?.refills.filter((seconds) => seconds >= shortest) ?? [];
+  if (refills.length < Math.max(1, least)) return null;
+  return median(refills);
 }
 
 /**
@@ -79,11 +95,12 @@ export function refillClock(entry: LearnedSpawns | null | undefined, least: numb
  */
 export function usualClock(
   entries: Iterable<LearnedSpawns | null | undefined>,
-  least: number
+  least: number,
+  shortest = 0
 ): number | null {
   const clocks: number[] = [];
   for (const entry of entries) {
-    const clock = refillClock(entry, least);
+    const clock = refillClock(entry, least, shortest);
     if (clock !== null) clocks.push(clock);
   }
   return median(clocks);

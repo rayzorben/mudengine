@@ -234,6 +234,8 @@ export class StatScreen implements SessionModule {
   private proposed = false;
   /** The last situation acted on or declined, so one situation is one attempt and one sentence. */
   private handled: string | null = null;
+  /** The points there were when `handled` was decided: more arriving at the same trainer and level are weighed again. */
+  private handledCp = 0;
   /** The figures this visit aims at: `train.wanted`, or what `byExp` chose for it. */
   private aimed: Record<TrainedAttribute, number> | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -300,7 +302,10 @@ export class StatScreen implements SessionModule {
     /*
      * Weighed once a level at a trainer: the weighing is seven surveys, and
      * the points it leaves unspent stay unspent until the next level gives
-     * more to weigh.
+     * more to weigh — or until more points arrive at this one. A level is
+     * decided on mid-read: *Welcome to level 11!* reached here before *You
+     * gain 15 CPs*, so the level's points were weighed as the 1 left over and
+     * never again (2026-10-03). Points spent here weigh nothing new.
      */
     const byExp = this.config.pick === 'exp';
     const key = byExp
@@ -313,8 +318,9 @@ export class StatScreen implements SessionModule {
             (attribute) => `${current[attribute] ?? '?'}>${this.config.wanted[attribute]}`
           )
         ].join('|');
-    if (this.handled === key) return;
+    if (this.handled === key && cp <= this.handledCp) return;
     this.handled = key;
+    this.handledCp = cp;
 
     const sheet = this.sheetOf(state);
     if (byExp) {

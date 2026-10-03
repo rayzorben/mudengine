@@ -692,8 +692,10 @@ tuning:
     # Where the world database states no lair clock (a MegaMUD export has no
     # Delay column) or no lair at all (an arena), the client times the gap
     # from the kill that emptied the room to the next monster in. A room's
-    # timed clock prices it after this many refills; this many are kept.
+    # timed clock prices it after this many refills; this many are kept. A
+    # lair's gap under refillShortestSeconds is the lair's second monster coming in.
     refillsLeast: 3
+    refillShortestSeconds: 3
     refillsKept: 12
 
     # How often automatic hunting (`automation.hunting`) may ask the survey. A
@@ -764,6 +766,9 @@ tuning:
     # raise the exp rate most (train.pick: exp). Most of what a stat does moves
     # in steps of three to ten points, so one point alone mostly shows nothing.
     statHorizon: 10
+    # And over how many of the best spots: the best alone often waits on its
+    # lair's clock, which no stat moves.
+    statPlaces: 5
 
   # Getting back into the shadows between fights — `AutoStealth`.
   # `askEveryMs` floors the retry after a failed roll, so a low-Stealth
@@ -1177,6 +1182,10 @@ tuning:
     # character is *standing somewhere*, and a loop that advanced the moment
     # each leg confirmed walked past twelve laps of monsters engaging nothing.
     dwellMs: 2000
+
+    # A stop on a clock longer than this (a boss's hours) found empty is looked
+    # at again after this many seconds.
+    emptyRecheckSeconds: 600
 
     # How long a loop stands still after an escape before it will plan again.
     #

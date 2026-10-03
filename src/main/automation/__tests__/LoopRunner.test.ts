@@ -1816,6 +1816,34 @@ describe('a stop that states its own clock', () => {
   });
 
   /*
+   * Except a boss's clock: hours, so a lair found empty (somebody else's
+   * kill) is looked at again after `emptyRecheckSeconds`, not every lap.
+   */
+  it('looks again at an empty boss after the recheck, not every lap', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    const boss: Loop = {
+      name: 'Ring and boss',
+      stops: [
+        { room: 'Arena', every: 30 },
+        { room: 'Throne', every: 28_800 }
+      ]
+    };
+    runner.start(boss, state());
+    lap(runner, true); // Arena cleared
+    lap(runner, false); // Throne entered and empty
+    expect(walked).toEqual(['Arena', 'Throne', 'Arena']);
+    // Arena's clock comes round and the throne stays skipped meanwhile.
+    vi.advanceTimersByTime(30_000);
+    lap(runner, true);
+    expect(walked.at(-1)).toBe('Arena');
+    // Past the recheck the throne is due again.
+    vi.advanceTimersByTime(600_000);
+    lap(runner, true);
+    expect(walked.at(-1)).toBe('Throne');
+  });
+
+  /*
    * The positive control for both: a loop with no clocks stated anywhere walks
    * the list as written, which is what every loop written by hand does.
    */
