@@ -133,14 +133,22 @@ option {
    * Five named tracks rather than a template per combination: the shape used to
    * be re-declared per state, three columns in one and five in another, which
    * is also why the width transition could not interpolate between them.
+   *
+   * The console's track is eighty measured columns a pane (`--console-w`, set
+   * by `useConsoleWidth`), shrinking only when the window cannot hold it, and
+   * the card rail takes the rest. Before a terminal is measured the console
+   * shares the window with it. A closed rail's track is `auto`: empty, so it
+   * costs nothing while the console shares the window, and stretched over
+   * what a fixed console leaves, so the tab rail keeps its edge.
    */
   --track-tabs: 0;
   --track-tsplit: 0;
-  --track-rail: 0;
+  --track-main: minmax(0, var(--console-w, 1fr));
+  --track-rail: auto;
   --track-rsplit: 0;
   grid-template-areas: 'tabs tsplit main rsplit rail';
   grid-template-columns:
-    var(--track-tabs) var(--track-tsplit) minmax(0, 1fr)
+    var(--track-tabs) var(--track-tsplit) var(--track-main)
     var(--track-rsplit) var(--track-rail);
   gap: 0;
   min-height: 0;
@@ -157,7 +165,7 @@ option {
 }
 
 .workspace[data-rail='open'] {
-  --track-rail: var(--rail-w);
+  --track-rail: minmax(0, 1fr);
   --track-rsplit: var(--gap);
 }
 
@@ -166,10 +174,9 @@ option {
  * rather than only its rotation.
  *
  * `top` spends rows, which are cheap. `left` and `right` spend columns, which
- * are not: the console needs 80 of them and no server in this family will
- * format to fewer, so a rail down a side is a deliberate trade of terminal
- * width for being able to read every character's health at once. See
- * docs/ui-design.md §3.8.
+ * come out of the card rail: the console keeps its eighty, so a rail down a
+ * side is a trade of card width for being able to read every character's
+ * health at once. See docs/ui-design.md §3.8.
  */
 .workspace[data-tabs='left'],
 .workspace[data-tabs='right'] {
@@ -203,7 +210,7 @@ option {
 .workspace[data-rail-side='left'] {
   grid-template-areas: 'rail rsplit main tsplit tabs';
   grid-template-columns:
-    var(--track-rail) var(--track-rsplit) minmax(0, 1fr)
+    var(--track-rail) var(--track-rsplit) var(--track-main)
     var(--track-tsplit) var(--track-tabs);
 }
 
@@ -291,15 +298,22 @@ option {
 
 .rail {
   /*
-   * More cards than fit at most heights, so the rail scrolls as a column.
+   * The rail is what the eighty-column console leaves, which on a wide window
+   * is wider than any card needs, so the cards stand side by side: a column
+   * fills to the rail's height and the next card starts the next column
+   * (todo 00, 2026-10-03). Every column is at least `--rail-column-min` and
+   * `align-content: stretch` shares the rest between them, so the cards fill
+   * the rail whatever its width. More columns than fit scroll sideways.
    * Every card in it is a fixed box; see below.
    */
   display: flex;
   flex-direction: column;
+  flex-wrap: wrap;
+  align-content: stretch;
   gap: var(--gap);
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  min-width: 0;
+  overflow: auto;
   /*
    * A performance rule before it is a visual one. Blink re-decides an `auto`
    * scrollbar inside every layout that passes through the rail, and a
@@ -332,6 +346,17 @@ option {
  * A *floating* card is exempt, because its height is dragged by the person
  * looking at it and there is nothing below it to move.
  */
+/*
+ * Every item in the rail is one column wide however wide its contents would
+ * be: `contain: inline-size` keeps a long line in a card from widening its
+ * column, and the minimum is the narrowest a card stays readable at (the
+ * map's legend, an inventory row with its slot).
+ */
+.rail > * {
+  contain: inline-size;
+  min-width: var(--rail-column-min);
+}
+
 .rail > .card {
   flex: 0 0 auto;
   /* The fallback is the point: a card added without a declared height still

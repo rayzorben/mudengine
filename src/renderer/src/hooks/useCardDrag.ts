@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { insertionIndex } from '../lib/reorder';
+import { wrappedInsertionIndex, type WrappedSlot } from '../lib/reorder';
 import { snapTarget, type SnapBox, type SnapSide } from '../lib/snap';
 import type { CardId, CardLayoutApi, Lane } from '../lib/cards';
 import { tuning } from '../lib/tuning';
@@ -57,14 +57,15 @@ interface LaneShape {
   lane: Lane;
   box: DOMRect;
   /**
-   * Card midpoints along the lane's own axis.
+   * Each card's line and its midpoint along the lane's own axis.
    *
-   * The rail stacks, so its axis is vertical; the strips run left to right, so
-   * theirs is horizontal. One number per card either way — which is what lets
-   * the insertion index be computed the same way for all three.
+   * The rail stacks, so its axis is vertical and its lines are the columns it
+   * wraps into; the strips run left to right in one line, so theirs is
+   * horizontal. The same shape for all three, which is what lets the
+   * insertion index be computed the same way for each.
    */
   vertical: boolean;
-  slots: number[];
+  slots: WrappedSlot[];
 }
 
 interface Origin {
@@ -127,7 +128,9 @@ export function useCardDrag(
         box: element.getBoundingClientRect(),
         slots: Array.from(element.querySelectorAll<HTMLElement>('[data-card]')).map((card) => {
           const box = card.getBoundingClientRect();
-          return vertical ? box.top + box.height / 2 : box.left + box.width / 2;
+          return vertical
+            ? { line: box.left, along: box.top + box.height / 2 }
+            : { line: box.top, along: box.left + box.width / 2 };
         })
       });
     }
@@ -178,8 +181,10 @@ export function useCardDrag(
         // rule the tab rail drags by, stated once in `lib/reorder.ts`: two
         // copies of it drift into an indicator that points at one gap while the
         // drop lands in another.
-        const along = lane.vertical ? y : x;
-        return { where: 'lane', lane: lane.lane, index: insertionIndex(lane.slots, along) };
+        const index = lane.vertical
+          ? wrappedInsertionIndex(lane.slots, y, x)
+          : wrappedInsertionIndex(lane.slots, x, y);
+        return { where: 'lane', lane: lane.lane, index };
       }
       /*
        * Then a card already over the console to line up with.
