@@ -272,16 +272,12 @@ export class ItemErrand implements SessionModule {
   }
 
   /**
-   * Why the first of `items` the pack lacks cannot be got, or null where each
-   * has a counter, an ask, or a placed dropper combat would fight. A dropper out of
-   * reach from here still counts: an earlier item can open the way to it
-   * (2026-10-01: the Large Chamber guardian, behind the bone key's door, drops
-   * the stone key). Asks nothing of the server.
+   * The first of `items` the pack lacks that cannot be got, and why, or null
+   * where each has a counter, an ask, or a placed dropper combat would fight.
+   * A dropper out of reach from here still counts: an earlier item can open the
+   * way to it. Asks nothing of the server. A trip plans its keys with the
+   * navigation engine first; this is the errand's own check before it sets off.
    */
-  unobtainable(items: readonly Wanted[], state: CharacterState): string | null {
-    return this.firstUnobtainable(items, state)?.why ?? null;
-  }
-
   private firstUnobtainable(
     items: readonly Wanted[],
     state: CharacterState

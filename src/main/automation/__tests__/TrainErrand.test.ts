@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  planRefusalsWords,
+  type Plan,
+  type PlanRefusal,
+  type PlanStep
+} from '../../../shared/navigation';
 import { tuning } from '../../app/tuning';
 import { TrainErrand, type TrainPlanner } from '../TrainErrand';
 import { CommandQueue } from '../CommandQueue';
@@ -75,10 +81,39 @@ let released: number;
 let fetched: Array<{ items: string[]; then: Route }>;
 let fetchingNow: boolean;
 
-const planner = (over: Partial<TrainPlanner> = {}): TrainPlanner => ({
+/**
+ * What the engine plans for a route answer: a walk; the keys a blocked route
+ * names, then the last leg; or the route's reason as a refusal.
+ */
+const planned =
+  (routeTo: (room: string) => Route | string) =>
+  (room: string): Plan => {
+    const route = routeTo(room);
+    if (typeof route === 'string') {
+      return { kind: 'refused', refusals: [{ kind: 'no-way', why: route }] };
+    }
+    if (!route.blocked) return { kind: 'plan', steps: [{ kind: 'walk', route }], cost: route.cost };
+    const keyed = route.unlocks;
+    if (keyed === undefined || keyed.blocked || (keyed.needs ?? []).length === 0) {
+      return { kind: 'refused', refusals: [{ kind: 'no-way', why: route.reason ?? '' }] };
+    }
+    const fetches: PlanStep[] = (keyed.needs ?? []).map((item) => ({
+      kind: 'buy',
+      item,
+      room: '1/1'
+    }));
+    return { kind: 'plan', steps: [...fetches, { kind: 'walk', route: keyed }], cost: keyed.cost };
+  };
+
+/** The refusal a route answer's reason becomes. */
+const noWay = (why: string): string => t('navigation.noWayBecause', { why });
+
+type PlannerOver = Partial<TrainPlanner> & { routeTo?: (room: string) => Route | string };
+
+const planner = ({ routeTo, ...over }: PlannerOver = {}): TrainPlanner => ({
   here: () => here,
   trainers: () => [TITAN, AMAZON],
-  routeTo: () => ROUTE,
+  plan: planned(routeTo ?? (() => ROUTE)),
   walk: (route) => {
     walked.push(route);
     return null;
@@ -87,7 +122,6 @@ const planner = (over: Partial<TrainPlanner> = {}): TrainPlanner => ({
     fetched.push({ items: items.map((item) => item.name), then });
     return null;
   },
-  unobtainable: () => null,
   fetching: () => fetchingNow,
   lightFor: () => null,
   lightSettled: () => {},
@@ -120,7 +154,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const make = (config = train(), over: Partial<TrainPlanner> = {}, enabled = true): TrainErrand =>
+const make = (config = train(), over: PlannerOver = {}, enabled = true): TrainErrand =>
   new TrainErrand(config, enabled, queue, planner(over), {
     notice: (message) => notices.push(message),
     decided: (decision) => decisions.push(decision)
@@ -146,7 +180,7 @@ const skippedOne = (trainer: TrainerChoice, why: string): string =>
 const unreachable = (why: string): string =>
   t('automation.train.refusalUnreachable', {
     level: 30,
-    skipped: [skippedOne(TITAN, why), skippedOne(AMAZON, why)].join('; ')
+    skipped: [skippedOne(TITAN, noWay(why)), skippedOne(AMAZON, noWay(why))].join('; ')
   });
 
 describe('going to collect the level', () => {
@@ -424,7 +458,7 @@ describe('going to collect the level', () => {
     make(train(), { routeTo: (room) => (room === '3/542' ? BLOCKED : ROUTE) }).onCharacter(owed());
     expect(walked).toEqual([ROUTE]);
     expect(notices).toEqual([
-      t('automation.train.skipping', { skipped: skippedOne(TITAN, 'No way there at all') }),
+      t('automation.train.skipping', { skipped: skippedOne(TITAN, noWay('No way there at all')) }),
       going(AMAZON)
     ]);
   });
@@ -500,7 +534,10 @@ describe('going to collect the level', () => {
     make(train({ trainer: TITAN.shop }), { routeTo: () => BLOCKED }).onCharacter(owed());
     expect(walked).toEqual([]);
     expect(notices).toEqual([
-      t('automation.train.refusalNoRoute', { room: TITAN.roomName, why: 'No way there at all' })
+      t('automation.train.refusalNoRoute', {
+        room: TITAN.roomName,
+        why: noWay('No way there at all')
+      })
     ]);
   });
 
@@ -623,7 +660,7 @@ describe('a trainer behind a keyed door', () => {
     ...ROUTE,
     needs: [{ id: 338, name: 'iron key' }]
   } as Route;
-  const keyed = (over: Partial<TrainPlanner> = {}): TrainErrand =>
+  const keyed = (over: PlannerOver = {}): TrainErrand =>
     make(train(), {
       trainers: () => [TITAN],
       routeTo: () => ({ ...BLOCKED, unlocks: KEYED }),
@@ -632,7 +669,10 @@ describe('a trainer behind a keyed door', () => {
 
   it('hands the key to the item errand, with the walk to the trainer owed', () => {
     keyed().onCharacter(owed());
-    expect(fetched).toEqual([{ items: ['iron key'], then: KEYED }]);
+    // The last leg is the plan's walk after its last fetch, steps and cost.
+    expect(fetched).toEqual([
+      { items: ['iron key'], then: { steps: KEYED.steps, cost: KEYED.cost, blocked: false } }
+    ]);
     expect(walked).toEqual([]);
     expect(notices).toContain(
       t('automation.train.goingKeyed', {
@@ -703,9 +743,34 @@ describe('a trainer behind a keyed door', () => {
   });
 
   it('is out of reach when a key cannot be got, and nothing is fetched', () => {
-    const why = 'no stone key';
-    keyed({ unobtainable: () => why }).onCharacter(owed());
+    const refusals: PlanRefusal[] = [
+      { kind: 'fight', item: { id: 344, name: 'stone key' }, monster: 'ogre', survives: 0.5 }
+    ];
+    const why = planRefusalsWords(refusals, t);
+    keyed({ plan: () => ({ kind: 'refused', refusals }) }).onCharacter(owed());
     expect(fetched).toEqual([]);
+    expect(notices).toContain(
+      t('automation.train.refusalUnreachable', { level: 30, skipped: skippedOne(TITAN, why) })
+    );
+  });
+
+  /* A way that wants a room emptied first is planned, and said, but not walked. */
+  it('says a way that wants a room cleared first, and walks nothing', () => {
+    const plan: Plan = {
+      kind: 'plan',
+      steps: [
+        { kind: 'walk', route: ROUTE },
+        { kind: 'clear', room: '12/1799', name: 'Deep Dark Pit', monsters: ['hydra'] },
+        { kind: 'walk', route: ROUTE }
+      ],
+      cost: 3
+    };
+    keyed({ plan: () => plan }).onCharacter(owed());
+    expect(walked).toEqual([]);
+    const why = t('automation.train.refusalClearing', {
+      roomName: 'Deep Dark Pit',
+      monsters: 'hydra'
+    });
     expect(notices).toContain(
       t('automation.train.refusalUnreachable', { level: 30, skipped: skippedOne(TITAN, why) })
     );
@@ -715,7 +780,10 @@ describe('a trainer behind a keyed door', () => {
     keyed({ routeTo: () => BLOCKED }).onCharacter(owed());
     expect(fetched).toEqual([]);
     expect(notices).toContain(
-      t('automation.train.refusalUnreachable', { level: 30, skipped: skippedOne(TITAN, 'locked') })
+      t('automation.train.refusalUnreachable', {
+        level: 30,
+        skipped: skippedOne(TITAN, noWay('locked'))
+      })
     );
   });
 });

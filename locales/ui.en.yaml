@@ -4993,6 +4993,7 @@ automation:
     becauseOwed: a level was earned and not collected
     whyStopped: the walk stopped before it arrived
     whyFetch: the key for the door on the way was not fetched
+    refusalClearing: '{monsters} must be killed in {roomName} before the way on opens, and the trip to the trainer does not stop to kill them'
     refusalNowhere: A level is waiting, and the world data names no trainer that will train this
       character at level {level}. Nothing walked.
     refusalTrainerStale: A level is waiting, and the trainer chosen in settings no longer trains
@@ -5687,3 +5688,13 @@ gates:
   roll: rolls {stat} against {value}
   spellOff: not under {name}
   standing: '{low} to {high} only'
+# Why a plan to get somewhere has no way (`shared/navigation.ts`).
+navigation:
+  fightForItem: '{item} comes from {monster}, which you survive {survives} of the time'
+  fightInTheWay: '{monster} stands in the way, and you survive {survives} of the time'
+  noSource: nothing in the world data gives {item}
+  noWay: no way there
+  noWayBecause: 'no way there: {why}'
+  oddsUnread: the fight with {monster} is still being worked out
+  outOfReach: everywhere that gives {item} is out of reach
+  purse: '{item} costs more than you carry'

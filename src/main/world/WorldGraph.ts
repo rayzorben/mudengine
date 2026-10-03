@@ -16,7 +16,7 @@ import { describeObstacle, leverOpening } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
 import { scriptAfter } from './navigation/scriptWays';
-import { ItemSources, spokenFor } from './navigation/sources';
+import { ItemSources, spokenFor, type ItemSource } from './navigation/sources';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
@@ -299,30 +299,11 @@ export class WorldGraph {
    * on the pair because the answer is about both.
    */
   private readonly resolvedRows = new Map<string, MobRowChoice | null>();
-  /**
-   * Shop name → the rooms holding it, built on the first ask. Null until then:
-   * most sessions never open a Reference card, and 55,806 rooms is not a scan
-   * to pay for on load.
-   */
+  /** Shop name → its rooms, built on the first ask: most sessions never open a Reference card. */
   private shopRoomsByName: Map<string, WorldRoom[]> | null = null;
-  /**
-   * Monster number → the rooms the realm spawns it in, built on the first ask.
-   *
-   * Null until then, for `shopRoomsByName`'s reason exactly: most sessions
-   * never open a Reference card, and this is the same 55,806-room scan. One
-   * scan answers every monster, so the alternative — a filter per clicked name
-   * — is the N+1 this layer exists to refuse.
-   */
+  /** Monster number → its spawn rooms, built on the first ask: one scan for every monster, never one per name. */
   private mobRoomsById: Map<number, MobSpawnRoom[]> | null = null;
-  /**
-   * Item id -> the **rooms** whose counter stocks it, built on the first ask.
-   *
-   * `Catalogue.stockedBy` answers by name because that is what `WorldItem.shops`
-   * holds and what a card prints. A name is not somewhere to walk to — `Boat
-   * Launch` is one shop row standing in two rooms — so choosing where to buy
-   * needs the rooms, and re-deriving them per ask is the scan over 57,511
-   * rooms this file refuses everywhere else.
-   */
+  /** Item id → the rooms whose counter stocks it, built on the first ask: a shop name is not a room. */
   private stocking: Record<'sold' | 'taken', Map<number, WorldRoom[]>> | null = null;
   /** Every way the realm gives an item (`navigation/sources.ts`). */
   private readonly sources = new ItemSources({
@@ -334,15 +315,7 @@ export class WorldGraph {
     summonersOf: (mob) => this.summonersOf(mob),
     spawnRoomsOf: (mob) => this.spawnRoomsOf(mob)
   });
-  /**
-   * The items that are themselves a way through, as edges — built once.
-   *
-   * An item that teleports is an edge from **everywhere** to one room, which
-   * is why it is a flat list rather than a map keyed by where it is used:
-   * `WorldItem.lands` is a fixed address and drinking the potion works
-   * wherever the character is standing. The exit objects are shared across
-   * every search and never mutated, like the portal table beside them.
-   */
+  /** The items that are a way through, as edges from everywhere to one room, built once and shared. */
   private landings: ReadonlyArray<PortalExit> | null = null;
   /**
    * What each of those edges spends, keyed by the edge — see `Router.buildRoute`.
@@ -2363,6 +2336,20 @@ export class WorldGraph {
   /** A* from one room to another — `Router.route`. */
   route(from: RoomId, to: RoomId, traveller?: Traveller, options?: RouteOptions): Route {
     return this.router.route(from, to, traveller, options);
+  }
+
+  /** What reaching each of these rooms costs, one search for all (`Router.sweepTo`). */
+  sweepTo(
+    from: RoomId,
+    wanted: ReadonlySet<RoomId>,
+    traveller: Traveller
+  ): Map<RoomId, { cost: number; moves: number }> {
+    return this.router.sweepTo(from, wanted, traveller);
+  }
+
+  /** Every way the realm gives an item (`navigation/sources.ts`). */
+  itemSources(item: number): ItemSource[] {
+    return this.sources.of(item);
   }
 }
 

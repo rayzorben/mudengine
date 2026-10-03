@@ -17,6 +17,13 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
+import {
+  plannedItems,
+  planRefusalsWords,
+  type Plan,
+  type PlannedItem,
+  type PlanStep
+} from '../../shared/navigation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
@@ -40,17 +47,15 @@ export interface TrainPlanner {
   /** The trainers the realm says will take this character at a level (now's by default), cheapest first. */
   trainers(level?: number): TrainerChoice[];
   /**
-   * A route to a room, or the reason there is none. A blocked one carries the
-   * way through a door whose key the realm says where to get (`Route.unlocks`,
-   * with its `needs`), where there is one.
+   * The plan to a room from where the character stands (the one navigation
+   * engine): the keys the way wants, fetched in the order they can be had, and
+   * the fights it takes; or why there is none. Null while unplaced.
    */
-  routeTo(room: RoomId): Route | string;
+  plan(room: RoomId): Plan | null;
   /** Hands the route to the walker as a leg. Returns its refusal, or null. */
   walk(route: Route): string | null;
   /** Gets each item (`ItemErrand.collect`), then walks `then`. Returns its refusal, or null. */
   fetch(items: ReadonlyArray<Wanted>, then: Route): string | null;
-  /** Why one of these items cannot be got (`ItemErrand.unobtainable`), or null. */
-  unobtainable(items: ReadonlyArray<Wanted>): string | null;
   /** The light `route`'s dark rooms want bought first (`LightAhead.wanted`), or null. */
   lightFor(route: Route): LightFetch | null;
   /** What became of fetching that light, said (`LightAhead.settle`). */
@@ -80,13 +85,14 @@ export interface TrainEvents {
 }
 
 /**
- * How to reach a trainer: standing in its room, a route, a route through a
- * door whose key is fetched on the way (`needs`), or the reason there is none.
+ * How to reach a trainer: standing in its room; a plan, as the whole walk
+ * (`route`, priced at the plan's cost), the keys it fetches on the way in the
+ * order it fetches them (`needs`) and the last leg walked after them
+ * (`then`); or the reason there is none.
  */
 type Way =
   | { kind: 'here' }
-  | { kind: 'route'; route: Route }
-  | { kind: 'keyed'; route: Route; needs: ReadonlyArray<{ id: number; name: string }> }
+  | { kind: 'route'; route: Route; needs: readonly PlannedItem[]; then: Route }
   | { kind: 'none'; why: string };
 
 /** A trainer some way reaches, with the walk there (none where the character stands in it). */
@@ -406,7 +412,7 @@ export class TrainErrand implements SessionModule {
       const room = roomId(candidate.map, candidate.room);
       const way = ways.get(room) ?? this.routeFor(candidate);
       ways.set(room, way);
-      if (way.kind === 'here' || way.kind === 'route' || way.kind === 'keyed') {
+      if (way.kind === 'here' || way.kind === 'route') {
         const each: Reached = {
           trainer: candidate,
           way,
@@ -495,26 +501,33 @@ export class TrainErrand implements SessionModule {
   private routeFor(trainer: TrainerChoice): Way {
     const to = roomId(trainer.map, trainer.room);
     if (this.planner.here() === to) return { kind: 'here' };
-    const route = this.planner.routeTo(to);
-    if (typeof route === 'string') return { kind: 'none', why: route };
-    if (!route.blocked) return { kind: 'route', route };
+    const made = this.planner.plan(to);
+    if (made === null) return { kind: 'none', why: t('automation.walk.refusalNoRoute') };
+    if (made.kind === 'refused') return { kind: 'none', why: planRefusalsWords(made.refusals, t) };
     /*
-     * A door whose key a monster on the way drops is walked through once the
-     * item errand has fetched the key (2026-10-01: the Super Mystic Trainer in 1/2240 is behind a
-     * Large Chamber door whose guardian drops the key, and the trip fell back
-     * to a trainer at 45,445 copper). The item errand kills the guardian,
-     * takes the key and walks on.
+     * A way that wants a room emptied on the way (`nomonsters`) is planned but
+     * not walked: the trip has nobody to clear it, so it says which and why.
      */
-    const keyed = route.unlocks;
-    if (keyed !== undefined && !keyed.blocked && (keyed.needs ?? []).length > 0) {
-      // Every key, before setting off: the first can lead somewhere only the
-      // second gets out of (2026-10-02: a one-way wall, then an ogre combat
-      // would not fight in front of the stone key's door).
-      const why = this.planner.unobtainable(keyed.needs ?? []);
-      if (why !== null) return { kind: 'none', why };
-      return { kind: 'keyed', route: keyed, needs: keyed.needs ?? [] };
+    const clear = made.steps.find((step) => step.kind === 'clear');
+    if (clear?.kind === 'clear') {
+      return {
+        kind: 'none',
+        why: t('automation.train.refusalClearing', {
+          roomName: clear.name,
+          monsters: clear.monsters.join(', ')
+        })
+      };
     }
-    return { kind: 'none', why: route.reason ?? t('automation.walk.refusalNoRoute') };
+    const walked = (steps: readonly PlanStep[]): Route => ({
+      steps: steps.flatMap((step) => (step.kind === 'walk' ? step.route.steps : [])),
+      cost: steps.reduce((sum, step) => sum + (step.kind === 'walk' ? step.route.cost : 0), 0),
+      blocked: false
+    });
+    // The last leg is every walk after the last fetch; the whole walk is priced at the plan's cost.
+    const lastFetch = made.steps.findLastIndex((step) => step.kind !== 'walk');
+    const then = walked(made.steps.slice(lastFetch + 1));
+    const route: Route = { ...walked(made.steps), cost: made.cost };
+    return { kind: 'route', route, needs: plannedItems(made), then };
   }
 
   /** The purse, then the walk or the verb. One level is one attempt from here on. */
@@ -561,16 +574,22 @@ export class TrainErrand implements SessionModule {
     const to = roomId(chosen.map, chosen.room);
     // A light the trainer's dark rooms want is fetched as a door's key is (todo 11).
     const light = this.planner.lightFor(route);
-    if (way.kind === 'keyed' || light !== null) {
-      const needs = [...(way.kind === 'keyed' ? way.needs : []), ...(light?.items ?? [])];
+    const keyed = way.needs.length > 0;
+    if (keyed || light !== null) {
+      const needs = [...way.needs, ...(light?.items ?? [])];
       const where = {
         room: chosen.roomName,
         items: needs.map((item) => item.name).join(', '),
         cost: chosen.cost.toLocaleString()
       };
-      const refused = this.planner.fetch(needs, route);
+      /*
+       * The plan's keys, in its order. Exemption, 2026-10-02: the item trip
+       * still checks each item itself (`ItemErrand.firstUnobtainable`) until
+       * it walks the planned steps.
+       */
+      const refused = this.planner.fetch(needs, way.then);
       // A refused keyed trip is said as the trip's refusal: nothing walks on.
-      if (light !== null && (refused === null || way.kind !== 'keyed')) {
+      if (light !== null && (refused === null || !keyed)) {
         this.planner.lightSettled(light, refused);
       }
       if (refused === null) {
@@ -582,7 +601,7 @@ export class TrainErrand implements SessionModule {
         this.phase = { kind: 'walking', to, trainer: chosen, fetching: needs };
         return;
       }
-      if (way.kind === 'keyed') {
+      if (keyed) {
         this.refuse(t('automation.train.refusalNoRoute', { room: chosen.roomName, why: refused }));
         return;
       }

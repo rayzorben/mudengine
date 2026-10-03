@@ -1478,6 +1478,10 @@ tuning:
     # usually across maps, which is what most of them are for.
     portalPenalty: 3
 
+    # One fight in a plan costs this many ordinary steps, so a key off a monster
+    # is weighed against a longer walk to a shop that sells it.
+    fightCost: 30
+
     # What using an item that teleports costs over an ordinary step — the
     # potion of levitation, Paradigm's seven tokens. Dearer than a portal by a
     # wide margin, and deliberately: a room script's teleport is scenery you

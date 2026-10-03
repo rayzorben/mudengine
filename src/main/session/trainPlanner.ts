@@ -23,11 +23,11 @@ import { ERRAND_LEG, type Travel } from './Travel';
 /** The modules, read when the errand asks: several are built after it. */
 export interface TrainPlannerModules {
   tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
-  errands: Pick<Errands, 'trainers' | 'planFromHere'>;
+  errands: Pick<Errands, 'trainers' | 'planTo'>;
   walker: Pick<Walker, 'start' | 'walking'>;
   loops: Pick<LoopRunner, 'progress' | 'noteErrand'>;
   travel: Pick<Travel, 'isRetreating' | 'retreatArmed' | 'escapeUnanswered'>;
-  itemErrand: Pick<ItemErrand, 'collect' | 'running' | 'unobtainable'>;
+  itemErrand: Pick<ItemErrand, 'collect' | 'running'>;
   light: Pick<LightAhead, 'wanted' | 'settle'>;
   world:
     | Pick<WorldGraph, 'byId' | 'item' | 'classNamed' | 'raceId' | 'namedClasses' | 'namedRaces'>
@@ -45,11 +45,9 @@ export function trainPlanner(parts: TrainPlannerParts): TrainPlanner {
   return {
     here: () => roomAddress(m().tracker.current.room),
     trainers: (level) => m().errands.trainers(level),
-    // A blocked plan carries its keyed way, planned in the same pass.
-    routeTo: (room) => m().errands.planFromHere(room, { unlocks: true }),
+    plan: (room) => m().errands.planTo(room),
     walk: (route) => m().walker.start(route, m().tracker.current, ERRAND_LEG),
     fetch: (items, then) => m().itemErrand.collect(items, then, m().tracker.current),
-    unobtainable: (items) => m().itemErrand.unobtainable(items, m().tracker.current),
     fetching: () => m().itemErrand.running,
     lightFor: (route) => m().light.wanted(route, m().tracker.current),
     lightSettled: (light, refused) => m().light.settle(light, refused),
