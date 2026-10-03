@@ -68,17 +68,18 @@ export interface Home {
 }
 
 /**
- * The files a character owns outside its directory, each named after its id:
- * the directory under the root and the file's suffix. The client's stores and
+ * The records a character owns outside its directory, each named after its id:
+ * the directory under the root, the suffix, and whether the record is one file
+ * or a directory of them (the fight log's segments). The client's stores and
  * the character export both read this, so a new record travels with the
  * character by being listed here.
  */
 export const CHARACTER_RECORDS = {
-  memory: { dir: 'memory', suffix: '.json' },
-  belongings: { dir: 'belongings', suffix: '.json' },
-  fights: { dir: 'fights', suffix: '.jsonl.gz' },
-  talk: { dir: 'talk', suffix: '.jsonl' },
-  backscroll: { dir: 'backscroll', suffix: '.log' }
+  memory: { dir: 'memory', suffix: '.json', holds: 'file' },
+  belongings: { dir: 'belongings', suffix: '.json', holds: 'file' },
+  fights: { dir: 'fights', suffix: '', holds: 'directory' },
+  talk: { dir: 'talk', suffix: '.jsonl', holds: 'file' },
+  backscroll: { dir: 'backscroll', suffix: '.log', holds: 'file' }
 } as const;
 
 export type CharacterRecord = keyof typeof CHARACTER_RECORDS;

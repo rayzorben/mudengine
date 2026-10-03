@@ -26,7 +26,7 @@ import { LoopStore } from './config/LoopStore';
 import { SettingsEditor, type SettingsEditorOptions } from './config/SettingsEditor';
 import { LoopCatalogue } from './config/LoopCatalogue';
 import { migrateHome } from './config/Migration';
-import { homeAt, homeRoot, type Home } from './app/home';
+import { CHARACTER_RECORDS, homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { wearerOf } from './world/wearer';
 import { RealmLibrary } from './world/RealmLibrary';
@@ -75,6 +75,8 @@ import type { ShippedSentences } from '../shared/sentences';
 import { NO_PLAYERS, NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
+import { segmentFightLogs } from './session/fightLogMigration';
+import { fightsPerSegment } from './session/fightSegments';
 import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { MobLoreEntry } from '../shared/lore';
@@ -590,14 +592,21 @@ function splitMemoryFor(id: SessionId): RealmMemory | undefined {
  * turned off.
  */
 const fightLogs = new Map<SessionId, FightLog>();
+/**
+ * The startup split of every old one-file fight log into segments (todo 13).
+ * Each log waits for it before touching its record; it never rejects.
+ */
+let fightsSegmented: Promise<void> = Promise.resolve();
 
 function fightsFor(id: SessionId): FightSink {
   if (!(config?.config.logging.fights ?? DEFAULT_CONFIG.logging.fights)) return NO_FIGHTS;
   const existing = fightLogs.get(id);
   if (existing) return existing;
-  const log = new FightLog(home.record('fights', id), {
-    notice: (message) => announce('fights', message)
-  });
+  const log = new FightLog(
+    home.record('fights', id),
+    { notice: (message) => announce('fights', message) },
+    fightsSegmented
+  );
   fightLogs.set(id, log);
   // Folded now, off the thread: the hunting survey asks synchronously, and
   // automatic hunting's first survey would otherwise price nothing and keep
@@ -3228,6 +3237,13 @@ function build(): void {
   loops = createLoops();
   publishTree();
   internal = createInternal();
+  // After the tuning is read, so the split uses the player's segment size;
+  // before any session, so every fight log waits for it.
+  fightsSegmented = segmentFightLogs(
+    home.state(CHARACTER_RECORDS.fights.dir),
+    fightsPerSegment(),
+    (message) => announce('home', message, 'log')
+  );
   // As soon as the tuning is read, so the start of the client is sampled under the player's numbers.
   record('main', mainThreadProfiler());
   lore = createLore();

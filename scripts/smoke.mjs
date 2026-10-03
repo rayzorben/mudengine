@@ -17245,12 +17245,13 @@ check(
  * Nothing reads these yet, which is the point of collecting them: every
  * question worth asking about how a character fights needs a record that
  * predates the question. What is asserted is that a fight in this run reached
- * a file, and that the record carries the *conditions* as well as the
+ * the record, and that the record carries the *conditions* as well as the
  * measurement — a damage figure with no level, class or gear beside it cannot
  * be compared with anything.
  */
 {
-  const file = path.join(HOME, 'fights', `${SESSION}.jsonl.gz`);
+  // A fresh home, so the record's first segment (`session/fightSegments.ts`).
+  const file = path.join(HOME, 'fights', SESSION, '0001.jsonl.gz');
   let written = [];
   try {
     written = zlib

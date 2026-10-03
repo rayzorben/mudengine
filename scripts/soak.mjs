@@ -246,7 +246,7 @@ class Driver {
     this.noSys = false;
     this.world = library.load(profile.database).graph;
     this.fights = new FightLog(
-      path.join(path.dirname(configPath()), 'fights', `${profile.id}.jsonl.gz`),
+      path.join(path.dirname(configPath()), 'fights', profile.id),
       { notice: (message) => log(role, 'fights', message) }
     );
     this.session = new SessionManager(

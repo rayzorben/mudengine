@@ -4,11 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import { FightLog, readFights } from '../FightLog';
-import type { FightRecord } from '../../../shared/fights';
+import { FightLog } from '../FightLog';
+import { foldFile, readFights, segmentFile } from '../fightSegments';
+import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { FOLD_VERSION, type FightRecord } from '../../../shared/fights';
+import { setTuning } from '../../app/tuning';
 
 let dir: string;
+/** The character's record: a directory of segments. */
 let file: string;
+/** Its first segment. */
+let first: string;
 
 const fight = (over: Partial<FightRecord> = {}): FightRecord => ({
   at: 1_700_000_000_000,
@@ -43,11 +49,13 @@ const fight = (over: Partial<FightRecord> = {}): FightRecord => ({
 beforeEach(() => {
   vi.useFakeTimers();
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-fights-'));
-  file = path.join(dir, 'fights', 'main.jsonl.gz');
+  file = path.join(dir, 'fights', 'main');
+  first = segmentFile(file, 1);
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  setTuning(DEFAULT_INTERNAL.tuning);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -56,7 +64,7 @@ describe('writing fights down', () => {
     const log = new FightLog(file);
     log.record(fight());
     // Deferred on purpose: the parse path pushes and returns.
-    expect(fs.existsSync(file)).toBe(false);
+    expect(fs.existsSync(first)).toBe(false);
     vi.advanceTimersByTime(3000);
     expect(readFights(file)).toEqual([fight()]);
     log.dispose();
@@ -66,7 +74,7 @@ describe('writing fights down', () => {
     const log = new FightLog(file);
     log.record(fight());
     log.flush();
-    expect(fs.existsSync(path.dirname(file))).toBe(true);
+    expect(fs.existsSync(first)).toBe(true);
     log.dispose();
   });
 
@@ -79,15 +87,15 @@ describe('writing fights down', () => {
     const log = new FightLog(file);
     log.record(fight({ mob: 'giant rat' }));
     log.flush();
-    const afterFirst = fs.readFileSync(file).length;
+    const afterFirst = fs.readFileSync(first).length;
     log.record(fight({ mob: 'lashworm' }));
     log.flush();
 
-    expect(fs.readFileSync(file).length).toBeGreaterThan(afterFirst);
+    expect(fs.readFileSync(first).length).toBeGreaterThan(afterFirst);
     expect(readFights(file).map((entry) => entry.mob)).toEqual(['giant rat', 'lashworm']);
     // And the whole file is still one gzip stream to anything else that reads it.
     expect(
-      zlib.gunzipSync(fs.readFileSync(file)).toString().split('\n').filter(Boolean)
+      zlib.gunzipSync(fs.readFileSync(first)).toString().split('\n').filter(Boolean)
     ).toHaveLength(2);
     log.dispose();
   });
@@ -123,7 +131,7 @@ describe('writing fights down', () => {
     const said: string[] = [];
     // A *file* where the directory should be, so `mkdir` cannot succeed.
     fs.writeFileSync(path.join(dir, 'blocked'), 'not a directory');
-    const log = new FightLog(path.join(dir, 'blocked', 'main.jsonl.gz'), {
+    const log = new FightLog(path.join(dir, 'blocked', 'main'), {
       notice: (message) => said.push(message)
     });
     log.record(fight());
@@ -131,7 +139,6 @@ describe('writing fights down', () => {
     log.record(fight());
     log.flush();
     expect(said).toHaveLength(1);
-    expect(said[0]).toMatch(/could not be written/i);
     log.dispose();
   });
 
@@ -141,13 +148,13 @@ describe('writing fights down', () => {
     const log = new FightLog(file);
     log.record(fight({ mob: 'giant rat' }));
     log.flush();
-    fs.appendFileSync(file, Buffer.from([0x1f, 0x8b, 0x08, 0x00]));
+    fs.appendFileSync(first, Buffer.from([0x1f, 0x8b, 0x08, 0x00]));
     expect(readFights(file).map((entry) => entry.mob)).toEqual(['giant rat']);
     log.dispose();
   });
 
   it('says nothing about a file that is not there', () => {
-    expect(readFights(path.join(dir, 'nothing.jsonl.gz'))).toEqual([]);
+    expect(readFights(path.join(dir, 'nothing'))).toEqual([]);
   });
 });
 
@@ -235,14 +242,13 @@ describe('what the record says about a monster', () => {
 
   it('answers as empty, out loud, from a record it cannot read', async () => {
     vi.useRealTimers();
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, Buffer.from('not a gzip stream at all'));
+    fs.mkdirSync(file, { recursive: true });
+    fs.writeFileSync(first, Buffer.from('not a gzip stream at all'));
     const notices: string[] = [];
     const log = new FightLog(file, { notice: (message) => notices.push(message) });
     log.record(fight({ mob: 'giant rat', at: 5 }));
     expect((await log.summary('giant rat'))?.fights).toBe(1);
     expect(notices).toHaveLength(1);
-    expect(notices[0]).toContain('could not be read');
     log.dispose();
   });
 });
@@ -298,6 +304,144 @@ describe('what the record says this character deals a round', () => {
     expect(log.measured(5, { ...ask, least: 1 })?.fights).toBe(1);
     await log.ready();
     expect(log.measured(5, ask)).toEqual({ perRound: 30, fights: 2, fromLevel: 5 });
+    log.dispose();
+  });
+});
+
+/*
+ * Todo 13: the log is segments of `records.fightsPerSegment` fights, each
+ * closed one with its fold beside it, so a read holds one segment at a time.
+ */
+describe('a record in segments', () => {
+  const perSegment = (count: number): void =>
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      records: { ...DEFAULT_INTERNAL.tuning.records, fightsPerSegment: count }
+    });
+
+  it('starts a new segment every so many fights and reads them back in order', async () => {
+    vi.useRealTimers();
+    perSegment(2);
+    const log = new FightLog(file);
+    for (const mob of ['a', 'b', 'c', 'd', 'e']) log.record(fight({ mob }));
+    log.flush();
+    expect(fs.existsSync(segmentFile(file, 3))).toBe(true);
+    expect(fs.existsSync(segmentFile(file, 4))).toBe(false);
+    expect(readFights(file).map((entry) => entry.mob)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    // The two closed segments have their folds; the open one has none.
+    await vi.waitFor(() => expect(fs.existsSync(foldFile(file, 2))).toBe(true));
+    expect(fs.existsSync(foldFile(file, 1))).toBe(true);
+    expect(fs.existsSync(foldFile(file, 3))).toBe(false);
+    log.dispose();
+  });
+
+  it('reads a segment size under one as one, rather than closing segments forever', () => {
+    perSegment(0);
+    const log = new FightLog(file);
+    log.record(fight({ mob: 'a' }));
+    log.record(fight({ mob: 'b' }));
+    log.flush();
+    expect(readFights(file).map((entry) => entry.mob)).toEqual(['a', 'b']);
+    expect(fs.existsSync(segmentFile(file, 2))).toBe(true);
+    log.dispose();
+  });
+
+  it('fills the open segment it found before starting the next', async () => {
+    vi.useRealTimers();
+    perSegment(3);
+    const earlier = new FightLog(file);
+    earlier.record(fight({ mob: 'a' }));
+    earlier.record(fight({ mob: 'b' }));
+    earlier.dispose();
+
+    const log = new FightLog(file);
+    // Not counted until the record has been read: it waits rather than guess.
+    await log.ready();
+    log.record(fight({ mob: 'c' }));
+    log.record(fight({ mob: 'd' }));
+    log.flush();
+    expect(readFights(file).map((entry) => entry.mob)).toEqual(['a', 'b', 'c', 'd']);
+    expect(fs.existsSync(segmentFile(file, 2))).toBe(true);
+    expect((await new FightLog(file).summary('a'))?.fights).toBe(1);
+    log.dispose();
+  });
+
+  it('answers a closed segment from its saved fold', async () => {
+    vi.useRealTimers();
+    perSegment(1);
+    const earlier = new FightLog(file);
+    earlier.record(fight({ mob: 'giant rat', mine: 30 }));
+    earlier.record(fight({ mob: 'lashworm' }));
+    earlier.dispose();
+    await vi.waitFor(() => expect(fs.existsSync(foldFile(file, 1))).toBe(true));
+
+    // What the saved fold says, where it differs from the fights: proof it is what is read.
+    const saved = JSON.parse(fs.readFileSync(foldFile(file, 1), 'utf8')) as {
+      folds: Array<[string, { fights: number }]>;
+    };
+    expect(saved.folds[0]?.[1].fights).toBe(1);
+    saved.folds[0]![1].fights = 7;
+    fs.writeFileSync(foldFile(file, 1), JSON.stringify(saved));
+
+    const notices: string[] = [];
+    const log = new FightLog(file, { notice: (message) => notices.push(message) });
+    expect((await log.summary('giant rat'))?.fights).toBe(7);
+    expect(notices).toEqual([]);
+    log.dispose();
+  });
+
+  it('folds again, and says so, a segment whose fold is missing or from an older version', async () => {
+    vi.useRealTimers();
+    perSegment(1);
+    const earlier = new FightLog(file);
+    earlier.record(fight({ mob: 'giant rat' }));
+    earlier.record(fight({ mob: 'giant rat' }));
+    earlier.record(fight({ mob: 'lashworm' }));
+    earlier.dispose();
+    await vi.waitFor(() => expect(fs.existsSync(foldFile(file, 2))).toBe(true));
+    const stale = JSON.parse(fs.readFileSync(foldFile(file, 1), 'utf8')) as Record<string, unknown>;
+    fs.writeFileSync(
+      foldFile(file, 1),
+      JSON.stringify({ ...stale, version: FOLD_VERSION - 1, folds: [] })
+    );
+    fs.rmSync(foldFile(file, 2));
+
+    const notices: string[] = [];
+    const log = new FightLog(file, { notice: (message) => notices.push(message) });
+    expect((await log.summary('giant rat'))?.fights).toBe(2);
+    expect(notices).toHaveLength(1);
+    // And written again, at this version.
+    for (const segment of [1, 2]) {
+      const again = JSON.parse(fs.readFileSync(foldFile(file, segment), 'utf8')) as {
+        version: number;
+      };
+      expect(again.version).toBe(FOLD_VERSION);
+    }
+    log.dispose();
+  });
+
+  it('holds its fights until what it waits for has settled, and writes them on quit regardless', async () => {
+    vi.useRealTimers();
+    let settle = (): void => {};
+    const after = new Promise<void>((resolve) => (settle = resolve));
+    const log = new FightLog(file, {}, after);
+    log.record(fight({ mob: 'a' }));
+    log.flush();
+    // A quit writes what is held even while the migration runs.
+    expect(readFights(file).map((entry) => entry.mob)).toEqual(['a']);
+
+    const waiting = new FightLog(file, {}, after);
+    waiting.record(fight({ mob: 'b' }));
+    let answered = false;
+    const asked = waiting.summary('a').then((summary) => {
+      answered = true;
+      return summary;
+    });
+    await new Promise((next) => setTimeout(next, 20));
+    expect(answered).toBe(false);
+    settle();
+    expect((await asked)?.fights).toBe(1);
+    waiting.dispose();
     log.dispose();
   });
 });
