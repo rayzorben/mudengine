@@ -12,36 +12,40 @@ import type { Traveller } from '../Router';
 import { planRealmOf } from '../navigation/realm';
 import { WorldGraph } from '../WorldGraph';
 
-const step = (from: string, to: string): RouteStep =>
-  ({ from, to, direction: 'n', command: 'n', name: to, requirement: null }) as RouteStep;
+const step = (from: string, to: string, key?: number): RouteStep =>
+  ({
+    from,
+    to,
+    direction: 'n',
+    command: 'n',
+    name: to,
+    requirement: key === undefined ? null : { kind: 'key', raw: `Key: ${key}`, keyId: key }
+  }) as RouteStep;
 const way = (from: string, to: string): Route => ({
   steps: [step(from, to)],
   cost: 5,
   blocked: false
 });
-const shut: Route = { steps: [], cost: 0, blocked: true, reason: 'locked' };
+/* The router's refusal at a keyed door: the door, and the key it names. */
+const shut: Route = {
+  steps: [],
+  cost: 0,
+  blocked: true,
+  reason: 'locked',
+  blocks: [{ kind: 'key', at: 'hall', to: 'goal', name: 'goal', keyId: 1, itemName: 'bone key' }]
+};
+const KEYS: Record<number, string> = { 1: 'bone key', 2: 'iron key' };
 
 /*
  * A door at the goal wants keys 1 and 2. Key 1 is sold in the open; key 2 is
  * dropped by a monster in a room behind key 1's door.
  */
 const realm: PlanRealm = {
-  route: (from, to, traveller: Traveller, options) => {
+  route: (from, to, traveller: Traveller) => {
     const keys = traveller.keys ?? [];
     if (to === 'goal') {
-      if (keys.includes(1) && keys.includes(2)) return way(from, to);
-      return options?.unlocks === true
-        ? {
-            ...shut,
-            unlocks: {
-              ...way(from, to),
-              needs: [
-                { id: 2, name: 'iron key' },
-                { id: 1, name: 'bone key' }
-              ]
-            }
-          }
-        : shut;
+      if (!keys.includes(1) || !keys.includes(2)) return shut;
+      return { steps: [step(from, 'hall', 2), step('hall', to, 1)], cost: 10, blocked: false };
     }
     if (to === 'cave' && !keys.includes(1)) return shut;
     return way(from, to);
@@ -61,7 +65,9 @@ const realm: PlanRealm = {
         ? [{ kind: 'kill', monster: 'troll', room: 'cave' }]
         : [],
   standing: () => [],
-  roomName: (room) => room
+  roomName: (room) => room,
+  keysNamed: () => [1, 2],
+  itemName: (item) => KEYS[item]
 };
 const odds = (fight: FightOdds, purse: boolean | null = true): NavigationOracle => ({
   fight: () => fight,

@@ -65,8 +65,6 @@ export interface RoomIndex {
   hazardOf(room: WorldRoom, level?: number | null): SpellHazard | null;
   /** The timed passages a route walks into. */
   corridorsOn(steps: readonly RouteStep[]): Passage[];
-  /** Every room where an item can be had: a counter, a dropper's spawn, a word. */
-  sourceRooms(item: number): ReadonlySet<RoomId>;
   item(id: number): WorldItem | undefined;
   spellById(id: number): WorldSpell | null;
   byId(id: RoomId): WorldRoom | undefined;

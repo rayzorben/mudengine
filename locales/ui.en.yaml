@@ -2619,6 +2619,7 @@ cards:
     noRoomByReference: The world data has no room {roomRef}.
     noRouteFallback: No route.
     reasons:
+      noneCheaper: no cheaper way
       unknownDestinationRoom: Unknown destination {roomId}
       unknownStartRoom: Unknown start room {roomId}
     routeSummary: '{stepCount} steps'

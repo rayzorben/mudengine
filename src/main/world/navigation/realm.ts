@@ -17,6 +17,8 @@ export interface PlanWorld extends StandingRealm {
     traveller: Traveller
   ): ReadonlyMap<RoomId, { cost: number }>;
   itemSources(item: number): readonly ItemSource[];
+  namedExitItems(): readonly number[];
+  item(id: number): { name: string } | undefined;
 }
 
 export function planRealmOf(world: PlanWorld): PlanRealm {
@@ -25,6 +27,8 @@ export function planRealmOf(world: PlanWorld): PlanRealm {
     sweep: (from, rooms, traveller) => world.sweepTo(from, rooms, traveller),
     sources: (item) => world.itemSources(item),
     standing: (room) => standing(world, room),
-    roomName: (room) => world.byId(room)?.name ?? room
+    roomName: (room) => world.byId(room)?.name ?? room,
+    keysNamed: () => world.namedExitItems(),
+    itemName: (item) => world.item(item)?.name.trim() || undefined
   };
 }

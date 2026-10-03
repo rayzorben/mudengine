@@ -366,7 +366,6 @@ export class WorldGraph {
       leversFor: (room, direction) => this.leversFor(room, direction),
       hazardOf: (room, level) => catalogue.hazardOf(room, level),
       corridorsOn: (steps) => this.corridorsOn(steps),
-      sourceRooms: (item) => this.sources.rooms(item),
       item: (id) => catalogue.item(id),
       spellById: (id) => catalogue.spellById(id),
       byId: (id) => this.byId(id),

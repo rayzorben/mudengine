@@ -1562,9 +1562,9 @@ export default function RoutePanel({
                       });
                     }
                     /*
-                     * And through the door, once what opens it is fetched —
-                     * named with what is fetched, because that is the price:
-                     * the steps are shorter and the errand is not.
+                     * And through the door, once what opens it is fetched,
+                     * named with what is fetched: its steps are the plan's
+                     * walk whole, out to each key and back.
                      */
                     if (route.unlocks !== undefined && chosen !== 'keyed') {
                       items.push({

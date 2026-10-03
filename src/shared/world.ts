@@ -3439,15 +3439,19 @@ export interface Route {
    */
   another?: Route;
   /**
-   * The way through a door this character holds no key for, planned as
-   * though it did (todo 805) — where fetching the key and walking through
-   * beats the way round by `tuning.world.alternativeMinSteps`, the fetch
-   * priced in (`Router.keyedWay`). On a refused route, the way the pack
-   * would open once it held what refused it. Its `needs` names what to fetch;
-   * the errand fetches them before it is walked. Absent on any route not
-   * planned for a reader.
+   * The way through doors this character holds no key for, planned by the
+   * navigation engine with each key fetched in order (todo 805): on a walk
+   * refused for keys, and on a route planned for a reader where fetching
+   * them and walking through beats this way by
+   * `tuning.world.alternativeMinSteps`, the fetches priced in. Its `needs`
+   * names what to fetch; the errand fetches them before it is walked.
    */
   unlocks?: Route;
+  /**
+   * The search met a door this traveller holds no key for: a way through it
+   * may be shorter once the key is fetched, which the engine weighs.
+   */
+  keysAhead?: true;
   /**
    * What this way assumes is in the pack and is not — set on an `unlocks`
    * route only. Walking it without them walks into a locked door, so the

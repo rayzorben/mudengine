@@ -1,6 +1,6 @@
 /**
  * The plan to get from one room to another, whole before the first step: the
- * keys the way wants (`Route.unlocks`), each fetched from where the realm gives
+ * keys the way wants (`keysWanted`), each fetched from where the realm gives
  * it (`sources.ts`) in the order they can be had, so a key behind an earlier
  * key's door comes after it; the fights it takes, weighed as combat weighs
  * them; and the rooms a way wants empty, cleared. A route that crosses a wall
@@ -20,7 +20,13 @@ import {
   type PlanRefusal,
   type PlanStep
 } from '../../../shared/navigation';
-import { describeBlock, type RoomId, type Route } from '../../../shared/world';
+import {
+  blockItem,
+  describeBlock,
+  itemDemanded,
+  type RoomId,
+  type Route
+} from '../../../shared/world';
 import type { RouteOptions, Traveller } from '../Router';
 import type { ItemSource } from './sources';
 
@@ -38,6 +44,10 @@ export interface PlanRealm {
   standing(room: RoomId): readonly string[];
   /** The room's name, for a reader. */
   roomName(room: RoomId): string;
+  /** Every item the realm demands on an exit and names (`Router.namedExitItems`). */
+  keysNamed(): readonly number[];
+  /** An item's name, for a reader. */
+  itemName(item: number): string | undefined;
 }
 
 /** A route this character can walk: found, and crossing no wall. */
@@ -56,19 +66,65 @@ function noWayWords(route: Route): string {
 }
 
 /**
- * The keys a way wants: what the router found holding every key the realm
- * names (`Route.unlocks`), else the keys the walls it crosses name, so a door
- * nobody can force says which key and where that key comes from.
+ * The keys a way wants: planned holding the items its refusal names, where
+ * those alone open it, else holding every item the realm names on an exit.
+ * What the way found uses and the pack lacks is wanted, so a second lock
+ * nobody reached is found as well as the first. Only a refusal a door or an
+ * item explains is asked: a search holding every key, for a way a level or a
+ * class shuts, costs a pass of the realm and finds nothing.
  */
-function keysWanted(direct: Route): PlannedItem[] {
-  const keyed = direct.unlocks;
-  if (keyed !== undefined && !keyed.blocked && (keyed.needs ?? []).length > 0)
-    return keyed.needs ?? [];
-  return (direct.walls ?? []).flatMap((wall) =>
-    wall.kind === 'door' && wall.keyId !== undefined
-      ? [{ id: wall.keyId, name: wall.itemName ?? `#${wall.keyId}` }]
-      : []
+function keysWanted(
+  realm: PlanRealm,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller,
+  direct: Route
+): PlannedItem[] {
+  const named = (direct.blocked ? direct.blocks : direct.walls) ?? [];
+  const doors = named.some(
+    (block) => block.kind === 'key' || block.kind === 'door' || block.kind === 'carry'
   );
+  if (!doors) return [];
+  const refused = named.map(blockItem);
+  const tries: Array<readonly number[]> = [];
+  if (refused.every((item) => item !== null)) tries.push(refused.map((item) => item!.id));
+  tries.push(realm.keysNamed());
+  for (const extra of tries) {
+    const held = wayHolding(realm, from, to, traveller, extra);
+    if (held !== null && held.needs.length > 0) return held.needs;
+  }
+  return [];
+}
+
+/**
+ * The way when the pack also holds `extra`, and the items its steps use that
+ * the pack does not hold; null where there is no walk, or none within
+ * `within`.
+ */
+function wayHolding(
+  realm: PlanRealm,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller,
+  extra: readonly number[],
+  within?: number
+): { way: Route; needs: PlannedItem[] } | null {
+  const held = traveller.keys ?? [];
+  const keys = [...new Set([...held, ...extra])];
+  const options: RouteOptions = within === undefined ? {} : { within };
+  const way = realm.route(from, to, { ...traveller, keys }, options);
+  return walkable(way) ? { way, needs: keysUsed(realm, way, held) } : null;
+}
+
+/** The items a way's steps demand that the pack does not hold, each once, in order. */
+function keysUsed(realm: PlanRealm, way: Route, held: readonly number[]): PlannedItem[] {
+  const needs = new Map<number, PlannedItem>();
+  for (const step of way.steps) {
+    const id = itemDemanded(step.requirement);
+    if (id === null || held.includes(id) || needs.has(id)) continue;
+    needs.set(id, { id, name: realm.itemName(id) ?? `#${id}` });
+  }
+  return [...needs.values()];
 }
 
 /** The fights a step takes: a summoner first where one brings the monster. */
@@ -200,7 +256,7 @@ export function plan(
   traveller: Traveller,
   options: RouteOptions = {}
 ): Plan {
-  const direct = realm.route(from, to, traveller, { ...options, unlocks: true });
+  const direct = realm.route(from, to, traveller, options);
   return planAfter(realm, oracle, direct, from, to, traveller);
 }
 
@@ -219,19 +275,70 @@ export function leg(
   traveller: Traveller,
   options: RouteOptions = {}
 ): Route {
-  const direct = realm.route(from, to, traveller, { ...options, unlocks: true });
+  const direct = realm.route(from, to, traveller, options);
   const made = planAfter(realm, oracle, direct, from, to, traveller);
   if (made.kind === 'refused') return refusedLeg(direct, planRefusalsWords(made.refusals, t));
+  const keyed = keyedRoute(made);
+  if (keyed !== null) return { ...refusedLeg(direct, noWayWords(direct)), unlocks: keyed };
+  // Fetching nothing, the plan walked the direct route as it was. For a
+  // reader, the way round what the player keeps out of is planned as a walk
+  // too, and a way through a door the walk went round is weighed.
+  const keptOut = direct.keptOut;
+  const round = keptOut?.round.blocked === true ? leg(realm, oracle, from, to, traveller) : null;
+  const offered =
+    options.alternatives === true && direct.keysAhead === true
+      ? keyedOffer(realm, oracle, from, to, traveller, direct)
+      : null;
+  if (round === null && offered === null) return direct;
+  return {
+    ...direct,
+    ...(round === null || keptOut === undefined ? {} : { keptOut: { ...keptOut, round } }),
+    ...(offered === null ? {} : { unlocks: offered })
+  };
+}
+
+/** A plan that fetches, as one route with its keys in order (`Route.needs`); null for a walk. */
+function keyedRoute(made: Extract<Plan, { kind: 'plan' }>): Route | null {
   const needs = made.steps.flatMap((step) => (isFetch(step) ? [step.item] : []));
-  // Fetching nothing, the plan walked the direct route as it was.
-  if (needs.length === 0) return direct;
-  const unlocks: Route = {
+  if (needs.length === 0) return null;
+  return {
     steps: made.steps.flatMap((step) => (step.kind === 'walk' ? step.route.steps : [])),
     cost: made.cost,
     blocked: false,
     needs
   };
-  return { ...refusedLeg(direct, noWayWords(direct)), unlocks };
+}
+
+/**
+ * The way through doors a walkable route went round, where fetching their
+ * keys and walking through beats it by `alternativeMinSteps`, the fetches
+ * priced as the plan walks them (todo 805: 155 steps round against one
+ * through the black star key's door).
+ */
+function keyedOffer(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller,
+  direct: Route
+): Route | null {
+  const { alternativeMinSteps } = tuning().world;
+  const beat = direct.cost - alternativeMinSteps;
+  if (beat <= 0) return null;
+  // Bounded by what would have to be beaten: the search expands only rooms the margin leaves in.
+  const held = wayHolding(realm, from, to, traveller, realm.keysNamed(), beat);
+  if (held === null || held.needs.length === 0) return null;
+  // Never a way through a lair expected to kill, nor the direct route's own rooms again.
+  const { way } = held;
+  if (way.steps.some((step) => step.deadly === true)) return null;
+  const same =
+    way.steps.length === direct.steps.length &&
+    way.steps.every((step, index) => step.to === direct.steps[index]?.to);
+  if (same) return null;
+  const made = planKeys(realm, oracle, from, to, traveller, held.needs);
+  if (made.kind === 'refused' || made.cost > beat) return null;
+  return keyedRoute(made);
 }
 
 /**
@@ -259,8 +366,20 @@ function planAfter(
   traveller: Traveller
 ): Plan {
   if (walkable(direct)) return finish(realm, oracle, from, to, traveller, [], 0, direct);
-  const needs = keysWanted(direct).filter((need) => !(traveller.keys ?? []).includes(need.id));
+  const needs = keysWanted(realm, from, to, traveller, direct);
   if (needs.length === 0) return { kind: 'refused', refusals: [noWay(direct)] };
+  return planKeys(realm, oracle, from, to, traveller, needs);
+}
+
+/** The plan that fetches these keys, cheapest first, else in every order of a few. */
+function planKeys(
+  realm: PlanRealm,
+  oracle: NavigationOracle,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller,
+  needs: readonly PlannedItem[]
+): Plan {
   const greedy = acquire(realm, oracle, from, to, traveller, needs, null);
   if (greedy.kind === 'plan' || needs.length > ORDERS_TRIED) return greedy;
   /*

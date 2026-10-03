@@ -36,7 +36,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the hunt's wiring, out whole (`huntPlanner.ts`, todo 11).
   'src/main/session/SessionManager.ts': 3724,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
-  'src/main/world/WorldGraph.ts': 2434,
+  'src/main/world/WorldGraph.ts': 2433,
   'src/main/parse/CharacterTracker.ts': 2537,
   'src/renderer/src/App.tsx': 1786,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).

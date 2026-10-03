@@ -5,7 +5,9 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { WorldGraph, dangerPenalty, edgeBlock, edgePenalty, edgeWall } from '../WorldGraph';
-import type { Traveller } from '../WorldGraph';
+import type { RouteOptions, Traveller } from '../WorldGraph';
+import { leg } from '../navigation/plan';
+import { planRealmOf } from '../navigation/realm';
 import type {
   Direction,
   Landing,
@@ -1720,10 +1722,12 @@ describe('the shipped realm data', () => {
   });
 
   /*
-   * And the way there (todo 806): through two vortexes and the Plane, or round
-   * by the moat once those keys are fetched — and the choice is the player's.
+   * And the way there (todo 806): the way through two vortexes and the Plane
+   * ends at the Gatehouse door, a wall without its key, so the walk the player
+   * keeps out of the vortexes is the engine's plan round by the moat, with
+   * those keys fetched (2026-10-02).
    */
-  it.runIf(has)('offers the moat beside the vortexes to the Dark-Elf Castle', () => {
+  it.runIf(has)('plans the moat with its keys to the Dark-Elf Castle, not the vortexes', () => {
     const traveller: Traveller = {
       level: 45,
       packKnown: true,
@@ -1732,10 +1736,11 @@ describe('the shipped realm data', () => {
       pickSkill: 0,
       keepOut: { words: ['vortex', 'Negative Power Plane'] }
     };
-    const read = realm!.route(roomId(1, 1076), roomId(8, 560), traveller, { alternatives: true });
-    expect(read.keptOut?.words).toEqual(['vortex', 'Negative Power Plane']);
-    expect(read.keptOut?.round.blocked).toBe(true);
-    const moat = read.keptOut!.round.unlocks!;
+    const read = leg(planRealmOf(realm!), WINS, roomId(1, 1076), roomId(8, 560), traveller, {
+      alternatives: true
+    });
+    expect(read.blocked).toBe(true);
+    const moat = read.unlocks!;
     expect(moat.steps.some((step) => step.keptOut !== undefined)).toBe(false);
     expect(moat.needs?.map((item) => item.name)).toEqual(
       expect.arrayContaining(['gate key', 'moldy key'])
@@ -4467,6 +4472,9 @@ describe('itemsWanted', () => {
  */
 describe('a way only a key opens', () => {
   const lacking: Traveller = { keys: [], packKnown: true, level: 9 };
+  /** The walk the route panel reads, as the navigation engine plans it. */
+  const read = (graph: WorldGraph, options: RouteOptions = { alternatives: true }): Route =>
+    leg(planRealmOf(graph), WINS, '1/1', '1/3', lacking, options);
   /**
    * Start → Hall → Vault through a door `Key: 1124`, or thirty rooms round;
    * the key is sold `shopAt` rooms north of the start. `gate` puts a second
@@ -4526,44 +4534,36 @@ describe('a way only a key opens', () => {
   };
 
   it('offers the way through the door when the key is near enough to fetch', () => {
-    const route = vault(1).route('1/1', '1/3', lacking, { alternatives: true });
+    const route = read(vault(1));
     expect(route.steps).toHaveLength(31);
-    expect(route.unlocks?.steps.map((step) => step.command)).toEqual(['e', 'e']);
+    // The planned walk whole: out to the locksmith, back, and through the door.
+    expect(route.unlocks?.steps.map((step) => step.command)).toEqual(['n', 's', 'e', 'e']);
     expect(route.unlocks?.needs).toEqual([{ id: 1124, name: 'angular key' }]);
     // What pressing it collects, and that a prefix short of the door wants nothing.
     expect(itemsWanted(route.unlocks!)).toEqual([{ id: 1124, name: 'angular key' }]);
     expect(itemsWanted({ ...route.unlocks!, steps: [] })).toEqual([]);
     // Only for a reader: a loop's leg does not go on errands.
-    expect(vault(1).route('1/1', '1/3', lacking).unlocks).toBeUndefined();
+    expect(read(vault(1), {}).unlocks).toBeUndefined();
   });
 
   it('prices the fetch, so a key further off than the way round is not offered', () => {
-    expect(vault(20).route('1/1', '1/3', lacking, { alternatives: true }).unlocks).toBeUndefined();
+    expect(read(vault(20)).unlocks).toBeUndefined();
   });
 
   it('offers nothing for a key nobody can fetch', () => {
-    expect(
-      vault(null).route('1/1', '1/3', lacking, { alternatives: true }).unlocks
-    ).toBeUndefined();
+    expect(read(vault(null)).unlocks).toBeUndefined();
   });
 
   it('carries the way the key opens beside a refusal', () => {
-    const route = vault(1, { round: false }).route('1/1', '1/3', lacking, { alternatives: true });
+    const route = read(vault(1, { round: false }));
     expect(route.blocked).toBe(true);
     expect(route.unlocks?.blocked).toBe(false);
-    expect(route.unlocks?.steps.map((step) => step.command)).toEqual(['e', 'e']);
+    expect(route.unlocks?.steps.map((step) => step.command)).toEqual(['n', 's', 'e', 'e']);
     expect(itemsWanted(route.unlocks!)).toEqual([{ id: 1124, name: 'angular key' }]);
   });
 
   it('offers nothing where the key would not be enough', () => {
-    const route = vault(1, { round: false, gate: 'Level: 20 to 999' }).route(
-      '1/1',
-      '1/3',
-      lacking,
-      {
-        alternatives: true
-      }
-    );
+    const route = read(vault(1, { round: false, gate: 'Level: 20 to 999' }));
     expect(route.blocked).toBe(true);
     expect(route.unlocks).toBeUndefined();
   });
