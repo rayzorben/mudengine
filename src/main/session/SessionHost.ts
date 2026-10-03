@@ -51,7 +51,7 @@ import { sameTarget, type ConnectionState, type ConnectionTarget } from '../../s
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
-import type { CharacterRecord } from '../../shared/belongings';
+import type { CharacterRecord, KeptRoom } from '../../shared/belongings';
 import type { TalkSink } from './TalkLog';
 import { isTalkBlock } from '../../shared/talk';
 import { SessionDebug } from './SessionDebug';
@@ -220,6 +220,11 @@ export interface SessionHostOptions {
    * nothing down.
    */
   findsFor?(id: SessionId): RealmFinds | undefined;
+  /**
+   * Where this character's record last placed it, read from the record for the
+   * realm its file says it plays, so the tab draws that room before any dial.
+   */
+  lastRoomFor?(id: SessionId): KeptRoom | null;
   /**
    * The realm at `target` named its own data (`SessionSink.realmTold`).
    *
@@ -527,6 +532,7 @@ export class SessionHost {
         players: this.options.playersFor(id),
         spellLore: this.options.spellLoreFor?.(id),
         finds: this.options.findsFor?.(id),
+        lastRoom: this.options.lastRoomFor?.(id),
         sentences: this.options.sentences?.(),
         words: () => this.options.wordsFor(id),
         extensions: this.extensionsFor(id)

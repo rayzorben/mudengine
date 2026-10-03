@@ -187,6 +187,21 @@ describe('SessionHost', () => {
     });
   });
 
+  /* The last room outlives the process: a tab opens on it before any dial. */
+  it('opens a session on the room its record last placed it in', () => {
+    host?.disposeAll();
+    host = new SessionHost({
+      ...options,
+      lastRoomFor: (id) => (id === 'thorn' ? { map: 1, room: 2140, confidence: 1 } : null)
+    });
+    expect(host.ensure('thorn').manager.character.room).toMatchObject({
+      map: 1,
+      number: 2140,
+      resolvedBy: 'remembered'
+    });
+    expect(host.ensure('soul').manager.character.room.map).toBeNull();
+  });
+
   /*
    * The backscroll outlives the process (todo 06, 2026-09-17): what the
    * console showed is written down per character, and the next launch's

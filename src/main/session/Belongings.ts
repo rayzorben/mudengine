@@ -554,12 +554,24 @@ function sameSpellbook(a: readonly KnownSpell[], b: readonly KnownSpell[]): bool
  * "not read yet", never narrow it to "knows nothing".
  */
 export function peekSpellbook(file: string, realm: string): readonly KnownSpell[] | null {
+  return peek(file, realm)?.spellbook ?? null;
+}
+
+/**
+ * The room the record last placed the character in, read the same way, for a
+ * tab drawn at launch before any dial. A file it cannot read places nothing
+ * here; `connect` opens the record and reports it, once a window can hear.
+ */
+export function peekRoom(file: string, realm: string): KeptRoom | null {
+  return peek(file, realm)?.room ?? null;
+}
+
+/** The record for `realm`, or null for a missing, unreadable or other realm's file. */
+function peek(file: string, realm: string): BelongingsFile | null {
   try {
     if (!fs.existsSync(file)) return null;
     const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!isBelongingsFile(parsed)) return null;
-    if (parsed.realm !== realm) return null;
-    return parsed.spellbook ?? null;
+    return isBelongingsFile(parsed) && parsed.realm === realm ? parsed : null;
   } catch {
     return null;
   }

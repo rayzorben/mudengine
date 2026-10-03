@@ -119,7 +119,7 @@ import {
   type PlayerRegistry,
   type RealmPlayers
 } from '../../shared/players';
-import { NO_RECORD, type CharacterRecord } from '../../shared/belongings';
+import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../shared/belongings';
 import type { FledEntry } from '../../shared/fled';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
@@ -273,12 +273,8 @@ export interface SessionDeps {
    */
   readonly memory?: RealmMemory;
   /**
-   * Where fights are written down.
-   *
-   * Absent in every test and with `logging.fights` off, which writes no file
-   * rather than an empty one. See
-   * `shared/fights.ts` for why the record exists at all before anything reads
-   * it.
+   * Where fights are written down; absent in every test and with `logging.fights`
+   * off, which writes no file. `shared/fights.ts` says why the record exists.
    */
   readonly fights?: FightSink;
   /**
@@ -287,6 +283,8 @@ export interface SessionDeps {
    * nothing, which is what every test wants.
    */
   readonly players?: RealmPlayers;
+  /** Where the character's record last placed it, drawn before any dial (`parse/lastRoom.ts`). */
+  readonly lastRoom?: KeptRoom | null;
   /**
    * The realm's sentences for an effect landing and ending, shipped and
    * learned. Per realm like the lore beside it, and defaulting to none for
@@ -538,7 +536,8 @@ export class SessionManager {
       (discovery) => this.records.remember(discovery),
       fights,
       players,
-      spellLore
+      spellLore,
+      deps.lastRoom
     );
     this.records = new Records({ tracker: this.tracker, world, memory, finds }, sink);
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
