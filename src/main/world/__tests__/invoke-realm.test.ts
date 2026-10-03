@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
+import { wireItem } from '../../../shared/entities';
+import { invokeChoices } from '../../../shared/invoke';
 import { itemHitProcs, itemInvocation } from '../../../shared/items';
 import { WorldGraph } from '../WorldGraph';
 
@@ -54,6 +56,28 @@ describe.skipIf(!available)('a weapon that blesses, on the shipped realm', () =>
     expect(spell).not.toBeNull();
     expect(spell!.name).toBe('weapon major bless');
     expect(spell!.duration).toBeGreaterThan(0);
+  });
+
+  /*
+   * And what it costs. The server charges an item cast the spell's mana
+   * (`Player.InitiateSpell`), and the wire agrees: `MA=21` became `MA=13`.
+   */
+  it('and the realm states the mana that cast takes', () => {
+    expect(graph!.spellById(114)?.mana).toBe(8);
+  });
+
+  /* The Spells page's list, read from a pack holding the weapon wielded. */
+  it('lists the wielded weapon as a choice, with its mana', () => {
+    const pack = [{ ...wireItem('shimmering longsword'), equipped: true }];
+    expect(invokeChoices(pack, graph!)).toEqual([
+      {
+        item: 'shimmering longsword',
+        spell: 'weapon major bless',
+        mana: 8,
+        equipped: true,
+        mustBeEquipped: true
+      }
+    ]);
   });
 
   /*

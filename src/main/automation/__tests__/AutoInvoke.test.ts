@@ -21,6 +21,7 @@ const automation: AutomationConfig = {
 const LONGSWORD: WorldItem = {
   id: 900,
   name: 'shimmering longsword',
+  kind: 'weapon',
   uses: -1,
   abilities: [
     [28, 1],
@@ -32,10 +33,19 @@ const LONGSWORD: WorldItem = {
   ]
 };
 
-/** `weapon major bless`, duration 60 — the spell the longsword casts. */
-const BLESS: WorldSpell = { id: 114, name: 'weapon major bless', duration: 60 };
+/** `weapon major bless`, duration 60, 8 mana — the spell the longsword casts. */
+const BLESS: WorldSpell = { id: 114, name: 'weapon major bless', mana: 8, duration: 60 };
 
-const carried = (name: string): CarriedItem => ({ ...wireItem(name) });
+/** Wielded, as the server requires of a weapon it is asked to use. */
+const carried = (name: string, equipped = true): CarriedItem => ({
+  ...wireItem(name),
+  equipped
+});
+
+const named =
+  (lookup: (name: string) => WorldItem | null): InvokeSources['itemsNamed'] =>
+  (names) =>
+    Object.fromEntries(names.map((name) => [name, lookup(name) ?? undefined]));
 
 function state(over: Partial<CharacterState> = {}, items = [carried('shimmering longsword')]) {
   const base = structuredClone(EMPTY_CHARACTER);
@@ -51,7 +61,7 @@ function state(over: Partial<CharacterState> = {}, items = [carried('shimmering 
 }
 
 const sources = (over: Partial<InvokeSources> = {}): InvokeSources => ({
-  itemNamed: (name) => (name.toLowerCase() === 'shimmering longsword' ? LONGSWORD : null),
+  itemsNamed: named((name) => (name === 'shimmering longsword' ? LONGSWORD : null)),
   spellById: (id) => (id === 114 ? BLESS : null),
   spellNamed: (name) => (name.trim().toLowerCase() === 'weapon major bless' ? BLESS : null),
   ...over
@@ -69,8 +79,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const run = (over: Partial<InvokeSources> = {}, on = true): AutoInvoke =>
-  new AutoInvoke(on, queue, sources(over));
+const CHOSEN = ['shimmering longsword'];
+
+const run = (over: Partial<InvokeSources> = {}, on = true, chosen = CHOSEN): AutoInvoke =>
+  new AutoInvoke({ invokeItems: on, invokeWith: chosen }, true, queue, sources(over));
 
 describe('asking a carried item for its blessing', () => {
   it('uses the weapon that can bless, when the bless is not up', () => {
@@ -113,14 +125,14 @@ describe('asking a carried item for its blessing', () => {
    */
   it('refuses an item with a limited number of uses', () => {
     const limited: WorldItem = { ...LONGSWORD, uses: 3 };
-    run({ itemNamed: () => limited }).consider(state());
+    run({ itemsNamed: named(() => limited) }).consider(state());
     vi.advanceTimersByTime(200);
     expect(sent).toEqual([]);
   });
 
   it('refuses an item the realm says nothing about', () => {
     const silent: WorldItem = { id: 1, name: 'shimmering longsword', abilities: [[43, 114]] };
-    run({ itemNamed: () => silent }).consider(state());
+    run({ itemsNamed: named(() => silent) }).consider(state());
     vi.advanceTimersByTime(200);
     expect(sent).toEqual([]);
   });
@@ -144,7 +156,7 @@ describe('asking a carried item for its blessing', () => {
         [43, 170]
       ]
     };
-    run({ itemNamed: () => proc }).consider(state());
+    run({ itemsNamed: named(() => proc) }).consider(state());
     vi.advanceTimersByTime(200);
     expect(sent).toEqual([]);
   });
@@ -178,16 +190,69 @@ describe('asking a carried item for its blessing', () => {
    * and the second buff is still there to ask for on the next status line.
    */
   it('asks for one at a time', () => {
-    const second: WorldItem = { ...LONGSWORD, id: 901, name: 'black flail' };
-    const invoke = new AutoInvoke(true, queue, {
-      itemNamed: (name) =>
-        name === 'shimmering longsword' ? LONGSWORD : name === 'black flail' ? second : null,
-      spellById: (id) => (id === 114 ? BLESS : null),
-      spellNamed: () => BLESS
+    const second: WorldItem = { ...LONGSWORD, id: 901, name: 'black flail', kind: 'misc' };
+    const both = sources({
+      itemsNamed: named((name) =>
+        name === 'shimmering longsword' ? LONGSWORD : name === 'black flail' ? second : null
+      )
     });
-    invoke.consider(state({}, [carried('shimmering longsword'), carried('black flail')]));
+    const chosen = { invokeItems: true, invokeWith: ['shimmering longsword', 'black flail'] };
+    new AutoInvoke(chosen, true, queue, both).consider(
+      state({}, [carried('shimmering longsword'), carried('black flail', false)])
+    );
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  /* The todo's case: several weapons that bless, and only the chosen one used. */
+  it('uses only the items chosen', () => {
+    run({}, true, []).consider(state());
+    run({}, true, ['black flail']).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    run({}, true, ['Shimmering Longsword']).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  /* `You do not have shimmering longsword equipped.` (`UseCommand.cs`). */
+  it('waits for a weapon to be wielded', () => {
+    run().consider(state({}, [carried('shimmering longsword', false)]));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+  });
+
+  /*
+   * An item cast costs the spell's mana: `MA=21` became `MA=13` on festus's
+   * `use shimmering longsword`, and short of it the server answers `You do not
+   * have enough mana to cast that spell.`
+   */
+  it('waits for the mana the spell costs', () => {
+    const base = state();
+    const invoke = run();
+    invoke.consider({ ...base, vitals: { ...base.vitals, mana: 7, manaMax: 21 } });
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    invoke.consider({ ...base, vitals: { ...base.vitals, mana: 8, manaMax: 21 } });
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  /* A `use` spends the round's magic energy like a cast does. */
+  it('holds for the round when a cast has already gone', () => {
+    const held = { mayCast: vi.fn(() => false), noteCast: vi.fn() };
+    const invoke = new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources(),
+      held
+    );
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(held.mayCast).toHaveBeenCalledWith('weapon major bless');
+    expect(sent).toEqual([]);
+    expect(held.noteCast).not.toHaveBeenCalled();
   });
 
   /*

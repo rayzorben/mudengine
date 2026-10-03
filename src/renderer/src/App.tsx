@@ -868,7 +868,9 @@ export default function App() {
       // And the realm's own rules of the same kind, for the rows under it.
       loadWards: (session: SessionId) => api.wards(session),
       // And the monsters the realm names, for the priority list's picker.
-      loadMobNames: (session: SessionId) => api.mobNames(session)
+      loadMobNames: (session: SessionId) => api.mobNames(session),
+      // And what the inventory holds that can bless, for the Spells page.
+      loadInvokeChoices: (session: SessionId) => api.invokeChoices(session)
     }),
     [api, reveal]
   );
@@ -1739,9 +1741,7 @@ export default function App() {
         }}
       />
       <SettingsScreen
-        deleteProfile={settingsApi.deleteProfile}
-        deleteServer={settingsApi.deleteServer}
-        load={settingsApi.load}
+        {...settingsApi}
         maximaFor={maximaFor}
         figuresFor={figuresFor}
         palette={consolePalette}
@@ -1749,18 +1749,6 @@ export default function App() {
         open={settingsOpen}
         openAt={settingsAt}
         required={mustMakeCharacter}
-        revealConfig={settingsApi.revealConfig}
-        chooseRealm={settingsApi.chooseRealm}
-        loadLoops={settingsApi.loadLoops}
-        loadTrainers={settingsApi.loadTrainers}
-        loadBanks={settingsApi.loadBanks}
-        loadServing={settingsApi.loadServing}
-        loadWards={settingsApi.loadWards}
-        loadMobNames={settingsApi.loadMobNames}
-        revealProfiles={settingsApi.revealProfiles}
-        saveProfile={settingsApi.saveProfile}
-        saveGlobal={settingsApi.saveGlobal}
-        saveServer={settingsApi.saveServer}
       />
     </div>
   );

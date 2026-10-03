@@ -32,6 +32,7 @@ import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import LightFields from './LightFields';
+import InvokeFields from './InvokeFields';
 import AttackFields from './AttackFields';
 import DrainFields from './DrainFields';
 import HealFields from './HealFields';
@@ -905,19 +906,16 @@ export default function CharacterForm({
               spells={shownBook.spells}
               values={blessingValuesOf(form)}
             />
-            {/*
-              Beside the blessings this character *casts*, because
-              it answers the same question from the other side: a
-              weapon that blesses is a blessing nobody had to
-              configure, and the list above is where somebody looks
-              for one.
-            */}
-            <CheckField
-              checked={form.spellInvokeItems}
-              hint={t('settings.spells.invokeItemsHint')}
-              label={t('settings.spells.invokeItemsLabel')}
-              name="invoke-items"
-              onChange={(value) => patch({ spellInvokeItems: value })}
+          </fieldset>
+
+          <fieldset className="settings-menus" data-fieldset="spells-invoke">
+            <legend>{t('settings.spells.invokeLegend')}</legend>
+            <InvokeFields
+              chosen={form.spellInvokeWith}
+              choices={realm.invokeChoices}
+              enabled={form.spellInvokeItems}
+              onChosen={(spellInvokeWith) => patch({ spellInvokeWith })}
+              onEnabled={(spellInvokeItems) => patch({ spellInvokeItems })}
             />
           </fieldset>
         </SettingsSection>

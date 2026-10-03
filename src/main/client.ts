@@ -41,6 +41,7 @@ import { PlayerBook, realmAddress } from './world/PlayerBook';
 import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
+import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, unrouted } from '../shared/world';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import {
@@ -2395,6 +2396,13 @@ function registerIpc(): void {
    * section.
    */
   handle(Invoke.wards, (_caller, session: SessionId) => worldFor(session)?.wards() ?? []);
+  /* What this character's listed inventory holds that can bless when used. */
+  handle(Invoke.invokeChoices, (_caller, session: SessionId) => {
+    const world = worldFor(session);
+    const inventory = host?.get(session)?.manager.character.inventory;
+    if (!world || inventory === undefined || inventory.listedAt === null) return null;
+    return invokeChoices(inventory.items, world);
+  });
   handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
     const world = worldFor(session);
     // A realm with no world loaded knows nothing about any room, which is the

@@ -283,6 +283,7 @@ export interface GlobalDraft {
       /** Keep up the self blessings that pay for the hunt. See `SpellsConfig`. */
       autoChooseBlessings: boolean;
       invokeItems: boolean;
+      invokeWith: string[];
     };
     loot: ProfileDraft['loot'];
     drop: ProfileDraft['drop'];
@@ -596,6 +597,8 @@ export interface ProfileDraft {
     /** Keep up the self blessings that pay for the hunt. See `SpellsConfig`. */
     autoChooseBlessings: boolean;
     invokeItems: boolean;
+    /** The items the switch above may use. See `SpellsConfig`. */
+    invokeWith: string[];
   };
   /**
    * Which alerts this character raises — `ui.alerts`, not `automation.*`.
@@ -1150,7 +1153,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // `!== false`: on unless it was turned off. See the field.
       autoBless: spells['autoBless'] !== false,
       autoChooseBlessings: spells['autoChooseBlessings'] === true,
-      invokeItems: spells['invokeItems'] === true
+      invokeItems: spells['invokeItems'] === true,
+      invokeWith: words(spells['invokeWith'], 32)
     },
     alerts: {
       /*
@@ -1352,7 +1356,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         notifyPartyOnWearOff: spells['notifyPartyOnWearOff'] === true,
         autoBless: spells['autoBless'] !== false,
         autoChooseBlessings: spells['autoChooseBlessings'] === true,
-        invokeItems: spells['invokeItems'] === true
+        invokeItems: spells['invokeItems'] === true,
+        invokeWith: words(spells['invokeWith'], 32)
       },
       // Read by the function that already knows how, like the blocks above.
       loot: asIf.loot,

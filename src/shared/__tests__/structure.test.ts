@@ -34,14 +34,16 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // (`macros.ts`), less the extensions' hooks (todo 84). Lowered by the
   // blessings' construction, out with its choice (`BlessingChoice.ts`, todo 10).
   // Lowered by the hunt's wiring, out whole (`huntPlanner.ts`, todo 11).
-  'src/main/session/SessionManager.ts': 3643,
+  // Lowered by the item bless's reading, out to `shared/invoke.ts` (todo 03).
+  'src/main/session/SessionManager.ts': 3640,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2433,
   'src/main/parse/CharacterTracker.ts': 2533,
-  'src/renderer/src/App.tsx': 1767,
+  // Lowered by handing the settings screen its api whole (todo 03).
+  'src/renderer/src/App.tsx': 1755,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
   'src/main/automation/Walker.ts': 1957,
-  'src/renderer/src/components/SettingsScreen.tsx': 1219,
+  'src/renderer/src/components/SettingsScreen.tsx': 1215,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
   // rest and meditate fields, shared with the options page (825), and the
@@ -51,7 +53,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the blessings' fields, shared with the Global page (`BlessingFields`, todo 10).
   // Lowered by the carried blocks handed to `CarrySections` whole (todo 12).
   // Lowered by the light switches, shared with the Global page (`LightFields`, todo 11).
-  'src/renderer/src/components/CharacterForm.tsx': 1526
+  // Lowered by the items that bless, out whole (`InvokeFields`, todo 03).
+  'src/renderer/src/components/CharacterForm.tsx': 1524
 };
 
 /**
