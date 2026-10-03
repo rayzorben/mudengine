@@ -1858,7 +1858,7 @@ describe('a stop that states its own clock', () => {
   });
 });
 
-/* Todo 825: a lap waits for mana as it waits for health, from `meditateBelow` to `meditateTo`. */
+/* Todo 825: a lap waits for mana as it waits for health, from `restBelowMana` to `restToMana`. */
 describe('holding for mana', () => {
   const vitals = (mana: number, manaMax: number | null) =>
     state({ vitals: { ...EMPTY_CHARACTER.vitals, hp: 100, hpMax: 100, mana, manaMax } });
@@ -1867,7 +1867,7 @@ describe('holding for mana', () => {
     const { planner: p, walked } = planner();
     const notices: string[] = [];
     const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
-    runner.configure({ ...DEFAULT_CONFIG.automation.health, meditateBelow: 0.3, meditateTo: 0.8 });
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelowMana: 0.3, restToMana: 0.8 });
     runner.start(loop, state());
     expect(walked).toEqual(['Arena']);
     runner.onCharacter(vitals(20, 100));
@@ -1885,7 +1885,7 @@ describe('holding for mana', () => {
   it('lets the dwell lapse without leaving while drained', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
-    runner.configure({ ...DEFAULT_CONFIG.automation.health, meditateBelow: 0.3, meditateTo: 0.8 });
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelowMana: 0.3, restToMana: 0.8 });
     runner.start(loop, vitals(100, 100));
     runner.onWalkEnded(true, null, vitals(20, 100));
     runner.onCharacter(vitals(20, 100));
@@ -1900,7 +1900,7 @@ describe('holding for mana', () => {
   it('never waits on a mana figure with no maximum', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});
-    runner.configure({ ...DEFAULT_CONFIG.automation.health, meditateBelow: 0.3, meditateTo: 0.8 });
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelowMana: 0.3, restToMana: 0.8 });
     runner.start(loop, state());
     // The positive control: the same figure with its maximum holds.
     runner.onCharacter(vitals(20, 100));

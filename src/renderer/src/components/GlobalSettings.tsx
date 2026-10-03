@@ -1002,8 +1002,8 @@ export default function GlobalSettings({
                   restBelow: percent(draft.automation.health.restBelow),
                   restTo: percent(draft.automation.health.restTo),
                   restBeforeTraps: percent(draft.automation.health.restBeforeTraps),
-                  meditateBelow: percent(draft.automation.health.meditateBelow),
-                  meditateTo: percent(draft.automation.health.meditateTo)
+                  restBelowMana: percent(draft.automation.health.restBelowMana),
+                  restToMana: percent(draft.automation.health.restToMana)
                 }}
               />
             </fieldset>

@@ -555,12 +555,16 @@ notices:
     blessingChoice:
       many: 'Auto Choose Blessings was added, off, to {count} files: {fileList}'
       one: 'Auto Choose Blessings was added, off, to {fileList}'
-    meditateCeiling:
-      many: 'Keep Meditating To Mana % was added, off, to {count} files: {fileList}'
-      one: 'Keep Meditating To Mana % was added, off, to {fileList}'
-    meditateFirst:
-      many: 'Meditate Before Resting was added, off, to {count} files: {fileList}'
-      one: 'Meditate Before Resting was added, off, to {fileList}'
+    manaRest:
+      many: 'Meditate If Below Mana % and Keep Meditating To Mana % are now Rest If Below Mana % and
+        Rest To Mana %, with Use Meditate on where mana was rested for, in {count} files: {fileList}'
+      one: 'Meditate If Below Mana % and Keep Meditating To Mana % are now Rest If Below Mana % and
+        Rest To Mana %, with Use Meditate on where mana was rested for, in {fileList}'
+    manaRestAdded:
+      many: 'Rest If Below Mana %, Rest To Mana %, Use Meditate and Meditate Before Resting were added
+        to {count} files: {fileList}'
+      one: 'Rest If Below Mana %, Rest To Mana %, Use Meditate and Meditate Before Resting were added
+        to {fileList}'
     freedomCureStated:
       many: 'A Freedom spell, cast when the character is held in place, was added blank to the cures
         in {count} files: {fileList}'
@@ -3519,13 +3523,12 @@ settings:
     hangUpOnPlayer: Hang Up When a Player Is Seen
     hangUpWarning: On a realm with a hangup penalty, a disconnect costs part of your maximum health,
       and at low health it kills. Use Auto-Run instead.
-    meditateBelowHint: Sends med below this. Ignored for a class with no mana.
-    meditateBelowLabel: Meditate If Below Mana %
-    meditateToHint:
-      Sends med again after something interrupts it, and holds a walk or loop, until mana
-      reaches this. 0 meditates once and walks on a little above Meditate If Below. Raised to
-      Meditate If Below if it is lower.
-    meditateToLabel: Keep Meditating To Mana %
+    restBelowManaHint: Rests for mana below this, with med under Use Meditate; ignored for a class
+      with no mana.
+    restBelowManaLabel: Rest If Below Mana %
+    restToManaHint: Rests again after something interrupts it, and holds a walk or loop, until mana
+      reaches this; 0 rests once.
+    restToManaLabel: Rest To Mana %
     outnumberedHint: A health threshold notices being swarmed too late. 0 is off.
     outnumberedLabel: Run If Attackers Exceed
     pvpActionHint: What to do about the fight itself. Running happens as soon as the attack is seen,
@@ -3584,9 +3587,11 @@ settings:
       any trap at any health.
     restBeforeTrapsLabel: Keep After a Trap HP %
     restNextDoor: Rest Next Door to a Lair
+    useMeditate: Use Meditate
+    useMeditateHint: Rests for mana with med, which is faster but needs the Meditate ability.
     meditateFirst: Meditate Before Resting
-    meditateFirstHint: With health and mana both low, meditates for mana and then rests; when off, it
-      rests first and meditates after.
+    meditateFirstHint: With Use Meditate and health and mana both low, meditates first and then
+      rests; when off, it rests first and meditates after.
     restNextDoorHint: A room that spawns monsters on a short regen time is not a place to rest. The
       character looks into a neighboring room with no lair, steps in only if it is empty, rests, and
       steps back.
@@ -5293,6 +5298,7 @@ automation:
     reasonDefend: 'defend: {target} is attacking {member}'
     reasonRestWithLeader: 'resting with {leader}'
     reasonMeditateWithLeader: 'meditating with {leader}'
+    reasonRestWhileLeaderMeditates: 'resting while {leader} meditates'
     # Todo 839: the party led through a room's own command, and waited for.
     reasonRelay: 'leading the party through "{command}"'
     reasonReinvite: 'inviting {member} back into the party'

@@ -1041,13 +1041,14 @@ export class Remotes implements SessionModule {
           ['Automation', c.enabled],
           ['Combat', c.combat.enabled],
           // Two switches each, because they are: coins and items are looted
-          // by different rules, and resting and meditating are proposed by
-          // different branches on different thresholds -- a caster that only
-          // meditates has its recovery on, and one word would have said off.
+          // by different rules, and health and mana are rested for on
+          // different thresholds -- a caster that only rests for mana has its
+          // recovery on, and one word would have said off.
           ['Loot coins', c.loot.coins],
           ['Loot items', c.loot.items.length > 0],
           ['Rest', c.health.restBelow > 0],
-          ['Meditate', c.health.meditateBelow > 0],
+          ['Rest mana', c.health.restBelowMana > 0],
+          ['Meditate', c.health.useMeditate && c.health.restBelowMana > 0],
           ['Heal', c.spells.heal.length > 0],
           ['Sneak', c.movement.sneak],
           ['Doors', c.movement.openDoors],

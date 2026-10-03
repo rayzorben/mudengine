@@ -164,7 +164,7 @@ const session = new SessionManager(
       enabled: true,
       idle: { ...profile.config.automation.idle, enabled: false },
       loot: { coins: true, items: [] },
-      health: { restBelow: 0.5, meditateBelow: 0 }
+      health: { restBelow: 0.5, restBelowMana: 0 }
     },
     login: profile.config.connection.login,
     fights

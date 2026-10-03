@@ -270,7 +270,7 @@ describe('a character', () => {
     it('takes them, as fractions', () => {
       const draft = asProfileDraft({
         ...good,
-        health: { restBelow: 0.5, meditateBelow: 0.25, meditateTo: 0.6 },
+        health: { restBelow: 0.5, restBelowMana: 0.25, restToMana: 0.6 },
         movement: { openDoors: true, openTries: 2, sneak: true },
         spells: { attack: 'ice blade', minMana: 0.2, healMinMana: 0.1 }
       });
@@ -282,9 +282,10 @@ describe('a character', () => {
         restBeforeTraps: 0.45,
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
-        meditateBelow: 0.25,
-        meditateTo: 0.6,
-        // Absent above, and off: resting comes first unless said.
+        restBelowMana: 0.25,
+        restToMana: 0.6,
+        // Absent above, and off: mana is rested for with `rest`, and resting comes first.
+        useMeditate: false,
         meditateFirst: false,
         // The rules list, empty where the payload states none.
         potions: [],
@@ -398,8 +399,9 @@ describe('a character', () => {
         restBeforeTraps: 0.45,
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
-        meditateBelow: 0,
-        meditateTo: 0,
+        restBelowMana: 0,
+        restToMana: 0,
+        useMeditate: false,
         meditateFirst: false,
         // The rules list, empty where the payload states none.
         potions: [],

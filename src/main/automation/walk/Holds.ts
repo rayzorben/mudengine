@@ -772,7 +772,7 @@ export class Holds {
    * while too hurt to travel*.
    */
   holdForHealth(state: CharacterState): boolean {
-    // Mana holds a walk on the same terms, from `meditateBelow` to `meditateTo` (todo 825).
+    // Mana holds a walk on the same terms, from `restBelowMana` to `restToMana` (todo 825).
     // Never in a fight the walk goes on through, or one about to start: resting
     // heals nothing while something swings.
     const wanted = this.goesOnThrough(state) ? null : this.wantsVitalHold(state);

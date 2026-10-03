@@ -455,9 +455,10 @@ export interface ProfileDraft {
     /** Rest next door to a lair rather than in it. See `HealthConfig`. */
     restNextDoor: boolean;
     restBeforeTraps: number;
-    meditateBelow: number;
-    meditateTo: number;
-    /** Meditate before resting. See `HealthConfig`. */
+    restBelowMana: number;
+    restToMana: number;
+    /** Rest for mana with `med`, and meditate before resting. See `HealthConfig`. */
+    useMeditate: boolean;
     meditateFirst: boolean;
     /** The *use this when that* rules. See `PotionRule`. */
     potions: PotionRule[];
@@ -955,8 +956,9 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         health['restBeforeTraps'],
         DEFAULT_CONFIG.automation.health.restBeforeTraps
       ),
-      meditateBelow: unit(health['meditateBelow']),
-      meditateTo: unit(health['meditateTo']),
+      restBelowMana: unit(health['restBelowMana']),
+      restToMana: unit(health['restToMana']),
+      useMeditate: health['useMeditate'] === true,
       meditateFirst: health['meditateFirst'] === true,
       /*
        * The rules, parsed at the boundary like everything else here: a row

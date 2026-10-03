@@ -244,7 +244,6 @@ function migrateAll(options: MigrationOptions): void {
   theHangPenaltyIsTheRealms(home, note);
   statedTheTeleport(home, note, options.template);
   statedTheFreedomCure(home, note);
-  statedTheMeditateCeiling(home, note, options.template);
   statedThePartyPacing(home, note, options.template);
   statedTheHealChoice(home, note, options.template);
   statedTheAutoJoin(home, note);
@@ -254,7 +253,7 @@ function migrateAll(options: MigrationOptions): void {
   statedBuyingALight(home, note, options.template);
   theHealKeptItsOwnFloor(home, note, options.template);
   theCombatOverridesWent(home, note);
-  statedMeditatingFirst(home, note, options.template);
+  theManaPairRests(home, note, options.template);
 }
 
 /**
@@ -263,7 +262,7 @@ function migrateAll(options: MigrationOptions): void {
  * `combat.defendAfterRounds`, leave every file that states them.
  */
 function theCombatOverridesWent(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const cleaned: string[] = [];
   const gone: ReadonlyArray<readonly [string, string]> = [
     ['movement', 'fightOnArrival'],
@@ -507,7 +506,7 @@ function theTalkHoldGrew(home: Home, note: (message: string) => void): void {
  * removes it.
  */
 function theDesktopSwitchesBecameRows(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const changed: string[] = [];
   const silenced: string[] = [];
 
@@ -592,7 +591,7 @@ function theDesktopSwitchesBecameRows(home: Home, note: (message: string) => voi
  * naming a setting the client no longer reads.
  */
 function theCombatFloorWent(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const cleaned: string[] = [];
 
   for (const file of files) {
@@ -629,7 +628,7 @@ function theCombatFloorWent(home: Home, note: (message: string) => void): void {
  * cost is still drawn on the cards; what it no longer does is decline.
  */
 function theFightCostWent(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const cleaned: string[] = [];
 
   for (const file of files) {
@@ -730,7 +729,7 @@ const TRAIN_COMMENT = ` Spending character points -- the \`train stats\` screen.
  * under it means.
  */
 function statedTheSpellChoice(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -767,7 +766,7 @@ function statedTheSpellChoice(home: Home, note: (message: string) => void): void
  * the points `stats` spends are awarded by the level `levels` collects.
  */
 function statedTheLevelling(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -845,7 +844,7 @@ function statedTheLevelling(home: Home, note: (message: string) => void): void {
  * and says nothing.
  */
 function theCombatAndPotionSettingsWent(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const changed: string[] = [];
 
   for (const file of files) {
@@ -936,7 +935,7 @@ function theCombatAndPotionSettingsWent(home: Home, note: (message: string) => v
 }
 
 function statedTheAlertRules(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -994,7 +993,7 @@ const ALERT_RULES_COMMENT = ` Your own alerts, tried in order.
  * do not use are two keys for the sake of keys.
  */
 function statedTheRecoveryBounds(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -1045,7 +1044,7 @@ const RECOVERY_BOUNDS_COMMENT = ` And the bounds on trying again.
  * *use this when that is true*, for anything the two cannot say.
  */
 function statedThePotionRules(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -1120,7 +1119,7 @@ const AUTO_CHOOSE_COMMENT = ` Auto Choose Best Spell.
  * `restTo`, since it is about the same rest.
  */
 function statedTheRestNextDoor(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -1170,7 +1169,7 @@ const REST_NEXT_DOOR_COMMENT = ` Rest next door to a lair rather than in it.
  * gives: it walks the character back towards whatever killed it.
  */
 function statedTheGearRecovery(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -1220,7 +1219,7 @@ const RECOVER_GEAR_COMMENT = ` Go back for the kit after a death.
  * know whether the character is a backstabber.
  */
 function statedTheHideForOpener(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -1269,7 +1268,7 @@ function statedTheHideForOpener(home: Home, note: (message: string) => void): vo
  * Every row also gains `quietSeconds`, at the shipped thirty.
  */
 function alertRowsBecameEvents(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const changed: string[] = [];
   const widened: string[] = [];
 
@@ -1390,7 +1389,7 @@ function theMobListsBecameRules(home: Home, note: (message: string) => void): vo
   };
 
   // The options file and every character's: `automation.combat`.
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   for (const file of files) {
     edit(file, (document) => {
       const combat = document.getIn(['automation', 'combat'], true);
@@ -1464,7 +1463,7 @@ function theMobListsBecameRules(home: Home, note: (message: string) => void): vo
  * is short enough to read whole.
  */
 function statedTheMobRules(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -1545,7 +1544,7 @@ const HIDE_FOR_OPENER_COMMENT = ` Get back into the shadows between fights, so \
  * player's money on a reading of a file that says nothing.
  */
 function theCoinsCanBeShed(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -1746,7 +1745,7 @@ function theLineBecameARewrite(
   template: string | undefined
 ): void {
   const comments = templateComments(template, 'ui');
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   for (const file of files) {
     if (!fs.existsSync(file)) continue;
     let moved = false;
@@ -1848,7 +1847,7 @@ function theRewritesBecameAList(
   template: string | undefined
 ): void {
   const comments = templateComments(template, 'ui');
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   for (const file of files) {
     if (!fs.existsSync(file)) continue;
     let moved = false;
@@ -2324,7 +2323,7 @@ function theEscapeIsADirection(
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const changed: string[] = [];
   const comments = templateComments(template, 'automation');
   const RETIRED_STRATEGIES = new Set(['flee', 'reverse-step']);
@@ -2604,7 +2603,7 @@ function theLoopSettlesAfterAnEscape(
  * screen until this change, so somebody has almost certainly set them.
  */
 function restIsOnePair(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const folded: string[] = [];
   const pairs = [
     ['loopPauseBelow', 'restBelow'],
@@ -2674,7 +2673,7 @@ function restIsOnePair(home: Home, note: (message: string) => void): void {
  * instead of going back to inheriting them.
  */
 function dropTheRoundMacro(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const cleaned: string[] = [];
 
   for (const file of files) {
@@ -2778,7 +2777,7 @@ function stateInFrom(
   after: string,
   comment: string | undefined
 ): string[] {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
   for (const file of files) {
     edit(file, (document) => {
@@ -2956,58 +2955,100 @@ function statedTheAutoJoin(home: Home, note: (message: string) => void): void {
 }
 
 /**
- * `automation.health.meditateTo` into every file that states `health:`
- * without it, at the shipped 0 and with the template's comment (todo 825).
- * After `meditateBelow`, its pair; appended where the file states neither.
+ * The mana pair is resting for mana, not meditating (the user, 2026-10-03):
+ * `meditateBelow`/`meditateTo` become `restBelowMana`/`restToMana` in every
+ * file, in place and with the template's new comment, a stated figure kept;
+ * then the pair, `useMeditate` and `meditateFirst` are stated where absent.
+ * `useMeditate` is on where the file rested for mana at all, since until now
+ * that rest was always `med`. Replaces `statedTheMeditateCeiling`, which
+ * stated the old `meditateTo` and would have put it back on every launch.
  */
-function statedTheMeditateCeiling(
+function theManaPairRests(
   home: Home,
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const stated = stateIn(
-    home,
-    HEALTH_BLOCK,
-    'meditateTo',
-    DEFAULT_CONFIG.automation.health.meditateTo,
-    'meditateBelow',
-    templateComments(template, 'automation').get('automation.health.meditateTo')
-  );
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
+  const comments = templateComments(template, 'automation');
+  const files = everySettingsFile(home);
+  const renamed: string[] = [];
+  for (const file of files) {
+    edit(file, (document) => {
+      const health = document.getIn(HEALTH_BLOCK, true);
+      if (!isMap(health)) return false;
+      let changed = false;
+      for (const [old, now] of MANA_PAIR_RENAMED) {
+        const pair = health.items.find((item) => keyText(item) === old);
+        if (pair === undefined) continue;
+        changed = true;
+        // Both stated: the new key is the one a screen has written since.
+        if (health.has(now) || !isScalar(pair.key)) {
+          health.delete(old);
+          continue;
+        }
+        pair.key.value = now;
+        const comment = comments.get(`automation.health.${now}`);
+        if (comment !== undefined) pair.key.commentBefore = comment;
+      }
+      if (changed) renamed.push(file);
+      return changed;
+    });
+  }
+  const d = DEFAULT_CONFIG.automation.health;
+  const of = (key: string) => comments.get(`automation.health.${key}`);
+  const stated = [
+    ...stateIn(
+      home,
+      HEALTH_BLOCK,
+      'restBelowMana',
+      d.restBelowMana,
+      'restBeforeTraps',
+      of('restBelowMana')
+    ),
+    ...stateIn(home, HEALTH_BLOCK, 'restToMana', d.restToMana, 'restBelowMana', of('restToMana')),
+    ...stateInFrom(
+      home,
+      HEALTH_BLOCK,
+      'useMeditate',
+      (map) => {
+        const below = map.get('restBelowMana');
+        return typeof below === 'number' && below > 0;
+      },
+      'restToMana',
+      of('useMeditate')
+    ),
+    ...stateIn(
+      home,
+      HEALTH_BLOCK,
+      'meditateFirst',
+      d.meditateFirst,
+      'useMeditate',
+      of('meditateFirst')
+    )
+  ];
+  // A renamed file is said as renamed; one that only had keys stated, as added.
+  const added = [...new Set(stated)].filter((file) => !renamed.includes(file));
+  if (renamed.length > 0) {
+    const params = { count: renamed.length, fileList: renamed.join(', ') };
+    note(
+      renamed.length === 1
+        ? t('notices.migration.manaRest.one', params)
+        : t('notices.migration.manaRest.many', params)
+    );
+  }
+  if (added.length === 0) return;
+  const params = { count: added.length, fileList: added.join(', ') };
   note(
-    stated.length === 1
-      ? t('notices.migration.meditateCeiling.one', params)
-      : t('notices.migration.meditateCeiling.many', params)
+    added.length === 1
+      ? t('notices.migration.manaRestAdded.one', params)
+      : t('notices.migration.manaRestAdded.many', params)
   );
 }
 
-/**
- * `automation.health.meditateFirst` into every file that states `health:`
- * without it, off, after `meditateTo` (the user, 2026-10-03): a switch inside
- * a block the file states is one `reconcileWithTemplate` never reaches.
- */
-function statedMeditatingFirst(
-  home: Home,
-  note: (message: string) => void,
-  template: string | undefined
-): void {
-  const stated = stateIn(
-    home,
-    HEALTH_BLOCK,
-    'meditateFirst',
-    DEFAULT_CONFIG.automation.health.meditateFirst,
-    'meditateTo',
-    templateComments(template, 'automation').get('automation.health.meditateFirst')
-  );
-  if (stated.length === 0) return;
-  const params = { count: stated.length, fileList: stated.join(', ') };
-  note(
-    stated.length === 1
-      ? t('notices.migration.meditateFirst.one', params)
-      : t('notices.migration.meditateFirst.many', params)
-  );
-}
+/** The mana pair's old keys and the ones they became. */
+const MANA_PAIR_RENAMED = [
+  ['meditateBelow', 'restBelowMana'],
+  ['meditateTo', 'restToMana']
+] as const;
 
 /**
  * `automation.health.restBeforeTraps` into every file that states `health:`
@@ -3107,7 +3148,7 @@ function statedTheTrapRest(home: Home, note: (message: string) => void): void {
  * removes them.
  */
 function alertSettingsBecameRows(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const converted: string[] = [];
   const floored: string[] = [];
 
@@ -3637,7 +3678,7 @@ function keptTheConversationLog(home: Home, note: (message: string) => void): vo
  * a skill this client cannot check the character has.
  */
 function theDoorsOpenByDefault(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const moved: string[] = [];
 
   for (const file of files) {
@@ -3679,7 +3720,7 @@ function theDoorsOpenByDefault(home: Home, note: (message: string) => void): voi
  * said `false` said *hang up anyway*, and keeps that as `penalties: false`.
  */
 function theHangPenaltyIsTheRealms(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const changed: string[] = [];
 
   for (const file of files) {
@@ -3818,7 +3859,7 @@ function theHealKeptItsOwnFloor(
   template: string | undefined
 ): void {
   const comment = templateComments(template, 'automation').get('automation.spells.healMinMana');
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -3853,7 +3894,7 @@ function theHealKeptItsOwnFloor(
  * Idempotent: a key stays added whatever its value.
  */
 function statedTheFreedomCure(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -3903,7 +3944,7 @@ function statedTheFreedomCure(home: Home, note: (message: string) => void): void
  * file does not.
  */
 function theWardSwitchMovedToHealth(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const moved: string[] = [];
 
   for (const file of files) {
@@ -3944,7 +3985,7 @@ function theWardSwitchMovedToHealth(home: Home, note: (message: string) => void)
 }
 
 function statedDoorForcing(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -4107,7 +4148,7 @@ function statedTheStepNudge(home: Home, note: (message: string) => void): void {
  * rewritten.
  */
 function theActionsBecameAFamily(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   for (const file of files) {
     if (!fs.existsSync(file)) continue;
     let changed = false;
@@ -4433,7 +4474,7 @@ const ROSTER_LINES_COMMENT = ` Cap on the lines of a \`who\` listing -- the one 
  * keep one.
  */
 function askedTheBankOnEntry(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const asked: string[] = [];
 
   for (const file of files) {
@@ -4496,7 +4537,7 @@ const LOOK_WORDS = new Set(['l', 'lo', 'loo', 'look']);
  * longer matches.
  */
 function stoppedAnnouncingTheLook(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const quietened: string[] = [];
 
   for (const file of files) {
@@ -4556,7 +4597,7 @@ function stoppedAnnouncingTheLook(home: Home, note: (message: string) => void): 
  * ever overwritten.
  */
 function statedTheNewAutomation(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   const addKeys = (
@@ -4668,7 +4709,7 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
  * `reconcileWithTemplate` never reaches inside a block that is already stated.
  */
 function statedTheEntityPredicates(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -4739,7 +4780,7 @@ function statedTheEntityPredicates(home: Home, note: (message: string) => void):
  * to a block reaches nobody who has already run the client.
  */
 function splitTheHealSpell(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const split: string[] = [];
 
   for (const file of files) {
@@ -4801,7 +4842,7 @@ function splitTheHealSpell(home: Home, note: (message: string) => void): void {
  * was not carried, not clutter to tidy.
  */
 function mergedBuffsIntoBlessings(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const merged: string[] = [];
 
   for (const file of files) {
@@ -4890,7 +4931,7 @@ const BLESSINGS_COMMENT = ` Blessings kept up on this character and the party, i
  * because there is nothing honest to translate it into.
  */
 function keyedBlessingsOnSpell(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const changed: string[] = [];
 
   for (const file of files) {
@@ -5332,7 +5373,7 @@ function dropAnonymousConnection(home: Home, note: (message: string) => void): v
  */
 function peersBecameRemotes(options: MigrationOptions): void {
   const { home, note, template } = options;
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
   let droppedParty = false;
 
@@ -5546,7 +5587,7 @@ const DEAD_HEALTH_KEYS = ['restUntil', 'meditateUntil'] as const;
  * somebody may have written themselves is not this code's business.
  */
 function dropStandUpThresholds(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const cleaned: string[] = [];
 
   for (const file of files) {
@@ -5608,7 +5649,7 @@ function dropStandUpThresholds(home: Home, note: (message: string) => void): voi
  * somebody wrote themselves that happens to mention the word is left alone.
  */
 function dropDiagnosticsPreference(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const cleaned: string[] = [];
 
   for (const file of files) {
@@ -6116,7 +6157,7 @@ const AUTO_RECONNECT_COMMENT = ` Dial this character again when a connection is 
  * set any of them to `false` — see `statedDoorForcing`.
  */
 function statedTheLightAndSupplies(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -6196,7 +6237,7 @@ function statedTheConditionWaits(
   note: (message: string) => void,
   template: string | undefined
 ): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const comments = templateComments(template, 'automation');
   const stated: string[] = [];
   const written = new Set<string>();
@@ -6266,7 +6307,7 @@ function statedTheConditionWaits(
  * overwritten.
  */
 function statedTheKeyPickup(home: Home, note: (message: string) => void): void {
-  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const files = everySettingsFile(home);
   const stated: string[] = [];
 
   for (const file of files) {
@@ -6799,6 +6840,11 @@ function listing(dir: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** The options file and every character's profile: what a step that reaches `automation:` edits. */
+function everySettingsFile(home: Home): string[] {
+  return [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
 }
 
 function directories(dir: string): string[] {

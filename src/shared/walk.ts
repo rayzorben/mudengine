@@ -167,7 +167,7 @@ export function isAfflictionHold(hold: string | null): hold is AfflictionHold {
  */
 export type WalkHold =
   | 'health'
-  /** Mana under `meditateBelow`, until `meditateTo` (todo 825). */
+  /** Mana under `restBelowMana`, until `restToMana` (todo 825). */
   | 'mana'
   | 'fight'
   | 'trap'

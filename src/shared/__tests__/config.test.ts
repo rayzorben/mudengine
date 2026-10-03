@@ -508,10 +508,10 @@ describe('the resting pair', () => {
 
   // Todo 825: the meditate pair on the same terms, 0 staying 0.
   it('lifts a meditate line under its floor, and leaves 0 alone', () => {
-    expect(health({}).meditateTo).toBe(0);
-    expect(health({ meditateBelow: 0.4, meditateTo: 0.2 })).toMatchObject({ meditateTo: 0.4 });
-    expect(health({ meditateBelow: 0.4, meditateTo: 0.9 })).toMatchObject({ meditateTo: 0.9 });
-    expect(health({ meditateBelow: 0.4, meditateTo: 0 })).toMatchObject({ meditateTo: 0 });
+    expect(health({}).restToMana).toBe(0);
+    expect(health({ restBelowMana: 0.4, restToMana: 0.2 })).toMatchObject({ restToMana: 0.4 });
+    expect(health({ restBelowMana: 0.4, restToMana: 0.9 })).toMatchObject({ restToMana: 0.9 });
+    expect(health({ restBelowMana: 0.4, restToMana: 0 })).toMatchObject({ restToMana: 0 });
   });
 
   /*

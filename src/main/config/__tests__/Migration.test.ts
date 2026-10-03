@@ -242,10 +242,11 @@ describe('the "stand up at" health thresholds', () => {
       restBeforeTraps: 0.45,
       // And by `statedTheRestNextDoor`, on.
       restNextDoor: true,
-      meditateBelow: 0.3,
-      // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0,
-      // And by `statedMeditatingFirst`, off.
+      // Renamed by `theManaPairRests`, the ceiling stated off, and Use
+      // Meditate on, since the file rested for mana and that rest was `med`.
+      restBelowMana: 0.3,
+      restToMana: 0,
+      useMeditate: true,
       meditateFirst: false,
       // And by `statedTheNewAutomation`, at the default.
       useWards: true
@@ -4153,9 +4154,10 @@ describe('resting before a trap', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0,
-      // And by `statedMeditatingFirst`, off.
+      // And by `theManaPairRests`, all off.
+      restBelowMana: 0,
+      restToMana: 0,
+      useMeditate: false,
       meditateFirst: false
     });
     const once = fs.readFileSync(profile.file, 'utf8');
@@ -4196,9 +4198,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0,
-      // And by `statedMeditatingFirst`, off.
+      // And by `theManaPairRests`, all off.
+      restBelowMana: 0,
+      restToMana: 0,
+      useMeditate: false,
       meditateFirst: false
     });
   });
@@ -4220,9 +4223,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0,
-      // And by `statedMeditatingFirst`, off.
+      // And by `theManaPairRests`, all off.
+      restBelowMana: 0,
+      restToMana: 0,
+      useMeditate: false,
       meditateFirst: false
     });
   });
@@ -4237,9 +4241,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0,
-      // And by `statedMeditatingFirst`, off.
+      // And by `theManaPairRests`, all off.
+      restBelowMana: 0,
+      restToMana: 0,
+      useMeditate: false,
       meditateFirst: false
     });
   });
@@ -4256,9 +4261,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `statedTheMeditateCeiling`, off.
-      meditateTo: 0,
-      // And by `statedMeditatingFirst`, off.
+      // And by `theManaPairRests`, all off.
+      restBelowMana: 0,
+      restToMana: 0,
+      useMeditate: false,
       meditateFirst: false
     });
     const once = fs.readFileSync(profile.file, 'utf8');
@@ -5693,7 +5699,7 @@ describe('resting next door to a lair is stated', () => {
     expect(health()['restNextDoor']).toBe(true);
     const text = fs.readFileSync(home.options, 'utf8');
     expect(text.indexOf('restTo:')).toBeLessThan(text.indexOf('restNextDoor:'));
-    expect(text.indexOf('restNextDoor:')).toBeLessThan(text.indexOf('meditateBelow:'));
+    expect(text.indexOf('restNextDoor:')).toBeLessThan(text.indexOf('restBelowMana:'));
     expect(
       notesOf(said, 'notices.migration.restNextDoor.one', 'notices.migration.restNextDoor.many')
     ).toHaveLength(1);
@@ -6536,43 +6542,50 @@ describe('the Freedom cure is stated', () => {
   });
 });
 
-/* `statedTheMeditateCeiling` (todo 825): `meditateTo` beside its partner, with the template's words. */
-describe('Keep Meditating To is stated', () => {
+/* `theManaPairRests` (the user, 2026-10-03): the mana pair rests for mana, and meditating is a switch. */
+describe('the mana pair rests for mana', () => {
   const write = (file: string, body: string): void => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `automation:\n  health:\n${body}`, 'utf8');
   };
+  const healthOf = (file: string): Record<string, unknown> =>
+    (parse(fs.readFileSync(file, 'utf8')) as { automation: { health: Record<string, unknown> } })
+      .automation.health;
 
-  it('writes it off, after meditateBelow, with its comment, once', () => {
+  it('renames the pair in place, keeps the figures, and turns Use Meditate on where it meditated, once', () => {
     const profile = home.profile('festus').file;
-    write(profile, '    restBelow: 0.4\n    meditateBelow: 0.2\n    useWards: true\n');
+    write(
+      profile,
+      '    restBelow: 0.4\n    meditateBelow: 0.2\n    meditateTo: 0.9\n    useWards: true\n'
+    );
     migrate(true);
     const text = fs.readFileSync(profile, 'utf8');
-    const health = (parse(text) as { automation: { health: Record<string, unknown> } }).automation
-      .health;
+    const health = healthOf(profile);
     const keys = Object.keys(health);
-    expect(keys[keys.indexOf('meditateBelow') + 1]).toBe('meditateTo');
-    expect(health['meditateTo']).toBe(0);
-    expect(text).toContain('Keep meditating to this share of mana');
+    expect(keys).not.toContain('meditateBelow');
+    expect(keys).not.toContain('meditateTo');
+    expect(keys.indexOf('restToMana')).toBe(keys.indexOf('restBelowMana') + 1);
+    expect(keys.indexOf('useMeditate')).toBe(keys.indexOf('restToMana') + 1);
+    expect(health['restBelowMana']).toBe(0.2);
+    expect(health['restToMana']).toBe(0.9);
+    expect(health['useMeditate']).toBe(true);
+    expect(health['meditateFirst']).toBe(false);
+    expect(text).toContain('Rest for mana with `med` rather than `rest`');
     expect(
-      notesOf(
-        said,
-        'notices.migration.meditateCeiling.one',
-        'notices.migration.meditateCeiling.many'
-      )
+      notesOf(said, 'notices.migration.manaRest.one', 'notices.migration.manaRest.many')
     ).toHaveLength(1);
     migrate(true);
     expect(fs.readFileSync(profile, 'utf8')).toBe(text);
   });
 
-  it('never overwrites a stated figure', () => {
+  it('leaves Use Meditate off where the file never rested for mana', () => {
     const profile = home.profile('soul').file;
-    write(profile, '    meditateBelow: 0.2\n    meditateTo: 0.9\n');
+    write(profile, '    restBelow: 0.4\n    meditateBelow: 0\n');
     migrate(true);
-    const health = (
-      parse(fs.readFileSync(profile, 'utf8')) as { automation: { health: Record<string, unknown> } }
-    ).automation.health;
-    expect(health['meditateTo']).toBe(0.9);
+    const health = healthOf(profile);
+    expect(health['restBelowMana']).toBe(0);
+    expect(health['restToMana']).toBe(0);
+    expect(health['useMeditate']).toBe(false);
   });
 });
 
