@@ -51,6 +51,7 @@ import { tuning } from '../app/tuning';
 import type { Block, BlockType } from '../../shared/blocks';
 import { tailAfterPrompt, type BatchBlock } from '../parse/Classifier';
 import type { LineTerminator, TerminalMark } from '../../shared/types';
+import { SGR_RESET } from '../../shared/template';
 
 /**
  * How long an unterminated tail is held inside a quiet window before it is
@@ -325,6 +326,13 @@ export class TerminalFeed {
   private acknowledged = false;
   /** Something was withheld since the last emit, so the next shown line needs its own row. */
   private swallowed = false;
+  /**
+   * A drawn prompt took the realm's reset after it ({@link afterStyling}), so
+   * the colour its design ends in stays on the console until something resets
+   * it. That colour is for the typed line only: the reset is painted before
+   * the first thing written once the prompt's row has ended (`settle`).
+   */
+  private owesReset = false;
   /** The listing being withheld for a rewrite, its lines so far, and the clock that gives up on it. */
   private held: { type: BlockType; lines: HeldLine[]; timer: NodeJS.Timeout | null } | null = null;
   /** A line drawn in the realm's place once the session has read it: see `drawUnread`. */
@@ -511,6 +519,7 @@ export class TerminalFeed {
       const shown = end === null ? text : text.slice(0, afterStyling(text, rawIndexOf(text, end)));
       const drawn = already === 0 ? this.designed(shown, plain.slice(0, end ?? undefined)) : null;
       this.emit(drawn ?? shown.slice(already), terminator, mark);
+      if (drawn !== null) this.owesReset = true;
       if (end !== null) this.swallowed = true;
       return;
     }
@@ -718,9 +727,11 @@ export class TerminalFeed {
   private drawDesigned(pending: string, plain: string): boolean {
     const drawn = this.designed(pending, plain);
     if (drawn === null) return false;
+    this.settle();
     this.out.text += drawn;
     this.forwarded = pending.length;
     this.atLineStart = false;
+    this.owesReset = true;
     return true;
   }
 
@@ -787,6 +798,7 @@ export class TerminalFeed {
   private emitDrawn(drawn: Emitted): void {
     if (drawn.text.length === 0) return;
     this.swallowed = false;
+    this.settle();
     for (const { offset, mark } of drawn.marks) {
       this.out.marks.push({ offset: this.out.text.length + offset, mark });
     }
@@ -822,6 +834,7 @@ export class TerminalFeed {
   private forwardTail(): void {
     const fresh = this.tail.slice(this.forwarded);
     if (fresh.length === 0) return;
+    this.settle();
     this.out.text += fresh;
     this.forwarded = this.tail.length;
     this.atLineStart = false;
@@ -830,9 +843,21 @@ export class TerminalFeed {
   private emit(text: string, terminator: LineTerminator, mark?: TerminalMark): void {
     if (text.length === 0) return;
     this.swallowed = false;
+    this.settle();
     if (mark) this.out.marks.push({ offset: this.out.text.length, mark });
     this.out.text += text;
     this.atLineStart = terminator !== 'flush' || text.endsWith('\n');
+  }
+
+  /**
+   * Pays the reset a drawn prompt owes, once its row has ended: the next row
+   * starts in the default ink, whoever sent the line that ended it. Kept
+   * across `reset()`, because the console keeps the colour across a dial.
+   */
+  private settle(): void {
+    if (!this.owesReset || !this.atLineStart) return;
+    this.out.text += SGR_RESET;
+    this.owesReset = false;
   }
 
   private expire(): void {
