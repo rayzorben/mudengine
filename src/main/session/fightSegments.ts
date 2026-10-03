@@ -24,6 +24,7 @@ import {
 } from '../../shared/fights';
 import { isRecord } from '../../shared/values';
 import { tuning } from '../app/tuning';
+import { segmentPath, segmentsIn as segmentsInDir } from './segmentFiles';
 
 /** Fights folded both ways, per monster and per level, and how many there were. */
 export interface FoldedRecord {
@@ -34,14 +35,15 @@ export interface FoldedRecord {
 
 export const emptyFold = (): FoldedRecord => ({ folds: new Map(), outputs: new Map(), fights: 0 });
 
-const SEGMENT = /^(\d{4,})\.jsonl\.gz$/;
-const name = (segment: number): string => String(segment).padStart(4, '0');
+/** A segment's suffix, and the old one-file log's. */
+export const FIGHTS_EXT = '.jsonl.gz';
+const FOLD_EXT = '.folds.json';
 
 export const segmentFile = (dir: string, segment: number): string =>
-  path.join(dir, `${name(segment)}.jsonl.gz`);
+  segmentPath(dir, segment, FIGHTS_EXT);
 
 export const foldFile = (dir: string, segment: number): string =>
-  path.join(dir, `${name(segment)}.folds.json`);
+  segmentPath(dir, segment, FOLD_EXT);
 
 let pendingWrites = 0;
 
@@ -52,29 +54,17 @@ let pendingWrites = 0;
  * it while another reads it) never rename each other's.
  */
 const pendingFoldFile = (dir: string, segment: number): string =>
-  path.join(dir, `.${name(segment)}.folds.json.${process.pid}-${(pendingWrites += 1)}.tmp`);
+  path.join(
+    dir,
+    `.${path.basename(foldFile(dir, segment))}.${process.pid}-${(pendingWrites += 1)}.tmp`
+  );
 
 /** Whether a name in a record's directory is a fold write a crash left behind. */
 export const isPendingFold = (entry: string): boolean =>
   /^\.\d{4,}\.folds\.json\..*\.tmp$/.test(entry);
 
 /** The segment numbers in `dir`, in order; none for a directory that is not there. */
-export function segmentsIn(dir: string): number[] {
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch (error) {
-    // Not there, or a file where a directory on the way should be: no record.
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT' || code === 'ENOTDIR') return [];
-    throw error;
-  }
-  return names
-    .map((entry) => SEGMENT.exec(entry)?.[1])
-    .filter((digits): digits is string => digits !== undefined)
-    .map(Number)
-    .sort((a, b) => a - b);
-}
+export const segmentsIn = (dir: string): number[] => segmentsInDir(dir, FIGHTS_EXT);
 
 /** A file's length, or zero for one not there yet. */
 export function lengthOf(file: string): number {
