@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { t } from '../../app/i18n';
+import { personStop } from '../../automation/personStop';
 import { Travel, type TravelParts, type TravelSession } from '../Travel';
 import type { SafetyDecision } from '../../../shared/automation';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
@@ -534,5 +535,36 @@ describe('a light bought before the dark', () => {
     parts.loops.start = () => null;
     expect(looping.startLoop(loop)).toEqual({ started: true });
     expect(parts.light.beforeLap).toHaveBeenCalledWith(loop, state);
+  });
+});
+
+/*
+ * Todo 15: a stop during the trip to the shop before a route. The trip ends on
+ * the walk's ending and lets go synchronously, which walked the character on
+ * to the route's destination: the stop started a walk.
+ */
+describe('a stop on the way to the shop before a route', () => {
+  const route = {
+    steps: [{ from: '1/1', to: '1/2', command: 'n', name: 'Town Gates' }],
+    blocked: false
+  } as unknown as Route;
+
+  it('stays put, and says the route it was owed is not walked on to', () => {
+    const { travel: going, parts, notices } = travel(beside(), 'stepping');
+    vi.mocked(parts.supplies.considerBeforeRoute).mockReturnValue({
+      item: { name: 'torch' },
+      shopName: 'General Store'
+    } as unknown as ReturnType<typeof parts.supplies.considerBeforeRoute>);
+    expect(going.walkRoute(route)).toBeNull();
+    // The trip's own ending, as `Supplies.finish` releases it.
+    vi.mocked(parts.walker.stop).mockImplementation(() => going.walkOnAfterErrand());
+
+    going.stopMoving('Brackle');
+
+    expect(parts.errands.planFromHere).not.toHaveBeenCalled();
+    expect(parts.walker.start).not.toHaveBeenCalled();
+    expect(notices).toContain(
+      t('session.walk.notResumed', { destination: 'Town Gates', reason: personStop('Brackle') })
+    );
   });
 });

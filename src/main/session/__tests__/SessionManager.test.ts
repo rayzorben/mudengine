@@ -17,6 +17,7 @@ import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../..
 import { WorldGraph } from '../../world/WorldGraph';
 import { worldOf } from '../../world/__tests__/realmFile';
 import { t } from '../../app/i18n';
+import { personStop } from '../../automation/personStop';
 import { composes } from '../../app/copyMatch';
 import { escapeRegExp } from '../../../shared/regex';
 import { PlayerBook } from '../../world/PlayerBook';
@@ -6830,14 +6831,14 @@ describe('starting and stopping a movement', () => {
   };
 
   /** In the realm at the north end of the corridor. */
-  async function atTheNorthEnd(): Promise<{
+  async function atTheNorthEnd(automation: AutomationConfig = quiet): Promise<{
     socket: net.Socket;
     world: WorldGraph;
     notices: string[];
   }> {
     const world = corridor();
     const { sink, notices } = collect();
-    manager = build(sink, { world, automation: quiet });
+    manager = build(sink, { world, automation });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
@@ -7154,6 +7155,71 @@ describe('starting and stopping a movement', () => {
     manager!.stopMoving();
     expect(manager!.movement).toEqual({ kind: 'route', moving: false, resumable: true });
     expect(manager!.walker.progress.asked).toBe(true);
+  });
+
+  /* Todo 15: `@stop` and `@rego`, the same Stop and Play on another player's word. */
+  describe("on another player's word", () => {
+    const granted: AutomationConfig = {
+      ...quiet,
+      remotes: {
+        ...quiet.remotes,
+        enabled: true,
+        party: [],
+        players: { brackle: { allow: ['stop', 'rego'], deny: [] } }
+      }
+    };
+
+    it('stops a route, and walks it again from far away on @rego without asking', async () => {
+      const { socket, world, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
+      socket.write('Brackle telepaths: @stop\r\n');
+      await until(() => manager!.walker.progress.status === 'stopped');
+      expect(manager!.walker.progress.reason).toBe(personStop('Brackle'));
+      await until(() => sent().includes('/Brackle {ok}'));
+
+      // Thirty-five steps further away than it stopped: Play would ask first.
+      await standIn(socket, 1);
+      socket.write('Brackle telepaths: @rego\r\n');
+      await until(() => manager!.walker.progress.status === 'walking');
+      expect(manager!.walker.progress.total).toBe(37);
+      await until(() => sent().split('/Brackle {ok}').length === 3);
+      expect(notices).toContain(
+        t('session.remotes.regoResumed', { who: 'Brackle', name: 'Room 38' })
+      );
+    });
+
+    it('resumes a stopped lap on @rego', async () => {
+      const { socket } = await atTheNorthEnd(granted);
+      expect(
+        manager!.startLoop({ name: 'lap', stops: [{ room: 'Room 38' }, { room: 'Room 36' }] })
+      ).toEqual({ started: true });
+      socket.write('Brackle telepaths: @stop\r\n');
+      await until(() => manager!.loops.progress.status === 'stopped');
+      expect(manager!.loops.progress.reason).toBe(personStop('Brackle'));
+      socket.write('Brackle telepaths: @rego\r\n');
+      await until(() => manager!.loops.progress.status === 'running');
+    });
+
+    /* A stop the player pressed is theirs to end, as `@ok` leaves it alone. */
+    it('resumes nothing the player stopped, and says so', async () => {
+      const { socket, world, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      expect(manager!.walkRoute(world.route('1/40', '1/38'))).toBeNull();
+      manager!.stopMoving();
+      socket.write('Brackle telepaths: @rego\r\n');
+      await until(() => notices.includes(t('session.remotes.regoNothing', { who: 'Brackle' })));
+      expect(manager!.walker.progress.status).toBe('stopped');
+      expect(sent()).not.toContain('{ok}');
+    });
+
+    it('stops nothing when nothing is moving, and says so', async () => {
+      const { socket, notices } = await atTheNorthEnd(granted);
+      const sent = wire(socket);
+      socket.write('Brackle telepaths: @stop\r\n');
+      await until(() => notices.includes(t('session.remotes.stopNothing', { who: 'Brackle' })));
+      expect(sent()).not.toContain('{ok}');
+    });
   });
 
   /* One movement at a time from every door, not only from a route: a lap
