@@ -135,7 +135,7 @@ import { answeringAfter } from '../parse/echo';
 import { TerminalFeed } from './TerminalFeed';
 import { Paint } from './Paint';
 import { Appraisal } from './Appraisal';
-import { fightBook, type OddsBook } from './OddsBook';
+import { fightBook, type SessionOdds } from './OddsBook';
 import { blessingsFor } from './BlessingChoice';
 import { Publisher } from './Publisher';
 import { Rewriter } from './Rewriter';
@@ -414,7 +414,7 @@ export class SessionManager {
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
   readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'opening'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
-  readonly odds: Pick<OddsBook, 'refresh' | 'mob' | 'lair' | 'lairsLeft' | 'reset' | 'dispose'>;
+  readonly odds: SessionOdds;
   private automationConfig: AutomationConfig;
   /** What `configure` was last handed, so an extension's layer is laid again over it. */
   private configured: Parameters<SessionManager['configure']>;

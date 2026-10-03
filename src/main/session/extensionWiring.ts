@@ -56,7 +56,7 @@ export interface ExtensionWiring {
     | 'reachKey'
   >;
   world(): ExtensionWorld | undefined;
-  odds: Pick<OddsBook, 'lair' | 'lairsLeft'>;
+  odds: Pick<OddsBook, 'lair' | 'lairsLeft' | 'mob' | 'mobAs'>;
   blessings: Pick<Blessings, 'entries'>;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
@@ -133,6 +133,8 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       },
       priceAt: (name, shop) => errands.priceAt(name, shop),
       lairOdds: (room) => wiring.odds.lair(room),
+      fightOdds: (monster, as) =>
+        as === undefined ? wiring.odds.mob(monster) : wiring.odds.mobAs(monster, as),
       lairsUnrun: () => wiring.odds.lairsLeft,
       blessings: () => wiring.blessings.entries(),
       fled: wiring.fled,

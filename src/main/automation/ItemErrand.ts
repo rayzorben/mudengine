@@ -90,6 +90,9 @@ export interface ItemPlanner {
   combatOn(): boolean;
   /** Take this by name while the errand runs — session-scoped, never the file. */
   alsoTake(name: string): void;
+  /** Fight this by name while the errand runs, whatever the odds: the plan chose it. */
+  fightFor(mob: string): void;
+  stopFighting(mob: string): void;
   stopTaking(name: string): void;
   /** The route the player asked for, walked — or run (todo 06) — once the pack holds the item. */
   walk(route: Route, run: boolean): string | null;
@@ -226,6 +229,8 @@ const ACTION = 'collect';
 
 export class ItemErrand implements SessionModule {
   private phase: Phase = { kind: 'idle' };
+  /** The monsters this errand has combat fight whatever the odds: a planned source's. See `give`. */
+  private fought: readonly string[] = [];
 
   constructor(
     private readonly planner: ItemPlanner,
@@ -403,6 +408,7 @@ export class ItemErrand implements SessionModule {
       if (refused !== null) return this.refuse(item, refused);
       // A summoned dropper's loot is picked up for as long as the errand runs.
       if (ask.summons !== undefined) this.planner.alsoTake(item.name);
+      this.fightPlanned(item, [ask.summons]);
       this.phase = {
         kind: 'asking',
         item,
@@ -439,9 +445,10 @@ export class ItemErrand implements SessionModule {
     // Running before the lap starts, so what a starting lap sets off (a light
     // bought for its rooms, `LightAhead.beforeLap`) sees this trip under way.
     this.phase = { kind: 'hunting', item, rest, owes, run };
+    this.fightPlanned(item, [lair.via, lair.mob]);
     const refused = this.planner.runLoop(loop);
     if (refused !== null) {
-      this.planner.stopTaking(item.name);
+      this.give();
       this.phase = { kind: 'idle' };
       return this.refuse(item, refused);
     }
@@ -695,10 +702,25 @@ export class ItemErrand implements SessionModule {
     this.refuse(item, why);
   }
 
-  /** Stop taking what was only ever wanted for this errand. */
+  /** Stop taking, and fighting, what was only ever wanted for this errand. */
   private give(): void {
+    for (const mob of this.fought) this.planner.stopFighting(mob);
+    this.fought = [];
     if (this.phase.kind === 'idle') return;
     this.planner.stopTaking(this.phase.item.name);
+  }
+
+  /**
+   * A planned source's fights are fought whatever `openAbove` says: the plan
+   * showed the odds and the player, or the planner walking the character,
+   * chose to go on them (the user, 2026-10-03). A source the errand found
+   * itself is fought by combat's own rule.
+   */
+  private fightPlanned(item: Wanted, mobs: readonly (string | undefined)[]): void {
+    if (item.from === undefined) return;
+    const named = mobs.filter((mob): mob is string => mob !== undefined);
+    for (const mob of named) this.planner.fightFor(mob);
+    this.fought = named;
   }
 
   /** A plan's source the world database no longer has. */

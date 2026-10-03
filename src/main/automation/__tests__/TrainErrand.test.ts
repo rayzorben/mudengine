@@ -743,9 +743,7 @@ describe('a trainer behind a keyed door', () => {
   });
 
   it('is out of reach when a key cannot be got, and nothing is fetched', () => {
-    const refusals: PlanRefusal[] = [
-      { kind: 'fight', item: { id: 344, name: 'stone key' }, monster: 'ogre', survives: 0.5 }
-    ];
+    const refusals: PlanRefusal[] = [{ kind: 'no-source', item: { id: 344, name: 'stone key' } }];
     const why = planRefusalsWords(refusals, t);
     keyed({ plan: () => ({ kind: 'refused', refusals }) }).onCharacter(owed());
     expect(fetched).toEqual([]);
@@ -760,7 +758,13 @@ describe('a trainer behind a keyed door', () => {
       kind: 'plan',
       steps: [
         { kind: 'walk', route: ROUTE },
-        { kind: 'clear', room: '12/1799', name: 'Deep Dark Pit', monsters: ['hydra'] },
+        {
+          kind: 'clear',
+          room: '12/1799',
+          name: 'Deep Dark Pit',
+          monsters: ['hydra'],
+          odds: { kind: 'win', survives: null }
+        },
         { kind: 'walk', route: ROUTE }
       ],
       cost: 3
@@ -836,7 +840,37 @@ describe('the trainer each level ahead goes to', () => {
       routeTo: (room) => (room === '3/1' ? 'no route' : ROUTE)
     });
     expect(errand.trainersAhead([30], KEY)).toEqual([
-      { level: 30, trainer: TITAN, reachable: true }
+      { level: 30, trainer: TITAN, reachable: true, fights: [] }
+    ]);
+  });
+
+  /* A fight the trip would lose is the caller's to weigh: reached, with its odds (2026-10-03). */
+  it('is reached through a key fight it would lose, carrying the odds', () => {
+    const odds = { kind: 'lose', survives: 0.4 } as const;
+    const plan: Plan = {
+      kind: 'plan',
+      steps: [
+        { kind: 'walk', route: ROUTE },
+        {
+          kind: 'kill',
+          item: { id: 177, name: 'bone key' },
+          monster: 'mummy',
+          room: '1/1309',
+          roomName: 'Crypt, Sealed Tomb',
+          odds
+        },
+        { kind: 'walk', route: ROUTE }
+      ],
+      cost: 3
+    };
+    const errand = make(train(), { trainers: () => [TITAN], plan: () => plan });
+    expect(errand.trainersAhead([30], KEY)).toEqual([
+      {
+        level: 30,
+        trainer: TITAN,
+        reachable: true,
+        fights: [{ monsters: ['mummy'], roomName: 'Crypt, Sealed Tomb', item: 'bone key', odds }]
+      }
     ]);
   });
 
@@ -846,7 +880,7 @@ describe('the trainer each level ahead goes to', () => {
       routeTo: () => 'no route'
     });
     expect(errand.trainersAhead([30, 31], KEY)).toEqual([
-      { level: 30, trainer: SYSOP, reachable: false },
+      { level: 30, trainer: SYSOP, reachable: false, fights: [] },
       null
     ]);
   });

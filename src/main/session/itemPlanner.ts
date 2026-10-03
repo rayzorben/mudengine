@@ -37,7 +37,7 @@ export interface ItemPlannerModules {
   walker: Pick<Walker, 'walking'>;
   queue: Pick<CommandQueue, 'enqueue' | 'queued' | 'cancel'>;
   questWatch: Pick<QuestWatch, 'noteSaid'>;
-  combat: Pick<AutoCombat, 'switchedOn'>;
+  combat: Pick<AutoCombat, 'switchedOn' | 'alsoFight' | 'stopFighting'>;
 }
 
 export interface ItemPlannerParts {
@@ -70,6 +70,8 @@ export function itemPlanner(parts: ItemPlannerParts): ItemPlanner {
     looping: () => m().loops.progress.status === 'running',
     stopLoop: parts.stopLap,
     combatOn: () => m().combat.switchedOn,
+    fightFor: (mob) => m().combat.alsoFight(mob),
+    stopFighting: (mob) => m().combat.stopFighting(mob),
     alsoTake: (name) => m().loot.alsoTake(name),
     stopTaking: (name) => m().loot.stopTaking(name),
     walk: (route, run) => m().travel.walkAfterCollecting(route, run),
