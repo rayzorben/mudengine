@@ -3,10 +3,12 @@
  * own modules, read through and acted on the way any module does, so
  * `SessionManager` composes every extension in one call.
  */
+import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { Blessings } from '../automation/Blessings';
 import type { CommandQueue } from '../automation/CommandQueue';
+import { asStashFetchAsk, type StashFetch } from '../automation/StashFetch';
 import type { ErrandStage, Supplies } from '../automation/Supplies';
 import type { TrainErrand } from '../automation/TrainErrand';
 import type { Walker } from '../automation/Walker';
@@ -60,6 +62,7 @@ export interface ExtensionWiring {
   blessings: Pick<Blessings, 'entries'>;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
+  stashFetch: Pick<StashFetch, 'fetch' | 'current'>;
   trainLevel: Pick<TrainErrand, 'heading' | 'refusal' | 'trainersAhead'>;
   walker: Pick<Walker, 'progress'>;
   queue: Pick<CommandQueue, 'offer'>;
@@ -207,6 +210,19 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
           return trip === null
             ? null
             : { item: trip.item.name, shop: trip.shopName, stage: tripStage(trip.stage) };
+        }
+      },
+      stash: {
+        record: () => tracker.current.stash,
+        fetch: (ask) => {
+          const parsed = asStashFetchAsk(ask);
+          if (parsed !== null) return wiring.stashFetch.fetch(parsed, tracker.current);
+          const why = t('automation.stashFetch.refusalUnreadable');
+          wiring.notice(t('automation.stashFetch.refused', { why }));
+          return why;
+        },
+        get current() {
+          return wiring.stashFetch.current;
         }
       },
       walk: () => wiring.walker.progress,

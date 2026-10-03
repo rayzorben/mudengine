@@ -48,6 +48,7 @@ import {
 } from '../../shared/underway';
 import { isCombatTally, settleClocks, type CombatTally } from '../../shared/tally';
 import type { Loadout, WornSlot } from '../../shared/gear';
+import { isStashEntry, type Stash, type StashEntry } from '../../shared/stash';
 import { isFledList, type FledEntry } from '../../shared/fled';
 import { sameItem } from '../../shared/items';
 import { errorMessage } from '../../shared/values';
@@ -69,6 +70,8 @@ interface BelongingsFile {
    * about a *record the client writes*, not about the user's own YAML.
    */
   loadout?: WornSlot[];
+  /** What the character hid and where. Absent is nothing hidden. */
+  stash?: StashEntry[];
   /**
    * What the `sp` / `pow` listing last said, under the same absence
    * allowance as the loadout — with one distinction the loadout does not
@@ -122,6 +125,7 @@ export interface BelongingsOptions {
 export class Belongings implements BelongingsSink, UnderwaySink {
   private banks: BankBalance[] = [];
   private loadout: WornSlot[] = [];
+  private stash: Stash = [];
   private spellbook: KnownSpell[] | null = null;
   private durations: Record<string, number> = {};
   private fled: FledEntry[] = [];
@@ -187,6 +191,17 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     // derived from live state, and a store holding a reference into that would
     // write whatever it became between the change and the deferred save.
     this.loadout = loadout.map((worn) => ({ ...worn }));
+    this.schedule();
+  }
+
+  recallStash(): Stash {
+    return this.stash;
+  }
+
+  rememberStash(stash: Stash): void {
+    // Held, not copied: `withHidden` and `withTaken` replace rather than mutate.
+    if (this.suspended || stash === this.stash) return;
+    this.stash = stash;
     this.schedule();
   }
 
@@ -295,6 +310,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     if (this.suspended) return false;
     this.banks = [];
     this.loadout = [];
+    this.stash = [];
     this.spellbook = null;
     this.durations = {};
     this.fled = [];
@@ -393,6 +409,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       }
       this.banks = parsed.banks;
       this.loadout = parsed.loadout ?? [];
+      this.stash = parsed.stash ?? [];
       // Absent is *never read*, and stays null — not normalised to [].
       this.spellbook = parsed.spellbook ?? null;
       this.durations = parsed.spellDurations ?? {};
@@ -447,6 +464,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       realm: this.options.realm,
       banks: this.banks,
       loadout: this.loadout,
+      ...(this.stash.length > 0 ? { stash: [...this.stash] } : {}),
       // Omitted while never read, so the absence survives the round trip.
       ...(this.spellbook !== null ? { spellbook: this.spellbook } : {}),
       ...(Object.keys(this.durations).length > 0 ? { spellDurations: this.durations } : {}),
@@ -585,6 +603,8 @@ function isBelongingsFile(value: unknown): value is BelongingsFile {
   if (!Array.isArray(file.banks)) return false;
   if (file.loadout !== undefined && !Array.isArray(file.loadout)) return false;
   if (file.loadout !== undefined && !file.loadout.every(isWornSlot)) return false;
+  if (file.stash !== undefined && !(Array.isArray(file.stash) && file.stash.every(isStashEntry)))
+    return false;
   if (file.spellbook !== undefined && !Array.isArray(file.spellbook)) return false;
   if (file.spellbook !== undefined && !file.spellbook.every(isKnownSpell)) return false;
   if (file.spellDurations !== undefined && !isDurationRecord(file.spellDurations)) return false;

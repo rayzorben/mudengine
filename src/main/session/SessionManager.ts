@@ -28,7 +28,7 @@ import { AutoLoot } from '../automation/AutoLoot';
 import { AutoLight } from '../automation/AutoLight';
 import { LightAhead } from '../automation/LightAhead';
 import { AutoStealth } from '../automation/AutoStealth';
-import { GearRecovery } from '../automation/GearRecovery';
+import type { GearRecovery } from '../automation/GearRecovery';
 import { TrainErrand } from '../automation/TrainErrand';
 import { StatScreen } from '../automation/StatScreen';
 import { RestAway } from '../automation/RestAway';
@@ -53,6 +53,7 @@ import {
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand } from '../automation/ItemErrand';
 import type { OutgrownGear } from '../automation/OutgrownGear';
+import type { StashFetch } from '../automation/StashFetch';
 import { QuestRunner } from '../automation/QuestRunner';
 import { EquipmentManager } from '../automation/EquipmentManager';
 import { Wards } from '../automation/Wards';
@@ -103,6 +104,7 @@ import { trainPlanner } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
+import { gearRecoveryTrip, stashFetchTrip } from './collectPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
@@ -435,6 +437,7 @@ export class SessionManager {
   private readonly trainLevel: TrainErrand;
   /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
   private readonly outgrown: OutgrownGear;
+  private readonly stashFetch: StashFetch;
   /** Where this character should be at all, and the lap that puts it there — todo 05. */
   private readonly hunt: AutoHunt;
   /** Going to get the item a route's door wants — todo 07. */
@@ -782,7 +785,7 @@ export class SessionManager {
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
-        for (const each of [...trips, this.hunt, this.questRunner])
+        for (const each of [...trips, this.stashFetch, this.hunt, this.questRunner])
           each.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to, landing) => {
@@ -1115,28 +1118,6 @@ export class SessionManager {
       },
       reports
     );
-    /*
-     * The kit, after a death: a leg back to where the character died, taking
-     * and dressing on arrival. The errand's planner, with the same refusals
-     * (a move in flight, a walk running, an escape), and a leg's options:
-     * holding when hurt, fighting nothing on the way, owed to nobody across
-     * a lost connection.
-     */
-    this.recoverGear = new GearRecovery(
-      automation.movement,
-      automation.enabled,
-      this.queue,
-      {
-        here: () => roomAddress(this.tracker.current.room),
-        coinWord: (coin) => this.vocabulary.coins.word(coin),
-        routeTo: (room) => this.errands.planFromHere(room),
-        walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
-        moveInFlight: () => this.tracker.pendingMoves > 0,
-        walking: () => this.walker.walking,
-        busy: () => this.travel.escaping
-      },
-      reports
-    );
     // And a light bought before the dark (todo 11), for a route, a lap or a trainer's trip.
     const light: LightAhead = new LightAhead(
       () => this.automationConfig,
@@ -1150,9 +1131,18 @@ export class SessionManager {
      */
     const legs = () => ({
       ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
-      ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light }
+      ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light },
+      vocabulary: this.vocabulary
     });
     const trip = { modules: legs, release: releaseErrand };
+    // The gear after a death, and a fetch from a stash: one walk and one pick-up (`Collect`).
+    const escaping = () => this.travel.escaping;
+    this.recoverGear = gearRecoveryTrip(automation, this.queue, reports, {
+      ...trip,
+      busy: escaping
+    });
+    const held = () => this.errandHeld();
+    this.stashFetch = stashFetchTrip(automation, this.queue, reports, { ...trip, busy: held });
     this.trainLevel = new TrainErrand(
       automation.train,
       automation.enabled,
@@ -1605,6 +1595,7 @@ export class SessionManager {
         supplies: this.supplies,
         trainLevel: this.trainLevel,
         outgrown: this.outgrown,
+        stashFetch: this.stashFetch,
         hunt: this.hunt,
         itemErrand: this.itemErrand,
         questRunner: this.questRunner,
@@ -1676,6 +1667,7 @@ export class SessionManager {
       ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },
       blessings: this.blessings,
       ...{ supplies: this.supplies, trainLevel: this.trainLevel, queue: this.queue, fled },
+      stashFetch: this.stashFetch,
       world: () => this.world,
       odds: this.odds,
       config: () => this.automationConfig,
@@ -1745,6 +1737,7 @@ export class SessionManager {
       },
       { module: this.trainLevel, configure: (a) => this.trainLevel.configure(a.train, a.enabled) },
       { module: this.outgrown, configure: (a) => this.outgrown.configure(a.outgrown, a.enabled) },
+      { module: this.stashFetch, configure: (a) => this.stashFetch.configure(a.enabled) },
       {
         module: this.hunt,
         configure: (a) => this.hunt.configure(a.hunting, a.walk, a.health, a.enabled)
@@ -2818,6 +2811,7 @@ export class SessionManager {
      */
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
     this.extensions.onBlock(block);
+    this.stashFetch.onBlock(block);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
     /*
@@ -3083,6 +3077,7 @@ export class SessionManager {
         this.recoverGear.onCharacter(state);
         this.trainLevel.onCharacter(state);
         this.outgrown.onCharacter(state);
+        this.stashFetch.onCharacter(state);
         /*
          * And where the character should be at all, which is the last of the
          * *going somewhere* decisions and rightly so: it only ever acts when
@@ -3250,6 +3245,7 @@ export class SessionManager {
       this.supplies.current !== null ||
       this.trainLevel.busy ||
       this.outgrown.busy ||
+      this.stashFetch.busy ||
       this.itemErrand.running ||
       this.questRunner.running
     );

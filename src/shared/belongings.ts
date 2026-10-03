@@ -32,6 +32,7 @@ import type { MeasuredRate } from './hunting';
 import type { AbilitySums, BankBalance, KnownSpell } from './character';
 import type { FledEntry } from './fled';
 import type { Loadout } from './gear';
+import type { Stash } from './stash';
 import type { RoomReference } from './world';
 import type { CharacterIdentity } from './reset';
 import type { CombatTally } from './tally';
@@ -88,6 +89,10 @@ export interface BelongingsSink {
   recallLoadout(): Loadout;
   /** A listing has named a slot and what is in it. See {@link Loadout}. */
   rememberLoadout(loadout: Loadout): void;
+  /** What this character hid and where, read at `reset()`. See `src/shared/stash.ts`. */
+  recallStash(): Stash;
+  /** A hide or a take moved it; keep the whole of it. */
+  rememberStash(stash: Stash): void;
   /**
    * What the `sp` / `pow` listing last said this character knows.
    *
@@ -198,6 +203,8 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberBanks: () => {},
   recallLoadout: () => [],
   rememberLoadout: () => {},
+  recallStash: () => [],
+  rememberStash: () => {},
   recallSpellbook: () => null,
   rememberSpellbook: () => {},
   recallSpellDurations: () => ({}),

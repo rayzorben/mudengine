@@ -708,3 +708,41 @@ describe('a change after the record was closed', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).not.toHaveProperty('underway');
   });
 });
+
+describe('what this character hid', () => {
+  const hidden = {
+    map: 1,
+    room: 2150,
+    name: 'Ganghouse, Vault',
+    item: 'padded gloves',
+    count: 1,
+    at: 1_700_000_000_000
+  };
+
+  it('keeps the stash and hands it back to the next session', () => {
+    const first = new Belongings({ file, realm: REALM });
+    first.rememberStash([hidden]);
+    first.close();
+
+    expect(new Belongings({ file, realm: REALM }).recallStash()).toEqual([hidden]);
+  });
+
+  it('refuses a stash whose entries are not hides, and says so', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ version: 1, realm: REALM, banks: [], stash: [{ ...hidden, count: 0 }] })
+    );
+    const notify = vi.fn();
+    const book = new Belongings({ file, realm: REALM, notify });
+    expect(book.recallStash()).toEqual([]);
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets it with the rest of the character', () => {
+    const book = new Belongings({ file, realm: REALM });
+    book.rememberStash([hidden]);
+    expect(book.forget()).toBe(true);
+    expect(book.recallStash()).toEqual([]);
+  });
+});
