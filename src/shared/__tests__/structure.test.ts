@@ -42,7 +42,9 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   'src/main/parse/CharacterTracker.ts': 2524,
   // Lowered by handing the settings screen its api whole (todo 03).
-  'src/renderer/src/App.tsx': 1755,
+  // Lowered by the strips' cards and the drag's marks, out whole (`StripCards`,
+  // `DragMarks`), and the rail's grid (`RailGrid`, todo 09).
+  'src/renderer/src/App.tsx': 1667,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
   'src/main/automation/Walker.ts': 1957,
   'src/renderer/src/components/SettingsScreen.tsx': 1215,
@@ -291,12 +293,13 @@ describe('dependencies point down', () => {
     for (const file of units) {
       expect(pathTo(file, app)?.join(' → ') ?? null, `${file} reaches ${app}`).toBeNull();
     }
-    // The walk does reach: App imports each, the switch through its renderers,
-    // the theme's port through the palette and the lookup's rows through its
-    // query.
+    // The walk does reach: App imports each, the switch and the card
+    // vocabulary through its renderers, the theme's port through the palette
+    // and the lookup's rows through its query.
     const imported = importsOf(app).map((imp) => imp.target);
     const through: Readonly<Record<string, string>> = {
       'src/renderer/src/components/CardSwitch.tsx': 'src/renderer/src/hooks/useCardRenderers.ts',
+      'src/renderer/src/lib/cards.ts': 'src/renderer/src/hooks/useCardRenderers.ts',
       'src/renderer/src/lib/theme.ts': 'src/renderer/src/lib/palette.ts',
       'src/renderer/src/lib/reference.ts': 'src/renderer/src/lib/paletteFind.ts'
     };

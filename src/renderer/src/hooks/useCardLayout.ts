@@ -7,15 +7,20 @@ import { isStatsGraph, STATS_WINDOW_HOURS } from '@shared/tally';
 
 import {
   CARDS,
+  LEAST_CARD,
   NO_CARD_SETTINGS,
+  shippedSize,
   type CardId,
   type CardLayout,
   type CardLayoutApi,
   type CardSettings,
   type FloatState,
-  type Lane
+  type Strip
 } from '../lib/cards';
+import { withGridSizes, type RailMeasure } from '../lib/layoutMigration';
+import type { GridSize, GridSpot } from '../lib/railGrid';
 import { reordered } from '../lib/reorder';
+import { gridCell } from './useRailGrid';
 
 const IDS: readonly CardId[] = CARDS.map((card) => card.id);
 
@@ -118,15 +123,6 @@ export const DEFAULT_FLOAT = {
 
 const MIN_FLOAT = { w: 0.12, h: 0.1 } as const;
 
-/**
- * The range a rail card can be dragged to, as a fraction of the rail.
- *
- * The floor keeps the heading and one row on screen — a card dragged to
- * nothing cannot be dragged back — and the ceiling is the whole rail, which
- * is the most a card can usefully take.
- */
-export const RAIL_HEIGHT = { min: 0.06, max: 1 } as const;
-
 const clamp = (value: number, low: number, high: number): number =>
   Math.min(high, Math.max(low, value));
 
@@ -143,10 +139,10 @@ export function raised(floats: readonly FloatState[], id: CardId): readonly Floa
 }
 
 /**
- * The layout with a card put into a lane at a gap, from wherever it was.
+ * The layout with a card put into a strip at a gap, from wherever it was.
  *
- * The gap is counted the way the drag measures it — **among the lane's cards
- * as drawn, the dragged one included** — so a card already in that lane goes
+ * The gap is counted the way the drag measures it — **among the strip's cards
+ * as drawn, the dragged one included** — so a card already in that strip goes
  * through `reordered`, which knows that a gap past the card's own place is
  * one too far once the card is lifted out. Inserting at the raw gap into the
  * list *without* the card put every downward move one slot too far, for as
@@ -158,16 +154,62 @@ export function raised(floats: readonly FloatState[], id: CardId): readonly Floa
  * A card from another lane, a float or the picker has no place in this list
  * yet, and the raw gap is exactly where it goes.
  */
-export function docked(current: CardLayout, id: CardId, lane: Lane, index: number): CardLayout {
-  const here = current[lane];
+export function docked(current: CardLayout, id: CardId, strip: Strip, index: number): CardLayout {
+  const here = current[strip];
   if (here.includes(id)) {
     const next = reordered(here, id, index);
-    return next === here ? current : { ...current, [lane]: [...next] };
+    return next === here ? current : { ...current, [strip]: [...next] };
   }
   const base = without(current, id);
-  const list = base[lane];
+  const list = base[strip];
   const at = clamp(index, 0, list.length);
-  return { ...base, [lane]: [...list.slice(0, at), id, ...list.slice(at)] };
+  return { ...base, [strip]: [...list.slice(0, at), id, ...list.slice(at)] };
+}
+
+/**
+ * The layout with a card standing on the rail in `box`, and every other rail
+ * card written down where `drawn` has it, so what was on screen is what is
+ * kept. The same layout back when nothing moved, so a drop into the card's
+ * own cells writes nothing.
+ */
+export function placed(
+  current: CardLayout,
+  id: CardId,
+  box: GridSpot & GridSize,
+  drawn: ReadonlyMap<CardId, GridSpot & GridSize>
+): CardLayout {
+  const base = current.rail.includes(id) ? current : without(current, id);
+  const rail = base.rail.includes(id) ? base.rail : [...base.rail, id];
+  const spots: Partial<Record<CardId, GridSpot>> = {};
+  for (const card of rail) {
+    const at = card === id ? box : drawn.get(card);
+    if (at !== undefined) spots[card] = { x: at.x, y: at.y };
+  }
+  const sizes = { ...base.sizes };
+  const shipped = shippedSize(id);
+  if (box.w === shipped.w && box.h === shipped.h) delete sizes[id];
+  else sizes[id] = { w: box.w, h: box.h };
+  const next = { ...base, rail, spots, sizes };
+  const same =
+    base === current &&
+    sameEntries(next.spots, current.spots, (a, b) => a.x === b.x && a.y === b.y) &&
+    sameEntries(next.sizes, current.sizes, (a, b) => a.w === b.w && a.h === b.h);
+  return same ? current : next;
+}
+
+/** Two sparse records with the same keys and equal values, whatever order they were built in. */
+function sameEntries<T>(
+  a: Partial<Record<CardId, T>>,
+  b: Partial<Record<CardId, T>>,
+  equal: (one: T, two: T) => boolean
+): boolean {
+  const keys = Object.keys(a) as CardId[];
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => {
+    const one = a[key];
+    const two = b[key];
+    return one !== undefined && two !== undefined && equal(one, two);
+  });
 }
 
 /**
@@ -209,9 +251,12 @@ function without(current: CardLayout, id: CardId): CardLayout {
     away: current.away.filter((entry) => entry !== id),
     // Placement, not preference: moving a card must not reset what is set on it.
     settings: current.settings,
-    // Nor the height it was dragged to: a card floated and docked again is
-    // back at the size somebody chose for it, not the size it shipped at.
-    heights: current.heights,
+    // Nor the size it was dragged to: a card floated and docked again is back
+    // at the size somebody chose for it, not the size it shipped at.
+    sizes: current.sizes,
+    // Its spot it gives up: back on the rail it takes the first free one,
+    // rather than landing on a card put there while it was away.
+    spots: Object.fromEntries(Object.entries(current.spots).filter(([card]) => card !== id)),
     // Nor whether it was rolled up. A card rolled up on the rail and then
     // dragged over the console is the same card, and unrolling it to move it
     // would be the client undoing a choice in order to honour another.
@@ -234,22 +279,46 @@ function readRolled(value: unknown): CardId[] {
   return out;
 }
 
+/** A whole number of cells, from `localStorage` where anything may have been. */
+function cells(value: unknown, least: number): number | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(least, Math.round(value))
+    : null;
+}
+
 /**
- * What a stored heights block actually says, card by card.
+ * What a stored sizes block actually says, card by card.
  *
- * Parsed, not trusted, like the floats: a figure that is not a finite number
- * is absent — the card's own declared height, which is the one answer that is
- * never wrong — and one from a window of a different shape is clamped rather
- * than honoured, so no card can be stored at a height it cannot be dragged
- * back from.
+ * Parsed, not trusted, like the floats: a figure that is not a number is the
+ * card's shipped one, and one under the least a card may be is raised to it,
+ * so no card can be stored at a size it cannot be dragged back from. A size
+ * that is the shipped one is not kept, so a later build's shipped size
+ * reaches it.
  */
-function readHeights(value: unknown): Partial<Record<CardId, number>> {
+function readSizes(value: unknown): Partial<Record<CardId, GridSize>> {
   if (typeof value !== 'object' || value === null) return {};
-  const out: Partial<Record<CardId, number>> = {};
+  const out: Partial<Record<CardId, GridSize>> = {};
   for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
-    if (!isCardId(id)) continue;
-    if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
-    out[id] = clamp(raw, RAIL_HEIGHT.min, RAIL_HEIGHT.max);
+    if (!isCardId(id) || typeof raw !== 'object' || raw === null) continue;
+    const found = raw as Record<string, unknown>;
+    const shipped = shippedSize(id);
+    const w = cells(found['w'], LEAST_CARD.w) ?? shipped.w;
+    const h = cells(found['h'], LEAST_CARD.h) ?? shipped.h;
+    if (w !== shipped.w || h !== shipped.h) out[id] = { w, h };
+  }
+  return out;
+}
+
+/** Where the rail's own cards stand; a spot for a card not on it is dropped. */
+function readSpots(value: unknown, rail: readonly CardId[]): Partial<Record<CardId, GridSpot>> {
+  if (typeof value !== 'object' || value === null) return {};
+  const out: Partial<Record<CardId, GridSpot>> = {};
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!isCardId(id) || !rail.includes(id) || typeof raw !== 'object' || raw === null) continue;
+    const found = raw as Record<string, unknown>;
+    const x = cells(found['x'], 0);
+    const y = cells(found['y'], 0);
+    if (x !== null && y !== null) out[id] = { x, y };
   }
   return out;
 }
@@ -418,18 +487,25 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
     floats,
     away,
     settings: readSettings(partial.settings),
-    heights: readHeights(partial.heights),
+    sizes: readSizes(partial.sizes),
+    spots: readSpots(partial.spots, rail),
     rolled: readRolled(partial.rolled)
   };
 }
 
-function parse(stored: string | null): CardLayout | null {
+/** A stored layout, and whether it was in the shape before the grid. */
+interface Parsed {
+  layout: CardLayout;
+  migrated: boolean;
+}
+
+function parse(stored: string | null, measure: () => RailMeasure): Parsed | null {
   if (stored === null) return null;
   try {
     const value: unknown = JSON.parse(stored);
     if (typeof value !== 'object' || value === null) return null;
-    const raw = value as Record<string, unknown>;
-    return normalizeLayout({
+    const raw = withGridSizes(value as Record<string, unknown>, measure);
+    const layout = normalizeLayout({
       rail: Array.isArray(raw['rail']) ? (raw['rail'] as CardId[]) : undefined,
       above: Array.isArray(raw['above']) ? (raw['above'] as CardId[]) : undefined,
       below: Array.isArray(raw['below']) ? (raw['below'] as CardId[]) : undefined,
@@ -439,17 +515,45 @@ function parse(stored: string | null): CardLayout | null {
       // this, field by field, and drops whatever is not what it should be.
       settings: raw['settings'] as CardLayout['settings'],
       /*
-       * `heights` was written by `store` and never read back here, so a card
-       * dragged taller on the rail came back at its shipped height on the next
-       * launch — a gesture that appeared to work and was thrown away at the
-       * window's edge. Found while adding `rolled` beside it, which is stored
-       * exactly the same way and would have inherited the same silence.
+       * Read back as they are written: `heights`, their forerunner, was once
+       * written by `store` and never read here, so a card dragged taller came
+       * back at its shipped height on the next launch.
        */
-      heights: raw['heights'] as CardLayout['heights'],
+      sizes: raw['sizes'] as CardLayout['sizes'],
+      spots: raw['spots'] as CardLayout['spots'],
       rolled: Array.isArray(raw['rolled']) ? (raw['rolled'] as CardId[]) : undefined
     });
+    return { layout, migrated: raw !== value };
   } catch {
     return null;
+  }
+}
+
+/**
+ * The rail as laid out, for converting a stored fraction of it: the rail
+ * when there is one, else the window it fills.
+ */
+function measureRail(): RailMeasure {
+  const root = getComputedStyle(document.documentElement);
+  return {
+    rail: document.querySelector<HTMLElement>('.rail')?.clientHeight ?? window.innerHeight,
+    cell: gridCell(document.documentElement),
+    gap: parseFloat(root.getPropertyValue('--gap')) || 0
+  };
+}
+
+/**
+ * Writes a layout migrated from the shape before the grid back under its own
+ * key, with what it replaced kept beside it, as a config file is backed up
+ * before it is migrated (todo 09). Refused storage leaves the migration to
+ * the next read; the arrangement still applies.
+ */
+function keepMigrated(key: string, before: string, layout: CardLayout): void {
+  try {
+    window.localStorage.setItem(`${key}.before-grid`, before);
+    window.localStorage.setItem(key, JSON.stringify(layout));
+  } catch {
+    /* storage refused */
   }
 }
 
@@ -475,8 +579,10 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
 
   const read = useCallback((): CardLayout => {
     try {
-      const found = parse(window.localStorage.getItem(key));
-      if (found) return found;
+      const stored = window.localStorage.getItem(key);
+      const found = parse(stored, measureRail);
+      if (found?.migrated === true && stored !== null) keepMigrated(key, stored, found.layout);
+      if (found) return found.layout;
       const legacy: unknown = JSON.parse(window.localStorage.getItem(legacyKey) ?? 'null');
       if (Array.isArray(legacy)) return normalizeLayout({ away: legacy as CardId[] });
       return normalizeLayout({});
@@ -528,9 +634,13 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         const base = without(layout, id);
         store({ ...base, rail: [...base.rail, id] });
       },
-      dock: (id, lane, index) => {
-        const next = docked(layout, id, lane, index);
+      dock: (id, strip, index) => {
+        const next = docked(layout, id, strip, index);
         // A drop back into its own gap moves nothing and writes nothing.
+        if (next !== layout) store(next);
+      },
+      placeOnRail: (id, box, drawn) => {
+        const next = placed(layout, id, box, drawn);
         if (next !== layout) store(next);
       },
       laneOf: (id) =>
@@ -573,18 +683,7 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         const next = raised(layout.floats, id);
         if (next !== layout.floats) store({ ...layout, floats: [...next] });
       },
-      heightOf: (id) => layout.heights[id],
-      sizeRail: (id, fraction) => {
-        const next = clamp(fraction, RAIL_HEIGHT.min, RAIL_HEIGHT.max);
-        if (layout.heights[id] === next) return;
-        store({ ...layout, heights: { ...layout.heights, [id]: next } });
-      },
-      resetHeight: (id) => {
-        if (layout.heights[id] === undefined) return;
-        const heights = { ...layout.heights };
-        delete heights[id];
-        store({ ...layout, heights });
-      },
+      sizeOf: (id) => layout.sizes[id] ?? shippedSize(id),
       isRolled: (id) => layout.rolled.includes(id),
       roll: (id, rolled) => {
         // Asking for the state it is already in writes nothing: every write is

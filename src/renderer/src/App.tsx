@@ -1,18 +1,14 @@
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import CommandPalette, { type Command } from './components/CommandPalette';
 import SearchBar from './components/SearchBar';
 import RoutePanel from './components/RoutePanel';
 import CardRailHead from './components/CardRailHead';
+import RailGrid from './components/RailGrid';
+import { SHIPPED_COLUMNS } from './lib/cards';
+import { CONSOLE_RANGE } from './lib/splitter';
+import StripCards from './components/StripCards';
+import DragMarks from './components/DragMarks';
 import FloatLayer from './components/FloatLayer';
 import PinnedFloats from './components/PinnedFloats';
 import SettingsScreen from './components/SettingsScreen';
@@ -36,7 +32,6 @@ import { useNameIndexes } from './hooks/useNameIndexes';
 import { useNavigationVisible } from './hooks/useNavigationVisible';
 import { measureAbove, measureBelow, measureTabs, usePaneRanges } from './hooks/usePaneRanges';
 import { useCardLayout } from './hooks/useCardLayout';
-import { cardLabel, type Lane } from './lib/cards';
 import { useCardChrome } from './hooks/useCardChrome';
 import { useCardContext } from './hooks/useCardContext';
 import { useCardRenderers } from './hooks/useCardRenderers';
@@ -60,7 +55,7 @@ import { useCardDrag } from './hooks/useCardDrag';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useHomeBrowser } from './hooks/useHomeBrowser';
 import { useCardResize } from './hooks/useCardResize';
-import { reordered } from './lib/reorder';
+import { useRailGrid } from './hooks/useRailGrid';
 import { useDensity } from './hooks/useDensity';
 import { useAlerts } from './hooks/useAlerts';
 import { useDesktopAlerts } from './hooks/useDesktopAlerts';
@@ -154,7 +149,7 @@ export default function App() {
     addPane,
     turnPanes,
     closePane
-  } = usePanes(sessions, size.cols, noticeTo);
+  } = usePanes(sessions, noticeTo);
 
   /** Every session is a character with a name worth showing; none is no rail. */
   const showTabs = sessions.length > 0;
@@ -363,29 +358,42 @@ export default function App() {
   const cards = useCardLayout(session);
 
   /*
-   * The tab rail's width, dragged and remembered per client. The range a drag may
-   * move within is computed when the gesture starts, from the console as laid
-   * out and the terminal's measured cell width — so the floor is eighty
-   * *measured* columns, never a pixel constant (docs/ui-design.md §3.8).
+   * The console's columns and the tab rail's width, dragged and remembered per
+   * client. The range a drag may move within is computed when the gesture
+   * starts, from the console as laid out and the terminal's measured cell
+   * width — so the floor is eighty *measured* columns, never a pixel constant
+   * (docs/ui-design.md §3.8).
    */
   const widths = usePaneWidths();
-  /* The console is eighty columns a pane across; the card rail takes the rest. */
-  const consoleWidth = useConsoleWidth(size.cols, paneFlow === 'columns' ? panes.length : 1);
+  /* The console is the chosen columns a pane across; the card rail takes the rest. */
+  const across = paneFlow === 'columns' ? panes.length : 1;
+  const consoleWidth = useConsoleWidth(size.cols, across, widths.columns);
   const workspaceStyle = useMemo(
-    () => ({ ...widths.style, ...consoleWidth }) as CSSProperties,
+    () =>
+      ({ ...widths.style, ...consoleWidth, '--card-columns': SHIPPED_COLUMNS }) as CSSProperties,
     [widths.style, consoleWidth]
   );
   const [resizing, setResizing] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
-  const drag = useCardDrag(cards, workspaceRef);
-
-  // The corner grip on a rail card, the same shape as the float's: one axis,
-  // stored as a fraction of the rail.
-  const resize = useCardResize(cards);
+  /* The card rail's grid, which a drop and the corner grip are measured against. */
+  const railGrid = useRailGrid();
+  const drag = useCardDrag(cards, workspaceRef, railGrid.view);
+  // The corner grip on a rail card, the same shape as the float's, in whole cells.
+  const resize = useCardResize(cards, railGrid.view);
 
   /** What each splitter measures, and the range a drag of it may move within. */
-  const { rangeForTabs, rangeForAbove, rangeForBelow, resetTabs, resetAbove, resetBelow } =
-    usePaneRanges(layersRef, size, widths);
+  const {
+    measureConsole,
+    rangeForConsole,
+    setConsole,
+    resetConsole,
+    rangeForTabs,
+    rangeForAbove,
+    rangeForBelow,
+    resetTabs,
+    resetAbove,
+    resetBelow
+  } = usePaneRanges(layersRef, size, across, widths);
 
   const { pressure, meter, record, reset } = useStreamPressure();
 
@@ -1024,6 +1032,7 @@ export default function App() {
     turnPanes,
     cards,
     widths: {
+      columns: widths.columns,
       tabs: widths.tabs,
       above: widths.above,
       below: widths.below,
@@ -1240,73 +1249,6 @@ export default function App() {
     pinnedChrome
   });
 
-  /*
-   * Where a dragged card would land on the rail, or null if it would not.
-   *
-   * Drawn as a gap *between* cards, because the whole reason the indicator
-   * exists is that a drop landing somewhere the player was not shown is a drop
-   * they have to undo.
-   */
-  const dropIn = (which: Lane): number | null =>
-    drag.state?.live && drag.state.target.where === 'lane' && drag.state.target.lane === which
-      ? drag.state.target.index
-      : null;
-
-  /**
-   * One lane of cards, with a gap the dragged card's own size opened where a
-   * drop would land.
-   *
-   * A gap rather than a line, so the cards below it move out of the way and
-   * the card is *felt* to move before it is dropped — a line said where, and
-   * nothing else on the rail changed until the pointer was released. It is
-   * not drawn where the drop would change nothing: there the dimmed card
-   * itself is the gap, and a second box beside it would read as two places
-   * for one card. `reordered` is the same arithmetic the drop commits with,
-   * so the two cannot disagree about which drops are no move.
-   *
-   * The rail and the two docked strips render from the same function: they
-   * differ only in which way they run, and two copies of this would drift the
-   * moment one of them gained a case.
-   */
-  const lane = (which: Lane): ReactNode => {
-    const at = dropIn(which);
-    const ids = cards[which];
-    const held = drag.state;
-    const noMove =
-      at !== null && held !== null && ids.includes(held.id) && reordered(ids, held.id, at) === ids;
-    const slot =
-      at !== null && held !== null && !noMove ? (
-        <div
-          className="rail-slot"
-          data-shape={held.shape}
-          style={
-            held.shape === 'card'
-              ? ({
-                  '--slot-w': `${held.size.w}px`,
-                  '--slot-h': `${held.size.h}px`
-                } as React.CSSProperties)
-              : undefined
-          }
-        />
-      ) : null;
-    return (
-      <>
-        {ids.map((id, index) => {
-          const card = renderCard(id);
-          if (card === null) return null;
-          return (
-            <Fragment key={id}>
-              {at === index && slot}
-              {card}
-            </Fragment>
-          );
-        })}
-        {/* The gap at the very end, which no card precedes. */}
-        {at !== null && at >= ids.length && slot}
-      </>
-    );
-  };
-
   return (
     <div className="app">
       <div
@@ -1383,7 +1325,7 @@ export default function App() {
               // over NAWS and re-wraps a scrollback nobody asked to re-wrap.
               data-empty={cards.above.length === 0 ? 'true' : undefined}
             >
-              {lane('above')}
+              <StripCards drag={drag.state} ids={cards.above} render={renderCard} strip="above" />
               {cards.above.length > 0 && (
                 <Splitter
                   edge="top"
@@ -1499,10 +1441,25 @@ export default function App() {
                   rangeFor={rangeForBelow}
                 />
               )}
-              {lane('below')}
+              <StripCards drag={drag.state} ids={cards.below} render={renderCard} strip="below" />
             </div>
           )}
         </div>
+
+        {railVisible && (
+          <Splitter
+            // The console's edge, beside the card rail: a drag moves whole
+            // columns, eighty to a hundred and twenty a pane.
+            edge={railSide === 'right' ? 'left' : 'right'}
+            label={t('splitter.aria.consoleWidth', CONSOLE_RANGE)}
+            measure={measureConsole}
+            onChange={setConsole}
+            onDragging={setResizing}
+            onReset={resetConsole}
+            pane="rail"
+            rangeFor={rangeForConsole}
+          />
+        )}
 
         {railVisible && (
           <div className="rail">
@@ -1528,11 +1485,11 @@ export default function App() {
             {hudOpen && !inGame && <StandbyCard character={character} state={state} />}
 
             {/*
-              In the order this character arranged them. One list, rendered by
-              one function, so a card dragged from third to first is the same
-              card — and a new card added to the vocabulary needs no entry here.
+              Where this character put them, on the grid. One list, rendered by
+              one function, so a card dragged across the rail is the same card,
+              and a new card added to the vocabulary needs no entry here.
             */}
-            {lane('rail')}
+            <RailGrid drag={drag.state} grid={railGrid} layout={cards} render={renderCard} />
           </div>
         )}
 
@@ -1556,56 +1513,11 @@ export default function App() {
             />
           ))}
 
-        {/*
-          What is being dragged, following the pointer, in its own shape.
-
-          A ghost rather than the card itself: moving the real node out of the
-          rail would collapse the gap it leaves and shift every measurement the
-          drop target is computed from, so the indicator would point somewhere
-          the card is no longer going. The ghost is the size of what was
-          picked up — the card's box, or a put-away card's chip — and held
-          where the pointer took hold of it, so the card is felt to move
-          rather than a label to appear. A card already floating needs none:
-          it follows the pointer itself.
-        */}
-        {/*
-          Where a released card would land, beside the one it is being lined up
-          with: the landing box itself, drawn where the card will be and at the
-          size it will take. A bar along the seam would say which edge and not
-          what happens to the card, and the whole point of the gesture is that
-          the card takes its neighbour's measurement across that edge.
-        */}
-        {drag.state?.live && drag.state.target.where === 'snap' && (
-          <div
-            className="snap-indicator"
-            /* Which card, and which of its edges — the two facts the box's own
-               geometry does not state outright, for a person inspecting the
-               window and for the check that drives the gesture. */
-            data-side={drag.state.target.side}
-            data-snap-to={drag.state.target.to}
-            style={{
-              left: drag.state.target.box.x,
-              top: drag.state.target.box.y,
-              width: drag.state.target.box.w,
-              height: drag.state.target.box.h
-            }}
-          />
-        )}
-
-        {drag.state?.live && !cards.floatOf(drag.state.id) && (
-          <div
-            className="drag-ghost"
-            data-shape={drag.state.shape}
-            style={{
-              left: drag.state.x - drag.state.grab.dx,
-              top: drag.state.y - drag.state.grab.dy,
-              ...(drag.state.size.w > 0 ? { width: drag.state.size.w } : {}),
-              ...(drag.state.size.h > 0 ? { height: drag.state.size.h } : {})
-            }}
-          >
-            {cardLabel(drag.state.id)}
-          </div>
-        )}
+        {/* What is in hand, and where releasing it beside another float puts it. */}
+        <DragMarks
+          floating={drag.state ? cards.floatOf(drag.state.id) !== undefined : false}
+          state={drag.state}
+        />
       </div>
 
       <SlideOuts

@@ -2,8 +2,9 @@
  * What each splitter measures and the range it may be dragged within: the
  * pane's laid-out box, read when a gesture starts, and a ceiling that keeps
  * the console eighty measured columns and twelve measured rows. The card rail
- * has no splitter; it is what the console leaves, and the first to give
- * width to a wider tab rail.
+ * has no splitter of its own; it is what the console leaves, and the first to
+ * give width to a wider tab rail or a wider console. The console's handle
+ * moves whole columns (todo 09).
  *
  * Out of `App` (todo 733); the arithmetic is `lib/splitter.ts`. See
  * `mudengine-ui` › `parts/cards.md`, *The edge between two panes is a
@@ -12,8 +13,9 @@
 import { useCallback, type RefObject } from 'react';
 
 import type { PaneWidths } from './usePaneWidths';
-import { consoleCellWidth, consoleRoom } from '../lib/consoleWidth';
+import { consoleGrid, consoleRoom } from '../lib/consoleWidth';
 import {
+  CONSOLE_RANGE,
   CONSOLE_ROWS,
   DOCK_RANGE,
   TAB_RAIL_RANGE,
@@ -45,13 +47,15 @@ export const measureBelow = (): number => heightOf('.dock-below > .card', DOCK_R
 /**
  * @param layersRef The console's box, which the panes divide.
  * @param size The shown console's measured size, in cells.
+ * @param across Panes side by side, each of which holds the columns chosen.
  */
 export function usePaneRanges(
   layersRef: RefObject<HTMLElement>,
   size: TerminalSize,
-  widths: Pick<PaneWidths, 'setTabs' | 'setAbove' | 'setBelow'>
+  across: number,
+  widths: Pick<PaneWidths, 'setColumns' | 'setTabs' | 'setAbove' | 'setBelow'>
 ) {
-  const { setTabs, setAbove, setBelow } = widths;
+  const { setColumns, setTabs, setAbove, setBelow } = widths;
   const rangeFor = useCallback(
     (which: 'tabs' | 'above' | 'below'): SplitRange => {
       const box = layersRef.current;
@@ -68,11 +72,11 @@ export function usePaneRanges(
         );
       }
       const current = widthOf('.workspace > .tab-rail', TAB_RAIL_RANGE.min);
-      const cell = consoleCellWidth(size.cols);
-      if (!box || cell === null) return TAB_RAIL_RANGE;
-      return ceilingFor(TAB_RAIL_RANGE, current, consoleRoom(box), cell);
+      const grid = consoleGrid();
+      if (!box || grid === null) return TAB_RAIL_RANGE;
+      return ceilingFor(TAB_RAIL_RANGE, current, consoleRoom(box), grid.cell);
     },
-    [size.cols, size.rows]
+    [size.rows]
   );
 
   /*
@@ -82,6 +86,36 @@ export function usePaneRanges(
    * the measuring itself moved out of the render path with them — see
    * `Splitter`.
    */
+  /*
+   * The console's handle works in the px its columns take, every pane across
+   * together, so a drag moves it under the pointer; what is kept is the
+   * whole columns that is (`setConsole`). Its ceiling is what the card rail
+   * holds beyond its one card column.
+   */
+  const measureConsole = useCallback((): number => {
+    const grid = consoleGrid();
+    return grid === null ? 0 : grid.cols * grid.cell * across;
+  }, [across]);
+  const rangeForConsole = useCallback((): SplitRange => {
+    const box = layersRef.current;
+    const grid = consoleGrid();
+    if (!box || grid === null) return { min: 0, max: 0 };
+    const per = grid.cell * across;
+    const room = grid.cols * per + consoleRoom(box) - box.clientWidth;
+    return {
+      min: CONSOLE_RANGE.min * per,
+      max: Math.min(CONSOLE_RANGE.max * per, Math.floor(room))
+    };
+  }, [across]);
+  const setConsole = useCallback(
+    (px: number) => {
+      const grid = consoleGrid();
+      if (grid !== null) setColumns(px / (grid.cell * across));
+    },
+    [across, setColumns]
+  );
+  const resetConsole = useCallback(() => setColumns(Number.NaN), [setColumns]);
+
   const rangeForTabs = useCallback(() => rangeFor('tabs'), [rangeFor]);
   const rangeForAbove = useCallback(() => rangeFor('above'), [rangeFor]);
   const rangeForBelow = useCallback(() => rangeFor('below'), [rangeFor]);
@@ -90,6 +124,10 @@ export function usePaneRanges(
   const resetBelow = useCallback(() => setBelow(Number.NaN), [setBelow]);
 
   return {
+    measureConsole,
+    rangeForConsole,
+    setConsole,
+    resetConsole,
     rangeForTabs,
     rangeForAbove,
     rangeForBelow,

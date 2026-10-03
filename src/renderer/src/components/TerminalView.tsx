@@ -644,8 +644,18 @@ export default function TerminalView({
       if (!reportRef.current) return;
       handlers.current.onResize({ cols: term.cols, rows: term.rows });
     };
+    /*
+     * The columns this terminal holds now, on its own element, for the
+     * console's width arithmetic (`lib/consoleWidth.ts`): React's copy of the
+     * size is a fit behind while a drag or a split is under way, and a cell
+     * measured against it was wrong by the columns in between (todo 09).
+     */
+    const markColumns = (): void => {
+      if (term.element) term.element.dataset['cols'] = String(term.cols);
+    };
 
     fit.fit();
+    markColumns();
     publishSize();
 
     /**
@@ -763,6 +773,7 @@ export default function TerminalView({
       }, tuning().enterTakenMs);
     };
     window.addEventListener('keydown', watchEnter, { capture: true });
+    term.onResize(markColumns);
     term.onResize(publishSize);
 
     /*
