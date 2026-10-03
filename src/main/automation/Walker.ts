@@ -1119,7 +1119,9 @@ export class Walker implements SessionModule {
     }
 
     if (here !== step.to) {
-      this.stop(t('automation.walk.reasonWrongRoom', { roomName: state.room.name ?? here }));
+      // Unsent, the room is another mover's doing (`RestAway`, festus 2026-10-03).
+      if (!this.stepSent) this.onward(state, here);
+      else this.stop(t('automation.walk.reasonWrongRoom', { roomName: state.room.name ?? here }));
       return;
     }
 
@@ -1445,17 +1447,13 @@ export class Walker implements SessionModule {
     if (destination === undefined) return;
     const replanned = this.events.replan?.(destination.to, this.shortest);
     if (replanned === undefined) {
-      // Nobody can plan for this walker, so a character that moved is exactly
-      // the off-path case it has always stopped for.
+      // Nobody can plan for this walker: a character that moved is off the path.
       this.stop(t('automation.walk.reasonWrongRoom', { roomName: state.room.name ?? here }));
       return;
     }
-    if (typeof replanned === 'string') {
-      this.stop(replanned);
-      return;
-    }
-    if (replanned.blocked) {
-      this.stop(replanned.reason ?? t('automation.walk.refusalNoRoute'));
+    if (typeof replanned === 'string' || replanned.blocked) {
+      const why = typeof replanned === 'string' ? replanned : replanned.reason;
+      this.stop(why ?? t('automation.walk.refusalNoRoute'));
       return;
     }
     if (replanned.steps.length === 0) {
@@ -1480,8 +1478,9 @@ export class Walker implements SessionModule {
     this.redraw(replanned, state);
   }
 
-  /** A fresh plan in place of this one, carried on from its first step. */
+  /** A fresh plan in place of this one, from its first step: the old one's step still queued goes. */
   private redraw(route: Route, state: CharacterState): void {
+    this.cancelQueued();
     this.walked += this.index;
     this.route = route;
     this.index = 0;

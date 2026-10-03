@@ -610,6 +610,12 @@ const TUNING_DEFAULTS = {
     killConfidence: 0.9,
     /** How long a heal proposal stays worth sending. */
     healExpiresMs: 3000,
+    /**
+     * In a fight, the share of the hit points missing a chosen heal must be
+     * expected to mend, or it is not cast: casting ends the attack, so a
+     * minor heal at 92 missing gave up the round for 11 (festus, 2026-10-03).
+     */
+    fightHealShare: 0.25,
     /** Long enough for the next status line to say whether the heal worked. */
     healCooldownMs: 6000,
     /**
@@ -1758,6 +1764,13 @@ const TUNING_DEFAULTS = {
     safetyLogLimit: 40,
     /** How long a `safe-haven` retreat waits for the fight to end. */
     retreatPatienceMs: 20_000,
+    /**
+     * How long a hang-up waits for a run on the wire to land, so the
+     * character logs back in away from what it ran from (`Safety`). A step
+     * answers in about 1.2s (the movement round, measured); this is two and a
+     * half of them.
+     */
+    hangUpAfterRunMs: 3_000,
     /** How long a `safe-haven` retreat waits for the escape move to land. */
     retreatSettleMs: 5_000,
     /**

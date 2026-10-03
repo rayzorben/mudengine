@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 import { Safety, type SafetyParts } from '../Safety';
 import type { HangUpAssessment } from '../../automation/HangUp';
 import type { SafetyDecision } from '../../../shared/automation';
@@ -60,7 +61,8 @@ function build(
   config: AutomationConfig,
   state: CharacterState,
   assessment: HangUpAssessment = { clean: true, reasons: [], clearInMs: null },
-  danger: { fight?: Survival | null; percent?: number | null } = {}
+  danger: { fight?: Survival | null; percent?: number | null } = {},
+  run: { unanswered: boolean } = { unanswered: false }
 ) {
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
@@ -76,7 +78,12 @@ function build(
       noteCommand: () => null
     },
     queue: { enqueue: () => true },
-    travel: { runFromPlayer: () => undefined },
+    travel: {
+      runFromPlayer: () => undefined,
+      get escapeUnanswered() {
+        return run.unanswered;
+      }
+    },
     client: { connected: true },
     publisher: { state: LINK, noteSafety: (decision) => void decisions.push(decision) },
     grounded: { down: false }
@@ -150,5 +157,62 @@ describe('hanging up on a monster its row names', () => {
     safety.considerHangingUp(state);
     expect(hungUp).toEqual([]);
     expect(notices).toEqual([]);
+  });
+});
+
+/*
+ * festus, 2026-10-03: `nw` and the hang-up went in one millisecond at 27%,
+ * the line dropped before the step, and he logged back in at 74 hp beside
+ * the zombie he had run from.
+ */
+describe('hanging up with a run on the wire', () => {
+  const hurt = (): CharacterState => {
+    const state = standing([]);
+    return { ...state, vitals: { ...state.vitals, hp: 27 } };
+  };
+  const config = automation({ enabled: true, penalties: false, belowHealth: 0.35 }, []);
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('waits for the run to land, says so, then hangs up where it landed', () => {
+    const run = { unanswered: true };
+    const state = hurt();
+    const { safety, notices, hungUp } = build(config, state, undefined, {}, run);
+    safety.considerHangingUp(state);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    const why = t('session.safety.whyHealth', { percent: '27%' });
+    expect(notices).toEqual([t('session.safety.hangUpAfterRun', { why })]);
+    run.unanswered = false;
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual(['client']);
+  });
+
+  /* A run that ended with health back above the line leaves no wait behind for the next one. */
+  it('waits again for a later run after health came back between them', () => {
+    vi.useFakeTimers();
+    const run = { unanswered: true };
+    const low = hurt();
+    const { safety, notices, hungUp } = build(config, low, undefined, {}, run);
+    safety.considerHangingUp(low);
+    run.unanswered = false;
+    safety.considerHangingUp(standing([]));
+    vi.advanceTimersByTime(10 * tuning().session.hangUpAfterRunMs);
+    run.unanswered = true;
+    safety.considerHangingUp(low);
+    expect(hungUp).toEqual([]);
+    expect(notices).toHaveLength(2);
+  });
+
+  it('hangs up anyway once the run has had its time', () => {
+    vi.useFakeTimers();
+    const state = hurt();
+    const { safety, hungUp } = build(config, state, undefined, {}, { unanswered: true });
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    vi.advanceTimersByTime(tuning().session.hangUpAfterRunMs);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual(['client']);
   });
 });

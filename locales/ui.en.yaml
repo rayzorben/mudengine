@@ -4480,6 +4480,7 @@ session:
     hangUpRefused: 'Not hanging up: {why}. {reasons}. Disconnecting now would be penalized; walk out
       instead.'
     hangingUpClean: 'Hanging up: {why}.'
+    hangUpAfterRun: 'Running first, then hanging up where the run lands: {why}.'
     hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hangup penalty."
     hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hangup
       penalty.'
@@ -5096,6 +5097,8 @@ automation:
         much as one heal for the mana.'
     reasonArea: 'heal: {count} in the party are hurt'
     noChoice: 'No heal in the spellbook fits, so {spell} is cast as configured.'
+    notInFight: 'Not healing during the fight: {spell} mends about {expected} of the {deficit} HP
+      missing, and casting stops your attack.'
     noChoiceNoSpell: No heal in the spellbook fits, and none is configured, so nothing is cast.
     noFiguresSelf: Healing with the configured spell, because this character's maximum health is not
       known yet and heals are chosen by how much health is missing.
