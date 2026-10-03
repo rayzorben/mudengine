@@ -401,8 +401,8 @@ describe('a card with nothing to say', () => {
 });
 
 /*
- * A palette for one card, chosen per appearance so switching the client between
- * light and dark cannot leave one card the wrong way round.
+ * A palette for one card, remembered per client appearance, so switching the
+ * client between light and dark brings back what the card wore that way round.
  */
 describe("a card's own palette", () => {
   it('reads both halves back', () => {

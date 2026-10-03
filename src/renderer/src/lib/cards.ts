@@ -259,10 +259,11 @@ export interface CardSettings {
    * A palette for this card alone, chosen per appearance.
    *
    * Two entries and not one, because the client's own theme is two themes:
-   * pick Nord for the Combat card while the client is dark and switching the
-   * client to a light theme must not leave one dark hole in a light rail. The
-   * card follows whichever half matches, and follows the client where that
-   * half is unset — which is every card until somebody says otherwise.
+   * the key is the client's appearance when the pick was made, and either
+   * half of the registry may be its value. Switching the client between light
+   * and dark brings back what the card wore the last time the client was that
+   * way round, and the card follows the client where that entry is unset,
+   * which is every card until somebody says otherwise.
    *
    * The value is a `ThemeId` from the same registry the client's own theme
    * comes from, so a card palette is one of the sixteen already in the build
