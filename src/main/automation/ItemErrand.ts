@@ -86,6 +86,8 @@ export interface ItemPlanner {
   runLoop(loop: Loop): string | null;
   looping(): boolean;
   stopLoop(reason: string): void;
+  /** Whether auto-combat is on: a lair or a summons is a fight, fought only with it on. */
+  combatOn(): boolean;
   /** Take this by name while the errand runs — session-scoped, never the file. */
   alsoTake(name: string): void;
   stopTaking(name: string): void;
@@ -394,6 +396,9 @@ export class ItemErrand implements SessionModule {
      */
     const ask = sources.asks[0];
     if (ask !== undefined) {
+      if (ask.summons !== undefined && !this.planner.combatOn()) {
+        return this.refuse(item, t('automation.collect.refusalCombatOff', { mob: ask.summons }));
+      }
       const refused = this.planner.walkTo(ask.room);
       if (refused !== null) return this.refuse(item, refused);
       // A summoned dropper's loot is picked up for as long as the errand runs.
@@ -419,6 +424,9 @@ export class ItemErrand implements SessionModule {
     }
     const lair = sources.lairs[0];
     if (lair === undefined) return this.refuse(item, whyNoLair(sources));
+    if (!this.planner.combatOn()) {
+      return this.refuse(item, t('automation.collect.refusalCombatOff', { mob: lair.mob }));
+    }
     /*
      * The loop is built from the realm's own rooms for those monsters, as the
      * Hunting card builds one, and filed nowhere. Its stops are every room

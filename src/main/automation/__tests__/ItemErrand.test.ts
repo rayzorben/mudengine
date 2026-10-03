@@ -79,6 +79,7 @@ function errand(over: Partial<ItemPlanner> = {}, now?: () => number): ItemErrand
     stopLoop: () => {
       looping = false;
     },
+    combatOn: () => true,
     alsoTake: (name) => taking.push(name),
     stopTaking: (name) => {
       taking = taking.filter((entry) => entry !== name);
@@ -246,6 +247,18 @@ describe('collecting what a route needs', () => {
     expect(taking).toEqual([]);
     expect(looping).toBe(false);
     expect(walked).toEqual([OWED]);
+  });
+
+  /* A lair is a fight, and auto-combat off is the player's answer (2026-10-02). */
+  it('refuses to hunt with auto-combat off, saying so', () => {
+    sources = {
+      shops: [],
+      ...dropped([{ id: '1/816', name: 'Graveyard', mob: 'fierce zombie', steps: 4 }])
+    };
+    const refused = errand({ combatOn: () => false }).collect([KEY], OWED, ready());
+    expect(refused).toBe(t('automation.collect.refusalCombatOff', { mob: 'fierce zombie' }));
+    expect(loops).toEqual([]);
+    expect(taking).toEqual([]);
   });
 
   /*

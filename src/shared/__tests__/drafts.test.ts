@@ -313,7 +313,6 @@ describe('a character', () => {
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,
-        fightOnArrival: true,
         // A list the payload did not send keeps the shipped words, since an
         // empty one is a choice and a missing one is not.
         keepOutOf: ['vortex', 'Negative Power Plane'],
@@ -424,7 +423,6 @@ describe('a character', () => {
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,
-        fightOnArrival: true,
         keepOutOf: ['vortex', 'Negative Power Plane'],
         // The shipped default, for the same reason `restBelow` keeps 0.35
         // here: a nonsense block must not silently switch off something that
@@ -575,7 +573,6 @@ describe('a character', () => {
         // Stated above, and the one direction MegaMUD's own default is not.
         politeAttacks: true,
         // Absent above: the shipped figure, since 0 would mean never defend.
-        defendAfterRounds: 2,
         maxMobs: 3,
         refreshRounds: 3
       });

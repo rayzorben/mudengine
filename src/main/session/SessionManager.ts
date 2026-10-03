@@ -41,7 +41,6 @@ import { AutoHeal } from '../automation/AutoHeal';
 import { AutoInvoke } from '../automation/AutoInvoke';
 import type { Blessings } from '../automation/Blessings';
 import { CastRound } from '../automation/CastRound';
-import { CombatLease } from '../automation/CombatLease';
 import { Cures } from '../automation/Cures';
 import { Potions } from '../automation/Potions';
 import { LoopRunner } from '../automation/LoopRunner';
@@ -402,7 +401,6 @@ export class SessionManager {
   readonly queue: CommandQueue;
   readonly rules: RuleEngine;
   readonly walker: Walker;
-  private readonly combatLease: CombatLease;
   /**
    * Fighting on the character's behalf.
    *
@@ -469,13 +467,6 @@ export class SessionManager {
   /** Asking a carried item for the blessing it can cast. See `AutoInvoke`. */
   private readonly invoke: AutoInvoke;
   readonly loops: LoopRunner;
-  /**
-   * Whether a route was moving on the previous progress push, so the line
-   * about a journey fighting through a switch that is off is said at its start
-   * and not once a step. The lap's edge is `AutoCombat.lapRunning`.
-   */
-  private wasWalking = false;
-
   /**
    * The character's own persisted record, as `useRealm` handed it over — the
    * same instance the tracker writes through. Held here so the blessing
@@ -780,21 +771,12 @@ export class SessionManager {
       }
     });
 
-    // What the lease, the light, the errands and the travel tell the session:
+    // What the light, the errands and the travel tell the session:
     // a line for the console, and a decision for the safety trace.
     const reports = {
       notice: (message: string): void => this.sink.notice(message),
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     };
-    this.combatLease = new CombatLease({
-      flip: (on) => this.sink.switchAutomation?.('combat', on) ?? false,
-      ...reports,
-      declined: () => this.combat.journeyDeclined,
-      returned: (declined) => this.combat.leaseReturned(declined)
-    });
-    // Configured where it is built, as the loop runner is: unconfigured, it
-    // read every switch as on and would never lend (todo 00).
-    this.combatLease.configure(automation);
     // Walking a route is an outbound action: it proposes to the arbiter like
     // everything else, a verified step at a time.
     this.walker = new Walker(automation, this.queue, {
@@ -831,7 +813,7 @@ export class SessionManager {
       // Where the player asked to go, taken here because every walk comes through the walker;
       // and a new walk supersedes a journey still owed from a lost connection, whoever started it.
       destination: (room, name) => {
-        this.travel.supersedeJourney();
+        this.travel.walkStarted();
         this.sink.destination?.(room, name);
       },
       // The tracker's queue: it counts the typed moves and leftover legs a route cannot see.
@@ -902,31 +884,8 @@ export class SessionManager {
       keyToUse: (keyId) => this.errands.keyToUse(keyId),
       notice: (message) => this.sink.notice(message),
       progress: (progress) => {
-        /*
-         * Auto-combat and the Combat Stats' `Moving` clock are told whether a
-         * route is running: only the walker knows one is in progress.
-         *
-         * **A route fights**, whatever the switch says (todo 00) — the player
-         * asked to go somewhere, and what lives between here and there is the
-         * realm's business. Said once at the start, for the reason the lap's
-         * line is: a client that attacks while the toolbar's own switch reads
-         * off is two surfaces disagreeing in silence.
-         */
-        const walking = progress.status === 'walking';
-        // Not for a run: it declines the fight one statement after this
-        // publish, and the sentence would announce a fight it never has.
-        if (
-          walking &&
-          !this.wasWalking &&
-          !this.combat.lapRunning &&
-          !this.travel.walkIsRun &&
-          this.combat.fightingBecauseTravelling
-        ) {
-          this.sink.notice(t('automation.combat.fightingForTheRoute'));
-        }
-        this.wasWalking = walking;
-        this.combat.noteWalking(walking);
-        this.tracker.noteMoving(walking);
+        // The Combat Stats' `Moving` clock: only the walker knows a route is in progress.
+        this.tracker.noteMoving(progress.status === 'walking');
         this.carryOver.remember();
         this.sink.walk?.(progress);
       }
@@ -1242,7 +1201,8 @@ export class SessionManager {
           loot: this.loot,
           walker: this.walker,
           queue: this.queue,
-          questWatch: this.questWatch
+          questWatch: this.questWatch,
+          combat: this.combat
         }),
         stopLap,
         config: () => this.automationConfig,
@@ -1291,7 +1251,7 @@ export class SessionManager {
         },
         fightFor: (mob) => this.combat.alsoFight(mob),
         stopFighting: (mob) => this.combat.stopFighting(mob),
-        questing: (on) => this.combat.noteQuesting(on),
+        combatOn: () => this.combat.switchedOn,
         warding: (on) => this.wards.lend(on),
         said: (command) => this.questWatch.noteSaid(command),
         watched: () => this.questWatch.watched
@@ -1616,8 +1576,6 @@ export class SessionManager {
         },
         notice: (message) => this.sink.notice(message),
         progress: (progress) => {
-          // A loop's walk engages: the loop was chosen for what lives on it.
-          this.combat.noteLooping(progress.status === 'running');
           this.travel.noteLap(progress);
           this.carryOver.remember();
           this.sink.loop?.(progress);
@@ -1647,7 +1605,6 @@ export class SessionManager {
         walker: this.walker,
         loops: this.loops,
         combat: this.combat,
-        combatLease: this.combatLease,
         supplies: this.supplies,
         trainLevel: this.trainLevel,
         outgrown: this.outgrown,
@@ -1664,7 +1621,7 @@ export class SessionManager {
         fled,
         keepFled: (entries) => this.belongings.rememberFled(entries),
         driven: () => this.extensions.driving,
-        switchAutomation: (on) => this.sink.switchAutomationNow?.('automation', on) ?? false,
+        switchAutomation: (name, on) => this.sink.switchAutomationNow?.(name, on) ?? false,
         ...reports
       }
     );
@@ -1813,7 +1770,6 @@ export class SessionManager {
       { module: this.potions, configure: (a) => this.potions.configure(a.health, a.enabled) },
       { module: this.cures, configure: (a) => this.cures.configure(a.spells, a.enabled) },
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
-      { module: this.combatLease },
       { module: this.extensions, configure: () => this.extensions.configure(this.configured[0]) },
       {
         module: this.invoke,
@@ -1916,8 +1872,6 @@ export class SessionManager {
       this.walker.stop(t('session.walk.stoppedConnectionClosed'));
       this.dropTyped();
       this.queue.clear();
-      // A lent switch is in the player's file; nothing is fighting for it now.
-      this.combatLease.end(lost ? 'lost' : 'closed');
       /*
        * The character is no longer in the realm, and saying otherwise is a lie
        * the HUD acts on: it went on reporting vitals and a room for a character
@@ -2471,7 +2425,6 @@ export class SessionManager {
    */
   private leftTheRealm(): void {
     this.sink.notice(t('session.realm.left'));
-    this.combatLease.end('left');
     this.dropTyped();
     this.queue.clear();
     this.playerMove = null;
@@ -2578,15 +2531,11 @@ export class SessionManager {
     this.promptDesign.noteDesign();
     this.errands.forgetPreferred();
     this.queue.configure(automation);
-    // The lease first: it knows whether this reload is its own write landing,
-    // and combat is told what it says.
-    const leaseEdge = this.combatLease.configure(automation);
     this.combat.configure(
       automation.combat,
       automation.enabled,
       automation.spells,
-      automation.party,
-      leaseEdge
+      automation.party
     );
     for (const { configure } of this.modules) configure?.(automation);
     this.loops.configure(automation.health, automation.movement, automation.walk);
@@ -2832,7 +2781,6 @@ export class SessionManager {
      */
     if (block.type === 'user-dies') {
       this.travel.stopGoingAnywhere();
-      this.combatLease.end('died');
       this.wards.died();
     }
 
@@ -2951,17 +2899,6 @@ export class SessionManager {
     // An escape in flight reads what the server said back (todos 06, 813).
     this.travel.settleEscape(block, roomBefore);
     this.fleeGoto.settle(block, this.answering);
-    /*
-     * A monster's blow on this character, for the rounds `CombatLease` counts.
-     * After `apply`: a miss's pattern also fits a sentence about somebody
-     * standing here, and only the tracker's vouching puts an attacker on it.
-     */
-    if (
-      block.type === 'mob-hits' ||
-      (block.type === 'mob-misses' && this.tracker.current.combat.attackers.length > 0)
-    ) {
-      this.combatLease.noteMonsterBlow(block.at);
-    }
     const changed = fed.line || fed.batch;
     // The tracker records that a stat sheet would settle a buff ending; the
     // routine is what asks for one. Facts fan out, actions funnel in.
@@ -3145,18 +3082,6 @@ export class SessionManager {
       this.fleeGoto.consider(state);
       // And the walk home a `safe-haven` escape armed, once the fight is over.
       this.travel.walkHomeIfDue(state);
-      /*
-       * Hit and not moving with auto-combat off lends it (todo 00). After the
-       * walker, whose arrival decides first whether a destination keeps it on,
-       * and after the escape, which outranks fighting.
-       */
-      this.combatLease.defend(state, {
-        moveOnly,
-        escaping: this.travel.escapeUnanswered || this.travel.isRetreating(),
-        stoodDown: this.combat.stoodDown,
-        movePending: this.tracker.pendingMoves > 0,
-        fighting: this.combat.willFight
-      });
       if (!moveOnly) {
         // Shopping, which yields to every one of the above (`Supplies.consider`).
         this.supplies.onCharacter(state);
@@ -3633,13 +3558,12 @@ export class SessionManager {
 
   /**
    * The character to the window, per change and never coalesced, with the
-   * room's verdict and asks beside it (`Publisher.character`). The lease is
-   * told between the two, where it always has been, and the reset watch last.
+   * room's verdict and asks beside it (`Publisher.character`), and the reset
+   * watch last.
    */
   private publishCharacter(): void {
     this.odds.refresh(this.tracker.current);
     this.publisher.character();
-    this.combatLease.onCharacter(this.tracker.current, this.walker.walking);
     this.publisher.publishAsks();
     this.watchForReset();
     this.locating.onCharacter(this.tracker.current);

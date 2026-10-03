@@ -759,22 +759,6 @@ export default function GlobalSettings({
                 automation({ combat: { ...draft.automation.combat, enabled: value } })
               }
             />
-            <div className="settings-inline">
-              <NumberField
-                hint={t('settings.combat.defendAfterRoundsHint')}
-                label={t('settings.combat.defendAfterRounds')}
-                name="global-defend-after-rounds"
-                onChange={(value) =>
-                  automation({
-                    combat: {
-                      ...draft.automation.combat,
-                      defendAfterRounds: Number.parseInt(value, 10) || 0
-                    }
-                  })
-                }
-                value={String(draft.automation.combat.defendAfterRounds)}
-              />
-            </div>
             <CheckField
               checked={draft.automation.combat.retaliate}
               hint={t('settings.combat.hitBackHint')}
@@ -1539,15 +1523,6 @@ export default function GlobalSettings({
                   automation({ movement: { ...draft.automation.movement, ...waits } })
                 }
                 value={draft.automation.movement}
-              />
-              <CheckField
-                checked={draft.automation.movement.fightOnArrival}
-                hint={t('settings.movement.fightOnArrivalHint')}
-                label={t('settings.movement.fightOnArrival')}
-                name="global-fight-on-arrival"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, fightOnArrival: value } })
-                }
               />
             </fieldset>
 

@@ -34,7 +34,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // (`macros.ts`), less the extensions' hooks (todo 84). Lowered by the
   // blessings' construction, out with its choice (`BlessingChoice.ts`, todo 10).
   // Lowered by the hunt's wiring, out whole (`huntPlanner.ts`, todo 11).
-  'src/main/session/SessionManager.ts': 3724,
+  'src/main/session/SessionManager.ts': 3648,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2433,
   'src/main/parse/CharacterTracker.ts': 2537,
@@ -51,7 +51,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the blessings' fields, shared with the Global page (`BlessingFields`, todo 10).
   // Lowered by the carried blocks handed to `CarrySections` whole (todo 12).
   // Lowered by the light switches, shared with the Global page (`LightFields`, todo 11).
-  'src/renderer/src/components/CharacterForm.tsx': 1551
+  'src/renderer/src/components/CharacterForm.tsx': 1533
 };
 
 /**

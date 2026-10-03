@@ -846,15 +846,6 @@ export interface CombatConfig {
    */
   retaliate: boolean;
   /**
-   * Lend auto-combat to a character hit for this many rounds without moving,
-   * while it is off or the journey declined it. 0 never does.
-   *
-   * *Off* means do not open fights; it never meant stand there and be killed.
-   * `CombatLease` turns the switch on in the character's file and hands it
-   * back on the next arrival in another room (todo 00, 2026-09-23).
-   */
-  defendAfterRounds: number;
-  /**
    * Leave alone a monster somebody **outside the party** is already fighting.
    *
    * MegaMUD's *PoliteAttacks*, in MegaMUD's own direction and under its own
@@ -1785,15 +1776,6 @@ export interface MovementConfig {
    * command spent to be refused. See `afflictionHolding` in `walk.ts`.
    */
   walkWhileBlind: boolean;
-  /**
-   * Turn auto-combat back on when a route the player asked for arrives (todo
-   * 11). The ordinary reason to walk with it off is to get somewhere without
-   * fighting on the way; on arrival the reason is gone. Only a route the
-   * player asked for — a loop's leg and an errand are not journeys with an
-   * arrival in them. The switch flips the character's own file, so the
-   * toolbar shows it.
-   */
-  fightOnArrival: boolean;
   /**
    * Ways and places routes keep out of, in the realm's own words (todo 806):
    * a word a way's script phrase says (`go vortex`), or a room's name does
@@ -2754,7 +2736,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       hideForOpener: false,
       engage: 'hostile',
       retaliate: true,
-      defendAfterRounds: 2,
       politeAttacks: false,
       maxMobs: 0,
       refreshRounds: 3,
@@ -2860,7 +2841,6 @@ export const DEFAULT_CONFIG: AppConfig = {
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       walkWhileConfused: false,
-      fightOnArrival: true,
       keepOutOf: ['vortex', 'Negative Power Plane'],
       collectKeys: true
     },
@@ -4094,7 +4074,6 @@ function normalizeMovement(value: unknown): MovementConfig {
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
     walkWhileConfused: bool(raw['walkWhileConfused'], d.walkWhileConfused),
-    fightOnArrival: bool(raw['fightOnArrival'], d.fightOnArrival),
     // One word once, however it was spelt: two spellings of one word are one
     // place kept out of.
     keepOutOf: uniqueWords(stringList(raw['keepOutOf'], d.keepOutOf)),
@@ -4307,7 +4286,6 @@ function normalizeCombat(value: unknown): CombatConfig {
     hideForOpener: bool(raw['hideForOpener'], d.hideForOpener),
     engage: ENGAGE_POLICIES.includes(engage as EngagePolicy) ? (engage as EngagePolicy) : d.engage,
     retaliate: bool(raw['retaliate'], d.retaliate),
-    defendAfterRounds: int(raw['defendAfterRounds'], d.defendAfterRounds, 0, 20),
     politeAttacks: bool(raw['politeAttacks'], d.politeAttacks),
     // Capped where the retreat guard is, for the same reason: a room holding more
     // than twenty things is not a number anybody is tuning against.

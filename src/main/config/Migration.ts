@@ -253,6 +253,45 @@ function migrateAll(options: MigrationOptions): void {
   statedTheOutgrownGear(home, note, options.template);
   statedBuyingALight(home, note, options.template);
   theHealKeptItsOwnFloor(home, note, options.template);
+  theCombatOverridesWent(home, note);
+}
+
+/**
+ * Auto-combat off is off (the user, 2026-10-02): nothing turns the switch back
+ * on, so the two settings that did, `movement.fightOnArrival` and
+ * `combat.defendAfterRounds`, leave every file that states them.
+ */
+function theCombatOverridesWent(home: Home, note: (message: string) => void): void {
+  const files = [home.options, ...directories(home.profilesDir).map((id) => home.profile(id).file)];
+  const cleaned: string[] = [];
+  const gone: ReadonlyArray<readonly [string, string]> = [
+    ['movement', 'fightOnArrival'],
+    ['combat', 'defendAfterRounds']
+  ];
+
+  for (const file of files) {
+    edit(file, (document) => {
+      let touched = false;
+      for (const [block, key] of gone) {
+        const map = document.getIn(['automation', block], true);
+        if (!isMap(map) || !map.has(key)) continue;
+        map.delete(key);
+        // An emptied block reads as a setting somebody meant to fill in.
+        if (map.items.length === 0) document.deleteIn(['automation', block]);
+        touched = true;
+      }
+      if (touched) cleaned.push(file);
+      return touched;
+    });
+  }
+
+  if (cleaned.length === 0) return;
+  const params = { count: cleaned.length, fileList: cleaned.join(', ') };
+  note(
+    cleaned.length === 1
+      ? t('notices.migration.combatOverridesDropped.one', params)
+      : t('notices.migration.combatOverridesDropped.many', params)
+  );
 }
 
 /**
@@ -4557,16 +4596,6 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
         changed = true;
       }
       if (
-        addKeys(
-          document,
-          ['automation', 'movement'],
-          [['fightOnArrival', true]],
-          FIGHT_ON_ARRIVAL_COMMENT
-        )
-      ) {
-        changed = true;
-      }
-      if (
         addKeys(document, ['automation', 'party'], [['askForHealBelow', 0]], ASK_FOR_HEAL_COMMENT)
       ) {
         changed = true;
@@ -4580,16 +4609,6 @@ function statedTheNewAutomation(home: Home, note: (message: string) => void): vo
           ['automation', 'movement'],
           [['keepOutOf', [...DEFAULT_CONFIG.automation.movement.keepOutOf]]],
           KEEP_OUT_OF_COMMENT
-        )
-      ) {
-        changed = true;
-      }
-      if (
-        addKeys(
-          document,
-          ['automation', 'combat'],
-          [['defendAfterRounds', 2]],
-          DEFEND_AFTER_ROUNDS_COMMENT
         )
       ) {
         changed = true;
@@ -4882,20 +4901,11 @@ const NOTIFY_WEAR_OFF_COMMENT = ` Tell the party member who blessed you when the
  instead of its clock. Both ends must run mudengine. Off: it speaks on
  somebody's telepath channel unasked.`;
 
-const FIGHT_ON_ARRIVAL_COMMENT = ` Turn auto-combat back on when a route you asked for arrives: walking
- with it off is how you get somewhere without fighting on the way, and on
- arrival that reason is gone. Flips the switch in this file.`;
-
 const KEEP_OUT_OF_COMMENT = ` Ways and places routes keep out of, in the realm's own words: a way whose
  script phrase says one (\`go vortex\`), or a room whose name does. A route
  you ask for that crosses one is shown beside the way round it, and you
  choose; a walk nobody is watching is planned round them, and refused out
  loud where there is no way round, unless it starts or ends inside one.`;
-
-const DEFEND_AFTER_ROUNDS_COMMENT = ` With auto-combat off, or a route run with it off, being hit for this many
- rounds without moving turns it on until you next arrive in another room.
- Off means do not start fights; it never meant stand there and be killed.
- Flips the switch in this file, both ways. 0 never does.`;
 
 const HANG_PENALTIES_COMMENT = ` Whether this realm charges for a hang-up at all. Off: below belowHealth
  the client simply hangs up. Paradigm's realm menu states it, and that

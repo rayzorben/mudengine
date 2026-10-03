@@ -92,8 +92,8 @@ export interface QuestRunPlanner {
   /** Fight this monster by name whatever the combat policy says, and stop. */
   fightFor(mob: string): void;
   stopFighting(mob: string): void;
-  /** Auto-combat on for the run, as it is for a route. */
-  questing(on: boolean): void;
+  /** Whether auto-combat is on: a kill step is fought only with the player's switch on. */
+  combatOn(): boolean;
   /** Wards on for the run: the plan's supplies are bought to be used. */
   warding(on: boolean): void;
   /** A line this run sent at an asker or a room, so the book watches it. */
@@ -261,7 +261,6 @@ export class QuestRunner implements SessionModule {
     };
     this.heldLap = this.planner.looping();
     if (this.heldLap) this.planner.hold();
-    this.planner.questing(true);
     // Only a plan that bought a ward has one to use; the release below is
     // unconditional, so a run never leaves the lend standing.
     if (plan.steps.some((step) => step.items.some((item) => item.stops !== undefined))) {
@@ -877,6 +876,10 @@ export class QuestRunner implements SessionModule {
     }
     const nth = run.at + 1;
     if (act.verb === 'kill') {
+      if (!this.planner.combatOn()) {
+        this.refuse(t('automation.quests.refusalCombatOff', { mob: act.mob }));
+        return;
+      }
       this.planner.fightFor(act.mob);
       // The death runs the step; the book watches it (`stepKilled`), and the
       // counter is then read as for any other act.
@@ -1287,7 +1290,6 @@ export class QuestRunner implements SessionModule {
     const step = run.plan.steps[run.at];
     if (step?.act?.verb === 'kill') this.planner.stopFighting(step.act.mob);
     if (run.phase.kind === 'fetching') this.planner.abandonErrands(reason);
-    this.planner.questing(false);
     this.planner.warding(false);
     if (this.heldLap) this.planner.release();
     this.heldLap = false;

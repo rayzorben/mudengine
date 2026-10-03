@@ -11,7 +11,6 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { AutoCombat } from '../automation/AutoCombat';
 import type { AutoHunt } from '../automation/AutoHunt';
-import type { CombatLease } from '../automation/CombatLease';
 import type { CommandQueue } from '../automation/CommandQueue';
 import { wantedFrom, type ItemErrand } from '../automation/ItemErrand';
 import { plannedFetches } from '../../shared/navigation';
@@ -30,7 +29,7 @@ import type { Errands } from './Errands';
 import { anotherLoop, refusesToPlay, type PlayReading } from './Play';
 import { healthFraction, percentText, type SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
-import type { AutomationConfig } from '../../shared/config';
+import type { AutomationConfig, AutomationSwitch } from '../../shared/config';
 import { withFled, type FledEntry } from '../../shared/fled';
 import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
@@ -154,8 +153,7 @@ export interface TravelParts {
     | 'strayedFrom'
     | 'place'
   >;
-  readonly combat: Pick<AutoCombat, 'willFight' | 'declineWhileTravelling'>;
-  readonly combatLease: Pick<CombatLease, 'lending' | 'run' | 'onWalkEnded'>;
+  readonly combat: Pick<AutoCombat, 'willFight'>;
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon'>;
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
@@ -189,10 +187,10 @@ export interface TravelSession {
   fled(): readonly FledEntry[];
   keepFled(entries: readonly FledEntry[]): void;
   /**
-   * Write the master switch into the character's file and read it back
+   * Write one automation switch into the character's file and read it back
    * before returning. Whether it was written.
    */
-  switchAutomation(on: boolean): boolean;
+  switchAutomation(name: AutomationSwitch, on: boolean): boolean;
 }
 
 export class Travel implements SessionModule {
@@ -203,7 +201,6 @@ export class Travel implements SessionModule {
   private readonly walker: TravelParts['walker'];
   private readonly loops: TravelParts['loops'];
   private readonly combat: TravelParts['combat'];
-  private readonly combatLease: TravelParts['combatLease'];
   private readonly supplies: TravelParts['supplies'];
   private readonly trainLevel: TravelParts['trainLevel'];
   private readonly outgrown: TravelParts['outgrown'];
@@ -375,10 +372,12 @@ export class Travel implements SessionModule {
    * ever waiting for the answer; reset at `connect` and on leaving the realm.
    */
   private saidWaitingToBePlaced = false;
-  /** Whether the walk in progress is one the player asked for. See `CombatLease`. */
+  /** Whether the walk in progress is one the player asked for. See `startAsked`. */
   private walkAsked = false;
-  /** And whether it was asked for with *Run it*: auto-combat off, and left off (todo 06). */
+  /** And whether it was asked for with *Run it*: auto-combat off until it arrives (todo 06). */
   private walkRun = false;
+  /** True only inside `startAsked`'s own `Walker.start`. See `walkStarted`. */
+  private startingAsked = false;
   /** Who the party waits for, and the one clock on it (todo 831). See `PartyWait`. */
   private readonly partyWait: PartyWait;
 
@@ -393,7 +392,6 @@ export class Travel implements SessionModule {
     this.walker = parts.walker;
     this.loops = parts.loops;
     this.combat = parts.combat;
-    this.combatLease = parts.combatLease;
     this.supplies = parts.supplies;
     this.trainLevel = parts.trainLevel;
     this.outgrown = parts.outgrown;
@@ -492,9 +490,17 @@ export class Travel implements SessionModule {
     this.journey ??= route;
   }
 
-  /** A walk started, whoever started it, so nothing owed from a lost connection outlives it. */
-  supersedeJourney(): void {
+  /**
+   * A walk started, whoever started it: nothing owed from a lost connection
+   * outlives it, and one that did not come through `startAsked` (a walk home
+   * after an escape, an errand's leg) replaces the asked walk without ending
+   * it, so its flags go with it and its arrival is not a run's.
+   */
+  walkStarted(): void {
     this.journey = null;
+    if (this.startingAsked) return;
+    this.walkAsked = false;
+    this.walkRun = false;
   }
 
   /**
@@ -513,8 +519,8 @@ export class Travel implements SessionModule {
 
   /**
    * A walk ended, arrived or not. A walk home a fight cut short is armed again
-   * so the character is still going somewhere (todo 03); combat lent for the
-   * journey is handed back; an arrival spends the choice to cross; a back
+   * so the character is still going somewhere (todo 03); a run that arrived
+   * turns auto-combat back on; an arrival spends the choice to cross; a back
    * press gives its trail entry up. Before the modules hear it, as it was.
    */
   walkEnded(arrived: boolean): void {
@@ -529,23 +535,30 @@ export class Travel implements SessionModule {
         from: map !== null && number !== null ? roomId(map, number) : null
       };
     }
-    // Whether the player asked for this walk, before anything replans.
-    this.combatLease.onWalkEnded(arrived, this.walkAsked, this.walkRun);
     // Arrived, the choice to cross is spent: see `crossing`.
     if (arrived && this.walkAsked) this.crossing = null;
+    if (arrived && this.walkAsked && this.walkRun) this.combatOnAfterRun();
     this.walkAsked = false;
     this.walkRun = false;
     this.settleStepBack(arrived);
   }
 
+  /**
+   * *Run it* is off for the way there (the user, 2026-10-03): the arrival
+   * turns auto-combat on, and a run stopped short leaves it off.
+   */
+  private combatOnAfterRun(): void {
+    if (this.session.config().combat.enabled) return;
+    this.session.notice(
+      this.session.switchAutomation('combat', true)
+        ? t('automation.combat.onAfterRun')
+        : t('automation.combat.onAfterRunRefused')
+    );
+  }
+
   /** Whether the walk in progress is one the player asked for. */
   get walkIsAsked(): boolean {
     return this.walkAsked;
-  }
-
-  /** And whether it was asked for with *Run it*. */
-  get walkIsRun(): boolean {
-    return this.walkRun;
   }
 
   /** An escape sent whose answer has not come. See `settleEscape`. */
@@ -1021,7 +1034,7 @@ export class Travel implements SessionModule {
      * fighting*: only an `escape` row's monster brings this here out of one,
      * and nothing is opened beside it (todo 818, on review).
      */
-    const standing = this.combat.willFight || this.combatLease.lending;
+    const standing = this.combat.willFight;
     this.session.notice(
       notice(
         !fighting
@@ -1263,13 +1276,13 @@ export class Travel implements SessionModule {
        * **And it says what is true** (todo 00). A room that printed exits
        * every one of which leads back into a room just run from did name an
        * exit — the client refused it — and *standing and fighting* is only
-       * true where auto-combat will swing, lent or not.
+       * true where auto-combat will swing.
        */
       const blocked = state.room.exits.flatMap((exit) => {
         const direction = asDirection(exit.direction);
         return direction === null || tried.has(direction) ? [] : [DIRECTION_NAME[direction]];
       });
-      const fighting = this.combat.willFight || this.combatLease.lending;
+      const fighting = this.combat.willFight;
       const then = fighting
         ? t('session.safety.escapeStanding')
         : t('session.safety.escapeNotFighting');
@@ -1667,16 +1680,17 @@ export class Travel implements SessionModule {
    */
   private switchedOnFor(walk: () => string | null): string | null {
     if (this.session.config().enabled) return walk();
-    if (!this.session.switchAutomation(true)) return t('session.walk.automationNotOn');
+    if (!this.session.switchAutomation('automation', true))
+      return t('session.walk.automationNotOn');
     let refused: string | null;
     try {
       refused = walk();
     } catch (error) {
-      this.session.switchAutomation(false);
+      this.session.switchAutomation('automation', false);
       throw error;
     }
     if (refused !== null) {
-      this.session.switchAutomation(false);
+      this.session.switchAutomation('automation', false);
       return refused;
     }
     this.session.notice(t('session.walk.automationOn'));
@@ -1802,22 +1816,25 @@ export class Travel implements SessionModule {
    *
    * The one place `walkAsked` is set: the panel's route, the one owed back
    * after a supply or item errand, and the one picked up after a lost
-   * connection are all the player's, and `CombatLease` hands combat back on
-   * the arrival of each. A loop's leg goes another way. A refused start
-   * leaves whatever was walking exactly as it was asked for.
+   * connection are all the player's. A loop's leg goes another way. A refused
+   * start leaves whatever was walking exactly as it was asked for.
    *
-   * **Run it is turn off, go.** The switch is written off through the lease,
-   * the journey's own override is declined in the same statement — the
-   * walker publishes inside `start`, so the journey is armed by the time it
-   * returns — and the arrival hands nothing back. A file that will not take
-   * the write refuses the run out loud rather than walking a route that
-   * would fight.
+   * **Run it is turn off, go.** The switch is written off and read back
+   * before this returns, so the first room the walk reaches is judged with it
+   * off. A file that will not take the write refuses the run out loud rather
+   * than walking a route that would fight.
    */
   private startAsked(route: Route, run: boolean): string | null {
     const was = { asked: this.walkAsked, run: this.walkRun };
     this.walkAsked = true;
     this.walkRun = run;
-    const refused = this.walker.start(route, this.tracker.current);
+    this.startingAsked = true;
+    let refused: string | null;
+    try {
+      refused = this.walker.start(route, this.tracker.current);
+    } finally {
+      this.startingAsked = false;
+    }
     if (refused !== null) {
       this.walkAsked = was.asked;
       this.walkRun = was.run;
@@ -1828,9 +1845,9 @@ export class Travel implements SessionModule {
      * step the held arbiter refused to queue ends the walk before `start`
      * returns — so the walker is asked whether it is walking rather than the
      * return value read as *started*. Otherwise a run pressed with the stat
-     * screen up wrote the switch off for a walk that never began, declined
-     * nothing (the stop had already disarmed the journey) and reported
-     * success (on review). Nothing is walking now, whatever was before.
+     * screen up wrote the switch off for a walk that never began and
+     * reported success (on review). Nothing is walking now, whatever was
+     * before.
      */
     if (!this.walker.walking) {
       this.walkAsked = false;
@@ -1841,13 +1858,12 @@ export class Travel implements SessionModule {
     // it on the panel over the way round: planned again the same way later.
     const last = route.steps.at(-1);
     this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
-    if (!run) return null;
-    if (!this.combatLease.run()) {
+    if (!run || !this.session.config().combat.enabled) return null;
+    if (!this.session.switchAutomation('combat', false)) {
       const reason = t('automation.combat.runRefused');
       this.walker.stop(reason);
       return reason;
     }
-    this.combat.declineWhileTravelling();
     this.session.notice(t('automation.combat.runningCombatOff'));
     return null;
   }

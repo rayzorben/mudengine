@@ -167,7 +167,6 @@ export interface CharacterFields {
   combatHideForOpener: boolean;
   combatEngage: EngagePolicy;
   combatRetaliate: boolean;
-  combatDefendAfterRounds: string;
   /** Leave alone a monster a stranger is already fighting — MegaMUD's PoliteAttacks. */
   combatPoliteAttacks: boolean;
   combatMaxMobs: string;
@@ -255,7 +254,6 @@ export interface CharacterFields {
   walkWhileBlind: boolean;
   walkWhilePoisoned: boolean;
   walkWhileConfused: boolean;
-  fightOnArrival: boolean;
   /** Ways and places routes keep out of. See `MovementConfig`. */
   keepOutOf: string[];
   /** Bend down for a key an exit of this room needs. */
@@ -458,7 +456,6 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     combatHideForOpener: entry.combat.hideForOpener,
     combatEngage: entry.combat.engage,
     combatRetaliate: entry.combat.retaliate,
-    combatDefendAfterRounds: String(entry.combat.defendAfterRounds),
     combatPoliteAttacks: entry.combat.politeAttacks,
     combatMaxMobs: String(entry.combat.maxMobs),
     party: partyFormOf(entry.party),
@@ -522,7 +519,6 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     walkWhileBlind: entry.movement.walkWhileBlind,
     walkWhilePoisoned: entry.movement.walkWhilePoisoned,
     walkWhileConfused: entry.movement.walkWhileConfused,
-    fightOnArrival: entry.movement.fightOnArrival,
     keepOutOf: [...entry.movement.keepOutOf],
     collectKeys: entry.movement.collectKeys,
     huntAuto: entry.hunting.enabled,
@@ -629,7 +625,6 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       hideForOpener: form.combatHideForOpener,
       engage: form.combatEngage,
       retaliate: form.combatRetaliate,
-      defendAfterRounds: Number.parseInt(form.combatDefendAfterRounds, 10) || 0,
       politeAttacks: form.combatPoliteAttacks,
       maxMobs: Number.parseInt(form.combatMaxMobs, 10) || 0,
       refreshRounds: Number.parseInt(form.combatRefresh, 10) || 0,
@@ -713,7 +708,6 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       walkWhileBlind: form.walkWhileBlind,
       walkWhilePoisoned: form.walkWhilePoisoned,
       walkWhileConfused: form.walkWhileConfused,
-      fightOnArrival: form.fightOnArrival,
       keepOutOf: form.keepOutOf,
       collectKeys: form.collectKeys
     },
@@ -945,7 +939,6 @@ export function emptyForm(
     combatHideForOpener: combat.hideForOpener,
     combatEngage: combat.engage,
     combatRetaliate: combat.retaliate,
-    combatDefendAfterRounds: String(combat.defendAfterRounds),
     combatPoliteAttacks: combat.politeAttacks,
     combatMaxMobs: String(combat.maxMobs),
     party: partyFormOf(party),
@@ -1006,7 +999,6 @@ export function emptyForm(
     walkWhileBlind: movement.walkWhileBlind,
     walkWhilePoisoned: movement.walkWhilePoisoned,
     walkWhileConfused: movement.walkWhileConfused,
-    fightOnArrival: movement.fightOnArrival,
     keepOutOf: [...movement.keepOutOf],
     collectKeys: movement.collectKeys,
     huntAuto: hunting.enabled,

@@ -429,8 +429,6 @@ export interface ProfileDraft {
     hideForOpener: boolean;
     engage: EngagePolicy;
     retaliate: boolean;
-    /** Rounds hit without moving before auto-combat is lent. See `CombatConfig`. */
-    defendAfterRounds: number;
     /** Leave alone a monster a stranger is already fighting. See `CombatConfig`. */
     politeAttacks: boolean;
     maxMobs: number;
@@ -486,7 +484,6 @@ export interface ProfileDraft {
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
     walkWhileConfused: boolean;
-    fightOnArrival: boolean;
     /** Ways and places routes keep out of. See `MovementConfig`. */
     keepOutOf: string[];
     /** Bend down for a key an exit here needs. See `MovementConfig`. */
@@ -889,18 +886,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // The one boolean here that defaults *on*, because it is the one that
       // cannot start a fight: something is already swinging. See `CombatConfig`.
       retaliate: combat['retaliate'] !== false,
-      // Absent is the shipped figure, not 0: 0 is a choice to stand and be hit.
-      defendAfterRounds: Math.min(
-        20,
-        Math.max(
-          0,
-          Math.trunc(
-            Number(
-              combat['defendAfterRounds'] ?? DEFAULT_CONFIG.automation.combat.defendAfterRounds
-            ) || 0
-          )
-        )
-      ),
       // Defaults off, which is MegaMUD's own `PoliteAttacks=0`: a blank field
       // must not silently make a character stand aside.
       politeAttacks: combat['politeAttacks'] === true,
@@ -1020,8 +1005,6 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       walkWhileBlind: movement['walkWhileBlind'] === true,
       walkWhilePoisoned: movement['walkWhilePoisoned'] === true,
       walkWhileConfused: movement['walkWhileConfused'] === true,
-      // `!== false`: on unless it was turned off. See the field.
-      fightOnArrival: movement['fightOnArrival'] !== false,
       // A list or nothing: a payload that failed to send it keeps the shipped
       // words, as `useWards` keeps the shipped answer — an empty list is a
       // choice, and a missing one is not.

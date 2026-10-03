@@ -533,17 +533,6 @@ export default function CharacterForm({
               name="combat"
               onChange={(value) => patch({ combat: value })}
             />
-            {/* Drawn whether the switch is on or off: it is the
-                one combat setting that acts while it is off. */}
-            <div className="settings-inline">
-              <NumberField
-                hint={t('settings.combat.defendAfterRoundsHint')}
-                label={t('settings.combat.defendAfterRounds')}
-                name="defend-after-rounds"
-                onChange={(value) => patch({ combatDefendAfterRounds: value })}
-                value={form.combatDefendAfterRounds}
-              />
-            </div>
             {form.combat && (
               <>
                 <CheckField
@@ -1414,13 +1403,6 @@ export default function CharacterForm({
           <fieldset className="settings-menus" data-fieldset="movement-afflictions">
             <legend>{t('settings.movement.afflictionsLegend')}</legend>
             <ConditionWaitFields namePrefix="" onChange={patch} value={form} />
-            <CheckField
-              checked={form.fightOnArrival}
-              hint={t('settings.movement.fightOnArrivalHint')}
-              label={t('settings.movement.fightOnArrival')}
-              name="fight-on-arrival"
-              onChange={(value) => patch({ fightOnArrival: value })}
-            />
           </fieldset>
 
           <fieldset className="settings-menus" data-fieldset="movement-keep-out">
