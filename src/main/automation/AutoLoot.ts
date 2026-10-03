@@ -57,11 +57,11 @@
  *
  * It reads the pack listing, like `AutoDrop`, because the server's own
  * `DropCommand` needs the count: `drop {#} {name}` is its stated syntax, and
- * the coin branch is reached only when a number leads. And it refuses while
- * the pack holds an item the same word would match — `GetItemStacks` is tried
- * **first** and strips the count, so `drop 15 copper` drops a copper ring and
- * never reaches the purse. That is the server's own rule, read, not a guess
- * about it; the same hazard `COIN` below exists for on the way in.
+ * the coin branch is reached only when a number leads. `GetItemStacks` is
+ * tried **first**, and it takes a stack the word names only when that stack
+ * holds at least the count, so `drop 1 copper` drops a copper ring and
+ * `drop 15 copper` drops the coins (`pickedBeforeThePurse`). Only the first
+ * case is refused; the same hazard `COIN` below exists for on the way in.
  *
  * Proposes to `CommandQueue` in the `probe` band like `Recovery`; nothing here
  * touches a socket.
@@ -125,6 +125,31 @@ function matchesWord(name: string, word: string): boolean {
     if (at === 0 || text[at - 1] === ' ') return true;
   }
   return false;
+}
+
+/**
+ * The carried item `drop <count> <word>` would drop in place of the coins, or
+ * undefined when the command reaches the purse.
+ *
+ * `ItemContainer.GetItemStacks` matches a stack only when it holds at least
+ * the count (`istack.Count >= count`), and the listing names one instance per
+ * item, so a stack is the items of one name. Wire, paramud 2026-09-02: `drop
+ * 32 sil` with one silverbark canoe in the pack printed `You dropped 32 silver
+ * nobles`.
+ */
+function pickedBeforeThePurse(
+  items: readonly { name: string }[],
+  word: string,
+  count: number
+): string | undefined {
+  const stacks = new Map<string, number>();
+  for (const item of items) {
+    if (!matchesWord(item.name, word)) continue;
+    const held = (stacks.get(item.name) ?? 0) + 1;
+    if (held >= count) return item.name;
+    stacks.set(item.name, held);
+  }
+  return undefined;
 }
 
 const GRADE_RANK: Readonly<Record<string, number>> = {
@@ -300,18 +325,15 @@ export class AutoLoot implements SessionModule {
       if (count === null || count <= 0) continue;
       if (this.shed.has(coin)) continue;
       /*
-       * The server tries the pack **before** the purse and strips the count
-       * while doing it (`ItemContainer.GetItemStacks`), so a `drop 15 copper`
-       * with a copper ring in the pack drops the ring. Its own rule, read off
-       * its own source: a name matches where the typed word begins a word of
-       * it. Refused rather than worked around, and said once — the alternative
-       * is this client throwing away a piece of kit to tidy up some change.
+       * The server tries the pack before the purse, so `drop 1 copper` with a
+       * copper ring in the pack drops the ring. Refused and said once, since
+       * the alternative is throwing away a piece of gear to tidy up some change.
        */
-      const clash = state.inventory.items.find((item) => matchesWord(item.name, coin));
+      const clash = pickedBeforeThePurse(state.inventory.items, coin, count);
       if (clash !== undefined) {
         if (this.saidClash.has(coin)) continue;
         this.saidClash.add(coin);
-        this.notice(t('automation.loot.discardBlocked', { coin, item: clash.name }));
+        this.notice(t('automation.loot.discardBlocked', { coin, count, item: clash }));
         continue;
       }
       this.shed.set(coin, count);
