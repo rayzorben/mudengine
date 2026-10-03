@@ -29,7 +29,7 @@ import type { NameIndex, SpanHit } from '../lib/names';
 import type { Box } from '../lib/menu';
 import { anchorRect, type PopoverAnchor } from '../lib/popover';
 import { MARK_GLYPH } from './marks';
-import { GLYPH_CELLS } from '@shared/template';
+import { GLYPH_CELLS, SGR_RESET } from '@shared/template';
 import { sliceLines, splitMarks } from '../lib/chunks';
 import { tuning } from '../lib/tuning';
 import { silenceQueries } from '../lib/terminalQueries';
@@ -1078,7 +1078,7 @@ export default function TerminalView({
       // Through the writer like everything else: the faces resolve while the
       // opening banner is arriving, and a warning written past the queue
       // would land in the middle of a line the server was halfway through.
-      writer.write(`\r\n\x1b[1;30;43m ${warning} \x1b[0m\r\n`);
+      writer.write(`\r\n\x1b[1;30;43m ${warning} ${SGR_RESET}\r\n`);
     });
 
     return () => {

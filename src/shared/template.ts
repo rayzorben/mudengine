@@ -1379,6 +1379,9 @@ function sgrColour(colour: string, background: boolean): string {
   return `${background ? 48 : 38};2;${r};${g};${b}`;
 }
 
+/** The SGR that puts the console back to its default ink. */
+export const SGR_RESET = '\x1b[0m';
+
 /**
  * The runs as bytes for the console: one SGR per run, and by default a reset
  * at the end so whatever the server prints after the line starts clean.
@@ -1403,5 +1406,5 @@ export function toAnsi(segments: readonly Segment[]): string {
     if (segment.bg !== null) codes.push(sgrColour(segment.bg, true));
     out += `\x1b[${codes.join(';')}m${segment.text}`;
   }
-  return segments[segments.length - 1]?.text === '' ? out : `${out}\x1b[0m`;
+  return segments[segments.length - 1]?.text === '' ? out : out + SGR_RESET;
 }
