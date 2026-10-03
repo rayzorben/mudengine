@@ -839,6 +839,15 @@ tuning:
     sellFromCopper: 1000
     confirmMs: 8000
 
+  # Fetching named items from a stash — `StashFetch`. Up to `searches` bare
+  # searches before settling for the open floor (each search rolls every hidden
+  # item against Perception); `collectMs` waits for a search's answer and for
+  # the pack to show each get; a get still queued after `expiresMs` is dropped.
+  stashFetch:
+    searches: 4
+    collectMs: 8000
+    expiresMs: 6000
+
   # Looking for what a room did not print — `AutoSearch`. Shorter than the
   # loot's on purpose: a search is about the room the character is standing in,
   # so one still queued after it has walked out would look somewhere else.

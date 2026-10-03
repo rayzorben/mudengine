@@ -118,6 +118,7 @@ function travel(
     supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn() },
     trainLevel: { busy: false, abandon: vi.fn() },
     outgrown: { busy: false, abandon: vi.fn() },
+    stashFetch: { busy: false, abandon: vi.fn() },
     hunt: { noteStopped: vi.fn(), noteLapStopped: vi.fn() },
     itemErrand: { running: false, collect: vi.fn(), abandon: vi.fn() },
     questRunner: { running: false, abandon: vi.fn() },

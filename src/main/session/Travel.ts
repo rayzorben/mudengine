@@ -20,6 +20,7 @@ import type { SessionModule } from '../automation/Module';
 import type { QuestRunner } from '../automation/QuestRunner';
 import type { Supplies } from '../automation/Supplies';
 import type { OutgrownGear } from '../automation/OutgrownGear';
+import type { StashFetch } from '../automation/StashFetch';
 import type { TrainErrand } from '../automation/TrainErrand';
 import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
 import type { Walker } from '../automation/Walker';
@@ -157,6 +158,7 @@ export interface TravelParts {
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon'>;
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
+  readonly stashFetch: Pick<StashFetch, 'busy' | 'abandon'>;
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
   readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
   readonly questRunner: Pick<QuestRunner, 'running' | 'abandon'>;
@@ -214,6 +216,7 @@ export class Travel implements SessionModule {
   private readonly supplies: TravelParts['supplies'];
   private readonly trainLevel: TravelParts['trainLevel'];
   private readonly outgrown: TravelParts['outgrown'];
+  private readonly stashFetch: TravelParts['stashFetch'];
   private readonly hunt: TravelParts['hunt'];
   private readonly itemErrand: TravelParts['itemErrand'];
   private readonly questRunner: TravelParts['questRunner'];
@@ -411,6 +414,7 @@ export class Travel implements SessionModule {
     this.supplies = parts.supplies;
     this.trainLevel = parts.trainLevel;
     this.outgrown = parts.outgrown;
+    this.stashFetch = parts.stashFetch;
     this.hunt = parts.hunt;
     this.itemErrand = parts.itemErrand;
     this.questRunner = parts.questRunner;
@@ -1138,6 +1142,7 @@ export class Travel implements SessionModule {
       this.supplies.current !== null ||
       this.trainLevel.busy ||
       this.outgrown.busy ||
+      this.stashFetch.busy ||
       this.itemErrand.running ||
       this.questRunner.running
     );
@@ -2351,6 +2356,8 @@ export class Travel implements SessionModule {
     this.trainLevel.abandon();
     // And the walk to the ganghouse or a counter with outgrown gear (todo 12).
     this.outgrown.abandon();
+    // And a fetch from a stash, on the same terms (todo 05).
+    this.stashFetch.abandon();
     // And the hunt: the lair it was walking to is several maps from the
     // temple. Not *stood down* — a death is not the player pressing stop — so
     // the next status line surveys again from wherever the character stands.
