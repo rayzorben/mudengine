@@ -422,9 +422,9 @@ export interface ItemInvocation {
   /**
    * True where the realm states `UseCount: -1`.
    *
-   * The distinction is the whole of whether invoking it is free: 39 items in
-   * the shipped realm are unlimited and 266 are not, and an item with three
-   * charges spent on a buff is three charges somebody was saving.
+   * The distinction is the whole of whether invoking it spends a charge: 39
+   * items in the shipped realm are unlimited and 266 are not, and an item with
+   * three charges spent on a buff is three charges somebody was saving.
    */
   unlimited: boolean;
 }

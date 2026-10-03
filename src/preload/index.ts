@@ -157,6 +157,7 @@ const api: IpcApi = {
   banks: (session) => ipcRenderer.invoke(Invoke.banks, session),
   itemsServing: (session) => ipcRenderer.invoke(Invoke.itemsServing, session),
   wards: (session) => ipcRenderer.invoke(Invoke.wards, session),
+  invokeChoices: (session) => ipcRenderer.invoke(Invoke.invokeChoices, session),
   draftLoop: (session, rooms) => ipcRenderer.invoke(Invoke.draftLoop, session, rooms),
   wearer: (session) => ipcRenderer.invoke(Invoke.wearer, session),
   lookup: (session, query) => ipcRenderer.invoke(Invoke.lookup, session, query),

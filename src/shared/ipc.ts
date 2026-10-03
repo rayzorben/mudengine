@@ -69,6 +69,7 @@ import type {
 import type { GlobalDraft, LoginStepDraft, ProfileDraft, ServerDraft } from './drafts';
 import type { RemoteGrant, RemoteName } from './remotes';
 import type { CureGates, SpellServes, SpellTargeting } from './spellcraft';
+import type { InvokeChoice } from './invoke';
 import type { ThemePreference } from './themes';
 import type { ProfileAccent } from './profiles';
 import type { LocateWord } from './locate';
@@ -926,6 +927,8 @@ export const Invoke = {
   itemsServing: 'world:serving',
   /** The realm's own *use this item there* rules, for the same list. */
   wards: 'world:wards',
+  /** What the inventory holds that can bless, for the Spells page's list. */
+  invokeChoices: 'world:invoke-choices',
   /** Realm rooms matching a name fragment, for the destination picker. */
   searchRooms: 'world:search',
   /** Every monster this realm names, for the priority list's picker. */
@@ -1493,6 +1496,13 @@ export interface IpcApi {
    * no world is loaded, which draws no rows and leaves the switch alone.
    */
   wards(session: SessionId): Promise<WardRule[]>;
+  /**
+   * The items in this character's inventory that can bless when used, each
+   * with its spell and mana (`invokeChoices`). Null while the character is
+   * not in the realm or its inventory has not been listed: nobody has looked,
+   * which is not an empty pack.
+   */
+  invokeChoices(session: SessionId): Promise<InvokeChoice[] | null>;
   /**
    * Who this character is, in the realm's own row ids, for deciding what may
    * go on.

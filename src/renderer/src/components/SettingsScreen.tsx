@@ -209,11 +209,7 @@ export default function SettingsScreen({
   revealProfiles,
   chooseRealm,
   loadLoops,
-  loadTrainers,
-  loadBanks,
-  loadServing,
-  loadWards,
-  loadMobNames
+  ...realmLoaders
 }: SettingsScreenProps) {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
   /**
@@ -726,7 +722,7 @@ export default function SettingsScreen({
     open && tab === 'characters',
     section,
     selected === null || selected === NEW_CHARACTER ? null : selected,
-    { loadTrainers, loadBanks, loadServing, loadWards, loadMobNames }
+    realmLoaders
   );
 
   if (!open) return null;

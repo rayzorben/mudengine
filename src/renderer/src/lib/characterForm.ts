@@ -237,6 +237,8 @@ export interface CharacterFields {
   spellAutoBless: boolean;
   spellAutoChooseBlessings: boolean;
   spellInvokeItems: boolean;
+  /** The items it may use, by name. */
+  spellInvokeWith: string[];
   /** Movement — what a route may do on the way. */
   openDoors: boolean;
   openTries: string;
@@ -507,6 +509,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     spellAutoBless: entry.spells.autoBless,
     spellAutoChooseBlessings: entry.spells.autoChooseBlessings,
     spellInvokeItems: entry.spells.invokeItems,
+    spellInvokeWith: [...entry.spells.invokeWith],
     openDoors: entry.movement.openDoors,
     openTries: String(entry.movement.openTries),
     pickLocks: entry.movement.pickLocks,
@@ -695,7 +698,8 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       notifyPartyOnWearOff: form.spellNotifyWearOff,
       autoBless: form.spellAutoBless,
       autoChooseBlessings: form.spellAutoChooseBlessings,
-      invokeItems: form.spellInvokeItems
+      invokeItems: form.spellInvokeItems,
+      invokeWith: [...form.spellInvokeWith]
     },
     movement: {
       openDoors: form.openDoors,
@@ -991,6 +995,7 @@ export function emptyForm(
     spellAutoBless: spells.autoBless,
     spellAutoChooseBlessings: spells.autoChooseBlessings,
     spellInvokeItems: spells.invokeItems,
+    spellInvokeWith: [...spells.invokeWith],
     openDoors: movement.openDoors,
     openTries: String(movement.openTries),
     pickLocks: movement.pickLocks,
