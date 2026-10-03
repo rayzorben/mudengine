@@ -84,6 +84,7 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import {
   fightIsRunning,
+  inAParty,
   joinedMembers,
   type CharacterState,
   type PartyMember
@@ -348,7 +349,10 @@ export class AutoHeal implements SessionModule {
             ceiling: healTo > 0 ? Math.min(1, healTo) : 1,
             urgency: tuning().spells.healUrgency,
             nearEnough: tuning().spells.healNearEnough,
-            partyWide: this.config.healParty
+            // Nobody joined, or no listing read yet, is no party: a rain cast
+            // alone reaches only the caster, and a single heal is the cast for
+            // one bar.
+            partyWide: this.config.healParty && inAParty(state)
           });
     if (plan === null) return false;
 
