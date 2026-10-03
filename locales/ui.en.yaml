@@ -5342,8 +5342,8 @@ automation:
     reasonCoinsDropped: 'loot: {count} {coin} on the floor'
     reasonDiscard: 'loot: dropping {count} {coin}'
     discardBlocked: 'Not dropping your {coin}: "{item}" is in your inventory, and the game reads
-      "drop {coin}" as that item first, so it would be dropped instead. Get rid of the item, or take
-      {coin} off the discard list.'
+      "drop {count} {coin}" as that item first, so it would be dropped instead. Get rid of the item,
+      or take {coin} off the discard list.'
     reasonConvert: 'loot: using {item} to convert cash'
     reasonListed: 'loot: {item} listed here'
     # A supply the pack is under the ceiling of, found rather than bought.
