@@ -9426,19 +9426,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       JSON.stringify(mirrored)
     );
     /*
-     * The half a swapped grid area alone would not catch. Each handle has to
-     * be in the gap beside *its own* pane, or dragging the card rail resizes
-     * the tabs -- which type-checks, lays out plausibly, and is otherwise only
-     * ever found by grabbing the wrong edge.
+     * The half a swapped grid area alone would not catch. The tab rail's
+     * handle has to be in the gap beside the tab rail, or dragging it resizes
+     * nothing it is next to. The card rail has none: it is what the
+     * eighty-column console leaves (todo 00).
      */
     check(
-      mirrored.railSplit !== null &&
+      mirrored.railSplit === null &&
         mirrored.tabSplit !== null &&
-        mirrored.railSplit.left >= mirrored.rail.right &&
-        mirrored.railSplit.right <= mirrored.console.left &&
         mirrored.tabSplit.left >= mirrored.console.right &&
         mirrored.tabSplit.right <= mirrored.tabs.left,
-      'and each handle sits in the gap beside the pane it resizes',
+      'and the tab rail’s handle sits in the gap beside it, with none on the card rail',
       JSON.stringify(mirrored)
     );
   }
@@ -9717,70 +9715,55 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check((await railOrder()).includes(lifting[0]) === false, 'and leaves the rail');
 
   /*
-   * The edge between the console and the rail is a handle. Dragged, the rail
-   * takes the width and the console gives it up — but never below eighty
-   * measured columns, and the rail never below its own minimum. Read from the
-   * status rail's own `cols×rows` readout, which is the terminal's measurement.
+   * The console is eighty columns, no more and no fewer, and the card rail
+   * takes the rest of the window with no handle of its own (todo 00). Read
+   * from the status rail's own `cols×rows` readout, which is the terminal's
+   * measurement, once the track has settled.
    */
   {
-    const railWidth = async () =>
-      Number(
-        await evaluate(`document.querySelector('.workspace > .rail').getBoundingClientRect().width`)
-      );
     const columns = async () => {
       const text = await evaluate(`document.querySelector('.status-rail').textContent`);
       const m = /(\d+)\u00d7(\d+)/.exec(String(text));
       return m ? Number(m[1]) : null;
     };
-    const handle = await boxOf('.splitter[data-edge="right"]');
-    const before = await railWidth();
-    check(handle !== null, 'the console and the rail meet at a handle');
-    await drag(handle, { x: handle.x - 120, y: handle.y });
-    const wider = await readUntil(railWidth, (wider) => wider > before + 10);
-    // Up to what was dragged: the smoke window is narrow enough that the
-    // console's eighty-column floor can stop the rail well short of 120px,
-    // which is the floor doing its job rather than the handle failing.
+    const cols = await readUntil(columns, (cols) => cols === 80);
+    check(cols === 80, 'the console is exactly eighty columns wide', `${cols}`);
     check(
-      wider > before + 10 && wider <= before + 125,
-      'dragging the handle widens the rail, up to what was dragged',
-      `${before} -> ${wider}`
+      !(await evaluate(`!!document.querySelector('.splitter[data-pane="rail"]')`)),
+      'and the card rail has no handle: it takes what the console leaves'
     );
-    check((await columns()) >= 80, 'and the console keeps eighty columns', `${await columns()}`);
-    const far = await boxOf('.splitter[data-edge="right"]');
-    const wasWide = await railWidth();
-    await drag(far, { x: 40, y: far.y });
-    await readUntil(railWidth, (now) => now !== wasWide);
-    const cols = await columns();
+    /*
+     * Side by side where the rail is wide enough: every column is at least
+     * `--rail-column-min`, so a rail holding two of them and more cards than
+     * one column's height puts a second column beside the first.
+     */
+    const shape = JSON.parse(
+      await evaluate(`
+        (() => {
+          const rail = document.querySelector('.workspace > .rail');
+          const min = parseFloat(getComputedStyle(rail).getPropertyValue('--rail-column-min'));
+          const cards = [...rail.querySelectorAll(':scope > [data-card]')];
+          const lefts = new Set(cards.map((c) => Math.round(c.getBoundingClientRect().left)));
+          const tall = cards.reduce((sum, c) => sum + c.getBoundingClientRect().height, 0);
+          return JSON.stringify({
+            width: rail.clientWidth,
+            height: rail.clientHeight,
+            min,
+            tall,
+            columns: lefts.size,
+            narrowest: Math.min(...cards.map((c) => c.getBoundingClientRect().width))
+          });
+        })()
+      `)
+    );
     check(
-      cols !== null && cols >= 80,
-      'dragged past the floor, the console still has eighty columns',
-      `${cols}`
+      shape.narrowest >= shape.min - 0.5,
+      'no card on the rail is narrower than a column',
+      JSON.stringify(shape)
     );
-    check(
-      (await railWidth()) <= 560,
-      'and the rail stops at its own maximum',
-      `${await railWidth()}`
-    );
-    const back = await boxOf('.splitter[data-edge="right"]');
-    const wasNarrow = await railWidth();
-    await drag(back, { x: back.x + 2000, y: back.y });
-    await readUntil(railWidth, (now) => now !== wasNarrow);
-    check(
-      (await railWidth()) >= 259,
-      'dragged the other way, the rail stops at its minimum',
-      `${await railWidth()}`
-    );
-    // Put back: a double-click on the handle is the reset, and later checks
-    // measure the console against the width it started with.
-    await evaluate(
-      `document.querySelector('.splitter[data-edge="right"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`
-    );
-    await waitFor(async () => Math.abs((await railWidth()) - before) < 2);
-    check(
-      Math.abs((await railWidth()) - before) < 2,
-      'a double-click on the handle puts the rail back',
-      `${before} -> ${await railWidth()}`
-    );
+    if (shape.width >= 2 * shape.min && shape.tall > shape.height) {
+      check(shape.columns >= 2, 'and the cards stand side by side', JSON.stringify(shape));
+    }
   }
 
   /*
@@ -12686,15 +12669,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
           `document.querySelector('.workspace > .rail')?.getBoundingClientRect().width ?? NaN`
         )
       );
-    const before = await railWidth();
-    const handle = await boxOf('.splitter[data-edge="right"]');
-    check(handle !== null, 'the rail still meets the console at a handle');
-    if (handle !== null) await drag(handle, { x: handle.x + 2000, y: handle.y });
+    /*
+     * The narrowest a card on the rail can be is one column,
+     * `--rail-column-min`: the rail is held to that for the measurement, and
+     * every card on it stretches to it.
+     */
+    await evaluate(`(() => {
+      const rail = document.querySelector('.workspace > .rail');
+      rail.style.width = getComputedStyle(rail).getPropertyValue('--rail-column-min');
+      return true;
+    })()`);
     const floor = await readUntil(railWidth, (floor) => floor <= 262);
-    // Against the floor itself (`RAIL_RANGE.min`, 260px), as the splitter block
-    // does -- not against the starting width, which a drag that did nothing
-    // would satisfy and leave every measurement below made on a wide rail.
-    check(floor <= 262, 'the rail is at its floor for the measurement', `${before} -> ${floor}`);
+    check(floor <= 262, 'the rail is one column wide for the measurement', `${floor}`);
     const fit = JSON.parse(
       await evaluate(`
         (() => {
@@ -12727,17 +12713,15 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'and the maximum is shown whole, not shortened',
       JSON.stringify(fit)
     );
-    await evaluate(
-      `document.querySelector('.splitter[data-edge="right"]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`
-    );
+    await evaluate(`(document.querySelector('.workspace > .rail').style.width = '', true)`);
     const after = await readUntil(
       () => railWidth(),
-      (after) => Math.abs(after - before) < 2
+      (after) => after > floor + 2
     );
     check(
-      Math.abs(after - before) < 2,
+      after > floor + 2,
       'and the rail is put back for the checks that follow',
-      `${before} -> ${after}`
+      `${floor} -> ${after}`
     );
   }
   /*

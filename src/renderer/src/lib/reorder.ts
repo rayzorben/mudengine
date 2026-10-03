@@ -30,6 +30,38 @@ export function insertionIndex(slots: readonly number[], along: number): number 
   return slots.filter((slot) => along > slot).length;
 }
 
+/** A box in a lane that wraps: where its line starts across, its midpoint along. */
+export interface WrappedSlot {
+  /** The start of its line on the cross axis: a column's left edge on the rail. */
+  line: number;
+  /** Its midpoint on the lane's own axis. */
+  along: number;
+}
+
+/**
+ * The gap the pointer is in, in a lane whose boxes wrap into lines: the rail,
+ * where a column fills to the rail's height and the next card starts the next
+ * column (todo 00).
+ *
+ * The pointer's line is the last whose start it has passed, and within it the
+ * gap is `insertionIndex` over that line's midpoints; every box in an earlier
+ * line comes before it. Boxes are in reading order, so a line's boxes are
+ * consecutive. One line is exactly `insertionIndex`.
+ */
+export function wrappedInsertionIndex(
+  slots: readonly WrappedSlot[],
+  along: number,
+  across: number
+): number {
+  const starts = [...new Set(slots.map((slot) => slot.line))].sort((a, b) => a - b);
+  const first = starts[0];
+  if (first === undefined) return 0;
+  const line = starts.filter((start) => across >= start).pop() ?? first;
+  const before = slots.filter((slot) => slot.line < line).length;
+  const own = slots.filter((slot) => slot.line === line).map((slot) => slot.along);
+  return before + insertionIndex(own, along);
+}
+
 /**
  * The list, with one entry moved to a gap measured against the list as drawn.
  *

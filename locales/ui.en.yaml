@@ -812,7 +812,7 @@ palette:
     splitStackedHint: stacked
     unsplitLabel: Close this pane
     unsplitPanesHint: '{paneCount} panes'
-    widthsResetHint: the console and the rails back to their default widths
+    widthsResetHint: the character rail and the strips back to their default sizes
     widthsResetLabel: Reset pane widths
   navigate:
     gotoLabel: 'Goto: {roomName}'
@@ -1046,7 +1046,6 @@ statusRail:
 splitter:
   aria:
     bottomStripHeight: Bottom strip height
-    cardRailWidth: Card rail width
     tabRailWidth: Character rail width
     topStripHeight: Top strip height
   tooltip: '{paneName}: drag, or use the arrow keys; double-click to reset'

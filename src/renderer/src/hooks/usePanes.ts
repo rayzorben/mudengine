@@ -10,6 +10,7 @@
  */
 import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react';
 
+import { consoleCellWidth, consoleRoom } from '../lib/consoleWidth';
 import { t } from '../lib/i18n';
 import { CONSOLE_COLUMNS as MIN_COLUMNS, type PaneFlow } from '../lib/splitter';
 import { tuning } from '../lib/tuning';
@@ -143,12 +144,15 @@ export function usePanes(
   const columnsIfSplit = useCallback(
     (count: number): number | null => {
       const box = layersRef.current;
-      if (!box || cols <= 0) return null;
-      const cell = box.clientWidth / cols;
-      if (!Number.isFinite(cell) || cell <= 0) return null;
+      const cell = consoleCellWidth(cols);
+      if (!box || cell === null) return null;
+      // The console is held at eighty columns a pane, so a split widens it
+      // into the card rail, which gives up all of its width before any
+      // console does.
+      const room = consoleRoom(box);
       // The gaps between panes are not available to any of them.
       const gap = 8 * (count - 1);
-      return Math.floor((box.clientWidth - gap) / count / cell);
+      return Math.floor((room - gap) / count / cell);
     },
     [cols]
   );

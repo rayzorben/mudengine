@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { insertionIndex, reordered } from '../reorder';
+import { insertionIndex, reordered, wrappedInsertionIndex } from '../reorder';
 
 /*
  * The arithmetic both rails drag by. It lived in `useCardDrag` alone and was
@@ -68,5 +68,45 @@ describe('moving one entry to a gap', () => {
     const one = ['vaelor'];
     expect(reordered(one, 'vaelor', 0)).toBe(one);
     expect(reordered(one, 'vaelor', 1)).toBe(one);
+  });
+});
+
+/*
+ * The rail wraps into columns (todo 00): a column fills to the rail's height
+ * and the next card starts the next one, so the gap is found in the column
+ * the pointer is over and every card in an earlier column comes before it.
+ */
+describe('which gap the pointer is in, when the lane wraps', () => {
+  /* Two columns from x 0 and x 300: cards at midpoints 50, 150 then 50. */
+  const slots = [
+    { line: 0, along: 50 },
+    { line: 0, along: 150 },
+    { line: 300, along: 50 }
+  ];
+
+  it('is the plain gap in one line', () => {
+    const one = [10, 30, 50].map((along) => ({ line: 0, along }));
+    for (const at of [0, 11, 31, 999]) {
+      expect(wrappedInsertionIndex(one, at, 5)).toBe(insertionIndex([10, 30, 50], at));
+    }
+  });
+
+  it('counts every box in the columns before the pointer’s', () => {
+    expect(wrappedInsertionIndex(slots, 10, 320)).toBe(2);
+    expect(wrappedInsertionIndex(slots, 90, 320)).toBe(3);
+  });
+
+  it('finds the gap within the pointer’s own column', () => {
+    expect(wrappedInsertionIndex(slots, 10, 100)).toBe(0);
+    expect(wrappedInsertionIndex(slots, 100, 100)).toBe(1);
+    expect(wrappedInsertionIndex(slots, 200, 100)).toBe(2);
+  });
+
+  it('takes a pointer before the first column as in it', () => {
+    expect(wrappedInsertionIndex(slots, 100, -40)).toBe(1);
+  });
+
+  it('is the one gap of an empty lane', () => {
+    expect(wrappedInsertionIndex([], 10, 10)).toBe(0);
   });
 });
