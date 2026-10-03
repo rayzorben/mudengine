@@ -24,7 +24,8 @@ import type {
   TerminalSize,
   InlineGlyph
 } from '@shared/types';
-import { consoleWriter, noticeSequence, type ConsoleWriter } from '../lib/console';
+import { consoleWriter, type ConsoleWriter } from '../lib/console';
+import { screenNotices, terminalSurface, type ScreenNotices } from '../lib/screenNotices';
 import type { NameIndex, SpanHit } from '../lib/names';
 import type { Box } from '../lib/menu';
 import { anchorRect, type PopoverAnchor } from '../lib/popover';
@@ -764,10 +765,7 @@ export default function TerminalView({
       enterTimer = setTimeout(() => {
         enterTimer = null;
         if (enterTaken) return;
-        writerRef.current?.settled(() => {
-          const atLineStart = term.buffer.active.cursorX === 0;
-          term.write(noticeSequence(t('terminal.enterNotTaken', { where, code }), atLineStart));
-        });
+        postNotice(t('terminal.enterNotTaken', { where, code }));
         // The notice is paint only; the capture is what lines it up with the wire.
         handlers.current.onLostEnter({ place, control, code });
       }, tuning().enterTakenMs);
@@ -848,6 +846,17 @@ export default function TerminalView({
      */
     const writer = consoleWriter(term);
     writerRef.current = writer;
+    const notices: ScreenNotices = screenNotices(() => terminalSurface(term));
+    /**
+     * Every notice, at the writer's `settled` moment. `term.buffer` answers
+     * for what has been **parsed**, not for what has been queued: three
+     * notices raised in one turn would all read the cursor as it was before
+     * any of them. Where the bytes go is `screenNotices`'s.
+     */
+    const postNotice = (message: string): void => {
+      notices.expect();
+      writer.settled(() => notices.notice(message));
+    };
 
     handlers.current.onReady({
       write: (chunk) => {
@@ -888,6 +897,10 @@ export default function TerminalView({
           settle();
           return;
         }
+        // Notices on a screen the server is drawing come off before its bytes
+        // and go back after them, under whatever it drew.
+        const bracketed = notices.active;
+        if (bracketed) writer.settled(notices.lift);
         segments.forEach((segment, index) => {
           const last = index === segments.length - 1;
           const mark = segment.mark;
@@ -920,6 +933,7 @@ export default function TerminalView({
             });
           });
         });
+        if (bracketed) writer.settled(notices.settle);
       },
       /*
        * The slate between two characters, in the queue rather than around it:
@@ -942,6 +956,7 @@ export default function TerminalView({
           const buffer = term.buffer.active;
           above = buffer.baseY - buffer.viewportY;
           term.options.scrollback = lines;
+          notices.forget();
           term.reset();
         });
         for (const piece of sliceLines(text, tuning().restoreSliceChars)) writer.write(piece);
@@ -954,27 +969,12 @@ export default function TerminalView({
         });
       },
       atCapacity: () => term.buffer.active.baseY >= (term.options.scrollback ?? 0),
-      reset: () => writer.settled(() => term.reset()),
-      notice: (message) => {
-        /*
-         * The bytes are `noticeSequence`'s — a decision with two edge cases,
-         * which is where this codebase puts a pure function rather than an
-         * inline branch. What is left here is the *timing*, which is the part
-         * a canvas is needed to observe.
-         *
-         * `term.buffer` answers for what has been **parsed**, not for what has
-         * been queued: xterm processes writes on a later task. Three notices
-         * raised in one turn would all read the cursor as it was before any of
-         * them, so all three would decide the same way and two would be wrong.
-         * `settled` is the one moment the buffer answers for what is on
-         * screen — everything asked for before this notice has been parsed,
-         * and nothing asked for after it has been written yet.
-         */
+      reset: () =>
         writer.settled(() => {
-          const atLineStart = term.buffer.active.cursorX === 0;
-          term.write(noticeSequence(message, atLineStart));
-        });
-      },
+          notices.forget();
+          term.reset();
+        }),
+      notice: postNotice,
       jumpToLatest,
       focus: () => term.focus(),
       search: (query, direction) => {
