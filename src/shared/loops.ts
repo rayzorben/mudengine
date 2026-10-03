@@ -29,7 +29,7 @@
  */
 
 import { fileSlug } from './files';
-import type { RoomId } from './world';
+import { asRoomReference, type RoomId } from './world';
 import type { AfflictionHold } from './walk';
 
 /** One place a loop visits, named the way a person would say it. */
@@ -385,6 +385,69 @@ export function splitStop(stop: LoopStop): {
     name: (match[1] ?? '').trim(),
     at: { map: Number(match[2]), room: Number(match[3]) }
   };
+}
+
+/** What a spoken loop name or start room picks out: one loop, several, or none. */
+export type LoopMatch =
+  { kind: 'one'; loop: Loop } | { kind: 'several'; loops: Loop[] } | { kind: 'none' };
+
+/**
+ * The loop somebody means by `request`, as `@loop` names one (todo 16).
+ *
+ * A `map/room` picks the loop whose first stop is that room. Otherwise the
+ * first of three readings that finds anything decides: the exact name; the
+ * name with case ignored and its area optional (`Overgrown Forest Trail` for
+ * `Blackwood Forest: Overgrown Forest Trail`); then every word of the request
+ * among the name's words. Several at that reading are kept, never one picked.
+ * Whole words, unlike `matchVisits`' substrings: this moves a character on
+ * somebody else's word, and `rat` must not pick a `Pirate` loop.
+ */
+export function matchLoop(loops: readonly Loop[], request: string): LoopMatch {
+  const at = asRoomReference(request);
+  if (at !== null) {
+    return matched(
+      loops.filter((loop) => {
+        const first = loop.stops[0];
+        const start = first === undefined ? null : splitStop(first).at;
+        return start !== null && start.map === at.map && start.room === at.room;
+      })
+    );
+  }
+  const exact = loops.find((loop) => loop.name === request);
+  if (exact !== undefined) return { kind: 'one', loop: exact };
+  const said = spoken(request);
+  if (said.length === 0) return { kind: 'none' };
+  const named = matched(
+    loops.filter((loop) => {
+      const colon = loop.name.indexOf(':');
+      return (
+        spoken(loop.name) === said || (colon >= 0 && spoken(loop.name.slice(colon + 1)) === said)
+      );
+    })
+  );
+  if (named.kind !== 'none') return named;
+  const wanted = said.split(' ');
+  return matched(
+    loops.filter((loop) => {
+      const words = new Set(spoken(loop.name).split(' '));
+      return wanted.every((word) => words.has(word));
+    })
+  );
+}
+
+/** A name's words in lower case, punctuation dropped, one space between. */
+function spoken(name: string): string {
+  return name
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 0)
+    .join(' ');
+}
+
+function matched(loops: Loop[]): LoopMatch {
+  const [only] = loops;
+  if (only === undefined) return { kind: 'none' };
+  return loops.length === 1 ? { kind: 'one', loop: only } : { kind: 'several', loops };
 }
 
 /** Where the loop goes after `index`, honouring `bounce`. */
