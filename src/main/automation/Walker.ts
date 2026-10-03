@@ -1003,11 +1003,10 @@ export class Walker implements SessionModule {
       // Under a timed spell a fight is walked out of: the spell is the deadline.
       if (!this.holds.leaving && this.events.moveOnly?.(state) !== true && this.holds.answerFight())
         return;
-      if (this.holds.stepOutOfFight(state)) return;
     } else {
       this.holds.nothingFighting();
-      if (this.holds.stepOutOfThreat(state)) return;
     }
+    if (this.holds.stepOutOfFight(state)) return;
 
     /*
      * The fight this route stood still for is over. Pick the journey back up
@@ -1322,7 +1321,7 @@ export class Walker implements SessionModule {
      */
     if (this.holds.holdForRest(state) || this.holds.holdForFloor(state)) return true;
     // Health, and outside the beat's budget — see `Holds.holdForHealth`.
-    if (this.holds.holdForHealth(state, fightIsRunning(state))) return true;
+    if (this.holds.holdForHealth(state)) return true;
     // Then a condition the server has stated, on the same terms.
     if (this.holds.holdForAffliction(state)) return true;
     // Then the trap the step ahead fires, and the party rejoining, on the same terms again.

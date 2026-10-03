@@ -4042,6 +4042,89 @@ describe('a fight on the way', () => {
         expect(moves(sent)).toEqual([]);
         walk.dispose();
       });
+
+      /*
+       * Nor before it bites (2026-10-03): festus ran to Frozen Cavern with
+       * auto-combat off, stood for health in each room among grey wolves the
+       * realm files as hostile, and stepped only once each had swung.
+       */
+      const among = (room: number, disposition: 'hostile' | 'passive'): CharacterState => {
+        const hurt = hurtAt(room, false);
+        const wolf = {
+          name: 'grey wolf',
+          kind: 'mob' as const,
+          disposition,
+          uncertain: false,
+          costly: 'never' as const,
+          hidden: false,
+          free: false,
+          charmed: false
+        };
+        return { ...hurt, room: { ...hurt.room, occupants: [wolf] } };
+      };
+
+      it('steps on from a room a monster that attacks on sight is standing in', async () => {
+        const now = among(1, 'hostile');
+        const walk = new Walker(hurtConfig, queue, { stateNow: () => now });
+        walk.start(ROUTE, now);
+        await vi.advanceTimersByTimeAsync(50);
+
+        expect(walk.progress.hold).toBeNull();
+        expect(moves(sent)).toEqual(['e']);
+        walk.dispose();
+      });
+
+      it('steps the moment one walks in', async () => {
+        let now = hurtAt(1, false);
+        const walk = new Walker(hurtConfig, queue, { stateNow: () => now });
+        walk.start(ROUTE, now);
+        await vi.advanceTimersByTimeAsync(50);
+        expect(walk.progress.hold).toBe('health');
+
+        now = among(1, 'hostile');
+        walk.onCharacter(now);
+        await vi.advanceTimersByTimeAsync(50);
+
+        expect(walk.progress.hold).toBeNull();
+        expect(moves(sent)).toEqual(['e']);
+        walk.dispose();
+      });
+
+      // The positive control: a monster that does not attack first is rested beside.
+      it('still stands still beside one that does not attack first', async () => {
+        let now = hurtAt(1, false);
+        const walk = new Walker(hurtConfig, queue, { stateNow: () => now });
+        walk.start(ROUTE, now);
+        await vi.advanceTimersByTimeAsync(50);
+        expect(walk.progress.hold).toBe('health');
+
+        now = among(1, 'passive');
+        walk.onCharacter(now);
+        await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+
+        expect(walk.progress.hold).toBe('health');
+        expect(moves(sent)).toEqual([]);
+        walk.dispose();
+      });
+
+      // And where auto-combat will fight it, the hold stands for that fight.
+      it('still stands still where auto-combat will fight the one that walked in', async () => {
+        let now = hurtAt(1, false);
+        const walk = new Walker(hurtConfig, queue, {
+          stateNow: () => now,
+          willFight: () => true
+        });
+        walk.start(ROUTE, now);
+        await vi.advanceTimersByTimeAsync(50);
+
+        now = among(1, 'hostile');
+        walk.onCharacter(now);
+        await vi.advanceTimersByTimeAsync(TUNING.walk.holdMs + 50);
+
+        expect(walk.progress.hold).toBe('health');
+        expect(moves(sent)).toEqual([]);
+        walk.dispose();
+      });
     });
   });
 
