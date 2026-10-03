@@ -70,7 +70,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
       rolled: [],
       reset: vi.fn()
     },
-    widths: { tabs: null, above: null, below: null, reset: vi.fn() },
+    widths: { columns: null, tabs: null, above: null, below: null, reset: vi.fn() },
     openSettings: vi.fn(),
     manageServers: vi.fn(),
     editGlobal: vi.fn(),

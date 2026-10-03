@@ -1,16 +1,14 @@
 /**
- * The arithmetic behind a draggable pane edge and the console's fixed width,
- * kept pure so the rules can be tested without a DOM.
+ * The arithmetic behind a draggable pane edge and the console's width, kept
+ * pure so the rules can be tested without a DOM.
  *
- * The console is eighty measured columns, no more and no fewer: the server
- * formats to 80 and never negotiates NAWS, so a narrower console shears every
- * map and stat column and a wider one is width the game never prints into.
- * The card rail takes what is left of the window (todo 00, 2026-10-03), so it
- * has no handle of its own. The tab rail and the docked strips keep a handle
- * and a range, and when the window cannot honour the eighty columns the
- * console is reported narrow rather than rearranged. The width is the live
- * cell width times 80. See `mudengine-ui` ›
- * `parts/cards.md`, *The console is eighty columns wide*.
+ * The console is a whole number of measured columns, eighty to a hundred and
+ * twenty at the player's choice (todo 09, 2026-10-03): the server formats to
+ * 80 and never negotiates NAWS, so a narrower console shears every map and
+ * stat column. The card rail takes what is left of the window. When the
+ * window cannot honour eighty the console is reported narrow rather than
+ * rearranged. See `mudengine-ui` › `parts/cards.md`, *The console is eighty
+ * to a hundred and twenty columns wide*.
  *
  * Handle size follows WCAG 2.5.8 (24×24 CSS px minimum target).
  */
@@ -45,6 +43,12 @@ export const CONSOLE_ROWS = 12;
  * `MIN_COLUMNS`.
  */
 export const CONSOLE_COLUMNS = 80;
+/**
+ * The columns the console's handle moves between: the eighty the game
+ * formats to, and up to half again for a player who wants the room for a
+ * long line or a wide window's worth of backscroll.
+ */
+export const CONSOLE_RANGE = { min: CONSOLE_COLUMNS, max: 120 } as const;
 /** One arrow-key press, and one with Shift held. */
 export const KEY_STEP = 16;
 export const KEY_STEP_LARGE = 64;
@@ -60,22 +64,33 @@ export function clampWidth(value: number, range: SplitRange): number {
  * How wide the console's track must be for each pane across it to hold
  * exactly `keep` columns, or null before anything has been measured.
  *
- * `track` is the track as laid out now, `cols` what the terminal fitted into
- * it, `cell` what one column costs. Whatever the track holds besides cells
- * (padding, the scrollbar, the gaps between panes) is in `track` already and
- * does not change with it, so the answer is a fixed point: the track it gives
- * fits `keep` columns, and measured again it gives itself. Rounded up, because
- * a track a fraction short fits one column fewer.
+ * `track` and `pane` are the track and one pane as laid out now, `overhead`
+ * what a pane holds besides its columns (padding, the scrollbar and the part
+ * of a column the last fit could not use), and `cell` what one column costs.
+ * None of that changes with the track, so the answer is a fixed point: the
+ * track it gives fits `keep` columns, and measured again it gives itself.
+ * Because `pane` is read after the panes are laid out and not off the last
+ * fit, a change in how many panes stand across is answered before the
+ * terminals fit, rather than after a fit at the wrong width. Rounded up,
+ * because a track a fraction short fits one column fewer.
  */
 export function consoleTrack(
   track: number,
-  cols: number,
+  pane: number,
+  overhead: number,
   cell: number,
   across: number,
   keep = CONSOLE_COLUMNS
 ): number | null {
-  if (![track, cols, cell, across].every((n) => Number.isFinite(n) && n > 0)) return null;
-  return Math.ceil(track + (keep - cols) * cell * across);
+  if (![track, pane, cell, across].every((n) => Number.isFinite(n) && n > 0)) return null;
+  if (!Number.isFinite(overhead) || overhead < 0) return null;
+  return Math.ceil(track + (overhead + keep * cell - pane) * across);
+}
+
+/** A remembered console width in columns, held to `CONSOLE_RANGE`; null for anything else. */
+export function rememberedColumns(raw: unknown): number | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  return Math.min(CONSOLE_RANGE.max, Math.max(CONSOLE_RANGE.min, Math.round(raw)));
 }
 
 /**

@@ -8356,7 +8356,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   {
     const sizes = JSON.parse(
       await evaluate(`
-        (() => JSON.stringify([...document.querySelectorAll('.rail > .card:not([data-rolled="true"])')].map((card) => {
+        (() => JSON.stringify([...document.querySelectorAll('.rail-cell > .card:not([data-rolled="true"])')].map((card) => {
           const style = getComputedStyle(card);
           const medium = parseFloat(style.getPropertyValue('--card-size-medium'));
           const large = parseFloat(style.getPropertyValue('--card-size-large'));
@@ -9482,17 +9482,19 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       JSON.stringify(mirrored)
     );
     /*
-     * The half a swapped grid area alone would not catch. The tab rail's
-     * handle has to be in the gap beside the tab rail, or dragging it resizes
-     * nothing it is next to. The card rail has none: it is what the
-     * eighty-column console leaves (todo 00).
+     * The half a swapped grid area alone would not catch. Each handle has to
+     * be in the gap beside its own pane, or dragging it resizes nothing it is
+     * next to: the tab rail's beside the tab rail, and the console's between
+     * the console and the card rail (todo 09).
      */
     check(
-      mirrored.railSplit === null &&
-        mirrored.tabSplit !== null &&
+      mirrored.tabSplit !== null &&
         mirrored.tabSplit.left >= mirrored.console.right &&
-        mirrored.tabSplit.right <= mirrored.tabs.left,
-      'and the tab rail’s handle sits in the gap beside it, with none on the card rail',
+        mirrored.tabSplit.right <= mirrored.tabs.left &&
+        mirrored.railSplit !== null &&
+        mirrored.railSplit.left >= mirrored.rail.right &&
+        mirrored.railSplit.right <= mirrored.console.left,
+      'and each handle sits in the gap beside its own pane',
       JSON.stringify(mirrored)
     );
   }
@@ -9557,64 +9559,153 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     );
 
   /*
-   * Back to the top of the rail first.
+   * The rail is a grid of square cells (todo 09): every card stands on whole
+   * cells, where it was put, and no two share one. Read off the laid-out
+   * boxes against the grid's own corner, so what is asserted is what is on
+   * screen, not what the layout says it drew.
+   */
+  const grid = async () =>
+    JSON.parse(
+      await evaluate(`
+        (() => {
+          const grid = document.querySelector('.rail-grid');
+          if (!grid) return 'null';
+          const style = getComputedStyle(grid);
+          const cell = parseFloat(style.getPropertyValue('--grid-cell'));
+          const g = grid.getBoundingClientRect();
+          const rail = grid.parentElement;
+          const cards = [...grid.querySelectorAll(':scope > .rail-cell')].map((c) => {
+            const b = c.getBoundingClientRect();
+            return {
+              id: c.dataset.railCard,
+              x: (b.left - g.left) / cell,
+              y: (b.top - g.top) / cell,
+              w: b.width / cell,
+              h: b.height / cell
+            };
+          });
+          return JSON.stringify({
+            cell,
+            left: g.left,
+            top: g.top,
+            columns: Math.floor(grid.clientWidth / cell),
+            // What the rail drew against: behind \`columns\` until its observer has run.
+            drawnFor: Number(grid.style.getPropertyValue('--rail-columns')),
+            scroll: rail.scrollTop,
+            sideways: rail.scrollWidth - rail.clientWidth,
+            cards
+          });
+        })()
+      `)
+    );
+  const cellsOf = (shape, id) => shape?.cards.find((card) => card.id === id) ?? null;
+  const onCells = (cards) =>
+    cards.every((c) => [c.x, c.y, c.w, c.h].every((n) => Math.abs(n - Math.round(n)) < 0.02));
+  const apart = (cards) =>
+    cards.every((a, i) =>
+      cards.every(
+        (b, j) =>
+          i === j ||
+          a.x + a.w <= b.x + 0.02 ||
+          b.x + b.w <= a.x + 0.02 ||
+          a.y + a.h <= b.y + 0.02 ||
+          b.y + b.h <= a.y + 0.02
+      )
+    );
+  /** This character's stored arrangement, never the per-client widths beside it. */
+  const storedLayout = async () =>
+    JSON.parse(
+      await evaluate(`
+        (() => {
+          const key = Object.keys(window.localStorage).find(
+            (k) => k.startsWith('mudengine.layout.') && k !== 'mudengine.layout.widths'
+          );
+          return key ? window.localStorage.getItem(key) : 'null';
+        })()
+      `)
+    );
+  /** A press and release on a grip, twice: the double-click that resets it. */
+  const doubleClick = async (at) => {
+    for (const clickCount of [1, 2]) {
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await cdp('Input.dispatchMouseEvent', {
+          type,
+          x: Math.round(at.x),
+          y: Math.round(at.y),
+          button: 'left',
+          buttons: type === 'mousePressed' ? 1 : 0,
+          clickCount,
+          pointerType: 'mouse'
+        });
+      }
+    }
+  };
+
+  /*
+   * Back to the top of the rail first: the Talk card's reply box scrolled it
+   * to the bottom a moment ago, and a pointer cannot reach a card above the
+   * viewport. A player scrolls back up; so does this.
    *
-   * Every card in it is a fixed box now, so ten of them overflow any ordinary
-   * window and the rail scrolls — and focusing the Talk card's reply box a
-   * moment ago scrolled it to the bottom to reveal it, which is what it should
-   * do. The cards this drags are then above the viewport, at negative
-   * coordinates, and a pointer cannot reach them. A player scrolls back up; so
-   * does this.
+   * And a window wide enough for the rail to hold three cards across: the
+   * smoke window leaves it one column, where side by side and a drop beside a
+   * card cannot be shown. Put back at the end of this block.
    */
   await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
-  const before = await readUntil(
-    () => railOrder(),
-    (before) => before.length >= 2
-  );
-  check(before.length >= 2, 'the rail has cards to rearrange', JSON.stringify(before));
-
-  // Drag the second card's heading above the first. The drop indicator is drawn
-  // between cards, so the assertion is on the order that results.
-  /*
-   * Grabbed by the grip, which is the affordance a player is given: the whole
-   * heading is draggable, but its centre lands on a face crumb or a badge
-   * depending on the card, and those are things you click.
-   */
-  const second = await boxOf(`.rail [data-card="${before[1]}"] .card-grip`);
-  const first = await boxOf(`.rail [data-card="${before[0]}"]`);
-  await drag(second, { x: first.x, y: first.top + 4 }, gapIn('.rail'));
-
-  const reordered = await railOrder();
+  const tall = await evaluate(`window.innerHeight`);
+  await cdp('Emulation.setDeviceMetricsOverride', {
+    width: 1800,
+    height: tall,
+    deviceScaleFactor: 1,
+    mobile: false
+  });
+  const settled = (now) => now !== null && now.drawnFor === now.columns;
+  const laid = await readUntil(grid, (now) => settled(now) && now.columns >= 51);
   check(
-    reordered[0] === before[1],
-    'a card dragged above another takes its place',
-    `${JSON.stringify(before)} -> ${JSON.stringify(reordered)}`
+    laid !== null && laid.cards.length >= 3,
+    'the rail has cards to arrange',
+    JSON.stringify(laid)
   );
-
-  // And the arrangement is written down, per character -- not per client.
-  const stored = await evaluate(`
-    (() => {
-      const key = Object.keys(window.localStorage).find((k) => k.startsWith('mudengine.layout.'));
-      return key ? window.localStorage.getItem(key) : '';
-    })()
-  `);
   check(
-    typeof stored === 'string' && stored.includes(reordered[0]),
-    'and the order is remembered for this character'
+    onCells(laid?.cards ?? []),
+    'every card on the rail stands on whole grid cells',
+    JSON.stringify(laid)
   );
+  check(apart(laid?.cards ?? []), 'and no two share a cell', JSON.stringify(laid));
+  check((laid?.sideways ?? 1) <= 0, 'and the rail never scrolls sideways', JSON.stringify(laid));
+
+  const before = await railOrder();
+  const [first, second, third] = before;
+  const firstCells = cellsOf(laid, first);
+  const secondCells = cellsOf(laid, second);
 
   /*
-   * Mid-drag, the rail shows the card's own shape moving and opens a gap its
-   * size where it would land -- a line said where and moved nothing (todo
-   * 03). Held rather than released: the gap and the ghost exist only while
-   * the pointer is down, so the gesture is driven by hand here.
+   * A card dragged across the grid lands in the cells it was dropped on.
+   * Held rather than released at first: mid-drag the grid draws the landing
+   * box at the card's own size and the ghost is the card's own shape (todo
+   * 03), and both exist only while the pointer is down.
    */
   {
-    const order = await railOrder();
-    const grip = await boxOf(`.rail [data-card="${order[1]}"] .card-grip`);
-    const card = await boxOf(`.rail [data-card="${order[1]}"]`);
-    const top = await boxOf(`.rail [data-card="${order[0]}"]`);
-    const to = { x: top.x, y: top.top + 4 };
+    const shape = await grid();
+    const card = await boxOf(`.rail [data-card="${second}"]`);
+    const grip = await boxOf(`.rail [data-card="${second}"] .card-grip`);
+    /*
+     * Beside the first card, where the grip check below grows that card
+     * towards it. Free on any rail this run has reached, since the rail was
+     * one card wide until the window grew.
+     */
+    const firstNow = cellsOf(shape, first);
+    const want = { x: firstNow.x + firstNow.w, y: firstNow.y };
+    const others = shape.cards.filter((c) => c.id !== second);
+    check(
+      apart([...others, { ...want, w: secondCells.w, h: secondCells.h }]) &&
+        want.x + secondCells.w <= shape.columns,
+      'the cells beside the first card are free to drop on',
+      JSON.stringify({ want, shape })
+    );
+    const to = {
+      x: shape.left + want.x * shape.cell + (grip.x - card.left),
+      y: shape.top + want.y * shape.cell + (grip.y - card.top)
+    };
     await cdp('Input.dispatchMouseEvent', {
       type: 'mousePressed',
       x: Math.round(grip.x),
@@ -9635,28 +9726,27 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       });
       await sleep(25);
     }
-    // Both marks of a drag in flight, waited for: the gap the rail opened and
-    // the ghost under the pointer are what this reads, and both are mounted by
-    // the move that made the gesture live.
-    await shown('.rail > .rail-slot');
+    await shown('.rail-grid > .rail-slot');
     await shown('.drag-ghost');
     const held = JSON.parse(
       await evaluate(`
         (() => {
-          const slot = document.querySelector('.rail > .rail-slot');
+          const slot = document.querySelector('.rail-grid > .rail-slot');
           const ghost = document.querySelector('.drag-ghost');
           const box = (el) => el.getBoundingClientRect();
           return JSON.stringify({
-            slot: slot ? Math.round(box(slot).height) : null,
+            slot: slot ? { w: Math.round(box(slot).width), h: Math.round(box(slot).height) } : null,
             ghost: ghost ? { w: Math.round(box(ghost).width), h: Math.round(box(ghost).height) } : null
           });
         })()
       `)
     );
     check(
-      held.slot !== null && Math.abs(held.slot - card.height) <= 2,
-      'mid-drag, the rail opens a gap the dragged card’s own height where it would land',
-      JSON.stringify({ held, card: Math.round(card.height) })
+      held.slot !== null &&
+        Math.abs(held.slot.w - card.width) <= 2 &&
+        Math.abs(held.slot.h - card.height) <= 2,
+      'mid-drag, the grid draws the landing box at the dragged card’s own size',
+      JSON.stringify({ held, card: { w: Math.round(card.width), h: Math.round(card.height) } })
     );
     check(
       held.ghost !== null &&
@@ -9674,89 +9764,164 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       clickCount: 1,
       pointerType: 'mouse'
     });
-    await waitFor(
-      async () => !(await evaluate(`!!document.querySelector('.rail > .rail-slot, .drag-ghost')`))
-    );
+    await gone('.rail-grid > .rail-slot');
     check(
-      !(await evaluate(`!!document.querySelector('.rail > .rail-slot, .drag-ghost')`)),
+      !(await evaluate(`!!document.querySelector('.rail-grid > .rail-slot, .drag-ghost')`)),
       'and both go with the drop'
     );
-    // Back where it was, so the checks after this read the rail they expect.
-    const moved = await boxOf(`.rail [data-card="${order[1]}"] .card-grip`);
-    const under = await boxOf(`.rail [data-card="${order[0]}"]`);
-    await drag(moved, { x: under.x, y: under.bottom - 4 }, gapIn('.rail'));
+    const moved = await readUntil(grid, (now) => cellsOf(now, second)?.x === want.x);
     check(
-      (await railOrder())[1] === order[1],
-      'and dragging it back below puts the rail back',
-      JSON.stringify(await railOrder())
+      cellsOf(moved, second)?.x === want.x && cellsOf(moved, second)?.y === want.y,
+      'a card dragged across the grid lands in the cells it was dropped on',
+      JSON.stringify({ want, got: cellsOf(moved, second) })
+    );
+    const spots = (await storedLayout())?.spots ?? {};
+    check(
+      spots[second]?.x === want.x && spots[second]?.y === want.y,
+      'and where it stands is remembered for this character, in cells',
+      JSON.stringify(spots[second])
+    );
+    check(
+      cellsOf(moved, second)?.y === cellsOf(moved, first)?.y,
+      'so with room for two, cards stand side by side',
+      JSON.stringify(moved)
     );
   }
 
   /*
-   * A rail card's height is the player's: the corner grip drags it, the figure
-   * is kept as a fraction of the rail rather than in pixels, and a
-   * double-click on the grip puts the card back at its own height.
+   * The corner grip moves whole cells: three in and two up shrinks the card
+   * by exactly that, and the size is kept in cells. Dragged back out past the
+   * card beside it, it stops at that card. A double-click puts it back at
+   * its shipped size.
    */
   {
-    const [id] = await railOrder();
-    const before = await boxOf(`.rail [data-card="${id}"]`);
-    const grip = await boxOf(`.rail [data-card="${id}"] .card-resize`);
-    await drag(grip, { x: grip.x, y: grip.y + 60 });
-    const after = await readUntil(
-      () => boxOf(`.rail [data-card="${id}"]`),
-      (after) => after !== null && after.height - before.height >= 50
-    );
+    const grip = await boxOf(`.rail [data-card="${first}"] .card-resize`);
+    const cell = laid.cell;
+    const beside = cellsOf(await grid(), second);
+    await drag(grip, { x: grip.x - 3 * cell, y: grip.y - 2 * cell });
+    const shrunk = await readUntil(grid, (now) => cellsOf(now, first)?.w === firstCells.w - 3);
+    const shrunkCells = cellsOf(shrunk, first);
     check(
-      after.height - before.height >= 50 && after.height - before.height <= 70,
-      'dragging a rail card’s corner grip makes it taller by what was dragged',
-      `${Math.round(before.height)} -> ${Math.round(after.height)}`
+      shrunkCells?.w === firstCells.w - 3 && shrunkCells?.h === firstCells.h - 2,
+      'dragging a rail card’s corner grip resizes it by whole grid cells',
+      JSON.stringify({ before: firstCells, after: shrunkCells })
     );
-    const heights = JSON.parse(
-      await evaluate(`
-        (() => {
-          const key = Object.keys(window.localStorage).find((k) => k.startsWith('mudengine.layout.'));
-          const layout = key ? JSON.parse(window.localStorage.getItem(key)) : {};
-          return JSON.stringify(layout.heights ?? {});
-        })()
-      `)
-    );
-    const rail = await boxOf('.rail');
+    const sizes = (await storedLayout())?.sizes ?? {};
     check(
-      typeof heights[id] === 'number' &&
-        heights[id] > 0 &&
-        heights[id] <= 1 &&
-        Math.abs(heights[id] * rail.height - after.height) <= 2,
-      'and the height is remembered as a fraction of the rail, not in pixels',
-      JSON.stringify({
-        stored: heights[id],
-        rail: Math.round(rail.height),
-        card: Math.round(after.height)
-      })
+      sizes[first]?.w === shrunkCells?.w && sizes[first]?.h === shrunkCells?.h,
+      'and the size is remembered in cells, not pixels',
+      JSON.stringify(sizes[first])
     );
-    const again = await boxOf(`.rail [data-card="${id}"] .card-resize`);
-    for (const clickCount of [1, 2]) {
-      for (const type of ['mousePressed', 'mouseReleased']) {
-        await cdp('Input.dispatchMouseEvent', {
-          type,
-          x: Math.round(again.x),
-          y: Math.round(again.y),
-          button: 'left',
-          buttons: type === 'mousePressed' ? 1 : 0,
-          clickCount,
-          pointerType: 'mouse'
-        });
-      }
-    }
-    const reset = await readUntil(
-      () => boxOf(`.rail [data-card="${id}"]`),
-      (reset) => Math.abs(reset.height - before.height) <= 2
-    );
+    const again = await boxOf(`.rail [data-card="${first}"] .card-resize`);
+    await drag(again, { x: again.x + 8 * cell, y: again.y });
+    const blocked = await readUntil(grid, (now) => cellsOf(now, first)?.w === firstCells.w);
     check(
-      Math.abs(reset.height - before.height) <= 2,
-      'and a double-click on the grip puts the card back at its own height',
-      `${Math.round(after.height)} -> ${Math.round(reset.height)} (was ${Math.round(before.height)})`
+      beside?.x === firstCells.x + firstCells.w &&
+        cellsOf(blocked, first)?.w === firstCells.w &&
+        apart(blocked?.cards ?? []),
+      'and grown towards the card beside it, it stops at that card',
+      JSON.stringify({ first: cellsOf(blocked, first), second: cellsOf(blocked, second) })
+    );
+    await doubleClick(await boxOf(`.rail [data-card="${first}"] .card-resize`));
+    const reset = await readUntil(grid, (now) => cellsOf(now, first)?.h === firstCells.h);
+    check(
+      cellsOf(reset, first)?.w === firstCells.w && cellsOf(reset, first)?.h === firstCells.h,
+      'and a double-click on the grip puts the card back at its shipped size',
+      JSON.stringify(cellsOf(reset, first))
     );
   }
+
+  /* Dropped on another card, a card goes to the nearest free cells, never over it. */
+  {
+    const shape = await grid();
+    const target = cellsOf(shape, first);
+    const card = await boxOf(`.rail [data-card="${third}"]`);
+    const grip = await boxOf(`.rail [data-card="${third}"] .card-grip`);
+    const to = {
+      x: shape.left + target.x * shape.cell + (grip.x - card.left),
+      y: shape.top + target.y * shape.cell + (grip.y - card.top)
+    };
+    await drag(grip, to, async () =>
+      evaluate(`!!document.querySelector('.rail-grid > .rail-slot')`)
+    );
+    const after = await readUntil(
+      grid,
+      (now) =>
+        now !== null &&
+        JSON.stringify(cellsOf(now, third)) !== JSON.stringify(cellsOf(shape, third))
+    );
+    check(
+      apart(after?.cards ?? []) &&
+        onCells(after?.cards ?? []) &&
+        JSON.stringify(cellsOf(after, first)) === JSON.stringify(target),
+      'a card dropped on another goes to the nearest free cells, and the other stays put',
+      JSON.stringify({ first: cellsOf(after, first), third: cellsOf(after, third) })
+    );
+  }
+
+  /*
+   * The grid runs on below the cards: a drag held at the rail's foot scrolls
+   * it, and the lowest card can be put lower than any card stood before.
+   */
+  {
+    await evaluate(
+      `(() => { const r = document.querySelector('.rail'); r.scrollTop = r.scrollHeight; return true; })()`
+    );
+    const shape = await stable(grid);
+    const lowest = [...shape.cards].sort((a, b) => b.y + b.h - (a.y + a.h))[0];
+    const bottom = lowest.y + lowest.h;
+    const rail = await boxOf('.rail');
+    const grip = await boxOf(`.rail [data-card="${lowest.id}"] .card-grip`);
+    let scrolled = shape.scroll;
+    await drag(grip, { x: grip.x, y: rail.bottom - 4 }, async () => {
+      const now = await grid();
+      scrolled = Math.max(scrolled, now.scroll);
+      const slot = JSON.parse(
+        await evaluate(`
+          (() => {
+            const slot = document.querySelector('.rail-grid > .rail-slot');
+            const grid = document.querySelector('.rail-grid');
+            if (!slot || !grid) return 'null';
+            const cell = parseFloat(getComputedStyle(grid).getPropertyValue('--grid-cell'));
+            return JSON.stringify((slot.getBoundingClientRect().bottom - grid.getBoundingClientRect().top) / cell);
+          })()
+        `)
+      );
+      return slot !== null && slot > bottom + 2;
+    });
+    const lower = await readUntil(grid, (now) => {
+      const card = cellsOf(now, lowest.id);
+      return card !== null && card.y + card.h > bottom;
+    });
+    const card = cellsOf(lower, lowest.id);
+    check(
+      scrolled > shape.scroll && card !== null && card.y + card.h > bottom,
+      'held at the rail’s foot, a drag scrolls the grid on, and a card can be put lower than any stood',
+      JSON.stringify({ bottom, got: card, scrolled, from: shape.scroll })
+    );
+    check(
+      apart(lower?.cards ?? []),
+      'still with no two cards sharing a cell',
+      JSON.stringify(lower)
+    );
+  }
+
+  await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
+  await cdp('Emulation.clearDeviceMetricsOverride', {});
+  const narrowed = await readUntil(
+    grid,
+    (now) =>
+      settled(now) &&
+      now.columns < laid.columns &&
+      now.cards.every((c) => c.x + c.w <= now.columns) &&
+      apart(now.cards)
+  );
+  check(
+    apart(narrowed?.cards ?? []) &&
+      (narrowed?.cards ?? []).every((c) => c.x + c.w <= narrowed.columns),
+    'and on a narrower rail every card comes inside it, still apart',
+    JSON.stringify(narrowed)
+  );
 
   // Now off the rail entirely, onto the console.
   const lifting = await railOrder();
@@ -9771,9 +9936,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check((await railOrder()).includes(lifting[0]) === false, 'and leaves the rail');
 
   /*
-   * The console is eighty columns, no more and no fewer, and the card rail
-   * takes the rest of the window with no handle of its own (todo 00). Read
-   * from the status rail's own `cols×rows` readout, which is the terminal's
+   * The console is eighty columns until the player drags its edge, and the
+   * edge moves whole columns, up to a hundred and twenty (todo 09). Read from
+   * the status rail's own `cols×rows` readout, which is the terminal's
    * measurement, once the track has settled.
    */
   {
@@ -9783,50 +9948,61 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       const text = await evaluate(
         `[...document.querySelectorAll('.status-rail .metric b')].map((b) => b.textContent).join(' ')`
       );
-      const m = /(\d+)\u00d7(\d+)/.exec(String(text));
+      const m = /(\d+)×(\d+)/.exec(String(text));
       return m ? Number(m[1]) : null;
     };
+    const storedColumns = async () =>
+      JSON.parse(await evaluate(`window.localStorage.getItem('mudengine.layout.widths') ?? 'null'`))
+        ?.columns ?? null;
     const cols = await readUntil(columns, (cols) => cols === 80);
-    check(cols === 80, 'the console is exactly eighty columns wide', `${cols}`);
     check(
-      !(await evaluate(`!!document.querySelector('.splitter[data-pane="rail"]')`)),
-      'and the card rail has no handle: it takes what the console leaves'
+      cols === 80,
+      'the console is eighty columns wide until the player says otherwise',
+      `${cols}`
     );
-    /*
-     * Side by side where the rail is wide enough: every card is at least
-     * `--rail-column-min` wide, so a rail with room for two puts two on a
-     * row. The smoke window leaves room for one, so the rail is held wider
-     * for the reading and put back after it.
-     */
-    const shape = async () =>
-      JSON.parse(
-        await evaluate(`
-          (() => {
-            const rail = document.querySelector('.workspace > .rail');
-            const cards = [...rail.querySelectorAll(':scope > [data-card]')];
-            const tops = cards.map((c) => Math.round(c.getBoundingClientRect().top));
-            return JSON.stringify({
-              width: rail.clientWidth,
-              sideways: rail.scrollWidth - rail.clientWidth,
-              shared: tops.length - new Set(tops).size
-            });
-          })()
-        `)
-      );
-    const narrow = await shape();
-    check(narrow.sideways <= 0, 'the rail never scrolls sideways', JSON.stringify(narrow));
-    await evaluate(`(() => {
-      const rail = document.querySelector('.workspace > .rail');
-      const min = parseFloat(getComputedStyle(rail).getPropertyValue('--rail-column-min'));
-      rail.style.width = 2 * min + 60 + 'px';
-      return true;
-    })()`);
-    const wide = await readUntil(shape, (wide) => wide.shared > 0);
-    check(wide.shared > 0, 'and with room for two, cards stand side by side', JSON.stringify(wide));
-    check(wide.sideways <= 0, 'still without scrolling sideways', JSON.stringify(wide));
-    await evaluate(`(document.querySelector('.workspace > .rail').style.width = '', true)`);
-    const back = await readUntil(shape, (now) => now.width === narrow.width);
-    check(back.width === narrow.width, 'and the rail is put back', JSON.stringify(back));
+    check(
+      await evaluate(`!!document.querySelector('.splitter[data-pane="rail"]')`),
+      'and its edge beside the card rail is a handle'
+    );
+
+    // Room for the console to grow into: the smoke window leaves the card
+    // rail its one column and nothing for the console to take.
+    const tall = await evaluate(`window.innerHeight`);
+    await cdp('Emulation.setDeviceMetricsOverride', {
+      width: 1800,
+      height: tall,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+    await stable(async () => evaluate(`document.querySelector('.rail')?.clientWidth ?? 0`));
+    const cell = await evaluate(`
+      (() => {
+        const screen = document.querySelector('.terminal-layer[data-focused="true"] .xterm-screen');
+        return screen ? screen.getBoundingClientRect().width / ${cols} : 0;
+      })()
+    `);
+    const edge = await boxOf('.splitter[data-pane="rail"]');
+    const grows =
+      (await evaluate(`document.querySelector('.workspace')?.dataset.railSide`)) === 'left'
+        ? -1
+        : 1;
+    await drag(edge, { x: edge.x + grows * 10.4 * cell, y: edge.y });
+    const ninety = await readUntil(columns, (now) => now === 90);
+    check(ninety === 90, 'dragging the edge ten columns out holds ninety', `${ninety}`);
+    check(
+      (await storedColumns()) === 90,
+      'and the width is remembered in columns, not pixels',
+      JSON.stringify(await storedColumns())
+    );
+    const further = await boxOf('.splitter[data-pane="rail"]');
+    await drag(further, { x: further.x + grows * 60 * cell, y: further.y });
+    const most = await readUntil(columns, (now) => now === 120);
+    check(most === 120, 'and never more than a hundred and twenty', `${most}`);
+    await doubleClick(await boxOf('.splitter[data-pane="rail"]'));
+    const back = await readUntil(columns, (now) => now === 80);
+    check(back === 80, 'a double-click on the edge puts it back at eighty', `${back}`);
+    await cdp('Emulation.clearDeviceMetricsOverride', {});
+    await readUntil(columns, (now) => now === 80);
   }
 
   /*
@@ -10058,7 +10234,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   await shown('.float > .card .card-grip');
   const back = await boxOf('.float > .card .card-grip');
   const railBox = await boxOf('.rail');
-  await drag(back, { x: railBox.x, y: railBox.top + 6 }, gapIn('.rail'));
+  await drag(back, { x: railBox.x, y: railBox.top + 6 }, gapIn('.rail-grid'));
   check(
     (await railOrder()).includes(lifting[0]),
     'and dragging it back onto the rail docks it again'
@@ -12745,13 +12921,18 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * every card on it stretches to it.
      */
     const before = await railWidth();
-    await evaluate(`(() => {
-      const rail = document.querySelector('.workspace > .rail');
-      rail.style.width = getComputedStyle(rail).getPropertyValue('--rail-column-min');
-      return true;
-    })()`);
-    const floor = await readUntil(railWidth, (floor) => floor <= 262);
-    check(floor <= 262, 'the rail is one column wide for the measurement', `${floor}`);
+    const least = Number(
+      await evaluate(`
+        (() => {
+          const rail = document.querySelector('.workspace > .rail');
+          const least = getComputedStyle(rail).getPropertyValue('--rail-column-min');
+          rail.style.width = least;
+          return parseFloat(least);
+        })()
+      `)
+    );
+    const floor = await readUntil(railWidth, (floor) => floor <= least + 2);
+    check(floor <= least + 2, 'the rail is one column wide for the measurement', `${floor}`);
     const fit = JSON.parse(
       await evaluate(`
         (() => {
@@ -14348,7 +14529,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   const heights = async () =>
     JSON.parse(
       await evaluate(`
-        JSON.stringify([...document.querySelectorAll('.rail > .card')].map((c) => ({
+        JSON.stringify([...document.querySelectorAll('.rail-cell > .card')].map((c) => ({
           card: c.dataset.card ?? c.className,
           h: Math.round(c.getBoundingClientRect().height),
           // Either the body scrolls, or the card keeps its own scroll region
@@ -16519,22 +16700,52 @@ if (jumpShown) {
   await stable(async () =>
     evaluate(`document.querySelector('.status-rail .metric b')?.innerText ?? ''`)
   );
-  await split('palette.layout.panesSideBySideLabel', 'paneflow');
-  await readUntil(
-    () => evaluate(`document.querySelector('.terminal-layers')?.dataset.flow ?? ''`),
-    (flow) => flow === 'columns'
-  );
-  const wide = await evaluate(`
+  /*
+   * Every grid size the status rail shows from here until the split has
+   * settled, so a console fitted narrower on the way there is seen, however
+   * briefly. Reading once after the split was the flaky check (todo 09): the
+   * track used to be corrected only after the panes had fitted at half the
+   * width, so a read could land on that fit (`38` columns) or after it.
+   */
+  await evaluate(`
     (() => {
-      const box = document.querySelector('.terminal-layers');
-      const cols = (document.querySelector('.status-rail .metric b')?.innerText ?? '').split('\u00d7')[0];
-      const narrow = !!document.querySelector('.status-rail .metric[data-narrow="true"]');
-      return { flow: box.dataset.flow, cols: Number(cols), narrow };
+      const readout = () => document.querySelector('.status-rail .metric b')?.textContent ?? '';
+      window.__gridReadouts = [readout()];
+      window.__gridWatch?.disconnect();
+      window.__gridWatch = new MutationObserver(() => window.__gridReadouts.push(readout()));
+      window.__gridWatch.observe(document.querySelector('.status-rail'), {
+        subtree: true,
+        childList: true,
+        characterData: true
+      });
+      return true;
     })()
   `);
-  log('     wide side-by-side', JSON.stringify(wide));
+  await split('palette.layout.panesSideBySideLabel', 'paneflow');
+  const wideNow = () =>
+    evaluate(`
+      (() => {
+        const box = document.querySelector('.terminal-layers');
+        const cols = (document.querySelector('.status-rail .metric b')?.innerText ?? '').split('\u00d7')[0];
+        const narrow = !!document.querySelector('.status-rail .metric[data-narrow="true"]');
+        const lefts = [...document.querySelectorAll('.terminal-layer[data-shown="true"]')].map((el) =>
+          Math.round(el.getBoundingClientRect().left)
+        );
+        return { flow: box.dataset.flow, cols: Number(cols), narrow, across: new Set(lefts).size };
+      })()
+    `);
+  await readUntil(wideNow, (now) => now.flow === 'columns' && now.across === 2);
+  await stable(async () => JSON.stringify(await wideNow()));
+  const wide = await wideNow();
+  const readouts = await evaluate(`
+    (() => {
+      window.__gridWatch?.disconnect();
+      return window.__gridReadouts.map((text) => Number(text.split('\u00d7')[0]));
+    })()
+  `);
+  log('     wide side-by-side', JSON.stringify({ ...wide, readouts }));
   check(
-    wide.flow === 'columns',
+    wide.flow === 'columns' && wide.across === 2,
     'a window wide enough gets its side-by-side split',
     JSON.stringify(wide)
   );
@@ -16542,6 +16753,11 @@ if (jumpShown) {
     wide.cols >= 80 && !wide.narrow,
     'and each console still has the columns the game formats to',
     JSON.stringify(wide)
+  );
+  check(
+    readouts.length > 0 && readouts.every((cols) => cols >= 80),
+    'and no console was fitted narrower on the way there',
+    JSON.stringify(readouts)
   );
   await capture('smoke-panes.png', 'side-by-side panes');
   await cdp('Emulation.clearDeviceMetricsOverride', {});
