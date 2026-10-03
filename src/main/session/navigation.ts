@@ -7,8 +7,8 @@
  */
 import { tuning } from '../app/tuning';
 import type { CharacterTracker } from '../parse/CharacterTracker';
-import { leg, plan, type PlanRealm } from '../world/navigation/plan';
-import { standing } from '../world/navigation/standing';
+import { leg, plan } from '../world/navigation/plan';
+import { planRealmOf } from '../world/navigation/realm';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { unfoughtShare } from '../../shared/danger';
 import type { FightOdds, NavigationOracle, Plan } from '../../shared/navigation';
@@ -38,7 +38,7 @@ export class Navigation {
     const here = roomAddress(state.room);
     if (world === undefined || here === null) return null;
     const traveller = this.parts.errands.travellerNow(state);
-    return plan(realmOf(world), this.oracle(world), here, to, traveller);
+    return plan(planRealmOf(world), this.oracle(world), here, to, traveller);
   }
 
   /**
@@ -49,7 +49,13 @@ export class Navigation {
   leg(from: RoomId, to: RoomId, traveller: Traveller, options: RouteOptions = {}): Route | null {
     const world = this.parts.world();
     if (world === undefined) return null;
-    return leg(realmOf(world), this.oracle(world), from, to, traveller, options);
+    return leg(planRealmOf(world), this.oracle(world), from, to, traveller, options);
+  }
+
+  /** This character's fights and purse, weighed for a plan made elsewhere; null while worldless. */
+  weighing(): NavigationOracle | null {
+    const world = this.parts.world();
+    return world === undefined ? null : this.oracle(world);
   }
 
   private oracle(world: Pick<WorldGraph, 'byId' | 'lairOf' | 'item'>): NavigationOracle {
@@ -79,18 +85,7 @@ export function worldLeg(
   to: RoomId,
   traveller: Traveller
 ): Route {
-  return leg(realmOf(world), UNWEIGHED, from, to, traveller);
-}
-
-/** What the planner reads of the realm, from the world. */
-function realmOf(world: NonNullable<ReturnType<NavigationParts['world']>>): PlanRealm {
-  return {
-    route: (from, target, traveller, options) => world.route(from, target, traveller, options),
-    sweep: (from, rooms, traveller) => world.sweepTo(from, rooms, traveller),
-    sources: (item) => world.itemSources(item),
-    standing: (room) => standing(world, room),
-    roomName: (room) => world.byId(room)?.name ?? room
-  };
+  return leg(planRealmOf(world), UNWEIGHED, from, to, traveller);
 }
 
 /**

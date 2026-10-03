@@ -17,6 +17,8 @@ import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
 import { scriptAfter } from './navigation/scriptWays';
 import { ItemSources, spokenFor, type ItemSource } from './navigation/sources';
+import { planRealmOf } from './navigation/realm';
+import type { NavigationOracle } from '../../shared/navigation';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
@@ -31,7 +33,6 @@ import {
   type WorldExit,
   type WorldItem,
   type WardRule,
-  type ApproachGate,
   type WorldLookup,
   type BankChoice,
   type CashPlace,
@@ -341,7 +342,13 @@ export class WorldGraph {
     // Here rather than beside the field, so every table the router holds
     // exists whatever order the fields above are declared in.
     this.router = new Router(this.roomIndex());
-    this.planner = new QuestPlanner(this.router, catalogue, this.plannerRooms(), quests);
+    this.planner = new QuestPlanner(
+      this.router,
+      catalogue,
+      this.plannerRooms(),
+      planRealmOf(this),
+      quests
+    );
   }
 
   /**
@@ -1833,10 +1840,11 @@ export class WorldGraph {
     from: RoomId | null,
     carrying: readonly number[] | null,
     traveller: Traveller,
+    odds: NavigationOracle,
     supplies?: readonly number[],
     lap?: Traveller
   ): PlanStep {
-    return this.planner.planStep(quest, step, from, carrying, traveller, supplies, lap);
+    return this.planner.planStep(quest, step, from, carrying, traveller, odds, supplies, lap);
   }
 
   /**
@@ -1933,15 +1941,10 @@ export class WorldGraph {
   /**
    * Every item that is a way through, as an edge the router can relax.
    *
-   * **`WorldItem.lands` was read in one direction only** and that was the whole
-   * bug: `QuestPlanner`'s `waysIn` feeds `approachItems`, which walks
-   * *backwards* to answer what the way into a place wants, so the client could
-   * tell a player the Amethyst Cave needs a potion of levitation, a titanium
-   * fork and a magical quartz rod and then answer *the realm data joins no
-   * path* when asked to walk there. No exit or portal in either database enters
-   * the 173 rooms behind the potion — measured both ways, the cave reaches Town
-   * Gates and nothing reaches the cave — so for the router those rooms did not
-   * exist at all.
+   * No exit or portal in either database enters the 173 rooms behind the
+   * potion of levitation (measured both ways: the Amethyst Cave reaches Town
+   * Gates and nothing reaches the cave), so without this edge the router
+   * answered *the realm data joins no path* about them.
    *
    * Modelled as a `PortalExit` because that is what it is: the realm moves the
    * character by coordinates, no compass reasoning applies, and everything
@@ -1998,11 +2001,6 @@ export class WorldGraph {
     }
     this.landings = built;
     return built;
-  }
-
-  /** What the way into a room demands be carried — `QuestPlanner.approachItems`. */
-  approachItems(room: RoomId): ApproachGate[] {
-    return this.planner.approachItems(room);
   }
 
   /**

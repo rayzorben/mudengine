@@ -56,7 +56,7 @@
 import { abilityHeld, type Gate, type TbStat } from './gates';
 // Type-only, so no value cycle: see `module-cycle.test.ts`.
 import type { AbilitySums, Denomination } from './character';
-import type { ApproachGate, ItemHandover } from './world';
+import type { ItemHandover } from './world';
 
 /** One thing a step hands over when it runs. */
 export type QuestReward =
@@ -99,9 +99,6 @@ export interface QuestSource {
    * the block a monster's death or a cave's own word runs. Three of the four
    * things PhoenixQuest sends a player to fetch were placed by nothing at all
    * until this. Carried from `WorldItem.from`, which the converter wrote.
-   *
-   * Each handover carries its own `approach`, because two handovers of one
-   * item are two places and the way into each is its own question.
    */
   from?: ItemHandover[];
 }
@@ -188,18 +185,6 @@ export interface QuestStep {
    * item list wherever the realm does not say.
    */
   sources?: QuestSource[];
-  /**
-   * What the way to **this step's own room** demands be carried, where the
-   * realm encloses it — `ApproachGate`, outermost frontier first.
-   *
-   * A step is *go there and say this*, and the realm routinely puts the there
-   * behind a door: PhoenixQuest's last step is thrown into the Lake of Fire,
-   * whose one entrance wants the basalt key the step before it hands over. 24
-   * of each shipped world's steps are behind something, and the book named
-   * none of it. Joined in main like `place` and `sources`, and absent for the
-   * ordinary step in an open part of the realm.
-   */
-  approach?: ApproachGate[];
 }
 
 /**

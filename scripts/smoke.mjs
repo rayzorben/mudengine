@@ -4432,20 +4432,15 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await gone('.reference-popover');
 
   /*
-   * ------------------------------- and what the way to the thing itself wants
+   * ------------------------------------ the source line of a quest item
    *
    * Reported 2026-09-15 (todo 02): the book said *golden egg -- kill
-   * necromancer in Amethyst Cave* and stopped, and the Amethyst Cave is behind
-   * a titanium fork and then a magical quartz rod, which the realm states on
-   * its own corridors and nothing read. Driven here because the sweep
-   * (`WorldGraph.approachItems`), the join onto the handover and the nested
-   * row are three layers and only the last is visible.
-   *
-   * Two more halves of the same report in one read: the monster and the room
-   * in that line are an entity and a place, and both were plain text on the
-   * card sending the player to them; and the step's own demands now sit
-   * **above** the counter's arrow rather than below it, which is the realm's
-   * own order (`checkability` before `giveability`).
+   * necromancer in Amethyst Cave*, and the monster and the room in that line
+   * are an entity and a place, both plain text on the card sending the player
+   * to them. And the step's own demands sit **above** the counter's arrow
+   * rather than below it, which is the realm's own order (`checkability`
+   * before `giveability`). What the way into the cave wants is the navigation
+   * engine's plan, drawn when the step is planned.
    */
   const wayIn = JSON.parse(
     await evaluate(`
@@ -4456,15 +4451,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           .find((li) => /golden egg/i.test(li.innerText));
         if (!egg) return JSON.stringify({ error: 'no golden egg row' });
         const step = egg.closest('.quest-step');
-        // By containment, not by class: the nested way-in list wears the
-        // same class, and this asks where this item's own row sits.
+        // Where this item's own row sits among the step's parts.
         const order = [...step.querySelector('.quest-what').children];
         const items = order.findIndex((el) => el.contains(egg));
         const flag = order.findIndex((el) => el.querySelector('.quest-flag'));
         return JSON.stringify({
-          wants: [...egg.querySelectorAll('.quest-approach > li')].map((li) =>
-            li.innerText.replace(/\s+/g, ' ').trim()
-          ),
           // The two controls in the source line, which were text.
           killer: [...egg.querySelectorAll('button.lookup')].map((b) => b.innerText.trim()),
           where: [...egg.querySelectorAll('button.quest-where')].map((b) => b.innerText.trim()),
@@ -4473,25 +4464,6 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         });
       })()
     `)
-  );
-  check(
-    Array.isArray(wayIn.wants) &&
-      wayIn.wants.some((line) => /potion of levitation/i.test(line)) &&
-      wayIn.wants.some((line) => /titanium fork/i.test(line)) &&
-      wayIn.wants.some((line) => /magical quartz rod/i.test(line)),
-    'the way into the place a quest item comes from names what it wants carried',
-    JSON.stringify(wayIn.wants)
-  );
-  /*
-   * And each of those says where *it* comes from, which is the other half of
-   * the report: the titanium fork is `ask gnome inventor fork`, and the card
-   * telling the player to fetch it said nothing about who has one.
-   */
-  check(
-    Array.isArray(wayIn.wants) &&
-      wayIn.wants.some((line) => /titanium fork/i.test(line) && /gnome inventor/i.test(line)),
-    'and each of them says who hands it over',
-    JSON.stringify(wayIn.wants)
   );
   check(
     Array.isArray(wayIn.killer) && wayIn.killer.some((name) => /necromancer/i.test(name)),

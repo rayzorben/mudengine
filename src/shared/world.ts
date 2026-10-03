@@ -615,8 +615,7 @@ export interface WorldItem {
    * have — the exit table says nothing about it, so a client reading only
    * corridors calls half the map unreachable. Derived at build time, because
    * the chain runs through `TBInfo`, which does not ship (`landingsOfItems`).
-   * Read by `WorldGraph.approachItems`, which treats a landing inside an
-   * enclosed region as a way into it.
+   * The router walks it as an edge into the landing.
    */
   lands?: RoomId;
   /**
@@ -920,58 +919,7 @@ export type ItemHandover = {
   place?: string;
   /** The words that reach it. A death has none: nothing is said. */
   say?: string[];
-  /**
-   * What the way to that room demands be carried, outermost frontier first.
-   *
-   * Joined by the **quest book** alone (`QuestPlanner.joinStep`), which is the
-   * one reader: the Reference card's `Given by` row is a lead and this is an
-   * errand list, and a sweep per handover on every lookup would be paid for by
-   * nobody. Absent where the realm leaves the place open, and where no room is
-   * named to ask about.
-   */
-  approach?: ApproachGate[];
 };
-
-/**
- * One item the way somewhere demands, and where the realm says to get it.
- *
- * The same three answers `QuestSource` carries, one level down and no further:
- * *the golden egg is off the necromancer in the Amethyst Cave, and the way
- * into the Amethyst Cave wants a magical quartz rod, which Morukai hands over
- * for `ask Morukai return`.* Recursing again would be a walkthrough written
- * out of guesses about which of several ways somebody will take.
- */
-export interface ApproachItem {
-  id: number;
-  name: string;
-  /** Shops known to stock it, by name. */
-  shops?: string[];
-  /** Monsters known to drop it, by name. */
-  mobs?: string[];
-  /** Where one of the realm's own scripts hands it over. See `QuestSource.from`. */
-  from?: ItemHandover[];
-}
-
-/**
- * One frontier on the way somewhere: **any one** of these items gets through.
- *
- * `anyOf` and not a bare item, because a realm may write two doors into one
- * place. Naming one of them would send somebody for the wrong errand, and
- * unioning them into one list would say both are needed — the *step's routes*
- * lesson in a second place. **Neither shipped world holds one**: the pairs
- * that looked like alternatives turn out to open onto different places, which
- * is what the flood in `approachItems` is for and a frontier count could not
- * see. It is carried because the shape is real, cheap and derived rather than
- * assumed; `WorldGraph.test.ts` holds it against a realm written for it.
- *
- * Several of these in a row **are** a conjunction: every one has to be crossed,
- * in the order given, which is the order they are fetched in. See
- * `WorldGraph.approachItems` for how the realm is asked, and
- * `tuning.world.approachRooms` for when it refuses to answer.
- */
-export interface ApproachGate {
-  anyOf: ApproachItem[];
-}
 
 /**
  * Where a shop an item is *sold by* actually is.
@@ -2764,11 +2712,9 @@ export interface RouteScatter {
 /**
  * An item used to travel, and what using it spends.
  *
- * **An item can be a door** (`WorldItem.lands`, format 40) and until now only
- * `approachItems` read it: the potion of levitation casts a spell whose text
- * block is `teleport 1009 9`, no exit in either database enters the 173 rooms
- * behind it, and the router answered *the realm data joins no path* about a
- * quest the same client had just told the player how to finish. So a plan can
+ * **An item can be a door** (`WorldItem.lands`, format 40): the potion of
+ * levitation casts a spell whose text block is `teleport 1009 9`, and no exit
+ * in either database enters the 173 rooms behind it. So a plan can
  * hold a step that is not a move at all — and the thing a reader has to know
  * before walking one is what it costs them **permanently**, because a charge
  * spent is not a charge the walk back has.

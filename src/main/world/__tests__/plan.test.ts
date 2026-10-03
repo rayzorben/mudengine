@@ -9,7 +9,7 @@ import { t } from '../../app/i18n';
 import { planRefusalsWords } from '../../../shared/navigation';
 import type { ItemSource } from '../navigation/sources';
 import type { Traveller } from '../Router';
-import { standing } from '../navigation/standing';
+import { planRealmOf } from '../navigation/realm';
 import { WorldGraph } from '../WorldGraph';
 
 const step = (from: string, to: string): RouteStep =>
@@ -164,13 +164,7 @@ const file = path.resolve('resources/world/paradigm.jsonl.gz');
 const graph = fs.existsSync(file) ? WorldGraph.load(file) : null;
 
 describe.skipIf(graph === null)('the trainers soul was sent to, on the shipped realm', () => {
-  const world = (): PlanRealm => ({
-    route: (from, to, traveller, options) => graph!.route(from, to, traveller, options),
-    sweep: (from, rooms, traveller) => graph!.sweepTo(from, rooms, traveller),
-    sources: (item) => graph!.itemSources(item),
-    standing: (room) => standing(graph!, room),
-    roomName: (room) => graph!.byId(room)?.name ?? room
-  });
+  const world = (): PlanRealm => planRealmOf(graph!);
   const soul = (): Traveller => ({
     level: 10,
     classId: graph!.classNamed('Mystic')?.id ?? null,
@@ -193,6 +187,23 @@ describe.skipIf(graph === null)('the trainers soul was sent to, on the shipped r
       made.kind === 'plan' ? made.steps.flatMap((s) => (s.kind === 'kill' ? [s.monster] : [])) : [];
     expect(kills).not.toContain('ogre');
     expect(made.kind === 'plan' && made.steps.at(-1)).toMatchObject({ kind: 'walk' });
+  });
+
+  /*
+   * The Amethyst Cave (todo 02, 2026-09-15): the potion of levitation is the
+   * only way into the Catacombs, the fork opens their doors, and the rod is
+   * Morukai's, inside them, so it comes last.
+   */
+  it('gets the three things the Amethyst Cave wants, the rod from inside last', () => {
+    const able: Traveller = { ...soul(), level: 40, strength: 60, pickSkill: 60, wealth: 1e7 };
+    const made = plan(world(), losesTo([]), '1/834', '9/1431', able);
+    const fetched =
+      made.kind === 'plan'
+        ? made.steps.flatMap((s) => (s.kind === 'ask' ? [s.item.name] : []))
+        : [];
+    expect(fetched).toHaveLength(3);
+    expect(fetched.slice(0, 2).sort()).toEqual(['potion of levitation', 'titanium fork']);
+    expect(fetched[2]).toBe('magical quartz rod');
   });
 
   /* The Hydra Trainer wants the manscorpion king's key and the hydra dead. */

@@ -1,8 +1,8 @@
 /**
  * The quest planner: the realm's quests with their items' sources joined on,
  * the order a step's items are best fetched in, one step of a plan priced
- * from the one before, where to go and kill for an item, and what the way
- * into a room demands be carried.
+ * from the one before (its way there planned by the navigation engine), and
+ * where to go and kill for an item.
  *
  * It reads the router's searches, the catalogue's rows and the rooms
  * (`PlannerRooms`), each through the narrowest part it calls, and never the
@@ -20,18 +20,16 @@ import {
   type PlanItem,
   type PlanPlace,
   type PlanSnag,
+  type PlanSource,
   type PlanStep
 } from '../../shared/quests';
 import type { Quest, QuestErrand, QuestSource, QuestStep } from '../../shared/quests';
 import {
   asRoomReference,
-  itemDemanded,
+  counterIn,
   roomId,
-  type ApproachGate,
-  type ApproachItem,
   type Dropper,
   type DropSources,
-  type ItemHandover,
   type RoomId,
   type Route,
   type RouteHazard,
@@ -41,7 +39,17 @@ import {
 import type { Catalogue } from './Catalogue';
 import { handoverSource } from './navigation/sources';
 import type { PlannerRooms } from './PlannerRooms';
+import { plan, leg, type PlanRealm } from './navigation/plan';
 import type { Router, Traveller } from './Router';
+import {
+  fetchAct,
+  plannedFetches,
+  planRefusalsWords,
+  type FetchStep,
+  type NavigationOracle,
+  type Plan,
+  type PlannedFetch
+} from '../../shared/navigation';
 
 /** What the planner asks the router: a way, and the sweeps an order or a ring is priced on. */
 type PlannerRouter = Pick<Router, 'route' | 'sweepTo' | 'withinSteps'>;
@@ -53,6 +61,7 @@ type PlannerCatalogue = Pick<
   | 'everyItem'
   | 'item'
   | 'mob'
+  | 'shop'
   | 'sourcesOf'
   | 'spellById'
   | 'stockedBy'
@@ -71,15 +80,6 @@ export class QuestPlanner {
    * the join would run again on every mount of the card.
    */
   private questsJoined: Quest[] | null = null;
-  /**
-   * Every way *into* each room, with the item it demands — `approachItems`.
-   *
-   * Backwards, because the question is *what stands between the realm and this
-   * room* and the exits are all written the other way. Built once on the first
-   * question (66ms over Paradigm's 138,771 edges) and null until then, like
-   * the joined book above.
-   */
-  private waysIn: Map<RoomId, Array<{ from: RoomId | null; item: number | null }>> | null = null;
   /** Every room, by `map/room`: the table the router reads, held rather than asked for. */
   private readonly rooms: ReadonlyMap<RoomId, WorldRoom>;
 
@@ -87,6 +87,8 @@ export class QuestPlanner {
     private readonly router: PlannerRouter,
     private readonly catalogue: PlannerCatalogue,
     private readonly index: PlannerRooms,
+    /** What the navigation engine reads of the realm, for a step's way there. */
+    private readonly navigable: PlanRealm,
     quests: unknown
   ) {
     this.rooms = index.roomsById;
@@ -165,11 +167,6 @@ export class QuestPlanner {
       // A room the realm no longer has keeps its address and gains no name,
       // rather than being dropped: the address is still what the realm said.
       if (name !== undefined && name.length > 0) joined.place = name;
-      // And what the way there wants carried, where the realm encloses it: a
-      // step is *go there and say this*, and the there is routinely behind a
-      // door the step says nothing about. See `approachItems`.
-      const approach = this.approachItems(step.room);
-      if (approach.length > 0) joined.approach = approach;
     }
     const sources: QuestSource[] = [];
     for (const [id, name] of this.itemsDemanded(step)) {
@@ -199,11 +196,7 @@ export class QuestPlanner {
        * `double-terminated quartz` were three of the four things PhoenixQuest
        * asks for with nothing at all said about where to get them.
        */
-      const from = (known === undefined ? [] : (this.index.placingHandovers(known).from ?? [])).map(
-        // Per handover, not per item: two handovers of one thing are two
-        // places, and the way into each is its own question.
-        (handover) => this.approaching(handover)
-      );
+      const from = known === undefined ? [] : (this.index.placingHandovers(known).from ?? []);
       if (shops.size === 0 && mobs.size === 0 && from.length === 0) continue;
       const source: QuestSource = { id };
       if (shops.size > 0) source.shops = [...shops];
@@ -213,20 +206,6 @@ export class QuestPlanner {
     }
     if (sources.length > 0) joined.sources = sources;
     return joined;
-  }
-
-  /**
-   * One handover, with what the way to where it happens demands carried.
-   *
-   * The quest book's own join and nobody else's — see `ItemHandover.approach`
-   * for why the Reference card does not pay for it. A copy, like
-   * `placingHandovers` (`PlannerRooms`), because the item index holds one
-   * object per item and every lookup shares it.
-   */
-  private approaching(handover: ItemHandover): ItemHandover {
-    if (handover.room === undefined) return handover;
-    const approach = this.approachItems(handover.room as RoomId);
-    return approach.length === 0 ? handover : { ...handover, approach };
   }
 
   /**
@@ -535,6 +514,7 @@ export class QuestPlanner {
     from: RoomId | null,
     carrying: readonly number[] | null,
     traveller: Traveller,
+    odds: NavigationOracle,
     supplies: readonly number[] = [],
     lap: Traveller = traveller
   ): PlanStep {
@@ -552,6 +532,9 @@ export class QuestPlanner {
     // What the way wants, gathered before anything the step itself wants:
     // every walk this step makes leaves from `from`, and the hunts leave first.
     const bought: PlanItem[] = [];
+    // And the keys the way to the step's room wants, where the navigation
+    // engine gets them, gathered after the step's own items.
+    const keys: PlanItem[] = [];
     let reachable: boolean | null = null;
     let moves: number | undefined;
     if (from !== null && at !== undefined && this.rooms.has(from) && this.rooms.has(at.room)) {
@@ -578,17 +561,24 @@ export class QuestPlanner {
         if (item.source.how !== 'kill' || item.source.at === undefined) continue;
         const to = item.source.at.room as RoomId;
         if (!this.rooms.has(to)) continue;
-        const way = this.router.route(cursor, to, this.quietened(lap, inHand));
-        if (way.blocked) continue;
+        const way = leg(this.navigable, odds, cursor, to, this.quietened(lap, inHand));
+        if (way.blocked) {
+          snags.push({ kind: 'unreachable', reason: way.reason ?? '' });
+          continue;
+        }
         hunts.push(way);
         cursor = to;
       }
-      let route = this.router.route(cursor, at.room, this.quietened(traveller, inHand));
-      if (route.blocked) {
+      const towards = (stoppers: readonly number[]): Plan =>
+        plan(this.navigable, odds, cursor, at.room, this.quietened(traveller, stoppers));
+      const first = towards(inHand);
+      if (first.kind === 'refused') {
         reachable = false;
-        snags.push({ kind: 'unreachable', reason: route.reason ?? '' });
+        snags.push({ kind: 'unreachable', reason: planRefusalsWords(first.refusals, t) });
       } else {
         reachable = true;
+        let made = first;
+        let ways = walksOf(made);
         /*
          * What the ways meet that nothing in hand stops is bought here, once
          * each — two spells the same raft stops are one raft — at the counter
@@ -599,7 +589,7 @@ export class QuestPlanner {
          * never a chase.
          */
         const spent: number[] = [];
-        for (const way of [...hunts, route]) {
+        for (const way of [...hunts, ...ways]) {
           for (const hazard of way.hazards ?? []) {
             if (!this.worthNaming(hazard)) continue;
             if (this.stopperOf(hazard.id, carrying, [...supplies, ...spent]) !== undefined)
@@ -613,12 +603,16 @@ export class QuestPlanner {
           }
         }
         if (spent.length > 0) {
-          const again = this.router.route(
-            cursor,
-            at.room,
-            this.quietened(traveller, [...inHand, ...spent])
-          );
-          if (!again.blocked) route = again;
+          const again = towards([...inHand, ...spent]);
+          if (again.kind === 'plan') {
+            made = again;
+            ways = walksOf(made);
+          }
+        }
+        keys.push(...plannedFetches(made).map((planned) => this.fetchedItem(planned, carrying)));
+        for (const key of keys) {
+          if (key.source.how === 'unplaced')
+            snags.push({ kind: 'unplaced', item: key.name ?? `#${key.id}` });
         }
         /*
          * Every hazard the router still names is one the pack does not stop:
@@ -629,7 +623,7 @@ export class QuestPlanner {
          * rooms any one way crosses; a timed passage on any of them is named.
          */
         const named = new Map<number, Extract<PlanSnag, { kind: 'hazard' }>>();
-        for (const way of [...hunts, route]) {
+        for (const way of [...hunts, ...ways]) {
           for (const hazard of way.hazards ?? []) {
             if (!this.worthNaming(hazard)) continue;
             const seen = named.get(hazard.id);
@@ -651,20 +645,23 @@ export class QuestPlanner {
             snags.push(snag);
           }
         }
-        for (const way of [...hunts, route]) snags.push(...this.corridorsAlong(way.steps));
+        for (const way of [...hunts, ...ways]) snags.push(...this.corridorsAlong(way.steps));
         // The step is every way it walks and the way out to each counter and
         // back: a figure that left the hunt out, or the tavern's three
         // hundred rooms, would be a plan nobody could keep to. What the fight
         // itself costs is not a number of moves.
-        moves = route.steps.length;
-        for (const way of hunts) moves += way.steps.length;
+        moves = 0;
+        for (const way of [...hunts, ...ways]) moves += way.steps.length;
         for (const item of [...bought, ...own]) {
           if (item.source.how === 'buy' && item.source.detour !== undefined)
             moves += item.source.detour;
         }
       }
     }
-    const items = [...bought, ...own];
+    // The keys after the step's own items: the run hunts those from `from`
+    // first, and the way the keys open is planned from where the hunts end.
+    const listed = new Set([...bought, ...own].map((item) => item.id));
+    const items = [...bought, ...own, ...keys.filter((key) => !listed.has(key.id))];
     const roll = stepRoll(step);
     return {
       block: step.block,
@@ -676,6 +673,46 @@ export class QuestPlanner {
       snags,
       ...(roll === null ? {} : { roll })
     };
+  }
+
+  /** A key the way to a step wants, fetched where the navigation engine plans it. */
+  private fetchedItem({ step }: PlannedFetch, carrying: readonly number[] | null): PlanItem {
+    return {
+      id: step.item.id,
+      name: step.item.name,
+      held: packHolds(carrying, step.item.id),
+      hand: false,
+      source: this.fetchSource(step)
+    };
+  }
+
+  /**
+   * Where the plan gets a key, as a quest plan's row says it: a counter the
+   * realm no longer lists is unplaced, and a summoned dropper's row names the
+   * summoner, whose death in that room is what the run does.
+   */
+  private fetchSource(step: FetchStep): PlanSource {
+    const place = this.planPlace(step.room);
+    const at = place === undefined ? {} : { at: place };
+    const act = fetchAct(step);
+    switch (act.kind) {
+      case 'buy': {
+        const room = this.rooms.get(step.room);
+        const counter =
+          room === undefined ? undefined : counterIn(room, (shop) => this.catalogue.shop(shop));
+        return counter === undefined
+          ? { how: 'unplaced' }
+          : { how: 'buy', shops: [counter.shop], ...at };
+      }
+      case 'say':
+        return { how: 'said', say: act.say, ...at };
+      case 'kill':
+        return { how: 'kill', mob: act.summoner ?? act.dropper, ...at };
+      default: {
+        const never: never = act;
+        return never;
+      }
+    }
   }
 
   /** A room the realm names, with its name where the graph holds it. */
@@ -1002,304 +1039,9 @@ export class QuestPlanner {
       });
     return { droppers, lairs };
   }
+}
 
-  /**
-   * What the way into a room demands be carried, or nothing where it is open.
-   *
-   * Reported 2026-09-15 (todo 02): the quest book said *golden egg — kill
-   * necromancer in Amethyst Cave* and stopped. Reaching that cave takes a
-   * potion of levitation, a titanium fork and a magical quartz rod; the realm
-   * states all three and nothing was reading any of them.
-   *
-   * **Two halves, because *what encloses this place* and *what opens it* are
-   * different questions.** `enclosing` sweeps backwards over every way in that
-   * demands no item and gives the question up the moment it reaches the open
-   * realm — so what it returns is a pocket with no free entrance, or nothing
-   * at all. Inside that pocket the question is then answered **forwards and by
-   * trial**: `opensInto` floods from whichever doors the items in hand unlock,
-   * which is what the server actually does, and a set of items is *required*
-   * when taking any one of them away puts the room out of reach.
-   *
-   * The trial matters, and the first attempt at this got it wrong by reasoning
-   * about frontiers in order instead. The Catacombs' fork doors are all
-   * *inside* the pocket, so the frontier chain read the fork as needed at the
-   * near gates and then dismissed the potion at the far one as a door the fork
-   * already opens — which is exactly backwards: the fork opens nothing from
-   * the mainland, and the potion is the only entrance there is. Measured
-   * forwards from Town Gates: nothing reaches 44,803 rooms, the fork alone
-   * adds none, the potion adds 26, the potion and the fork add 143 more, and
-   * only all three reach the Amethyst Cave.
-   *
-   * **Every item reported is necessary given the others** — that is what the
-   * minimisation leaves — and an item that could stand in for one of them is
-   * named beside it (`ApproachGate.anyOf`) rather than being picked between.
-   * Ordered by when the flood can first use each, which is the order they are
-   * fetched in. Where the items to hand do not reach the room at all the
-   * answer is nothing: an account the client cannot complete is not one to
-   * send somebody out on. Stock's Fine Mansion study is what the trial buys
-   * over counting frontiers twice: a skeleton key opens a door into that
-   * pocket and the study is not behind it, so the honest answer is the black
-   * serpent key alone, and the frontier count said *either*.
-   */
-  approachItems(room: RoomId): ApproachGate[] {
-    const inside = this.enclosing(room);
-    if (inside === null) return [];
-
-    const candidates = this.gatesWithin(inside);
-    if (candidates.length === 0) return [];
-    const opens = (held: ReadonlySet<number>): boolean =>
-      this.opensInto(room, inside, held).has(room);
-    // Everything the realm offers, and it still does not get there: the client
-    // cannot account for this room and says so by saying nothing.
-    if (!opens(new Set(candidates))) return [];
-
-    // Minimised one at a time, so what is left is a set no member of which can
-    // be dropped — every row the card draws is an errand the realm insists on.
-    const kept = [...candidates];
-    for (const item of candidates) {
-      const without = new Set(kept.filter((held) => held !== item));
-      if (!opens(without)) continue;
-      kept.splice(kept.indexOf(item), 1);
-    }
-    if (kept.length === 0) return [];
-
-    return this.orderApproach(room, inside, kept, candidates);
-  }
-
-  /**
-   * The order the items are used in, each with whatever could stand in for it.
-   *
-   * The flood is run again, adding at each stage the kept items it can now
-   * reach a door for: that is the order somebody fetches them in, and it is
-   * the realm's own rather than the id order the minimisation happened to
-   * leave. A stand-in is an item *outside* the kept set that the room is still
-   * reachable with in place of this one — the alternative the minimisation had
-   * to choose between and must not hide.
-   */
-  private orderApproach(
-    room: RoomId,
-    inside: ReadonlySet<RoomId>,
-    kept: readonly number[],
-    candidates: readonly number[]
-  ): ApproachGate[] {
-    const order: number[] = [];
-    const held = new Set<number>();
-    while (order.length < kept.length) {
-      const next = kept.filter(
-        (item) =>
-          !held.has(item) &&
-          this.opensInto(null, inside, new Set([...held, item])).size >
-            this.opensInto(null, inside, held).size
-      );
-      // Nothing opens anything further on its own — the rest are wanted
-      // together, and the id order they are in is as good as any.
-      const stage = next.length > 0 ? next : kept.filter((item) => !held.has(item));
-      for (const item of stage) {
-        order.push(item);
-        held.add(item);
-      }
-    }
-
-    const others = candidates.filter((item) => !kept.includes(item));
-    return order.map((item) => {
-      const rest = order.filter((held) => held !== item);
-      const instead = others.filter((other) =>
-        this.opensInto(room, inside, new Set([...rest, other])).has(room)
-      );
-      return { anyOf: [item, ...instead].map((id) => this.approachItem(id)) };
-    });
-  }
-
-  /**
-   * The pocket a room sits in, or null where the realm leaves it open.
-   *
-   * Backwards over every way in that demands no item, so what it collects is
-   * closed under un-gated entry: every remaining way in wants something. That
-   * reasoning holds only while the region stays a pocket — out in the open
-   * realm the gates it meets are other pockets' doors, and unbounded it
-   * answered an ordinary street with every key in the realm — so it gives the
-   * question up past `tuning.world.approachRooms`.
-   *
-   * **It grows *through* a gate and falls back when that escapes.** The rooms
-   * a door is crossed from are taken in too, because the Catacombs' own doors
-   * are inside the pocket and a region stopping at the first of them would
-   * name one gate and miss the two behind it. When taking a door in lets the
-   * open realm flood through, the answer is the **last state that was still a
-   * pocket** — which is what keeps the Lake of Fire, whose one door opens onto
-   * the mainland, answering *basalt key* instead of saying nothing. Null is
-   * the room that was never enclosed at all.
-   */
-  private enclosing(room: RoomId): Set<RoomId> | null {
-    const ways = this.waysInto();
-    const cap = tuning().world.approachRooms;
-    const inside = new Set<RoomId>([room]);
-    let frontier: RoomId[] = [room];
-    // Closed under un-gated entry, and so a pocket every remaining way into
-    // which wants something. Null until the first closure has run.
-    let settled: Set<RoomId> | null = null;
-
-    while (frontier.length > 0) {
-      const queue = [...frontier];
-      const gated: RoomId[] = [];
-      while (queue.length > 0) {
-        const at = queue.pop() as RoomId;
-        for (const way of ways.get(at) ?? []) {
-          // An item that is itself a door comes from nowhere: there is no room
-          // to take in, and the item is found again by `gatesWithin`.
-          if (way.from === null || inside.has(way.from)) continue;
-          if (way.item !== null) {
-            gated.push(way.from);
-            continue;
-          }
-          inside.add(way.from);
-          if (inside.size > cap) return settled;
-          queue.push(way.from);
-        }
-      }
-      settled = new Set(inside);
-      frontier = [];
-      for (const at of gated) {
-        if (inside.has(at)) continue;
-        inside.add(at);
-        if (inside.size > cap) return settled;
-        frontier.push(at);
-      }
-    }
-    return settled;
-  }
-
-  /**
-   * Every item a way into or within the pocket demands, once each.
-   *
-   * Both kinds, because both have to be crossed: a door from outside is how
-   * you get in and a door between two of its rooms is how you get on. Which
-   * of them are actually *needed* is not decided here — that is what the
-   * flood and the minimisation are for.
-   */
-  private gatesWithin(inside: ReadonlySet<RoomId>): number[] {
-    const ways = this.waysInto();
-    const items = new Set<number>();
-    for (const at of inside) {
-      for (const way of ways.get(at) ?? []) {
-        if (way.item !== null) items.add(way.item);
-      }
-    }
-    return [...items];
-  }
-
-  /**
-   * Where a pack of these items can get to inside the pocket — the server's
-   * own arithmetic, forwards.
-   *
-   * Seeded from every room outside the pocket that touches it (you are
-   * standing in the open realm) and from the landing of every item in hand
-   * that is itself a door. A `room` asks a yes/no question and short-circuits;
-   * `null` asks how far it got, which is what the ordering compares.
-   */
-  private opensInto(
-    room: RoomId | null,
-    inside: ReadonlySet<RoomId>,
-    held: ReadonlySet<number>
-  ): ReadonlySet<RoomId> {
-    const ways = this.waysInto();
-    const reached = new Set<RoomId>();
-    const queue: RoomId[] = [];
-    const arrive = (at: RoomId): void => {
-      if (reached.has(at)) return;
-      reached.add(at);
-      queue.push(at);
-    };
-
-    // Every door from outside, and every item that is a door of its own.
-    for (const at of inside) {
-      for (const way of ways.get(at) ?? []) {
-        if (way.from !== null && inside.has(way.from)) continue;
-        if (way.item !== null && !held.has(way.item)) continue;
-        arrive(at);
-      }
-    }
-
-    while (queue.length > 0) {
-      const at = queue.pop() as RoomId;
-      if (room !== null && at === room) return reached;
-      for (const exit of this.rooms.get(at)?.exits ?? []) {
-        const to = roomId(exit.map, exit.room);
-        if (!inside.has(to)) continue;
-        const item = itemDemanded(exit.requirement);
-        if (item !== null && !held.has(item)) continue;
-        arrive(to);
-      }
-      for (const command of this.rooms.get(at)?.commands ?? []) {
-        if (command.to === undefined || !inside.has(command.to)) continue;
-        const item = command.opens?.item;
-        if (item !== undefined && !held.has(item)) continue;
-        arrive(command.to);
-      }
-    }
-    return reached;
-  }
-
-  /** One wanted item, with the same three answers a quest source carries. */
-  private approachItem(id: number): ApproachItem {
-    const known = this.catalogue.item(id);
-    const name = known?.name.trim();
-    const { shops, mobs } = this.catalogue.sourcesOf(name === undefined ? { id } : { id, name });
-    const from = known === undefined ? [] : (this.index.placingHandovers(known).from ?? []);
-    return {
-      id,
-      // The realm names every row an exit refers to; `#983` is this admitting
-      // it did not, which is what the card refuses to make a control of.
-      name: name === undefined || name.length === 0 ? `#${id}` : name,
-      ...(shops.length > 0 ? { shops } : {}),
-      ...(mobs.length > 0 ? { mobs } : {}),
-      ...(from.length > 0 ? { from } : {})
-    };
-  }
-
-  /**
-   * Every way into every room, with the one item it demands where it does.
-   *
-   * Three columns of the realm state the same thing and all three are read:
-   * an exit's `Key:` (a lock, which a skill may also open), the item a hidden
-   * exit's own action wants (`RequirementAction.item`), and the item a room
-   * script's lever wants (`RoomCommand.opens.item`). A portal command's
-   * landing is an edge like any other and is walked with them.
-   *
-   * **And an item that is itself a door** — format 40. `WorldItem.lands` is
-   * where *using* the thing puts you, and that is a way in from **nowhere**:
-   * drinking the potion of levitation works wherever you are standing, and it
-   * drops you into the Catacombs, which no corridor reaches at all. So the
-   * edge carries a `null` source. Without it the Catacombs are a sealed pocket
-   * and the client's answer to *how do I get to the necromancer* leaves out
-   * the one thing that gets you anywhere near him.
-   *
-   * A `Key:` names a **wall** only for a character who cannot pick or force
-   * it, which is a question about a character and not about a room — so this
-   * reads the item and leaves the skill substitute to the router. What the
-   * card says is what the way *wants*, never that there is no other way in.
-   */
-  private waysInto(): Map<RoomId, Array<{ from: RoomId | null; item: number | null }>> {
-    if (this.waysIn !== null) return this.waysIn;
-    const index = new Map<RoomId, Array<{ from: RoomId | null; item: number | null }>>();
-    const add = (into: RoomId, from: RoomId | null, item: number | null): void => {
-      const held = index.get(into);
-      if (held === undefined) index.set(into, [{ from, item }]);
-      else held.push({ from, item });
-    };
-    for (const [key, room] of this.rooms) {
-      for (const exit of room.exits) {
-        add(roomId(exit.map, exit.room), key, itemDemanded(exit.requirement));
-      }
-      for (const command of room.commands ?? []) {
-        if (command.to === undefined) continue;
-        add(command.to, key, command.opens?.item ?? null);
-      }
-    }
-    for (const item of new Set(this.catalogue.everyItem())) {
-      if (item.lands === undefined || !this.rooms.has(item.lands)) continue;
-      add(item.lands, null, item.id);
-    }
-    this.waysIn = index;
-    return index;
-  }
+/** The walks of a plan, in order. */
+function walksOf(made: Extract<Plan, { kind: 'plan' }>): Route[] {
+  return made.steps.flatMap((step) => (step.kind === 'walk' ? [step.route] : []));
 }

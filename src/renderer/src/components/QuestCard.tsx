@@ -41,7 +41,7 @@ import {
 } from '@shared/quests';
 import type { AbilitySums } from '@shared/character';
 import { errorMessage } from '@shared/values';
-import type { ApproachGate, ItemHandover, RoomId } from '@shared/world';
+import type { ItemHandover, RoomId } from '@shared/world';
 import type { SessionId } from '@shared/ipc';
 
 /** One gate in the window's own words. */
@@ -811,85 +811,6 @@ function Where({
         {name}
       </button>
     </>
-  );
-}
-
-/**
- * What every way into a place demands be carried — realm format unchanged,
- * derived (`WorldGraph.approachItems`).
- *
- * Reported 2026-09-15 (todo 02): the book said *golden egg — kill necromancer
- * in Amethyst Cave* and stopped, and the Amethyst Cave is behind a titanium
- * fork and a magical quartz rod, which the realm states and nothing read. One
- * row per frontier, outermost first, which is the order they are fetched in; a
- * frontier with two doors is drawn `or`, because either opens it.
- *
- * Ticked against the pack like the step's own items and by the same three-
- * valued rule, and each wanted item carries where *it* comes from — the rod is
- * `ask Morukai return`, which is this quest's own step 7. That is one level
- * down and no further: the errand after the errand after the errand is a
- * walkthrough written out of guesses.
- */
-function Approach({
-  gates,
-  carrying,
-  onName,
-  onGoTo
-}: {
-  gates: readonly ApproachGate[];
-  carrying: readonly number[] | null;
-  onName?: ((name: string, anchor: HTMLElement) => void) | null;
-  onGoTo?: ((room: string) => void) | null;
-}): React.JSX.Element | null {
-  if (gates.length === 0) return null;
-  return (
-    <ul className="quest-items quest-approach">
-      {gates.map((gate, index) => {
-        /*
-          Held at the **frontier**, because any one of its items opens it: the
-          row is ticked once, in the marker column the step's own items use, so
-          a list of errands reads the same whichever line it is on. Which of
-          two it is is the name's own tooltip.
-        */
-        const answers = gate.anyOf.map((item) => packHolds(carrying, item.id));
-        const open = answers.some((held) => held === true)
-          ? true
-          : answers.every((held) => held === false)
-            ? false
-            : null;
-        return (
-          <li
-            data-held={open === null ? undefined : open ? 'true' : 'false'}
-            key={gate.anyOf.map((item) => item.id).join(':') || index}
-          >
-            <span className="quest-verb" title={t('cards.quests.approach.title')}>
-              {t('cards.quests.approach.verb')}
-            </span>
-            {gate.anyOf.map((item, nth) => {
-              const has = packHolds(carrying, item.id);
-              const where = sourceNodes(item, null, onName, onGoTo);
-              return (
-                <Fragment key={item.id}>
-                  {nth > 0 && <span className="quiet-note">{t('cards.quests.approach.or')}</span>}
-                  <span
-                    title={
-                      has === null
-                        ? undefined
-                        : has
-                          ? t('cards.quests.bring.held')
-                          : t('cards.quests.bring.missing')
-                    }
-                  >
-                    <Name onName={onName}>{item.name}</Name>
-                  </span>
-                  {where.length > 0 && <span className="quiet-note">{joinDot(where)}</span>}
-                </Fragment>
-              );
-            })}
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 
@@ -2683,9 +2604,6 @@ function Step({
           </p>
         )}
 
-        {/* What the way *there* wants, where the realm walls the place in. */}
-        <Approach carrying={carrying} gates={step.approach ?? []} onGoTo={onGoTo} onName={onName} />
-
         {/*
           The walk the several items add up to — todo 01.
 
@@ -2763,19 +2681,6 @@ function Step({
                   {/* Silent where the realm does not place it: naming no
                       source is the honest answer, and a guess is worse. */}
                   {source.length > 0 && <span className="quiet-note">{joinDot(source)}</span>}
-                  {/* And what the way to where it is got wants carried, per
-                      place: two handovers of one item are two journeys. */}
-                  {(step.sources?.find((known) => known.id === item.id)?.from ?? []).map(
-                    (handover, nth) => (
-                      <Approach
-                        carrying={carrying}
-                        gates={handover.approach ?? []}
-                        key={`${handover.room ?? ''}:${nth}`}
-                        onGoTo={onGoTo}
-                        onName={onName}
-                      />
-                    )
-                  )}
                 </li>
               );
             })}

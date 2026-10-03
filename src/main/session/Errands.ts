@@ -7,7 +7,7 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
-import type { FightOdds, Plan, PlannedFetch } from '../../shared/navigation';
+import { fetchAct, type FightOdds, type Plan, type PlannedFetch } from '../../shared/navigation';
 import { fightOdds, Navigation } from './navigation';
 import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
@@ -1107,7 +1107,8 @@ export class Errands implements SessionModule {
    */
   async questPlan(block: number, marked: number | null): Promise<QuestPlan | null> {
     const world = this.world;
-    if (world === undefined) return null;
+    const odds = this.navigation.weighing();
+    if (world === undefined || odds === null) return null;
     const quest = world.quests().find((each) => each.steps.some((step) => step.block === block));
     if (quest === undefined) return null;
     // A later ask supersedes this chain: the answer would be thrown away by
@@ -1148,7 +1149,7 @@ export class Errands implements SessionModule {
       // The hunts are the errand's laps, so the plan reads them on the lap's
       // own traveller, carrying the same counter.
       const lap = { ...this.lapTraveller(state), counters: priced.counters };
-      const planned = world.planStep(quest, step, at, carrying, priced, supplies, lap);
+      const planned = world.planStep(quest, step, at, carrying, priced, odds, supplies, lap);
       // The odds of the step's roll off this character's own sheet, where
       // the sheet prints the stat the script names (todo 106).
       const chance =
@@ -1313,36 +1314,32 @@ export class Errands implements SessionModule {
   plannedSources({ step, moves }: PlannedFetch): ItemSources | null {
     const room = this.world?.byId(step.room);
     if (room === undefined) return null;
-    switch (step.kind) {
+    const act = fetchAct(step);
+    switch (act.kind) {
       case 'buy': {
         const counter = counterIn(room, (shop) => this.world?.shop(shop));
         return counter === undefined
           ? null
           : { ...NO_SOURCES, shops: [{ ...counter, detour: 0, moves }] };
       }
-      case 'ask':
-        return {
-          ...NO_SOURCES,
-          asks: [{ room: step.room, roomName: room.name, say: step.say, steps: moves }]
-        };
+      case 'say': {
+        const ask = { room: step.room, roomName: room.name, say: act.say, steps: moves };
+        const summons = act.summons === undefined ? {} : { summons: act.summons };
+        return { ...NO_SOURCES, asks: [{ ...ask, ...summons }] };
+      }
       case 'kill': {
-        const summon = step.summon;
-        if (summon !== undefined && 'say' in summon) {
-          const ask = { room: step.room, roomName: room.name, say: summon.say, steps: moves };
-          return { ...NO_SOURCES, asks: [{ ...ask, summons: step.monster }] };
-        }
-        const lair = { id: step.room, name: room.name, mob: step.monster, steps: moves };
+        const lair = { id: step.room, name: room.name, mob: act.dropper, steps: moves };
         // A dropper only ever summoned is placed nowhere itself (`Dropper.placed`).
-        return summon === undefined
-          ? { ...NO_SOURCES, droppers: [{ mob: step.monster, placed: 1 }], lairs: [lair] }
+        return act.summoner === undefined
+          ? { ...NO_SOURCES, droppers: [{ mob: act.dropper, placed: 1 }], lairs: [lair] }
           : {
               ...NO_SOURCES,
-              droppers: [{ mob: step.monster, placed: 0 }],
-              lairs: [{ ...lair, via: summon.by }]
+              droppers: [{ mob: act.dropper, placed: 0 }],
+              lairs: [{ ...lair, via: act.summoner }]
             };
       }
       default: {
-        const never: never = step;
+        const never: never = act;
         return never;
       }
     }

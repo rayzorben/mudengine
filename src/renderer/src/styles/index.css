@@ -3800,19 +3800,6 @@ button.quest-plan-back {
 }
 
 /*
- * What the way into a place demands be carried, under the line it is about.
- *
- * `.quest-items`' own list, indented: it is subordinate to the step's place or
- * to the item above it, and an errand list that sat flush with the thing it is
- * an errand *for* would read as a second demand of the step. One frontier per
- * row, so two doors into one place stay one row joined by `or` and two doors
- * in a row stay two.
- */
-.quest-approach {
-  padding-left: 12px;
-}
-
-/*
  * The same answer on a route's own hand-over row, where the names run inline:
  * a tick after the name rather than a column, because these sit in a flowing
  * row and a fixed column would open a gap in the middle of a sentence.
