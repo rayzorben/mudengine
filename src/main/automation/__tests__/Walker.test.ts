@@ -867,6 +867,26 @@ describe('stopping', () => {
     held.dispose();
   });
 
+  /* The review's case: a re-plan from another mover's room drops the old plan's step still queued. */
+  it('sends only the new plan step when another mover moved it while its step was queued', () => {
+    const held = new CommandQueue(config, { send: (command) => sent.push(command) });
+    const w = new Walker(config, held, { replan: () => ROUTE });
+    held.noteTyping(true);
+    w.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(50);
+    expect(held.queued((intent) => intent.command === 'e')).toBe(true);
+    w.onCharacter(
+      at(9, 9, { room: { ...EMPTY_CHARACTER.room, map: 9, number: 9, name: 'Elsewhere' } })
+    );
+    vi.advanceTimersByTime(1000);
+    held.noteTyping(false);
+    vi.advanceTimersByTime(1000);
+    expect(sent).toEqual(['e']);
+    expect(w.progress.status).toBe('walking');
+    w.dispose();
+    held.dispose();
+  });
+
   it('walks on when an abandoned line lapses, rather than racing the queue', () => {
     /*
      * The queue writes a line off after `queue.abandonedLineMs` and sends. The
@@ -3628,6 +3648,32 @@ describe('walking while hurt', () => {
     await vi.advanceTimersByTimeAsync(50);
     expect(sent).toEqual(['e']);
     expect(walk.progress.hold).toBeNull();
+    walk.dispose();
+  });
+
+  /*
+   * festus, 2026-10-03: `RestAway` stepped s out of a lair to rest while the
+   * route stood for health, and the route read the room as its own step gone
+   * wrong and stopped. Nothing of the route's was on the wire.
+   */
+  it('plans on from a room another mover took it to while it stood', () => {
+    const asked: string[] = [];
+    const walk = new Walker({ ...config, health: { ...config.health, restBelow: 0.5 } }, queue, {
+      notice: (m) => notices.push(m),
+      stateNow: () => hurt(0.3),
+      replan: (to) => {
+        asked.push(to);
+        return ROUTE;
+      }
+    });
+    walk.start(ROUTE, hurt(0.3));
+    expect(walk.progress.hold).toBe('health');
+    const moved = hurt(0.3);
+    moved.room = { ...moved.room, map: 9, number: 9, name: 'Elsewhere' };
+    walk.onCharacter(moved);
+    expect(asked).toEqual([ROUTE.steps.at(-1)?.to]);
+    expect(walk.progress.status).toBe('walking');
+    expect(sent).toEqual([]);
     walk.dispose();
   });
 

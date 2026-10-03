@@ -9,6 +9,7 @@
  * not how you escape*.
  */
 import { t } from '../app/i18n';
+import { tuning } from '../app/tuning';
 import { PVP_WINDOW_MS, playersHere, type HangUpWatch } from '../automation/HangUp';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
@@ -30,7 +31,7 @@ export interface SafetyParts {
   readonly hangUp: Pick<HangUpWatch, 'assess' | 'clean'>;
   readonly realmMenu: Pick<RealmMenu, 'penalty' | 'noteCommand'>;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
-  readonly travel: Pick<Travel, 'runFromPlayer'>;
+  readonly travel: Pick<Travel, 'runFromPlayer' | 'escapeUnanswered'>;
   readonly client: Pick<TelnetClient, 'connected'>;
   readonly publisher: Pick<Publisher, 'state' | 'noteSafety'>;
   /** The ground: a player's blows reach this ahead of the session's gate. */
@@ -63,6 +64,8 @@ export class Safety implements SessionModule {
   private readonly pvpSaid = new Map<string, number>();
   /** The last refusal reported, so it is said once rather than per status line. */
   private lastHangUpRefusal: string | null = null;
+  /** When a hang-up first waited on a run still on the wire; null while none waits. */
+  private waitedForRun: number | null = null;
   /**
    * The monster a `hangup` row names that the switch left standing in the
    * room, by key, so the refusal is said once while it stays (818).
@@ -92,6 +95,7 @@ export class Safety implements SessionModule {
     this.pvpSaid.clear();
     this.lastHangUpRefusal = null;
     this.stalkerSaid = null;
+    this.waitedForRun = null;
   }
 
   /**
@@ -202,6 +206,8 @@ export class Safety implements SessionModule {
    * that silently declines is worse than one that was never offered.
    */
   considerHangingUp(state: CharacterState): void {
+    // The wait belongs to the run on the wire, read before anything returns early.
+    if (!this.travel.escapeUnanswered) this.waitedForRun = null;
     const safety = this.automationConfig.safety.hangUp;
     if (!this.automationConfig.enabled) return;
     if (state.phase !== 'in-game' || !this.client.connected) return;
@@ -234,6 +240,7 @@ export class Safety implements SessionModule {
       : company || stalker === null
         ? t('session.safety.whyCompany')
         : t('session.safety.whyStalker', { mob: stalker });
+    if (this.waitForTheRun(why)) return;
     const assessment = this.hangUp.assess(state, Date.now());
     // The realm's own menu outranks every setting; see `RealmMenu`.
     const menu = this.realmMenu.penalty;
@@ -278,6 +285,30 @@ export class Safety implements SessionModule {
     // the walker, the queue and the roster are all torn down identically —
     // said as the *client's* doing, because nobody pressed anything.
     this.session.disconnect('client');
+  }
+
+  /**
+   * Whether the hang-up waits for a run on the wire to land, at most
+   * `hangUpAfterRunMs`: hung up in the room run from, the character logs back
+   * in beside what it ran from (festus, 2026-10-03: `nw` and the hang-up in
+   * one millisecond, back at 74 hp beside the zombie). Hung up where it lands.
+   */
+  private waitForTheRun(why: string): boolean {
+    if (!this.travel.escapeUnanswered) return false;
+    const now = Date.now();
+    if (this.waitedForRun === null) {
+      this.waitedForRun = now;
+      const refused = t('session.safety.hangUpAfterRun', { why });
+      this.session.notice(refused);
+      this.publisher.noteSafety({
+        at: now,
+        action: 'hang up',
+        because: why,
+        acted: false,
+        refused
+      });
+    }
+    return now - this.waitedForRun < tuning().session.hangUpAfterRunMs;
   }
 
   /**

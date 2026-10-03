@@ -82,7 +82,12 @@
  */
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
-import { joinedMembers, type CharacterState, type PartyMember } from '../../shared/character';
+import {
+  fightIsRunning,
+  joinedMembers,
+  type CharacterState,
+  type PartyMember
+} from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import {
   castsBare,
@@ -377,6 +382,8 @@ export class AutoHeal implements SessionModule {
 
     const { target, choice } = plan;
     const deficit = this.deficit(target.hp, target.hpMax) ?? 0;
+    if (this.tooLittleForTheFight(target.name === null ? 'self' : 'party', choice, deficit, state))
+      return false;
     if (target.name === null) {
       this.sayChoice('self', choice, deficit);
       this.cast(choice.chosen.spell.name, null, state, t('automation.heal.reasonSelf'));
@@ -468,8 +475,33 @@ export class AutoHeal implements SessionModule {
       );
       return configured;
     }
+    if (this.tooLittleForTheFight(aim, choice, deficit, state)) return '';
     this.sayChoice(aim, choice, deficit);
     return choice.chosen.spell.name;
+  }
+
+  /**
+   * In a fight a cast ends the attack, so a chosen heal that mends little of
+   * what is missing (`fightHealShare`) costs a round for nearly nothing: not
+   * cast, and said once.
+   */
+  private tooLittleForTheFight(
+    aim: HealAim,
+    choice: HealChoice,
+    deficit: number,
+    state: CharacterState
+  ): boolean {
+    const chosen = choice.chosen;
+    if (chosen === null || choice.why !== 'most' || !fightIsRunning(state)) return false;
+    if (chosen.expected >= tuning().spells.fightHealShare * deficit) return false;
+    this.sayOnce(aim, `in-fight:${chosen.spell.name}`, () =>
+      t('automation.heal.notInFight', {
+        spell: chosen.spell.name,
+        expected: Math.round(chosen.expected),
+        deficit
+      })
+    );
+    return true;
   }
 
   /** The derivation, said when it changes — the round spell's own rule. */

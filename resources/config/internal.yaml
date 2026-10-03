@@ -534,6 +534,10 @@ tuning:
     # How long a heal proposal stays worth sending.
     healExpiresMs: 3000
 
+    # In a fight, the share of the hit points missing a chosen heal must be
+    # expected to mend, or it is not cast: casting ends the attack.
+    fightHealShare: 0.25
+
     # Long enough for the next status line to say whether the heal worked.
     healCooldownMs: 6000
 
@@ -1323,6 +1327,10 @@ tuning:
 
     # How long a `safe-haven` retreat waits for the fight to end.
     retreatPatienceMs: 20000
+
+    # How long a hang-up waits for a run on the wire to land, so the character
+    # logs back in away from what it ran from.
+    hangUpAfterRunMs: 3000
 
     # How long a `safe-haven` retreat waits for the escape move to land.
     retreatSettleMs: 5000

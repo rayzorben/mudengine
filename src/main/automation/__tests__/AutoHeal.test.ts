@@ -339,6 +339,26 @@ describe('choosing the heal from the spellbook', () => {
     expect(sent).toEqual(['mahe']);
   });
 
+  /*
+   * festus, 2026-10-03: minor healing for 11 at 92 missing, cast four times
+   * against a zombie all-outing for 80, each cast ending the attack.
+   */
+  it('casts nothing in a fight that mends little of what is missing, and says so', () => {
+    const low = (inCombat: boolean): CharacterState => {
+      const at = bar(30);
+      return { ...at, inCombat, vitals: { ...at.vitals, mana: 3 } };
+    };
+    const healer = chooser(spells({ autoChooseHeal: true, heal: '', healBelow: 0.7 }));
+    healer.onCharacter(low(true));
+    drain();
+    expect(sent).toEqual([]);
+    expect(said).toHaveLength(1);
+    // The positive control: out of the fight the same cast is the best there is.
+    healer.onCharacter(low(false));
+    drain();
+    expect(sent).toEqual(['mihe']);
+  });
+
   /* The whole complaint: one configured spell is wrong at one end of the bar. */
   it('outranks the configured spell, which is what is cast with the switch off', () => {
     chooser(spells({ autoChooseHeal: true, heal: 'minor healing', healBelow: 0.7 })).onCharacter(
