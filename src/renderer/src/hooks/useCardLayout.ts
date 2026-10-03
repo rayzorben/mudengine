@@ -7,6 +7,7 @@ import { isStatsGraph, STATS_WINDOW_HOURS } from '@shared/tally';
 
 import {
   CARDS,
+  isCardId,
   LEAST_CARD,
   NO_CARD_SETTINGS,
   shippedSize,
@@ -20,7 +21,7 @@ import {
 import { withGridSizes, type RailMeasure } from '../lib/layoutMigration';
 import type { GridSize, GridSpot } from '../lib/railGrid';
 import { reordered } from '../lib/reorder';
-import { gridCell } from './useRailGrid';
+import { gridCell, gridGap } from './useRailGrid';
 
 const IDS: readonly CardId[] = CARDS.map((card) => card.id);
 
@@ -323,10 +324,6 @@ function readSpots(value: unknown, rail: readonly CardId[]): Partial<Record<Card
   return out;
 }
 
-function isCardId(value: unknown): value is CardId {
-  return typeof value === 'string' && IDS.includes(value as CardId);
-}
-
 function readFloat(value: unknown): FloatState | null {
   if (typeof value !== 'object' || value === null) return null;
   const raw = value as Record<string, unknown>;
@@ -534,11 +531,10 @@ function parse(stored: string | null, measure: () => RailMeasure): Parsed | null
  * when there is one, else the window it fills.
  */
 function measureRail(): RailMeasure {
-  const root = getComputedStyle(document.documentElement);
   return {
     rail: document.querySelector<HTMLElement>('.rail')?.clientHeight ?? window.innerHeight,
     cell: gridCell(document.documentElement),
-    gap: parseFloat(root.getPropertyValue('--gap')) || 0
+    gap: gridGap(document.documentElement)
   };
 }
 
@@ -641,6 +637,13 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
       },
       placeOnRail: (id, box, drawn) => {
         const next = placed(layout, id, box, drawn);
+        if (next !== layout) store(next);
+      },
+      placeAll: (boxes) => {
+        let next = layout;
+        for (const [id, box] of boxes) {
+          if (layout.rail.includes(id)) next = placed(next, id, box, boxes);
+        }
         if (next !== layout) store(next);
       },
       laneOf: (id) =>

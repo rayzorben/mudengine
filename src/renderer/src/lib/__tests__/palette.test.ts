@@ -70,6 +70,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
       rolled: [],
       reset: vi.fn()
     },
+    autoLayout: { run: vi.fn(), undo: vi.fn(), canUndo: false },
     widths: { columns: null, tabs: null, above: null, below: null, reset: vi.fn() },
     openSettings: vi.fn(),
     manageServers: vi.fn(),
@@ -157,6 +158,16 @@ describe('the palette commands', () => {
     find('loop:north', { api, say, loops: [{ name: 'north', stops: 4 }] }).run();
     expect(startLoop).toHaveBeenCalledWith(HERO, 'north');
     await vi.waitFor(() => expect(say).toHaveBeenCalledWith(HERO, 'nothing to loop'));
+  });
+
+  it('always offers auto layout, and its undo only while there is a layout kept', () => {
+    const autoLayout = { run: vi.fn(), undo: vi.fn(), canUndo: false };
+    find('cards:auto-layout', { autoLayout }).run();
+    expect(autoLayout.run).toHaveBeenCalledOnce();
+    expect(ids({ autoLayout })).not.toContain('cards:auto-layout-undo');
+    const kept = { ...autoLayout, canUndo: true };
+    find('cards:auto-layout-undo', { autoLayout: kept }).run();
+    expect(autoLayout.undo).toHaveBeenCalledOnce();
   });
 
   it('shortens the options path to its two ends', () => {

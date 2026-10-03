@@ -831,6 +831,9 @@ palette:
     realm: In the realm
     view: View
   layout:
+    autoLayoutHint: each card sized to what it shows, kept in view where they fit
+    autoLayoutLabel: Auto layout the card rail
+    autoLayoutUndoHint: the card rail as it was before auto layout
     cardAlwaysHint: otherwise it leaves the rail while it has nothing to show
     cardAlwaysLabel: '{cardName} card: always show'
     cardHideEmptyHint: it stays on the rail even when it has nothing to show
@@ -1795,6 +1798,11 @@ cards:
     none: No balance recorded. Send 'bank' to check it.
     title: Banks
     total: '{copper} copper coins (cc) in all'
+  autoLayout:
+    label: Auto layout
+    tooltip: Size each card to what it shows, and keep them in view where they fit
+    undo: Undo auto layout
+    undoTooltip: Put the rail back as it was before auto layout
   automation:
     badge:
       off: off
