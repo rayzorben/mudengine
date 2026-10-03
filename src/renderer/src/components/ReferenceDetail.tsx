@@ -1,6 +1,7 @@
 import { SupplyControl, type SupplyList } from './SupplyControls';
 import { Fragment, useState } from 'react';
 import EntityNumber from './EntityNumber';
+import MobFactRow from './MobFactRow';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
@@ -428,18 +429,8 @@ function MobDetail({
           </dd>
         </>
       )}
-      {mob.magicResist !== undefined && (
-        <>
-          <dt>{t('cards.reference.mob.magicResistLabel')}</dt>
-          <dd>{mob.magicResist}</dd>
-        </>
-      )}
-      {mob.experience !== undefined && (
-        <>
-          <dt>{t('cards.reference.mob.experienceLabel')}</dt>
-          <dd>{mob.experience.toLocaleString()}</dd>
-        </>
-      )}
+      <MobFactRow fact="magicResist" mob={mob} />
+      <MobFactRow fact="experience" mob={mob} />
       {mob.regen !== undefined && (
         <>
           <dt>{t('cards.reference.mob.regenLabel')}</dt>
@@ -466,12 +457,7 @@ function MobDetail({
           </dd>
         </>
       )}
-      {mob.undead === true && (
-        <>
-          <dt>{t('cards.reference.mob.undeadLabel')}</dt>
-          <dd>{t('cards.reference.mob.undeadYes')}</dd>
-        </>
-      )}
+      <MobFactRow fact="undead" mob={mob} />
       {/*
         What it resists and ignores — format 14, and the rows that decide
         whether a spell is worth casting at it. Above the drop table, which is

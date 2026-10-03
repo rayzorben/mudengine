@@ -172,12 +172,15 @@ function ReferenceCard({
                   role="option"
                 >
                   <span className="what">{entry.name}</span>
-                  <span className="kind">{entryWord(entry)}</span>
+                  {/* Small, a match is its name and its figure (`lib/cardSize.ts`). */}
+                  <span className="kind from-medium">{entryWord(entry)}</span>
                   {/* Beside the kind rather than at the end: the realm's
                       number says *which row this is* and belongs with the
                       word that says what kind of row it is, while the figure
                       at the end is the one thing the rows are compared by. */}
-                  <EntityNumber of={entryNumber(entry)} />
+                  <span className="from-medium">
+                    <EntityNumber of={entryNumber(entry)} />
+                  </span>
                   {/* One figure per row — the one that says how big it is. */}
                   {figure !== null && <span className="fig">{figure}</span>}
                 </li>

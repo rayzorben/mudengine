@@ -958,7 +958,7 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
     { odds: undefined, label: t('cards.map.legendLair') }
   ];
   return (
-    <div className="map-legend">
+    <div className="map-legend from-medium">
       <span data-kind="here">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
           <circle className="map-you" cx="0" cy="0" r="5.2" />

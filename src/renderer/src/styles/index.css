@@ -1100,6 +1100,19 @@ button.quest-banner-dismiss {
 }
 
 /*
+ * What a card draws at each size (`lib/cardSize.ts`, todo 06). Content marks
+ * the smallest size it is drawn at, and the card hides it below that; a
+ * card with no measured size draws its medium design. `only-small` is the
+ * glance drawn in place of what a small card hides. A face that would build
+ * something costly and hide it asks `useCardSize()` instead.
+ */
+.card[data-card-size='small'] .from-medium,
+.card:not([data-card-size='large']) .from-large,
+.card:not([data-card-size='small']) .only-small {
+  display: none;
+}
+
+/*
  * A card states one thing; its rows are label/value pairs.
  *
  * **One `.readout` per card**, and the rule is load-bearing rather than tidy: a
@@ -1281,6 +1294,12 @@ button.quest-banner-dismiss {
   max-height: 9.5em;
   min-width: 0;
   overflow-y: auto;
+}
+
+/* A large card shows twice as much of it, and it still scrolls inside itself
+   so a long lap never pushes the transport under the fold. */
+.card[data-card-size='large'] .progression-scroller {
+  max-height: 19em;
 }
 
 /*
@@ -2125,6 +2144,11 @@ kbd {
   line-height: 1.45;
   margin: 0 0 8px;
   overflow: hidden;
+}
+
+/* A large card has the room for the whole description. */
+.card[data-card-size='large'] .room-description {
+  -webkit-line-clamp: unset;
 }
 
 .room-name {
@@ -6355,6 +6379,20 @@ button.quest-plan-back {
   font-size: var(--font-micro);
 }
 
+/* What a small Vitals card keeps of its sheet: the afflictions, under the bars. */
+.vitals-afflicted {
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: var(--font-micro);
+}
+
+/* A small Banks card is one figure, drawn as the figure a glance reads. */
+.banks-total {
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 /* The highlighted option, wherever a filtered list is shown. */
 .route-matches li[data-active='true'] > button {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
@@ -6458,21 +6496,27 @@ button.quest-plan-back {
  */
 .conversation-log .line {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: var(--talk-stamp-track,) auto auto minmax(0, 1fr);
   gap: 3px 6px;
   align-items: baseline;
 }
 
-.conversation-log[data-stamped] .line {
-  grid-template-columns: auto auto auto minmax(0, 1fr);
+/* The stamp's column, where one is drawn: empty, the templates have none. */
+.conversation-log[data-stamped] {
+  --talk-stamp-track: auto;
+}
+
+/* A small card gives the stamp's width to what was said (`lib/cardSize.ts`). */
+.card[data-card-size='small'] .conversation-log {
+  --talk-stamp-track: ;
+}
+
+.card[data-card-size='small'] .conversation-log .stamp {
+  display: none;
 }
 
 .conversation-log[data-layout='original'] .line {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.conversation-log[data-layout='original'][data-stamped] .line {
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: var(--talk-stamp-track,) minmax(0, 1fr);
 }
 
 /*
@@ -6497,13 +6541,9 @@ button.quest-plan-back {
  */
 .conversation-log[data-layout='condensed-aligned'] {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: var(--talk-stamp-track,) auto auto minmax(0, 1fr);
   gap: 3px 6px;
   align-content: start;
-}
-
-.conversation-log[data-layout='condensed-aligned'][data-stamped] {
-  grid-template-columns: auto auto auto minmax(0, 1fr);
 }
 
 .conversation-log[data-layout='condensed-aligned'] .line {

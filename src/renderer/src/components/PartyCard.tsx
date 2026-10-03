@@ -219,7 +219,7 @@ function PartyCard({
           if (inRank.length === 0) return null;
           return (
             <section className="party-rank-group" data-rank={key} key={key}>
-              <h4 className="party-rank-head">{label}</h4>
+              <h4 className="party-rank-head from-medium">{label}</h4>
               <ul className="party-list">
                 {inRank.map((member) => (
                   <li
@@ -245,7 +245,7 @@ function PartyCard({
                           member.name
                         )}
                       </span>
-                      <span className="party-class">{member.className ?? ''}</span>
+                      <span className="party-class from-medium">{member.className ?? ''}</span>
                       {/*
                         A condition is tonal, per §9 — and it is the thing on
                         this row that decides whether a member will answer a
@@ -260,7 +260,7 @@ function PartyCard({
                           sighting is fresh: the fact `assistLeader` acts on,
                           shown where the person deciding to help can see it. */}
                       {fightingWord(character, member.name) !== null && (
-                        <span className="chip quiet party-fighting">
+                        <span className="chip quiet party-fighting from-medium">
                           {fightingWord(character, member.name)}
                         </span>
                       )}
@@ -274,7 +274,7 @@ function PartyCard({
                         !isHead(member) && (
                           <button
                             aria-label={t('cards.party.followAria', { name: member.name })}
-                            className="quiet party-follow"
+                            className="quiet party-follow from-medium"
                             onClick={() => ask(`follow ${member.name}`)}
                             onMouseDown={keepFocus}
                             type="button"

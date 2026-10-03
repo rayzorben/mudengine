@@ -181,6 +181,8 @@ function GangCard({
     {
       id: 'level',
       label: t('cards.gang.column.level'),
+      // Small, a member is a name and whether they are on (`lib/cardSize.ts`).
+      from: 'medium',
       numeric: true,
       value: (row) => row.level,
       cell: (row) => (row.level === null ? <span className="quiet-note">—</span> : row.level)
@@ -188,12 +190,14 @@ function GangCard({
     {
       id: 'race',
       label: t('cards.gang.column.race'),
+      from: 'medium',
       value: (row) => row.race,
       cell: (row) => row.race ?? <span className="quiet-note">—</span>
     },
     {
       id: 'class',
       label: t('cards.gang.column.class'),
+      from: 'medium',
       value: (row) => row.className,
       cell: (row) => row.className ?? <span className="quiet-note">—</span>
     },
@@ -215,7 +219,7 @@ function GangCard({
 
   const membersFace = (
     <>
-      <dl className="readout gang-head">
+      <dl className="readout gang-head from-medium">
         <dt>{t('cards.gang.title')}</dt>
         <dd>{gang === undefined ? <span className="quiet-note">—</span> : (gang ?? '—')}</dd>
       </dl>
@@ -238,7 +242,7 @@ function GangCard({
         pressed this is who is *online* in the gang; with it, the membership.
       */}
       {gang === undefined || gang === null ? null : (
-        <p className="settings-note">
+        <p className="settings-note from-medium">
           {listed
             ? t('cards.gang.fromListing', { online, total: members.length })
             : t('cards.gang.fromRoster')}

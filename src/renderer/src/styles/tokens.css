@@ -269,6 +269,17 @@
   /* A card column on the rail: under this the map's legend and an inventory
      row with its slot stop fitting. */
   --rail-column-min: 260px;
+  /*
+   * The shorter side of a card's box from which it draws its medium and its
+   * large design (`lib/cardSize.ts`, todo 06). Medium from 160px: every
+   * playing card ships on the rail at 176–380px tall and at least
+   * `--rail-column-min` wide, so the rail as shipped is medium or larger, and
+   * the heading plus two meters is all a box under 160px holds. Large from
+   * 300px, the player's own 300x300; the Self and Map cards ship that tall.
+   * `npm run smoke` reads every rail card's box against these.
+   */
+  --card-size-medium: 160px;
+  --card-size-large: 300px;
   /* Wide enough for a name, health in numbers and a room name. See §3.8. */
   --tab-rail-w: 200px;
 }
