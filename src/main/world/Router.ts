@@ -2007,9 +2007,9 @@ export class Router {
 
   /**
    * What reaching the nearest room where this item can be had costs, in the
-   * router's units: a counter that stocks it, or a room the realm places a
-   * monster that drops it. Null where the realm names none this traveller can
-   * reach — which is not something to send anybody for.
+   * router's units: any source the one table lists (`navigation/sources.ts`).
+   * Null where the realm names none this traveller can reach, which is not
+   * something to send anybody for.
    */
   private fetchPrice(item: number, from: RoomId, traveller: Traveller): number | null {
     const rooms = this.index.sourceRooms(item);

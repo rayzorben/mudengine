@@ -1677,6 +1677,21 @@ describe('the shipped realm data', () => {
    * `hunting.clusterRadius` of it, walked out from the first.
    */
   /*
+   * A thing only a death hands over is a place to hunt too: Eternal Fire is the
+   * efreeti's, on dying in 6/1243, and nothing drops it. The router and the
+   * errand read the same table (`navigation/sources.ts`), so neither calls it
+   * unobtainable while the other walks to it.
+   */
+  it.runIf(has)('hunts where a death hands the item over', () => {
+    const festus: Traveller = { level: 45, packKnown: true, keys: [] };
+    const ring = { rooms: 8, radius: tuning().hunting.clusterRadius };
+    const fire = realm!.itemIdNamed('Eternal Fire')!;
+    const found = realm!.droppingPlaces({ id: fire }, roomId(6, 1243), festus, ring);
+    expect(found.droppers).toEqual([]);
+    expect(found.lairs).toContainEqual(expect.objectContaining({ id: '6/1243', mob: 'efreeti' }));
+  });
+
+  /*
    * Todo 806, the fork's three items on the way into the Dark-Elf Castle, each
    * of which read as having no source: a dropper only ever summoned, found
    * where its summoner lives; a handover; and a room script that summons the
