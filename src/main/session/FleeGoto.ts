@@ -46,7 +46,7 @@ export interface FleeGotoParts {
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly travel: Pick<
     Travel,
-    'escapeUnanswered' | 'teleportSent' | 'teleportRefused' | 'teleportLanded'
+    'escapeUnanswered' | 'teleportSent' | 'teleportRefused' | 'teleportLanded' | 'stayingReason'
   >;
   readonly publisher: Pick<Publisher, 'noteSafety'>;
   readonly grounded: Pick<Grounded, 'down'>;
@@ -148,13 +148,16 @@ export class FleeGoto implements SessionModule {
 
     const why = t('session.safety.whyHealth', { percent: percentText(fraction) });
     const command = setting.command;
-    if (command.length === 0 || command === this.refused) {
+    // A teleport is a run: not for a follower, nor while nothing takes the character anywhere.
+    const staying = this.travel.stayingReason(state);
+    if (staying !== null || command.length === 0 || command === this.refused) {
       if (this.saidThisFight) return;
       this.saidThisFight = true;
       const refused =
-        command.length === 0
+        staying ??
+        (command.length === 0
           ? t('session.safety.teleportUnstated')
-          : t('session.safety.teleportRefusedBefore', { command });
+          : t('session.safety.teleportRefusedBefore', { command }));
       this.session.notice(t('session.safety.teleportNot', { why, refused }));
       this.decided(why, false, refused);
       return;

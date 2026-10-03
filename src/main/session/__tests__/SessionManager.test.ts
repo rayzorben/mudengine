@@ -3412,13 +3412,14 @@ describe('which way out', () => {
   /*
    * The realm's teleport below the retreat (todo 813). The wire it answers:
    * `sys go 1 297` mid-fight lands in `Bank of Godfrey` ~100ms later
-   * (`logs/2026-09-04_12-28-42_main.mudcap.jsonl`). Nothing is taking this
-   * character anywhere, so the retreat refuses and the tier below it goes.
+   * (`logs/2026-09-04_12-28-42_main.mudcap.jsonl`). The character is on a
+   * route, since nothing runs or teleports otherwise (the user, 2026-10-03),
+   * and the walked retreat is off, so the tier below it goes.
    */
   const teleporting = () => ({
-    ...escaping({ cooldownMs: 1 }),
+    ...escaping({ cooldownMs: 1, enabled: false }),
     safety: {
-      ...escaping({ cooldownMs: 1 }).safety,
+      ...escaping({ cooldownMs: 1, enabled: false }).safety,
       fleeGoto: { enabled: true, belowHealth: 0.2, command: 'sys go 1 297' }
     }
   });
@@ -3426,6 +3427,7 @@ describe('which way out', () => {
   it('teleports below its floor when the retreat will not, and reads the landing', async () => {
     const { sink, notices, traces } = collect();
     manager = build(sink, { world: haven(), automation: teleporting() });
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -3434,11 +3436,6 @@ describe('which way out', () => {
     await until(() => manager!.character.room.number === 3);
     socket.write('*Combat Engaged*\r\n');
     await until(() => manager!.character.inCombat);
-
-    // Below the retreat's floor, above the teleport's: the retreat's word only.
-    socket.write('[HP=25]:\r\n');
-    await until(() => notices.some(composes(NOT_RUNNING)));
-    expect(seen()).not.toMatch(/sys go/);
 
     socket.write('[HP=15]:\r\n');
     await until(() => /sys go 1 297\r\n/.test(seen()));
@@ -3456,6 +3453,7 @@ describe('which way out', () => {
   it('teleports from nobody lying on the ground', async () => {
     const { sink, notices } = collect();
     manager = build(sink, { world: haven(), automation: teleporting() });
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -3931,6 +3929,7 @@ describe('the per-line order in act()', () => {
         spells: mending
       })
     });
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -3991,6 +3990,8 @@ describe('the per-line order in act()', () => {
     );
     const { sink } = collect();
     manager = build(sink, { world, automation: automation({ health: resting(0.5) }) });
+    // Stepping out is moving, which only a character the client takes somewhere does.
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -4933,6 +4934,7 @@ describe('a player opening on this character', () => {
   it('runs when told to, whatever the retreat threshold says', async () => {
     const { sink, notices } = collect();
     manager = build(sink, { automation: pvpConfig({ action: 'retreat' }) });
+    underWay(manager);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const received: Buffer[] = [];
@@ -4941,6 +4943,20 @@ describe('a player opening on this character', () => {
     await attacked(socket);
     await until(() => Buffer.concat(received).toString('latin1').includes('w\r\n'));
     expect(notices.some(composes(RUNNING, { direction: 'w' }))).toBe(true);
+  });
+
+  /* The user, 2026-10-03: no run of any sort while nothing takes the character anywhere. */
+  it('stays put when a player opens on a character going nowhere, and says so', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: pvpConfig({ action: 'retreat' }) });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: Buffer[] = [];
+    socket.on('data', (chunk) => received.push(chunk));
+
+    await attacked(socket);
+    await until(() => notices.some(composes('session.safety.escapeStaying')));
+    expect(Buffer.concat(received).toString('latin1')).not.toMatch(/\bw\r\n/);
   });
 
   /*

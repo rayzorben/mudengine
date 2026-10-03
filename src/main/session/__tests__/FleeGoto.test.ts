@@ -55,7 +55,11 @@ function rig(config: AutomationConfig = settings()) {
     escapeUnanswered: false,
     teleportSent: vi.fn(),
     teleportRefused: vi.fn(),
-    teleportLanded: vi.fn()
+    teleportLanded: vi.fn(),
+    staying: null as string | null,
+    stayingReason(): string | null {
+      return this.staying;
+    }
   };
   const noteSafety = vi.fn();
   const grounded = { down: false };
@@ -109,6 +113,22 @@ describe('FleeGoto', () => {
     // Once: the next status line does not send it again while it is unanswered.
     flee.consider(tracker.current);
     expect(sent).toHaveLength(1);
+  });
+
+  /* The user, 2026-10-03: no run of any sort while nothing takes the character anywhere. */
+  it('sends nothing for a follower or a character going nowhere, and says why once', () => {
+    const { flee, tracker, sent, travel, notice } = rig();
+    travel.staying = t('session.safety.escapeFollowingReason', { leader: 'Headcase' });
+    flee.consider(tracker.current);
+    flee.consider(tracker.current);
+    expect(sent).toEqual([]);
+    expect(notice).toHaveBeenCalledTimes(1);
+    expect(notice).toHaveBeenCalledWith(
+      t('session.safety.teleportNot', {
+        why: t('session.safety.whyHealth', { percent: '15%' }),
+        refused: travel.staying
+      })
+    );
   });
 
   it('sends nothing above its floor, nor on an unknown figure, nor out of a fight', () => {

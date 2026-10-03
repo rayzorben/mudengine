@@ -1133,8 +1133,7 @@ export class SessionManager {
         walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking,
-        busy: () =>
-          this.travel.isRetreating() || this.travel.retreatArmed || this.travel.escapeUnanswered
+        busy: () => this.travel.escaping
       },
       reports
     );
@@ -1234,8 +1233,7 @@ export class SessionManager {
         },
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking,
-        busy: () =>
-          this.travel.isRetreating() || this.travel.retreatArmed || this.travel.escapeUnanswered,
+        busy: () => this.travel.escaping,
         looping: () => this.loops.progress.status === 'running',
         hold: () => this.loops.noteErrand(),
         release: () => this.loops.noteErrandOver(),
@@ -1274,8 +1272,8 @@ export class SessionManager {
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walking: () => this.walker.walking && this.walker.holding === null,
         looping: () => this.loops.progress.status === 'running',
-        busy: () =>
-          this.travel.isRetreating() || this.travel.retreatArmed || this.travel.escapeUnanswered
+        stayingReason: () => this.travel.stayingReason(this.tracker.current),
+        busy: () => this.travel.escaping
       },
       reports
     );
@@ -3251,9 +3249,7 @@ export class SessionManager {
    */
   private errandHeld(): boolean {
     return (
-      this.travel.isRetreating() ||
-      this.travel.retreatArmed ||
-      this.travel.escapeUnanswered ||
+      this.travel.escaping ||
       this.supplies.current !== null ||
       this.trainLevel.busy ||
       this.outgrown.busy ||

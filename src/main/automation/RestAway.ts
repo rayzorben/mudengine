@@ -36,6 +36,11 @@ export interface RestAwayPlanner {
   looping(): boolean;
   /** An escape in flight or awaiting its answer. */
   busy(): boolean;
+  /**
+   * Why the client moves the character nowhere on its own, or null: following
+   * a leader, or nothing taking it anywhere (`Travel.stayingReason`).
+   */
+  stayingReason(): string | null;
 }
 
 export interface RestAwayEvents {
@@ -67,6 +72,8 @@ export class RestAway implements SessionModule {
   private saidIn: RoomId | null = null;
   /** A lair with no safe neighbour, where resting was allowed and said once. */
   private allowedIn: RoomId | null = null;
+  /** The lair and reason a rest here was kept to, said once for each. */
+  private stayingSaid: string | null = null;
 
   constructor(
     private settings: RestAwaySettings,
@@ -98,6 +105,7 @@ export class RestAway implements SessionModule {
     this.tried.clear();
     this.saidIn = null;
     this.allowedIn = null;
+    this.stayingSaid = null;
   }
 
   /**
@@ -130,6 +138,17 @@ export class RestAway implements SessionModule {
     // `Recovery` refuses these itself; nothing steps out of a fight either.
     if (fightIsHere(state) || countThreats(state, this.mobRules) > 0) return 'took-over';
     if (this.walkedOn()) return 'took-over';
+    /*
+     * Stepping out is moving, and only a character the client is taking
+     * somewhere moves; a follower's leader decides (the user, 2026-10-03:
+     * festus joined a party with automation off, turned it on, and stepped
+     * out of the room to rest, leaving the party).
+     */
+    const staying = this.planner.stayingReason();
+    if (staying !== null) {
+      this.sayStaying(here, clock, staying);
+      return 'rest-here';
+    }
 
     const tried = this.tried.get(here) ?? new Set<Direction>();
     const next = this.planner.neighbours(here).find((way) => !tried.has(way.direction));
@@ -190,8 +209,8 @@ export class RestAway implements SessionModule {
     if (peeked !== null && peeked.at >= since && peeked.direction === direction) {
       const present = peeked.room.occupants.map((who) => who.name);
       if (present.length === 0) {
-        // A walk that began while the room was looked into has the character.
-        if (this.walkedOn()) {
+        // A walk that began during the look has the character, or nothing takes it anywhere now.
+        if (this.walkedOn() || this.planner.stayingReason() !== null) {
           this.phase = { kind: 'idle' };
           return 'took-over';
         }
@@ -262,6 +281,7 @@ export class RestAway implements SessionModule {
     if (this.planner.looping() || this.planner.walking() || this.planner.moveInFlight()) {
       return 'not-mine';
     }
+    if (this.planner.stayingReason() !== null) return 'not-mine';
     if (here === null || fightIsHere(state)) return 'not-mine';
     this.events.notice?.(t('automation.restAway.steppingBack', { direction: back }));
     this.queue.enqueue({
@@ -272,6 +292,21 @@ export class RestAway implements SessionModule {
       reason: t('automation.restAway.reasonBack')
     });
     return 'not-mine';
+  }
+
+  private sayStaying(here: RoomId, clock: number, why: string): void {
+    const key = `${here}|${why}`;
+    if (this.stayingSaid === key) return;
+    this.stayingSaid = key;
+    const seconds = Math.round(clock);
+    this.events.notice?.(t('automation.restAway.staying', { seconds, why }));
+    this.events.decided?.({
+      at: this.now(),
+      action: ACTION,
+      because: t('automation.restAway.becauseClock', { seconds }),
+      acted: false,
+      refused: why
+    });
   }
 
   private markTried(room: RoomId, direction: Direction): void {

@@ -193,6 +193,16 @@ export interface TravelSession {
   switchAutomation(name: AutomationSwitch, on: boolean): boolean;
 }
 
+/** Why the client moves a character nowhere on its own: a leader decides, or nothing takes it anywhere. */
+type InPlace = { kind: 'following'; leader: string } | { kind: 'stopped' };
+
+/** The reason words for staying put, one spelling for the escape's trace and every other reader. */
+function reasonFor(held: InPlace): string {
+  return held.kind === 'following'
+    ? t('session.safety.escapeFollowingReason', { leader: held.leader })
+    : t('session.safety.escapeStayingReason');
+}
+
 export class Travel implements SessionModule {
   private readonly tracker: TravelParts['tracker'];
   private readonly world: TravelParts['world'];
@@ -588,18 +598,26 @@ export class Travel implements SessionModule {
     return this.retreat !== null;
   }
 
+  /** An escape sent, armed or unanswered: the character is the escape's, not an errand's. */
+  get escaping(): boolean {
+    return this.isRetreating() || this.retreatArmed || this.escapeUnanswered;
+  }
+
   /**
    * A player opened on this character and `safety.pvp.action` says run: the
    * pvp block's own trigger, whatever `retreat.enabled` says, under the same
-   * cooldown so a blow a round is one move. See `Safety.onPvpBlow`.
+   * cooldown so a blow a round is one move, and only for a character the
+   * client is taking somewhere (`staysToFight`). See `Safety.onPvpBlow`.
    */
   runFromPlayer(state: CharacterState, attacker: string): void {
     const now = Date.now();
     if (now - this.lastAskedToEscape < this.automationConfig.safety.retreat.cooldownMs) return;
+    const why = t('session.safety.whyPvp', { attacker });
+    if (this.staysToFight(state, why, true, now)) return;
     this.lastAskedToEscape = now;
     // The shared escape, so the exit ladder and the configured strategy are
     // honoured here exactly as at the health floor.
-    this.escape(state, t('session.safety.whyPvp', { attacker }), now);
+    this.escape(state, why, now);
   }
 
   /**
@@ -978,45 +996,61 @@ export class Travel implements SessionModule {
         : outnumbered || dread === null
           ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
           : t('session.safety.whyDreaded', { mob: dread });
-    /*
-     * **A follower leaves running to its leader**: a member that walks out
-     * alone leaves the party in the fight and is no longer beside it when the
-     * leader moves on, so whoever `party.following` names decides, lap or no
-     * lap. Checked before `goingSomewhere()` because a follower may have a
-     * lap of its own running.
-     */
-    if (state.party.following !== null) {
-      const leader = state.party.following;
-      this.stayPut(
-        FOLLOWING,
-        why,
-        fighting,
-        now,
-        (then) => t('session.safety.escapeFollowing', { why, leader, then }),
-        t('session.safety.escapeFollowingReason', { leader })
-      );
-      return;
-    }
-    /*
-     * **Only a character the client is taking somewhere runs** (todo 03): a
-     * route that has arrived is where the player wanted to be. Said once a
-     * fight and traced; the PvP retreat is its own switch and does not come
-     * through here. `mudengine-automation` › *Running away is a direction*.
-     */
-    if (!this.goingSomewhere()) {
-      this.stayPut(
-        STAYING,
-        why,
-        fighting,
-        now,
-        (then) => t('session.safety.escapeStaying', { why, then }),
-        t('session.safety.escapeStayingReason')
-      );
-      return;
-    }
+    if (this.staysToFight(state, why, fighting, now)) return;
 
     this.lastAskedToEscape = now;
     this.escape(state, why, now, undefined, hurt);
+  }
+
+  /**
+   * Whether this character stays where it is rather than run, said once a
+   * fight and traced. Every run asks it: for health, mana, company, an
+   * `escape` row and a player's blow alike (the user, 2026-10-03: no running
+   * of any sort while movement is stopped).
+   */
+  private staysToFight(
+    state: CharacterState,
+    why: string,
+    fighting: boolean,
+    now: number
+  ): boolean {
+    const held = this.inPlace(state);
+    if (held === null) return false;
+    const reason = reasonFor(held);
+    if (held.kind === 'following') {
+      const { leader } = held;
+      const notice = (then: string) => t('session.safety.escapeFollowing', { why, leader, then });
+      this.stayPut(FOLLOWING, why, fighting, now, notice, reason);
+    } else {
+      const notice = (then: string) => t('session.safety.escapeStaying', { why, then });
+      this.stayPut(STAYING, why, fighting, now, notice, reason);
+    }
+    return true;
+  }
+
+  /**
+   * Why the client moves this character nowhere on its own, or null where it
+   * may: no run, teleport or step out to rest (`RestAway`, `FleeGoto`).
+   */
+  stayingReason(state: CharacterState): string | null {
+    const held = this.inPlace(state);
+    return held === null ? null : reasonFor(held);
+  }
+
+  private inPlace(state: CharacterState): InPlace | null {
+    /*
+     * **A follower leaves moving to its leader**: a member that walks out
+     * alone leaves the party and is no longer beside it when the leader moves
+     * on, so whoever `party.following` names decides, lap or no lap. Checked
+     * before `goingSomewhere()` because a follower may have a lap of its own.
+     */
+    if (state.party.following !== null) return { kind: 'following', leader: state.party.following };
+    /*
+     * **Only a character the client is taking somewhere moves** (todo 03): a
+     * route that has arrived is where the player wanted to be.
+     * `mudengine-automation` › *Running away is a direction*.
+     */
+    return this.goingSomewhere() ? null : { kind: 'stopped' };
   }
 
   /** The monsters swinging at the character as it runs for its health (`src/shared/fled.ts`). */
