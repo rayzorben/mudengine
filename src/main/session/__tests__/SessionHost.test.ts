@@ -58,6 +58,10 @@ let notices: Notice[] = [];
 let dialledRealms: ConnectionTarget[] = [];
 /** Whether these sessions want a lost connection dialled back. See `Reconnect`. */
 let autoReconnect = false;
+/** Everything a session's backscroll holds. */
+const backscrollOf = async (id: SessionId): Promise<string> =>
+  (await host!.ensure(id).backscroll.page(Number.POSITIVE_INFINITY)).text;
+
 /** Where each session's backscroll is written, fresh per test. */
 let backscrollDir = '';
 
@@ -92,7 +96,7 @@ beforeEach(async () => {
     memoryFor: () => undefined,
     fightsFor: () => NO_FIGHTS,
     talkFor: () => NO_TALK,
-    backscrollFor: (id) => path.join(backscrollDir, `${id}.log`),
+    backscrollFor: (id) => path.join(backscrollDir, id),
     playersFor: () => NO_REALM_PLAYERS,
     destinationsFor: () => ({ remember: () => {}, matching: () => [] }),
     playersAt: (target) => {
@@ -208,16 +212,17 @@ describe('SessionHost', () => {
    * first attach replays it ahead of anything new.
    */
   it('opens a session on the backscroll the last launch wrote, and writes on from it', async () => {
-    const file = path.join(backscrollDir, 'thorn.log');
+    const file = path.join(backscrollDir, 'thorn', '0001.log');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, 'yesterday\r\n', 'utf8');
-    expect(host!.ensure('thorn').backscroll.text).toBe('yesterday\r\n');
+    expect(await backscrollOf('thorn')).toBe('yesterday\r\n');
 
     await host!.connect('thorn', target());
     await until(() => accepted.length === 1);
     accepted[0]!.write('today\r\n');
     await until(() => textFor('thorn').includes('today'));
-    expect(host!.ensure('thorn').backscroll.text.startsWith('yesterday\r\n')).toBe(true);
-    expect(host!.ensure('thorn').backscroll.text).toContain('today\r\n');
+    expect((await backscrollOf('thorn')).startsWith('yesterday\r\n')).toBe(true);
+    expect(await backscrollOf('thorn')).toContain('today\r\n');
 
     // The write is deferred; removing the session is the flush quitting makes.
     host!.remove('thorn');
@@ -300,14 +305,12 @@ describe('SessionHost', () => {
 
     accepted[0]!.write('thorn output\r\n');
     accepted[1]!.write('mara output\r\n');
-    await until(
-      () =>
-        host!.get('thorn')!.backscroll.text.includes('thorn') &&
-        host!.get('mara')!.backscroll.text.includes('mara')
-    );
+    await until(() => textFor('thorn').includes('thorn') && textFor('mara').includes('mara'));
 
-    expect(host!.get('thorn')!.backscroll.text).not.toContain('mara');
-    expect(host!.get('mara')!.backscroll.text).not.toContain('thorn');
+    expect(await backscrollOf('thorn')).toContain('thorn');
+    expect(await backscrollOf('thorn')).not.toContain('mara');
+    expect(await backscrollOf('mara')).toContain('mara');
+    expect(await backscrollOf('mara')).not.toContain('thorn');
   });
 
   it('returns the same slot rather than opening a character twice', () => {

@@ -75,6 +75,7 @@ import type { ShippedSentences } from '../shared/sentences';
 import { NO_PLAYERS, NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
+import { segmentBackscrolls } from './session/backscrollMigration';
 import { segmentFightLogs } from './session/fightLogMigration';
 import { fightsPerSegment } from './session/fightSegments';
 import { worldLeg } from './session/navigation';
@@ -597,6 +598,8 @@ const fightLogs = new Map<SessionId, FightLog>();
  * Each log waits for it before touching its record; it never rejects.
  */
 let fightsSegmented: Promise<void> = Promise.resolve();
+/** The same for every old one-file backscroll (todo 14); each console waits for it. */
+let backscrollSegmented: Promise<void> = Promise.resolve();
 
 function fightsFor(id: SessionId): FightSink {
   if (!(config?.config.logging.fights ?? DEFAULT_CONFIG.logging.fights)) return NO_FIGHTS;
@@ -1334,6 +1337,7 @@ function createHost(): SessionHost {
     // Beside the conversation and for the same reason: what the console
     // showed outlives the launch. `check:secrets` walks the whole home.
     backscrollFor: (id) => home.record('backscroll', id),
+    backscrollSplit: backscrollSegmented,
     // Each extension's records go under the home in a folder of its own name.
     extensions: {
       loaded: () => extensions,
@@ -2106,12 +2110,13 @@ function registerIpc(): void {
   });
 
   /*
-   * Attaching registers the window and returns the retained output in one
-   * synchronous step, so nothing can arrive between the two and be lost. The
-   * renderer holds live chunks until this resolves and writes them after the
-   * replay — otherwise the catch-up would land on top of output newer than it.
+   * Attaching registers the window and fixes what the page covers in one
+   * synchronous step, so nothing can arrive between the two and be lost; only
+   * older segments are read after it (`Backscroll.page`). The renderer holds
+   * live chunks until this resolves and writes them after the replay —
+   * otherwise the catch-up would land on top of output newer than it.
    */
-  handle(Invoke.attach, (caller, session: SessionId): AttachSnapshot => {
+  handle(Invoke.attach, async (caller, session: SessionId): Promise<AttachSnapshot> => {
     /*
      * Looks the session up; never creates it. Sessions come from profiles now,
      * so a window attaching to an id nobody defines must get an empty view
@@ -2120,8 +2125,9 @@ function registerIpc(): void {
     const slot = host?.get(session);
     if (slot) windows.attach(caller.windowId, session);
     const manager = slot?.manager;
-    return {
-      backscroll: slot?.backscroll.page(tuning().view.consolePageLines) ?? NO_BACKSCROLL,
+    const backscroll = slot?.backscroll.page(tuning().view.consolePageLines);
+    const snapshot: AttachSnapshot = {
+      backscroll: NO_BACKSCROLL,
       lines: manager?.lines ?? [],
       state: manager?.state ?? IDLE_STATE,
       character: manager?.character ?? EMPTY_CHARACTER,
@@ -2141,14 +2147,21 @@ function registerIpc(): void {
       // creates one, so it must not conjure a log for a stale id either.
       talk: slot ? talkFor(session).backlog() : []
     };
+    // Everything above is read before this first await, at the moment of attaching.
+    return { ...snapshot, backscroll: (await backscroll) ?? NO_BACKSCROLL };
   });
 
   // A number off the wire: anything but a count of lines is answered with nothing.
-  handle(Invoke.backscrollPage, (_caller, session: SessionId, lines: unknown): BackscrollPage => {
-    const slot = host?.get(session);
-    if (!slot || typeof lines !== 'number' || !Number.isFinite(lines)) return NO_BACKSCROLL;
-    return slot.backscroll.page(lines);
-  });
+  handle(
+    Invoke.backscrollPage,
+    (_caller, session: SessionId, lines: unknown): Promise<BackscrollPage> => {
+      const slot = host?.get(session);
+      if (!slot || typeof lines !== 'number' || !Number.isFinite(lines)) {
+        return Promise.resolve(NO_BACKSCROLL);
+      }
+      return slot.backscroll.page(lines);
+    }
+  );
 
   handle(Invoke.detach, (caller, session: SessionId) => {
     windows.detach(caller.windowId, session);
@@ -3242,6 +3255,11 @@ function build(): void {
   fightsSegmented = segmentFightLogs(
     home.state(CHARACTER_RECORDS.fights.dir),
     fightsPerSegment(),
+    (message) => announce('home', message, 'log')
+  );
+  backscrollSegmented = segmentBackscrolls(
+    home.state(CHARACTER_RECORDS.backscroll.dir),
+    tuning().view.consolePageLines,
     (message) => announce('home', message, 'log')
   );
   // As soon as the tuning is read, so the start of the client is sampled under the player's numbers.

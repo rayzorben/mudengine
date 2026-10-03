@@ -41,8 +41,8 @@ export interface ExtensionDeps {
   records(name: string): string;
   /** Writes settings into this character's file; the error, or null. */
   keep(writes: readonly LayerWrite[]): string | null;
-  /** The last lines of the session, colour removed. */
-  backscroll(lines: number): string;
+  /** The last lines of the session, escape sequences intact; older lines are read from disk. */
+  backscroll(lines: number): Promise<string>;
 }
 
 export interface ExtensionWiring {
@@ -179,7 +179,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       },
       safety: wiring.safety,
       busy: wiring.busy,
-      backscroll: (lines) => deps?.backscroll(lines) ?? '',
+      backscroll: (lines) => deps?.backscroll(lines) ?? Promise.resolve(''),
       hunt: {
         steer: (key) => wiring.hunt.steer(key),
         get hunting() {

@@ -70,7 +70,7 @@ export interface Home {
 /**
  * The records a character owns outside its directory, each named after its id:
  * the directory under the root, the suffix, and whether the record is one file
- * or a directory of them (the fight log's segments). The client's stores and
+ * or a directory of them (the fight log's and the backscroll's segments). The client's stores and
  * the character export both read this, so a new record travels with the
  * character by being listed here.
  */
@@ -79,7 +79,7 @@ export const CHARACTER_RECORDS = {
   belongings: { dir: 'belongings', suffix: '.json', holds: 'file' },
   fights: { dir: 'fights', suffix: '', holds: 'directory' },
   talk: { dir: 'talk', suffix: '.jsonl', holds: 'file' },
-  backscroll: { dir: 'backscroll', suffix: '.log', holds: 'file' }
+  backscroll: { dir: 'backscroll', suffix: '', holds: 'directory' }
 } as const;
 
 export type CharacterRecord = keyof typeof CHARACTER_RECORDS;
