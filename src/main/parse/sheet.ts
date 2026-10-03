@@ -719,11 +719,13 @@ export class StatusLine {
     const hpMax = read.hpMax ?? s.vitals.hpMax;
     const manaMax = read.manaMax ?? s.vitals.manaMax;
     // A `set statline` template has no wildcard for the pool's name, so its
-    // `MA=` is the player's own text: Vaelor's printed `MA=` over a Mystic's
-    // kai (2026-10-03). Only the class default line states the pool.
+    // `MA=` is literal text: the client's own template printed it over a
+    // Mystic's kai (2026-10-03). The prompt fills the pool only while it is
+    // unknown; the sheet's `Kai:` and the book that answered decide it.
     const key = prompt.exact === true ? undefined : block.groups['manaType'];
     const manaType: 'MA' | 'KAI' | null =
-      key === 'MA' || key === 'M' ? 'MA' : key === 'KAI' || key === 'K' ? 'KAI' : s.vitals.manaType;
+      s.vitals.manaType ??
+      (key === 'MA' || key === 'M' ? 'MA' : key === 'KAI' || key === 'K' ? 'KAI' : null);
     const agreed = prompt.exact === true;
     return {
       ...s,

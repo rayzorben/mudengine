@@ -9,6 +9,7 @@
  * has no effect is not cast again this fight*.
  */
 import { HAZARD_ABILITY } from './abilities';
+import type { Vitals } from './character';
 import { magicResistance, scaledPower } from './menace';
 import { castOdds, type ProwessSheet } from './prowess';
 import type { RealmFamily } from './realm';
@@ -85,10 +86,10 @@ export interface SpellChoiceInput {
   family: RealmFamily | null;
   /**
    * What the book is spent from: the sheet's `Mana:` or `Kai:`. A Mystic's
-   * kai goes to its ways and blessings, and its hands outfight the attack
+   * kai goes to its other powers, and its hands outfight the attack
    * powers, so a kai book attacks with nothing (the user, 2026-10-03).
    */
-  pool: 'MA' | 'KAI' | null;
+  pool: Vitals['manaType'];
   target: SpellTarget | null;
   /** Spells refused on this target or capped this fight, by the book's spelling. */
   excluded: ReadonlySet<string>;
@@ -111,6 +112,11 @@ export interface SpellCandidate {
 
 export type SpellChoiceRefusal =
   'no-book' | 'empty-book' | 'kai' | 'no-attack-spells' | 'all-resisted' | 'no-mana';
+
+/** A refusal meaning the book holds no attack spell or power this character casts. */
+export function attacksWithNothing(refusal: SpellChoiceRefusal | null): boolean {
+  return refusal === 'kai' || refusal === 'no-attack-spells';
+}
 
 export interface SpellChoice {
   chosen: SpellCandidate | null;
