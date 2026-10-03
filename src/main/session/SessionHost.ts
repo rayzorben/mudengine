@@ -158,11 +158,12 @@ export interface SessionHostOptions {
    */
   talkFor(id: SessionId): TalkSink;
   /**
-   * Where this character's console output is kept between launches, so the
-   * terminal opens where it was left. Optional: a test keeps it in memory.
-   * See `Backscroll`.
+   * The directory this character's console output is kept in between
+   * launches, so the terminal opens where it was left. See `Backscroll`.
    */
-  backscrollFor?(id: SessionId): string;
+  backscrollFor(id: SessionId): string;
+  /** Settles once the old one-file backscrolls are split; none to wait for when absent. */
+  backscrollSplit?: Promise<void>;
   /**
    * The installed extensions (todo 84), the client's home each keeps its
    * records under, and how a character's settings are written when the
@@ -545,7 +546,8 @@ export class SessionHost {
       manager,
       backscroll: new Backscroll({
         lines: config.terminal.scrollback,
-        file: this.options.backscrollFor?.(id),
+        dir: this.options.backscrollFor(id),
+        after: this.options.backscrollSplit,
         onProblem: (message) => this.options.notice({ session: id, message })
       }),
       reconnect,
@@ -669,7 +671,7 @@ export class SessionHost {
       home: given.home,
       records: (name) => given.records(name, id),
       keep: (writes) => given.keep(id, writes),
-      backscroll: (lines) => this.slots.get(id)?.backscroll.page(lines).text ?? ''
+      backscroll: async (lines) => (await this.slots.get(id)?.backscroll.page(lines))?.text ?? ''
     };
   }
 

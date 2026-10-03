@@ -142,8 +142,11 @@ export interface ExtensionSessionHost {
   safety(): readonly SafetyDecision[];
   /** An escape, a move, a walk, an errand: the character is someone else's for now. */
   busy(): boolean;
-  /** The last lines of the session, colour removed. */
-  backscroll(lines: number): string;
+  /**
+   * The last lines of the session, escape sequences intact. Asynchronous:
+   * only the newest segment is in memory, and older lines are read from disk.
+   */
+  backscroll(lines: number): Promise<string>;
 
   hunt: {
     /**

@@ -1884,12 +1884,6 @@ const TUNING_DEFAULTS = {
     talkHeld: 500,
     /** How long painted console output waits before it is written down. */
     backscrollFlushMs: 2000,
-    /**
-     * Rewrite the backscroll file once it holds this many times what is kept,
-     * rather than appending for ever: it is read whole at launch, and a cap
-     * on the lines kept is not a cap on a file that only grows.
-     */
-    backscrollRewriteAt: 2,
     /** How long a balance change waits before it is written. */
     belongingsWriteDelayMs: 2000,
     /**
@@ -2618,7 +2612,9 @@ const TUNING_DEFAULTS = {
      * *Load more* at its top brings back from main. Main keeps
      * `terminal.scrollback`; a tab attaching after a day of play was sent all
      * 100,000 lines (8 MB) and the web image closed it for it (2026-09-28).
-     * Back at the live edge the console drops to this again.
+     * Back at the live edge the console drops to this again. It is also how
+     * many lines each backscroll file on disk holds, and only the newest is
+     * kept in memory.
      */
     consolePageLines: 10000,
     /**

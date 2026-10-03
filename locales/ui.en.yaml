@@ -155,6 +155,14 @@ notices:
       whole file is still in {backup}.'
     fightsNotSegmented: 'Splitting {file} into smaller files stopped: {error}. Its fights are kept,
       and the split is tried again at the next launch.'
+    backscrollSegmented:
+      one: '{file} was moved into {dir} as one file of up to {per} lines. The old file is kept as
+        {backup}.'
+      many: '{file} was split into {segments} files of up to {per} lines in {dir}. The old file is
+        kept as {backup}.'
+    backscrollNotSegmented: 'Splitting {file} into smaller files stopped: {error}. The console
+      starts empty this time, the file is kept, and the split is tried again at the next launch.'
+    backscrollUnreadable: 'The backscroll in {dir} could not be listed: {error}'
     fightsSkipped:
       one: 'One line of {file} was not a fight and was left out. The whole file is still in
         {backup}.'
@@ -675,10 +683,10 @@ notices:
       realm needs {minColumns}. Stack them instead, or use a smaller terminal font.
   session:
     backscroll:
-      readError: Could not read {fileName} ({message}). The console starts empty and the file is not
-        overwritten. Fix or remove it before the next launch.
-      saveError: 'Could not write {fileName}: {message}. The console still works, but nothing more
-        is saved for the next launch.'
+      readError: Could not read the backscroll in {dir} ({message}). The console shows only what
+        arrives from now on, and nothing there is overwritten. Fix or remove it before the next launch.
+      saveError: 'Could not write the backscroll in {dir}: {message}. The console still works, but
+        nothing more is saved for the next launch, and scrolling back reaches only the newest lines.'
     closeRefused: '{refusalReason} Disconnect it before closing the tab.'
     # Connect pressed on a character already playing there, from a tab that
     # had not caught up: dialling again would hang up on the game.
