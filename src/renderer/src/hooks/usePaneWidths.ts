@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { DOCK_RANGE, TAB_RAIL_RANGE, rememberedWidth } from '../lib/splitter';
+import { DOCK_RANGE, TAB_RAIL_RANGE, rememberedColumns, rememberedWidth } from '../lib/splitter';
 
 /**
- * How wide the player dragged the tab rail and how tall the docked strips,
- * remembered per client. The card rail has no width of its own: it is what
- * the eighty-column console leaves (`useConsoleWidth`).
+ * How many columns the player dragged the console to, how wide the tab rail
+ * and how tall the docked strips, remembered per client. The card rail has no
+ * width of its own: it is what the console leaves (`useConsoleWidth`).
  *
  * Per client rather than per character, like density and theme: a pane's
  * width is a fact about this window on this display, not about who is being
@@ -19,10 +19,13 @@ import { DOCK_RANGE, TAB_RAIL_RANGE, rememberedWidth } from '../lib/splitter';
  * "the density's default", which is the token in `tokens.css`.
  */
 export interface PaneWidths {
+  /** The console's columns a pane, 80–120; null is eighty. */
+  columns: number | null;
   tabs: number | null;
   /** Heights of the strips docked above and below the console. */
   above: number | null;
   below: number | null;
+  setColumns(columns: number): void;
   setTabs(px: number): void;
   setAbove(px: number): void;
   setBelow(px: number): void;
@@ -34,11 +37,12 @@ export interface PaneWidths {
 const KEY = 'mudengine.layout.widths';
 
 type Stored = {
+  columns: number | null;
   tabs: number | null;
   above: number | null;
   below: number | null;
 };
-const NONE: Stored = { tabs: null, above: null, below: null };
+const NONE: Stored = { columns: null, tabs: null, above: null, below: null };
 
 function read(): Stored {
   try {
@@ -48,6 +52,7 @@ function read(): Stored {
     if (typeof parsed !== 'object' || parsed === null) return NONE;
     const record = parsed as Record<string, unknown>;
     return {
+      columns: rememberedColumns(record['columns']),
       tabs: rememberedWidth(record['tabs'], TAB_RAIL_RANGE),
       above: rememberedWidth(record['above'], DOCK_RANGE),
       below: rememberedWidth(record['below'], DOCK_RANGE)
@@ -74,6 +79,10 @@ export function usePaneWidths(): PaneWidths {
     setWidths(next);
   }, []);
 
+  const setColumns = useCallback(
+    (columns: number) => update({ ...widths, columns: rememberedColumns(columns) }),
+    [update, widths]
+  );
   const setTabs = useCallback(
     (px: number) => update({ ...widths, tabs: rememberedWidth(px, TAB_RAIL_RANGE) }),
     [update, widths]
@@ -96,5 +105,5 @@ export function usePaneWidths(): PaneWidths {
     return out;
   }, [widths]);
 
-  return { ...widths, setTabs, setAbove, setBelow, reset, style };
+  return { ...widths, setColumns, setTabs, setAbove, setBelow, reset, style };
 }

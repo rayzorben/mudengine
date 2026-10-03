@@ -7,7 +7,9 @@ import {
   ceilingFor,
   consoleTrack,
   clampWidth,
+  CONSOLE_RANGE,
   keyAdjust,
+  rememberedColumns,
   rememberedWidth
 } from '../splitter';
 
@@ -54,25 +56,54 @@ describe('the console floor', () => {
 });
 
 describe('the console track', () => {
-  it('grows or shrinks by the columns it is short or over, per pane across', () => {
-    // 10px cells: 70 columns fitted in 760px wants 100px more.
-    expect(consoleTrack(760, 70, 10, 1)).toBe(860);
+  /*
+   * 10px cells and 20px of each pane that is not cells. A pane holding 70
+   * columns is 720px: the track grows by the 10 columns it is short.
+   */
+  it('grows or shrinks by the columns each pane is short or over', () => {
+    expect(consoleTrack(760, 720, 20, 10, 1)).toBe(860);
     // Two panes side by side at 90 each give back 10 columns apiece.
-    expect(consoleTrack(1900, 90, 10, 2)).toBe(1700);
+    expect(consoleTrack(1868, 920, 20, 10, 2)).toBe(1668);
   });
 
-  it('is a fixed point once the console holds eighty', () => {
-    expect(consoleTrack(860, CONSOLE_COLUMNS, 10, 1)).toBe(860);
+  it('is a fixed point once the console holds what it keeps', () => {
+    expect(consoleTrack(860, 820, 20, 10, 1)).toBe(860);
+    expect(consoleTrack(1060, 1020, 20, 10, 1, CONSOLE_RANGE.max - 20)).toBe(1060);
+  });
+
+  /*
+   * The split that flaked (todo 09): one pane of eighty becomes two before
+   * either terminal has fitted. Each pane is already laid out at half the
+   * track, so the track is answered for two panes of eighty at once, and no
+   * fit lands at forty columns first.
+   */
+  it('answers a change in panes across before the terminals fit', () => {
+    // 820px holding eighty; split two ways with an 8px gap, each pane is 406px.
+    expect(consoleTrack(820, 406, 20, 10, 2)).toBe(1648);
   });
 
   it('rounds up, so the track is never a fraction of a column short', () => {
-    expect(consoleTrack(700, 79, 8.4, 1)).toBe(709);
+    expect(consoleTrack(700, 700, 36.4, 8.4, 1)).toBe(709);
   });
 
   it('is unknown before the terminal has been measured', () => {
-    expect(consoleTrack(800, 0, 10, 1)).toBeNull();
-    expect(consoleTrack(800, 80, Number.NaN, 1)).toBeNull();
-    expect(consoleTrack(0, 80, 10, 1)).toBeNull();
+    expect(consoleTrack(800, 0, 20, 10, 1)).toBeNull();
+    expect(consoleTrack(800, 800, 20, Number.NaN, 1)).toBeNull();
+    expect(consoleTrack(0, 800, 20, 10, 1)).toBeNull();
+    expect(consoleTrack(800, 800, Number.NaN, 10, 1)).toBeNull();
+  });
+});
+
+describe('a remembered console width', () => {
+  it('is held between eighty and a hundred and twenty whole columns', () => {
+    expect(rememberedColumns(100.4)).toBe(100);
+    expect(rememberedColumns(40)).toBe(CONSOLE_RANGE.min);
+    expect(rememberedColumns(400)).toBe(CONSOLE_RANGE.max);
+  });
+
+  it('is nothing for what is not a number', () => {
+    expect(rememberedColumns('96')).toBeNull();
+    expect(rememberedColumns(Number.NaN)).toBeNull();
   });
 });
 

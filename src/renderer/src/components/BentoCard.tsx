@@ -222,17 +222,14 @@ export interface BentoCardProps {
   /** True while this card is the one being dragged, so it can say so. */
   dragging?: boolean;
   /**
-   * How tall this card is on the rail, as a fraction of the rail, where
-   * somebody has dragged it — else the height its stylesheet declares.
-   *
-   * With `onResize`, the corner grip that changes it: a rail card is a fixed
-   * box that never resizes with its contents, and the person looking at it is
-   * the one thing allowed to change the box. Only a rail card carries the
-   * grip: a float has its own, and a docked strip is sized by its splitter.
+   * The corner grip that sizes a rail card on the rail's grid: a rail card
+   * is a fixed box that never resizes with its contents, and the person
+   * looking at it is the one thing allowed to change the box. Only a rail
+   * card carries the grip: a float has its own, and a docked strip is sized
+   * by its splitter.
    */
-  height?: number;
   onResize?(event: PointerEvent<HTMLElement>): void;
-  /** Double-click on the grip: back to the card's own height. */
+  /** Double-click on the grip: back to the card's shipped size. */
   onResizeReset?(): void;
   /**
    * Hand the keyboard back to the game.
@@ -314,7 +311,6 @@ export type CardChrome = Pick<
   | 'cardId'
   | 'onGrab'
   | 'dragging'
-  | 'height'
   | 'onResize'
   | 'onResizeReset'
   | 'translucency'
@@ -362,7 +358,6 @@ export default function BentoCard({
   cardId,
   onGrab,
   dragging,
-  height,
   onResize,
   onResizeReset,
   translucency,
@@ -694,13 +689,6 @@ export default function BentoCard({
        */
       style={{
         ...palette,
-        /*
-         * A dragged height overrides the one the stylesheet declares for this
-         * card, and as a percentage of the rail rather than a pixel figure:
-         * the rail is what it is a fraction of, and a percentage is what
-         * survives a window resize, a different monitor and a bigger font.
-         */
-        ...(height !== undefined ? ({ '--card-h': `${height * 100}%` } as CSSProperties) : {}),
         ...(translucency
           ? ({
               '--card-alpha': `${Math.round(floatAlphas(translucency.solidity).fill * 100)}%`,
