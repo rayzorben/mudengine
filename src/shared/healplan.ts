@@ -46,7 +46,7 @@ export interface HealPlanInput extends HealCastInput {
   urgency: number;
   /** An option within this share of the best relief is as good, and the cheapest of those wins. */
   nearEnough: number;
-  /** Whether a party-wide heal may be cast at all: party healing is on. */
+  /** Whether a party-wide heal may be cast at all: party healing is on and somebody has joined. */
   partyWide: boolean;
 }
 
