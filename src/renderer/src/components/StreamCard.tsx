@@ -57,7 +57,7 @@ function StreamCard({ lines, quiet, ...chrome }: StreamCardProps) {
               key={line.seq}
             >
               <span
-                className="mark"
+                className="mark from-medium"
                 title={t('cards.stream.terminatorTooltip', { terminator: line.terminator })}
               >
                 {line.terminator === 'repaint' ? '⏎̸' : line.terminator === 'flush' ? '…' : '⏎'}

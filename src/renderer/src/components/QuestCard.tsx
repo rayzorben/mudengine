@@ -1139,7 +1139,9 @@ function QuestCard({
      */
     {
       id: 'level',
+      // Small, the book is each quest's name and progress (`lib/cardSize.ts`).
       label: t('cards.quests.columns.level'),
+      from: 'medium',
       numeric: true,
       // Null is not zero: a quest the realm sets no level on is open to
       // everybody, and drawing that as level 0 would be a claim it does not make.
@@ -1148,6 +1150,7 @@ function QuestCard({
     {
       id: 'exp',
       label: t('cards.quests.columns.exp'),
+      from: 'medium',
       numeric: true,
       /*
        * Zero is a figure here and not an absence: a quest whose steps pay no
@@ -1171,6 +1174,7 @@ function QuestCard({
     {
       id: 'hide',
       label: t('cards.quests.columns.hide'),
+      from: 'medium',
       control: true,
       unsearchable: true,
       unsortable: true,

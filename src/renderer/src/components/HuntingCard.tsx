@@ -247,6 +247,8 @@ function HuntingCard({
       },
       {
         id: 'rooms',
+        // Small, a spot is its lair and what it pays (`lib/cardSize.ts`).
+        from: 'medium',
         label: t('cards.hunting.columns.rooms'),
         numeric: true,
         value: (spot) => spot.walk.length,
@@ -255,12 +257,14 @@ function HuntingCard({
       },
       {
         id: 'steps',
+        from: 'medium',
         label: t('cards.hunting.columns.steps'),
         numeric: true,
         value: (spot) => spot.rooms[0]?.steps ?? null
       },
       {
         id: 'cost',
+        from: 'medium',
         label: t('cards.hunting.columns.cost'),
         numeric: true,
         // The worst the room can spawn, which is what the exclusions read and

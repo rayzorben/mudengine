@@ -47,12 +47,13 @@ function LinkCard({ negotiated, events, quiet, ...chrome }: LinkCardProps) {
 
   const agreed = (
     <dl className="readout">
-      <dt>{t('cards.link.localLabel')}</dt>
-      <dd className={negotiated.localEnabled.length ? '' : 'inert'}>
+      {/* Small, the link is its three flags (`lib/cardSize.ts`). */}
+      <dt className="from-medium">{t('cards.link.localLabel')}</dt>
+      <dd className={negotiated.localEnabled.length ? 'from-medium' : 'inert from-medium'}>
         {negotiated.localEnabled.join(', ') || t('cards.link.noneValue')}
       </dd>
-      <dt>{t('cards.link.remoteLabel')}</dt>
-      <dd className={negotiated.remoteEnabled.length ? '' : 'inert'}>
+      <dt className="from-medium">{t('cards.link.remoteLabel')}</dt>
+      <dd className={negotiated.remoteEnabled.length ? 'from-medium' : 'inert from-medium'}>
         {negotiated.remoteEnabled.join(', ') || t('cards.link.noneValue')}
       </dd>
       <dt>{t('cards.link.flagsLabel')}</dt>

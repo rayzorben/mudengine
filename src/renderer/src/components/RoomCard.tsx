@@ -572,7 +572,9 @@ function RoomBody({
           {/* Clamped rather than scrolled: the description is context, and the
               exits below it are what the card is actually consulted for. The
               full text is in the terminal, a few lines up. */}
-          {room.description !== null && <p className="room-description">{room.description}</p>}
+          {room.description !== null && (
+            <p className="room-description from-medium">{room.description}</p>
+          )}
 
           <div className="exits">
             {/* Null is not zero: exits the server would not print are unseen,
@@ -589,9 +591,13 @@ function RoomBody({
                   key={exit.direction}
                   title={exit.note ?? undefined}
                 >
-                  {/* Short codes are canonical; expand them for reading. */}
-                  {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
-                  {exit.note && <span className="exit-note"> {exit.note}</span>}
+                  {/* Short codes are canonical; expanded for reading where the
+                      card has room, as they are typed where it has not. */}
+                  <span className="from-medium">
+                    {DIRECTION_NAME[exit.direction as Direction] ?? exit.direction}
+                  </span>
+                  <span className="only-small">{exit.direction}</span>
+                  {exit.note && <span className="exit-note from-medium"> {exit.note}</span>}
                 </span>
               ))
             )}
@@ -612,7 +618,7 @@ function RoomBody({
             four ways to say one thing.
           */}
           {answers.length > 0 && (
-            <div className="exits room-answers">
+            <div className="exits room-answers from-medium">
               {answers.map((answer, index) => {
                 const phrase = answer.say[0] ?? '';
                 return ask && phase === 'in-game' ? (
@@ -652,7 +658,7 @@ function RoomBody({
             and what it wants is an errand the client can say where to run.
           */}
           {asks.length > 0 && (
-            <div className="exits room-asks">
+            <div className="exits room-asks from-medium">
               {asks.map((offer, index) => {
                 const line = t('cards.room.asks.command', { who: offer.who, word: offer.say });
                 const wants = offer.wants?.join(', ');
@@ -710,7 +716,7 @@ function RoomBody({
             room.hidden.length > 0 ||
             floorCoins.length > 0 ||
             hiddenCoins.length > 0) && (
-            <dl className="readout">
+            <dl className="readout from-medium">
               {/*
                * First, and before `Here` and `Items`, because in a bank it is
                * what the room is *for*. The order is fixed whether or not each

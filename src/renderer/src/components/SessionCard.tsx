@@ -40,10 +40,13 @@ function SessionCard({ state, size, meter, ...chrome }: SessionCardProps) {
         <dd className={target ? '' : 'inert'}>
           {target ? `${target.host}:${target.port}` : t('cards.session.noTarget')}
         </dd>
-        <dt>{t('cards.session.encoding')}</dt>
-        <dd className={target ? '' : 'inert'}>{target?.encoding ?? '—'}</dd>
-        <dt>{t('cards.session.grid')}</dt>
-        <dd>{t('cards.session.gridValue', { cols: size.cols, rows: size.rows })}</dd>
+        {/* Small, a session is where and how fast (`lib/cardSize.ts`). */}
+        <dt className="from-medium">{t('cards.session.encoding')}</dt>
+        <dd className={target ? 'from-medium' : 'inert from-medium'}>{target?.encoding ?? '—'}</dd>
+        <dt className="from-medium">{t('cards.session.grid')}</dt>
+        <dd className="from-medium">
+          {t('cards.session.gridValue', { cols: size.cols, rows: size.rows })}
+        </dd>
         <dt>{t('cards.session.rate')}</dt>
         <dd className={charsPerSecond > 0 ? '' : 'inert'}>
           {t('cards.session.rateValue', { rate: charsPerSecond.toLocaleString() })}

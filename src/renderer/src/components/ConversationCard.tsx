@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
+import OnCardSize from './OnCardSize';
 import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
 import { FindField } from './CardTable';
 import { keepFocus } from '../lib/focus';
@@ -936,6 +937,11 @@ function ConversationCard({
     seenTopRef.current = node.scrollTop;
   };
 
+  /** A drawn box that is following stays on the newest line when it is reshaped. */
+  const keepUp = (node: HTMLDivElement): void => {
+    if (node.clientHeight > 0 && resumeRef.current === undefined) pin(node);
+  };
+
   /** Puts the log on the newest line, and lets go of any hold on it. */
   const follow = (): void => {
     window.clearTimeout(resumeRef.current);
@@ -1033,7 +1039,7 @@ function ConversationCard({
       hidden = node.clientHeight === 0;
       if (hidden) return;
       if (wasHidden) follow();
-      else if (resumeRef.current === undefined) pin(node);
+      else keepUp(node);
     });
     observer.observe(node);
     return () => observer.disconnect();
@@ -1068,6 +1074,13 @@ function ConversationCard({
 
   const feed = (
     <>
+      {/* A small card drops the stamp column and the lines rewrap under the
+          reader, with no change to the box the observer above watches. */}
+      <OnCardSize
+        run={() => {
+          if (logRef.current !== null) keepUp(logRef.current);
+        }}
+      />
       {finding && (
         <FindField
           autoFocus

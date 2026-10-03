@@ -78,6 +78,7 @@ function BanksCard({ character, ...chrome }: BanksCardProps): React.JSX.Element 
   const now = Date.now();
 
   const total = bankedCopper(banks);
+  const totalWords = t('cards.banks.total', { copper: total.toLocaleString() });
 
   return (
     <BentoCard
@@ -95,7 +96,9 @@ function BanksCard({ character, ...chrome }: BanksCardProps): React.JSX.Element 
         <div className="aside">{t('cards.banks.none')}</div>
       ) : (
         <>
-          <dl className="readout">
+          {/* Small, the card is what is banked in all (`lib/cardSize.ts`). */}
+          <div className="banks-total only-small">{totalWords}</div>
+          <dl className="readout from-medium">
             {banks.map((bank) => (
               /*
                 A fragment and **not** a wrapping element. `.readout` is one
@@ -123,11 +126,7 @@ function BanksCard({ character, ...chrome }: BanksCardProps): React.JSX.Element 
             total is that vault's row again, and a card repeating itself reads
             as two facts where there is one.
           */}
-          {banks.length > 1 ? (
-            <div className="aside">
-              {t('cards.banks.total', { copper: total.toLocaleString() })}
-            </div>
-          ) : null}
+          {banks.length > 1 ? <div className="aside from-medium">{totalWords}</div> : null}
         </>
       )}
     </BentoCard>

@@ -480,6 +480,8 @@ export function InventoryBody({
        */
       id: 'number',
       label: t('entity.numberColumn'),
+      // Small, the pack is the weight bar and what is in it (`lib/cardSize.ts`).
+      from: 'medium',
       name: t('entity.numberColumnLabel'),
       numeric: true,
       value: (item) => entityNumber(item) ?? entityNumberText(item),
@@ -488,6 +490,7 @@ export function InventoryBody({
     {
       id: 'weight',
       label: t('cards.inventory.columns.weight'),
+      from: 'medium',
       numeric: true,
       value: (item) => item.encumbrance ?? null,
       // The figure and nothing around it: the cell is already the `weight`
@@ -516,6 +519,7 @@ export function InventoryBody({
        */
       id: 'where',
       label: t('cards.player.detail.where'),
+      from: 'medium',
       value: (item) => item.slot ?? (item.equipped ? t('cards.inventory.inUseStatus') : null),
       cell: (item) =>
         item.slot !== null ? (
@@ -554,7 +558,7 @@ export function InventoryBody({
             </div>
           )}
 
-          <dl className="readout">
+          <dl className="readout from-medium">
             {hasPurse && (
               <>
                 <dt>{t('cards.inventory.wealthLabel')}</dt>

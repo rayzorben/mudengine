@@ -15,6 +15,7 @@ import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
 import { levelWord } from '../lib/vitals';
+import LevelMeter, { levelReading } from './LevelMeter';
 
 export interface VitalsCardProps extends CardChrome {
   character: CharacterState;
@@ -160,6 +161,8 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
    * `i18n-coverage.test.ts` reads only the literal after `t(`, so a dynamic
    * key would be an unexempted dynamic call and a key nothing is seen to read.
    */
+  const reading = useMemo(() => levelReading(progress, progress.expThisSession), [progress]);
+
   const afflicted = [
     afflictions.blind === 'yes' ? t('cards.vitals.afflicted.blind') : null,
     afflictions.poisoned === 'yes' ? t('cards.vitals.afflicted.poisoned') : null,
@@ -200,7 +203,18 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
           />
         )}
 
-        <dl className="readout">
+        {/* Small, the card is the two bars and what is wrong with them; large,
+            it adds the way into the level. See `lib/cardSize.ts`. */}
+        {afflicted.length > 0 && (
+          <div className="vitals-afflicted only-small">{afflicted.join(' · ')}</div>
+        )}
+        {reading !== null && (
+          <div className="from-large">
+            <LevelMeter reading={reading} />
+          </div>
+        )}
+
+        <dl className="readout from-medium">
           <dt>{t('cards.realm.column.name')}</dt>
           <dd className={character.name ? '' : 'inert'}>{character.name ?? '—'}</dd>
           <dt>{t('cards.vitals.labels.class')}</dt>
@@ -284,6 +298,8 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
     {
       id: 'experience',
       label: t('cards.vitals.expColumn.experience'),
+      // Small, the chart is each level and what it still costs.
+      from: 'medium',
       numeric: true,
       value: (row) => row.experience,
       cell: (row) => row.experience.toLocaleString()

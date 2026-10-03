@@ -73,11 +73,14 @@ function figure(value: number | null): string {
 function Row({
   label,
   value,
-  span
+  span,
+  className
 }: {
   label: string;
   value: number | null;
   span?: [number, number];
+  /** Set on the label and the value both, as a size class (`lib/cardSize.ts`). */
+  className?: string;
 }) {
   const share =
     value === null || span === undefined || span[1] <= span[0]
@@ -86,9 +89,9 @@ function Row({
   const tone = value === null ? 'inert' : share !== null ? 'stat' : value === 0 ? 'none' : '';
   return (
     <>
-      <dt>{label}</dt>
+      <dt className={className}>{label}</dt>
       <dd
-        className={tone}
+        className={className === undefined ? tone : `${tone} ${className}`}
         style={share === null ? undefined : ({ '--stat-share': share } as CSSProperties)}
         title={
           span === undefined
@@ -153,6 +156,8 @@ function SelfCard({
    * sight rows are sentences, and pairing a sentence puts an ellipsis where
    * the answer is.
    */
+  // Small, the sheet is who this is and how far along; the attributes, the
+  // skills and the sight wait for a bigger box (`lib/cardSize.ts`).
   const selfFace = (
     <div className="readout-box">
       <dl className="readout columns">
@@ -172,79 +177,125 @@ function SelfCard({
         <dt className="span">{t('cards.self.labels.exp')}</dt>
         <dd className={`span${progress.exp === null ? ' inert' : ''}`}>{figure(progress.exp)}</dd>
 
-        <dt className="group" data-group="1">
+        <dt className="group from-medium" data-group="1">
           {t('cards.self.groups.attributes')}
         </dt>
-        <dd className="group" />
+        <dd className="group from-medium" />
         <Row
+          className="from-medium"
           label={t('cards.self.labels.strength')}
           value={progress.strength}
           span={spans?.strength}
         />
         <Row
+          className="from-medium"
           label={t('cards.self.labels.intellect')}
           value={progress.intellect}
           span={spans?.intellect}
         />
         <Row
+          className="from-medium"
           label={t('cards.self.labels.willpower')}
           value={progress.willpower}
           span={spans?.willpower}
         />
         <Row
+          className="from-medium"
           label={t('cards.self.labels.agility')}
           value={progress.agility}
           span={spans?.agility}
         />
-        <Row label={t('cards.self.labels.health')} value={progress.health} span={spans?.health} />
-        <Row label={t('cards.self.labels.charm')} value={progress.charm} span={spans?.charm} />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.health')}
+          value={progress.health}
+          span={spans?.health}
+        />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.charm')}
+          value={progress.charm}
+          span={spans?.charm}
+        />
 
-        <dt className="group" data-group="2">
+        <dt className="group from-medium" data-group="2">
           {t('cards.self.groups.skills')}
         </dt>
-        <dd className="group" />
-        <dt className="span">{t('cards.self.labels.armour')}</dt>
-        <dd className={`span${progress.armourClass === null ? ' inert' : ''}`}>
+        <dd className="group from-medium" />
+        <dt className="span from-medium">{t('cards.self.labels.armour')}</dt>
+        <dd className={`span from-medium${progress.armourClass === null ? ' inert' : ''}`}>
           {figure(progress.armourClass)}
           {progress.damageResist !== null ? ` / ${progress.damageResist}` : ''}
         </dd>
-        <Row label={t('cards.self.labels.perception')} value={progress.perception} />
-        <Row label={t('cards.self.labels.stealth')} value={progress.stealthSkill} />
-        <Row label={t('cards.self.labels.thievery')} value={progress.thievery} />
-        <Row label={t('cards.self.labels.traps')} value={progress.traps} />
-        <Row label={t('cards.self.labels.picklocks')} value={progress.picklocks} />
-        <Row label={t('cards.self.labels.tracking')} value={progress.tracking} />
-        <Row label={t('cards.self.labels.martialArts')} value={progress.martialArts} />
-        <Row label={t('cards.self.labels.magicRes')} value={progress.magicRes} />
-        <Row label={t('cards.self.labels.spellcasting')} value={progress.spellcasting} />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.perception')}
+          value={progress.perception}
+        />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.stealth')}
+          value={progress.stealthSkill}
+        />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.thievery')}
+          value={progress.thievery}
+        />
+        <Row className="from-medium" label={t('cards.self.labels.traps')} value={progress.traps} />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.picklocks')}
+          value={progress.picklocks}
+        />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.tracking')}
+          value={progress.tracking}
+        />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.martialArts')}
+          value={progress.martialArts}
+        />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.magicRes')}
+          value={progress.magicRes}
+        />
+        <Row
+          className="from-medium"
+          label={t('cards.self.labels.spellcasting')}
+          value={progress.spellcasting}
+        />
 
-        <dt className="group" data-group="3">
+        <dt className="group from-medium" data-group="3">
           {t('cards.self.groups.sight')}
         </dt>
-        <dd className="group" />
-        <dt className="span">{t('cards.self.labels.nightVision')}</dt>
-        <dd className={`span${sight === null ? ' inert' : ''}`}>
+        <dd className="group from-medium" />
+        <dt className="span from-medium">{t('cards.self.labels.nightVision')}</dt>
+        <dd className={`span from-medium${sight === null ? ' inert' : ''}`}>
           {sight === null ? '—' : sight.vision}
           {sight !== null && !sight.raceKnown && (
             <span className="hint"> {t('cards.self.sight.raceUnknown')}</span>
           )}
         </dd>
-        <dt className="span">{t('cards.self.labels.lit')}</dt>
-        <dd className={`span${sight?.lit ? '' : ' inert'}`}>
+        <dt className="span from-medium">{t('cards.self.labels.lit')}</dt>
+        <dd className={`span from-medium${sight?.lit ? '' : ' inert'}`}>
           {sight?.lit
             ? t('cards.self.sight.litFormat', { item: sight.lit, reach: sight.reach })
             : t('cards.self.sight.nothingLit')}
         </dd>
-        <dt className="span">{t('cards.self.labels.seesDownTo')}</dt>
-        <dd className={`span${darkestUnlit === null ? ' inert' : ''}`}>
+        <dt className="span from-medium">{t('cards.self.labels.seesDownTo')}</dt>
+        <dd className={`span from-medium${darkestUnlit === null ? ' inert' : ''}`}>
           {darkestUnlit === null
             ? '—'
             : darkestLit === null
               ? String(darkestUnlit)
               : t('cards.self.sight.downToFormat', { unlit: darkestUnlit, lit: darkestLit })}
         </dd>
-        <dt className="span">{t('cards.self.labels.here')}</dt>
-        <dd className={`span${seen === null ? ' inert' : ''}`}>
+        <dt className="span from-medium">{t('cards.self.labels.here')}</dt>
+        <dd className={`span from-medium${seen === null ? ' inert' : ''}`}>
           {seen === null
             ? t('cards.self.sight.hereUnknown')
             : t('cards.self.sight.hereFormat', {
@@ -318,6 +369,8 @@ function SelfCard({
     },
     {
       id: 'min',
+      // Small, a supply is its name and how many are carried.
+      from: 'medium',
       label: t('cards.self.supplies.min'),
       numeric: true,
       value: (row) => row.min,
@@ -340,6 +393,7 @@ function SelfCard({
     },
     {
       id: 'max',
+      from: 'medium',
       label: t('cards.self.supplies.max'),
       numeric: true,
       value: (row) => row.max,
@@ -362,6 +416,7 @@ function SelfCard({
     },
     {
       id: 'shop',
+      from: 'medium',
       label: t('cards.self.supplies.columnShop'),
       value: (row) => (row.shop.length > 0 ? row.shop : null),
       cell: (row) =>
@@ -380,6 +435,7 @@ function SelfCard({
     },
     {
       id: 'remove',
+      from: 'medium',
       label: '',
       control: true,
       unsearchable: true,
