@@ -4089,9 +4089,20 @@ settings:
       hunting go better, picked from your spellbook and the world data, with the mana your heals
       need kept back. Your own self blesses below may be dropped; party blesses are cast as listed.'
     invokeItemsLabel: Bless From an Item
-    invokeItemsHint: Use a carried item to cast the bless it grants, when that bless is not up. Only
-      items the world data says have unlimited uses; nine weapons in the built-in world bless this
-      way, for no mana and no charge. Items with a fixed number of charges are left alone.
+    invokeItemsHint: Use the items ticked under Items That Bless on a character's page to cast the
+      bless each grants, when it is not up and the mana is there. It spends no charge, but takes the
+      spell's mana.
+    invokeLegend: Items That Bless
+    invokeNote: Items in your inventory that cast a bless for ever when used. Tick the ones to use;
+      a weapon or armour blesses only while it is worn or wielded.
+    invokeUnlisted: List your inventory (i) in the realm to see which items can bless.
+    invokeNone: Nothing in your inventory can bless.
+    invokeNoneChosen: No item is ticked, so the switch uses none. Tick one below.
+    invokeCasts: Casts {spell} for {mana} mana.
+    invokeCastsUnpriced: Casts {spell}; the world database states no mana for it.
+    invokeNotCarried: Not in your inventory when it was last listed.
+    invokeUnequipped: '{item} (not equipped)'
+    invokeAway: '{item} (not carried)'
     notifyWearOffHint: When a party member's bless on this character wears off, telepath them
       @bless-expired so their client recasts it right away instead of waiting for its timer. Both
       players must run mudengine.
