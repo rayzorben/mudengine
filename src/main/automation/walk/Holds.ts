@@ -17,7 +17,7 @@ import {
 } from '../../../shared/walk';
 import { roomAddress, trapOn, type RoomId, type RouteStep } from '../../../shared/world';
 import type { Block } from '../../../shared/blocks';
-import type { CharacterState } from '../../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../../shared/character';
 import { stillFor, type AutomationConfig } from '../../../shared/config';
 import { splitSpells } from '../../../shared/spell-messages';
 import { t } from '../../app/i18n';
@@ -239,6 +239,11 @@ export class Holds {
     return countThreats(state, this.config.combat.mobRules) > 0;
   }
 
+  /** Whether the walk goes on through the fight here, running or about to start. */
+  private goesOnThrough(state: CharacterState): boolean {
+    return this.walksThrough(fightIsRunning(state) || this.aboutToFight(state));
+  }
+
   /** A route that resumes after a fight, in one nothing will end (`canEndAFight`). */
   private get nothingEndsIt(): boolean {
     return this.resumeAfterFight && !this.canEndAFight();
@@ -298,20 +303,16 @@ export class Holds {
   }
 
   /**
-   * A fight the walk goes on through, found while it stands still for health
-   * or mana: the step goes now, since standing still until the hold's next
-   * beat takes the blows (`holdForHealth`). True when it went.
+   * A fight the walk goes on through, running or about to, found while it
+   * stands still for health or mana: the step goes now, since standing still
+   * until the hold's next beat takes the blows (`holdForHealth`). True when it went.
    */
   stepOutOfFight(state: CharacterState): boolean {
-    if (!this.standingForVitals || !this.walksThrough(true)) return false;
+    if (!this.standingForVitals) return false;
+    if (!this.goesOnThrough(state)) return false;
     if ((this.events.pendingMoves?.() ?? 0) > 0) return false;
     this.walk.carryOn(state);
     return true;
-  }
-
-  /** `stepOutOfFight` for a monster that attacks on sight and has not swung yet. */
-  stepOutOfThreat(state: CharacterState): boolean {
-    return this.aboutToFight(state) && this.stepOutOfFight(state);
   }
 
   /**
@@ -770,12 +771,11 @@ export class Holds {
    * Published and not printed: `mudengine-automation` › *A route stands still
    * while too hurt to travel*.
    */
-  holdForHealth(state: CharacterState, fighting: boolean): boolean {
+  holdForHealth(state: CharacterState): boolean {
     // Mana holds a walk on the same terms, from `meditateBelow` to `meditateTo` (todo 825).
     // Never in a fight the walk goes on through, or one about to start: resting
     // heals nothing while something swings.
-    const through = this.walksThrough(fighting || this.aboutToFight(state));
-    const wanted = through ? null : this.wantsVitalHold(state);
+    const wanted = this.goesOnThrough(state) ? null : this.wantsVitalHold(state);
     const mine = this.standingForVitals;
     if (wanted === null) {
       // Only its own hold: a walk standing still blind is not one whose health

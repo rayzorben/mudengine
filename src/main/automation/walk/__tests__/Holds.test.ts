@@ -278,7 +278,7 @@ describe('Holds, put down', () => {
     expect(holds.current).toBe('fight');
     // …and one that holds when hurt is held by the health.
     holds.take(null);
-    expect(holds.holdForHealth(hurt(at(1, 1), 10), false)).toBe(true);
+    expect(holds.holdForHealth(hurt(at(1, 1), 10))).toBe(true);
   });
 
   // Mutant: the release asks a hand-written list that omits one condition.
