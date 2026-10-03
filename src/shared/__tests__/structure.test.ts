@@ -38,7 +38,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2433,
   'src/main/parse/CharacterTracker.ts': 2533,
-  'src/renderer/src/App.tsx': 1786,
+  'src/renderer/src/App.tsx': 1767,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
   'src/main/automation/Walker.ts': 1957,
   'src/renderer/src/components/SettingsScreen.tsx': 1219,

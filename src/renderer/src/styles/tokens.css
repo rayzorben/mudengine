@@ -256,7 +256,9 @@
   --topbar-h: calc(var(--control-h) + 8px);
   --font-ui: var(--font-ui-base);
   --font-micro: calc(var(--font-ui-base) - 2px);
-  --rail-w: 340px;
+  /* A card column on the rail: under this the map's legend and an inventory
+     row with its slot stop fitting. */
+  --rail-column-min: 260px;
   /* Wide enough for a name, health in numbers and a room name. See §3.8. */
   --tab-rail-w: 200px;
 }
@@ -271,7 +273,6 @@
      would do nothing except be able to drift from the original. */
   --font-ui: calc(var(--font-ui-base) - 1px);
   --font-micro: calc(var(--font-ui-base) - 3px);
-  --rail-w: 300px;
   --tab-rail-w: 176px;
 }
 

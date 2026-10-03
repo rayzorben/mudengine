@@ -30,6 +30,51 @@ export function insertionIndex(slots: readonly number[], along: number): number 
   return slots.filter((slot) => along > slot).length;
 }
 
+/** A box in a lane, as laid out. */
+export interface LaneBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/**
+ * The gap the pointer is in, in a lane whose boxes wrap into rows: the rail,
+ * where cards stand side by side and the next row starts below (todo 00).
+ *
+ * The pointer's row is the last whose top it has passed, and every box in an
+ * earlier row comes before it. Within its row a box is passed when the
+ * pointer is beyond its right edge, or over it and past its midpoint on the
+ * lane's own axis: down for the rail, so a one-card row is the old stacked
+ * rule, and across for a strip, which is `insertionIndex` over midpoints.
+ * Boxes are in reading order.
+ */
+export function wrappedInsertionIndex(
+  boxes: readonly LaneBox[],
+  x: number,
+  y: number,
+  vertical: boolean
+): number {
+  const tops = [...new Set(boxes.map((box) => box.top))].sort((a, b) => a - b);
+  const first = tops[0];
+  if (first === undefined) return 0;
+  const row = tops.filter((top) => y >= top).pop() ?? first;
+  const before = boxes.filter((box) => box.top < row).length;
+  const own = boxes.filter((box) => box.top === row);
+  if (!vertical)
+    return (
+      before +
+      insertionIndex(
+        own.map((box) => (box.left + box.right) / 2),
+        x
+      )
+    );
+  const passed = own.filter(
+    (box) => x > box.right || (x >= box.left && y > (box.top + box.bottom) / 2)
+  ).length;
+  return before + passed;
+}
+
 /**
  * The list, with one entry moved to a gap measured against the list as drawn.
  *

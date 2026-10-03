@@ -1,7 +1,9 @@
 /**
  * What each splitter measures and the range it may be dragged within: the
  * pane's laid-out box, read when a gesture starts, and a ceiling that keeps
- * the console eighty measured columns and twelve measured rows.
+ * the console eighty measured columns and twelve measured rows. The card rail
+ * has no splitter; it is what the console leaves, and the first to give
+ * width to a wider tab rail.
  *
  * Out of `App` (todo 733); the arithmetic is `lib/splitter.ts`. See
  * `mudengine-ui` › `parts/cards.md`, *The edge between two panes is a
@@ -10,10 +12,10 @@
 import { useCallback, type RefObject } from 'react';
 
 import type { PaneWidths } from './usePaneWidths';
+import { consoleCellWidth, consoleRoom } from '../lib/consoleWidth';
 import {
   CONSOLE_ROWS,
   DOCK_RANGE,
-  RAIL_RANGE,
   TAB_RAIL_RANGE,
   ceilingFor,
   type SplitRange
@@ -37,7 +39,6 @@ function heightOf(selector: string, fallback: number): number {
  * per commit.
  */
 export const measureTabs = (): number => widthOf('.workspace > .tab-rail', TAB_RAIL_RANGE.min);
-export const measureRail = (): number => widthOf('.workspace > .rail', RAIL_RANGE.min);
 export const measureAbove = (): number => heightOf('.dock-above > .card', DOCK_RANGE.min);
 export const measureBelow = (): number => heightOf('.dock-below > .card', DOCK_RANGE.min);
 
@@ -52,7 +53,7 @@ export function usePaneRanges(
 ) {
   const { setTabs, setAbove, setBelow } = widths;
   const rangeFor = useCallback(
-    (which: 'rail' | 'tabs' | 'above' | 'below'): SplitRange => {
+    (which: 'tabs' | 'above' | 'below'): SplitRange => {
       const box = layersRef.current;
       if (which === 'above' || which === 'below') {
         // A strip takes rows from the console; it keeps its own floor of them.
@@ -66,13 +67,10 @@ export function usePaneRanges(
           CONSOLE_ROWS
         );
       }
-      const base = which === 'rail' ? RAIL_RANGE : TAB_RAIL_RANGE;
-      const current = widthOf(
-        which === 'rail' ? '.workspace > .rail' : '.workspace > .tab-rail',
-        base.min
-      );
-      if (!box || size.cols <= 0) return base;
-      return ceilingFor(base, current, box.clientWidth, box.clientWidth / size.cols);
+      const current = widthOf('.workspace > .tab-rail', TAB_RAIL_RANGE.min);
+      const cell = consoleCellWidth(size.cols);
+      if (!box || cell === null) return TAB_RAIL_RANGE;
+      return ceilingFor(TAB_RAIL_RANGE, current, consoleRoom(box), cell);
     },
     [size.cols, size.rows]
   );
@@ -85,7 +83,6 @@ export function usePaneRanges(
    * `Splitter`.
    */
   const rangeForTabs = useCallback(() => rangeFor('tabs'), [rangeFor]);
-  const rangeForRail = useCallback(() => rangeFor('rail'), [rangeFor]);
   const rangeForAbove = useCallback(() => rangeFor('above'), [rangeFor]);
   const rangeForBelow = useCallback(() => rangeFor('below'), [rangeFor]);
   const resetTabs = useCallback(() => setTabs(Number.NaN), [setTabs]);
@@ -94,7 +91,6 @@ export function usePaneRanges(
 
   return {
     rangeForTabs,
-    rangeForRail,
     rangeForAbove,
     rangeForBelow,
     resetTabs,
