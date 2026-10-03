@@ -38,6 +38,7 @@ import {
   type WorldShop,
   type WorldShopItem,
   type WorldSpell,
+  asScriptLines,
   sells
 } from '../../shared/world';
 import type { TrainerRow } from '../../shared/training';
@@ -1348,6 +1349,8 @@ export class Catalogue {
        */
       const hazard = readHazard(record['hz']);
       if (hazard !== null) spell.hazard = hazard;
+      const script = asScriptLines(record['st']);
+      if (script !== null) spell.script = script;
       spells.push(spell);
     }
     this.spells = spells;

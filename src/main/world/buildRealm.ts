@@ -13,7 +13,9 @@ import type { Quest } from '../../shared/quests';
 import { blocksInReach, indexQuests, itemsInReach, landingsOfItems } from './indexQuests';
 import type { BuiltItemFrom, ItemLanding } from './indexQuests';
 import { indexSpellHazards } from './spellHazard';
-import { gateNames } from './navigation/stepGates';
+import { gateNames, nameGate } from './navigation/stepGates';
+import type { ScriptLine } from '../../shared/world';
+import { scriptLines } from './navigation/scriptWays';
 import { readTextblocks } from './navigation/textblock';
 import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
@@ -106,8 +108,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 51 | **One reader of the text blocks** (`navigation/textblock.ts`). The room commands, the quest steps, the levers, the item landings and the room spells each split `TBInfo` themselves and disagreed with the server. Two corrections in the output: `roomitem` is the server checking that an item already lies in the room, never a place to get one, so scenery such as the huge broken willow and the frozen hydra loses an invented source and each dragon carving names only the fang that drops it (`droproomitem` is the step that puts one down); and a room spell whose chain holds `takeitem`, `roomitem` or the server's no-op `check` is no longer unread on that account |
  * | 52 | **One gate vocabulary** (`src/shared/gates.ts`). A quest step's conditions are the gates an exit's instruction states and the router judges, so `QuestGate` is gone: `item` is `carry`, `item-absent` is `lack`, `ability-absent` is an ability gate marked `absent`, `skill` is `roll`, `price` is `copper`, and `checkspell`/`failspell` are `spell-off`, the server failing both while the spell is on (read before as being *under* it). A step's room checks are kept: an item lying in the room, no monsters, a named monster present |
  * | 53 | **A room's commands ship their gates typed** (`RoomCommand.gates`, by the one `gatesOf`), and a portal's conditions are judged by the router as any exit's: a script's level, class, race, alignment, ability, carried item or price walls the way when it shuts, and what only standing there settles (an empty room, an item on the floor, a roll) is priced, never pruned. `need` strings, `Requirement.unread` and the runtime string readers (`readAbilityGate`, the summons pattern) are gone. A line stops at a step the server cannot run, so `17/10747`'s misspelt `nononsters` lever no longer opens anything. What a command summons is `summons` |
+ * | 54 | **What a spell's script does to whoever it is cast on** (`BuiltSpell.st`, `navigation/scriptWays.ts`). A cast exit runs its post-spell after the step, and a script that can move the character (a teleport, a cast that lands elsewhere, a roll or a shown block that does) was a flat unread price. Such a spell carries its lines in order, each the gates ahead of its first moving step and whether it moves; the first line that passes is what happens, and a run where none does moves nobody. The Great Pyramid's fourth-floor arch is `checkability 134 9:addexp 0` ahead of two lines that cast `arch fail`, so it is free at DaoLordQuest 9 and a scatter's wall below. In the shipped Paradigm (`pmud.zip`), 63 spells: 48 always move, 6 have a line that moves nobody, 9 a chain that cannot be followed |
  */
-export const REALM_FORMAT = 53;
+export const REALM_FORMAT = 54;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -473,6 +476,11 @@ export interface BuiltSpell {
    * this client cannot read. See `spellHazard.ts`.
    */
   hz?: BuiltSpellHazard;
+  /**
+   * Its script's lines in order (`scriptLines`), for a spell whose script can
+   * move whoever it is cast on. Format 54: the pyramid's arches.
+   */
+  st?: ScriptLine[];
 }
 
 /**
@@ -1525,6 +1533,16 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   const races = indexRaces(source);
   const classes = indexClasses(source);
   const names = gateNames(source, { classes, races, spells });
+  // What each spell's script does to whoever it is cast on (format 54).
+  const abilitiesOf = new Map(spells.map((spell) => [spell.id, spell.ab ?? []]));
+  for (const spell of spells) {
+    const lines = scriptLines(spell.id, (id) => abilitiesOf.get(id), blocks);
+    if (lines === null) continue;
+    spell.st = lines.map((line) => ({
+      ...line,
+      gates: line.gates.map((gate) => nameGate(gate, names))
+    }));
+  }
 
   /*
    * And now the rooms, with the words each one answers attached — format 13.

@@ -8,7 +8,7 @@
  * `fail` and a need come from a fact that was read, or from what stands in a
  * room the character is not in, which only being there answers.
  */
-import { alignmentRank, type Alignment } from './alignment';
+import { alignmentRank, asAlignment, type Alignment } from './alignment';
 
 /** What `testskill` reads (`TextBlockPart.cs:1155`); `wisdom` is willpower. */
 export const TB_STATS = [
@@ -74,6 +74,139 @@ export interface AbilityBounds {
   atLeast?: number;
   atMost?: number;
   absent?: boolean;
+}
+
+/** Every kind, the runtime half of `GateKind`: keyed by the type, so neither can drift. */
+const GATE_KINDS: Record<GateKind, true> = {
+  level: true,
+  class: true,
+  race: true,
+  standing: true,
+  alignment: true,
+  carry: true,
+  lack: true,
+  floor: true,
+  ability: true,
+  'spell-off': true,
+  lives: true,
+  copper: true,
+  roll: true,
+  'empty-room': true,
+  'monster-here': true,
+  occupied: true
+};
+
+/** A gate read off the world file, or null for a shape that is not one. */
+export function asGate(value: unknown): Gate | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const kind = record['kind'];
+  if (typeof kind !== 'string' || !Object.hasOwn(GATE_KINDS, kind)) return null;
+  const whole = (key: string): number | undefined => {
+    const figure = record[key];
+    return typeof figure === 'number' && Number.isFinite(figure) ? figure : undefined;
+  };
+  // A figure that is present and not a number makes the gate malformed, not open.
+  let malformed = false;
+  const optional = (key: string): Record<string, number> => {
+    if (record[key] === undefined) return {};
+    const figure = whole(key);
+    if (figure === undefined) malformed = true;
+    return figure === undefined ? {} : { [key]: figure };
+  };
+  const read = readGate(kind as GateKind, record, whole, optional);
+  return malformed ? null : read;
+}
+
+function readGate(
+  gate: GateKind,
+  record: Record<string, unknown>,
+  whole: (key: string) => number | undefined,
+  optional: (key: string) => Record<string, number>
+): Gate | null {
+  const name = typeof record['name'] === 'string' ? { name: record['name'] } : {};
+  switch (gate) {
+    case 'level':
+      return { kind: gate, ...optional('min'), ...optional('max') };
+    case 'class':
+    case 'race': {
+      const id = whole('id');
+      const is = record['is'];
+      return id === undefined || typeof is !== 'boolean' ? null : { kind: gate, id, is, ...name };
+    }
+    case 'standing': {
+      const low = typeof record['low'] === 'string' ? asAlignment(record['low']) : null;
+      const high = typeof record['high'] === 'string' ? asAlignment(record['high']) : null;
+      return low === null || high === null ? null : { kind: gate, low, high };
+    }
+    case 'alignment':
+      return { kind: gate, ...optional('atLeast'), ...optional('atMost') };
+    case 'carry':
+    case 'lack': {
+      const item = whole('item');
+      return item === undefined ? null : { kind: gate, item, ...name };
+    }
+    case 'floor': {
+      const item = whole('item');
+      const lying = record['lying'];
+      return item === undefined || typeof lying !== 'boolean'
+        ? null
+        : { kind: gate, item, lying, ...name };
+    }
+    case 'ability': {
+      const id = whole('id');
+      if (id === undefined) return null;
+      const absent = record['absent'];
+      if (absent !== undefined && typeof absent !== 'boolean') return null;
+      return {
+        kind: gate,
+        id,
+        ...optional('atLeast'),
+        ...optional('atMost'),
+        ...(absent === true ? { absent } : {}),
+        ...name
+      };
+    }
+    case 'spell-off': {
+      const spell = whole('spell');
+      return spell === undefined ? null : { kind: gate, spell, ...name };
+    }
+    case 'lives': {
+      const below = whole('below');
+      return below === undefined ? null : { kind: gate, below };
+    }
+    case 'copper': {
+      const copper = whole('copper');
+      return copper === undefined ? null : { kind: gate, copper };
+    }
+    case 'roll': {
+      const stat = record['stat'];
+      const figure = whole('value');
+      return typeof stat !== 'string' ||
+        !(TB_STATS as readonly string[]).includes(stat) ||
+        figure === undefined
+        ? null
+        : { kind: gate, stat: stat as TbStat, value: figure };
+    }
+    case 'empty-room':
+    case 'occupied':
+      return { kind: gate };
+    case 'monster-here': {
+      const monster = whole('monster');
+      return monster === undefined ? null : { kind: gate, monster, ...name };
+    }
+    default: {
+      const never: never = gate;
+      return never;
+    }
+  }
+}
+
+/** A list of gates read off the world file, or null where any is malformed. */
+export function asGates(value: unknown): Gate[] | null {
+  if (!Array.isArray(value)) return null;
+  const gates = value.map(asGate);
+  return gates.every((gate): gate is Gate => gate !== null) ? gates : null;
 }
 
 /** What would let a gate pass. */

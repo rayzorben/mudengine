@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  asGate,
+  asGates,
   judge,
   judgeAll,
   rollChance,
@@ -152,6 +154,16 @@ describe('the one judge', () => {
       expect(judge(gate, unread)).toBe('unknown');
     }
   );
+
+  /* The world file's gates are read back as they were written, and nothing else is. */
+  it('reads every kind back off the world file, and refuses a malformed one', () => {
+    for (const { gate } of Object.values(CASES))
+      expect(asGate(JSON.parse(JSON.stringify(gate)))).toEqual(gate);
+    expect(asGate({ kind: 'carry' })).toBeNull();
+    expect(asGate({ kind: 'teleport', item: 1 })).toBeNull();
+    expect(asGate({ kind: 'roll', stat: 'luck', value: 1 })).toBeNull();
+    expect(asGates([{ kind: 'occupied' }, { kind: 'level', min: 'x' }])).toEqual(null);
+  });
 
   /* A level past the gate's top is a fact no training changes. */
   it('fails a level above the top and needs one below the bottom', () => {

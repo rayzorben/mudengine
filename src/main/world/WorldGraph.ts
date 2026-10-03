@@ -1,14 +1,13 @@
 /**
- * The room graph, and the realm's catalogue joined onto it.
- *
- * Ported from `mudengine/src/engine/path.coffee`, which
- * docs/legacy-assessment.md calls the strongest single piece of logic in either
- * reference codebase. **Loaded once, indexed**: the original issued
- * synchronous SQLite queries from inside block parsing, per line, on the main
- * thread. The catalogue is `Catalogue.ts`, read out of the header first; A*
- * is `Router.ts`, over a `RoomIndex` composed of both; the quest planner is
- * `QuestPlanner.ts`, over the router, the catalogue and `PlannerRooms`. What
- * stays here is the rooms and every join that has to find one; the rest delegates.
+ * The room graph, and the realm's catalogue joined onto it. Ported from
+ * `mudengine/src/engine/path.coffee` (docs/legacy-assessment.md: the strongest
+ * single piece of logic in either reference codebase). **Loaded once,
+ * indexed**: the original issued synchronous SQLite queries from inside block
+ * parsing, per line, on the main thread. The catalogue is `Catalogue.ts`, read
+ * out of the header first; A* is `Router.ts`, over a `RoomIndex` composed of
+ * both; the quest planner is `QuestPlanner.ts`, over the router, the catalogue
+ * and `PlannerRooms`. What stays here is the rooms and every join that has to
+ * find one; the rest delegates.
  */
 import fs from 'node:fs';
 import zlib from 'node:zlib';
@@ -16,9 +15,11 @@ import zlib from 'node:zlib';
 import { describeObstacle, leverOpening } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
+import { scriptAfter } from './navigation/scriptWays';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
+  asRoomCommand,
   asRoomReference,
   DIRECTIONS,
   roomId,
@@ -2195,12 +2196,11 @@ export class WorldGraph {
         }
         if (ability === HAZARD_ABILITY.textBlock) {
           if (effect === 'plain') effect = 'script';
+          Object.assign(requirement, scriptAfter(requirement, id, spell));
           continue;
         }
-        if (ability === HAZARD_ABILITY.endCast) {
-          if (value > 0) pending.push(value);
-          continue;
-        }
+        if (ability === HAZARD_ABILITY.endCast && value > 0) pending.push(value);
+        if (ability === HAZARD_ABILITY.endCast) continue;
         /*
          * Every other ability that names a *row* rather than a magnitude:
          * `KillSpell`, `Summon`, `%Spell`, `RemovesSpell` and their kin. The
@@ -2311,13 +2311,7 @@ export class WorldGraph {
      * that is not a `RoomCommand` is a bug here and not a derivative differing.
      */
     const answers = Array.isArray(raw['cmd'])
-      ? raw['cmd'].filter(
-          (entry): entry is RoomCommand =>
-            typeof entry === 'object' &&
-            entry !== null &&
-            Array.isArray((entry as RoomCommand).say) &&
-            (entry as RoomCommand).say.length > 0
-        )
+      ? raw['cmd'].map(asRoomCommand).filter((entry) => entry !== null)
       : [];
     if (answers.length > 0) result.commands = answers;
     return result;

@@ -8,7 +8,7 @@
  * Dependency-free: the graph is built in the main process, routes are rendered
  * in the renderer.
  */
-import type { AbilityBounds, Gate } from './gates';
+import { asGates, type AbilityBounds, type Gate } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellchoice';
 import type { FightSummary } from './fights';
@@ -407,6 +407,8 @@ export interface Requirement {
    *   corridor with something cast at whoever uses it.
    */
   spellEffect?: 'teleports' | 'scatters' | 'script' | 'plain';
+  /** For a `script` whose post-spell can move the character, its lines in order (`WorldSpell.script`). */
+  script?: readonly ScriptLine[];
   /**
    * Where that teleport actually puts the character, read off the realm's own
    * spell table at load. Present exactly for `teleports` and `scatters`.
@@ -1386,6 +1388,11 @@ export interface WorldSpell {
    */
   hazard?: SpellHazard;
   /**
+   * Its script's lines in order, for a spell whose script can move whoever it
+   * is cast on (format 54): the first line whose gates pass is what happens.
+   */
+  script?: readonly ScriptLine[];
+  /**
    * What casting it actually does, from `Spells.Abil-n` — format 14.
    *
    * 1,985 of the realm's 1,990 spells carry these, and until 2026-08-31 the
@@ -2341,6 +2348,44 @@ export interface RoomCommand {
    * lever can be found. See `RemoteLever.item`.
    */
   opens?: { room: RoomId; direction: string; item?: number };
+}
+
+/** Whether a script line moves whoever runs it; `'unread'` where its chain cannot be followed. */
+export type ScriptMoves = boolean | 'unread';
+
+/** One line of a spell's script: the gates ahead of its first moving step, and whether it moves. */
+export interface ScriptLine {
+  gates: Gate[];
+  moves: ScriptMoves;
+}
+
+/** A spell's script lines read off the world file, or null for a shape that is not one. */
+export function asScriptLines(value: unknown): ScriptLine[] | null {
+  if (!Array.isArray(value)) return null;
+  const lines: ScriptLine[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'object' || entry === null) return null;
+    const record = entry as Record<string, unknown>;
+    const gates = asGates(record['gates']);
+    const moves = record['moves'];
+    if (gates === null || (typeof moves !== 'boolean' && moves !== 'unread')) return null;
+    lines.push({ gates, moves });
+  }
+  return lines;
+}
+
+/**
+ * A room command read off the world file, or null for a shape that is not
+ * one. The file is this client's own, so a malformed entry is a bug here and
+ * is dropped rather than repaired.
+ */
+export function asRoomCommand(value: unknown): RoomCommand | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const command = value as RoomCommand;
+  if (!Array.isArray(command.say) || command.say.length === 0) return null;
+  if (command.gates === undefined) return command;
+  const gates = asGates(command.gates);
+  return gates === null ? null : { ...command, gates };
 }
 
 /**

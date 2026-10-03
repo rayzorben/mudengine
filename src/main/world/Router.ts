@@ -629,7 +629,11 @@ type Way =
 /** The way a gated exit makes for this character, or null for one whose instruction gives no figure. */
 function wayOf(requirement: Requirement, traveller: Traveller): Way | null {
   const gates = exitGates(requirement);
-  if (gates === null) return null;
+  return gates === null ? null : wayThrough(gates, traveller);
+}
+
+/** The way these gates make for this character. */
+function wayThrough(gates: readonly Gate[], traveller: Traveller): Way {
   let unknown = false;
   for (const gate of gates) {
     const verdict = judge(gate, traveller);
@@ -639,6 +643,28 @@ function wayOf(requirement: Requirement, traveller: Traveller): Way | null {
     unknown = true;
   }
   return unknown ? 'unknown' : 'pass';
+}
+
+/**
+ * What an exit whose spell runs a script costs for what the script does. The
+ * step happens, then the script's lines run in order and the first whose
+ * gates pass is what happens (`Requirement.script`): one that moves the
+ * character is a wall, since they end up somewhere the route did not plan; a
+ * gate nobody can read on the way is the unread price; and one that moves
+ * nobody, or a run where every line fails, is `'stays'`, which leaves the
+ * exit its own price. The pyramid's fourth-floor arch stays at DaoLordQuest 9
+ * and is a wall below it.
+ */
+function scriptPrice(requirement: Requirement, traveller: Traveller): number | 'stays' {
+  if (requirement.script === undefined) return UNEVALUATED;
+  for (const line of requirement.script) {
+    const through = wayThrough(line.gates, traveller);
+    if (through === 'unknown') return UNEVALUATED;
+    if (through !== 'pass') continue;
+    if (line.moves === 'unread') return UNEVALUATED;
+    return line.moves ? tuning().world.wallCost : 'stays';
+  }
+  return 'stays';
 }
 
 /**
@@ -851,14 +877,14 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * cannot use this to get anywhere in particular* is exactly what a wall
        * means. What the router does with one instead is `scatterCosts`.
        *
-       * `script` keeps the old discouragement, and that is the honest answer
-       * rather than an unchanged one: the spell hands the character a
-       * `TextBlock` this client does not convert, 40 of the 56 are called
-       * `pyramid 4 arch fail`, and a script named *fail* is a gate under
-       * another name.
+       * A `script` is priced by what its lines do to this character
+       * (`scriptPrice`); one that keeps them on course is a plain cast.
        */
       if (requirement.spellEffect === 'scatters') return tuning().world.wallCost;
-      if (requirement.spellEffect === 'script') return UNEVALUATED;
+      if (requirement.spellEffect === 'script') {
+        const scripted = scriptPrice(requirement, traveller);
+        if (scripted !== 'stays') return scripted;
+      }
       return 0;
 
     case 'spell':
@@ -883,7 +909,11 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * number.
        */
       if (requirement.spellEffect === 'scatters') return tuning().world.wallCost;
-      if (requirement.spellEffect === 'script') return UNEVALUATED;
+      if (requirement.spellEffect === 'script') {
+        // A script that keeps the character on course leaves the trap's hurt.
+        const scripted = scriptPrice(requirement, traveller);
+        if (scripted !== 'stays') return scripted;
+      }
       /*
        * A trap that *teleports* is still a trap: `beyond` takes the character
        * to the spell's room and the hurt is charged here as for any other, so

@@ -17,6 +17,7 @@ import type { LevelBand } from '../../shared/world';
 import type { BuiltSpellHazard } from './buildRealm';
 import { number } from './values';
 import type { RealmSource } from './RealmSource';
+import { castMoves, SCRIPT_DEPTH, scriptsOf } from './navigation/scriptWays';
 import { linesRun, roleOf, stepsRun, type Textblock } from './navigation/textblock';
 
 /**
@@ -39,9 +40,6 @@ const pair = (band: LevelBand): [number | null, number | null] => [
   band.min ?? null,
   band.max ?? null
 ];
-
-/** How deep a chain of blocks and spells is followed before it is called unread. */
-const DEPTH = 8;
 
 /** One `Spells` row, in the two forms this reader needs it. */
 interface SpellFacts {
@@ -176,7 +174,7 @@ export function resolveHazard(
    * recording: a spell reached once behind `maxlevel 19` and once outside any
    * gate would keep the band the first visit gave it, and the effect would be
    * dropped for exactly the characters it can reach. The band space is a
-   * handful of gates per chain and `DEPTH` still bounds it, so the pair is
+   * handful of gates per chain and `SCRIPT_DEPTH` still bounds it, so the pair is
    * cheap; a cycle repeats its own pair and is caught as before.
    */
   const seenSpells = new Set<string>();
@@ -230,7 +228,7 @@ export function resolveHazard(
   const seenUngated = new Set<string>();
 
   const walkSpell = (spell: number, depth: number): void => {
-    if (depth > DEPTH) return void (unread = true);
+    if (depth > SCRIPT_DEPTH) return void (unread = true);
     const key = visit(spell);
     if (seenSpells.has(key)) return;
     seenSpells.add(key);
@@ -242,12 +240,14 @@ export function resolveHazard(
      */
     if (row === undefined) return void (unread = true);
     const mean = Math.abs(row.power[0] + row.power[1]) / 2;
+    // `TextBlock 0` is the realm's *no script*, not a script it lost.
+    for (const script of scriptsOf(row.abilities)) walkBlock(script, depth + 1, 'steps');
+    if (castMoves(row.abilities)) {
+      relocates = true;
+      widen('relocates');
+    }
     for (const [ability, value] of row.abilities) {
-      if (ability === HAZARD_ABILITY.textBlock) {
-        // `TextBlock 0` is the realm's *no script*, not a script it lost.
-        if (value > 0) walkBlock(value, depth + 1, 'steps');
-        continue;
-      }
+      if (ability === HAZARD_ABILITY.textBlock) continue;
       if (ability === HAZARD_ABILITY.endCast) {
         /*
          * **Not followed, and that is the whole difference between a pass and
@@ -267,11 +267,8 @@ export function resolveHazard(
         if (value > 0) unread = true;
         continue;
       }
-      if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap) {
-        relocates = true;
-        widen('relocates');
+      if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap)
         continue;
-      }
       if (!HURTS.has(ability) && !(ability === HAZARD_ABILITY.heal && value < 0)) continue;
       // `abil.Sum == 0 ? rolledPower : abil.Sum`, the server's own choice of
       // which figure to use — the same one `resolveSpells` makes.
@@ -282,7 +279,7 @@ export function resolveHazard(
   };
 
   const walkBlock = (block: number, depth: number, use: 'steps' | 'roll'): void => {
-    if (depth > DEPTH) return void (unread = true);
+    if (depth > SCRIPT_DEPTH) return void (unread = true);
     const key = visit(block);
     if (seenBlocks.has(key)) return;
     seenBlocks.add(key);
