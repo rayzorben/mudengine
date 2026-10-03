@@ -710,17 +710,16 @@ describe('putting cash back on the floor', () => {
   });
 
   /*
-   * `ItemContainer.GetItemStacks` is tried **before** the purse and strips the
-   * leading count, so `drop 15 copper` finds a copper ring and drops that. The
-   * server's own rule, read off its own source — refused out loud rather than
-   * worked around, because the alternative is this client throwing away a
-   * piece of kit to tidy up some change.
+   * `ItemContainer.GetItemStacks` is tried before the purse and takes a stack
+   * the word names when it holds at least the count, so `drop 1 copper` with a
+   * copper kettle in the pack drops the kettle. Refused out loud rather than
+   * throwing away a piece of gear to tidy up some change.
    */
-  it('refuses while the pack holds something the same word names, and says so once', () => {
+  it('refuses while the pack holds as many of something the same word names, and says so once', () => {
     const auto = make(loot({ discardKinds: ['copper'] }));
-    auto.onCharacter(carrying({ copper: 15 }, ['a bright copper kettle']));
+    auto.onCharacter(carrying({ copper: 1 }, ['a bright copper kettle']));
     drain();
-    auto.onCharacter(carrying({ copper: 15 }, ['a bright copper kettle']));
+    auto.onCharacter(carrying({ copper: 1 }, ['a bright copper kettle']));
     drain();
     expect(sent).toEqual([]);
     expect(notices).toHaveLength(1);
@@ -729,12 +728,26 @@ describe('putting cash back on the floor', () => {
 
   it('drops again once that item has left the pack', () => {
     const auto = make(loot({ discardKinds: ['copper'] }));
-    auto.onCharacter(carrying({ copper: 15 }, ['copper ring']));
+    auto.onCharacter(carrying({ copper: 2 }, ['copper ring', 'copper ring']));
     drain();
     expect(sent).toEqual([]);
-    auto.onCharacter(carrying({ copper: 15 }, []));
+    auto.onCharacter(carrying({ copper: 2 }, []));
     drain();
-    expect(sent).toEqual(['drop 15 copper']);
+    expect(sent).toEqual(['drop 2 copper']);
+  });
+
+  /*
+   * Festus, paramud 2026-10-03: 5 silver nobles, a worn silver bracelet and a
+   * large silvery cross. A stack smaller than the count is passed over, so the
+   * server drops the coins (`drop 32 sil` past one silverbark canoe printed
+   * `You dropped 32 silver nobles`, 2026-09-02).
+   */
+  it('drops the coins when every item the word names is fewer than the count', () => {
+    const auto = make(loot({ discardKinds: ['silver'] }));
+    auto.onCharacter(carrying({ silver: 5 }, ['silver bracelet', 'large silvery cross']));
+    drain();
+    expect(sent).toEqual(['drop 5 silver']);
+    expect(notices).toEqual([]);
   });
 
   // A command spent mid-round is one the fight paid for; and whether an
