@@ -147,6 +147,20 @@ describe('edgePenalty', () => {
    * (`checkability 133 5`) put a rank-4 character in the Caves of Chaos rather
    * than in `9/1424`, two maps from where the plan believed it was.
    */
+  /* A spell trap whose script keeps the character on course is still a trap. */
+  it('charges a scripted trap its hurt when the script keeps the character there', () => {
+    const trap: Requirement = {
+      kind: 'spell',
+      raw: 'Spell Trap: 1',
+      spellId: 1,
+      spellEffect: 'script',
+      damage: 16,
+      script: [{ gates: [{ kind: 'level', min: 20 }], moves: true }]
+    };
+    expect(edgePenalty(trap, { level: 10 })).toBe(36);
+    expect(edgePenalty(trap, { level: 25 })).toBe(tuning().world.wallCost);
+  });
+
   describe('a room script gated on a quest counter', () => {
     const gated: Requirement = {
       kind: 'text',
@@ -1093,6 +1107,25 @@ describe('the real realm data', () => {
    * lets everybody through — so it is priced by what the spell does. 21 of the
    * shipped realm's 22 are `poison darts`, whose power is 12–20.
    */
+  /*
+   * The Great Pyramid's fourth-floor arches cast `pyramid 4 arch pass`, whose
+   * script keeps a character at DaoLordQuest 9 on course and sends anybody
+   * else to a random room (format 54).
+   */
+  it.runIf(available)('prices the pyramid arch by the quest counter its script reads', () => {
+    const arch = [...graph!.everyRoom()]
+      .flatMap((room) => room.exits)
+      .find((exit) => exit.requirement?.castPost === 701)?.requirement;
+    expect(arch?.script?.[0]).toEqual({
+      gates: [expect.objectContaining({ kind: 'ability', id: 134, atLeast: 9 })],
+      moves: false
+    });
+    const at = (rank: number) => ({ counters: { sums: { 134: rank }, complete: true } });
+    expect(edgePenalty(arch!, at(9))).toBe(0);
+    expect(edgePenalty(arch!, at(8))).toBe(tuning().world.wallCost);
+    expect(edgePenalty(arch!, {})).toBe(60);
+  });
+
   it.runIf(available)('prices a spell trap by the hurt the realm states', () => {
     const trapped = [...graph!.everyRoom()]
       .flatMap((room) => room.exits)
@@ -1101,16 +1134,14 @@ describe('the real realm data', () => {
     expect(darts?.requirement?.damage).toBe(16);
     expect(edgePenalty(darts!.requirement, {})).toBe(36);
     /*
-     * The other one fires a `TextBlock` — a realm script this client does not
-     * convert — so it is *unread* rather than harmless, and gets the same
-     * discouragement a cast exit's script gets. The trap floor would have
-     * promised the one thing an unread script cannot promise: that the
-     * character is still standing where it walked to.
+     * The other one, the bridge trigger, runs a script that rolls one of six
+     * teleports (`random 2776`) and keeps nobody where they walked to: no way
+     * stays on course, so it is a scatter's wall (format 54).
      */
     const trigger = trapped.find((exit) => exit.requirement?.spellId === 851);
     expect(trigger?.requirement?.spellEffect).toBe('script');
-    expect(trigger?.requirement?.damage).toBeUndefined();
-    expect(edgePenalty(trigger!.requirement, {})).toBe(60);
+    expect(trigger?.requirement?.script).toEqual([{ gates: [], moves: true }]);
+    expect(edgePenalty(trigger!.requirement, {})).toBe(tuning().world.wallCost);
   });
 
   /*
