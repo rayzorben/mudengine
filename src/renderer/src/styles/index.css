@@ -5939,6 +5939,20 @@ button.quest-plan-back {
   margin: 0;
 }
 
+/* The legend on the left, the Dark/Light switch for the grid on the right. */
+.card-palette-head {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.card-palette-halves {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
 /*
  * Three to a row, so the eight palettes of one appearance plus the "follow the
  * client" swatch read as a block to scan rather than a list to walk. Fixed
@@ -5958,6 +5972,17 @@ button.quest-plan-back {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.palette-half {
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-lo-quiet);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-micro);
+  padding: 2px 7px;
+}
+
 .palette-pick {
   align-items: center;
   background: transparent;
@@ -5973,7 +5998,9 @@ button.quest-plan-back {
 }
 
 .palette-pick:hover,
-.palette-pick:focus-visible {
+.palette-pick:focus-visible,
+.palette-half:hover,
+.palette-half:focus-visible {
   background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
   color: var(--text-hi);
   outline: none;
@@ -5984,7 +6011,8 @@ button.quest-plan-back {
  * face makes -- a ring rather than a fill, because the swatch inside it is
  * already a block of colour and a second one around it would be two.
  */
-.palette-pick[data-active='true'] {
+.palette-pick[data-active='true'],
+.palette-half[data-active='true'] {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   color: var(--accent);
 }
