@@ -254,6 +254,31 @@ function migrateAll(options: MigrationOptions): void {
   theHealKeptItsOwnFloor(home, note, options.template);
   theCombatOverridesWent(home, note);
   theManaPairRests(home, note, options.template);
+  theExitsGainedADesign(home, note);
+}
+
+/**
+ * The exits line became a rewrite (2026-10-03, todo 01): its shipped design,
+ * off, appended to every stated `ui.rewrites.designs` list that has no design
+ * for the exits, so the designer lists it. A list cannot say "I removed
+ * that" (`pinTheLoopShelf`'s caveat): a player who deletes the design gets it
+ * back, off, on the next launch.
+ */
+function theExitsGainedADesign(home: Home, note: (message: string) => void): void {
+  for (const file of everySettingsFile(home)) {
+    if (!fs.existsSync(file)) continue;
+    let added = false;
+    edit(file, (document) => {
+      const designs = document.getIn(['ui', 'rewrites', 'designs'], true);
+      if (!isSeq(designs)) return false;
+      const has = designs.items.some((design) => isMap(design) && design.get('entity') === 'room');
+      if (has) return false;
+      designs.items.push(designNode(document, shippedDesign('room')));
+      added = true;
+      return true;
+    });
+    if (added) note(t('notices.migration.exitsDesigned', { file }));
+  }
 }
 
 /**
@@ -1778,11 +1803,11 @@ function theLineBecameARewrite(
 /**
  * How each of the older block's listings was laid out: the list its rows
  * come from, and the one-off lines before and after them, in the order the
- * console drew them.
+ * console drew them. The exits came after that block, so no file states them.
  */
 const OLDER_LISTINGS: Readonly<
   Record<
-    Exclude<RewriteEntity, 'statline'>,
+    Exclude<RewriteEntity, 'statline' | 'room'>,
     { list: string | null; before: string[]; after: string[] }
   >
 > = {
@@ -1800,7 +1825,10 @@ const OLDER_LISTINGS: Readonly<
  * line stated blank was off and stays out; `{keys}` drew `none` for an empty
  * ring, which the `or` filter now says.
  */
-function olderListingTemplate(entity: Exclude<RewriteEntity, 'statline'>, stated: unknown): string {
+function olderListingTemplate(
+  entity: Exclude<RewriteEntity, 'statline' | 'room'>,
+  stated: unknown
+): string {
   const raw = isRecord(stated) ? stated : {};
   const lines = isRecord(raw['lines']) ? raw['lines'] : {};
   const shape = OLDER_LISTINGS[entity];
@@ -1865,7 +1893,7 @@ function theRewritesBecameAList(
       const designs = DEFAULT_REWRITES.map((shipped) => {
         const kind = shipped.entity;
         const older = block[kind];
-        if (!isRecord(older)) return structuredClone(shipped);
+        if (kind === 'room' || !isRecord(older)) return structuredClone(shipped);
         const design = structuredClone(shipped);
         if (typeof older['enabled'] === 'boolean') design.enabled = older['enabled'];
         if (kind === 'statline') {

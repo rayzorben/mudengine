@@ -50,6 +50,20 @@ export function asDirection(input: string): Direction | null {
   return (DIRECTIONS as readonly string[]).includes(word) ? (word as Direction) : null;
 }
 
+/**
+ * Exits in the order the server lists them: `DIRECTIONS`' order, which is the
+ * exit number `RoomManager` sorts a room's exits by before `GetObviousExits`
+ * prints them (north, south, east, west, northeast … down). A word that is no
+ * direction keeps its place after them. Stable, so equals stay as given.
+ */
+export function inExitOrder<T>(exits: readonly T[], direction: (exit: T) => string): T[] {
+  const rank = (exit: T): number => {
+    const code = asDirection(direction(exit));
+    return code === null ? DIRECTIONS.length : DIRECTIONS.indexOf(code);
+  };
+  return [...exits].sort((a, b) => rank(a) - rank(b));
+}
+
 /** What the player types to go that way. */
 export const DIRECTION_COMMAND: Record<Direction, string> = {
   n: 'n',

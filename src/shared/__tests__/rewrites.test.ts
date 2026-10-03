@@ -18,6 +18,7 @@ import {
   type InventoryRow,
   type RewriteDesign,
   type RewriteFacts,
+  type RoomFacts,
   type VitalBands
 } from '../rewrites';
 import { GLYPH_BLANK, parseTemplate, pathsIn, type Drawn } from '../template';
@@ -28,6 +29,7 @@ import { asUiDict, flattenDict, makeT } from '../i18n';
 import { wireItem, type ItemEntity } from '../entities';
 import { readEffects } from '../abilities';
 import type { StatlineFigures } from '../statline';
+import { asSpokenDirection } from '../world';
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 
@@ -565,6 +567,50 @@ describe('the other listings', () => {
     );
     expect(drawn.map(plainOf)).toEqual(['+25 ? 100 13']);
   });
+
+  const exits = (printed: string, hidden: RoomFacts['hidden']): RewriteFacts => ({
+    entity: 'room',
+    figures: FIGURES,
+    room: {
+      printed,
+      exits:
+        printed === 'None'
+          ? []
+          : printed.split(', ').map((word) => ({
+              word,
+              direction: asSpokenDirection(word.split(' ').pop()!) ?? word
+            })),
+      hidden
+    }
+  });
+  const exitsLine = design('room', '{room.exits}|{room.exitsWithHidden}|{room.hidden}');
+  const hiddenWord = (exit: string): string => t('rewrites.room.hiddenExit', { exit });
+
+  it("puts the hidden exits among the printed ones in the server's order", () => {
+    const drawn = renderRewrite(exitsLine, exits('north, east, west', ['u', 's']), NO_BANDS, t);
+    expect(drawn.map(plainOf)).toEqual([
+      `north, east, west|north, ${hiddenWord('south')}, east, west, ${hiddenWord('up')}|south, up`
+    ]);
+  });
+
+  it('keeps the doors as printed, and a room with none printed lists only its hidden ones', () => {
+    const doors = renderRewrite(exitsLine, exits('closed door north', ['e']), NO_BANDS, t);
+    expect(doors.map(plainOf)).toEqual([
+      `closed door north|closed door north, ${hiddenWord('east')}|east`
+    ]);
+    const none = renderRewrite(exitsLine, exits('None', ['d']), NO_BANDS, t);
+    expect(none.map(plainOf)).toEqual([`None|${hiddenWord('down')}|down`]);
+  });
+
+  it('draws the printed exits and ? for the hidden ones where the room is not known', () => {
+    const drawn = renderRewrite(
+      design('room', '{room.exitsWithHidden}|{room.hidden}|{if room.known}k{else}u{/if}'),
+      exits('north, south', null),
+      NO_BANDS,
+      t
+    );
+    expect(drawn.map(plainOf)).toEqual(['north, south|?|u']);
+  });
 });
 
 describe('the bytes the console is fed', () => {
@@ -721,7 +767,7 @@ describe('the catalogue and the dictionary', () => {
 
   it('draws every shipped design against the character alone, so an unlisted figure shows itself', () => {
     // A figure a design names that its scope lacks is drawn as typed; the
-    // shipped six name only what their entity offers, so none shows.
+    // shipped seven name only what their entity offers, so none shows.
     const facts: Record<RewriteDesign['entity'], RewriteFacts> = {
       statline: { entity: 'statline', figures: FIGURES },
       inventory: {
@@ -744,6 +790,11 @@ describe('the catalogue and the dictionary', () => {
         entity: 'experience',
         figures: FIGURES,
         gain: { gained: 1, exp: null, need: null, level: null, expSession: null }
+      },
+      room: {
+        entity: 'room',
+        figures: FIGURES,
+        room: { printed: 'north', exits: [{ word: 'north', direction: 'n' }], hidden: null }
       }
     };
     for (const shippedDesign of DEFAULT_REWRITES) {
