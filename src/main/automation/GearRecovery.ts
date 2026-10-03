@@ -11,30 +11,23 @@
  * `mudengine-automation` § *Going back for the kit is a leg, and it refuses
  * loudly*.
  */
+import { Collect, type CollectEnd, type CollectPlanner } from './Collect';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
-import { DENOMINATIONS, type CharacterState, type Denomination } from '../../shared/character';
+import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
 import { restorePlan } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
-import { roomId, type RoomId, type Route } from '../../shared/world';
+import { roomId } from '../../shared/world';
 import type { SessionModule } from './Module';
 
-export interface RecoveryPlanner {
-  /** Where the character stands, or null while unplaced. */
-  here(): RoomId | null;
-  /** A route to the room it died in, or the reason there is none. */
-  routeTo(room: RoomId): Route | string;
-  /** Hands the route to the walker as a leg. Returns its refusal, or null. */
-  walk(route: Route): string | null;
+export interface RecoveryPlanner extends CollectPlanner {
   /** A move outstanding, a walk running, an escape in flight: not now. */
   moveInFlight(): boolean;
   walking(): boolean;
   busy(): boolean;
-  /** The word that picks a coin up on this realm (todo 830); omitted, the denomination. */
-  coinWord?(coin: Denomination): string;
 }
 
 export interface RecoveryEvents {
@@ -42,11 +35,6 @@ export interface RecoveryEvents {
   /** The trace: what was recovered, and what was refused and why. */
   decided?(decision: SafetyDecision): void;
 }
-
-type Phase =
-  | { kind: 'idle' }
-  | { kind: 'walking'; to: RoomId }
-  | { kind: 'collecting'; to: RoomId; asked: Set<string>; askedAt: number };
 
 const ACTION = 'recover gear';
 
@@ -67,7 +55,10 @@ export class GearRecovery implements SessionModule {
   private failures = 0;
   /** Whether the bound has been said, so it is said once rather than per death. */
   private saidSpent = false;
-  private phase: Phase = { kind: 'idle' };
+  /** The walk back and the pick-up, shared with the stash fetch. */
+  private readonly collect: Collect;
+  /** Where the trip under way is going, as its sentences name it. */
+  private room = '';
 
   constructor(
     private config: MovementConfig,
@@ -76,7 +67,22 @@ export class GearRecovery implements SessionModule {
     private readonly planner: RecoveryPlanner,
     private readonly events: RecoveryEvents = {},
     private readonly now: () => number = () => Date.now()
-  ) {}
+  ) {
+    this.collect = new Collect(
+      queue,
+      planner,
+      {
+        // Reaching the pile is what the run of failures counted the absence of (todo 21).
+        arrived: () => {
+          this.failures = 0;
+          this.saidSpent = false;
+        },
+        taking: (taking, gone, capped) => this.taking(taking, gone, capped),
+        ended: (end, state) => this.ended(end, state)
+      },
+      now
+    );
+  }
 
   configure(config: MovementConfig, enabled: boolean): void {
     this.config = config;
@@ -85,7 +91,7 @@ export class GearRecovery implements SessionModule {
 
   reset(): void {
     this.handled = null;
-    this.phase = { kind: 'idle' };
+    this.collect.cancel();
     this.failures = 0;
     this.saidSpent = false;
   }
@@ -94,11 +100,10 @@ export class GearRecovery implements SessionModule {
   onCharacter(state: CharacterState): void {
     if (!this.enabled || !this.config.recoverGear) return;
     if (state.phase !== 'in-game') return;
-    if (this.phase.kind === 'collecting') {
-      this.collect(state);
+    if (this.collect.busy) {
+      this.collect.onCharacter(state);
       return;
     }
-    if (this.phase.kind !== 'idle') return;
 
     const death = state.lastDeath;
     if (death === null || death.at === this.handled) return;
@@ -148,135 +153,82 @@ export class GearRecovery implements SessionModule {
     }
 
     this.handled = death.at;
-    const to = roomId(death.map, death.number);
-    if (this.planner.here() === to) {
-      this.phase = { kind: 'collecting', to, asked: new Set(), askedAt: 0 };
-      this.collect(state);
-      return;
-    }
-    const route = this.planner.routeTo(to);
-    if (typeof route === 'string') {
-      this.refuse(
-        t('automation.gearRecovery.refusalNoRoute', { room: death.name ?? to, why: route })
-      );
-      return;
-    }
-    this.events.notice?.(
-      t('automation.gearRecovery.going', {
-        count: missing.length,
-        room: death.name ?? to,
-        steps: route.steps.length
-      })
+    const room = death.name ?? roomId(death.map, death.number);
+    this.room = room;
+    const started = this.collect.start(
+      {
+        to: roomId(death.map, death.number),
+        items: missing,
+        search: null,
+        key: 'recover',
+        reason: (item) => t('automation.gearRecovery.reasonTaking', { item }),
+        coinReason: (coin) => t('automation.gearRecovery.reasonCoins', { coin }),
+        collectMs: tuning().gearRecovery.collectMs,
+        expiresMs: tuning().gearRecovery.expiresMs
+      },
+      state
     );
-    const refused = this.planner.walk(route);
-    if (refused !== null) {
-      this.refuse(
-        t('automation.gearRecovery.refusalNoRoute', { room: death.name ?? to, why: refused })
+    if (started.kind === 'refused') {
+      this.refuse(t('automation.gearRecovery.refusalNoRoute', { room, why: started.why }));
+    } else if (started.kind === 'walking') {
+      this.events.notice?.(
+        t('automation.gearRecovery.going', { count: missing.length, room, steps: started.steps })
       );
-      return;
     }
-    this.phase = { kind: 'walking', to };
   }
 
   /** The walker's report: the recovery's own leg ended, or somebody else's walk did. */
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
-    if (this.phase.kind !== 'walking') return;
-    const { to } = this.phase;
-    if (!arrived || this.planner.here() !== to) {
-      this.phase = { kind: 'idle' };
-      this.failed(
-        t('automation.gearRecovery.refusalNotReached', {
-          room: state.lastDeath?.name ?? to,
-          why: reason ?? t('automation.gearRecovery.whyStopped')
-        })
-      );
-      return;
-    }
-    /*
-     * Reached the pile, which is what the run of failures was counting the
-     * absence of. Reset here rather than at the dressing: the trip is the
-     * dangerous part and it worked, and an item nobody else left on the floor
-     * is not a reason to call the journey a failure (todo 21).
-     */
-    this.failures = 0;
-    this.saidSpent = false;
-    this.phase = { kind: 'collecting', to, asked: new Set(), askedAt: 0 };
-    this.collect(state);
+    this.collect.onWalkEnded(arrived, reason, state);
+  }
+
+  private taking(taking: readonly string[], gone: number, capped: number): void {
+    this.events.notice?.(
+      [
+        t('automation.gearRecovery.taking', { count: taking.length, items: taking.join(', ') }),
+        gone > 0 ? t('automation.gearRecovery.takingGone', { gone }) : '',
+        capped > 0 ? t('automation.gearRecovery.takingCapped', { capped }) : ''
+      ]
+        .filter((part) => part.length > 0)
+        .join(' ')
+    );
   }
 
   /**
-   * Standing where the character died: take what is still there, then put it
-   * on. The floor is read from the room block, the pack from `You took`, and
-   * the dressing waits for the pack to hold what was asked for — or for
-   * `tuning.gearRecovery.collectMs` to pass, after which it dresses with what
-   * arrived and says what did not.
+   * How the trip ended. Taken: dressed with what arrived (`restorePlan`),
+   * saying what did not. The rest are refusals, and a walk that never got
+   * there, or a pile left, counts towards `recoverGearTries`.
    */
-  private collect(state: CharacterState): void {
-    if (this.phase.kind !== 'collecting') return;
-    const { to, asked } = this.phase;
-    if (this.planner.here() !== to) {
-      // Wandered, or walked: the pile is somewhere the character is not.
-      this.phase = { kind: 'idle' };
-      this.failed(t('automation.gearRecovery.refusalLeft'));
-      return;
-    }
-    const missing = this.missing(state);
-    if (asked.size === 0) {
-      const onFloor = missing.filter((item) =>
-        state.room.items.some((floor) => sameItem(floor.name, item))
-      );
-      const gone = missing.filter((item) => !onFloor.includes(item));
-      if (onFloor.length === 0) {
-        this.phase = { kind: 'idle' };
-        this.refuse(t('automation.gearRecovery.refusalNothingHere', { items: missing.join(', ') }));
+  private ended(end: CollectEnd, state: CharacterState): void {
+    const { room } = this;
+    switch (end.kind) {
+      case 'not-reached':
+        this.failed(
+          t('automation.gearRecovery.refusalNotReached', {
+            room,
+            why: end.why ?? t('automation.gearRecovery.whyStopped')
+          })
+        );
         return;
+      case 'left':
+        this.failed(t('automation.gearRecovery.refusalLeft'));
+        return;
+      case 'nothing-here':
+        this.refuse(
+          t('automation.gearRecovery.refusalNothingHere', { items: this.missing(state).join(', ') })
+        );
+        return;
+      case 'taken':
+        this.dress(end.asked, end.arrived, state);
+        return;
+      default: {
+        const never: never = end;
+        return never;
       }
-      const max = tuning().spending.maxGear;
-      const taking = onFloor.slice(0, max);
-      const { expiresMs } = tuning().gearRecovery;
-      for (const item of taking) {
-        asked.add(item);
-        this.queue.enqueue({
-          command: `get ${item}`,
-          priority: 'probe',
-          coalesceKey: `recover:${item.toLowerCase()}`,
-          expiresAt: this.now() + expiresMs,
-          reason: t('automation.gearRecovery.reasonTaking', { item })
-        });
-      }
-      // And the purse, which the death dropped beside the kit.
-      const cash = state.room.cash;
-      if (cash !== null) {
-        for (const coin of DENOMINATIONS) {
-          if (cash[coin] <= 0) continue;
-          this.queue.enqueue({
-            command: `get ${this.planner.coinWord?.(coin) ?? coin}`,
-            priority: 'probe',
-            coalesceKey: `recover:${coin}`,
-            expiresAt: this.now() + expiresMs,
-            reason: t('automation.gearRecovery.reasonCoins', { coin })
-          });
-        }
-      }
-      this.phase = { kind: 'collecting', to, asked, askedAt: this.now() };
-      const capped = onFloor.length - taking.length;
-      this.events.notice?.(
-        [
-          t('automation.gearRecovery.taking', { count: taking.length, items: taking.join(', ') }),
-          gone.length > 0 ? t('automation.gearRecovery.takingGone', { gone: gone.length }) : '',
-          capped > 0 ? t('automation.gearRecovery.takingCapped', { capped }) : ''
-        ]
-          .filter((part) => part.length > 0)
-          .join(' ')
-      );
-      return;
     }
-    const arrived = [...asked].filter((item) =>
-      state.inventory.items.some((held) => sameItem(held.name, item))
-    );
-    const waited = this.now() - this.phase.askedAt;
-    if (arrived.length < asked.size && waited < tuning().gearRecovery.collectMs) return;
-    this.phase = { kind: 'idle' };
+  }
+
+  private dress(asked: readonly string[], arrived: readonly string[], state: CharacterState): void {
     const plan = restorePlan(state.loadout, state.inventory.items, tuning().spending.maxGear);
     for (const command of plan.commands) {
       this.queue.enqueue({
@@ -287,18 +239,17 @@ export class GearRecovery implements SessionModule {
         reason: t('automation.gearRecovery.reasonDressing')
       });
     }
-    const notTaken = [...asked].filter((item) => !arrived.includes(item));
     this.events.notice?.(
       t('automation.gearRecovery.dressed', {
         worn: plan.commands.length,
-        notTaken: notTaken.length,
+        notTaken: asked.length - arrived.length,
         missing: plan.missing.length
       })
     );
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
-      because: t('automation.gearRecovery.becauseStripped', { count: asked.size }),
+      because: t('automation.gearRecovery.becauseStripped', { count: asked.length }),
       acted: true
     });
   }

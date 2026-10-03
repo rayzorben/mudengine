@@ -7,14 +7,11 @@
  */
 import { t } from '../app/i18n';
 import type { CommandQueue } from '../automation/CommandQueue';
-import type { LoopRunner } from '../automation/LoopRunner';
 import {
   OutgrownGear,
   type OutgrownEvents,
   type OutgrownPlanner
 } from '../automation/OutgrownGear';
-import type { Walker } from '../automation/Walker';
-import type { CharacterTracker } from '../parse/CharacterTracker';
 import { outgrownItems } from '../world/outgrownItems';
 import { slotAskerOf } from '../world/slotGear';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -24,14 +21,11 @@ import { splitStop } from '../../shared/loops';
 import { ganghouseHeld, keptRegardless, type KitPiece } from '../../shared/outgrown';
 import { roomAddress, roomId } from '../../shared/world';
 import type { Errands } from './Errands';
-import { ERRAND_LEG } from './Travel';
+import { legPlanner, type LegModules } from './legPlanner';
 
 /** The modules, read when the trip asks: several are built after it. */
-export interface OutgrownPlannerModules {
-  tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
+export interface OutgrownPlannerModules extends LegModules {
   errands: Pick<Errands, 'planFromHere' | 'findStop' | 'travellerNow' | 'realmClass'>;
-  walker: Pick<Walker, 'start' | 'walking'>;
-  loops: Pick<LoopRunner, 'progress' | 'noteErrand'>;
   world:
     | Pick<
         WorldGraph,
@@ -76,7 +70,7 @@ function keyRows(state: CharacterState, world: OutgrownPlannerModules['world']):
 export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
   const m = parts.modules;
   return {
-    here: () => roomAddress(m().tracker.current.room),
+    ...legPlanner(m),
     outgrown: (state) => {
       const { world, errands } = m();
       if (world === undefined) return [];
@@ -130,13 +124,7 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
         null
       );
     },
-    routeTo: (room) => m().errands.planFromHere(room),
-    walk: (route) => m().walker.start(route, m().tracker.current, ERRAND_LEG),
-    moveInFlight: () => m().tracker.pendingMoves > 0,
-    walking: () => m().walker.walking,
     busy: parts.busy,
-    looping: () => m().loops.progress.status === 'running',
-    hold: () => m().loops.noteErrand(),
     release: parts.release
   };
 }

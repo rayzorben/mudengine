@@ -7,6 +7,7 @@ import zlib from 'node:zlib';
 
 import { WorldGraph } from '../../world/WorldGraph';
 import type { FightRecord, FightSink } from '../../../shared/fights';
+import type { Stash } from '../../../shared/stash';
 import { CharacterTracker } from '../CharacterTracker';
 import { parseExit } from '../room';
 import { Classifier } from '../Classifier';
@@ -11175,7 +11176,8 @@ describe('the spellbook and the belongings record', () => {
       durations: {} as Record<string, number>,
       abilities: null as AbilitySums | null,
       stats: null as StatsRecord | null,
-      room: null as KeptRoom | null
+      room: null as KeptRoom | null,
+      stash: [] as Stash
     };
     return {
       state,
@@ -11184,6 +11186,10 @@ describe('the spellbook and the belongings record', () => {
         rememberBanks: () => {},
         recallLoadout: () => [],
         rememberLoadout: () => {},
+        recallStash: () => state.stash,
+        rememberStash: (stash: Stash) => {
+          state.stash = stash;
+        },
         recallSpellbook: () => state.spellbook,
         rememberSpellbook: (book: ReadonlyArray<(typeof state.spellbook & object)[number]>) => {
           state.spellbook = book.map((spell) => ({ ...spell }));
@@ -11236,6 +11242,35 @@ describe('the spellbook and the belongings record', () => {
       if (batch) tracker.apply(batch, batch.rows);
     }
   };
+
+  it('writes what was hidden down, and seeds it back at reset', () => {
+    const { state, sink } = fakeBelongings();
+    const tracker = new CharacterTracker();
+    tracker.useBelongings(sink);
+    feedThrough(tracker, [
+      '[HP=34]:',
+      'You are carrying padded gloves, 3 torch',
+      'You have no keys.',
+      '[HP=34]:',
+      'You hid padded gloves.',
+      '[HP=34]:',
+      'You hid 3 torch.',
+      '[HP=34]:'
+    ]);
+    // No world placed the room, so the room is recorded as unknown, never guessed.
+    expect(state.stash.map(({ item, count, map }) => ({ item, count, map }))).toEqual([
+      { item: 'padded gloves', count: 1, map: null },
+      { item: 'torch', count: 3, map: null }
+    ]);
+    // And a take in an unplaced room takes from no pile.
+    feedThrough(tracker, ['You took padded gloves.', '[HP=34]:']);
+    expect(state.stash).toHaveLength(2);
+
+    const next = new CharacterTracker();
+    next.useBelongings(sink);
+    next.reset();
+    expect(next.current.stash).toBe(state.stash);
+  });
 
   it('writes the ability listing down, and seeds it back at reset', () => {
     const { state, sink } = fakeBelongings();

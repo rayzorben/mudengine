@@ -1116,6 +1116,19 @@ const TUNING_DEFAULTS = {
     /** A `hide`, `sell` or `drop` that leaves the pack holding as many after this is refused. */
     confirmMs: 8000
   },
+  /** Fetching named items from a stash — `StashFetch` (todo 05). */
+  stashFetch: {
+    /**
+     * Bare searches before taking what the open floor holds. The server rolls
+     * each hidden item against Perception per search (`Player.TrySearch`), so
+     * one search can miss it.
+     */
+    searches: 4,
+    /** How long a search's answer, then the pack showing each `get`, is waited for. */
+    collectMs: 8000,
+    /** A `get` for the stash still queued after this is for a room already left. */
+    expiresMs: 6000
+  },
   /**
    * Looking for what a room did not print — `AutoSearch`.
    *
