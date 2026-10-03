@@ -110,7 +110,7 @@ export interface SessionHostOptions {
    * exist.
    */
   worldFor(id: SessionId): WorldGraph | undefined;
-  /** Write one automation switch into a character's file; whether it was written. See `CombatLease`. */
+  /** Write one automation switch into a character's file; whether it was written. */
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
   /** Read every character's file again now, rather than on the next poll. */
   reread?(): void;
@@ -462,7 +462,6 @@ export class SessionHost {
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
-        switchAutomation: (name, on) => this.options.flipSwitch?.(id, name, on) ?? false,
         // Nothing is written that cannot be read back now.
         switchAutomationNow: (name, on) => {
           const { flipSwitch, reread } = this.options;

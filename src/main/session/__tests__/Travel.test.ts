@@ -114,8 +114,7 @@ function travel(
       strayedFrom: null,
       place: null
     },
-    combat: { willFight: true, declineWhileTravelling: vi.fn() },
-    combatLease: { lending: false, run: vi.fn(), onWalkEnded: vi.fn() },
+    combat: { willFight: true },
     supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn() },
     trainLevel: { busy: false, abandon: vi.fn() },
     outgrown: { busy: false, abandon: vi.fn() },
@@ -124,8 +123,15 @@ function travel(
     questRunner: { running: false, abandon: vi.fn() },
     light: { beforeRoute: () => false, beforeLap: vi.fn() }
   };
+  const settings = overrides.settings ?? config;
+  // The combat switch as the file holds it, and every write of it.
+  const combat = { on: settings.combat.enabled, flips: [] as boolean[] };
   const session: TravelSession = {
-    config: () => ({ ...(overrides.settings ?? config), enabled: master.on }),
+    config: () => ({
+      ...settings,
+      enabled: master.on,
+      combat: { ...settings.combat, enabled: combat.on }
+    }),
     movement:
       overrides.movement ??
       (() => (going ? { kind: 'route', moving: true, resumable: false } : { ...NOT_MOVING })),
@@ -136,13 +142,18 @@ function travel(
     fled: overrides.fled ?? (() => []),
     keepFled: overrides.keepFled ?? (() => {}),
     driven: overrides.driven ?? (() => false),
-    switchAutomation: (on) => {
+    switchAutomation: (name, on) => {
+      if (name === 'combat') {
+        combat.flips.push(on);
+        if (master.writes) combat.on = on;
+        return master.writes;
+      }
       switched.push(on);
       if (master.writes) master.on = on;
       return master.writes;
     }
   };
-  return { travel: new Travel(parts, session), parts, sent, notices, decisions, switched };
+  return { travel: new Travel(parts, session), parts, sent, notices, decisions, switched, combat };
 }
 
 /*
@@ -406,6 +417,68 @@ describe('collecting before a walk', () => {
       { id: 1, name: 'rope', from: { step, moves: 1 } },
       { id: 2, name: 'torch' }
     ]);
+  });
+});
+
+/*
+ * Run it (todo 06): auto-combat off for the way there, and back on when the
+ * run arrives (the user, 2026-10-03). Nothing else writes the switch.
+ */
+describe('a route run with auto-combat off', () => {
+  const ROUTE = {
+    steps: [{ from: '1/1', to: '1/2' }],
+    cost: 1,
+    blocked: false
+  } as unknown as Route;
+  const fighting = { ...config, combat: { ...config.combat, enabled: true } };
+
+  function running(settings: AutomationConfig) {
+    const made = travel(beside(), 'stepping', false, { on: true, writes: true }, { settings });
+    // As the walker does: every accepted start says so through `destination`.
+    made.parts.walker.start = vi.fn(() => {
+      made.travel.walkStarted();
+      return null;
+    });
+    made.parts.supplies.considerBeforeRoute = () => null;
+    made.parts.light.beforeRoute = () => false;
+    return made;
+  }
+
+  it('turns it off at the start and back on at the arrival', () => {
+    const { travel: moving, combat, notices } = running(fighting);
+    expect(moving.walkRoute(ROUTE, true)).toBeNull();
+    expect(combat.flips).toEqual([false]);
+    expect(notices).toContain(t('automation.combat.runningCombatOff'));
+    moving.walkEnded(true);
+    expect(combat.flips).toEqual([false, true]);
+    expect(notices).toContain(t('automation.combat.onAfterRun'));
+  });
+
+  /* A walk home after an escape replaces the run without ending it. */
+  it('leaves it off when another walk replaced the run and arrives', () => {
+    const { travel: moving, combat } = running(fighting);
+    moving.walkRoute(ROUTE, true);
+    expect(combat.flips).toEqual([false]);
+    moving.walkStarted();
+    moving.walkEnded(true);
+    expect(combat.flips).toEqual([false]);
+  });
+
+  it('leaves it off when the run stops short', () => {
+    const { travel: moving, combat } = running(fighting);
+    moving.walkRoute(ROUTE, true);
+    moving.walkEnded(false);
+    expect(combat.flips).toEqual([false]);
+    expect(combat.on).toBe(false);
+  });
+
+  it('never writes it for a route walked rather than run', () => {
+    const { travel: moving, combat } = running(config);
+    // Positive control: the walk started.
+    expect(moving.walkRoute(ROUTE)).toBeNull();
+    expect(moving.walkIsAsked).toBe(true);
+    moving.walkEnded(true);
+    expect(combat.flips).toEqual([]);
   });
 });
 

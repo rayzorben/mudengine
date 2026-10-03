@@ -499,9 +499,7 @@ describe('the round combat macro', () => {
       hideForOpener: false,
       // And by `statedTheMobRules`, empty, which is what the client already
       // does without the key.
-      mobRules: [],
-      // And by `statedTheNewAutomation`, at the shipped figure (todo 00).
-      defendAfterRounds: 2
+      mobRules: []
     });
   });
 
@@ -1640,6 +1638,52 @@ describe('the floor on opening a fight', () => {
         'notices.migration.combatFloorDropped.many'
       )
     ).toEqual([]);
+  });
+});
+
+/**
+ * Auto-combat off is off (the user, 2026-10-02): the two settings that turned
+ * it back on leave the user's files.
+ */
+describe('the settings that turned auto-combat back on', () => {
+  const OPTIONS_WITH = `automation:
+  movement:
+    # Wait out blindness.
+    walkWhileBlind: false
+    fightOnArrival: true
+  combat:
+    retaliate: true
+    defendAfterRounds: 2
+`;
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+    fs.writeFileSync(home.options, OPTIONS_WITH, 'utf8');
+  });
+
+  it('go from the options file, leaving the rest of each block and its comments', () => {
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const automation = parse(text).automation as Record<string, Record<string, unknown>>;
+    expect(automation['movement']?.['fightOnArrival']).toBeUndefined();
+    expect(automation['movement']?.['walkWhileBlind']).toBe(false);
+    expect(automation['combat']?.['defendAfterRounds']).toBeUndefined();
+    expect(automation['combat']?.['retaliate']).toBe(true);
+    expect(text).toContain('# Wait out blindness.');
+  });
+
+  it('go from a character file, and say so once', () => {
+    const scope = home.profile('main');
+    fs.mkdirSync(scope.dir, { recursive: true });
+    fs.writeFileSync(scope.file, 'automation:\n  combat:\n    defendAfterRounds: 0\n', 'utf8');
+    migrate();
+    const automation = parse(fs.readFileSync(scope.file, 'utf8')).automation as
+      Record<string, Record<string, unknown> | undefined> | undefined;
+    expect(automation?.['combat']?.['defendAfterRounds']).toBeUndefined();
+    expect(notesOf(said, 'notices.migration.combatOverridesDropped.many')).toHaveLength(1);
+    said.length = 0;
+    migrate();
+    expect(notesOf(said, 'notices.migration.combatOverridesDropped.many')).toHaveLength(0);
   });
 });
 

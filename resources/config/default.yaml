@@ -859,13 +859,6 @@ automation:
     # off, and says so.
     walkWhileConfused: false
 
-    # Turn auto-combat back on when a route you asked for arrives. The usual
-    # reason to walk with it off is to get somewhere without fighting on the
-    # way, and on arrival that reason is gone. A loop's leg and an errand are
-    # not journeys with an arrival in them. Flips the switch in this file, so
-    # the toolbar shows it.
-    fightOnArrival: true
-
     # Ways and places routes keep out of, in the realm's own words: a way whose
     # script phrase says one (`go vortex`), or a room whose name does (the
     # Negative Power Plane). A route you ask for that crosses one is shown
@@ -1788,12 +1781,6 @@ automation:
     # fight -- something is already swinging -- so it is on, and it ignores
     # every limit below.
     retaliate: true
-
-    # With auto-combat off, or a route run with it off, being hit for this many
-    # rounds without moving turns it on until you next arrive in another room.
-    # Off means do not start fights; it never meant stand there and be killed.
-    # Flips the switch in this file, both ways. 0 never does.
-    defendAfterRounds: 2
 
     # Leave alone a monster somebody outside your party is already fighting --
     # MegaMUD's PoliteAttacks, under its own name and in its own direction. On,

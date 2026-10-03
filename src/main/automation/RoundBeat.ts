@@ -1,8 +1,8 @@
 /**
  * Where a round's blows begin. The server prints a round's blows together on
  * the room's tick, so blows closer than `tuning.combat.roundGapMs` are one
- * round and the first after a longer quiet opens the next. `CombatLease` counts
- * rounds with it and `CastRound` reopens the round's cast with it.
+ * round and the first after a longer quiet opens the next. `CastRound` reopens
+ * the round's cast with it.
  */
 import { tuning } from '../app/tuning';
 

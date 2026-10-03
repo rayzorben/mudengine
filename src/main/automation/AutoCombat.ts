@@ -428,28 +428,6 @@ export class AutoCombat implements SessionModule {
   private offBy: string | null = null;
   /** Set while an escape is in flight; nothing opens a fight through it. */
   private retreating = false;
-  /** True while `Walker` has a route running. */
-  private walking = false;
-  private looping = false;
-  /**
-   * Whether the loop runner last said its lap is running. Apart from
-   * `looping` because `reset()` leaves it: a carried loop outlives a
-   * reconnect, and its lap has not started again.
-   */
-  private lap = false;
-  /**
-   * Whether this journey is fighting, and whether the player has said not to.
-   *
-   * `travelling` is armed by the route or the lap that started (todo 00) and
-   * disarmed when nothing is moving any more; `declined` is the player having
-   * turned auto-combat off *during* one, which holds for the rest of that
-   * journey and is taken back by the next one. Both are session-scoped: the
-   * player's own file is never written by either.
-   */
-  private travelling = false;
-  private declined = false;
-  /** True while a quest run has the character; fights as a journey does. See `noteQuesting`. */
-  private questing = false;
   /** True while the character is under a timed spell it must walk out from. See `noteMoveOnly`. */
   private moveOnly = false;
   /**
@@ -557,24 +535,8 @@ export class AutoCombat implements SessionModule {
     config: CombatConfig,
     enabled: boolean,
     spells?: SpellsConfig,
-    party?: PartyConfig,
-    // `CombatLease`'s own write landing: not the player overruling a journey.
-    leaseEdge = false
+    party?: PartyConfig
   ): void {
-    /*
-     * The switch going off *during* a journey is the player overruling the
-     * journey's own override (todo 00), and it has to be caught on the edge:
-     * once travelling, `acting` ignores `config.enabled`, so without this the
-     * toolbar's switch would do nothing until the character stopped walking.
-     * Turning it back on the same way clears the refusal, which is what makes
-     * the control answer in both directions.
-     */
-    if (this.config.enabled && !config.enabled && !leaseEdge) this.declineWhileTravelling();
-    // A reload that reads on is the player's hand whichever edge it arrived
-    // on: a run's write and the toolbar's press inside one poll reach here as
-    // on → on, and a decline left standing beside a switch that reads on is
-    // auto-combat dead with nothing to say why (todo 06, on review).
-    if (config.enabled) this.declined = false;
     this.config = config;
     this.enabled = enabled;
     this.spell.configure(spells, config.mobRules);
@@ -663,7 +625,6 @@ export class AutoCombat implements SessionModule {
   /** A new connection. Nothing about the last fight carries over. */
   reset(): void {
     this.wanted.clear();
-    this.questing = false;
     this.moveOnly = false;
     this.refused.clear();
     this.cannotBackstabWith.clear();
@@ -678,10 +639,6 @@ export class AutoCombat implements SessionModule {
     this.openerSpent = false;
     this.saidOpenerNeedsStealth = false;
     this.retreating = false;
-    this.walking = false;
-    this.looping = false;
-    this.travelling = false;
-    this.declined = false;
     this.standDownUntil = 0;
     this.movePendingNow = false;
     this.arrivedAt = 0;
@@ -691,42 +648,6 @@ export class AutoCombat implements SessionModule {
 
   dispose(): void {
     this.clearRound();
-  }
-
-  /** Whether a route is being walked, which decides whether to start anything. */
-  noteWalking(walking: boolean): void {
-    this.setTravelling(walking || this.looping || this.questing);
-    this.walking = walking;
-  }
-
-  /**
-   * Whether a loop is running its lap.
-   *
-   * A lap **fights**, whatever the switch says (todo 03). Said once as the lap
-   * starts; it is scoped to the loop, so stopping the lap is how you answer
-   * it, and nothing is written into the player's own file.
-   */
-  noteLooping(looping: boolean): void {
-    if (looping && !this.lap && this.fightingBecauseTravelling) {
-      this.events.notice?.(t('automation.loops.fightingForTheLap'));
-    }
-    this.lap = looping;
-    this.setTravelling(looping || this.walking || this.questing);
-    this.looping = looping;
-  }
-
-  /**
-   * Whether a quest run has the character (todo 102).
-   *
-   * A run walks, stands at an asker and fights a boss, and it fights on every
-   * one of those terms as a route does: the player pressed *Run it* on a plan
-   * that names the kill, which is the argument `setTravelling` makes for a
-   * route. Armed for the whole run, not per leg, so a fight opened at the
-   * step's room — where nothing is walking — still opens.
-   */
-  noteQuesting(questing: boolean): void {
-    this.setTravelling(questing || this.walking || this.looping);
-    this.questing = questing;
   }
 
   /**
@@ -759,66 +680,9 @@ export class AutoCombat implements SessionModule {
     return false;
   }
 
-  /**
-   * Going somewhere turns fighting on; stopping puts it back (todo 00).
-   *
-   * `automation.combat.whileWalking` used to ask, per route, whether to open
-   * fights on the way — and a lap overrode it, because a lap walked past
-   * everything on it completes its rounds having gained nothing. The setting
-   * went because the override was the right answer both times: the player
-   * asked to go somewhere, what lives between here and there is the realm's
-   * business, and a client that walks a character through a corridor of
-   * monsters without swinging is the one that comes back at the level it left.
-   *
-   * **Armed at the start of a journey, not per step.** A route starting and a
-   * lap's first room are the same moment to this — `noteWalking` and
-   * `noteLooping` both arrive with the movement — and arming on the edge is
-   * what makes {@link declineWhileTravelling} last the whole journey instead
-   * of being undone by the next room.
-   *
-   * **Session-scoped, and never written to the player's file.** It ends when
-   * the movement does, which is what makes it answerable by stopping rather
-   * than by remembering to put a switch back.
-   */
-  private setTravelling(moving: boolean): void {
-    if (moving === this.travelling) return;
-    this.travelling = moving;
-    /*
-     * A refusal is this journey's and ends with it, either edge: the player
-     * said *not this route*, not *never again*. `acting` read it bare, so one
-     * left standing past the journey refused everything beside a switch that
-     * read on until a reload happened to clear it, and said nothing.
-     */
-    this.declined = false;
-  }
-
-  /**
-   * The player turning auto-combat off while going somewhere (todo 00).
-   *
-   * The journey's override is the client's decision, so the player has to be
-   * able to overrule it — and the overruling has to outlast the room it was
-   * made in, or the next arrival turns fighting straight back on. It holds
-   * until this journey ends; the next one asks again. *Run it* (todo 06) makes
-   * the same refusal on the player's behalf the moment the walk starts.
-   */
-  declineWhileTravelling(): void {
-    if (this.travelling) this.declined = true;
-  }
-
-  /**
-   * `CombatLease` handed the switch back (todo 00, 2026-09-23): the journey
-   * is put back as it was when the switch was lent — declined again after a
-   * *Run it*, still fighting on a route that was. The reload that follows
-   * arrives flagged as the lease's (`configure`'s `leaseEdge`), so it
-   * declines nothing by itself.
-   */
-  leaseReturned(declined: boolean): void {
-    this.declined = declined && this.travelling;
-  }
-
-  /** Whether the journey under way is one the player declined to fight on. */
-  get journeyDeclined(): boolean {
-    return this.travelling && this.declined;
+  /** Whether the player's switches let this fight at all. */
+  get switchedOn(): boolean {
+    return this.enabled && this.config.enabled;
   }
 
   /** Whether this would hit back at a monster swinging now. */
@@ -830,7 +694,7 @@ export class AutoCombat implements SessionModule {
    * Whether this fights at all right now, for the walker's question of
    * whether a fight around a route will end (2026-09-23, on review): acting,
    * not stood down by a `break`, and either hitting back or engaging.
-   * `willFight` is the defend lease's, which is about hitting back alone.
+   * `willFight` is about hitting back alone.
    */
   get wouldFight(): boolean {
     return (
@@ -844,28 +708,13 @@ export class AutoCombat implements SessionModule {
   }
 
   /**
-   * Whether this module will act at all right now.
-   *
-   * The master switch, then the block's own — except that **going somewhere
-   * fights whatever the block says**, unless the player has said otherwise for
-   * this journey (todo 00; a lap alone overrode it from todo 03, 2026-09-06).
-   * See {@link setTravelling} for the argument.
-   *
-   * **A declined journey is declined whatever the switch reads** (todo 06):
-   * *Run it* declines the journey in the same breath as asking the file to
-   * turn the switch off, and the file answers half a second later through
-   * `configure`. Until then the switch still reads on, and a first step taken
-   * beside a monster would open exactly the fight the press was made to avoid.
-   * Nothing else holds `declined` beside a switch that reads on: it is set on
-   * the switch going off and cleared by any reload that reads on.
+   * Whether this module will act at all right now: the master switch and the
+   * block's own, and nothing else turns it on (the user, 2026-10-02). A route,
+   * a lap and a quest run used to fight with the switch off; the player's
+   * switch is the answer whatever the client is doing.
    */
   private get acting(): boolean {
-    return (
-      this.enabled &&
-      !this.journeyDeclined &&
-      !this.moveOnly &&
-      (this.config.enabled || this.travelling)
-    );
+    return this.switchedOn && !this.moveOnly;
   }
 
   /**
@@ -877,40 +726,6 @@ export class AutoCombat implements SessionModule {
    */
   noteMoveOnly(moveOnly: boolean): void {
     this.moveOnly = moveOnly;
-  }
-
-  /**
-   * Whether the only thing standing this down is the player's own refusal of
-   * this journey's override.
-   *
-   * `onCharacter` returns on `acting` before `engage` can report anything, so
-   * without this the loudest gate the player can reach would be the one that
-   * said nothing — and *why did it stop fighting* is exactly the question a
-   * refusal exists to answer. Everything else that makes `acting` false (the
-   * master switch, the block's own switch while standing still) is the player
-   * reading a switch they set and finding it obeyed, which needs no sentence.
-   */
-  private get declinedOnly(): boolean {
-    // Whatever the switch reads: a run's decline stands beside a switch that
-    // still reads on for half a second, and is reported for that half second.
-    return this.enabled && this.travelling && this.declined;
-  }
-
-  /** Whether a lap is running, so a route started mid-lap is not announced as a fresh journey. */
-  get lapRunning(): boolean {
-    return this.lap;
-  }
-
-  /**
-   * Whether the journey is the only reason this is acting, so it can say so.
-   *
-   * Read at the moment a lap or a route starts; false the rest of the time,
-   * including on a character whose switch is already on, where there is
-   * nothing to announce. A client that fights while a switch reads off is two
-   * surfaces disagreeing in silence.
-   */
-  get fightingBecauseTravelling(): boolean {
-    return this.enabled && !this.config.enabled && !this.declined;
   }
 
   /**
@@ -1182,11 +997,9 @@ export class AutoCombat implements SessionModule {
      */
     this.spell.onTarget(state.combat.target);
 
-    // A journey the player declined still reports itself: `engage` reaches
-    // `whyNot`, which names the refusal and sends nothing. See `declinedOnly`.
-    if (!this.acting && !this.declinedOnly) return;
+    if (!this.acting) return;
     if (state.phase !== 'in-game') return;
-    if (this.acting && was !== null) this.breakEmptied(was, state);
+    if (was !== null) this.breakEmptied(was, state);
 
     /*
      * A verb the server refused with the weapon that is no longer in hand.
@@ -1240,14 +1053,7 @@ export class AutoCombat implements SessionModule {
       this.confirmArrival(was, state);
     }
 
-    /*
-     * Hitting back is an *action*, so it runs only while this module is really
-     * acting. `declinedOnly` is a door through the early return above opened
-     * for reporting alone, and without this guard it let a declined journey
-     * swing — the player pressing the toolbar switch, reading the refusal in
-     * the trace, and watching the client keep fighting anyway.
-     */
-    if (this.acting && this.retaliation(state)) return;
+    if (this.retaliation(state)) return;
     this.engage(state);
   }
 
@@ -1599,9 +1405,8 @@ export class AutoCombat implements SessionModule {
    * stands down while a move is unanswered.
    *
    * Every guard here is the engage path's own, so the two cannot disagree
-   * about what is worth stopping for — both read `acting`, which is where the
-   * journey override and the player's refusal of it now live. Only the
-   * move-pending guard is left out: the caller has already refused to plan
+   * about what is worth stopping for — both read `acting`, which is the
+   * player's two switches. Only the move-pending guard is left out: the caller has already refused to plan
    * across an unanswered move.
    */
   quarry(state: CharacterState): boolean {
@@ -1767,11 +1572,6 @@ export class AutoCombat implements SessionModule {
      */
     const engaged = this.stillEngaged(state);
     if (engaged !== null) return t('automation.combat.refusedEngagedWith', { target: engaged });
-    // The journey turned fighting on and the player turned it back off; it
-    // stays off until the next one (`declineWhileTravelling`).
-    if (this.travelling && this.declined) {
-      return t('automation.combat.refusedDeclinedTravelling');
-    }
 
     const here = countMobs(state.room.occupants);
     if (this.config.maxMobs > 0 && here > this.config.maxMobs) {

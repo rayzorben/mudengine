@@ -291,15 +291,6 @@ const writeProfiles = () => {
       '    retreat:',
       '      enabled: true',
       '      belowHealth: 0.1',
-      /*
-       * No defence lease (todo 00). The fixture scripts two volleys of blows
-       * at a character standing still with auto-combat off, which is exactly
-       * what lends it -- and the lend writes the switch into this file, so the
-       * settings checks below found it already on. `CombatLease.test.ts` and
-       * `SessionManager.test.ts` own the behaviour.
-       */
-      '  combat:',
-      '    defendAfterRounds: 0',
       ''
     ].join('\n'),
     'utf8'

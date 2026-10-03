@@ -151,15 +151,10 @@ export interface SessionSink {
    */
   realmTold?(realm: RealmWord): void;
   /**
-   * Flip one automation switch in this character's own file, for the two
-   * things the session decides on the player's behalf (`CombatLease`): combat
-   * lent for a hold, and given back on arrival. Whether it was written.
-   */
-  switchAutomation?(name: AutomationSwitch, on: boolean): boolean;
-  /**
-   * The same write, read back before this returns: a route the player sent
-   * the character on with automation off is walked now, not on the next
-   * reload (todo 03). Whether it was written.
+   * Flip one automation switch in this character's own file and read it back
+   * before this returns: a route the player sent the character on with
+   * automation off is walked now, not on the next reload (todo 03), and Run
+   * it's write lands before the first room. Whether it was written.
    */
   switchAutomationNow?(name: AutomationSwitch, on: boolean): boolean;
 }

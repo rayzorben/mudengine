@@ -7,6 +7,7 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import type { AutoCombat } from '../automation/AutoCombat';
 import type { AutoLoot } from '../automation/AutoLoot';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { ItemPlanner } from '../automation/ItemErrand';
@@ -36,6 +37,7 @@ export interface ItemPlannerModules {
   walker: Pick<Walker, 'walking'>;
   queue: Pick<CommandQueue, 'enqueue' | 'queued' | 'cancel'>;
   questWatch: Pick<QuestWatch, 'noteSaid'>;
+  combat: Pick<AutoCombat, 'switchedOn'>;
 }
 
 export interface ItemPlannerParts {
@@ -67,6 +69,7 @@ export function itemPlanner(parts: ItemPlannerParts): ItemPlanner {
     },
     looping: () => m().loops.progress.status === 'running',
     stopLoop: parts.stopLap,
+    combatOn: () => m().combat.switchedOn,
     alsoTake: (name) => m().loot.alsoTake(name),
     stopTaking: (name) => m().loot.stopTaking(name),
     walk: (route, run) => m().travel.walkAfterCollecting(route, run),

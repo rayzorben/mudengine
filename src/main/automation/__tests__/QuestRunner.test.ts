@@ -169,7 +169,6 @@ let restock: PlanItem | null;
 let fighting: string[];
 let said: string[];
 let watched: QuestWatched;
-let questing: boolean[];
 let warding: boolean[];
 let clock: number;
 
@@ -200,7 +199,7 @@ const planner = (over: Partial<QuestRunPlanner> = {}): QuestRunPlanner => ({
   abandonErrands: () => {},
   fightFor: (mob) => void fighting.push(mob),
   stopFighting: () => {},
-  questing: (on) => void questing.push(on),
+  combatOn: () => true,
   warding: (on) => void warding.push(on),
   said: (command) => void said.push(command),
   watched: () => watched,
@@ -220,7 +219,6 @@ beforeEach(() => {
   fighting = [];
   said = [];
   watched = {};
-  questing = [];
   warding = [];
   here = '1/1';
   // The runner's clock and the queue's `Date.now()` have to agree, or every
@@ -272,9 +270,8 @@ describe('running a quest plan', () => {
   it('walks to the step, asks, reads the counter back, and finishes', () => {
     const runner = make();
     expect(runner.start(plan(STEP_ONE), QUEST, inRealm())).toBeNull();
-    // Not at the sage yet: a leg is walked first, and combat is on for it.
+    // Not at the sage yet: a leg is walked first.
     expect(walked).toHaveLength(1);
-    expect(questing).toEqual([true]);
     expect(runner.progress.phase).toBe('walking');
 
     here = '1/2';
@@ -297,7 +294,6 @@ describe('running a quest plan', () => {
     runner.onCharacter(listed(atSage, 1, clock));
     expect(runner.running).toBe(false);
     expect(runner.progress.status).toBe('done');
-    expect(questing).toEqual([true, false]);
     expect(published.at(-1)?.steps).toEqual([
       {
         block: 10,
@@ -542,6 +538,24 @@ describe('running a quest plan', () => {
     expect(notices.at(-1)).toBe(
       heldUp(t('automation.quests.refusalMobNotFought', { mob: 'orc', nth: 1 }))
     );
+  });
+
+  /* Auto-combat off is the player's answer, and a run never turns it on. */
+  it('stops at a kill step with auto-combat off, saying so', () => {
+    const runner = make({ combatOn: () => false });
+    here = '1/2';
+    const atOrc = withHere(inRealm(), '1/2', ['orc']);
+    expect(
+      runner.start(
+        plan({ ...STEP_ONE, act: { verb: 'kill', mob: 'orc' } } as PlanStep),
+        { ...QUEST, steps: [{ ...QUEST.steps[0]!, who: undefined, kill: 'orc' }] } as Quest,
+        atOrc
+      )
+    ).toBeNull();
+    runner.onCharacter(atOrc);
+    expect(fighting).toEqual([]);
+    expect(runner.running).toBe(false);
+    expect(decisions.at(-1)?.refused).toBe(t('automation.quests.refusalCombatOff', { mob: 'orc' }));
   });
 
   /*

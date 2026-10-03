@@ -683,158 +683,20 @@ describe('refusing to start one', () => {
   });
 
   /*
-   * Going somewhere fights, whichever kind of going it is (todo 00).
-   *
-   * `whileWalking` used to ask this per route and a lap overrode it. Both went:
-   * the player asked to go somewhere, and what lives between here and there is
-   * the realm's business — a client that walks a character through a corridor
-   * of monsters without swinging comes back at the level it left.
+   * The switch is the player's and nothing overrides it (the user,
+   * 2026-10-02): a route, a lap and a quest run used to fight with it off,
+   * and Festus walked into guardian wolves and swung at them.
    */
-  it('fights along a plain route', () => {
-    const auto = make(combat());
-    auto.noteWalking(true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  it('fights on a lap', () => {
-    const auto = make(combat());
-    auto.noteLooping(true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  /* And through the block's own switch, which is what the journey overrides. */
-  it('fights on a route with the block switched off', () => {
-    const auto = make(combat({ enabled: false }));
-    auto.noteWalking(true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  it('fights on a lap with the block switched off', () => {
-    const auto = make(combat({ enabled: false }));
-    auto.noteLooping(true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  /* Standing still it stays off, which is what the switch is for. */
-  it('fights nothing standing still with the block switched off', () => {
+  it('fights nothing with the block switched off', () => {
     const auto = make(combat({ enabled: false }));
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
+    expect(auto.switchedOn).toBe(false);
   });
 
-  /*
-   * The player overruling the journey, and the overruling outlasting the room
-   * it was made in: the switch going off mid-journey is caught on the edge in
-   * `configure`, and `acting` ignores `config.enabled` while travelling, so
-   * without the decline the toolbar's switch would do nothing until the
-   * character stopped walking.
-   */
-  it('stops fighting for the rest of a journey once the switch goes off', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual([]);
-  });
-
-  /*
-   * *Run it* (todo 06) declines the journey the moment the walk starts and
-   * asks the file to turn the switch off in the same breath — but the file
-   * answers through `configure` half a second later, and until then the
-   * switch still reads on. The decline has to hold across that, or the first
-   * step beside a monster opens the fight the press was made to avoid.
-   */
-  it('stays declined while the switch still reads on, until it is turned back on', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.declineWhileTravelling();
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual([]);
-    // The file lands: still declined, and not a journey that fights.
-    auto.configure(combat({ enabled: false }), true);
-    expect(auto.fightingBecauseTravelling).toBe(false);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual([]);
-    // Turned back on by hand: the journey fights again.
-    auto.configure(combat({ enabled: true }), true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  /*
-   * The decline is the journey's and ends with it (2026-09-23). `acting` read
-   * it bare, so a journey declined and then ended beside a switch that reads
-   * on left the character refusing every fight until a reload happened to
-   * clear it, and saying nothing.
-   */
-  it('ends the decline with the journey, so a switch that reads on fights again', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.declineWhileTravelling();
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual([]);
-    auto.noteWalking(false);
-    expect(auto.willFight).toBe(true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  /* And the decline is reported for that half second, not only obeyed. */
-  it('reports the decline while the switch still reads on, and sends nothing', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.declineWhileTravelling();
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual([]);
-    expect(refusals()).toEqual([`giant rat — ${t('automation.combat.refusedDeclinedTravelling')}`]);
-  });
-
-  /*
-   * A reload that reads on is the player's hand whichever edge it arrived on:
-   * a run's write and the toolbar's press inside one poll reach `configure`
-   * as on → on, and a decline left standing there would be auto-combat dead
-   * with the switch reading on and nothing to say why.
-   */
-  it('takes the decline back on any reload that reads on', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.declineWhileTravelling();
-    auto.configure(combat({ enabled: true }), true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  /*
-   * And **nothing swings** on that path, retaliation included.
-   *
-   * `declinedOnly` opens a door through the `acting` early return purely so
-   * `whyNot` can report the refusal — but `retaliation` runs before `engage`
-   * in `onCharacter`, so the door let a declined journey hit back where the
-   * block's own switch had always stopped it. A player who turns the switch
-   * off mid-route, reads the refusal in the trace and watches the client keep
-   * fighting is holding a control that does not control anything.
-   */
-  it('does not hit back on a journey the player declined', () => {
-    const auto = make(combat({ enabled: true, engage: 'none' }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false, engage: 'none' }), true);
+  it('does not hit back with the block switched off', () => {
+    const auto = make(combat({ enabled: false, engage: 'none' }));
     auto.onCharacter(
       state({
         inCombat: true,
@@ -845,8 +707,8 @@ describe('refusing to start one', () => {
     expect(sent).toEqual([]);
   });
 
-  /* The positive control: the same blow, standing still with the block on. */
-  it('still hits back standing still with the block on', () => {
+  /* The positive control: the same blow with the block on. */
+  it('still hits back with the block on', () => {
     const auto = make(combat({ enabled: true, engage: 'none' }));
     auto.onCharacter(
       state({
@@ -858,94 +720,25 @@ describe('refusing to start one', () => {
     expect(sent).toEqual(['a giant rat']);
   });
 
-  /* And the next journey asks again: it was *not this route*, not *never*. */
-  it('fights again on the next journey after one was declined', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
-    auto.noteWalking(false);
-    auto.noteWalking(true);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-  });
-
-  /*
-   * `CombatLease` lent the switch and handed it back (todo 00): the off edge
-   * that follows is the lease's, so the journey is put back as it was when
-   * the switch was lent — declined after a *Run it*, fighting on a route.
-   */
-  it('puts a declined journey back declined when the lease hands the switch back', () => {
+  it('fights again once the player turns the switch back on', () => {
     const auto = make(combat({ enabled: false }));
-    auto.noteWalking(true);
-    auto.declineWhileTravelling();
-    // Lent: the reload reads on and the journey fights.
-    auto.configure(combat({ enabled: true }), true);
-    expect(auto.journeyDeclined).toBe(false);
-    auto.leaseReturned(true);
-    auto.configure(combat({ enabled: false }), true, undefined, undefined, true);
-    expect(auto.journeyDeclined).toBe(true);
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
-  });
-
-  it('leaves a route that was fighting still fighting when the lease hands the switch back', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.leaseReturned(false);
-    auto.configure(combat({ enabled: false }), true, undefined, undefined, true);
-    expect(auto.journeyDeclined).toBe(false);
-    auto.onCharacter(state({ room }));
-    drain();
-    expect(sent).toEqual(['a giant rat']);
-    // Nothing is left over: the player's own off edge declines as it always did.
     auto.configure(combat({ enabled: true }), true);
-    auto.configure(combat({ enabled: false }), true);
-    expect(auto.journeyDeclined).toBe(true);
-  });
-
-  /* Turning it back on mid-journey answers in the other direction too. */
-  it('fights again when the switch goes back on mid-journey', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
-    auto.configure(combat({ enabled: true }), true);
+    expect(auto.switchedOn).toBe(true);
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual(['a giant rat']);
   });
 
-  /*
-   * The master switch is not overridden by anything: with automation off, only
-   * what the player types is ever sent.
-   */
-  it('fights nothing on a loop when automation itself is off', () => {
+  /* With automation off, only what the player types is ever sent. */
+  it('fights nothing when automation itself is off', () => {
     const auto = make(combat({ enabled: true }), false);
-    auto.noteLooping(true);
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual([]);
-  });
-
-  /* What the route and the lap read to know whether they have something to say. */
-  it('says when the journey is the only reason it is fighting', () => {
-    expect(make(combat({ enabled: false })).fightingBecauseTravelling).toBe(true);
-    expect(make(combat({ enabled: true })).fightingBecauseTravelling).toBe(false);
-    expect(make(combat({ enabled: false }), false).fightingBecauseTravelling).toBe(false);
-  });
-
-  it('says once, as the lap starts, that the lap is why it fights', () => {
-    const lap = t('automation.loops.fightingForTheLap');
-    const auto = make(combat({ enabled: false }));
-    auto.noteLooping(true);
-    auto.noteLooping(true);
-    // A reconnect resets the module; a carried loop's lap has not started again.
-    auto.reset();
-    auto.noteLooping(true);
-    expect(notices.filter((n) => n === lap)).toHaveLength(1);
-    make(combat({ enabled: true })).noteLooping(true);
-    expect(notices.filter((n) => n === lap)).toHaveLength(1);
+    expect(auto.switchedOn).toBe(false);
   });
 
   /*
@@ -980,43 +773,29 @@ describe('refusing to start one', () => {
  * The walker's question, and the answer has to be the same one `engage` would
  * give — a beat held for a fight that is never opened is 4.5 seconds a lap, and
  * a step taken out of a room a fight *is* about to open in is the fight walked
- * out of. Both read `acting`, which is where the journey's own override and
- * the player's refusal of it live, so the two cannot disagree.
+ * out of. Both read `acting`, the player's two switches, so the two cannot
+ * disagree.
  */
 describe('the beat a walk takes for it', () => {
   const room = { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] };
 
-  /* A journey the player turned fighting off for holds no beat either: the
-     walker would be stopping for a fight that is never opened. */
-  it('is not asked for on a journey the player declined', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
-    expect(auto.quarry(state({ room }))).toBe(false);
+  /* With the switch off nothing is opened, so the walker holds no beat for it. */
+  it('is not asked for with the switch off', () => {
+    expect(make(combat({ enabled: false })).quarry(state({ room }))).toBe(false);
   });
 
-  it('is asked for on a loop, whose walk engages', () => {
-    const auto = make(combat());
-    auto.noteLooping(true);
-    expect(auto.quarry(state({ room }))).toBe(true);
-  });
-
-  it('is asked for on a plain route, which fights like a lap', () => {
-    const auto = make(combat());
-    auto.noteWalking(true);
-    expect(auto.quarry(state({ room }))).toBe(true);
+  it('is asked for with the switch on', () => {
+    expect(make(combat()).quarry(state({ room }))).toBe(true);
   });
 
   /* Every other gate is the engage path's own, so the two cannot disagree. */
   it('is not asked for where the fight would be refused anyway', () => {
     const auto = make(combat({ engage: 'none' }));
-    auto.noteWalking(true);
     expect(auto.quarry(state({ room }))).toBe(false);
   });
 
   it('is not asked for in a room too small for engage to open in', () => {
     const auto = make(combat({ engage: 'all', minMobs: 2 }));
-    auto.noteWalking(true);
     expect(auto.quarry(state({ room }))).toBe(false);
     const two = { ...room, occupants: [...room.occupants, mob('kobold', 'hostile')] };
     expect(auto.quarry(state({ room: two }))).toBe(true);
@@ -1024,7 +803,6 @@ describe('the beat a walk takes for it', () => {
 
   it('is not asked for in a room with nothing in it worth stopping for', () => {
     const auto = make(combat());
-    auto.noteWalking(true);
     expect(auto.quarry(state())).toBe(false);
   });
 });
@@ -3425,27 +3203,6 @@ describe('saying why it did not open a fight', () => {
   const room = (...occupants: ReturnType<typeof mob>[]) =>
     state({ room: { ...EMPTY_CHARACTER.room, occupants } });
 
-  it('names the journey the player turned fighting off for', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
-    auto.onCharacter(room(mob('thug', 'hostile')));
-    drain();
-    expect(sent).toEqual([]);
-    expect(refusals()).toEqual([`thug — ${t('automation.combat.refusedDeclinedTravelling')}`]);
-  });
-
-  /* A journey nobody declined fights, whichever kind of journey it is. */
-  it('says nothing about a walk that was not declined', () => {
-    const auto = make(combat());
-    auto.noteWalking(true);
-    auto.noteLooping(true);
-    auto.onCharacter(room(mob('thug', 'hostile')));
-    drain();
-    expect(sent).toEqual(['a thug']);
-    expect(refusals()).toEqual([]);
-  });
-
   it('names the count when there are more monsters than maxMobs', () => {
     const auto = make(combat({ maxMobs: 1 }));
     auto.onCharacter(room(mob('thug', 'hostile'), mob('nasty thug', 'hostile')));
@@ -3499,9 +3256,7 @@ describe('saying why it did not open a fight', () => {
    * change between them.
    */
   it('says it once, not once per status line', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
+    const auto = make(combat({ engage: 'none' }));
     const here = room(mob('thug', 'hostile'));
     auto.onCharacter(here);
     auto.onCharacter(here);
@@ -3512,9 +3267,7 @@ describe('saying why it did not open a fight', () => {
 
   /* And says it again when the answer changes. */
   it('says it again when a different monster is refused', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
+    const auto = make(combat({ engage: 'none' }));
     auto.onCharacter(room(mob('thug', 'hostile')));
     auto.onCharacter(room(mob('orc rogue', 'hostile')));
     drain();
@@ -3528,13 +3281,11 @@ describe('saying why it did not open a fight', () => {
    * trace's second column is a monster, and a place there would read as one.
    */
   it('names the gate over the policy, against the monster it looked at', () => {
-    const auto = make(combat({ enabled: true }));
-    auto.noteWalking(true);
-    auto.configure(combat({ enabled: false }), true);
-    auto.onCharacter(room(mob('shopkeeper', 'passive')));
+    const auto = make(combat({ maxMobs: 1 }));
+    auto.onCharacter(room(mob('shopkeeper', 'passive'), mob('farmer', 'passive')));
     drain();
     expect(refusals()).toEqual([
-      `shopkeeper — ${t('automation.combat.refusedDeclinedTravelling')}`
+      `shopkeeper — ${t('automation.combat.refusedMaxMobs', { here: 2, max: 1 })}`
     ]);
   });
 

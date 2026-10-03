@@ -304,12 +304,11 @@ notices:
     combatAndPotionSettings:
       many: 'Combat and potion settings changed in {count} files. "joinFights" is now
         "politeAttacks" (MegaMUD''s name, and it works the same way). "whileWalking" is gone: routes
-        and loops both fight now, and turning auto-combat off during one skips the fighting.
-        "avoidUndead", "avoidDeathSpell" and the attack priority list were removed. The two named
+        and loops follow the auto-combat switch. "avoidUndead", "avoidDeathSpell" and the attack priority list were removed. The two named
         potion slots became rows in "potions", keeping any threshold you had set. {fileList}'
       one: 'Combat and potion settings changed in {count} file. "joinFights" is now "politeAttacks"
-        (MegaMUD''s name, and it works the same way). "whileWalking" is gone: routes and loops both
-        fight now, and turning auto-combat off during one skips the fighting. "avoidUndead",
+        (MegaMUD''s name, and it works the same way). "whileWalking" is gone: routes and loops follow
+        the auto-combat switch. "avoidUndead",
         "avoidDeathSpell" and the attack priority list were removed. The two named potion slots
         became rows in "potions", keeping any threshold you had set. {fileList}'
     combatFloorDropped:
@@ -317,6 +316,11 @@ notices:
         for starting a fight. Low health is handled by running and resting instead. {fileList}'
       one: '"combat.minHealth" was removed from {count} file. There is no longer a minimum health
         for starting a fight. Low health is handled by running and resting instead. {fileList}'
+    combatOverridesDropped:
+      many: '"movement.fightOnArrival" and "combat.defendAfterRounds" were removed from {count}
+        files. Auto-combat is turned on only by you, or when a route you ran arrives. {fileList}'
+      one: '"movement.fightOnArrival" and "combat.defendAfterRounds" were removed from {count} file.
+        Auto-combat is turned on only by you, or when a route you ran arrives. {fileList}'
     fightCostDropped:
       many: '"combat.maxFightCost" was removed from {count} files. Fights are no longer skipped
         because of their expected cost. The Room card still shows the estimate, but nothing acts on
@@ -2736,7 +2740,7 @@ cards:
     walkTooltip: Walk this route (Enter or Alt G)
     # Todo 06: turn off, go.
     runButton: Run it
-    runTooltip: Walk this route with auto-combat turned off, and leave it off (Alt R)
+    runTooltip: Walk this route with auto-combat off, and turn it back on when you arrive (Alt R)
   session:
     encoding: Encoding
     grid: Grid
@@ -3365,9 +3369,6 @@ settings:
     engageNone: Retaliate Only
     hitBack: Retaliate When Attacked
     hitBackHint: Attacks whatever is already attacking this character. Never starts a fight.
-    defendAfterRounds: Defend After Rounds
-    defendAfterRoundsHint: With auto-combat off, how many rounds of being hit without moving before
-      auto-combat turns on, until you next enter another room. 0 never does.
     politeAttacks: Polite Attacks
     politeAttacksHint: MegaMUD's Polite Attacks. When on, a monster that someone outside your party
       is already fighting is left to them, and the Automation card says whose it was. Fighting back
@@ -3711,9 +3712,6 @@ settings:
     walkWhileConfused: Walk While Confused
     walkWhileConfusedHint: When off, a route or loop waits until the confusion wears off (MegaMUD's
       IgnoreConfusion default). A confused character's commands can be ignored.
-    fightOnArrival: Auto-Combat On at Arrival
-    fightOnArrivalHint: Turns auto-combat back on when a route you asked for arrives, since walking
-      with it off is how you travel without fighting. Loops and detours are unaffected.
     extinguishInLight: Put the Light Out in Lit Rooms
     extinguishInLightHint: Removes a lit torch in a room that does not need it, when nothing is
       moving the character, so the torch lasts through the sewer instead of burning out on the way
@@ -4600,6 +4598,7 @@ automation:
     huntingNextDoor: 'Looking for {item}: {mob} drops it, starting next door in {room}.'
     loopName: 'Collect: {item}'
     refusalBusy: Something is already being collected.
+    refusalCombatOff: 'Not collecting: it means killing {mob}, and auto-combat is off. Turn auto-combat on and try again.'
     replacingLap: Stopping {loopName} to go and get it; it will not restart on its own.
     refusalLapStopped: The hunt for {item} stopped before you had one.
     refusalNoSource: The world data names nowhere this comes from.
@@ -4689,6 +4688,7 @@ automation:
     stockingUp: Stocking up on {item} before step {nth}; this leg passes closest to the shop.
     stockUnfilled: 'Continuing without {item}: the shop had none, and the quest does not need one.'
     refusalGaveUp: '{why}, and that is {tries} setbacks in a row with no progress'
+    refusalCombatOff: 'Auto-combat is off, so {mob} is not fought. Turn auto-combat on, then press Run it again.'
     refusalSwitchedOff: 'Auto-Quest is off. Turn it on under Quests in the settings, then press Run it again.'
     refusalBusy: A quest is already being run.
     refusalNotInRealm: This character is not in the realm.
@@ -4772,31 +4772,10 @@ automation:
       most 95, while hiding uses the full value, so Stealth above {ceiling} only helps while
       standing still.'
   combat:
-    lentForHold: 'Held with auto-combat off: turning it on until the hold wears off.'
-    returnedAfterHold: 'The hold wore off: auto-combat off again, walking on.'
-    backOnArrival: 'Arrived: auto-combat back on.'
-    # Todo 00 (2026-09-23): hit and not moving with auto-combat off lends it
-    # until the next arrival in another room.
-    lentForDefence:
-      one: 'Hit for {rounds} round without moving, with auto-combat off: turning it on until you
-        move.'
-      many: 'Hit for {rounds} rounds without moving, with auto-combat off: turning it on until you
-        move.'
-    defendBecause: 'rounds hit without moving, with auto-combat off: {rounds}'
-    defendUnwritable: "auto-combat could not be turned on in the character's file"
-    returnedAfterMove: 'Moved: auto-combat back off.'
-    returnedAfterDeath: 'Killed: auto-combat back off.'
-    returnedAfterLeaving: 'Left the realm: auto-combat back off.'
-    returnedAfterLoss: 'Connection lost: auto-combat back off.'
-    returnedAfterClose: 'Disconnected: auto-combat back off.'
-    # The file refused handing the lent switch back; tried again each state.
-    returnStuck: Auto-combat was turned on temporarily and could not be turned back off in the
-      character's file. Trying again; turn it off by hand if this continues.
-    returnUnwritable: "auto-combat could not be turned back off in the character's file"
-    returnedAtReset: 'New session: auto-combat back off.'
-    # Todo 06: *Run it* is turn off, go -- said at the start, and again where the
-    # run is picked up after a lost connection or an errand.
-    runningCombatOff: 'Running it: auto-combat is off, and stays off until you turn it back on.'
+    # Todo 06: *Run it* is turn off, go, and on again when the run arrives.
+    runningCombatOff: 'Running it: auto-combat is off until you arrive.'
+    onAfterRun: 'Arrived: auto-combat back on.'
+    onAfterRunRefused: "Arrived, but auto-combat could not be turned on in the character's file."
     runRefused: "Not running it: auto-combat could not be turned off in the character's file."
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something arrived that the world data could not place'
@@ -4853,10 +4832,6 @@ automation:
     refusedStandDown: you typed break
     refusedUncertain: the world data contradicts itself about {target}, and Attack Target Selection
       is Hostile / Aggressive Only
-    refusedDeclinedTravelling: you turned auto-combat off for this journey
-    fightingForTheRoute: Auto-combat is off, but this route will fight on the way. Stop the route to
-      stop fighting, or turn auto-combat on and off again to skip fighting for the rest of this
-      trip.
     standDown: Auto-combat is paused after break; it resumes when you move or attack.
     # An opener the class can never land -- `combat.opener` survives a reroll,
     # and a Mage was being told why its backstab was withheld (todo 28).
@@ -5140,9 +5115,6 @@ automation:
     reasonReply: away reply
     replied: 'Told {player} you are away.'
   loops:
-    fightingForTheLap: Auto-combat is off, but this loop will fight anyway, because a loop is chosen
-      for the monsters on it. Stop the loop to stop fighting, or turn auto-combat on and off again
-      to skip fighting for the rest of this lap.
     heldForErrand: 'Loop paused: going shopping. It continues from the shop.'
     walkingOnAfterErrand: Continuing from the shop.
     giveUpReason: 'could not reach {stopName}: {why}'

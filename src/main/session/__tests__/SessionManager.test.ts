@@ -3032,7 +3032,12 @@ describe('which way out', () => {
   /** At Haven Hall with a two-step route north to the Rat Lair under way. */
   async function walkingToTheLair(): Promise<{ socket: net.Socket; seen: () => string }> {
     const world = haven();
-    manager = build(collected.sink, { world, automation: escaping() });
+    // Auto-combat on: a route holds only for a fight something is fighting.
+    const automation = escaping();
+    manager = build(collected.sink, {
+      world,
+      automation: { ...automation, combat: { ...automation.combat, enabled: true } }
+    });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const seen = wire(socket);
@@ -4479,14 +4484,14 @@ describe('typing while a route is being walked', () => {
   };
 
   /** In the realm at the north end, with a reader for what reached the wire. */
-  async function atTheNorthEnd(): Promise<{
+  async function atTheNorthEnd(automation: AutomationConfig = quiet): Promise<{
     socket: net.Socket;
     world: WorldGraph;
     wire: () => string;
   }> {
     const world = line();
     const { sink } = collect();
-    manager = build(sink, { world, automation: quiet });
+    manager = build(sink, { world, automation });
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     const chunks: Buffer[] = [];
@@ -4540,7 +4545,11 @@ describe('typing while a route is being walked', () => {
    * that sent nothing at all until a person pressed Enter.
    */
   it('waits a fight out and then walks on, from wherever the fight left it', async () => {
-    const { socket, world } = await atTheNorthEnd();
+    // Auto-combat on: a route holds only for a fight something is fighting.
+    const { socket, world } = await atTheNorthEnd({
+      ...quiet,
+      combat: { ...quiet.combat, enabled: true }
+    });
     walkSouth(world);
     await until(() => manager!.walker.progress.status === 'walking');
 
@@ -5438,33 +5447,27 @@ describe('a step the server never answers', () => {
 });
 
 /*
- * Hit and not moving with auto-combat off (todo 00, 2026-09-23). The switch
- * is the character's file, so the harness stands in for it: a flip asked for
- * is a reload of the same configuration with the switch the other way.
+ * Auto-combat off is off (the user, 2026-10-02): hit round after round with
+ * the switch off, nothing is swung and the switch is never written on. The
+ * harness stands in for the file and records any write.
  */
-describe('auto-combat lent to a character hit and not moving', () => {
+describe('auto-combat off while being hit', () => {
   const config = (combat: boolean): AutomationConfig => ({
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
     onEnterRealm: [],
     rules: [],
-    combat: { ...DEFAULT_CONFIG.automation.combat, enabled: combat, defendAfterRounds: 2 }
+    combat: { ...DEFAULT_CONFIG.automation.combat, enabled: combat }
   });
 
-  it('turns it on after two rounds, swings back, and hands it back on the next arrival', async () => {
-    // Rounds 150ms apart rather than the server's five seconds.
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      combat: { ...DEFAULT_INTERNAL.tuning.combat, roundGapMs: 100 }
-    });
+  it('never turns it on and never hits back', async () => {
     const collected = collect();
     const flips: boolean[] = [];
     const sink: SessionSink = {
       ...collected.sink,
-      switchAutomation: (_name, on) => {
+      switchAutomationNow: (_name, on) => {
         flips.push(on);
-        setTimeout(() => manager?.configure(config(on), DEFAULT_CONFIG.connection.login), 0);
         return true;
       }
     };
@@ -5480,34 +5483,15 @@ describe('auto-combat lent to a character hit and not moving', () => {
         PROMPT_REPAINT
     );
     await until(() => manager!.character.room.occupants.length === 1);
-
-    // One round: below the setting. Positive control for the silence.
-    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=53/MA=12]:' + PROMPT_REPAINT);
-    await settled(53);
+    for (const hp of [53, 50, 47]) {
+      socket.write(
+        `The slime beast slashes you for 3 damage!\r\n[HP=${hp}/MA=12]:` + PROMPT_REPAINT
+      );
+      // Positive control: each blow is read before the absence is asserted.
+      await settled(hp);
+    }
     expect(flips).toEqual([]);
     expect(wire()).not.toContain('slime beast');
-
-    // A second round, well past the round beat: lent, and the next blow is hit back.
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=50/MA=12]:' + PROMPT_REPAINT);
-    await until(() => flips.length === 1);
-    expect(flips).toEqual([true]);
-    expect(
-      collected.notices.some(
-        composes(['automation.combat.lentForDefence.one', 'automation.combat.lentForDefence.many'])
-      )
-    ).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    socket.write('The slime beast slashes you for 3 damage!\r\n[HP=47/MA=12]:' + PROMPT_REPAINT);
-    await until(() => wire().includes('slime beast'));
-
-    // Moved: handed back. An arrival is a room answering a move, never a reprint.
-    const before = wire().length;
-    manager.send('n\r');
-    await until(() => wire().slice(before).includes('n\r\n'));
-    socket.write('Guild Hall\r\nObvious exits: south\r\n[HP=47/MA=12]:' + PROMPT_REPAINT);
-    await until(() => flips.length === 2);
-    expect(flips).toEqual([true, false]);
   });
 });
 
