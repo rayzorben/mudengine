@@ -287,6 +287,12 @@ export interface RemoteEvents {
    */
   stopMoving?(from: string): boolean;
   resumeMoving?(from: string): boolean;
+  /**
+   * `@loop`: start the loop `request` names, by name or by its start room,
+   * as the player's own palette does. Returns whether a loop started, which
+   * decides the `{ok}`; the session says why when none did.
+   */
+  startLoop?(from: string, request: string): boolean;
 }
 
 /** What a `@stop` stopped and is still waiting for a `@rego`, for `@status`. */
@@ -1310,6 +1316,18 @@ export class Remotes implements SessionModule {
             ? this.events.stopMoving?.(from)
             : this.events.resumeMoving?.(from);
         if (done === true) this.reply(from, '{ok}', prefix);
+        return;
+      }
+
+      case 'loop': {
+        // `{ok}` only for a loop that started, the rule `@stop` follows.
+        if (command.argument === null) {
+          this.events.notice?.(t('automation.remotes.loopUnnamed', { from }));
+          return;
+        }
+        if (this.events.startLoop?.(from, command.argument) === true) {
+          this.reply(from, '{ok}', prefix);
+        }
         return;
       }
 

@@ -4614,6 +4614,13 @@ session:
     regoResumed: '{who} sent @rego; resuming {name} from here.'
     regoRefused: '{who} sent @rego, and {name} could not be resumed: {reason}'
     regoTooFar: it is {stepCount} steps away
+    loopStarted: '{who} sent @loop; starting {name}.'
+    loopReplaced: '{who} sent @loop; stopping {was} and starting {name}.'
+    loopRefused: '{who} sent @loop, and {name} could not start: {reason}'
+    loopNone: '{who} sent @loop {request}, and no loop is called that or starts in that room.
+      Nothing was started or sent back.'
+    loopSeveral: '{who} sent @loop {request}, and {count} loops match: {names}. Nothing was started
+      or sent back.'
     theRoute: the route
   statline:
     exact: The game reports the status line as {statline}; every prompt is read by it exactly.
@@ -5451,6 +5458,7 @@ automation:
       come back to. Nothing was sent.
     comebackUnreadable: '{from} sent @comeback-room without a readable map/room number, so nothing
       was walked.'
+    loopUnnamed: '{from} sent @loop without a loop name or map/room, so nothing was started.'
     reasonAnswering: answering {name}
     reasonAsking: asking {who} {body}
     reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'

@@ -1824,6 +1824,55 @@ describe('@stop and @rego', () => {
   });
 });
 
+/* Todo 16: one of this character's loops, on the sender's word. */
+describe('@loop', () => {
+  const driven = (answers: boolean, on: AutomationConfig = config) => {
+    const asked: string[] = [];
+    const notices: string[] = [];
+    const remotes = new Remotes(on, queue, {
+      notice: (message) => notices.push(message),
+      startLoop: (from, request) => (asked.push(`${from}:${request}`), answers)
+    });
+    return { asked, notices, remotes };
+  };
+
+  it('hands the name over whole, and answers {ok} when a loop started', () => {
+    const { asked, remotes } = driven(true);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@loop Overgrown Trail'), who());
+    drain();
+    expect(asked).toEqual(['Soul:Overgrown Trail']);
+    expect(sent).toEqual(['/Soul {ok}']);
+  });
+
+  it('sends nothing back when no loop started', () => {
+    const { asked, remotes } = driven(false);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@loop 17/16'), who());
+    drain();
+    expect(asked).toEqual(['Soul:17/16']);
+    expect(sent).toEqual([]);
+  });
+
+  it('starts nothing without a name, and says so', () => {
+    const { asked, notices, remotes } = driven(true);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@loop'), who());
+    drain();
+    expect(asked).toEqual([]);
+    expect(notices).toEqual([t('automation.remotes.loopUnnamed', { from: 'Soul' })]);
+    expect(sent).toEqual([]);
+  });
+
+  it('is not granted by the shipped lists', () => {
+    const shipped: AutomationConfig = {
+      ...config,
+      remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
+    };
+    const { asked, remotes } = driven(true, shipped);
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@loop Rats'), who());
+    drain();
+    expect(asked).toEqual([]);
+  });
+});
+
 /* Todo 831: MegaMUD's party settings, on both ends of the party. */
 describe('party pacing', () => {
   let paced: string[];
