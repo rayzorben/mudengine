@@ -1,0 +1,25 @@
+{
+ "source": "2026-10-03_17-51-16_soul.mudcap.jsonl",
+ "chunks": [
+  {
+   "t": 199931,
+   "s": "\u001b[0m\u001b[79D\u001b[K\u001b[1;36mDarkwood Tree, Small House\r\n\u001b[0;35mAlso here: \u001b[0;37mAldreth\u001b[0;35m.\r\n\u001b[0;32mObvious exits: open door east\r\n\u001b[79D\u001b[K\u001b[0;36m[HP=\u001b[1;36m74\u001b[0;36m/KAI=\u001b[1;36m9\u001b[0;36m]:\u001b[79D\u001b[K\u001b[0;36m[HP=\u001b[1;36m74\u001b[0;36m/KAI=\u001b[1;36m9\u001b[0;36m]:"
+  },
+  {
+   "t": 201778,
+   "s": "train\r\n\u001b[0m\u001b[79D\u001b[KYou hand over 13000 copper farthings to train to the next level!\r\n\u001b[0m\u001b[79D\u001b[KWelcome to level 12!\r\n\u001b[0m\u001b[79D\u001b[KYou gain 1 additional lives.\r\n\u001b[0m\u001b[79D\u001b[KYou gain 15 CPs\r\n\u001b[0m\u001b[79D\u001b[KYou have learned a new power way of the tortoise!\r\n\u001b[79D\u001b[K\u001b[0;36m[HP=\u001b[1;36m74\u001b[0;36m/KAI=\u001b[1;36m9\u001b[0;36m]:"
+  },
+  {
+   "t": 201887,
+   "s": "train stats\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\u001b[2J\u001b[H\u001b[1;1H\u001b[1;5H\u001b[0;37m.─────────────────────────────────────.──.\u001b[2;4H\u001b[0;37m/ \u001b[1;36mP A R A D I G M      \u001b[0;36mChar. Creation \u001b[0;37m/    \\  \u001b[1;30m┌─    \u001b[1;35mPoint Cost Chart    \u001b[1;30m─┐"
+  },
+  {
+   "t": 201893,
+   "s": "\u001b[3;3H\u001b[0;37m│\u001b[3;41H\u001b[0;37m├──.   │ \u001b[1;30m│                          │"
+  },
+  {
+   "t": 202006,
+   "s": "\u001b[4;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mGiven Name\u001b[4;39H\u001b[0;31m«\u001b[4;41H\u001b[0;37m│___\\_/  \u001b[1;30m│ \u001b[1;35m1st \u001b[0;35m10 points: \u001b[1;35m1 \u001b[0;35mCP each \u001b[1;30m│\u001b[5;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mFamily Name\u001b[5;39H\u001b[0;31m«\u001b[5;41H\u001b[0;37m│        \u001b[1;30m│ \u001b[1;35m2nd \u001b[0;35m10 points: \u001b[1;35m2 \u001b[0;35mCP each \u001b[1;30m│\u001b[6;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mRace\u001b[6;39H\u001b[0;31m«\u001b[6;41H\u001b[0;37m│        \u001b[1;30m│ \u001b[1;35m3rd \u001b[0;35m10 points: \u001b[1;35m3 \u001b[0;35mCP each \u001b[1;30m│\u001b[7;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mClass\u001b[7;39H\u001b[0;31m«\u001b[7;41H\u001b[0;37m│        \u001b[1;30m│     ... and so on ...    │\u001b[8;3H\u001b[0;37m│\u001b[8;41H\u001b[0;37m│        \u001b[1;30m│                          │\u001b[9;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mStrength\u001b[9;39H\u001b[0;31m«\u001b[9;41H\u001b[0;37m│        \u001b[1;30m│ \u001b[0;35m+\u001b[1;35m10 \u001b[0;35mto base stat:  \u001b[1;35m10 \u001b[0;35mCP \u001b[1;30m│\u001b[10;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mIntellect\u001b[10;39H\u001b[0;31m«\u001b[10;41H\u001b[0;37m│ \u001b[1;30m───────┤ \u001b[0;35m+\u001b[1;35m20 \u001b[0;35mto base stat:  \u001b[1;35m30 \u001b[0;35mCP \u001b[1;30m│\u001b[11;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mWillpower\u001b[11;39H\u001b[0;31m«\u001b[11;41H\u001b[0;37m│        \u001b[1;30m│ \u001b[0;35m+\u001b[1;35m30 \u001b[0;35mto base stat:  \u001b[1;35m60 \u001b[0;35mCP \u001b[1;30m│\u001b[12;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mAgility\u001b[12;39H\u001b[0;31m«\u001b[12;41H\u001b[0;37m│        \u001b[1;30m│ \u001b[0;35m+\u001b[1;35m40 \u001b[0;35mto base stat: \u001b[1;35m100 \u001b[0;35mCP \u001b[1;30m│\u001b[13;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mHealth\u001b[13;39H\u001b[0;31m«\u001b[13;41H\u001b[0;37m│        \u001b[1;30m│ \u001b[0;35m+\u001b[1;35m50 \u001b[0;35mto base stat: \u001b[1;35m150 \u001b[0;35mCP \u001b[1;30m│\u001b[14;3H\u001b[0;37m│ \u001b[0;31m» \u001b[0;36mCharm\u001b[14;39H\u001b[0;31m«\u001b[14;41H\u001b[0;37m│        \u001b[1;30m└─    ... and so on ...   ─┘\u001b[15;3H\u001b[0;37m│\u001b[15;41H\u001b[0;37m│\u001b[16;3H\u001b[0;37m│ \u001b[0;31m»  \u001b[0;36mHair Length\u001b[16;39H\u001b[0;31m«\u001b[16;41H\u001b[0;37m│        \u001b[1;30m┌ \u001b[1;36mUse the Space Bar to\u001b[17;3H\u001b[0;37m│ \u001b[0;31m»  \u001b[0;36mHair Colour\u001b[17;39H\u001b[0;31m«\u001b[17;41H\u001b[0;37m│ \u001b[1;30m───────┤ \u001b[1;36mtoggle between choices for\u001b[18;3H\u001b[0;37m│ \u001b[0;31m»  \u001b[0;36mEye Colour\u001b[18;39H\u001b[0;31m«\u001b[18;41H\u001b[0;37m│        \u001b[1;30m└ \u001b[1;36myour physical description\u001b[19;3H\u001b[0;37m│\u001b[19;41H\u001b[0;37m│\u001b[20;3H\u001b[0;37m│ \u001b[1;31m»  \u001b[0;36mExit:\u001b[20;19H\u001b[1;31m«\u001b[20;22H\u001b[0;31m» \u001b[0;36mCP Left:\u001b[20;39H\u001b[0;31m«\u001b[20;41H\u001b[0;37m│ \u001b[1;30m──────── \u001b[1;37mSAVE \u001b[1;36myour character or \u001b[1;37mEXIT\u001b[21;2H\u001b[0;37m⌐┴───────────────────────────────.     │\u001b[22;2H\u001b[0;37m\\_________________________________\\___/\u001b[9;18H\u001b[0m(  40 to  140)\u001b[10;18H\u001b[0m(  40 to  140)\u001b[11;18H\u001b[0m(  30 to  130)\u001b[12;18H\u001b[0m(  60 to  170)\u001b[13;18H\u001b[0m(  30 to  120)\u001b[14;18H\u001b[0m(  50 to  150)\u001b[4;20H\u001b[1;37m\u001b[40mSoul      \u001b[0m\u001b[5;20H\u001b[1;37m\u001b[40mGuardian  "
+  }
+ ]
+}
