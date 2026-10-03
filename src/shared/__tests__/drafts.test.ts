@@ -353,7 +353,8 @@ describe('a character', () => {
         notifyPartyOnWearOff: false,
         autoBless: true,
         autoChooseBlessings: false,
-        invokeItems: false
+        invokeItems: false,
+        invokeWith: []
       });
     });
 
@@ -461,8 +462,17 @@ describe('a character', () => {
         notifyPartyOnWearOff: false,
         autoBless: true,
         autoChooseBlessings: false,
-        invokeItems: false
+        invokeItems: false,
+        invokeWith: []
       });
+    });
+
+    /* The items that bless, by name; anything that is not one is dropped. */
+    it('takes the items chosen to bless with', () => {
+      const spells = { invokeWith: ['shimmering longsword', 3, ''] };
+      expect(asProfileDraft({ ...good, spells })?.spells.invokeWith).toEqual([
+        'shimmering longsword'
+      ]);
     });
 
     /* A door that did not open on the third try is locked. */

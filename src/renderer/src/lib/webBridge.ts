@@ -288,6 +288,7 @@ export function createWebBridge(): IpcApi {
     banks: (session) => invoke(Invoke.banks, session),
     itemsServing: (session) => invoke(Invoke.itemsServing, session),
     wards: (session) => invoke(Invoke.wards, session),
+    invokeChoices: (session) => invoke(Invoke.invokeChoices, session),
     draftLoop: (session, rooms) => invoke(Invoke.draftLoop, session, rooms),
     wearer: (session) => invoke(Invoke.wearer, session),
     lookup: (session, query) => invoke(Invoke.lookup, session, query),

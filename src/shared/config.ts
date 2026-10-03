@@ -2137,15 +2137,19 @@ export interface SpellsConfig {
    *
    * The realm states the whole of it. An item's `CastsSp` names a spell, and
    * where `UseCount` is `-1` the server lets it be used for ever — nine
-   * weapons in the shipped realm cast a sixty-tick bless that way, costing no
-   * mana and no charge, and nothing in this client ever asked for one.
+   * weapons in the shipped realm cast a sixty-tick bless that way, for no
+   * charge but for the spell's own mana (8 for `weapon major bless`).
    *
-   * Off by default, like everything automated. **Only unlimited items**: one
-   * with three charges spent on a buff is three charges somebody was saving,
-   * and the realm has to say `-1` — silence is not unlimited. See
-   * `AutoInvoke`.
+   * Off by default, like everything automated, and it uses only the items
+   * named in `invokeWith`. See `AutoInvoke`.
    */
   invokeItems: boolean;
+  /**
+   * The carried items `invokeItems` may use, by name, picked on the Spells
+   * page from the inventory. Empty uses none: a player carrying several
+   * weapons that bless chooses which.
+   */
+  invokeWith: string[];
   /**
    * Do not cast below this fraction of maximum mana. 0 always casts.
    *
@@ -2899,6 +2903,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       autoChooseHeal: false,
       healParty: false,
       invokeItems: false,
+      invokeWith: [],
       minMana: 0.15,
       healMinMana: 0.15,
       cures: { blindness: '', poison: '', disease: '', freedom: '' },
@@ -4239,6 +4244,7 @@ function normalizeSpells(value: unknown): SpellsConfig {
     autoChooseHeal: bool(raw['autoChooseHeal'], d.autoChooseHeal),
     healParty: bool(raw['healParty'], d.healParty),
     invokeItems: bool(raw['invokeItems'], d.invokeItems),
+    invokeWith: uniqueWords(stringList(raw['invokeWith'], d.invokeWith)),
     minMana: fraction(raw['minMana'], d.minMana),
     healMinMana: fraction(raw['healMinMana'], d.healMinMana),
     cures: normalizeCures(raw['cures']),

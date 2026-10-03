@@ -1685,15 +1685,22 @@ automation:
     #
     # The realm states all of it. An item's CastsSp names a spell, and where
     # UseCount is -1 the server lets it be used for ever -- nine weapons in the
-    # shipped realm cast a sixty-tick bless that way, for no mana and no
-    # charge. Nothing needs configuring: the pack says what is carried and the
-    # realm says what it casts.
+    # shipped realm cast a sixty-tick bless that way. It costs no charge, but
+    # the server takes the spell's own mana (8 for weapon major bless) and
+    # answers "You do not have enough mana to cast that spell." without it, so
+    # the item waits until the mana is there.
     #
     # Only unlimited items. One with three charges spent on a buff is three
     # charges you were saving, so the realm has to *say* -1 and silence is not
-    # unlimited. Never in a fight, and never for a spell with no duration --
-    # that is not a blessing.
+    # unlimited. A weapon or armour has to be worn or wielded, as the server
+    # answers "You do not have ... equipped." otherwise. Never in a fight, and
+    # never for a spell with no duration -- that is not a blessing.
     invokeItems: false
+
+    # The items invokeItems may use, by name. Empty uses none. The Spells page
+    # lists what the inventory holds that can bless, with each one's mana.
+    #   invokeWith: [shimmering longsword]
+    invokeWith: []
 
     # A different floor while in combat, when one is wanted -- MegaMUD's
     # `HpHealAtt%`, whose own documentation says why: "this percentage should

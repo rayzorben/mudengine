@@ -1428,18 +1428,18 @@ export class SessionManager {
       { notice: (message) => this.sink.notice(message) },
       this.castRound
     );
-    /*
-     * And the blessing a carried item can give, which is not a cast at all:
-     * the realm names a spell on the item and the server lets an unlimited one
-     * be used for ever, so a warrior with the right weapon has a bless for
-     * free. See `AutoInvoke`; it reads the realm rather than a configured
-     * list, because the realm already states every part of it.
-     */
-    this.invoke = new AutoInvoke(automation.enabled && automation.spells.invokeItems, this.queue, {
-      itemNamed: (name) => this.world?.itemsNamed([name])[name] ?? null,
-      spellById: (id) => this.world?.spellById(id) ?? null,
-      spellNamed: realmSpell
-    });
+    /* And the blessing a chosen carried item casts when used. See `AutoInvoke`. */
+    this.invoke = new AutoInvoke(
+      automation.spells,
+      automation.enabled,
+      this.queue,
+      {
+        itemsNamed: (names) => this.world?.itemsNamed(names) ?? {},
+        spellById: (id) => this.world?.spellById(id) ?? null,
+        spellNamed: realmSpell
+      },
+      this.castRound
+    );
     /*
      * And which kit to be in. The pack is asked before the realm for both
      * facts: a carried item carries the realm's own reading joined onto it
@@ -1768,10 +1768,7 @@ export class SessionManager {
       { module: this.cures, configure: (a) => this.cures.configure(a.spells, a.enabled) },
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
       { module: this.extensions, configure: () => this.extensions.configure(this.configured[0]) },
-      {
-        module: this.invoke,
-        configure: (a) => this.invoke.configure(a.enabled && a.spells.invokeItems)
-      },
+      { module: this.invoke, configure: (a) => this.invoke.configure(a.spells, a.enabled) },
       { module: this.events, configure: (a) => this.events.configure(a.events, a.enabled) },
       { module: this.hangUp },
       { module: this.rowOverrides, configure: (a) => this.rowOverrides.configure(a) },

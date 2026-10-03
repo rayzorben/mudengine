@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import type { PotionWhen } from '@shared/config';
+import type { InvokeChoice } from '@shared/invoke';
 import type { SessionId } from '@shared/ipc';
 import type { BankChoice, TrainerChoice, WardRule } from '@shared/world';
 import type { CharacterSection } from '../lib/characterForm';
@@ -17,6 +18,8 @@ export interface CharacterRealm {
   wards: WardRule[];
   mobs: string[];
   banks: BankChoice[] | null;
+  /** What the inventory holds that can bless; null while nobody has listed it. */
+  invokeChoices: InvokeChoice[] | null;
 }
 
 /** The questions it asks, each addressed to the character on screen. */
@@ -57,6 +60,11 @@ export interface CharacterRealmLoaders {
    * picker. A property of the realm, so one call answers every row.
    */
   loadMobNames(session: SessionId): Promise<string[]>;
+  /**
+   * The items in this character's inventory that can bless when used, for
+   * the Spells page's list. About the character, so asked on that page.
+   */
+  loadInvokeChoices(session: SessionId): Promise<InvokeChoice[] | null>;
 }
 
 /**
@@ -70,7 +78,14 @@ export function useCharacterRealm(
   active: boolean,
   section: CharacterSection,
   session: SessionId | null,
-  { loadTrainers, loadBanks, loadServing, loadWards, loadMobNames }: CharacterRealmLoaders
+  {
+    loadTrainers,
+    loadBanks,
+    loadServing,
+    loadWards,
+    loadMobNames,
+    loadInvokeChoices
+  }: CharacterRealmLoaders
 ): CharacterRealm {
   /*
    * Where this character may go and level (todo 18).
@@ -112,6 +127,12 @@ export function useCharacterRealm(
    * what the realm holds. Asked on the Movement tab, where banking is drawn.
    */
   const [banks, setBanks] = useState<BankChoice[] | null>(null);
+  /*
+   * The inventory's items that can bless. `null` is nobody has listed the
+   * inventory (or the character is not in the realm), which the list draws
+   * as such rather than as carrying nothing.
+   */
+  const [invokeChoices, setInvokeChoices] = useState<InvokeChoice[] | null>(null);
   useEffect(() => {
     if (!active || section !== 'train') return;
     if (session === null) {
@@ -181,5 +202,19 @@ export function useCharacterRealm(
       stale = true;
     };
   }, [active, section, session, loadMobNames]);
-  return { trainers, serving, wards, mobs, banks };
+  useEffect(() => {
+    if (!active || section !== 'spells') return;
+    setInvokeChoices(null);
+    if (session === null) return;
+    let stale = false;
+    void loadInvokeChoices(session).then(
+      (found) => void (stale || setInvokeChoices(found)),
+      // Not a reason to refuse the save: the names already chosen still show.
+      () => void (stale || setInvokeChoices(null))
+    );
+    return () => {
+      stale = true;
+    };
+  }, [active, section, session, loadInvokeChoices]);
+  return { trainers, serving, wards, mobs, banks, invokeChoices };
 }
