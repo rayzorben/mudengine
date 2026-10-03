@@ -1897,7 +1897,7 @@ export class Errands implements SessionModule {
       state,
       current,
       limits,
-      tuning().train.statHorizon,
+      { horizon: tuning().train.statHorizon, places: tuning().train.statPlaces },
       (as) => this.huntingGrounds(null, null, as).spots
     );
   }

@@ -852,6 +852,12 @@ const TUNING_DEFAULTS = {
      * (`src/shared/spawns.ts`). One gap is a wanderer as often as a refill.
      */
     refillsLeast: 3,
+    /**
+     * A lair's timed gap shorter than this is the lair's second monster coming
+     * in (`RoomClocks.lairClock`); half of orohost's record was under a
+     * second. An arena's clock takes no floor.
+     */
+    refillShortestSeconds: 3,
     /** How many of each room's newest timed refills are kept. */
     refillsKept: 12,
     /**
@@ -961,7 +967,12 @@ const TUNING_DEFAULTS = {
      * moves in steps of three to ten points, so one point alone mostly shows
      * nothing; ten cross every step but crits' charm (thirty).
      */
-    statHorizon: 10
+    statHorizon: 10,
+    /**
+     * How many of the best spots a stat is weighed over: the best alone often
+     * waits on its lair's clock, which no stat moves.
+     */
+    statPlaces: 5
   },
   /** Going back for the kit after a death — `GearRecovery`. */
   gearRecovery: {
@@ -1565,6 +1576,12 @@ const TUNING_DEFAULTS = {
      * each leg confirmed walked past twelve laps of monsters engaging nothing.
      */
     dwellMs: 2_000,
+    /**
+     * A stop on a clock longer than this found empty is looked at again after
+     * this many seconds (`LoopRunner.noteLeaving`): a boss somebody else
+     * killed, on hours of clock.
+     */
+    emptyRecheckSeconds: 600,
     /**
      * How long a loop stands still after an escape before it will plan again.
      *

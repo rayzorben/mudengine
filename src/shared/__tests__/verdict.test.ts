@@ -13,6 +13,7 @@ import {
   targetOf,
   verdictFor,
   wieldedWeapon,
+  backstabsWith,
   type Verdict
 } from '../verdict';
 import type { Menace, MenacePlayer, MenaceWeights } from '../menace';
@@ -550,5 +551,36 @@ describe('the monster list, which replaces the weighing rather than ranking agai
   it('still ranks on the bands beside a never row', () => {
     const order = rankByPriority(['rat', 'gnoll'], rows(['rat', 'never'], ['gnoll', 'first']));
     expect(order).toEqual([1, 0]);
+  });
+});
+
+describe('opening with a backstab', () => {
+  const held = (
+    weapon: { min: number; max: number; kind?: number },
+    abilities?: Array<[number, number]>
+  ) => ({
+    equipped: true,
+    kind: 'weapon',
+    weapon,
+    ...(abilities === undefined ? {} : { abilities })
+  });
+
+  it('is the server’s rule: a weapon of kind 2, or one with a backstab ability', () => {
+    expect(backstabsWith([held({ min: 2, max: 8, kind: 2 })])).toBe(true);
+    // The pig on a spit: kind 1, and nothing that backstabs.
+    expect(
+      backstabsWith([
+        held({ min: 2, max: 12, kind: 1 }, [
+          [59, 12],
+          [119, 1]
+        ])
+      ])
+    ).toBe(false);
+    expect(backstabsWith([held({ min: 2, max: 12, kind: 1 }, [[116, 5]])])).toBe(true);
+  });
+
+  it('is not known with nothing wielded or a weapon of no stated kind', () => {
+    expect(backstabsWith([])).toBeNull();
+    expect(backstabsWith([held({ min: 2, max: 12 })])).toBeNull();
   });
 });

@@ -51,6 +51,11 @@ export class RoomClocks {
    * asked for because the database states none, the realm's usual lair clock
    * over every lair `isLair` admits. Null while nothing is timed.
    *
+   * A lair's gap under `refillShortestSeconds` is left out: the room read
+   * empty and full again within a second of a kill is the lair's second
+   * monster coming in. An arena's are real refills, and `refilling` keeps
+   * them: the Newhaven Arena's timed gaps on orohost run 0.005 to 0.8 s.
+   *
    * Outranks it because the `Delay` reading is the client's and the gap is
    * the server's: orohost runs the Paradigm data, whose Small Cavern states
    * `Delay` 3 (150 s through `respawnSeconds`), and refilled it in a median of
@@ -61,9 +66,9 @@ export class RoomClocks {
     isLair: (room: RoomId) => boolean,
     usual: boolean
   ): { seconds: number; whose: 'timed' | 'usual' } | null {
-    const least = tuning().hunting.refillsLeast;
+    const { refillsLeast: least, refillShortestSeconds: shortest } = tuning().hunting;
     const own = rooms.flatMap((room) => {
-      const clock = refillClock(this.lore.spawnsAt(room), least);
+      const clock = refillClock(this.lore.spawnsAt(room), least, shortest);
       return clock === null ? [] : [clock];
     });
     if (own.length > 0) return { seconds: Math.min(...own), whose: 'timed' };
@@ -71,7 +76,8 @@ export class RoomClocks {
     const lairs = [...this.lore.allSpawns()].filter(([room]) => isLair(room));
     const typical = usualClock(
       lairs.map(([, entry]) => entry),
-      least
+      least,
+      shortest
     );
     return typical === null ? null : { seconds: typical, whose: 'usual' };
   }
@@ -82,6 +88,7 @@ export class RoomClocks {
     const rooms: RefillingRoom[] = [];
     for (const [room, entry] of this.lore.allSpawns()) {
       if (isLair(room)) continue;
+      // An arena refills within a second (the Newhaven Arena), so no gap is too short here.
       const clock = refillClock(entry, least);
       if (clock === null) continue;
       const names = Object.entries(entry.seen)

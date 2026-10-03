@@ -457,6 +457,9 @@ export const MARTIAL_DAMAGE_ABILITY = { punch: 92, kick: 93, jumpkick: 94 } as c
 /** Each martial attack's accuracy bonus (`Player.PunchAcc` and the rest). */
 export const MARTIAL_ACCURACY_ABILITY = { punch: 89, kick: 90, jumpkick: 91 } as const;
 
+/** A weapon's backstab bonuses; any of them lets the weapon backstab (`Item.CanBackstab`). */
+export const BACKSTAB_ABILITY = { accuracy: 116, minDamage: 117, maxDamage: 118 } as const;
+
 /**
  * `ShadowHome` (the server's spelling; `ShadowRest` above is this client's).
  *

@@ -39,8 +39,13 @@ function soul(): CharacterState {
   };
 }
 
-const spot = (expPerHour: number | null): HuntingSpot =>
-  ({ estimate: { expPerHour, expPerCycle: null, cycleSeconds: null } }) as unknown as HuntingSpot;
+const WEIGH = { horizon: 10, places: 5 };
+
+const spot = (expPerHour: number | null, key = 'lair'): HuntingSpot =>
+  ({
+    key,
+    estimate: { expPerHour, expPerCycle: null, cycleSeconds: null }
+  }) as unknown as HuntingSpot;
 
 describe('the same character, a stat raised', () => {
   it('raises the figure, and the hit points health brings at this level', () => {
@@ -76,7 +81,7 @@ describe('where the points go', () => {
   const survey = (as: CharacterState): HuntingSpot[] => [spot((as.progress.agility ?? 0) * 100)];
 
   it('is the stat adding the most exp an hour per CP', () => {
-    const { wanted, chose } = chooseByExp(soul(), CURRENT, LIMITS, 10, survey);
+    const { wanted, chose } = chooseByExp(soul(), CURRENT, LIMITS, WEIGH, survey);
     expect(chose?.attribute).toBe('agility');
     expect(chose?.gain).toBe(1000);
     expect(wanted).toEqual({ ...CURRENT, ...zero(), agility: 90 });
@@ -84,16 +89,32 @@ describe('where the points go', () => {
 
   it('is nowhere when no stat adds anything', () => {
     const flat = (): HuntingSpot[] => [spot(5000)];
-    expect(chooseByExp(soul(), CURRENT, LIMITS, 10, flat).chose).toBeNull();
+    expect(chooseByExp(soul(), CURRENT, LIMITS, WEIGH, flat).chose).toBeNull();
   });
 
   it('counts a ground opened where none was offered as its whole rate', () => {
     // Only with 20 more hit points is anywhere safe to hunt.
     const opens = (as: CharacterState): HuntingSpot[] =>
       (as.vitals.hpMax ?? 0) > 100 ? [spot(3000)] : [];
-    const gains = statGains(soul(), statSteps(CURRENT, LIMITS, 10), opens);
+    const gains = statGains(soul(), statSteps(CURRENT, LIMITS, 10), opens, 5);
     expect(gains.find((gain) => gain.attribute === 'health')?.gain).toBe(3000);
     expect(gains.find((gain) => gain.attribute === 'agility')?.gain).toBeNull();
+  });
+
+  it('weighs the best few spots, since the best one waits on its clock', () => {
+    // The best lair is bound by its clock; the next two pay 100 an hour per point of strength.
+    const clocked = (as: CharacterState): HuntingSpot[] => [
+      spot(27000, 'guard'),
+      spot((as.progress.strength ?? 0) * 100, 'mercenary'),
+      spot((as.progress.strength ?? 0) * 100, 'kobold')
+    ];
+    const { chose } = chooseByExp(soul(), CURRENT, LIMITS, { horizon: 10, places: 3 }, clocked);
+    expect(chose?.attribute).toBe('strength');
+    // A thousand more at two of the three spots.
+    expect(chose?.gain).toBeCloseTo(2000 / 3);
+    expect(
+      chooseByExp(soul(), CURRENT, LIMITS, { horizon: 10, places: 1 }, clocked).chose
+    ).toBeNull();
   });
 
   it('goes to the cheaper of two stats worth the same', () => {

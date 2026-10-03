@@ -19,7 +19,7 @@ import type { RealmFamily } from './realm';
 // Type only: `survival.ts` imports this module's values, and a value the other
 // way would be the cycle `module-cycle.test.ts` exists to refuse.
 import type { Odds, Survival } from './survival';
-import { DODGE_ABILITY } from './abilities';
+import { BACKSTAB_ABILITY, DODGE_ABILITY, carriesAbility } from './abilities';
 import { statedNow } from './stated';
 import type { CharacterState, RoomOccupant } from './character';
 import type { MobEntity } from './entities';
@@ -473,6 +473,27 @@ export function wieldedWeapon(
 ): ProwessWeapon | null {
   const found = items.find((item) => item.equipped && item.kind === 'weapon' && item.weapon);
   return found?.weapon ?? null;
+}
+
+/**
+ * Whether the weapon in hand can open with a backstab, as GreaterMUD's
+ * `Item.CanBackstab` rules it: a weapon of `WeaponType` 2, or one carrying a
+ * backstab ability. The server refuses any other (*You may not backstab with
+ * this weapon!*). Null where nothing is wielded or its kind is not known.
+ */
+export function backstabsWith(
+  items: ReadonlyArray<{
+    equipped: boolean;
+    kind?: string;
+    weapon?: ProwessWeapon;
+    abilities?: ReadonlyArray<readonly [number, number]>;
+  }>
+): boolean | null {
+  const found = items.find((item) => item.equipped && item.kind === 'weapon' && item.weapon);
+  if (found?.weapon === undefined) return null;
+  const abilities = found.abilities;
+  if (Object.values(BACKSTAB_ABILITY).some((id) => carriesAbility(abilities, id))) return true;
+  return found.weapon.kind === undefined ? null : found.weapon.kind === 2;
 }
 
 /**

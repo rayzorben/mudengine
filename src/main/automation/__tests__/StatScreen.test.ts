@@ -520,6 +520,15 @@ describe('spending where the exp rate rises most', () => {
     expect(weighed).toBe(2);
   });
 
+  it('weighs again when the level’s points arrive after the level', () => {
+    // *Welcome to level 11!* is read before *You gain 15 CPs*.
+    const auto = make(byExpConfig());
+    auto.onCharacter(atTheTrainer({ level: 11, cp: 1 }));
+    expect(weighed).toBe(1);
+    auto.onCharacter(atTheTrainer({ level: 11, cp: 16 }));
+    expect(weighed).toBe(2);
+  });
+
   it('weighs nothing while the race’s spans are unread', () => {
     const auto = make(byExpConfig());
     auto.onCharacter({ ...atTheTrainer(), attributeSpans: null });
