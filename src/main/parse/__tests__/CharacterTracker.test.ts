@@ -9,6 +9,7 @@ import { WorldGraph } from '../../world/WorldGraph';
 import type { FightRecord, FightSink } from '../../../shared/fights';
 import type { Stash } from '../../../shared/stash';
 import { CharacterTracker } from '../CharacterTracker';
+import { Belongings } from '../../session/Belongings';
 import { parseExit } from '../room';
 import { Classifier } from '../Classifier';
 import { actsOf, applyAct, readLine } from '../lineActs';
@@ -10311,6 +10312,47 @@ describe('what was in each worn slot', () => {
     listing(feed, 'padded helm (Head)');
 
     expect(written).toEqual([['padded helm']]);
+  });
+
+  /*
+   * festus's two swaps, `wea chalice` then `wea cros`, with no `i` between
+   * (logs/2026-10-03_10-53-22_festus.log:944, 3742). Each sentence names no
+   * slot; the listings before had named both items `(Off-Hand)`. The record
+   * on disk and the next connection both hold the cross (todo 18).
+   */
+  it('keeps a swap made by hand in the saved record and across a reconnect', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-loadout-'));
+    try {
+      const file = path.join(dir, 'festus.json');
+      const realm = 'orohost:2427';
+      const record = new Belongings({ file, realm });
+      const { tracker, feed } = feeder();
+      tracker.useBelongings(record);
+      tracker.reset();
+
+      listing(feed, 'golden chalice (Off-Hand), large silvery cross');
+      listing(feed, 'large silvery cross (Off-Hand), golden chalice');
+      feed('You have removed large silvery cross.');
+      feed('You are now wearing golden chalice.');
+      expect(tracker.current.loadout).toEqual([
+        { slot: 'Off-Hand', item: 'golden chalice', at: expect.any(Number) }
+      ]);
+      feed('You have removed golden chalice.');
+      feed('You are now wearing large silvery cross.');
+      record.close();
+
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { loadout: unknown };
+      expect(saved.loadout).toEqual([
+        { slot: 'Off-Hand', item: 'large silvery cross', at: expect.any(Number) }
+      ]);
+
+      const next = feeder().tracker;
+      next.useBelongings(new Belongings({ file, realm }));
+      next.reset();
+      expect(next.current.loadout.map((worn) => worn.item)).toEqual(['large silvery cross']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

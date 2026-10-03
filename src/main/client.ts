@@ -58,6 +58,7 @@ import {
   type Wearer,
   UNKNOWN_WEARER
 } from '../shared/gear';
+import { planNotices, restoreNotices } from './automation/gearNotices';
 import { Belongings, peekRoom, peekSpellbook } from './session/Belongings';
 import type { CharacterRecord, KeptRoom } from '../shared/belongings';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
@@ -2683,21 +2684,8 @@ function registerIpc(): void {
     })();
 
     for (const command of plan.commands) manager.ask(command);
-    if (plan.missing.length > 0) {
-      announce(
-        'gear',
-        t('automation.gear.missing', {
-          count: plan.missing.length,
-          items: plan.missing.join(', ')
-        })
-      );
-    }
-    if (plan.overflow > 0) {
-      announce(
-        'gear',
-        t('automation.gear.capped', { max: tuning().spending.maxGear, more: plan.overflow })
-      );
-    }
+    const said = action === 'restore' ? restoreNotices(plan, state.loadout) : planNotices(plan);
+    for (const message of said) announce('gear', message);
     return plan.commands.length;
   });
 

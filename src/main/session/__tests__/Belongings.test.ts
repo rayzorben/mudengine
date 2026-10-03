@@ -6,6 +6,7 @@ import path from 'node:path';
 import { Belongings, peekRoom, peekSpellbook } from '../Belongings';
 import type { BankBalance } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
+import { t } from '../../app/i18n';
 
 let dir = '';
 let file = '';
@@ -151,6 +152,30 @@ describe('what the banks told this character', () => {
       new Belongings({ file, realm: REALM, notify: (m: string) => said.push(m) }).recallBanks()
     ).toEqual([]);
     expect(said).toHaveLength(1);
+  });
+
+  /*
+   * A check made stricter refused festus's whole record for two days, and the
+   * notice did not say why (todo 18). The field is named now.
+   */
+  it('names the field it could not read', () => {
+    const { spent: _spent, ...older } = NO_TALLY;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ version: 1, realm: REALM, banks: [], stats: { savedAt: 1, tally: older } }),
+      'utf8'
+    );
+    const said: string[] = [];
+
+    new Belongings({ file, realm: REALM, notify: (m: string) => said.push(m) });
+    expect(said).toEqual([
+      t('notices.world.belongings.invalidField', {
+        fileName: 'vaelor.json',
+        field: 'stats.tally.spent',
+        notSaved: t('notices.world.belongings.notSaved')
+      })
+    ]);
   });
 
   /* Nothing kept is not nothing banked, and a missing file is the first case. */

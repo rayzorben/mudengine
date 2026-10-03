@@ -155,12 +155,27 @@ describe('putting back what was on', () => {
     expect(plan.overflow).toBe(3);
   });
 
-  /* The button is greyed from the same function that would run, so a lit
-     button is one that will do something. */
-  it('answers whether there is anything to put back', () => {
-    expect(canRestore(loadout, [carried({ name: 'padded helm' })])).toBe(true);
-    expect(canRestore(loadout, [worn('padded helm', 'Head')])).toBe(false);
-    expect(canRestore([], [carried({ name: 'padded helm' })])).toBe(false);
+  /* Lit whenever a slot is recorded, everything on or not (todo 18): the
+     press makes sure, and says so when nothing was off. */
+  it('is pressable whenever a slot is recorded', () => {
+    expect(canRestore(loadout)).toBe(true);
+    expect(canRestore([])).toBe(false);
+  });
+
+  /* The light is `AutoLight`'s (user, 2026-10-03): re-equipping a torch would
+     light it in daylight. */
+  describe('the readied light', () => {
+    const torch: Loadout = [{ slot: 'Readied', item: 'torch', at: NOW }];
+
+    it('is never worn by a re-equip', () => {
+      const plan = restorePlan([...loadout, ...torch], [carried({ name: 'torch' })], 10);
+      expect(plan.commands).toEqual([]);
+      expect(plan.missing).toEqual(['padded helm', 'padded vest']);
+    });
+
+    it('does not light the button on its own', () => {
+      expect(canRestore(torch)).toBe(false);
+    });
   });
 });
 
