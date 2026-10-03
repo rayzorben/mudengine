@@ -18,6 +18,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import {
+  clearWords,
   plannedFetches,
   planRefusalsWords,
   type Plan,
@@ -37,7 +38,7 @@ import {
   type Route,
   type TrainerChoice
 } from '../../shared/world';
-import type { Wanted } from './ItemErrand';
+import { wantedFrom, type Wanted } from './ItemErrand';
 import type { LightFetch } from './LightAhead';
 import type { SessionModule } from './Module';
 
@@ -512,10 +513,7 @@ export class TrainErrand implements SessionModule {
     if (clear?.kind === 'clear') {
       return {
         kind: 'none',
-        why: t('automation.train.refusalClearing', {
-          roomName: clear.name,
-          monsters: clear.monsters.join(', ')
-        })
+        why: t('automation.train.refusalClearing', { clear: clearWords(clear, t) })
       };
     }
     const walked = (steps: readonly PlanStep[]): Route => ({
@@ -577,8 +575,7 @@ export class TrainErrand implements SessionModule {
     const keyed = way.needs.length > 0;
     if (keyed || light !== null) {
       // Each key fetched where the plan gets it, which the plan has already judged.
-      const planned = way.needs.map((need): Wanted => ({ ...need.step.item, from: need }));
-      const needs = [...planned, ...(light?.items ?? [])];
+      const needs = [...wantedFrom(way.needs), ...(light?.items ?? [])];
       const where = {
         room: chosen.roomName,
         items: needs.map((item) => item.name).join(', '),

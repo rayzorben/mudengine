@@ -41,7 +41,19 @@ export type PlanStep =
       summon?: { say: string } | { by: string };
     }
   /** Kill what stands in this room, which a way through it wants empty (`nomonsters`). */
-  | { kind: 'clear'; room: RoomId; name: string; monsters: string[] };
+  | ClearStep;
+
+export interface ClearStep {
+  kind: 'clear';
+  room: RoomId;
+  name: string;
+  monsters: string[];
+}
+
+/** What a room to clear asks, in words. */
+export function clearWords(step: ClearStep, t: UiLookup): string {
+  return t('navigation.clearFirst', { monsters: step.monsters.join(', '), roomName: step.name });
+}
 
 /** A step that gets an item: where the plan fetches it, and how. */
 export type FetchStep = Extract<PlanStep, { kind: 'buy' | 'ask' | 'kill' }>;

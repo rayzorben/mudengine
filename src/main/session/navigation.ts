@@ -7,12 +7,12 @@
  */
 import { tuning } from '../app/tuning';
 import type { CharacterTracker } from '../parse/CharacterTracker';
-import { plan, type PlanRealm } from '../world/navigation/plan';
+import { leg, plan, type PlanRealm } from '../world/navigation/plan';
 import { standing } from '../world/navigation/standing';
-import type { WorldGraph } from '../world/WorldGraph';
+import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { unfoughtShare } from '../../shared/danger';
 import type { FightOdds, NavigationOracle, Plan } from '../../shared/navigation';
-import { roomAddress, type RoomId } from '../../shared/world';
+import { roomAddress, type RoomId, type Route } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { OddsReader } from './OddsBook';
 
@@ -37,14 +37,19 @@ export class Navigation {
     const state = this.parts.tracker.current;
     const here = roomAddress(state.room);
     if (world === undefined || here === null) return null;
-    const realm: PlanRealm = {
-      route: (from, target, traveller, options) => world.route(from, target, traveller, options),
-      sweep: (from, rooms, traveller) => world.sweepTo(from, rooms, traveller),
-      sources: (item) => world.itemSources(item),
-      standing: (room) => standing(world, room),
-      roomName: (room) => world.byId(room)?.name ?? room
-    };
-    return plan(realm, this.oracle(world), here, to, this.parts.errands.travellerNow(state));
+    const traveller = this.parts.errands.travellerNow(state);
+    return plan(realmOf(world), this.oracle(world), here, to, traveller);
+  }
+
+  /**
+   * The walk between two rooms for this traveller with what it holds now
+   * (`leg`): refused where the way first wants a key fetched, or a fight on
+   * it is lost. Null while worldless.
+   */
+  leg(from: RoomId, to: RoomId, traveller: Traveller, options: RouteOptions = {}): Route | null {
+    const world = this.parts.world();
+    if (world === undefined) return null;
+    return leg(realmOf(world), this.oracle(world), from, to, traveller, options);
   }
 
   private oracle(world: Pick<WorldGraph, 'byId' | 'lairOf' | 'item'>): NavigationOracle {
@@ -59,6 +64,33 @@ export class Navigation {
       }
     };
   }
+}
+
+/** Nothing said about any fight or purse: a character with no session yet. */
+const UNWEIGHED: NavigationOracle = { fight: () => ({ kind: 'unread' }), affords: () => null };
+
+/**
+ * The walk between two rooms for a character with no session (`leg`): every
+ * fight on it is not yet known, so a way through one is refused.
+ */
+export function worldLeg(
+  world: NonNullable<ReturnType<NavigationParts['world']>>,
+  from: RoomId,
+  to: RoomId,
+  traveller: Traveller
+): Route {
+  return leg(realmOf(world), UNWEIGHED, from, to, traveller);
+}
+
+/** What the planner reads of the realm, from the world. */
+function realmOf(world: NonNullable<ReturnType<NavigationParts['world']>>): PlanRealm {
+  return {
+    route: (from, target, traveller, options) => world.route(from, target, traveller, options),
+    sweep: (from, rooms, traveller) => world.sweepTo(from, rooms, traveller),
+    sources: (item) => world.itemSources(item),
+    standing: (room) => standing(world, room),
+    roomName: (room) => world.byId(room)?.name ?? room
+  };
 }
 
 /**

@@ -123,6 +123,11 @@ export interface Wanted {
   from?: PlannedFetch;
 }
 
+/** The items a plan fetches, each to be fetched where the plan gets it. */
+export function wantedFrom(fetches: readonly PlannedFetch[]): Wanted[] {
+  return fetches.map((planned) => ({ ...planned.step.item, from: planned }));
+}
+
 /** What the trace says the item was wanted for. */
 function wantedFor(item: Wanted): string {
   return item.dark === true

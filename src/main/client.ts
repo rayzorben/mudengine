@@ -74,6 +74,7 @@ import type { ShippedSentences } from '../shared/sentences';
 import { NO_PLAYERS, NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
+import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { MobLoreEntry } from '../shared/lore';
 import type { MovementStart, WalkStart } from '../shared/movement';
@@ -1641,21 +1642,16 @@ function registerIpc(): void {
       const odds = host?.get(session)?.manager?.odds.lair(room);
       return odds?.kind === 'run' ? odds.survival.level : null;
     };
-  const travellerOf = (session: SessionId, walking: 'route' | 'lap'): Traveller => {
+  /*
+   * A character with no session yet is priced as one that can force nothing,
+   * which is `edgePenalty`'s own rule.
+   */
+  const nobody: Traveller = { level: null, strength: null, pickSkill: undefined, wealth: null };
+  // The builder drafts as the lap will walk, by distance and passability: see
+  // the header of `loopDraft.ts`.
+  const lapTravellerOf = (session: SessionId): Traveller => {
     const manager = host?.get(session)?.manager;
-    // The session's own statement of what its character costs to move — the
-    // stats off the sheet, the purse, what the server refused — so a door
-    // graded one way on the panel and another way in a loop's leg cannot
-    // happen. The builder drafts as the lap will walk, by distance and
-    // passability: see the header of `loopDraft.ts`. A character with no
-    // session yet is priced as one that can force nothing, which is
-    // `edgePenalty`'s own rule.
-    if (manager) {
-      return walking === 'lap'
-        ? manager.lapTraveller(manager.character)
-        : manager.travellerNow(manager.character);
-    }
-    return { level: null, strength: null, pickSkill: undefined, wealth: null };
+    return manager ? manager.lapTraveller(manager.character) : nobody;
   };
 
   /*
@@ -1704,18 +1700,18 @@ function registerIpc(): void {
     if (!world || world.size === 0) return unrouted(t('app.route.noRealmData'));
     const manager = (await placedFirst(session))?.manager;
     const here = manager?.character.room;
-    if (!here || here.map === null || here.number === null) {
+    if (!manager || !here || here.map === null || here.number === null) {
       // Routing from an unknown position would be a guess dressed as a plan.
       return unrouted(t('app.route.unknownRoom'));
     }
     // With the alternatives a reader chooses between: this is the one route
-    // planned to be read rather than walked.
-    return world.route(
-      roomId(here.map, here.number),
-      roomId(map, room),
-      travellerOf(session, 'route'),
-      { alternatives: true }
-    );
+    // planned to be read rather than walked. The session's own statement of
+    // what its character costs to move, so a door graded one way on the panel
+    // and another way in a loop's leg cannot happen.
+    const route = manager.leg(roomId(here.map, here.number), roomId(map, room), {
+      alternatives: true
+    });
+    return typeof route === 'string' ? unrouted(route) : route;
   });
 
   /*
@@ -1734,7 +1730,9 @@ function registerIpc(): void {
       if (start === undefined || goal === undefined) {
         return { route: unrouted(t('app.route.invalidPayload')), legs: [] };
       }
-      const route = world.route(start, goal, travellerOf(session, 'route'));
+      const manager = host?.get(session)?.manager;
+      const planned = manager?.leg(start, goal) ?? worldLeg(world, start, goal, nobody);
+      const route = typeof planned === 'string' ? unrouted(planned) : planned;
       return { route, legs: pagesFor(session, world, route, start) };
     }
   );
@@ -1774,7 +1772,7 @@ function registerIpc(): void {
       cache = new LoopDraftCache();
       drafts.set(session, cache);
     }
-    return cache.draft(world, picks, travellerOf(session, 'lap'));
+    return cache.draft(world, picks, lapTravellerOf(session));
   });
 
   /*

@@ -4,7 +4,9 @@ import path from 'node:path';
 
 import type { FightOdds, NavigationOracle } from '../../../shared/navigation';
 import type { Route, RouteStep } from '../../../shared/world';
-import { plan, type PlanRealm } from '../navigation/plan';
+import { leg, plan, type PlanRealm } from '../navigation/plan';
+import { t } from '../../app/i18n';
+import { planRefusalsWords } from '../../../shared/navigation';
 import type { ItemSource } from '../navigation/sources';
 import type { Traveller } from '../Router';
 import { standing } from '../navigation/standing';
@@ -98,6 +100,62 @@ describe('a plan made whole before the first step', () => {
       kind: 'odds-unread',
       monster: 'troll'
     });
+  });
+});
+
+describe('a walk with what is held now', () => {
+  it("is the router's own route where nothing is fetched", () => {
+    const asked: Array<boolean | undefined> = [];
+    const direct = way('here', 'shop');
+    const watched: PlanRealm = {
+      ...realm,
+      route: (from, to, traveller, options) => {
+        asked.push(options?.alternatives);
+        return to === 'shop' ? direct : realm.route(from, to, traveller, options);
+      }
+    };
+    expect(
+      leg(watched, odds({ kind: 'win' }), 'here', 'shop', nobody, { alternatives: true })
+    ).toBe(direct);
+    // One search: the planned walk is the direct route, not asked twice.
+    expect(asked).toEqual([true]);
+  });
+
+  it('is refused where keys come first, carrying the planned way and its keys in order', () => {
+    const walked = leg(realm, odds({ kind: 'win' }), 'here', 'goal', nobody);
+    expect(walked).toMatchObject({ blocked: true, steps: [], reason: 'locked' });
+    expect(walked.unlocks?.needs).toEqual([
+      { id: 1, name: 'bone key' },
+      { id: 2, name: 'iron key' }
+    ]);
+  });
+
+  it("is refused with the plan's reason where a key cannot be had", () => {
+    const walked = leg(realm, odds({ kind: 'lose', survives: 0.4 }), 'here', 'goal', nobody);
+    const refused = plan(realm, odds({ kind: 'lose', survives: 0.4 }), 'here', 'goal', nobody);
+    expect(walked.blocked).toBe(true);
+    expect(walked.reason).toBe(
+      refused.kind === 'refused' && planRefusalsWords(refused.refusals, t)
+    );
+  });
+
+  it('walks into a room that wants emptying where the fight there is won, and not where it is lost', () => {
+    const emptied: Route = {
+      steps: [
+        {
+          ...step('pit', 'tunnel'),
+          requirement: { kind: 'text', raw: 'go tunnel', gates: [{ kind: 'empty-room' }] }
+        } as RouteStep
+      ],
+      cost: 5,
+      blocked: false
+    };
+    const pit: PlanRealm = { ...realm, route: () => emptied, standing: () => ['hydra'] };
+    expect(leg(pit, odds({ kind: 'win' }), 'pit', 'tunnel', nobody)).toBe(emptied);
+    const lost = leg(pit, odds({ kind: 'lose', survives: 0.1 }), 'pit', 'tunnel', nobody);
+    expect(lost).toMatchObject({ blocked: true, steps: [] });
+    const refusal = { kind: 'fight', item: null, monster: 'hydra', survives: 0.1 } as const;
+    expect(lost.reason).toBe(planRefusalsWords([refusal], t));
   });
 });
 

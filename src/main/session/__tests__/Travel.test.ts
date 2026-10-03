@@ -77,6 +77,8 @@ function travel(
     world: undefined,
     errands: {
       planFromHere: vi.fn(),
+      planTo: vi.fn(() => null),
+      routeBetween: vi.fn(() => t('session.loop.noRealmData')),
       travellerNow: vi.fn(),
       lapTraveller: vi.fn(),
       askCountersFor: vi.fn(),
@@ -360,6 +362,50 @@ describe('a route asked for with automation off', () => {
     expect(moving.collectThenWalk(items, route)).toBeNull();
     expect(switched).toEqual([]);
     expect(notices).toEqual([]);
+  });
+});
+
+/* A key the panel says to fetch is fetched where the navigation engine plans it. */
+describe('collecting before a walk', () => {
+  it("fetches a key the plan gets from the plan's source, and the rest as asked", () => {
+    const { travel: moving, parts } = travel(beside(), 'none', true);
+    const step = {
+      kind: 'kill',
+      item: { id: 1, name: 'rope' },
+      monster: 'troll',
+      room: '1/9'
+    } as const;
+    const route: Route = {
+      steps: [
+        {
+          from: '1/1',
+          to: '1/5',
+          direction: 'n',
+          command: 'n',
+          name: 'Gate',
+          requirement: null,
+          dark: false
+        }
+      ],
+      cost: 1,
+      blocked: false
+    };
+    vi.mocked(parts.errands.planTo).mockReturnValue({
+      kind: 'plan',
+      steps: [{ kind: 'walk', route }, step],
+      cost: 1
+    });
+    vi.mocked(parts.itemErrand.collect).mockReturnValue(null);
+    const items = [
+      { id: 1, name: 'rope' },
+      { id: 2, name: 'torch' }
+    ];
+    expect(moving.collectThenWalk(items, route)).toBeNull();
+    expect(parts.errands.planTo).toHaveBeenCalledWith('1/5');
+    expect(vi.mocked(parts.itemErrand.collect).mock.calls[0]?.[0]).toEqual([
+      { id: 1, name: 'rope', from: { step, moves: 1 } },
+      { id: 2, name: 'torch' }
+    ]);
   });
 });
 
