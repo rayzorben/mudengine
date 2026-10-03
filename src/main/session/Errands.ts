@@ -7,6 +7,8 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
+import type { FightOdds, Plan } from '../../shared/navigation';
+import { fightOdds, Navigation } from './navigation';
 import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
@@ -62,8 +64,6 @@ import {
   type SpotInput,
   type SpotMob
 } from '../../shared/hunting';
-import { unfoughtShare } from '../../shared/danger';
-import type { Odds } from '../../shared/survival';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { attacksOnSight, fightable } from '../../shared/mobs';
@@ -195,6 +195,7 @@ export type ErrandsWorld = Pick<
   | 'hazardOf'
   | 'item'
   | 'itemAsks'
+  | 'lairOf'
   | 'itemsNamed'
   | 'lair'
   | 'lairEntities'
@@ -205,8 +206,10 @@ export type ErrandsWorld = Pick<
   | 'raceAbilities'
   | 'raceId'
   | 'residentEntities'
+  | 'itemSources'
   | 'route'
   | 'shop'
+  | 'sweepTo'
   | 'shopPlace'
   | 'size'
   | 'spellById'
@@ -254,6 +257,8 @@ export class Errands implements SessionModule {
   private fitted: { state: CharacterState; key: string } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
   private readonly lairCosts = new LairCosts((room) => this.weighLair(room));
+  /** The one navigation engine for this character (`session/navigation.ts`). */
+  private readonly navigation: Navigation;
   /** Every toll the realm's exits charge, in copper, cheapest first; read once. */
   private tolls: number[] | null = null;
   /**
@@ -308,6 +313,17 @@ export class Errands implements SessionModule {
     this.fightRecord = parts.fightRecord;
     this.clocks = new RoomClocks(parts.lore);
     this.kills = parts.lore;
+    this.navigation = new Navigation({
+      world: () => this.world,
+      tracker: parts.tracker,
+      errands: this,
+      odds: () => this.session.odds()
+    });
+  }
+
+  /** The plan from where the character stands to a room, keys and fights included, or null while unplaced. */
+  planTo(to: RoomId): Plan | null {
+    return this.navigation.planTo(to);
   }
 
   private get automationConfig(): AutomationConfig {
@@ -1324,30 +1340,28 @@ export class Errands implements SessionModule {
     // A lair whose monster combat will not open on is a loop that waits there
     // for ever (2026-10-02: a stone key off an ogre, behind a one-way wall).
     // Every dropper is weighed, reached from here or not: one behind an earlier
-    // key's door is reached on the way (`ItemErrand.unobtainable`).
-    const { openAbove } = tuning().combat;
+    // key's door is reached on the way (`ItemErrand.firstUnobtainable`). The
+    // rule is the navigation engine's (`fightOdds`).
     const odds = this.session.odds();
     const unfought = new Map<string, ItemSources['unfought'][number]>();
-    const weigh = (fight: Odds, mob: string, via?: string): boolean => {
-      const survives = unfoughtShare(fight, openAbove);
-      if (survives === undefined) return true;
+    const weigh = (fight: FightOdds, mob: string, via?: string): boolean => {
+      if (fight.kind === 'win') return true;
+      const survives = fight.kind === 'lose' ? fight.survives : null;
       unfought.set(
         `${via ?? ''}>${mob}`,
         via === undefined ? { mob, survives } : { mob, survives, via }
       );
       return false;
     };
-    for (const dropper of drops.droppers) weigh(odds.mob(dropper.mob), dropper.mob);
-    const lairs = drops.lairs.filter((place) => {
-      if (place.via !== undefined) {
-        return (
-          weigh(odds.mob(place.via), place.mob, place.via) && weigh(odds.mob(place.mob), place.mob)
-        );
-      }
-      // A lair is weighed whole, at its cap, as combat meets it there.
-      const room = world.byId(place.id);
-      return weigh(room?.lair === undefined ? odds.mob(place.mob) : odds.lair(room), place.mob);
-    });
+    const fight = (mob: string, room: RoomId | null): FightOdds =>
+      fightOdds(odds, world, mob, room);
+    for (const dropper of drops.droppers) weigh(fight(dropper.mob, null), dropper.mob);
+    const lairs = drops.lairs.filter((place) =>
+      place.via !== undefined
+        ? weigh(fight(place.via, null), place.mob, place.via) &&
+          weigh(fight(place.mob, null), place.mob)
+        : weigh(fight(place.mob, place.id), place.mob)
+    );
     return { shops, asks, droppers: drops.droppers, lairs, unfought: [...unfought.values()] };
   }
 

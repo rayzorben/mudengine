@@ -1941,6 +1941,12 @@ const TUNING_DEFAULTS = {
      */
     portalPenalty: 3,
     /**
+     * One fight in a plan costs this many ordinary steps, so a key off a
+     * monster is weighed against a longer walk to a shop that sells it
+     * (`navigation/plan.ts`).
+     */
+    fightCost: 30,
+    /**
      * What using an item that teleports costs over an ordinary step
      * (`WorldItem.lands`).
      *
