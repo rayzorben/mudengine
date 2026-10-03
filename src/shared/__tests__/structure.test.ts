@@ -34,10 +34,10 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // (`macros.ts`), less the extensions' hooks (todo 84). Lowered by the
   // blessings' construction, out with its choice (`BlessingChoice.ts`, todo 10).
   // Lowered by the hunt's wiring, out whole (`huntPlanner.ts`, todo 11).
-  'src/main/session/SessionManager.ts': 3648,
+  'src/main/session/SessionManager.ts': 3647,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2433,
-  'src/main/parse/CharacterTracker.ts': 2537,
+  'src/main/parse/CharacterTracker.ts': 2533,
   'src/renderer/src/App.tsx': 1786,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`).
   'src/main/automation/Walker.ts': 1958,

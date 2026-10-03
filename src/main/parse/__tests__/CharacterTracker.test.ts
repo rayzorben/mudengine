@@ -1034,7 +1034,10 @@ describe('the last room outlives the socket', () => {
   ];
   const ROAD_LINES = ['Newhaven, Narrow Road', 'Obvious exits: north'];
 
-  function session(record: BelongingsSink = NO_BELONGINGS): {
+  function session(
+    record: BelongingsSink = NO_BELONGINGS,
+    kept: KeptRoom | null = null
+  ): {
     tracker: CharacterTracker;
     feed: (lines: string[]) => void;
   } {
@@ -1048,7 +1051,15 @@ describe('the last room outlives the socket', () => {
     const graph = WorldGraph.load(file);
     fs.rmSync(dir, { recursive: true, force: true });
     const classifier = new Classifier();
-    const tracker = new CharacterTracker(graph);
+    const tracker = new CharacterTracker(
+      graph,
+      NO_LORE,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      kept
+    );
     tracker.useBelongings(record);
     let seq = 0;
     const feed = (lines: string[]): void => {
@@ -1129,6 +1140,17 @@ describe('the last room outlives the socket', () => {
       map: 1,
       number: 2147,
       resolvedBy: 'remembered'
+    });
+  });
+
+  it('starts on the room the record kept, before any connection', () => {
+    const { tracker } = session(NO_BELONGINGS, { map: 1, room: 2147, confidence: 0.8 });
+    expect(tracker.current.phase).toBe('unknown');
+    expect(tracker.current.room).toMatchObject({
+      name: GUILD.n,
+      number: 2147,
+      resolvedBy: 'remembered',
+      confidence: 0.8
     });
   });
 

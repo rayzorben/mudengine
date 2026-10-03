@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Belongings, peekSpellbook } from '../Belongings';
+import { Belongings, peekRoom, peekSpellbook } from '../Belongings';
 import type { BankBalance } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 
@@ -431,6 +431,15 @@ describe('the room this character last stood in', () => {
       room: 2147,
       confidence: 1
     });
+  });
+
+  it('can be read at launch without opening the record, for its own realm only', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberRoom({ map: 1, room: 2147, confidence: 1 });
+    store.close();
+    expect(peekRoom(file, REALM)).toEqual({ map: 1, room: 2147, confidence: 1 });
+    expect(peekRoom(file, 'elsewhere:23')).toBeNull();
+    expect(peekRoom(path.join(dir, 'missing.json'), REALM)).toBeNull();
   });
 
   it('goes with the rest when the player says this is somebody else', () => {

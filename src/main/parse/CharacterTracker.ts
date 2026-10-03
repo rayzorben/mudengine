@@ -51,7 +51,7 @@ import { PLAYER_STATUS_HEADER } from './patterns';
 import * as lastRoom from './lastRoom';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
-import { NO_BELONGINGS, type BelongingsSink } from '../../shared/belongings';
+import { NO_BELONGINGS, type BelongingsSink, type KeptRoom } from '../../shared/belongings';
 import { bareName, WORN_SLOT } from '../../shared/items';
 import { learnLoadout } from '../../shared/gear';
 import { isWoundBand } from '../../shared/wounds';
@@ -268,19 +268,12 @@ export class CharacterTracker {
      * and what to do with it belongs to whoever wired it up.
      */
     onDiscovery?: (discovery: Discovery) => void,
-    /**
-     * Where fights are written down.
-     *
-     * Last, and defaulting to nowhere: a session with no character file behind
-     * it has nowhere to write, and every existing caller predates this.
-     */
+    /** Where fights are written down; nowhere for a session with no character file. */
     fights: FightSink = NO_FIGHTS,
     /**
-     * What the realm already knows about the other players on it.
-     *
-     * Seeds the registry, is told about every record that changes, and is
-     * where what other sessions on the same realm learn comes from. Last, and
-     * defaulting to a realm that knows nothing, for the reason `fights` does.
+     * What the realm already knows about the other players on it: seeds the
+     * registry, is told about every record that changes, and is where what
+     * other sessions on the same realm learn comes from.
      */
     book: RealmPlayers = NO_REALM_PLAYERS,
     /**
@@ -290,8 +283,11 @@ export class CharacterTracker {
      * `patterns.ts` and the watchdog clock as the only readers of a buff's
      * life, exactly as before the table existed.
      */
-    spellLore: SpellLore = NO_SPELL_LORE
+    spellLore: SpellLore = NO_SPELL_LORE,
+    /** Where the character's record last placed it, drawn before any dial (`lastRoom.ts`). */
+    kept: KeptRoom | null = null
   ) {
+    this.state = { ...this.state, room: lastRoom.recalledRoom(kept, world) };
     // The book's guard reads the phase, and a kit teaches the pack's slots.
     this.company = new Company(book, {
       inGame: () => this.state.phase === 'in-game',

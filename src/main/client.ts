@@ -57,8 +57,8 @@ import {
   type Wearer,
   UNKNOWN_WEARER
 } from '../shared/gear';
-import { Belongings, peekSpellbook } from './session/Belongings';
-import type { CharacterRecord } from '../shared/belongings';
+import { Belongings, peekRoom, peekSpellbook } from './session/Belongings';
+import type { CharacterRecord, KeptRoom } from '../shared/belongings';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
 import {
   SpellMessageBook,
@@ -661,6 +661,19 @@ function belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord 
   });
   belongings.set(id, record);
   return record;
+}
+
+/**
+ * Where a character's record last placed it, for the realm its file says it
+ * plays, so the tab draws the room before any dial. Read without opening the
+ * record: a launch has no window yet to hear what an unreadable one says.
+ */
+function lastRoomFor(id: SessionId): KeptRoom | null {
+  const target = profileFor(id)?.target;
+  if (!target) return null;
+  const realm = realmAddress(target);
+  const open = belongings.get(id);
+  return open?.realm === realm ? open.recallRoom() : peekRoom(home.record('belongings', id), realm);
 }
 
 /**
@@ -1323,6 +1336,7 @@ function createHost(): SessionHost {
       }
     },
     belongingsAt,
+    lastRoomFor,
     playersFor,
     destinationsFor,
     playersAt,
