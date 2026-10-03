@@ -17,7 +17,13 @@ import { fileSlug, isLoopFileName } from '../../shared/files';
 import type { CharacterImport } from '../../shared/ipc';
 import { errorMessage, isRecord } from '../../shared/values';
 import { asShippedWorld } from '../../shared/worlds';
-import { CHARACTER_RECORD_KINDS, recordPath, type Home } from '../app/home';
+import {
+  CHARACTER_RECORD_KINDS,
+  CHARACTER_RECORDS,
+  recordPath,
+  type CharacterRecord,
+  type Home
+} from '../app/home';
 import { t } from '../app/i18n';
 import { ServerStore } from './ServerStore';
 import { packTarball, unpackTarball, type TarEntry } from './tarball';
@@ -57,20 +63,16 @@ export async function exportCharacter(
 
   const entries: TarEntry[] = [
     { name: `profiles/${id}/profile.yaml`, data: Buffer.from(document.toString(), 'utf8') },
-    ...(await loopEntries(scope.loops, `profiles/${id}/loops`))
+    ...(await filesIn(scope.loops, `profiles/${id}/loops`, isLoopFile))
   ];
   if (realm !== undefined) {
     const server = home.server(realm);
     entries.push(
       { name: `servers/${realm}/server.yaml`, data: await fs.promises.readFile(server.file) },
-      ...(await loopEntries(server.loops, `servers/${realm}/loops`))
+      ...(await filesIn(server.loops, `servers/${realm}/loops`, isLoopFile))
     );
   }
-  for (const kind of CHARACTER_RECORD_KINDS) {
-    const file = home.record(kind, id);
-    if (!fs.existsSync(file)) continue;
-    entries.push({ name: recordPath(kind, id), data: await fs.promises.readFile(file) });
-  }
+  for (const kind of CHARACTER_RECORD_KINDS) entries.push(...(await recordEntries(home, kind, id)));
   const manifest: Manifest = { format: FORMAT, character: id, realm: realm ?? null };
   entries.unshift({ name: MANIFEST, data: Buffer.from(JSON.stringify(manifest, null, 2)) });
   return { ok: true, bytes: await packTarball(entries), name };
@@ -127,7 +129,12 @@ export async function importCharacter(
     writes.push(...filesUnder(files, `servers/${manifest.realm}/`, home.server(realm).dir));
   }
   for (const kind of CHARACTER_RECORD_KINDS) {
-    const data = files.get(recordPath(kind, manifest.character));
+    const inside = recordPath(kind, manifest.character);
+    if (isDirectory(kind)) {
+      writes.push(...filesUnder(files, `${inside}/`, home.record(kind, id)));
+      continue;
+    }
+    const data = files.get(inside);
     if (data !== undefined) writes.push({ file: home.record(kind, id), data });
   }
   writes.push(
@@ -192,19 +199,27 @@ function placeEntries(
   const allowed = new Set<string>([
     MANIFEST,
     `profiles/${own}/profile.yaml`,
-    ...CHARACTER_RECORD_KINDS.map((kind) => recordPath(kind, own)),
+    ...CHARACTER_RECORD_KINDS.filter((kind) => !isDirectory(kind)).map((kind) =>
+      recordPath(kind, own)
+    ),
     ...(manifest.realm === null ? [] : [`servers/${manifest.realm}/server.yaml`])
   ]);
-  const loopDirs = [
-    `profiles/${own}/loops/`,
-    ...(manifest.realm === null ? [] : [`servers/${manifest.realm}/loops/`])
+  const dirs: Array<{ dir: string; holds(name: string): boolean }> = [
+    { dir: `profiles/${own}/loops/`, holds: isLoopFile },
+    ...(manifest.realm === null
+      ? []
+      : [{ dir: `servers/${manifest.realm}/loops/`, holds: isLoopFile }]),
+    ...CHARACTER_RECORD_KINDS.filter(isDirectory).map((kind) => ({
+      dir: `${recordPath(kind, own)}/`,
+      holds: isRecordFile
+    }))
   ];
   const files = new Map<string, Buffer>();
   for (const entry of entries) {
-    const loop = loopDirs.some(
-      (dir) => entry.name.startsWith(dir) && isLoopFile(entry.name.slice(dir.length))
+    const inDir = dirs.some(
+      ({ dir, holds }) => entry.name.startsWith(dir) && holds(entry.name.slice(dir.length))
     );
-    if (!allowed.has(entry.name) && !loop) return null;
+    if (!allowed.has(entry.name) && !inDir) return null;
     if (entry.name !== MANIFEST) files.set(entry.name, entry.data);
   }
   return files;
@@ -213,6 +228,26 @@ function placeEntries(
 /** A loop file directly inside its directory: no separator can climb out. */
 function isLoopFile(name: string): boolean {
   return isLoopFileName(name) && !/[/\\]/.test(name);
+}
+
+/**
+ * A file directly inside a record that is a directory. A leading dot is a
+ * file being written (`fightSegments.isPendingFold`), never part of the record.
+ */
+function isRecordFile(name: string): boolean {
+  return name.length > 0 && !name.startsWith('.') && !/[/\\]/.test(name);
+}
+
+function isDirectory(kind: CharacterRecord): boolean {
+  return CHARACTER_RECORDS[kind].holds === 'directory';
+}
+
+/** One record as entries: its file, or each file directly inside its directory. */
+async function recordEntries(home: Home, kind: CharacterRecord, id: string): Promise<TarEntry[]> {
+  const at = home.record(kind, id);
+  if (isDirectory(kind)) return filesIn(at, recordPath(kind, id), isRecordFile);
+  if (!fs.existsSync(at)) return [];
+  return [{ name: recordPath(kind, id), data: await fs.promises.readFile(at) }];
 }
 
 function asManifest(entries: readonly TarEntry[]): Manifest | null {
@@ -275,11 +310,16 @@ function createdBetween(made: string, dir: string): string[] {
   return created;
 }
 
-async function loopEntries(dir: string, inside: string): Promise<TarEntry[]> {
+/** Each regular file directly inside `dir` that `accept` takes, named under `inside`. */
+async function filesIn(
+  dir: string,
+  inside: string,
+  accept: (name: string) => boolean
+): Promise<TarEntry[]> {
   let names: string[];
   try {
     names = (await fs.promises.readdir(dir, { withFileTypes: true }))
-      .filter((entry) => entry.isFile() && isLoopFile(entry.name))
+      .filter((entry) => entry.isFile() && accept(entry.name))
       .map((entry) => entry.name)
       .sort();
   } catch {

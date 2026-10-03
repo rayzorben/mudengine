@@ -1871,6 +1871,13 @@ const TUNING_DEFAULTS = {
      * socket; sliced, the socket is read between the slices.
      */
     fightsFoldSlice: 500,
+    /**
+     * How many fights one segment of a character's fight log holds before the
+     * next is started (`session/fightSegments.ts`). A read holds one segment's
+     * text at a time: festus's 136,401 fights were 137 MB unpacked, about 1 KB
+     * a fight, so 10,000 is about 10 MB.
+     */
+    fightsPerSegment: 10000,
     /** How long the conversation log holds lines before writing them. */
     talkFlushMs: 2000,
     /** How many it holds if a flush never happens. */

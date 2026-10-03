@@ -218,6 +218,55 @@ export interface FightFold {
 
 export type FightFolds = Map<string, FightFold>;
 
+/**
+ * Which `foldFight` and `foldOutput` made a saved fold. A fold saved beside a
+ * closed segment of the fight log is read only when it carries this number,
+ * and refolded from the fights otherwise, so a change to either function or
+ * to `FightFold`/`FightOutput` raises it (`fights.test.ts` fails until it does).
+ * A record field either function starts reading also goes into `isFoldable`
+ * (`session/fightSegments.ts`).
+ */
+export const FOLD_VERSION = 1;
+
+/** Adds every name's sums in `from` into `into`. */
+export function mergeFolds(into: FightFolds, from: ReadonlyMap<string, FightFold>): void {
+  mergeInto(into, from, FOLD_FIELDS);
+}
+
+/** How two folds of one name combine, field by field: every field of `FightFold` is here. */
+export const FOLD_FIELDS: Readonly<Record<keyof FightFold, Combine>> = {
+  fights: 'sum',
+  kills: 'sum',
+  mine: 'sum',
+  blows: 'sum',
+  timed: 'sum',
+  ms: 'sum',
+  opened: 'sum',
+  latest: 'max'
+};
+
+/** Whether a figure adds up across folds or keeps the larger. */
+export type Combine = 'sum' | 'max';
+
+function mergeInto<K, T extends { [P in keyof T]: number }>(
+  into: Map<K, T>,
+  from: ReadonlyMap<K, T>,
+  fields: Readonly<Record<keyof T, Combine>>
+): void {
+  for (const [key, figures] of from) {
+    const sum = into.get(key);
+    if (sum === undefined) {
+      into.set(key, { ...figures });
+      continue;
+    }
+    for (const field of Object.keys(fields) as Array<keyof T>) {
+      const held: number = sum[field];
+      const value: number = figures[field];
+      sum[field] = (fields[field] === 'sum' ? held + value : Math.max(held, value)) as T[keyof T];
+    }
+  }
+}
+
 /** Adds one fight into the folds, under the name the server printed. */
 export function foldFight(into: FightFolds, record: FightRecord): void {
   const fold = into.get(record.mob) ?? {
@@ -319,6 +368,18 @@ export function foldOutput(into: FightOutputs, record: FightRecord): void {
   output.ms += record.ms ?? 0;
   into.set(record.level, output);
 }
+
+/** Adds every level's sums in `from` into `into`. */
+export function mergeOutputs(into: FightOutputs, from: ReadonlyMap<number, FightOutput>): void {
+  mergeInto(into, from, OUTPUT_FIELDS);
+}
+
+/** How two outputs of one level combine: every field of `FightOutput` is here. */
+export const OUTPUT_FIELDS: Readonly<Record<keyof FightOutput, Combine>> = {
+  fights: 'sum',
+  mine: 'sum',
+  ms: 'sum'
+};
 
 /** What a measured figure is asked with: the numbers are the caller's tuning. */
 export interface MeasureAsk {

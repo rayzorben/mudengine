@@ -63,7 +63,7 @@ const library = new RealmLibrary({
 });
 const world = library.load(profile.database).graph;
 const fights = new FightLog(
-  path.join(path.dirname(configPath()), 'fights', `${profile.id}.jsonl.gz`),
+  path.join(path.dirname(configPath()), 'fights', profile.id),
   { notice: (message) => log('fights', message) }
 );
 
