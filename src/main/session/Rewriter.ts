@@ -6,15 +6,17 @@
  * batch the classifier assembled, the realm's row for each thing in it
  * (`WorldGraph.buildItemEntity`, the join the tracker makes for the pack),
  * whether this character may put it on (`equipVerdict`, the pack card's own
- * gate) and the purse a price is measured against. Read off the tracker's
- * *published* state, since the feed sees a line before the tracker acts on
- * it; the listing's own figures come from the batch, never the state.
+ * gate) and the purse a price is measured against. A listing is read off the
+ * state from before its closing line; a single line off the state after the
+ * tracker has read it (`TerminalFeed.drawUnread`). The listing's own figures
+ * come from the block, never the state.
  * `mudengine-ui` § The console is rewritten in one grammar.
  */
 import { DEFAULT_CONFIG, type RewritesUiConfig } from '../../shared/config';
 import type { Block, BlockType } from '../../shared/blocks';
 import type { BatchBlock } from '../parse/Classifier';
 import type { CarriedItem, CharacterState, Denomination } from '../../shared/character';
+import { roomId, type WorldRoom } from '../../shared/world';
 import { sameItem } from '../../shared/items';
 import { quotedInCopper } from '../../shared/coins';
 import { wireItem, type ItemEntity } from '../../shared/entities';
@@ -30,6 +32,7 @@ import {
   type InventoryRow,
   type ReadEffects,
   type PartyRow,
+  type PrintedExit,
   type RewriteDesign,
   type RewriteEntity,
   type RewriteFacts,
@@ -41,11 +44,18 @@ import type { Drawn } from '../../shared/template';
 import type { TerminalMark } from '../../shared/types';
 import { t } from '../app/i18n';
 import { itemList, parseCarriedEntries, parseCoinEntry, parseKeyEntries } from '../parse/inventory';
+import { cannotBe, parseExit, printedExitWords } from '../parse/room';
 import type { WorldGraph } from '../world/WorldGraph';
+
+/** What a rewrite asks the world database: the joins a row is drawn with, and the room. */
+export type RewriteWorld = Pick<
+  WorldGraph,
+  'buildItemEntity' | 'namedClasses' | 'referredNames' | 'byId'
+>;
 
 export interface RewriteContext {
   state: CharacterState;
-  world: WorldGraph | undefined;
+  world: RewriteWorld | undefined;
   wearer: Wearer;
 }
 
@@ -75,6 +85,35 @@ function foldInstances(items: readonly CarriedItem[]): CarriedItem[] {
     folded.push({ ...item });
   }
   return folded;
+}
+
+/**
+ * The world database's room an `Obvious exits:` line completed, read off the
+ * state the tracker left once it had read the line, or null where that is
+ * not known. A look (`l n`) is published as `peeked` and is the room that
+ * way from where the character stands; anything else is the character's own
+ * room, and only if it is the one these exits were printed for: the tracker
+ * set its exits from this line, and the world database's room has every one.
+ */
+function roomPrinted(
+  block: Block,
+  printed: readonly PrintedExit[],
+  context: RewriteContext
+): WorldRoom | null {
+  const { state, world } = context;
+  if (world === undefined || state.room.map === null || state.room.number === null) return null;
+  const here = world.byId(roomId(state.room.map, state.room.number)) ?? null;
+  const peeked = state.peeked !== null && state.peeked.at === block.at ? state.peeked : null;
+  if (peeked !== null) {
+    const way = here?.exits.find((exit) => exit.direction === peeked.direction);
+    const there = way === undefined ? undefined : world.byId(roomId(way.map, way.room));
+    const named = there?.name.trim().toLowerCase() === peeked.room.name?.trim().toLowerCase();
+    return there !== undefined && named && !cannotBe(there, printed) ? there : null;
+  }
+  const same =
+    state.room.exits.length === printed.length &&
+    state.room.exits.every((exit, at) => exit.direction === printed[at]?.direction);
+  return here !== null && same && !cannotBe(here, printed) ? here : null;
 }
 
 function int(value: string | undefined): number | null {
@@ -260,19 +299,35 @@ export class Rewriter {
       case 'experience': {
         const gained = int(g['exp']);
         if (gained === null) return null;
+        // The state after the line: the tracker has counted the gain on.
         const progress = context.state.progress;
-        const need = progress.expNeeded === null ? null : Math.max(0, progress.expNeeded - gained);
         return {
           entity,
           figures,
           gain: {
             gained,
-            exp: progress.exp === null ? null : progress.exp + gained,
-            need,
+            exp: progress.exp,
+            need: progress.expNeeded,
             level: progress.level,
-            expSession: progress.expThisSession + gained
+            expSession: progress.expThisSession
           }
         };
+      }
+      case 'room': {
+        const said = g['exits']?.trim() ?? '';
+        const exits = printedExitWords(said).map((word) => ({
+          word,
+          direction: parseExit(word).direction
+        }));
+        const where = roomPrinted(block, exits, context);
+        const shown = new Set(exits.map((exit) => exit.direction));
+        const hidden =
+          where === null
+            ? null
+            : where.exits
+                .filter((exit) => exit.requirement?.kind === 'hidden' && !shown.has(exit.direction))
+                .map((exit) => exit.direction);
+        return { entity, figures, room: { printed: said, exits, hidden } };
       }
     }
   }

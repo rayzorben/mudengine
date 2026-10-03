@@ -162,7 +162,8 @@ export interface FeedSource {
   /**
    * The client's own lines in a completed block's place — a whole listing or
    * one line — or null to paint the realm's own. What comes back ends every
-   * line it draws, so whatever follows starts on a row of its own.
+   * line it draws, so whatever follows starts on a row of its own. A single
+   * line is asked for once the session has read it ({@link TerminalFeed.line}).
    */
   rewrite?(block: Block | BatchBlock): Emitted | null;
 }
@@ -189,6 +190,14 @@ interface HeldLine {
   mark?: TerminalMark;
   /** Volunteered by the server mid-listing: painted after the drawn listing, never lost. */
   volunteered: boolean;
+}
+
+/** One line the client draws in the realm's place, waiting for the session to read it. */
+interface UnreadLine {
+  block: Block;
+  text: string;
+  terminator: LineTerminator;
+  mark?: TerminalMark;
 }
 
 /** A prompt that has begun but not finished: the tolerant pattern's own opening. */
@@ -318,6 +327,8 @@ export class TerminalFeed {
   private swallowed = false;
   /** The listing being withheld for a rewrite, its lines so far, and the clock that gives up on it. */
   private held: { type: BlockType; lines: HeldLine[]; timer: NodeJS.Timeout | null } | null = null;
+  /** A line drawn in the realm's place once the session has read it: see `drawUnread`. */
+  private unread: UnreadLine | null = null;
   /** Packets read so far, counted as each one starts: see `arrived`. */
   private received = 0;
   /** The packet the unframed tail began in, or null with no tail. */
@@ -427,6 +438,7 @@ export class TerminalFeed {
     mark?: TerminalMark,
     facts?: LineFacts
   ): void {
+    this.drawUnread();
     this.cancelHold();
     const already = this.forwarded;
     // The packet this line began in: an earlier one's when it was the tail.
@@ -524,35 +536,15 @@ export class TerminalFeed {
         this.armHeldTimer();
         return;
       }
-      // One line the client draws in the realm's place: the experience line.
+      // One line the client draws in the realm's place: the experience line,
+      // the exits. Drawn once the session has read it (`drawUnread`).
       if (facts.batchNow === null && type !== null && this.source.rewrites(type)) {
-        const drawn = this.source.rewrite?.(facts.block) ?? null;
-        if (drawn !== null) {
-          this.emitDrawn(drawn);
-          // The repaint marker still erases the prompt row it ended.
-          if (terminator === 'repaint' && text.endsWith(PROMPT_REPAINT)) {
-            this.out.text += PROMPT_REPAINT;
-          }
-          return;
-        }
+        this.unread = { block: facts.block, text, terminator, ...(mark ? { mark } : {}) };
+        return;
       }
     }
     if (!withhold) {
-      /*
-       * A volunteered line landing after withheld ones would otherwise be
-       * glued to the prompt the withheld echo's newline was meant to end.
-       */
-      if (
-        this.swallowed &&
-        !this.atLineStart &&
-        already === 0 &&
-        plain.length > 0 &&
-        terminator !== 'repaint'
-      ) {
-        this.out.text += '\r\n';
-        this.atLineStart = true;
-      }
-      this.emit(text.slice(already), terminator, mark);
+      this.paintAsSent(text.slice(already), terminator, already === 0 && plain.length > 0, mark);
       return;
     }
 
@@ -567,10 +559,53 @@ export class TerminalFeed {
   }
 
   /**
+   * A line painted as the realm sent it. One landing after withheld lines
+   * would otherwise be glued to the prompt the withheld echo's newline was
+   * meant to end, so a whole line (`fresh`) starts a row of its own.
+   */
+  private paintAsSent(
+    text: string,
+    terminator: LineTerminator,
+    fresh: boolean,
+    mark?: TerminalMark
+  ): void {
+    if (this.swallowed && !this.atLineStart && fresh && terminator !== 'repaint') {
+      this.out.text += '\r\n';
+      this.atLineStart = true;
+    }
+    this.emit(text, terminator, mark);
+  }
+
+  /**
+   * The line the client draws in the realm's place, drawn now that the
+   * session has read it: its facts are what reading it settled, such as the
+   * room an `Obvious exits:` line completes, which the tracker places only
+   * after the feed has seen the line. Called before anything else is painted
+   * (the next line, the tail, the take), all in the call that framed it, so
+   * nothing is reordered. Painted as sent where the design declines.
+   */
+  private drawUnread(): void {
+    const unread = this.unread;
+    if (unread === null) return;
+    this.unread = null;
+    const drawn = this.source.rewrite?.(unread.block) ?? null;
+    if (drawn === null) {
+      this.paintAsSent(unread.text, unread.terminator, true, unread.mark);
+      return;
+    }
+    this.emitDrawn(drawn);
+    // The repaint marker still erases the prompt row it ended.
+    if (unread.terminator === 'repaint' && unread.text.endsWith(PROMPT_REPAINT)) {
+      this.out.text += PROMPT_REPAINT;
+    }
+  }
+
+  /**
    * The unterminated tail as it stands after a chunk. Forwarded now outside
    * a quiet window; held briefly inside one.
    */
   partial(pending: string): void {
+    this.drawUnread();
     this.tail = pending;
     if (pending.length === 0) this.tailSince = null;
     else this.tailSince ??= this.received;
@@ -700,6 +735,7 @@ export class TerminalFeed {
 
   /** Everything emitted since the last take, for one push to the terminal. */
   take(): Emitted {
+    this.drawUnread();
     const taken = this.out;
     this.out = { text: '', marks: [] };
     return taken;
@@ -718,11 +754,13 @@ export class TerminalFeed {
     this.out = { text: '', marks: [] };
     this.acknowledged = false;
     this.swallowed = false;
+    this.unread = null;
   }
 
   dispose(): void {
     this.cancelHold();
     this.dropHeld();
+    this.unread = null;
   }
 
   /**

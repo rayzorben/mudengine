@@ -149,6 +149,15 @@ export function parseExit(entry: string): RoomExit {
 }
 
 /**
+ * The words of an `Obvious exits:` list, one per exit. `GetObviousExits`
+ * (`Room.cs`, server source; no capture has one) prints `None` for a room it
+ * lists no exit out of, and that is no exit rather than one called `none`.
+ */
+export function printedExitWords(text: string | undefined): string[] {
+  return /^\s*none\s*$/i.test(text ?? '') ? [] : list(text);
+}
+
+/**
  * The room's listed exit that way, re-noted as the server now says the door
  * stands — `closed door`, `open gate` — in the words `parseExit` would have
  * read off a reprint, so `Barriers.shutAhead` and the Room card need no second
@@ -315,7 +324,10 @@ function trimVerb(middle: string): string {
  * over a word this client cannot read would be the client blaming the realm
  * for its own gap.
  */
-function cannotBe(room: WorldRoom, printed: readonly RoomExit[]): boolean {
+export function cannotBe(
+  room: WorldRoom,
+  printed: ReadonlyArray<Pick<RoomExit, 'direction'>>
+): boolean {
   const known = new Set<string>(room.exits.map((exit) => exit.direction));
   return printed.some(
     (exit) => MOVE_COMMANDS[exit.direction] !== undefined && !known.has(exit.direction)
@@ -406,7 +418,7 @@ export class RoomTracker {
    */
   exits(s: CharacterState, text: string | undefined, at: number): CharacterState {
     // Exits complete a room. Everything before this was provisional.
-    const exits = list(text).map(parseExit);
+    const exits = printedExitWords(text).map(parseExit);
     const room = this.draft.complete(this.exitEntities(exits, null));
 
     let expectation = this.expect.head();

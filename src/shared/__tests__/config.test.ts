@@ -31,7 +31,7 @@ describe('normalizeRewrites', () => {
           },
           designs: [
             { name: ' Mine ', entity: 'inventory', enabled: true, template: '{item}' },
-            { name: 'Nope', entity: 'room', template: '{x}' },
+            { name: 'Nope', entity: 'map', template: '{x}' },
             'nope',
             { entity: 'who' }
           ]
