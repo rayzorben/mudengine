@@ -407,7 +407,7 @@ describe('a character that is already resting', () => {
   });
 
   it('sends nothing while meditating either', () => {
-    make(health({ meditateBelow: 0.5 })).onCharacter(
+    make(health({ useMeditate: true, restBelowMana: 0.5 })).onCharacter(
       state({ mana: 100, manaMax: 100, meditating: true })
     );
     drain();
@@ -594,7 +594,9 @@ describe('the resting ceiling', () => {
 
 describe('meditating', () => {
   it('meditates on low mana', () => {
-    make(health({ meditateBelow: 0.5 })).onCharacter(state({ mana: 10, manaMax: 100 }));
+    make(health({ useMeditate: true, restBelowMana: 0.5 })).onCharacter(
+      state({ mana: 10, manaMax: 100 })
+    );
     drain();
     expect(sent).toEqual(['med']);
   });
@@ -605,14 +607,16 @@ describe('meditating', () => {
    * for as long as the setting was on.
    */
   it('never meditates for a class with no mana', () => {
-    make(health({ meditateBelow: 0.5 })).onCharacter(state({ hp: 30, hpMax: 30 }));
+    make(health({ useMeditate: true, restBelowMana: 0.5 })).onCharacter(
+      state({ hp: 30, hpMax: 30 })
+    );
     drain();
     expect(sent).toEqual([]);
   });
 
   /* Health first unless the player says otherwise: the one that decides whether the character is alive. */
   it('rests rather than meditating when both are low', () => {
-    make(health({ restBelow: 0.5, meditateBelow: 0.5 })).onCharacter(
+    make(health({ useMeditate: true, restBelow: 0.5, restBelowMana: 0.5 })).onCharacter(
       state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100 })
     );
     drain();
@@ -621,15 +625,17 @@ describe('meditating', () => {
 
   /* The user, 2026-10-03: Meditate Before Resting puts mana first. */
   it('meditates first when both are low and meditating comes first', () => {
-    make(health({ restBelow: 0.5, meditateBelow: 0.5, meditateFirst: true })).onCharacter(
-      state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100 })
-    );
+    make(
+      health({ useMeditate: true, restBelow: 0.5, restBelowMana: 0.5, meditateFirst: true })
+    ).onCharacter(state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100 }));
     drain();
     expect(sent).toEqual(['med']);
   });
 
   it('switches from resting to meditating once health is back, without standing up', () => {
-    const recovery = make(health({ restBelow: 0.5, restTo: 0.9, meditateBelow: 0.5 }));
+    const recovery = make(
+      health({ useMeditate: true, restBelow: 0.5, restTo: 0.9, restBelowMana: 0.5 })
+    );
     recovery.onCharacter(state({ hp: 50, hpMax: 100, mana: 10, manaMax: 100, resting: true }));
     drain();
     // Positive control: still short of restTo, the rest goes on.
@@ -640,7 +646,9 @@ describe('meditating', () => {
   });
 
   it('sends the switch once, not on every line while it is unanswered', () => {
-    const recovery = make(health({ restBelow: 0.5, restTo: 0.9, meditateBelow: 0.5 }));
+    const recovery = make(
+      health({ useMeditate: true, restBelow: 0.5, restTo: 0.9, restBelowMana: 0.5 })
+    );
     const back = state({ hp: 95, hpMax: 100, mana: 10, manaMax: 100, resting: true });
     recovery.onCharacter(back);
     recovery.onCharacter(back);
@@ -650,7 +658,9 @@ describe('meditating', () => {
   });
 
   it('does not switch with something in the room that attacks on sight', () => {
-    const recovery = make(health({ restBelow: 0.5, restTo: 0.9, meditateBelow: 0.5 }));
+    const recovery = make(
+      health({ useMeditate: true, restBelow: 0.5, restTo: 0.9, restBelowMana: 0.5 })
+    );
     const back = state({ hp: 95, hpMax: 100, mana: 10, manaMax: 100, resting: true });
     const threat = {
       name: 'giant rat',
@@ -673,7 +683,13 @@ describe('meditating', () => {
 
   it('switches from meditating to resting once mana is back', () => {
     const recovery = make(
-      health({ restBelow: 0.5, meditateBelow: 0.5, meditateTo: 0.9, meditateFirst: true })
+      health({
+        useMeditate: true,
+        restBelow: 0.5,
+        restBelowMana: 0.5,
+        restToMana: 0.9,
+        meditateFirst: true
+      })
     );
     recovery.onCharacter(state({ hp: 10, hpMax: 100, mana: 50, manaMax: 100, meditating: true }));
     drain();
@@ -684,7 +700,7 @@ describe('meditating', () => {
   });
 
   it('meditating with health still low and resting first switches to the rest at once', () => {
-    make(health({ restBelow: 0.5, meditateBelow: 0.5 })).onCharacter(
+    make(health({ useMeditate: true, restBelow: 0.5, restBelowMana: 0.5 })).onCharacter(
       state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100, meditating: true })
     );
     drain();
@@ -754,7 +770,7 @@ describe('resting with the leader', () => {
     expect(sent).toEqual(['rest']);
   });
 
-  it('meditates with the leader only as a class with mana', () => {
+  it('goes down with a meditating leader only as a class with mana, resting where it does not meditate', () => {
     withLeader().onCharacter(
       state({
         hp: 100,
@@ -776,7 +792,7 @@ describe('resting with the leader', () => {
       })
     );
     drain();
-    expect(sent).toEqual(['med']);
+    expect(sent).toEqual(['rest']);
   });
 
   it('does nothing while the leader is up, in a fight, or when not asked', () => {
@@ -804,18 +820,23 @@ describe('resting with the leader', () => {
 /*
  * Captured 2026-09-04 on the sanctioned realm: a mystic's `med` answered
  * `Your command had no effect.` on every status line for as long as its Kai
- * was under `meditateBelow` — one refused command every three seconds, all
+ * was under `restBelowMana` — one refused command every three seconds, all
  * evening. `askedUntil` bounds a rest the server swallowed; this is the
  * server *answering*, and the answer is read.
  */
 describe('a verb the realm refuses', () => {
   const low = (): CharacterState => state({ hp: 334, hpMax: 334, mana: 0, manaMax: 30 });
 
-  it('stops proposing med once the realm says it had no effect, and says so once', () => {
+  /* And mana is rested for with `rest` from then on (the user, 2026-10-03). */
+  it('stops proposing med once the realm says it had no effect, says so once, and rests instead', () => {
     const notices: string[] = [];
-    const recovery = new Recovery(settings(health({ meditateBelow: 0.3 })), queue, {
-      notice: (message) => notices.push(message)
-    });
+    const recovery = new Recovery(
+      settings(health({ useMeditate: true, restBelowMana: 0.3 })),
+      queue,
+      {
+        notice: (message) => notices.push(message)
+      }
+    );
     recovery.onCharacter(low());
     drain();
     expect(sent).toEqual(['med']);
@@ -827,12 +848,13 @@ describe('a verb the realm refuses', () => {
       recovery.onCharacter(low());
     }
     drain();
-    expect(sent).toEqual(['med']);
+    expect(sent.filter((command) => command === 'med')).toEqual(['med']);
+    expect(sent).toContain('rest');
     expect(notices).toEqual([t('automation.recovery.verbRefused', { verb: 'med' })]);
   });
 
   it("is not moved by a refusal of somebody else's command", () => {
-    const recovery = make(health({ meditateBelow: 0.3 }));
+    const recovery = make(health({ useMeditate: true, restBelowMana: 0.3 }));
     recovery.noteNoEffect('flee');
     recovery.noteNoEffect(null);
     recovery.onCharacter(low());
@@ -847,7 +869,7 @@ describe('a verb the realm refuses', () => {
    * was proposed, or after the answer's deadline — is somebody else's.
    */
   it('honours a refusal only while its own ask is outstanding', () => {
-    const recovery = make(health({ meditateBelow: 0.3 }));
+    const recovery = make(health({ useMeditate: true, restBelowMana: 0.3 }));
     recovery.noteNoEffect('med');
     recovery.onCharacter(low());
     drain();
@@ -860,18 +882,18 @@ describe('a verb the realm refuses', () => {
   });
 
   it('asks again on a new connection', () => {
-    const recovery = make(health({ meditateBelow: 0.3 }));
+    const recovery = make(health({ useMeditate: true, restBelowMana: 0.3 }));
     recovery.onCharacter(low());
     drain();
     recovery.noteNoEffect('med');
     vi.advanceTimersByTime(4000);
     recovery.onCharacter(low());
     drain();
-    expect(sent).toEqual(['med']);
+    expect(sent).toEqual(['med', 'rest']);
     recovery.reset();
     recovery.onCharacter(low());
     drain();
-    expect(sent).toEqual(['med', 'med']);
+    expect(sent).toEqual(['med', 'rest', 'med']);
   });
 });
 
@@ -954,7 +976,7 @@ describe('resting beside what a row says does not attack first', () => {
 });
 
 /*
- * Todo 825: `meditateTo` carries a stretch of meditating as `restTo` carries a
+ * Todo 825: `restToMana` carries a stretch of meditating as `restTo` carries a
  * rest, and a stretch of either begins when the figure is seen under its
  * floor, not only when the character is seen sitting.
  */
@@ -962,7 +984,9 @@ describe('meditating to a line, and resting to one from the floor', () => {
   const full = { hp: 100, hpMax: 100 };
 
   it('meditates under the floor, and again after a break, until the line', () => {
-    const recovery = make(health({ restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 }));
+    const recovery = make(
+      health({ useMeditate: true, restBelow: 0, restBelowMana: 0.3, restToMana: 0.8 })
+    );
     recovery.onCharacter(state({ ...full, mana: 20, manaMax: 100 }));
     drain();
     expect(sent).toEqual(['med']);
@@ -978,7 +1002,9 @@ describe('meditating to a line, and resting to one from the floor', () => {
   });
 
   it('carries on to the line from the floor, never having been seen meditating', () => {
-    const recovery = make(health({ restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 }));
+    const recovery = make(
+      health({ useMeditate: true, restBelow: 0, restBelowMana: 0.3, restToMana: 0.8 })
+    );
     recovery.onCharacter(state({ ...full, mana: 20, manaMax: 100 }));
     drain();
     vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.rest.askedMs);
@@ -988,7 +1014,12 @@ describe('meditating to a line, and resting to one from the floor', () => {
   });
 
   it('never meditates on a mana figure with no maximum', () => {
-    const settings = health({ restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 });
+    const settings = health({
+      useMeditate: true,
+      restBelow: 0,
+      restBelowMana: 0.3,
+      restToMana: 0.8
+    });
     make(settings).onCharacter(state({ ...full, mana: 20, manaMax: null }));
     drain();
     expect(sent).toEqual([]);
@@ -1009,5 +1040,50 @@ describe('meditating to a line, and resting to one from the floor', () => {
     recovery.onCharacter(state({ hp: 60, hpMax: 100 }));
     drain();
     expect(sent).toEqual(['rest']);
+  });
+});
+
+/*
+ * The user, 2026-10-03: the mana pair is resting for mana. Without Use
+ * Meditate it rests, which is how a class without the Meditate ability gets
+ * its mana back.
+ */
+describe('resting for mana without meditate', () => {
+  it('rests for mana below its line', () => {
+    make(health({ restBelowMana: 0.5 })).onCharacter(state({ mana: 10, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  it('keeps resting until mana reaches its line, with health already full', () => {
+    const recovery = make(health({ restBelowMana: 0.5, restToMana: 0.9 }));
+    recovery.onCharacter(state({ hp: 100, hpMax: 100, mana: 10, manaMax: 100 }));
+    recovery.onCharacter(state({ hp: 100, hpMax: 100, mana: 60, manaMax: 100, resting: true }));
+    drain();
+    expect(sent).toEqual(['rest']);
+    // Broken short of the line, the rest goes out again.
+    vi.advanceTimersByTime(4000);
+    recovery.onCharacter(state({ hp: 100, hpMax: 100, mana: 60, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['rest', 'rest']);
+  });
+
+  /* A rest adds no mana (`CalcRestTick`), so a `med` the player typed is left alone. */
+  it('never swaps a med the player typed for a rest for mana', () => {
+    const recovery = make(health({ restBelow: 0.5, restBelowMana: 0.5 }));
+    recovery.onCharacter(state({ hp: 100, hpMax: 100, mana: 10, manaMax: 100, meditating: true }));
+    drain();
+    expect(sent).toEqual([]);
+    // Positive control: health short as well, the rest it wants goes out.
+    recovery.onCharacter(state({ hp: 10, hpMax: 100, mana: 10, manaMax: 100, meditating: true }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  it('is what wouldRest answers, so a lair is stepped out of for mana as for health', () => {
+    const recovery = make(health({ restBelowMana: 0.5 }));
+    expect(recovery.wouldRest(state({ mana: 10, manaMax: 100 }))).toBe(true);
+    const meditating = make(health({ restBelowMana: 0.5, useMeditate: true }));
+    expect(meditating.wouldRest(state({ mana: 10, manaMax: 100 }))).toBe(false);
   });
 });

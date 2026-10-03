@@ -1,8 +1,8 @@
 /**
  * The rest and meditate settings, one set of fields for the character form
  * and the options page (todo 825): rest below and to, rest before traps,
- * meditate below and to, then the two switches, resting next door to a lair
- * and meditating before resting. Each value is as the page holds it; the
+ * rest below and to for mana, then the switches: resting next door to a
+ * lair, resting for mana with `med`, and meditating before resting. Each value is as the page holds it; the
  * page turns a change back into its own draft. Where a maximum is known the
  * figure it means is drawn beside the field.
  */
@@ -11,9 +11,9 @@ import { barOf, figureOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import type { VitalThresholds } from '@shared/character';
 
-export type RestField = 'restBelow' | 'restTo' | 'restBeforeTraps' | 'meditateBelow' | 'meditateTo';
+export type RestField = 'restBelow' | 'restTo' | 'restBeforeTraps' | 'restBelowMana' | 'restToMana';
 
-export type RestCheck = 'restNextDoor' | 'meditateFirst';
+export type RestCheck = 'restNextDoor' | 'useMeditate' | 'meditateFirst';
 
 export interface RestFieldsProps {
   values: Readonly<Record<RestField, number | string>>;
@@ -60,18 +60,18 @@ function rows(): readonly Row[] {
       hint: t('settings.health.restBeforeTrapsHint')
     },
     {
-      field: 'meditateBelow',
+      field: 'restBelowMana',
       mana: true,
-      name: 'med-below',
-      label: t('settings.health.meditateBelowLabel'),
-      hint: t('settings.health.meditateBelowHint')
+      name: 'rest-mana-below',
+      label: t('settings.health.restBelowManaLabel'),
+      hint: t('settings.health.restBelowManaHint')
     },
     {
-      field: 'meditateTo',
+      field: 'restToMana',
       mana: true,
-      name: 'med-to',
-      label: t('settings.health.meditateToLabel'),
-      hint: t('settings.health.meditateToHint')
+      name: 'rest-mana-to',
+      label: t('settings.health.restToManaLabel'),
+      hint: t('settings.health.restToManaHint')
     }
   ];
 }
@@ -83,6 +83,12 @@ function checks(): ReadonlyArray<{ field: RestCheck; name: string; label: string
       name: 'rest-next-door',
       label: t('settings.health.restNextDoor'),
       hint: t('settings.health.restNextDoorHint')
+    },
+    {
+      field: 'useMeditate',
+      name: 'use-meditate',
+      label: t('settings.health.useMeditate'),
+      hint: t('settings.health.useMeditateHint')
     },
     {
       field: 'meditateFirst',

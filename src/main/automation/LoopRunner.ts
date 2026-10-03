@@ -228,7 +228,7 @@ export class LoopRunner implements SessionModule {
   private asked = false;
   /** Holding for health; see `health.restBelow`. */
   private hurt = false;
-  /** Holding for mana, `meditateBelow` to `meditateTo` (todo 825). */
+  /** Holding for mana, `restBelowMana` to `restToMana` (todo 825). */
   private drained = false;
   /**
    * Holding for a stated affliction — blind, held, poisoned or confused —

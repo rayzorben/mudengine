@@ -507,7 +507,7 @@ export type LoopStatus = 'idle' | 'running' | 'stopped';
 export type LoopHold =
   | 'fight'
   | 'health'
-  /** Mana under `meditateBelow`, until `meditateTo` (todo 825). */
+  /** Mana under `restBelowMana`, until `restToMana` (todo 825). */
   | 'mana'
   | 'retreated'
   | 'errand'

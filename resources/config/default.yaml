@@ -1317,20 +1317,27 @@ automation:
     # `restBelow` of 0 does not turn this off.
     restBeforeTraps: 0.45
 
-    # And the same for mana. Ignored outright for a class that has none -- a
-    # warrior's status line carries no MA= at all, and `med` for one is answered
-    # `Your command had no effect.` in the room.
-    meditateBelow: 0
+    # And the same for mana: rest when it falls below this share, with `rest`,
+    # or with `med` under useMeditate. A rest adds no mana; it keeps you still
+    # while mana comes back, which is how a class without the Meditate ability
+    # waits for it. Ignored for a class that has no mana -- a warrior's status
+    # line carries no MA= at all. 0 never rests for mana.
+    restBelowMana: 0
 
-    # Keep meditating to this share of mana, as restTo does for health: `med`
+    # Keep resting for mana to this share, as restTo does for health: the rest
     # goes out again after something interrupts it, and a walk or loop waits
-    # until mana is back here. 0 meditates once. Never below meditateBelow.
-    meditateTo: 0
+    # until mana is back here. 0 rests once. Never below restBelowMana.
+    restToMana: 0
 
-    # With health and mana both below their lines, meditate first and rest
-    # after. Off rests first. Either way the other follows once the first is
-    # back, switching from one to the other without standing up. Meditating
-    # ticks mana faster; resting ticks health faster.
+    # Rest for mana with `med` rather than `rest`. Meditating ticks mana faster
+    # but needs the class's Meditate ability: turn it on once the character has
+    # it. A `med` the game answers "Your command had no effect." goes back to
+    # `rest` for the session.
+    useMeditate: false
+
+    # With useMeditate, and health and mana both below their lines, meditate
+    # first and rest after. Off rests first. Either way the other follows once
+    # the first is back, switching from one to the other without standing up.
     meditateFirst: false
 
     # Potions and anything else, with its own condition -- *use this when that

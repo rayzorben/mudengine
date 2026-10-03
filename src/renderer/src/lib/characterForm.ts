@@ -185,9 +185,10 @@ export interface CharacterFields {
   restBeforeTraps: string;
   /** Rest next door to a lair rather than in it. */
   restNextDoor: boolean;
-  meditateBelow: string;
-  meditateTo: string;
-  /** Meditate before resting. */
+  restBelowMana: string;
+  restToMana: string;
+  /** Rest for mana with `med`, and meditate before resting. */
+  useMeditate: boolean;
   meditateFirst: boolean;
   /** And where a running loop holds still and walks on again. */
   /** The player's own *use this when that* rules. See `PotionList`. */
@@ -472,8 +473,9 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     restBelow: percent(entry.health.restBelow),
     restTo: percent(entry.health.restTo),
     restBeforeTraps: percent(entry.health.restBeforeTraps),
-    meditateBelow: percent(entry.health.meditateBelow),
-    meditateTo: percent(entry.health.meditateTo),
+    restBelowMana: percent(entry.health.restBelowMana),
+    restToMana: percent(entry.health.restToMana),
+    useMeditate: entry.health.useMeditate,
     meditateFirst: entry.health.meditateFirst,
     restNextDoor: entry.health.restNextDoor,
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
@@ -648,8 +650,9 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       restBelow: fractionOf(form.restBelow),
       restTo: fractionOf(form.restTo),
       restBeforeTraps: fractionOf(form.restBeforeTraps),
-      meditateBelow: fractionOf(form.meditateBelow),
-      meditateTo: fractionOf(form.meditateTo),
+      restBelowMana: fractionOf(form.restBelowMana),
+      restToMana: fractionOf(form.restToMana),
+      useMeditate: form.useMeditate,
       meditateFirst: form.meditateFirst,
       restNextDoor: form.restNextDoor,
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
@@ -954,8 +957,9 @@ export function emptyForm(
     restBelow: percent(health.restBelow),
     restTo: percent(health.restTo),
     restBeforeTraps: percent(health.restBeforeTraps),
-    meditateBelow: percent(health.meditateBelow),
-    meditateTo: percent(health.meditateTo),
+    restBelowMana: percent(health.restBelowMana),
+    restToMana: percent(health.restToMana),
+    useMeditate: health.useMeditate,
     meditateFirst: health.meditateFirst,
     restNextDoor: health.restNextDoor,
     potionRules: health.potions.map((rule) => ({ ...rule })),

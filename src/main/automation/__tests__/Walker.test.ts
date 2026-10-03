@@ -3820,7 +3820,7 @@ describe('walking while hurt', () => {
     walk.dispose();
   });
 
-  /* Todo 825: a route waits for mana as for health, from `meditateBelow` to `meditateTo`. */
+  /* Todo 825: a route waits for mana as for health, from `restBelowMana` to `restToMana`. */
   it('holds for mana under the floor, and walks on at the line', async () => {
     const drained = (fraction: number | null): CharacterState => {
       const state = at(1, 1);
@@ -3836,7 +3836,7 @@ describe('walking while hurt', () => {
       };
     };
     let current = drained(0.2);
-    const health = { ...config.health, restBelow: 0, meditateBelow: 0.3, meditateTo: 0.8 };
+    const health = { ...config.health, restBelow: 0, restBelowMana: 0.3, restToMana: 0.8 };
     const walk = new Walker({ ...config, health }, queue, {
       notice: (m) => notices.push(m),
       stateNow: () => current

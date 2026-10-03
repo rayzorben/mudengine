@@ -1518,25 +1518,36 @@ export interface HealthConfig {
    */
   restBeforeTraps: number;
   /**
-   * Meditate when mana falls below this fraction. 0 never meditates.
+   * Rest for mana when it falls below this fraction, as `restBelow` does for
+   * health (the user, 2026-10-03): with `useMeditate` the rest is `med`,
+   * otherwise `rest`. A rest adds nothing to mana on GreaterMUD
+   * (`CalcRestTick`); it keeps the character still while mana comes back,
+   * which is how a class without the Meditate ability waits for it. 0 never
+   * rests for mana.
    *
    * Ignored outright for a class with no mana — a warrior's status line carries
-   * no `MA=` at all, and `med` for one is answered `Your command had no
-   * effect.`, which is a command spent to be refused in the room.
+   * no `MA=` at all.
    */
-  meditateBelow: number;
+  restBelowMana: number;
   /**
-   * Keep meditating to this fraction of mana: `restTo` for mana (todo 825).
-   * `meditateBelow` starts a stretch and this carries it on through whatever
+   * Keep resting for mana to this fraction: `restTo` for mana (todo 825).
+   * `restBelowMana` starts a stretch and this carries it on through whatever
    * breaks it, and a route or a loop held for mana walks on here. 0 is the
-   * single sit-down; never below `meditateBelow`, clamped up as `restTo` is.
+   * single sit-down; never below `restBelowMana`, clamped up as `restTo` is.
    */
-  meditateTo: number;
+  restToMana: number;
   /**
-   * With health and mana both below their lines, meditate first and rest
-   * after; off rests first (the user, 2026-10-03). Either way the other goes
-   * on once the first is back, `med` and `rest` switching over while the
-   * character is still down. Meditating ticks mana faster, resting health.
+   * Rest for mana with `med` rather than `rest` (2026-10-03): meditating ticks
+   * mana faster and needs the class's Meditate ability, so it is the player's
+   * to turn on once the character has it. A `med` the realm answers `Your
+   * command had no effect.` goes back to `rest` for the session.
+   */
+  useMeditate: boolean;
+  /**
+   * Under `useMeditate`, with health and mana both below their lines,
+   * meditate first and rest after; off rests first (the user, 2026-10-03).
+   * Either way the other goes on once the first is back, `med` and `rest`
+   * switching over while the character is still down.
    */
   meditateFirst: boolean;
   /**
@@ -2787,8 +2798,9 @@ export const DEFAULT_CONFIG: AppConfig = {
       restTo: 0.7,
       restNextDoor: true,
       restBeforeTraps: 0.45,
-      meditateBelow: 0,
-      meditateTo: 0,
+      restBelowMana: 0,
+      restToMana: 0,
+      useMeditate: false,
       meditateFirst: false,
       potions: [],
       useWards: true
@@ -3195,7 +3207,7 @@ export function normalizeConfig(input: unknown): AppConfig {
 }
 
 /**
- * The `to` of a start-and-carry-on pair (`restTo`, `meditateTo`, `healTo`):
+ * The `to` of a start-and-carry-on pair (`restTo`, `restToMana`, `healTo`):
  * clamped up to its `below`, since a line under the floor is two opposite
  * instructions about one number, and 0 kept as 0, the single sit-down or cast.
  */
@@ -3851,7 +3863,7 @@ function normalizeHealth(value: unknown): HealthConfig {
   const raw = isRecord(value) ? value : {};
   const d = DEFAULT_CONFIG.automation.health;
   const restBelow = fraction(raw['restBelow'], d.restBelow);
-  const meditateBelow = fraction(raw['meditateBelow'], d.meditateBelow);
+  const restBelowMana = fraction(raw['restBelowMana'], d.restBelowMana);
   return {
     restBelow,
     /*
@@ -3863,8 +3875,9 @@ function normalizeHealth(value: unknown): HealthConfig {
     restTo: ceilingOver(fraction(raw['restTo'], d.restTo), restBelow),
     restNextDoor: bool(raw['restNextDoor'], d.restNextDoor),
     restBeforeTraps: fraction(raw['restBeforeTraps'], d.restBeforeTraps),
-    meditateBelow,
-    meditateTo: ceilingOver(fraction(raw['meditateTo'], d.meditateTo), meditateBelow),
+    restBelowMana,
+    restToMana: ceilingOver(fraction(raw['restToMana'], d.restToMana), restBelowMana),
+    useMeditate: bool(raw['useMeditate'], d.useMeditate),
     meditateFirst: bool(raw['meditateFirst'], d.meditateFirst),
     potions: normalizePotionRules(raw['potions']),
     useWards: bool(raw['useWards'], d.useWards)
@@ -4399,9 +4412,9 @@ export function resumeAtHealth(health: HealthConfig, marginWhenUncapped: number)
   return resumeAt(health.restBelow, health.restTo, marginWhenUncapped);
 }
 
-/** The mana a journey held for mana walks on again at: the same pair, `meditateBelow`/`meditateTo`. */
+/** The mana a journey held for mana walks on again at: the same pair, `restBelowMana`/`restToMana`. */
 export function resumeAtMana(health: HealthConfig, marginWhenUncapped: number): number {
-  return resumeAt(health.meditateBelow, health.meditateTo, marginWhenUncapped);
+  return resumeAt(health.restBelowMana, health.restToMana, marginWhenUncapped);
 }
 
 /**
@@ -4444,7 +4457,7 @@ export function stillFor(
     : holdsForVital(
         vitals.mana,
         vitals.manaMax,
-        health.meditateBelow,
+        health.restBelowMana,
         resumeAtMana(health, marginWhenUncapped),
         held
       );
