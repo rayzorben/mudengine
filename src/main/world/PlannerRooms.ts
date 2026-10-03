@@ -7,6 +7,7 @@
  * from its own tables and joins (todo 712) — so the planner never imports the
  * graph. See `mudengine-world` › `parts/quests.md`.
  */
+import type { ItemSource } from './navigation/sources';
 import type {
   BuyingPlace,
   MobPlaces,
@@ -24,6 +25,8 @@ export interface PlannerRooms extends Pick<RoomIndex, 'roomsById' | 'corridorsOn
   mobPlaces(mob: WorldMob): MobPlaces | undefined;
   /** Every placement of a monster, uncapped: one entry per room and slot. */
   spawnRoomsOf(mob: WorldMob): ReadonlyArray<{ readonly room: WorldRoom }>;
+  /** Every way the realm gives an item (`navigation/sources.ts`). */
+  itemSources(item: number): readonly ItemSource[];
   /** Where a shop of this name is: one room, or several reported as several. */
   shopPlace(name: string): ShopPlace | undefined;
   /** An item with each of its handovers' rooms named. */

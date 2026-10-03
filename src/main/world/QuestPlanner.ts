@@ -39,6 +39,7 @@ import {
   type WorldRoom
 } from '../../shared/world';
 import type { Catalogue } from './Catalogue';
+import { handoverSource } from './navigation/sources';
 import type { PlannerRooms } from './PlannerRooms';
 import type { Router, Traveller } from './Router';
 
@@ -853,24 +854,30 @@ export class QuestPlanner {
       };
     }
     for (const handover of source?.from ?? []) {
+      const asks = handoverSource(handover);
+      if (asks === null) continue;
       const at = this.planPlace(handover.room);
       const placed = at === undefined ? {} : { at };
-      const word = handover.say?.[0];
-      if (handover.kind === 'killed' && handover.who !== undefined) {
-        return { ...base, source: { how: 'kill', mob: handover.who, ...placed } };
+      switch (asks.kind) {
+        case 'kill':
+          return { ...base, source: { how: 'kill', mob: asks.monster, ...placed } };
+        case 'ask':
+          return {
+            ...base,
+            source: {
+              how: 'ask',
+              who: asks.who,
+              ...(asks.word === undefined ? {} : { say: asks.word }),
+              ...placed
+            }
+          };
+        case 'said':
+          return { ...base, source: { how: 'said', say: asks.word, ...placed } };
+        default: {
+          const never: never = asks;
+          return never;
+        }
       }
-      if (handover.kind === 'asked' && handover.who !== undefined) {
-        return {
-          ...base,
-          source: {
-            how: 'ask',
-            who: handover.who,
-            ...(word === undefined ? {} : { say: word }),
-            ...placed
-          }
-        };
-      }
-      if (word !== undefined) return { ...base, source: { how: 'said', say: word, ...placed } };
     }
     const who = source?.mobs?.[0];
     if (who !== undefined) {
@@ -934,26 +941,38 @@ export class QuestPlanner {
     traveller: Traveller,
     ring: { rooms: number; radius: number }
   ): DropSources {
-    const { mobs } = this.catalogue.sourcesOf(item);
+    // The kills the table lists (`navigation/sources.ts`): where the realm
+    // places a dropper, where a death hands the item over, and, for a dropper
+    // the realm places nowhere, where the monster that summons it on dying
+    // lives (todo 806). A summons by words is an ask, found by `itemAsks`.
+    const kills = this.index
+      .itemSources(item.id)
+      .flatMap((source) =>
+        source.kind === 'kill' && (source.summon === undefined || 'by' in source.summon)
+          ? [source]
+          : []
+      );
+    const placedAt = new Map<string, Set<RoomId>>();
+    for (const kill of kills) {
+      if (kill.summon !== undefined || kill.certain === true) continue;
+      placedAt.set(kill.monster, (placedAt.get(kill.monster) ?? new Set()).add(kill.room));
+    }
+    // Keyed by the monster's own name, which the table carries; a drop list
+    // may spell it otherwise (`Catalogue.mob` reads either).
+    const droppers: Dropper[] = this.catalogue.sourcesOf(item).mobs.map((mob) => {
+      const own = this.catalogue.mob(mob)?.name ?? mob;
+      return { mob, placed: placedAt.get(own)?.size ?? 0 };
+    });
     const spawns = new Map<RoomId, { room: WorldRoom; mob: string; via?: string }>();
-    const droppers: Dropper[] = [];
     const summoned = new Map<RoomId, { room: WorldRoom; mob: string; via: string }>();
-    for (const name of mobs) {
-      const mob = this.catalogue.mob(name);
-      const placed = new Set<RoomId>();
-      for (const { room } of mob === undefined ? [] : this.index.spawnRoomsOf(mob)) {
-        const id = roomId(room.map, room.room);
-        placed.add(id);
-        if (!spawns.has(id)) spawns.set(id, { room, mob: name });
-      }
-      droppers.push({ mob: name, placed: placed.size });
-      // A dropper the realm places nowhere is found where whatever summons it
-      // on dying lives (todo 806), and only then: a placed one is the lap.
-      if (placed.size > 0 || mob === undefined) continue;
-      for (const summoner of this.catalogue.summonersOf(mob)) {
-        for (const { room } of this.index.spawnRoomsOf(summoner)) {
-          const id = roomId(room.map, room.room);
-          if (!summoned.has(id)) summoned.set(id, { room, mob: name, via: summoner.name });
+    for (const kill of kills) {
+      const room = this.index.roomsById.get(kill.room);
+      if (room === undefined) continue;
+      if (kill.summon === undefined) {
+        if (!spawns.has(kill.room)) spawns.set(kill.room, { room, mob: kill.monster });
+      } else if ('by' in kill.summon && (placedAt.get(kill.monster)?.size ?? 0) === 0) {
+        if (!summoned.has(kill.room)) {
+          summoned.set(kill.room, { room, mob: kill.monster, via: kill.summon.by });
         }
       }
     }

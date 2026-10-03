@@ -16,11 +16,11 @@ import { describeObstacle, leverOpening } from './obstacle';
 import { parseInstruction } from './instructions';
 import type { BuiltExit } from './buildRealm';
 import { scriptAfter } from './navigation/scriptWays';
+import { ItemSources, spokenFor } from './navigation/sources';
 import type { PlanStep, Quest, QuestErrand, QuestStep } from '../../shared/quests';
 import {
   type WorldLair,
   asRoomCommand,
-  asRoomReference,
   DIRECTIONS,
   roomId,
   type Requirement,
@@ -324,8 +324,16 @@ export class WorldGraph {
    * rooms this file refuses everywhere else.
    */
   private stocking: Record<'sold' | 'taken', Map<number, WorldRoom[]>> | null = null;
-  /** Monster row → the room scripts that summon it and nothing else — `itemAsks`. */
-  private summonScripts: Map<number, Array<{ room: RoomId; say: string }>> | null = null;
+  /** Every way the realm gives an item (`navigation/sources.ts`). */
+  private readonly sources = new ItemSources({
+    everyRoom: () => this.rooms.values(),
+    hasRoom: (id) => this.rooms.has(id),
+    sellingRooms: (item) => this.stockRooms(item, false),
+    handovers: (item) => this.catalogue.item(item)?.from ?? [],
+    droppers: (item) => this.sourcesOf({ id: item }).mobs.flatMap((name) => this.mob(name) ?? []),
+    summonersOf: (mob) => this.summonersOf(mob),
+    spawnRoomsOf: (mob) => this.spawnRoomsOf(mob)
+  });
   /**
    * The items that are themselves a way through, as edges — built once.
    *
@@ -377,7 +385,7 @@ export class WorldGraph {
       leversFor: (room, direction) => this.leversFor(room, direction),
       hazardOf: (room, level) => catalogue.hazardOf(room, level),
       corridorsOn: (steps) => this.corridorsOn(steps),
-      sourceRooms: (item) => this.sourceRooms(item),
+      sourceRooms: (item) => this.sources.rooms(item),
       item: (id) => catalogue.item(id),
       spellById: (id) => catalogue.spellById(id),
       byId: (id) => this.byId(id),
@@ -398,6 +406,7 @@ export class WorldGraph {
       corridorsOn: (steps) => this.corridorsOn(steps),
       mobPlaces: (mob) => this.mobPlaces(mob),
       spawnRoomsOf: (mob) => this.spawnRoomsOf(mob),
+      itemSources: (item) => this.sources.of(item),
       shopPlace: (name) => this.shopPlace(name),
       placingHandovers: (item) => this.placingHandovers(item),
       buyingPlaces: (item, from, to, traveller) => this.buyingPlaces(item, from, to, traveller),
@@ -1013,27 +1022,6 @@ export class WorldGraph {
       this.stocking = { sold, taken };
     }
     return (taking ? this.stocking.taken : this.stocking.sold).get(item) ?? [];
-  }
-
-  /**
-   * Every room where this item can be had: a counter that stocks it, a room
-   * the realm places a monster that drops it, or where saying something gets
-   * it — what `Router.fetchPrice` prices the walk to the nearest of.
-   */
-  private sourceRooms(item: number): ReadonlySet<RoomId> {
-    const sold = this.stockRooms(item, false);
-    const rooms = new Set<RoomId>(sold.map((room) => roomId(room.map, room.room)));
-    for (const name of this.sourcesOf({ id: item }).mobs) {
-      const mob = this.mob(name);
-      if (mob === undefined) continue;
-      // And, for a dropper only ever summoned, whatever summons it (todo 806).
-      for (const who of [mob, ...this.summonersOf(mob)]) {
-        for (const { room } of this.spawnRoomsOf(who)) rooms.add(roomId(room.map, room.room));
-      }
-    }
-    // And where saying something gets it.
-    for (const { room } of this.askPlaces(item)) rooms.add(room);
-    return rooms;
   }
 
   /**
@@ -1953,53 +1941,13 @@ export class WorldGraph {
    * refused rather than guessed at.
    */
   private askPlaces(item: number): Array<Omit<ItemAsk, 'steps'>> {
-    const found: Array<Omit<ItemAsk, 'steps'>> = [];
-    const add = (room: RoomId, say: string, summons?: string): void => {
-      const known = this.rooms.get(room);
-      if (known === undefined || found.some((entry) => entry.room === room && entry.say === say)) {
-        return;
-      }
-      found.push({
-        room,
-        roomName: known.name,
-        say,
-        ...(summons === undefined ? {} : { summons })
-      });
-    };
-    for (const handover of this.catalogue.item(item)?.from ?? []) {
-      const word = handover.say?.[0];
-      const at = handover.room === undefined ? null : asRoomReference(handover.room);
-      if (at === null || word === undefined) continue;
-      const room = roomId(at.map, at.room);
-      if (handover.kind === 'asked' && handover.who !== undefined) {
-        add(room, `ask ${handover.who} ${word}`);
-      } else if (handover.kind === 'said') {
-        add(room, word);
-      }
-    }
-    if (this.summonScripts === null) {
-      const index = new Map<number, Array<{ room: RoomId; say: string }>>();
-      for (const [room, known] of this.rooms) {
-        for (const command of known.commands ?? []) {
-          const say = command.say[0];
-          // A command that summons, asks nothing of whoever says it and moves nobody.
-          if (say === undefined || command.gates !== undefined || command.to) continue;
-          for (const id of command.summons ?? []) {
-            const held = index.get(id);
-            if (held === undefined) index.set(id, [{ room, say }]);
-            else held.push({ room, say });
-          }
-        }
-      }
-      this.summonScripts = index;
-    }
-    for (const name of this.sourcesOf({ id: item }).mobs) {
-      const mob = this.mob(name);
-      for (const id of mob?.ids ?? []) {
-        for (const script of this.summonScripts.get(id) ?? []) add(script.room, script.say, name);
-      }
-    }
-    return found;
+    return this.sources.of(item).flatMap((source) => {
+      const say = spokenFor(source);
+      const roomName = this.rooms.get(source.room)?.name;
+      if (say === null || roomName === undefined) return [];
+      const summons = source.kind === 'kill' ? { summons: source.monster } : {};
+      return [{ room: source.room, roomName, say, ...summons }];
+    });
   }
 
   /** Where to go and kill for an item, the nearest ring — `QuestPlanner.droppingPlaces`. */
