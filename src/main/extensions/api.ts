@@ -23,6 +23,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
+import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
 import type { HuntingAdvice, HuntOrder, HuntWait } from '../../shared/hunting';
 import type { TuningConfig } from '../../shared/internal';
@@ -49,6 +50,8 @@ export type ExtensionWorld = Pick<
   | 'itemsWornIn'
   | 'stockingPlaces'
   | 'spellNamed'
+  | 'spellById'
+  | 'itemsWhere'
   | 'classNamed'
   | 'raceId'
   | 'namedClasses'
@@ -138,6 +141,14 @@ export interface ExtensionSessionHost {
   wearing(items: readonly string[], as?: CharacterState): Wearing;
   /** The attacks the class can make and a round of each, as it stands or as `as`. */
   attacks(as?: CharacterState): AttackOption[];
+  /**
+   * The scrolls a counter sells that teach a spell the character (or `as`)
+   * does not know and the server would not refuse it (`learnVerdict`; a
+   * scroll whose answer is unknown is kept), each with the counter least out of the way.
+   */
+  spellScrolls(as?: CharacterState): SpellScroll[];
+  /** The character (or `as`) with these `Spells` rows in its book, and the names that went in. */
+  learning(spells: readonly number[], as?: CharacterState): Learning;
   /** The safety trace, newest first. */
   safety(): readonly SafetyDecision[];
   /** An escape, a move, a walk, an errand: the character is someone else's for now. */

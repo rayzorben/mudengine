@@ -3303,6 +3303,7 @@ settings:
       vitalsCrossing: your health or mana falls a band
       levelled: you gain a level
       learned: you learn something
+      learnRefused: a scroll cannot teach you its spell
       leftRealm: you leave the realm
       hangupPenalty: you are charged for hanging up
       loginFailed: logging in fails

@@ -174,6 +174,12 @@ export type BlockType =
    * this spell instead. Captured on the live realm 2026-09-03.
    */
   | 'user-reads-spell'
+  /** `You already know how to cast {name}!`: the book has it, the scroll is kept. */
+  | 'user-reads-known'
+  /** `Unable to learn {name}!`: the class, a level or alignment gate refuses it (`Spell.CanPlayerUseSpell`). */
+  | 'user-reads-refused'
+  /** `No spells are assigned to this scroll!` */
+  | 'user-reads-blank'
   /**
    * The telnet field screen has taken the terminal: `train stats` at a trainer.
    *
@@ -925,6 +931,9 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-trains': 'status',
   'user-learns': 'status',
   'user-reads-spell': 'status',
+  'user-reads-known': 'status',
+  'user-reads-refused': 'status',
+  'user-reads-blank': 'status',
   'user-stats-screen': 'session',
   'user-stats-assigned': 'status',
   'user-gains': 'status',

@@ -25,11 +25,12 @@ import {
 } from '../../shared/experience';
 import { readingOf, statlineMatcher, type StatlineReading } from '../../shared/statline';
 import type { BelongingsSink } from '../../shared/belongings';
-import { LEARN_SPELL_ABILITY } from '../../shared/abilities';
+import { listsSpell, taughtBy, withSpell } from '../../shared/learning';
 import { bareName } from '../../shared/items';
 import { readStatAll, statedBasis } from '../../shared/stated';
 import type { Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
+import type { WorldSpell } from '../../shared/world';
 import type { WorldGraph } from '../world/WorldGraph';
 import { withCharges, withoutItem } from './inventory';
 import { STATUS_LINE } from './patterns';
@@ -406,11 +407,6 @@ function bookResource(s: CharacterState, book: string | undefined): 'MA' | 'KAI'
   return book === 'powers' ? 'KAI' : book === 'spells' ? 'MA' : s.vitals.manaType;
 }
 
-/** Whether a book already lists a spell by this name. */
-function listsSpell(book: readonly KnownSpell[], name: string): boolean {
-  return book.some((entry) => entry.name.toLowerCase() === name.toLowerCase());
-}
-
 /** `spellbook`: the listing, replacing the whole book. */
 export function spellbookListed(
   s: CharacterState,
@@ -484,10 +480,8 @@ function scrollTeaching(
   const names = state.inventory.items.map((held) => bareName(held.name));
   const known = world.itemsNamed(names);
   for (const name of names) {
-    const teaches = known[name]?.abilities?.some(
-      ([id, value]) => id === LEARN_SPELL_ABILITY && value === spellId
-    );
-    if (teaches === true) return name;
+    const row = known[name];
+    if (row !== undefined && taughtBy(row).includes(spellId)) return name;
   }
   return null;
 }
@@ -521,28 +515,36 @@ export function spellRead(
     next = withoutItem(next, scroll, 1);
   }
 
-  /*
-   * Appended on `user-learns`' terms and for its reason: only onto a book
-   * a listing has read, because one spell appended to `null` would
-   * publish a book of one and a settings screen reading it would say the
-   * character knows nothing else.
-   */
-  const book = next.spellbook;
-  const known = spell?.name ?? name;
-  if (book !== null && !listsSpell(book, known)) {
-    next = {
-      ...next,
-      spellbook: [
-        ...book,
-        {
-          name: known,
-          short: spell?.short ?? null,
-          level: spell?.level ?? null,
-          cost: spell?.mana ?? null
-        }
-      ]
-    };
-  }
+  next = inTheBook(next, spell?.name ?? name, spell);
+  return next === s ? null : next;
+}
+
+/**
+ * The spell in the book, appended on `user-learns`' terms and for its reason:
+ * only onto a book a listing has read, because one spell appended to `null`
+ * would publish a book of one and a settings screen reading it would say the
+ * character knows nothing else.
+ */
+function inTheBook(s: CharacterState, name: string, spell: WorldSpell | null): CharacterState {
+  if (s.spellbook === null) return s;
+  const spellbook = withSpell(s.spellbook, name, spell);
+  return spellbook === s.spellbook ? s : { ...s, spellbook: [...spellbook] };
+}
+
+/**
+ * `user-reads-known`: `You already know how to cast {name}!`. The scroll is
+ * kept (`ReadCommand` spends a use only on a spell added), and the book lists
+ * the spell, so one missing from it is appended.
+ */
+export function spellKnown(
+  s: CharacterState,
+  named: string | undefined,
+  world: ScrollWorld | undefined
+): CharacterState | null {
+  const name = named?.trim();
+  if (!name) return null;
+  const spell = world?.spellNamed(name) ?? null;
+  const next = inTheBook(s, spell?.name ?? name, spell);
   return next === s ? null : next;
 }
 

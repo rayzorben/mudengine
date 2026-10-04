@@ -399,14 +399,20 @@ const ALIGNMENT_GATES: Readonly<
   113: () => (low, high) => low >= -50 && high <= 40
 };
 
+/** Whether any row is an alignment gate `alignmentRefuses` reads. */
+export function alignmentGated(abilities: ReadonlyArray<readonly [number, number]>): boolean {
+  return abilities.some(([id]) => ALIGNMENT_GATES[id] !== undefined);
+}
+
 /**
  * Whether an alignment gate on the item refuses every character of this word.
  *
  * The word is a band of points, so a gate refuses only where it refuses the
  * whole band (`alignmentBand`'s open interval); a band a threshold runs through
- * is unknown, and unknown never refuses.
+ * is unknown, and unknown never refuses. A spell's gates are the same rows
+ * (`learning.ts`).
  */
-function alignmentRefuses(
+export function alignmentRefuses(
   abilities: ReadonlyArray<readonly [number, number]>,
   alignment: Alignment
 ): boolean {

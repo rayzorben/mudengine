@@ -1422,6 +1422,13 @@ export interface WorldSpell {
   maxGrowth?: [number, number];
   /** The same for how long it lasts — `DurIncLVLs`/`DurInc`. 150 spells. */
   durationGrowth?: [number, number];
+  /**
+   * `Spells.Magery` and `MageryLVL` (format 55): the class magery type that
+   * may learn it and the least magery level, as `Spell.CanPlayerUseSpell`
+   * reads them. Absent is the realm's 0: any class's type, no level asked.
+   */
+  mageryType?: number;
+  mageryLevel?: number;
 }
 
 /**
@@ -1461,8 +1468,8 @@ export interface WorldRace {
  * A class the realm offers.
  *
  * Deliberately narrower than the table behind it: see `BuiltClass`. A hit-dice
- * pair whose order nothing has settled and a magery *type* whose numbering only
- * speaks for zero are both left out rather than published as facts.
+ * pair whose order nothing has settled is left out rather than published as a
+ * fact.
  */
 export interface WorldClass {
   id: number;
@@ -1477,6 +1484,12 @@ export interface WorldClass {
   weaponType?: number;
   /** `Classes.ArmourType`: the heaviest `ARMOUR_TYPE` code it may wear. Format 48. */
   armourType?: number;
+  /**
+   * `Classes.MageryType` (format 55): the spells it may learn, as the server's
+   * `SpellMageryType` (0 none, 1 Mage, 2 Priest, 3 Druid, 4 Bard, 5 Mystic).
+   * Absent where the world file predates it, which is unknown.
+   */
+  mageryType?: number;
   /**
    * What the class grants, from `Classes.Abil-n` — format 14.
    *
