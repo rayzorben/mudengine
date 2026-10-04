@@ -188,6 +188,21 @@ export default function MobRuleList({
                       {t('settings.combat.mobRuleNotHostileHint')}
                     </Hint>
                   </label>
+                  <label className="blessing-check">
+                    <input
+                      aria-describedby={fieldHintId(`${namePrefix}-${index}-stop-to-kill`)}
+                      checked={row.stopToKill === true}
+                      name={`${namePrefix}-${index}-stop-to-kill`}
+                      onChange={(event) =>
+                        replace(index, { ...row, stopToKill: event.target.checked })
+                      }
+                      type="checkbox"
+                    />
+                    <span>{t('settings.combat.mobRuleStopToKill')}</span>
+                    <Hint id={fieldHintId(`${namePrefix}-${index}-stop-to-kill`)}>
+                      {t('settings.combat.mobRuleStopToKillHint')}
+                    </Hint>
+                  </label>
                 </div>
               )}
             </li>

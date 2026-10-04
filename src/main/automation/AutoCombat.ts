@@ -104,6 +104,7 @@ import {
   LEAVING_STANCES,
   peaceOf,
   stanceHere,
+  stopsToKill,
   type LeavingStance,
   type MobStance
 } from '../../shared/mobRules';
@@ -809,9 +810,12 @@ export class AutoCombat implements SessionModule {
   /**
    * The stranger `politeAttacks` leaves this monster to, while the sighting is
    * fresh, or null. `choose` and retaliation's joiners ask the same question.
+   * A `stopToKill` row is fought whoever has claimed it (MegaMUD ignores
+   * *Polite attacks* for it).
    */
   private claimOn(state: CharacterState, name: string): { by: string } | null {
     if (!this.config.politeAttacks) return null;
+    if (stopsToKill(this.config.mobRules, name)) return null;
     const claim = state.combat.claimed[mobKey(name)];
     if (claim === undefined || Date.now() - claim.at > tuning().combat.assistFreshMs) return null;
     return claim;
@@ -1427,9 +1431,9 @@ export class AutoCombat implements SessionModule {
     if (state.combat.target !== null) return false;
     const here = countMobs(state.room.occupants);
     if (this.config.maxMobs > 0 && here > this.config.maxMobs) return false;
-    // `whyNot`'s mirror of the line above. Missing, a room too small to open in
-    // held a walk's beat and held `AutoSearch` for as long as the monster stood.
-    if (this.config.minMobs > 0 && here < this.config.minMobs) return false;
+    // A room under `minMobs` is declined monster by monster in `choose`, which
+    // keeps a `stopToKill` one: missing, a room too small to open in held a
+    // walk's beat and held `AutoSearch` for as long as the monster stood.
     return this.pick(state) !== null;
   }
 
@@ -1487,7 +1491,7 @@ export class AutoCombat implements SessionModule {
      * the room — the trace's second column is a monster, and putting a place
      * there would read as one.
      */
-    const refusal = this.whyNot(state, joined !== null);
+    const refusal = this.whyNot(state, joined !== null, choice.target);
     if (refusal !== null) {
       this.decline(choice.target ?? choice.considered, refusal);
       return;
@@ -1515,7 +1519,7 @@ export class AutoCombat implements SessionModule {
    * numbers come last because they are the cheapest to read and the least
    * surprising to be stopped by.
    */
-  private whyNot(state: CharacterState, joining: boolean): string | null {
+  private whyNot(state: CharacterState, joining: boolean, target: string | null): string | null {
     // Joining a party's fight — assisting the leader or defending a member —
     // is not *opening* one, so `engage: none` does not stop it. Nor does it
     // stop a monster a quest run was told to kill (`alsoFight`).
@@ -1577,12 +1581,20 @@ export class AutoCombat implements SessionModule {
      * for. MegaMUD's `MinMstrs`. Beside `maxMobs` because they are one
      * question — *is this room the right size to fight in* — asked from both
      * ends, and a room that is too small is refused for the same reason a room
-     * that is too crowded is.
+     * that is too crowded is. A `stopToKill` monster is fought in it anyway
+     * (MegaMUD's *Stop to kill if able*); `choose` offers no other.
      */
-    if (this.config.minMobs > 0 && here < this.config.minMobs) {
-      return t('automation.combat.refusedMinMobs', { here, min: this.config.minMobs });
-    }
+    const few = this.tooFew(state);
+    if (few !== null && !(target !== null && stopsToKill(this.config.mobRules, target))) return few;
     return null;
+  }
+
+  /** Why this room is too small to open a fight in (`minMobs`), or null. */
+  private tooFew(state: CharacterState): string | null {
+    const here = countMobs(state.room.occupants);
+    return this.config.minMobs > 0 && here < this.config.minMobs
+      ? t('automation.combat.refusedMinMobs', { here, min: this.config.minMobs })
+      : null;
   }
 
   /**
@@ -1640,6 +1652,8 @@ export class AutoCombat implements SessionModule {
      * on the attacker whatever this module thinks of it (`guards.ts`).
      */
     const bystanders = new Set<RoomOccupant>();
+    // A room under `minMobs` is opened in only for a `stopToKill` monster.
+    const few = this.tooFew(state);
 
     for (const who of mobs) {
       const row = mobRuleFor(this.config.mobRules, who.name);
@@ -1667,11 +1681,16 @@ export class AutoCombat implements SessionModule {
         decline(who, t('automation.combat.refusedCostly', { target: who.name }));
         continue;
       }
+      if (few !== null && row?.stopToKill !== true) {
+        decline(who, few);
+        continue;
+      }
       /*
        * A quest step's monster (`alsoFight`) is past the policy from here on:
        * the caps and the disposition are about what to pick a fight with
        * unasked, and this one was asked for by name. The refusals above it —
-       * a stance row, a claim, the ten evil points — stand.
+       * a stance row, a claim, the ten evil points, a room under `minMobs` —
+       * stand.
        */
       if (this.isWanted(who.name)) {
         willing.push(who);
