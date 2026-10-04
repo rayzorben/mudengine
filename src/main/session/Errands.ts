@@ -12,6 +12,7 @@ import { fightOdds, Navigation } from './navigation';
 import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
+import type { WalkKind } from '../../shared/walk';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
@@ -306,6 +307,8 @@ export class Errands implements SessionModule {
   private readonly shutEdges = new Set<string>();
   /** Rooms run out of for health, and until when they are kept out of (todo 73). */
   private readonly shunned = new Map<RoomId, number>();
+  /** The rooms run from that a trip's route has been said to meet, each once per run (todo 19). */
+  private readonly ranFromSaid = new Set<RoomId>();
   /** The corridors of this character's preferred routes; null until asked, and after the loops change. */
   private preferred: ReadonlySet<string> | null = null;
   /** The loops and movement settings `preferred` was derived under, as one string. */
@@ -353,6 +356,7 @@ export class Errands implements SessionModule {
     this.refusedEdges.clear();
     this.shutEdges.clear();
     this.shunned.clear();
+    this.ranFromSaid.clear();
     this.clocks.reset();
   }
 
@@ -459,12 +463,12 @@ export class Errands implements SessionModule {
    * a fight, because those two answering the question differently is the
    * "two halves of one gate in two files" failure this codebase keeps
    * relearning — and the purse is exactly the argument it was left out of
-   * once already. `shortest` is a lap's leg: see `lapTraveller`.
+   * once already. `kind` says whose leg it is: see `travellerFor`.
    */
   planFromHere(
     to: RoomId,
     options: RouteOptions = {},
-    shortest = false,
+    kind: WalkKind = 'walk',
     /**
      * The kept-out words this plan may cross: nothing, unless the caller is
      * planning the player's own journey again (`allowingFor`).
@@ -474,14 +478,58 @@ export class Errands implements SessionModule {
     const state = this.tracker.current;
     const here = state.room;
     if (here.map === null || here.number === null) return t('session.loop.unknownRoom');
-    const traveller = shortest
-      ? this.lapTraveller(state)
-      : this.travellerNow(state, true, allowing);
+    const traveller = this.travellerFor(kind, state, allowing);
     const plan =
       this.navigation.leg(roomId(here.map, here.number), to, traveller, options) ??
       t('session.loop.noRealmData');
-    if (typeof plan !== 'string') this.askCountersFor(plan);
+    if (typeof plan !== 'string') {
+      this.askCountersFor(plan);
+      this.sayRanFrom(plan);
+    }
     return plan;
+  }
+
+  /**
+   * The traveller a leg of this kind is planned as: a lap's by distance
+   * (`lapTraveller`), a trip's with the rooms run from (`shunned`), and any
+   * other walk as the character stands (`travellerNow`). Todo 19: a lap that
+   * inherited the rooms run from walked a different way for fifteen minutes.
+   */
+  private travellerFor(
+    kind: WalkKind,
+    state: CharacterState,
+    allowing: readonly string[] = []
+  ): Traveller {
+    switch (kind) {
+      case 'lap':
+        return this.lapTraveller(state);
+      case 'trip':
+        return { ...this.travellerNow(state, true, allowing), shunned: this.shunnedNow() };
+      case 'walk':
+        return this.travellerNow(state, true, allowing);
+      default: {
+        const unreached: never = kind;
+        return unreached;
+      }
+    }
+  }
+
+  /**
+   * A trip's route that met a room run from, said once per run: round it, or
+   * through it where no way round is survivable (`Route.ranFrom`).
+   */
+  private sayRanFrom(plan: Route): void {
+    const met = plan.ranFrom;
+    if (met === undefined) return;
+    const fresh = met.rooms.filter((room) => !this.ranFromSaid.has(room.id));
+    if (fresh.length === 0) return;
+    for (const room of fresh) this.ranFromSaid.add(room.id);
+    const rooms = fresh.map((room) => room.name).join(', ');
+    this.session.notice(
+      met.round
+        ? t('session.walk.roundRanFrom', { rooms })
+        : t('session.walk.throughRanFrom', { rooms })
+    );
   }
 
   /**
@@ -584,7 +632,6 @@ export class Errands implements SessionModule {
       spellsUp: this.spellsUp(state),
       ...pack,
       refused: this.refusedEdges,
-      shunned: this.shunnedNow(),
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
       // What waits in each room, against this character as they stand now.
       danger: (room) => this.lairDanger(room, state),
@@ -651,10 +698,12 @@ export class Errands implements SessionModule {
    *
    * A loop is walked for the monsters on it, so pricing them re-routes the
    * lap around its own purpose. Kept: the gates (doors, keys, levels, class,
-   * counters), the edges the server refused, and a room whose spell moves the
+   * counters), the purse for a toll, the edges the server refused, the
+   * keep-out words the loop was drafted with, and a room whose spell moves the
    * character, which is not a way to arrive anywhere. Dropped: the lair, the
-   * room's damage, the preferred corridors. See `mudengine-automation` ›
-   * *A lap walks the shortest way*.
+   * room's damage, the preferred corridors, and the rooms run from (todo 19,
+   * never on `travellerNow`). See `mudengine-automation` › *A lap walks the
+   * shortest way*.
    */
   lapTraveller(state: CharacterState): Traveller {
     const priced = this.travellerNow(state, false);
@@ -884,9 +933,14 @@ export class Errands implements SessionModule {
     }));
   }
 
-  /** The room run out of for health: no route or hunting ground goes back in for a while (todo 73). */
+  /**
+   * The room run out of for health: a trip's route goes round it for a while
+   * where a way round is survivable (todos 73, 19). A loop's lap and the
+   * player's own walk never do.
+   */
   shun(room: RoomId): void {
     this.shunned.set(room, Date.now() + tuning().combat.shunRoomMs);
+    this.ranFromSaid.delete(room);
   }
 
   /** The rooms still kept out of, the lapsed dropped. */
@@ -2619,11 +2673,10 @@ export class Errands implements SessionModule {
   routeBetween(
     from: RoomId,
     to: RoomId,
-    shortest: boolean,
+    kind: WalkKind,
     options: RouteOptions = {}
   ): Route | string {
-    const state = this.tracker.current;
-    const traveller = shortest ? this.lapTraveller(state) : this.travellerNow(state);
+    const traveller = this.travellerFor(kind, this.tracker.current);
     return this.navigation.leg(from, to, traveller, options) ?? t('session.loop.noRealmData');
   }
 }

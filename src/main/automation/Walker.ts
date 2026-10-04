@@ -54,7 +54,7 @@
  * edited.
  */
 import { gatesWords } from '../../shared/gateWords';
-import type { WalkHold, WalkProgress, WalkStatus } from '../../shared/walk';
+import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
 import { portalLeftUnseen } from '../../shared/walk';
 import {
   roomAddress,
@@ -201,11 +201,11 @@ export class Walker implements SessionModule {
    */
   private resumeAfterLoss = true;
   /**
-   * Whether every re-plan of this walk is by distance alone: a lap's leg
-   * (`LoopRunner`), whose route is always the shortest way to the next stop.
-   * See `mudengine-automation` › *A lap walks the shortest way*.
+   * What this walk is for, handed back to every re-plan: a lap's leg
+   * (`LoopRunner`) by distance alone, a trip round a room run from. See
+   * `WalkKind` and `mudengine-automation` › *A lap walks the shortest way*.
    */
-  private shortest = false;
+  private kind: WalkKind = 'walk';
   /*
    * There was a `recent` here — the last few steps *this walker* confirmed —
    * and it is gone with its only reader, `retreatFrom`.
@@ -288,7 +288,7 @@ export class Walker implements SessionModule {
     );
     this.levers = new Levers(queue, events, {
       ...inFlight,
-      shortest: () => this.shortest,
+      kind: () => this.kind,
       destination: () => this.route?.steps.at(-1),
       detour: (route, state) => this.detour(route, state)
     });
@@ -505,7 +505,7 @@ export class Walker implements SessionModule {
       resumeAfterFight = true,
       whileFighting = true,
       resumeAfterLoss = true,
-      shortest = false
+      kind = 'walk'
     }: {
       quiet?: boolean;
       asked?: boolean;
@@ -513,7 +513,7 @@ export class Walker implements SessionModule {
       resumeAfterFight?: boolean;
       whileFighting?: boolean;
       resumeAfterLoss?: boolean;
-      shortest?: boolean;
+      kind?: WalkKind;
     } = {}
   ): string | null {
     if (!this.config.enabled) return t('automation.walk.refusalDisabled');
@@ -651,7 +651,7 @@ export class Walker implements SessionModule {
     this.quiet = quiet;
     this.asked = asked;
     this.resumeAfterLoss = resumeAfterLoss;
-    this.shortest = shortest;
+    this.kind = kind;
     /*
      * Asked for while a fight was running, so this walk's job is to leave it —
      * **but only when leaving is what ends the fight**.
@@ -797,7 +797,7 @@ export class Walker implements SessionModule {
     this.leftMobsBehind = false;
     this.quiet = false;
     this.resumeAfterLoss = true;
-    this.shortest = false;
+    this.kind = 'walk';
     this.warnedLight = null;
     /*
      * The units, in the order their fields were cleared here before todo 740
@@ -1445,7 +1445,7 @@ export class Walker implements SessionModule {
   private onward(state: CharacterState, here: RoomId): void {
     const destination = this.route?.steps.at(-1);
     if (destination === undefined) return;
-    const replanned = this.events.replan?.(destination.to, this.shortest);
+    const replanned = this.events.replan?.(destination.to, this.kind);
     if (replanned === undefined) {
       // Nobody can plan for this walker: a character that moved is off the path.
       this.stop(t('automation.walk.reasonWrongRoom', { roomName: state.room.name ?? here }));

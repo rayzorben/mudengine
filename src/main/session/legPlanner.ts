@@ -33,7 +33,7 @@ export interface LegPlanner {
 export function legPlanner(m: () => LegModules): LegPlanner {
   return {
     here: () => roomAddress(m().tracker.current.room),
-    routeTo: (room) => m().errands.planFromHere(room),
+    routeTo: (room) => m().errands.planFromHere(room, {}, ERRAND_LEG.kind),
     walk: (route) => m().walker.start(route, m().tracker.current, ERRAND_LEG),
     moveInFlight: () => m().tracker.pendingMoves > 0,
     walking: () => m().walker.walking,

@@ -4319,7 +4319,6 @@ describe('describeBlock', () => {
       name: 'Negative Power Plane',
       word: 'Negative Power Plane'
     },
-    ranFrom: { kind: 'ranFrom', at: '1/1', to: '1/2', name: 'Narrow Stone Tunnel' },
     unreachable: { kind: 'unreachable' }
   };
 
@@ -7456,31 +7455,68 @@ describe('a monster’s coins', () => {
 
 /*
  * Todo 73: a room run out of for health is kept out of. Soul ran from a mad
- * wizard, rested next door, and walked back into him twice.
+ * wizard, rested next door, and walked back into him twice. Todo 19: only by
+ * a trip, and only where a way round is survivable (the user, 2026-10-03).
  */
 describe('a room the character ran out of', () => {
-  const world = (): WorldGraph => makeWorld(corridor(4));
-  const traveller: Traveller = { level: 5, packKnown: true, keys: [], shunned: new Set(['1/3']) };
+  /** East through the tunnel is two steps; round by the lanes is three. */
+  const square = (): WorldGraph =>
+    makeWorld([
+      { m: 1, r: 1, n: 'Square', x: { e: { m: 1, r: 2 }, n: { m: 1, r: 4 } } },
+      { m: 1, r: 2, n: 'Narrow Stone Tunnel', x: { w: { m: 1, r: 1 }, e: { m: 1, r: 3 } } },
+      { m: 1, r: 3, n: 'Far Hall', x: { w: { m: 1, r: 2 }, n: { m: 1, r: 5 } } },
+      { m: 1, r: 4, n: 'North Lane', x: { s: { m: 1, r: 1 }, e: { m: 1, r: 5 } } },
+      { m: 1, r: 5, n: 'Upper Lane', x: { w: { m: 1, r: 4 }, s: { m: 1, r: 3 } } }
+    ]);
+  const ranFrom: Traveller = { level: 5, packKnown: true, keys: [], shunned: new Set(['1/2']) };
+  const commands = (route: Route): string[] => route.steps.map((step) => step.command);
 
-  it('is no step on a route through it, and says so in its own words', () => {
-    const through = world().route(roomId(1, 1), roomId(1, 4), traveller);
-    expect(through.blocked).toBe(true);
-    expect(through.blocks?.map((block) => block.kind)).toContain('ranFrom');
-    expect(world().route(roomId(1, 1), roomId(1, 2), traveller).blocked).toBe(false);
+  it('is gone round where a way round exists, and the route names it', () => {
+    // Positive control: without the run, the tunnel is the way.
+    expect(commands(square().route(roomId(1, 1), roomId(1, 3), {}))).toEqual(['e', 'e']);
+    const round = square().route(roomId(1, 1), roomId(1, 3), ranFrom);
+    expect(commands(round)).toEqual(['n', 'e', 's']);
+    expect(round.ranFrom).toEqual({
+      round: true,
+      rooms: [{ id: '1/2', name: 'Narrow Stone Tunnel' }]
+    });
   });
 
-  it('is no walk an unwatched leg takes back into, though the player may ask for it', () => {
-    expect(world().route(roomId(1, 1), roomId(1, 3), traveller).blocked).toBe(true);
-    const asked = world().route(roomId(1, 1), roomId(1, 3), traveller, { alternatives: true });
-    expect(asked.blocked).toBe(false);
+  it('is walked through where the only way round is not survivable, and the route says so', () => {
+    const deadly: Traveller = {
+      ...ranFrom,
+      danger: (room) => (room.name === 'North Lane' ? 1.4 : null)
+    };
+    const through = square().route(roomId(1, 1), roomId(1, 3), deadly);
+    expect(through.blocked).toBe(false);
+    expect(commands(through)).toEqual(['e', 'e']);
+    expect(through.ranFrom?.round).toBe(false);
   });
 
-  it('lets the character walk out of it', () => {
-    expect(world().route(roomId(1, 3), roomId(1, 4), traveller).blocked).toBe(false);
+  it('is walked through where there is no way round at all', () => {
+    const through = makeWorld(corridor(4)).route(roomId(1, 1), roomId(1, 4), {
+      ...ranFrom,
+      shunned: new Set(['1/3'])
+    });
+    expect(through.blocked).toBe(false);
+    expect(through.steps).toHaveLength(3);
+    expect(through.ranFrom).toEqual({ round: false, rooms: [{ id: '1/3', name: 'Room 3' }] });
   });
 
-  it('is not reached by the sweep the hunting survey makes, nor anything beyond it', () => {
-    const reach = world().withinSteps(roomId(1, 1), 10, traveller);
-    expect([...reach.keys()]).toEqual(['1/1', '1/2']);
+  it('lets the character walk out of it, and into it', () => {
+    const out = square().route(roomId(1, 2), roomId(1, 3), ranFrom);
+    expect(commands(out)).toEqual(['e']);
+    expect(out.ranFrom).toBeUndefined();
+    const into = square().route(roomId(1, 1), roomId(1, 2), ranFrom);
+    expect(commands(into)).toEqual(['e']);
+    expect(into.ranFrom).toBeUndefined();
+  });
+
+  it('keeps nothing out of the sweep the hunting survey makes', () => {
+    const reach = makeWorld(corridor(4)).withinSteps(roomId(1, 1), 10, {
+      ...ranFrom,
+      shunned: new Set(['1/2'])
+    });
+    expect([...reach.keys()]).toEqual(['1/1', '1/2', '1/3', '1/4']);
   });
 });
