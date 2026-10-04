@@ -1438,11 +1438,27 @@ export class LoopRunner implements SessionModule {
     if (vital === 'health') this.hurt = held;
     else this.drained = held;
     if (held) this.waiting = true;
+    /*
+     * `Recovery` rests only where nothing in the room attacks first, and after
+     * a heal's `*Combat Off*` the room still holds the fight with no flag up
+     * (todo 20), so the notice says resting only in a room with nothing else in it.
+     */
+    const beside = this.monstersHere(state);
     if (vital === 'health') {
-      this.events.notice?.(held ? t('automation.loops.tooHurt') : t('automation.loops.mended'));
+      this.events.notice?.(
+        !held
+          ? t('automation.loops.mended')
+          : beside
+            ? t('automation.loops.tooHurtBeside')
+            : t('automation.loops.tooHurt')
+      );
     } else {
       this.events.notice?.(
-        held ? t('automation.loops.tooDrained') : t('automation.loops.manaBack')
+        !held
+          ? t('automation.loops.manaBack')
+          : beside
+            ? t('automation.loops.tooDrainedBeside')
+            : t('automation.loops.tooDrained')
       );
     }
     this.publish();

@@ -1862,3 +1862,14 @@ export function placedByServer(room: Pick<Room, 'map' | 'number' | 'resolvedBy'>
 export function fightIsRunning(state: CharacterState): boolean {
   return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
 }
+
+/**
+ * The same arrival in the same room: the name alone is not enough, since the
+ * desert is a thousand rooms called `Scorching Desert` (`Room.arrival`).
+ */
+export function sameVisit(
+  a: Pick<Room, 'name' | 'arrival'>,
+  b: Pick<Room, 'name' | 'arrival'>
+): boolean {
+  return a.name === b.name && a.arrival === b.arrival;
+}
