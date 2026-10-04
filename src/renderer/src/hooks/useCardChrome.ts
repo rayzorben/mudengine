@@ -12,7 +12,6 @@ import { useCallback, useRef } from 'react';
 import type { CardChrome } from '../components/BentoCard';
 import type { CardDrag } from './useCardDrag';
 import { DEFAULT_FLOAT } from './useCardLayout';
-import type { CardResize } from './useCardResize';
 import type { CardId, CardLayoutApi, CardSettings, FloatState } from '../lib/cards';
 import type { Theme } from '@shared/themes';
 
@@ -34,7 +33,6 @@ export interface CardChromes {
 export function useCardChrome(
   cards: PinnedLayout & Pick<CardLayoutApi, 'floatOf' | 'laneOf' | 'lift' | 'raise'>,
   drag: Pick<CardDrag, 'state' | 'begin'>,
-  resize: Pick<CardResize, 'begin' | 'reset'>,
   returnFocus: () => void,
   theme: Theme
 ): CardChromes {
@@ -49,10 +47,6 @@ export function useCardChrome(
   cardsRef.current = cards;
   const dragRef = useRef(drag);
   dragRef.current = drag;
-  // The corner grip on a rail card, through a ref for the reason `dragRef`
-  // is — a card's chrome is cached and must not close over a stale gesture.
-  const resizeRef = useRef(resize);
-  resizeRef.current = resize;
   // A put-away card's row is a handle too (see `CardPicker`); through the
   // ref so the picker's props hold still between drags.
   const grabCard = useCallback(
@@ -159,17 +153,6 @@ export function useCardChrome(
               },
               pinned: floating.pinned === true,
               onPin: (next: boolean) => cardsRef.current.pin(id, next)
-            }
-          : {}),
-        /*
-         * The corner grip, on the rail only: a float has its own, and a
-         * docked strip is sized by its splitter.
-         */
-        ...(lane === 'rail'
-          ? {
-              onResize: (event: React.PointerEvent<HTMLElement>) =>
-                resizeRef.current.begin(id, event),
-              onResizeReset: () => resizeRef.current.reset(id)
             }
           : {})
       };

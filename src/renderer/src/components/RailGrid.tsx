@@ -8,14 +8,17 @@
 import { memo, useLayoutEffect, useMemo, type CSSProperties, type ReactNode } from 'react';
 
 import type { DragState } from '../hooks/useCardDrag';
+import { useCardResize } from '../hooks/useCardResize';
 import type { RailGrid as Grid } from '../hooks/useRailGrid';
 import { SHIPPED_COLUMNS, type CardId, type CardLayoutApi } from '../lib/cards';
+import { t } from '../lib/i18n';
 import { arrange, bottomOf, sameBox, type GridBox } from '../lib/railGrid';
+import ResizeHandles from './ResizeHandles';
 
 export interface RailGridProps {
-  layout: Pick<CardLayoutApi, 'rail' | 'spots' | 'sizeOf'>;
+  layout: Pick<CardLayoutApi, 'rail' | 'spots' | 'sizeOf' | 'isRolled' | 'placeOnRail'>;
   render(id: CardId): ReactNode;
-  grid: Pick<Grid, 'ref' | 'columns' | 'showing' | 'publish'>;
+  grid: Pick<Grid, 'ref' | 'columns' | 'showing' | 'publish' | 'view'>;
   /**
    * The drag in flight, if any: the grid draws where the card in hand would
    * land, and offers a screen of empty rows below its cards.
@@ -32,7 +35,9 @@ function area(box: GridBox): CSSProperties {
 }
 
 function RailGrid({ layout, render, grid, drag }: RailGridProps) {
-  const { rail, spots, sizeOf } = layout;
+  const { rail, spots, sizeOf, isRolled } = layout;
+  // The handles on every corner and side of a card, in whole cells.
+  const resize = useCardResize(layout, grid.view);
   // Before the grid is measured it is one shipped card wide, which is what
   // the rail's narrowest track holds.
   const columns = grid.columns ?? SHIPPED_COLUMNS;
@@ -80,6 +85,19 @@ function RailGrid({ layout, render, grid, drag }: RailGridProps) {
       {drawn.cards.map(({ id, element }) => (
         <div className="rail-cell" data-rail-card={id} key={id} style={area(drawn.boxes.get(id)!)}>
           {element}
+          {/*
+            Not on a rolled card: its height is its heading, so a handle
+            there would write a size nothing draws. Its cells are kept and
+            come back with it.
+          */}
+          {!isRolled(id) && (
+            <ResizeHandles
+              card={id}
+              onGrab={resize.begin}
+              onReset={resize.reset}
+              title={t('cards.header.resizeHint')}
+            />
+          )}
         </div>
       ))}
       {slot && <div className="rail-slot" style={area(slot)} />}
