@@ -770,6 +770,35 @@ export function castOdds(
   return { chance: { value: chance, from: 'source' }, expectedMana };
 }
 
+/**
+ * The server's `SpellMageryType` codes (`Classes.MageryType`): which spells a
+ * class may learn and which stat its mana tick is figured off. A Mystic casts
+ * from kai (`Player.cs:2373`).
+ */
+export const MAGERY = { none: 0, mage: 1, priest: 2, druid: 3, bard: 4, mystic: 5 } as const;
+
+/**
+ * What `GetBaseMARegen` (`Player.cs:4550`) multiplies by for a class of this
+ * magery type: INT, WIL, their mean, CHM; null for a Mystic (whose tick is a
+ * flat 1), a class that casts nothing, or a stat not read.
+ */
+function manaStat(sheet: ProwessSheet, mageryType: number | null): number | null {
+  switch (mageryType) {
+    case MAGERY.mage:
+      return sheet.intellect;
+    case MAGERY.priest:
+      return sheet.willpower;
+    case MAGERY.druid:
+      return sheet.intellect === null || sheet.willpower === null
+        ? null
+        : Math.trunc((sheet.intellect + sheet.willpower) / 2);
+    case MAGERY.bard:
+      return sheet.charm;
+    default:
+      return null;
+  }
+}
+
 /** What comes back per tick, and how long a tick is. */
 export interface Regeneration {
   health: Reckoning<number>;
@@ -793,12 +822,11 @@ export interface Regeneration {
  *     HPRegen = max(1, (level + 20) * HEA / 750)
  *     MARegen = ((level + 20) * stat * (magery + 2)) / 1650
  *
- * where `stat` is INT for a Mage, WIL for a Priest, their mean for a Druid and
- * CHM for a Bard; a Mystic regenerates 1. This client cannot tell those four
- * apart from the class name alone without the realm's magery type, so the
- * *stat* is chosen by `mageryLevel` where the caller knows which it is and the
- * mana figure is `null` otherwise — an honest absence rather than a number
- * computed off the wrong stat.
+ * where `stat` is chosen by the class row's `MageryType` (`manaStat`): INT
+ * for a Mage, WIL for a Priest, their mean for a Druid, CHM for a Bard; a
+ * Mystic regenerates a flat 1 (none at all while `KaiBind` is up, which the
+ * sheet cannot see either: `stat all` states the `-1`). With the type unknown
+ * the mana figure is null rather than one computed off the wrong stat.
  *
  * The ability bonuses on both are gear and spells the client cannot enumerate,
  * which makes each a floor: `bound` — until `stat all`'s own `HP Regen:` and
@@ -806,7 +834,7 @@ export interface Regeneration {
  */
 export function regeneration(
   sheet: ProwessSheet,
-  manaStat: number | null,
+  mageryType: number | null,
   family: RealmFamily | null
 ): Regeneration | null {
   const said = sheet.stated;
@@ -833,13 +861,18 @@ export function regeneration(
   // `Player.HPRegen`: the `HPRegen` rows are a percentage of the tick.
   const hp = base + Math.trunc(((sheet.effects?.hpRegen ?? 0) * base) / 100);
   const magery = sheet.mageryLevel;
+  const stat = manaStat(sheet, mageryType);
   const mana =
-    magery === null || manaStat === null
+    magery === null
       ? null
-      : {
-          value: Math.max(0, Math.trunc(((level + 20) * manaStat * (magery + 2)) / 1650)),
-          from: 'bound' as const
-        };
+      : mageryType === MAGERY.mystic
+        ? { value: 1, from: 'bound' as const }
+        : stat === null
+          ? null
+          : {
+              value: Math.max(0, Math.trunc(((level + 20) * stat * (magery + 2)) / 1650)),
+              from: 'bound' as const
+            };
 
   return {
     health: { value: hp, from: 'bound' },

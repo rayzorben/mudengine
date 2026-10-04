@@ -161,7 +161,13 @@ function choice(on: AutomationConfig = config) {
     } as unknown as BlessingChoiceParts['world'],
     errands: {
       fitness: (state) => `ac ${state.progress.armourClass} dr ${state.progress.damageResist}`,
-      realmClass: () => ({ combat: 4, magery: null, family: 'greatermud', attack: PLAIN_ATTACK })
+      realmClass: () => ({
+        combat: 4,
+        magery: null,
+        mageryType: null,
+        family: 'greatermud',
+        attack: PLAIN_ATTACK
+      })
     },
     setup: {
       blessed: (_bare, set) => ({

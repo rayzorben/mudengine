@@ -11,7 +11,7 @@
 import { HAZARD_ABILITY } from './abilities';
 import type { Vitals } from './character';
 import { magicResistance, scaledPower } from './menace';
-import { castOdds, type ProwessSheet } from './prowess';
+import { castOdds, MAGERY, type ProwessSheet } from './prowess';
 import type { RealmFamily } from './realm';
 import {
   castsOnOthers,
@@ -22,9 +22,6 @@ import {
 } from './spellcraft';
 import type { WorldSpell } from './world';
 
-/** The server's `SpellMageryType.Mystic`: a class of it casts from kai (`Player.cs:2373`). */
-export const MYSTIC_MAGERY = 5;
-
 /** The pool a book is spent from: the wire's word, else the class row's magery type; null unknown. */
 export function poolOf(
   stated: Vitals['manaType'],
@@ -32,7 +29,7 @@ export function poolOf(
 ): Vitals['manaType'] {
   if (stated !== null) return stated;
   if (mageryType === undefined || mageryType === 0) return null;
-  return mageryType === MYSTIC_MAGERY ? 'KAI' : 'MA';
+  return mageryType === MAGERY.mystic ? 'KAI' : 'MA';
 }
 
 /** `Spell.GetMagicResModifierByValue`'s pivot: the resistance at which a cast lands as stated. */

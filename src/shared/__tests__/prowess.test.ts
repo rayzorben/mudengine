@@ -6,6 +6,7 @@ import {
   castOdds,
   critChance,
   dodge,
+  MAGERY,
   regeneration,
   martialRoundDamage,
   roundDamage,
@@ -277,15 +278,26 @@ describe('regeneration — Player.cs:4813 and :4863', () => {
   });
 
   it('answers no mana figure for a class that casts nothing', () => {
-    expect(regeneration(SHEET, 60, 'greatermud')?.mana).toBeNull();
+    expect(regeneration(SHEET, MAGERY.mage, 'greatermud')?.mana).toBeNull();
   });
 
-  it('computes mana off the stat the caller names', () => {
-    const caster = { ...SHEET, mageryLevel: 3 };
+  it('computes mana off the stat the class magery type names (GetBaseMARegen)', () => {
+    const caster = { ...SHEET, mageryLevel: 3, intellect: 60, willpower: 40, charm: 80 };
     // (10+20) x 60 x (3+2) / 1650 = 9000/1650 = 5
-    expect(regeneration(caster, 60, 'greatermud')?.mana).toEqual({ value: 5, from: 'bound' });
-    // And nothing at all when the caller cannot say which stat: a figure off
-    // the wrong stat is worse than an absence.
+    expect(regeneration(caster, MAGERY.mage, 'greatermud')?.mana).toEqual({
+      value: 5,
+      from: 'bound'
+    });
+    // WIL 40: 6000/1650 = 3; the mean 50: 7500/1650 = 4; CHM 80: 12000/1650 = 7
+    expect(regeneration(caster, MAGERY.priest, 'greatermud')?.mana?.value).toBe(3);
+    expect(regeneration(caster, MAGERY.druid, 'greatermud')?.mana?.value).toBe(4);
+    expect(regeneration(caster, MAGERY.bard, 'greatermud')?.mana?.value).toBe(7);
+    // A Mystic's tick is a flat 1.
+    expect(regeneration(caster, MAGERY.mystic, 'greatermud')?.mana).toEqual({
+      value: 1,
+      from: 'bound'
+    });
+    // The type unknown: a figure off the wrong stat is worse than an absence.
     expect(regeneration(caster, null, 'greatermud')?.mana).toBeNull();
   });
 

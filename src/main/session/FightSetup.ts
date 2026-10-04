@@ -86,7 +86,7 @@ export class FightSetup {
   ): FightCharacter | null {
     const { hp, mana, manaMax } = state.vitals;
     if (state.vitals.hpMax === null) return null;
-    const { combat, magery, family, attack } = this.errands.realmClass(verb);
+    const { combat, magery, mageryType, family, attack } = this.errands.realmClass(verb);
     const read = prowessSheetOf(state, { combat, magery });
     const blessed = set !== undefined && set !== null;
     const player = blessed
@@ -105,7 +105,7 @@ export class FightSetup {
     if (hpMax <= 0) return null;
     const health = at === 'rested' ? hpMax : hp;
     if (health === null) return null;
-    const regen = regeneration(sheet, null, family);
+    const regen = regeneration(sheet, mageryType, family);
     const roundCap = tuning().menace.survivalRoundCap;
     return {
       hp: health,
@@ -154,7 +154,7 @@ export class FightSetup {
               });
         return kill === null || subject.hp === undefined
           ? null
-          : { perRound: subject.hp / kill.rounds, manaPerRound: (kill.mana ?? 0) / kill.rounds };
+          : { perRound: subject.hp / kill.rounds, manaPerRound: kill.mana ?? 0 };
       })
     };
   }
