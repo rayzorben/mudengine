@@ -1123,7 +1123,7 @@ export class SessionManager {
     const legs = () => ({
       ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
       ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light },
-      vocabulary: this.vocabulary
+      ...{ vocabulary: this.vocabulary, combat: this.combat }
     });
     const trip = { modules: legs, release: releaseErrand };
     // The gear after a death, and a fetch from a stash: one walk and one pick-up (`Collect`).

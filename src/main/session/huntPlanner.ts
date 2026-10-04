@@ -5,6 +5,7 @@
  * at a time and a light bought for its rooms), and where the rate it paid is
  * kept. Out of `SessionManager`'s constructor whole, as `trainPlanner.ts` is.
  */
+import type { AutoCombat } from '../automation/AutoCombat';
 import type { HuntPlanner } from '../automation/AutoHunt';
 import type { LoopRunner } from '../automation/LoopRunner';
 import type { Walker } from '../automation/Walker';
@@ -18,6 +19,7 @@ import type { Travel } from './Travel';
 export interface HuntPlannerModules {
   tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
   errands: Pick<Errands, 'huntingGrounds' | 'planFromHere'>;
+  combat: Pick<AutoCombat, 'huntFor'>;
   belongings: Pick<Belongings, 'rememberHuntRate'>;
   walker: Pick<Walker, 'start' | 'walking'>;
   loops: Pick<LoopRunner, 'progress'>;
@@ -53,6 +55,7 @@ export function huntPlanner(parts: HuntPlannerParts): HuntPlanner {
     stopLoop: parts.stopLap,
     moveInFlight: () => m().tracker.pendingMoves > 0,
     walking: () => m().walker.walking,
-    busy: parts.busy
+    busy: parts.busy,
+    fightFor: (names) => m().combat.huntFor(names)
   };
 }

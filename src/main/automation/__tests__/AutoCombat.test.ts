@@ -3237,6 +3237,34 @@ describe('saying why it did not open a fight', () => {
     ]);
   });
 
+  /* 2026-10-04: a hunt sent to the drunken gamblers walked past them; the realm does not say they attack first. */
+  it("opens on the hunt's monsters the realm does not say attack first, and on nothing else of that kind", () => {
+    const auto = make(combat());
+    auto.onCharacter(room(mob('short drunken gambler', 'passive')));
+    drain();
+    expect(sent).toEqual([]);
+    auto.huntFor(['drunken gambler']);
+    auto.onCharacter(
+      room(mob('large drunken brawler', 'passive'), mob('short drunken gambler', 'passive'))
+    );
+    drain();
+    expect(sent).toEqual(['a short drunken gambler']);
+    // Ended: the hunt's monsters go back to the engage policy.
+    sent.length = 0;
+    auto.huntFor([]);
+    auto.onCharacter(room(mob('short drunken gambler', 'passive')));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it("never opens on a hunt's monster that costs alignment", () => {
+    const auto = make(combat());
+    auto.huntFor(['young gypsy girl']);
+    auto.onCharacter(room(mob('young gypsy girl', 'passive', { costly: 'always' })));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
   it('names a row set to never attack', () => {
     const auto = make(combat({ mobRules: [{ mob: 'thug', treat: 'never' }] }));
     auto.onCharacter(room(mob('thug', 'hostile')));
