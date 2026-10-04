@@ -81,7 +81,12 @@ import { openingRefusal } from '../../shared/danger';
 import { avoided, type FledEntry } from '../../shared/fled';
 import type { Block } from '../../shared/blocks';
 import { NO_INSTANT_SPELLS, type InstantSpellLore } from '../../shared/lore';
-import { ownAlignment, type CharacterState, type RoomOccupant } from '../../shared/character';
+import {
+  ownAlignment,
+  sameVisit,
+  type CharacterState,
+  type RoomOccupant
+} from '../../shared/character';
 import { attackAim, castAimedAt, occupantNamed } from '../../shared/aim';
 import { commandOf, REREAD_ROOM } from '../../shared/commands';
 import {
@@ -123,6 +128,7 @@ import { attacksOnSight } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import { BrokenFight } from './BrokenFight';
 
 /**
  * `notice`, and `needBook` — the spellbook never read while *Auto Choose Best
@@ -426,6 +432,8 @@ export class AutoCombat implements SessionModule {
    * and the realm's table cannot say which: the next line does.
    */
   private offBy: string | null = null;
+  /** The fight a heal or any other command broke, hit back until it is engaged again. */
+  private readonly broken = new BrokenFight();
   /** Set while an escape is in flight; nothing opens a fight through it. */
   private retreating = false;
   /** True while the character is under a timed spell it must walk out from. See `noteMoveOnly`. */
@@ -631,6 +639,7 @@ export class AutoCombat implements SessionModule {
     this.spell.reset();
     this.sentAttack = null;
     this.offBy = null;
+    this.broken.forget();
     this.rounds = 0;
     this.state = null;
     this.opened.clear();
@@ -873,6 +882,7 @@ export class AutoCombat implements SessionModule {
       case 'combat-status':
         this.spell.heard(block, this.state);
         if (block.groups['status'] !== 'Off') return;
+        this.broken.off(this.state);
         switch (this.offAnswering(answering)) {
           case 'attack':
             return;
@@ -997,6 +1007,7 @@ export class AutoCombat implements SessionModule {
      * last one shrugged off. MegaMUD's `ClearOnceEngaged`, read literally.
      */
     this.spell.onTarget(state.combat.target);
+    this.broken.observe(state);
 
     if (!this.acting) return;
     if (state.phase !== 'in-game') return;
@@ -1027,7 +1038,7 @@ export class AutoCombat implements SessionModule {
        * and its room's own order decides. On the arrival count as well as the
        * name, since the desert is a thousand rooms called `Scorching Desert`.
        */
-      if (was.room.name !== state.room.name || was.room.arrival !== state.room.arrival) {
+      if (!sameVisit(was.room, state.room)) {
         this.focus = null;
       }
       /*
@@ -1107,7 +1118,10 @@ export class AutoCombat implements SessionModule {
      * the last listing said, which is why every attacker resolves to an
      * occupant here.
      */
-    const swinging: Array<{ name: string; mob?: MobEntity | undefined }> = state.combat.attackers
+    const swinging: Array<{ name: string; mob?: MobEntity | undefined }> = [
+      ...state.combat.attackers,
+      ...this.broken.owedIn(state)
+    ]
       .filter(
         (name) => !this.isPlayer(state, name) && hitsBack(mobRuleFor(this.config.mobRules, name))
       )
@@ -1965,14 +1979,15 @@ export class AutoCombat implements SessionModule {
    * (`Spell.cs:2082`), and a blessing lapsing mid-fight is cast into one:
    * `gbls` 167ms behind `aa dustdevil` ended the fight, the cooldown refused
    * the re-engage for four seconds, and the dustdevil's round went unanswered
-   * (todo 03, 2026-09-23). Released for the monster the fight was on, so the
-   * state the Off produces re-opens it; that `aa` meets no fight, so it is
-   * answered by `*Combat Engaged*` alone and cannot feed itself.
+   * (todo 03, 2026-09-23). Released for every monster the fight was on, which
+   * `retaliation` then hits back (`BrokenFight`, todo 20); that `aa` meets no
+   * fight, so it is answered by `*Combat Engaged*` alone and cannot feed itself.
    */
   private fightBrokenBy(command: string | null): void {
     if (command === null) return;
-    const fought = this.state?.combat.target ?? null;
-    if (fought !== null) this.opened.delete(mobKey(fought));
+    for (const fought of this.broken.broke()) this.opened.delete(mobKey(fought));
+    // A typed `break` ended it on purpose: nothing is owed back once the stand-down lapses.
+    if (commandOf(command) === 'Break') this.broken.forget();
     if (this.focus !== null) this.opened.delete(this.focus);
   }
 
