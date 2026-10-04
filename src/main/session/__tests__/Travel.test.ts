@@ -141,6 +141,7 @@ function travel(
     dropTyped: vi.fn(),
     notice: (message) => void notices.push(message),
     decided: (decision) => void decisions.push(decision),
+    hangUpTakesOver: overrides.hangUpTakesOver ?? (() => false),
     fled: overrides.fled ?? (() => []),
     keepFled: overrides.keepFled ?? (() => {}),
     driven: overrides.driven ?? (() => false),

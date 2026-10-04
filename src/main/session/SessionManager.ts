@@ -1571,8 +1571,7 @@ export class SessionManager {
      * *hurt* from its first status line; `configure` re-applies on reload.
      */
     this.loops.configure(automation.health, automation.movement, automation.walk);
-    // Built once every module it drives exists; the callbacks above reach it
-    // only when something happens, which is after the constructor.
+    // Built once every module it drives exists; its callbacks run only after the constructor.
     this.travel = new Travel(
       {
         tracker: this.tracker,
@@ -1599,6 +1598,7 @@ export class SessionManager {
         fled,
         keepFled: (entries) => this.belongings.rememberFled(entries),
         driven: () => this.extensions.driving,
+        hangUpTakesOver: (state) => this.safety.takesOver(state),
         switchAutomation: (name, on) => this.sink.switchAutomationNow?.(name, on) ?? false,
         ...reports
       }
