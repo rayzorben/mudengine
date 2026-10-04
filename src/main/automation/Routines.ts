@@ -489,6 +489,19 @@ export class Routines implements SessionModule {
   }
 
   /**
+   * The record of the character was thrown away at the player's word
+   * (`SessionManager.forgetCharacter`), and with it the book and the quest
+   * counters this session had already read: each is null again, so each is
+   * owed one more listing. The book is asked now, as on entry; the counters
+   * wait for whatever needs them, as they always do.
+   */
+  characterForgotten(state: CharacterState): void {
+    this.askedBook = null;
+    this.askedAbilities = false;
+    this.askSpellbook(state);
+  }
+
+  /**
    * The quest counters, once per session, when something needs them.
    *
    * `abil` is the only place on the wire a quest counter is ever stated
@@ -552,7 +565,9 @@ export class Routines implements SessionModule {
    * correction that ran silently would leave "asked and nothing came back"
    * as the visible story. `user-learns` is a level-up putting a spell in the
    * book between listings; the re-ask is what replaces the appended
-   * one-name row with the server's own listing.
+   * one-name row with the server's own listing. A scroll read is the same
+   * change, and `You already know how to cast` says the book holds a spell
+   * the listing may not.
    */
   onBlock(block: Block): void {
     for (const fact of Object.keys(READ) as StaleFact[]) {
@@ -582,9 +597,7 @@ export class Routines implements SessionModule {
       this.events.notice?.(t('automation.routines.spellbookCorrected', { book }));
       return;
     }
-    if (block.type === 'user-learns' && this.askedBook !== null) {
-      const kind = block.groups?.['kind'];
-      if (kind !== 'power' && kind !== 'spell') return;
+    if (changesTheBook(block) && this.askedBook !== null) {
       this.queue.enqueue({
         command: this.askedBook,
         priority: 'probe',
@@ -865,5 +878,24 @@ export class Routines implements SessionModule {
      * See `onPlayersHere`.
      */
     this.lookAt();
+  }
+}
+
+/**
+ * A sentence that says the book holds a spell the last listing may not: a
+ * spell or power learned at a level, a scroll read into the book, or a scroll
+ * read for a spell the book already has.
+ */
+function changesTheBook(block: Block): boolean {
+  switch (block.type) {
+    case 'user-learns': {
+      const kind = block.groups?.['kind'];
+      return kind === 'power' || kind === 'spell';
+    }
+    case 'user-reads-spell':
+    case 'user-reads-known':
+      return true;
+    default:
+      return false;
   }
 }

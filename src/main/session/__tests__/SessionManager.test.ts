@@ -8451,3 +8451,36 @@ describe('a monster in the room a step arrives in', () => {
     expect(manager.character.combat.blows).toBe(0);
   });
 });
+
+/*
+ * Todo 24: the player answered the reset question after `spells` had listed
+ * the new character's book, and the forget put the book back to never read.
+ * Nothing asked again, so a scroll read into it appended nothing, and a
+ * planner reading the book bought the same scroll 40 times.
+ */
+describe('forgetting the character that was here before', () => {
+  it('lists the book again, so the new character has one', async () => {
+    const { sink } = collect();
+    manager = build(sink, { automation: quiet });
+    manager.useRealm(NO_REALM_PLAYERS, { ...NO_RECORD, forget: () => true });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const received: Buffer[] = [];
+    socket.on('data', (chunk) => received.push(chunk));
+    const asked = (): number =>
+      Buffer.concat(received).toString('latin1').split('spells\r\n').length - 1;
+
+    socket.write('[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => asked() === 1);
+    socket.write('You have no spells.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.spellbook !== null);
+    expect(manager.character.spellbook).toEqual([]);
+
+    expect(manager.forgetCharacter()).toBe(true);
+    expect(manager.character.spellbook).toBeNull();
+    await until(() => asked() === 2);
+    socket.write('You have no spells.\r\n[HP=100/MA=50]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.spellbook !== null);
+    expect(manager.character.spellbook).toEqual([]);
+  });
+});

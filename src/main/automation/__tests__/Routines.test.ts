@@ -535,6 +535,28 @@ describe('reading the spellbook', () => {
     expect(commandsIn(queue).filter((command) => command === 'powers')).toHaveLength(1);
   });
 
+  // Todo 24: buy, read, check the book.
+  it.each(['user-reads-spell', 'user-reads-known'])('re-asks on %s', (type) => {
+    const { routines, queue } = make();
+    routines.onCharacter(withResource('MA'));
+    queue.cancel((intent) => intent.command === 'spells');
+    routines.onBlock({ type, groups: { name: 'magic missile' }, at: Date.now() } as never);
+    expect(commandsIn(queue).filter((command) => command === 'spells')).toHaveLength(1);
+  });
+
+  it('asks the book again once the character is forgotten, and not before', () => {
+    const { routines, queue } = make();
+    routines.onCharacter(withResource('MA'));
+    expect(commandsIn(queue)).toContain('spells');
+    // Off the queue, so a second ask is a second ask rather than a coalesce.
+    queue.cancel((intent) => intent.command === 'spells');
+    routines.onCharacter(withResource('MA'));
+    expect(commandsIn(queue)).not.toContain('spells');
+
+    routines.characterForgotten(withResource('MA'));
+    expect(commandsIn(queue).filter((command) => command === 'spells')).toHaveLength(1);
+  });
+
   it('asks nothing with automation off', () => {
     const { routines, queue } = make({ enabled: false });
     routines.onCharacter(withResource('KAI'));

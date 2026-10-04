@@ -3537,10 +3537,10 @@ export class SessionManager {
    */
   forgetCharacter(): boolean {
     if (!this.belongings.forget()) return false;
-    // The four persisted fields are re-seeded from the record that is now
-    // empty; the room, the roster and the phase are this session's own and are
-    // left exactly as they are.
+    // The persisted fields are re-seeded from the now empty record, and the
+    // book is listed again; the room, the roster and the phase are left as they are.
     this.tracker.forgetBelongings();
+    this.routines.characterForgotten(this.tracker.current);
     this.statsBaseline.useStore(this.belongings);
     this.questWatch.reset();
     this.publishCharacter();
