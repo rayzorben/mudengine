@@ -19,6 +19,7 @@ import {
   type RouteStep
 } from '../../../shared/world';
 import type { CharacterState } from '../../../shared/character';
+import type { WalkKind } from '../../../shared/walk';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { CommandQueue } from '../CommandQueue';
@@ -26,8 +27,8 @@ import type { WalkerEvents, WalkInFlight } from './ports';
 
 /** What the lever errand asks of the walk it interrupts, answered by `Walker`. */
 export interface LeversWalk extends Pick<WalkInFlight, 'quiet' | 'stop' | 'stepAgain'> {
-  /** Whether this walk replans by distance alone (a lap's leg). */
-  shortest(): boolean;
+  /** What this walk is for, which its re-plans are planned as. */
+  kind(): WalkKind;
   /** The journey's last step: where an errand comes back to. */
   destination(): RouteStep | undefined;
   /** `route` in place of the plan, at a fresh step, and carried on from there. */
@@ -155,7 +156,7 @@ export class Levers {
     const errand = this.errand;
     if (errand === null) return false;
     const to = errand.rooms[0]?.at ?? errand.back;
-    const on = this.events.replan?.(to, this.walk.shortest());
+    const on = this.events.replan?.(to, this.walk.kind());
     if (on === undefined || typeof on === 'string' || on.blocked) {
       /*
        * The way on is gone: the errand is given up as a fresh walk would hold
@@ -369,7 +370,7 @@ export class Levers {
     let best: { at: RoomId; route: Route } | null = null;
     let why: string | null = null;
     for (const at of rooms.keys()) {
-      const there = this.events.replan?.(at, this.walk.shortest());
+      const there = this.events.replan?.(at, this.walk.kind());
       if (there === undefined) return false;
       if (typeof there === 'string') {
         why ??= there;
@@ -480,7 +481,7 @@ export class Levers {
           : t('automation.walk.leverNext', { roomCount: errand.rooms.length })
       );
     }
-    const on = this.events.replan?.(to, this.walk.shortest());
+    const on = this.events.replan?.(to, this.walk.kind());
     if (on === undefined || typeof on === 'string') {
       this.errands = [];
       this.walk.stop(on ?? t('automation.walk.refusalNoRoute'));
@@ -585,7 +586,7 @@ export class Levers {
     if (state === undefined) return false;
 
     // Leg one from here; the rest between rooms the character is not in yet.
-    const first = this.events.replan?.(chain[0]!.at, this.walk.shortest());
+    const first = this.events.replan?.(chain[0]!.at, this.walk.kind());
     if (first === undefined) return false;
     let why: string | null = typeof first === 'string' ? first : null;
     let walkable = typeof first !== 'string' && !first.blocked;
@@ -593,7 +594,7 @@ export class Levers {
       const between = this.events.routeBetween?.(
         chain[leg - 1]!.at,
         chain[leg]!.at,
-        this.walk.shortest()
+        this.walk.kind()
       );
       if (between === undefined || typeof between === 'string') {
         why ??= typeof between === 'string' ? between : null;
@@ -607,7 +608,7 @@ export class Levers {
     }
     // And back to the gate, or the levers buy a room nothing can leave.
     if (walkable) {
-      const home = this.events.routeBetween?.(chain.at(-1)!.at, step.from, this.walk.shortest());
+      const home = this.events.routeBetween?.(chain.at(-1)!.at, step.from, this.walk.kind());
       if (home === undefined || typeof home === 'string' || home.blocked) {
         why ??= typeof home === 'string' ? home : (home?.reason ?? null);
         walkable = false;

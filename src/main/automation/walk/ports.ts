@@ -6,7 +6,7 @@
  * Each unit is handed the `Pick` of either that it calls. The why is
  * `mudengine-automation` › `parts/walking.md`.
  */
-import type { WalkProgress } from '../../../shared/walk';
+import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
 import type {
   Direction,
@@ -256,10 +256,11 @@ export interface WalkerEvents {
    * Returns the route, or the reason there is none — reported as the reason
    * the walk stopped, because a journey that cannot be re-planned is over.
    *
-   * `shortest` is the walk's own `start` option, handed back so a lap's leg
-   * is re-planned by distance as it was first planned.
+   * `kind` is the walk's own `start` option, handed back so a lap's leg is
+   * re-planned by distance and a trip round a room run from, as each was
+   * first planned.
    */
-  replan?(to: RoomId, shortest: boolean): Route | string;
+  replan?(to: RoomId, kind: WalkKind): Route | string;
   /**
    * Every lever the realm says opens this exit, and where each is pulled.
    *
@@ -281,9 +282,9 @@ export interface WalkerEvents {
    * first lever, and legs two onwards start somewhere the character is not yet.
    *
    * Absent means the run cannot be checked, and an unchecked all-or-nothing
-   * journey is not one to start. `shortest` as for `replan`.
+   * journey is not one to start. `kind` as for `replan`.
    */
-  routeBetween?(from: RoomId, to: RoomId, shortest: boolean): Route | string;
+  routeBetween?(from: RoomId, to: RoomId, kind: WalkKind): Route | string;
 }
 
 /** The walk in flight, as the units `Walker` asks see it. */

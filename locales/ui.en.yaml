@@ -4672,6 +4672,9 @@ session:
     readSettledByLocate: The game answered a later question before "{command}", so that re-read is
       not coming. Nothing was held up by it.
     exitBackOpen: The room lists {direction} again, so routes will use it once more.
+    roundRanFrom: This trip goes round {rooms}, where you ran from a fight a few minutes ago.
+    throughRanFrom: This trip goes through {rooms}, where you ran from a fight a few minutes ago.
+      There is no safe way round.
     exitRefused: The world data says there is an exit {direction}, but the game refuses it; routes
       will avoid it.
     exitShut: The way {direction} is closed, not missing; routes will avoid it until the room lists

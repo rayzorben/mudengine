@@ -152,12 +152,12 @@ export interface Traveller {
    */
   keepOut?: { words: readonly string[]; allowed?: readonly string[] };
   /**
-   * Rooms this character ran out of for its health a short while ago (todo 73):
-   * no route crosses one and no hunting ground behind one is reached, until
-   * `tuning.combat.shunRoomMs` has passed. Soul ran from a mad wizard, rested
-   * to full in the next room and walked back in twice, and died. A route's own
-   * ends are let through (`route`), as a place kept out of is, and a gates-open
-   * search crosses one to say it is the block (`ranFrom`).
+   * Rooms this character ran out of for its health a short while ago (todo 73),
+   * set on a trip's traveller alone (todo 19): the route goes round one until
+   * `tuning.combat.shunRoomMs` has passed, where a way round is survivable, and
+   * through it where none is (`roundRanFrom`). Soul ran from a mad wizard,
+   * rested to full in the next room and walked back in twice, and died. A
+   * route's own ends are let through.
    */
   shunned?: ReadonlySet<RoomId>;
   /**
@@ -1119,7 +1119,7 @@ export class Router {
     const open = (exit: WorldExit | PortalExit): boolean => {
       if (who === undefined) return true;
       const next = this.rooms.get(this.beyond(exit));
-      return next === undefined || (this.keptOut(who, exit, next) === null && !ranFrom(who, next));
+      return next === undefined || this.keptOut(who, exit, next) === null;
     };
     const wall = tuning().world.wallCost;
     const passable = (requirement: Requirement | null): boolean => {
@@ -1249,16 +1249,52 @@ export class Router {
       };
     }
     if (from === to) return { steps: [], cost: 0, blocked: false };
-    // A room run from is let through where the character stands in it, and where the player asked
-    // for it on the panel; a walk nobody watches does not go back in (todo 73).
-    const asked = options.alternatives === true;
-    if (traveller.shunned?.has(from) === true || (asked && traveller.shunned?.has(to) === true)) {
-      const shunned = new Set(traveller.shunned);
-      shunned.delete(from);
-      if (asked) shunned.delete(to);
-      traveller = { ...traveller, shunned };
-    }
+    return this.roundRanFrom(from, to, goal, traveller, options);
+  }
 
+  /**
+   * The way round the rooms this traveller ran from (`Traveller.shunned`, a
+   * trip's alone), where it is survivable; otherwise the way through them.
+   *
+   * Todos 73 and 19, the user (2026-10-03): a room run from is kept out of
+   * only when another way round it exists that the engine prices as
+   * survivable, which is a way under `wallCost`: no door it cannot force, no
+   * lair expected to kill. A trip with no such way goes through as planned,
+   * and says so (`Route.ranFrom`). The route's own ends are let through. The
+   * way through is planned first, so a trip that meets none of them pays for
+   * one search.
+   */
+  private roundRanFrom(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    traveller: Traveller,
+    options: RouteOptions
+  ): Route {
+    const fled = new Set(traveller.shunned);
+    fled.delete(from);
+    fled.delete(to);
+    const plain: Traveller = { ...traveller, shunned: undefined };
+    const through = this.wayFor(from, to, goal, plain, options);
+    if (fled.size === 0 || through.blocked) return through;
+    const met = new Map<RoomId, string>();
+    for (const step of through.steps) if (fled.has(step.to)) met.set(step.to, step.name);
+    if (met.size === 0) return through;
+    const rooms = [...met].map(([id, name]) => ({ id, name }));
+    const round = this.wayFor(from, to, goal, { ...plain, shunned: fled }, options);
+    return !round.blocked && round.cost < tuning().world.wallCost
+      ? { ...round, ranFrom: { round: true, rooms } }
+      : { ...through, ranFrom: { round: false, rooms } };
+  }
+
+  /** `route` past its checks and the rooms run from: the kept-out choice, then the plan. */
+  private wayFor(
+    from: RoomId,
+    to: RoomId,
+    goal: WorldRoom,
+    traveller: Traveller,
+    options: RouteOptions
+  ): Route {
     /*
      * **The ways and places kept out of** (todo 806). A walk that starts or
      * ends inside one may cross it. For a reader, the way through is planned
@@ -2681,9 +2717,6 @@ export class Router {
       const kept = into === undefined ? null : this.keptOut(traveller, exit, into);
       if (kept !== null) {
         blocks.unshift({ kind: 'keptOut', at: prev, to: cursor, name: into!.name, word: kept });
-      }
-      if (into !== undefined && ranFrom(traveller, into)) {
-        blocks.unshift({ kind: 'ranFrom', at: prev, to: cursor, name: into.name });
       }
       const blocked = edgeBlock(exit.requirement, traveller);
       if (blocked) {

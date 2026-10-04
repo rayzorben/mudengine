@@ -246,8 +246,8 @@ describe('running from a fight', () => {
     expect(kept.map((list) => list.map((entry) => entry.name))).toEqual([['black ooze']]);
   });
 
-  /* Todo 73: and the room it ran out of is kept out of, so nothing walks it back in. */
-  it('keeps the room it ran out of off every route for a while', () => {
+  /* Todo 73: and the room it ran out of is kept out of a trip's route for a while (todo 19). */
+  it('marks the room it ran out of for a trip to go round', () => {
     const state = hit(8, 'Dank Room', 1);
     const { travel: moving, parts } = travel(state, 'none', true, undefined, {
       settings: plain

@@ -828,7 +828,7 @@ export class SessionManager {
        * A route that stood still for a fight plans again from wherever the fight left the
        * character: the answer needs the realm graph, the purse and the refused edges.
        */
-      replan: (to, shortest) => this.travel.replan(to, shortest),
+      replan: (to, kind) => this.travel.replan(to, kind),
       moveOnly,
       // Where a draw put the character, when the room cannot say (`WalkerEvents.locate`).
       locate: () => this.claims.askWhereIAm(),
@@ -845,7 +845,7 @@ export class SessionManager {
        * levers spread over several rooms can be walked at all. Priced by the
        * same traveller, so the check and the walk cannot disagree.
        */
-      routeBetween: (from, to, shortest) => this.errands.routeBetween(from, to, shortest),
+      routeBetween: (from, to, kind) => this.errands.routeBetween(from, to, kind),
       // A walk that engages pauses where there is something worth fighting, so
       // the wanderer met mid-corridor is met, not passed — and so is the second
       // monster in a room the first was just killed in. Asked of auto-combat
@@ -1079,7 +1079,7 @@ export class SessionManager {
       {
         here: () => roomAddress(this.tracker.current.room),
         shopRoom: (item) => this.errands.shopRoom(item),
-        routeTo: (room) => this.errands.planFromHere(room),
+        routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
         priceAt: (item, shop) => this.errands.priceAt(item.name, shop),
         cashFrom: (need, then) => {
           const state = this.tracker.current;
@@ -1094,18 +1094,12 @@ export class SessionManager {
           );
         },
         walk: (route) =>
+          // A trip, unsaid and not picked up after a fight: `Supplies` starts
+          // afresh from the next pack listing, which is what it was ever about.
           this.walker.start(route, this.tracker.current, {
+            ...ERRAND_LEG,
             quiet: true,
-            asked: false,
-            // An errand is a walk automation chose: it waits to be well, and
-            // it waits for a fight to be over — the loop's own answers.
-            holdWhenHurt: true,
-            resumeAfterFight: false,
-            whileFighting: false,
-            // And it is not owed back across a lost connection: `Supplies`
-            // starts afresh from the next pack listing, which is the fact the
-            // errand was ever about.
-            resumeAfterLoss: false
+            resumeAfterFight: false
           }),
         moveInFlight: () => this.tracker.pendingMoves > 0,
         walkingTo: () => this.walker.remaining.at(-1)?.to ?? null,
@@ -1214,7 +1208,7 @@ export class SessionManager {
          */
         printsCounters: () =>
           this.vocabulary.family === 'greatermud' || this.tracker.current.abilities !== null,
-        routeTo: (room) => this.errands.planFromHere(room),
+        routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
         walk: (route) => this.walker.start(route, this.tracker.current, ERRAND_LEG),
         stopWalking: (reason) => {
           if (this.walker.walking && !this.travel.walkIsAsked) this.walker.stop(reason);
@@ -1466,7 +1460,7 @@ export class SessionManager {
           if (roomAddress(this.tracker.current.room) === null) return t('session.loop.unknownRoom');
           const found = this.errands.findStop(stop);
           if (typeof found === 'string') return found;
-          return this.errands.planFromHere(roomId(found.map, found.room), {}, true);
+          return this.errands.planFromHere(roomId(found.map, found.room), {}, 'lap');
         },
         /*
          * Quietly: the loop is what is happening, and the loop narrates it.
@@ -1516,7 +1510,7 @@ export class SessionManager {
             // is when it is back — the same recovery a fight gets.
             resumeAfterLoss: false,
             // And by distance, however the walker comes to re-plan it.
-            shortest: true
+            kind: 'lap'
           }),
         moveInFlight: () => this.tracker.pendingMoves > 0,
         // A rest this client asked for a millisecond ago. The lap waits a beat
@@ -3373,7 +3367,7 @@ export class SessionManager {
 
   /** The walk between two rooms with what this character holds now. See `Errands.routeBetween`. */
   leg(from: RoomId, to: RoomId, options: RouteOptions = {}): Route | string {
-    return this.errands.routeBetween(from, to, false, options);
+    return this.errands.routeBetween(from, to, 'walk', options);
   }
 
   /** What a lap's leg costs to move. See `Errands.lapTraveller`. */
