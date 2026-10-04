@@ -9,6 +9,7 @@ import {
   normalizeMobRules,
   peaceOf,
   stanceHere,
+  stopsToKill,
   treated,
   type MobRule
 } from '../mobRules';
@@ -59,6 +60,22 @@ describe('a row may say what a monster is', () => {
     };
     expect(treated(banded, 'friend')).toEqual({ mob: 'rat', treat: 'friend' });
     expect(treated(banded, 'last')).toEqual({ ...banded, treat: 'last' });
+  });
+
+  it('reads stop to kill off a banded row only', () => {
+    const rows = normalizeMobRules([
+      { mob: 'Cave Bear', treat: 'high', stopToKill: true },
+      { mob: 'town guard', treat: 'never', stopToKill: true },
+      { mob: 'rat', treat: 'low', stopToKill: 'yes' }
+    ]);
+    expect(rows).toEqual([
+      { mob: 'cave bear', treat: 'high', stopToKill: true },
+      { mob: 'town guard', treat: 'never' },
+      { mob: 'rat', treat: 'low' }
+    ]);
+    expect(stopsToKill(rows, 'the cave bear')).toBe(true);
+    expect(stopsToKill(rows, 'town guard')).toBe(false);
+    expect(stopsToKill(rows, 'rat')).toBe(false);
   });
 
   it('hits back what it would run or hang up from, and never a friend or a never', () => {
