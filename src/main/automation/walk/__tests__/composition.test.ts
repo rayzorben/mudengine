@@ -28,10 +28,18 @@ afterEach(() => {
 });
 
 describe('the walker puts its units down', () => {
-  // Mutants: the order reversed; any one of the four left out.
+  // Mutants: the order reversed; any one of the six left out. The move timing
+  // and the run's round clock first, where `answers` was cleared (todo 00).
   it('resets them in the order their fields were cleared before the carve', () => {
     const resets = [...body(/^ {2}reset\(\): void/).matchAll(/this\.(\w+)\.reset\(\)/g)];
-    expect(resets.map((call) => call[1])).toEqual(['holds', 'barriers', 'levers', 'sneak']);
+    expect(resets.map((call) => call[1])).toEqual([
+      'stepTimes',
+      'offRounds',
+      'holds',
+      'barriers',
+      'levers',
+      'sneak'
+    ]);
   });
 
   // Mutant: stop keeps the errand.
