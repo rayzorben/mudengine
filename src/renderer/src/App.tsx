@@ -54,7 +54,6 @@ import { Splitter } from './components/Splitter';
 import { useCardDrag } from './hooks/useCardDrag';
 import { useCommandPalette } from './hooks/useCommandPalette';
 import { useHomeBrowser } from './hooks/useHomeBrowser';
-import { useCardResize } from './hooks/useCardResize';
 import { useAutoLayout } from './hooks/useAutoLayout';
 import { useRailGrid } from './hooks/useRailGrid';
 import { useDensity } from './hooks/useDensity';
@@ -376,11 +375,9 @@ export default function App() {
   );
   const [resizing, setResizing] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
-  /* The card rail's grid, which a drop and the corner grip are measured against. */
+  /* The card rail's grid, which a drop and a resize are measured against. */
   const railGrid = useRailGrid();
   const drag = useCardDrag(cards, workspaceRef, railGrid.view);
-  // The corner grip on a rail card, the same shape as the float's, in whole cells.
-  const resize = useCardResize(cards, railGrid.view);
   const autoLayout = useAutoLayout(session, cards, railGrid.view);
 
   /** What each splitter measures, and the range a drag of it may move within. */
@@ -1228,7 +1225,6 @@ export default function App() {
   const { chromeFor, pinnedChrome, grabCard, floatCard } = useCardChrome(
     cards,
     drag,
-    resize,
     returnFocus,
     theme
   );
@@ -1252,9 +1248,9 @@ export default function App() {
         className="workspace"
         data-dragging={drag.state?.live ? 'true' : undefined}
         data-rail={railVisible ? 'open' : 'closed'}
-        // A splitter or a card's corner grip: either way the pointer is the
-        // animation, and no transition may lag behind it.
-        data-resizing={resizing || resize.active !== null ? 'true' : undefined}
+        // A splitter held: the pointer is the animation, and no transition
+        // may lag behind it. A card's resize handle says so on the root.
+        data-resizing={resizing ? 'true' : undefined}
         ref={workspaceRef}
         data-rail-side={railSide}
         data-tabs={showTabs ? tabSide : 'none'}

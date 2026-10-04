@@ -272,6 +272,17 @@ export function shippedSize(id: CardId): GridSize {
  */
 export const LEAST_CARD: GridSize = { w: 6, h: 4 };
 
+/** The smallest a float can be made, in fractions of the workspace. */
+export const MIN_FLOAT = { w: 0.12, h: 0.1 } as const;
+
+/** Where a float stands and how big it is, in fractions of the workspace. */
+export interface FloatBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 /**
  * A card lifted off the rail and left over the console.
  *
@@ -281,14 +292,10 @@ export const LEAST_CARD: GridSize = { w: 6, h: 4 };
  * entirely — the first time any of those changes. This is the same rule the
  * layout path already follows for columns.
  */
-export interface FloatState {
+export interface FloatState extends FloatBox {
   id: CardId;
   /** Stays in view whichever character is shown. See `CardLayoutApi.pin`. */
   pinned?: boolean;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
   /**
    * How solid the card is, 0–1. One number, two alphas.
    *
@@ -516,7 +523,12 @@ export interface CardLayoutApi extends CardLayout {
    */
   lift(id: CardId, at: { x: number; y: number }, size?: { w: number; h: number }): void;
   moveFloat(id: CardId, at: { x: number; y: number }): void;
-  sizeFloat(id: CardId, size: { w: number; h: number }): void;
+  /**
+   * A float's whole box at once: a handle on its left or top side moves the
+   * corner as it changes the size, and two writes in one tick would read the
+   * same stale layout.
+   */
+  sizeFloat(id: CardId, box: FloatBox): void;
   /** How solid the card is, 0–1. Drives both the fill and the text. */
   setSolidity(id: CardId, solidity: number): void;
   /**

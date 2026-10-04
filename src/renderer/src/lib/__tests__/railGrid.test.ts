@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { RESIZE_EDGES } from '../resizeEdge';
 import {
   arrange,
   bottomOf,
@@ -7,7 +8,8 @@ import {
   fitted,
   nearestFree,
   overlaps,
-  resizedWithin,
+  resizedBy,
+  resizedTo,
   type GridBox
 } from '../railGrid';
 
@@ -147,26 +149,73 @@ describe('the free spot nearest the pointer', () => {
   });
 });
 
-describe('dragging a card’s corner', () => {
+describe('resizing a card to a size', () => {
   const least = { w: 6, h: 4 };
 
   it('grows into empty cells', () => {
-    expect(resizedWithin(box(0, 0, 17, 12), { w: 22, h: 20 }, [], 40, least)).toEqual(
+    expect(resizedTo(box(0, 0, 17, 12), 'se', { w: 22, h: 20 }, [], 40, least)).toEqual(
       box(0, 0, 22, 20)
     );
   });
 
   it('stops at the card beside it and the card below it', () => {
     const taken = [box(20, 0, 10, 10), box(0, 16, 10, 10)];
-    expect(resizedWithin(box(0, 0, 17, 12), { w: 30, h: 30 }, taken, 40, least)).toEqual(
+    expect(resizedTo(box(0, 0, 17, 12), 'se', { w: 30, h: 30 }, taken, 40, least)).toEqual(
       box(0, 0, 20, 16)
     );
   });
 
   it('stops at the grid’s right edge and at the least size', () => {
-    expect(resizedWithin(box(30, 0, 8, 8), { w: 40, h: 1 }, [], 40, least)).toEqual(
+    expect(resizedTo(box(30, 0, 8, 8), 'se', { w: 40, h: 1 }, [], 40, least)).toEqual(
       box(30, 0, 10, 4)
     );
+  });
+});
+
+describe('dragging a card’s handle', () => {
+  const least = { w: 6, h: 4 };
+  const card = box(10, 10, 12, 8);
+
+  it('moves only the sides the handle is on', () => {
+    expect(resizedBy(card, 'e', { x: 3, y: 5 }, [], 40, least)).toEqual(box(10, 10, 15, 8));
+    expect(resizedBy(card, 's', { x: 3, y: 5 }, [], 40, least)).toEqual(box(10, 10, 12, 13));
+    expect(resizedBy(card, 'se', { x: 3, y: 5 }, [], 40, least)).toEqual(box(10, 10, 15, 13));
+  });
+
+  it('from the left or top, moves the spot and keeps the opposite side', () => {
+    expect(resizedBy(card, 'w', { x: -4, y: 0 }, [], 40, least)).toEqual(box(6, 10, 16, 8));
+    expect(resizedBy(card, 'n', { x: 0, y: -3 }, [], 40, least)).toEqual(box(10, 7, 12, 11));
+    expect(resizedBy(card, 'nw', { x: 2, y: 2 }, [], 40, least)).toEqual(box(12, 12, 10, 6));
+    expect(resizedBy(card, 'ne', { x: 2, y: -2 }, [], 40, least)).toEqual(box(10, 8, 14, 10));
+    expect(resizedBy(card, 'sw', { x: -2, y: 2 }, [], 40, least)).toEqual(box(8, 10, 14, 10));
+  });
+
+  it('stops at the grid’s left and top edges', () => {
+    expect(resizedBy(card, 'nw', { x: -30, y: -30 }, [], 40, least)).toEqual(box(0, 0, 22, 18));
+  });
+
+  it('stops at the card to the left and the card above', () => {
+    const taken = [box(0, 10, 7, 8), box(10, 0, 12, 4)];
+    expect(resizedBy(card, 'nw', { x: -9, y: -9 }, taken, 40, least)).toEqual(box(7, 4, 15, 14));
+  });
+
+  it('shrinks to the least size, keeping the side it was not taken by', () => {
+    expect(resizedBy(card, 'nw', { x: 20, y: 20 }, [], 40, least)).toEqual(box(16, 14, 6, 4));
+  });
+
+  it('never overlaps a neighbour, from any handle and any travel', () => {
+    const taken = [box(0, 0, 10, 10), box(22, 0, 10, 10), box(0, 18, 40, 6), box(22, 10, 5, 5)];
+    for (const edge of RESIZE_EDGES) {
+      for (let dy = -12; dy <= 12; dy += 3) {
+        for (let dx = -12; dx <= 12; dx += 3) {
+          const next = resizedBy(card, edge, { x: dx, y: dy }, taken, 40, least);
+          expect(apart([...taken, next])).toBe(true);
+          expect(next.x).toBeGreaterThanOrEqual(0);
+          expect(next.y).toBeGreaterThanOrEqual(0);
+          expect(next.x + next.w).toBeLessThanOrEqual(40);
+        }
+      }
+    }
   });
 });
 

@@ -186,7 +186,8 @@ option {
 }
 
 /* No animation while a handle is being dragged: the pointer is the animation. */
-.workspace[data-resizing='true'] {
+.workspace[data-resizing='true'],
+:root[data-resize-edge] .workspace {
   transition: none;
   user-select: none;
 }
@@ -381,6 +382,8 @@ option {
   min-height: 0;
   min-width: 0;
   padding: 0 var(--gap) var(--gap) 0;
+  /* The frame its resize handles hang from. */
+  position: relative;
 }
 
 /*
@@ -9231,14 +9234,10 @@ button.lookup:focus-visible {
 }
 
 /*
- * The corner grip. Small, and only obvious once the pointer is on the card.
- *
- * One mark for both the float's corner and a rail card's: learned once, in
- * the same corner, and drawn the same way. The rail's moves one axis — a rail
- * card is as wide as the rail — so its cursor says so.
+ * The corner grip on a panel over the game (`PopoverHead`). Small, and only
+ * obvious once the pointer is on the panel.
  */
-.float-grip,
-.card-resize {
+.float-grip {
   bottom: 0;
   cursor: nwse-resize;
   height: 16px;
@@ -9249,12 +9248,7 @@ button.lookup:focus-visible {
   z-index: 2;
 }
 
-.card-resize {
-  cursor: ns-resize;
-}
-
-.float-grip::after,
-.card-resize::after {
+.float-grip::after {
   border-bottom: 2px solid var(--text-lo-quiet);
   border-right: 2px solid var(--text-lo-quiet);
   bottom: 4px;
@@ -9267,11 +9261,184 @@ button.lookup:focus-visible {
   width: 6px;
 }
 
-.float:hover .float-grip::after,
-.float-grip:focus-visible::after,
-.card:hover .card-resize::after,
-.card-resize:focus-visible::after {
+.float-grip:focus-visible::after {
   opacity: 1;
+}
+
+/*
+ * The handles that resize a card from its corners and sides (todo 01,
+ * `ResizeHandles`), on a rail card and a float alike. The frame is the
+ * card's own box; each handle reaches a little way in over the edge and out
+ * into the gutter, so the body, its scrollbar, the heading's drag and the
+ * action column keep the pointer. A corner reaches in no further than the
+ * action column's inset, so the close button is never under one.
+ *
+ * Quiet: the four corners show a hairline bracket while the card is pointed
+ * at, and a side shows a short seam only under the pointer.
+ */
+.resize-frame {
+  --resize-out: var(--resize-reach-out);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+/* On the rail the card's box stops a gap short of its cells' right and bottom. */
+.rail-cell > .resize-frame {
+  --resize-out: calc(var(--gap) / 2);
+  inset: 0 var(--gap) var(--gap) 0;
+}
+
+.resize-handle {
+  pointer-events: auto;
+  position: absolute;
+  touch-action: none;
+}
+
+.resize-handle[data-edge='n'],
+.resize-handle[data-edge='s'] {
+  cursor: ns-resize;
+  height: calc(var(--resize-out) + var(--resize-reach-in));
+  left: var(--resize-corner);
+  right: var(--resize-corner);
+}
+
+.resize-handle[data-edge='e'],
+.resize-handle[data-edge='w'] {
+  bottom: var(--resize-corner);
+  cursor: ew-resize;
+  top: var(--resize-corner);
+  width: calc(var(--resize-out) + var(--resize-reach-in));
+}
+
+.resize-handle[data-edge='nw'],
+.resize-handle[data-edge='ne'],
+.resize-handle[data-edge='se'],
+.resize-handle[data-edge='sw'] {
+  height: calc(var(--resize-out) + var(--resize-corner));
+  width: calc(var(--resize-out) + var(--resize-corner));
+}
+
+.resize-handle[data-edge='nw'],
+.resize-handle[data-edge='se'] {
+  cursor: nwse-resize;
+}
+
+.resize-handle[data-edge='ne'],
+.resize-handle[data-edge='sw'] {
+  cursor: nesw-resize;
+}
+
+.resize-handle[data-edge^='n'] {
+  top: calc(-1 * var(--resize-out));
+}
+
+.resize-handle[data-edge^='s'] {
+  bottom: calc(-1 * var(--resize-out));
+}
+
+.resize-handle[data-edge$='w'] {
+  left: calc(-1 * var(--resize-out));
+}
+
+.resize-handle[data-edge$='e'] {
+  right: calc(-1 * var(--resize-out));
+}
+
+/* The marks: a bracket in each corner, a seam along a side. */
+.resize-handle::after {
+  content: '';
+  opacity: 0;
+  position: absolute;
+  transition: opacity var(--dur-control) var(--ease-out);
+}
+
+.resize-handle[data-edge='nw']::after,
+.resize-handle[data-edge='ne']::after,
+.resize-handle[data-edge='se']::after,
+.resize-handle[data-edge='sw']::after {
+  height: var(--resize-mark);
+  width: var(--resize-mark);
+}
+
+.resize-handle[data-edge^='n']::after {
+  border-top: var(--resize-mark-line) solid var(--text-lo-quiet);
+  top: calc(var(--resize-out) + var(--resize-mark-inset));
+}
+
+.resize-handle[data-edge^='s']::after {
+  border-bottom: var(--resize-mark-line) solid var(--text-lo-quiet);
+  bottom: calc(var(--resize-out) + var(--resize-mark-inset));
+}
+
+.resize-handle[data-edge$='w']::after {
+  border-left: var(--resize-mark-line) solid var(--text-lo-quiet);
+  left: calc(var(--resize-out) + var(--resize-mark-inset));
+}
+
+.resize-handle[data-edge$='e']::after {
+  border-right: var(--resize-mark-line) solid var(--text-lo-quiet);
+  right: calc(var(--resize-out) + var(--resize-mark-inset));
+}
+
+/* A side's seam runs along the middle of that side. */
+.resize-handle[data-edge='n']::after,
+.resize-handle[data-edge='s']::after {
+  left: calc(50% - var(--resize-seam) / 2);
+  width: var(--resize-seam);
+}
+
+.resize-handle[data-edge='e']::after,
+.resize-handle[data-edge='w']::after {
+  height: var(--resize-seam);
+  top: calc(50% - var(--resize-seam) / 2);
+}
+
+.rail-cell:hover
+  > .resize-frame
+  > .resize-handle:not([data-edge='n'], [data-edge='e'], [data-edge='s'], [data-edge='w'])::after,
+.float:hover
+  > .resize-frame
+  > .resize-handle:not([data-edge='n'], [data-edge='e'], [data-edge='s'], [data-edge='w'])::after,
+.resize-handle:hover::after {
+  opacity: 1;
+}
+
+/*
+ * While a handle is held the whole window wears its cursor and nothing is
+ * selected (`useEdgeDrag`); the workspace stands still with the splitters'.
+ */
+:root[data-resize-edge] {
+  user-select: none;
+}
+
+:root[data-resize-edge='n'],
+:root[data-resize-edge='n'] *,
+:root[data-resize-edge='s'],
+:root[data-resize-edge='s'] * {
+  cursor: ns-resize;
+}
+
+:root[data-resize-edge='e'],
+:root[data-resize-edge='e'] *,
+:root[data-resize-edge='w'],
+:root[data-resize-edge='w'] * {
+  cursor: ew-resize;
+}
+
+:root[data-resize-edge='nw'],
+:root[data-resize-edge='nw'] *,
+:root[data-resize-edge='se'],
+:root[data-resize-edge='se'] * {
+  cursor: nwse-resize;
+}
+
+:root[data-resize-edge='ne'],
+:root[data-resize-edge='ne'] *,
+:root[data-resize-edge='sw'],
+:root[data-resize-edge='sw'] * {
+  cursor: nesw-resize;
 }
 
 /*
