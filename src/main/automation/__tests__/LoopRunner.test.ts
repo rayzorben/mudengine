@@ -787,6 +787,50 @@ describe('holding while hurt', () => {
   });
 
   /*
+   * festus, 2026-10-03 (todo 20): a heal's `*Combat Off*` left three monsters
+   * in the room with no fight on the books, and the hold said it was resting.
+   * Nothing rests beside a monster; an occupant nobody placed counts as one.
+   */
+  it('does not say it is resting with something else in the room', () => {
+    const { planner: p } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    runner.start(loop, hurt(100));
+    runner.onWalkEnded(true, null, hurt(30));
+    const beside = hurt(30);
+    runner.onCharacter({
+      ...beside,
+      room: {
+        ...beside.room,
+        occupants: [
+          {
+            name: 'big stitched zombie',
+            kind: 'unknown',
+            disposition: null,
+            uncertain: true,
+            costly: 'never',
+            charmed: false,
+            hidden: false,
+            free: false
+          }
+        ]
+      }
+    });
+    expect(notices.at(-1)).toBe(t('automation.loops.tooHurtBeside'));
+    expect(notices).not.toContain(t('automation.loops.tooHurt'));
+  });
+
+  it('says it is resting in a room with nothing else in it (the control)', () => {
+    const { planner: p } = planner();
+    const notices: string[] = [];
+    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    runner.start(loop, hurt(100));
+    runner.onWalkEnded(true, null, hurt(30));
+    runner.onCharacter(hurt(30));
+    expect(notices.at(-1)).toBe(t('automation.loops.tooHurt'));
+  });
+
+  /*
    * The floors are the character's, not the client's: a caster pausing at 60%
    * and walking on at 90% is the configuration this exists for, and the pair
    * still behaves as a pair.

@@ -9,6 +9,7 @@ import type { Survival } from '../../../shared/survival';
 import type { EngageDecision } from '../../../shared/automation';
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 import { ANY, notesOf, sentence } from '../../app/copyMatch';
 import {
   DEFAULT_CONFIG,
@@ -3939,6 +3940,121 @@ describe('opening only a fight it walks out of', () => {
     auto.onCharacter({ ...at(34), progress: { ...EMPTY_CHARACTER.progress, level: 3 } });
     drain();
     expect(sent).toEqual(['a thug']);
+  });
+});
+
+/*
+ * festus, 2026-10-03 (todo 20; `2026-10-03_10-53-22_festus.mudcap.jsonl`
+ * t=9688784): three monsters in Forest Trail, the zombie swung, `aa big
+ * stitched zombie` went out and `mihe` behind it. The server answered the heal
+ * `*Combat Off*` alone, the tracker emptied the fight, and the next `aa` was
+ * weighed as opening a new fight at 190 of 319, refused on the odds, and went
+ * out only at the zombie's next swing five seconds later.
+ */
+describe('a fight a heal broke', () => {
+  const trail = {
+    ...EMPTY_CHARACTER.room,
+    name: 'Forest Trail',
+    occupants: [
+      fighter('big stitched zombie', 300, [bite(20, 80)]),
+      fighter('big skeletal acid beast', 300, [bite(10, 40)]),
+      fighter('small scythe skeleton', 120, [bite(5, 15)])
+    ]
+  };
+  const at = (over: Partial<CharacterState> = {}): CharacterState =>
+    state({
+      vitals: { ...EMPTY_CHARACTER.vitals, hp: 190, hpMax: 319 },
+      room: trail,
+      ...over
+    });
+  const fight = (target: string | null, attackers: string[]): CharacterState =>
+    at({
+      inCombat: target !== null,
+      combat: { ...EMPTY_CHARACTER.combat, engaged: target !== null, target, attackers }
+    });
+  const all = ['big stitched zombie', 'big skeletal acid beast', 'small scythe skeleton'];
+  /* Survived too seldom to open on from 190: the refusal the replay met. */
+  const refusing: OpeningGuard = {
+    opening: () =>
+      ({
+        survives: 0.4,
+        worstRound: 120,
+        horizons: [{ rounds: 3, standing: 1, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
+      }) as unknown as Survival,
+    fled: () => []
+  };
+  const festus = (): AutoCombat =>
+    make(
+      combat({ attack: 'aa', engage: 'hostile' }),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      refusing
+    );
+  const swungAt = (auto: AutoCombat): void => {
+    auto.onCharacter(fight(null, ['big stitched zombie']));
+    drain();
+    expect(sent).toEqual(['aa big stitched zombie']);
+    auto.onCharacter(fight('big stitched zombie', all));
+  };
+
+  it('goes back at the monster at once after the heal', () => {
+    const auto = festus();
+    swungAt(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'mihe');
+    auto.onCharacter(fight(null, []));
+    drain();
+    expect(sent).toEqual(['aa big stitched zombie', 'aa big stitched zombie']);
+  });
+
+  it('would not open the same room afresh (the control)', () => {
+    const auto = festus();
+    auto.onCharacter(fight(null, []));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toHaveLength(1);
+  });
+
+  it('owes nothing once the fight is engaged again', () => {
+    const auto = festus();
+    swungAt(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'mihe');
+    auto.onCharacter(fight(null, []));
+    auto.onCharacter(fight('big stitched zombie', []));
+    drain();
+    // The re-engaged fight ends on its own Off, answering the attack.
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'aa big stitched zombie');
+    vi.advanceTimersByTime(tuning().combat.engageCooldownMs);
+    auto.onCharacter(fight(null, []));
+    drain();
+    expect(sent).toEqual(['aa big stitched zombie', 'aa big stitched zombie']);
+  });
+
+  it('owes nothing to a fight the player broke off', () => {
+    const auto = festus();
+    swungAt(auto);
+    auto.noteUserCommand('break');
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'break');
+    auto.onCharacter(fight(null, []));
+    vi.advanceTimersByTime(tuning().combat.breakStandoffMs + 1);
+    auto.onCharacter(fight(null, []));
+    drain();
+    expect(sent).toEqual(['aa big stitched zombie']);
+    // The control: a blow after the stand-down is still hit back.
+    auto.onCharacter(fight(null, ['big stitched zombie']));
+    drain();
+    expect(sent).toEqual(['aa big stitched zombie', 'aa big stitched zombie']);
+  });
+
+  it('owes nothing in the next room', () => {
+    const auto = festus();
+    swungAt(auto);
+    auto.onBlock(block('combat-status', { status: 'Off' }), 'mihe');
+    auto.onCharacter(at({ room: { ...trail, arrival: 1 } }));
+    drain();
+    expect(sent).toEqual(['aa big stitched zombie']);
   });
 });
 
