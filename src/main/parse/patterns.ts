@@ -472,6 +472,16 @@ export const RULES: Rule[] = [
    * it is looked up rather than trusted as a spelling — see the tracker's case.
    */
   { type: 'user-reads-spell', pattern: /^You add (?<name>.+?) to your spellbook!$/ },
+  /*
+   * `ReadCommand`'s other answers to a scroll that teaches. `Unable to learn`
+   * is the wire's (captures/219, a Warrior reading magic missile, 2026-10-03);
+   * the other two are the server's own strings, sent the same way
+   * (`ReadCommand.cs:68-91`), for want of a Mage or a blank scroll on the
+   * local realm. The scroll is kept after each.
+   */
+  { type: 'user-reads-known', pattern: /^You already know how to cast (?<name>.+?)!$/ },
+  { type: 'user-reads-refused', pattern: /^Unable to learn (?<name>.+?)!$/ },
+  { type: 'user-reads-blank', pattern: /^No spells are assigned to this scroll!$/ },
   { type: 'user-gains', pattern: /^You gain (?<count>\d+) (?<what>additional lives|CPs?)\.?$/ },
   {
     type: 'user-warnings',

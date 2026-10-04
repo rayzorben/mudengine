@@ -200,6 +200,7 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
   'user-levels': { severity: 'info', channel: 'session' },
   'user-learns': { severity: 'info', channel: 'session' },
   'user-reads-spell': { severity: 'info', channel: 'session' },
+  'user-reads-refused': { severity: 'warning', channel: 'session' },
   /* Asking to leave; the realm may still refuse, and the rail should say it was asked. */
   'user-exits-realm': { severity: 'info', channel: 'session' },
   /*
@@ -493,6 +494,7 @@ export const ALERT_EVENTS = {
   /* The character itself, and the connection under it. */
   levelled: { channel: 'session', types: ['user-levels'] },
   learned: { channel: 'session', types: ['user-learns', 'user-reads-spell'] },
+  'learn-refused': { channel: 'session', types: ['user-reads-refused'] },
   'left-realm': { channel: 'session', types: ['user-exits-realm'] },
   'hangup-penalty': { channel: 'session', types: ['user-disconnect-penalty'] },
   'login-failed': { channel: 'session', types: ['login-failed'] }

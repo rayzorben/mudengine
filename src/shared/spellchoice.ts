@@ -22,6 +22,19 @@ import {
 } from './spellcraft';
 import type { WorldSpell } from './world';
 
+/** The server's `SpellMageryType.Mystic`: a class of it casts from kai (`Player.cs:2373`). */
+export const MYSTIC_MAGERY = 5;
+
+/** The pool a book is spent from: the wire's word, else the class row's magery type; null unknown. */
+export function poolOf(
+  stated: Vitals['manaType'],
+  mageryType: number | undefined
+): Vitals['manaType'] {
+  if (stated !== null) return stated;
+  if (mageryType === undefined || mageryType === 0) return null;
+  return mageryType === MYSTIC_MAGERY ? 'KAI' : 'MA';
+}
+
 /** `Spell.GetMagicResModifierByValue`'s pivot: the resistance at which a cast lands as stated. */
 const MAGIC_RES_PIVOT = 50;
 

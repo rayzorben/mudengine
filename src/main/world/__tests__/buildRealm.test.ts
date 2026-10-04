@@ -817,6 +817,22 @@ describe('naming the spells a realm has', () => {
     expect(indexSpells(fake({ Spells: [{ Number: 1, Name: '' }] }))).toEqual([]);
   });
 
+  // Format 55: who may learn it. Zero is any class's type and no level, so it is left out.
+  it('keeps the magery type and level a spell asks of its learner', () => {
+    const spells = indexSpells(
+      fake({
+        Spells: [
+          { Number: 1, Name: 'magic missile', Magery: 1, MageryLVL: 1 },
+          { Number: 219, Name: 'minor healing', Magery: 0, MageryLVL: 0 }
+        ]
+      })
+    );
+    expect(spells).toEqual([
+      { id: 1, n: 'magic missile', mt: 1, ml: 1 },
+      { id: 219, n: 'minor healing' }
+    ]);
+  });
+
   it('survives a realm with no Spells table at all', () => {
     expect(indexSpells(fake({ Rooms: [room()] }))).toEqual([]);
   });
@@ -1089,16 +1105,32 @@ describe('naming the races and classes a realm offers', () => {
   });
 
   /*
-   * `MinHits`/`MaxHits` and `MageryType` are in the table and deliberately not
-   * carried: the first is larger than the second in all fifteen rows and
-   * nothing read so far says which way round they are, and the second speaks
-   * only for zero. A guess published here would look exactly like a fact.
+   * `MinHits`/`MaxHits` are in the table and deliberately not carried: the
+   * first is larger than the second in all fifteen rows and nothing read so
+   * far says which way round they are. A guess published here would look
+   * exactly like a fact.
    */
-  it('carries nothing for the two columns whose meaning is unsettled', () => {
+  it('carries nothing for the hit-dice pair, whose order is unsettled', () => {
     const [entry] = indexClasses(
-      fake({ Classes: [{ Number: 1, Name: 'Warrior', MinHits: 7, MaxHits: 4, MageryType: 2 }] })
+      fake({ Classes: [{ Number: 1, Name: 'Warrior', MinHits: 7, MaxHits: 4 }] })
     );
     expect(entry).toEqual({ id: 1, n: 'Warrior' });
+  });
+
+  // Format 55: the server's `SpellMageryType`, zero (no magery) a code like any other.
+  it('carries the magery type, zero included', () => {
+    const entries = indexClasses(
+      fake({
+        Classes: [
+          { Number: 1, Name: 'Warrior', MageryType: 0, MageryLVL: 0 },
+          { Number: 12, Name: 'Mage', MageryType: 1, MageryLVL: 3 }
+        ]
+      })
+    );
+    expect(entries).toEqual([
+      { id: 1, n: 'Warrior', mt: 0 },
+      { id: 12, n: 'Mage', mt: 1, magery: 3 }
+    ]);
   });
 
   it('survives a realm with neither table', () => {

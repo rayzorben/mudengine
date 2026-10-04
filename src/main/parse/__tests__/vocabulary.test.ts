@@ -223,7 +223,10 @@ describe('every fact the parser produces reaches something', () => {
     // A line the server composed from a row of its message table and no frame
     // reads: explained and attributed (`message`, `role`), decided on by
     // nothing yet — the row's kind says what would (todo 109).
-    'realm-message': "the server's own words for a line no frame reads; nothing decides on it yet"
+    'realm-message': "the server's own words for a line no frame reads; nothing decides on it yet",
+    // `ReadCommand` on a scroll whose `LearnSp` names no spell: nothing is
+    // learned and the scroll is kept, so no state moves (todo 20, 2026-10-03).
+    'user-reads-blank': 'a scroll that teaches nothing; no state moves'
     /*
      * `user-trains` was here — *"the price of a level; wealth is re-read from
      * the next listing"* — and the exemption dissolved on 2026-09-03. An
