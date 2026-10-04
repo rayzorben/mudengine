@@ -96,6 +96,7 @@ import {
   castsToKill,
   chooseAttackSpell,
   healPower,
+  poolOf,
   type SpellChoiceInput
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
@@ -1692,10 +1693,9 @@ export class Errands implements SessionModule {
     const weapon = wieldedWeapon(state.inventory.items);
     const weights = tuning().menace;
     /*
-     * The caster's rounds (todo 108). `verdictFor` gets a fight's length from
-     * the swing, and a Mage's swing is nothing worth counting; where the swing
-     * says nothing, the spell the character would cast at *this* monster, at
-     * one cast a round over the full pool, says it.
+     * The caster's rounds (todo 108): the spell the character would cast at
+     * *this* monster, at one cast a round over the full pool, ahead of the
+     * swing, since the spell goes first (todo 20); the swing where none is cast.
      */
     const casting = this.castingInput(state, sheet, family);
     /*
@@ -1769,8 +1769,8 @@ export class Errands implements SessionModule {
             ? null
             : entity.experience * scale),
         copper: entity.coins === undefined ? null : expectedCopper(entity.coins),
+        // The spell first, as `AttackSpells` casts it before the melee round.
         rounds:
-          verdicts[index]?.rounds?.value ??
           (casting === null
             ? null
             : (castsToKill(casting, {
@@ -1778,6 +1778,7 @@ export class Errands implements SessionModule {
                 magicRes: entity.magicResist ?? null,
                 abilities: entity.abilities
               })?.rounds ?? null)) ??
+          verdicts[index]?.rounds?.value ??
           recorded(verdicts[index]?.menace?.hp ?? entity.hp ?? null),
         perRound: verdicts[index]?.menace?.perRound ?? null,
         nakedPerRound: bare[index]?.perRound ?? null,
@@ -2514,7 +2515,8 @@ export class Errands implements SessionModule {
       mana: state.vitals.manaMax ?? state.vitals.mana,
       sheet,
       family,
-      pool: state.vitals.manaType,
+      // The class row says kai before a statline has: a Mystic never casts an attack from it.
+      pool: poolOf(state.vitals.manaType, world.classNamed(state.className ?? '')?.mageryType),
       killConfidence: tuning().spells.killConfidence
     };
   }

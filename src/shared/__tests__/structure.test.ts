@@ -41,7 +41,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2433,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
-  'src/main/parse/CharacterTracker.ts': 2524,
+  // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
+  'src/main/parse/CharacterTracker.ts': 2522,
   // Lowered by handing the settings screen its api whole (todo 03).
   // Lowered by the strips' cards and the drag's marks, out whole (`StripCards`,
   // `DragMarks`), and the rail's grid (`RailGrid`, todo 09).

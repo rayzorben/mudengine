@@ -205,6 +205,26 @@ describe('the room’s fight, run', () => {
     expect(result!.rounds.value).toBeLessThan(4);
   });
 
+  /*
+   * The spell goes first, as `AttackSpells` casts the chosen spell before the
+   * melee round, and the sword once the mana runs dry (todo 20): a Mage with
+   * a quarterstaff and magic missile was priced swinging the staff.
+   */
+  it('casts while the mana pays, and swings once it runs dry', () => {
+    const foes = [{ name: 'orc', subject: { hp: 200, profiles: [biter(20, 1, 3)] } }];
+    const swung = simulateFight(fight({ foes, mana: 12, manaMax: 12 }))!;
+    const cast = simulateFight(
+      fight({ foes, mana: 12, manaMax: 12, casting: [{ perRound: 100, manaPerRound: 4 }] })
+    )!;
+    expect(cast.rounds.value).toBeLessThan(swung.rounds.value);
+    expect(cast.manaMean).toBe(8);
+    expect(swung.manaMean).toBe(0);
+    const dry = simulateFight(
+      fight({ foes, mana: 2, manaMax: 12, casting: [{ perRound: 100, manaPerRound: 4 }] })
+    )!;
+    expect(dry.rounds.value).toBe(swung.rounds.value);
+  });
+
   it('charges a lapsing blessing’s recast against the heals', () => {
     const foes = [{ name: 'orc', subject: { hp: 300, profiles: [biter(60, 8, 14)] } }];
     const heal = {

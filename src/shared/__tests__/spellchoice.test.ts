@@ -237,6 +237,11 @@ describe('casts to kill', () => {
     expect(castsToKill(input, { hp: null, magicRes: null })).toBeNull();
     expect(castsToKill({ ...input, book: [] }, { hp: 60, magicRes: null })).toBeNull();
   });
+
+  // The fight run casts first on this answer (todo 20): a Mystic's kai never buys a round.
+  it('answers nothing for a book spent from kai', () => {
+    expect(castsToKill({ ...input, pool: 'KAI' }, { hp: 60, magicRes: null })).toBeNull();
+  });
 });
 
 /*

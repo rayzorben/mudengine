@@ -19,12 +19,12 @@ export interface LightPlannerModules {
   tracker: Pick<CharacterTracker, 'current'>;
   errands: Pick<Errands, 'travellerNow' | 'routeBetween' | 'stopRoom'>;
   itemErrand: Pick<ItemErrand, 'collect' | 'running'>;
-  world: Pick<WorldGraph, 'itemsOfKind' | 'stockingPlaces'> | undefined;
+  world: Pick<WorldGraph, 'itemsWhere' | 'stockingPlaces'> | undefined;
 }
 
 export function lightPlanner(modules: () => LightPlannerModules): LightPlanner {
   return {
-    lights: () => realmLights(modules().world?.itemsOfKind('light') ?? []),
+    lights: () => realmLights(modules().world?.itemsWhere((item) => item.kind === 'light') ?? []),
     counters: (items, to) => {
       const { world, tracker, errands } = modules();
       const state = tracker.current;

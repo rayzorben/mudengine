@@ -446,6 +446,7 @@ const EVENT_WORD: Record<AlertEvent, () => string> = {
   'vitals-crossing': () => t('settings.alerts.event.vitalsCrossing'),
   levelled: () => t('settings.alerts.event.levelled'),
   learned: () => t('settings.alerts.event.learned'),
+  'learn-refused': () => t('settings.alerts.event.learnRefused'),
   'left-realm': () => t('settings.alerts.event.leftRealm'),
   'hangup-penalty': () => t('settings.alerts.event.hangupPenalty'),
   'login-failed': () => t('settings.alerts.event.loginFailed')

@@ -109,8 +109,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 52 | **One gate vocabulary** (`src/shared/gates.ts`). A quest step's conditions are the gates an exit's instruction states and the router judges, so `QuestGate` is gone: `item` is `carry`, `item-absent` is `lack`, `ability-absent` is an ability gate marked `absent`, `skill` is `roll`, `price` is `copper`, and `checkspell`/`failspell` are `spell-off`, the server failing both while the spell is on (read before as being *under* it). A step's room checks are kept: an item lying in the room, no monsters, a named monster present |
  * | 53 | **A room's commands ship their gates typed** (`RoomCommand.gates`, by the one `gatesOf`), and a portal's conditions are judged by the router as any exit's: a script's level, class, race, alignment, ability, carried item or price walls the way when it shuts, and what only standing there settles (an empty room, an item on the floor, a roll) is priced, never pruned. `need` strings, `Requirement.unread` and the runtime string readers (`readAbilityGate`, the summons pattern) are gone. A line stops at a step the server cannot run, so `17/10747`'s misspelt `nononsters` lever no longer opens anything. What a command summons is `summons` |
  * | 54 | **What a spell's script does to whoever it is cast on** (`BuiltSpell.st`, `navigation/scriptWays.ts`). A cast exit runs its post-spell after the step, and a script that can move the character (a teleport, a cast that lands elsewhere, a roll or a shown block that does) was a flat unread price. Such a spell carries its lines in order, each the gates ahead of its first moving step and whether it moves; the first line that passes is what happens, and a run where none does moves nobody. The Great Pyramid's fourth-floor arch is `checkability 134 9:addexp 0` ahead of two lines that cast `arch fail`, so it is free at DaoLordQuest 9 and a scatter's wall below. In the shipped Paradigm (`pmud.zip`), 63 spells: 48 always move, 6 have a line that moves nobody, 9 a chain that cannot be followed |
+ * | 55 | **Who may learn a spell.** `Spells.Magery` and `MageryLVL` and `Classes.MageryType` were read by nothing, so a scroll could not be told apart from one the class is refused: `Spell.CanPlayerUseSpell` refuses a spell whose magery type is not the class's (0 is any class's) or whose magery level is above the class's, and `read` answers `Unable to learn magic missile!` to a Warrior. `BuiltSpell.mt`/`ml` and `BuiltClass.mt` carry the codes, read as the server's `SpellMageryType` (1 Mage, 2 Priest, 3 Druid, 4 Bard, 5 Mystic): gmud.zip, pmud.zip and stock 1.11p all give the Mage, Gypsy and Warlock 1 and magic missile 1, the four holy classes 2 and minor healing 2, the Mystic 5 — todo 20 |
  */
-export const REALM_FORMAT = 54;
+export const REALM_FORMAT = 55;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -481,6 +482,13 @@ export interface BuiltSpell {
    * move whoever it is cast on. Format 54: the pyramid's arches.
    */
   st?: ScriptLine[];
+  /**
+   * `Spells.Magery`, the magery type a class must have to learn it, and
+   * `MageryLVL`, the least magery level (format 55). Omitted for 0: type 0
+   * is any class's, level 0 asks for none.
+   */
+  mt?: number;
+  ml?: number;
 }
 
 /**
@@ -573,9 +581,8 @@ export interface BuiltRace {
  * meaning is settled are carried: `MinHits`/`MaxHits` are **not**, because the
  * first is larger than the second in all fifteen rows (`7-4`, `5-3`) and
  * nothing read so far says which way round they are — a hit-dice range printed
- * backwards is a claim the realm data does not make. `MageryType` is likewise
- * left out: it is 0 through 5 and only 0 (no magery at all) is certain, so the
- * *level* is carried and the numbering is not invented.
+ * backwards is a claim the realm data does not make. `MageryType` is carried
+ * since format 55, read as the server's `SpellMageryType`.
  */
 export interface BuiltClass {
   id: number;
@@ -590,6 +597,8 @@ export interface BuiltClass {
   wpn?: number;
   /** `ArmourType`: the heaviest armour kind it may wear, `ARMOUR_TYPE`'s code. Format 48. */
   arm?: number;
+  /** `MageryType`: the spells it may learn, 0 for none but a spell of type 0. Format 55. */
+  mt?: number;
   /**
    * `Abil-n` / `AbilVal-n` — format 14, and the same pairs an item carries.
    *
@@ -1907,6 +1916,11 @@ export function indexSpells(source: RealmSource): BuiltSpell[] {
     // The element — format 34. Zero is cold, so only a blank is omitted.
     const attackType = number(row['AttType']);
     if (attackType !== null && attackType !== BLANK_AS_NUMBER) entry.at = attackType;
+    // Who may learn it — format 55. Zero is any class's type and no level.
+    const mageryType = number(row['Magery']);
+    if (mageryType !== null && mageryType > 0) entry.mt = mageryType;
+    const mageryLevel = number(row['MageryLVL']);
+    if (mageryLevel !== null && mageryLevel > 0) entry.ml = mageryLevel;
     for (const [levels, amount, field] of [
       ['MinIncLVLs', 'MinInc', 'mig'],
       ['MaxIncLVLs', 'MaxInc', 'mag'],
@@ -2030,9 +2044,8 @@ export function indexRaces(source: RealmSource): BuiltRace[] {
 /**
  * Every class the realm offers.
  *
- * Fifteen rows. See `BuiltClass` for the two columns deliberately not carried:
- * a hit-dice pair whose order nothing has settled, and a magery *type* whose
- * numbering only says something for zero.
+ * Fifteen rows. See `BuiltClass` for the hit-dice pair deliberately not
+ * carried: nothing has settled its order.
  */
 export function indexClasses(source: RealmSource): BuiltClass[] {
   const classes = source.table('Classes');
@@ -2059,6 +2072,9 @@ export function indexClasses(source: RealmSource): BuiltClass[] {
     if (weapon !== null) entry.wpn = weapon;
     const armour = number(row['ArmourType']);
     if (armour !== null) entry.arm = armour;
+    // Format 55. Zero is a code here (no magery), so only absent is dropped.
+    const mageryType = number(row['MageryType']);
+    if (mageryType !== null) entry.mt = mageryType;
     const ab = abilityPairs(row);
     if (ab.length > 0) entry.ab = ab;
     built.push(entry);
