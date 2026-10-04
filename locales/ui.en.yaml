@@ -5598,8 +5598,7 @@ automation:
       {needed} HP (now {hp}) before going through.
     trapResumed: Enough health for the trap into {stepName}; walking on.
     offRoundsTimed: 'Timing the run to the rounds: a round every {round} s, a step takes {step} s.'
-    offRoundsNoRounds: 'Not timing the run to the rounds: not enough rounds seen yet.'
-    offRoundsStale: 'Not timing the run to the rounds: the last round seen was too long ago.'
+    offRoundsNoRounds: 'Not timing the run to the rounds: no round seen yet.'
     offRoundsNoSteps: 'Not timing the run to the rounds: not enough steps timed yet.'
     holdingBlind: Blind; waiting here until you can see again.
     holdingHeld: Held fast; waiting here until you can move again.

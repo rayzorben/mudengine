@@ -1,25 +1,27 @@
 /**
  * When the next round goes off, from the rounds seen. The server runs a room's
  * combat on a five-tick clock of one-second ticks (`TimedEventManager`
- * `CombatTickTime`), so a round's blows come a period apart; the period is the
- * median of recent one-round gaps (`RoundBeat`) and the phase is the last
- * round seen. Unknown until enough gaps are measured, and stale as many
- * rounds after the last one as the reader trusts. See `mudengine-automation` › parts/walking.md
- * › *A run steps in the off-rounds*.
+ * `CombatTickTime`), so a round's blows come a period apart. The period is
+ * `hunting.roundSeconds` until enough one-round gaps are measured
+ * (`RoundBeat`), then their median, worked out once per round seen. The phase
+ * is the last round seen, and every round seen resets it. Unknown only until
+ * the first round. See `mudengine-automation` › parts/walking.md › *A run
+ * steps in the off-rounds*.
  */
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import { median } from '../../shared/median';
 import { RoundBeat } from './RoundBeat';
 
-/** The next round, or why it cannot be told. */
-export type NextRound =
-  { known: true; at: number; periodMs: number } | { known: false; why: 'unmeasured' | 'stale' };
+/** The next round, or that none has been seen to count from. */
+export type NextRound = { known: true; at: number; periodMs: number } | { known: false };
 
 export class RoundClock {
   private readonly beat = new RoundBeat();
   private lastAt: number | null = null;
   private gaps: number[] = [];
+  /** The measured round, or null while there are too few gaps. */
+  private measuredMs: number | null = null;
 
   onBlock(block: Block): void {
     if (!this.beat.onBlock(block)) return;
@@ -27,12 +29,11 @@ export class RoundClock {
     this.lastAt = block.at;
   }
 
-  /** The first round after `now`, or stale past `trustedRounds` rounds after the last seen. */
-  next(now: number, trustedRounds: number): NextRound {
-    const periodMs = this.period();
-    if (periodMs === null || this.lastAt === null) return { known: false, why: 'unmeasured' };
+  /** The first round after `now`, counted on from the last round seen. */
+  next(now: number): NextRound {
+    if (this.lastAt === null) return { known: false };
+    const periodMs = this.measuredMs ?? tuning().hunting.roundSeconds * 1000;
     const since = now - this.lastAt;
-    if (since > periodMs * trustedRounds) return { known: false, why: 'stale' };
     const ahead = Math.floor(Math.max(0, since) / periodMs) + 1;
     return { known: true, at: this.lastAt + ahead * periodMs, periodMs };
   }
@@ -41,6 +42,7 @@ export class RoundClock {
     this.beat.reset();
     this.lastAt = null;
     this.gaps = [];
+    this.measuredMs = null;
   }
 
   private noteGap(gap: number): void {
@@ -49,10 +51,6 @@ export class RoundClock {
     this.gaps.push(gap);
     const keep = tuning().combat.roundSamples;
     if (this.gaps.length > keep) this.gaps.splice(0, this.gaps.length - keep);
-  }
-
-  private period(): number | null {
-    if (this.gaps.length < tuning().combat.roundSamplesLeast) return null;
-    return median(this.gaps);
+    if (this.gaps.length >= tuning().combat.roundSamplesLeast) this.measuredMs = median(this.gaps);
   }
 }
