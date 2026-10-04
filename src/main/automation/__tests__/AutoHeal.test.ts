@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AutoHeal } from '../AutoHeal';
 import { CommandQueue } from '../CommandQueue';
-import { t } from '../../app/i18n';
+import { isSaidBy, t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type PartyMember } from '../../../shared/character';
 import type { WorldSpell } from '../../../shared/world';
+import type { Block } from '../../../shared/blocks';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -455,6 +456,110 @@ describe('choosing the heal from the spellbook', () => {
     drain();
     // 120 missing: the most one cast mends.
     expect(sent).toEqual(['mahe Soul']);
+  });
+});
+
+/*
+ * festus, 2026-10-03 (2026-10-03_17-51-16_festus.mudcap.jsonl t=2495722):
+ * minor healing (5-14) cast at 220/319 on the first of two 36-37 blows from a
+ * thin blood skeleton, because 10 was a quarter of the 36 then missing. It
+ * healed 11, ended the attack and gave the skeleton a free round.
+ */
+describe('weighing a heal in a fight against the blows', () => {
+  const FESTUS_ROWS: Record<string, WorldSpell> = {
+    'minor healing': { ...HEAL_ROWS['minor healing']!, power: [5, 14] },
+    'major healing': { ...HEAL_ROWS['major healing']!, mana: 6, power: [15, 37] }
+  };
+  let said: string[];
+  const healer = (realm: number | null = null) =>
+    new AutoHeal(
+      spells({ autoChooseHeal: true, heal: '', healBelow: 0.8, healTo: 0.8 }),
+      true,
+      queue,
+      undefined,
+      (name) => FESTUS_ROWS[name] ?? null,
+      { notice: (message) => said.push(message) },
+      undefined,
+      undefined,
+      () => realm
+    );
+  const festus = (hp: number, inCombat = true): CharacterState => {
+    const at = state({ hp, hpMax: 319, mana: 4, manaMax: 85 });
+    at.spellbook = [
+      { name: 'minor healing', short: 'mihe', level: 1, cost: 2 },
+      { name: 'major healing', short: 'mahe', level: 8, cost: 6 }
+    ];
+    at.progress = { ...at.progress, level: 20 };
+    return { ...at, inCombat };
+  };
+  const blow = (damage: number | null): Block =>
+    ({
+      type: damage === null ? 'user-hits' : 'mob-hits',
+      seq: 1,
+      at: Date.now(),
+      domain: 'combat',
+      groups: damage === null ? {} : { damage: String(damage) },
+      text: ''
+    }) as unknown as Block;
+  /** A round's blows: the gap that opens it, then each blow. */
+  const round = (auto: AutoHeal, ...damage: Array<number | null>): void => {
+    vi.advanceTimersByTime(tuning().hunting.roundSeconds * 1000);
+    for (const each of damage) auto.onBlock(blow(each));
+  };
+  beforeEach(() => {
+    said = [];
+  });
+
+  it('holds a heal smaller than the blows already landed this round', () => {
+    const auto = healer();
+    round(auto, 36);
+    auto.onCharacter(festus(220));
+    drain();
+    expect(sent).toEqual([]);
+    expect(said.some((line) => isSaidBy('automation.heal.notInFightRound', line))).toBe(true);
+    // The positive control: the same bar out of the fight is healed.
+    auto.onCharacter(festus(220, false));
+    drain();
+    expect(sent).toEqual(['mihe']);
+  });
+
+  it('holds it against the world database figure before a round has closed', () => {
+    const auto = healer(70);
+    auto.onCharacter(festus(220));
+    drain();
+    expect(sent).toEqual([]);
+    expect(said.some((line) => isSaidBy('automation.heal.notInFightRealm', line))).toBe(true);
+  });
+
+  it('weighs it against this fight once a round has closed, over the share', () => {
+    const auto = healer(70);
+    // A monster hitting for 4 a round: a heal of about 10 beats it, though
+    // it is far under a quarter of the 156 missing.
+    round(auto, 4, null);
+    round(auto, 4, null);
+    auto.onCharacter(festus(100));
+    drain();
+    expect(sent).toEqual(['mihe']);
+  });
+
+  it('holds it against this fight when the rounds hit harder than it mends', () => {
+    const auto = healer();
+    round(auto, 36, 37, null);
+    round(auto, 34, null);
+    auto.onCharacter(festus(250));
+    drain();
+    expect(sent).toEqual([]);
+    expect(said.some((line) => isSaidBy('automation.heal.notInFightMeasured', line))).toBe(true);
+  });
+
+  it('forgets a fight once it is over', () => {
+    const auto = healer();
+    round(auto, 36, 37);
+    auto.onCharacter(festus(300, false));
+    // A new fight, no blows yet, no figure: the share decides, as before.
+    auto.onCharacter(festus(250));
+    drain();
+    expect(sent).toEqual(['mihe']);
   });
 });
 
