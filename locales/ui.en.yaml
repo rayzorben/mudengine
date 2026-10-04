@@ -3415,6 +3415,10 @@ settings:
     mobRuleNotHostile: Not hostile
     mobRuleNotHostileHint: It does not attack first, whatever the world data says. The character
       rests next to it, and only attacks it when Attack All Monsters is set.
+    mobRuleStopToKill: Stop to kill
+    mobRuleStopToKillHint: MegaMUD's Stop to kill if able. It is attacked even with fewer monsters in
+      the room than Min Monsters in Room, and even when a player outside the party is fighting it
+      (Polite Attacks).
     # Todo 816: how a banded row fights its monster.
     mobRuleNoBackstab: No backstab
     mobRuleSpellAria: 'Spell for monster {number}'
