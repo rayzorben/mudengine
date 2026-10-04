@@ -440,6 +440,11 @@ export class AutoCombat implements SessionModule {
    * file, and taken off again the moment the step is done. See `alsoFight`.
    */
   private readonly wanted = new Set<string>();
+  /**
+   * The monsters of the lap a hunt runs (`huntFor`), by `mobKey`: the hunt's
+   * to set and clear, so a reconnect that carries the lap keeps them.
+   */
+  private hunted = new Set<string>();
   /** Until when a typed `break` keeps this from fighting. See the constant. */
   private standDownUntil = 0;
   /** Whether a step is outstanding, as of the last line. See `movePending`. */
@@ -667,16 +672,27 @@ export class AutoCombat implements SessionModule {
     this.wanted.delete(mobKey(name));
   }
 
-  /** Whether a room's listing names something a quest run wants dead. */
+  /**
+   * The monsters a hunt's spot is for, fought as a quest step's are
+   * (`alsoFight`) while it runs; an empty list when it ends. The engage
+   * policy is about fights picked unasked; a hunt names these, as a quest
+   * step does (the drunken gambler, 2026-10-04).
+   */
+  huntFor(names: readonly string[]): void {
+    this.hunted = new Set(names.map(mobKey).filter((key) => key.length > 0));
+  }
+
+  /** Whether a room's listing names something a quest run or the hunt wants dead. */
   private wantedHere(state: CharacterState): boolean {
-    if (this.wanted.size === 0) return false;
+    if (this.wanted.size === 0 && this.hunted.size === 0) return false;
     return state.room.occupants.some((who) => who.kind === 'mob' && this.isWanted(who.name));
   }
 
   private isWanted(name: string): boolean {
-    if (this.wanted.size === 0) return false;
     const key = mobKey(name);
-    for (const wanted of this.wanted) if (nameAnswersTo(key, wanted)) return true;
+    for (const set of [this.wanted, this.hunted]) {
+      for (const wanted of set) if (nameAnswersTo(key, wanted)) return true;
+    }
     return false;
   }
 
@@ -1686,7 +1702,8 @@ export class AutoCombat implements SessionModule {
         continue;
       }
       /*
-       * A quest step's monster (`alsoFight`) is past the policy from here on:
+       * A quest step's monster (`alsoFight`), or the hunt's (`huntFor`), is
+       * past the policy from here on:
        * the caps and the disposition are about what to pick a fight with
        * unasked, and this one was asked for by name. The refusals above it —
        * a stance row, a claim, the ten evil points, a room under `minMobs` —

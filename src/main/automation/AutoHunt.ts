@@ -74,6 +74,8 @@ export interface HuntPlanner {
   busy(): boolean;
   /** What hunting a spot paid, kept for the survey and the next session (todo 70). */
   noteRate(key: string, rate: MeasuredRate): void;
+  /** The spot's monsters, fought while it is hunted (`AutoCombat.huntFor`); empty when the hunt ends. */
+  fightFor(names: readonly string[]): void;
 }
 
 export interface HuntEvents {
@@ -132,6 +134,11 @@ type Phase =
     };
 
 const ACTION = 'hunt';
+
+/** The monsters a spot is hunted for, as the realm names them. */
+function monstersOf(spot: HuntingSpot): string[] {
+  return spot.mobs.map((mob) => mob.name);
+}
 
 export class AutoHunt implements SessionModule {
   /** A lap that was running, not this module's, when the hunt was steered: the steerer's to end. */
@@ -215,6 +222,9 @@ export class AutoHunt implements SessionModule {
     this.health = health;
     this.enabled = enabled;
     if (!wasOn && enabled && config.enabled) this.judgedFor = null;
+    // Switched off mid-lap: what is left running is the player's, fought by the engage policy alone.
+    if (this.phase.kind === 'hunting')
+      this.planner.fightFor(enabled && config.enabled ? monstersOf(this.phase.spot) : []);
   }
 
   reset(): void {
@@ -263,7 +273,7 @@ export class AutoHunt implements SessionModule {
     this.rejudge();
     if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === keyOf(key)) return;
     if (this.mine()) this.planner.stopLoop(t('automation.hunt.steeredAway'));
-    this.phase = { kind: 'idle' };
+    this.idle();
   }
 
   private rejudge(): void {
@@ -341,7 +351,7 @@ export class AutoHunt implements SessionModule {
   noteStopped(): void {
     if (this.phase.kind === 'idle') return;
     const was = this.phase;
-    this.phase = { kind: 'idle' };
+    this.idle();
     // Judged for this character as it stands: nothing about it has changed, so
     // nothing here will choose differently until something does.
     this.events.notice?.(
@@ -356,7 +366,7 @@ export class AutoHunt implements SessionModule {
    * the better lair. *Go there* is this (todo 05's own last bullet).
    */
   noteLapStopped(): void {
-    this.phase = { kind: 'idle' };
+    this.idle();
     this.judgedFor = null;
   }
 
@@ -378,7 +388,7 @@ export class AutoHunt implements SessionModule {
       } else {
         // The lap ended some other way, or the player started one of their
         // own: either way what is running is not this module's to reason about.
-        this.phase = { kind: 'idle' };
+        this.idle();
       }
     }
 
@@ -618,7 +628,7 @@ export class AutoHunt implements SessionModule {
    */
   private relocate(state: CharacterState, spot: HuntingSpot, because: string, stop: string): void {
     this.events.decided?.({ at: this.now(), action: ACTION, because, acted: true });
-    this.phase = { kind: 'idle' };
+    this.idle();
     this.planner.stopLoop(stop);
     // The spot the comparison was made on, not a second sweep of the realm.
     const target = spotTarget(spot);
@@ -853,7 +863,7 @@ export class AutoHunt implements SessionModule {
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     if (this.phase.kind !== 'walking') return;
     const { to, target } = this.phase;
-    this.phase = { kind: 'idle' };
+    this.idle();
     if (!arrived || this.planner.here() !== to) {
       this.refuse(
         t('automation.hunt.refusalNotReached', {
@@ -873,6 +883,7 @@ export class AutoHunt implements SessionModule {
       this.refuse(t('automation.hunt.refusalLoop', { loopName: loop.name, why: refused }));
       return;
     }
+    this.planner.fightFor(monstersOf(spot));
     this.phase = {
       kind: 'hunting',
       key: target.key,
@@ -893,6 +904,12 @@ export class AutoHunt implements SessionModule {
       because: t('automation.hunt.becauseRate', { rate }),
       acted: true
     });
+  }
+
+  /** Nothing hunted: the lap's monsters, if one was, go back to the engage policy. */
+  private idle(): void {
+    if (this.phase.kind === 'hunting') this.planner.fightFor([]);
+    this.phase = { kind: 'idle' };
   }
 
   private refuse(why: string): void {

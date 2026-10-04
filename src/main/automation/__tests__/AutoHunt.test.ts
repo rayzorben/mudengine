@@ -97,6 +97,8 @@ let stops: string[];
 let clock: number;
 /** Every rate the hunt measured and kept. */
 let noted: Array<{ key: string; perHour: number }>;
+/** The laps whose monsters the hunt asked combat to fight, null for none, in order. */
+let fought: string[][];
 
 function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationConfig> = {}) {
   const planner: HuntPlanner = {
@@ -124,6 +126,7 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
     moveInFlight: () => false,
     walking: () => false,
     busy: () => false,
+    fightFor: (names) => void fought.push([...names]),
     ...over
   };
   return new AutoHunt(
@@ -147,6 +150,7 @@ beforeEach(() => {
   running = null;
   stops = [];
   noted = [];
+  fought = [];
   clock = 1_000_000;
   answer = advice([spot('lair:a', 12_000)]);
 });
@@ -177,6 +181,34 @@ describe('going hunting on its own', () => {
     auto.onCharacter(ready());
     expect(walked).toHaveLength(0);
     expect(started).toHaveLength(1);
+  });
+
+  /* 2026-10-04: a level 1 Mage walked past the drunken gamblers he was sent for; the realm does not say they attack first. */
+  it("has the spot's monsters fought while it is hunted, and puts them down when it stops", () => {
+    const auto = hunt();
+    auto.onCharacter(ready());
+    expect(fought).toEqual([]);
+    here = '1/816';
+    auto.onWalkEnded(true, null, ready());
+    const mobs = answer.spots[0]!.mobs.map((mob) => mob.name);
+    expect(mobs.length).toBeGreaterThan(0);
+    expect(fought).toEqual([mobs]);
+    auto.noteStopped();
+    expect(fought).toEqual([mobs, []]);
+  });
+
+  it("puts the spot's monsters down when hunting is switched off mid-lap", () => {
+    const auto = hunt();
+    auto.onCharacter(ready());
+    here = '1/816';
+    auto.onWalkEnded(true, null, ready());
+    auto.configure(
+      config({ enabled: false }),
+      DEFAULT_CONFIG.automation.walk,
+      DEFAULT_CONFIG.automation.health,
+      true
+    );
+    expect(fought.at(-1)).toEqual([]);
   });
 
   /*
