@@ -1,13 +1,13 @@
 /**
  * A run's step out of an empty room, timed to the rounds (todo 00,
- * 2026-10-03). A round hits whoever is in the room when its tick goes off, and
- * a character stays in the room it is leaving for the whole of the server's
- * movement delay, so a step from a room with nothing in it is held only where
- * its arrival would land just before the next round: it then lands just after
- * it, and the round goes off over the empty room. A room with a monster, or a
+ * 2026-10-03; the user's move-move rule 2026-10-04). A round hits whoever is
+ * in the room when its tick goes off. A step from a room with nothing in it
+ * goes at once while a step and another after it fit before the next round,
+ * so the room it lands in can still be left before that round; otherwise it
+ * waits for the round and goes as it fires. A room with a monster, or a
  * fight, never holds. Unknown rounds or step length hold nothing. Whether the
- * run is timed is said each time the answer changes. See `mudengine-automation` › parts/walking.md › *A run steps in the
- * off-rounds*.
+ * run is timed is said each time the answer changes. See
+ * `mudengine-automation` › parts/walking.md › *A run steps in the off-rounds*.
  */
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -18,22 +18,24 @@ import type { StepTimes } from './StepTimes';
 import type { WalkerEvents } from './ports';
 
 /**
- * How long to hold a step sent at `now` so that it does not arrive within
- * `marginMs` before the round at `nextRound`: 0 when it arrives earlier than
- * that (still in this off-round) or after the round anyway.
+ * How long to hold a step at `now`: 0 when two steps and `marginMs` fit
+ * before the round at `nextRound`, or when that round went off within
+ * `marginMs` (a step that cannot fit twice goes once a round, as it fires);
+ * otherwise until the round.
  */
 export function offRoundHoldMs(
   now: number,
   nextRound: number,
+  periodMs: number,
   stepMs: number,
   marginMs: number
 ): number {
-  const arrival = now + stepMs;
-  if (arrival <= nextRound - marginMs) return 0;
-  return Math.max(0, nextRound + marginMs - arrival);
+  const left = nextRound - now;
+  if (left > 2 * stepMs + marginMs || periodMs - left <= marginMs) return 0;
+  return left;
 }
 
-type Untimed = 'stepUnmeasured' | 'unmeasured' | 'stale';
+type Untimed = 'stepUnmeasured' | 'unmeasured';
 type Said = 'timed' | Untimed;
 
 /** Why a run is not timed, as said. */
@@ -41,8 +43,6 @@ function untimed(why: Untimed): string {
   switch (why) {
     case 'unmeasured':
       return t('automation.walk.offRoundsNoRounds');
-    case 'stale':
-      return t('automation.walk.offRoundsStale');
     case 'stepUnmeasured':
       return t('automation.walk.offRoundsNoSteps');
     default: {
@@ -58,6 +58,8 @@ export class OffRounds {
   private running = false;
   /** Which of the timing's answers was last said this walk, so each is said once. */
   private said: Said | null = null;
+  /** The round a held step waits for, so a late timer sends it rather than waiting another. */
+  private awaited: number | null = null;
 
   constructor(
     private readonly steps: StepTimes,
@@ -73,18 +75,28 @@ export class OffRounds {
   begin(run: boolean): void {
     this.running = run;
     this.said = null;
+    this.awaited = null;
   }
 
   /** How long to hold the step out of this room; 0 for none. */
   holdMs(state: CharacterState, quiet: boolean): number {
+    const awaited = this.awaited;
+    this.awaited = null;
+    if (awaited !== null && this.now() >= awaited) return 0;
+    const hold = this.timedHold(state, quiet);
+    if (hold > 0) this.awaited = this.now() + hold;
+    return hold;
+  }
+
+  private timedHold(state: CharacterState, quiet: boolean): number {
     if (!this.running) return 0;
     if (fightIsRunning(state) || state.room.occupants.some((who) => who.kind !== 'player'))
       return 0;
     const now = this.now();
-    const next = this.rounds.next(now, tuning().walk.offRoundForgetRounds);
+    const next = this.rounds.next(now);
     const stepMs = this.steps.usual;
     if (!next.known || stepMs === null) {
-      const why = next.known ? 'stepUnmeasured' : next.why;
+      const why = next.known ? 'stepUnmeasured' : 'unmeasured';
       this.say(why, quiet, () => untimed(why));
       return 0;
     }
@@ -94,13 +106,14 @@ export class OffRounds {
         step: (stepMs / 1000).toFixed(2)
       })
     );
-    return offRoundHoldMs(now, next.at, stepMs, tuning().walk.offRoundMarginMs);
+    return offRoundHoldMs(now, next.at, next.periodMs, stepMs, tuning().walk.offRoundMarginMs);
   }
 
   reset(): void {
     this.rounds.reset();
     this.running = false;
     this.said = null;
+    this.awaited = null;
   }
 
   private say(said: Said, quiet: boolean, message: () => string): void {

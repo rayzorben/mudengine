@@ -498,8 +498,9 @@ const TUNING_DEFAULTS = {
     roundCommandExpiryMs: 2000,
     /**
      * One-round gaps the round's length is the median of (`RoundClock`), and
-     * how many before it is known. Measured 2026-10-03 on Paradigm over 17,722
-     * gaps: median 5,037 ms (five server ticks of about 1,008 ms).
+     * how many before the median replaces `hunting.roundSeconds`. Measured
+     * 2026-10-03 on Paradigm over 17,722 gaps: median 5,037 ms (five server
+     * ticks of about 1,008 ms).
      */
     roundSamples: 8,
     roundSamplesLeast: 3,
@@ -1252,18 +1253,13 @@ const TUNING_DEFAULTS = {
      */
     followSettleMs: 350,
     /**
-     * A run's step out of an empty room is held so it does not arrive within
-     * this of the next round (`walk/OffRounds.ts`). Measured 2026-10-03 on
-     * Paradigm: 95% of rounds land within 250 ms of the one predicted a round
-     * ahead.
+     * Slack on a run's predicted round (`walk/OffRounds.ts`): a step goes
+     * only when two steps and this fit before it, and a round that went off
+     * within this is taken as just fired. Measured 2026-10-03 on Paradigm: 95%
+     * of rounds land within 250 ms of the one predicted a round ahead, 87%
+     * three ahead, 78% five ahead.
      */
     offRoundMarginMs: 250,
-    /**
-     * Rounds after the last one seen that the next is still predicted. A
-     * skipped tick moves the rounds a second early about one round in twenty:
-     * three rounds ahead, 87% land within the margin; five ahead, 78%.
-     */
-    offRoundForgetRounds: 3,
     /** Move answers timed before a run is timed to the rounds; at most `nudgeSamples`. */
     offRoundStepSamples: 3,
     /**
