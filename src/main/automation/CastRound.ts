@@ -34,19 +34,8 @@ export class CastRound implements CastGate, SessionModule {
   ) {}
 
   onBlock(block: Block): void {
-    switch (block.type) {
-      case 'user-hits':
-      case 'user-misses':
-      case 'mob-hits':
-      case 'mob-misses':
-        if (this.beat.blow(block.at)) this.roundAt = block.at;
-        return;
-      case 'spell-refused':
-        this.spend();
-        return;
-      default:
-        return;
-    }
+    if (this.beat.onBlock(block)) this.roundAt = block.at;
+    if (block.type === 'spell-refused') this.spend();
   }
 
   mayCast(spell: string): boolean {
