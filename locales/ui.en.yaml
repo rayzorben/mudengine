@@ -5279,7 +5279,9 @@ automation:
     started: 'Looping {loopName}: {stopCount} stops.'
     stopped: 'Loop stopped: {reason}'
     tooHurt: Health below the loop threshold; resting to recover.
+    tooHurtBeside: Health below the loop threshold, with monsters in the room; the loop waits here.
     tooDrained: Mana below the meditate threshold; meditating to recover.
+    tooDrainedBeside: Mana below the meditate threshold, with monsters in the room; the loop waits here.
     manaBack: Mana is back; the loop continues.
     afflicted: Waiting out a condition before the next leg.
     afflictionOver: The condition has passed; the loop continues.
