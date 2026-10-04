@@ -461,9 +461,10 @@ tuning:
     # auto-combat attacks whatever its rules say, whatever the odds.
     openAbove: 0.95
 
-    # A monster run from is not attacked again until the character is this
-    # many levels past the level it ran at, or this long has passed, so a loop
-    # whose one monster was run from goes on earning.
+    # A monster run from that waits to be attacked is not attacked again until
+    # the character is this many levels past the level it ran at, or this long
+    # has passed, so a loop whose one monster was run from goes on earning. One
+    # that attacks on sight, or might, is fought when it is in the room.
     fledLevels: 2
     fledForgetMs: 1800000
     # A room run out of for health is kept out of, by routes and the hunting

@@ -1696,8 +1696,15 @@ export class AutoCombat implements SessionModule {
         willing.push(who);
         continue;
       }
-      // Run from at about this level: not opened on again until outgrown.
-      const fled = this.fledFrom(state, who.name);
+      /*
+       * Run from at about this level: not opened on again until outgrown, but
+       * only where the realm says it waits to be attacked. One that attacks on
+       * sight, or might, swings whether it is opened on or not, and follows:
+       * festus left a large blood skeleton alone twice and took its round both
+       * times (2026-10-04).
+       */
+      const fled =
+        attacksOnSight(who.disposition, mine) === false ? this.fledFrom(state, who.name) : null;
       if (fled !== null) {
         decline(who, fled);
         continue;
