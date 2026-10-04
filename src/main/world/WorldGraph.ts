@@ -428,8 +428,8 @@ export class WorldGraph {
     return this.catalogue.itemsCasting(spell);
   }
 
-  itemsOfKind(kind: Parameters<Catalogue['itemsOfKind']>[0]): WorldItem[] {
-    return this.catalogue.itemsOfKind(kind);
+  itemsWhere(test: (item: WorldItem) => boolean): WorldItem[] {
+    return this.catalogue.itemsWhere(test);
   }
 
   sourcesOf(item: Parameters<Catalogue['sourcesOf']>[0]): ReturnType<Catalogue['sourcesOf']> {

@@ -18,7 +18,9 @@ import { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import { bestInSlot } from '../world/bestInSlot';
 import { gearUpgrades, type UpgradeRealm } from '../world/gearUpgrades';
+import { learnerOf, learning } from '../world/learning';
 import { slotAskerOf, type SlotAsker } from '../world/slotGear';
+import { spellScrolls } from '../world/spellScrolls';
 import { wearing } from '../world/wearing';
 import { attackOptions } from '../../shared/attackOptions';
 import type { SafetyDecision } from '../../shared/automation';
@@ -176,6 +178,25 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
           errands.capabilities().abilities,
           family
         );
+      },
+      spellScrolls: (as) => {
+        const world = wiring.world();
+        const state = as ?? tracker.current;
+        const here = roomAddress(state.room);
+        if (world === undefined || here === null) return [];
+        const traveller = errands.travellerNow(state);
+        const learner = learnerOf(state, world.classNamed(state.className ?? ''));
+        return spellScrolls(state, learner, {
+          itemsWhere: (test) => world.itemsWhere(test),
+          spellById: (id) => world.spellById(id),
+          stockingPlaces: (items) => world.stockingPlaces(items, here, null, traveller),
+          priceAt: (name, at) => errands.priceAt(name, at)
+        });
+      },
+      learning: (spells, as) => {
+        const world = wiring.world();
+        const state = as ?? tracker.current;
+        return world === undefined ? { state, learned: [] } : learning(state, spells, world);
       },
       safety: wiring.safety,
       busy: wiring.busy,

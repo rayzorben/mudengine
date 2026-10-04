@@ -81,8 +81,10 @@ export interface SurvivalInput {
    */
   draw?: number;
   /**
-   * A caster's blow where the swing says nothing, by foe: expected damage a
-   * round and the mana a round of it costs. Null where the swing answers.
+   * A caster's blow, by foe: expected damage a round and the mana a round of
+   * it costs. Cast while the mana pays for it, as `AttackSpells` casts the
+   * chosen spell before the melee round; the swing once it runs dry. Null
+   * where the character casts nothing at it.
    */
   casting: Array<{ perRound: number; manaPerRound: number } | null>;
   heal: SurvivalHeal | null;
@@ -132,6 +134,8 @@ export interface Survival {
   lostMean: number;
   /** The most health lost in any one round of any fight. */
   worstRound: number;
+  /** Mana spent a fight on casts, heals and recasts, the mean over every fight: what resting for mana gives back; null with the pool unread. */
+  manaMean: number | null;
   horizons: SurvivalHorizon[];
   trials: number;
 }
@@ -263,6 +267,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
   let roundsTotal = 0;
   let healsTotal = 0;
   let downTotal = 0;
+  let manaTotal = 0;
   let worstRound = 0;
   const leftovers: number[] = [];
 
@@ -352,6 +357,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     roundsTotal += round;
     healsTotal += heals;
     downTotal += input.hp - Math.max(0, hp);
+    if (input.mana !== null && mana !== null) manaTotal += input.mana - mana;
     if (!dead) {
       survived += 1;
       leftovers.push(Math.max(0, hp));
@@ -377,6 +383,10 @@ export function startFight(input: SurvivalInput): FightTrials | null {
 
     /** The character's blows at one foe this round. */
     function strike(side: FoeSide): number {
+      if (side.cast !== null && mana !== null && mana >= side.cast.manaPerRound) {
+        mana -= side.cast.manaPerRound;
+        return side.cast.perRound;
+      }
       if (side.attack !== null) {
         const swings = sampledCount(random, Math.min(MAX_SWINGS, side.attack.swings?.value ?? 1));
         let dealt = 0;
@@ -396,11 +406,8 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         }
         return dealt;
       }
-      if (side.cast !== null && (mana === null || mana >= side.cast.manaPerRound)) {
-        if (mana !== null) mana -= side.cast.manaPerRound;
-        return side.cast.perRound;
-      }
-      return 0;
+      // With the pool unread the spell is cast every round; there is no swing to fall back on.
+      return side.cast !== null && mana === null ? side.cast.perRound : 0;
     }
   };
 
@@ -425,6 +432,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         hpLeft: leftovers.length === 0 ? null : leftovers[Math.floor(leftovers.length / 2)]!,
         heals: healsTotal / trials,
         lostMean: downTotal / trials,
+        manaMean: input.mana === null ? null : manaTotal / trials,
         worstRound,
         horizons: horizons.map((rounds, at) => {
           const { standing, won, lost } = reads[at]!;

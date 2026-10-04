@@ -11199,6 +11199,39 @@ describe.runIf(realm !== null && realm.size > 0)('reading a spell off a scroll',
       'a torch'
     ]);
   });
+
+  /*
+   * `ReadCommand`'s other answers keep the scroll: a use is spent only on a
+   * spell added. `Unable to learn` is the wire's (captures/219); `already
+   * know` the server's string, sent the same way.
+   */
+  it('keeps the scroll on a spell already known, and lists it in the book', () => {
+    const tracker = play(
+      [...shelf, 'You already know how to cast minor healing!'],
+      realm ?? undefined
+    );
+
+    expect(tracker.current.spellbook?.map((spell) => spell.name)).toEqual([
+      'harm',
+      'minor healing'
+    ]);
+    expect(carried(tracker)).toEqual([
+      'scroll of cause harm',
+      'scroll of minor healing',
+      'a torch'
+    ]);
+  });
+
+  it('keeps the scroll and the book on a spell the class cannot learn', () => {
+    const tracker = play([...shelf, 'Unable to learn minor healing!'], realm ?? undefined);
+
+    expect(tracker.current.spellbook?.map((spell) => spell.name)).toEqual(['harm']);
+    expect(carried(tracker)).toEqual([
+      'scroll of cause harm',
+      'scroll of minor healing',
+      'a torch'
+    ]);
+  });
 });
 
 /*

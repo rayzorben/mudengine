@@ -380,9 +380,12 @@ export class Catalogue {
     return [...this.items.values()].filter((item) => item.worn === worn);
   }
 
-  /** Every item row the realm files as one kind, in header order: the lights a walk could buy. */
-  itemsOfKind(kind: NonNullable<WorldItem['kind']>): WorldItem[] {
-    return [...this.items.values()].filter((item) => item.kind === kind);
+  /**
+   * Every item row `test` takes, in header order: the lights a walk could
+   * buy, the scrolls that teach a spell.
+   */
+  itemsWhere(test: (item: WorldItem) => boolean): WorldItem[] {
+    return [...this.items.values()].filter(test);
   }
 
   /**
@@ -1299,7 +1302,10 @@ export class Catalogue {
         // say", which keeps every picker open rather than emptying it.
         ['tg', 'targets'],
         // Whether resistance can refuse it — format 20, the same rule.
-        ['res', 'resist']
+        ['res', 'resist'],
+        // Who may learn it — format 55; absent is the realm's 0.
+        ['mt', 'mageryType'],
+        ['ml', 'mageryLevel']
       ] as const) {
         const value = Number(record[key]);
         if (Number.isFinite(value) && value > 0) spell[field] = value;
@@ -1595,6 +1601,10 @@ export class Catalogue {
       const armourType = record['arm'];
       if (typeof armourType === 'number' && Number.isInteger(armourType))
         entryOut.armourType = armourType;
+      // Who may learn what — format 55. Zero is a code, so only absent is dropped.
+      const mageryType = record['mt'];
+      if (typeof mageryType === 'number' && Number.isInteger(mageryType))
+        entryOut.mageryType = mageryType;
       // Negative is a real price here; see `loadRaces`.
       const exp = Number(record['expTable']);
       if (Number.isFinite(exp) && exp !== 0) entryOut.expTable = exp;

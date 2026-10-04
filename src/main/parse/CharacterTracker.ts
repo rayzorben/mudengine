@@ -87,6 +87,7 @@ import {
   spellbookEmpty,
   spellbookListed,
   spellLearned,
+  spellKnown,
   spellRead,
   statAll,
   statSheet,
@@ -2135,25 +2136,22 @@ export class CharacterTracker {
        * has no book to append to, and a realm that cannot place the scroll
        * still saw the spell — so neither is made to wait on the other.
        *
-       * **The sentence names the spell and never the item.** That makes the
-       * second half a realm-data question rather than a parsing one: the
-       * player typed `read minor`, a prefix the server resolved, and
-       * `scroll of minor healing` appears in neither the command nor the
-       * answer. Binding the command that provoked the line would have bound
-       * the prefix. So the scroll is found by asking which carried item
-       * *teaches this spell* (`scrollTeaching`, `sheet.ts`), which is a lookup.
+       * **The sentence names the spell and never the item**: `read minor` is
+       * a prefix the server resolved, so the scroll is found by asking which
+       * carried item *teaches this spell* (`scrollTeaching`, `sheet.ts`).
        *
-       * Where the realm cannot place either — a derivative realm, an item
-       * outside the index, a scroll acquired before this client was watching
-       * — the spell is still recorded and **nothing is removed**. The pack is
-       * a maintained listing and the next `i` corrects it; a guess at which
-       * item went would take a real one off the card, which is the failure
-       * that is not self-correcting.
+       * Where the realm cannot place either (a derivative realm, an item
+       * outside the index) the spell is still recorded and **nothing is
+       * removed**: the next `i` corrects the pack, and a guess at which item
+       * went would take a real one off the card, which does not correct itself.
        */
       case 'user-reads-spell':
         return spellRead(s, g['name'], this.world, (scroll) =>
           this.notePack(block.seq, scroll, false, 1)
         );
+      // `You already know how to cast {name}!`: the scroll is kept, the book lists it.
+      case 'user-reads-known':
+        return spellKnown(s, g['name'], this.world);
 
       /*
        * A bare encumbrance line, which arrives on its own after picking
