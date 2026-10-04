@@ -14,7 +14,7 @@ import type { SpellElement } from './spellchoice';
 import type { FightSummary } from './fights';
 import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
-import type { AlignmentCost, MobDisposition } from './mobs';
+import type { AlignmentCost, MobAvoid, MobDisposition } from './mobs';
 import type { Verdict } from './verdict';
 import type { RowPeace } from './mobRules';
 import type { Denomination } from './character';
@@ -1968,6 +1968,8 @@ export interface WorldMob {
    * sharing this name are one of those — see `AlignmentCost`.
    */
   costly: AlignmentCost;
+  /** Why the realm data says to leave it alone unless it or the party starts the fight. See `MobAvoid`. */
+  avoid?: MobAvoid;
   /**
    * What it is worth and what it takes, from format 12 of the realm file.
    *

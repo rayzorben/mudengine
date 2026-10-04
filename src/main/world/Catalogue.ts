@@ -59,7 +59,7 @@ import {
   type ReferredNames,
   type ReferredTable
 } from '../../shared/abilities';
-import { dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
+import { avoidOf, dispositionFromCode, mobNameCandidates } from '../../shared/mobs';
 import {
   counterPriceInCopper,
   currencyOfCode,
@@ -519,7 +519,11 @@ export class Catalogue {
    * file degrades to exactly that case rather than failing to load.
    */
   private loadMobs(raw: unknown, version: number): void {
-    for (const entry of Array.isArray(raw) ? raw : []) {
+    const entries: unknown[] = Array.isArray(raw) ? raw : [];
+    // A derivative without the EXP column states none anywhere, which says
+    // nothing about what any one monster is worth (`buildRealm`'s columns).
+    const statesExperience = version >= WORTH_SINCE && entries.some(statesWorth);
+    for (const entry of entries) {
       if (typeof entry !== 'object' || entry === null) continue;
       const record = entry as Record<string, unknown>;
       const name = String(record['n'] ?? '').trim();
@@ -549,10 +553,7 @@ export class Catalogue {
        * reason `number()` in `buildRealm` does — a monster with no armour and
        * a realm that never stated one are the same fact, and neither is "0".
        */
-      const positive = (key: string): number | undefined => {
-        const value = Number(record[key]);
-        return Number.isFinite(value) && value > 0 ? value : undefined;
-      };
+      const positive = (key: string): number | undefined => positiveIn(record, key);
       mob.armour = positive('ac');
       mob.damageResist = positive('dr');
       mob.magicResist = positive('mr');
@@ -589,6 +590,15 @@ export class Catalogue {
       const profiles = readProfiles(record['pf']);
       if (profiles.length > 0) mob.profiles = profiles;
       else if (version >= PROFILES_SINCE) mob.profiles = [];
+      /*
+       * Avoided where every row agrees: no attack and no spell is the empty
+       * list above; no experience is no row stating any, which `experience`
+       * (the least of the rows) cannot say alone, and a file before format 12
+       * or without the column cannot say at all.
+       */
+      const worthNothing = statesExperience && !statesWorth(record);
+      const avoid = avoidOf(mob.profiles?.length === 0, worthNothing);
+      if (avoid !== undefined) mob.avoid = avoid;
       // What it resists and ignores — format 14, the worst of the rows sharing
       // this name. See `BuiltMob.ab`.
       const abilities = readAbilities(record);
@@ -625,10 +635,7 @@ export class Catalogue {
           disposition: dispositionFromCode(row['d']),
           profile: typeof at === 'number' ? (profiles[at] ?? null) : null
         };
-        const stated = (key: string): number | undefined => {
-          const value = Number(row[key]);
-          return Number.isFinite(value) && value > 0 ? value : undefined;
-        };
+        const stated = (key: string): number | undefined => positiveIn(row, key);
         kept.armour = stated('ac');
         kept.damageResist = stated('dr');
         kept.magicResist = stated('mr');
@@ -1059,6 +1066,7 @@ export class Catalogue {
     if (known.damageResist !== undefined) entity.damageResist = known.damageResist;
     if (known.magicResist !== undefined) entity.magicResist = known.magicResist;
     if (known.experience !== undefined) entity.experience = known.experience;
+    if (known.avoid !== undefined) entity.avoid = known.avoid;
     if (known.regen !== undefined) entity.regen = known.regen;
     if (known.regenHours !== undefined) entity.regenHours = known.regenHours;
     if (known.coins !== undefined) entity.coins = known.coins;
@@ -1929,6 +1937,26 @@ const NPC_ROLE_OF: Readonly<Record<ShopKind, NonNullable<NpcEntity['npcType']> |
  * formats; this is the one row of that table the reader has to know.
  */
 const PROFILES_SINCE = 20;
+
+/** The realm format that first wrote a monster's experience (`BuiltMob.xp`). */
+const WORTH_SINCE = 12;
+
+/**
+ * A column's number where it is above zero. Zero and absent are one answer: a
+ * monster with no armour and a realm that never stated one are the same fact.
+ */
+function positiveIn(record: Record<string, unknown>, key: string): number | undefined {
+  const value = Number(record[key]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/** Whether a `BuiltMob` or `BuiltMobRow` states any experience, on itself or a row. */
+function statesWorth(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const record = entry as Record<string, unknown>;
+  if (positiveIn(record, 'xp') !== undefined) return true;
+  return Array.isArray(record['rw']) && record['rw'].some(statesWorth);
+}
 
 /** The realm format that states the coin a price is counted in (`BuiltItem.cur`). */
 const CURRENCY_SINCE = 47;

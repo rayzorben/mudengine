@@ -80,12 +80,37 @@ export function costsAlignment(align: number): boolean {
 export type AlignmentCost = 'never' | 'sometimes' | 'always';
 
 /**
- * The monsters auto-combat will fight: none that costs evil points to attack,
- * certainly or by a row the name cannot rule out. What the hunting survey
- * prices.
+ * Why the realm data says to leave a monster alone unless it, or the party,
+ * starts the fight: MegaMUD's *Avoid*. Set only where every row sharing the
+ * name agrees.
+ *
+ * - `no-experience`: killing it pays nothing. The sleazy shopkeeper is
+ *   ChaoticEvil and stationary, so `ShouldMobAttackTarget` targets every
+ *   player (festus killed him for 0 experience, 2026-10-04). One that swings
+ *   is hit back.
+ * - `no-attacks`: it pays, but states no attack and no spell, so it cannot
+ *   hurt anyone. A cocoon is one, and a hunt still asks for it by name.
+ *
+ * The disposition is left as the realm says: one that swings still counts
+ * when resting and running.
  */
-export function fightable<T extends { costly: AlignmentCost }>(mobs: readonly T[]): T[] {
-  return mobs.filter((mob) => mob.costly === 'never');
+export type MobAvoid = 'no-experience' | 'no-attacks';
+
+/** The realm's reason to avoid a monster, from what every row of its name states. */
+export function avoidOf(fightsWithNothing: boolean, worthNothing: boolean): MobAvoid | undefined {
+  if (worthNothing) return 'no-experience';
+  return fightsWithNothing ? 'no-attacks' : undefined;
+}
+
+/**
+ * The monsters a hunt may be for: none that costs evil points to attack,
+ * certainly or by a row the name cannot rule out, and none that pays nothing.
+ * What the hunting survey prices.
+ */
+export function fightable<T extends { costly: AlignmentCost; avoid?: MobAvoid }>(
+  mobs: readonly T[]
+): T[] {
+  return mobs.filter((mob) => mob.costly === 'never' && mob.avoid !== 'no-experience');
 }
 
 /** Combines the per-row answers for one name. */

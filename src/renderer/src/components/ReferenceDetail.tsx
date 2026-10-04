@@ -5,6 +5,7 @@ import MobFactRow from './MobFactRow';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
+import { avoidNote } from '../lib/avoid';
 import type { RowPeace } from '@shared/mobRules';
 import {
   NO_REFERRED_NAMES,
@@ -399,6 +400,7 @@ function MobDetail({
         )}
         {/* The character's own row, beside the realm's word (todo 818). */}
         {peace !== null && <span className="quiet">{TEMPER_ROW[peace]()}</span>}
+        {mob.avoid !== undefined && <span className="quiet">{avoidNote(mob.avoid)}</span>}
       </dd>
       {mob.costly !== 'never' && (
         <>

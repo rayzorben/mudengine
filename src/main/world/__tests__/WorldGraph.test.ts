@@ -3033,6 +3033,72 @@ describe('only castable spells are offered to the console', () => {
 });
 
 /*
+ * MegaMUD's Avoid, from the realm data: a name every row of which states no
+ * attack, or no experience. The sleazy shopkeeper is both (2026-10-04).
+ */
+describe('a monster the realm data says to avoid', () => {
+  const bite = { a: [[1, 1, 100, 8, 30, 1000, 0]] };
+  const statue = { n: 'obsidian statue', hp: 300, i: [347], d: 'h', pf: [bite] };
+  function withMobs(version: number, mobs?: object[]): WorldGraph {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'world-avoid-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const header = JSON.stringify({
+      v: version,
+      source: 'test',
+      rooms: 1,
+      generatedAt: 'x',
+      mobs: mobs ?? [
+        { n: 'sleazy shopkeeper', hp: 100, i: [348], d: 'h' },
+        { n: 'cocoon', hp: 150, i: [40], d: 'p', xp: 20 },
+        statue,
+        { n: 'thug', hp: 40, i: [9], d: 'h', xp: 30, pf: [bite] },
+        {
+          n: 'giant rat',
+          hp: 20,
+          i: [1, 2],
+          d: 'h',
+          pf: [bite],
+          rw: [
+            { hp: 10, p: 0, d: 'h' },
+            { hp: 20, p: 0, d: 'h', xp: 5 }
+          ]
+        }
+      ]
+    });
+    const body = [header, JSON.stringify({ m: 1, r: 1, n: 'Square' })].join('\n') + '\n';
+    fs.writeFileSync(file, zlib.gzipSync(body));
+    const loaded = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return loaded;
+  }
+
+  it('avoids a monster with no attacks, or one worth nothing', () => {
+    const graph = withMobs(55);
+    expect(graph.mob('sleazy shopkeeper')?.avoid).toBe('no-experience');
+    expect(graph.mob('obsidian statue')?.avoid).toBe('no-experience');
+    expect(graph.mob('cocoon')?.avoid).toBe('no-attacks');
+    expect(graph.mob('thug')?.avoid).toBeUndefined();
+    expect(graph.buildMobEntity('sleazy shopkeeper').avoid).toBe('no-experience');
+  });
+
+  it('avoids a name only where every row agrees', () => {
+    expect(withMobs(55).mob('giant rat')?.avoid).toBeUndefined();
+  });
+
+  /* A file older than the column says nothing, which is not *nothing to gain*. */
+  it('says nothing on a file written before the columns', () => {
+    const graph = withMobs(11);
+    expect(graph.mob('sleazy shopkeeper')?.avoid).toBeUndefined();
+    expect(graph.mob('obsidian statue')?.avoid).toBeUndefined();
+  });
+
+  /* A derivative built without the EXP column states none anywhere. */
+  it('says nothing about worth on a realm with no experience column', () => {
+    expect(withMobs(55, [statue]).mob('obsidian statue')?.avoid).toBeUndefined();
+  });
+});
+
+/*
  * Format 20: how a monster fights, read back off the file and handed to its
  * entity with every spell it names resolved — the shape `menace.ts` weighs.
  */

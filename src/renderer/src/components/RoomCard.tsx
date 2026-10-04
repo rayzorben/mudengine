@@ -8,6 +8,7 @@ import { ago } from '../lib/players';
 import { exitsUnseen, lightNote } from '../lib/room';
 import Icon from './Icon';
 import RowPeaceChip from './RowPeaceChip';
+import { avoidNote } from '../lib/avoid';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText, ownAlignment } from './LairList';
@@ -491,6 +492,7 @@ function describe(who: RoomOccupant, mine: Alignment | null): string {
    */
   if (who.costly === 'always') parts.push(t('cards.room.occupant.alwaysCostly'));
   if (who.costly === 'sometimes') parts.push(t('cards.room.occupant.sometimesCostly'));
+  if (who.mob?.avoid !== undefined) parts.push(avoidNote(who.mob.avoid));
   return parts.join('; ');
 }
 
@@ -836,6 +838,11 @@ function RoomBody({
                         )}
                         {/* And the player's own row, beside the realm's word (todo 818). */}
                         <RowPeaceChip character={character} name={who.name} verdict={verdict} />
+                        {who.mob?.avoid !== undefined && (
+                          <span className="chip quiet" title={avoidNote(who.mob.avoid)}>
+                            {t('cards.room.occupant.avoidChip')}
+                          </span>
+                        )}
                         {/*
                         Not a fight cost but a standing one, and the server
                         charges it in silence — which is why it is on the card

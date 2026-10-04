@@ -40,7 +40,7 @@
  */
 import type { Alignment } from './alignment';
 import type { ItemKind } from './items';
-import type { AlignmentCost, MobDisposition } from './mobs';
+import type { AlignmentCost, MobAvoid, MobDisposition } from './mobs';
 import type {
   MapObstacle,
   MobProfile,
@@ -249,6 +249,8 @@ export interface MobEntity {
   uncertain: boolean;
   /** What attacking it costs this character in alignment. */
   costly: AlignmentCost;
+  /** Why the realm data says to leave it alone unless it or the party starts the fight. */
+  avoid?: MobAvoid;
   armour?: number;
   damageResist?: number;
   magicResist?: number;

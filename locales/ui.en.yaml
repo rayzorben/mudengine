@@ -2543,6 +2543,7 @@ cards:
       alignCostChip: −10 align
       alignCostUncertainChip: −10 align?
       alwaysCostly: attacking it costs you 10 alignment
+      avoidChip: avoid
       charmedChip: charmed
       # Todo 818: the character's row says it does not attack first, shown
       # beside the realm's disposition rather than instead of it.
@@ -4713,6 +4714,11 @@ session:
       have. This character's world.database may not match this realm, so routes will fail from here.
 # What the automations say: loops, login, peers, hang-up.
 automation:
+  # MegaMUD's Avoid, from the world data (MobAvoid): the Room and Reference
+  # cards, and auto-combat's refusal.
+  avoid:
+    noExperience: gives no exp, so automation avoids it unless it or the party starts the fight
+    noAttacks: has no attacks, so automation avoids it unless it or the party starts the fight
   # Going and getting what a route needs -- `ItemErrand` (todo 07). The route
   # says what the door wants; the realm says where it comes from.
   collect:
@@ -4949,6 +4955,7 @@ automation:
     refusedTooRich: '{target} is worth {exp} exp, over the Max Monster Exp of {cap}'
     refusedMovePending: a step is still waiting for its room
     refusedNotHostile: the world data does not say {target} attacks first
+    refusedAvoided: '{target} {why}'
     refusedClaimed: '{player} is already fighting {target}, and Polite Attacks is on'
     refusedRetreating: Running away
     refusedStandDown: you typed break
