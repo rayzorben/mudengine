@@ -9,6 +9,14 @@ import type { RoomId, RouteStep } from './world';
 import { isBlinding, type Afflictions, type CharacterState } from './character';
 import type { MovementConfig } from './config';
 
+/**
+ * What a walk is for, which decides how each of its legs is planned (todo 19):
+ * a loop's `lap` by distance alone and the same every lap, a `trip` to a shop,
+ * bank, trainer or item round a room the character ran from where a way round
+ * is survivable, and every other `walk` as the player's own route.
+ */
+export type WalkKind = 'lap' | 'trip' | 'walk';
+
 export type WalkStatus =
   /** Nothing planned. */
   | 'idle'

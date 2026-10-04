@@ -49,7 +49,7 @@ export function lightPlanner(modules: () => LightPlannerModules): LightPlanner {
       // A stop or a leg that will not plan is the lap's own to report as it walks.
       return legs.flatMap(([from, to]): RouteStep[] => {
         if (from === null || to === null || from === to) return [];
-        const route = errands.routeBetween(from, to, true);
+        const route = errands.routeBetween(from, to, 'lap');
         return typeof route === 'string' || route.blocked ? [] : route.steps;
       });
     },

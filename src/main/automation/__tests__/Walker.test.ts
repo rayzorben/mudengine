@@ -6,6 +6,7 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { Walker } from '../Walker';
 import type { WalkerEvents } from '../walk/ports';
+import type { WalkKind } from '../../../shared/walk';
 import {
   CONFIG as config,
   ROUTE,
@@ -3873,7 +3874,7 @@ describe('a fight on the way', () => {
    */
   const walkerThatCanPlan = (
     start: CharacterState,
-    replan?: (to: string, shortest: boolean) => Route | string
+    replan?: (to: string, kind: WalkKind) => Route | string
   ): { walk: Walker; move: (state: CharacterState) => void } => {
     let current = start;
     const walk = new Walker(config, queue, {
@@ -4270,15 +4271,15 @@ describe('a fight on the way', () => {
     walk.dispose();
   });
 
-  /* A lap's leg is planned by distance alone, and re-planned the same way. */
-  it('hands the walk’s own shortest option to the re-plan', async () => {
-    const asked: boolean[] = [];
-    for (const shortest of [true, false]) {
+  /* A lap's leg is planned by distance alone, and re-planned the same way; a trip's round a room run from. */
+  it('hands the walk’s own kind to the re-plan', async () => {
+    const asked: WalkKind[] = [];
+    for (const kind of ['lap', 'trip', 'walk'] as const) {
       const { walk, move } = walkerThatCanPlan(at(1, 1), (_to, flag) => {
         asked.push(flag);
         return 'nowhere to go';
       });
-      walk.start(ROUTE, at(1, 1), { shortest });
+      walk.start(ROUTE, at(1, 1), { kind });
       await vi.advanceTimersByTimeAsync(50);
       walk.onCharacter(fighting(1, 1));
       move(at(1, 9));
@@ -4286,7 +4287,7 @@ describe('a fight on the way', () => {
       await vi.advanceTimersByTimeAsync(50);
       walk.dispose();
     }
-    expect(asked).toEqual([true, false]);
+    expect(asked).toEqual(['lap', 'trip', 'walk']);
   });
 
   /* Chased into the destination, or the last step's answer arrived among the

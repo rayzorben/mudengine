@@ -24,6 +24,7 @@ import { personStop } from '../automation/personStop';
 import type { StashFetch } from '../automation/StashFetch';
 import type { TrainErrand } from '../automation/TrainErrand';
 import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
+import type { WalkKind } from '../../shared/walk';
 import type { Walker } from '../automation/Walker';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -115,7 +116,8 @@ export const ERRAND_LEG = {
   holdWhenHurt: true,
   resumeAfterFight: true,
   whileFighting: false,
-  resumeAfterLoss: false
+  resumeAfterLoss: false,
+  kind: 'trip'
 } as const;
 
 /** What the journeys are walked, planned and fought with. */
@@ -539,12 +541,12 @@ export class Travel implements SessionModule {
    * the character: lent the choice to cross only for a walk the player asked
    * for, and never for a lap's leg, which plans by distance.
    */
-  replan(to: RoomId, shortest: boolean): Route | string {
+  replan(to: RoomId, kind: WalkKind): Route | string {
     return this.errands.planFromHere(
       to,
       {},
-      shortest,
-      this.walkAsked && !shortest ? this.allowingFor(to) : []
+      kind,
+      this.walkAsked && kind !== 'lap' ? this.allowingFor(to) : []
     );
   }
 
@@ -660,7 +662,7 @@ export class Travel implements SessionModule {
     const drawn = this.errands.planFromHere(
       owed.to,
       { alternatives: true },
-      false,
+      'walk',
       crossedWords(route)
     );
     if (typeof drawn === 'string') return drawn;
@@ -689,7 +691,7 @@ export class Travel implements SessionModule {
       this.loops.stop(t('session.loop.stoppedForRoute'));
       this.walker.stop(t('session.loop.stoppedForRoute'));
     }
-    const plan = this.errands.planFromHere(room);
+    const plan = this.errands.planFromHere(room, {}, ERRAND_LEG.kind);
     if (typeof plan === 'string') return plan;
     if (plan.blocked) return plan.reason ?? t('automation.walk.refusalNoRoute');
     if (plan.steps.length === 0) return null;
@@ -821,7 +823,7 @@ export class Travel implements SessionModule {
     }
     if (journey !== null) {
       this.journey = null;
-      const route = this.errands.planFromHere(journey.to, {}, false, this.allowingFor(journey.to));
+      const route = this.errands.planFromHere(journey.to, {}, 'walk', this.allowingFor(journey.to));
       const refused = typeof route === 'string' ? route : this.startAsked(route, journey.run);
       if (refused !== null) {
         this.session.notice(
@@ -1623,7 +1625,7 @@ export class Travel implements SessionModule {
     }
     // Priced as every other route is — retreating through a gate this
     // character cannot pay is not a retreat.
-    const route = this.errands.routeBetween(here, roomId(found.map, found.room), false);
+    const route = this.errands.routeBetween(here, roomId(found.map, found.room), 'walk');
     if (typeof route === 'string') {
       this.session.notice(
         t('session.safety.retreatRefused', { room: retreat.room, reason: route })
@@ -1791,7 +1793,7 @@ export class Travel implements SessionModule {
     const plan = this.errands.planFromHere(
       destination,
       { alternatives: true },
-      false,
+      'walk',
       crossedWords(route)
     );
     if (typeof plan === 'string') return { refused: plan };
@@ -1836,7 +1838,7 @@ export class Travel implements SessionModule {
    * and *what will it cost to walk* cannot disagree.
    */
   private stepsBetween(from: RoomId, to: RoomId): number | null {
-    const route = this.errands.routeBetween(from, to, false);
+    const route = this.errands.routeBetween(from, to, 'walk');
     return typeof route === 'string' || route.blocked ? null : route.steps.length;
   }
 
@@ -2177,7 +2179,7 @@ export class Travel implements SessionModule {
     if (heading !== null) {
       // Measured the way the lap will walk it, or the prompt quotes a detour
       // the leg will never take.
-      const plan = this.errands.planFromHere(heading, {}, true);
+      const plan = this.errands.planFromHere(heading, {}, 'lap');
       if (typeof plan !== 'string') {
         const owed = this.stepsFromStop(heading);
         const wandered = plan.steps.length - (owed ?? 0);
@@ -2209,7 +2211,7 @@ export class Travel implements SessionModule {
   private resumeRoute(confirmed: number | null): MovementStart {
     const owed = this.walker.unfinished;
     if (owed === null) return { refused: t('session.move.nothingToResume') };
-    const plan = this.errands.planFromHere(owed.to, {}, false, this.allowingFor(owed.to));
+    const plan = this.errands.planFromHere(owed.to, {}, 'walk', this.allowingFor(owed.to));
     if (typeof plan === 'string') return { refused: plan };
     const wandered = plan.steps.length - owed.left;
     if (this.tooFar(wandered, confirmed)) {
@@ -2253,7 +2255,7 @@ export class Travel implements SessionModule {
   private stepsFromStop(heading: RoomId): number | null {
     const from = this.loops.strayedFrom;
     if (from === null) return null;
-    const route = this.errands.routeBetween(from, heading, true);
+    const route = this.errands.routeBetween(from, heading, 'lap');
     return typeof route === 'string' || route.blocked ? null : route.steps.length;
   }
 
@@ -2269,7 +2271,7 @@ export class Travel implements SessionModule {
     const owed = this.errandOwes;
     if (owed === null) return;
     this.errandOwes = null;
-    const route = this.errands.planFromHere(owed.to, {}, false, owed.crossing);
+    const route = this.errands.planFromHere(owed.to, {}, 'walk', owed.crossing);
     const refused = typeof route === 'string' ? route : this.startLit(route, owed.run);
     this.session.notice(
       refused === null || refused === undefined
