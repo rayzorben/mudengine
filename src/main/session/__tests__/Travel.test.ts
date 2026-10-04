@@ -450,10 +450,12 @@ describe('a route run with auto-combat off', () => {
   }
 
   it('turns it off at the start and back on at the arrival', () => {
-    const { travel: moving, combat, notices } = running(fighting);
+    const { travel: moving, combat, notices, parts } = running(fighting);
     expect(moving.walkRoute(ROUTE, true)).toBeNull();
     expect(combat.flips).toEqual([false]);
     expect(notices).toContain(t('automation.combat.runningCombatOff'));
+    // And its steps are timed to the rounds (todo 00).
+    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, expect.anything(), { offRounds: true });
     moving.walkEnded(true);
     expect(combat.flips).toEqual([false, true]);
     expect(notices).toContain(t('automation.combat.onAfterRun'));
@@ -523,7 +525,7 @@ describe('a light bought before the dark', () => {
     expect(parts.walker.start).not.toHaveBeenCalled();
     parts.light.beforeRoute = () => false;
     moving.walkRoute(ROUTE);
-    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, state);
+    expect(parts.walker.start).toHaveBeenCalledWith(ROUTE, state, { offRounds: false });
   });
 
   it('asks for a lap once it has started, and not for one refused', () => {

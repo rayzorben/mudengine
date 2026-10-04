@@ -78,6 +78,8 @@ import { Holds } from './walk/Holds';
 import { SneakBeforeStep } from './walk/Sneak';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
+import { StepTimes } from './walk/StepTimes';
+import { OffRounds } from './walk/OffRounds';
 
 /**
  * The nudge's coalesce key — by intent, so a walk cannot queue two of them.
@@ -157,37 +159,15 @@ export class Walker implements SessionModule {
    */
   private askedWhereAt: number | null = null;
   /**
-   * When the step now outstanding reached the wire, or null.
-   *
-   * One end of the only measurement this walker takes — see `noteAnswered`.
-   * Cleared when the step is answered, and whenever a walk ends without one:
-   * a timestamp left over from a step nobody is walking any more would be
-   * measured against the next arrival and record a wait that never happened.
+   * How long this realm takes to answer a move (`walk/StepTimes.ts`). The
+   * nudge deadline is built from it: Paradigm answers a move in a median
+   * 1,239 ms (festus, 2026-09-02, 22 town steps), so a flat second was late on
+   * every step and the bare Enter it sent reprinted every room. Kept per
+   * connection.
    */
-  private stepSentAt: number | null = null;
-  /**
-   * How long this realm has actually taken to answer a move, newest last, at
-   * most `walk.nudgeSamples` of them.
-   *
-   * **The nudge deadline is a measurement, not a claim.** It was a flat
-   * second, on the reasoning that "a move that landed is answered in well
-   * under a second" — which is a fact about one realm written down as a fact
-   * about every realm. Paradigm answers a move in a median 1,239ms (measured
-   * over 22 uninterrupted town steps in
-   * `logs/2026-09-02_21-04-28_festus.mudcap.jsonl`; p25 1,228, p90 1,250 —
-   * the server's movement round, tight enough to be a constant of it). Every
-   * normal step was therefore late by 240ms, the fallback fired on all of
-   * them, and the bare Enter it sends is answered with a **full reprint of
-   * the room** — so the console showed every room twice for the whole lap,
-   * and each step spent a second command out of the budget the fighting is
-   * done from.
-   *
-   * Kept per connection rather than per walk: the realm does not change
-   * between two routes, and starting from nothing again would put the same
-   * spurious Enter on the wire at the top of every one. `reset()` clears it,
-   * because that is a new connection and possibly a different server.
-   */
-  private answers: number[] = [];
+  private readonly stepTimes = new StepTimes();
+  /** A run's steps out of an empty room, timed to the rounds. */
+  private readonly offRounds: OffRounds;
   /** The `sn` before each step, and when not to ask (`walk/Sneak.ts`). */
   private readonly sneak: SneakBeforeStep;
   /**
@@ -273,6 +253,7 @@ export class Walker implements SessionModule {
       stepAgain: () => this.sendCurrent(false)
     };
     this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere);
+    this.offRounds = new OffRounds(this.stepTimes, events);
     this.holds = new Holds(
       config,
       events,
@@ -505,7 +486,8 @@ export class Walker implements SessionModule {
       resumeAfterFight = true,
       whileFighting = true,
       resumeAfterLoss = true,
-      kind = 'walk'
+      kind = 'walk',
+      offRounds = false
     }: {
       quiet?: boolean;
       asked?: boolean;
@@ -514,6 +496,8 @@ export class Walker implements SessionModule {
       whileFighting?: boolean;
       resumeAfterLoss?: boolean;
       kind?: WalkKind;
+      /** A run: steps out of an empty room are timed to the rounds. */
+      offRounds?: boolean;
     } = {}
   ): string | null {
     if (!this.config.enabled) return t('automation.walk.refusalDisabled');
@@ -652,6 +636,7 @@ export class Walker implements SessionModule {
     this.asked = asked;
     this.resumeAfterLoss = resumeAfterLoss;
     this.kind = kind;
+    this.offRounds.begin(offRounds);
     /*
      * Asked for while a fight was running, so this walk's job is to leave it —
      * **but only when leaving is what ends the fight**.
@@ -762,9 +747,8 @@ export class Walker implements SessionModule {
   stop(reason: string, quiet = false): void {
     if (this.status !== 'walking') return;
     this.clock.clear();
-    // The outstanding step is not going to be answered as this step any more,
-    // so the clock it was being timed against goes with it. See `answers`.
-    this.stepSentAt = null;
+    // The outstanding step is not going to be answered as this step any more.
+    this.stepTimes.abandoned();
     this.cancelQueued();
     this.status = 'stopped';
     this.reason = reason;
@@ -781,8 +765,8 @@ export class Walker implements SessionModule {
 
   /** A new connection: forget everything. */
   reset(): void {
-    this.answers = [];
-    this.stepSentAt = null;
+    this.stepTimes.reset();
+    this.offRounds.reset();
     this.clock.clear();
     this.route = null;
     this.index = 0;
@@ -860,6 +844,7 @@ export class Walker implements SessionModule {
    * to `Barriers`, whose header has the ladder.
    */
   onBlock(block: Block): void {
+    this.offRounds.onBlock(block);
     if (this.status !== 'walking') return;
     if (block.type === 'user-sneak-failed') this.sneak.refused();
 
@@ -1161,7 +1146,7 @@ export class Walker implements SessionModule {
     // What this realm charges for a move, which is the only thing that can
     // say what "late" means on it. Taken here because this is the moment the
     // walk *knew* it had arrived, which is the quantity the deadline bounds.
-    this.noteAnswered();
+    this.stepTimes.answered(Date.now());
     /*
      * The answer arrived after all, so the Enter asking for one is a reprint
      * nobody needs — and an arriving room consumes the expectation queue, so
@@ -1353,6 +1338,12 @@ export class Walker implements SessionModule {
     const step = this.route?.steps[this.index];
     if (step !== undefined && this.barriers.mustSearchFirst(state, step)) {
       this.barriers.holdSearching(step);
+      return true;
+    }
+    // A run out of an empty room waits for the round to go off over it.
+    const offRound = this.offRounds.holdMs(state, this.quiet);
+    if (offRound > 0) {
+      this.retryAfter(offRound, state);
       return true;
     }
     if (this.quarryHolds >= tuning().walk.maxHolds) return false;
@@ -1659,7 +1650,7 @@ export class Walker implements SessionModule {
   private onWire(step: RouteStep): boolean {
     if (this.status !== 'walking' || this.route?.steps[this.index] !== step) return false;
     this.stepSent = true;
-    this.stepSentAt = Date.now();
+    this.stepTimes.sent(Date.now());
     return true;
   }
 
@@ -1723,7 +1714,7 @@ export class Walker implements SessionModule {
    *
    * The deadline used to be a flat second on the reasoning that a move is
    * answered in well under one. Paradigm takes 1.24s, so the abnormal case
-   * was every case: see `answers`.
+   * was every case: see `stepTimes`.
    */
   private waitForAnswer(command: string): void {
     this.clock.clear();
@@ -1757,27 +1748,12 @@ export class Walker implements SessionModule {
   }
 
   /**
-   * The realm answered a move, and how long it took is the measurement the
-   * deadline is built from. Ignored when nothing is outstanding — a room can
-   * confirm a step the walk never timed, and a wait that was not measured is
-   * not a wait of zero.
-   */
-  private noteAnswered(): void {
-    if (this.stepSentAt === null) return;
-    const took = Date.now() - this.stepSentAt;
-    this.stepSentAt = null;
-    this.answers.push(took);
-    const keep = tuning().walk.nudgeSamples;
-    if (this.answers.length > keep) this.answers.splice(0, this.answers.length - keep);
-  }
-
-  /**
    * How long to give the server before asking it to say something.
    *
    * The slowest answer this realm has recently given, plus the configured
    * margin — so the fallback fires when the realm is slower than *itself*,
    * which is the only definition of late that survives meeting a second
-   * realm. See `answers` for the measurement that made this necessary and
+   * realm. See `stepTimes` for the measurement that made this necessary and
    * `walk.nudgeAfterMs` for what the margin is.
    *
    * Until a move has been answered even once there is nothing to be slower
@@ -1788,8 +1764,8 @@ export class Walker implements SessionModule {
    */
   private nudgeAfter(): number {
     const margin = tuning().walk.nudgeAfterMs;
-    if (this.answers.length === 0) return margin;
-    const slowest = Math.max(...this.answers);
+    const slowest = this.stepTimes.slowest;
+    if (slowest === null) return margin;
     return Math.max(margin, Math.min(slowest + margin, this.config.walk.stepTimeoutMs));
   }
 
