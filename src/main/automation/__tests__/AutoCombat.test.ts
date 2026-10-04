@@ -3921,15 +3921,47 @@ describe('opening a fight whatever the odds', () => {
     expect(sent).toEqual(['aa angry blood skeleton']);
   });
 
-  it('leaves alone a monster it ran from, until it is two levels past it', () => {
+  /*
+   * festus, 2026-10-04 (`2026-10-04_14-06-00_festus.mudcap.jsonl` t=149702
+   * and t=234847): run from a large blood skeleton at level 27 at 13:55, it
+   * followed him into the next room twice and was turned down as run from;
+   * the hit-back went out only after its first round.
+   */
+  it('attacks a monster it ran from that attacks on sight', () => {
     const fled = [{ name: 'angry blood skeleton', level: 27, at: Date.now() }];
-    const auto = festus(guard(fled));
-    auto.onCharacter(at(319));
-    drain();
-    expect(sent).toEqual([]);
-    auto.onCharacter({ ...at(319), progress: { ...EMPTY_CHARACTER.progress, level: 29 } });
+    festus(guard(fled)).onCharacter(at(319));
     drain();
     expect(sent).toEqual(['aa angry blood skeleton']);
+  });
+
+  it('leaves alone a passive monster it ran from, until it is two levels past it', () => {
+    const golem: RoomOccupant = {
+      ...fighter('stone golem', 300, [bite(40, 110)], { disposition: 'passive' }),
+      disposition: 'passive'
+    };
+    const here = (level: number): CharacterState => ({
+      ...at(319),
+      progress: { ...EMPTY_CHARACTER.progress, level },
+      room: { ...at(319).room, occupants: [golem] }
+    });
+    const auto = make(
+      combat({ attack: 'aa', engage: 'all' }),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      guard([{ name: 'stone golem', level: 27, at: Date.now() }])
+    );
+    auto.onCharacter(here(27));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      `stone golem — ${t('automation.combat.refusedFled', { target: 'stone golem', level: 27, until: 29 })}`
+    ]);
+    auto.onCharacter(here(29));
+    drain();
+    expect(sent).toEqual(['aa stone golem']);
   });
 });
 

@@ -536,7 +536,7 @@ const TUNING_DEFAULTS = {
      * route; auto-combat never refuses a fight on it (the user, 2026-10-03).
      */
     openAbove: 0.95,
-    /** A monster run from is not attacked again until the character is this many levels past it… */
+    /** A monster run from that waits to be attacked is not attacked again until the character is this many levels past it… */
     fledLevels: 2,
     /** …or this long has passed, so a loop whose one monster was run from goes on earning. */
     fledForgetMs: 1_800_000,
