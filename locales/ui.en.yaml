@@ -4571,7 +4571,13 @@ session:
     hangUpRefused: 'Not hanging up: {why}. {reasons}. Disconnecting now would be penalized; walk out
       instead.'
     hangingUpClean: 'Hanging up: {why}.'
-    hangUpAfterRun: 'Running first, then hanging up where the run lands: {why}.'
+    # Todo 21: the run goes first and the hang-up decides on where it lands.
+    hangUpAfterRun: 'Not hanging up yet: {why}. Running first; hanging up if the run fails, or if
+      you are attacked or hurt again where it lands.'
+    hangUpNotAfterRun: 'Not hanging up: {why}, but {refused}.'
+    hangUpRunGotOut: the run got out and nothing is attacking here
+    hangUpRunCaught: 'The run did not get you clear: {why}, and you were attacked or hurt again where
+      it landed.'
     hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hangup penalty."
     hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hangup
       penalty.'
