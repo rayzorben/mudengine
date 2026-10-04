@@ -131,7 +131,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       realmClass: () => errands.realmClass(),
       capabilities: () => errands.capabilities(),
       leg: (from, to) => {
-        const way = errands.routeBetween(from, to, false);
+        const way = errands.routeBetween(from, to, 'walk');
         return typeof way === 'string' ? unrouted(way) : way;
       },
       priceAt: (name, shop) => errands.priceAt(name, shop),

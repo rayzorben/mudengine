@@ -6381,11 +6381,11 @@ describe('what this character costs to move', () => {
     expect(errands.reachKey({ ...state, inventory: { ...state.inventory, rows: [999_999] } })).toBe(
       key
     );
+    // Nor a room run from, which only a trip's route goes round (todo 19).
     errands.shun('1/2');
-    const shunned = errands.reachKey(state);
-    expect(shunned).not.toBe(key);
+    expect(errands.reachKey(state)).toBe(key);
     expect(errands.reachKey({ ...state, progress: { ...state.progress, level: 31 } })).not.toBe(
-      shunned
+      key
     );
   });
 
@@ -6593,6 +6593,90 @@ describe('a lap walks the shortest way', () => {
 
     expect(manager!.startMoving(null, null)).toEqual({ started: true });
     await until(() => /\bs\r\n/.test(wire()));
+  });
+});
+
+/*
+ * Todo 19 (2026-10-03_10-53-22_festus.mudcap.jsonl t=9448825): Festus ran from
+ * a fat blood skeleton in 17/20 on the leg 7000 → 18 of the Overgrown Forest
+ * Trail loop, and for fifteen minutes every lap went round 17/20 by the hidden
+ * `go path` exits, off the loop, into wandering monsters. A lap's leg is the
+ * same every lap; only a trip goes round a room run from.
+ */
+describe('a lap keeps its way after a run', () => {
+  /** 7000 se 20 s 19 w 18 is the loop's way; 7000 n 51 w 50 n 49 w 16 sw 18 goes round. */
+  const trail = (): WorldGraph => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-trail-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const to = (r: number): { m: number; r: number } => ({ m: 17, r });
+    const rooms = [
+      { m: 17, r: 7000, n: 'Trail Bend', x: { se: to(20), n: to(51) } },
+      { m: 17, r: 20, n: 'Overgrown Forest Trail', x: { nw: to(7000), s: to(19) } },
+      { m: 17, r: 19, n: 'Overgrown Trail', x: { n: to(20), w: to(18) } },
+      { m: 17, r: 18, n: 'Trail End', x: { e: to(19), ne: to(16) } },
+      { m: 17, r: 51, n: 'Forest Trail', x: { s: to(7000), w: to(50) } },
+      { m: 17, r: 50, n: 'Dirt Path', x: { e: to(51), n: to(49) } },
+      { m: 17, r: 49, n: 'Forest Path', x: { s: to(50), w: to(16) } },
+      { m: 17, r: 16, n: 'Forest Edge', x: { e: to(49), sw: to(18) } }
+    ];
+    const header = { v: 32, source: 'test', rooms: rooms.length, generatedAt: 'x', mobs: [] };
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [JSON.stringify(header), ...rooms.map((room) => JSON.stringify(room))].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    return world;
+  };
+
+  it('walks its own leg through the room run from, while a trip goes round it', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, {
+      world: trail(),
+      automation: {
+        ...DEFAULT_CONFIG.automation,
+        enabled: true,
+        idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+        onEnterRealm: [],
+        rules: []
+      }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk) => chunks.push(chunk));
+    const wire = (): string => Buffer.concat(chunks).toString('latin1');
+    socket.write('Health: 20/20 [100%]\r\n');
+    socket.write('[HP=20]:' + PROMPT_REPAINT);
+    socket.write(
+      'Location:            17,7000\r\nTrail Bend\r\nObvious exits: north, southeast\r\n'
+    );
+    await until(() => manager!.character.room.number === 7000);
+    const errands = manager['errands'];
+    errands.shun('17/20');
+
+    // Positive control: the run is live, and a trip goes round 17/20 and says so.
+    const trip = errands.planFromHere('17/18', {}, 'trip');
+    expect(typeof trip === 'string' ? trip : trip.steps.map((step) => step.command)).toEqual([
+      'n',
+      'w',
+      'n',
+      'w',
+      'sw'
+    ]);
+    expect(notices.some((notice) => notice.includes('Overgrown Forest Trail'))).toBe(true);
+
+    expect(
+      manager.loops.start(
+        { name: 'trail', stops: [{ room: 'Trail End' }, { room: 'Trail Bend' }] },
+        manager.character
+      )
+    ).toBeNull();
+    await until(() => /\b(se|n)\r\n/.test(wire()));
+    expect(wire()).toMatch(/\bse\r\n/);
+    expect(wire()).not.toMatch(/\bn\r\n/);
   });
 });
 
