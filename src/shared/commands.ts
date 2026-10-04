@@ -906,10 +906,14 @@ export function commandOf(input: string): CommandName | null {
  * the second, independent arm for a realm whose rule turns out to differ.
  */
 export function opensStatScreen(input: string): boolean {
-  if (commandOf(input) !== 'Train') return false;
+  return commandOf(input) === 'Train' && argumentOf(input) === 'stats';
+}
+
+/** What follows the command word, trimmed and in the case it was typed; empty for a bare word. */
+export function argumentOf(input: string): string {
   const text = input.trim();
   const space = text.search(/\s/);
-  return space >= 0 && text.slice(space + 1).trim() === 'stats';
+  return space < 0 ? '' : text.slice(space + 1).trim();
 }
 
 /**
