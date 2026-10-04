@@ -81,7 +81,10 @@
  * been lost has lost it, unlike a rest.
  */
 import type { CommandQueue } from './CommandQueue';
+import { FightHeal, type FightHealBasis } from './FightHeal';
 import { t } from '../app/i18n';
+import type { Block } from '../../shared/blocks';
+import type { UiParams } from '../../shared/i18n';
 import {
   fightIsRunning,
   inAParty,
@@ -113,6 +116,24 @@ const SELF = '@self';
 /** The key a party-wide heal's cooldown is filed under: it has no one target. */
 const AREA = '@party';
 
+/** What a heal held back in a fight says, by the figure it fell short of. */
+function notInFight(basis: FightHealBasis, params: UiParams): string {
+  switch (basis) {
+    case 'measured':
+      return t('automation.heal.notInFightMeasured', params);
+    case 'realm':
+      return t('automation.heal.notInFightRealm', params);
+    case 'round':
+      return t('automation.heal.notInFightRound', params);
+    case 'share':
+      return t('automation.heal.notInFight', params);
+    default: {
+      const never: never = basis;
+      return never;
+    }
+  }
+}
+
 export class AutoHeal implements SessionModule {
   private lastCastAt = new Map<string, number>();
   /**
@@ -134,6 +155,8 @@ export class AutoHeal implements SessionModule {
   private asked = new Map<string, { from: string; at: number }>();
   /** Why the last request from each member was refused, so a repeat says nothing new. */
   private saidRefusal = new Map<string, string>();
+  /** What a heal in a fight has to beat. */
+  private readonly fight: FightHeal;
 
   constructor(
     private config: SpellsConfig,
@@ -163,15 +186,24 @@ export class AutoHeal implements SessionModule {
       family: RealmFamily | null;
     } = () => ({ combat: null, magery: null, family: null }),
     /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
-    private readonly gate: CastGate = OPEN_CAST_GATE
-  ) {}
+    private readonly gate: CastGate = OPEN_CAST_GATE,
+    /** What the monsters in the fight are expected to deal a round (`FightHeal`). */
+    realmPerRound: (state: CharacterState) => number | null = () => null
+  ) {
+    this.fight = new FightHeal(realmPerRound);
+  }
 
   configure(config: SpellsConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
   }
 
+  onBlock(block: Block): void {
+    this.fight.onBlock(block);
+  }
+
   reset(): void {
+    this.fight.reset();
     this.lastCastAt.clear();
     this.healing.clear();
     this.saidChoice.clear();
@@ -241,6 +273,7 @@ export class AutoHeal implements SessionModule {
   }
 
   onCharacter(state: CharacterState): void {
+    this.fight.onCharacter(state);
     if (!this.enabled || this.config.healBelow <= 0) return;
     this.forgetStaleRequests();
     if (state.phase !== 'in-game' || !this.hasMana(state)) return;
@@ -485,9 +518,8 @@ export class AutoHeal implements SessionModule {
   }
 
   /**
-   * In a fight a cast ends the attack, so a chosen heal that mends little of
-   * what is missing (`fightHealShare`) costs a round for nearly nothing: not
-   * cast, and said once.
+   * In a fight a cast ends the attack, so a chosen heal expected to mend less
+   * than `FightHeal` says the round is worth is not cast, and is said once.
    */
   private tooLittleForTheFight(
     aim: HealAim,
@@ -496,13 +528,15 @@ export class AutoHeal implements SessionModule {
     state: CharacterState
   ): boolean {
     const chosen = choice.chosen;
-    if (chosen === null || choice.why !== 'most' || !fightIsRunning(state)) return false;
-    if (chosen.expected >= tuning().spells.fightHealShare * deficit) return false;
-    this.sayOnce(aim, `in-fight:${chosen.spell.name}`, () =>
-      t('automation.heal.notInFight', {
+    if (chosen === null || !fightIsRunning(state)) return false;
+    const { basis, floor } = this.fight.floor(aim, deficit, state);
+    if (chosen.expected >= floor) return false;
+    this.sayOnce(aim, `in-fight:${chosen.spell.name}|${basis}`, () =>
+      notInFight(basis, {
         spell: chosen.spell.name,
         expected: Math.round(chosen.expected),
-        deficit
+        deficit,
+        perRound: Math.round(floor)
       })
     );
     return true;

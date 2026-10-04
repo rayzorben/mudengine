@@ -12,7 +12,12 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import type { FightSetup } from './FightSetup';
 import type { OddsReader } from './OddsBook';
-import { ownAlignment, packRows, type CharacterState } from '../../shared/character';
+import {
+  ownAlignment,
+  packRows,
+  type CharacterState,
+  type RoomOccupant
+} from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { inTheFight } from '../../shared/guards';
 import { attacksFirst, rowPeaceFor } from '../../shared/mobRules';
@@ -28,6 +33,7 @@ import {
   type Verdict
 } from '../../shared/verdict';
 import { roomId } from '../../shared/world';
+import { weighRoom } from '../../shared/menace';
 
 /** What the appraisal reads: the character, the realm, and the realm's answers about both. */
 export interface AppraisalParts {
@@ -192,26 +198,7 @@ export class Appraisal {
   private survivalOf(state: CharacterState): Survival | null {
     const character = this.setup.character(state, 'now');
     if (character === null) return null;
-    const standing = ownAlignment(state);
-    const fighting = new Set(
-      [...state.combat.attackers, state.combat.target ?? '']
-        .filter((name) => name.length > 0)
-        .map((name) => name.toLowerCase())
-    );
-    /*
-     * What would fight: everything the realm says attacks on sight, anything
-     * it cannot say about (unknown never reassures), and whatever is already
-     * swinging or being swung at. A passive resident standing by is not a
-     * foe, or every shop would read as a fight — unless it is certain to
-     * protect one, when the server brings it in (`guards.ts`) — and nor is
-     * one the player's row says does not attack first (`attacksFirst`).
-     */
-    const rules = this.session.config().combat.mobRules;
-    const fights = inTheFight(
-      state.room.occupants.filter((who) => who.kind !== 'player'),
-      (who) => attacksFirst(who, standing, rules) !== false || fighting.has(who.name.toLowerCase()),
-      () => true
-    );
+    const fights = this.foesOf(state);
     if (fights.length === 0) return null;
     const met = fights.map((who) => ({ name: who.name, subject: who.mob ?? {} }));
     const input = { ...character, ...this.setup.foes(state, character, met) };
@@ -220,5 +207,50 @@ export class Appraisal {
     if (this.ran?.key === key) return this.ran.survival;
     this.ran = { key, survival: simulateFight(input) };
     return this.ran.survival;
+  }
+
+  /**
+   * What the monsters in the fight are expected to deal this character a
+   * round, `Menace.perRound` summed, for the heal in a fight (`FightHeal`).
+   * Null where nothing fights or the world database cannot weigh one of them:
+   * a total that leaves a monster out is smaller than the truth.
+   */
+  fightPerRound(state: CharacterState): number | null {
+    const foes = this.foesOf(state);
+    if (foes.length === 0) return null;
+    const player = this.errands.menacePlayer(state);
+    let total = 0;
+    for (const menace of weighRoom(
+      foes.map((who) => who.mob ?? {}),
+      player,
+      tuning().menace
+    )) {
+      if (menace === null) return null;
+      total += menace.perRound;
+    }
+    return total;
+  }
+
+  /**
+   * What would fight: everything the realm says attacks on sight, anything
+   * it cannot say about (unknown never reassures), and whatever is already
+   * swinging or being swung at. A passive resident standing by is not a
+   * foe, or every shop would read as a fight — unless it is certain to
+   * protect one, when the server brings it in (`guards.ts`) — and nor is
+   * one the player's row says does not attack first (`attacksFirst`).
+   */
+  private foesOf(state: CharacterState): RoomOccupant[] {
+    const standing = ownAlignment(state);
+    const fighting = new Set(
+      [...state.combat.attackers, state.combat.target ?? '']
+        .filter((name) => name.length > 0)
+        .map((name) => name.toLowerCase())
+    );
+    const rules = this.session.config().combat.mobRules;
+    return inTheFight(
+      state.room.occupants.filter((who) => who.kind !== 'player'),
+      (who) => attacksFirst(who, standing, rules) !== false || fighting.has(who.name.toLowerCase()),
+      () => true
+    );
   }
 }
