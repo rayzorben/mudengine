@@ -5241,6 +5241,13 @@ automation:
     noChoice: 'No heal in the spellbook fits, so {spell} is cast as configured.'
     notInFight: 'Not healing during the fight: {spell} mends about {expected} of the {deficit} HP
       missing, and casting stops your attack.'
+    notInFightMeasured: 'Not healing during the fight: {spell} mends about {expected}, and you have
+      taken about {perRound} a round this fight. Casting stops your attack.'
+    notInFightRealm: 'Not healing during the fight: {spell} mends about {expected}, and the world
+      database says what is fighting you hits for about {perRound} a round. Casting stops your
+      attack.'
+    notInFightRound: 'Not healing during the fight: {spell} mends about {expected}, and you have
+      already taken {perRound} this round. Casting stops your attack.'
     noChoiceNoSpell: No heal in the spellbook fits, and none is configured, so nothing is cast.
     noFiguresSelf: Healing with the configured spell, because this character's maximum health is not
       known yet and heals are chosen by how much health is missing.
