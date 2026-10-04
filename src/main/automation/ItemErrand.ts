@@ -23,7 +23,7 @@
 import type { PlannedFetch } from '../../shared/navigation';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import { percentText, type SafetyDecision } from '../../shared/automation';
+import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { SupplyItem } from '../../shared/config';
 import type { Loop } from '../../shared/loops';
@@ -53,13 +53,6 @@ export interface ItemSources extends DropSources {
    * or a room script that summons a dropper (todo 806). `WorldGraph.itemAsks`.
    */
   asks: readonly ItemAsk[];
-  /**
-   * The droppers left out of `lairs`, each once: combat would not open on
-   * them even rested (`refusedRested`), with the share survived, or their
-   * fight is still being worked out (`survives` null). `via` is the monster
-   * whose death summons the dropper, where that is the fight refused.
-   */
-  unfought: readonly { mob: string; survives: number | null; via?: string }[];
 }
 
 export interface ItemPlanner {
@@ -148,28 +141,6 @@ function wantedFor(item: Wanted): string {
  * *nowhere* is never said of a monster it does.
  */
 function whyNoLair(sources: ItemSources): string {
-  const named = ({ mob, via }: ItemSources['unfought'][number]): string =>
-    via === undefined ? mob : t('automation.collect.summonedBy', { mob, summoner: via });
-  const known = sources.unfought.flatMap((each) =>
-    each.survives === null
-      ? []
-      : [
-          t('automation.collect.survivedShare', {
-            mob: named(each),
-            survives: percentText(each.survives)
-          })
-        ]
-  );
-  if (known.length > 0) {
-    return t('automation.collect.refusalDropperUnfought', {
-      mobs: known.join(', '),
-      needs: percentText(tuning().combat.openAbove)
-    });
-  }
-  if (sources.unfought.length > 0) {
-    const mobs = sources.unfought.map(named).join(', ');
-    return t('automation.collect.refusalDropperUnworked', { mobs });
-  }
   if (sources.droppers.length === 0) return t('automation.collect.refusalNoSource');
   const placed = sources.droppers.filter((dropper) => dropper.placed > 0);
   const mobs = (placed.length > 0 ? placed : sources.droppers)
@@ -315,12 +286,7 @@ export class ItemErrand implements SessionModule {
       const sources = this.planner.sourcesOf(item, null);
       if (sources.shops.length + sources.asks.length + sources.lairs.length > 0) continue;
       // Placed, so somewhere a route can reach; a summoned one's summoner may be out of reach for good.
-      const fought = sources.droppers.some(
-        (dropper) =>
-          dropper.placed > 0 &&
-          !sources.unfought.some((each) => each.via === undefined && each.mob === dropper.mob)
-      );
-      if (fought) continue;
+      if (sources.droppers.some((dropper) => dropper.placed > 0)) continue;
       return {
         item,
         why: t('automation.collect.refusalNoWayToGet', { item: item.name, why: whyNoLair(sources) })
@@ -711,10 +677,10 @@ export class ItemErrand implements SessionModule {
   }
 
   /**
-   * A planned source's fights are fought whatever `openAbove` says: the plan
-   * showed the odds and the player, or the planner walking the character,
-   * chose to go on them (the user, 2026-10-03). A source the errand found
-   * itself is fought by combat's own rule.
+   * A planned source's fights are fought whatever the player's engage rules
+   * say about them: the plan showed the fights and the player, or the planner
+   * walking the character, chose to go (the user, 2026-10-03). A source the
+   * errand found itself is fought by those rules.
    */
   private fightPlanned(item: Wanted, mobs: readonly (string | undefined)[]): void {
     if (item.from === undefined) return;

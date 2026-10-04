@@ -517,9 +517,10 @@ const TUNING_DEFAULTS = {
     /** How old a sighting of the leader's target may be before it is nobody's. */
     assistFreshMs: 60_000,
     /**
-     * The share of the room's simulated fights survived, from the health the
-     * character has now, that opening one needs (`src/shared/danger.ts`).
-     * An unknown fight is not refused; 0 opens whatever the odds.
+     * The share of a fight's simulated runs survived, at full health, above
+     * which a planned fight costs no more than `world.fightCost`. Below it the
+     * plan adds up to `world.survivalCost` (`navigation/plan.ts`). It prices a
+     * route; auto-combat never refuses a fight on it (the user, 2026-10-03).
      */
     openAbove: 0.95,
     /** A monster run from is not attacked again until the character is this many levels past it… */
@@ -1990,6 +1991,14 @@ const TUNING_DEFAULTS = {
      * (`navigation/plan.ts`).
      */
     fightCost: 30,
+    /**
+     * The most a planned fight's odds add on top of `fightCost`, in steps:
+     * all of it for a fight never survived, nothing at `combat.openAbove`.
+     * About resting the whole bar back: Festus rested 1.09 hp a second
+     * (median of five clean rests, 319 HP) and walked a step every 1.86 s on
+     * his loops (2026-10-03 captures), so 290 s of rest is 155 steps.
+     */
+    survivalCost: 155,
     /**
      * What using an item that teleports costs over an ordinary step
      * (`WorldItem.lands`).

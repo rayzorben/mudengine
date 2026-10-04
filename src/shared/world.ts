@@ -3371,8 +3371,9 @@ export function blockItem(block: RouteBlock): { id: number; name: string } | nul
 }
 
 /**
- * This character's odds in one fight, as combat weighs it before opening:
- * `win` opens by combat's rule, `lose` does not. `survives` is the simulator's
+ * This character's odds in one fight, as a planned route prices it: `win`
+ * is survived at least `openAbove` of the time and costs a plain fight,
+ * `lose` is not and costs more (`fightPrice`). `survives` is the simulator's
  * share of fights walked out of, null on a `win` the simulator cannot run.
  */
 export type FightOdds =

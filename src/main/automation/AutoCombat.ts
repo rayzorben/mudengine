@@ -76,8 +76,7 @@ import {
 import type { CommandQueue } from './CommandQueue';
 import { countMobs } from './RuleEngine';
 import { t } from '../app/i18n';
-import { percentText, type EngageDecision } from '../../shared/automation';
-import { openingRefusal } from '../../shared/danger';
+import type { EngageDecision } from '../../shared/automation';
 import { avoided, type FledEntry } from '../../shared/fled';
 import type { Block } from '../../shared/blocks';
 import { NO_INSTANT_SPELLS, type InstantSpellLore } from '../../shared/lore';
@@ -122,7 +121,6 @@ import {
   type Verdict
 } from '../../shared/verdict';
 import type { RealmFamily } from '../../shared/realm';
-import type { Survival } from '../../shared/survival';
 import { dodge, type ProwessAttack } from '../../shared/prowess';
 import { attacksOnSight } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
@@ -136,13 +134,11 @@ import { BrokenFight } from './BrokenFight';
  * — are the attack spell's too (`AttackSpellEvents`).
  */
 /**
- * What opening a fight is weighed against (`src/shared/danger.ts`): the fight
- * it would make, simulated, and the monsters this character ran from. Null
- * where nothing was wired, which weighs nothing.
+ * What opening a fight is weighed against: the monsters this character ran
+ * from. Null where nothing was wired, which weighs nothing. The odds are not
+ * read here (the user, 2026-10-03); they price a planned route.
  */
 export interface OpeningGuard {
-  /** Undefined where the realm has no world database: nothing to weigh against, so no check. */
-  opening(target: string): Survival | null | undefined;
   fled(): readonly FledEntry[];
 }
 
@@ -468,12 +464,6 @@ export class AutoCombat implements SessionModule {
    * worth saying even when it repeats the last session's.
    */
   private lastDecision: string | null = null;
-  /**
-   * Hit points a fight turned down for health wants first, or null: rested
-   * to (`Recovery`, the walk's hold) and forgotten once reached. See
-   * `restingFor`.
-   */
-  private owed: number | null = null;
 
   constructor(
     private config: CombatConfig,
@@ -644,7 +634,6 @@ export class AutoCombat implements SessionModule {
     this.state = null;
     this.opened.clear();
     this.focus = null;
-    this.owed = null;
     this.openerSpent = false;
     this.saidOpenerNeedsStealth = false;
     this.retreating = false;
@@ -662,8 +651,8 @@ export class AutoCombat implements SessionModule {
   /**
    * A monster a quest step or a planned key wants dead, fought by name
    * whatever the policy says about it — `engage: none`, a disposition the
-   * realm does not call hostile, a cap on health or experience, the odds
-   * `openAbove` asks for. Not past the three refusals that
+   * realm does not call hostile, a cap on health or experience. Not past the
+   * three refusals that
    * are not settings (a player, something unplaced, a monster the realm is
    * sure is good), not past a stance row, and not past somebody else's
    * claim on it. Session-scoped, like `AutoLoot.alsoTake`.
@@ -998,8 +987,6 @@ export class AutoCombat implements SessionModule {
   onCharacter(state: CharacterState): void {
     const was = this.state;
     this.state = state;
-    const hp = state.vitals.hp;
-    if (this.owed !== null && hp !== null && hp >= this.owed) this.owed = null;
     /*
      * A new target opens the per-target book again: the casts spent and the
      * spells found to have no effect are facts about the monster that *was* in
@@ -1513,21 +1500,6 @@ export class AutoCombat implements SessionModule {
       return;
     }
 
-    /*
-     * A fight it would not walk out of is not opened. A party's is the
-     * leader's call, and a planned one the plan's: the player or the planner
-     * chose to go on those odds (the user, 2026-10-03).
-     */
-    const odds =
-      joined === null && !this.isWanted(choice.target)
-        ? this.wontSurvive(state, choice.target)
-        : null;
-    if (odds !== null) {
-      this.decline(choice.target, odds);
-      return;
-    }
-    this.owed = null;
-
     // A party's fight is joined whether or not the proposal got through: the
     // trace says so either way, because the decision was made.
     const swung = this.swing(choice.target, choice.because);
@@ -1912,14 +1884,6 @@ export class AutoCombat implements SessionModule {
     this.note(target, false, why);
   }
 
-  /**
-   * Hit points a fight turned down for health wants before it is opened, or
-   * null: what `Recovery` and the walk's hold rest towards.
-   */
-  get restingFor(): number | null {
-    return this.owed;
-  }
-
   /** Why a monster this character ran from is not opened on, or null. See `src/shared/fled.ts`. */
   private fledFrom(state: CharacterState, name: string): string | null {
     if (this.guard === null) return null;
@@ -1933,40 +1897,6 @@ export class AutoCombat implements SessionModule {
           target: name,
           level: entry.level,
           until: entry.level + band
-        });
-  }
-
-  /**
-   * Why opening on `target` is not survived well enough, or null: the room's
-   * fight with it in, simulated from the health the character has now
-   * (`openingRefusal`). Not asked of a monster already swinging: hitting back
-   * is not opening, and the run decides that fight.
-   */
-  private wontSurvive(state: CharacterState, target: string): string | null {
-    if (this.guard === null) return null;
-    const key = mobKey(target);
-    if (state.combat.attackers.some((name) => mobKey(name) === key)) return null;
-    const { hp, hpMax } = state.vitals;
-    const { openAbove } = tuning().combat;
-    const fight = this.guard.opening(target);
-    if (fight === undefined) return null;
-    const refusal = openingRefusal(fight, hp, hpMax, openAbove);
-    if (refusal === null) return null;
-    // Every refusal that resting would answer is rested towards, so it is never a wander.
-    if (refusal.needs !== null && hp !== null && hp < refusal.needs) this.owed = refusal.needs;
-    return refusal.needs === null
-      ? t('automation.combat.refusedOdds', {
-          target,
-          survives: percentText(refusal.survives),
-          needs: percentText(openAbove),
-          hp: hp ?? 0
-        })
-      : t('automation.combat.refusedOddsResting', {
-          target,
-          survives: percentText(refusal.survives),
-          needs: percentText(openAbove),
-          hp: hp ?? 0,
-          rest: refusal.needs
         });
   }
 
