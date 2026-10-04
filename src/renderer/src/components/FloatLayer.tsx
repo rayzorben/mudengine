@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 
-import type { CardId, CardLayoutApi, FloatState } from '../lib/cards';
+import { useEdgeDrag } from '../hooks/useEdgeDrag';
+import {
+  MIN_FLOAT,
+  type CardId,
+  type CardLayoutApi,
+  type FloatBox,
+  type FloatState
+} from '../lib/cards';
 import { t } from '../lib/i18n';
+import { stretched, type ResizeEdge } from '../lib/resizeEdge';
+import ResizeHandles from './ResizeHandles';
 
 export interface FloatLayerProps {
   layout: CardLayoutApi;
@@ -57,7 +66,6 @@ function Float({
   layout: CardLayoutApi;
   children: ReactNode;
 }) {
-  const [resizing, setResizing] = useState(false);
   /*
    * A rolled card is its heading, and nothing else, wherever it is standing.
    *
@@ -69,54 +77,23 @@ function Float({
   const rolled = layout.isRolled(float.id);
 
   /*
-   * What the move handler reads, carried outside the resize effect's
-   * dependencies. Every `sizeFloat` produces a new layout api, so an effect
-   * depending on `layout` would tear its window listeners down and reattach
-   * them on every pointermove of the very gesture they serve; the ref keeps the
-   * values live while the effect runs once per gesture.
+   * The handles on its corners and sides, the same as a rail card's. Sized
+   * from where the pointer is against the box when the handle was taken, so
+   * a drag that overshoots and comes back lands under the pointer; a handle
+   * on the left or top moves the corner too.
    */
-  const live = useRef({ layout, x: float.x, y: float.y });
-  useEffect(() => {
-    live.current = { layout, x: float.x, y: float.y };
+  const { begin } = useEdgeDrag<FloatBox>(({ edge, x, y, from }, event) => {
+    const box = boxRef.current?.getBoundingClientRect();
+    if (!box || box.width === 0 || box.height === 0) return;
+    const by = { x: (event.clientX - x) / box.width, y: (event.clientY - y) / box.height };
+    layout.sizeFloat(float.id, stretched(from, edge, by, MIN_FLOAT));
   });
-
-  /*
-   * The corner grip.
-   *
-   * Sized from where the pointer *is* rather than from an accumulated delta, so
-   * a resize that overshoots and comes back lands under the pointer instead of
-   * drifting away from it.
-   */
-  const onGrip = useCallback((event: React.PointerEvent) => {
-    if (event.button !== 0) return;
-    // Refuses the caret as well as the browser's own drag, exactly as the card
-    // header does.
-    event.preventDefault();
-    event.stopPropagation();
-    setResizing(true);
-  }, []);
-
-  useEffect(() => {
-    if (!resizing) return;
-    const move = (event: PointerEvent): void => {
-      const box = boxRef.current?.getBoundingClientRect();
-      if (!box || box.width === 0 || box.height === 0) return;
-      const { x, y } = live.current;
-      live.current.layout.sizeFloat(float.id, {
-        w: (event.clientX - box.left) / box.width - x,
-        h: (event.clientY - box.top) / box.height - y
-      });
-    };
-    const stop = (): void => setResizing(false);
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
-    window.addEventListener('pointercancel', stop);
-    return () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-      window.removeEventListener('pointercancel', stop);
-    };
-  }, [resizing, boxRef, float.id]);
+  const { x, y, w, h } = float;
+  const onGrab = useCallback(
+    (_card: CardId, edge: ResizeEdge, event: React.PointerEvent<HTMLElement>) =>
+      begin(edge, event, { x, y, w, h }),
+    [begin, x, y, w, h]
+  );
 
   return (
     <div
@@ -140,12 +117,7 @@ function Float({
     >
       {children}
       {!rolled && (
-        <span
-          aria-hidden="true"
-          className="float-grip"
-          onPointerDown={onGrip}
-          title={t('cards.float.resizeTooltip')}
-        />
+        <ResizeHandles card={float.id} onGrab={onGrab} title={t('cards.float.resizeTooltip')} />
       )}
     </div>
   );

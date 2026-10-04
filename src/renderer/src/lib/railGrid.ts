@@ -1,12 +1,14 @@
 /**
  * The card rail as a grid of square cells (todo 09, 2026-10-03): where each
  * card stands, measured in whole cells, and the rule that no two overlap.
- * Every placement the rail draws, every drop and every corner drag goes
+ * Every placement the rail draws, every drop and every resize goes
  * through here, so the picture and the stored arrangement cannot disagree.
  *
  * Pure and tested without a DOM. The cell's size and why it is that size are
  * in `mudengine-ui` › `parts/cards.md`, *The card rail is a grid*.
  */
+
+import { sidesOf, type ResizeEdge, type Side, type Span } from './resizeEdge';
 
 /** Where a card's top-left corner is, in cells from the grid's own corner. */
 export interface GridSpot {
@@ -160,28 +162,86 @@ export function nearestFree(wanted: GridBox, taken: readonly GridBox[], columns:
 }
 
 /**
- * A card's box after its corner is dragged towards `wanted`, kept on the
- * grid and off its neighbours. The width is settled first, at the card's
- * present height, and then the height at that width; each stops at the
- * nearest card in its way, at the grid's right edge, and at `least`.
+ * One axis of a box resized from `side` towards `wanted` cells: the side
+ * held stays where it is, and the side moved stops at the first length that
+ * is `free`, at `room` (the grid's edge) and at `least`.
  */
-export function resizedWithin(
+function settled(
+  span: Span,
+  side: Side,
+  wanted: number,
+  least: number,
+  limit: number,
+  free: (span: Span) => boolean
+): Span {
+  if (side === 0) return span;
+  const end = span.start + span.length;
+  const room = side === 1 ? limit - span.start : end;
+  const at = (length: number): Span =>
+    side === 1 ? { start: span.start, length } : { start: end - length, length };
+  const lo = Math.min(least, room);
+  const hi = Math.max(lo, Math.min(Math.round(wanted), room));
+  for (let n = hi; n > lo; n -= 1) if (free(at(n))) return at(n);
+  return at(lo);
+}
+
+/**
+ * A card's box after its `edge` handle is dragged until the card is `wanted`
+ * cells, kept on the grid and off its neighbours. The side opposite the
+ * handle stays put, so a handle on the left or top moves the card's spot as
+ * well as its size. The width is settled first, at the card's present height
+ * (or the smaller one wanted), then the height at that width; each stops at
+ * the nearest card in its way, at the grid's edge, and at `least`.
+ */
+export function resizedTo(
   box: GridBox,
+  edge: ResizeEdge,
   wanted: GridSize,
   taken: readonly GridBox[],
   columns: number,
   least: GridSize
 ): GridBox {
-  const largest = (from: number, to: number, free: (n: number) => boolean): number => {
-    for (let n = to; n > from; n -= 1) if (free(n)) return n;
-    return from;
-  };
-  const minW = Math.min(least.w, columns - box.x);
-  const w = largest(minW, Math.max(minW, Math.min(Math.round(wanted.w), columns - box.x)), (n) =>
-    isFree({ ...box, w: n, h: Math.min(box.h, Math.max(least.h, Math.round(wanted.h))) }, taken)
+  const sides = sidesOf(edge);
+  const down: Span = { start: box.y, length: box.h };
+  const held =
+    sides.y === 0
+      ? down
+      : settled(
+          down,
+          sides.y,
+          Math.min(box.h, Math.max(least.h, Math.round(wanted.h))),
+          least.h,
+          Infinity,
+          () => true
+        );
+  const across = settled(
+    { start: box.x, length: box.w },
+    sides.x,
+    wanted.w,
+    least.w,
+    columns,
+    (s) => isFree({ x: s.start, w: s.length, y: held.start, h: held.length }, taken)
   );
-  const h = largest(least.h, Math.max(least.h, Math.round(wanted.h)), (n) =>
-    isFree({ ...box, w, h: n }, taken)
+  const rows = settled(down, sides.y, wanted.h, least.h, Infinity, (s) =>
+    isFree({ x: across.start, w: across.length, y: s.start, h: s.length }, taken)
   );
-  return { x: box.x, y: box.y, w, h };
+  return { x: across.start, y: rows.start, w: across.length, h: rows.length };
+}
+
+/**
+ * A card's box after its `edge` handle has travelled `travel` whole cells
+ * from where it was taken: the travel says how far the moving sides go, and
+ * `resizedTo` keeps the result on the grid and off its neighbours.
+ */
+export function resizedBy(
+  box: GridBox,
+  edge: ResizeEdge,
+  travel: GridSpot,
+  taken: readonly GridBox[],
+  columns: number,
+  least: GridSize
+): GridBox {
+  const sides = sidesOf(edge);
+  const wanted = { w: box.w + sides.x * travel.x, h: box.h + sides.y * travel.y };
+  return resizedTo(box, edge, wanted, taken, columns, least);
 }

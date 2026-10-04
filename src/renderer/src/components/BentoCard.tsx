@@ -222,16 +222,6 @@ export interface BentoCardProps {
   /** True while this card is the one being dragged, so it can say so. */
   dragging?: boolean;
   /**
-   * The corner grip that sizes a rail card on the rail's grid: a rail card
-   * is a fixed box that never resizes with its contents, and the person
-   * looking at it is the one thing allowed to change the box. Only a rail
-   * card carries the grip: a float has its own, and a docked strip is sized
-   * by its splitter.
-   */
-  onResize?(event: PointerEvent<HTMLElement>): void;
-  /** Double-click on the grip: back to the card's shipped size. */
-  onResizeReset?(): void;
-  /**
    * Hand the keyboard back to the game.
    *
    * A card takes no typed input, so nothing on one moves the caret — except the
@@ -311,8 +301,6 @@ export type CardChrome = Pick<
   | 'cardId'
   | 'onGrab'
   | 'dragging'
-  | 'onResize'
-  | 'onResizeReset'
   | 'translucency'
   | 'returnFocus'
   | 'pinned'
@@ -358,8 +346,6 @@ export default function BentoCard({
   cardId,
   onGrab,
   dragging,
-  onResize,
-  onResizeReset,
   translucency,
   returnFocus,
   children
@@ -938,28 +924,6 @@ export default function BentoCard({
             returnFocus?.();
           }}
           value={settings.value}
-        />
-      )}
-
-      {/*
-        The corner grip, on a rail card only. The same mark a float wears in
-        the same corner, so it is learned once; drawn quiet until the card is
-        pointed at, like the action column, and never only on hover of the
-        grip itself — an affordance you have to find by hovering is one most
-        people never find.
-
-        Not on a rolled card: its height is its heading, so a grip there would
-        write a height nothing draws and then hand back a card that had
-        silently changed size when it was rolled down again. The height it was
-        dragged to is kept and comes back with it.
-      */}
-      {onResize && rolled !== true && (
-        <span
-          aria-hidden="true"
-          className="card-resize"
-          onDoubleClick={onResizeReset}
-          onPointerDown={onResize}
-          title={t('cards.header.resizeHint')}
         />
       )}
 

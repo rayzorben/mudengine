@@ -5347,7 +5347,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     const talkGrip = JSON.parse(
       await evaluate(`
         (() => {
-          const el = document.querySelector('.conversation-card .card-resize');
+          const el = document.querySelector('.rail-cell:has(> .conversation-card) > .resize-frame > .resize-handle[data-edge="se"]');
           if (!el) return 'null';
           const b = el.getBoundingClientRect();
           return JSON.stringify({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) });
@@ -5413,7 +5413,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         JSON.parse(
           await evaluate(`
           (() => {
-            const el = document.querySelector('.conversation-card .card-resize');
+            const el = document.querySelector('.rail-cell:has(> .conversation-card) > .resize-frame > .resize-handle[data-edge="se"]');
             if (!el) return 'null';
             const b = el.getBoundingClientRect();
             return JSON.stringify({ x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) });
@@ -9796,7 +9796,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * its shipped size.
    */
   {
-    const grip = await boxOf(`.rail [data-card="${first}"] .card-resize`);
+    const grip = await boxOf(
+      `.rail [data-rail-card="${first}"] > .resize-frame > .resize-handle[data-edge="se"]`
+    );
     const cell = laid.cell;
     const beside = cellsOf(await grid(), second);
     await drag(grip, { x: grip.x - 3 * cell, y: grip.y - 2 * cell });
@@ -9813,7 +9815,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'and the size is remembered in cells, not pixels',
       JSON.stringify(sizes[first])
     );
-    const again = await boxOf(`.rail [data-card="${first}"] .card-resize`);
+    const again = await boxOf(
+      `.rail [data-rail-card="${first}"] > .resize-frame > .resize-handle[data-edge="se"]`
+    );
     await drag(again, { x: again.x + 8 * cell, y: again.y });
     const blocked = await readUntil(grid, (now) => cellsOf(now, first)?.w === firstCells.w);
     check(
@@ -9823,12 +9827,80 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'and grown towards the card beside it, it stops at that card',
       JSON.stringify({ first: cellsOf(blocked, first), second: cellsOf(blocked, second) })
     );
-    await doubleClick(await boxOf(`.rail [data-card="${first}"] .card-resize`));
+    await doubleClick(
+      await boxOf(
+        `.rail [data-rail-card="${first}"] > .resize-frame > .resize-handle[data-edge="se"]`
+      )
+    );
     const reset = await readUntil(grid, (now) => cellsOf(now, first)?.h === firstCells.h);
     check(
       cellsOf(reset, first)?.w === firstCells.w && cellsOf(reset, first)?.h === firstCells.h,
       'and a double-click on the grip puts the card back at its shipped size',
       JSON.stringify(cellsOf(reset, first))
+    );
+  }
+
+  /*
+   * A card resizes from every corner and side (todo 01). Its top-left corner
+   * moves its spot as well as its size and keeps its far sides where they
+   * were; its left side, dragged into the card beside it, stops at that card;
+   * its top side, dragged up, moves the spot back up. No two cards share a
+   * cell at any point.
+   */
+  {
+    const handle = (id, edge) =>
+      boxOf(`.rail [data-rail-card="${id}"] > .resize-frame > .resize-handle[data-edge="${edge}"]`);
+    const cell = laid.cell;
+    const start = cellsOf(await grid(), second);
+    const besideFirst = cellsOf(await grid(), first);
+    const nw = await handle(second, 'nw');
+    await drag(nw, { x: nw.x + 2 * cell, y: nw.y + 2 * cell });
+    const cornered = await readUntil(grid, (now) => cellsOf(now, second)?.x === start.x + 2);
+    const corner = cellsOf(cornered, second);
+    check(
+      corner?.x === start.x + 2 &&
+        corner?.y === start.y + 2 &&
+        corner?.x + corner?.w === start.x + start.w &&
+        corner?.y + corner?.h === start.y + start.h &&
+        apart(cornered?.cards ?? []),
+      'dragging a rail card’s top-left corner moves its spot and keeps its far sides',
+      JSON.stringify({ start, now: corner })
+    );
+    const stored = await storedLayout();
+    check(
+      stored?.spots?.[second]?.x === corner?.x &&
+        stored?.spots?.[second]?.y === corner?.y &&
+        stored?.sizes?.[second]?.w === corner?.w,
+      'and the new spot and size are remembered in cells',
+      JSON.stringify({ spot: stored?.spots?.[second], size: stored?.sizes?.[second] })
+    );
+    const w = await handle(second, 'w');
+    await drag(w, { x: w.x - 6 * cell, y: w.y });
+    const edged = await readUntil(
+      grid,
+      (now) => cellsOf(now, second)?.x === besideFirst.x + besideFirst.w
+    );
+    const side = cellsOf(edged, second);
+    check(
+      side?.x === besideFirst.x + besideFirst.w &&
+        side?.x + side?.w === start.x + start.w &&
+        side?.y === corner?.y &&
+        apart(edged?.cards ?? []),
+      'and its left side, dragged into the card beside it, stops at that card',
+      JSON.stringify({ first: besideFirst, second: side })
+    );
+    const n = await handle(second, 'n');
+    await drag(n, { x: n.x, y: n.y - 2 * cell });
+    const topped = await readUntil(grid, (now) => cellsOf(now, second)?.y === start.y);
+    const top = cellsOf(topped, second);
+    check(
+      top?.y === start.y &&
+        top?.h === start.h &&
+        top?.x === side?.x &&
+        top?.w === side?.w &&
+        apart(topped?.cards ?? []),
+      'and its top side, dragged up, moves the spot up and the width stays',
+      JSON.stringify({ start, now: top })
     );
   }
 

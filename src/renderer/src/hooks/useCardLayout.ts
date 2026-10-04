@@ -9,6 +9,7 @@ import {
   CARDS,
   isCardId,
   LEAST_CARD,
+  MIN_FLOAT,
   NO_CARD_SETTINGS,
   shippedSize,
   type CardId,
@@ -121,8 +122,6 @@ export const DEFAULT_FLOAT = {
   h: 0.3,
   solidity: solidityForFill(DEFAULT_FLOAT_FILL)
 } as const;
-
-const MIN_FLOAT = { w: 0.12, h: 0.1 } as const;
 
 const clamp = (value: number, low: number, high: number): number =>
   Math.min(high, Math.max(low, value));
@@ -660,10 +659,12 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         store({ ...base, floats: [...base.floats, lifted(id, existing, at, size)] });
       },
       moveFloat: (id, at) => patchFloat(id, { x: clamp(at.x, 0, 0.98), y: clamp(at.y, 0, 0.98) }),
-      sizeFloat: (id, size) =>
+      sizeFloat: (id, box) =>
         patchFloat(id, {
-          w: clamp(size.w, MIN_FLOAT.w, 1),
-          h: clamp(size.h, MIN_FLOAT.h, 1)
+          x: clamp(box.x, 0, 0.98),
+          y: clamp(box.y, 0, 0.98),
+          w: clamp(box.w, MIN_FLOAT.w, 1),
+          h: clamp(box.h, MIN_FLOAT.h, 1)
         }),
       setSolidity: (id, solidity) => patchFloat(id, { solidity: clamp(solidity, 0, 1) }),
       pin: (id, pinned) => patchFloat(id, pinned ? { pinned: true } : { pinned: undefined }),

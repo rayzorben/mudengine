@@ -164,6 +164,22 @@
   --grid-cell: 16px;
   /* Every scrollbar in the chrome, and the strip the card rail keeps for its own. */
   --scrollbar-w: 10px;
+  /*
+   * A card's resize handles (todo 01): how far a side reaches in over the
+   * card's edge and out past it over the console (on the rail, out is half
+   * the gap, so two cards' handles meet in the middle of it), and how far a
+   * corner reaches in along each side. The corner stops at the action
+   * column's inset (6px), so the close button is never under one; a side
+   * takes 3px of a 10px scrollbar. The marks: a corner's bracket, its line,
+   * its inset from the card's edge, and a side's seam.
+   */
+  --resize-reach-in: 3px;
+  --resize-reach-out: 4px;
+  --resize-corner: 6px;
+  --resize-mark: 6px;
+  --resize-mark-line: 2px;
+  --resize-mark-inset: 4px;
+  --resize-seam: 24px;
 
   /* ----------------------------------------------------------- motion */
   /* The one gold in the chrome: the glyph beside a bank's name in the console. */
