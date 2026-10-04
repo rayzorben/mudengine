@@ -497,6 +497,19 @@ const TUNING_DEFAULTS = {
      */
     roundCommandExpiryMs: 2000,
     /**
+     * One-round gaps the round's length is the median of (`RoundClock`), and
+     * how many before it is known. Measured 2026-10-03 on Paradigm over 17,722
+     * gaps: median 5,037 ms (five server ticks of about 1,008 ms).
+     */
+    roundSamples: 8,
+    roundSamplesLeast: 3,
+    /**
+     * How far from `hunting.roundSeconds` a gap may be and still be one round.
+     * A tick the server skips makes a 4 s gap (4% of gaps), which is a fifth
+     * out, so the band is half that.
+     */
+    oneRoundShare: 0.1,
+    /**
      * The shortest gap between two attempts to open a fight on the same thing.
      * Not pacing — pacing comes from the prompt — but a floor on *asking*: an
      * attack refused for a reason this client cannot see leaves the room
@@ -1238,6 +1251,21 @@ const TUNING_DEFAULTS = {
      * it always did.
      */
     followSettleMs: 350,
+    /**
+     * A run's step out of an empty room is held so it does not arrive within
+     * this of the next round (`walk/OffRounds.ts`). Measured 2026-10-03 on
+     * Paradigm: 95% of rounds land within 250 ms of the one predicted a round
+     * ahead.
+     */
+    offRoundMarginMs: 250,
+    /**
+     * Rounds after the last one seen that the next is still predicted. A
+     * skipped tick moves the rounds a second early about one round in twenty:
+     * three rounds ahead, 87% land within the margin; five ahead, 78%.
+     */
+    offRoundForgetRounds: 3,
+    /** Move answers timed before a run is timed to the rounds; at most `nudgeSamples`. */
+    offRoundStepSamples: 3,
     /**
      * How far the character may have wandered from what it was walking before
      * pressing play asks about it first.
