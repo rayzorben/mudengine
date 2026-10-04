@@ -1669,7 +1669,9 @@ export class Travel implements SessionModule {
        * decide afresh from wherever the character is standing when it is
        * back, which is what they do on every line anyway.
        */
-      resumeAfterLoss: false
+      resumeAfterLoss: false,
+      // The rest of the run, timed to the rounds (todo 00).
+      offRounds: true
     });
     if (refused !== null) {
       this.session.notice(
@@ -1877,7 +1879,8 @@ export class Travel implements SessionModule {
     this.startingAsked = true;
     let refused: string | null;
     try {
-      refused = this.walker.start(route, this.tracker.current);
+      // *Run it* times its steps to the rounds (todo 00).
+      refused = this.walker.start(route, this.tracker.current, { offRounds: run });
     } finally {
       this.startingAsked = false;
     }
