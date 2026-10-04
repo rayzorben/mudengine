@@ -254,6 +254,19 @@ describe('what a spot pays', () => {
     expect(e.ceilingPerHour).not.toBeNull();
   });
 
+  it('leaves deadly and costly to the run fight where the odds book ran it safe', () => {
+    const input = singles({
+      mobs: [mutant({ name: 'dragon', experience: 50_000, rounds: 20, perRound: 30 })]
+    });
+    const floor = estimateSpot(input, C);
+    expect(floor.deadly).toBe(true);
+    const ran = estimateSpot({ ...input, fightRun: true }, C);
+    expect(ran.worstShareAtLeast).toBe(floor.worstShareAtLeast);
+    expect(ran.deadly).toBe(false);
+    expect(ran.costly).toBe(false);
+    expect(ran.expPerHour).not.toBeNull();
+  });
+
   it('spreads a loop over its rooms and walks between them', () => {
     const e = estimateSpot(singles({ rooms: 4, loopSteps: 12 }), C);
     expect(e.walkSeconds).toBeCloseTo(12 * 1.25, 5);

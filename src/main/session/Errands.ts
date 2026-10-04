@@ -171,12 +171,16 @@ interface HuntPriced extends HuntPrice {
   group: HuntGroup;
   /** Every room of the group, nearest first. */
   rooms: HuntingRoom[];
+  /** The odds book ran the lair's fight and it is safe (`SpotInput.fightRun`). */
+  fightRun: boolean;
 }
 
 /** The character's own side of the combat arithmetic. See `Errands.realmClass`. */
 export interface RealmClass {
   combat: number | null;
   magery: number | null;
+  /** `Classes.MageryType`, which stat the mana tick is figured off (`regeneration`). */
+  mageryType: number | null;
   family: RealmFamily | null;
   /** The attack `combat.attack` types, as the class can make it (`attackFor`). */
   attack: ProwessAttack;
@@ -1518,9 +1522,9 @@ export class Errands implements SessionModule {
       fillerRadius,
       sizeTolerance
     };
-    const { combat, magery, family, attack } = this.realmClass();
+    const { combat, magery, mageryType, family, attack } = this.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery });
-    const regen = regeneration(sheet, null, family);
+    const regen = regeneration(sheet, mageryType, family);
     /*
      * The opener is `bs` and the weapon in hand lets it land: a weapon the
      * server will not backstab with (`backstabsWith`, a pig on a spit) is
@@ -1807,7 +1811,23 @@ export class Errands implements SessionModule {
       const clock = timed?.whose ?? known.clock;
       const respawn = timed?.seconds ?? known.respawn;
       const rooms = [...group.rooms].sort((a, b) => a.steps - b.steps);
-      const entry: HuntPriced = { key, group, mobs, clock, respawn, refills, rooms };
+      /*
+       * A lair whose fight, run at full health, is not safe is not a place to
+       * hunt (todo 03), and one not yet run, or waiting on the character's own
+       * figures, is not known to be: both are left out and counted. A fight
+       * `simulateFight` cannot run is left to the estimate.
+       */
+      const odds = kind.lair ? this.session.odds().lair(group.sample) : null;
+      if (odds?.kind === 'pending' || odds?.kind === 'unread') {
+        excluded.unsimulated += 1;
+        continue;
+      }
+      if (odds?.kind === 'run' && odds.survival.level !== 'safe') {
+        excluded.unsurvivable += 1;
+        continue;
+      }
+      const fightRun = odds?.kind === 'run';
+      const entry: HuntPriced = { key, group, mobs, clock, respawn, refills, rooms, fightRun };
       /*
        * A first estimate to rank on and to exclude by: the nearest rooms, the
        * ring's length guessed from the sweep's distances — out to the farthest
@@ -1826,25 +1846,11 @@ export class Errands implements SessionModule {
           respawnSeconds: respawn,
           loopSteps: guessed,
           character,
-          filler: []
+          filler: [],
+          fightRun
         },
         c
       );
-      /*
-       * A lair whose fight, run at full health, is not safe is not a place to
-       * hunt (todo 03), and one not yet run, or waiting on the character's own
-       * figures, is not known to be: both are left out and counted. A fight
-       * `simulateFight` cannot run is left to the estimate.
-       */
-      const odds = kind.lair ? this.session.odds().lair(group.sample) : null;
-      if (odds?.kind === 'pending' || odds?.kind === 'unread') {
-        excluded.unsimulated += 1;
-        continue;
-      }
-      if (odds?.kind === 'run' && odds.survival.level !== 'safe') {
-        excluded.unsurvivable += 1;
-        continue;
-      }
       if (estimate.deadly || estimate.costly) {
         excluded.dangerous += 1;
         continue;
@@ -1987,7 +1993,8 @@ export class Errands implements SessionModule {
       loopSteps: ringSteps(rooms),
       character,
       filler: [],
-      refillsOnEntry: own.refills
+      refillsOnEntry: own.refills,
+      fightRun: own.fightRun
     });
     const sized = sizeLoop(base, candidates.length, c);
     const ring = order.slice(0, sized.rooms);
@@ -2426,6 +2433,7 @@ export class Errands implements SessionModule {
     return {
       combat: row?.combat ?? null,
       magery: row?.magery ?? null,
+      mageryType: row?.mageryType ?? null,
       family: this.serverFamily,
       attack: attackFor(attack, this.capabilities().abilities)
     };

@@ -153,6 +153,14 @@ export interface SpotInput {
    * a loop of two stops or more re-enters it every lap, so there is no wait.
    */
   refillsOnEntry?: boolean;
+  /**
+   * The odds book ran this lair's fight at its cap and it came out safe
+   * (2026-10-04): the run fight, which rolls every blow, dodge and heal,
+   * answers *deadly* and *costly* instead of the floor, which charges the
+   * worst spawn's blows at its full rounds and cut every lair a level 1 Mage
+   * casting magic missile could hunt (worst 60% of the bar, every fight won).
+   */
+  fightRun?: boolean;
 }
 
 export type HuntingUnknown =
@@ -540,8 +548,9 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   const damageShare = share(damagePerRoom);
   const worstShare = share(worstDamagePerRoom);
   const worstShareAtLeast = share(worstDamageAtLeast);
-  const deadly = worstShareAtLeast !== null && worstShareAtLeast >= 1;
-  const costly = worstShareAtLeast !== null && worstShareAtLeast > c.maxDamageShare;
+  const floored = given.fightRun !== true && worstShareAtLeast !== null;
+  const deadly = floored && worstShareAtLeast >= 1;
+  const costly = floored && worstShareAtLeast > c.maxDamageShare;
   const trivial =
     primary.nakedDamage !== null &&
     hpMax !== null &&
