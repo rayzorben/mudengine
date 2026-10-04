@@ -445,9 +445,10 @@ tuning:
     # How old a sighting of the leader's target may be before it is nobody's.
     assistFreshMs: 60000
 
-    # The share of the room's simulated fights survived, from the health the
-    # character has now, that opening one needs. An unknown fight is not
-    # refused; 0 opens whatever the odds.
+    # The share of a fight's simulated runs survived, at full health, above
+    # which a fight on a planned route costs no more than `fightCost`. Below
+    # it the route adds up to `survivalCost`. It prices routes only:
+    # auto-combat attacks whatever its rules say, whatever the odds.
     openAbove: 0.95
 
     # A monster run from is not attacked again until the character is this
@@ -1509,6 +1510,12 @@ tuning:
     # One fight in a plan costs this many ordinary steps, so a key off a monster
     # is weighed against a longer walk to a shop that sells it.
     fightCost: 30
+
+    # The most a fight's odds add on top of `fightCost`, in steps: all of it
+    # for a fight never survived, none at `openAbove`. About what resting the
+    # whole bar back takes, so a fight and a rest are walked into rather than
+    # walked round the long way.
+    survivalCost: 155
 
     # What using an item that teleports costs over an ordinary step — the
     # potion of levitation, Paradigm's seven tokens. Dearer than a portal by a

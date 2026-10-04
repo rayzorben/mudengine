@@ -3800,146 +3800,72 @@ describe('what follows a cast’s Off', () => {
 });
 
 /*
- * Soul walked into two thugs at 28 of 34 and opened on them, took 18 in the
- * first round, and died; it went back at a mad wizard four times. A fight is
- * opened only where it is survived, from the health there is now.
+ * festus, 2026-10-03 (todo 22; `2026-10-03_17-51-16_festus.mudcap.jsonl`
+ * t=874079): an angry blood skeleton walked into Overgrown Forest Trail as
+ * Festus stepped in at 319/319. The room's fight, replayed, is survived 13% of
+ * the time, and the opening was turned down on `openAbove`; the skeleton
+ * swung first 1,490 ms later. Auto-combat opens by the player's rules whatever
+ * the odds (the user, 2026-10-03); the odds price a planned route.
  */
-describe('opening only a fight it walks out of', () => {
-  const thug = fighter('thug', 28, [bite(2, 11)]);
+describe('opening a fight whatever the odds', () => {
+  const skeleton = fighter('angry blood skeleton', 300, [bite(40, 110)]);
   const at = (hp: number): CharacterState =>
     state({
-      vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 34 },
-      progress: { ...EMPTY_CHARACTER.progress, level: 1 },
-      room: { ...EMPTY_CHARACTER.room, occupants: [thug] }
+      vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 319 },
+      progress: { ...EMPTY_CHARACTER.progress, level: 27 },
+      room: { ...EMPTY_CHARACTER.room, name: 'Overgrown Forest Trail', occupants: [skeleton] }
     });
-  const guard = (survival: Survival | null, fled: FledEntry[] = []): OpeningGuard => ({
-    opening: () => survival,
-    fled: () => fled
-  });
-  const odds = (survives: number, worstRound: number, standing = 1): Survival =>
-    ({
-      survives,
-      worstRound,
-      horizons: [{ rounds: 3, standing, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
-    }) as unknown as Survival;
-
-  it('opens a fight survived from here (the control)', () => {
-    const auto = make(
-      combat(),
-      true,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      guard(odds(1, 11))
-    );
-    auto.onCharacter(at(34));
-    drain();
-    expect(sent).toEqual(['a thug']);
-  });
-
-  it('does not open a fight survived too seldom, and rests to full first', () => {
-    const auto = make(
-      combat(),
-      true,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      guard(odds(0.6, 5))
-    );
-    auto.onCharacter(at(30));
-    drain();
-    expect(sent).toEqual([]);
-    expect(refusals()).toHaveLength(1);
-    expect(auto.restingFor).toBe(34);
-  });
-
+  const guard = (fled: FledEntry[] = []): OpeningGuard => ({ fled: () => fled });
   /*
-   * A planned kill (a key's dropper, a quest's) is opened on any odds: the
-   * plan showed them and the player, or the planner, chose to go (the user,
-   * 2026-10-03). The same fight the test above refuses.
+   * The guard the capture's build had, with the replay's figure: what it asked
+   * before opening. Nothing reads `opening` now; a build that did refuses here.
    */
-  it('opens a fight survived too seldom where the plan asked for it', () => {
-    const auto = make(
-      combat(),
-      true,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      guard(odds(0.6, 5))
-    );
-    auto.alsoFight('thug');
-    auto.onCharacter(at(30));
-    drain();
-    expect(sent).toEqual(['a thug']);
-  });
-
-  it('leaves a fight nobody can work out to the run and the hang-up', () => {
-    make(combat(), true, undefined, undefined, undefined, undefined, guard(null)).onCharacter(
-      at(34)
-    );
-    drain();
-    expect(sent).toEqual(['a thug']);
-  });
-
-  it('opens as before on a realm with no world database to weigh against', () => {
-    const blind: OpeningGuard = { opening: () => undefined, fled: () => [] };
-    make(combat(), true, undefined, undefined, undefined, undefined, blind).onCharacter(at(34));
-    drain();
-    expect(sent).toEqual(['a thug']);
-  });
-
-  it('opens on a monster whose worst blow is half its health, at full health (the cave bear)', () => {
+  const deadly = {
+    fled: () => [],
+    opening: () => ({ survives: 0.13, worstRound: 156 }) as unknown as Survival
+  } as OpeningGuard;
+  const festus = (with_: OpeningGuard = deadly): AutoCombat =>
     make(
-      combat(),
+      combat({ attack: 'aa', engage: 'hostile' }),
       true,
       undefined,
       undefined,
       undefined,
       undefined,
-      guard(odds(0.99, 18, 0.999))
-    ).onCharacter(at(34));
-    drain();
-    expect(sent).toEqual(['a thug']);
-  });
-
-  it('does not open what it would have to run from at once, and rests to full first', () => {
-    const auto = make(
-      combat(),
-      true,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      guard(odds(0.75, 11, 0.8))
+      with_
     );
-    auto.onCharacter(at(20));
+
+  it('waits for the step, then attacks on the line that answers it, at full health', () => {
+    const auto = festus();
+    auto.noteMovePending(true);
+    auto.onCharacter(at(319));
     drain();
     expect(sent).toEqual([]);
-    expect(auto.restingFor).toBe(34);
-    auto.onCharacter(at(34));
-    expect(auto.restingFor).toBeNull();
+    expect(refusals()).toEqual([
+      `angry blood skeleton — ${t('automation.combat.refusedMovePending')}`
+    ]);
+
+    auto.noteMovePending(false);
+    auto.onCharacter(at(319));
+    drain();
+    expect(sent).toEqual(['aa angry blood skeleton']);
+  });
+
+  it('attacks hurt as well, with nothing rested towards first', () => {
+    festus().onCharacter(at(120));
+    drain();
+    expect(sent).toEqual(['aa angry blood skeleton']);
   });
 
   it('leaves alone a monster it ran from, until it is two levels past it', () => {
-    const fled = [{ name: 'thug', level: 1, at: Date.now() }];
-    const auto = make(
-      combat(),
-      true,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      guard(odds(1, 11), fled)
-    );
-    auto.onCharacter(at(34));
+    const fled = [{ name: 'angry blood skeleton', level: 27, at: Date.now() }];
+    const auto = festus(guard(fled));
+    auto.onCharacter(at(319));
     drain();
     expect(sent).toEqual([]);
-    auto.onCharacter({ ...at(34), progress: { ...EMPTY_CHARACTER.progress, level: 3 } });
+    auto.onCharacter({ ...at(319), progress: { ...EMPTY_CHARACTER.progress, level: 29 } });
     drain();
-    expect(sent).toEqual(['a thug']);
+    expect(sent).toEqual(['aa angry blood skeleton']);
   });
 });
 
@@ -3973,26 +3899,8 @@ describe('a fight a heal broke', () => {
       combat: { ...EMPTY_CHARACTER.combat, engaged: target !== null, target, attackers }
     });
   const all = ['big stitched zombie', 'big skeletal acid beast', 'small scythe skeleton'];
-  /* Survived too seldom to open on from 190: the refusal the replay met. */
-  const refusing: OpeningGuard = {
-    opening: () =>
-      ({
-        survives: 0.4,
-        worstRound: 120,
-        horizons: [{ rounds: 3, standing: 1, won: 0, lost: { least: 0, mean: 0, most: 0 } }]
-      }) as unknown as Survival,
-    fled: () => []
-  };
-  const festus = (): AutoCombat =>
-    make(
-      combat({ attack: 'aa', engage: 'hostile' }),
-      true,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      refusing
-    );
+  /* Opening on nothing, so every `aa` here is the broken fight hit back. */
+  const festus = (): AutoCombat => make(combat({ attack: 'aa', engage: 'none' }));
   const swungAt = (auto: AutoCombat): void => {
     auto.onCharacter(fight(null, ['big stitched zombie']));
     drain();

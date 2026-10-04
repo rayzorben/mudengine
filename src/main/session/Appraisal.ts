@@ -56,8 +56,6 @@ export class Appraisal {
   private readonly odds: AppraisalParts['odds'];
   /** The room's last run and what it was run on, so a status line that moves nothing reruns nothing. */
   private ran: { key: string; survival: Survival | null } | null = null;
-  /** The same for the fight an opening would make (`opening`). */
-  private ranOpening: { key: string; survival: Survival | null } | null = null;
 
   constructor(
     parts: AppraisalParts,
@@ -185,28 +183,18 @@ export class Appraisal {
   }
 
   /**
-   * The fight opening on `target` would make: the room's, with the target in
-   * it whether or not it would have started one. What `AutoCombat` asks
-   * before it swings (`openingRefusal`).
-   */
-  opening(target: string): Survival | null {
-    const state = this.tracker.current;
-    return state.phase === 'in-game' ? this.survivalOf(state, target) : null;
-  }
-
-  /**
    * The room's fight run for this character as it stands (todo 02): what
-   * here would fight, with the character half `FightSetup` builds, and
-   * `also` with it when an opening is being weighed. Run again only when what
+   * here would fight, with the character half `FightSetup` builds. Run again
+   * only when what
    * it is run on moved. See `simulateFight` and mudengine-automation › *The
    * verdict is also run as a fight*.
    */
-  private survivalOf(state: CharacterState, also: string | null = null): Survival | null {
+  private survivalOf(state: CharacterState): Survival | null {
     const character = this.setup.character(state, 'now');
     if (character === null) return null;
     const standing = ownAlignment(state);
     const fighting = new Set(
-      [...state.combat.attackers, state.combat.target ?? '', also ?? '']
+      [...state.combat.attackers, state.combat.target ?? '']
         .filter((name) => name.length > 0)
         .map((name) => name.toLowerCase())
     );
@@ -229,11 +217,8 @@ export class Appraisal {
     const input = { ...character, ...this.setup.foes(state, character, met) };
     // The recasts' rounds count down with the clock, so the key is what is drawn from, not the time.
     const key = JSON.stringify({ ...input, recasts: input.recasts.length });
-    const kept = also === null ? this.ran : this.ranOpening;
-    if (kept?.key === key) return kept.survival;
-    const run = { key, survival: simulateFight(input) };
-    if (also === null) this.ran = run;
-    else this.ranOpening = run;
-    return run.survival;
+    if (this.ran?.key === key) return this.ran.survival;
+    this.ran = { key, survival: simulateFight(input) };
+    return this.ran.survival;
   }
 }

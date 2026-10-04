@@ -415,7 +415,7 @@ export class SessionManager {
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
-  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'opening'>;
+  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: SessionOdds;
   private automationConfig: AutomationConfig;
@@ -823,7 +823,6 @@ export class SessionManager {
       restInFlight: () => this.recovery.restInFlight,
       floorInFlight: () => this.loot.floorInFlight,
       onTheGround,
-      restFor: () => this.combat.restingFor,
       /*
        * A route that stood still for a fight plans again from wherever the fight left the
        * character: the answer needs the realm graph, the purse and the refused edges.
@@ -934,7 +933,7 @@ export class SessionManager {
       () => this.errands.realmClass(),
       lore,
       (id) => this.world?.spellById(id) ?? null,
-      { opening: (name) => (this.world ? this.appraisal.opening(name) : undefined), fled }
+      { fled }
     );
 
     /*
@@ -3303,10 +3302,9 @@ export class SessionManager {
     if (away !== 'took-over' && this.mayRest()) this.restNow(state);
   }
 
-  /** `Recovery`, told first the health a walk or a fight held for health wants (`restingFor`). */
+  /** `Recovery`, told first the health a walk held for health wants (`restingFor`). */
   private restNow(state: CharacterState): void {
-    const owed = [this.walker.restingFor, this.combat.restingFor].filter((hp) => hp !== null);
-    this.recovery.needAtLeast(owed.length === 0 ? null : Math.max(...owed));
+    this.recovery.needAtLeast(this.walker.restingFor);
     this.recovery.onCharacter(state);
   }
 

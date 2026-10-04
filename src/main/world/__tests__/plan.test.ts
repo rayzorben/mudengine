@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import type { NavigationOracle } from '../../../shared/navigation';
 import type { FightOdds, Route, RouteStep } from '../../../shared/world';
+import { tuning } from '../../app/tuning';
 import { leg, plan, type PlanRealm } from '../navigation/plan';
 import type { ItemSource } from '../navigation/sources';
 import type { Traveller } from '../Router';
@@ -117,28 +118,40 @@ describe('a plan made whole before the first step', () => {
     );
   });
 
-  /* A source whose fight opens comes before a nearer one whose does not. */
-  it('takes the winnable source over a nearer losing one', () => {
-    const two: PlanRealm = {
-      ...realm,
-      sources: (item): readonly ItemSource[] =>
-        item === 2
-          ? [
-              { kind: 'kill', monster: 'ogre', room: 'cave' },
-              { kind: 'kill', monster: 'troll', room: 'far' }
-            ]
-          : realm.sources(item),
-      sweep: (_from, rooms) =>
-        new Map([...rooms].map((room) => [room, { cost: room === 'far' ? 50 : 5 }]))
-    };
-    const ogreLoses: NavigationOracle = {
-      fight: (monster) => (monster === 'ogre' ? { kind: 'lose', survives: 0.2 } : WON),
-      affords: () => true
-    };
-    const made = plan(two, ogreLoses, 'here', 'goal', nobody);
-    expect(made.kind === 'plan' && made.steps).toContainEqual(
-      expect.objectContaining({ kind: 'kill', monster: 'troll' })
-    );
+  /*
+   * The odds add to a source's price, up to `survivalCost` (todo 22, the
+   * user 2026-10-03): a losing fight close by gives way to a winnable one a
+   * little further, and not to one a long way round.
+   */
+  const ogreOrTroll = (far: number): PlanRealm => ({
+    ...realm,
+    sources: (item): readonly ItemSource[] =>
+      item === 2
+        ? [
+            { kind: 'kill', monster: 'ogre', room: 'cave' },
+            { kind: 'kill', monster: 'troll', room: 'far' }
+          ]
+        : realm.sources(item),
+    sweep: (_from, rooms) =>
+      new Map([...rooms].map((room) => [room, { cost: room === 'far' ? far : 5 }]))
+  });
+  const ogreLoses: NavigationOracle = {
+    fight: (monster) => (monster === 'ogre' ? { kind: 'lose', survives: 0.2 } : WON),
+    affords: () => true
+  };
+  const killed = (made: ReturnType<typeof plan>): string | undefined =>
+    made.kind === 'plan'
+      ? made.steps.flatMap((each) => (each.kind === 'kill' ? [each.monster] : []))[0]
+      : undefined;
+
+  it('takes a winnable source a little further over a nearer losing one', () => {
+    expect(killed(plan(ogreOrTroll(50), ogreLoses, 'here', 'goal', nobody))).toBe('troll');
+  });
+
+  it('takes the losing source where the winnable one is further than the odds cost', () => {
+    const { survivalCost } = tuning().world;
+    const far = 5 + survivalCost + 10;
+    expect(killed(plan(ogreOrTroll(far), ogreLoses, 'here', 'goal', nobody))).toBe('ogre');
   });
 });
 

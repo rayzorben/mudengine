@@ -1,7 +1,7 @@
 /**
  * The navigation engine for one character: the plan from where it stands
- * (`world/navigation/plan.ts`), with the fights weighed as combat weighs them
- * before opening (`unfoughtShare`, the same rule) and the counters priced
+ * (`world/navigation/plan.ts`), with the fights weighed against `openAbove`
+ * (`unfoughtShare`), which prices them (`fightPrice`), and the counters priced
  * against the purse. Every automation that goes somewhere asks this.
  * `mudengine-world` › *There is one navigation engine*.
  */
@@ -128,8 +128,8 @@ export function worldNearest(
 }
 
 /**
- * Whether combat would open on a monster where it stands, by the rule it opens
- * by (`unfoughtShare` against `openAbove`), with the share walked out of
+ * Whether a fight with a monster where it stands is survived at least
+ * `openAbove` of the time (`unfoughtShare`), with the share walked out of
  * wherever the simulator ran it: one of the room's lair is weighed
  * with the whole lair at its cap, as combat meets it there; any other monster
  * (a resident, a summoner, one met away from its lair) on its own.
