@@ -13,7 +13,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
-import { commandOf, GREATERMUD_ONLY, type CommandName } from '../../shared/commands';
+import { argumentOf, commandOf, GREATERMUD_ONLY, type CommandName } from '../../shared/commands';
 import { coinReader, type CoinNames, type CoinReader } from '../../shared/coins';
 import { locateCommand } from '../../shared/locate';
 import { UNSTATED_REALM_WORDS, type RealmWords } from '../../shared/profiles';
@@ -83,7 +83,8 @@ export class Vocabulary {
    * Filled from two directions, and both are needed:
    *
    * - **The wire.** Any word the realm's own command table names
-   *   (`commandOf`) that comes back as `command-not-understood` is put here.
+   *   (`commandOf`) that comes back on its own as `command-not-understood` is
+   *   put here (`noteWordMissing` says why a line with an argument is not).
    *   A word the table does *not* name says nothing and is left alone: a text
    *   exit is room data — `go manhole` is missing from every realm's command
    *   table by construction — and refusing one in this room is not a fact
@@ -171,14 +172,22 @@ export class Vocabulary {
    * a fact about this realm's vocabulary. Retiring `go manhole` would take a
    * real way through the realm away from every room that has one.
    *
+   * A word said back with an argument retires nothing. MajorMUD says `a y`
+   * back when no monster here matches `y` (captures 057:5 after a kill,
+   * 053:158 while blind, 002:382): the argument matched nothing, and the word
+   * is fine.
+   * Retiring `Attack` from that line stopped every attack until the realm
+   * visit ended (todo 846).
+   *
    * Said once per command and never per ask, because the refusal is a decision
    * somebody who turned a feature on needs to be able to read — and a line per
    * probe is the console talking over the room.
    */
   noteWordMissing(spoken: string | undefined): void {
-    const name = commandOf(spoken ?? '');
+    if (spoken === undefined || argumentOf(spoken) !== '') return;
+    const name = commandOf(spoken);
     if (name === null || this.unavailable.has(name)) return;
-    this.retire(name, spoken ?? name);
+    this.retire(name, spoken);
   }
 
   /**

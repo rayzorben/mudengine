@@ -6083,6 +6083,32 @@ describe('a command this realm has no word for', () => {
   });
 
   /*
+   * Todo 846: `a y` said back means no monster here matched `y` (captures
+   * 057:5, 053:158, 002:382), not that the realm has no `a`. Retiring
+   * `Attack` from it stopped every attack until the realm visit ended. The
+   * control is a bare word said back, which still retires its command.
+   */
+  it('keeps a command whose argument matched nothing, and retires a bare word', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('[HP=489/MA=171]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+
+    manager.send('a y\r');
+    socket.write('You say "a y"\r\n[HP=489/MA=171]:' + PROMPT_REPAINT);
+    await until(() => manager!.lines.some((line) => line.plain === 'You say "a y"'));
+    manager.send('sea\r');
+    socket.write('You say "sea"\r\n');
+    await until(() => notices.includes(t('session.realm.commandUnavailable', { command: 'sea' })));
+
+    expect(notices).not.toContain(t('session.realm.commandUnavailable', { command: 'a y' }));
+    expect(manager.queue.enqueue({ command: 'a rat', priority: 'combat' })).toBe(true);
+    expect(manager.queue.enqueue({ command: 'sea', priority: 'probe' })).toBe(false);
+  });
+
+  /*
    * How the MajorMUD lineage actually refuses it — measured on
    * bbs.bearfather.net 2026-09-05, where `rm` came back `Your command had no
    * effect.` privately rather than being spoken in the room. The sentence
