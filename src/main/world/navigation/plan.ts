@@ -130,6 +130,21 @@ function keysUsed(realm: PlanRealm, way: Route, held: readonly number[]): Planne
   return [...needs.values()];
 }
 
+/**
+ * What a fight adds to a plan, in steps: `fightCost`, and on top of it the
+ * odds (the user, 2026-10-03): nothing where the fight is survived at least
+ * `openAbove` of the time, rising to `survivalCost` where it never is or is
+ * not worked out yet. Capped, so a fight and a rest after it is walked into
+ * rather than walked round the long way. The one place the odds count.
+ */
+function fightPrice(count: number, odds: FightOdds): number {
+  const { fightCost, survivalCost } = tuning().world;
+  const { openAbove } = tuning().combat;
+  const short =
+    odds.kind === 'win' ? 0 : odds.kind === 'unread' ? 1 : (openAbove - odds.survives) / openAbove;
+  return count * fightCost + Math.round(survivalCost * Math.min(1, Math.max(0, short)));
+}
+
 /** The fights a step takes: a summoner first where one brings the monster. */
 function fightsOf(source: ItemSource): string[] {
   if (source.kind !== 'kill') return [];
@@ -178,12 +193,17 @@ function walk(
     const odds = oddsOf(oracle, monsters, room);
     if (index > start) steps.push(part(start, index));
     steps.push({ kind: 'clear', room, name: realm.roomName(room), monsters, odds });
-    cost += tuning().world.fightCost;
+    cost += fightPrice(1, odds);
     start = index;
   }
   // Unsplit, the walk is the route whole, with its hazards and its alternatives.
   steps.push(start === 0 ? { kind: 'walk', route } : part(start, route.steps.length));
   return { kind: 'leg', steps, cost };
+}
+
+/** What getting the item at a source adds for its fights (`fightPrice`). */
+function sourceFights(source: ItemSource, step: PlanStep): number {
+  return step.kind === 'kill' ? fightPrice(fightsOf(source).length, step.odds) : 0;
 }
 
 /** The worst of these fights where they stand. */
@@ -453,18 +473,11 @@ function acquire(
           refuse({ kind: 'purse', item });
           continue;
         }
-        const price = priced.cost + fightsOf(source).length * tuning().world.fightCost;
-        candidates.push({ item, source, price, step: actionAt(realm, oracle, source, item) });
+        const step = actionAt(realm, oracle, source, item);
+        candidates.push({ item, source, price: priced.cost + sourceFights(source, step), step });
       }
     }
-    /*
-     * A source whose fight opens by combat's rule ahead of one whose does not,
-     * then the cheaper: a losing fight is planned where it is the only way,
-     * never chosen over a winnable one further off.
-     */
-    const opens = (step: PlanStep): number =>
-      step.kind !== 'kill' || step.odds.kind === 'win' ? 0 : 1;
-    candidates.sort((a, b) => opens(a.step) - opens(b.step) || a.price - b.price);
+    candidates.sort((a, b) => a.price - b.price);
     let best: {
       item: PlannedItem;
       source: ItemSource;
@@ -475,8 +488,11 @@ function acquire(
     for (const candidate of candidates) {
       const leg = walk(realm, oracle, at, candidate.source.room, holding);
       if (leg.kind === 'leg') {
-        const fights = fightsOf(candidate.source).length * tuning().world.fightCost;
-        best = { ...candidate, leg, price: leg.cost + fights };
+        best = {
+          ...candidate,
+          leg,
+          price: leg.cost + sourceFights(candidate.source, candidate.step)
+        };
         break;
       }
       refuse({ kind: 'out-of-reach', item: candidate.item });

@@ -8,7 +8,7 @@
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
 import { fetchAct, type Plan, type PlannedFetch } from '../../shared/navigation';
-import { fightOdds, Navigation } from './navigation';
+import { Navigation } from './navigation';
 import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
@@ -123,7 +123,6 @@ import {
   roomId,
   type BuyingPlace,
   type Requirement,
-  type FightOdds,
   type RoomId,
   type Route,
   type TrainerChoice,
@@ -131,7 +130,7 @@ import {
 } from '../../shared/world';
 
 /** Nowhere to get an item. */
-const NO_SOURCES: ItemSources = { shops: [], asks: [], droppers: [], lairs: [], unfought: [] };
+const NO_SOURCES: ItemSources = { shops: [], asks: [], droppers: [], lairs: [] };
 
 /** No preferred corridors: one value, so a session with none re-renders nothing. */
 const NO_EDGES: ReadonlySet<string> = new Set();
@@ -1443,32 +1442,7 @@ export class Errands implements SessionModule {
     const { maxLoopRooms, clusterRadius } = tuning().hunting;
     const ring = { rooms: maxLoopRooms, radius: clusterRadius };
     const drops = world.droppingPlaces(item, here, this.lapTraveller(state), ring);
-    // A lair whose monster combat will not open on is a loop that waits there
-    // for ever (2026-10-02: a stone key off an ogre, behind a one-way wall).
-    // Every dropper is weighed, reached from here or not: one behind an earlier
-    // key's door is reached on the way (`ItemErrand.firstUnobtainable`). The
-    // rule is the navigation engine's (`fightOdds`).
-    const odds = this.session.odds();
-    const unfought = new Map<string, ItemSources['unfought'][number]>();
-    const weigh = (fight: FightOdds, mob: string, via?: string): boolean => {
-      if (fight.kind === 'win') return true;
-      const survives = fight.kind === 'lose' ? fight.survives : null;
-      unfought.set(
-        `${via ?? ''}>${mob}`,
-        via === undefined ? { mob, survives } : { mob, survives, via }
-      );
-      return false;
-    };
-    const fight = (mob: string, room: RoomId | null): FightOdds =>
-      fightOdds(odds, world, mob, room);
-    for (const dropper of drops.droppers) weigh(fight(dropper.mob, null), dropper.mob);
-    const lairs = drops.lairs.filter((place) =>
-      place.via !== undefined
-        ? weigh(fight(place.via, null), place.mob, place.via) &&
-          weigh(fight(place.mob, null), place.mob)
-        : weigh(fight(place.mob, place.id), place.mob)
-    );
-    return { shops, asks, droppers: drops.droppers, lairs, unfought: [...unfought.values()] };
+    return { shops, asks, droppers: drops.droppers, lairs: drops.lairs };
   }
 
   /**

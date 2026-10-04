@@ -8386,3 +8386,68 @@ describe('an extension configured', () => {
     expect(seen.length).toBeGreaterThan(1);
   });
 });
+
+/*
+ * Todo 22 (2026-10-03_17-51-16_festus.mudcap.jsonl t=874079): Festus stepped
+ * `se` at 319/319 into Overgrown Forest Trail as an angry blood skeleton walked
+ * in. `Also here:` came while the step was unanswered and was refused; the
+ * `Obvious exits:` line in the same read answered the step. The fight was then
+ * turned down on the odds, and the skeleton swung first 1,490 ms later. Now the
+ * exits line opens it, with no wait for a later line.
+ */
+describe('a monster in the room a step arrives in', () => {
+  const trail = (): WorldGraph =>
+    worldOf(
+      [
+        { m: 17, r: 54, n: 'Dirt Path', x: { se: { m: 17, r: 55 } } },
+        { m: 17, r: 55, n: 'Overgrown Forest Trail', x: { e: { m: 17, r: 56 } } },
+        { m: 17, r: 56, n: 'Thick Brush', x: {} }
+      ],
+      {
+        v: 32,
+        mobs: [
+          {
+            n: 'angry blood skeleton',
+            hp: 300,
+            i: [1212],
+            d: 'h',
+            ac: 40,
+            xp: 900,
+            pf: [{ a: [[1, 1, 200, 40, 110, 250, 0]], c: [] }]
+          }
+        ]
+      }
+    );
+
+  it('is attacked on the exits line that answers the step', async () => {
+    const { sink } = collect();
+    manager = build(sink, {
+      world: trail(),
+      automation: {
+        ...quiet,
+        combat: {
+          ...DEFAULT_CONFIG.automation.combat,
+          enabled: true,
+          engage: 'hostile',
+          attack: 'aa'
+        }
+      }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const sent = wire(socket);
+    socket.write('Health: 319/319 [100%]\r\n[HP=319/319]:' + PROMPT_REPAINT);
+    socket.write('Location:            17,54\r\nDirt Path\r\nObvious exits: southeast\r\n');
+    await until(() => manager!.character.room.number === 54);
+
+    manager.send('se\r');
+    await until(() => /\bse\r\n/.test(sent()));
+    // One read, as the capture has it: no prompt behind the exits line.
+    socket.write(
+      'Overgrown Forest Trail\r\nAlso here: angry blood skeleton.\r\nObvious exits: east\r\n'
+    );
+    await until(() => /aa angry blood skeleton\r\n/.test(sent()));
+    expect(manager.character.vitals.hp).toBe(319);
+    expect(manager.character.combat.blows).toBe(0);
+  });
+});
