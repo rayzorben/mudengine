@@ -4328,3 +4328,109 @@ describe('an attack asked again at the send', () => {
     expect(canStillHit(here(57, []), 'mad wizard')).toBe(false);
   });
 });
+
+/*
+ * A monster the realm data says to avoid (`MobAvoid`) is not opened on, but is
+ * hit back once it swings and joined when the leader fights it. festus killed
+ * the sleazy shopkeeper, who has no attacks, for 0 experience (2026-10-04).
+ */
+describe('a monster the realm data says to avoid', () => {
+  const shopkeeper = () =>
+    fighter('sleazy shopkeeper', 100, [], { profiles: [], avoid: 'no-experience' });
+  const statue = fighter('obsidian statue', 300, [bite(8, 30, 100)], { avoid: 'no-experience' });
+  const alone = (who: RoomOccupant) =>
+    state({ room: { ...EMPTY_CHARACTER.room, occupants: [who] } });
+
+  it('is not opened on, and says why', () => {
+    const auto = make(combat());
+    auto.onCharacter(alone(shopkeeper()));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      `sleazy shopkeeper — ${t('automation.combat.refusedAvoided', {
+        target: 'sleazy shopkeeper',
+        why: t('automation.avoid.noExperience')
+      })}`
+    ]);
+  });
+
+  /* The positive control: the player's own row says to fight it. */
+  it('is opened on when the player’s row lists it', () => {
+    const auto = make(combat({ mobRules: [{ mob: 'sleazy shopkeeper', treat: 'default' }] }));
+    auto.onCharacter(alone(shopkeeper()));
+    drain();
+    expect(sent).toEqual(['a sleazy shopkeeper']);
+  });
+
+  it('is hit back once it swings', () => {
+    const auto = make(combat());
+    auto.onCharacter(
+      state({
+        inCombat: true,
+        room: { ...EMPTY_CHARACTER.room, occupants: [statue] },
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['obsidian statue'] }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['a obsidian statue']);
+  });
+
+  it('is not joined into another fight before it swings', () => {
+    const ogre = (over: Partial<MobEntity> = {}): RoomOccupant =>
+      fighter('orc warrior', 60, [bite(20, 60, 90)], over);
+    const bitten = (over: Partial<MobEntity> = {}): CharacterState =>
+      state({
+        inCombat: true,
+        room: {
+          ...EMPTY_CHARACTER.room,
+          occupants: [ogre(over), fighter('giant rat', 20, [bite(1, 3, 20)])]
+        },
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, attackers: ['giant rat'] }
+      });
+    // The positive control: unmarked, the heavier bystander is taken first.
+    make(combat()).onCharacter(bitten());
+    make(combat()).onCharacter(bitten({ avoid: 'no-experience' }));
+    drain();
+    expect(sent).toEqual(['a orc warrior', 'a giant rat']);
+  });
+
+  it('is joined when the leader attacks it', () => {
+    const auto = make(combat());
+    auto.configure(combat(), true, undefined, {
+      ...DEFAULT_CONFIG.automation.party,
+      assistLeader: true
+    });
+    auto.onCharacter(
+      state({
+        party: {
+          ...EMPTY_CHARACTER.party,
+          following: 'Brackle',
+          engaged: { Brackle: { kind: 'mob', target: 'sleazy shopkeeper', at: Date.now() } }
+        },
+        room: { ...EMPTY_CHARACTER.room, occupants: [shopkeeper()] }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['a sleazy shopkeeper']);
+  });
+
+  it('is fought when it attacks a party member', () => {
+    const auto = make(combat());
+    auto.configure(combat(), true, undefined, {
+      ...DEFAULT_CONFIG.automation.party,
+      assistLeader: false,
+      defendParty: true
+    });
+    auto.onCharacter(
+      state({
+        party: {
+          ...EMPTY_CHARACTER.party,
+          threatened: { Brackle: { target: 'obsidian statue', at: Date.now() } }
+        },
+        room: { ...EMPTY_CHARACTER.room, occupants: [statue] }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['a obsidian statue']);
+  });
+});

@@ -7,7 +7,7 @@
  */
 import type { Alignment } from './alignment';
 import type { RoomOccupant } from './character';
-import { attacksOnSight } from './mobs';
+import { attacksOnSight, type MobAvoid } from './mobs';
 import { int, isRecord, str } from './values';
 import { mobKey } from './world';
 
@@ -225,6 +225,19 @@ export function attacksFirst(
   rules: readonly MobRule[]
 ): boolean | null {
   return rowPeaceFor(rules, who.name) === null ? attacksOnSight(who.disposition, mine) : false;
+}
+
+/**
+ * Why the realm data says to leave a monster alone unless it or the party
+ * starts the fight (`MobAvoid`), or null. A banded row the player wrote for it
+ * says to fight it, and outranks the realm; a stance row is refused on its own.
+ */
+export function avoidedFor(
+  who: Pick<RoomOccupant, 'name' | 'mob'>,
+  rules: readonly MobRule[]
+): MobAvoid | null {
+  const avoid = who.mob?.avoid;
+  return avoid === undefined || mobRuleFor(rules, who.name) !== undefined ? null : avoid;
 }
 
 /** Whether the row for a monster says it is stopped for and killed (`stopToKill`). */

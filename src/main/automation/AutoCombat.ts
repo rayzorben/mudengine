@@ -96,6 +96,7 @@ import {
 } from '../../shared/config';
 import {
   attacksFirst,
+  avoidedFor,
   DEFAULT_MOB_PRIORITY,
   hitsBack,
   isBanded,
@@ -123,7 +124,7 @@ import {
 } from '../../shared/verdict';
 import type { RealmFamily } from '../../shared/realm';
 import { dodge, type ProwessAttack } from '../../shared/prowess';
-import { attacksOnSight } from '../../shared/mobs';
+import { attacksOnSight, type MobAvoid } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -313,6 +314,25 @@ function stanceRefusal(stance: MobStance, target: string): string {
       return t('automation.combat.refusedHangupRow', { target });
     default: {
       const unreachable: never = stance;
+      return unreachable;
+    }
+  }
+}
+
+/** Why a monster the realm data says to avoid is not opened on. */
+function avoidRefusal(avoid: MobAvoid, target: string): string {
+  return t('automation.combat.refusedAvoided', { target, why: avoidWhy(avoid) });
+}
+
+/** The reason in the cards' words (the renderer's `avoidNote` reads the same keys). */
+function avoidWhy(avoid: MobAvoid): string {
+  switch (avoid) {
+    case 'no-attacks':
+      return t('automation.avoid.noAttacks');
+    case 'no-experience':
+      return t('automation.avoid.noExperience');
+    default: {
+      const unreachable: never = avoid;
       return unreachable;
     }
   }
@@ -1178,6 +1198,7 @@ export class AutoCombat implements SessionModule {
         !who.uncertain &&
         who.costly === 'never' &&
         attacksFirst(who, mine, this.config.mobRules) === true &&
+        avoidedFor(who, this.config.mobRules) === null &&
         this.claimOn(state, who.name) === null &&
         !standing.some((guard) => this.leftAlone(guard.name) && protects(guard, who) !== false) &&
         !(worth > 0 && who.mob?.experience !== undefined && who.mob.experience > worth) &&
@@ -1711,6 +1732,17 @@ export class AutoCombat implements SessionModule {
        */
       if (this.isWanted(who.name)) {
         willing.push(who);
+        continue;
+      }
+      /*
+       * The realm data says to leave it alone (the sleazy shopkeeper, killed
+       * for nothing, 2026-10-04): opened on only once it swings, or with the
+       * leader or for a member, which never reach here.
+       */
+      const avoid = avoidedFor(who, this.config.mobRules);
+      if (avoid !== null) {
+        decline(who, avoidRefusal(avoid, who.name));
+        if (who.costly === 'never') bystanders.add(who);
         continue;
       }
       /*
