@@ -2156,6 +2156,96 @@ describe('running away', () => {
  * tick that already exists coalesces a whole burst into the single `who` that
  * answers all of it.
  */
+/*
+ * Todo 21, festus 2026-10-03 (`2026-10-03_10-53-22_festus.mudcap.jsonl`
+ * t=9693846): one round of three monsters took him from 187 to 94 of 319,
+ * under the run line (40%) and the hang-up line (35%) at once, and `ne` and
+ * the hang-up went in the same millisecond. The run goes first; the hang-up
+ * decides on where it lands.
+ */
+describe('the run goes before the hang-up', () => {
+  const both = () => ({
+    ...DEFAULT_CONFIG.automation,
+    enabled: true,
+    idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+    onEnterRealm: [],
+    rules: [],
+    safety: {
+      ...DEFAULT_CONFIG.automation.safety,
+      retreat: {
+        ...DEFAULT_CONFIG.automation.safety.retreat,
+        enabled: true,
+        belowHealth: 0.4,
+        whenOutnumbered: 0,
+        cooldownMs: 3000
+      } as RetreatConfig,
+      hangUp: {
+        ...DEFAULT_CONFIG.automation.safety.hangUp,
+        enabled: true,
+        belowHealth: 0.35,
+        penalties: false,
+        onPlayerInRoom: false
+      }
+    }
+  });
+  const why = t('session.safety.whyHealth', { percent: '29%' });
+
+  /** The round that crossed both lines, in the capture's own words. */
+  const theRound = async (socket: net.Socket): Promise<void> => {
+    socket.write('Health: 319/319 [100%]\r\n');
+    socket.write('Overgrown Forest Trail\r\n');
+    socket.write('Also here: big stitched zombie.\r\n');
+    socket.write('Obvious exits: northeast, south\r\n');
+    socket.write('*Combat Engaged*\r\n');
+    socket.write('The big stitched zombie claws you for 93 damage!\r\n');
+    await until(() => manager!.character.combat.blows > 0);
+    socket.write('[HP=94]:\r\n');
+  };
+
+  it('runs, waits for the room, and does not hang up where nothing attacks', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: both() });
+    underWay(manager);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const sent = wire(socket);
+    await theRound(socket);
+
+    await until(() => /\bne\r\n/.test(sent()));
+    await until(() => notices.includes(t('session.safety.hangUpAfterRun', { why })));
+    expect(manager.state.phase).toBe('connected');
+
+    socket.write('Dirt Path\r\nObvious exits: southwest\r\n[HP=94]:\r\n');
+    const refused = t('session.safety.hangUpRunGotOut');
+    await until(() => notices.includes(t('session.safety.hangUpNotAfterRun', { why, refused })));
+    expect(manager.state.phase).toBe('connected');
+    expect(notices.some(composes(['session.safety.hangingUpUnchargedSetting']))).toBe(false);
+  });
+
+  it('hangs up rather than run again when it is attacked where the run landed', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink, { automation: both() });
+    underWay(manager);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const sent = wire(socket);
+    await theRound(socket);
+    await until(() => /\bne\r\n/.test(sent()));
+
+    socket.write('Dirt Path\r\nAlso here: big stitched zombie.\r\n');
+    socket.write('Obvious exits: southwest, north\r\n[HP=94]:\r\n');
+    await until(() => manager!.character.room.name === 'Dirt Path');
+    socket.write('The big stitched zombie claws you for 20 damage!\r\n[HP=74]:\r\n');
+
+    await until(() => notices.some(composes(['session.safety.hangingUpUnchargedSetting'])));
+    // Caught by the blow, before the status line that says how much it took.
+    expect(notices).toContain(t('session.safety.hangUpRunCaught', { why }));
+    await settled(74);
+    expect(sent()).not.toMatch(/\b(sw|n)\r\n/);
+    expect(notices.some(composes(RUNNING, { direction: 'sw' }))).toBe(false);
+  });
+});
+
 describe('the roster catch-up', () => {
   /*
    * Three tests, and they are here for the *wiring* — that a line on the wire
