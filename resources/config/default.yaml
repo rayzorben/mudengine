@@ -1310,7 +1310,9 @@ automation:
     # holds no lair in is looked into first (`l <direction>`), entered only if
     # it is empty, rested in, and stepped back from when nothing else has the
     # character. Where no neighbour is safe the rest goes ahead where it is,
-    # said once. On: it acts only when resting was going to act.
+    # said once. A character following a leader rests where the party is, and
+    # so does one with no route, loop or detour under way. On: it acts only
+    # when resting was going to act.
     restNextDoor: true
 
     # Rest before stepping through a trap, until health covers what the trap
