@@ -2471,8 +2471,9 @@ function templateComments(template: string | undefined, root: string): Map<strin
 }
 
 /**
- * Replace any comment under `automation:` that names the retired word with the
- * template's current one for the same key. Returns whether anything moved.
+ * Replace any comment under `root:` that names the retired word, and is not
+ * already the template's text for that place, with the template's current one
+ * for the same key. Returns whether anything moved.
  *
  * A comment the template has nothing to say about is **left alone** rather than
  * blanked: an empty paragraph where an explanation used to be is worse than a
@@ -2493,12 +2494,18 @@ function retireStaleProse(
   const automation = document.get(root, true);
   if (!isMap(automation)) return false;
   let moved = false;
+  /*
+   * A comment that names `flee` and is not already the template's text for
+   * its place. The template's own paragraph above `safety:` names `flee` to
+   * say there is no such command, so a file laid out like the template was
+   * rewritten on every start (todo 847).
+   */
+  const stale = (current: unknown, ...template: Array<string | undefined>): current is string =>
+    typeof current === 'string' && /\bflee/i.test(current) && !template.includes(current);
   const refresh = (pair: Pair, path: string): void => {
     const key = pair.key as Scalar;
-    const current = key.commentBefore;
-    if (typeof current !== 'string' || !/\bflee/i.test(current)) return;
     const replacement = comments.get(path);
-    if (replacement === undefined || replacement === current) return;
+    if (replacement === undefined || !stale(key.commentBefore, replacement)) return;
     key.commentBefore = replacement;
     moved = true;
   };
@@ -2524,10 +2531,10 @@ function retireStaleProse(
     const blob = pair.value.commentBefore;
     const first = pair.value.items[0];
     const firstKey = first === undefined ? null : keyText(first);
-    if (typeof blob === 'string' && /\bflee/i.test(blob) && firstKey !== null) {
+    if (firstKey !== null) {
       const forBlock = comments.get(`${root}.${key}`);
       const forFirst = comments.get(`${root}.${key}.${firstKey}`);
-      if (forBlock !== undefined && forFirst !== undefined) {
+      if (forBlock !== undefined && forFirst !== undefined && stale(blob, forBlock, forFirst)) {
         (pair.key as Scalar).commentBefore = forBlock;
         (first!.key as Scalar).commentBefore = forFirst;
         pair.value.commentBefore = null;
