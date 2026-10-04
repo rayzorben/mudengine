@@ -62,7 +62,7 @@ function build(
   state: CharacterState,
   assessment: HangUpAssessment = { clean: true, reasons: [], clearInMs: null },
   danger: { fight?: Survival | null; percent?: number | null } = {},
-  run: { unanswered: boolean } = { unanswered: false }
+  run: { unanswered: boolean; landings?: number } = { unanswered: false }
 ) {
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
@@ -82,6 +82,9 @@ function build(
       runFromPlayer: () => undefined,
       get escapeUnanswered() {
         return run.unanswered;
+      },
+      get landings() {
+        return run.landings ?? 0;
       }
     },
     client: { connected: true },
@@ -175,7 +178,7 @@ describe('hanging up with a run on the wire', () => {
     vi.useRealTimers();
   });
 
-  it('waits for the run to land, says so, then hangs up where it landed', () => {
+  it('waits for the run, says so, then hangs up when the run did not land', () => {
     const run = { unanswered: true };
     const state = hurt();
     const { safety, notices, hungUp } = build(config, state, undefined, {}, run);
@@ -214,5 +217,94 @@ describe('hanging up with a run on the wire', () => {
     vi.advanceTimersByTime(tuning().session.hangUpAfterRunMs);
     safety.considerHangingUp(state);
     expect(hungUp).toEqual(['client']);
+  });
+});
+
+/*
+ * Todo 21, festus 2026-10-03 (t=9693846): one round took him from 187 to 94
+ * of 319 (29%), under the run line (40%) and the hang-up line (35%) at once.
+ * The run goes first; the hang-up decides on where it lands.
+ */
+describe('one decision for a health drop: the run, then the hang-up', () => {
+  const config = automation({ enabled: true, penalties: false, belowHealth: 0.35 }, []);
+  const at = (hp: number, attackers: string[] = []): CharacterState => {
+    const state = standing([]);
+    return {
+      ...state,
+      vitals: { ...state.vitals, hp, hpMax: 319 },
+      combat: { ...state.combat, attackers }
+    };
+  };
+  const ran = () => {
+    const run = { unanswered: true, landings: 0 };
+    const built = build(config, at(94), undefined, {}, run);
+    built.safety.considerHangingUp(at(94));
+    run.unanswered = false;
+    run.landings = 1;
+    return { ...built, run };
+  };
+  const why = t('session.safety.whyHealth', { percent: '29%' });
+
+  it('does not hang up where the run got out and nothing attacks', () => {
+    const { safety, notices, decisions, hungUp } = ran();
+    safety.considerHangingUp(at(94));
+    safety.considerHangingUp(at(96));
+    expect(hungUp).toEqual([]);
+    const refused = t('session.safety.hangUpRunGotOut');
+    expect(notices).toEqual([
+      t('session.safety.hangUpAfterRun', { why }),
+      t('session.safety.hangUpNotAfterRun', { why, refused })
+    ]);
+    expect(decisions.at(-1)).toMatchObject({ action: 'hang up', acted: false, refused });
+  });
+
+  it('hangs up where the run landed once it is attacked there', () => {
+    const { safety, notices, hungUp } = ran();
+    safety.considerHangingUp(at(94));
+    expect(safety.takesOver(at(94, ['big stitched zombie']))).toBe(true);
+    safety.considerHangingUp(at(94, ['big stitched zombie']));
+    expect(hungUp).toEqual(['client']);
+    expect(notices).toContain(t('session.safety.hangUpRunCaught', { why }));
+  });
+
+  it('hangs up where the run landed once health falls again', () => {
+    const { safety, hungUp } = ran();
+    safety.considerHangingUp(at(94));
+    safety.considerHangingUp(at(80));
+    expect(hungUp).toEqual(['client']);
+  });
+
+  /* The control for `takesOver`: nothing caught it, so a second run is not held back. */
+  it('lets a second run go while nothing has caught the first', () => {
+    const { safety } = ran();
+    safety.considerHangingUp(at(94));
+    expect(safety.takesOver(at(94))).toBe(false);
+  });
+
+  it('forgets the run once health is back over the line', () => {
+    const { safety, hungUp } = ran();
+    safety.considerHangingUp(at(94));
+    safety.considerHangingUp(at(200));
+    safety.considerHangingUp(at(100));
+    expect(hungUp).toEqual(['client']);
+  });
+
+  /* A charged realm with a monster on the character: the hang-up would refuse, so the run goes. */
+  it('does not take over where the hang-up would be refused', () => {
+    const run = { unanswered: true, landings: 0 };
+    const refusedHere = { clean: false, reasons: ['in combat'], clearInMs: null };
+    const charged = automation({ enabled: true, penalties: true, belowHealth: 0.35 }, []);
+    const { safety, notices, hungUp } = build(charged, at(94), refusedHere, {}, run);
+    safety.considerHangingUp(at(94));
+    run.unanswered = false;
+    run.landings = 1;
+    safety.considerHangingUp(at(94));
+    expect(safety.takesOver(at(94, ['big stitched zombie']))).toBe(false);
+    safety.considerHangingUp(at(94, ['big stitched zombie']));
+    expect(hungUp).toEqual([]);
+    expect(notices.slice(-2)).toEqual([
+      t('session.safety.hangUpRunCaught', { why }),
+      t('session.safety.hangUpRefused', { why, reasons: 'in combat' })
+    ]);
   });
 });

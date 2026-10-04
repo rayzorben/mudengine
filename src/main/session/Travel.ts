@@ -188,6 +188,11 @@ export interface TravelSession {
   notice(message: string): void;
   /** A safety decision, for the trace. */
   decided(decision: SafetyDecision): void;
+  /**
+   * A run the hang-up waited on got out and is caught again, and the hang-up
+   * goes now (`Safety.takesOver`): no second run on the same line.
+   */
+  hangUpTakesOver(state: CharacterState): boolean;
   /** The monsters this character ran from, and the list as it stands after a run (`Belongings`). */
   fled(): readonly FledEntry[];
   keepFled(entries: readonly FledEntry[]): void;
@@ -236,6 +241,8 @@ export class Travel implements SessionModule {
    * blows inside the three seconds the cooldown held the second run.
    */
   private landedAt = 0;
+  /** How many escapes have landed this session: `Safety` reads a run's answer off it. */
+  private landed = 0;
   /**
    * This fight has been run from: the character is going somewhere until it
    * is over, so a second run is not refused for a walk the first one stopped
@@ -593,6 +600,11 @@ export class Travel implements SessionModule {
   /** Whether the walk in progress is one the player asked for. */
   get walkIsAsked(): boolean {
     return this.walkAsked;
+  }
+
+  /** How many escapes have landed in another room. */
+  get landings(): number {
+    return this.landed;
   }
 
   /** An escape sent whose answer has not come. See `settleEscape`. */
@@ -975,6 +987,8 @@ export class Travel implements SessionModule {
           ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
           : t('session.safety.whyDreaded', { mob: dread });
     if (this.staysToFight(state, why, fighting, now)) return;
+    // The run went first and got out; caught again, the hang-up is next (todo 21).
+    if (this.session.hangUpTakesOver(state)) return;
 
     this.lastAskedToEscape = now;
     this.escape(state, why, now, undefined, hurt);
@@ -1503,6 +1517,7 @@ export class Travel implements SessionModule {
     }
     if (landed(state.room, before)) {
       this.landedAt = now;
+      this.landed += 1;
       this.ranThisFight = true;
       settle(true);
       return;

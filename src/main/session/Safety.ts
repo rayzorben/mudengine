@@ -10,7 +10,12 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import { PVP_WINDOW_MS, playersHere, type HangUpWatch } from '../automation/HangUp';
+import {
+  PVP_WINDOW_MS,
+  playersHere,
+  type HangUpAssessment,
+  type HangUpWatch
+} from '../automation/HangUp';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
 import type { TelnetClient } from '../net/TelnetClient';
@@ -31,7 +36,7 @@ export interface SafetyParts {
   readonly hangUp: Pick<HangUpWatch, 'assess' | 'clean'>;
   readonly realmMenu: Pick<RealmMenu, 'penalty' | 'noteCommand'>;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
-  readonly travel: Pick<Travel, 'runFromPlayer' | 'escapeUnanswered'>;
+  readonly travel: Pick<Travel, 'runFromPlayer' | 'escapeUnanswered' | 'landings'>;
   readonly client: Pick<TelnetClient, 'connected'>;
   readonly publisher: Pick<Publisher, 'state' | 'noteSafety'>;
   /** The ground: a player's blows reach this ahead of the session's gate. */
@@ -64,8 +69,16 @@ export class Safety implements SessionModule {
   private readonly pvpSaid = new Map<string, number>();
   /** The last refusal reported, so it is said once rather than per status line. */
   private lastHangUpRefusal: string | null = null;
-  /** When a hang-up first waited on a run still on the wire; null while none waits. */
-  private waitedForRun: number | null = null;
+  /**
+   * A run the hang-up waits on: when the wait began, and how many runs had
+   * landed then, so its answer reads as landed or failed. Null while none waits.
+   */
+  private runWaited: { readonly since: number; readonly landings: number } | null = null;
+  /**
+   * The run the hang-up waited on got out, with the health it landed at: the
+   * hang-up stays off while nothing attacks and health holds. Null otherwise.
+   */
+  private gotOut: { readonly hp: number; said: boolean } | null = null;
   /**
    * The monster a `hangup` row names that the switch left standing in the
    * room, by key, so the refusal is said once while it stays (818).
@@ -95,7 +108,8 @@ export class Safety implements SessionModule {
     this.pvpSaid.clear();
     this.lastHangUpRefusal = null;
     this.stalkerSaid = null;
-    this.waitedForRun = null;
+    this.runWaited = null;
+    this.gotOut = null;
   }
 
   /**
@@ -206,14 +220,10 @@ export class Safety implements SessionModule {
    * that silently declines is worse than one that was never offered.
    */
   considerHangingUp(state: CharacterState): void {
-    // The wait belongs to the run on the wire, read before anything returns early.
-    if (!this.travel.escapeUnanswered) this.waitedForRun = null;
+    // The run's answer is read before anything returns early.
+    this.settleTheRun(state);
     const safety = this.automationConfig.safety.hangUp;
-    if (!this.automationConfig.enabled) return;
-    if (state.phase !== 'in-game' || !this.client.connected) return;
-    // Once: the lines already in the socket still arrive while it closes, and
-    // each would hang up, and say so, again.
-    if (this.publisher.state.phase === 'closing') return;
+    if (!this.mayAct(state)) return;
     /*
      * A monster whose row says to hang up on it (todo 818, MegaMUD's
      * *Hangup*) is a reason of its own, under the same switch and the same
@@ -231,9 +241,12 @@ export class Safety implements SessionModule {
     }
 
     const fraction = healthFraction(state);
-    const hurt = fraction !== null && fraction <= safety.belowHealth;
+    const hurt = fraction !== null && this.belowTheLine(fraction);
     const company = safety.onPlayerInRoom && playersHere(state).length > 0;
-    if (!hurt && !company && stalker === null) return;
+    if (!hurt && !company && stalker === null) {
+      this.gotOut = null;
+      return;
+    }
 
     const why = hurt
       ? t('session.safety.whyHealth', { percent: percentText(fraction) })
@@ -241,45 +254,38 @@ export class Safety implements SessionModule {
         ? t('session.safety.whyCompany')
         : t('session.safety.whyStalker', { mob: stalker });
     if (this.waitForTheRun(why)) return;
-    const assessment = this.hangUp.assess(state, Date.now());
-    // The realm's own menu outranks every setting; see `RealmMenu`.
-    const menu = this.realmMenu.penalty;
-    const penalised = menu !== null ? menu.percent > 0 : safety.penalties;
-
-    if (!penalised) {
-      this.lastHangUpRefusal = null;
-      this.session.notice(
-        menu !== null
-          ? t('session.safety.hangingUpUncharged', { why, realm: menu.realm })
-          : t('session.safety.hangingUpUnchargedSetting', { why })
-      );
-      this.publisher.noteSafety({ at: Date.now(), action: 'hang up', because: why, acted: true });
-      this.session.disconnect('client');
-      return;
-    }
-
-    if (!assessment.clean) {
+    // Health alone: a player or a `hangup` row is a reason the run did not answer.
+    if (!company && stalker === null && this.theRunGotOut(state, why)) return;
+    const refusal = this.refusedHere(state);
+    if (refusal !== null) {
       // Once per reason-set, not once per status line: at low health this runs
       // several times a second and a repeated warning is a warning nobody reads.
-      const key = assessment.reasons.join('|');
+      const key = refusal.reasons.join('|');
       if (key !== this.lastHangUpRefusal) {
         this.lastHangUpRefusal = key;
         this.session.notice(
-          t('session.safety.hangUpRefused', { why, reasons: assessment.reasons.join('; ') })
+          t('session.safety.hangUpRefused', { why, reasons: refusal.reasons.join('; ') })
         );
         this.publisher.noteSafety({
           at: Date.now(),
           action: 'hang up',
           because: why,
           acted: false,
-          refused: assessment.reasons.join('; ')
+          refused: refusal.reasons.join('; ')
         });
       }
       return;
     }
 
     this.lastHangUpRefusal = null;
-    this.session.notice(t('session.safety.hangingUpClean', { why }));
+    const menu = this.realmMenu.penalty;
+    this.session.notice(
+      this.penalised
+        ? t('session.safety.hangingUpClean', { why })
+        : menu !== null
+          ? t('session.safety.hangingUpUncharged', { why, realm: menu.realm })
+          : t('session.safety.hangingUpUnchargedSetting', { why })
+    );
     this.publisher.noteSafety({ at: Date.now(), action: 'hang up', because: why, acted: true });
     // Through the same path the player's own disconnect takes, so the phase,
     // the walker, the queue and the roster are all torn down identically —
@@ -289,15 +295,15 @@ export class Safety implements SessionModule {
 
   /**
    * Whether the hang-up waits for a run on the wire to land, at most
-   * `hangUpAfterRunMs`: hung up in the room run from, the character logs back
-   * in beside what it ran from (festus, 2026-10-03: `nw` and the hang-up in
-   * one millisecond, back at 74 hp beside the zombie). Hung up where it lands.
+   * `hangUpAfterRunMs`. The run goes first and the hang-up decides on its
+   * answer (`settleTheRun`): festus ran `ne` and hung up in the same
+   * millisecond at 29%, with no chance to see whether the run got him out.
    */
   private waitForTheRun(why: string): boolean {
     if (!this.travel.escapeUnanswered) return false;
     const now = Date.now();
-    if (this.waitedForRun === null) {
-      this.waitedForRun = now;
+    if (this.runWaited === null) {
+      this.runWaited = { since: now, landings: this.travel.landings };
       const refused = t('session.safety.hangUpAfterRun', { why });
       this.session.notice(refused);
       this.publisher.noteSafety({
@@ -308,7 +314,96 @@ export class Safety implements SessionModule {
         refused
       });
     }
-    return now - this.waitedForRun < tuning().session.hangUpAfterRunMs;
+    return now - this.runWaited.since < tuning().session.hangUpAfterRunMs;
+  }
+
+  /**
+   * The answer to the run the hang-up waited on, once it has come: landed
+   * keeps the health it landed at (`gotOut`); a refusal or no answer leaves
+   * the hang-up to go. An unknown health is never a run that got out.
+   */
+  private settleTheRun(state: CharacterState): void {
+    const waited = this.runWaited;
+    if (waited === null || this.travel.escapeUnanswered) return;
+    this.runWaited = null;
+    const hp = state.vitals.hp;
+    this.gotOut =
+      this.travel.landings > waited.landings && hp !== null ? { hp, said: false } : null;
+  }
+
+  /**
+   * Whether the hang-up stays off because the run it waited on got out:
+   * nothing attacks where it landed and health has not fallen since. Said
+   * once. Attacked there, or hurt again, the run did not get away, and the
+   * hang-up goes.
+   */
+  private theRunGotOut(state: CharacterState, why: string): boolean {
+    const out = this.gotOut;
+    if (out === null) return false;
+    if (!caughtAfter(out.hp, state)) {
+      if (!out.said) {
+        out.said = true;
+        const refused = t('session.safety.hangUpRunGotOut');
+        this.session.notice(t('session.safety.hangUpNotAfterRun', { why, refused }));
+        this.publisher.noteSafety({
+          at: Date.now(),
+          action: 'hang up',
+          because: why,
+          acted: false,
+          refused
+        });
+      }
+      return true;
+    }
+    this.gotOut = null;
+    this.session.notice(t('session.safety.hangUpRunCaught', { why }));
+    return false;
+  }
+
+  /**
+   * The run the hang-up waited on got out and is caught again (attacked, or
+   * hurt since it landed), and the hang-up would go now, or it has gone: a
+   * second run does not go on the same line (`Travel.considerEscape`).
+   */
+  takesOver(state: CharacterState): boolean {
+    // Hung up: nothing runs on the lines still arriving while the link closes.
+    if (this.publisher.state.phase === 'closing') return true;
+    const out = this.gotOut;
+    if (out === null || !caughtAfter(out.hp, state)) return false;
+    if (!this.mayAct(state) || !this.automationConfig.safety.hangUp.enabled) return false;
+    const fraction = healthFraction(state);
+    if (fraction === null || !this.belowTheLine(fraction)) return false;
+    return this.refusedHere(state) === null;
+  }
+
+  /**
+   * Why a hang-up here is refused, or null where it goes: refused only in a
+   * charged realm while `HangUpWatch` sees a reason it would be charged.
+   */
+  private refusedHere(state: CharacterState): HangUpAssessment | null {
+    if (!this.penalised) return null;
+    const assessment = this.hangUp.assess(state, Date.now());
+    return assessment.clean ? null : assessment;
+  }
+
+  /** Automation on, in the realm, and not already closing. */
+  private mayAct(state: CharacterState): boolean {
+    if (!this.automationConfig.enabled) return false;
+    if (state.phase !== 'in-game' || !this.client.connected) return false;
+    // Once: the lines already in the socket still arrive while it closes, and
+    // each would hang up, and say so, again.
+    return this.publisher.state.phase !== 'closing';
+  }
+
+  /** A share of health at or below the hang-up line. */
+  private belowTheLine(fraction: number): boolean {
+    return fraction <= this.automationConfig.safety.hangUp.belowHealth;
+  }
+
+  /** Whether a hang-up here is charged: the realm's own menu outranks every setting (`RealmMenu`). */
+  private get penalised(): boolean {
+    const menu = this.realmMenu.penalty;
+    return menu !== null ? menu.percent > 0 : this.automationConfig.safety.hangUp.penalties;
   }
 
   /**
@@ -331,4 +426,10 @@ export class Safety implements SessionModule {
       refused: reason
     });
   }
+}
+
+/** Attacked where the run landed, or hurt since: the run did not get away. */
+function caughtAfter(landedHp: number, state: CharacterState): boolean {
+  const hp = state.vitals.hp;
+  return state.combat.attackers.length > 0 || hp === null || hp < landedHp;
 }
