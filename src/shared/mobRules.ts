@@ -48,6 +48,12 @@ export type MobRule =
        * disposition rather than instead of it.
        */
       notHostile?: boolean;
+      /**
+       * MegaMUD's *Stop to kill if able*: not walked past. It is opened on in a
+       * room under `minMobs` and whoever outside the party has claimed it
+       * (`politeAttacks`); every other refusal still stands.
+       */
+      stopToKill?: boolean;
     };
 
 /**
@@ -221,6 +227,12 @@ export function attacksFirst(
   return rowPeaceFor(rules, who.name) === null ? attacksOnSight(who.disposition, mine) : false;
 }
 
+/** Whether the row for a monster says it is stopped for and killed (`stopToKill`). */
+export function stopsToKill(rules: readonly MobRule[], name: string): boolean {
+  const row = mobRuleFor(rules, name);
+  return row !== undefined && isBanded(row) && row.stopToKill === true;
+}
+
 /**
  * The first monster in the room whose row takes this stance, in the room's
  * spelling, or null.
@@ -284,6 +296,7 @@ function fightingOf(entry: Record<string, unknown>): {
   cast?: MobCast;
   noBackstab?: boolean;
   notHostile?: boolean;
+  stopToKill?: boolean;
 } {
   const raw = isRecord(entry['cast']) ? entry['cast'] : {};
   const spell = str(raw['spell'], '').trim();
@@ -291,7 +304,8 @@ function fightingOf(entry: Record<string, unknown>): {
   return {
     ...(spell.length > 0 ? { cast: { spell, times } } : {}),
     ...(entry['noBackstab'] === true ? { noBackstab: true } : {}),
-    ...(entry['notHostile'] === true ? { notHostile: true } : {})
+    ...(entry['notHostile'] === true ? { notHostile: true } : {}),
+    ...(entry['stopToKill'] === true ? { stopToKill: true } : {})
   };
 }
 

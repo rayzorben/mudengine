@@ -1918,11 +1918,15 @@ automation:
     # spells and then `attack` carry the fight; `noBackstab` keeps the `bs`
     # opener for something else; `notHostile` says it does not attack first,
     # whatever the realm says -- it is rested beside and opened on only at
-    # `engage: all`, and the Room and Reference cards show both words:
+    # `engage: all`, and the Room and Reference cards show both words;
+    # `stopToKill` is MegaMUD's Stop to kill if able: it is attacked in a room
+    # with fewer than `minMobs` and when someone outside the party is fighting
+    # it (`politeAttacks`), and every other refusal still stands:
     #
     #     - { mob: gnoll shaman, treat: first, cast: { spell: harm, times: 2 } }
     #     - { mob: black bear, treat: default, noBackstab: true }
     #     - { mob: old hermit, treat: default, notHostile: true }
+    #     - { mob: cave bear, treat: high, stopToKill: true }
     #
     # Where a banded monster is in the room the band decides outright and the
     # client's own weighing is skipped -- which is the point: a ranking the

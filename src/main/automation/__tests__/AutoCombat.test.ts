@@ -3405,6 +3405,70 @@ describe('the size of the room and the size of the monster', () => {
     expect(sent).toEqual(['a giant rat']);
   });
 
+  /*
+   * MegaMUD's *Stop to kill if able* (todo 819): a row's `stopToKill` is not
+   * walked past for want of company or for a stranger's claim, and nothing
+   * else about the room changes.
+   */
+  describe('a stop to kill row', () => {
+    const stop = [{ mob: 'cave bear', treat: 'default' as const, stopToKill: true }];
+
+    it('is opened on in a room under the minimum, and nothing else there is', () => {
+      const auto = make(combat({ engage: 'all', minMobs: 3, mobRules: stop }));
+      const room = inRoom(mob('giant rat', 'hostile'), mob('cave bear', 'hostile'));
+      expect(auto.quarry(room)).toBe(true);
+      auto.onCharacter(room);
+      drain();
+      expect(sent).toEqual(['a cave bear']);
+
+      // Control: the same room without the row is walked past.
+      sent.length = 0;
+      const plain = make(combat({ engage: 'all', minMobs: 3 }));
+      expect(plain.quarry(room)).toBe(false);
+      plain.onCharacter(room);
+      drain();
+      expect(sent).toEqual([]);
+    });
+
+    it('is fought whoever outside the party claimed it', () => {
+      const claimed = state({
+        room: { ...EMPTY_CHARACTER.room, occupants: [mob('cave bear', 'hostile')] },
+        combat: {
+          ...EMPTY_CHARACTER.combat,
+          claimed: { 'cave bear': { by: 'Rend', at: Date.now() } }
+        }
+      });
+      make(combat({ politeAttacks: true, mobRules: stop })).onCharacter(claimed);
+      drain();
+      expect(sent).toEqual(['a cave bear']);
+
+      sent.length = 0;
+      make(combat({ politeAttacks: true })).onCharacter(claimed);
+      drain();
+      expect(sent).toEqual([]);
+    });
+
+    it('still stops at the maximum and at a monster that does not attack first', () => {
+      const crowd = make(combat({ engage: 'all', maxMobs: 1, mobRules: stop }));
+      const room = inRoom(mob('cave bear', 'hostile'), mob('giant rat', 'hostile'));
+      expect(crowd.quarry(room)).toBe(false);
+      crowd.onCharacter(room);
+      drain();
+      expect(refusals()[0]).toBe(
+        `cave bear — ${t('automation.combat.refusedMaxMobs', { here: 2, max: 1 })}`
+      );
+
+      sent.length = 0;
+      const calm = make(combat({ engage: 'hostile', mobRules: stop }));
+      calm.onCharacter(inRoom(mob('cave bear', 'passive')));
+      drain();
+      expect(sent).toEqual([]);
+      expect(refusals().at(-1)).toBe(
+        `cave bear — ${t('automation.combat.refusedNotHostile', { target: 'cave bear' })}`
+      );
+    });
+  });
+
   it('declines a monster worth more experience than the cap', () => {
     const auto = make(combat({ engage: 'all', maxMonsterExperience: 500 }));
     auto.onCharacter(inRoom(known('ancient dragon', { experience: 90_000 })));
