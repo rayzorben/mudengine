@@ -3816,6 +3816,62 @@ describe('the escape becomes a direction', () => {
     expect(written.split('\n').filter((l) => /flee/i.test(l))).toEqual([]);
     expect(written).toContain('Running away outranks fighting');
   });
+
+  /*
+   * Todo 847: a file laid out like the template has the paragraph above
+   * `safety:` that names `flee` to say there is no such command. `yaml` files
+   * it on the map, the redistribution moved it, and the next read put it back,
+   * so every start wrote the file, left a backup and said so again.
+   */
+  it('moves an old paragraph on a block once, and not again', () => {
+    stated(`automation:
+  safety:
+    # Running away. \`flee\` is the escape that works.
+    retreat:
+      enabled: true
+`);
+    const notes = (): string[] =>
+      notesOf(
+        said,
+        'notices.migration.escapeIsADirection.one',
+        'notices.migration.escapeIsADirection.many'
+      );
+    migrate(true);
+    expect(notes()).toHaveLength(1);
+    const written = fs.readFileSync(home.options, 'utf8');
+    expect(written).not.toContain('is the escape that works');
+    migrate(true);
+    expect(notes()).toEqual([]);
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(written);
+  });
+
+  it('leaves the template’s own paragraphs where they are, run after run', () => {
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+    fs.copyFileSync(path.resolve('resources/config/default.yaml'), home.options);
+    fs.copyFileSync(path.resolve('resources/config/internal.yaml'), home.internal);
+    migrate(true);
+    const options = fs.readFileSync(home.options, 'utf8');
+    const internal = fs.readFileSync(home.internal, 'utf8');
+    for (const name of fs.readdirSync(path.dirname(home.options)))
+      if (name.endsWith('.bak')) fs.rmSync(path.join(path.dirname(home.options), name));
+    for (const name of fs.readdirSync(path.dirname(home.internal)))
+      if (name.endsWith('.bak')) fs.rmSync(path.join(path.dirname(home.internal), name));
+    const files = fs.readdirSync(path.dirname(home.options));
+    const beside = fs.readdirSync(path.dirname(home.internal));
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(options);
+    expect(fs.readFileSync(home.internal, 'utf8')).toBe(internal);
+    expect(fs.readdirSync(path.dirname(home.options))).toEqual(files);
+    expect(fs.readdirSync(path.dirname(home.internal))).toEqual(beside);
+    expect(
+      notesOf(
+        said,
+        'notices.migration.escapeIsADirection.one',
+        'notices.migration.escapeIsADirection.many',
+        'notices.migration.escapeSettle'
+      )
+    ).toEqual([]);
+  });
 });
 
 describe('the new automation settings', () => {
