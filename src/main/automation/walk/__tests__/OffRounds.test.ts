@@ -74,8 +74,8 @@ describe('a run timed to the rounds', () => {
   );
   /** The same line with no lair in it. */
   const TOWN = routeOf(...[1, 2, 3, 4, 5].map((room) => stepOf(room, room + 1, 'e')));
-  /** The captured rounds' gaps (festus, t=956178): 5052, 5052, 5030. */
-  const ROUNDS = [0, 5052, 10104, 15134];
+  /** A fight's rounds on Paradigm's beat of 5,000 ms. */
+  const ROUNDS = [0, 5000, 10000, 15000];
   const base = 1_000_000;
 
   const monster = {
@@ -89,13 +89,12 @@ describe('a run timed to the rounds', () => {
     charmed: false
   };
 
-  /** The round, the median of those gaps. */
-  const PERIOD = 5052;
+  const PERIOD = 5000;
 
   /**
    * The rounds of a fight, then a walk started `roundsLater` rounds on whose
    * first three steps are answered in `STEP` each: the arrival in 1/4 is
-   * 1,235 ms before a round, too soon for two steps.
+   * 1,049 ms before a round, too soon for two steps.
    */
   function walkToRoomFour(
     run: boolean,
@@ -123,7 +122,7 @@ describe('a run timed to the rounds', () => {
 
   function heldUntilTheRound(rig: ReturnType<typeof walkToRoomFour>): void {
     expect(moves(rig.sent)).toEqual(['e', 'e', 'e']);
-    vi.advanceTimersByTime(1235 - 1);
+    vi.advanceTimersByTime(1049 - 1);
     expect(moves(rig.sent)).toEqual(['e', 'e', 'e']);
     vi.advanceTimersByTime(1);
     expect(moves(rig.sent)).toEqual(['e', 'e', 'e', 'e']);
@@ -133,7 +132,7 @@ describe('a run timed to the rounds', () => {
     const rig = walkToRoomFour(true);
     heldUntilTheRound(rig);
     expect(rig.notices).toContain(
-      t('automation.walk.offRoundsTimed', { round: '5.05', step: '1.24' })
+      t('automation.walk.offRoundsTimed', { round: '5.00', step: '1.24' })
     );
   });
 
@@ -182,7 +181,7 @@ describe('a run timed to the rounds', () => {
     const rig = walkToRoomFour(false);
     expect(moves(rig.sent)).toEqual(['e', 'e', 'e', 'e']);
     expect(rig.notices).not.toContain(
-      t('automation.walk.offRoundsTimed', { round: '5.05', step: '1.24' })
+      t('automation.walk.offRoundsTimed', { round: '5.00', step: '1.24' })
     );
   });
 
