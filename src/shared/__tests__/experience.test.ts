@@ -4,6 +4,7 @@ import {
   derivedExperienceTable,
   experienceChart,
   experienceOwed,
+  experienceSeed,
   experienceStanding,
   withDerivedExperience,
   withRealmExperience,
@@ -200,6 +201,50 @@ describe('folding a derived window under what the realm said', () => {
   it('is unmoved when it has nothing to add', () => {
     const first = withDerivedExperience(null, derived(3));
     expect(withDerivedExperience(first, derived(3))).toBe(first);
+  });
+});
+
+describe('the percentage a derived window is chained from', () => {
+  it('keeps the database while the realm agrees with it', () => {
+    const stated = withRealmExperience(null, rowsFrom(KANG_PALADIN.from.slice(0, 3)));
+    expect(experienceSeed(stated, KANG_PALADIN.percent)).toEqual({
+      percent: KANG_PALADIN.percent,
+      source: 'database'
+    });
+    expect(experienceSeed(null, KANG_PALADIN.percent)?.source).toBe('database');
+  });
+
+  it('takes the percentage from the realm when the database is wrong', () => {
+    // orohost, 2026-10-04: a Gnome Mage the world file prices at 270% is
+    // charged `(4000)` for level 3 on the `exp` line, which is 200%.
+    const stated = withRealmExperience(null, [{ level: 3, experience: 4000 }]);
+    expect(experienceSeed(stated, 270)).toEqual({ percent: 200, source: 'chained' });
+    expect(experienceSeed(stated, null)?.percent).toBe(200);
+    const wire = withRealmExperience(null, [{ level: 7, experience: KANG_PALADIN.from[5]! }]);
+    expect(experienceSeed(wire, 270)?.percent).toBe(KANG_PALADIN.percent);
+  });
+
+  it('is null when no whole percentage gives every stated row', () => {
+    const stated = withRealmExperience(null, [
+      { level: 3, experience: 4000 },
+      { level: 4, experience: 9999 }
+    ]);
+    expect(experienceSeed(stated, 270)).toBeNull();
+    expect(
+      experienceSeed(withRealmExperience(null, [{ level: 2, experience: 2005 }]), null)
+    ).toBeNull();
+  });
+
+  it('chains a full window from a seed the realm gave', () => {
+    const stated = withRealmExperience(null, [{ level: 3, experience: 4000 }]);
+    const seed = experienceSeed(stated, 270)!;
+    const table = withDerivedExperience(
+      stated,
+      derivedExperienceTable(seed.percent, 2, seed.source)!
+    );
+    expect(table?.rows.map((row) => row.experience).slice(0, 3)).toEqual([2000, 4000, 7333]);
+    expect(table?.rows.find((row) => row.level === 4)?.source).toBe('chained');
+    expect(table?.rows.length).toBeGreaterThan(5);
   });
 });
 

@@ -813,9 +813,18 @@ describe('the experience table', () => {
       '[HP=56/MA=12]: ',
       'Exp: 75547 Level: 3 Exp needed for next level: 0 (27133) [278%]'
     ]);
-    expect(tracker.current.progress.expTable?.rows).toEqual([
-      { level: 4, experience: 27133, source: 'realm' }
-    ]);
+    const rows = tracker.current.progress.expTable?.rows ?? [];
+    expect(rows.find((row) => row.level === 4)).toEqual({
+      level: 4,
+      experience: 27133,
+      source: 'realm'
+    });
+    // 27,133 is a Kang Paladin's 740%, so the rest of the window is chained from it.
+    expect(rows.find((row) => row.level === 5)).toEqual({
+      level: 5,
+      experience: 49743,
+      source: 'chained'
+    });
   });
 
   it('works the table out from the realm data before anything has been asked', () => {

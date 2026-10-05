@@ -3109,8 +3109,10 @@ cards:
     # Where the numbers came from, said out loud: a figure this client worked
     # out must not read like one the server sent.
     expProvenance:
+      chained: calculated from the exp the game says a level needs; the world data has another rate for this character
       database: calculated from the world data
       mixed: partly the game's own table, partly calculated from the world data
+      mixedChained: partly the game's own figures, partly calculated from them; the world data has another rate for this character
       realm: the game's own table
     expReached: reached
     # Beside a figure this client worked out rather than read off the wire.

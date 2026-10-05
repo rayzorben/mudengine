@@ -10,7 +10,7 @@ import {
   type SessionPhase,
   type VitalThresholds
 } from '@shared/character';
-import { experienceOf, type ExperienceLevel } from '@shared/experience';
+import { experienceOf, workedOut, type ExperienceLevel } from '@shared/experience';
 import type { SessionId } from '@shared/ipc';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { t } from '../lib/i18n';
@@ -255,7 +255,7 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
                     client's arithmetic rather than the realm's. A level
                     somebody is told they have already earned is exactly the
                     figure that must not be taken on trust. */}
-                {standing.earnedSource === 'database' && (
+                {standing.earnedSource !== null && workedOut(standing.earnedSource) && (
                   <span className="hint"> {t('cards.vitals.workedOut')}</span>
                 )}
               </dd>
@@ -328,15 +328,21 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
     }
   ];
 
-  const derived = rows.filter((row) => row.source === 'database').length;
+  const derived = rows.filter((row) => workedOut(row.source)).length;
+  // A chain from the game's own price says so: the world data was wrong for this character.
+  const chained = rows.some((row) => row.source === 'chained');
   const provenance =
     rows.length === 0
       ? null
       : derived === 0
         ? t('cards.vitals.expProvenance.realm')
         : derived === rows.length
-          ? t('cards.vitals.expProvenance.database')
-          : t('cards.vitals.expProvenance.mixed');
+          ? chained
+            ? t('cards.vitals.expProvenance.chained')
+            : t('cards.vitals.expProvenance.database')
+          : chained
+            ? t('cards.vitals.expProvenance.mixedChained')
+            : t('cards.vitals.expProvenance.mixed');
 
   const expFace = (
     <>
@@ -361,7 +367,7 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
         rowAttrs={(row) => ({
           'data-reached': held !== null && row.experience <= held ? 'true' : undefined,
           'data-next': standing?.next === row.level ? 'true' : undefined,
-          'data-derived': row.source === 'database' ? 'true' : undefined
+          'data-derived': workedOut(row.source) ? 'true' : undefined
         })}
         rows={rows}
         session={session}
