@@ -2986,6 +2986,7 @@ export class Router {
         // And the level itself, for the light arithmetic: how dark decides
         // whether a torch is worth lighting, and `dark` alone cannot say.
         ...(arriving?.light !== undefined && arriving.light < 0 ? { light: arriving.light } : {}),
+        ...(arriving?.lair !== undefined ? { lair: true as const } : {}),
         ...(danger !== null && danger > 0 ? { danger } : {}),
         ...(lairDamage !== null && lairDamage > 0 ? { lairDamage } : {}),
         // And what the room itself does to whoever stands in it, by the same

@@ -474,6 +474,7 @@ export interface ProfileDraft {
     bashDoors: boolean;
     bashTries: number;
     sneak: boolean;
+    runBetweenRounds: boolean;
     provideLight: boolean;
     lightDimRooms: boolean;
     extinguishInLight: boolean;
@@ -1008,6 +1009,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       bashDoors: movement['bashDoors'] === true,
       bashTries: Math.min(10, Math.max(0, Math.trunc(Number(movement['bashTries']) || 0))),
       sneak: movement['sneak'] === true,
+      runBetweenRounds: movement['runBetweenRounds'] !== false,
       provideLight: movement['provideLight'] === true,
       // Off by default, MegaMUD's own: a blank field waits the condition out.
       walkWhileBlind: movement['walkWhileBlind'] === true,

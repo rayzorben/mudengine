@@ -9,6 +9,7 @@ import PartyFields from './PartyFields';
 import { partyFormOf, partyOf } from '../lib/characterForm';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
+import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
 import MobRuleList from './MobRuleList';
 import GearSetList from './GearSetList';
@@ -1486,14 +1487,12 @@ export default function GlobalSettings({
 
             <fieldset className="settings-menus" data-fieldset="movement-stealth">
               <legend>{t('settings.movement.stealthLegend')}</legend>
-              <CheckField
-                checked={draft.automation.movement.sneak}
-                hint={t('settings.movement.sneakHint')}
-                label={t('settings.movement.sneak')}
-                name="global-sneak"
-                onChange={(value) =>
-                  automation({ movement: { ...draft.automation.movement, sneak: value } })
+              <SneakAndRunFields
+                namePrefix="global-"
+                onChange={(fields) =>
+                  automation({ movement: { ...draft.automation.movement, ...fields } })
                 }
+                value={draft.automation.movement}
               />
             </fieldset>
 

@@ -2804,7 +2804,9 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       // And one room back the way you came, beside the transport: a walk into
       // a room nobody meant to be in is answered by a press, not by working
       // out which direction undoes it.
-      'move:back'
+      'move:back',
+      // Timing Run it to the combat rounds, beside the transport it times.
+      'runBetweenRounds'
     ]
   }
 };

@@ -1,18 +1,22 @@
 /**
- * A run's step out of an empty room, timed to the rounds (todo 00,
- * 2026-10-03; the user's move-move rule 2026-10-04). A round hits whoever is
- * in the room when its tick goes off. A step from a room with nothing in it
- * goes at once while a step and another after it fit before the next round,
- * so the room it lands in can still be left before that round; otherwise it
- * waits for the round and goes as it fires. A room with a monster, or a
- * fight, never holds. Unknown rounds or step length hold nothing. Whether the
- * run is timed is said each time the answer changes. See
- * `mudengine-automation` › parts/walking.md › *A run steps in the off-rounds*.
+ * A run's step out of an empty room into a lair, timed to the rounds (todo
+ * 00, 2026-10-03; the user's move-move rule and lairs only, 2026-10-04). A
+ * round hits whoever is in the room when its tick goes off. Such a step goes
+ * at once while a step and another after it fit before the next round, so
+ * the lair it lands in can still be left before that round; otherwise it
+ * waits for the round and goes as it fires. A monster in the room or a fight
+ * never holds, since a wait there gives the monster a free round; a step into
+ * a room with no lair is not timed. Unknown rounds or step length hold
+ * nothing, and so does `movement.runBetweenRounds` off. Whether the run is
+ * timed is said each time the answer changes. See `mudengine-automation` ›
+ * parts/walking.md › *A run steps in the off-rounds*.
  */
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
-import { fightIsRunning, type CharacterState } from '../../../shared/character';
+import { fightIsRunning, monstersHere, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
+import type { MovementConfig } from '../../../shared/config';
+import type { RouteStep } from '../../../shared/world';
 import { RoundClock } from '../RoundClock';
 import type { StepTimes } from './StepTimes';
 import type { WalkerEvents } from './ports';
@@ -33,6 +37,11 @@ export function offRoundHoldMs(
   const left = nextRound - now;
   if (left > 2 * stepMs + marginMs || periodMs - left <= marginMs) return 0;
   return left;
+}
+
+/** A fight, or a monster in the room: a wait here is a free round. */
+function beset(state: CharacterState): boolean {
+  return fightIsRunning(state) || monstersHere(state);
 }
 
 type Untimed = 'stepUnmeasured' | 'unmeasured';
@@ -78,20 +87,38 @@ export class OffRounds {
     this.awaited = null;
   }
 
-  /** How long to hold the step out of this room; 0 for none. */
-  holdMs(state: CharacterState, quiet: boolean): number {
+  /**
+   * How long to hold `step` out of this room; 0 for none, and always 0 for a
+   * step into a room with no lair or with `runBetweenRounds` off.
+   */
+  holdMs(
+    state: CharacterState,
+    step: RouteStep | undefined,
+    movement: Pick<MovementConfig, 'runBetweenRounds'>,
+    quiet: boolean
+  ): number {
     const awaited = this.awaited;
     this.awaited = null;
     if (awaited !== null && this.now() >= awaited) return 0;
+    if (step?.lair !== true || !movement.runBetweenRounds) return 0;
     const hold = this.timedHold(state, quiet);
     if (hold > 0) this.awaited = this.now() + hold;
     return hold;
   }
 
+  /**
+   * Whether a monster came into the room or a fight started while a step is
+   * held here: the step then goes at once, or the wait gives it a free round.
+   * Past the awaited round the step is another hold's, if it is held at all.
+   */
+  monsterCameIn(state: CharacterState): boolean {
+    if (this.awaited === null || this.now() >= this.awaited || !beset(state)) return false;
+    this.awaited = null;
+    return true;
+  }
+
   private timedHold(state: CharacterState, quiet: boolean): number {
-    if (!this.running) return 0;
-    if (fightIsRunning(state) || state.room.occupants.some((who) => who.kind !== 'player'))
-      return 0;
+    if (!this.running || beset(state)) return 0;
     const now = this.now();
     const next = this.rounds.next(now);
     const stepMs = this.steps.usual;

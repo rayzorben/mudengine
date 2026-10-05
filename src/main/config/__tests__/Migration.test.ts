@@ -2093,7 +2093,9 @@ toolbar:
       // which is what keeps it here rather than appended past the shelf.
       'move:toggle',
       // And back goes in beside it (`theToolbarGainedBack`).
-      'move:back'
+      'move:back',
+      // And the run's round timing at the end (`pinTheRunBetweenRounds`).
+      'runBetweenRounds'
     ]);
   });
 
@@ -2129,7 +2131,14 @@ toolbar:
     // — the gear button lands after `connect`, which is, and back has no
     // `move:toggle` to sit beside so it goes on the end. The bless switch has
     // none of its neighbours here either, and runs last, so it takes the front.
-    expect(pinned()).toEqual(['autoBless', 'loop:open', 'connect', 'gear:restore', 'move:back']);
+    expect(pinned()).toEqual([
+      'autoBless',
+      'loop:open',
+      'connect',
+      'gear:restore',
+      'move:back',
+      'runBetweenRounds'
+    ]);
   });
 
   /* A deviation from the shipped row lives in `localStorage`, which this
@@ -2382,7 +2391,8 @@ tuning:
       'autoBless',
       'move:toggle',
       'move:back',
-      'loop:open'
+      'loop:open',
+      'runBetweenRounds'
     ]);
   });
 
@@ -2439,7 +2449,8 @@ describe('the gear button on an existing toolbar', () => {
       'automation',
       'autoBless',
       'loop:open',
-      'move:back'
+      'move:back',
+      'runBetweenRounds'
     ]);
   });
 
@@ -2462,7 +2473,14 @@ describe('the gear button on an existing toolbar', () => {
   it('goes to the front of a row with no dial on it', () => {
     fs.writeFileSync(home.internal, 'toolbar:\n  pinned:\n    - combat\n', 'utf8');
     migrate();
-    expect(pinned()).toEqual(['gear:restore', 'loop:open', 'combat', 'autoBless', 'move:back']);
+    expect(pinned()).toEqual([
+      'gear:restore',
+      'loop:open',
+      'combat',
+      'autoBless',
+      'move:back',
+      'runBetweenRounds'
+    ]);
   });
 
   it('leaves a file that states no toolbar alone', () => {
@@ -2508,7 +2526,8 @@ describe('the bless switch on an existing toolbar', () => {
       'loot',
       'loop:open',
       'move:toggle',
-      'move:back'
+      'move:back',
+      'runBetweenRounds'
     ]);
   });
 
@@ -6763,6 +6782,64 @@ describe('buying a light is stated', () => {
     expect(fs.readFileSync(soul, 'utf8')).toContain('buyLight: false');
     expect(
       notesOf(said, 'notices.migration.buyLight.one', 'notices.migration.buyLight.many')
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
+// Run between rounds (2026-10-04): on after sneak, with the template's paragraph, once.
+describe('running between rounds is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-run-rounds-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch on after sneak, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    sneak: false\n    provideLight: true\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(
+      soul,
+      'name: Soul\nautomation:\n  movement:\n    runBetweenRounds: false\n',
+      'utf8'
+    );
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const movement = (parse(text).automation as Record<string, Record<string, unknown>>)[
+      'movement'
+    ]!;
+    const keys = Object.keys(movement);
+    expect(keys[keys.indexOf('sneak') + 1]).toBe('runBetweenRounds');
+    expect(movement['runBetweenRounds']).toBe(true);
+    expect(text).toContain('# Time a run to the combat rounds');
+    expect(fs.readFileSync(soul, 'utf8')).toContain('runBetweenRounds: false');
+    expect(
+      notesOf(
+        said,
+        'notices.migration.runBetweenRounds.one',
+        'notices.migration.runBetweenRounds.many'
+      )
     ).toHaveLength(1);
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);

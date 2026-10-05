@@ -6,10 +6,13 @@ import { blockOf } from '../../../../shared/__tests__/blocks';
 import { t } from '../../../app/i18n';
 import { EMPTY_CHARACTER } from '../../../../shared/character';
 import { DEFAULT_INTERNAL } from '../../../../shared/internal';
-import { at, moves, routeOf, stepOf, useRigs, wire } from './walking';
+import { at, configWith, moves, routeOf, stepOf, useRigs, wire } from './walking';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
 const MARGIN = TUNING.walk.offRoundMarginMs;
+const ON = { runBetweenRounds: true };
+/** A step into a room the realm marks as a lair. */
+const INTO_LAIR = stepOf(1, 2, 'e', { lair: true });
 
 /*
  * Figures measured 2026-10-03 on Paradigm: a round every 5,037 ms (median of
@@ -55,18 +58,22 @@ describe('a held step', () => {
     offRounds.onBlock(blockOf('mob-hits', '', {}, 0));
     offRounds.begin(true);
     now = 4000;
-    expect(offRounds.holdMs(at(1, 1), true)).toBe(1000);
+    expect(offRounds.holdMs(at(1, 1), INTO_LAIR, ON, true)).toBe(1000);
     // A step too long to fit twice, and the retry comes half a second after the round.
     now = 5500;
-    expect(offRounds.holdMs(at(1, 1), true)).toBe(0);
+    expect(offRounds.holdMs(at(1, 1), INTO_LAIR, ON, true)).toBe(0);
   });
 });
 
 describe('a run timed to the rounds', () => {
   const rigOf = useRigs();
   const STEP = 1239;
-  /** Six rooms in a line, 1/1 east to 1/6. */
-  const LINE = routeOf(...[1, 2, 3, 4, 5].map((room) => stepOf(room, room + 1, 'e')));
+  /** Six rooms in a line, 1/1 east to 1/6, each a lair. */
+  const LINE = routeOf(
+    ...[1, 2, 3, 4, 5].map((room) => stepOf(room, room + 1, 'e', { lair: true }))
+  );
+  /** The same line with no lair in it. */
+  const TOWN = routeOf(...[1, 2, 3, 4, 5].map((room) => stepOf(room, room + 1, 'e')));
   /** The captured rounds' gaps (festus, t=956178): 5052, 5052, 5030. */
   const ROUNDS = [0, 5052, 10104, 15134];
   const base = 1_000_000;
@@ -90,15 +97,20 @@ describe('a run timed to the rounds', () => {
    * first three steps are answered in `STEP` each: the arrival in 1/4 is
    * 1,235 ms before a round, too soon for two steps.
    */
-  function walkToRoomFour(run: boolean, roomFour = at(1, 4), roundsLater = 0) {
+  function walkToRoomFour(
+    run: boolean,
+    roomFour = at(1, 4),
+    roundsLater = 0,
+    { line = LINE, runBetweenRounds = true } = {}
+  ) {
     vi.setSystemTime(base);
-    const rig = rigOf();
+    const rig = rigOf({}, configWith({ movement: { runBetweenRounds } }));
     for (const round of ROUNDS) {
       vi.setSystemTime(base + round);
       rig.walker.onBlock(wire('mob-hits'));
     }
     vi.setSystemTime(base + 15234 + roundsLater * PERIOD);
-    rig.walker.start(LINE, at(1, 1), { offRounds: run });
+    rig.walker.start(line, at(1, 1), { offRounds: run });
     for (const room of [2, 3]) {
       vi.advanceTimersByTime(STEP);
       rig.walker.onCharacter(at(1, room));
@@ -131,6 +143,27 @@ describe('a run timed to the rounds', () => {
     vi.advanceTimersByTime(STEP);
     rig.walker.onCharacter(at(1, 5));
     expect(moves(rig.sent)).toEqual(['e', 'e', 'e', 'e', 'e']);
+  });
+
+  it('steps at once when a monster comes in while the step is held', () => {
+    const rig = walkToRoomFour(true);
+    expect(moves(rig.sent)).toEqual(['e', 'e', 'e']);
+    rig.walker.onCharacter(
+      at(1, 4, {
+        room: { ...structuredClone(EMPTY_CHARACTER.room), map: 1, number: 4, occupants: [monster] }
+      })
+    );
+    expect(moves(rig.sent)).toEqual(['e', 'e', 'e', 'e']);
+  });
+
+  it('times nothing into a room with no lair', () => {
+    const rig = walkToRoomFour(true, at(1, 4), 0, { line: TOWN });
+    expect(moves(rig.sent)).toEqual(['e', 'e', 'e', 'e']);
+  });
+
+  it('times nothing with the switch off', () => {
+    const rig = walkToRoomFour(true, at(1, 4), 0, { runBetweenRounds: false });
+    expect(moves(rig.sent)).toEqual(['e', 'e', 'e', 'e']);
   });
 
   it('counts on from the last round seen, however long ago', () => {
