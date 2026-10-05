@@ -665,6 +665,7 @@ export class QuestPlanner {
     const roll = stepRoll(step);
     return {
       block: step.block,
+      ...(step.to === undefined ? {} : { to: step.to }),
       act: planAct(step),
       items,
       ...(at === undefined ? {} : { at }),

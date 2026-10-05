@@ -1146,6 +1146,12 @@ export type PlanSnag =
 /** One step of a plan: gather these, go there, do this. */
 export interface PlanStep {
   block: number;
+  /**
+   * The rank the step reaches (`QuestStep.to`). With `block` it names the
+   * realm's step: one block holds several, the Dao Lord's books hold ranks 6
+   * and 7.
+   */
+  to?: number;
   /** Null where the realm traced the step to nobody, nowhere and no death. */
   act: PlanAct | null;
   items: PlanItem[];

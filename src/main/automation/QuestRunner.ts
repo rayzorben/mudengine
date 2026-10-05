@@ -560,9 +560,12 @@ export class QuestRunner implements SessionModule {
       .flatMap((step) => (step.at === undefined ? [] : [step.at.room]));
   }
 
-  /** The realm's own step behind a plan's row. */
+  /**
+   * The realm's own step behind a plan's row, by block and rank: one block
+   * holds several steps (the Dao Lord's blue and red books, ranks 6 and 7).
+   */
   private realmStep(run: Run, step: PlanStep): QuestStep | undefined {
-    return run.quest.steps.find((each) => each.block === step.block);
+    return run.quest.steps.find((each) => each.block === step.block && each.to === step.to);
   }
 
   /**
