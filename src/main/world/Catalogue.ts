@@ -790,12 +790,12 @@ export class Catalogue {
      * about one room's clock. `respawnSeconds` is the one reading of the
      * column and stays that.
      */
-    const { greatermudRespawnOffsetSeconds, passiveTickSeconds } = tuning().hunting;
+    const { greatermudRespawnOffsetSeconds, roomRegenSeconds } = tuning().hunting;
     return {
       max,
       respawnSeconds: respawnSeconds(room.delay ?? null, family, {
         greatermudRespawnOffsetSeconds,
-        passiveTickSeconds
+        roomRegenSeconds
       }),
       mobs
     };

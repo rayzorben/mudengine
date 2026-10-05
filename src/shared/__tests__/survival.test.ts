@@ -300,6 +300,16 @@ describe('the room’s fight, run', () => {
     expect(lapsing(5, 30, 0.9).lostMean).toBe(gone.lostMean);
   });
 
+  /* `Player.InitiateSpell` casts a blessing with `BreakCombat`: the swing goes with the cast. */
+  it('spends the character’s turn on a recast it pays for', () => {
+    const foes = [{ name: 'orc', subject: { hp: 60, profiles: [biter(20, 1, 3)] } }];
+    const plain = simulateFight(fight({ foes }))!;
+    const recast = simulateFight(
+      fight({ foes, recasts: [{ round: 1, cost: 0, minMana: 0, effect: null }] })
+    )!;
+    expect(recast.rounds.value).toBeGreaterThan(plain.rounds.value);
+  });
+
   it('lowers the top of the bar when a lapsed blessing raised it', () => {
     const run = simulateFight(
       fight({

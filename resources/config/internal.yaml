@@ -684,7 +684,9 @@ tuning:
   hunting:
     roundSeconds: 5
     restTickSeconds: 15
-    passiveTickSeconds: 121
+    passiveTickSeconds: 30
+    # The pass that refills the monsters of a room a player stands in.
+    roomRegenSeconds: 121
     killOverheadMs: 1500
     stepMs: 1250
     greatermudRespawnOffsetSeconds: 30

@@ -5338,6 +5338,21 @@ describe('the hunting survey’s reach', () => {
     expect(block('hunting')['maxSpots']).toBe(7);
   });
 
+  /* 2026-10-05: 121 was the room refill; the player's own tick is 30. */
+  it('moves a standing tick still at the shipped 121 to 30, and adds the room refill', () => {
+    fs.writeFileSync(home.internal, `${withReach}    passiveTickSeconds: 121\n`, 'utf8');
+    migrate();
+    expect(block('hunting')['passiveTickSeconds']).toBe(
+      DEFAULT_INTERNAL.tuning.hunting.passiveTickSeconds
+    );
+    expect(block('hunting')['roomRegenSeconds']).toBe(
+      DEFAULT_INTERNAL.tuning.hunting.roomRegenSeconds
+    );
+    fs.writeFileSync(home.internal, `${withReach}    passiveTickSeconds: 40\n`, 'utf8');
+    migrate();
+    expect(block('hunting')['passiveTickSeconds']).toBe(40);
+  });
+
   it('says so, and does nothing on a second run', () => {
     migrate();
     expect(said.join(' ')).toContain('huntRadiusSteps');

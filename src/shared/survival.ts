@@ -342,6 +342,8 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     let heals = 0;
     let regenCarry = 0;
     let held = 0;
+    // Recasts paid for and not yet cast (`recastNow`).
+    let recasting = 0;
     let lost = 0;
     let round = 0;
     let dead = false;
@@ -364,7 +366,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
 
       if (held > 0) {
         held -= 1;
-      } else if (!healed()) {
+      } else if (!healed() && !recastNow()) {
         const side = facing[met[target]!]!;
         const dealt = strike(side);
         alive[target] = alive[target]! - dealt;
@@ -431,6 +433,16 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     }
 
     /**
+     * The character's turn spent on a recast paid for. A blessing is cast with
+     * `BreakCombat` (`Player.InitiateSpell`), so the round's swing goes with it.
+     */
+    function recastNow(): boolean {
+      if (recasting === 0) return false;
+      recasting -= 1;
+      return true;
+    }
+
+    /**
      * What the round is worth to a heal, as `FightHeal` reads it: the mean
      * taken a round so far, else what the foes standing are expected to deal.
      */
@@ -453,6 +465,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         const { cost } = recast;
         if (cost !== null && mana !== null && clearsFloor(mana, recast.minMana) && mana >= cost) {
           mana -= cost;
+          recasting += 1;
           continue;
         }
         if (recast.effect === null) continue;
