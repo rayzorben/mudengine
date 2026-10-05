@@ -26,11 +26,18 @@ export interface CollectPlanner {
   walk(route: Route): string | null;
   /** The word that picks a coin up on this realm (todo 830); omitted, the denomination. */
   coinWord?(coin: Denomination): string;
+  /**
+   * A fight here, or one auto-combat is about to open: a search waits it out,
+   * since the server answers `You may not search while attacking!` after
+   * spending the command (`AutoSearch.fightHere`). Omitted, never.
+   */
+  fighting?(): boolean;
 }
 
 /** What to take, from where, and the owner's words for each command sent. */
 export interface CollectAsk {
   to: RoomId;
+  /** Empty, every search in `search` is sent: nothing found ends them early. */
   items: readonly string[];
   /**
    * Bare searches before taking what the open floor holds, for a pile `hide`
@@ -87,6 +94,8 @@ type Phase =
       refused: boolean;
       /** Set by the answer's block; read on the state after it. */
       answered: boolean;
+      /** A fight held this one, so it may have been dropped unsent. */
+      foughtOver: boolean;
       queuedAt: number;
       sentAt: number | null;
     }
@@ -116,9 +125,16 @@ export class Collect {
     return this.phase.kind === 'idle' ? null : this.phase.kind;
   }
 
-  /** Put down without an ending: a death, a reset, the owner switched off. */
+  /**
+   * Put down without an ending: a death, a reset, the owner switched off, a
+   * stop. What it still has queued is taken back, or a search goes out after.
+   */
   cancel(): void {
+    const phase = this.phase;
     this.phase = { kind: 'idle' };
+    if (phase.kind === 'idle') return;
+    const ours = `${phase.ask.key}:`;
+    this.queue.cancel((intent) => intent.coalesceKey?.startsWith(ours) === true);
   }
 
   /**
@@ -207,6 +223,7 @@ export class Collect {
       sent,
       refused: false,
       answered: false,
+      foughtOver: false,
       queuedAt: this.now(),
       sentAt: null
     };
@@ -217,6 +234,7 @@ export class Collect {
       coalesceKey: `${ask.key}:search`,
       expiresAt: this.now() + tuning().search.expiresMs,
       reason: plan.reason,
+      stillWanted: () => this.planner.fighting?.() !== true,
       onSent: () => {
         if (this.phase !== phase) return;
         phase.sentAt = this.now();
@@ -237,8 +255,19 @@ export class Collect {
    */
   private searched(phase: Extract<Phase, { kind: 'searching' }>, state: CharacterState): void {
     const { ask, plan, offered, sent, refused, sentAt, queuedAt } = phase;
+    // Nothing ages through a fight; one dropped unsent for it is asked again after.
+    if (this.planner.fighting?.() === true) {
+      phase.foughtOver = true;
+      phase.queuedAt = this.now();
+      return;
+    }
+    if (phase.foughtOver && sentAt === null && !phase.answered) {
+      this.search(ask, plan, offered, sent);
+      return;
+    }
     if (!phase.answered && this.now() - (sentAt ?? queuedAt) < ask.collectMs) return;
-    if (!refused && offered < plan.times && ask.items.some((item) => !onAFloor(state, item))) {
+    const wanted = ask.items.length === 0 || ask.items.some((item) => !onAFloor(state, item));
+    if (!refused && offered < plan.times && wanted) {
       this.search(ask, plan, offered + 1, sent);
       return;
     }

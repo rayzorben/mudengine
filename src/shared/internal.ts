@@ -1144,6 +1144,20 @@ const TUNING_DEFAULTS = {
     /** A `get` for the stash still queued after this is for a room already left. */
     expiresMs: 6000
   },
+  /** Searching every room near the character — `AreaSearch`. */
+  areaSearch: {
+    /** The widest radius the dialog offers, in moves from where the character stands. */
+    maxRadius: 15,
+    /** The most searches a room is given. */
+    maxSearches: 10,
+    /** What the dialog offers first: the rooms a few steps away, each searched once. */
+    firstRadius: 3,
+    firstSearches: 1,
+    /** How long a search's answer is waited for before the next goes out. */
+    collectMs: 8000,
+    /** Rooms missed in a row (no way there, or left mid-search) before the search ends. */
+    missedInARow: 3
+  },
   /**
    * Looking for what a room did not print — `AutoSearch`.
    *
@@ -2805,6 +2819,7 @@ export const DEFAULT_INTERNAL: InternalConfig = {
       // a room nobody meant to be in is answered by a press, not by working
       // out which direction undoes it.
       'move:back',
+      'area:search',
       // Timing Run it to the combat rounds, beside the transport it times.
       'runBetweenRounds'
     ]
