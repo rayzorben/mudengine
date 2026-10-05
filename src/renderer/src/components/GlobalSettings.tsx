@@ -1999,6 +1999,13 @@ export default function GlobalSettings({
               name="global-capture"
               onChange={(value) => patch('logging', { capture: value })}
             />
+            <NumberField
+              hint={t('settings.client.records.keepDaysHint')}
+              label={t('settings.client.records.keepDaysLabel')}
+              name="global-keep-days"
+              onChange={(value) => patch('logging', { keepDays: Number.parseInt(value, 10) || 0 })}
+              value={draft.logging.keepDays}
+            />
             <CheckField
               checked={draft.logging.fights}
               hint={t('settings.client.records.fightsHint')}
