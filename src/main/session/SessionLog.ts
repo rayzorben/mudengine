@@ -23,7 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { slug, stamp } from './filename';
+import { LOG_SUFFIX, slug, stamp } from './filename';
 import { stripAnsi } from '../net/LineTokenizer';
 import type { ConnectionTarget } from '../../shared/types';
 import { errorMessage } from '../../shared/values';
@@ -89,7 +89,7 @@ export class SessionLog {
      * `npm run check:secrets` walks the whole directory. A file holding only
      * the header it was opened with is a file with nothing in it.
      */
-    this.file = path.join(this.options.directory, `${stamp(at)}_${label}.log`);
+    this.file = path.join(this.options.directory, `${stamp(at)}_${label}${LOG_SUFFIX}`);
     this.header = `--- session ${target.host}:${target.port} (${target.encoding}) ---\n`;
   }
 

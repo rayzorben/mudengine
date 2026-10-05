@@ -82,6 +82,7 @@ import { segmentFightLogs } from './session/fightLogMigration';
 import { fightsPerSegment } from './session/fightSegments';
 import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
+import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
 import type { MovementStart, WalkStart } from '../shared/movement';
 import type { FightSummary } from '../shared/fights';
@@ -289,6 +290,8 @@ let host: SessionHost | null = null;
 let extensions: readonly LoadedExtension[] = [];
 /** Main's flight recorder and each window's (`FlightRecorder`), stopped at teardown. */
 const recorders = new Set<FlightRecorder>();
+/** Deletes session logs past `logging.keepDays` (todo 04). */
+let logSweep: LogSweep | null = null;
 
 /**
  * The realm knowledge base, loaded once.
@@ -3258,6 +3261,15 @@ function build(): void {
   loops = createLoops();
   publishTree();
   internal = createInternal();
+  // After the tuning is read, which says how often it sweeps.
+  logSweep = new LogSweep({
+    keeping: () => ({
+      directory: logDirectory(),
+      keepDays: config?.config.logging.keepDays ?? DEFAULT_CONFIG.logging.keepDays
+    }),
+    notice: (message, level) => announce('logs', message, level)
+  });
+  logSweep.start();
   // After the tuning is read, so the split uses the player's segment size;
   // before any session, so every fight log waits for it.
   fightsSegmented = segmentFightLogs(
@@ -3382,6 +3394,7 @@ function teardown(): void {
   settle('workspace', () => workspace?.save());
   for (const recorder of recorders) settle('flight recorder', () => recorder.dispose());
   recorders.clear();
+  settle('log sweep', () => logSweep?.dispose());
   settle('internal', () => internal?.dispose());
   // Written before the sessions go: what the last fight taught is scheduled
   // lazily, and quitting is exactly when that schedule has not fired yet.

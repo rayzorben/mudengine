@@ -257,6 +257,7 @@ function migrateAll(options: MigrationOptions): void {
   theExitsGainedADesign(home, note);
   statedRunBetweenRounds(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
+  statedLogKeeping(home, note, options.template);
 }
 
 /**
@@ -2814,21 +2815,34 @@ function stateInFrom(
   after: string,
   comment: string | undefined
 ): string[] {
-  const files = everySettingsFile(home);
   const stated: string[] = [];
-  for (const file of files) {
-    edit(file, (document) => {
-      const map = document.getIn([...block], true);
-      if (!isMap(map) || map.has(key)) return false;
-      const pair = document.createPair(key, valueOf(map)) as Pair;
-      if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
-      const at = map.items.findIndex((item) => keyText(item) === after);
-      if (at === -1) map.items.push(pair);
-      else map.items.splice(at + 1, 0, pair);
-      stated.push(file);
-      return true;
-    });
+  for (const file of everySettingsFile(home)) {
+    if (stateInFile(file, block, key, valueOf, after, comment)) stated.push(file);
   }
+  return stated;
+}
+
+/** `stateInFrom` for one file: whether the key went in. */
+function stateInFile(
+  file: string,
+  block: readonly string[],
+  key: string,
+  valueOf: (map: YAMLMap) => unknown,
+  after: string,
+  comment: string | undefined
+): boolean {
+  let stated = false;
+  edit(file, (document) => {
+    const map = document.getIn([...block], true);
+    if (!isMap(map) || map.has(key)) return false;
+    const pair = document.createPair(key, valueOf(map)) as Pair;
+    if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
+    const at = map.items.findIndex((item) => keyText(item) === after);
+    if (at === -1) map.items.push(pair);
+    else map.items.splice(at + 1, 0, pair);
+    stated = true;
+    return true;
+  });
   return stated;
 }
 
@@ -3911,6 +3925,24 @@ function statedRunBetweenRounds(
       ? t('notices.migration.runBetweenRounds.one', params)
       : t('notices.migration.runBetweenRounds.many', params)
   );
+}
+
+/**
+ * `logging.keepDays` (2026-10-05, todo 04) into the options file's `logging:`
+ * block, at the shipped week, after `capture` and with the template's
+ * paragraph. Only the options file: the logs are one folder swept by its
+ * number, so a character's `logging:` has nothing to say about it.
+ * Idempotent: a key stays added whatever its value.
+ */
+function statedLogKeeping(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const days = DEFAULT_CONFIG.logging.keepDays;
+  const comment = templateComments(template, 'logging').get('logging.keepDays');
+  if (!stateInFile(home.options, ['logging'], 'keepDays', () => days, 'capture', comment)) return;
+  note(t('notices.migration.logKeeping', { days, file: home.options }));
 }
 
 /**
@@ -6731,6 +6763,8 @@ function theTuningBlockGainedKeys(
     addKey('queue', 'unreadRetryMs', DEFAULT_INTERNAL.tuning.queue.unreadRetryMs);
     addKey('queue', 'unreadRetries', DEFAULT_INTERNAL.tuning.queue.unreadRetries);
     addKey('spells', 'castSlackMs', DEFAULT_INTERNAL.tuning.spells.castSlackMs);
+    // How often old session logs are looked for (todo 04, 2026-10-05).
+    addKey('records', 'logSweepEveryMs', DEFAULT_INTERNAL.tuning.records.logSweepEveryMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

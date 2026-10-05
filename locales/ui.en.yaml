@@ -58,6 +58,14 @@ app:
     invalidPicks: The loop builder sent something other than a list of up to {max} rooms.
     notFound: No loop named {name} in this character's options.
     unknownScope: Invalid loop scope.
+  logs:
+    notDeleted:
+      many: '{count} old log files could not be deleted. The first: {first}'
+      one: 'An old log file could not be deleted: {first}'
+    swept:
+      many: Deleted {count} log files older than {days} days from {directory}.
+      one: Deleted a log file older than {days} days from {directory}.
+    unreadable: 'Old logs were not deleted: {directory} could not be read ({error})'
   onboarding:
     noCharactersYet: No characters are set up yet, so settings opened on a new one. Ctrl/⌘ , reopens
       it. Nothing connects until a character exists.
@@ -279,6 +287,9 @@ notices:
     teleportStated: '"automation.safety.fleeGoto" was added to {file}, turned off. It is a
       last-resort teleport used after Auto-Run. The command is set per realm, on the realm''s
       settings page.'
+    logKeeping: '"logging.keepDays: {days}" was added to {file}. Session logs and raw transcripts
+      older than that many days are deleted now, and once a day while the client runs. 0 keeps them
+      all.'
     outgrownStated: '"automation.outgrown" was added to {file}, turned off. It stashes outgrown gear
       in the ganghouse, or sells or drops it.'
     buyLight:
@@ -3411,6 +3422,9 @@ settings:
       fightsLabel: Write Fight Log
       folderLabel: Folder
       folderPlaceholder: beside the options file
+      keepDaysHint: Session logs and raw transcripts older than this are deleted when the client
+        starts and once a day after. 0 keeps them all.
+      keepDaysLabel: Keep Logs, Days
       maxBytesLabel: New Log After, Bytes
       note: What the client saves. Each of these is a file next to the options file. The recordings
         hold everything the game sent and every command sent back, including a password on a

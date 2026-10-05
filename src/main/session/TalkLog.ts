@@ -32,7 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { errorMessage } from '../../shared/values';
+import { DAY_MS, errorMessage } from '../../shared/values';
 import type { Block } from '../../shared/blocks';
 import { tuning } from '../app/tuning';
 
@@ -47,8 +47,6 @@ export const NO_TALK: TalkSink = {
   append: () => {},
   backlog: () => []
 };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface TalkLogEvents {
   /** Said once, into the terminal, when the file cannot be written. */

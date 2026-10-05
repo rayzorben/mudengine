@@ -984,6 +984,7 @@ export class SettingsEditor {
         enabled: config.logging.enabled,
         directory: config.logging.directory,
         capture: config.logging.capture,
+        keepDays: config.logging.keepDays,
         fights: config.logging.fights,
         conversations: config.logging.conversations,
         conversationDays: config.logging.conversationDays,
@@ -1101,6 +1102,7 @@ export class SettingsEditor {
         set(['logging', 'enabled'], draft.logging.enabled);
         set(['logging', 'directory'], draft.logging.directory);
         set(['logging', 'capture'], draft.logging.capture);
+        set(['logging', 'keepDays'], draft.logging.keepDays);
         set(['logging', 'fights'], draft.logging.fights);
         set(['logging', 'conversations'], draft.logging.conversations);
         set(['logging', 'conversationDays'], draft.logging.conversationDays);

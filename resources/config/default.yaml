@@ -2409,6 +2409,12 @@ logging:
   # reproducible from the file alone.
   capture: true
 
+  # How many days a session log or capture is kept after it was last written
+  # to. Older ones are deleted when the client starts and once a day while it
+  # runs. 0 keeps them all. Only the files the client named itself are
+  # touched, whatever `directory` says.
+  keepDays: 7
+
   # Keep the Talk card's conversation history on disk, so quitting and
   # restarting restores it rather than starting the card empty. One plain
   # file per character, in `talk/`, holding only the conversation channels --
