@@ -7,17 +7,19 @@ import {
   lifted,
   normalizeLayout,
   placed,
-  raised
+  raised,
+  readArrangement,
+  restoredRail
 } from '../useCardLayout';
 import {
   CARDS,
   hidesWhenEmpty,
   HIDES_WHEN_EMPTY,
   LEAST_CARD,
-  shippedSize,
   type CardId,
   type CardLayout
 } from '../../lib/cards';
+import { onRail, preferredSize } from '../../lib/railCards';
 import type { GridBox } from '../../lib/railGrid';
 
 const ALL: CardId[] = CARDS.map((card) => card.id);
@@ -441,26 +443,29 @@ describe("a card's own palette", () => {
 });
 
 /*
- * A rail card's size and spot are whole grid cells (todo 09). A figure under
- * the least a card may be is raised to it, so no card can be stored at a size
- * it cannot be dragged back from, and a spot for a card not on the rail is
- * dropped: a card that leaves the rail gives its spot up.
+ * A rail card's size and spot are whole grid cells (todo 09) of the rail the
+ * layout keeps them on (todo 06). A figure under the least a card may be is
+ * raised to it, so no card can be stored at a size it cannot be dragged back
+ * from, and a spot for a card not on the rail is dropped: a card that leaves
+ * the rail gives its spot up.
  */
 describe('a card sized and placed on the rail', () => {
   it('keeps its size in whole cells, never under the least', () => {
     const layout = normalizeLayout({
-      sizes: { room: { w: 20.4, h: 9 }, vitals: { w: 1, h: 1 } }
+      sizes: { room: { w: 20.4, h: 9 }, vitals: { w: 1, h: 1 } },
+      columns: 49
     });
     expect(layout.sizes).toEqual({ room: { w: 20, h: 9 }, vitals: LEAST_CARD });
+    expect(layout.columns).toBe(49);
   });
 
-  it('keeps no entry for a size that is the shipped one, or one it cannot read', () => {
+  it('keeps no entry for a size that is the preferred one, or one it cannot read', () => {
     const stored = {
-      room: shippedSize('room'),
+      room: preferredSize('room', 40),
       map: { w: 'wide' },
       ghost: { w: 9, h: 9 }
     } as unknown as CardLayout['sizes'];
-    expect(normalizeLayout({ sizes: stored }).sizes).toEqual({});
+    expect(normalizeLayout({ sizes: stored, columns: 40 }).sizes).toEqual({});
   });
 
   it('keeps the spots of the cards on the rail, and only those', () => {
@@ -474,42 +479,110 @@ describe('a card sized and placed on the rail', () => {
 });
 
 /*
- * Placing a card on the grid writes down every rail card where it is drawn,
- * so what was on screen is what is kept and the card in hand lands where the
- * landing box said.
+ * Placing a card on the grid writes down every rail card at the row it is
+ * drawn on, so what was on screen is what is kept and the card in hand lands
+ * where the landing box said. On festus's rail, 49 cells: Vitals on the
+ * right where it is wanted, Room raised to the top of the left column.
  */
 describe('placing a card on the rail', () => {
+  const on = (columns: number, stacked = false) => ({ columns, stacked });
   const layout = normalizeLayout({ rail: ['vitals', 'room'], away: ['map'] });
   const drawn = new Map<CardId, GridBox>([
-    ['vitals', { x: 0, y: 0, w: 17, h: 13 }],
-    ['room', { x: 17, y: 0, w: 17, h: 14 }]
+    ['vitals', { x: 29, y: 0, w: 20, h: 14 }],
+    ['room', { x: 0, y: 0, w: 29, h: 14 }]
   ]);
 
-  it('stands it in its cells and freezes the rest where they are drawn', () => {
-    const next = placed(layout, 'room', { x: 0, y: 13, w: 17, h: 14 }, drawn);
-    expect(next.spots).toMatchObject({ vitals: { x: 0, y: 0 }, room: { x: 0, y: 13 } });
+  it('stands it in its cells and keeps the rest at the rows they are drawn on', () => {
+    const next = placed(layout, 'room', { x: 0, y: 14, w: 29, h: 14 }, drawn, on(49));
+    expect(next.spots).toEqual({ vitals: { x: 29, y: 0 }, room: { x: 0, y: 14 } });
     expect(next.sizes).toEqual({});
+    expect(next.columns).toBe(49);
   });
 
-  it('keeps a size that is not the shipped one', () => {
-    const next = placed(layout, 'room', { x: 17, y: 0, w: 10, h: 6 }, drawn);
+  it('keeps a size that is not the preferred one', () => {
+    const next = placed(layout, 'room', { x: 0, y: 0, w: 10, h: 6 }, drawn, on(49));
     expect(next.sizes).toEqual({ room: { w: 10, h: 6 } });
   });
 
+  /*
+   * The case that broke one width per card: Vitals dropped against Map's
+   * edge on a 34-cell rail, Map kept on 49. Every card is written against the
+   * rail it was dropped on, so the two meet on any rail after.
+   */
+  it('writes every card against the rail it was placed on, so two that met still meet', () => {
+    const kept = normalizeLayout({
+      rail: ['map', 'vitals'],
+      spots: { map: { x: 0, y: 0 } },
+      sizes: { map: { w: 29, h: 27 } },
+      columns: 49
+    });
+    const at34 = new Map<CardId, GridBox>([
+      ['map', { x: 0, y: 0, w: 20, h: 27 }],
+      ['vitals', { x: 20, y: 27, w: 14, h: 14 }]
+    ]);
+    const next = placed(kept, 'vitals', { x: 20, y: 0, w: 14, h: 14 }, at34, on(34));
+    expect(next.columns).toBe(34);
+    for (let columns = 30; columns <= 90; columns += 1) {
+      const [map, vitals] = onRail(['map', 'vitals'], next, columns).cards;
+      expect(map!.spot!.x + map!.size.w).toBe(vitals!.spot!.x);
+    }
+  });
+
+  it('stands the cards with a place in the order they are read in', () => {
+    const next = placed(layout, 'room', { x: 0, y: 14, w: 29, h: 14 }, drawn, on(49));
+    expect(next.rail.slice(0, 2)).toEqual(['vitals', 'room']);
+    const up = placed(next, 'room', { x: 0, y: 0, w: 29, h: 14 }, drawn, on(49));
+    expect(up.rail.slice(0, 2)).toEqual(['room', 'vitals']);
+  });
+
+  /*
+   * A stacked rail draws the rail's order, so a drop there moves the card in
+   * that order and writes no row: widened, the arrangement is as it was.
+   */
+  it('writes only the order and the height on a stacked rail', () => {
+    const kept = placed(layout, 'room', { x: 0, y: 14, w: 29, h: 14 }, drawn, on(49));
+    const stack = new Map<CardId, GridBox>([
+      ['vitals', { x: 0, y: 0, w: 20, h: 14 }],
+      ['room', { x: 0, y: 14, w: 20, h: 14 }]
+    ]);
+    const moved = placed(kept, 'room', { x: 0, y: 0, w: 20, h: 14 }, stack, on(20, true));
+    expect(moved.rail.slice(0, 2)).toEqual(['room', 'vitals']);
+    expect(moved.spots).toEqual(kept.spots);
+    expect(moved.columns).toBe(49);
+    const taller = placed(kept, 'room', { x: 0, y: 14, w: 20, h: 18 }, stack, on(20, true));
+    expect(taller.spots).toEqual(kept.spots);
+    expect(taller.sizes).toEqual({ room: { w: 29, h: 18 } });
+  });
+
+  /*
+   * Auto layout's undo puts back the arrangement as it was kept, whatever a
+   * stacked rail drew, for the cards on the rail now.
+   */
+  it('puts back a kept arrangement for the cards still on the rail', () => {
+    const kept = placed(layout, 'room', { x: 0, y: 14, w: 10, h: 6 }, drawn, on(49));
+    const since = { ...docked(kept, 'vitals', 'below', 0), rail: ['map', 'room'] as CardId[] };
+    const back = restoredRail(since, readArrangement(JSON.parse(JSON.stringify(kept)))!);
+    expect(back.rail).toEqual(['room', 'map']);
+    expect(back.spots).toEqual({ room: { x: 0, y: 14 } });
+    expect(back.sizes).toEqual(kept.sizes);
+    expect(back.columns).toBe(49);
+  });
+
   it('brings a card from elsewhere onto the rail', () => {
-    const next = placed(layout, 'map', { x: 0, y: 14, w: 17, h: 25 }, drawn);
+    const next = placed(layout, 'map', { x: 0, y: 14, w: 29, h: 27 }, drawn, on(49));
     expect(next.rail).toContain('map');
     expect(next.away).not.toContain('map');
     expect(next.spots['map']).toEqual({ x: 0, y: 14 });
+    expect(next.sizes['map']).toBeUndefined();
   });
 
   it('writes nothing when nothing moved', () => {
-    const settled = placed(layout, 'room', { x: 17, y: 0, w: 17, h: 14 }, drawn);
-    expect(placed(settled, 'room', { x: 17, y: 0, w: 17, h: 14 }, drawn)).toBe(settled);
+    const settled = placed(layout, 'room', { x: 0, y: 0, w: 29, h: 14 }, drawn, on(49));
+    expect(placed(settled, 'room', { x: 0, y: 0, w: 29, h: 14 }, drawn, on(49))).toBe(settled);
   });
 
   it('gives the spot up when the card leaves the rail', () => {
-    const settled = placed(layout, 'room', { x: 0, y: 13, w: 17, h: 14 }, drawn);
+    const settled = placed(layout, 'room', { x: 0, y: 14, w: 29, h: 14 }, drawn, on(49));
     expect(docked(settled, 'room', 'below', 0).spots['room']).toBeUndefined();
   });
 });

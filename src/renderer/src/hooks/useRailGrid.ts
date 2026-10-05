@@ -9,7 +9,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { cardSizeBounds } from '../lib/cardSize';
 import type { CardId, RailGridView } from '../lib/cards';
-import type { GridBox } from '../lib/railGrid';
+import type { GridBox, RailWidth } from '../lib/railGrid';
 
 export interface RailGrid {
   /** Put on the grid element. */
@@ -18,8 +18,8 @@ export interface RailGrid {
   columns: number | null;
   /** Rows of cells the rail shows at once. */
   showing: number;
-  /** The rail hands over what it drew, after each commit. */
-  publish(drawn: ReadonlyMap<CardId, GridBox>): void;
+  /** The rail hands over what it drew and the rail it drew it on, after each commit. */
+  publish(drawn: ReadonlyMap<CardId, GridBox>, width: RailWidth): void;
   view: RailGridView;
 }
 
@@ -40,6 +40,7 @@ export function useRailGrid(): RailGrid {
   const [showing, setShowing] = useState(0);
   const element = useRef<HTMLElement | null>(null);
   const drawn = useRef<ReadonlyMap<CardId, GridBox>>(NOTHING);
+  const width = useRef<RailWidth | null>(null);
   const observer = useRef<ResizeObserver | null>(null);
 
   const measure = useCallback(() => {
@@ -62,6 +63,7 @@ export function useRailGrid(): RailGrid {
       element.current = next;
       if (!next) {
         drawn.current = NOTHING;
+        width.current = null;
         return;
       }
       measure();
@@ -74,8 +76,9 @@ export function useRailGrid(): RailGrid {
     [measure]
   );
 
-  const publish = useCallback((next: ReadonlyMap<CardId, GridBox>) => {
+  const publish = useCallback((next: ReadonlyMap<CardId, GridBox>, on: RailWidth) => {
     drawn.current = next;
+    width.current = on;
   }, []);
 
   const view = useMemo<RailGridView>(
@@ -97,6 +100,7 @@ export function useRailGrid(): RailGrid {
       bounds: () => (element.current ? cardSizeBounds(element.current) : null),
       drawn: () => drawn.current,
       scroller: () => element.current?.parentElement ?? null,
+      width: () => width.current,
       card: (id) =>
         element.current?.querySelector<HTMLElement>(`[data-rail-card="${id}"] > .card`) ?? null,
       room: () => {

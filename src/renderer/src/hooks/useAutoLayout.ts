@@ -10,20 +10,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { SessionId } from '@shared/ipc';
 
-import { autoLayout, laidWidth, rowsFor, type FitCard, type FitFrame } from '../lib/autoLayout';
+import { autoLayout, rowsFor, type FitCard, type FitFrame } from '../lib/autoLayout';
 import { contentHeight } from '../lib/cardContent';
 import { CARD_SIZES, isCardSize, type CardSize } from '../lib/cardSize';
 import {
-  isCardId,
   LEAST_CARD,
-  shippedSize,
   type AutoLayoutApi,
   type CardId,
   type CardLayoutApi,
+  type RailArrangement,
   type RailGridView
 } from '../lib/cards';
+import { NOTHING_KEPT, preferredOn, railFor } from '../lib/railCards';
 import { sameBox, type GridBox } from '../lib/railGrid';
 import { forgetStored, readStored, writeStored } from '../lib/storage';
+import { readArrangement } from './useCardLayout';
 
 /** Plans drawn before the rail is left as it is: one, and a measure at each size a card can step to. */
 const PASSES = CARD_SIZES.length + 1;
@@ -32,22 +33,6 @@ const SETTLE_FRAMES = 30;
 
 const nextFrame = (): Promise<void> =>
   new Promise((resolve) => requestAnimationFrame(() => resolve()));
-
-/** A kept arrangement, parsed: anything that is not a card's whole box is dropped. */
-function readBoxes(stored: string): Map<CardId, GridBox> | null {
-  const value: unknown = JSON.parse(stored);
-  if (!Array.isArray(value)) return null;
-  const out = new Map<CardId, GridBox>();
-  for (const entry of value) {
-    if (!Array.isArray(entry) || !isCardId(entry[0])) continue;
-    const box = entry[1] as Record<string, unknown> | null;
-    const n = (key: string): number | null =>
-      typeof box?.[key] === 'number' && Number.isFinite(box[key]) ? (box[key] as number) : null;
-    const [x, y, w, h] = [n('x'), n('y'), n('w'), n('h')];
-    if (x !== null && y !== null && w !== null && h !== null) out.set(entry[0], { x, y, w, h });
-  }
-  return out.size > 0 ? out : null;
-}
 
 /** Whether the rail stands every card where `placed` put it, and no other. */
 function sameArrangement(
@@ -61,7 +46,12 @@ function sameArrangement(
   });
 }
 
-const kept = (key: string): Map<CardId, GridBox> | null => readStored(key, readBoxes, () => null);
+const kept = (key: string): RailArrangement | null =>
+  readStored(
+    key,
+    (stored) => readArrangement(JSON.parse(stored)),
+    () => null
+  );
 
 /** The grid as `autoLayout` reads it, measured now; null while there is no rail. */
 function measureFrame(rail: RailGridView): FitFrame | null {
@@ -75,7 +65,10 @@ function measureFrame(rail: RailGridView): FitFrame | null {
 
 export function useAutoLayout(
   session: SessionId,
-  layout: Pick<CardLayoutApi, 'placeAll' | 'isRolled'>,
+  layout: Pick<
+    CardLayoutApi,
+    'placeAll' | 'restoreRail' | 'isRolled' | 'rail' | 'spots' | 'sizes' | 'columns'
+  >,
   rail: RailGridView
 ): AutoLayoutApi {
   const key = `mudengine.layout.${session}.before-auto`;
@@ -115,11 +108,14 @@ export function useAutoLayout(
 
   const run = useCallback(() => {
     const token = (runs.current += 1);
-    const before = rail.drawn();
-    if (before.size === 0) return;
+    if (rail.drawn().size === 0) return;
     // The player's own arrangement is what undo is for: a second run keeps
-    // the one the first replaced, not the first run's.
-    if (kept(key) === null) writeStored(key, JSON.stringify([...before]));
+    // the one the first replaced, not the first run's. The arrangement as
+    // kept, never as a stacked rail draws it.
+    if (kept(key) === null) {
+      const { rail: order, spots, sizes, columns } = live.current;
+      writeStored(key, JSON.stringify({ rail: order, spots, sizes, columns }));
+    }
     setCanUndo(kept(key) !== null);
     const needs = new Map<CardId, FitCard<CardId>['needs']>();
     const pass = async (): Promise<void> => {
@@ -131,19 +127,21 @@ export function useAutoLayout(
         // A card dropped, sized, shown or put away since the last pass is the
         // player's say, and the run ends there rather than moving it again.
         if (placed !== null && !sameArrangement(placed, drawn)) return;
+        const width = railFor(drawn.keys(), NOTHING_KEPT, frame.columns);
         const cards = [...drawn].map(([id, box]): FitCard<CardId> => {
           const element = rail.card(id);
           const size = element?.dataset.cardSize;
+          const wanted = preferredOn(id, width);
           const known =
-            element && isCardSize(size) && box.w === laidWidth(shippedSize(id), frame.columns)
+            element && isCardSize(size) && box.w === wanted.w
               ? { ...needs.get(id), [size]: rowsFor(contentHeight(element), frame) }
               : (needs.get(id) ?? {});
           needs.set(id, known);
           const rolled = live.current.isRolled(id);
-          return { id, shipped: shippedSize(id), needs: known, ...(rolled ? { keep: box } : {}) };
+          return { id, wanted, needs: known, ...(rolled ? { keep: box } : {}) };
         });
         const plan = autoLayout(cards, frame);
-        live.current.placeAll(plan.boxes);
+        live.current.placeAll(plan.boxes, width);
         placed = plan.boxes;
         if (plan.unmeasured.length === 0) break;
         await settled(plan.boxes, plan.sizes);
@@ -158,8 +156,8 @@ export function useAutoLayout(
 
   const undo = useCallback(() => {
     runs.current += 1;
-    const boxes = kept(key);
-    if (boxes !== null) live.current.placeAll(boxes);
+    const arrangement = kept(key);
+    if (arrangement !== null) live.current.restoreRail(arrangement);
     forgetStored(key);
     setCanUndo(kept(key) !== null);
   }, [key]);

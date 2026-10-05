@@ -11,16 +11,23 @@ import {
   LEAST_CARD,
   MIN_FLOAT,
   NO_CARD_SETTINGS,
-  shippedSize,
   type CardId,
   type CardLayout,
   type CardLayoutApi,
   type CardSettings,
   type FloatState,
+  type RailArrangement,
   type Strip
 } from '../lib/cards';
-import { withGridSizes, type RailMeasure } from '../lib/layoutMigration';
-import type { GridSize, GridSpot } from '../lib/railGrid';
+import { withGridSizes, withRailColumns, type RailMeasure } from '../lib/layoutMigration';
+import { inReadingOrder, KEPT_COLUMNS, preferredSize, standsOn } from '../lib/railCards';
+import {
+  scaled,
+  type GridBox,
+  type GridSize,
+  type GridSpot,
+  type RailWidth
+} from '../lib/railGrid';
 import { reordered } from '../lib/reorder';
 import { gridCell, gridGap } from './useRailGrid';
 
@@ -168,34 +175,118 @@ export function docked(current: CardLayout, id: CardId, strip: Strip, index: num
 }
 
 /**
- * The layout with a card standing on the rail in `box`, and every other rail
- * card written down where `drawn` has it, so what was on screen is what is
- * kept. The same layout back when nothing moved, so a drop into the card's
+ * The layout with a card standing on the rail in `box`, cells of `rail` as
+ * drawn. The same layout back when nothing moved, so a drop into the card's
  * own cells writes nothing.
+ *
+ * On a rail that stands the arrangement, every other card is written down at
+ * the row `drawn` has it on, so what was on screen is what is kept, and the
+ * whole arrangement in cells of `rail` (todo 06), so cards that met meet on
+ * any rail. The rail's order becomes the order the cards are read in, which
+ * a stacked rail draws them in.
+ *
+ * A stacked rail draws the rail's order, not the arrangement, so a placement
+ * there writes only where in that order the card goes and the height it was
+ * given: the arrangement is drawn again as kept when the rail widens.
  */
 export function placed(
   current: CardLayout,
   id: CardId,
-  box: GridSpot & GridSize,
-  drawn: ReadonlyMap<CardId, GridSpot & GridSize>
+  box: GridBox,
+  drawn: ReadonlyMap<CardId, GridBox>,
+  rail: RailWidth
 ): CardLayout {
   const base = current.rail.includes(id) ? current : without(current, id);
-  const rail = base.rail.includes(id) ? base.rail : [...base.rail, id];
-  const spots: Partial<Record<CardId, GridSpot>> = {};
-  for (const card of rail) {
-    const at = card === id ? box : drawn.get(card);
-    if (at !== undefined) spots[card] = { x: at.x, y: at.y };
-  }
-  const sizes = { ...base.sizes };
-  const shipped = shippedSize(id);
-  if (box.w === shipped.w && box.h === shipped.h) delete sizes[id];
-  else sizes[id] = { w: box.w, h: box.h };
-  const next = { ...base, rail, spots, sizes };
+  const next = rail.stacked
+    ? stackedIn(base, id, box, drawn)
+    : laidOut(base, id, box, drawn, rail.columns);
   const same =
     base === current &&
+    next.columns === current.columns &&
+    next.rail.every((card, i) => current.rail[i] === card) &&
     sameEntries(next.spots, current.spots, (a, b) => a.x === b.x && a.y === b.y) &&
     sameEntries(next.sizes, current.sizes, (a, b) => a.w === b.w && a.h === b.h);
   return same ? current : next;
+}
+
+/**
+ * The layout with the rail's arrangement put back as `kept` had it: the order,
+ * spots and sizes of the cards on the rail now, in cells of `kept`'s rail. A
+ * card put on the rail since takes the highest free cells where it is wanted,
+ * after the rest in the order.
+ */
+export function restoredRail(current: CardLayout, kept: RailArrangement): CardLayout {
+  const on = (card: CardId): boolean => current.rail.includes(card);
+  const spots: Partial<Record<CardId, GridSpot>> = {};
+  for (const card of kept.rail) {
+    const spot = kept.spots[card];
+    if (spot && on(card)) spots[card] = spot;
+  }
+  return {
+    ...current,
+    rail: [...kept.rail.filter(on), ...current.rail.filter((card) => !kept.rail.includes(card))],
+    spots,
+    sizes: kept.sizes,
+    columns: kept.columns
+  };
+}
+
+/** A size kept in cells of a rail `columns` wide, or none where it is the preferred one. */
+function keepSize(
+  sizes: Partial<Record<CardId, GridSize>>,
+  card: CardId,
+  size: GridSize,
+  columns: number
+): void {
+  const wanted = preferredSize(card, columns);
+  if (size.w !== wanted.w || size.h !== wanted.h) sizes[card] = { w: size.w, h: size.h };
+  else delete sizes[card];
+}
+
+/** `placed` on a rail that stands the arrangement: all of it written against this rail. */
+function laidOut(
+  base: CardLayout,
+  id: CardId,
+  box: GridBox,
+  drawn: ReadonlyMap<CardId, GridBox>,
+  columns: number
+): CardLayout {
+  const cards = base.rail.includes(id) ? base.rail : [...base.rail, id];
+  const sizes: Partial<Record<CardId, GridSize>> = {};
+  // A size kept for a card not drawn is brought to this rail with the rest.
+  for (const [card, size] of Object.entries(base.sizes) as Array<[CardId, GridSize]>) {
+    const across = scaled({ x: 0, y: 0, ...size }, base.columns, { columns, stacked: false });
+    keepSize(sizes, card, { w: across.w, h: size.h }, columns);
+  }
+  const spots: Partial<Record<CardId, GridSpot>> = {};
+  for (const card of cards) {
+    const row = card === id ? box : drawn.get(card);
+    if (row === undefined) continue;
+    const at = card === id ? box : { ...standsOn(card, base, columns), y: row.y };
+    spots[card] = { x: at.x, y: at.y };
+    keepSize(sizes, card, at, columns);
+  }
+  return { ...base, rail: inReadingOrder(cards, spots), spots, sizes, columns };
+}
+
+/** `placed` on a stacked rail: where the card goes in the rail's order, and its height. */
+function stackedIn(
+  base: CardLayout,
+  id: CardId,
+  box: GridBox,
+  drawn: ReadonlyMap<CardId, GridBox>
+): CardLayout {
+  const others = base.rail.filter((card) => card !== id);
+  let index = 0;
+  others.forEach((card, i) => {
+    const at = drawn.get(card);
+    if (at !== undefined && at.y < box.y) index = i + 1;
+  });
+  const rail = [...others.slice(0, index), id, ...others.slice(index)];
+  const sizes = { ...base.sizes };
+  const given = sizes[id] ?? preferredSize(id, base.columns);
+  if (box.h !== given.h) keepSize(sizes, id, { w: given.w, h: box.h }, base.columns);
+  return { ...base, rail, sizes };
 }
 
 /** Two sparse records with the same keys and equal values, whatever order they were built in. */
@@ -255,13 +346,16 @@ function without(current: CardLayout, id: CardId): CardLayout {
     // Nor the size it was dragged to: a card floated and docked again is back
     // at the size somebody chose for it, not the size it shipped at.
     sizes: current.sizes,
-    // Its spot it gives up: back on the rail it takes the first free one,
-    // rather than landing on a card put there while it was away.
+    // Its spot it gives up: back on the rail it takes the highest free cells
+    // where it is wanted, rather than landing on a card put there while it
+    // was away.
     spots: Object.fromEntries(Object.entries(current.spots).filter(([card]) => card !== id)),
     // Nor whether it was rolled up. A card rolled up on the rail and then
     // dragged over the console is the same card, and unrolling it to move it
     // would be the client undoing a choice in order to honour another.
-    rolled: current.rolled
+    rolled: current.rolled,
+    // The rail its spots and sizes are cells of goes with them.
+    columns: current.columns
   };
 }
 
@@ -291,27 +385,50 @@ function cells(value: unknown, least: number): number | null {
  * What a stored sizes block actually says, card by card.
  *
  * Parsed, not trusted, like the floats: a figure that is not a number is the
- * card's shipped one, and one under the least a card may be is raised to it,
- * so no card can be stored at a size it cannot be dragged back from. A size
- * that is the shipped one is not kept, so a later build's shipped size
- * reaches it.
+ * card's preferred one on a rail `columns` wide, and one under the least a
+ * card may be is raised to it, so no card can be stored at a size it cannot
+ * be dragged back from. A size that is the preferred one is not kept, so a
+ * later build's preferred size reaches it.
  */
-function readSizes(value: unknown): Partial<Record<CardId, GridSize>> {
+function readSizes(value: unknown, columns: number): Partial<Record<CardId, GridSize>> {
   if (typeof value !== 'object' || value === null) return {};
   const out: Partial<Record<CardId, GridSize>> = {};
   for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
     if (!isCardId(id) || typeof raw !== 'object' || raw === null) continue;
     const found = raw as Record<string, unknown>;
-    const shipped = shippedSize(id);
-    const w = cells(found['w'], LEAST_CARD.w) ?? shipped.w;
-    const h = cells(found['h'], LEAST_CARD.h) ?? shipped.h;
-    if (w !== shipped.w || h !== shipped.h) out[id] = { w, h };
+    const wanted = preferredSize(id, columns);
+    const w = Math.min(columns, cells(found['w'], LEAST_CARD.w) ?? wanted.w);
+    const h = cells(found['h'], LEAST_CARD.h) ?? wanted.h;
+    keepSize(out, id, { w, h }, columns);
   }
   return out;
 }
 
+/**
+ * An arrangement of the rail kept before (auto layout's undo), parsed like a
+ * stored layout's own; null where it is not one.
+ */
+export function readArrangement(value: unknown): RailArrangement | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw['rail'])) return null;
+  const rail: CardId[] = [];
+  for (const id of raw['rail'] as unknown[]) if (isCardId(id) && !rail.includes(id)) rail.push(id);
+  const columns = cells(raw['columns'], 1) ?? KEPT_COLUMNS;
+  return {
+    rail,
+    spots: readSpots(raw['spots'], rail, columns),
+    sizes: readSizes(raw['sizes'], columns),
+    columns
+  };
+}
+
 /** Where the rail's own cards stand; a spot for a card not on it is dropped. */
-function readSpots(value: unknown, rail: readonly CardId[]): Partial<Record<CardId, GridSpot>> {
+function readSpots(
+  value: unknown,
+  rail: readonly CardId[],
+  columns: number
+): Partial<Record<CardId, GridSpot>> {
   if (typeof value !== 'object' || value === null) return {};
   const out: Partial<Record<CardId, GridSpot>> = {};
   for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
@@ -319,7 +436,7 @@ function readSpots(value: unknown, rail: readonly CardId[]): Partial<Record<Card
     const found = raw as Record<string, unknown>;
     const x = cells(found['x'], 0);
     const y = cells(found['y'], 0);
-    if (x !== null && y !== null) out[id] = { x, y };
+    if (x !== null && y !== null) out[id] = { x: Math.min(x, columns - 1), y };
   }
   return out;
 }
@@ -430,6 +547,7 @@ function readSettings(value: unknown): Partial<Record<CardId, CardSettings>> {
  * was never built.
  */
 export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
+  const columns = cells(partial.columns, 1) ?? KEPT_COLUMNS;
   const rail: CardId[] = [];
   const above: CardId[] = [];
   const below: CardId[] = [];
@@ -484,16 +602,20 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
     floats,
     away,
     settings: readSettings(partial.settings),
-    sizes: readSizes(partial.sizes),
-    spots: readSpots(partial.spots, rail),
-    rolled: readRolled(partial.rolled)
+    sizes: readSizes(partial.sizes, columns),
+    spots: readSpots(partial.spots, rail, columns),
+    rolled: readRolled(partial.rolled),
+    columns
   };
 }
 
-/** A stored layout, and whether it was in the shape before the grid. */
+/**
+ * A stored layout, and the key its stored value is kept under when it was in
+ * an older shape: before the grid, or before a place kept its rail's width.
+ */
 interface Parsed {
   layout: CardLayout;
-  migrated: boolean;
+  migrated: 'before-grid' | 'before-columns' | null;
 }
 
 function parse(stored: string | null, measure: () => RailMeasure): Parsed | null {
@@ -501,7 +623,8 @@ function parse(stored: string | null, measure: () => RailMeasure): Parsed | null
   try {
     const value: unknown = JSON.parse(stored);
     if (typeof value !== 'object' || value === null) return null;
-    const raw = withGridSizes(value as Record<string, unknown>, measure);
+    const gridded = withGridSizes(value as Record<string, unknown>, measure);
+    const raw = withRailColumns(gridded);
     const layout = normalizeLayout({
       rail: Array.isArray(raw['rail']) ? (raw['rail'] as CardId[]) : undefined,
       above: Array.isArray(raw['above']) ? (raw['above'] as CardId[]) : undefined,
@@ -518,9 +641,11 @@ function parse(stored: string | null, measure: () => RailMeasure): Parsed | null
        */
       sizes: raw['sizes'] as CardLayout['sizes'],
       spots: raw['spots'] as CardLayout['spots'],
+      columns: raw['columns'] as number,
       rolled: Array.isArray(raw['rolled']) ? (raw['rolled'] as CardId[]) : undefined
     });
-    return { layout, migrated: raw !== value };
+    const migrated = gridded !== value ? 'before-grid' : raw !== gridded ? 'before-columns' : null;
+    return { layout, migrated };
   } catch {
     return null;
   }
@@ -539,14 +664,19 @@ function measureRail(): RailMeasure {
 }
 
 /**
- * Writes a layout migrated from the shape before the grid back under its own
- * key, with what it replaced kept beside it, as a config file is backed up
- * before it is migrated (todo 09). Refused storage leaves the migration to
- * the next read; the arrangement still applies.
+ * Writes a migrated layout back under its own key, with what it replaced kept
+ * beside it under `kept`, as a config file is backed up before it is migrated
+ * (todo 09). Refused storage leaves the migration to the next read; the
+ * arrangement still applies.
  */
-function keepMigrated(key: string, before: string, layout: CardLayout): void {
+function keepMigrated(
+  key: string,
+  kept: NonNullable<Parsed['migrated']>,
+  before: string,
+  layout: CardLayout
+): void {
   try {
-    window.localStorage.setItem(`${key}.before-grid`, before);
+    window.localStorage.setItem(`${key}.${kept}`, before);
     window.localStorage.setItem(key, JSON.stringify(layout));
   } catch {
     /* storage refused */
@@ -577,7 +707,9 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
     try {
       const stored = window.localStorage.getItem(key);
       const found = parse(stored, measureRail);
-      if (found?.migrated === true && stored !== null) keepMigrated(key, stored, found.layout);
+      if (found?.migrated && stored !== null) {
+        keepMigrated(key, found.migrated, stored, found.layout);
+      }
       if (found) return found.layout;
       const legacy: unknown = JSON.parse(window.localStorage.getItem(legacyKey) ?? 'null');
       if (Array.isArray(legacy)) return normalizeLayout({ away: legacy as CardId[] });
@@ -635,17 +767,18 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         // A drop back into its own gap moves nothing and writes nothing.
         if (next !== layout) store(next);
       },
-      placeOnRail: (id, box, drawn) => {
-        const next = placed(layout, id, box, drawn);
+      placeOnRail: (id, box, drawn, rail) => {
+        const next = placed(layout, id, box, drawn, rail);
         if (next !== layout) store(next);
       },
-      placeAll: (boxes) => {
+      placeAll: (boxes, rail) => {
         let next = layout;
         for (const [id, box] of boxes) {
-          if (layout.rail.includes(id)) next = placed(next, id, box, boxes);
+          if (layout.rail.includes(id)) next = placed(next, id, box, boxes, rail);
         }
         if (next !== layout) store(next);
       },
+      restoreRail: (kept) => store(restoredRail(layout, kept)),
       laneOf: (id) =>
         layout.rail.includes(id)
           ? 'rail'
@@ -688,7 +821,6 @@ export function useCardLayout(session: SessionId): CardLayoutApi {
         const next = raised(layout.floats, id);
         if (next !== layout.floats) store({ ...layout, floats: [...next] });
       },
-      sizeOf: (id) => layout.sizes[id] ?? shippedSize(id),
       isRolled: (id) => layout.rolled.includes(id),
       roll: (id, rolled) => {
         // Asking for the state it is already in writes nothing: every write is

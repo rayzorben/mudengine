@@ -4,12 +4,14 @@ import { RESIZE_EDGES } from '../resizeEdge';
 import {
   arrange,
   bottomOf,
-  firstFree,
   fitted,
+  highestFree,
   nearestFree,
   overlaps,
   resizedBy,
   resizedTo,
+  scaled,
+  squeezed,
   type GridBox
 } from '../railGrid';
 
@@ -45,39 +47,94 @@ describe('a box brought inside the grid', () => {
   });
 });
 
-describe('the first free spot', () => {
-  it('is the corner of an empty grid', () => {
-    expect(firstFree({ w: 17, h: 12 }, [], 40)).toEqual(box(0, 0, 17, 12));
+/*
+ * Festus's rail, 49 cells across: the map on the left 29 wide, Vitals on the
+ * right 20 wide, the two meeting at cell 29.
+ */
+const map = box(0, 0, 29, 27);
+const vitals = box(29, 0, 20, 14);
+const on = (columns: number, stacked = false) => ({ columns, stacked });
+
+describe('a box kept on a rail of another width', () => {
+  it('is the same cells on the rail it was kept on', () => {
+    expect(scaled(map, 49, on(49))).toEqual(map);
+    expect(scaled(vitals, 49, on(49))).toEqual(vitals);
   });
 
-  it('is beside a card when the row has room, reading the grid as a page', () => {
-    expect(firstFree({ w: 17, h: 12 }, [box(0, 0, 17, 12)], 40)).toEqual(box(17, 0, 17, 12));
+  it('is narrower in proportion on a narrower rail, with its rows as they were', () => {
+    expect(scaled(map, 49, on(38))).toEqual(box(0, 0, 22, 27));
+    expect(scaled(vitals, 49, on(38))).toEqual(box(22, 0, 16, 14));
   });
 
-  it('is under the row when it has none', () => {
-    const taken = [box(0, 0, 17, 12), box(17, 0, 17, 14)];
-    expect(firstFree({ w: 17, h: 12 }, taken, 40)).toEqual(box(0, 12, 17, 12));
+  it('meets the box it met, whatever the width', () => {
+    for (let columns = 17; columns <= 90; columns += 1) {
+      const left = scaled(map, 49, on(columns));
+      const right = scaled(vitals, 49, on(columns));
+      expect(left.x + left.w).toBe(right.x);
+      expect(right.x + right.w).toBe(columns);
+    }
+  });
+
+  it('takes the whole width on a stacked rail', () => {
+    expect(scaled(vitals, 49, on(17, true))).toEqual(box(0, 0, 17, 14));
+  });
+
+  it('is squeezed once its width in proportion rounds under the least', () => {
+    // 20 of 49 is 10.61 cells of 26 and 10.20 of 25.
+    expect(squeezed(vitals, 49, 26, 11)).toBe(false);
+    expect(squeezed(vitals, 49, 25, 11)).toBe(true);
+  });
+
+  it('is never narrower on a wider rail than the one it was kept on', () => {
+    for (let columns = 49; columns <= 90; columns += 1) {
+      expect(scaled(vitals, 49, on(columns)).w).toBeGreaterThanOrEqual(20);
+    }
+  });
+});
+
+describe('the highest free cells in a column', () => {
+  it('is the top row of an empty grid', () => {
+    expect(highestFree(box(17, 40, 17, 12), [])).toEqual(box(17, 0, 17, 12));
+  });
+
+  it('is under the card in its columns, beside one that is not', () => {
+    const taken = [box(0, 0, 17, 30), box(17, 0, 17, 12)];
+    expect(highestFree(box(17, 50, 17, 12), taken)).toEqual(box(17, 12, 17, 12));
+  });
+
+  it('is a gap that holds it, above a card further down', () => {
+    const taken = [box(0, 0, 17, 10), box(0, 24, 17, 10)];
+    expect(highestFree(box(0, 0, 17, 14), taken)).toEqual(box(0, 10, 17, 14));
+    expect(highestFree(box(0, 0, 17, 15), taken)).toEqual(box(0, 34, 17, 15));
   });
 });
 
 describe('arranging the rail', () => {
   it('draws a placed card where it was put', () => {
-    const drawn = arrange([{ id: 'map', size: { w: 17, h: 24 }, spot: { x: 10, y: 30 } }], 40);
+    const drawn = arrange(
+      [{ id: 'map', size: { w: 17, h: 24 }, spot: { x: 10, y: 30 }, wanted: { x: 0, y: 0 } }],
+      40
+    );
     expect(drawn.get('map')).toEqual(box(10, 30, 17, 24));
   });
 
-  it('puts the unplaced cards in order at the first free spots, around the placed ones', () => {
+  it('raises each unplaced card in its own columns, the one wanted higher first', () => {
     const drawn = arrange(
       [
-        { id: 'vitals', size: { w: 17, h: 12 } },
-        { id: 'map', size: { w: 17, h: 24 }, spot: { x: 0, y: 0 } },
-        { id: 'room', size: { w: 17, h: 12 } }
+        { id: 'room', size: { w: 17, h: 12 }, wanted: { x: 20, y: 20 } },
+        { id: 'map', size: { w: 20, h: 24 }, spot: { x: 0, y: 0 }, wanted: { x: 0, y: 0 } },
+        { id: 'vitals', size: { w: 17, h: 12 }, wanted: { x: 20, y: 0 } }
       ],
       40
     );
-    expect(drawn.get('map')).toEqual(box(0, 0, 17, 24));
-    expect(drawn.get('vitals')).toEqual(box(17, 0, 17, 12));
-    expect(drawn.get('room')).toEqual(box(17, 12, 17, 12));
+    expect(drawn.get('map')).toEqual(box(0, 0, 20, 24));
+    expect(drawn.get('vitals')).toEqual(box(20, 0, 17, 12));
+    expect(drawn.get('room')).toEqual(box(20, 12, 17, 12));
+  });
+
+  it('leaves no gap where a card wanted above is not on the rail', () => {
+    const drawn = arrange([{ id: 'combat', size: { w: 20, h: 13 }, wanted: { x: 29, y: 14 } }], 49);
+    expect(drawn.get('combat')).toEqual(box(29, 0, 20, 13));
   });
 
   /*
@@ -88,9 +145,9 @@ describe('arranging the rail', () => {
   it('keeps every card apart on a grid narrower than the one they were placed on', () => {
     const drawn = arrange(
       [
-        { id: 'a', size: { w: 17, h: 12 }, spot: { x: 0, y: 0 } },
-        { id: 'b', size: { w: 17, h: 12 }, spot: { x: 17, y: 0 } },
-        { id: 'c', size: { w: 17, h: 12 }, spot: { x: 34, y: 0 } }
+        { id: 'a', size: { w: 17, h: 12 }, spot: { x: 0, y: 0 }, wanted: { x: 0, y: 0 } },
+        { id: 'b', size: { w: 17, h: 12 }, spot: { x: 17, y: 0 }, wanted: { x: 0, y: 0 } },
+        { id: 'c', size: { w: 17, h: 12 }, spot: { x: 34, y: 0 }, wanted: { x: 0, y: 0 } }
       ],
       20
     );
@@ -102,8 +159,8 @@ describe('arranging the rail', () => {
   it('moves the later of two stored cards that share cells', () => {
     const drawn = arrange(
       [
-        { id: 'a', size: { w: 10, h: 10 }, spot: { x: 0, y: 0 } },
-        { id: 'b', size: { w: 10, h: 10 }, spot: { x: 5, y: 5 } }
+        { id: 'a', size: { w: 10, h: 10 }, spot: { x: 0, y: 0 }, wanted: { x: 0, y: 0 } },
+        { id: 'b', size: { w: 10, h: 10 }, spot: { x: 5, y: 5 }, wanted: { x: 0, y: 0 } }
       ],
       40
     );
@@ -113,9 +170,9 @@ describe('arranging the rail', () => {
 
   it('answers the same arrangement for the same input', () => {
     const cards = [
-      { id: 'a', size: { w: 9, h: 7 } },
-      { id: 'b', size: { w: 12, h: 5 }, spot: { x: 3, y: 2 } },
-      { id: 'c', size: { w: 6, h: 9 } }
+      { id: 'a', size: { w: 9, h: 7 }, wanted: { x: 4, y: 3 } },
+      { id: 'b', size: { w: 12, h: 5 }, spot: { x: 3, y: 2 }, wanted: { x: 0, y: 0 } },
+      { id: 'c', size: { w: 6, h: 9 }, wanted: { x: 4, y: 3 } }
     ];
     expect([...arrange(cards, 30)]).toEqual([...arrange(cards, 30)]);
   });

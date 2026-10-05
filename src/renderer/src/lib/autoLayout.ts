@@ -1,10 +1,11 @@
 /**
  * Auto layout for the card rail (todo 01, 2026-10-03): every card on the rail
- * at its shipped width, each just tall enough for what it draws, packed in the
- * rail's own order so as many as can stay above the fold. Short of room, the
+ * in the columns it is wanted in (todo 06, 2026-10-05), each just tall enough
+ * for what it draws, raised as high as those columns allow, the card wanted
+ * higher first, so as many as can stay above the fold. Short of room, the
  * lowest cards step down a size (`lib/cardSize.ts`), large to medium to small,
  * before anything is left to scroll; with room to spare, a card whose content
- * runs past its shipped height grows into it.
+ * runs past its wanted height grows into it.
  *
  * Pure: the heights come in measured (`lib/cardContent.ts`), and a height not
  * yet measured at the size it is planned for is named in `unmeasured`, so the
@@ -12,13 +13,16 @@
  * `parts/cards.md`, *Auto layout*.
  */
 import { CARD_SIZES, cardSizeOf, type CardSize, type CardSizeBounds } from './cardSize';
-import { firstFree, fitted, type GridBox, type GridSize } from './railGrid';
+import { fitted, highestFree, inWantedOrder, type GridBox, type GridSize } from './railGrid';
 
 /** One rail card to lay out. */
 export interface FitCard<Id> {
   id: Id;
-  /** Its shipped size: the width it is laid out at, and its height before the rail has room to spare. */
-  shipped: GridSize;
+  /**
+   * Where it is wanted on this grid: the columns it is laid out in, its
+   * height before the rail has room to spare, and its row, which orders it.
+   */
+  wanted: GridBox;
   /** A rolled card keeps the cells it has: its body is put away, so there is nothing to measure. */
   keep?: GridSize;
   /** Rows its content takes at each size, measured at the width it is laid out at. */
@@ -44,11 +48,6 @@ export interface FitPlan<Id> {
   sizes: Map<Id, CardSize | null>;
   /** Cards placed at a size whose height was not measured yet. */
   unmeasured: Id[];
-}
-
-/** The width a card is laid out at: its shipped width, as far as the grid has room. */
-export function laidWidth(shipped: GridSize, columns: number): number {
-  return fitted({ x: 0, y: 0, ...shipped }, columns).w;
 }
 
 /** Rows a card needs for `px` of card: its box is its cells less the gap. */
@@ -81,6 +80,7 @@ function rowsAt(size: CardSize, w: number, frame: FitFrame): { low: number; high
 
 interface Planned<Id> {
   card: FitCard<Id>;
+  x: number;
   w: number;
   size: CardSize | null;
   h: number;
@@ -96,27 +96,24 @@ function heightAt<Id>(
   const range = rowsAt(size, w, frame);
   if (range === null) return null;
   const need = card.needs[size];
-  const shipped = sizeOfCells({ w, h: card.shipped.h }, frame);
-  // Unmeasured, a card is tried at its shipped height, or at the most this
-  // size allows when it is stepping down from the size it ships at.
-  const first = need ?? (shipped === size ? card.shipped.h : range.high);
-  const cap = Math.max(card.shipped.h, range.low);
+  const wanted = sizeOfCells({ w, h: card.wanted.h }, frame);
+  // Unmeasured, a card is tried at its wanted height, or at the most this
+  // size allows when it is stepping down from the size it is wanted at.
+  const first = need ?? (wanted === size ? card.wanted.h : range.high);
+  const cap = Math.max(card.wanted.h, range.low);
   return {
     h: Math.min(range.high, Math.max(range.low, Math.min(first, cap))),
     measured: need !== undefined
   };
 }
 
-/** Every card at its first free spot, in order, and the row under the lowest. */
-function pack<Id>(
-  plan: readonly Planned<Id>[],
-  columns: number
-): { boxes: Map<Id, GridBox>; bottom: number } {
+/** Every card raised as high as its columns allow, in order, and the row under the lowest. */
+function pack<Id>(plan: readonly Planned<Id>[]): { boxes: Map<Id, GridBox>; bottom: number } {
   const boxes = new Map<Id, GridBox>();
   const taken: GridBox[] = [];
   let bottom = 0;
-  for (const { card, w, h } of plan) {
-    const box = firstFree({ w, h }, taken, columns);
+  for (const { card, x, w, h } of plan) {
+    const box = highestFree({ x, y: 0, w, h }, taken);
     taken.push(box);
     boxes.set(card.id, box);
     bottom = Math.max(bottom, box.y + box.h);
@@ -136,29 +133,31 @@ function stepDown<Id>(entry: Planned<Id>, frame: FitFrame): Planned<Id> | null {
 }
 
 /**
- * The rail laid out, cards given in the order they are read on it.
+ * The rail laid out, the card wanted highest first, then leftmost, then in
+ * the order given.
  *
- * Each card starts at the size it ships at and the height its content takes
- * there, no taller than it ships. While the cards run past the rows in view,
- * the lowest card that can steps down a size. Once they fit, each card whose
- * content runs longer, top first, grows as far as the cards still fit. A card
- * left past the rows in view scrolls, as every card did before.
+ * Each card starts in the columns it is wanted in, at the size it is wanted
+ * at and the height its content takes there, no taller than it is wanted.
+ * While the cards run past the rows in view, the lowest card that can steps
+ * down a size. Once they fit, each card whose content runs longer, top first,
+ * grows as far as the cards still fit. A card left past the rows in view
+ * scrolls, as every card did before.
  */
 export function autoLayout<Id>(cards: readonly FitCard<Id>[], frame: FitFrame): FitPlan<Id> {
-  const plan: Planned<Id>[] = cards.map((card) => {
-    const w = laidWidth(card.keep ?? card.shipped, frame.columns);
-    if (card.keep) return { card, w, size: null, h: card.keep.h };
-    const size = sizeOfCells({ w, h: card.shipped.h }, frame) ?? 'small';
-    return { card, w, size, h: heightAt(card, size, w, frame)?.h ?? card.shipped.h };
+  const plan: Planned<Id>[] = inWantedOrder(cards, (card) => card.wanted).map((card) => {
+    const { x, w } = fitted({ ...card.wanted, ...card.keep }, frame.columns);
+    if (card.keep) return { card, x, w, size: null, h: card.keep.h };
+    const size = sizeOfCells({ w, h: card.wanted.h }, frame) ?? 'small';
+    return { card, x, w, size, h: heightAt(card, size, w, frame)?.h ?? card.wanted.h };
   });
 
-  for (let i = plan.length - 1; i >= 0 && pack(plan, frame.columns).bottom > frame.rows;) {
+  for (let i = plan.length - 1; i >= 0 && pack(plan).bottom > frame.rows;) {
     const smaller = stepDown(plan[i]!, frame);
     if (smaller === null) i -= 1;
     else plan[i] = smaller;
   }
 
-  if (pack(plan, frame.columns).bottom <= frame.rows) {
+  if (pack(plan).bottom <= frame.rows) {
     for (const [i, entry] of plan.entries()) {
       const need = entry.size === null ? undefined : entry.card.needs[entry.size];
       const range = entry.size === null ? null : rowsAt(entry.size, entry.w, frame);
@@ -170,7 +169,7 @@ export function autoLayout<Id>(cards: readonly FitCard<Id>[], frame: FitFrame): 
       while (low < high) {
         const mid = Math.ceil((low + high) / 2);
         plan[i] = { ...entry, h: mid };
-        if (pack(plan, frame.columns).bottom <= frame.rows) low = mid;
+        if (pack(plan).bottom <= frame.rows) low = mid;
         else high = mid - 1;
       }
       plan[i] = { ...entry, h: low };
@@ -178,7 +177,7 @@ export function autoLayout<Id>(cards: readonly FitCard<Id>[], frame: FitFrame): 
   }
 
   return {
-    boxes: pack(plan, frame.columns).boxes,
+    boxes: pack(plan).boxes,
     sizes: new Map(plan.map(({ card, size }) => [card.id, size])),
     unmeasured: plan
       .filter(({ card, size }) => size !== null && card.needs[size] === undefined)

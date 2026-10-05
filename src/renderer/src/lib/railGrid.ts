@@ -3,6 +3,8 @@
  * card stands, measured in whole cells, and the rule that no two overlap.
  * Every placement the rail draws, every drop and every resize goes
  * through here, so the picture and the stored arrangement cannot disagree.
+ * What is kept is drawn in proportion across a rail of another width (todo
+ * 06, 2026-10-05).
  *
  * Pure and tested without a DOM. The cell's size and why it is that size are
  * in `mudengine-ui` › `parts/cards.md`, *The card rail is a grid*.
@@ -25,14 +27,29 @@ export interface GridSize {
 export type GridBox = GridSpot & GridSize;
 
 /**
- * One card to arrange: its size, and where it was put, if it has been. A card
- * nobody has placed yet (one just shown, or one a later build added) takes
- * the first free spot.
+ * One card to arrange: its size, where it was put, if it has been, and where
+ * it is wanted. A card nobody has placed yet (one just shown, or one a later
+ * build added) takes the highest free cells from the column it is wanted in,
+ * the card wanted higher first.
  */
 export interface GridCard<Id> {
   id: Id;
   size: GridSize;
   spot?: GridSpot;
+  /** The column its left side is wanted in, and its row, which only orders it. */
+  wanted: GridSpot;
+}
+
+/**
+ * Things ordered by where each is wanted: the higher first, then the further
+ * left, then in the order given. The order a card nobody has placed is
+ * stood in, and the order auto layout lays them in.
+ */
+export function inWantedOrder<T>(items: readonly T[], wanted: (item: T) => GridSpot): T[] {
+  return items
+    .map((item, order) => ({ item, order, at: wanted(item) }))
+    .sort((a, b) => a.at.y - b.at.y || a.at.x - b.at.x || a.order - b.order)
+    .map(({ item }) => item);
 }
 
 /** Whether two boxes are the same cells. */
@@ -64,6 +81,40 @@ export function fitted(box: GridBox, columns: number): GridBox {
   return { x, y, w, h };
 }
 
+/**
+ * The rail a kept box is drawn on: its width in cells, and whether it is too
+ * narrow for a card on it to stand where it was put (`squeezed`), when every
+ * card takes the whole width, one under another.
+ */
+export interface RailWidth {
+  columns: number;
+  stacked: boolean;
+}
+
+/**
+ * A box in cells of a rail `from` wide, drawn on `rail`: each side on the
+ * cell line in proportion, so two boxes that met still meet, and its rows as
+ * they were. On a stacked rail it takes the whole width, and `arrange` moves
+ * it under whatever it then meets.
+ */
+export function scaled(box: GridBox, from: number, rail: RailWidth): GridBox {
+  const { columns } = rail;
+  if (rail.stacked) return fitted({ x: 0, y: box.y, w: columns, h: box.h }, columns);
+  const x = Math.round((box.x * columns) / from);
+  const right = Math.round(((box.x + box.w) * columns) / from);
+  return fitted({ x, y: box.y, w: right - x, h: box.h }, columns);
+}
+
+/**
+ * Whether a rail `columns` wide is too narrow for a box kept on a rail `from`
+ * wide: its width in proportion, to the nearest cell, is under `least`. Read
+ * off the width rather than the two sides `scaled` rounds, so the answer turns
+ * once as the rail narrows rather than with each cell the rounding moves.
+ */
+export function squeezed(box: GridBox, from: number, columns: number, least: number): boolean {
+  return Math.round((box.w * columns) / from) < least;
+}
+
 /** The first row under every box, which is always free. */
 export function bottomOf(boxes: Iterable<GridBox>): number {
   let bottom = 0;
@@ -72,24 +123,18 @@ export function bottomOf(boxes: Iterable<GridBox>): number {
 }
 
 /**
- * The first free spot for a card of this size, reading the grid as a page:
- * the highest row, then the leftmost cell. Only the grid's left edge and the
- * right and bottom edges of what is already there can be a first free spot,
- * so only those are tried.
+ * A box raised to the highest row where it is free, in the columns it is in:
+ * where a card wanted in those columns lands. Only the top row and the rows
+ * under what is already there can be the highest free one, so only those are
+ * tried.
  */
-export function firstFree(size: GridSize, taken: readonly GridBox[], columns: number): GridBox {
-  const { w, h } = fitted({ x: 0, y: 0, ...size }, columns);
-  const xs = [0, ...taken.map((box) => box.x + box.w)];
-  const ys = [0, ...taken.map((box) => box.y + box.h)];
-  const spots = ys
-    .flatMap((y) => xs.map((x) => ({ x, y })))
-    .filter((spot) => spot.x + w <= columns)
-    .sort((a, b) => a.y - b.y || a.x - b.x);
-  for (const spot of spots) {
-    const box = { ...spot, w, h };
-    if (isFree(box, taken)) return box;
+export function highestFree(box: GridBox, taken: readonly GridBox[]): GridBox {
+  const rows = [0, ...taken.map((other) => other.y + other.h)].sort((a, b) => a - b);
+  for (const y of rows) {
+    const at = { ...box, y };
+    if (isFree(at, taken)) return at;
   }
-  return { x: 0, y: bottomOf(taken), w, h };
+  return { ...box, y: bottomOf(taken) };
 }
 
 /**
@@ -97,8 +142,9 @@ export function firstFree(size: GridSize, taken: readonly GridBox[], columns: nu
  *
  * The placed cards first, top row first, each brought inside the grid and,
  * where a narrower window has pushed it onto another, moved down until it is
- * clear. Then the unplaced ones, in the order given, each at the first free
- * spot. No two boxes in the answer overlap, whatever was stored.
+ * clear. Then the unplaced ones, the one wanted highest first, each at the
+ * highest free cells in the columns it is wanted in. No two boxes in the
+ * answer overlap, whatever was stored.
  */
 export function arrange<Id>(cards: readonly GridCard<Id>[], columns: number): Map<Id, GridBox> {
   const out = new Map<Id, GridBox>();
@@ -117,9 +163,12 @@ export function arrange<Id>(cards: readonly GridCard<Id>[], columns: number): Ma
     taken.push(at);
     out.set(card.id, at);
   }
-  for (const card of cards) {
-    if (card.spot !== undefined) continue;
-    const box = firstFree(card.size, taken, columns);
+  const unplaced = inWantedOrder(
+    cards.filter((card) => card.spot === undefined),
+    (card) => card.wanted
+  );
+  for (const card of unplaced) {
+    const box = highestFree(fitted({ x: card.wanted.x, y: 0, ...card.size }, columns), taken);
     taken.push(box);
     out.set(card.id, box);
   }
