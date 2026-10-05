@@ -28,7 +28,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { slug, stamp } from './filename';
+import { CAPTURE_SUFFIX, slug, stamp } from './filename';
 import { errorMessage } from '../../shared/values';
 import type { ConnectionTarget, LostEnter, StreamLine } from '../../shared/types';
 
@@ -83,7 +83,7 @@ export class SessionCapture {
      * before every dial, so an eager open wrote a one-record file per *attempt*
      * — one every fifteen seconds behind auto-reconnect. See `SessionLog.open`.
      */
-    this.file = path.join(this.options.directory, `${stamp(at)}_${label}.mudcap.jsonl`);
+    this.file = path.join(this.options.directory, `${stamp(at)}_${label}${CAPTURE_SUFFIX}`);
     this.meta = {
       k: 'meta',
       session,

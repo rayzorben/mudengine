@@ -1976,7 +1976,12 @@ const TUNING_DEFAULTS = {
      */
     maxPlayers: 1_000,
     /** How long a book that could not read its file waits before retrying. */
-    playersRetryMs: 30_000
+    playersRetryMs: 30_000,
+    /**
+     * How often old session logs and captures are looked for while the client
+     * runs (`logging.keepDays`, todo 04). A day, the unit the setting counts in.
+     */
+    logSweepEveryMs: 86_400_000
   },
   /** The realm knowledge base — conversion, routing and the local map. */
   world: {

@@ -19,6 +19,7 @@
  * shows a window on it. Dependency-free like the rest of `shared/`: main writes
  * these, the renderer reads them.
  */
+import { DAY_MS } from './values';
 import type { RoomId } from './world';
 
 /** The file format's version, so a reader can refuse one it does not know. */
@@ -172,7 +173,7 @@ export function roomsWithFinds(finds: readonly Find[]): ReadonlySet<RoomId> {
  * disagree about what is on screen.
  */
 export function within(finds: readonly Find[], days: number, now: number): Find[] {
-  const floor = days > 0 ? now - days * 86_400_000 : Number.NEGATIVE_INFINITY;
+  const floor = days > 0 ? now - days * DAY_MS : Number.NEGATIVE_INFINITY;
   return finds.filter((find) => find.at >= floor).sort(byRarest);
 }
 

@@ -24,6 +24,7 @@ import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
 import { asLoops, mergeNamed, type Loop } from './loops';
 import { asCoinNames, type CoinNames } from './coins';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
+import { DEFAULT_LOGGING, normalizeLogging, type LoggingConfig } from './logging';
 /*
  * `DENOMINATIONS` is the one *value* this module takes from `character.ts`, and
  * it is safe: nothing under `character.ts` imports `config.ts` back, so the
@@ -437,66 +438,6 @@ export interface AlertsUiConfig {
 export interface VitalsUiConfig {
   hp: VitalThresholds;
   mana: VitalThresholds;
-}
-
-export interface LoggingConfig {
-  /** Append the decoded session to a file. */
-  enabled: boolean;
-  /**
-   * Write down every fight: what it cost, and the conditions it was fought
-   * under.
-   *
-   * Nothing reads these yet, which is the point of collecting them — every
-   * question worth asking about how a character fights needs a record that
-   * predates the question. One small compressed file per character beside the
-   * options file, appended and never revised. See `shared/fights.ts`.
-   *
-   * On, unlike the capture: a fight record is a few hundred bytes, holds no
-   * text the server sent and therefore cannot hold a password, and the whole
-   * value of it is that it was already being collected.
-   */
-  fights: boolean;
-  /**
-   * Also record a full machine-readable capture: raw bytes, decoded text with
-   * escape sequences intact, framed lines and outbound commands, timestamped.
-   *
-   * This is the development loop for pattern work — play manually with it on,
-   * then `npm run capture:analyse`.
-   *
-   * **On by default**, and it was not always. It was off because it is verbose,
-   * which was the wrong trade: the first real disagreement about *what the
-   * server actually sent and in what order* had no file to settle it from, and
-   * the argument was conducted over a pasted terminal excerpt instead — twice,
-   * wrongly. A recording that exists only once somebody thinks to turn it on is
-   * one that is never on when it is needed, because the moment you need it has
-   * already happened. Disk is cheap; a bug argued from memory is not.
-   */
-  capture: boolean;
-  /**
-   * Keep the Talk card's conversation history on disk, so quitting and
-   * restarting restores it rather than starting the card empty.
-   *
-   * One plain JSONL file per character (`talk/<id>.jsonl`), appended as each
-   * conversation line arrives and read back when the session is opened. On,
-   * like the fights beside it: what somebody said is exactly the record whose
-   * value is that it was already being collected — and unlike the capture it
-   * holds only the conversation channels, never a prompt, so it cannot hold a
-   * password.
-   */
-  conversations: boolean;
-  /**
-   * How much conversation to keep, in days. Entries older than this are
-   * dropped when the log is opened — the cleanup, so a year of talk does not
-   * become ten. Bounded below at one day; the default is a year.
-   */
-  conversationDays: number;
-  /**
-   * Where logs go. Empty means the per-user data directory, which is the only
-   * reliably writable location on all three platforms.
-   */
-  directory: string;
-  /** Stop appending past this size, rather than filling a disk unattended. */
-  maxBytes: number;
 }
 
 /**
@@ -2667,15 +2608,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       designs: structuredClone(DEFAULT_REWRITES) as RewriteDesign[]
     }
   },
-  logging: {
-    enabled: true,
-    fights: true,
-    capture: true,
-    conversations: true,
-    conversationDays: 365,
-    directory: '',
-    maxBytes: 64 * 1024 * 1024
-  },
+  logging: { ...DEFAULT_LOGGING },
   automation: {
     enabled: true,
     // No rules by default. Automation that acts without being asked to is not
@@ -4381,28 +4314,6 @@ function normalizeSafety(value: unknown): SafetyConfig {
       notifyGang: bool(pvp['notifyGang'], p.notifyGang),
       action: oneOf<PvpAction>(pvp['action'], PVP_ACTIONS, p.action)
     }
-  };
-}
-
-function normalizeLogging(value: unknown): LoggingConfig {
-  const raw = isRecord(value) ? value : {};
-  return {
-    enabled: bool(raw['enabled'], DEFAULT_CONFIG.logging.enabled),
-    fights: bool(raw['fights'], DEFAULT_CONFIG.logging.fights),
-    capture: bool(raw['capture'], DEFAULT_CONFIG.logging.capture),
-    conversations: bool(raw['conversations'], DEFAULT_CONFIG.logging.conversations),
-    // Floor of one day: zero would be a log that erases itself on every
-    // launch, which is `conversations: false` wearing a number.
-    conversationDays: int(
-      raw['conversationDays'],
-      DEFAULT_CONFIG.logging.conversationDays,
-      1,
-      36500
-    ),
-    directory: str(raw['directory'], DEFAULT_CONFIG.logging.directory),
-    // Floor of 64 KiB: a cap smaller than one screenful of combat is a
-    // misconfiguration rather than a preference.
-    maxBytes: int(raw['maxBytes'], DEFAULT_CONFIG.logging.maxBytes, 64 * 1024, 4 * 1024 ** 3)
   };
 }
 

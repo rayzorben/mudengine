@@ -101,6 +101,9 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** One day in milliseconds: what a setting counted in days is compared in. */
+export const DAY_MS = 24 * 60 * 60 * 1000;
+
 /** `HH:MM:SS.mmm` in local time: a line of a log read against the moment it happened. */
 export function timeOfDay(at: number): string {
   const d = new Date(at);
