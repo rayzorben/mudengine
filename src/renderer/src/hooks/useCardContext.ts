@@ -312,6 +312,8 @@ export interface CardContextInputs
   send(line: string): void;
   /** The Loops modal, which is the shown character's. */
   openLoops(): void;
+  /** The Search the area dialog, which is the shown character's too. */
+  openAreaSearch(): void;
   dial(id: SessionId): void;
   hangUp(id: SessionId): void;
   /** A refusal said in its own character's console. */
@@ -367,6 +369,7 @@ export function useCardContext({
   reverseLoop,
   send,
   openLoops,
+  openAreaSearch,
   dial,
   hangUp,
   sayRefusal,
@@ -612,7 +615,8 @@ export function useCardContext({
            * control bound to nowhere already follows in this client.
            */
           openLoops: shown ? openLoops : null,
-          openBuilder: shown ? openBuilder : null
+          openBuilder: shown ? openBuilder : null,
+          openAreaSearch: shown ? openAreaSearch : null
         },
         // Per client, not per character: which buttons somebody keeps to hand
         // is a fact about the person at the keyboard, so every character's
@@ -667,6 +671,7 @@ export function useCardContext({
       nameIndexes,
       realmAt,
       openLoops,
+      openAreaSearch,
       peekRoom,
       endPeek,
       runHunt,

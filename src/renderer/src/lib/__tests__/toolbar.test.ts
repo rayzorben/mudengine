@@ -25,6 +25,7 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   stopMoving: vi.fn(),
   stepBack: vi.fn(),
   openLoops: vi.fn(),
+  openAreaSearch: vi.fn(),
   openBuilder: vi.fn(),
   ...over
 });

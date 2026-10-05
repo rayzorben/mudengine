@@ -55,7 +55,9 @@ export const TOOLBAR_ACTIONS = [
    * What it walks is a route to the previous room on the trail, which main
    * plans; see `SessionManager.stepBack`.
    */
-  'move:back'
+  'move:back',
+  /** Walk every room within so many steps and search each (`AreaSearch`), through its dialog. */
+  'area:search'
 ] as const;
 export type ToolbarActionId = (typeof TOOLBAR_ACTIONS)[number];
 
@@ -262,6 +264,8 @@ export interface ToolbarSubject {
    * character's realm and files into its scope.
    */
   openBuilder: (() => void) | null;
+  /** Open the Search the area dialog. Null on a pinned float for `openLoops`' reason. */
+  openAreaSearch: (() => void) | null;
 }
 
 /**
@@ -287,6 +291,7 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     stepBack,
     openLoops,
     openBuilder,
+    openAreaSearch,
     canRestoreGear,
     restoreGear
   } = subject;
@@ -406,7 +411,20 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
       on: false,
       disabled: !inRealm,
       run: stepBack
-    }
+    },
+    // A way of moving too, and one pressed while nothing is.
+    ...(openAreaSearch === null
+      ? []
+      : [
+          {
+            id: 'area:search' as const,
+            label: t('toolbar.searchArea'),
+            icon: 'search' as const,
+            on: false,
+            disabled: !inRealm,
+            run: openAreaSearch
+          }
+        ])
   ];
 
   return [dial, gear, ...switches_, ...transport];

@@ -194,6 +194,8 @@ export function createWebBridge(): IpcApi {
     startMoving: (session, loop, confirmed) => invoke(Invoke.startMoving, session, loop, confirmed),
     collectThenWalk: (session, items, route, run) =>
       invoke(Invoke.collectThenWalk, session, items, route, run),
+    previewAreaSearch: (session, radius) => invoke(Invoke.previewAreaSearch, session, radius),
+    searchArea: (session, radius, searches) => invoke(Invoke.searchArea, session, radius, searches),
     stopMoving: (session) => invoke(Invoke.stopMoving, session),
     stepBack: (session, confirmed) => invoke(Invoke.stepBack, session, confirmed),
     listLoops: (session) => invoke(Invoke.listLoops, session),

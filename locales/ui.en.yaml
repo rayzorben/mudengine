@@ -92,6 +92,8 @@ app:
     whoIsConnected:
       many: '{count} characters are still in the realm: {names}.'
       one: '{name} is still in the realm.'
+  area:
+    invalid: The steps and the searches must each be a whole number in range.
   remotes:
     invalidName: Unrecognized remote (@) command.
   route:
@@ -875,6 +877,7 @@ palette:
     huntLabel: Where should I hunt?
     routeLabel: Route to room
     searchLabel: Search the console
+    areaSearchLabel: Search the area…
   noMatches: No matching command, and nothing in the realm by that name.
   pin:
     pinTitle: Pin to the top ({chord})
@@ -1012,6 +1015,7 @@ toolbar:
   startMoving: Start Moving / Resume
   stopMoving: Stop Moving
   stepBack: Step Back One Room
+  searchArea: Search the Area…
 tabs:
   head:
     newCharacterAria: New character
@@ -5221,6 +5225,31 @@ automation:
     endedNothingOnTheFloor: none of it was on the floor, and nothing was searched for
     endedMissed: 'not picked up: {items}'
     whyStopped: the walk stopped
+  areaSearch:
+    reasonSearch: searching every room nearby
+    starting:
+      one: 'Searching {rooms} rooms within {radius} steps, once each (about {steps} steps of walking).'
+      many: 'Searching {rooms} rooms within {radius} steps, {searches} times each (about {steps} steps of walking).'
+    searched: 'Searched {room} ({done} of {rooms}).'
+    missed: 'Passed over {room}: no way there, or the character left it.'
+    done: 'Area search over: {searched} rooms searched, {missed} passed over.'
+    because: 'the player asked for every room within {radius} steps to be searched'
+    becauseAsked: the player asked for the area to be searched
+    refused: 'Not searching the area: {why}'
+    refusalSwitchedOff: automation is off
+    refusalNotInRealm: the character is not in the realm
+    refusalRunning: the area is already being searched
+    refusalFighting: the character is fighting
+    refusalLooping: a loop is running; stop it first
+    refusalBusy: the character is walking, or already on another trip
+    refusalNoRooms: there is no room to search
+    endedSwitchedOff: 'Area search stopped: automation was turned off.'
+    endedStopped: 'Area search stopped: {why}'
+    endedDied: 'Area search stopped: the character died.'
+    endedRanAway: 'Area search stopped: the character ran away.'
+    endedLeftRealm: 'Area search stopped: the character left the realm.'
+    endedAttacked: 'Area search stopped: something attacked, and auto-combat is off.'
+    endedMissed: 'Area search stopped: the last {missed} rooms could not be searched.'
   gear:
     capped: Only {max} were sent; {more} more were left. Each is a command from the same budget as
       fighting.
@@ -5733,6 +5762,27 @@ movement:
   whatHappens: 'Walking back is a trip like any other: through whatever lives on the way, with
     auto-combat and your other settings working as usual. Staying here changes nothing: the loop or
     route keeps its place, and you can press play again.'
+
+# Walking every room within so many steps of the character and searching each.
+areaSearch:
+  title: 'Search the area: {name}'
+  radius: 'Rooms up to {steps} steps away'
+  searches:
+    one: Search each room once
+    many: 'Search each room {searches} times'
+  measuring: Counting the rooms…
+  none: 'Nothing to search: {why}'
+  plan: '{rooms} rooms to search, about {steps} steps of walking.'
+  leftLose: 'Left out, a fight there is lost: {rooms}'
+  leftUnread: 'Left out, the odds there are not worked out yet: {rooms}'
+  leftBehind: 'Left out, reached only through those: {rooms}'
+  leftStranded: 'Left out, no way on from there: {rooms}'
+  combatOff: Auto-combat is off, so a monster that attacks on the way is not fought, and the search
+    stops.
+  whatHappens: 'Rooms behind a door you cannot open are not counted. Whatever a search turns up is
+    kept in the room log and picked up as your loot settings say. Stop ends the search.'
+  cancel: Cancel
+  start: Search
 
 # The client thinks the character in the realm is not the one its records are
 # about, and is asking. It only ever asks: deleting the only copy of what

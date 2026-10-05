@@ -82,6 +82,11 @@ export class RoomClocks {
     return typical === null ? null : { seconds: typical, whose: 'usual' };
   }
 
+  /** The monsters the wire saw refill this room, by `mobKey`. */
+  seenIn(room: RoomId): string[] {
+    return Object.keys(this.lore.spawnsAt(room)?.seen ?? {});
+  }
+
   /** Rooms `isLair` does not admit that have a timed clock: an arena, read off the wire. */
   refilling(isLair: (room: RoomId) => boolean): RefillingRoom[] {
     const least = tuning().hunting.refillsLeast;

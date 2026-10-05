@@ -83,6 +83,7 @@ import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
 import type { MobLoreEntry } from '../shared/lore';
 import type { MovementStart, WalkStart } from '../shared/movement';
+import type { AreaSearchPreview } from '../shared/areaSearch';
 import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
@@ -1892,6 +1893,42 @@ function registerIpc(): void {
       // Refused first where no room would change the answer, then placed (`Play`, todo 762).
       const answer = await playPlaced(() => host?.get(session)?.manager, loop, agreed);
       return answer ?? { refused: t('app.session.notConnected') };
+    }
+  );
+  /*
+   * Searching the area (`AreaSearch`): the radius and the searches parsed and
+   * held to `tuning.areaSearch`'s bounds, since they turn into a walk and
+   * commands on a socket.
+   */
+  const areaBound = (value: unknown, most: number): number | null =>
+    typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= most
+      ? value
+      : null;
+  handle(
+    Invoke.previewAreaSearch,
+    (_caller, session: SessionId, radius: unknown): AreaSearchPreview => {
+      const { maxRadius, maxSearches, firstRadius, firstSearches } = tuning().areaSearch;
+      const manager = host?.get(session)?.manager;
+      const steps = radius === null ? null : areaBound(radius, maxRadius);
+      if (manager === undefined || (radius !== null && steps === null)) {
+        const refused =
+          manager === undefined ? t('app.session.notConnected') : t('app.area.invalid');
+        const bounds = { maxRadius, maxSearches, firstRadius, firstSearches };
+        return { ...bounds, combatOff: null, plan: { refused } };
+      }
+      return manager.areaSearch.preview(steps);
+    }
+  );
+  handle(
+    Invoke.searchArea,
+    (_caller, session: SessionId, radius: unknown, searches: unknown): string | null => {
+      const { maxRadius, maxSearches } = tuning().areaSearch;
+      const manager = host?.get(session)?.manager;
+      if (manager === undefined) return t('app.session.notConnected');
+      const steps = areaBound(radius, maxRadius);
+      const times = areaBound(searches, maxSearches);
+      if (steps === null || times === null) return t('app.area.invalid');
+      return manager.areaSearch.start(steps, times, manager.character);
     }
   );
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {

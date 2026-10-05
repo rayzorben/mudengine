@@ -60,6 +60,15 @@ describe('the neighbourhood sweep', () => {
     expect(graph.withinSteps('9/9', 3).size).toBe(0);
   });
 
+  // The area search's rooms left out for their fight (`Traveller.walled`): nothing past one.
+  it('goes no further than a walled room, and routes nowhere through one', () => {
+    const walled = new Set(['1/3']);
+    const within = graph.withinSteps('1/1', 4, { walled });
+    expect([...within.keys()].sort()).toEqual(['1/1', '1/2', '1/6']);
+    expect(graph.route('1/1', '1/5', { walled }).blocked).toBe(true);
+    expect(graph.route('1/1', '1/5', {}).blocked).toBe(false);
+  });
+
   /*
    * **A way this traveller cannot take is not a way** (todo 09). The survey
    * was offering lairs behind gates the character could not route through, and

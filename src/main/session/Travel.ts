@@ -22,6 +22,7 @@ import type { Supplies } from '../automation/Supplies';
 import type { OutgrownGear } from '../automation/OutgrownGear';
 import { personStop } from '../automation/personStop';
 import type { StashFetch } from '../automation/StashFetch';
+import type { AreaSearch } from '../automation/AreaSearch';
 import type { TrainErrand } from '../automation/TrainErrand';
 import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
 import type { WalkKind } from '../../shared/walk';
@@ -162,6 +163,7 @@ export interface TravelParts {
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
   readonly stashFetch: Pick<StashFetch, 'busy' | 'abandon'>;
+  readonly areaSearch: Pick<AreaSearch, 'busy' | 'abandon' | 'stop'>;
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
   readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
   readonly questRunner: Pick<QuestRunner, 'running' | 'abandon'>;
@@ -225,6 +227,7 @@ export class Travel implements SessionModule {
   private readonly trainLevel: TravelParts['trainLevel'];
   private readonly outgrown: TravelParts['outgrown'];
   private readonly stashFetch: TravelParts['stashFetch'];
+  private readonly areaSearch: TravelParts['areaSearch'];
   private readonly hunt: TravelParts['hunt'];
   private readonly itemErrand: TravelParts['itemErrand'];
   private readonly questRunner: TravelParts['questRunner'];
@@ -425,6 +428,7 @@ export class Travel implements SessionModule {
     this.trainLevel = parts.trainLevel;
     this.outgrown = parts.outgrown;
     this.stashFetch = parts.stashFetch;
+    this.areaSearch = parts.areaSearch;
     this.hunt = parts.hunt;
     this.itemErrand = parts.itemErrand;
     this.questRunner = parts.questRunner;
@@ -1127,10 +1131,22 @@ export class Travel implements SessionModule {
       this.session.movement().moving ||
       this.partyWait.holding ||
       this.retreat !== null ||
+      this.errandUnderWay()
+    );
+  }
+
+  /**
+   * An errand or a quest run has the character, in any phase: one waiting on
+   * a listing or a level stands still and walks nowhere, and is still under
+   * way. The one list, read here and by `SessionManager.errandHeld`.
+   */
+  errandUnderWay(): boolean {
+    return (
       this.supplies.current !== null ||
       this.trainLevel.busy ||
       this.outgrown.busy ||
       this.stashFetch.busy ||
+      this.areaSearch.busy ||
       this.itemErrand.running ||
       this.questRunner.running
     );
@@ -2089,6 +2105,8 @@ export class Travel implements SessionModule {
       this.session.notice(t('session.walk.notResumed', { destination: owed.name, reason }));
     }
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
+    // Before the walk, so the leg's end is not read as a room to pass over.
+    this.areaSearch.stop(reason);
     this.walker.stop(reason);
     // The one door a person's stop comes through, so it is the one place that
     // can tell a hunt it was stopped *by somebody* rather than by the realm.
@@ -2360,6 +2378,8 @@ export class Travel implements SessionModule {
     this.outgrown.abandon();
     // And a fetch from a stash, on the same terms (todo 05).
     this.stashFetch.abandon();
+    // And a search of the area: its rooms are around the room it died in.
+    this.areaSearch.abandon();
     // And the hunt: the lair it was walking to is several maps from the
     // temple. Not *stood down* — a death is not the player pressing stop — so
     // the next status line surveys again from wherever the character stands.
