@@ -1,5 +1,5 @@
 /**
- * Moving a character: play, back and stop, a lap's skip and turn, a loop
+ * Moving a character: play, back and stop, a lap's turn, a loop
  * started from the Loops modal or the Hunting card, each refusal said in the
  * console of the character it was about, and the question play may answer
  * with (`MovementPrompt`), held until somebody answers it.
@@ -21,14 +21,7 @@ export type Wandered = { session: SessionId; loop: string | null } & MovementCon
 export interface MovementInputs {
   api: Pick<
     IpcApi,
-    | 'startMoving'
-    | 'stepBack'
-    | 'stopMoving'
-    | 'skipLoopStop'
-    | 'reverseLoop'
-    | 'startLoop'
-    | 'runLoop'
-    | 'addLoop'
+    'startMoving' | 'stepBack' | 'stopMoving' | 'reverseLoop' | 'startLoop' | 'runLoop' | 'addLoop'
   >;
   /** The character on screen, or `NO_SESSION`. */
   session: SessionId;
@@ -49,7 +42,6 @@ export interface Movement {
   startMoving(loop: string | null): void;
   stopMoving(): void;
   startLoop(name: string): void;
-  skipLoop(): void;
   reverseLoop(): void;
   runChosenLoop(choice: LoopChoice, destination: LoopDestination): void;
   runHunt(loop: Loop, destination: LoopDestination): void;
@@ -234,10 +226,6 @@ export function useMovement({
     },
     [api, sayRefusal]
   );
-  const skipLoop = useCallback(() => {
-    void api.skipLoopStop(session).then(sayRefusal(session));
-    returnFocus();
-  }, [api, returnFocus, sayRefusal, session]);
   const reverseLoop = useCallback(() => {
     void api.reverseLoop(session).then(sayRefusal(session));
     returnFocus();
@@ -265,7 +253,6 @@ export function useMovement({
     startMoving,
     stopMoving,
     startLoop,
-    skipLoop,
     reverseLoop,
     runChosenLoop,
     runHunt,

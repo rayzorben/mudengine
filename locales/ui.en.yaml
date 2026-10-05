@@ -1868,6 +1868,7 @@ cards:
     more: More
     settings: Settings for this card
     pin: 'Pin: keep in view for every character'
+    headingLabel: '{cardTitle} controls'
     rollDown: 'Roll down: show the whole card'
     rollUp: 'Roll up: show the heading only'
     toolbarLabel: '{cardTitle} actions'
@@ -2183,7 +2184,6 @@ cards:
     loop:
       actions:
         reverse: Reverse Direction
-        skip: Skip Waypoint
       directionBackward: backward
       directionForward: forward
       directionLabel: Direction
@@ -5364,7 +5364,6 @@ automation:
     fallbackStop: a stop
     fallbackWhy: the walk failed
     resumed: Loop resumed from here.
-    skipped: 'Skipping {stopName} at your request.'
     reversed: Loop reversed; takes effect at the next stop.
     refusalNotStopped: There is no stopped loop to resume.
     refusalNotLooping: Nothing is looping.

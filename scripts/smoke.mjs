@@ -3506,7 +3506,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     evaluate(`
       (() => {
         if (document.querySelector('.route-panel')) return false;
-        const controls = [...document.querySelectorAll('.navigation-card .loop-control')]
+        const controls = [...document.querySelectorAll('.navigation-card > header .card-heading-action')]
           .map((b) => b.dataset.action);
         return controls.includes('play') && !controls.includes('stop');
       })()
@@ -3810,19 +3810,19 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   await capture('smoke-navigation.png', 'the Navigation card, running a loop');
   /*
    * The transport, which is the movement's rather than the lap's: one stop,
-   * and the lap's own skip beside it. No pause -- a stop keeps the lap's
-   * place, so play is the resume and a third word for the same state was a
-   * distinction nobody could hold.
+   * in the heading beside the chip (todo 05), and no skip. No pause -- a stop
+   * keeps the lap's place, so play is the resume and a third word for the
+   * same state was a distinction nobody could hold.
    */
   const running = await evaluate(
-    `[...document.querySelectorAll('.navigation-card .loop-control')].map((b) => b.dataset.action).join(',')`
+    `[...document.querySelectorAll('.navigation-card > header .card-heading-action')].map((b) => b.dataset.action).join(',')`
   );
   check(
     /stop/.test(String(running)) &&
-      /skip/.test(String(running)) &&
+      !/skip/.test(String(running)) &&
       !/pause/.test(String(running)) &&
       !/play/.test(String(running)),
-    'with stop and skip to hand, and no pause or play beside them',
+    'with stop in the heading, and no pause, play or skip beside it',
     String(running)
   );
   const stepped = await readUntil(
@@ -4647,23 +4647,19 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
   /*
-   * Stopping turns stop into play and leaves skip where it is: a stop keeps
-   * the lap's place, and skipping a stop it cannot reach before pressing play
-   * is exactly what somebody does with a stopped lap (`LoopRunner.skip` moves
-   * the pointer and waits).
+   * Stopping turns stop into play: a stop keeps the lap's place, so play is
+   * what picks it back up.
    */
   const controls = await readUntil(
     () =>
       evaluate(
-        `[...document.querySelectorAll('.navigation-card .loop-control')].map((b) => b.dataset.action).join(',')`
+        `[...document.querySelectorAll('.navigation-card > header .card-heading-action')].map((b) => b.dataset.action).join(',')`
       ),
     (controls) => !/stop/.test(String(controls)) && /play/.test(String(controls))
   );
   check(
-    !/stop/.test(String(controls)) &&
-      /play/.test(String(controls)) &&
-      /skip/.test(String(controls)),
-    'and stopping the lap leaves the play that picks it back up, and skip beside it',
+    !/stop/.test(String(controls)) && /play/.test(String(controls)),
+    'and stopping the lap leaves the play that picks it back up',
     String(controls)
   );
   /*

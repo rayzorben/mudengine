@@ -209,6 +209,13 @@ export interface BentoCardProps {
   /** Anything else the card can do, after close and copy. */
   actions?: CardAction[];
   /**
+   * Controls drawn in the heading, after the badge, for a card whose heading
+   * names a state the card changes: the Navigation card's play or stop sits
+   * beside the chip saying `running` or `stopped` (todo 05). They never fold,
+   * and a rolled card keeps them, since the heading is all a rolled card is.
+   */
+  headingActions?: CardAction[];
+  /**
    * Which card this is, for the layout to address it by.
    *
    * Published as `data-card` because the drag machine hit-tests the rail by
@@ -343,6 +350,7 @@ export default function BentoCard({
   onRoll,
   settings,
   actions,
+  headingActions,
   cardId,
   onGrab,
   dragging,
@@ -761,6 +769,17 @@ export default function BentoCard({
           )}
         </h2>
         {badge && <span className="badge">{badge}</span>}
+        {headingActions && headingActions.length > 0 && (
+          <span
+            aria-label={t('cards.chrome.headingLabel', { cardTitle: title })}
+            className="card-heading-actions"
+            role="toolbar"
+          >
+            {headingActions.map((action) => (
+              <ActionGlyph action={action} className="card-heading-action" key={action.id} />
+            ))}
+          </span>
+        )}
         {/*
           Only on a floating card, because it is only there that it means
           anything: a card on the rail has the slate behind it, not the console.
@@ -848,20 +867,11 @@ export default function BentoCard({
         aria-label={t('cards.chrome.toolbarLabel', { cardTitle: title })}
       >
         {drawn.map((action) => (
-          <button
-            aria-label={action.label}
+          <ActionGlyph
+            action={action}
             className={`card-action${action.id === 'close' ? ' card-close' : ''}`}
-            data-action={action.id}
-            data-danger={action.danger ? 'true' : undefined}
             key={action.id}
-            onClick={(event) => action.run(event.currentTarget)}
-            // Chrome is read, not typed into.
-            onMouseDown={keepFocus}
-            title={action.label}
-            type="button"
-          >
-            <Icon name={action.icon} />
-          </button>
+          />
         ))}
         {showMore && (
           <button
@@ -944,5 +954,24 @@ export default function BentoCard({
         />
       )}
     </section>
+  );
+}
+
+/** One `CardAction` as a glyph, in the action column or the heading. */
+function ActionGlyph({ action, className }: { action: CardAction; className: string }) {
+  return (
+    <button
+      aria-label={action.label}
+      className={className}
+      data-action={action.id}
+      data-danger={action.danger ? 'true' : undefined}
+      onClick={(event) => action.run(event.currentTarget)}
+      // Chrome is read, not typed into.
+      onMouseDown={keepFocus}
+      title={action.label}
+      type="button"
+    >
+      <Icon name={action.icon} />
+    </button>
   );
 }

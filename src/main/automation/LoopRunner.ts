@@ -39,7 +39,6 @@
 import {
   dueStop,
   NO_LOOP,
-  nextStop,
   splitStop,
   type Loop,
   type LoopProgress,
@@ -166,8 +165,8 @@ export class LoopRunner implements SessionModule {
   /**
    * Where each of this run's stops is, by stop index — resolved once at
    * `start`, so a stop the realm cannot place stays null for the run and is
-   * simply not drawn. Parallel to `loop.stops`, so `skip` and `reverse` move
-   * the index over it without invalidating anything.
+   * simply not drawn. Parallel to `loop.stops`, so stepping on and `reverse`
+   * move the index over it without invalidating anything.
    */
   private stopRooms: Array<RoomId | null> = [];
   private index = 0;
@@ -398,9 +397,9 @@ export class LoopRunner implements SessionModule {
                          * Asked of the planner rather than latched (todo 14).
                          *
                          * A flag would have to be cleared on every path that ends
-                         * the wait, and there are six: the timer, `onCharacter`
+                         * the wait, and there are five: the timer, `onCharacter`
                          * planning the leg the moment the rest lands, `stop`,
-                         * `skip`, `resume` and `reset` — five of which call
+                         * `resume` and `reset` — four of which call
                          * `clearTimer` and so kill the only thing that would have
                          * cleared it. The window is the fact; reading it is
                          * always true and never stale.
@@ -571,39 +570,6 @@ export class LoopRunner implements SessionModule {
     if (elapsed < tuning().loop.expRateGraceMs) return null;
     const rate = ((exp - anchor.exp) * 3_600_000) / elapsed;
     return rate < floor ? rate : null;
-  }
-
-  /**
-   * Gives up on the current stop and heads for the next one.
-   *
-   * For a stop the game will not let the character reach — a door somebody
-   * shut, a lair that is somebody else's tonight. Counts towards the lap like
-   * any step, because a lap is the list run through once however it is
-   * walked. While stopped it only moves the pointer; the walk waits for
-   * `resume`. The leg being walked is the caller's to end, as with `stop`.
-   */
-  skip(): string | null {
-    if (!this.loop || (this.status !== 'running' && this.status !== 'stopped')) {
-      return t('automation.loops.refusalNotLooping');
-    }
-    this.clearTimer();
-    this.lingering = false;
-    this.waiting = false;
-    this.failures = 0;
-    this.events.notice?.(
-      t('automation.loops.skipped', {
-        stopName: this.loop.stops[this.index]?.room ?? t('automation.loops.fallbackStop')
-      })
-    );
-    if (this.status === 'stopped') {
-      const next = nextStop(this.loop, this.index, this.forward);
-      this.index = next.index;
-      this.forward = next.forward;
-      this.publish();
-      return null;
-    }
-    this.step();
-    return null;
   }
 
   /**
@@ -1143,8 +1109,8 @@ export class LoopRunner implements SessionModule {
     }
 
     /*
-     * A fight in progress is waited out before anything is planned. `start`,
-     * `resume` and `skip` all reach here directly, and each used to plan
+     * A fight in progress is waited out before anything is planned. `start`
+     * and `resume` both reach here directly, and each used to plan
      * mid-fight — the room a leg is planned from is the room the fight is
      * *in*, so its first step walked out of it. Fighting is the point of a
      * loop; clearing the room comes first, and `onCharacter` advances the

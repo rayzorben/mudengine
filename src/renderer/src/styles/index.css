@@ -2420,24 +2420,11 @@ kbd {
   margin-top: 6px;
 }
 
-/*
- * The movement’s transport row: always drawn, never folded. Square quiet
- * buttons the height of a control, in a row under the heading, so play and
- * stop are where the eye already is rather than one kebab click away.
- */
+/* A row of buttons in a card's body, always drawn and never folded: the Hunting card's three. */
 .loop-controls {
   display: flex;
   gap: var(--gap);
   margin-bottom: var(--gap);
-}
-
-.loop-control {
-  align-items: center;
-  display: inline-flex;
-  height: var(--control-h);
-  justify-content: center;
-  padding: 0;
-  width: var(--control-h);
 }
 
 /* Not `.loop-picker`: that is the settings screen's loop shelf, and the smoke run asserts on it. */
@@ -6365,12 +6352,13 @@ button.quest-plan-back {
   padding-right: calc(var(--pad-card) + 16px);
 }
 
-.card-action {
+/* A card's glyph, in the action column, the heading, or as the roll toggle. */
+.card-action,
+.card-heading-action,
+.card-roll {
   align-items: center;
-  background: transparent;
   border: 0;
   border-radius: var(--r-chip);
-  color: var(--text-lo-quiet);
   cursor: pointer;
   display: flex;
   height: var(--card-action);
@@ -6382,10 +6370,15 @@ button.quest-plan-back {
   width: var(--card-action);
 }
 
-.card-action .icon {
+:is(.card-action, .card-heading-action, .card-roll) .icon {
   height: 12px;
   stroke-width: 1.9;
   width: 12px;
+}
+
+.card-action {
+  background: transparent;
+  color: var(--text-lo-quiet);
 }
 
 .card-action:hover,
@@ -9464,29 +9457,14 @@ button.lookup:focus-visible {
  * the card for the eye to land on.
  */
 .card-roll {
-  align-items: center;
   background: transparent;
-  border: 0;
-  border-radius: var(--r-chip);
   color: var(--text-lo-quiet);
-  cursor: pointer;
-  display: flex;
   flex: 0 0 auto;
-  height: var(--card-action);
-  justify-content: center;
   opacity: 0.35;
-  padding: 0;
   transition:
     background var(--dur-tint) var(--ease-out),
     color var(--dur-tint) var(--ease-out),
     opacity var(--dur-control) var(--ease-out);
-  width: var(--card-action);
-}
-
-.card-roll .icon {
-  height: 12px;
-  stroke-width: 1.9;
-  width: 12px;
 }
 
 .card:hover .card-roll,
@@ -9627,8 +9605,42 @@ tr:hover .row-action.worn,
 }
 
 /* The badge already claims the auto margin when there is one. */
-.card > header .badge ~ .card-alpha {
+.card > header .badge ~ .card-alpha,
+.card > header .card-heading-actions ~ .card-alpha {
   margin-left: 0;
+}
+
+/*
+ * Controls in the heading, beside the chip naming the state they change: the
+ * Navigation card's play or stop. The roll toggle's size, so the heading keeps
+ * its row; full strength at rest, unlike the roll toggle and the action
+ * column, because they are what the card is for; a tonal fill so they read as
+ * buttons beside the chip without becoming the one filled control.
+ */
+.card-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--card-side-gap);
+}
+
+.card-heading-action {
+  background: color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--accent);
+}
+
+.card-heading-action:hover,
+.card-heading-action:focus-visible {
+  background: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+}
+
+.card-heading-action[data-danger='true'] {
+  background: color-mix(in srgb, var(--danger) var(--tone-weak), transparent);
+  color: var(--danger);
+}
+
+.card-heading-action[data-danger='true']:hover,
+.card-heading-action[data-danger='true']:focus-visible {
+  background: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
 }
 
 /* ------------------------------------------------------------- standby */

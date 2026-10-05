@@ -715,8 +715,6 @@ export const Invoke = {
    * handler in main.
    */
   runLoop: 'loop:run',
-  /** Give up on the current stop and head for the next. */
-  skipLoopStop: 'loop:skip',
   /** Turn a bounce loop round. Refused for a plain loop. */
   reverseLoop: 'loop:reverse',
   /** The loops the client ships, for the settings screen to offer. */
@@ -1258,8 +1256,6 @@ export interface IpcApi {
   runLoop(session: SessionId, loop: Loop): Promise<string | null>;
   /** Start a named loop from `automation.loops`. Resolves to a refusal, or null. */
   startLoop(session: SessionId, name: string): Promise<string | null>;
-  /** Resolves to a refusal — nothing looping — or null. */
-  skipLoopStop(session: SessionId): Promise<string | null>;
   /** Resolves to a refusal — nothing looping, or not a bounce loop — or null. */
   reverseLoop(session: SessionId): Promise<string | null>;
   /**
