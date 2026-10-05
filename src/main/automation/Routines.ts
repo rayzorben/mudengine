@@ -55,7 +55,7 @@ import type { CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
 import {
   isStaleSentence,
-  READ,
+  readBy,
   REFRESH,
   staleAfter,
   unread,
@@ -65,6 +65,7 @@ import {
 import { SET_STATLINE } from '../../shared/statline';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import { StaleFacts } from './StaleFacts';
 
 export interface RoutineEvents {
   notice?(message: string): void;
@@ -153,6 +154,8 @@ export class Routines implements SessionModule {
 
   /** The party listing on its clock and after a round (todo 831). See `PartyListing`. */
   private readonly partyListing: PartyListing;
+  /** What a sentence made stale, asked until a send carries it. */
+  private readonly stale: StaleFacts;
 
   constructor(
     private config: AutomationConfig,
@@ -160,6 +163,7 @@ export class Routines implements SessionModule {
     private readonly events: RoutineEvents
   ) {
     this.partyListing = new PartyListing(queue, () => this.config);
+    this.stale = new StaleFacts(queue);
   }
 
   configure(config: AutomationConfig): void {
@@ -186,6 +190,7 @@ export class Routines implements SessionModule {
     this.lastSent = Date.now();
     this.inRealm = false;
     this.partyListing.reset();
+    this.stale.reset();
     this.stopIdle();
   }
 
@@ -317,6 +322,7 @@ export class Routines implements SessionModule {
      */
     this.askRoster();
     this.askUnread();
+    if (this.config.enabled) this.stale.ask();
     // And the party listing on its clock (todo 831).
     this.partyListing.onCharacter(state);
   }
@@ -570,9 +576,8 @@ export class Routines implements SessionModule {
    * the listing may not.
    */
   onBlock(block: Block): void {
-    for (const fact of Object.keys(READ) as StaleFact[]) {
-      if (READ[fact] === block.type) this.read.add(fact);
-    }
+    for (const fact of readBy(block.type)) this.read.add(fact);
+    this.stale.answered(block.type);
     if (!this.config.enabled) return;
     if (block.type === 'spellbook-refused') {
       const book = block.groups?.['book'];
@@ -643,15 +648,7 @@ export class Routines implements SessionModule {
      * chose.
      */
     if (isStaleSentence(block.type))
-      this.refresh(staleAfter(block.type), this.whyStale(block.type));
-  }
-
-  /** Asks for each stale fact once, in the words of whatever made it stale. */
-  private refresh(facts: readonly StaleFact[], reason: string): void {
-    for (const fact of facts) {
-      const { command, coalesceKey } = REFRESH[fact];
-      this.queue.enqueue({ command, priority: 'probe', coalesceKey, reason });
-    }
+      this.stale.owe(staleAfter(block.type), this.whyStale(block.type));
   }
 
   /**

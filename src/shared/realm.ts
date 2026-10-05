@@ -225,9 +225,11 @@ export interface FamilyReading {
  * that treated it as a tell would answer confidently on the first prompt of
  * every session.
  *
- * - **`user-experience-table` ⇒ MajorMUD.** `exp` on GreaterMUD answers with
- *   the summary line alone: zero tables across every recorded `orohost`
- *   session against three in one Paradigm session (`shared/experience.ts`).
+ * - **`user-experience-table` answering `exp` ⇒ MajorMUD.** `exp` on
+ *   GreaterMUD answers with the summary line alone: zero tables across every
+ *   recorded `orohost` session against three in one Paradigm session
+ *   (`shared/experience.ts`). `? exp` prints the same table on `orohost`
+ *   (wire, 2026-10-04), so the table answering anything else says nothing.
  * - **`user-profile` carrying `Location:` ⇒ GreaterMUD.** The `map,room` pair
  *   is `rm`'s answer. `Recent Deaths:` matches the same block type and is
  *   *not* a tell — it is `pro`'s heading, which is why the groups are tested
@@ -270,11 +272,14 @@ export interface FamilyReading {
  *   for a class with no mana, measured — so it is a tell about the lineage
  *   only for a command whose absence is the thing that separates them.
  *
- * None costs a command the client does not already send.
+ * None costs a command the client does not already send for its own sake.
  */
 export function familyToldBy(block: Block, answering: string | null = null): FamilyReading | null {
+  // `? exp` prints the table on orohost too (2026-10-04): only a plain `exp` answered with one tells.
   if (block.type === 'user-experience-table') {
-    return { family: 'majormud', tell: 'experience-table' };
+    return commandOf(answering ?? '') === 'Experience'
+      ? { family: 'majormud', tell: 'experience-table' }
+      : null;
   }
   if (block.type === 'user-profile' && block.groups['room'] !== undefined) {
     return { family: 'greatermud', tell: 'locate-answered' };
