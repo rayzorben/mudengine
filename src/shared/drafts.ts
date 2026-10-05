@@ -51,6 +51,7 @@ import {
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
 import { asCoinNames, type CoinNames } from './coins';
+import { asLowLives } from './lives';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import { DEFAULT_LOGGING, LOG_DAYS_MAX } from './logging';
 
@@ -367,6 +368,8 @@ export interface ProfileDraft {
    * for, this one puts back the one somebody had. See `Profile.autoReconnect`.
    */
   autoReconnect: boolean;
+  /** Ask before logging in at this many lives left or fewer. See `Profile.lowLives`. */
+  lowLives: number;
   accent: ProfileAccent;
   /**
    * This character's own theme, or '' to follow the options file.
@@ -841,6 +844,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     autoConnect: value['autoConnect'] === true,
     // `!== false`: on unless it was turned off. See the field.
     autoReconnect: value['autoReconnect'] !== false,
+    lowLives: asLowLives(value['lowLives']),
     accent: PROFILE_ACCENTS.includes(accent as ProfileAccent)
       ? (accent as ProfileAccent)
       : PROFILE_ACCENTS[0],

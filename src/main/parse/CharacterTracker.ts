@@ -881,12 +881,10 @@ export class CharacterTracker {
     if (!next) return !idle;
     /*
      * What is worn, written down, from the one place a new state is committed
-     * — the same placement `company.remember` has and for the same reason: a
-     * line in each of the seventy-four cases that can move an item is
-     * seventy-four chances to forget one.
-     *
-     * Only when the pack changed: a status line carries no inventory. An
-     * entry gained since the last `i` gets its realm row here too.
+     * (`company.remember`'s placement and reason: seventy-four cases can move
+     * an item, seventy-four chances to forget one). Only when the pack
+     * changed, as a status line carries none; an entry gained since the last
+     * `i` gets its realm row here too.
      */
     if (this.state.inventory.items !== before.inventory.items) {
       this.state = withJoinedItems(this.state, this.world);
@@ -930,10 +928,12 @@ export class CharacterTracker {
     if (this.state.combat.target !== before.combat.target) {
       this.state = withTargetEntity(this.state, this.world);
     }
-    // The book, written down from the same single commit point as the gear.
+    // The book and the lives, written down from the same single commit point as the gear.
     if (this.state.spellbook !== before.spellbook && this.state.spellbook !== null)
       this.belongings.rememberSpellbook(this.state.spellbook);
     if (this.state.stash !== before.stash) this.belongings.rememberStash(this.state.stash);
+    const lives = this.state.progress.lives;
+    if (lives !== null && lives !== before.progress.lives) this.belongings.rememberLives(lives);
     return this.state !== before;
   }
 

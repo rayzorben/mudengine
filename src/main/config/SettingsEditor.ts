@@ -23,6 +23,7 @@ import { fileSlug, isLoopFileName } from '../../shared/files';
 import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { t } from '../app/i18n';
+import { asLowLives, DEFAULT_LOW_LIVES } from '../../shared/lives';
 import { asLocateWord, DEFAULT_LOCATE } from '../../shared/locate';
 import {
   ownFleeGotoCommand,
@@ -210,6 +211,7 @@ export class SettingsEditor {
         document.setIn(['accent'], draft.accent);
         document.setIn(['autoConnect'], draft.autoConnect);
         document.setIn(['autoReconnect'], draft.autoReconnect);
+        document.setIn(['lowLives'], draft.lowLives);
         // A theme is `ui.theme`, the overlay every other setting uses; blank
         // means "follow the options file", so the key is removed rather than
         // written empty, and an emptied `ui` map goes with it.
@@ -1223,6 +1225,7 @@ export class SettingsEditor {
         // On unless the file says otherwise, so a character written before the
         // setting existed shows the tick it is actually running with.
         autoReconnect: record['autoReconnect'] !== false,
+        lowLives: asLowLives(record['lowLives']),
         theme: themeOf(record['ui']),
         serverName: typeof record['server'] === 'string' ? record['server'] : null,
         target,
@@ -1449,6 +1452,7 @@ function blank(id: string): ProfileEditable {
     theme: '',
     autoConnect: false,
     autoReconnect: true,
+    lowLives: DEFAULT_LOW_LIVES,
     serverName: null,
     target: { host: '', port: 23, encoding: 'cp437' },
     username: '',

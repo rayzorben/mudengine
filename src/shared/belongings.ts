@@ -54,6 +54,12 @@ export interface KeptRoom extends RoomReference {
   confidence: number;
 }
 
+/** The lives the character last had, and when that was read. See `src/shared/lives.ts`. */
+export interface KeptLives {
+  count: number;
+  at: number;
+}
+
 export interface BelongingsSink {
   /**
    * What the banks last said, from before this session.
@@ -182,6 +188,11 @@ export interface BelongingsSink {
   /** A room was placed; keep where. */
   rememberRoom(place: KeptRoom): void;
   /**
+   * The sheet or a death said how many lives are left; keep the count. Read
+   * before a dial, when the realm has not said it yet (`LowLivesHold`).
+   */
+  rememberLives(count: number): void;
+  /**
    * Throws the whole record away, because the player says this is not the same
    * character.
    *
@@ -223,6 +234,7 @@ export const NO_BELONGINGS: BelongingsSink = {
   rememberStatsBase: () => {},
   recallRoom: () => null,
   rememberRoom: () => {},
+  rememberLives: () => {},
   forget: () => false
 };
 

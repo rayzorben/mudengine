@@ -26,6 +26,7 @@ import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
 import { Reconnect } from './Reconnect';
+import { LowLivesHold } from './LowLivesHold';
 import type { ExtensionDeps } from './extensionWiring';
 import type { LoadedExtension } from '../extensions/ExtensionLoader';
 import type { LayerWrite } from '../../shared/extensions';
@@ -52,7 +53,8 @@ import { sameTarget, type ConnectionState, type ConnectionTarget } from '../../s
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
-import type { CharacterRecord, KeptRoom } from '../../shared/belongings';
+import type { CharacterRecord, KeptLives, KeptRoom } from '../../shared/belongings';
+import type { LowLivesAnswer } from '../../shared/lives';
 import type { TalkSink } from './TalkLog';
 import { isTalkBlock } from '../../shared/talk';
 import { SessionDebug } from './SessionDebug';
@@ -70,6 +72,8 @@ export interface SessionSlot {
    * on a link that dropped are four outages that each end when their own does.
    */
   readonly reconnect: Reconnect;
+  /** Every dial asks it first: a character low on lives waits for the player. See `LowLivesHold`. */
+  readonly lowLives: LowLivesHold;
   log: SessionLog | null;
   capture: SessionCapture | null;
   /**
@@ -229,6 +233,8 @@ export interface SessionHostOptions {
    * realm its file says it plays, so the tab draws that room before any dial.
    */
   lastRoomFor?(id: SessionId): KeptRoom | null;
+  /** The lives the character's record last read on the realm at `target`, before a dial there. */
+  livesAt(id: SessionId, target: ConnectionTarget): KeptLives | null;
   /**
    * The realm at `target` named its own data (`SessionSink.realmTold`).
    *
@@ -285,6 +291,8 @@ export interface SessionHostOptions {
    * thing that would keep it.
    */
   autoReconnect: (id: SessionId) => boolean;
+  /** The character's `lowLives`, read through like `autoReconnect`; 0 for one with no file. */
+  lowLives: (id: SessionId) => number;
   /**
    * The client's own settings — which of its commands stay out of the
    * console. One file for every session, read fresh like the options are.
@@ -360,8 +368,18 @@ export class SessionHost {
      * only the id: where to dial and whether to bother are both read at the
      * point of use, so nothing here pins a value the player can still change.
      */
+    // Before the ladder, which asks it before every rung.
+    const lowLives = new LowLivesHold({
+      livesAt: (target) => this.options.livesAt(id, target),
+      floor: () => this.options.lowLives(id),
+      automationOn: () => this.options.configFor(id).automation.enabled,
+      ask: (ask) => this.options.toAll(Push.lowLives, { session: id, payload: ask }),
+      notice: (message) => this.options.notice({ session: id, message })
+    });
+
     const reconnect = new Reconnect({
       enabled: () => this.options.autoReconnect(id),
+      held: (target) => lowLives.holds(target),
       // `dial` rather than `connect`, deliberately: `connect` calls a scheduled
       // retry off, and a retry calling itself off is a ladder with one rung.
       dial: (target) => this.dial(this.ensure(id), target),
@@ -471,14 +489,7 @@ export class SessionHost {
           this.options.toAll(Push.verdict, { session: id, payload: appraisal }),
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
-        // Nothing is written that cannot be read back now.
-        switchAutomationNow: (name, on) => {
-          const { flipSwitch, reread } = this.options;
-          if (flipSwitch === undefined || reread === undefined) return false;
-          if (!flipSwitch(id, name, on)) return false;
-          reread();
-          return true;
-        },
+        switchAutomationNow: (name, on) => this.switchNow(id, name, on),
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager
           // holds from `connect`; a word with no address is a word about nowhere.
@@ -556,6 +567,7 @@ export class SessionHost {
         onProblem: (message) => this.options.notice({ session: id, message })
       }),
       reconnect,
+      lowLives,
       log: null,
       capture: null,
       debug,
@@ -591,21 +603,58 @@ export class SessionHost {
      * the player just made.
      */
     slot.reconnect.cancel();
-    /*
-     * The same realm while already playing there is refused: the dial starts
-     * by hanging up. A tab that had not caught up showed a playing character
-     * as offline, and its Connect logged the character in again (2026-09-28).
-     * A different address still switches servers.
-     */
-    const state = slot.manager.state;
-    if (state.phase === 'connected' && state.target !== null && sameTarget(state.target, target)) {
-      this.options.notice({
-        session: id,
-        message: t('notices.session.alreadyConnected', { host: target.host, port: target.port })
-      });
-      return state;
-    }
+    if (this.alreadyThere(slot, target)) return slot.manager.state;
+    // A character low on lives is asked about first, and the answer dials. A
+    // press while a dial is under way is not asked: `dial` refuses it and says so.
+    const dialling = BUSY_PHASES.has(slot.manager.state.phase);
+    if (!dialling && slot.lowLives.holds(target)) return slot.manager.state;
     return this.dial(slot, target);
+  }
+
+  /**
+   * The same realm while already playing there is refused, and said: the dial
+   * starts by hanging up. A tab that had not caught up showed a playing
+   * character as offline, and its Connect logged the character in again
+   * (2026-09-28). A different address still switches servers.
+   */
+  private alreadyThere(slot: SessionSlot, target: ConnectionTarget): boolean {
+    const state = slot.manager.state;
+    if (state.phase !== 'connected' || state.target === null || !sameTarget(state.target, target))
+      return false;
+    this.options.notice({
+      session: slot.id,
+      message: t('notices.session.alreadyConnected', { host: target.host, port: target.port })
+    });
+    return true;
+  }
+
+  /**
+   * The player's answer to the low-lives question: switch automation off and
+   * log in, log in, or stay offline. False for staying, for a question no
+   * longer open, for a character already in that realm and for a switch that
+   * could not be written, which logs nobody in; all but the stale question
+   * are said. A dial refused as already under way says so itself.
+   */
+  async answerLowLives(id: SessionId, answer: LowLivesAnswer): Promise<boolean> {
+    const slot = this.slots.get(id);
+    const asked = slot?.lowLives.answered(answer) ?? null;
+    if (slot === undefined || asked === null || this.alreadyThere(slot, asked.target)) return false;
+    if (asked.switchOff && !this.switchNow(id, 'automation', false)) {
+      this.options.notice({ session: id, message: t('session.lowLives.notSwitchedOff') });
+      return false;
+    }
+    slot.reconnect.cancel();
+    await this.dial(slot, asked.target);
+    return true;
+  }
+
+  /** One switch written into the character's file and read back now. Nothing is written that cannot be read back. */
+  private switchNow(id: SessionId, name: AutomationSwitch, on: boolean): boolean {
+    const { flipSwitch, reread } = this.options;
+    if (flipSwitch === undefined || reread === undefined) return false;
+    if (!flipSwitch(id, name, on)) return false;
+    reread();
+    return true;
   }
 
   /**

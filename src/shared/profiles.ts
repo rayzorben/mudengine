@@ -33,6 +33,7 @@ import {
 } from './config';
 import { mergeMobRules, normalizeMobRules, type MobRule } from './mobRules';
 import { asCoinNames, type CoinNames } from './coins';
+import { asLowLives } from './lives';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import type { ConnectionTarget } from './types';
 import { isRecord, str } from './values';
@@ -116,6 +117,12 @@ export interface Profile {
    * has left the realm on purpose — see `Reconnect`.
    */
   autoReconnect: boolean;
+  /**
+   * At this many lives left or fewer, with automation on, the client asks
+   * before it logs this character in, whether the dial is a reconnect, a
+   * launch or Connect (todo 07). 0 never asks. See `src/shared/lives.ts`.
+   */
+  lowLives: number;
   accent: ProfileAccent;
   /**
    * The complete options this character runs under: the global file with this
@@ -475,6 +482,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // `!== false`, not `=== true`: this one is on unless the file says
       // otherwise. See the field.
       autoReconnect: raw['autoReconnect'] !== false,
+      lowLives: asLowLives(raw['lowLives']),
       accent: isProfileAccent(accent) ? accent : accentFor(id),
       // Merged onto the file as written, then coerced by the same function the
       // options file goes through: one place decides what a valid value is, and
@@ -505,8 +513,8 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
  * Strips the keys that describe the character itself, leaving the overlay.
  *
  * `server`, `account` and `login` are resolved into `connection:` above, and
- * `locate` into the profile beside it; `name`, `accent`, `autoConnect` and
- * `autoReconnect` are properties of the profile rather than of the client.
+ * `locate` into the profile beside it; `name`, `accent`, `autoConnect`,
+ * `autoReconnect` and `lowLives` are properties of the profile rather than of the client.
  * Leaving them in would put keys into the merged config that `normalizeConfig`
  * does not know, which is harmless but misleading to read.
  */
@@ -521,6 +529,7 @@ function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknow
     accent,
     autoConnect,
     autoReconnect,
+    lowLives,
     ...rest
   } = raw;
   void server;
@@ -532,5 +541,6 @@ function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknow
   void accent;
   void autoConnect;
   void autoReconnect;
+  void lowLives;
   return rest;
 }
