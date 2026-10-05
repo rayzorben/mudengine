@@ -1,18 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
-import { RoundClock } from '../RoundClock';
+import { RoundClock, fitBeat } from '../RoundClock';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { blockOf } from '../../../shared/__tests__/blocks';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
+const NOMINAL = TUNING.hunting.roundSeconds * 1000;
 
 /*
  * The rounds of one fight, as the capture has them
  * (`2026-10-03_17-51-16_festus.mudcap.jsonl`, t=956178, festus against a
- * vampire bat on Paradigm): five one-round gaps of 5,020-5,052 ms, then a
- * 4,030 ms gap where the server's round came a tick early.
+ * vampire bat on Paradigm): gaps of 5,020-5,052 ms, then one of 4,030 ms.
+ * Over the whole session the rounds keep a beat of 4,999.9 ms.
  */
 const ROUNDS = [956178, 961230, 966282, 971312, 976346, 981366, 985396];
+
+/** A round's first blow lands up to half a second either side of the beat. */
+const JITTER = [310, -420, 120, 470, -260, 40, -480, 200, -90, 380, -330, 0];
+
+/** `count` rounds on a beat of `periodMs` from `zero`, every `every`th round seen, with jitter. */
+function beat(zero: number, periodMs: number, count: number, every = 1): number[] {
+  return Array.from(
+    { length: count },
+    (_, i) => zero + i * every * periodMs + JITTER[i % JITTER.length]!
+  );
+}
 
 function clockOver(rounds: readonly number[]): RoundClock {
   const clock = new RoundClock();
@@ -20,58 +32,91 @@ function clockOver(rounds: readonly number[]): RoundClock {
   return clock;
 }
 
+function nextAt(clock: RoundClock, now: number): number {
+  const next = clock.next(now);
+  if (!next.known) throw new Error('no round known');
+  return next.at;
+}
+
 describe('the next round', () => {
   it('is unknown until a round is seen', () => {
     expect(new RoundClock().next(1000)).toEqual({ known: false });
   });
 
-  it('is a nominal round on from the last round until enough gaps are measured', () => {
-    const clock = clockOver(ROUNDS.slice(0, TUNING.combat.roundSamplesLeast));
-    const nominal = TUNING.hunting.roundSeconds * 1000;
-    expect(clock.next(ROUNDS[2]! + 100)).toEqual({
+  it('is a nominal round on from the only round seen', () => {
+    expect(clockOver([10_000]).next(10_100)).toEqual({
       known: true,
-      at: ROUNDS[2]! + nominal,
-      periodMs: nominal
+      at: 10_000 + NOMINAL,
+      periodMs: NOMINAL
     });
   });
 
-  it('is the median gap on from the last round', () => {
-    const clock = clockOver(ROUNDS.slice(0, 6));
-    // Gaps 5052, 5052, 5030, 5034, 5020: the median is 5034.
-    expect(clock.next(981366 + 1000)).toEqual({
+  it('keeps the nominal period over one fight, and averages its rounds for the phase', () => {
+    const clock = clockOver(beat(100_000, NOMINAL, 6));
+    const late = JITTER.slice(0, 6).reduce((a, b) => a + b, 0) / 6;
+    expect(clock.next(100_000 + 5.5 * NOMINAL)).toEqual({
       known: true,
-      at: 981366 + 5034,
-      periodMs: 5034
-    });
-    // Two rounds on, with none seen in between.
-    expect(clock.next(981366 + 6000)).toEqual({
-      known: true,
-      at: 981366 + 2 * 5034,
-      periodMs: 5034
+      at: expect.closeTo(100_000 + 6 * NOMINAL + late, 6),
+      periodMs: NOMINAL
     });
   });
 
-  it('leaves a tick the server skipped out of the round length, and starts from it', () => {
-    const clock = clockOver(ROUNDS);
-    expect(clock.next(985396 + 100)).toEqual({
-      known: true,
-      at: 985396 + 5034,
-      periodMs: 5034
-    });
+  it('takes the 4 s gap a capture showed as the blows catching up with the beat', () => {
+    // Each round's blows came about 37 ms later than the last until one came
+    // a tick early; the next round is on the beat.
+    const due = 956178 + 7 * NOMINAL;
+    expect(Math.abs(nextAt(clockOver(ROUNDS), 985396 + 100) - due)).toBeLessThan(100);
   });
 
-  it('keeps counting rounds on from the last one seen, however long ago', () => {
-    const clock = clockOver(ROUNDS.slice(0, 6));
-    expect(clock.next(981366 + 20 * 5034 + 1)).toEqual({
+  it('learns the server period from many rounds and holds it for minutes with none seen', () => {
+    const period = 5000.1;
+    const rounds = beat(1_000_000, period, 120, 3);
+    const clock = clockOver(rounds);
+    expect(clock.next(rounds.at(-1)!)).toMatchObject({
       known: true,
-      at: 981366 + 21 * 5034,
-      periodMs: 5034
+      periodMs: expect.closeTo(period, 0)
     });
+    // Seven and a half minutes on, festus's walk of 2026-10-05.
+    const due = 1_000_000 + 450 * period;
+    expect(Math.abs(nextAt(clock, due - 1000) - due)).toBeLessThan(100);
+  });
+
+  it('starts a new beat after rounds off the old one in a row', () => {
+    const shifted = 200_000 + 2500;
+    const clock = clockOver([
+      ...beat(100_000, NOMINAL, 6),
+      ...beat(shifted, NOMINAL, TUNING.combat.offBeatRounds)
+    ]);
+    const after = shifted + TUNING.combat.offBeatRounds * NOMINAL;
+    expect(Math.abs(nextAt(clock, after - 1000) - after)).toBeLessThan(500);
+  });
+
+  it('leaves a single round off the beat out', () => {
+    const rounds = beat(100_000, NOMINAL, 6);
+    const clock = clockOver([...rounds, rounds.at(-1)! + 2600]);
+    expect(nextAt(clock, rounds.at(-1)! + 3000)).toBe(
+      nextAt(clockOver(rounds), rounds.at(-1)! + 3000)
+    );
   });
 
   it('forgets everything on a new connection', () => {
     const clock = clockOver(ROUNDS);
     clock.reset();
     expect(clock.next(985396 + 100)).toEqual({ known: false });
+  });
+});
+
+describe('fitBeat', () => {
+  it('keeps the nominal period while the fitted one is unsure', () => {
+    const seen = [0, 5300, 9800].map((at, n) => ({ at, n }));
+    expect(fitBeat(seen, NOMINAL, 1).periodMs).toBe(NOMINAL);
+  });
+
+  it('takes the fitted period once it is sure', () => {
+    const seen = Array.from({ length: 50 }, (_, n) => ({ at: 7 + n * 5003, n }));
+    expect(fitBeat(seen, NOMINAL, 1)).toEqual({
+      zero: expect.closeTo(7, 6),
+      periodMs: expect.closeTo(5003, 6)
+    });
   });
 });

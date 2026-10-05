@@ -497,19 +497,20 @@ const TUNING_DEFAULTS = {
      */
     roundCommandExpiryMs: 2000,
     /**
-     * One-round gaps the round's length is the median of (`RoundClock`), and
-     * how many before the median replaces `hunting.roundSeconds`. Measured
-     * 2026-10-03 on Paradigm over 17,722 gaps: median 5,037 ms (five server
-     * ticks of about 1,008 ms).
+     * The round's beat (`RoundClock`): how many of the latest rounds it is
+     * fitted through, and how sure the fitted period must be before it
+     * replaces `hunting.roundSeconds`. Measured 2026-10-05 on Paradigm over
+     * festus's sessions of 1,244 to 2,396 rounds: one beat of 4,999.9 to
+     * 5,000.1 ms for the whole connection.
      */
-    roundSamples: 8,
-    roundSamplesLeast: 3,
+    roundSamples: 120,
+    roundPeriodSureMs: 1,
     /**
-     * How far from `hunting.roundSeconds` a gap may be and still be one round.
-     * A tick the server skips makes a 4 s gap (4% of gaps), which is a fifth
-     * out, so the band is half that.
+     * How far from the beat, as a share of a round, a round may land and still
+     * be on it, and how many off it in a row start a new beat.
      */
-    oneRoundShare: 0.1,
+    offBeatShare: 0.25,
+    offBeatRounds: 3,
     /**
      * The shortest gap between two attempts to open a fight on the same thing.
      * Not pacing — pacing comes from the prompt — but a floor on *asking*: an
@@ -1255,11 +1256,11 @@ const TUNING_DEFAULTS = {
     /**
      * Slack on a run's predicted round (`walk/OffRounds.ts`): a step goes
      * only when two steps and this fit before it, and a round that went off
-     * within this is taken as just fired. Measured 2026-10-03 on Paradigm: 95%
-     * of rounds land within 250 ms of the one predicted a round ahead, 87%
-     * three ahead, 78% five ahead.
+     * within this is taken as just fired. Measured 2026-10-05 on Paradigm over
+     * three sessions: a round's first blow is 250 ms from the beat at the
+     * median and 470 ms at p90.
      */
-    offRoundMarginMs: 250,
+    offRoundMarginMs: 500,
     /** Move answers timed before a run is timed to the rounds; at most `nudgeSamples`. */
     offRoundStepSamples: 3,
     /**
