@@ -2039,6 +2039,10 @@ automation:
     # minutes for everyone to be here and in it. 0 invites and walks on.
     regroupMinutes: 5
 
+    # Following, when the leader fails to bash a door: pick it if your
+    # picklocks are enough for it, or else bash it if your strength is.
+    helpWithDoors: false
+
   # Keeping a character alive, rather than playing it.
   safety:
     # Running away.

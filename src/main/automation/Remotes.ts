@@ -102,6 +102,7 @@ import { AutoJoin, joinIntent } from './AutoJoin';
 import { restoreNotices } from './gearNotices';
 import { restorePlan } from '../../shared/gear';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
+import { LeaderDoors } from './LeaderDoors';
 import type { Direction, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
@@ -353,6 +354,8 @@ export class Remotes implements SessionModule {
   private readonly autoJoin: AutoJoin;
   /** Leading the party through a room's own command, and waiting for it. See `PartyRegroup`. */
   private readonly regroup: PartyRegroup;
+  /** Picking or bashing a door the leader is failing to bash. See `LeaderDoors`. */
+  private readonly leaderDoors: LeaderDoors;
 
   constructor(
     private config: AutomationConfig,
@@ -373,12 +376,16 @@ export class Remotes implements SessionModule {
       notice: (message) => events.notice?.(message),
       askJoin: (member, state) => this.ask(member, 'join', state)
     });
+    this.leaderDoors = new LeaderDoors(config, queue, {
+      notice: (message) => events.notice?.(message)
+    });
   }
 
   configure(config: AutomationConfig): void {
     this.config = config;
     this.autoJoin.configure(config);
     this.regroup.configure(config);
+    this.leaderDoors.configure(config);
   }
 
   /** A walk's step is about to be queued: a portal's `@party` goes ahead of it. */
@@ -397,8 +404,8 @@ export class Remotes implements SessionModule {
   }
 
   /**
-   * A classified line arrived. Chat that opens with `@` matters here, and a
-   * party join (`askJoined`).
+   * A classified line arrived. Chat that opens with `@` matters here, a party
+   * join (`askJoined`), and the leader's door (`LeaderDoors`).
    *
    * `state` is passed rather than held because the answer to `@health` is a
    * fact about *now*, and a copy kept from the last state change is a copy that
@@ -407,6 +414,7 @@ export class Remotes implements SessionModule {
   onBlock(block: Block, state: CharacterState): void {
     // The party's own switch, not the remotes': the regroup answers nobody's `@`.
     this.regroup.onBlock(block);
+    this.leaderDoors.onBlock(block, state);
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     this.autoJoin.onBlock(block, state);
     if (block.type === 'party-joined') {
@@ -822,6 +830,7 @@ export class Remotes implements SessionModule {
     this.seen = false;
     this.autoJoin.reset();
     this.regroup.reset();
+    this.leaderDoors.reset();
   }
 
   /** The regroup's clock is the one thing here that outlives a call. */

@@ -48,6 +48,7 @@ export default function PartyFields({
       | 'ignoreWait'
       | 'parAfterRound'
       | 'relayPortals'
+      | 'helpWithDoors'
       | 'askHealth',
     label: string,
     hint: string,
@@ -131,6 +132,12 @@ export default function PartyFields({
           t('settings.party.relayPortalsLabel'),
           t('settings.party.relayPortalsHint'),
           'relay-portals'
+        )}
+        {check(
+          'helpWithDoors',
+          t('settings.party.helpWithDoorsLabel'),
+          t('settings.party.helpWithDoorsHint'),
+          'help-with-doors'
         )}
         <div className="settings-inline">
           <NumberField

@@ -1917,6 +1917,10 @@ describe('the cheap eight', () => {
       state: 'closed'
     });
     expect(expectType('The gate to the south just opened.', 'door-swings')['state']).toBe('opened');
+    // Somebody else's failed bash (captures/014).
+    expect(
+      expectType('You see Baby attempt to bash the gate to the east.', 'player-bashes-door')
+    ).toMatchObject({ player: 'Baby', barrier: 'gate', direction: 'east' });
     expect(expectType('Rend went west from here.', 'user-tracks')).toMatchObject({
       player: 'Rend',
       direction: 'west'

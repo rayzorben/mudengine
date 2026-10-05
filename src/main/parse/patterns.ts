@@ -1653,6 +1653,17 @@ export const RULES: Rule[] = [
     type: 'door-swings',
     pattern:
       /^The (?<barrier>door|gate|portcullis) to the (?<direction>[a-z]+) just (?<state>opened|closed)\.$/
+  },  /*
+   * `You see Baby attempt to bash the gate to the east.` — another player's
+   * failed bash, three in a row in captures/014. `Door.TryBashDoor` composes
+   * `"You see " + Name + " attempt to bash the " + doorType + " to the " +
+   * exitName + "."`; its success (`bash the … to the …`, no `attempt`) is not
+   * read, nor is a pick, whose failure the room is never told.
+   */
+  {
+    type: 'player-bashes-door',
+    pattern:
+      /^You see (?<player>[A-Z][\w'-]*) attempt to bash the (?<barrier>door|gate|portcullis) to the (?<direction>[a-z]+)\.$/
   },
   /*
    * `A new day begins to approach.` — the nightly cleanup, announced four
