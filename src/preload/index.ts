@@ -90,7 +90,6 @@ const api: IpcApi = {
   stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),
   startLoop: (session, name) => ipcRenderer.invoke(Invoke.startLoop, session, name),
-  skipLoopStop: (session) => ipcRenderer.invoke(Invoke.skipLoopStop, session),
   reverseLoop: (session) => ipcRenderer.invoke(Invoke.reverseLoop, session),
   loopCatalogue: () => ipcRenderer.invoke(Invoke.loopCatalogue),
   saveGlobal: (draft) => ipcRenderer.invoke(Invoke.saveGlobal, draft),

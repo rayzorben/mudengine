@@ -88,7 +88,6 @@ const stable: Omit<CardContextInputs, 'nameIndexes'> = {
   startMoving: noop,
   stopMoving: noop,
   startLoop: noop,
-  skipLoop: noop,
   reverseLoop: noop,
   send: noop,
   openLoops: noop,

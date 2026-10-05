@@ -48,6 +48,12 @@ function planner(over: Partial<LoopPlanner> = {}) {
   return { planner: base, walked };
 }
 
+/** Reach the stop being walked to and wait out its dwell, so the lap heads for the next. */
+function reachNext(runner: LoopRunner): void {
+  runner.onWalkEnded(true, null, state());
+  vi.advanceTimersByTime(2_100);
+}
+
 describe('starting a loop', () => {
   it('walks to the first stop and says what it is doing', () => {
     const { planner: p, walked } = planner();
@@ -132,8 +138,8 @@ describe('starting a loop', () => {
    * The hold is read, never latched.
    *
    * A flag would have to be cleared on every path that ends the wait, and there
-   * are six — the timer, `onCharacter` planning the leg the moment the rest
-   * lands, `stop`, `skip`, `resume` and `reset` — five of which call
+   * are five — the timer, `onCharacter` planning the leg the moment the rest
+   * lands, `stop`, `resume` and `reset` — four of which call
    * `clearTimer` and so kill the very callback that would have cleared it.
    * Found in review; without the derived reading a lap drawn `resting` stayed
    * that way for the session, and the tab read `recovering` beside it.
@@ -240,10 +246,8 @@ describe('when the lap actually begins', () => {
   it('does not fire again for every later stop or lap', () => {
     const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
-    runner.onWalkEnded(true, null, state());
-    vi.advanceTimersByTime(2_100);
-    runner.onWalkEnded(true, null, state());
-    vi.advanceTimersByTime(2_100);
+    reachNext(runner);
+    reachNext(runner);
     expect(runner.progress.laps).toBe(1);
     expect(begun()).toBe(1);
   });
@@ -309,8 +313,7 @@ describe('going round', () => {
     expect(walked).toEqual(['Arena']);
     vi.advanceTimersByTime(2_100);
     expect(walked).toEqual(['Arena', 'Road']);
-    runner.onWalkEnded(true, null, state());
-    vi.advanceTimersByTime(2_100);
+    reachNext(runner);
     expect(walked).toEqual(['Arena', 'Road', 'Arena']);
     expect(runner.progress.laps).toBe(1);
   });
@@ -920,8 +923,7 @@ describe('holding while hurt', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    runner.onWalkEnded(true, null, state());
-    vi.advanceTimersByTime(2_100);
+    reachNext(runner);
     expect(walked).toEqual(['Arena', 'Road']);
   });
 });
@@ -951,7 +953,7 @@ describe('the stops a lap still owes', () => {
   it('drops a stop as the lap reaches it', () => {
     const runner = new LoopRunner(rooms().planner, {});
     runner.start(abc, state());
-    runner.skip();
+    reachNext(runner);
     expect(runner.progress.remainingStops).toEqual(['1/2', '1/3']);
   });
 
@@ -961,8 +963,8 @@ describe('the stops a lap still owes', () => {
   it('stops at the end of the lap rather than running on round the next', () => {
     const runner = new LoopRunner(rooms().planner, {});
     runner.start(abc, state());
-    runner.skip();
-    runner.skip();
+    reachNext(runner);
+    reachNext(runner);
     expect(runner.progress.remainingStops).toEqual(['1/3']);
   });
 
@@ -970,7 +972,7 @@ describe('the stops a lap still owes', () => {
   it('reads a reversed bounce loop back down its own list', () => {
     const runner = new LoopRunner(rooms().planner, {});
     runner.start({ ...abc, bounce: true }, state());
-    runner.skip();
+    reachNext(runner);
     expect(runner.progress.remainingStops).toEqual(['1/2', '1/3']);
     runner.reverse();
     expect(runner.progress.remainingStops).toEqual(['1/2', '1/1']);
@@ -1090,28 +1092,6 @@ describe('the loop card’s controls', () => {
     expect(runner.progress).toMatchObject({ status: 'stopped', reason: 'asked' });
   });
 
-  it('skips the current stop and heads for the next', () => {
-    const { planner: p, walked } = planner();
-    const runner = new LoopRunner(p, {});
-    runner.start(loop, state());
-    expect(runner.progress.stop).toBe(1);
-    expect(runner.skip()).toBeNull();
-    expect(runner.progress.stop).toBe(2);
-    expect(walked).toEqual(['Arena', 'Road']);
-  });
-
-  it('while stopped, skip only moves the pointer and the walk waits for resume', () => {
-    const { planner: p, walked } = planner();
-    const runner = new LoopRunner(p, {});
-    runner.start(loop, state());
-    runner.stop('asked');
-    expect(runner.skip()).toBeNull();
-    expect(runner.progress.stop).toBe(2);
-    expect(walked).toEqual(['Arena']);
-    runner.resume(state());
-    expect(walked).toEqual(['Arena', 'Road']);
-  });
-
   it('reverses a bounce loop and refuses a plain one', () => {
     const { planner: p } = planner();
     const runner = new LoopRunner(p, {});
@@ -1128,7 +1108,6 @@ describe('the loop card’s controls', () => {
 
   it('refuses every control while nothing is looping', () => {
     const runner = new LoopRunner(planner().planner, {});
-    expect(runner.skip()).toBe(t('automation.loops.refusalNotLooping'));
     expect(runner.reverse()).toBe(t('automation.loops.refusalNotLooping'));
     expect(runner.resume(state())).toBe(t('automation.loops.refusalNotStopped'));
   });
@@ -1461,8 +1440,7 @@ describe('losing the connection', () => {
     expect(runner.progress).toMatchObject({ status: 'running', hold: null });
     // The route arrives; the lap books it as before and goes on from there.
     walking = false;
-    runner.onWalkEnded(true, null, state());
-    vi.advanceTimersByTime(2_100);
+    reachNext(runner);
     expect(walked).toEqual(['Arena', 'Road']);
   });
 

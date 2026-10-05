@@ -1975,20 +1975,6 @@ function registerIpc(): void {
     const answer = slot.manager.startLoop(parsed);
     return 'refused' in answer ? answer.refused : null;
   });
-  /*
-   * The loop's own two controls, from its card — the ones that mean nothing
-   * for a route. Skipping ends the leg being walked for the reason stopping
-   * does: the runner never touches the walker, and a leg left walking would
-   * arrive and dwell under a loop that had been told to move on.
-   */
-  handle(Invoke.skipLoopStop, (_caller, session: SessionId) => {
-    const slot = host?.get(session);
-    if (!slot) return t('app.session.notConnected');
-    if (slot.manager.loops.progress.status === 'running') {
-      slot.manager.walker.stop(t('session.walk.stoppedByPlayer'));
-    }
-    return slot.manager.loops.skip();
-  });
   handle(Invoke.reverseLoop, (_caller, session: SessionId) => {
     const slot = host?.get(session);
     if (!slot) return t('app.session.notConnected');

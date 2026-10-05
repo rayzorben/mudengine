@@ -150,7 +150,6 @@ export interface CardContext {
   startMoving(loop: string | null): void;
   stopMoving(): void;
   startLoop(name: string): void;
-  skipLoop(): void;
   reverseLoop(): void;
   /** Whose Player flyout is open from one of this character's listings, lower-cased, or null. */
   subject: string | null;
@@ -214,7 +213,6 @@ export interface AddressedActions {
   /** Re-base the Combat Stats card to this character's totals as they stand. */
   resetStats(): void;
   startLoop(name: string): void;
-  skipLoop(): void;
   reverseLoop(): void;
   selectPlayer(name: string, anchor: PopoverAnchor): void;
   setGangRemotes(remotes: RemoteName[]): void;
@@ -247,7 +245,6 @@ export type CardApi = Pick<
   | 'huntingGrounds'
   | 'stopMoving'
   | 'startLoop'
-  | 'skipLoopStop'
   | 'reverseLoop'
   | 'setGangRemotes'
   | 'setRemoteGangpath'
@@ -281,7 +278,6 @@ export interface CardContextInputs
       | 'startMoving'
       | 'stopMoving'
       | 'startLoop'
-      | 'skipLoop'
       | 'reverseLoop'
     >,
     Shown<
@@ -363,7 +359,6 @@ export function useCardContext({
   startMoving,
   stopMoving,
   startLoop,
-  skipLoop,
   reverseLoop,
   send,
   openLoops,
@@ -428,8 +423,6 @@ export function useCardContext({
         resetStats: () => resetStatsRef.current(sid),
         startLoop: (name) =>
           void api.startLoop(sid, name).then((refused) => sayRefusalRef.current(sid)(refused)),
-        skipLoop: () =>
-          void api.skipLoopStop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
         reverseLoop: () =>
           void api.reverseLoop(sid).then((refused) => sayRefusalRef.current(sid)(refused)),
         selectPlayer: (name, anchor) => selectPlayerRef.current(sid, name, anchor),
@@ -558,7 +551,6 @@ export function useCardContext({
         // float's own loops are not asked for, so it offers no picker.
         loops: shown ? loops : null,
         startLoop: shown ? startLoop : bound.startLoop,
-        skipLoop: shown ? skipLoop : bound.skipLoop,
         reverseLoop: shown ? reverseLoop : bound.reverseLoop,
         subject: flyout !== null && flyout.session === sid ? playerKey(flyout.name) : null,
         selectPlayer: bound.selectPlayer,
@@ -660,7 +652,6 @@ export function useCardContext({
       navigationVisible,
       loops,
       startLoop,
-      skipLoop,
       reverseLoop,
       // Read above like the rest: now that `toolbarPins` holds still, a value
       // left off this list is a stale closure a card acts on (todo 761).

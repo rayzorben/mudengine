@@ -49,7 +49,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the strips' cards and the drag's marks, out whole (`StripCards`,
   // `DragMarks`), and the rail's grid (`RailGrid`, todo 09).
   // Lowered by the palette taking the pane widths whole (todo 01).
-  'src/renderer/src/App.tsx': 1661,
+  'src/renderer/src/App.tsx': 1659,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   'src/main/automation/Walker.ts': 1933,

@@ -183,7 +183,6 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loops={ctx.loops}
           onChoose={ctx.chooseOnMap}
           onReverseLoop={ctx.reverseLoop}
-          onSkipLoop={ctx.skipLoop}
           onStart={ctx.startMoving}
           onStop={ctx.stopMoving}
           walk={view.walk}
