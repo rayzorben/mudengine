@@ -20,6 +20,7 @@ import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
 import { restorePlan } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
+import { atLivesFloor } from '../../shared/lives';
 import { roomId } from '../../shared/world';
 import type { SessionModule } from './Module';
 
@@ -274,7 +275,7 @@ export class GearRecovery implements SessionModule {
   private bound(state: CharacterState): string | null {
     const lives = state.progress.lives;
     const floor = this.config.recoverGearFloor;
-    if (floor > 0 && lives !== null && lives <= floor) {
+    if (lives !== null && atLivesFloor(lives, floor)) {
       return t('automation.gearRecovery.refusalLives', { lives, floor });
     }
     const tries = this.config.recoverGearTries;

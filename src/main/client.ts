@@ -60,8 +60,9 @@ import {
   UNKNOWN_WEARER
 } from '../shared/gear';
 import { planNotices, restoreNotices } from './automation/gearNotices';
-import { Belongings, peekRoom, peekSpellbook } from './session/Belongings';
-import type { CharacterRecord, KeptRoom } from '../shared/belongings';
+import { Belongings, peekLives, peekRoom, peekSpellbook } from './session/Belongings';
+import type { CharacterRecord, KeptLives, KeptRoom } from '../shared/belongings';
+import { asLowLivesAnswer } from '../shared/lives';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
 import {
   SpellMessageBook,
@@ -705,10 +706,28 @@ function belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord 
  */
 function lastRoomFor(id: SessionId): KeptRoom | null {
   const target = profileFor(id)?.target;
-  if (!target) return null;
+  return target ? fromRecord(id, target, (open) => open.recallRoom(), peekRoom) : null;
+}
+
+/** The lives the record last read on the realm at `target`, for the ask before a dial there. */
+function livesAt(id: SessionId, target: ConnectionTarget): KeptLives | null {
+  return fromRecord(id, target, (open) => open.recallLives(), peekLives);
+}
+
+/**
+ * One fact from a character's record for the realm at `target`: the open
+ * record's when it is that realm's (the file lags it by a deferred write),
+ * else read off the file without opening it.
+ */
+function fromRecord<T>(
+  id: SessionId,
+  target: ConnectionTarget,
+  live: (open: Belongings) => T,
+  peek: (file: string, realm: string) => T
+): T {
   const realm = realmAddress(target);
   const open = belongings.get(id);
-  return open?.realm === realm ? open.recallRoom() : peekRoom(home.record('belongings', id), realm);
+  return open?.realm === realm ? live(open) : peek(home.record('belongings', id), realm);
 }
 
 /**
@@ -1373,6 +1392,7 @@ function createHost(): SessionHost {
     },
     belongingsAt,
     lastRoomFor,
+    livesAt,
     playersFor,
     destinationsFor,
     playersAt,
@@ -1399,6 +1419,8 @@ function createHost(): SessionHost {
      * has to reach a session that is already counting down.
      */
     autoReconnect: (id) => profileFor(id)?.autoReconnect ?? false,
+    // Read through for the same reason; a character with no file asks nothing, as it dials nothing.
+    lowLives: (id) => profileFor(id)?.lowLives ?? 0,
     /*
      * What to call a character.
      *
@@ -2761,6 +2783,12 @@ function registerIpc(): void {
     return host?.get(session)?.manager.forgetCharacter() ?? false;
   });
 
+  // Parsed: a payload that is not one of the three answers dials nothing.
+  handle(Invoke.answerLowLives, async (_caller, session: SessionId, answer: unknown) => {
+    const parsed = asLowLivesAnswer(answer);
+    return parsed !== null && host !== null ? host.answerLowLives(session, parsed) : false;
+  });
+
   handle(Invoke.resetStats, (_caller, session: SessionId) => {
     host?.get(session)?.manager.statsBaseline.rebase();
   });
@@ -2796,12 +2824,12 @@ function registerIpc(): void {
    */
   const settingsSpells: NonNullable<SettingsEditorOptions['spells']> = {
     forProfile: (id, target) => {
-      const realm = realmAddress(target);
-      const live = belongings.get(id as SessionId);
-      const book =
-        live && live.realm === realm
-          ? live.recallSpellbook()
-          : peekSpellbook(home.record('belongings', id), realm);
+      const book = fromRecord(
+        id as SessionId,
+        target,
+        (open) => open.recallSpellbook(),
+        peekSpellbook
+      );
       if (book === null) return { spellbook: null, cureGates: null };
       const world = worldFor(id as SessionId);
       return {
@@ -3233,6 +3261,7 @@ function build(): void {
     // And the tuning template, for the file the player hand-edits to
     // experiment: its paragraphs are documentation too.
     internalTemplate: internalTemplate(),
+    profileTemplate: profileTemplate(),
     /*
      * The shelf, for the one migration that has to recognise a loop copied off
      * it. A function, so the lazy read above stays lazy for a client with no

@@ -41,6 +41,7 @@ import type { ProfileEditable, SettingsSnapshot } from '@shared/ipc';
 import type { StreamEncoding } from '@shared/types';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from '@shared/training';
 import type { RemoteGrant, RemoteName } from '@shared/remotes';
+import { asLowLives, DEFAULT_LOW_LIVES } from '@shared/lives';
 import { fractionOf, percentOf } from './form';
 import type { AttackField, AttackFieldsProps } from '../components/AttackFields';
 import type { BlessingFieldsProps, BlessingSwitch } from '../components/BlessingFields';
@@ -117,6 +118,8 @@ export interface CharacterFields {
   theme: ThemePreference | '';
   autoConnect: boolean;
   autoReconnect: boolean;
+  /** As typed. See `Profile.lowLives`. */
+  lowLives: string;
   serverName: string | null;
   host: string;
   port: string;
@@ -427,6 +430,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     theme: entry.theme,
     autoConnect: entry.autoConnect,
     autoReconnect: entry.autoReconnect,
+    lowLives: String(entry.lowLives),
     serverName: entry.serverName,
     host: entry.target.host,
     port: String(entry.target.port),
@@ -609,6 +613,8 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     changePassword: form.changePassword,
     autoConnect: form.autoConnect,
     autoReconnect: form.autoReconnect,
+    // A field cleared to retype is the default, never 0: 0 turns the question off.
+    lowLives: asLowLives(form.lowLives),
     accent: form.accent,
     theme: form.theme,
     login: form.login,
@@ -904,6 +910,7 @@ export function emptyForm(
      * standing while its client sits at a closed socket is one being killed.
      */
     autoReconnect: true,
+    lowLives: String(DEFAULT_LOW_LIVES),
     /*
      * The realm the client ships as its default, by name — and the first realm
      * on disk only if that one is not there.

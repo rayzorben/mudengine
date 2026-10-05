@@ -27,7 +27,7 @@ import type { Block } from '../shared/blocks';
 import type { Discovery } from '../shared/memory';
 import type { Find } from '../shared/finds';
 import type { Shelf } from '../shared/shops';
-import type { ResetNotice } from '../shared/ipc';
+import type { LowLivesAsk, ResetNotice } from '../shared/ipc';
 import type { CharacterState } from '../shared/character';
 import type { PlayerRegistry } from '../shared/players';
 import type { DebugRecord } from '../shared/debug';
@@ -164,6 +164,7 @@ const api: IpcApi = {
   forget: (session, discovery) => ipcRenderer.invoke(Invoke.forget, session, discovery),
   forgetFind: (session, find) => ipcRenderer.invoke(Invoke.forgetFind, session, find),
   forgetCharacter: (session) => ipcRenderer.invoke(Invoke.forgetCharacter, session),
+  answerLowLives: (session, answer) => ipcRenderer.invoke(Invoke.answerLowLives, session, answer),
   resetStats: (session) => ipcRenderer.invoke(Invoke.resetStats, session),
   names: (session) => ipcRenderer.invoke(Invoke.names, session),
   ask: (session, command) => ipcRenderer.invoke(Invoke.ask, session, command),
@@ -193,6 +194,7 @@ const api: IpcApi = {
   onFinds: (handler) => subscribe<Addressed<Find[]>>(Push.finds, handler),
   onShops: (handler) => subscribe<Addressed<Shelf[]>>(Push.shops, handler),
   onCharacterReset: (handler) => subscribe<Addressed<ResetNotice>>(Push.characterReset, handler),
+  onLowLives: (handler) => subscribe<Addressed<LowLivesAsk>>(Push.lowLives, handler),
   onQuestSaid: (handler) => subscribe<Addressed<QuestWatched>>(Push.questSaid, handler),
   onQuestRun: (handler) => subscribe<Addressed<QuestRunProgress>>(Push.questRun, handler),
   onConfig: (handler) => subscribe<ConfigSnapshot>(Push.config, handler),
