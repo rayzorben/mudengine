@@ -940,7 +940,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         party['regroupMinutes'],
         ...PARTY_RANGES.regroupMinutes,
         DEFAULT_CONFIG.automation.party.regroupMinutes
-      )
+      ),
+      helpWithDoors: party['helpWithDoors'] === true
     },
     health: {
       /*

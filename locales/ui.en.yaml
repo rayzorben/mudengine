@@ -4014,6 +4014,9 @@ settings:
     relayPortalsHint: Leading, say @party before a room's own command that moves only you (go
       vortex), so the party runs it too. A text exit the party follows through needs none.
     relayPortalsLabel: Relay Portals With @party
+    helpWithDoorsHint: Following, when the leader fails to bash a door, pick it if your picklocks
+      are enough for it, or else bash it if your strength is.
+    helpWithDoorsLabel: Help Leader With Doors
     regroupMinutesHint: After going through one, send par, invite back a member who is here but out
       of the party, and hold the walk this many minutes for everyone. 0 does not wait.
     regroupMinutesLabel: Rejoin Wait (minutes)
@@ -5468,6 +5471,15 @@ automation:
     regrouped: The party is back together; walking on.
     regroupLeft: Stopped waiting for the party; this character is not in the room the portal leads to.
     regroupGaveUp: 'Stopped waiting for the party: {members} did not rejoin within {minutes} min.'
+    # Todo 03: a door the leader is failing to bash.
+    reasonPickForLeader: 'picking the {barrier} {direction} for {leader}'
+    reasonBashForLeader: 'bashing the {barrier} {direction} for {leader}'
+    reasonOpenForLeader: 'opening the {barrier} {direction} after picking it'
+    helpDoorFighting: 'Not helping {leader} with the {barrier} {direction}: in a fight.'
+    helpDoorUnknown: 'Not bashing the {barrier} {direction} for {leader}: the realm has no record of it.'
+    helpDoorKeyOnly: 'Not helping {leader} with the {barrier} {direction}: only its key opens it.'
+    helpDoorHurt: 'Not bashing the {barrier} {direction} for {leader}: health is under Rest If Below HP %.'
+    helpDoorCannot: 'Not helping {leader} with the {barrier} {direction}: picklocks and strength are both short of it.'
   queue:
     fumbledResend: The game ignored "{command}"; sending it again.
   search:

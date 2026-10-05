@@ -2340,6 +2340,8 @@ export interface PartyConfig {
    * for everyone to be here and in it. 0 invites and does not wait.
    */
   regroupMinutes: number;
+  /** Following, pick or bash a door the leader fails to bash (`LeaderDoors`, todo 03). */
+  helpWithDoors: boolean;
 }
 
 /**
@@ -2787,7 +2789,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       parSeconds: 0,
       parAfterRound: false,
       relayPortals: true,
-      regroupMinutes: 5
+      regroupMinutes: 5,
+      helpWithDoors: false
     },
     health: {
       /*
@@ -4297,7 +4300,8 @@ function normalizeParty(value: unknown): PartyConfig {
     parSeconds: int(raw['parSeconds'], d.parSeconds, ...PARTY_RANGES.parSeconds),
     parAfterRound: bool(raw['parAfterRound'], d.parAfterRound),
     relayPortals: bool(raw['relayPortals'], d.relayPortals),
-    regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes)
+    regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes),
+    helpWithDoors: bool(raw['helpWithDoors'], d.helpWithDoors)
   };
 }
 

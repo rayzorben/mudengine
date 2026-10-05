@@ -35,6 +35,7 @@ import { asSpokenDirection, type RouteStep } from '../../../shared/world';
 import type { Block } from '../../../shared/blocks';
 import type { CharacterState } from '../../../shared/character';
 import type { AutomationConfig } from '../../../shared/config';
+import { barrierStated, canPick, meetsBarrier, tooHurtToBash } from '../../../shared/walk';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { CommandQueue } from '../CommandQueue';
@@ -807,12 +808,12 @@ export class Barriers {
     // number at all is not "impossible" — it is the plain `Door` the router
     // already priced as ordinary when it planned this route through it, so
     // refusing to force one would make the plan a promise the walk breaks.
-    const stated = need?.pickDifficulty !== undefined || need?.bashDifficulty !== undefined;
+    const stated = barrierStated(need);
 
     if (
       movement.pickLocks &&
       this.picked < movement.pickTries &&
-      meetsBarrier(need?.pickDifficulty, this.picklocks, tuning().walk.pickMargin, stated)
+      canPick(need?.pickDifficulty, this.picklocks, tuning().walk.pickMargin, stated)
     ) {
       this.picked += 1;
       this.sendForcing('pick', `pi ${step.direction}`, step, barrier);
@@ -832,37 +833,22 @@ export class Barriers {
   }
 
   /**
-   * Whether a bash costs more health than this character has to spend.
+   * `tooHurtToBash` (`src/shared/walk.ts`) for this character now.
    *
-   * *"You take 1 damage for bashing the gate!"* — the server prints it in the
-   * room, and a bash is the one rung of the ladder that is paid for in hit
-   * points. Before the ladder could be run again that was bounded by
-   * `bashTries` and then the walk ended; now it repeats, and `bashTries` a
-   * round for `barrierRetries` rounds is a character that can knock itself out
-   * at a door with nothing else in the room threatening it.
-   *
-   * `restBelow` is the figure that already says *this character does not
-   * travel below this*, and forcing a door is how this step travels — so it is
-   * the same line, applied to the one rung that spends health. The pick is
-   * ungated: it costs a command and nothing else.
+   * Before the ladder could be run again that was bounded by `bashTries` and
+   * then the walk ended; now it repeats, and `bashTries` a round for
+   * `barrierRetries` rounds is a character that can knock itself out at a door
+   * with nothing else in the room threatening it.
    *
    * Read straight off the config rather than through `Holds.wantsHealthHold`, which
    * is gated on `holdWhenHurt`. That option answers *who is responsible for
    * resting this walk*, and the walk that turns it off — a loop's leg, held
    * for health by `LoopRunner` **between** legs and not within one — is
    * exactly the walk that would otherwise stand at a door bashing all night.
-   *
-   * Unknown never refuses, the rule every threshold here follows: a null
-   * maximum is absence, not a low number.
    */
   private tooHurtToBash(): boolean {
-    const { restBelow } = this.config.health;
-    if (restBelow <= 0) return false;
     const state = this.events.stateNow?.();
-    if (state === undefined) return false;
-    const { hp, hpMax } = state.vitals;
-    if (hp === null || hpMax === null || hpMax <= 0) return false;
-    return hp / hpMax < restBelow;
+    return state !== undefined && tooHurtToBash(state.vitals, this.config.health.restBelow);
   }
 
   /**
@@ -1107,33 +1093,6 @@ export class Barriers {
   private lockedAt(step: RouteStep): boolean {
     return this.locked || this.lockedDoors.has(doorOf(step));
   }
-}
-
-/**
- * Whether a skill is worth spending a command against a barrier's number.
- *
- * `stated` is whether the realm named *any* number for this barrier: when it
- * named none it asks for no skill, which is the plain `Door` the router
- * already priced as ordinary. When it named one for the other channel only —
- * `Key: 2126 [or 157 picklocks]` says nothing about strength — this channel is
- * closed rather than free, because the realm has been specific.
- *
- * `0` is the realm's `any`: whoever leans on it gets through.
- *
- * An unknown skill never meets a stated number. That is the same direction
- * every threshold in this client takes — unknown is not plenty — and here it
- * is also the cheap one: the stat sheet is one `st` away.
- */
-function meetsBarrier(
-  need: number | undefined,
-  skill: number | null,
-  margin: number,
-  stated: boolean
-): boolean {
-  if (!stated) return true;
-  if (need === undefined) return false;
-  if (need <= 0) return true;
-  return skill !== null && skill >= need - margin;
 }
 
 /**

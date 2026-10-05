@@ -747,7 +747,8 @@ describe('following somebody', () => {
       parSeconds: 0,
       parAfterRound: false,
       relayPortals: true,
-      regroupMinutes: 5
+      regroupMinutes: 5,
+      helpWithDoors: false
     });
   });
 

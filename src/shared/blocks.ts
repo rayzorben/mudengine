@@ -570,6 +570,12 @@ export type BlockType =
    */
   | 'door-swings'
   /**
+   * `You see Baby attempt to bash the gate to the east.` — somebody else in
+   * the room failing to bash a barrier, so it is still shut and locked
+   * (`Door.TryBashDoor`). `automation.party.helpWithDoors` reads it.
+   */
+  | 'player-bashes-door'
+  /**
    * `Your skill fails you this time.` — a skill was tried and did not work.
    *
    * Deliberately not named for picking. The server spends this one sentence on
@@ -1009,6 +1015,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'heard-movement': 'movement',
   'door-changed': 'movement',
   'door-swings': 'movement',
+  'player-bashes-door': 'movement',
   'skill-failed': 'movement',
   'user-tracks': 'movement',
   'user-tracks-failed': 'movement',

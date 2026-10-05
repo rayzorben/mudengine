@@ -5,8 +5,8 @@
  * and the main process produces it, and `shared/` is the only module both may
  * import. Dependency-free, like everything else here.
  */
-import type { RoomId, RouteStep } from './world';
-import { isBlinding, type Afflictions, type CharacterState } from './character';
+import type { Requirement, RoomId, RouteStep } from './world';
+import { isBlinding, type Afflictions, type CharacterState, type Vitals } from './character';
 import type { MovementConfig } from './config';
 
 /**
@@ -315,4 +315,72 @@ export function portalLeftUnseen(
 ): boolean {
   if (step?.direction !== 'portal' || state === undefined) return false;
   return isBlinding(state.room.light) || state.afflictions.blind === 'yes';
+}
+
+/**
+ * Whether the realm named any number for a barrier's pick or bash. See
+ * `meetsBarrier`, which reads it.
+ */
+export function barrierStated(need: Requirement | null | undefined): boolean {
+  return need?.pickDifficulty !== undefined || need?.bashDifficulty !== undefined;
+}
+
+/**
+ * Whether a skill is worth spending a command against a barrier's number.
+ *
+ * `stated` is whether the realm named *any* number for this barrier: when it
+ * named none it asks for no skill, which is the plain `Door` the router
+ * already priced as ordinary. When it named one for the other channel only —
+ * `Key: 2126 [or 157 picklocks]` says nothing about strength — this channel is
+ * closed rather than free, because the realm has been specific.
+ *
+ * `0` is the realm's `any`: whoever leans on it gets through.
+ *
+ * An unknown skill never meets a stated number. That is the same direction
+ * every threshold in this client takes — unknown is not plenty — and here it
+ * is also the cheap one: the stat sheet is one `st` away.
+ */
+export function meetsBarrier(
+  need: number | undefined,
+  skill: number | null,
+  margin: number,
+  stated: boolean
+): boolean {
+  if (!stated) return true;
+  if (need === undefined) return false;
+  if (need <= 0) return true;
+  return skill !== null && skill >= need - margin;
+}
+
+/**
+ * Whether a lock-pick is worth a command: `meetsBarrier` for picklocks, and
+ * never on 0, which `Door.TryPickLock` fails whatever the door
+ * (`Picklocks > 0 ? Picklocks + picklocksRequired : 0`).
+ */
+export function canPick(
+  need: number | undefined,
+  picklocks: number | null,
+  margin: number,
+  stated: boolean
+): boolean {
+  return picklocks !== null && picklocks > 0 && meetsBarrier(need, picklocks, margin, stated);
+}
+
+/**
+ * Whether a bash costs more health than this character has to spend.
+ *
+ * Every bash, hit or miss, costs 0 to 3 hit points (`Door.TryBashDoor`:
+ * `You take 1 damage for bashing the gate!`). `restBelow` is the figure that
+ * already says *this character does not travel below this*, and forcing a
+ * door is travelling, so it is the same line. A pick costs no health and is
+ * never gated by it.
+ *
+ * Unknown never refuses, the rule every threshold here follows: a null
+ * maximum is absence, not a low number.
+ */
+export function tooHurtToBash(vitals: Vitals, restBelow: number): boolean {
+  if (restBelow <= 0) return false;
+  const { hp, hpMax } = vitals;
+  if (hp === null || hpMax === null || hpMax <= 0) return false;
+  return hp / hpMax < restBelow;
 }
