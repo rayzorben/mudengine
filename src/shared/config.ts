@@ -1706,6 +1706,12 @@ export interface MovementConfig {
    */
   sneak: boolean;
   /**
+   * Time *Run it* and the walk back after running to the rounds: a step out of an
+   * empty room into a lair waits for the round unless two steps fit before
+   * it (`walk/OffRounds.ts`). On by default (user, 2026-10-04).
+   */
+  runBetweenRounds: boolean;
+  /**
    * Ready a carried light before stepping somewhere the character could not
    * otherwise see, and on arriving somewhere it cannot — MegaMUD's AutoLight.
    *
@@ -2855,6 +2861,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       pickLocks: false,
       pickTries: 3,
       sneak: false,
+      runBetweenRounds: true,
       provideLight: true,
       lightDimRooms: false,
       extinguishInLight: true,
@@ -2959,6 +2966,7 @@ export const AUTOMATION_SWITCHES = {
   pickLocks: ['movement', 'pickLocks'],
   bashDoors: ['movement', 'bashDoors'],
   sneak: ['movement', 'sneak'],
+  runBetweenRounds: ['movement', 'runBetweenRounds'],
   provideLight: ['movement', 'provideLight'],
   healParty: ['spells', 'healParty'],
   invokeItems: ['spells', 'invokeItems'],
@@ -4089,6 +4097,7 @@ function normalizeMovement(value: unknown): MovementConfig {
     pickLocks: bool(raw['pickLocks'], d.pickLocks),
     pickTries: int(raw['pickTries'], d.pickTries, 0, 10),
     sneak: bool(raw['sneak'], d.sneak),
+    runBetweenRounds: bool(raw['runBetweenRounds'], d.runBetweenRounds),
     provideLight: bool(raw['provideLight'], d.provideLight),
     lightDimRooms: bool(raw['lightDimRooms'], d.lightDimRooms),
     extinguishInLight: bool(raw['extinguishInLight'], d.extinguishInLight),

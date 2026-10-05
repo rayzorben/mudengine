@@ -1003,6 +1003,7 @@ export class Walker implements SessionModule {
       this.holds.resumeFromFight(state);
       return;
     }
+    if (this.offRounds.monsterCameIn(state)) return this.carryOn(state);
 
     const step = this.route.steps[this.index];
     if (!step) return;
@@ -1340,8 +1341,7 @@ export class Walker implements SessionModule {
       this.barriers.holdSearching(step);
       return true;
     }
-    // A run out of an empty room waits for the round to go off over it.
-    const offRound = this.offRounds.holdMs(state, this.quiet);
+    const offRound = this.offRounds.holdMs(state, step, this.config.movement, this.quiet);
     if (offRound > 0) {
       this.retryAfter(offRound, state);
       return true;

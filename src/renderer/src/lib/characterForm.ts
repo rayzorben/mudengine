@@ -247,6 +247,7 @@ export interface CharacterFields {
   bashDoors: boolean;
   bashTries: string;
   sneak: boolean;
+  runBetweenRounds: boolean;
   provideLight: boolean;
   /** Go back for the kit after a death. */
   recoverGear: boolean;
@@ -517,6 +518,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     bashDoors: entry.movement.bashDoors,
     bashTries: String(entry.movement.bashTries),
     sneak: entry.movement.sneak,
+    runBetweenRounds: entry.movement.runBetweenRounds,
     provideLight: entry.movement.provideLight,
     recoverGear: entry.movement.recoverGear,
     recoverGearTries: String(entry.movement.recoverGearTries),
@@ -709,6 +711,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       bashDoors: form.bashDoors,
       bashTries: Number.parseInt(form.bashTries, 10) || 0,
       sneak: form.sneak,
+      runBetweenRounds: form.runBetweenRounds,
       provideLight: form.provideLight,
       recoverGear: form.recoverGear,
       recoverGearTries: Number.parseInt(form.recoverGearTries, 10) || 0,
@@ -1003,6 +1006,7 @@ export function emptyForm(
     bashDoors: movement.bashDoors,
     bashTries: String(movement.bashTries),
     sneak: movement.sneak,
+    runBetweenRounds: movement.runBetweenRounds,
     provideLight: movement.provideLight,
     recoverGear: movement.recoverGear,
     recoverGearTries: String(movement.recoverGearTries),

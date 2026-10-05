@@ -301,6 +301,7 @@ describe('a character', () => {
         bashDoors: false,
         bashTries: 0,
         sneak: true,
+        runBetweenRounds: true,
         // A draft states what the form showed; absent is off, and the
         // template's `true` for the light is the file's, not the payload's.
         provideLight: false,
@@ -416,6 +417,7 @@ describe('a character', () => {
         bashDoors: false,
         bashTries: 0,
         sneak: false,
+        runBetweenRounds: true,
         provideLight: false,
         lightDimRooms: false,
         extinguishInLight: false,

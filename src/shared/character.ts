@@ -1863,6 +1863,11 @@ export function fightIsRunning(state: CharacterState): boolean {
   return state.inCombat || state.combat.attackers.length > 0 || state.combat.target !== null;
 }
 
+/** Anything in the room that is not a player: a monster, or someone unknown. */
+export function monstersHere(state: CharacterState): boolean {
+  return state.room.occupants.some((occupant) => occupant.kind !== 'player');
+}
+
 /**
  * The same arrival in the same room: the name alone is not enough, since the
  * desert is a thousand rooms called `Scorching Desert` (`Room.arrival`).

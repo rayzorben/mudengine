@@ -89,7 +89,7 @@ palette:
 # Names are button ids. The switches are `automation` (the master), `combat`,
 # `retaliate`, `retreat`, `fleeGoto`, `hangUp`, `loot`, `drop`,
 # `search`, `autoDeposit`, `openDoors`, `pickLocks`, `bashDoors`, `sneak`,
-# `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
+# `runBetweenRounds`, `healParty`, `assistLeader`, `defendParty`, `restWithLeader`, `remotes`,
 # `gangpath` and `lookAtPlayers`; the rest are `connect`, `gear:restore`,
 # `loop:open` (the shelf of every loop), `loop:build` (the card a loop is drawn
 # on, by clicking rooms on the map), `move:toggle` -- one key for the whole
@@ -123,6 +123,8 @@ toolbar:
     # a door that shut behind you is answered too (it asks first when the way
     # back is not a single step).
     - 'move:back'
+    # Timing Run it to the combat rounds: a step into a lair waits for the round.
+    - runBetweenRounds
 
 # Every number the client uses to decide something.
 #

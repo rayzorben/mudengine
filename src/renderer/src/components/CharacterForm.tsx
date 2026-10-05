@@ -31,6 +31,7 @@ import HuntingFields from './HuntingFields';
 import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
+import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
 import InvokeFields from './InvokeFields';
 import AttackFields from './AttackFields';
@@ -1377,13 +1378,7 @@ export default function CharacterForm({
 
           <fieldset className="settings-menus" data-fieldset="movement-stealth">
             <legend>{t('settings.movement.stealthLegend')}</legend>
-            <CheckField
-              checked={form.sneak}
-              hint={t('settings.movement.sneakHint')}
-              label={t('settings.movement.sneak')}
-              name="sneak"
-              onChange={(value) => patch({ sneak: value })}
-            />
+            <SneakAndRunFields namePrefix="" onChange={patch} value={form} />
           </fieldset>
 
           <fieldset className="settings-menus" data-fieldset="movement-light">

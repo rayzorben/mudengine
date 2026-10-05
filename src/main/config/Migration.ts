@@ -255,6 +255,8 @@ function migrateAll(options: MigrationOptions): void {
   theCombatOverridesWent(home, note);
   theManaPairRests(home, note, options.template);
   theExitsGainedADesign(home, note);
+  statedRunBetweenRounds(home, note, options.template);
+  pinTheRunBetweenRounds(home, note);
 }
 
 /**
@@ -3882,6 +3884,34 @@ function statedBuyingALight(
 }
 
 /**
+ * `automation.movement.runBetweenRounds` (2026-10-04) into every file that
+ * states `movement:` without it, on as the template ships it, after `sneak`
+ * and with the template's paragraph. Idempotent: a key stays added whatever
+ * its value.
+ */
+function statedRunBetweenRounds(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    ['automation', 'movement'],
+    'runBetweenRounds',
+    DEFAULT_CONFIG.automation.movement.runBetweenRounds,
+    'sneak',
+    templateComments(template, 'automation').get('automation.movement.runBetweenRounds')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.runBetweenRounds.one', params)
+      : t('notices.migration.runBetweenRounds.many', params)
+  );
+}
+
+/**
  * `automation.spells.healMinMana` (2026-10-02): the heal's own mana floor,
  * which used to be `minMana`, the attack spell's. Into every file that states
  * `minMana` without it, at that file's `minMana`, so nobody's heals change
@@ -4076,22 +4106,33 @@ function statedDoorForcing(home: Home, note: (message: string) => void): void {
  * (`useToolbarPins`), which this cannot and must not reach.
  */
 function pinTheGearButton(home: Home, note: (message: string) => void): void {
+  if (pinOnToolbar(home, 'gear:restore', (ids) => ids.indexOf('connect') + 1)) {
+    note(t('notices.migration.gearButtonPinned'));
+  }
+}
+
+/**
+ * `id` onto the toolbar row of the tuning file at the index `at` picks from
+ * the row's ids (`indexOf(...) + 1` is the front when the neighbour is
+ * missing); whether it was written. A row that already has it, pinned by
+ * hand or by a second run of this, is left alone.
+ */
+function pinOnToolbar(
+  home: Home,
+  id: string,
+  at: (ids: ReadonlyArray<string | null>) => number
+): boolean {
   let pinned = false;
   edit(home.internal, (document) => {
     const list = document.getIn(['toolbar', 'pinned'], true);
     if (!isSeq(list)) return false;
-
     const ids = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
-    // Already there — a file edited by hand, or a second run of this.
-    if (ids.includes('gear:restore')) return false;
-
-    const after = ids.indexOf('connect');
-    list.items.splice(after >= 0 ? after + 1 : 0, 0, new Scalar('gear:restore'));
+    if (ids.includes(id)) return false;
+    list.items.splice(at(ids), 0, new Scalar(id));
     pinned = true;
     return true;
   });
-
-  if (pinned) note(t('notices.migration.gearButtonPinned'));
+  return pinned;
 }
 
 /**
@@ -4116,23 +4157,24 @@ function pinTheGearButton(home: Home, note: (message: string) => void): void {
  * and this says so in place.
  */
 function pinTheBlessSwitch(home: Home, note: (message: string) => void): void {
-  let pinned = false;
-  edit(home.internal, (document) => {
-    const list = document.getIn(['toolbar', 'pinned'], true);
-    if (!isSeq(list)) return false;
-    const ids = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
-    if (ids.includes('autoBless')) return false;
-    // Beside retaliate as the shipped row has it; on a curated row missing
-    // it, after the nearest of the switches that precede it there, else the
-    // front — the order a fresh client draws, as far as the row allows.
-    const after = ['retaliate', 'combat', 'automation']
-      .map((id) => ids.indexOf(id))
-      .find((at) => at >= 0);
-    list.items.splice(after === undefined ? 0 : after + 1, 0, new Scalar('autoBless'));
-    pinned = true;
-    return true;
-  });
-  if (pinned) note(t('notices.migration.blessSwitchPinned'));
+  // Beside retaliate as the shipped row has it; on a curated row missing
+  // it, after the nearest of the switches that precede it there, else the
+  // front — the order a fresh client draws, as far as the row allows.
+  const beside = (ids: ReadonlyArray<string | null>): number =>
+    (['retaliate', 'combat', 'automation'].map((id) => ids.indexOf(id)).find((at) => at >= 0) ??
+      -1) + 1;
+  if (pinOnToolbar(home, 'autoBless', beside)) note(t('notices.migration.blessSwitchPinned'));
+}
+
+/**
+ * The Run Between Rounds switch onto the toolbar, at the end of the row
+ * (2026-10-04, the user's ask). Unpinned from the toolbar's menu, it stays
+ * unpinned: the menu's choice is kept outside this file.
+ */
+function pinTheRunBetweenRounds(home: Home, note: (message: string) => void): void {
+  if (pinOnToolbar(home, 'runBetweenRounds', (ids) => ids.length)) {
+    note(t('notices.migration.runBetweenRoundsPinned'));
+  }
 }
 
 function statedTheStepNudge(home: Home, note: (message: string) => void): void {
@@ -5827,23 +5869,9 @@ function placesKey(loop: Loop): string {
  * this cannot and must not reach.
  */
 function pinTheLoopShelf(home: Home, note: (message: string) => void): void {
-  let pinned = false;
-  edit(home.internal, (document) => {
-    const list = document.getIn(['toolbar', 'pinned'], true);
-    if (!isSeq(list)) return false;
-
-    const ids = list.items.map((item) => (isScalar(item) ? String(item.value) : null));
-    // Already there — a file edited by hand, or a second run of this.
-    if (ids.includes('loop:open')) return false;
-
-    const after = ids.indexOf('loot');
-    const at = after >= 0 ? after + 1 : 0;
-    list.items.splice(at, 0, new Scalar('loop:open'));
-    pinned = true;
-    return true;
-  });
-
-  if (pinned) note(t('notices.migration.loopShelfPinned'));
+  if (pinOnToolbar(home, 'loop:open', (ids) => ids.indexOf('loot') + 1)) {
+    note(t('notices.migration.loopShelfPinned'));
+  }
 }
 
 /** The shipped sentence, as `default.yaml` used to state it. */

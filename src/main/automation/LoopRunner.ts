@@ -48,7 +48,7 @@ import {
 
 export { NO_LOOP, type LoopProgress, type LoopStatus };
 import { isSaidBy, t } from '../app/i18n';
-import { fightIsRunning, type CharacterState } from '../../shared/character';
+import { fightIsRunning, monstersHere, type CharacterState } from '../../shared/character';
 import {
   DEFAULT_CONFIG,
   stillFor,
@@ -999,7 +999,7 @@ export class LoopRunner implements SessionModule {
      * clock on the strength of it.
      */
     if (this.lingering) {
-      const monsters = this.monstersHere(state);
+      const monsters = monstersHere(state);
       if (monsters) this.sawMonster = true;
       this.roomClear = !monsters;
     }
@@ -1443,7 +1443,7 @@ export class LoopRunner implements SessionModule {
      * a heal's `*Combat Off*` the room still holds the fight with no flag up
      * (todo 20), so the notice says resting only in a room with nothing else in it.
      */
-    const beside = this.monstersHere(state);
+    const beside = monstersHere(state);
     if (vital === 'health') {
       this.events.notice?.(
         !held
@@ -1525,11 +1525,6 @@ export class LoopRunner implements SessionModule {
     if (!saw && stop.every > recheck) {
       this.clearedAt.set(stop.room, this.now() - (stop.every - recheck) * 1000);
     }
-  }
-
-  /** Anything in the room that is not a person. See `noteLeaving`. */
-  private monstersHere(state: CharacterState): boolean {
-    return state.room.occupants.some((occupant) => occupant.kind !== 'player');
   }
 
   /**

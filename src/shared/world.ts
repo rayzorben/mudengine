@@ -2645,6 +2645,12 @@ export interface RouteStep {
    */
   keptOut?: string;
   /**
+   * Whether the realm marks the room this step enters as a lair. A run times
+   * only such a step to the rounds (`walk/OffRounds.ts`). Absent on a scatter
+   * step, whose landing the plan cannot name.
+   */
+  lair?: true;
+  /**
    * Whether this step enters a lair the router could not weigh — an unread
    * bar, a monster its arithmetic cannot price — so what walking it costs is
    * unknown rather than nothing (todo 806). Absent where there is no lair or

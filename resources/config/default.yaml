@@ -794,6 +794,15 @@ automation:
     # tracks three states -- sneaking, seen, and nobody has said.
     sneak: false
 
+    # Time a run to the combat rounds: Run it, and the walk back after running.
+    #
+    # A round hits whoever is in the room when it goes off. A step from an
+    # empty room into a lair goes at once while two steps fit before the next
+    # round, so the lair can still be left before that round; otherwise it
+    # waits for the round and goes as it fires. A room with a monster in it
+    # never waits.
+    runBetweenRounds: true
+
     # Light, before the dark -- MegaMUD's AutoLight.
     #
     # `provideLight` readies a carried light -- a torch, a lantern, a glowing

@@ -284,6 +284,9 @@ notices:
     buyLight:
       many: 'Buy a Light First was added, on, to {count} files: {fileList}'
       one: 'Buy a Light First was added, on, to {fileList}'
+    runBetweenRounds:
+      many: 'Run Between Rounds was added, on, to {count} files: {fileList}'
+      one: 'Run Between Rounds was added, on, to {fileList}'
     markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -419,6 +422,8 @@ notices:
         the Movement section of settings. The backup next to the file has the old value. {fileList}
     gearButtonPinned: A gear button was added to your toolbar, next to the connect button. It
       re-equips what the client last saw in each worn slot. Press it first after a death.
+    runBetweenRoundsPinned: A Run Between Rounds switch was added to the end of your toolbar. When
+      it is on, Run it times a step into a lair to the combat rounds.
     blessSwitchPinned: An Auto-Bless switch was added to your toolbar, next to Retaliate. When it is
       off, your bless spells are not cast until you turn it back on.
     loopsRenamed:
@@ -1001,6 +1006,7 @@ toolbar:
   search: Auto-Search Rooms
   retaliate: Retaliate When Attacked
   sneak: Auto-Sneak on Move
+  runBetweenRounds: Run Between Rounds
   openLoops: Loops (Select a Loop)
   buildLoop: Build a Loop / Path Editor
   startMoving: Start Moving / Resume
@@ -3822,7 +3828,7 @@ settings:
       not show one, and it is on the floor here. A locked door with no key is a wall the router
       plans around, so this is the one time picking it up matters. On by default.
     doorsLegend: Doors
-    stealthLegend: Stealth
+    stealthLegend: Sneaking and Running
     lightLegend: Light
     afflictionsLegend: Afflictions
     keepOutLegend: Avoiding
@@ -3924,6 +3930,9 @@ settings:
     pickTries: Picks Per Door
     sneak: Auto-Sneak on Move
     sneakHint: Decides whether the next room notices you arrive. Sneaking can fail.
+    runBetweenRounds: Run Between Rounds
+    runBetweenRoundsHint: On Run it, and on the walk back after running, a step into a lair waits
+      for the round to go off unless there is time to step in and out again before it.
   remotes:
     addPlayerLabel: Grant Player Permissions
     addPlayerPlaceholder: Ardren

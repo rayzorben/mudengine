@@ -95,7 +95,8 @@ export type IconName =
   | 'broadcast'
   | 'flame'
   | 'bag'
-  | 'flag';
+  | 'flag'
+  | 'stopwatch';
 
 const ICONS: Record<IconName, ReactNode> = {
   /*
@@ -548,6 +549,13 @@ const ICONS: Record<IconName, ReactNode> = {
     <>
       <path d="M6 21V4" />
       <path d="M6 4h11l-2.5 4 2.5 4H6" />
+    </>
+  ),
+  // A stopwatch: the run timed to the combat rounds.
+  stopwatch: (
+    <>
+      <circle cx="12" cy="13.5" r="7.5" />
+      <path d="M10 2.5h4M12 2.5V6M12 13.5V9.5M18 6.5l1.5-1.5" />
     </>
   ),
   at: (

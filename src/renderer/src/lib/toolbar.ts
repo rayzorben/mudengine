@@ -96,6 +96,7 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
   pickLocks: 'key',
   bashDoors: 'hammer',
   sneak: 'eyeOff',
+  runBetweenRounds: 'stopwatch',
   provideLight: 'flame',
   healParty: 'heart',
   assistLeader: 'users',
@@ -152,6 +153,8 @@ function switchLabel(name: AutomationSwitch): string {
       return t('toolbar.bashDoors');
     case 'sneak':
       return t('toolbar.sneak');
+    case 'runBetweenRounds':
+      return t('toolbar.runBetweenRounds');
     case 'healParty':
       return t('toolbar.healParty');
     case 'assistLeader':
