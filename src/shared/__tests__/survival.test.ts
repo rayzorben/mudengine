@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { simulateFight, startFight, type SurvivalInput } from '../survival';
+import { NO_EFFECT } from '../blessingeffects';
+import { simulateFight, startFight, type Survival, type SurvivalInput } from '../survival';
 import type { MenaceWeights } from '../menace';
 import type { ProwessSheet } from '../prowess';
 import type { MobProfile, WorldSpell } from '../world';
@@ -127,12 +128,33 @@ describe('the room’s fight, run', () => {
         casting: [null, null, null],
         mana: 200,
         manaMax: 200,
-        heal: { below: 0.5, to: 0.8, restores: [20, 30], cost: 6, minMana: 0 }
+        heal: { below: 0.5, to: 0.8, restores: [20, 30], cost: 6, minMana: 0, chosenMends: null }
       })
     )!;
     expect(bare.heals).toBe(0);
     expect(healed.heals).toBeGreaterThan(0);
     expect(healed.survives).toBeGreaterThanOrEqual(bare.survives);
+  });
+
+  /* Todo 10, 2026-10-05: AutoHeal does not cast a chosen heal that mends less than the round; the run cast it. */
+  it('casts a chosen heal only in a round it mends, as AutoHeal does', () => {
+    const foes = [1, 2, 3].map((n) => ({
+      name: `orc ${n}`,
+      subject: { hp: 60, profiles: [biter(60, 6, 12)] }
+    }));
+    const run = (chosenMends: number | null): Survival =>
+      simulateFight(
+        fight({
+          foes,
+          casting: [null, null, null],
+          mana: 200,
+          manaMax: 200,
+          heal: { below: 0.5, to: 0.8, restores: [1, 1], cost: 6, minMana: 0, chosenMends }
+        })
+      )!;
+    expect(run(null).heals).toBeGreaterThan(0);
+    expect(run(1000).heals).toBe(run(null).heals);
+    expect(run(1).heals).toBe(0);
   });
 
   it('casts no heal past the mana floor, or with the mana unknown', () => {
@@ -142,7 +164,8 @@ describe('the room’s fight, run', () => {
       to: 0,
       restores: [20, 30] as [number, number],
       cost: 10,
-      minMana: 0.9
+      minMana: 0.9,
+      chosenMends: null
     };
     const floored = simulateFight(fight({ foes, heal, mana: 20, manaMax: 40 }))!;
     expect(floored.heals).toBe(0);
@@ -232,13 +255,58 @@ describe('the room’s fight, run', () => {
       to: 0.9,
       restores: [15, 20] as [number, number],
       cost: 10,
-      minMana: 0
+      minMana: 0,
+      chosenMends: null
     };
     const kept = simulateFight(fight({ foes, heal, mana: 30, manaMax: 100 }))!;
     const spent = simulateFight(
-      fight({ foes, heal, mana: 30, manaMax: 100, recasts: [{ round: 1, cost: 25 }] })
+      fight({
+        foes,
+        heal,
+        mana: 30,
+        manaMax: 100,
+        recasts: [{ round: 1, cost: 25, minMana: 0, effect: null }]
+      })
     )!;
     expect(spent.heals).toBeLessThan(kept.heals);
+  });
+
+  /* Todo 10, 2026-10-05: a recast was charged its mana and the blessing stayed up whether it was paid or not. */
+  it('takes a lapsed blessing off the character when nobody recasts it', () => {
+    const foes = [1, 2, 3].map((n) => ({
+      name: `orc ${n}`,
+      subject: { hp: 60, profiles: [biter(60, 6, 12)] }
+    }));
+    const shield = { ...NO_EFFECT, armourClass: 30 };
+    const lapsing = (cost: number | null, mana: number | null = 40, minMana = 0): Survival =>
+      simulateFight(
+        fight({
+          foes,
+          casting: [null, null, null],
+          mana,
+          player: { armourClass: 50, damageResist: 1, magicRes: 0 },
+          recasts: [{ round: 1, cost, minMana, effect: shield }]
+        })
+      )!;
+    const recast = lapsing(5);
+    const gone = lapsing(null);
+    expect(gone.lostMean).toBeGreaterThan(recast.lostMean);
+    // Unknown mana pays for nothing: the same fight as one nobody recasts.
+    const unread = lapsing(5, null);
+    expect(unread.lostMean).toBe(gone.lostMean);
+    expect(unread.survives).toBe(gone.survives);
+    // Under the row's mana floor it waits, so it is gone: 30 of 40 is under 0.9, 40 is not.
+    expect(lapsing(5, 40, 0.9).lostMean).toBe(recast.lostMean);
+    expect(lapsing(5, 30, 0.9).lostMean).toBe(gone.lostMean);
+  });
+
+  it('lowers the top of the bar when a lapsed blessing raised it', () => {
+    const run = simulateFight(
+      fight({
+        recasts: [{ round: 1, cost: null, minMana: 0, effect: { ...NO_EFFECT, maxHp: 30 } }]
+      })
+    )!;
+    expect(run.hpLeft!).toBeLessThanOrEqual(70);
   });
 });
 
@@ -340,7 +408,7 @@ describe('a monster whose blow is a spell', () => {
       weapon: { min: 10, max: 40, speed: 1400, strength: 60 },
       foes: Array.from({ length: count }, (_, n) => ({ name: `acolyte ${n}`, subject: acolyte })),
       casting: Array.from({ length: count }, () => null),
-      heal: { below: 0.5, to: 0.8, restores: [14, 38], cost: 6, minMana: 0 },
+      heal: { below: 0.5, to: 0.8, restores: [14, 38], cost: 6, minMana: 0, chosenMends: null },
       levels: { safeAbove: 0.6, riskyAbove: 0.25 },
       horizons: [1, 3, 6, 12, 24]
     });

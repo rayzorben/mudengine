@@ -91,6 +91,25 @@ export function effectOf(spell: WorldSpell, level: number): BlessingEffect | nul
   return isNothing(effect) ? null : effect;
 }
 
+/** An effect taken off: every figure negated, so `sumEffects` and `blessedPlayer` remove it. */
+export function negated(effect: BlessingEffect): BlessingEffect {
+  const martial = (rows: Readonly<Record<MartialKind, number>>): Record<MartialKind, number> =>
+    martialRows(rows, (value) => -value);
+  return {
+    armourClass: -effect.armourClass,
+    damageResist: -effect.damageResist,
+    magicRes: -effect.magicRes,
+    dodge: -effect.dodge,
+    accuracy: -effect.accuracy,
+    maxDamage: -effect.maxDamage,
+    martialAccuracy: martial(effect.martialAccuracy),
+    martialDamage: martial(effect.martialDamage),
+    crits: -effect.crits,
+    maxHp: -effect.maxHp,
+    hpRegen: -effect.hpRegen
+  };
+}
+
 /** Whether an effect moves no figure. */
 export function isNothing(effect: BlessingEffect): boolean {
   return sumEffects([effect]) === null;

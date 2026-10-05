@@ -1624,7 +1624,7 @@ export class SessionManager {
     this.rules.load(automation.rules, automation.combat.mobRules);
 
     const book = fightBook(
-      { tracker: this.tracker, world, errands: this.errands },
+      { tracker: this.tracker, world, errands: this.errands, blessings: () => this.blessings },
       { config: () => this.automationConfig, ran: () => this.publisher.publishVerdict() }
     );
     this.odds = book.odds;

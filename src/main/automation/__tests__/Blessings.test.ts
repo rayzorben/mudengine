@@ -680,3 +680,19 @@ describe('casting what the choice chose', () => {
     expect(chosen.resets()).toBe(2);
   });
 });
+
+/* Todo 10, 2026-10-05: a simulated fight recasts only what this character would. */
+describe('what a fight recasts', () => {
+  it('is a self row kept up that may be cast in combat, above its mana floor, with the switch on', () => {
+    const kept = new Blessings(spells([armour]), true, queue, standing);
+    expect(kept.recastFloor('protection')).toBe(0.3);
+    expect(kept.recastFloor('bless')).toBeNull();
+    const waits = new Blessings(spells([{ ...armour, inCombat: false }]), true, queue, standing);
+    expect(waits.recastFloor('protection')).toBeNull();
+    const party = new Blessings(spells([{ ...armour, target: 'party' }]), true, queue, standing);
+    expect(party.recastFloor('protection')).toBeNull();
+    const off = new Blessings(spells([armour]), false, queue, standing);
+    expect(off.recastFloor('protection')).toBeNull();
+    for (const each of [kept, waits, party, off]) each.dispose();
+  });
+});

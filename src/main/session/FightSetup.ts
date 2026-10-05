@@ -7,27 +7,39 @@
  * mudengine-automation › *The verdict is also run as a fight*.
  */
 import { tuning } from '../app/tuning';
+import type { Blessings } from '../automation/Blessings';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
-import { HAZARD_ABILITY } from '../../shared/abilities';
-import { blessedPlayer, sumEffects, type BlessingEffect } from '../../shared/blessingeffects';
+import {
+  blessedPlayer,
+  effectOf,
+  effectsUp,
+  NO_EFFECT,
+  sumEffects,
+  type BlessingEffect
+} from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import { ROUND_SECONDS, scaledPower } from '../../shared/menace';
-import { regeneration } from '../../shared/prowess';
+import { ROUND_SECONDS } from '../../shared/menace';
+import { regeneration, type ProwessSheet } from '../../shared/prowess';
+import type { RealmFamily } from '../../shared/realm';
 import { healFloor, resolveSpell, spellCost } from '../../shared/spellcraft';
-import { castsToKill } from '../../shared/spellchoice';
+import { castsToKill, thresholdHeal } from '../../shared/spellchoice';
 import {
   SURVIVAL_HORIZONS,
+  type Recast,
   type SurvivalFoe,
   type SurvivalHeal,
   type SurvivalInput
 } from '../../shared/survival';
 import { prowessSheetOf, wieldedWeapon } from '../../shared/verdict';
+import type { WorldSpell } from '../../shared/world';
 
 export interface FightSetupParts {
   readonly world: Pick<WorldGraph, 'spellNamed'> | undefined;
   readonly errands: Pick<Errands, 'castingInput' | 'menacePlayer' | 'realmClass'>;
+  /** Which lapsing blessings are recast mid-fight; built after the book, so asked for at use. */
+  readonly blessings: () => Pick<Blessings, 'recastFloor'>;
 }
 
 export interface FightSetupSession {
@@ -47,6 +59,9 @@ export interface FightFoe {
 export class FightSetup {
   private readonly world: FightSetupParts['world'];
   private readonly errands: FightSetupParts['errands'];
+  private readonly blessings: FightSetupParts['blessings'];
+  private readonly spellOf = (name: string): WorldSpell | null =>
+    this.world?.spellNamed(name) ?? null;
 
   constructor(
     parts: FightSetupParts,
@@ -54,6 +69,7 @@ export class FightSetup {
   ) {
     this.world = parts.world;
     this.errands = parts.errands;
+    this.blessings = parts.blessings;
   }
 
   /**
@@ -88,20 +104,25 @@ export class FightSetup {
     if (state.vitals.hpMax === null) return null;
     const { combat, magery, mageryType, family, attack } = this.errands.realmClass(verb);
     const read = prowessSheetOf(state, { combat, magery });
-    const blessed = set !== undefined && set !== null;
-    const player = blessed
-      ? blessedPlayer(this.errands.menacePlayer(state), set)
-      : this.errands.menacePlayer(state);
-    const hpMax = state.vitals.hpMax + (blessed ? set.maxHp : 0);
-    // What is blessed comes on top of what the gear worn adds (`gearEffect`).
-    const sheet =
-      set === undefined
-        ? read
-        : {
-            ...read,
-            stated: null,
-            effects: sumEffects([...(read.effects ? [read.effects] : []), ...(set ? [set] : [])])
-          };
+    const own = this.errands.menacePlayer(state);
+    const hpMax = state.vitals.hpMax + (set ? set.maxHp : 0);
+    // What is up, or blessed, comes on top of what the gear worn adds (`gearEffect`).
+    const extra = set === undefined ? this.up(state) : set;
+    const effects = sumEffects([
+      ...(read.effects ? [read.effects] : []),
+      ...(extra ? [extra] : [])
+    ]);
+    /*
+     * As it stands, the printed armour, resistances and bar and the `stat all`
+     * figures carry what is up, so it reaches only the formula paths and the
+     * dodge, which no sheet prints; a lapse mid-fight takes off the same. A
+     * what-if is the bare character with the set on top, on the formula sheet.
+     */
+    const sheet = set === undefined ? { ...read, effects } : { ...read, stated: null, effects };
+    const player =
+      extra === null
+        ? own
+        : blessedPlayer(own, set === undefined ? { ...NO_EFFECT, dodge: extra.dodge } : extra);
     if (hpMax <= 0) return null;
     const health = at === 'rested' ? hpMax : hp;
     if (health === null) return null;
@@ -118,7 +139,7 @@ export class FightSetup {
       attack,
       family,
       weights: tuning().menace,
-      heal: this.heal(state, at === 'rested' ? manaMax : mana),
+      heal: this.heal(state, hpMax, at === 'rested' ? manaMax : mana, sheet, family),
       regenPerRound: regen === null ? 0 : (regen.health.value * ROUND_SECONDS) / regen.tickSeconds,
       recasts: at === 'rested' ? [] : this.recasts(state, roundCap),
       levels: {
@@ -160,14 +181,16 @@ export class FightSetup {
   }
 
   /**
-   * What the heal and the casting add to `Errands.fitness`: the settings a
-   * fight's odds move with that the sheet does not show.
+   * What the heal, the casting and the blessings up add to `Errands.fitness`:
+   * what a fight's odds move with that the sheet does not show.
    */
   settingsKey(state: CharacterState): string {
     const { spells, combat } = this.session.config();
     return [
+      JSON.stringify(this.up(state)),
       combat.attack,
       spells.heal,
+      spells.autoChooseHeal,
       spells.healTo,
       spells.minMana,
       spells.healMinMana,
@@ -181,44 +204,69 @@ export class FightSetup {
   }
 
   /**
-   * The heal as `AutoHeal` would cast it: the in-combat threshold where one
-   * is set, the configured spell's own range at this level, its cost. Only
+   * The heal as `AutoHeal` would cast it at the in-combat threshold
+   * (`thresholdHeal`: chosen against the deficit under Auto Choose Best Heal,
+   * else the configured spell), its range at this level and its cost. Only
    * with the mana known; a heal that cannot be budgeted is not modelled,
    * which errs towards the fight being harder than it is.
    */
-  private heal(state: CharacterState, mana: number | null): SurvivalHeal | null {
+  private heal(
+    state: CharacterState,
+    hpMax: number,
+    mana: number | null,
+    sheet: ProwessSheet,
+    family: RealmFamily | null
+  ): SurvivalHeal | null {
     const spells = this.session.config().spells;
     const below = healFloor(spells, true);
-    if (below <= 0 || spells.heal.trim().length === 0 || mana === null) return null;
-    const found = resolveSpell(
-      spells.heal,
-      state.spellbook,
-      (name) => this.world?.spellNamed(name) ?? null
-    );
-    const cost = spellCost(found);
-    const realm = found.realm;
-    const heals = (realm?.abilities ?? []).some(
-      ([id, value]) => id === HAZARD_ABILITY.heal && value >= 0
-    );
-    if (realm === null || cost === null || !heals || realm.power === undefined) return null;
+    if (mana === null) return null;
+    const heal = thresholdHeal({
+      spells,
+      below,
+      hpMax,
+      book: state.spellbook,
+      realm: this.spellOf,
+      level: state.progress.level,
+      mana,
+      sheet,
+      family
+    });
+    if (heal === null || heal.cost === null) return null;
     return {
       below,
       to: spells.healTo,
-      restores: scaledPower(realm, state.progress.level ?? 0),
-      cost,
-      minMana: spells.healMinMana
+      restores: heal.restores,
+      cost: heal.cost,
+      minMana: spells.healMinMana,
+      chosenMends: heal.chosenMends
     };
   }
 
-  /** The blessings that lapse before a fight this long is over, and what each recast costs. */
-  private recasts(state: CharacterState, roundCap: number): SurvivalInput['recasts'] {
+  /** What the blessings up add at the character's level; null with none weighed or the level unread. */
+  private up(state: CharacterState): BlessingEffect | null {
+    const level = state.progress.level;
+    return level === null ? null : effectsUp(state.buffs, this.spellOf, level);
+  }
+
+  /**
+   * The blessings that lapse before a fight this long is over: what each
+   * adds, and what its recast costs and the mana floor it waits above where
+   * this character recasts it in a fight (`recastFloor`). Anything else is
+   * gone once it lapses.
+   */
+  private recasts(state: CharacterState, roundCap: number): Recast[] {
     const now = Date.now();
-    return state.buffs.flatMap((buff) => {
+    const level = state.progress.level;
+    return state.buffs.flatMap((buff): Recast[] => {
       if (buff.expiresAt === undefined) return [];
       const round = Math.ceil((buff.expiresAt - now) / (ROUND_SECONDS * 1000));
       if (round <= 0 || round > roundCap) return [];
-      const cost = this.world?.spellNamed(buff.spell)?.mana ?? null;
-      return cost === null || cost <= 0 ? [] : [{ round, cost }];
+      const spell = resolveSpell(buff.spell, state.spellbook, this.spellOf);
+      const effect = spell.realm === null || level === null ? null : effectOf(spell.realm, level);
+      const mana = spellCost(spell);
+      const floor = mana === null ? null : this.blessings().recastFloor(buff.spell);
+      const cost = mana === null || floor === null ? null : Math.max(0, mana);
+      return effect === null && !cost ? [] : [{ round, cost, minMana: floor ?? 0, effect }];
     });
   }
 }
