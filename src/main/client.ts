@@ -33,6 +33,7 @@ import { RealmLibrary } from './world/RealmLibrary';
 import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
 import { FindBook } from './world/FindBook';
+import { ShopBook } from './world/ShopBook';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from '../shared/memory';
@@ -539,6 +540,23 @@ function findsForRealm(realm: string): FindBook {
     (message) => announce('memory', message)
   );
   realmFinds.set(realmKey(realm), store);
+  return store;
+}
+
+/** One shop record per realm, created on first use and keyed as `realmFinds` is. */
+const realmShops = new Map<string, ShopBook>();
+
+function shopsFor(id: SessionId): ShopBook | undefined {
+  const realm = worldFor(id)?.info.source;
+  if (realm === undefined) return undefined;
+  const existing = realmShops.get(realmKey(realm));
+  if (existing) return existing;
+  const store = new ShopBook(
+    home.state('memory', `shops-${realmKey(realm)}.json`),
+    realm,
+    (message) => announce('memory', message)
+  );
+  realmShops.set(realmKey(realm), store);
   return store;
 }
 
@@ -1356,6 +1374,7 @@ function createHost(): SessionHost {
     destinationsFor,
     playersAt,
     findsFor,
+    shopsFor,
     // What the realm called itself, by the address it was dialled at, so the
     // next session built for it starts on the right world.
     realmTold: (_id, target, realm) => worldBook?.learn(realmAddress(target), realm),
@@ -2142,6 +2161,7 @@ function registerIpc(): void {
       telnet: manager?.log ?? [],
       learned: manager?.learned ?? [],
       finds: manager?.foundHere ?? [],
+      shops: slot ? [...(shopsFor(session)?.all ?? [])] : [],
       questSaid: { ...(manager?.questProgress ?? {}) },
       questRun: manager?.questRunProgress ?? IDLE_QUEST_RUN,
       // The Talk card's history. Only for a session that exists: attach never
@@ -3381,6 +3401,11 @@ function teardown(): void {
     settle(`memory realm ${realm}`, () => memory.close());
   }
   realmMemories.clear();
+  // And what searching turned up and what each counter listed, the same way.
+  for (const [realm, finds] of realmFinds) settle(`finds ${realm}`, () => finds.close());
+  realmFinds.clear();
+  for (const [realm, shops] of realmShops) settle(`shops ${realm}`, () => shops.close());
+  realmShops.clear();
   // Same reason again: a fight that ended in the last two seconds is held on a
   // timer, and quitting is when that timer has not fired.
   for (const [id, log] of fightLogs) settle(`fights ${id}`, () => log.dispose());

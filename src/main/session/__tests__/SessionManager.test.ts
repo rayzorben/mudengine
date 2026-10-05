@@ -30,6 +30,7 @@ import type { CharacterState } from '../../../shared/character';
 import type { StandDown } from '../../automation/LoginAutomator';
 import { NO_REALM_PLAYERS, type PlayerRegistry } from '../../../shared/players';
 import type { Find, RealmFinds, Sighting } from '../../../shared/finds';
+import type { RealmShops, Shelf } from '../../../shared/shops';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
 import type { HuntingAdvice } from '../../../shared/hunting';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
@@ -1520,7 +1521,17 @@ describe('hanging up to escape', () => {
   const knowMaximum = (socket: net.Socket): void => {
     socket.write('Health: 100/100 [100%]\r\n');
   };
+  /*
+   * Something standing here that low health is a reason to hang up on (todo
+   * 01). A capitalised name nothing places: the realm data cannot make it a
+   * monster it would refuse over, and it is not a player.
+   */
+  const strangerHere = async (socket: net.Socket): Promise<void> => {
+    socket.write('Rat Cellar\r\nAlso here: Gorgo.\r\nObvious exits: north, south\r\n');
+    await until(() => manager!.character.room.occupants.length > 0);
+  };
   const hurt = async (socket: net.Socket): Promise<void> => {
+    await strangerHere(socket);
     knowMaximum(socket);
     socket.write('[HP=100]:\r\n');
     // The fall has to arrive as a *change*, so the healthy line lands first.
@@ -1746,6 +1757,7 @@ describe('hanging up to escape', () => {
     await until(() => manager!.character.combat.attackers.length > 0);
     socket.write('*Combat Off*\r\n');
     await until(() => !manager!.character.inCombat);
+    await strangerHere(socket);
     socket.write('[HP=10]:\r\n');
 
     await until(() => notices.some(notHangingUp));
@@ -2217,7 +2229,7 @@ describe('the run goes before the hang-up', () => {
 
     socket.write('Dirt Path\r\nObvious exits: southwest\r\n[HP=94]:\r\n');
     const refused = t('session.safety.hangUpRunGotOut');
-    await until(() => notices.includes(t('session.safety.hangUpNotAfterRun', { why, refused })));
+    await until(() => notices.includes(t('session.safety.hangUpNotBut', { why, refused })));
     expect(manager.state.phase).toBe('connected');
     expect(notices.some(composes(['session.safety.hangingUpUnchargedSetting']))).toBe(false);
   });
@@ -7043,6 +7055,58 @@ describe('SessionManager finds', () => {
  * keeps what it stopped, play picks it back up from wherever the character now
  * is, and play asks first when "wherever it now is" is a long way off.
  */
+describe('SessionManager shops', () => {
+  it("writes down a counter's list against the room it was typed in", async () => {
+    const { sink } = collect();
+    const kept: Shelf[] = [];
+    const pushed: Shelf[][] = [];
+    const shops: RealmShops = {
+      stock: (shelf) => kept.push(shelf),
+      get all() {
+        return kept;
+      }
+    };
+    manager = build(
+      { ...sink, shops: (shelves) => pushed.push(shelves) },
+      {
+        automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+        shops
+      }
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write(
+      'Newhaven, Village Entrance\r\n' +
+        'Obvious exits: north\r\n' +
+        '[HP=100/MA=50]:rm\r\n' +
+        'Location: 1,2140\r\n' +
+        '[HP=100/MA=50]:'
+    );
+    await until(() => manager!.character.room.map !== null);
+
+    manager.send('list\r');
+    socket.write(
+      'The following items are for sale here:\r\n\r\n' +
+        'Item                          Quantity    Price\r\n' +
+        '------------------------------------------------------\r\n' +
+        "shortbow                      25          20 gold crowns (You can't use)\r\n" +
+        'quarterstaff                  31           Free\r\n' +
+        '[HP=100/MA=50]:'
+    );
+
+    await until(() => kept.length > 0);
+    const shelf = kept[kept.length - 1]!;
+    expect(shelf.room).toBe('1/2140');
+    expect(shelf.items.map((item) => [item.name, item.quantity, item.price, item.note])).toEqual([
+      ['shortbow', 25, '20 gold crowns', "You can't use"],
+      ['quarterstaff', 31, 'Free', null]
+    ]);
+    // Once per list: the header line is not a second write.
+    expect(kept).toHaveLength(1);
+    expect(pushed).toHaveLength(1);
+  });
+});
+
 describe('starting and stopping a movement', () => {
   /** Forty rooms in a line, `1/1` at the south end and `1/40` at the north. */
   const corridor = (): WorldGraph => {

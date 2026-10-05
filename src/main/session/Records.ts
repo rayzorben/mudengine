@@ -1,9 +1,10 @@
 /**
  * What this character writes down about the realm that its data does not
- * have: a way through (`RealmMemory`, off the tracker's discoveries) and what
- * a search turned up (`RealmFinds`). Each is said once when it is news,
- * struck out only by the player, and republished to its card when it moves;
- * a room the client cannot place is never written down. The stores are the
+ * have: a way through (`RealmMemory`, off the tracker's discoveries), what a
+ * search turned up (`RealmFinds`) and what a counter listed (`RealmShops`).
+ * A way through is said once when it is news; each is struck out only by the
+ * player (a shop list only by the next one) and republished to its card when
+ * it moves. A room the client cannot place is never written down. The stores are the
  * host's, keyed per realm; this is the session's reading and wording of them.
  * See `mudengine-session` › *The rest of the session's decisions are units
  * beside it*.
@@ -19,16 +20,20 @@ import {
   type Discovery,
   type RealmMemory
 } from '../../shared/memory';
+import type { Block } from '../../shared/blocks';
+import type { RealmShops } from '../../shared/shops';
 import { roomAddress } from '../../shared/world';
 
 /** Where the character stands, the realm's names for rooms, and the two stores. */
 export interface RecordsParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
-  readonly world: Pick<WorldGraph, 'byId'> | undefined;
+  readonly world: Pick<WorldGraph, 'byId' | 'shop'> | undefined;
   /** See `SessionDeps.memory`. */
   readonly memory: RealmMemory | undefined;
   /** See `SessionDeps.finds`. */
   readonly finds: RealmFinds;
+  /** See `SessionDeps.shops`. */
+  readonly shops: RealmShops;
 }
 
 export class Records {
@@ -36,15 +41,38 @@ export class Records {
   private readonly world: RecordsParts['world'];
   private readonly memory: RecordsParts['memory'];
   private readonly finds: RecordsParts['finds'];
+  private readonly shops: RecordsParts['shops'];
 
   constructor(
     parts: RecordsParts,
-    private readonly sink: Pick<SessionSink, 'notice' | 'learned' | 'finds'>
+    private readonly sink: Pick<SessionSink, 'notice' | 'learned' | 'finds' | 'shops'>
   ) {
     this.tracker = parts.tracker;
     this.world = parts.world;
     this.memory = parts.memory;
     this.finds = parts.finds;
+    this.shops = parts.shops;
+  }
+
+  /**
+   * Writes down what a line just applied told the realm's records: a search's
+   * answer, or a counter's `list`.
+   *
+   * Called after `apply`, rather than from the `onBlock` fan-out, because
+   * `room.hidden` and `shopListing` are set by this very block, so a module's
+   * pre-apply state still holds the last room's answer. A shop list is an
+   * array rule, so it arrives as the batch.
+   * The tracker has already parsed the line, so this reads its facts.
+   */
+  noted(block: Block, batch: Block | null | undefined): void {
+    if (
+      block.type === 'room-hidden-items' ||
+      // The bare search's empty answer; `to the north` asked about an exit.
+      (block.type === 'user-search-failed' && block.groups['direction'] === undefined)
+    ) {
+      this.recordSearch();
+    }
+    if (batch?.type === 'shop-list') this.recordListing();
   }
 
   /** What this character has learned about the realm the data does not have. */
@@ -158,6 +186,28 @@ export class Records {
     this.sink.notice(t('session.finds.forgot', { what: find.name, room: find.room }));
     this.sink.finds?.([...this.finds.all]);
     return true;
+  }
+
+  /**
+   * Writes down the counter's whole `list` against the room it was typed in.
+   * A room the client cannot place is not written down, for `recordSearch`'s
+   * reason; one the realm records no shop for is, under the room's name.
+   */
+  recordListing(): void {
+    const { room, shopListing, name } = this.tracker.current;
+    const where = roomAddress(room);
+    if (where === null || shopListing === null) return;
+    const here = this.world?.byId(where);
+    const shop = here?.shop === undefined ? undefined : this.world?.shop(here.shop);
+    this.shops.stock({
+      room: where,
+      shopName: shop?.name || room.name || here?.name || where,
+      shop: shop?.id ?? null,
+      by: name,
+      at: shopListing.at,
+      items: shopListing.items
+    });
+    this.sink.shops?.([...this.shops.all]);
   }
 
   /** Everything a search has turned up in this realm. See `RealmFinds`. */

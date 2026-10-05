@@ -7,6 +7,7 @@ import { tuning } from '../../app/tuning';
 import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../../shared/config';
 import { wireItem } from '../../../shared/entities';
+import type { Block } from '../../../shared/blocks';
 import type { SpellHazard, WorldItem, WorldSpell } from '../../../shared/world';
 
 const automation: AutomationConfig = {
@@ -30,7 +31,20 @@ const health = (over: Partial<HealthConfig> = {}): HealthConfig => ({
 const DESERT: WorldSpell = { id: 683, name: 'desert spell' };
 const DESERT_HAZARD: SpellHazard = { avoidedBy: [1180], avoidedBySpell: [711] };
 const WATERSKIN_SPELL: WorldSpell = { id: 711, name: 'waterskin', duration: 600 };
+const DESERT_DAMAGE: WorldSpell = { id: 712, name: 'desert damage', abilities: [[1, 0]] };
 const WATERSKIN: WorldItem = { id: 283, name: 'waterskin', uses: 3, abilities: [[43, 711]] };
+
+/* Message 2015 is spell 712's cast message: the desert's harm landing. */
+const message = (groups: Record<string, string>): Block => ({
+  seq: 1,
+  at: 0,
+  type: 'realm-message',
+  domain: 'unknown',
+  groups: { message: '2015', role: '1', kind: 'other', ...groups },
+  text: 'You suffer in the desert heat... you need water, soon!',
+  terminator: 'newline',
+  confidence: 0.8
+});
 
 const carried = (name: string): CarriedItem => ({ ...wireItem(name) });
 
@@ -40,6 +54,7 @@ function standing(items: CarriedItem[], rows: number[] = [], over: Partial<Chara
     ...base,
     phase: 'in-game' as const,
     inventory: { ...base.inventory, items, rows, listedAt: 1_000 },
+    room: { ...base.room, map: 12, number: 300 },
     ...over
   };
 }
@@ -53,7 +68,8 @@ let clock: number;
 const sources = (over: Partial<WardSources> = {}): WardSources => ({
   hazardAt: (room) => (room === '12/300' ? { spell: DESERT, hazard: DESERT_HAZARD } : null),
   itemsCasting: (spell) => (spell === 711 ? [WATERSKIN] : []),
-  spellById: (id) => (id === 711 ? WATERSKIN_SPELL : id === 683 ? DESERT : null),
+  spellById: (id) =>
+    id === 711 ? WATERSKIN_SPELL : id === 683 ? DESERT : id === 712 ? DESERT_DAMAGE : null,
   spellsUp: () => stated,
   ...over
 });
@@ -187,5 +203,43 @@ describe('keeping a room’s ward up', () => {
     clock += tuning().spells.blessRetryMs - 1;
     swallowed.beforeStep('12/300', standing([carried('waterskin')]));
     expect(sent).toEqual([]);
+  });
+
+  /*
+   * logs/2026-10-04_21-33-09_festus: a use at 480 s, a dive through the oasis
+   * pool, and back in the desert at 1557 s the heat landed 29 times while the
+   * clock still had 12 minutes to run.
+   */
+  it('uses the item at once when the room’s harm lands, whatever its own clock says', () => {
+    const wards = make();
+    const here = standing([carried('waterskin')]);
+    wards.beforeStep('12/300', here);
+    expect(sent).toEqual(['use waterskin']);
+    clock += 1077 * 1000;
+    wards.onBlock(message({ spells: '712' }), here);
+    expect(sent).toEqual(['use waterskin', 'use waterskin']);
+  });
+
+  it('uses it mid-fight too', () => {
+    make().onBlock(
+      message({ spells: '712' }),
+      standing([carried('waterskin')], [], { inCombat: true })
+    );
+    expect(sent).toEqual(['use waterskin']);
+  });
+
+  it('uses nothing for a caster’s spell, a harmless spell, or outside the desert', () => {
+    const wards = make();
+    const here = standing([carried('waterskin')]);
+    wards.onBlock(message({ spells: '712', fills: 'a goblin' }), here);
+    wards.onBlock(message({ spells: '711' }), here);
+    wards.onBlock(message({}), here);
+    const elsewhere = standing([carried('waterskin')], [], {
+      room: { ...here.room, map: 1, number: 1 }
+    });
+    wards.onBlock(message({ spells: '712' }), elsewhere);
+    expect(sent).toEqual([]);
+    wards.onBlock(message({ spells: '712' }), here);
+    expect(sent).toEqual(['use waterskin']);
   });
 });

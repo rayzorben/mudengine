@@ -127,6 +127,7 @@ import type { FledEntry } from '../../shared/fled';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
+import { NO_SHOPS, type RealmShops } from '../../shared/shops';
 import type { QuestErrand, QuestPlan, QuestRunProgress, QuestWatched } from '../../shared/quests';
 import { identityOf, resetSignals } from '../../shared/reset';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
@@ -145,6 +146,7 @@ import { Rewriter } from './Rewriter';
 import {
   DEFAULT_CONFIG,
   type AutomationConfig,
+  type AutomationSwitch,
   type LoginConfig,
   type RewritesUiConfig
 } from '../../shared/config';
@@ -302,6 +304,8 @@ export interface SessionDeps {
    * which is what the tests want.
    */
   readonly finds?: RealmFinds;
+  /** Where each counter's `list` is written down, keyed like `finds`. */
+  readonly shops?: RealmShops;
   /**
    * The server's own words for an emote and for a monster dying, shipped
    * (`resources/world/actions.csv`, `death-messages.csv`) and shared by
@@ -502,7 +506,7 @@ export class SessionManager {
   private readonly link: LinkWatch;
   /** `link` hung this socket up, so its close is not the far end's doing. */
   private hungUpDead = false;
-  /** What this character writes down about the realm: ways through and finds. See `Records`. */
+  /** What this character writes down about the realm: ways through, finds and shops. See `Records`. */
   private readonly records: Records;
   /** The realm read for this character: travellers, lairs, counters, quests. See `Errands`. */
   private readonly errands: Errands;
@@ -533,6 +537,7 @@ export class SessionManager {
       players = NO_REALM_PLAYERS,
       spellLore = NO_SPELL_LORE,
       finds = NO_FINDS,
+      shops = NO_SHOPS,
       sentences = NO_SHIPPED_SENTENCES,
       words = UNSTATED_WORDS
     } = deps;
@@ -545,7 +550,7 @@ export class SessionManager {
       spellLore,
       deps.lastRoom
     );
-    this.records = new Records({ tracker: this.tracker, world, memory, finds }, sink);
+    this.records = new Records({ tracker: this.tracker, world, memory, finds, shops }, sink);
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
     // Before `useRealm`, which tells it the family is unread again.
     this.errands = new Errands(
@@ -1332,11 +1337,15 @@ export class SessionManager {
      * the queue's hold does, and nothing automation sends.
      */
     this.afk = new Afk(automation.afk, automation.enabled, this.queue, this.sink);
+    // Write a switch to the character's file and read it back (`switchAutomationNow`).
+    const switchNow = (name: AutomationSwitch, on: boolean): boolean =>
+      this.sink.switchAutomationNow?.(name, on) ?? false;
     this.remotes = new Remotes(automation, this.queue, {
       notice: (message) => this.sink.notice(message),
       ...new RemoteMoves(this, this.errands, (message) => this.sink.notice(message)).events,
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
+      switchCombat: (on) => switchNow('combat', on),
       // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
       commanded: (from, raw, at) => {
         if (this.tracker.noteRemoteCall(from, raw, at)) this.publisher.players();
@@ -1363,13 +1372,7 @@ export class SessionManager {
         const facts = { ...(client === undefined ? {} : { client }), extendedRemotes: extended };
         if (this.tracker.noteRemoteClient(from, Date.now(), facts)) this.publisher.players();
       },
-      /*
-       * `@where-room`'s answer: where a peer is standing, as the realm
-       * addresses it. Written to their registry entry as a **sighting**, the
-       * same field a room's occupant list writes — the registry keeps a room
-       * number and no map, which is the shape it has always had, so the
-       * address is reported in full and the number is what is kept.
-       */
+      // `@where-room`'s answer, kept as a sighting: the registry holds the room number, no map.
       placed: (from, map, room, name) => {
         this.sink.notice(
           t('session.remotes.peerPlaced', {
@@ -1597,7 +1600,7 @@ export class SessionManager {
         keepFled: (entries) => this.belongings.rememberFled(entries),
         driven: () => this.extensions.driving,
         hangUpTakesOver: (state) => this.safety.takesOver(state),
-        switchAutomation: (name, on) => this.sink.switchAutomationNow?.(name, on) ?? false,
+        switchAutomation: switchNow,
         ...reports
       }
     );
@@ -2735,6 +2738,7 @@ export class SessionManager {
     this.noticeRealmMismatch(block);
     this.rules.onBlock(block);
     this.walker.onBlock(block);
+    this.wards.onBlock(block, this.tracker.current);
     /*
      * A `rm` used to go out on every `*Combat Off*` while a loop ran, on the
      * reading that combat is where dead reckoning breaks. **Measured, and it
@@ -2870,23 +2874,8 @@ export class SessionManager {
       this.itemErrand.noteListing(this.answering);
     }
 
-    /*
-     * What the search turned up, written down against the room it was in.
-     *
-     * **After `apply`**, and that is the whole of why this is here rather than
-     * beside `AutoLoot` in the `onBlock` fan-out above: `room.hidden` is set by
-     * this very block, so the pre-apply state a module is handed still holds
-     * the last room's answer. `CharacterTracker` has already done the parsing
-     * — the item's name, its count, the coins normalised into copper — so this
-     * reads the fact rather than splitting the line a second time.
-     */
-    if (
-      block.type === 'room-hidden-items' ||
-      // The bare search's empty answer; `to the north` asked about an exit.
-      (block.type === 'user-search-failed' && block.groups['direction'] === undefined)
-    ) {
-      this.records.recordSearch();
-    }
+    // After `apply`: what a search or a counter said, written down. See `Records.noted`.
+    this.records.noted(block, batch);
 
     /*
      * And what died, for the quest steps a monster's death runs.
@@ -3018,8 +3007,7 @@ export class SessionManager {
       // the walker has the character, because a torch is never put out
       // mid-route: the next step may be dark again.
       this.light.onCharacter(state, this.walker.walking);
-      // And the ward the room the character stands in wants, when its spell
-      // has lapsed (todo 105).
+      // And the ward this room wants, when its spell has lapsed (todo 105).
       this.wards.onCharacter(state, roomAddress(state.room));
       // And the key to a way out of this room, off this room's floor.
       this.keys.onCharacter(state);

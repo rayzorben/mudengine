@@ -70,4 +70,19 @@ describe('the message table', () => {
     expect(book.match('a b c')).toBeNull();
     expect(book.match('')).toBeNull();
   });
+
+  it('names the spells whose cast prints a row, and none for a table without the column', () => {
+    const rows = parseMessagesCsv(
+      [
+        'number,kind,line1,line2,line3,spells',
+        '2015,other,"You suffer in the desert heat... you need water, soon!","","",712',
+        '39,other,"You slash %s for %d damage!","","",'
+      ].join('\n')
+    );
+    expect(rows.map((row) => row.spells)).toEqual([[712], []]);
+    expect(
+      MessageBook.fromRows(rows).match('You suffer in the desert heat... you need water, soon!')
+    ).toMatchObject({ number: 2015, spells: [712] });
+    expect(parseMessagesCsv(CSV)[0]?.spells).toEqual([]);
+  });
 });

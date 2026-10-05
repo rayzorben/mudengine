@@ -18,7 +18,10 @@
  * duration from the moment the use went out, a tick every three seconds —
  * `EffectSpellTickTime`, the clock `SpellEffectManager.Tick` counts
  * `DurationLeft` down on (docs/greatermud/combat.md) — so a waterskin's six
- * hundred ticks are thirty minutes. The router prices on none of this
+ * hundred ticks are thirty minutes. When the room's harm lands (*You suffer
+ * in the desert heat…*, spell 712's cast message), the ward is down whatever
+ * that clock says, and the item is used at once. A dive through the oasis pool took it off 18 minutes
+ * into the thirty (2026-10-04). The router prices on none of this
  * (`Traveller.spellsUp` is stated countdowns alone); this keeps the walk
  * safe, and the plan already prices the leg as carrying the skins.
  *
@@ -30,7 +33,9 @@
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import { abilityHurts } from '../../shared/abilities';
 import type { Priority } from '../../shared/automation';
+import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { HealthConfig } from '../../shared/config';
 import { bareName } from '../../shared/items';
@@ -38,6 +43,7 @@ import { EFFECT_TICK_SECONDS } from '../../shared/menace';
 import {
   hazardAvoided,
   nameAnswersTo,
+  roomAddress,
   type RoomId,
   type SpellHazard,
   type WorldItem,
@@ -136,6 +142,30 @@ export class Wards implements SessionModule {
     // `beforeStep` asks again, and a round spent here mid-fight is a round.
     if (state.inCombat || state.combat.attackers.length > 0) return;
     this.keep(here, state, 'probe');
+  }
+
+  /**
+   * The server printed a spell landing that names no caster and hurts: the
+   * room's own spell got through, so its ward is down whatever this clock
+   * says. Used at once, in a fight too, at a heal's band: a tick of the desert
+   * costs more than a round.
+   */
+  onBlock(block: Block, state: CharacterState): void {
+    const here = roomAddress(state.room);
+    if (block.type !== 'realm-message' || here === null) return;
+    // A line naming a caster is another's spell.
+    if (block.groups['fills'] !== undefined) return;
+    const landed = (block.groups['spells'] ?? '').split('|').map(Number);
+    const hurts = landed.some((id) =>
+      (this.sources.spellById(id)?.abilities ?? []).some(([ability, value]) =>
+        abilityHurts(ability, value)
+      )
+    );
+    if (!hurts) return;
+    const found = this.sources.hazardAt(here);
+    if (found === null) return;
+    for (const id of found.hazard.avoidedBySpell ?? []) this.until.delete(id);
+    this.keep(here, state, 'combat');
   }
 
   /** Whether this module's own clock says the spell is still up. */

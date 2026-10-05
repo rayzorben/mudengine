@@ -26,6 +26,7 @@ import {
 import type { Block } from '../shared/blocks';
 import type { Discovery } from '../shared/memory';
 import type { Find } from '../shared/finds';
+import type { Shelf } from '../shared/shops';
 import type { ResetNotice } from '../shared/ipc';
 import type { CharacterState } from '../shared/character';
 import type { PlayerRegistry } from '../shared/players';
@@ -191,6 +192,7 @@ const api: IpcApi = {
   onProfiles: (handler) => subscribe<ProfileSummary[]>(Push.profiles, handler),
   onLearned: (handler) => subscribe<Addressed<Discovery[]>>(Push.learned, handler),
   onFinds: (handler) => subscribe<Addressed<Find[]>>(Push.finds, handler),
+  onShops: (handler) => subscribe<Addressed<Shelf[]>>(Push.shops, handler),
   onCharacterReset: (handler) => subscribe<Addressed<ResetNotice>>(Push.characterReset, handler),
   onQuestSaid: (handler) => subscribe<Addressed<QuestWatched>>(Push.questSaid, handler),
   onQuestRun: (handler) => subscribe<Addressed<QuestRunProgress>>(Push.questRun, handler),

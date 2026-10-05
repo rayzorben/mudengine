@@ -38,6 +38,7 @@ import type { ShippedSentences } from '../../shared/sentences';
 import type { FightSink } from '../../shared/fights';
 import type { RealmMemory } from '../../shared/memory';
 import type { RealmFinds } from '../../shared/finds';
+import type { RealmShops } from '../../shared/shops';
 import {
   Push,
   type Addressed,
@@ -221,6 +222,8 @@ export interface SessionHostOptions {
    * nothing down.
    */
   findsFor?(id: SessionId): RealmFinds | undefined;
+  /** Where each counter's `list` is written down, keyed on the realm like `findsFor`. */
+  shopsFor?(id: SessionId): RealmShops | undefined;
   /**
    * Where this character's record last placed it, read from the record for the
    * realm its file says it plays, so the tab draws that room before any dial.
@@ -510,6 +513,7 @@ export class SessionHost {
         learned: (discoveries) =>
           this.options.toAll(Push.learned, { session: id, payload: discoveries }),
         finds: (finds) => this.options.toAll(Push.finds, { session: id, payload: finds }),
+        shops: (shelves) => this.options.toAll(Push.shops, { session: id, payload: shelves }),
         reset: (notice) =>
           this.options.toAll(Push.characterReset, { session: id, payload: notice }),
         questSaid: (progress) =>
@@ -533,6 +537,7 @@ export class SessionHost {
         players: this.options.playersFor(id),
         spellLore: this.options.spellLoreFor?.(id),
         finds: this.options.findsFor?.(id),
+        shops: this.options.shopsFor?.(id),
         lastRoom: this.options.lastRoomFor?.(id),
         sentences: this.options.sentences?.(),
         words: () => this.options.wordsFor(id),

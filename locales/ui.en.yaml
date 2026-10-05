@@ -602,9 +602,11 @@ notices:
       one: 'Meditate If Below Mana % and Keep Meditating To Mana % are now Rest If Below Mana % and
         Rest To Mana %, with Use Meditate on where mana was rested for, in {fileList}'
     manaRestAdded:
-      many: 'Rest If Below Mana %, Rest To Mana %, Use Meditate and Meditate Before Resting were added
+      many:
+        'Rest If Below Mana %, Rest To Mana %, Use Meditate and Meditate Before Resting were added
         to {count} files: {fileList}'
-      one: 'Rest If Below Mana %, Rest To Mana %, Use Meditate and Meditate Before Resting were added
+      one:
+        'Rest If Below Mana %, Rest To Mana %, Use Meditate and Meditate Before Resting were added
         to {fileList}'
     freedomCureStated:
       many: 'A Freedom spell, cast when the character is held in place, was added blank to the cures
@@ -758,6 +760,11 @@ notices:
       saveError: 'Could not save {fileName}: {message}'
       upgraded: "{fileName} now counts searches, so each find's chance starts counting from the next
         search of its room. The old file is kept as {fileName}.bak."
+    shops:
+      invalidFile: '{fileName} is not a shop record, so shops start empty. The old file is kept as
+        {fileName}.bak.'
+      readError: 'Could not read {fileName}: {message}'
+      saveError: 'Could not save {fileName}: {message}'
     belongings:
       invalidFile: '{fileName} is not a record file. {notSaved}'
       invalidField: '{fileName} has a {field} this version cannot read. {notSaved}'
@@ -1806,6 +1813,21 @@ cards:
     none: No balance recorded. Send 'bank' to check it.
     title: Banks
     total: '{copper} copper coins (cc) in all'
+  shops:
+    badge: '{count} shops'
+    caption: Every shop's list in this realm
+    column:
+      item: Item
+      listed: Listed
+      price: Price
+      quantity: Qty
+      shop: Shop
+    copyRow: '{item}: {price}, {quantity} left at {shop} ({age})'
+    empty: No shop has been listed yet. Type 'list' in a shop to add it here.
+    findPlaceholder: Find an item or shop
+    goToTooltip: Plan a route to {room}
+    listedBy: Listed by {name}
+    title: Shops
   autoLayout:
     label: Auto layout
     tooltip: Size each card to what it shows, and keep them in view where they fit
@@ -3425,7 +3447,8 @@ settings:
     mobRuleNotHostileHint: It does not attack first, whatever the world data says. The character
       rests next to it, and only attacks it when Attack All Monsters is set.
     mobRuleStopToKill: Stop to kill
-    mobRuleStopToKillHint: MegaMUD's Stop to kill if able. It is attacked even with fewer monsters in
+    mobRuleStopToKillHint:
+      MegaMUD's Stop to kill if able. It is attacked even with fewer monsters in
       the room than Min Monsters in Room, and even when a player outside the party is fighting it
       (Polite Attacks).
     # Todo 816: how a banded row fights its monster.
@@ -4593,9 +4616,12 @@ session:
     # Todo 21: the run goes first and the hang-up decides on where it lands.
     hangUpAfterRun: 'Not hanging up yet: {why}. Running first; hanging up if the run fails, or if
       you are attacked or hurt again where it lands.'
-    hangUpNotAfterRun: 'Not hanging up: {why}, but {refused}.'
+    hangUpNotBut: 'Not hanging up: {why}, but {refused}.'
     hangUpRunGotOut: the run got out and nothing is attacking here
-    hangUpRunCaught: 'The run did not get you clear: {why}, and you were attacked or hurt again where
+    hangUpNoMonster: no monster is here and nothing is attacking
+    hangUpRoomUnseen: the room has not been seen since connecting and nothing is attacking
+    hangUpRunCaught:
+      'The run did not get you clear: {why}, and you were attacked or hurt again where
       it landed.'
     hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hangup penalty."
     hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hangup
@@ -5512,6 +5538,10 @@ automation:
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
     ranParty: '{from} asked the party to "{command}".'
     statsReset: '{from} sent @reset; the combat statistics start again from now.'
+    autoCombatUnread: '{from} sent @auto-combat without on or off, so nothing was changed.'
+    autoCombatSwitched: '{from} sent @auto-combat {word}; auto-combat is {word}.'
+    autoCombatNotWritten: "{from} sent @auto-combat {word}, but the character's file could not be
+      changed, so auto-combat was left as it was."
     peerIsOurs: "{who} answered @version with {client}, so questions to them will use this client's
       own format: a room's map number instead of its name."
     peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's

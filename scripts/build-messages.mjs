@@ -12,6 +12,11 @@
  *
  *   node scripts/build-messages.mjs [path/to/Messages.sql] [path/to/realm.zip]
  *
+ * `spells` names the spells whose cast prints the row (`Spells.Cast MSG B`,
+ * read from `Spells.sql` beside `Messages.sql`, since no `.mdb` carries the
+ * column): *You suffer in the desert heat…* is spell 712 landing, and that is
+ * how `Wards` knows the desert's spell got through.
+ *
  * `kind` is what the realm data says references the row — `spell` (a spell's
  * `DescMsg` 115, `StartMsg` 120 or `ConfuseMsg` 101), else what the row's own
  * shape says: `verbs` (a `|`-joined verb table), `commands` (the three words
@@ -42,6 +47,20 @@ for (const m of sql.matchAll(rowRe)) {
   rows.push({ number: Number(m[1]), lines });
 }
 
+/*
+ * `Spells.sql` columns, in order: Number, Name, Short Name, Level, Desc 1,
+ * Desc 2, Cast MSG A, Cast MSG B, … — the row's message is the eighth.
+ */
+const castBy = new Map();
+const spellsSql = path.join(path.dirname(sqlPath), 'Spells.sql');
+const spellRe =
+  /VALUES \((\d+), N'(?:[^']|'')*', N'(?:[^']|'')*', -?\d+, N'(?:[^']|'')*', N'(?:[^']|'')*', -?\d+, (\d+),/g;
+for (const m of fs.readFileSync(spellsSql, 'utf8').matchAll(spellRe)) {
+  const message = Number(m[2]);
+  if (message <= 0) continue;
+  castBy.set(message, [...(castBy.get(message) ?? []), Number(m[1])]);
+}
+
 const spellLinked = new Set();
 try {
   const realm = openRealm(realmPath);
@@ -56,7 +75,9 @@ try {
   }
   realm.close();
 } catch (error) {
-  console.error(`realm not read (${error instanceof Error ? error.message : error}); kinds by shape only`);
+  console.error(
+    `realm not read (${error instanceof Error ? error.message : error}); kinds by shape only`
+  );
 }
 
 const kindOf = ({ number, lines }) => {
@@ -71,12 +92,14 @@ const kindOf = ({ number, lines }) => {
 };
 
 const quote = (value) => `"${String(value).replace(/"/g, '""')}"`;
-const csv = ['number,kind,line1,line2,line3'];
+const csv = ['number,kind,line1,line2,line3,spells'];
 for (const row of rows) {
-  csv.push([row.number, kindOf(row), ...row.lines.map(quote)].join(','));
+  const spells = (castBy.get(row.number) ?? []).join('|');
+  csv.push([row.number, kindOf(row), ...row.lines.map(quote), spells].join(','));
 }
 fs.writeFileSync(out, `${csv.join('\n')}\n`);
 const kinds = new Map();
 for (const row of rows) kinds.set(kindOf(row), (kinds.get(kindOf(row)) ?? 0) + 1);
 console.log(`${rows.length} messages -> ${path.relative(process.cwd(), out)}`);
 console.log([...kinds].map(([k, n]) => `${k} ${n}`).join(', '));
+console.log(`${rows.filter((row) => castBy.has(row.number)).length} printed by a spell's cast`);

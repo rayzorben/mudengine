@@ -671,6 +671,31 @@ export const HAZARD_ABILITY = {
 } as const;
 
 /**
+ * The abilities that take hit points off whoever a spell lands on.
+ *
+ * The damaging quarter of `menace.hazardOf`'s switch and nothing else: a spell
+ * trap's price is what it costs to walk through, and being held or blinded for
+ * a round costs a fight rather than a corridor. `Heal` is not in the set
+ * because only a *negative* one is a wound, which is a value test rather than
+ * an id test.
+ */
+export const HURTS: ReadonlySet<number> = new Set([
+  HAZARD_ABILITY.damage,
+  HAZARD_ABILITY.damageWithMr,
+  HAZARD_ABILITY.drain,
+  HAZARD_ABILITY.poison
+]);
+
+/**
+ * Whether one `[ability, value]` pair wounds whoever the spell lands on. A
+ * negative heal is a wound by another name: `menace.hazardOf` reads it the
+ * same way, and `damnation` is the spell that taught it.
+ */
+export function abilityHurts(ability: number, value: number): boolean {
+  return HURTS.has(ability) || (ability === HAZARD_ABILITY.heal && value < 0);
+}
+
+/**
  * A monster's own dodge, in points — its `Abil-n = 34` slot
  * (`Mobs/MobType.cs:169`). The one ability the *character's* side of the
  * arithmetic reads off a monster: `prowess.swing` turns a fraction of landed

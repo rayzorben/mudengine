@@ -411,6 +411,91 @@ describe('answering the imperative ones', () => {
     });
   });
 
+  /* Todo 02: the auto-combat switch on another player's word, `{ok}` once the file says so. */
+  describe('@auto-combat', () => {
+    let switched: boolean[];
+    let writes: boolean;
+    const remotes = (combatOn: boolean): Remotes => {
+      const withCombat = { ...config, combat: { ...config.combat, enabled: combatOn } };
+      return new Remotes(withCombat, queue, {
+        notice: (m) => notices.push(m),
+        switchCombat: (on) => {
+          switched.push(on);
+          return writes;
+        }
+      });
+    };
+    beforeEach(() => {
+      switched = [];
+      writes = true;
+    });
+
+    it('turns auto-combat off and answers {ok}', () => {
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat off'), who());
+      drain();
+      expect(switched).toEqual([false]);
+      expect(sent).toEqual(['/Rand {ok}']);
+      expect(notices).toContain(
+        t('automation.remotes.autoCombatSwitched', { from: 'Rand', word: 'off' })
+      );
+    });
+
+    it('turns it on, whatever case the word is in', () => {
+      remotes(false).onBlock(said('conversation-telepath', 'Rand', '@auto-combat ON'), who());
+      drain();
+      expect(switched).toEqual([true]);
+      expect(sent).toEqual(['/Rand {ok}']);
+    });
+
+    it('answers {ok} without writing when the switch already says so', () => {
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat on'), who());
+      drain();
+      expect(switched).toEqual([]);
+      expect(sent).toEqual(['/Rand {ok}']);
+    });
+
+    it('answers nothing when the file could not be written, and says so', () => {
+      writes = false;
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat off'), who());
+      drain();
+      expect(switched).toEqual([false]);
+      expect(sent).toEqual([]);
+      expect(notices).toContain(
+        t('automation.remotes.autoCombatNotWritten', { from: 'Rand', word: 'off' })
+      );
+    });
+
+    it('changes nothing without on or off', () => {
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat'), who());
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat maybe'), who());
+      drain();
+      expect(switched).toEqual([]);
+      expect(sent).toEqual([]);
+      expect(
+        notices.filter((n) => n === t('automation.remotes.autoCombatUnread', { from: 'Rand' }))
+      ).toHaveLength(2);
+    });
+
+    it('answers nobody it was not granted to', () => {
+      const refusing = remotes(true);
+      refusing.configure({
+        ...config,
+        remotes: { ...config.remotes, players: {} }
+      });
+      refusing.onBlock(said('conversation-telepath', 'Rand', '@auto-combat off'), who());
+      drain();
+      expect(switched).toEqual([]);
+      expect(sent).toEqual([]);
+      expect(notices).toContain(
+        t('automation.remotes.refusedNotGranted', {
+          from: 'Rand',
+          raw: 'auto-combat',
+          unresolvedClause: ''
+        })
+      );
+    });
+  });
+
   it('joins the sender’s party on @join', () => {
     peers.onBlock(said('conversation-telepath', 'Buster', '@join'), who());
     drain();

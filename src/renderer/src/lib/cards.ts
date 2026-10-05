@@ -136,6 +136,11 @@ export const CARDS = [
    */
   { id: 'banks', label: t('cards.banks.title') },
   /*
+   * Every shop's last `list` in this realm. Accumulated like the vaults, so a
+   * card rather than the Room card's Shop face, which is only the shop here.
+   */
+  { id: 'shops', label: t('cards.shops.title') },
+  /*
    * The realm's quests, derived from its own text blocks — the realm has no
    * Quests table and never had one (`indexQuests.ts`).
    *
@@ -246,6 +251,8 @@ const SHIPPED: Record<CardId, { rows: number; columns?: number }> = {
   inventory: { rows: 14, columns: 20 },
   // Two vaults and a total, which is more banking than most characters do.
   banks: { rows: 12 },
+  // A five-column table, Carrying's width for the same reason.
+  shops: { rows: 14, columns: 20 },
   // A row's progress figure sits after the quest's name, outside its column
   // at 260px (`npm run smoke`, 2026-10-03).
   quests: { rows: 27, columns: 20 },
@@ -415,7 +422,8 @@ export const HIDES_WHEN_EMPTY: Partial<Record<CardId, boolean>> = {
   party: true,
   navigation: true,
   gang: false,
-  banks: false
+  banks: false,
+  shops: false
 };
 
 /** Whether this card, as set for this character, leaves the rail when empty. */
