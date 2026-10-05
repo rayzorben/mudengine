@@ -138,10 +138,16 @@ describe('the Info record read back off a header', () => {
 
 describe('the family the wire states', () => {
   it('reads a printed experience table as the MajorMUD lineage', () => {
-    expect(familyToldBy(block('user-experience-table'))).toEqual({
+    expect(familyToldBy(block('user-experience-table'), 'exp')).toEqual({
       family: 'majormud',
       tell: 'experience-table'
     });
+  });
+
+  /* orohost prints the table for `? exp` (2026-10-04), and the client asks it on every level. */
+  it('reads nothing from a table asked for any other way', () => {
+    expect(familyToldBy(block('user-experience-table'), '? exp')).toBeNull();
+    expect(familyToldBy(block('user-experience-table'))).toBeNull();
   });
 
   it("reads rm's coordinates as GreaterMUD", () => {

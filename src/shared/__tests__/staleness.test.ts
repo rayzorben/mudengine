@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { domainOf } from '../blocks';
 import { REFRESH, STALE_AFTER, staleAfter, type StaleFact } from '../staleness';
 
-const FACTS: readonly StaleFact[] = ['sheet', 'experience', 'pack'];
+const FACTS: readonly StaleFact[] = ['sheet', 'experience', 'chart', 'pack'];
 
 describe('what a sentence made stale', () => {
   it('names a command for every fact in the union', () => {
@@ -52,6 +52,6 @@ describe('what a sentence made stale', () => {
   /* Absent is "nothing went stale", never a crash and never everything. */
   it('answers a sentence that invalidated nothing with nothing', () => {
     expect(staleAfter('room-name')).toEqual([]);
-    expect(staleAfter('user-levels')).toEqual(['sheet', 'experience']);
+    expect(staleAfter('user-levels')).toEqual(['sheet', 'experience', 'chart']);
   });
 });

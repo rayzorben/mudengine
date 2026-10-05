@@ -689,6 +689,40 @@ describe('asking again after training', () => {
     routines.onBlock(trained);
     expect(commandsIn(queue)).not.toContain('exp');
   });
+
+  it('asks for the exp table as well', () => {
+    const { routines, queue } = make();
+    routines.onBlock(trained);
+    expect(commandsIn(queue)).toContain('? exp');
+  });
+
+  /*
+   * Soul, 2026-10-05: `train stats` followed the welcome at once, its hold
+   * cleared the queue, and the level's `exp` never went.
+   */
+  it('asks again once the stat screen lets go of what it dropped', () => {
+    const { routines, queue } = make({ onEnterRealm: [] });
+    routines.onBlock(trained);
+    expect(commandsIn(queue)).toContain('exp');
+    queue.hold('the stat screen is up');
+    expect(commandsIn(queue)).not.toContain('exp');
+    routines.onCharacter(inRealm);
+    expect(commandsIn(queue)).not.toContain('exp');
+    queue.release();
+    routines.onCharacter(inRealm);
+    expect(commandsIn(queue)).toEqual(expect.arrayContaining(['st', 'exp', '? exp', 'i']));
+  });
+
+  it('stops asking once an answer read it', () => {
+    const { routines, queue } = make({ onEnterRealm: [] });
+    routines.onBlock(trained);
+    queue.hold('the stat screen is up');
+    queue.release();
+    routines.onBlock({ type: 'user-experience', groups: {}, at: Date.now() } as never);
+    routines.onCharacter(inRealm);
+    expect(commandsIn(queue)).not.toContain('exp');
+    expect(commandsIn(queue)).toContain('? exp');
+  });
 });
 
 /*

@@ -41,6 +41,13 @@ export type StaleFact =
   | 'sheet'
   /** `exp` — experience made, and how much is needed for the next level. */
   | 'experience'
+  /**
+   * `? exp` — the table of what each level costs, one below to eight above.
+   * orohost's `exp` prints only the summary line, and past level 13 nothing
+   * works the table out (`EXPERIENCE_CONFIRMED_TO`), so this is the only
+   * place a price beyond the next level comes from.
+   */
+  | 'chart'
   /** `i` — what is carried, and the purse `Wealth:` states. */
   | 'pack';
 
@@ -56,6 +63,7 @@ export type StaleFact =
 export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }> = {
   sheet: { command: 'st', coalesceKey: 'probe:st' },
   experience: { command: 'exp', coalesceKey: 'probe:exp' },
+  chart: { command: '? exp', coalesceKey: 'probe:? exp' },
   pack: { command: 'i', coalesceKey: 'probe:i' }
 };
 
@@ -68,10 +76,10 @@ export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }
  * `i` for it would spend from the budget walking and fighting spend from.
  *
  * - **`user-levels`** (`Welcome to level 7!`) — the sheet, because the maximum
- *   hit points and mana are rolled on the level, and the experience, because
- *   the figure for the *next* level is a different number and this realm's
- *   status line carries no `Need=` to maintain it.
- * - **`user-trains`** — the same two, plus the **pack**: the sentence states a
+ *   hit points and mana are rolled on the level, and the experience and the
+ *   chart, because the figure for the *next* level is a different number and
+ *   this realm's status line carries no `Need=` to maintain it.
+ * - **`user-trains`** — the same three, plus the **pack**: the sentence states a
  *   price handed over (`You hand over 250 copper farthings…`), so the purse
  *   `Wealth:` and the copper count are both wrong from that line, and nothing
  *   else says so. Both sentences rather than one, because they are two facts —
@@ -87,8 +95,8 @@ export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }
  *   the experience curve is untouched.
  */
 export const STALE_AFTER = {
-  'user-levels': ['sheet', 'experience'],
-  'user-trains': ['sheet', 'experience', 'pack'],
+  'user-levels': ['sheet', 'experience', 'chart'],
+  'user-trains': ['sheet', 'experience', 'chart', 'pack'],
   'user-dies': ['pack'],
   'user-stats-assigned': ['sheet']
 } as const satisfies Partial<Record<BlockType, readonly StaleFact[]>>;
@@ -112,8 +120,14 @@ export function staleAfter(type: BlockType): readonly StaleFact[] {
 export const READ: Record<StaleFact, BlockType> = {
   sheet: 'player-status',
   experience: 'user-experience',
+  chart: 'user-experience-table',
   pack: 'user-inventory'
 };
+
+/** The facts a block of this type answers. */
+export function readBy(type: BlockType): StaleFact[] {
+  return (Object.keys(READ) as StaleFact[]).filter((fact) => READ[fact] === type);
+}
 
 /** What entering the realm must read, or the client plays the session on unknowns. */
 export const REQUIRED: readonly StaleFact[] = ['sheet', 'pack'];
