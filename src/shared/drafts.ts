@@ -52,6 +52,7 @@ import {
 import { asLoops, type Loop } from './loops';
 import { asCoinNames, type CoinNames } from './coins';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
+import { DEFAULT_LOGGING, LOG_DAYS_MAX } from './logging';
 
 /**
  * A load gate as the draft carries it: a closed union, so an unrecognised word
@@ -227,6 +228,7 @@ export interface GlobalDraft {
     enabled: boolean;
     directory: string;
     capture: boolean;
+    keepDays: number;
     fights: boolean;
     conversations: boolean;
     conversationDays: number;
@@ -1292,9 +1294,15 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       enabled: logging['enabled'] === true,
       directory: text(logging['directory']).slice(0, 400),
       capture: logging['capture'] === true,
+      keepDays: clamp(logging['keepDays'], 0, LOG_DAYS_MAX, DEFAULT_LOGGING.keepDays),
       fights: logging['fights'] === true,
       conversations: logging['conversations'] === true,
-      conversationDays: clamp(logging['conversationDays'], 1, 36500, 365),
+      conversationDays: clamp(
+        logging['conversationDays'],
+        1,
+        LOG_DAYS_MAX,
+        DEFAULT_LOGGING.conversationDays
+      ),
       maxBytes: clamp(logging['maxBytes'], 0, 1_000_000_000, 50_000_000)
     },
     automation: {

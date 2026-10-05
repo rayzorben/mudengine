@@ -3685,7 +3685,8 @@ describe('the conversation log stated in logging:', () => {
       enabled: true,
       fights: true,
       conversations: true,
-      conversationDays: 365
+      conversationDays: 365,
+      keepDays: 7
     });
     const once = fs.readFileSync(home.options, 'utf8');
     expect(once).toContain('# My note.');
@@ -3697,7 +3698,7 @@ describe('the conversation log stated in logging:', () => {
   it('never overwrites a key the user already stated', () => {
     fs.writeFileSync(home.options, 'logging:\n  conversations: false\n', 'utf8');
     migrate();
-    expect(readLogging()).toEqual({ conversations: false, conversationDays: 365 });
+    expect(readLogging()).toEqual({ conversations: false, conversationDays: 365, keepDays: 7 });
   });
 });
 
@@ -6843,6 +6844,54 @@ describe('running between rounds is stated', () => {
     ).toHaveLength(1);
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
+describe('how long logs are kept is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-keep-days-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes a week after capture into the options file only, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(home.options, 'logging:\n  enabled: true\n  capture: true\n  directory: ""\n');
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nlogging:\n  capture: false\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const logging = (parse(text) as { logging: Record<string, unknown> }).logging;
+    const keys = Object.keys(logging);
+    expect(keys[keys.indexOf('capture') + 1]).toBe('keepDays');
+    expect(logging['keepDays']).toBe(7);
+    expect(text).toContain('# How many days a session log or capture is kept');
+    expect(fs.readFileSync(soul, 'utf8')).not.toContain('keepDays');
+    expect(notesOf(said, 'notices.migration.logKeeping')).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+
+    fs.writeFileSync(home.options, 'logging:\n  keepDays: 0\n');
+    migrate();
+    const stated = parse(fs.readFileSync(home.options, 'utf8')) as {
+      logging: Record<string, unknown>;
+    };
+    expect(stated.logging['keepDays']).toBe(0);
   });
 });
 
