@@ -87,11 +87,34 @@
  * nearest file, while every race and the Mystic agree — so a derived seed there
  * is wrong for some characters and right for others. That is the case the
  * per-row provenance and the contradiction rule below exist for: the card marks
- * what it worked out, and the first row the realm states settles it.
+ * what it worked out, and a row the realm states reseeds the chain from the
+ * realm's own price (`experienceSeed`).
  */
 
-/** Where a number came from. Shown on the card, never inferred. */
-export type ExperienceSource = 'realm' | 'database';
+/**
+ * Where a number came from. Shown on the card, never inferred: the realm's
+ * own figure, the chain from the world database's percentage, or the chain
+ * from a percentage the realm's own rows gave where the database is wrong.
+ */
+export type ExperienceSource = 'realm' | 'database' | 'chained';
+
+/** A source this client worked out rather than read off the wire. */
+export type WorkedOutSource = Exclude<ExperienceSource, 'realm'>;
+
+/** Whether a row is this client's arithmetic rather than the realm's. */
+export function workedOut(source: ExperienceSource): boolean {
+  switch (source) {
+    case 'realm':
+      return false;
+    case 'database':
+    case 'chained':
+      return true;
+    default: {
+      const never: never = source;
+      return never;
+    }
+  }
+}
 
 /** What one level costs, and which half of the client said so. */
 export interface ExperienceLevel {
@@ -160,6 +183,53 @@ export function experienceChart(percent: number, upto: number): ExperienceLevel[
   return rows;
 }
 
+/** The percentage a derived window is chained from, and where it came from. */
+export interface ExperienceSeed {
+  percent: number;
+  source: WorkedOutSource;
+}
+
+/** The chart's figure for `level` on `percent`. */
+function chartAt(percent: number, level: number): number | undefined {
+  return experienceChart(percent, level).find((row) => row.level === level)?.experience;
+}
+
+/**
+ * The percentage a derived window is chained from: the world database's while
+ * every row the realm stated (to `EXPERIENCE_CONFIRMED_TO`) agrees with it,
+ * else the one whole percentage those rows leave, else null.
+ *
+ * The database is wrong for some characters on orohost (2026-10-04: a Gnome
+ * Mage the world file prices at 270% is charged 4,000 for level 3, which is
+ * 200%), and a contradicted chain used to leave the table one row long. A
+ * level's figure rises strictly with the percentage, so the lowest stated row
+ * fixes it, and every other stated row checks it.
+ */
+export function experienceSeed(
+  table: ExperienceTable | null,
+  databasePercent: number | null
+): ExperienceSeed | null {
+  const stated = (table?.rows ?? []).filter(
+    (row) => row.source === 'realm' && row.level >= 2 && row.level <= EXPERIENCE_CONFIRMED_TO
+  );
+  const reproduces = (percent: number): boolean =>
+    stated.every((row) => chartAt(percent, row.level) === row.experience);
+  if (databasePercent !== null && reproduces(databasePercent)) {
+    return { percent: databasePercent, source: 'database' };
+  }
+  const lowest = stated[0];
+  if (lowest === undefined) return null;
+  // Level 2 is ten times the percentage and every level after it is more.
+  let low = 1;
+  let high = Math.max(1, Math.ceil(lowest.experience / 10));
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if ((chartAt(middle, lowest.level) ?? 0) < lowest.experience) low = middle + 1;
+    else high = middle;
+  }
+  return reproduces(low) ? { percent: low, source: 'chained' } : null;
+}
+
 /**
  * The window of a derived table for a character at `level`.
  *
@@ -170,14 +240,18 @@ export function experienceChart(percent: number, upto: number): ExperienceLevel[
  * window would read as the realm's table with rows missing; nothing reads as
  * what it is, and the card asks.
  */
-export function derivedExperienceTable(percent: number, level: number): ExperienceTable | null {
+export function derivedExperienceTable(
+  percent: number,
+  level: number,
+  source: WorkedOutSource = 'database'
+): ExperienceTable | null {
   if (!Number.isInteger(level) || level < 1) return null;
   const first = Math.max(2, level - 1);
   if (first > EXPERIENCE_CONFIRMED_TO) return null;
   const last = Math.min(level + EXPERIENCE_WINDOW - 2, EXPERIENCE_CONFIRMED_TO);
   const chart = experienceChart(percent, last);
   if (chart.length === 0) return null;
-  return { rows: chart.filter((row) => row.level >= first) };
+  return { rows: chart.filter((row) => row.level >= first).map((row) => ({ ...row, source })) };
 }
 
 /**
@@ -202,12 +276,10 @@ export function withRealmExperience(
 
   const contradicted = rows.some((row) => {
     const before = held.get(row.level);
-    return (
-      before !== undefined && before.source === 'database' && before.experience !== row.experience
-    );
+    return before !== undefined && workedOut(before.source) && before.experience !== row.experience;
   });
   if (contradicted)
-    for (const [level, row] of [...held]) if (row.source === 'database') held.delete(level);
+    for (const [level, row] of [...held]) if (workedOut(row.source)) held.delete(level);
 
   for (const row of rows) held.set(row.level, { ...row, source: 'realm' });
   return { rows: [...held.values()].sort((a, b) => a.level - b.level) };
@@ -250,10 +322,10 @@ export function withDerivedExperience(
 
   const reseeded = derived.rows.some((row) => {
     const before = held.get(row.level);
-    return before?.source === 'database' && before.experience !== row.experience;
+    return before !== undefined && workedOut(before.source) && before.experience !== row.experience;
   });
   if (reseeded) {
-    for (const [level, row] of [...held]) if (row.source === 'database') held.delete(level);
+    for (const [level, row] of [...held]) if (workedOut(row.source)) held.delete(level);
   }
 
   let added = false;
@@ -333,7 +405,10 @@ export function experienceOwed(
 ): ExperienceOwed {
   if (standing === null) return { value: stated, derived: false };
   if (!standing.ahead && stated !== null) return { value: stated, derived: false };
-  return { value: standing.needed, derived: standing.nextSource === 'database' };
+  return {
+    value: standing.needed,
+    derived: standing.nextSource !== null && workedOut(standing.nextSource)
+  };
 }
 
 /** What the realm has said about this character's experience, as `Progress` holds it. */

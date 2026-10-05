@@ -18,6 +18,7 @@ import {
 } from '../../shared/character';
 import {
   derivedExperienceTable,
+  experienceSeed,
   withDerivedExperience,
   withRealmExperience,
   type ExperienceLevel,
@@ -575,15 +576,16 @@ export function lightOut(s: CharacterState, item: string | undefined): Character
  * The experience table, worked out from the realm data when nothing else has.
  *
  * Folded after the reducer rather than in a case, for the reason `trackPlayers`
- * and `trackTally` are: its three inputs — the race, the class and the level —
- * are set by four different blocks, and a line in each of them is four
- * chances to forget one.
+ * and `trackTally` are: its inputs, the race, the class, the level and the
+ * table, are set by several different blocks, and a line in each of them is a
+ * chance to forget one.
  *
- * **It never overwrites a row the realm stated, and a row that contradicts one
- * stops it adding anything at all** — `withDerivedExperience` is where that
- * lives, and why it merges rather than switching itself off: GreaterMUD's
- * `exp` prints no table, so on the realm this client defaults to the wire
- * only ever states one row and freezing on it left a chart of one.
+ * It never overwrites a row the realm stated (`withDerivedExperience`), and it
+ * merges rather than switching itself off, since GreaterMUD's `exp` prints no
+ * table and the wire only ever states one row. Where the realm's rows
+ * contradict the world data, the chain is seeded from those rows instead
+ * (`experienceSeed`); where no whole percentage gives every one, nothing is
+ * added.
  *
  * The guard is exact rather than cautious: nothing that feeds the sum has
  * moved, so the sum cannot have changed. That matters because this runs on
@@ -604,10 +606,14 @@ export function derivedExperience(
   )
     return state;
 
-  if (!world || state.race === null || state.className === null || level === null) return state;
-  const percent = world.experiencePercent(state.race, state.className);
-  if (percent === null) return state;
-  const derived = derivedExperienceTable(percent, level);
+  if (level === null) return state;
+  const database =
+    world && state.race !== null && state.className !== null
+      ? world.experiencePercent(state.race, state.className)
+      : null;
+  const seed = experienceSeed(table, database);
+  if (seed === null) return state;
+  const derived = derivedExperienceTable(seed.percent, level, seed.source);
   if (derived === null) return state;
   const merged = withDerivedExperience(table, derived);
   if (merged === table) return state;
