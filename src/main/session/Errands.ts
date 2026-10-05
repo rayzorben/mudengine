@@ -1484,6 +1484,7 @@ export class Errands implements SessionModule {
       roundSeconds,
       restTickSeconds,
       passiveTickSeconds,
+      roomRegenSeconds,
       killOverheadMs,
       stepMs,
       greatermudRespawnOffsetSeconds,
@@ -1508,6 +1509,7 @@ export class Errands implements SessionModule {
       roundSeconds,
       restTickSeconds,
       passiveTickSeconds,
+      roomRegenSeconds,
       killOverheadMs,
       stepMs,
       greatermudRespawnOffsetSeconds,
@@ -2608,10 +2610,10 @@ export class Errands implements SessionModule {
     const world = this.world;
     const found = world?.byId(room);
     if (!world || !found?.lair) return null;
-    const { greatermudRespawnOffsetSeconds, passiveTickSeconds } = tuning().hunting;
+    const { greatermudRespawnOffsetSeconds, roomRegenSeconds } = tuning().hunting;
     const stated = respawnSeconds(found.delay ?? null, this.serverFamily, {
       greatermudRespawnOffsetSeconds,
-      passiveTickSeconds
+      roomRegenSeconds
     });
     return (
       this.clocks.lairClock([room], (id) => this.isLair(id), stated === null)?.seconds ?? stated

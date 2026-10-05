@@ -1,9 +1,8 @@
 /**
  * Mana regeneration measured off the statline: how fast the pool rises while
  * the character stands out of combat, neither resting nor meditating, and is
- * short of its maximum. A kai pool's `stat all` figure is not the rate the
- * wire shows (todo 10: the sheet said 1 a tick, a capture rose much faster),
- * so the choice of blessings trusts only what it watched rise.
+ * short of its maximum. The choice of blessings reads it where no `stat all`
+ * has stated `MA Regen`.
  *
  * A stretch counts only between two lines close enough together
  * (`gapSeconds`), and one where the pool fell is passed over: a cast spent

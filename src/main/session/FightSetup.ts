@@ -140,7 +140,10 @@ export class FightSetup {
       family,
       weights: tuning().menace,
       heal: this.heal(state, hpMax, at === 'rested' ? manaMax : mana, sheet, family),
-      regenPerRound: regen === null ? 0 : (regen.health.value * ROUND_SECONDS) / regen.tickSeconds,
+      regenPerRound:
+        regen === null
+          ? 0
+          : (regen.health.value * ROUND_SECONDS) / tuning().hunting.passiveTickSeconds,
       recasts: at === 'rested' ? [] : this.recasts(state, roundCap),
       levels: {
         safeAbove: tuning().menace.survivalSafeAbove,

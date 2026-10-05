@@ -57,7 +57,7 @@ describe('the respawn clock', () => {
    * room stood in (`RegenTickTime`, 121s) and every entry (`Player.cs:782`).
    */
   it('reads a GreaterMUD delay of 0 as the regen pass', () => {
-    expect(respawnSeconds(0, 'greatermud', C)).toBe(C.passiveTickSeconds);
+    expect(respawnSeconds(0, 'greatermud', C)).toBe(C.roomRegenSeconds);
   });
 
   it('puts no clock on a refilling stop, so the lap walks it every time', () => {
@@ -72,7 +72,7 @@ describe('the respawn clock', () => {
     const spot = {
       key: 'lair:1:80:',
       mobs: [{ name: 'cave bear' }],
-      respawnSeconds: C.passiveTickSeconds,
+      respawnSeconds: C.roomRegenSeconds,
       walk: [room('Small Cavern', 2156, 0), room('Dungeon, Entrance', 2152, 0)]
     } as unknown as HuntingSpot;
     const loop = huntLoop(spot, (key) => key);
@@ -154,13 +154,14 @@ describe('what a spot pays', () => {
     const e = estimateSpot(singles(), C);
     // Six rounds of five seconds and the kill's overhead.
     expect(e.combatSeconds).toBeCloseTo(6 * 5 + 1.5, 5);
-    // Sixty hit points taken, a little regained standing, three resting ticks.
+    // Sixty hit points taken, 8.4 regained standing, and two resting ticks of
+    // 24 each with half a standing tick's 8 beside it (`sittingPerSecond`).
     expect(e.damagePerRoom).toBe(60);
-    expect(e.restSeconds).toBe(45);
+    expect(e.restSeconds).toBe(30);
     // Slower than the clock, so no waiting; the rate is the cycle's.
     expect(e.waitSeconds).toBe(0);
-    expect(e.cycleSeconds).toBeCloseTo(31.5 + 45, 5);
-    expect(e.expPerHour).toBeCloseTo((225 * 3600) / 76.5, 3);
+    expect(e.cycleSeconds).toBeCloseTo(31.5 + 30, 5);
+    expect(e.expPerHour).toBeCloseTo((225 * 3600) / 61.5, 3);
     expect(e.ceilingPerHour).toBeCloseTo((225 * 3600) / 30, 3);
     expect(e.deadly).toBe(false);
     expect(e.costly).toBe(false);
@@ -220,7 +221,7 @@ describe('what a spot pays', () => {
 
   it('waits for the clock when the cycle is faster than the respawn', () => {
     const e = estimateSpot(singles({ respawnSeconds: 300 }), C);
-    expect(e.waitSeconds).toBeCloseTo(300 - 76.5, 5);
+    expect(e.waitSeconds).toBeCloseTo(300 - 61.5, 5);
     expect(e.expPerHour).toBeCloseTo((225 * 3600) / 300, 3);
   });
 
@@ -457,7 +458,7 @@ describe('recovering by casting', () => {
     const dear = { ...healer, heal: { hpPerCast: 10, manaPerCast: 200 } };
     const e = estimateSpot(singles({ character: dear }), C);
     expect(e.healCasts).toBe(0);
-    expect(e.restSeconds).toBe(45);
+    expect(e.restSeconds).toBe(30);
   });
 
   it('costs a melee character nothing and casts nothing', () => {
@@ -480,18 +481,19 @@ describe('a lair that poisons', () => {
   it('stands the character for the poison before the rest, and says how long', () => {
     const e = estimateSpot(singles({ mobs: [poisoner], character: unlifted }), C);
     expect(e.poisonSeconds).toBe(90);
-    // The ninety seconds are in the cycle, ahead of a rest they left unchanged.
-    expect(e.restSeconds).toBe(45);
-    expect(e.cycleSeconds).toBeCloseTo(76.5 + 90, 5);
-    // Stood long enough, standing regains most of what was owed and the rest shrinks.
+    // The ninety seconds are in the cycle, and the three standing ticks in them
+    // (every 30s, `DoHPTick`) take a rest tick off the 30s rest after.
+    expect(e.restSeconds).toBe(15);
+    expect(e.cycleSeconds).toBeCloseTo(31.5 + 90 + 15, 5);
+    // Stood long enough, standing regains all that was owed and there is no rest.
     const long = mutant({ afflictions: [{ kind: 'poison', seconds: 600 }] });
-    expect(estimateSpot(singles({ mobs: [long], character: unlifted }), C).restSeconds).toBe(15);
+    expect(estimateSpot(singles({ mobs: [long], character: unlifted }), C).restSeconds).toBe(0);
   });
 
   it('costs nothing where the character is immune or has a cure', () => {
     const e = estimateSpot(singles({ mobs: [poisoner] }), C);
     expect(e.poisonSeconds).toBe(0);
-    expect(e.restSeconds).toBe(45);
+    expect(e.restSeconds).toBe(30);
   });
 
   it('names an unstated length rather than pricing it free', () => {
@@ -595,12 +597,12 @@ describe('filling the wait', () => {
    * back re-enters it every lap, so the lair beside it is taken and the wait goes.
    */
   it('takes the room next door for a lair that refills on entry, and the wait goes', () => {
-    const bear = singles({ respawnSeconds: C.passiveTickSeconds, refillsOnEntry: true });
+    const bear = singles({ respawnSeconds: C.roomRegenSeconds, refillsOnEntry: true });
     const camping = estimateSpot(bear, C);
     expect(camping.waitSeconds!).toBeGreaterThan(0);
     const filled = addFiller(
       bear,
-      [{ ...rat, respawnSeconds: C.passiveTickSeconds, refillsOnEntry: true }],
+      [{ ...rat, respawnSeconds: C.roomRegenSeconds, refillsOnEntry: true }],
       8,
       C
     );

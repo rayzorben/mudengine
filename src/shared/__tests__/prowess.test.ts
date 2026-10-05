@@ -10,7 +10,6 @@ import {
   regeneration,
   martialRoundDamage,
   roundDamage,
-  REGEN_TICK_SECONDS,
   swing,
   swingsPerRound,
   type ProwessSheet
@@ -269,7 +268,6 @@ describe('regeneration — Player.cs:4813 and :4863', () => {
     const back = regeneration(SHEET, null, 'greatermud')!;
     expect(back.health).toEqual({ value: 2, from: 'bound' });
     expect(back.restingHealth.value).toBe(6);
-    expect(back.tickSeconds).toBe(REGEN_TICK_SECONDS);
   });
 
   it('never returns nothing to a frail character', () => {
