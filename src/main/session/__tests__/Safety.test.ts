@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { Safety, type SafetyParts } from '../Safety';
-import type { HangUpAssessment } from '../../automation/HangUp';
+import { HangUpWatch, type HangUpAssessment } from '../../automation/HangUp';
 import type { SafetyDecision } from '../../../shared/automation';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
@@ -28,6 +28,12 @@ const LINK: ConnectionState = {
 };
 
 const stalker: RoomOccupant = classifyOccupant('stalker', {
+  players: new Set<string>(),
+  mob: () => ({ disposition: 'hostile', uncertain: false, costly: 'never' })
+});
+
+/** An ordinary monster: no row names it. */
+const orc: RoomOccupant = classifyOccupant('orc', {
   players: new Set<string>(),
   mob: () => ({ disposition: 'hostile', uncertain: false, costly: 'never' })
 });
@@ -67,9 +73,14 @@ function build(
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
   const hungUp: ConnectionEnd[] = [];
+  const watch = new HangUpWatch();
   const parts: SafetyParts = {
     tracker: { current: state },
-    hangUp: { assess: () => assessment, clean: () => assessment.clean },
+    hangUp: {
+      assess: () => assessment,
+      clean: () => assessment.clean,
+      monsterNear: (here, now) => watch.monsterNear(here, now)
+    },
     realmMenu: {
       penalty:
         danger.percent === undefined || danger.percent === null
@@ -170,7 +181,7 @@ describe('hanging up on a monster its row names', () => {
  */
 describe('hanging up with a run on the wire', () => {
   const hurt = (): CharacterState => {
-    const state = standing([]);
+    const state = standing([orc]);
     return { ...state, vitals: { ...state.vitals, hp: 27 } };
   };
   const config = automation({ enabled: true, penalties: false, belowHealth: 0.35 }, []);
@@ -200,7 +211,7 @@ describe('hanging up with a run on the wire', () => {
     const { safety, notices, hungUp } = build(config, low, undefined, {}, run);
     safety.considerHangingUp(low);
     run.unanswered = false;
-    safety.considerHangingUp(standing([]));
+    safety.considerHangingUp(standing([orc]));
     vi.advanceTimersByTime(10 * tuning().session.hangUpAfterRunMs);
     run.unanswered = true;
     safety.considerHangingUp(low);
@@ -228,7 +239,7 @@ describe('hanging up with a run on the wire', () => {
 describe('one decision for a health drop: the run, then the hang-up', () => {
   const config = automation({ enabled: true, penalties: false, belowHealth: 0.35 }, []);
   const at = (hp: number, attackers: string[] = []): CharacterState => {
-    const state = standing([]);
+    const state = standing([orc]);
     return {
       ...state,
       vitals: { ...state.vitals, hp, hpMax: 319 },
@@ -253,7 +264,7 @@ describe('one decision for a health drop: the run, then the hang-up', () => {
     const refused = t('session.safety.hangUpRunGotOut');
     expect(notices).toEqual([
       t('session.safety.hangUpAfterRun', { why }),
-      t('session.safety.hangUpNotAfterRun', { why, refused })
+      t('session.safety.hangUpNotBut', { why, refused })
     ]);
     expect(decisions.at(-1)).toMatchObject({ action: 'hang up', acted: false, refused });
   });
@@ -306,5 +317,71 @@ describe('one decision for a health drop: the run, then the hang-up', () => {
       t('session.safety.hangUpRunCaught', { why }),
       t('session.safety.hangUpRefused', { why, reasons: 'in combat' })
     ]);
+  });
+});
+
+/*
+ * Todo 01: low health is a reason to hang up only beside a monster or in a
+ * fight. Reconnecting hurt into an empty room does not hang up.
+ */
+describe('hanging up for health only where something could hit you', () => {
+  const config = automation({ enabled: true, penalties: false, belowHealth: 0.35 }, []);
+  const low = (occupants: RoomOccupant[]): CharacterState => {
+    const state = standing(occupants);
+    return { ...state, vitals: { ...state.vitals, hp: 20 } };
+  };
+  const why = t('session.safety.whyHealth', { percent: '20%' });
+
+  it('does not hang up in an empty room, and says so once', () => {
+    const { safety, notices, decisions, hungUp } = build(config, low([]));
+    safety.considerHangingUp(low([]));
+    safety.considerHangingUp(low([]));
+    expect(hungUp).toEqual([]);
+    const refused = t('session.safety.hangUpNoMonster');
+    expect(notices).toEqual([t('session.safety.hangUpNotBut', { why, refused })]);
+    expect(decisions).toEqual([
+      expect.objectContaining({ action: 'hang up', acted: false, refused })
+    ]);
+  });
+
+  it('hangs up once a monster walks in', () => {
+    const { safety, hungUp } = build(config, low([]));
+    safety.considerHangingUp(low([]));
+    expect(hungUp).toEqual([]);
+    safety.considerHangingUp(low([orc]));
+    expect(hungUp).toEqual(['client']);
+  });
+
+  it('counts a name it cannot place as a monster', () => {
+    const stranger = classifyOccupant('Gorgo', {
+      players: new Set<string>(),
+      mob: () => undefined
+    });
+    expect(stranger.kind).toBe('unknown');
+    const { safety, hungUp } = build(config, low([stranger]));
+    safety.considerHangingUp(low([stranger]));
+    expect(hungUp).toEqual(['client']);
+  });
+
+  it('says again when the room first seen since connecting is empty', () => {
+    const unseen = low([]);
+    unseen.room = { ...unseen.room, resolvedBy: 'remembered' };
+    const { safety, notices, hungUp } = build(config, unseen);
+    safety.considerHangingUp(unseen);
+    safety.considerHangingUp(low([]));
+    safety.considerHangingUp(low([]));
+    expect(hungUp).toEqual([]);
+    expect(notices).toEqual([
+      t('session.safety.hangUpNotBut', { why, refused: t('session.safety.hangUpRoomUnseen') }),
+      t('session.safety.hangUpNotBut', { why, refused: t('session.safety.hangUpNoMonster') })
+    ]);
+  });
+
+  it('hangs up in a fight the room listing does not show', () => {
+    const state = low([]);
+    const fighting = { ...state, combat: { ...state.combat, attackers: ['thug'] } };
+    const { safety, hungUp } = build(config, fighting);
+    safety.considerHangingUp(fighting);
+    expect(hungUp).toEqual(['client']);
   });
 });

@@ -1,6 +1,11 @@
 import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
-import { ownAlignment, type Adventurer, type CharacterState } from '../../shared/character';
+import {
+  fightIsRunning,
+  ownAlignment,
+  type Adventurer,
+  type CharacterState
+} from '../../shared/character';
 import { attacksOnSight } from '../../shared/mobs';
 import type { SessionModule } from './Module';
 
@@ -171,7 +176,7 @@ export class HangUpWatch implements SessionModule {
    * of the parse path (2026-09-11).
    */
   private findings(state: CharacterState, now: number): HangUpFindings {
-    const mobEngaged = this.lastMobBlowAt !== null && now - this.lastMobBlowAt < MOB_ENGAGED_MS;
+    const mobEngaged = this.mobSwungSince(now);
 
     /*
      * `ShouldMobAttackTarget` is set the moment a monster decides to attack, a
@@ -207,6 +212,29 @@ export class HangUpWatch implements SessionModule {
     }
 
     return { inCombat: state.inCombat, mobEngaged, onSight, unplaced, pvp };
+  }
+
+  /**
+   * Whether anything here could be what low health is a reason to hang up on
+   * (todo 01): a fight running, a monster's blow inside `MOB_ENGAGED_MS`, or
+   * something standing in the room that is not a player. In an empty room
+   * nothing can hit the character, so a hang-up there only loses the session.
+   * A passive monster counts, as a shopkeeper would. On a reconnect the room
+   * arrives with the first look, and a monster walking in puts it here on the
+   * next line. A capitalised stranger the client cannot place counts: it may
+   * be a named monster.
+   */
+  monsterNear(state: CharacterState, now: number): boolean {
+    return (
+      this.mobSwungSince(now) ||
+      fightIsRunning(state) ||
+      state.room.occupants.some((who) => who.kind !== 'player')
+    );
+  }
+
+  /** A monster hit or swung at this character inside `MOB_ENGAGED_MS`. */
+  private mobSwungSince(now: number): boolean {
+    return this.lastMobBlowAt !== null && now - this.lastMobBlowAt < MOB_ENGAGED_MS;
   }
 
   /** Whether no reason to expect a penalty was found. Never "safe". */

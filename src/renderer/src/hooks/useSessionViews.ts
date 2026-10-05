@@ -16,6 +16,7 @@ import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import type { Block } from '@shared/blocks';
 import { EMPTY_CHARACTER, type CharacterState } from '@shared/character';
 import type { Find } from '@shared/finds';
+import type { Shelf } from '@shared/shops';
 import type { AttachSnapshot, IpcApi, SessionId } from '@shared/ipc';
 import { NO_LOOP, type LoopProgress } from '@shared/loops';
 import type { Discovery } from '@shared/memory';
@@ -129,6 +130,8 @@ export interface SessionView {
    * dialling the realm reads the same log. See `src/shared/finds.ts`.
    */
   finds: Find[];
+  /** Every counter's last `list` in this realm, per realm like `finds`. See `src/shared/shops.ts`. */
+  shops: Shelf[];
   /**
    * The rank each quest has been *seen* to reach, from what this character was
    * watched doing this session.
@@ -163,6 +166,7 @@ export const EMPTY_VIEW: SessionView = {
   unseen: EMPTY_UNSEEN,
   learned: [],
   finds: [],
+  shops: [],
   questSaid: {},
   questRun: IDLE_QUEST_RUN
 };
@@ -222,6 +226,7 @@ export type ViewFeeds = Pick<
   | 'onPlayers'
   | 'onLearned'
   | 'onFinds'
+  | 'onShops'
   | 'onQuestSaid'
   | 'onQuestRun'
   | 'onAutomation'
@@ -345,6 +350,7 @@ export function useSessionViews(
         unseen: EMPTY_UNSEEN,
         learned: snapshot.learned,
         finds: snapshot.finds,
+        shops: snapshot.shops,
         questSaid: snapshot.questSaid,
         questRun: snapshot.questRun
       }));
@@ -437,6 +443,7 @@ export function useSessionViews(
         patchView(id, (v) => ({ ...v, learned: payload }))
       ),
       feeds.onFinds(({ session: id, payload }) => patchView(id, (v) => ({ ...v, finds: payload }))),
+      feeds.onShops(({ session: id, payload }) => patchView(id, (v) => ({ ...v, shops: payload }))),
       feeds.onQuestSaid(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, questSaid: payload }))
       ),

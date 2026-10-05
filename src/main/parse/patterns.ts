@@ -666,7 +666,7 @@ export const RULES: Rule[] = [
    * jabs you, …`) and because `PlayerAttackType.cs:363` sends the same
    * sentence for a player's blow. The other two are `Messages` rows of kind
    * `other` (23 of them, `resources/world/messages.csv`), which reached the
-   * client as `realm-message` — a type nothing anywhere reads.
+   * client as `realm-message`, which nothing counted as a miss.
    *
    * No `nameFallback` on any of them: an attacker no listing has placed stays
    * unnamed, and a blow nothing could name still counts.
@@ -1653,7 +1653,8 @@ export const RULES: Rule[] = [
     type: 'door-swings',
     pattern:
       /^The (?<barrier>door|gate|portcullis) to the (?<direction>[a-z]+) just (?<state>opened|closed)\.$/
-  },  /*
+  },
+  /*
    * `You see Baby attempt to bash the gate to the east.` — another player's
    * failed bash, three in a row in captures/014. `Door.TryBashDoor` composes
    * `"You see " + Name + " attempt to bash the " + doorType + " to the " +

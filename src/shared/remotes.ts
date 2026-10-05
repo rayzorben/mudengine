@@ -337,11 +337,13 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     support: 'unread',
     because: 'the settings do not map one for one, and no capture shows the reply'
   },
-  'auto-combat': {
-    name: 'auto-combat',
-    support: 'unread',
-    because: 'the setting exists (`automation.combat`) and no capture shows the reply'
-  },
+  /*
+   * `@auto-combat on` and `off`: the auto-combat switch, written to this
+   * character's file as the player's own toggle writes it (todo 02,
+   * 2026-10-04). `{ok}` once the file says so, as the user gave the reply. A
+   * sender not granted it hears nothing (`refuse`). Granted by nothing shipped.
+   */
+  'auto-combat': { name: 'auto-combat', support: 'acted' },
   'auto-nuke': {
     name: 'auto-nuke',
     support: 'unread',
@@ -833,6 +835,15 @@ export function formatRoomAddress(
 ): string | null {
   if (map === null || room === null) return null;
   return name === null ? `{${map}/${room}}` : `{${map}/${room} ${name}}`;
+}
+
+/**
+ * `on` or `off`, the word MegaMUD's `@auto-*` remotes take, as true or false;
+ * anything else is null and changes nothing.
+ */
+export function parseOnOff(argument: string | null): boolean | null {
+  const word = argument?.trim().toLowerCase();
+  return word === 'on' ? true : word === 'off' ? false : null;
 }
 
 /**

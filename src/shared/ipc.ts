@@ -20,6 +20,7 @@ import type { LocalMap } from './map';
 import type { RoutePages, WalkPages } from './routeLegs';
 import type { Discovery } from './memory';
 import type { Find } from './finds';
+import type { Shelf } from './shops';
 import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
 import type { PlayerRegistry } from './players';
@@ -272,6 +273,8 @@ export interface AttachSnapshot {
    * from one moment beside a room from another.
    */
   finds: Find[];
+  /** Every counter's last `list` in this realm. See `Push.shops`. */
+  shops: Shelf[];
   /**
    * The rank each quest has been seen to reach from what this character was
    * watched doing this session, and when each was seen. See `Push.questSaid`.
@@ -1106,6 +1109,11 @@ export const Push = {
    */
   finds: 'world:finds',
   /**
+   * Every counter's last `list` in this realm, after one was listed. The whole
+   * record, for the reason `learned` sends the whole record.
+   */
+  shops: 'world:shops',
+  /**
    * The character in the realm may not be the one this client's records are
    * about — a different race or class, level 1 after higher, experience a
    * fraction of what it was.
@@ -1572,6 +1580,7 @@ export interface IpcApi {
   onProfiles(handler: (profiles: ProfileSummary[]) => void): () => void;
   onLearned(handler: (message: Addressed<Discovery[]>) => void): () => void;
   onFinds(handler: (message: Addressed<Find[]>) => void): () => void;
+  onShops(handler: (message: Addressed<Shelf[]>) => void): () => void;
   onCharacterReset(handler: (message: Addressed<ResetNotice>) => void): () => void;
   onQuestSaid(handler: (message: Addressed<QuestWatched>) => void): () => void;
   onQuestRun(handler: (message: Addressed<QuestRunProgress>) => void): () => void;

@@ -40,6 +40,7 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'conversation',
   'gang',
   'banks',
+  'shops',
   'stats',
   'builder',
   'quests',

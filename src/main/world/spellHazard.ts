@@ -12,28 +12,13 @@
  *
  * See `mudengine-world` › *The world knowledge base*, the room-spell bullets.
  */
-import { HAZARD_ABILITY } from '../../shared/abilities';
+import { HAZARD_ABILITY, abilityHurts } from '../../shared/abilities';
 import type { LevelBand } from '../../shared/world';
 import type { BuiltSpellHazard } from './buildRealm';
 import { number } from './values';
 import type { RealmSource } from './RealmSource';
 import { castMoves, SCRIPT_DEPTH, scriptsOf } from './navigation/scriptWays';
 import { linesRun, roleOf, stepsRun, type Textblock } from './navigation/textblock';
-
-/**
- * The abilities that take hit points off whoever the spell lands on.
- *
- * The same four `WorldGraph`'s `HURTS` names, and deliberately a second
- * spelling rather than an import: this runs in the converter, which must not
- * depend on the graph that reads what it writes. The pair is asserted against
- * each other in `spellHazard.test.ts`.
- */
-const HURTS: ReadonlySet<number> = new Set([
-  HAZARD_ABILITY.damage,
-  HAZARD_ABILITY.damageWithMr,
-  HAZARD_ABILITY.drain,
-  HAZARD_ABILITY.poison
-]);
 
 /** A band on disk: `[min, max]`, `null` for unbounded on either side. */
 const pair = (band: LevelBand): [number | null, number | null] => [
@@ -269,7 +254,7 @@ export function resolveHazard(
       }
       if (ability === HAZARD_ABILITY.teleportRoom || ability === HAZARD_ABILITY.teleportMap)
         continue;
-      if (!HURTS.has(ability) && !(ability === HAZARD_ABILITY.heal && value < 0)) continue;
+      if (!abilityHurts(ability, value)) continue;
       // `abil.Sum == 0 ? rolledPower : abil.Sum`, the server's own choice of
       // which figure to use — the same one `resolveSpells` makes.
       const magnitude = value !== 0 ? Math.abs(value) : mean;

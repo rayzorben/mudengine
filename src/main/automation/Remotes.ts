@@ -74,6 +74,7 @@ import {
   isExtended,
   judgeRemote,
   parseRemoteCall,
+  parseOnOff,
   parseRemoteReply,
   parseRoomAddress,
   plainRemote,
@@ -302,6 +303,12 @@ export interface RemoteEvents {
    * decides the `{ok}`; the session says why when none did.
    */
   goTo?(from: string, request: string): boolean;
+  /**
+   * `@auto-combat on|off`: write the auto-combat switch to this character's
+   * file and read it back. Returns whether it was written, which decides the
+   * `{ok}`.
+   */
+  switchCombat?(on: boolean): boolean;
 }
 
 /** What a `@stop` stopped and is still waiting for a `@rego`, for `@status`. */
@@ -1377,6 +1384,23 @@ export class Remotes implements SessionModule {
           return;
         }
         if (this.events.goTo?.(from, command.argument) === true) this.reply(from, '{ok}', prefix);
+        return;
+      }
+
+      case 'auto-combat': {
+        // `{ok}` once the file says what was asked, already or now (todo 02).
+        const on = parseOnOff(command.argument);
+        if (on === null) {
+          this.events.notice?.(t('automation.remotes.autoCombatUnread', { from }));
+          return;
+        }
+        const words = { from, word: on ? 'on' : 'off' };
+        if (this.config.combat.enabled !== on && this.events.switchCombat?.(on) !== true) {
+          this.events.notice?.(t('automation.remotes.autoCombatNotWritten', words));
+          return;
+        }
+        this.events.notice?.(t('automation.remotes.autoCombatSwitched', words));
+        this.reply(from, '{ok}', prefix);
         return;
       }
 

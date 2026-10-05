@@ -832,7 +832,8 @@ export class Classifier {
       message: String(hit.number),
       role: String(hit.role),
       kind: hit.kind,
-      ...(hit.fills.length > 0 ? { fills: hit.fills.join('|') } : {})
+      ...(hit.fills.length > 0 ? { fills: hit.fills.join('|') } : {}),
+      ...(hit.spells.length > 0 ? { spells: hit.spells.join('|') } : {})
     };
   }
 

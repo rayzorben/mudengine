@@ -31,6 +31,7 @@ import ReferenceCard from './ReferenceCard';
 import RoomCard from './RoomCard';
 import SelfCard from './SelfCard';
 import SessionCard from './SessionCard';
+import ShopsCard from './ShopsCard';
 import StatsCard from './StatsCard';
 import StreamCard from './StreamCard';
 import ToolbarCard from './ToolbarCard';
@@ -316,6 +317,19 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
        */
       if (emptyCardHidden(chrome, id, character.banks.length > 0)) return null;
       return <BanksCard {...chrome} character={character} />;
+    case 'shops':
+      // Put away by default, and kept when empty unless the gear says otherwise, like the vaults.
+      if (emptyCardHidden(chrome, id, view.shops.length > 0)) return null;
+      return (
+        <ShopsCard
+          {...chrome}
+          goToRoom={ctx.chooseOnMap === null ? null : ctx.goToRoom}
+          inspect={ctx.inspect}
+          self={character.name}
+          session={ctx.session}
+          shelves={view.shops}
+        />
+      );
     case 'quests':
       /*
        * Unconditional, like the vaults: a realm that scripts no quests is a

@@ -67,7 +67,13 @@ import {
   counterIn
 } from '../../shared/world';
 import { trainersFor, type TrainerRow } from '../../shared/training';
-import { HAZARD_ABILITY, abilityShape, type ReferredNames } from '../../shared/abilities';
+import {
+  HAZARD_ABILITY,
+  HURTS,
+  abilityHurts,
+  abilityShape,
+  type ReferredNames
+} from '../../shared/abilities';
 import { tuning } from '../app/tuning';
 import type { ExitEntity, ItemEntity, MobEntity, NpcEntity } from '../../shared/entities';
 import {
@@ -115,22 +121,6 @@ function leverKey(room: RoomId, direction: string): string {
 
 /** Handed back for an exit nothing opens, so no caller allocates to say "none". */
 const NO_LEVERS: readonly RemoteLever[] = [];
-
-/**
- * The abilities that take hit points off whoever a spell lands on.
- *
- * The damaging quarter of `menace.hazardOf`'s switch and nothing else: a spell
- * trap's price is what it costs to walk through, and being held or blinded for
- * a round costs a fight rather than a corridor. `Heal` is not in the set
- * because only a *negative* one is a wound, which is a value test rather than
- * an id test.
- */
-const HURTS: ReadonlySet<number> = new Set([
-  HAZARD_ABILITY.damage,
-  HAZARD_ABILITY.damageWithMr,
-  HAZARD_ABILITY.drain,
-  HAZARD_ABILITY.poison
-]);
 
 /**
  * Where one spell's `TeleportRoom` puts the character, as the server works it out.
@@ -2133,10 +2123,7 @@ export class WorldGraph {
           if (effect === 'plain') effect = 'script';
           continue;
         }
-        // A negative heal is a wound by another name — `menace.hazardOf` reads
-        // it the same way, and `damnation` is the spell that taught it.
-        const hurts = HURTS.has(ability) || (ability === HAZARD_ABILITY.heal && value < 0);
-        if (!hurts) continue;
+        if (!abilityHurts(ability, value)) continue;
         // `abil.Sum == 0 ? rolledPower : abil.Sum`, the server's own choice of
         // which figure to use.
         const magnitude = value !== 0 ? Math.abs(value) : mean;

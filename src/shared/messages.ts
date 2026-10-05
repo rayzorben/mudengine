@@ -19,6 +19,8 @@ export interface MessageRow {
   number: number;
   kind: MessageKind;
   lines: readonly [string, string, string];
+  /** The spells whose cast prints this row (`Spells.Cast MSG B`), empty for most. */
+  spells: readonly number[];
 }
 
 /** One line of the table fitted to a line of the wire. */
@@ -32,6 +34,8 @@ export interface MessageHit {
   fills: string[];
   /** Whether each fill was a `%d` figure. */
   numeric: boolean[];
+  /** The spells whose cast prints this row. */
+  spells: readonly number[];
 }
 
 const KINDS: ReadonlySet<string> = new Set(['spell', 'cast', 'verbs', 'commands', 'other']);
@@ -44,7 +48,8 @@ export function parseMessagesCsv(text: string): MessageRow[] {
   const at = {
     number: column('number'),
     kind: column('kind'),
-    lines: [column('line1'), column('line2'), column('line3')]
+    lines: [column('line1'), column('line2'), column('line3')],
+    spells: column('spells')
   };
   if (at.number < 0 || at.kind < 0 || at.lines.some((index) => index < 0)) return [];
   const rows: MessageRow[] = [];
@@ -54,7 +59,11 @@ export function parseMessagesCsv(text: string): MessageRow[] {
     if (!Number.isInteger(number) || number <= 0 || !KINDS.has(kind)) continue;
     const lines = at.lines.map((index) => (record[index] ?? '').trim()) as [string, string, string];
     if (lines.every((line) => line.length === 0)) continue;
-    rows.push({ number, kind: kind as MessageKind, lines });
+    const spells = (at.spells < 0 ? '' : (record[at.spells] ?? ''))
+      .split('|')
+      .map(Number)
+      .filter((id) => Number.isInteger(id) && id > 0);
+    rows.push({ number, kind: kind as MessageKind, lines, spells });
   }
   return rows;
 }
@@ -62,6 +71,7 @@ export function parseMessagesCsv(text: string): MessageRow[] {
 interface Template {
   number: number;
   kind: MessageKind;
+  spells: readonly number[];
   role: 1 | 2 | 3;
   template: string;
   pattern: RegExp;
@@ -101,6 +111,7 @@ function compile(row: MessageRow, role: 1 | 2 | 3, template: string): Template |
   return {
     number: row.number,
     kind: row.kind,
+    spells: row.spells,
     role,
     template,
     pattern: new RegExp(`${source}$`),
@@ -186,7 +197,8 @@ export class MessageBook {
       role: template.role,
       template: template.template,
       fills,
-      numeric: fills.map((fill, index) => template.numeric[index] === true || /^-?\d+$/.test(fill))
+      numeric: fills.map((fill, index) => template.numeric[index] === true || /^-?\d+$/.test(fill)),
+      spells: template.spells
     };
   }
 }

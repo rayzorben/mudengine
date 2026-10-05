@@ -10,6 +10,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState, RealmFamily as RealmWord } from '../../shared/character';
 import type { AutomationSwitch } from '../../shared/config';
 import type { Find } from '../../shared/finds';
+import type { Shelf } from '../../shared/shops';
 import type { LoopProgress } from '../../shared/loops';
 import type { Discovery } from '../../shared/memory';
 import type { PlayerRegistry } from '../../shared/players';
@@ -89,6 +90,8 @@ export interface SessionSink {
    * something. The whole list, for the reason `learned` sends the whole list.
    */
   finds?(finds: Find[]): void;
+  /** Every counter's last `list` in this realm, after one was listed. The whole record. */
+  shops?(shelves: Shelf[]): void;
   /**
    * The character in the realm may not be the character these records are
    * about. Reported, never acted on: see `SessionManager.watchForReset`.

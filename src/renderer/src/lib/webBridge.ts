@@ -322,6 +322,7 @@ export function createWebBridge(): IpcApi {
     onProfiles: (handler) => subscribe(Push.profiles, handler),
     onLearned: (handler) => subscribe(Push.learned, handler),
     onFinds: (handler) => subscribe(Push.finds, handler),
+    onShops: (handler) => subscribe(Push.shops, handler),
     onCharacterReset: (handler) => subscribe(Push.characterReset, handler),
     onQuestSaid: (handler) => subscribe(Push.questSaid, handler),
     onQuestRun: (handler) => subscribe(Push.questRun, handler),

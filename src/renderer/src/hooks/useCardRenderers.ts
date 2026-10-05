@@ -121,6 +121,7 @@ export function useCardRenderers({
       view.players,
       view.questRun,
       view.questSaid,
+      view.shops,
       view.statsBase,
       view.talk,
       view.verdict,

@@ -6,6 +6,7 @@ import type { RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import { DeferredFile } from './DeferredFile';
 
 interface FindsFile {
   version: typeof FINDS_VERSION;
@@ -55,8 +56,7 @@ export class FindBook {
   private finds: Kept[] = [];
   private readonly index = new Map<string, Kept>();
   private readonly searches = new Map<RoomId, number>();
-  private timer: NodeJS.Timeout | null = null;
-  private dirty = false;
+  private readonly disk: DeferredFile;
 
   /**
    * @param file Where this realm's log lives.
@@ -70,6 +70,22 @@ export class FindBook {
     private readonly realm: string,
     private readonly onError?: (message: string) => void
   ) {
+    this.disk = new DeferredFile(
+      file,
+      (): FindsFile => ({
+        version: FINDS_VERSION,
+        realm: this.realm,
+        searches: Object.fromEntries(this.searches),
+        finds: this.finds
+      }),
+      (error) =>
+        this.onError?.(
+          t('notices.world.finds.saveError', {
+            fileName: path.basename(this.file),
+            message: errorMessage(error)
+          })
+        )
+    );
     this.load();
   }
 
@@ -150,11 +166,7 @@ export class FindBook {
 
   /** Writes anything outstanding and stops the timer. Safe to call twice. */
   close(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    if (this.dirty) this.write();
+    this.disk.close();
   }
 
   private load(): void {
@@ -221,40 +233,7 @@ export class FindBook {
   }
 
   private schedule(): void {
-    this.dirty = true;
-    if (this.timer) return;
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.write();
-    }, tuning().records.memoryWriteDelayMs);
-    // Nothing here holds the app open; `close()` is what guarantees a landing.
-    this.timer.unref?.();
-  }
-
-  private write(): void {
-    const payload: FindsFile = {
-      version: FINDS_VERSION,
-      realm: this.realm,
-      searches: Object.fromEntries(this.searches),
-      finds: this.finds
-    };
-    const temporary = `${this.file}.tmp`;
-    try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.writeFileSync(temporary, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-      fs.renameSync(temporary, this.file);
-      this.dirty = false;
-    } catch (error) {
-      this.onError?.(
-        t('notices.world.finds.saveError', {
-          fileName: path.basename(this.file),
-          message: errorMessage(error)
-        })
-      );
-      // Left dirty on purpose, so the next find tries again rather than the
-      // failure quietly becoming permanent.
-      fs.rmSync(temporary, { force: true });
-    }
+    this.disk.schedule();
   }
 }
 

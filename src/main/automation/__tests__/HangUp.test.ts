@@ -261,3 +261,14 @@ function mobs_(entries: Array<[string, MobDisposition]>): RoomOccupant[] {
     })
   );
 }
+
+/* Todo 01: what low health may hang up beside. */
+describe('whether a monster is near', () => {
+  it('counts a monster that swung lately, with the room empty and no fight flagged', () => {
+    const watch = new HangUpWatch();
+    expect(watch.monsterNear(state(), T0)).toBe(false);
+    watch.observe(block('mob-misses', { attacker: 'orc' }), []);
+    expect(watch.monsterNear(state(), T0 + 1)).toBe(true);
+    expect(watch.monsterNear(state(), T0 + MOB_ENGAGED_MS)).toBe(false);
+  });
+});

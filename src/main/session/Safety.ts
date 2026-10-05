@@ -33,7 +33,7 @@ import type { ConnectionEnd } from '../../shared/types';
 /** What the two decisions read, and the one escape they hand on. */
 export interface SafetyParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
-  readonly hangUp: Pick<HangUpWatch, 'assess' | 'clean'>;
+  readonly hangUp: Pick<HangUpWatch, 'assess' | 'clean' | 'monsterNear'>;
   readonly realmMenu: Pick<RealmMenu, 'penalty' | 'noteCommand'>;
   readonly queue: Pick<CommandQueue, 'enqueue'>;
   readonly travel: Pick<Travel, 'runFromPlayer' | 'escapeUnanswered' | 'landings'>;
@@ -84,6 +84,11 @@ export class Safety implements SessionModule {
    * room, by key, so the refusal is said once while it stays (818).
    */
   private stalkerSaid: string | null = null;
+  /**
+   * Why low health with no monster here did not hang up, as last said, so it
+   * is said once a stretch and again when the room is first seen (todo 01).
+   */
+  private nothingHereSaid: string | null = null;
 
   constructor(
     parts: SafetyParts,
@@ -110,6 +115,7 @@ export class Safety implements SessionModule {
     this.stalkerSaid = null;
     this.runWaited = null;
     this.gotOut = null;
+    this.nothingHereSaid = null;
   }
 
   /**
@@ -245,6 +251,7 @@ export class Safety implements SessionModule {
     const company = safety.onPlayerInRoom && playersHere(state).length > 0;
     if (!hurt && !company && stalker === null) {
       this.gotOut = null;
+      this.nothingHereSaid = null;
       return;
     }
 
@@ -253,6 +260,9 @@ export class Safety implements SessionModule {
       : company || stalker === null
         ? t('session.safety.whyCompany')
         : t('session.safety.whyStalker', { mob: stalker });
+    // Health alone is a reason only beside a monster or in a fight (todo 01).
+    if (hurt && !company && stalker === null && this.nothingHere(state, why)) return;
+    this.nothingHereSaid = null;
     if (this.waitForTheRun(why)) return;
     // Health alone: a player or a `hangup` row is a reason the run did not answer.
     if (!company && stalker === null && this.theRunGotOut(state, why)) return;
@@ -343,15 +353,7 @@ export class Safety implements SessionModule {
     if (!caughtAfter(out.hp, state)) {
       if (!out.said) {
         out.said = true;
-        const refused = t('session.safety.hangUpRunGotOut');
-        this.session.notice(t('session.safety.hangUpNotAfterRun', { why, refused }));
-        this.publisher.noteSafety({
-          at: Date.now(),
-          action: 'hang up',
-          because: why,
-          acted: false,
-          refused
-        });
+        this.sayNotHangingUp(why, t('session.safety.hangUpRunGotOut'));
       }
       return true;
     }
@@ -404,6 +406,36 @@ export class Safety implements SessionModule {
   private get penalised(): boolean {
     const menu = this.realmMenu.penalty;
     return menu !== null ? menu.percent > 0 : this.automationConfig.safety.hangUp.penalties;
+  }
+
+  /**
+   * Whether low health stays put because nothing here could hit the
+   * character: said once a stretch, and again once a room not yet seen since
+   * connecting turns out empty.
+   */
+  private nothingHere(state: CharacterState, why: string): boolean {
+    if (this.hangUp.monsterNear(state, Date.now())) return false;
+    const refused =
+      state.room.resolvedBy === 'remembered'
+        ? t('session.safety.hangUpRoomUnseen')
+        : t('session.safety.hangUpNoMonster');
+    if (refused !== this.nothingHereSaid) {
+      this.nothingHereSaid = refused;
+      this.sayNotHangingUp(why, refused);
+    }
+    return true;
+  }
+
+  /** A hang-up that stays off for a reason that is not a charge: said and traced. */
+  private sayNotHangingUp(why: string, refused: string): void {
+    this.session.notice(t('session.safety.hangUpNotBut', { why, refused }));
+    this.publisher.noteSafety({
+      at: Date.now(),
+      action: 'hang up',
+      because: why,
+      acted: false,
+      refused
+    });
   }
 
   /**
