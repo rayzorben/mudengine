@@ -9512,6 +9512,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     );
   }
   {
+    // Measured with the rail at its top, where its head is drawn.
+    await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
     const beside = await bandBoxes();
     const three = [beside.head, beside.toolbar, beside.chips];
     const all = three.every((row) => row !== null && row.height > 0);
@@ -9643,12 +9645,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * to the bottom a moment ago, and a pointer cannot reach a card above the
    * viewport. A player scrolls back up; so does this.
    *
-   * And a window wide enough for the rail to hold three cards across: the
-   * smoke window leaves it one column, where side by side and a drop beside a
-   * card cannot be shown. Put back at the end of this block.
+   * And a window wide enough for the rail to stand its two columns: the
+   * smoke window stacks it, where side by side cannot be shown. Taller, for
+   * the cards' corners clear of the status rail; no taller than about this,
+   * where the emulated view outgrows the window and a press lands off the
+   * mark. Put back at the end of this block.
    */
   await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
-  const tall = await evaluate(`window.innerHeight`);
+  const tall = Math.max(await evaluate(`window.innerHeight`), 1900);
   await cdp('Emulation.setDeviceMetricsOverride', {
     width: 1800,
     height: tall,
@@ -9671,9 +9675,32 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   check((laid?.sideways ?? 1) <= 0, 'and the rail never scrolls sideways', JSON.stringify(laid));
 
   const before = await railOrder();
-  const [first, second, third] = before;
+  /*
+   * The first two cards, in reading order, that stand side by side sharing
+   * rows: the grip and the handles below are tried on them. The rail stands
+   * in two columns (todo 06), so which two depends on what is on it.
+   */
+  const [first, second] = (() => {
+    const cards = before.map((id) => cellsOf(laid, id)).filter(Boolean);
+    for (const a of cards) {
+      const b = cards.find(
+        (c) => Math.abs(a.x + a.w - c.x) < 0.02 && a.y < c.y + c.h && c.y < a.y + a.h
+      );
+      if (b) return [a.id, b.id];
+    }
+    return before;
+  })();
+  check(
+    first !== second &&
+      cellsOf(laid, second)?.x === cellsOf(laid, first)?.x + cellsOf(laid, first)?.w,
+    'with room for two, cards stand side by side',
+    JSON.stringify({ first, second, laid })
+  );
+  // The lowest card but the pair: the one dragged, at the rail's foot.
+  const third = [...(laid?.cards ?? [])]
+    .filter((c) => c.id !== first && c.id !== second)
+    .sort((a, b) => b.y + b.h - (a.y + a.h))[0]?.id;
   const firstCells = cellsOf(laid, first);
-  const secondCells = cellsOf(laid, second);
 
   /*
    * A card dragged across the grid lands in the cells it was dropped on.
@@ -9682,26 +9709,41 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
    * 03), and both exist only while the pointer is down.
    */
   {
-    const shape = await grid();
-    const card = await boxOf(`.rail [data-card="${second}"]`);
-    const grip = await boxOf(`.rail [data-card="${second}"] .card-grip`);
     /*
-     * Beside the first card, where the grip check below grows that card
-     * towards it. Free on any rail this run has reached, since the rail was
-     * one card wide until the window grew.
+     * At the rail's foot, where two columns in proportion leave free cells
+     * (todo 06): the first cells in view, top row first, that the lowest card
+     * can stand in other than its own, clear of the rail's edges, where a
+     * held card scrolls it.
      */
-    const firstNow = cellsOf(shape, first);
-    const want = { x: firstNow.x + firstNow.w, y: firstNow.y };
-    const others = shape.cards.filter((c) => c.id !== second);
-    check(
-      apart([...others, { ...want, w: secondCells.w, h: secondCells.h }]) &&
-        want.x + secondCells.w <= shape.columns,
-      'the cells beside the first card are free to drop on',
-      JSON.stringify({ want, shape })
+    await evaluate(
+      `(() => { const r = document.querySelector('.rail'); r.scrollTop = r.scrollHeight; return true; })()`
     );
+    const shape = await stable(grid);
+    const rail = await boxOf('.rail');
+    const card = await boxOf(`.rail [data-card="${third}"]`);
+    const grip = await boxOf(`.rail [data-card="${third}"] .card-grip`);
+    const thirdCells = cellsOf(shape, third);
+    const others = shape.cards.filter((c) => c.id !== third);
+    const top = Math.ceil((rail.top - shape.top) / shape.cell) + 2;
+    const last = Math.floor((rail.bottom - shape.top) / shape.cell) - 3;
+    let want = null;
+    for (let y = Math.max(0, top); thirdCells && !want && y <= last; y += 1) {
+      for (let x = 0; !want && x + thirdCells.w <= shape.columns + 0.02; x += 1) {
+        const box = { x, y, w: thirdCells.w, h: thirdCells.h };
+        const own = Math.abs(x - thirdCells.x) < 0.02 && Math.abs(y - thirdCells.y) < 0.02;
+        if (!own && apart([...others, box])) want = { x, y };
+      }
+    }
+    check(
+      want !== null,
+      'there are free cells in view to drop a card on',
+      JSON.stringify({ third, top, last, shape })
+    );
+    want ??= { x: thirdCells?.x ?? 0, y: thirdCells?.y ?? 0 };
+    // Held where it was grabbed, at most a cell under its top: `gridTarget`'s hold.
     const to = {
       x: shape.left + want.x * shape.cell + (grip.x - card.left),
-      y: shape.top + want.y * shape.cell + (grip.y - card.top)
+      y: shape.top + want.y * shape.cell + Math.min(grip.y - card.top, shape.cell)
     };
     await cdp('Input.dispatchMouseEvent', {
       type: 'mousePressed',
@@ -9731,8 +9773,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
           const slot = document.querySelector('.rail-grid > .rail-slot');
           const ghost = document.querySelector('.drag-ghost');
           const box = (el) => el.getBoundingClientRect();
+          const grid = document.querySelector('.rail-grid');
+          const cell = parseFloat(getComputedStyle(grid).getPropertyValue('--grid-cell'));
           return JSON.stringify({
             slot: slot ? { w: Math.round(box(slot).width), h: Math.round(box(slot).height) } : null,
+            at: slot
+              ? {
+                  x: (box(slot).left - box(grid).left) / cell,
+                  y: (box(slot).top - box(grid).top) / cell,
+                  columns: grid.style.getPropertyValue('--rail-columns')
+                }
+              : null,
             ghost: ghost ? { w: Math.round(box(ghost).width), h: Math.round(box(ghost).height) } : null
           });
         })()
@@ -9766,24 +9817,30 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       !(await evaluate(`!!document.querySelector('.rail-grid > .rail-slot, .drag-ghost')`)),
       'and both go with the drop'
     );
-    const moved = await readUntil(grid, (now) => cellsOf(now, second)?.x === want.x);
+    const moved = await readUntil(
+      grid,
+      (now) => cellsOf(now, third)?.x === want.x && cellsOf(now, third)?.y === want.y
+    );
     check(
-      cellsOf(moved, second)?.x === want.x && cellsOf(moved, second)?.y === want.y,
+      cellsOf(moved, third)?.x === want.x && cellsOf(moved, third)?.y === want.y,
       'a card dragged across the grid lands in the cells it was dropped on',
-      JSON.stringify({ want, got: cellsOf(moved, second) })
+      JSON.stringify({
+        want,
+        held: held.at,
+        got: cellsOf(moved, third),
+        before: shape,
+        after: moved
+      })
     );
     const spots = (await storedLayout())?.spots ?? {};
     check(
-      spots[second]?.x === want.x && spots[second]?.y === want.y,
+      spots[third]?.x === want.x && spots[third]?.y === want.y,
       'and where it stands is remembered for this character, in cells',
-      JSON.stringify(spots[second])
-    );
-    check(
-      cellsOf(moved, second)?.y === cellsOf(moved, first)?.y,
-      'so with room for two, cards stand side by side',
-      JSON.stringify(moved)
+      JSON.stringify(spots[third])
     );
   }
+
+  await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
 
   /*
    * The corner grip moves whole cells: three in and two up shrinks the card
@@ -9902,10 +9959,11 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
   /* Dropped on another card, a card goes to the nearest free cells, never over it. */
   {
-    const shape = await grid();
+    await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
+    const shape = await stable(grid);
     const target = cellsOf(shape, first);
-    const card = await boxOf(`.rail [data-card="${third}"]`);
-    const grip = await boxOf(`.rail [data-card="${third}"] .card-grip`);
+    const card = await boxOf(`.rail [data-card="${second}"]`);
+    const grip = await boxOf(`.rail [data-card="${second}"] .card-grip`);
     const to = {
       x: shape.left + target.x * shape.cell + (grip.x - card.left),
       y: shape.top + target.y * shape.cell + (grip.y - card.top)
@@ -9917,14 +9975,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       grid,
       (now) =>
         now !== null &&
-        JSON.stringify(cellsOf(now, third)) !== JSON.stringify(cellsOf(shape, third))
+        JSON.stringify(cellsOf(now, second)) !== JSON.stringify(cellsOf(shape, second))
     );
     check(
       apart(after?.cards ?? []) &&
         onCells(after?.cards ?? []) &&
         JSON.stringify(cellsOf(after, first)) === JSON.stringify(target),
       'a card dropped on another goes to the nearest free cells, and the other stays put',
-      JSON.stringify({ first: cellsOf(after, first), third: cellsOf(after, third) })
+      JSON.stringify({ first: cellsOf(after, first), second: cellsOf(after, second) })
     );
   }
 
@@ -10042,6 +10100,57 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
         (await gone('.card-rail-head [data-action="undo-auto-layout"]')),
       'and its undo puts the rail back as it was',
       JSON.stringify({ before: beforeAuto, undone })
+    );
+  }
+
+  /*
+   * A narrower rail draws every card narrower where it stood (todo 06): the
+   * window made twenty cells narrower leaves each card on the rows it had,
+   * the cards that met still meeting, none of them wider. Twenty cells keeps
+   * the rail over the width under which it stacks.
+   */
+  {
+    await evaluate(`(document.querySelector('.rail').scrollTop = 0, true)`);
+    const wide = await stable(grid);
+    await cdp('Emulation.setDeviceMetricsOverride', {
+      width: 1800 - 20 * wide.cell,
+      height: tall,
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+    const narrower = await readUntil(
+      grid,
+      (now) => settled(now) && now.columns <= wide.columns - 15
+    );
+    const moved = (narrower?.cards ?? []).filter((card) => {
+      const was = cellsOf(wide, card.id);
+      return was === null || Math.round(card.y) !== Math.round(was.y) || card.w > was.w + 0.02;
+    });
+    check(
+      narrower !== null && moved.length === 0 && apart(narrower.cards) && onCells(narrower.cards),
+      'a rail made narrower draws every card narrower on the rows it had, still apart',
+      JSON.stringify({ moved, wide, narrower })
+    );
+    // Side by side and sharing rows: the right edge of one is the left of the other.
+    const met = (cards, a, b) => {
+      const one = cellsOf(cards, a);
+      const two = cellsOf(cards, b);
+      return (
+        one !== null &&
+        two !== null &&
+        Math.abs(one.x + one.w - two.x) < 0.02 &&
+        one.y < two.y + two.h &&
+        two.y < one.y + one.h
+      );
+    };
+    const pairs = wide.cards.flatMap((a) =>
+      wide.cards.filter((b) => met(wide, a.id, b.id)).map((b) => [a.id, b.id])
+    );
+    const parted = pairs.filter(([a, b]) => !met(narrower, a, b));
+    check(
+      pairs.length > 0 && parted.length === 0,
+      'and the cards that stood side by side still meet',
+      JSON.stringify({ pairs, parted })
     );
   }
 

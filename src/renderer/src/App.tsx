@@ -5,7 +5,7 @@ import SearchBar from './components/SearchBar';
 import RoutePanel from './components/RoutePanel';
 import CardRailHead from './components/CardRailHead';
 import RailGrid from './components/RailGrid';
-import { SHIPPED_COLUMNS } from './lib/cards';
+import { NARROWEST_RAIL } from './lib/railCards';
 import { CONSOLE_RANGE } from './lib/splitter';
 import StripCards from './components/StripCards';
 import DragMarks from './components/DragMarks';
@@ -369,8 +369,7 @@ export default function App() {
   const across = paneFlow === 'columns' ? panes.length : 1;
   const consoleWidth = useConsoleWidth(size.cols, across, widths.columns);
   const workspaceStyle = useMemo(
-    () =>
-      ({ ...widths.style, ...consoleWidth, '--card-columns': SHIPPED_COLUMNS }) as CSSProperties,
+    () => ({ ...widths.style, ...consoleWidth, '--card-columns': NARROWEST_RAIL }) as CSSProperties,
     [widths.style, consoleWidth]
   );
   const [resizing, setResizing] = useState(false);

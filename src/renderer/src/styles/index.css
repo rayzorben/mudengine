@@ -156,9 +156,9 @@ option {
    * leaves, so the tab rail keeps its edge.
    */
   /*
-   * The card rail's narrowest: one card at its shipped width, which is
-   * `SHIPPED_COLUMNS` cells (`lib/cards.ts`, set here as `--card-columns`),
-   * and the strip it keeps for its scrollbar. Under it the map's legend and
+   * The card rail's narrowest: one card column, which is `NARROWEST_RAIL`
+   * cells (`lib/cards.ts`, set here as `--card-columns`), and the strip it
+   * keeps for its scrollbar. Under it the map's legend and
    * an inventory row with its slot stop fitting.
    */
   --rail-column-min: calc(var(--card-columns) * var(--grid-cell) + var(--scrollbar-w));
@@ -393,8 +393,8 @@ option {
  * than an empty one, so the Room card grew as the character walked and every
  * control below it moved -- and **Stop walking** is the one control reached for
  * *while* the thing moving it is running. So the box is its cells and never
- * its content (`shippedSize` in `lib/cards.ts` until the corner grip changes
- * it). A card that has more to say scrolls.
+ * its content (`preferredSize` in `lib/cards.ts` until the corner grip
+ * changes it). A card that has more to say scrolls.
  *
  * A *floating* card is exempt, because its height is dragged by the person
  * looking at it and there is nothing below it to move.

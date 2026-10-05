@@ -10,13 +10,14 @@ import { memo, useLayoutEffect, useMemo, type CSSProperties, type ReactNode } fr
 import type { DragState } from '../hooks/useCardDrag';
 import { useCardResize } from '../hooks/useCardResize';
 import type { RailGrid as Grid } from '../hooks/useRailGrid';
-import { SHIPPED_COLUMNS, type CardId, type CardLayoutApi } from '../lib/cards';
+import type { CardId, CardLayoutApi } from '../lib/cards';
+import { NARROWEST_RAIL, onRail } from '../lib/railCards';
 import { t } from '../lib/i18n';
 import { arrange, bottomOf, sameBox, type GridBox } from '../lib/railGrid';
 import ResizeHandles from './ResizeHandles';
 
 export interface RailGridProps {
-  layout: Pick<CardLayoutApi, 'rail' | 'spots' | 'sizeOf' | 'isRolled' | 'placeOnRail'>;
+  layout: Pick<CardLayoutApi, 'rail' | 'spots' | 'sizes' | 'columns' | 'isRolled' | 'placeOnRail'>;
   render(id: CardId): ReactNode;
   grid: Pick<Grid, 'ref' | 'columns' | 'showing' | 'publish' | 'view'>;
   /**
@@ -35,22 +36,23 @@ function area(box: GridBox): CSSProperties {
 }
 
 function RailGrid({ layout, render, grid, drag }: RailGridProps) {
-  const { rail, spots, sizeOf, isRolled } = layout;
+  const { rail, spots, sizes, columns: keptOn, isRolled } = layout;
   // The handles on every corner and side of a card, in whole cells.
   const resize = useCardResize(layout, grid.view);
-  // Before the grid is measured it is one shipped card wide, which is what
-  // the rail's narrowest track holds.
-  const columns = grid.columns ?? SHIPPED_COLUMNS;
+  // Before the grid is measured it is the rail's narrowest track.
+  const columns = grid.columns ?? NARROWEST_RAIL;
 
   const drawn = useMemo(() => {
     const cards = rail.flatMap((id) => {
       const element = render(id);
       return element === null ? [] : [{ id, element }];
     });
-    const boxes = arrange(
-      cards.map(({ id }) => ({ id, size: sizeOf(id), spot: spots[id] })),
+    const { width, cards: onGrid } = onRail(
+      cards.map(({ id }) => id),
+      { spots, sizes, columns: keptOn },
       columns
     );
+    const boxes = arrange(onGrid, columns);
     const byPlace = (a: CardId, b: CardId): number => {
       const one = boxes.get(a)!;
       const two = boxes.get(b)!;
@@ -58,13 +60,14 @@ function RailGrid({ layout, render, grid, drag }: RailGridProps) {
     };
     return {
       boxes,
+      width,
       // Reading order, so Tab and a screen reader go along the rows as drawn.
       cards: cards.sort((a, b) => byPlace(a.id, b.id))
     };
-  }, [rail, spots, sizeOf, render, columns]);
+  }, [rail, spots, sizes, keptOn, render, columns]);
 
   const { publish } = grid;
-  useLayoutEffect(() => publish(drawn.boxes), [publish, drawn.boxes]);
+  useLayoutEffect(() => publish(drawn.boxes, drawn.width), [publish, drawn.boxes, drawn.width]);
 
   const dragging = drag?.live === true;
   const landing =

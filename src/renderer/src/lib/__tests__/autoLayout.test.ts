@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  autoLayout,
-  laidWidth,
-  rowsFor,
-  sizeOfCells,
-  type FitCard,
-  type FitFrame
-} from '../autoLayout';
+import { autoLayout, rowsFor, sizeOfCells, type FitCard, type FitFrame } from '../autoLayout';
 import type { CardSize } from '../cardSize';
 import { overlaps, type GridBox } from '../railGrid';
 
@@ -30,8 +23,9 @@ const card = (
   id: string,
   rows: number,
   needs: Partial<Record<CardSize, number>>,
-  columns = 17
-): FitCard<string> => ({ id, shipped: { w: columns, h: rows }, needs });
+  columns = 17,
+  at = { x: 0, y: 0 }
+): FitCard<string> => ({ id, wanted: { ...at, w: columns, h: rows }, needs });
 
 const heights = (boxes: Map<string, GridBox>): Record<string, number> =>
   Object.fromEntries([...boxes].map(([id, box]) => [id, box.h]));
@@ -53,11 +47,6 @@ describe('the cells a card needs', () => {
     expect(sizeOfCells({ w: 17, h: 40 }, FRAME)).toBe('medium');
     expect(sizeOfCells({ w: 20, h: 20 }, FRAME)).toBe('large');
   });
-
-  it('lays a card out at its shipped width, as far as the grid has room', () => {
-    expect(laidWidth({ w: 20, h: 13 }, 40)).toBe(20);
-    expect(laidWidth({ w: 20, h: 13 }, 17)).toBe(17);
-  });
 });
 
 describe('auto layout', () => {
@@ -71,7 +60,7 @@ describe('auto layout', () => {
     expect(plan.unmeasured).toEqual([]);
   });
 
-  it('grows a card whose content runs past its shipped height into the rows left in view', () => {
+  it('grows a card whose content runs past its wanted height into the rows left in view', () => {
     const plan = autoLayout(
       [
         card('vitals', 13, { medium: 8 }),
@@ -125,18 +114,30 @@ describe('auto layout', () => {
     expect(plan.sizes.get('self')).toBe('large');
   });
 
-  it('stands cards side by side where the rail is wide enough, in the order given', () => {
+  it('stands each card in the columns it is wanted in, raised as high as they allow', () => {
     const plan = autoLayout(
       [
-        card('vitals', 13, { medium: 13 }),
-        card('room', 13, { medium: 13 }),
-        card('map', 13, { medium: 13 })
+        card('map', 13, { medium: 13 }, 17, { x: 0, y: 0 }),
+        card('combat', 13, { medium: 11 }, 17, { x: 17, y: 14 }),
+        card('stats', 13, { medium: 13 }, 17, { x: 0, y: 27 })
       ],
       { ...FRAME, columns: 34 }
     );
-    expect(plan.boxes.get('vitals')).toEqual({ x: 0, y: 0, w: 17, h: 13 });
-    expect(plan.boxes.get('room')).toEqual({ x: 17, y: 0, w: 17, h: 13 });
-    expect(plan.boxes.get('map')).toEqual({ x: 0, y: 13, w: 17, h: 13 });
+    expect(plan.boxes.get('map')).toEqual({ x: 0, y: 0, w: 17, h: 13 });
+    expect(plan.boxes.get('combat')).toEqual({ x: 17, y: 0, w: 17, h: 11 });
+    expect(plan.boxes.get('stats')).toEqual({ x: 0, y: 13, w: 17, h: 13 });
+  });
+
+  it('lays the card wanted higher first, whatever order the rail gave', () => {
+    const plan = autoLayout(
+      [
+        card('stats', 13, { medium: 13 }, 17, { x: 0, y: 27 }),
+        card('map', 13, { medium: 13 }, 17, { x: 0, y: 0 })
+      ],
+      FRAME
+    );
+    expect(plan.boxes.get('map')).toEqual({ x: 0, y: 0, w: 17, h: 13 });
+    expect(plan.boxes.get('stats')).toEqual({ x: 0, y: 13, w: 17, h: 13 });
   });
 
   it('keeps a rolled card the cells it has', () => {

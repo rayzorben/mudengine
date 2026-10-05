@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { insertionIndex } from '../lib/reorder';
-import { nearestFree, type GridBox } from '../lib/railGrid';
+import { nearestFree, type GridBox, type RailWidth } from '../lib/railGrid';
 import { snapTarget, type SnapBox, type SnapSide } from '../lib/snap';
 import type { CardId, CardLayoutApi, RailGridView, Strip } from '../lib/cards';
+import { drawnOn } from '../lib/railCards';
 import { tuning } from '../lib/tuning';
 
 /**
@@ -15,11 +16,11 @@ import { tuning } from '../lib/tuning';
  * rail target carries the free cells it would take on the grid, and a snap
  * the box it would land in, in client pixels, for the same reason: each
  * indicator is drawn as that box, so what is shown is the arrangement itself
- * rather than a hint about it.
+ * rather than a hint about it, with the rail as drawn, which it is cells of.
  */
 export type DropTarget =
   | { where: 'lane'; lane: Strip; index: number }
-  | { where: 'grid'; box: GridBox }
+  | { where: 'grid'; box: GridBox; rail: RailWidth }
   | { where: 'snap'; to: CardId; side: SnapSide; box: SnapBox }
   | { where: 'float' };
 
@@ -144,31 +145,31 @@ export function useCardDrag(
    * The free cells on the rail's grid nearest where the card in hand is held,
    * or null when the pointer is not over the rail.
    *
-   * The card keeps its rail size wherever it came from (`sizeOf`), and its
+   * The card keeps its rail size wherever it came from (`drawnOn`), and its
    * corner is where the hold puts it: a card from the rail is held where it
    * was grabbed, and anything else by its heading, so a float of another
    * shape does not land far from the pointer.
    */
   const gridTarget = useCallback(
-    (at: Origin, x: number, y: number): GridBox | null => {
+    (at: Origin, x: number, y: number): Extract<DropTarget, { where: 'grid' }> | null => {
       const scroller = rail.scroller();
       const frame = rail.frame();
-      if (!scroller || !frame) return null;
+      const width = rail.width();
+      if (!scroller || !frame || !width) return null;
       const box = scroller.getBoundingClientRect();
       if (x < box.left || x > box.right || y < box.top || y > box.bottom) return null;
-      const size = layout.sizeOf(at.id);
+      const { w, h } = drawnOn(at.id, layout, width);
+      const size = { w, h };
       const dx = Math.min(at.hold.dx, size.w * frame.cell);
       const dy = Math.min(at.hold.dy, frame.cell);
       const others = [...rail.drawn()].filter(([id]) => id !== at.id).map(([, other]) => other);
-      return nearestFree(
-        {
-          x: Math.round((x - dx - frame.left) / frame.cell),
-          y: Math.round((y - dy - frame.top) / frame.cell),
-          ...size
-        },
-        others,
-        frame.columns
-      );
+      const wanted = {
+        x: Math.round((x - dx - frame.left) / frame.cell),
+        y: Math.round((y - dy - frame.top) / frame.cell),
+        ...size
+      };
+      const cells = nearestFree(wanted, others, width.columns);
+      return { where: 'grid', box: cells, rail: width };
     },
     [layout, rail]
   );
@@ -220,7 +221,7 @@ export function useCardDrag(
         return { where: 'lane', lane: strip.lane, index: insertionIndex(strip.slots, x) };
       }
       const cells = gridTarget(at, x, y);
-      if (cells !== null) return { where: 'grid', box: cells };
+      if (cells !== null) return cells;
       /*
        * Then a card already over the console to line up with.
        *
@@ -372,7 +373,7 @@ export function useCardDrag(
         return;
       }
       if (dragged.target.where === 'grid') {
-        layout.placeOnRail(at.id, dragged.target.box, rail.drawn());
+        layout.placeOnRail(at.id, dragged.target.box, rail.drawn(), dragged.target.rail);
         return;
       }
 

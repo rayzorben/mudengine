@@ -12,7 +12,7 @@ import type { Appearance, ThemeId } from '@shared/themes';
 import type { TalkLayout, TalkStamp } from '@shared/talk';
 import type { StatsGraph } from '@shared/tally';
 import type { CardSizeBounds } from './cardSize';
-import type { GridBox, GridSize, GridSpot } from './railGrid';
+import type { GridBox, GridSize, GridSpot, RailWidth } from './railGrid';
 
 /**
  * Every card the rail can hold, and the order a rail that has never been
@@ -215,64 +215,6 @@ export function isDiagnosticCard(id: CardId): boolean {
 }
 
 /**
- * How many grid cells a card spans on the rail before anybody sizes it
- * (todo 09). Seventeen across is the old card column: 260px of card and the
- * 12px between two. Each height is the box the card shipped at in pixels, in
- * the nearest whole cells, and every one is declared: a card with more to say
- * scrolls inside its box, it never grows, because a card that grows moves the
- * cards around it and **Stop walking** is reached for while the thing moving
- * it is running.
- */
-export const SHIPPED_COLUMNS = 17;
-const SHIPPED: Record<CardId, { rows: number; columns?: number }> = {
-  // One band high, the height of the rail head and the put-away chips.
-  toolbar: { rows: 4 },
-  // The sheet is thirty rows and the pack face has a meter, the purse, a find
-  // field and chips before its table, whose number column needs 285px of card
-  // (`npm run smoke`, 2026-10-03: 25px over at 260). Carrying is that table.
-  self: { rows: 21, columns: 20 },
-  vitals: { rows: 13 },
-  // A name, a bar, a legend and up to three readout rows.
-  combat: { rows: 13 },
-  room: { rows: 14 },
-  map: { rows: 25 },
-  // A map with a list under it and controls under that. It ships as a float.
-  builder: { rows: 33 },
-  // The loop's face is the taller: a transport row, the name, the bar and four
-  // figures.
-  navigation: { rows: 14 },
-  // Two ranks with a member each, the commonest party there is.
-  party: { rows: 14 },
-  notifications: { rows: 15 },
-  realm: { rows: 14 },
-  // Matched to Realm: they are read together.
-  players: { rows: 14 },
-  gang: { rows: 13 },
-  inventory: { rows: 14, columns: 20 },
-  // Two vaults and a total, which is more banking than most characters do.
-  banks: { rows: 12 },
-  // A five-column table, Carrying's width for the same reason.
-  shops: { rows: 14, columns: 20 },
-  // A row's progress figure sits after the quest's name, outside its column
-  // at 260px (`npm run smoke`, 2026-10-03).
-  quests: { rows: 27, columns: 20 },
-  hunting: { rows: 13 },
-  conversation: { rows: 15 },
-  reference: { rows: 13 },
-  stats: { rows: 13 },
-  extension: { rows: 31 },
-  session: { rows: 13 },
-  link: { rows: 14 },
-  automation: { rows: 14 },
-  stream: { rows: 15 }
-};
-
-export function shippedSize(id: CardId): GridSize {
-  const shipped = SHIPPED[id];
-  return { w: shipped.columns ?? SHIPPED_COLUMNS, h: shipped.rows };
-}
-
-/**
  * The smallest a card can be dragged on the rail: its heading, the grip in
  * its corner and a row of what it says. A card dragged to nothing cannot be
  * dragged back.
@@ -459,21 +401,29 @@ export interface CardLayout {
   settings: Partial<Record<CardId, CardSettings>>;
   /**
    * How many grid cells each card spans on the rail, for the cards somebody
-   * has sized from the corner grip; a card with no entry is its shipped size
-   * (`shippedSize`). Cells, never pixels, so a different window, display or
-   * terminal font leaves every card the size it was given.
+   * has sized from the corner grip; a card with no entry is its preferred
+   * size (`preferredSize`). Cells of the rail `columns` wide, never pixels,
+   * so a different display or terminal font leaves every card the size it
+   * was given, and a narrower or wider rail draws it in proportion across.
    *
    * A rail card is a fixed box that never resizes with its contents, and this
    * is the one way its box changes: by the person looking at it.
    */
   sizes: Partial<Record<CardId, GridSize>>;
   /**
-   * Where each rail card stands, in grid cells from the rail's corner. A rail
-   * card with no entry has not been put anywhere yet (shown from the picker,
-   * or new in this build) and takes the first free spot. Only rail cards have
-   * one: a card that leaves the rail gives its spot up.
+   * Where each rail card stands, in grid cells from the rail's corner, of the
+   * rail `columns` wide. A rail card with no entry has not been put anywhere
+   * yet (shown from the picker, or new in this build) and takes the highest
+   * free cells where it is wanted. Only rail cards have one: a card that
+   * leaves the rail gives its spot up.
    */
   spots: Partial<Record<CardId, GridSpot>>;
+  /**
+   * How wide the rail `spots` and `sizes` are cells of is: the rail the last
+   * placement was drawn on, every one of them written against it (todo 06),
+   * so two cards that met there meet on any rail.
+   */
+  columns: number;
   /**
    * The cards drawn as their heading alone — name, badge and the controls that
    * fit beside them — with the body put away.
@@ -490,6 +440,9 @@ export interface CardLayout {
    */
   rolled: CardId[];
 }
+
+/** What a layout keeps of the rail's arrangement: its order, and where and how big each card is. */
+export type RailArrangement = Pick<CardLayout, 'rail' | 'spots' | 'sizes' | 'columns'>;
 
 /** Where a card stands when it is not floating and not put away. */
 export type Lane = 'rail' | 'above' | 'below';
@@ -510,14 +463,17 @@ export interface CardLayoutApi extends CardLayout {
    * the rail as it is drawn now, and every card in it is written down where
    * it stands, so what is on screen is what is kept and no card moves under
    * one being placed. `box` is free of them: the caller asked `railGrid`.
+   * Both are cells of `rail`, the rail as drawn.
    */
-  placeOnRail(id: CardId, box: GridBox, drawn: ReadonlyMap<CardId, GridBox>): void;
+  placeOnRail(id: CardId, box: GridBox, drawn: ReadonlyMap<CardId, GridBox>, rail: RailWidth): void;
   /**
-   * Stand every rail card named in `boxes` in its box, at once: auto layout
-   * and its undo. A card not on the rail is left where it is; a rail card not
-   * named gives up its spot and takes the first free one.
+   * Stand every rail card named in `boxes` in its box, at once: auto layout.
+   * A card not on the rail is left where it is; a rail card not named gives
+   * up its spot and takes the highest free cells where it is wanted.
    */
-  placeAll(boxes: ReadonlyMap<CardId, GridBox>): void;
+  placeAll(boxes: ReadonlyMap<CardId, GridBox>, rail: RailWidth): void;
+  /** Put back an arrangement of the rail kept before: auto layout's undo. */
+  restoreRail(kept: RailArrangement): void;
   /** Which lane holds this card, if a lane does. */
   laneOf(id: CardId): Lane | undefined;
   /**
@@ -567,8 +523,6 @@ export interface CardLayoutApi extends CardLayout {
    * *cleared*, which is how a card goes back to its own default.
    */
   setSettings(id: CardId, change: Partial<CardSettings>): void;
-  /** How many cells a card spans on the rail: the size it was given, else its shipped one. */
-  sizeOf(id: CardId): GridSize;
   /** Whether this card is drawn as its heading alone. */
   isRolled(id: CardId): boolean;
   /**
@@ -602,6 +556,8 @@ export interface RailGridView {
   scroller(): HTMLElement | null;
   /** A rail card's own element, for measuring what it draws. */
   card(id: CardId): HTMLElement | null;
+  /** The rail the cards were last drawn on; null while there is no rail. */
+  width(): RailWidth | null;
   /** Rows of the grid in view with the rail scrolled to its top; null while there is no rail. */
   room(): number | null;
 }

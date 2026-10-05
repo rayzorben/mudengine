@@ -1,20 +1,15 @@
 import { useCallback, useMemo, useRef } from 'react';
 
-import {
-  LEAST_CARD,
-  shippedSize,
-  type CardId,
-  type CardLayoutApi,
-  type RailGridView
-} from '../lib/cards';
-import { resizedBy, resizedTo, type GridBox } from '../lib/railGrid';
+import { LEAST_CARD, type CardId, type CardLayoutApi, type RailGridView } from '../lib/cards';
+import { preferredSize } from '../lib/railCards';
+import { resizedBy, resizedTo, type GridBox, type RailWidth } from '../lib/railGrid';
 import type { ResizeEdge } from '../lib/resizeEdge';
 import { useEdgeDrag, type EdgeGesture } from './useEdgeDrag';
 
 export interface CardResize {
   /** Put on one of a rail card's resize handles. */
   begin(id: CardId, edge: ResizeEdge, event: React.PointerEvent<HTMLElement>): void;
-  /** A double-click on a handle: back to the card's shipped size, as far as there is room. */
+  /** A double-click on a handle: back to the card's preferred size, as far as there is room. */
   reset(id: CardId): void;
 }
 
@@ -46,12 +41,12 @@ export function useCardResize(
 
   /** The card in `next`, kept off its neighbours, written down. */
   const place = useCallback(
-    (id: CardId, next: (others: GridBox[], columns: number) => GridBox) => {
-      const frame = rail.frame();
-      if (!frame) return;
+    (id: CardId, next: (others: GridBox[], width: RailWidth) => GridBox) => {
+      const width = rail.width();
+      if (!width) return;
       const drawn = rail.drawn();
       const others = [...drawn].filter(([other]) => other !== id).map(([, other]) => other);
-      live.current.placeOnRail(id, next(others, frame.columns), drawn);
+      live.current.placeOnRail(id, next(others, width), drawn, width);
     },
     [rail]
   );
@@ -63,7 +58,7 @@ export function useCardResize(
       x: Math.round((event.clientX - x) / cell),
       y: Math.round((event.clientY - y) / cell)
     };
-    place(from.id, (others, columns) =>
+    place(from.id, (others, { columns }) =>
       resizedBy(from.box, edge, travel, others, columns, LEAST_CARD)
     );
   });
@@ -80,9 +75,12 @@ export function useCardResize(
     (id: CardId) => {
       const box = rail.drawn().get(id);
       if (!box) return;
-      place(id, (others, columns) =>
-        resizedTo(box, 'se', shippedSize(id), others, columns, LEAST_CARD)
-      );
+      // A stacked rail draws every card the whole width.
+      place(id, (others, { columns, stacked }) => {
+        const wanted = preferredSize(id, columns);
+        const size = stacked ? { ...wanted, w: columns } : wanted;
+        return resizedTo(box, 'se', size, others, columns, LEAST_CARD);
+      });
     },
     [place, rail]
   );
