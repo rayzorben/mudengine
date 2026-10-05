@@ -65,6 +65,7 @@ const QUEST: Quest = {
 
 const STEP_ONE: PlanStep = {
   block: 10,
+  to: 1,
   act: { verb: 'ask', who: 'Sage', say: 'hello' },
   items: [],
   at: { room: '1/2', place: 'Middle Road' },
@@ -75,6 +76,7 @@ const STEP_ONE: PlanStep = {
 
 const STEP_TWO: PlanStep = {
   block: 11,
+  to: 2,
   act: { verb: 'ask', who: 'Smith', say: 'forge' },
   items: [
     {
@@ -618,6 +620,25 @@ describe('running a quest plan', () => {
     const unmoved = t('automation.quests.refusalCounterUnmoved', { nth: 1, rank: 0, to: 1 });
     expect(runner.progress.reason).toBe(refusedWith(unmoved));
     expect(decisions.at(-1)?.refused).toBe(unmoved);
+  });
+
+  /*
+   * The Dao Lord's books (2026-10-04, `logs/2026-10-04_20-37-18_festus.mudcap.jsonl`
+   * t=291782): the blue book (rank 5 to 6) and the red one (6 to 7) are one
+   * block. Found by block alone, the red book's row read as rank 6, a run at
+   * rank 6 skipped it, and the waterskin bought on its leg went with it.
+   */
+  it('tells two steps of one block apart by the rank they reach', () => {
+    const books: Quest = {
+      ...QUEST,
+      steps: [QUEST.steps[0]!, { ...QUEST.steps[1]!, block: 10, needs: [], takes: [] }]
+    };
+    const red: PlanStep = { ...STEP_TWO, block: 10, items: [] };
+    const runner = make();
+    runner.start(plan(red), books, listed(inRealm(), 1, clock));
+    expect(runner.running).toBe(true);
+    expect(walked).toHaveLength(1);
+    expect(runner.progress.steps.map((step) => step.state)).toEqual(['now']);
   });
 
   it('buys what the step wants first, then asks again while the roll fails, bounded', () => {
