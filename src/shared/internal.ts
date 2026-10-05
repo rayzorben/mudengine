@@ -614,7 +614,14 @@ const TUNING_DEFAULTS = {
      * How long the odds book (`OddsBook`) runs fights for before it hands the
      * socket's thread back. One fight is 3 to 6ms, so a slice holds one or two.
      */
-    survivalSliceMs: 8
+    survivalSliceMs: 8,
+    /**
+     * Books the odds book keeps for figures the character had before, so a
+     * blessing that lapses and is cast again picks its book up where it was.
+     * A lapse moves the figures twice, at the wear-off and at the next `st`,
+     * and the recast twice more, so three bring the first book back.
+     */
+    survivalBooksKept: 3
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {

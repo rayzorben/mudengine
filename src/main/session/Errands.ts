@@ -90,13 +90,13 @@ import {
   type QuestPlan,
   type QuestWatched
 } from '../../shared/quests';
-import { holdsMovement, spellServes } from '../../shared/spellcraft';
+import { healFloor, holdsMovement, spellServes } from '../../shared/spellcraft';
 import {
   attacksWithNothing,
   castsToKill,
   chooseAttackSpell,
-  healPower,
   poolOf,
+  thresholdHeal,
   type SpellChoiceInput
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
@@ -1547,7 +1547,7 @@ export class Errands implements SessionModule {
       family,
       c.stepMs
     );
-    const heal = this.healingCast(state);
+    const heal = this.healingCast(state, sheet, family);
     /*
      * `RestCommand.cs:28` refuses a poisoned character, immunity excepted
      * (`poisonRefusesRest`). A cure — a configured spell, an antidote rule, or
@@ -2080,29 +2080,35 @@ export class Errands implements SessionModule {
   }
 
   /**
-   * The configured heal, priced from its realm row: what one cast mends and
-   * what it costs. Null where nothing is configured, the realm cannot name
-   * it, the row carries no heal at all, or the cost is unstated — an unpriced
-   * heal costs the estimate nothing, since resting is still the way the cycle
-   * recovers.
-   *
-   * `healPower` is the one reading of what a cast mends, shared with
-   * `chooseHealSpell` (todo 01): the survey and the healer must not disagree
-   * about what a spell is worth.
+   * The heal `AutoHeal` casts out of a fight (`thresholdHeal`: chosen against
+   * the deficit under Auto Choose Best Heal, else the configured spell),
+   * priced: the mean of what one cast mends and what it costs. Null where no
+   * heal would be cast or the cost is unstated: an unpriced heal costs the
+   * estimate nothing, since resting is still the way the cycle recovers.
    */
-  private healingCast(state: CharacterState): HealingCast | null {
-    const name = this.automationConfig.spells.heal.trim();
-    if (name.length === 0 || this.world === undefined) return null;
-    const spell = this.world.spellNamed(name);
-    if (spell === null || spell === undefined) return null;
-    const level = state.progress.level;
-    if (level === null) return null;
-    const power = healPower(spell, level);
-    const mana = spell.mana ?? null;
-    if (power === null || mana === null) return null;
-    const hp = (power[0] + power[1]) / 2;
-    if (hp <= 0) return null;
-    return { hpPerCast: hp, manaPerCast: mana };
+  private healingCast(
+    state: CharacterState,
+    sheet: ProwessSheet,
+    family: RealmFamily | null
+  ): HealingCast | null {
+    const world = this.world;
+    if (world === undefined) return null;
+    const spells = this.automationConfig.spells;
+    const heal = thresholdHeal({
+      spells,
+      below: healFloor(spells, false),
+      hpMax: state.vitals.hpMax,
+      book: state.spellbook,
+      realm: (name) => world.spellNamed(name) ?? null,
+      level: state.progress.level,
+      // The full pool: the survey prices a cycle begun rested.
+      mana: state.vitals.manaMax ?? state.vitals.mana,
+      sheet,
+      family
+    });
+    if (heal === null || heal.cost === null) return null;
+    const hp = (heal.restores[0] + heal.restores[1]) / 2;
+    return hp <= 0 ? null : { hpPerCast: hp, manaPerCast: heal.cost };
   }
 
   /**

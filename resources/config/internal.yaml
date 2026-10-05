@@ -541,6 +541,11 @@ tuning:
     # before handing it back, in milliseconds. One fight is 3 to 6ms.
     survivalSliceMs: 8
 
+    # How many runs of every monster and lair are kept for the figures the
+    # character had before, so a blessing that wears off and is cast again
+    # picks its run up where it was instead of starting over.
+    survivalBooksKept: 3
+
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
     # How sure one cast has to be of finishing the monster before the cheapest

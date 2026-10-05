@@ -146,6 +146,32 @@ describe('the odds book', () => {
     odds.dispose();
   });
 
+  /* Todo 10, 2026-10-05: a blessing lapsing and cast again restarted every lair and monster, twice. */
+  it('picks up the book it had when the figures move back, and forgets one past the kept few', async () => {
+    const { odds, tracker } = book();
+    odds.refresh(tracker.current);
+    await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
+    const first = odds.lair(lairRoom);
+    for (const level of [11, 12, 13]) {
+      tracker.current = inGame(level);
+      odds.refresh(tracker.current);
+      expect(odds.mob('ogre')).toEqual({ kind: 'pending' });
+    }
+    tracker.current = inGame(10);
+    odds.refresh(tracker.current);
+    // The same run, not one run again.
+    expect(odds.lair(lairRoom)).toBe(first);
+    // Four sets of figures away, the first is gone.
+    for (const level of [11, 12, 13, 14]) {
+      tracker.current = inGame(level);
+      odds.refresh(tracker.current);
+    }
+    tracker.current = inGame(10);
+    odds.refresh(tracker.current);
+    expect(odds.lair(lairRoom)).toEqual({ kind: 'pending' });
+    odds.dispose();
+  });
+
   it('answers a room with no lair as not run, and a monster the realm lacks likewise', async () => {
     const { odds, tracker } = book();
     odds.refresh(tracker.current);

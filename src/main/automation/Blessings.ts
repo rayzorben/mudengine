@@ -182,6 +182,20 @@ export class Blessings implements SessionModule {
   }
 
   /**
+   * The mana floor (the row's `minMana`) above which a lapse of `spell` on
+   * this character is cast again mid-fight, or null where it is not: no self
+   * row kept up that may be cast in combat, or the switch off. A simulated
+   * fight (`FightSetup`) recasts by it and loses the rest.
+   */
+  recastFloor(spell: string): number | null {
+    if (!this.enabled) return null;
+    const row = this.entries().find(
+      (each) => each.target === 'self' && each.inCombat && this.same(spell, each.spell)
+    );
+    return row?.minMana ?? null;
+  }
+
+  /**
    * Whether a wire spelling and a configured one name the same spell: the
    * realm accepts `bles` and prints `bless` (`sameSpell`, `spellcraft.ts`).
    */
