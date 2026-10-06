@@ -1165,6 +1165,19 @@ describe('the last room outlives the socket', () => {
     });
   });
 
+  it('writes the lives to the record when a death states them, once per change (todo 07)', () => {
+    const kept: number[] = [];
+    const { tracker, feed } = session({
+      ...NO_BELONGINGS,
+      rememberLives: (count) => kept.push(count)
+    });
+    tracker.reset();
+    feed(['You have been killed!', 'You have 41 lives left.']);
+    expect(tracker.current.progress.lives).toBe(41);
+    feed(['You have 41 lives left.']);
+    expect(kept).toEqual([41]);
+  });
+
   it('places nothing from a record naming a room the realm does not have', () => {
     const { tracker } = session({
       ...NO_BELONGINGS,
@@ -11302,6 +11315,7 @@ describe('the spellbook and the belongings record', () => {
         rememberRoom: (place: KeptRoom) => {
           state.room = { ...place };
         },
+        rememberLives: () => {},
         forget: () => false
       }
     };

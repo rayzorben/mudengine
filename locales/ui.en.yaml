@@ -277,6 +277,11 @@ notices:
         with a comment explaining it. This is what they were already doing. {fileList}'
       one: '"Reconnect if the connection drops" was added to {count} character file, turned on, with
         a comment explaining it. This is what it was already doing. {fileList}'
+    lowLivesStated:
+      many: '"Ask Before Login At" was added to {count} character files, set to {lives} lives, with
+        a comment explaining it. {fileList}'
+      one: '"Ask Before Login At" was added to {count} character file, set to {lives} lives, with a
+        comment explaining it. {fileList}'
     newAutomationStated:
       many: 'New settings were added to {count} files with comments explaining them: dropping junk,
         depositing cash at the bank, defending the party, the area spell, and what to do when a
@@ -4079,6 +4084,9 @@ settings:
       display name.
     idLabel: File Name
     idPlaceholder: thorn
+    lowLivesHint: With automation on and this many lives left or fewer, asks before logging in,
+      whether it is a reconnect, Connect on Start or Connect. 0 never asks.
+    lowLivesLabel: Ask Before Login At (lives)
     manageRealms: Manage realms…
     namePlaceholder: Thorn the Unready
     passwordHint: Stored in this character's own file and never shown again. The realm's login steps
@@ -4556,6 +4564,12 @@ session:
     fault: Something on this line could not be read; the console is unaffected. {message}
   probe:
     askedFromCard: asked from a card
+  lowLives:
+    held: 'Lives left: {lives}. With automation on, the client asks before logging in at {floor} or
+      fewer, and has not logged in.'
+    notSwitchedOff: Automation could not be turned off in the character's file, so the client did
+      not log in.
+    stayed: Stayed offline. Press Connect to be asked again.
   reconnect:
     dialFailed: 'Could not reconnect: {detail}'
     gaveUp: Gave up reconnecting. Press Connect to try again.
@@ -5775,6 +5789,20 @@ movement:
   whatHappens: 'Walking back is a trip like any other: through whatever lives on the way, with
     auto-combat and your other settings working as usual. Staying here changes nothing: the loop or
     route keeps its place, and you can press play again.'
+
+# A character is down to its last few lives with automation on, and the client
+# asks before logging it in.
+lowLives:
+  counted: 'Last read {at}. The client asks at {floor} lives or fewer for this character.'
+  logIn: Log In
+  stay: Stay Offline
+  switchOff: Turn Off Automation and Log In
+  title:
+    many: '{name} has {count} lives left'
+    one: '{name} has {count} life left'
+  warning: Automation is on, and each death costs a life. The client has not logged in and waits
+    for your answer. Turning automation off stops everything it does by itself, extensions
+    included.
 
 # The client thinks the character in the realm is not the one its records are
 # about, and is asking. It only ever asks: deleting the only copy of what

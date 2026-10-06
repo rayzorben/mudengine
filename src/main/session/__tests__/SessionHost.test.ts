@@ -2,7 +2,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { NO_FIGHTS } from '../../../shared/fights';
 import { NO_TALK } from '../TalkLog';
 import { NO_REALM_PLAYERS } from '../../../shared/players';
-import { NO_RECORD } from '../../../shared/belongings';
+import { NO_RECORD, type KeptLives } from '../../../shared/belongings';
 import { NO_LORE } from '../../../shared/lore';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
@@ -112,6 +112,9 @@ beforeEach(async () => {
     configFor: () => config,
     wordsFor: () => ({ locate: 'rm', coins: {} }),
     autoReconnect: () => autoReconnect,
+    // Never read, so nothing is held: the low-lives block below says otherwise.
+    livesAt: () => null,
+    lowLives: () => 2,
     label: (id) => ({ name: id, server: 'test', accent: 'cyan' }),
     logDirectory: () => '',
     toAttached: (channel, message) => attachedSends.push({ channel, message }),
@@ -420,5 +423,137 @@ describe('SessionHost', () => {
     await until(() => host!.get('thorn')?.manager.state.phase === 'closed');
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(accepted).toHaveLength(1);
+  });
+});
+
+/*
+ * Todo 07: at `lowLives` or fewer with automation on, nothing dials until the
+ * player answers, whether the dial is Connect or a reconnect.
+ */
+describe('a character low on lives', () => {
+  const on: AppConfig = { ...config, automation: { ...config.automation, enabled: true } };
+  const off: AppConfig = { ...config, automation: { ...config.automation, enabled: false } };
+  let flips: Array<[string, boolean]> = [];
+
+  /** A host whose character is at its floor, automation on, and whose switch can be written. */
+  function holding(over: Partial<typeof options> = {}): SessionHost {
+    host?.disposeAll();
+    flips = [];
+    let current = on;
+    host = new SessionHost({
+      ...options,
+      configFor: () => current,
+      livesAt: () => ({ count: 2, at: 1 }),
+      lowLives: () => 2,
+      flipSwitch: (_id, name, value) => {
+        flips.push([name, value]);
+        current = { ...current, automation: { ...current.automation, enabled: value } };
+        return true;
+      },
+      reread: () => {},
+      ...over
+    });
+    return host;
+  }
+
+  const asks = (): Sent[] => allSends.filter((sent) => sent.channel === Push.lowLives);
+
+  it('asks instead of dialling, and says why', async () => {
+    const held = holding();
+    const state = await held.connect('thorn', target());
+    expect(asks().map((sent) => sent.message)).toEqual([
+      { session: 'thorn', payload: { lives: 2, floor: 2, at: 1 } }
+    ]);
+    expect(state.phase).toBe('idle');
+    expect(notices).toContainEqual({
+      session: 'thorn',
+      message: t('session.lowLives.held', { lives: 2, floor: 2 })
+    });
+  });
+
+  it('dials as ever above the floor, at a floor of 0, with automation off, or lives unread', async () => {
+    const cases: Array<Partial<typeof options>> = [
+      { livesAt: () => ({ count: 3, at: 1 }) },
+      { lowLives: () => 0 },
+      { configFor: () => off },
+      { livesAt: () => null }
+    ];
+    for (const [index, over] of cases.entries()) {
+      await holding(over).connect('thorn', target());
+      await until(() => accepted.length === index + 1);
+    }
+    expect(asks()).toEqual([]);
+  });
+
+  it('switches automation off and then logs in, on that answer', async () => {
+    const held = holding();
+    await held.connect('thorn', target());
+    expect(await held.answerLowLives('thorn', 'switch-off')).toBe(true);
+    expect(flips).toEqual([['automation', false]]);
+    await until(() => accepted.length === 1);
+  });
+
+  it('logs in with automation as it was, on that answer', async () => {
+    const held = holding();
+    await held.connect('thorn', target());
+    expect(await held.answerLowLives('thorn', 'log-in')).toBe(true);
+    await until(() => accepted.length === 1);
+    expect(flips).toEqual([]);
+  });
+
+  it('stays offline, and dials nothing for an answer nobody asked for', async () => {
+    const held = holding();
+    expect(await held.answerLowLives('thorn', 'log-in')).toBe(false);
+    await held.connect('thorn', target());
+    expect(await held.answerLowLives('thorn', 'stay')).toBe(false);
+    // The question closed with the first answer.
+    expect(await held.answerLowLives('thorn', 'log-in')).toBe(false);
+    expect(held.get('thorn')?.manager.state.phase).toBe('idle');
+    expect(notices).toContainEqual({ session: 'thorn', message: t('session.lowLives.stayed') });
+  });
+
+  /*
+   * On review: a window that never showed the question, the player turning
+   * automation off there and pressing Connect, then Log In on the stale
+   * question elsewhere. That answer must not hang up and log in again.
+   */
+  it('closes the question when a dial goes ahead, so a stale answer dials nothing', async () => {
+    let current = on;
+    const held = holding({ configFor: () => current });
+    await held.connect('thorn', target());
+    expect(asks()).toHaveLength(1);
+
+    current = off;
+    await held.connect('thorn', target());
+    await until(() => held.get('thorn')?.manager.state.phase === 'connected');
+    expect(await held.answerLowLives('thorn', 'log-in')).toBe(false);
+    expect(accepted).toHaveLength(1);
+    expect(held.get('thorn')?.manager.state.phase).toBe('connected');
+  });
+
+  it('logs nobody in when the switch cannot be written', async () => {
+    const held = holding({ flipSwitch: () => false });
+    await held.connect('thorn', target());
+    expect(await held.answerLowLives('thorn', 'switch-off')).toBe(false);
+    expect(held.get('thorn')?.manager.state.phase).toBe('idle');
+    expect(notices).toContainEqual({
+      session: 'thorn',
+      message: t('session.lowLives.notSwitchedOff')
+    });
+  });
+
+  it('asks rather than dialling back a lost connection', async () => {
+    autoReconnect = true;
+    let lives: KeptLives | null = null;
+    const held = holding({ livesAt: () => lives });
+    await held.connect('thorn', target());
+    await until(() => accepted.length === 1);
+
+    // A death on the last connection left one life.
+    lives = { count: 1, at: 5 };
+    accepted[0]!.destroy();
+    await until(() => asks().length === 1);
+    expect(accepted).toHaveLength(1);
+    expect(held.get('thorn')?.reconnect.pending).toBe(false);
   });
 });

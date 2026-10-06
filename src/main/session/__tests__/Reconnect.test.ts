@@ -34,6 +34,9 @@ const state = (over: Partial<ConnectionState> = {}): ConnectionState => ({
 let dials: ConnectionTarget[] = [];
 let notices: string[] = [];
 let enabled = true;
+/** Whether the low-lives hold answers yes; how many times it was asked. */
+let held = false;
+let heldAsks = 0;
 /** How many times the host was told the retry state moved. */
 let changes = 0;
 /** What the next dial reports back. A retry follows anything but `connected`. */
@@ -42,6 +45,10 @@ let answer: ConnectionState = state({ phase: 'error' });
 function build(): Reconnect {
   return new Reconnect({
     enabled: () => enabled,
+    held: () => {
+      heldAsks += 1;
+      return held;
+    },
     dial: (target) => {
       dials.push(target);
       return Promise.resolve(answer);
@@ -72,6 +79,8 @@ beforeEach(() => {
   dials = [];
   notices = [];
   enabled = true;
+  held = false;
+  heldAsks = 0;
   changes = 0;
   answer = state({ phase: 'error' });
 });
@@ -211,6 +220,41 @@ describe('a connection that ended rather than dropped', () => {
   });
 });
 
+describe('a character low on lives (todo 07)', () => {
+  it('dials nothing when the hold answers, and arms no ladder', async () => {
+    held = true;
+    const reconnect = build();
+    drop(reconnect, 60_000);
+    expect(heldAsks).toBe(1);
+    expect(reconnect.pending).toBe(false);
+    expect(notices).not.toContain(t('session.reconnect.now'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dials).toHaveLength(0);
+  });
+
+  it('asks again before a later rung, and stops there when the answer changed', async () => {
+    const reconnect = build();
+    drop(reconnect, 60_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dials).toHaveLength(1);
+
+    held = true;
+    await vi.advanceTimersByTimeAsync(5_000);
+    // At the loss, before the first rung, and before the second.
+    expect(heldAsks).toBe(3);
+    expect(dials).toHaveLength(1);
+    expect(reconnect.pending).toBe(false);
+  });
+
+  it('is not asked about a close the player meant', () => {
+    held = true;
+    const reconnect = build();
+    reconnect.observe(state({ phase: 'closed' }));
+    reconnect.lost('left-realm');
+    expect(heldAsks).toBe(0);
+  });
+});
+
 describe('something else taking the connection over', () => {
   it('calls a pending retry off, which is what Disconnect presses', async () => {
     const reconnect = build();
@@ -231,6 +275,7 @@ describe('something else taking the connection over', () => {
     const settle: Array<(state: ConnectionState) => void> = [];
     const reconnect = new Reconnect({
       enabled: () => enabled,
+      held: () => held,
       dial: (target) => {
         dials.push(target);
         return new Promise<ConnectionState>((resolve) => settle.push(resolve));

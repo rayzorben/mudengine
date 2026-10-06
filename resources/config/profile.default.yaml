@@ -109,6 +109,14 @@ autoConnect: false
 # those live.
 autoReconnect: true
 
+# Ask before logging this character in once it is down to this many lives left,
+# while automation is on. A reconnect, Connect on Start and pressing Connect all
+# wait for the answer, which can switch automation off first; everything
+# automated stops with it, extensions included. The count is the last one the
+# stat sheet or a death said; a character whose lives were never read is not
+# asked about. 0 never asks.
+lowLives: 2
+
 # Identity colour, for the tab and the focused pane's edge: cyan, green, amber
 # or violet. Omit it and one is picked from the character's name, stably -- so
 # adding a character never repaints the ones you already had.

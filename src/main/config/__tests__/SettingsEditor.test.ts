@@ -41,6 +41,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   afk: { enabled: false, afterMinutes: 5, reply: '{AFK}' },
   autoConnect: false,
   autoReconnect: true,
+  lowLives: 2,
   accent: 'cyan',
   theme: '',
   login: [],
@@ -268,6 +269,14 @@ ui:
     expect(after['accent']).toBe('violet');
     expect(after['automation']).toEqual({ rules: [{ when: 'hp < 0.3', do: 's' }] });
     expect((after['ui'] as Record<string, unknown>)['theme']).toBe('slate');
+  });
+
+  /* Todo 07: the lives a character asks at, written and read back as the form shows them. */
+  it('writes the lives it asks at, and reads them back', () => {
+    expect(editor.saveProfile('vaelor', draft({ lowLives: 4 }))).toEqual({ ok: true });
+    expect(read('vaelor')['lowLives']).toBe(4);
+    const found = editor.snapshot().characters.find((entry) => entry.id === 'vaelor');
+    expect(found?.lowLives).toBe(4);
   });
 
   /* The file is theirs, and the template is the documentation. */

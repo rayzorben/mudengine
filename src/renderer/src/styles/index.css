@@ -1114,6 +1114,12 @@ button.quest-banner-dismiss {
   margin: 0;
 }
 
+/* The lives left are the warning, so they are the largest thing on it (todo 07). */
+.low-lives-prompt h2 {
+  color: var(--danger);
+  font-size: 1.5em;
+}
+
 /*
  * Old on the left, new on the right, as asked for: three columns rather than
  * the readout's two, the same shape `.readout.paired` takes for its own second

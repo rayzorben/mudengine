@@ -37,7 +37,7 @@ import path from 'node:path';
 
 import type { AbilitySums, BankBalance, KnownSpell } from '../../shared/character';
 import { bankKey } from '../../shared/character';
-import type { BelongingsSink, KeptRoom, StatsRecord } from '../../shared/belongings';
+import type { BelongingsSink, KeptLives, KeptRoom, StatsRecord } from '../../shared/belongings';
 import type { CharacterIdentity } from '../../shared/reset';
 import {
   asUnderway,
@@ -105,6 +105,8 @@ interface BelongingsFile {
   statsBase?: CombatTally;
   /** The room last stood in. Absent means none was ever placed. */
   room?: KeptRoom;
+  /** The lives last read. Absent means never read. */
+  lives?: KeptLives;
   /** The lap and the route the app last saw. Parsed by `asUnderway`; absent is nothing. */
   underway?: unknown;
 }
@@ -140,6 +142,8 @@ export class Belongings implements BelongingsSink, UnderwaySink {
   private statsBase: CombatTally | null = null;
   /** Null is *never placed*. See `recallRoom`. */
   private room: KeptRoom | null = null;
+  /** Null is *never read*. See `recallLives`. */
+  private lives: KeptLives | null = null;
   private underway: Underway = NOTHING_UNDERWAY;
   private timer: NodeJS.Timeout | null = null;
   /** When the armed timer fires, so a sooner request can replace a later one. */
@@ -319,6 +323,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     this.stats = null;
     this.statsBase = null;
     this.room = null;
+    this.lives = null;
     this.underway = NOTHING_UNDERWAY;
     this.schedule();
     return true;
@@ -336,6 +341,17 @@ export class Belongings implements BelongingsSink, UnderwaySink {
     this.room = { map, room, confidence };
     // Every step moves it, so it waits with the totals; `close()` writes the last one.
     this.schedule(tuning().records.statsWriteDelayMs);
+  }
+
+  /** The lives last read, for the ask before a dial. Null is *never read*, which is not low. */
+  recallLives(): KeptLives | null {
+    return this.lives;
+  }
+
+  rememberLives(count: number): void {
+    if (this.suspended || this.lives?.count === count) return;
+    this.lives = { count, at: Date.now() };
+    this.schedule();
   }
 
   rememberIdentity(identity: CharacterIdentity): void {
@@ -429,6 +445,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       this.stats = file.stats ?? null;
       this.statsBase = file.statsBase ?? null;
       this.room = file.room ?? null;
+      this.lives = file.lives ?? null;
       this.underway = asUnderway(file.underway);
     } catch (error) {
       /*
@@ -484,6 +501,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       ...(this.stats !== null ? { stats: this.stats } : {}),
       ...(this.statsBase !== null ? { statsBase: this.statsBase } : {}),
       ...(this.room !== null ? { room: this.room } : {}),
+      ...(this.lives !== null ? { lives: this.lives } : {}),
       ...(this.underway.lap === null && this.underway.route === null
         ? {}
         : { underway: this.underway })
@@ -592,6 +610,11 @@ export function peekRoom(file: string, realm: string): KeptRoom | null {
   return peek(file, realm)?.room ?? null;
 }
 
+/** The lives the record last read, the same way, for the ask before a launch's first dial. */
+export function peekLives(file: string, realm: string): KeptLives | null {
+  return peek(file, realm)?.lives ?? null;
+}
+
 /** The record for `realm`, or null for a missing, unreadable or other realm's file. */
 function peek(file: string, realm: string): BelongingsFile | null {
   try {
@@ -638,7 +661,15 @@ function belongingsFault(value: unknown): string | null {
     if (fault !== null) return fault;
   }
   if (!optional(file.room, isKeptRoom)) return 'room';
+  if (!optional(file.lives, isKeptLives)) return 'lives';
   return null;
+}
+
+/** A count of lives, a whole number from 0, and the clock it was read on. */
+function isKeptLives(value: unknown): value is KeptLives {
+  if (typeof value !== 'object' || value === null) return false;
+  const { count, at } = value as Record<string, unknown>;
+  return Number.isInteger(count) && (count as number) >= 0 && typeof at === 'number';
 }
 
 /** A room by its realm numbers, two whole numbers, and a confidence from 0 to 1. */

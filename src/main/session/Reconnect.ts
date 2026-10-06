@@ -64,6 +64,12 @@ export interface ReconnectEvents {
    */
   enabled(): boolean;
   /**
+   * Whether a dial to `target` waits for the player instead (`LowLivesHold`),
+   * which says why itself. Asked when the socket goes and again before each
+   * rung, so a floor raised during an outage reaches the ladder.
+   */
+  held(target: ConnectionTarget): boolean;
+  /**
    * Dials, and reports where the attempt got to.
    *
    * Through the host rather than straight at the manager, so the session log
@@ -169,6 +175,13 @@ export class Reconnect {
       // feature that declines silently is worse than one never offered.
       this.events.notice(standDownNotice(why));
       this.attempts = 0;
+      return;
+    }
+    if (this.target !== null && this.events.held(this.target)) {
+      // The player's answer dials, so no ladder is armed and none is carried.
+      this.attempts = 0;
+      this.flaps = 0;
+      this.connectedAt = null;
       return;
     }
 
@@ -299,6 +312,11 @@ export class Reconnect {
      */
     if (this.phase !== 'closed' && this.phase !== 'error') {
       this.attempts = 0;
+      return;
+    }
+    if (this.events.held(target)) {
+      this.attempts = 0;
+      this.publish();
       return;
     }
 
