@@ -274,13 +274,16 @@ export interface NoEffectLore {
   observeNoEffect(spell: string, monster: string, at: number): void;
   /** A cast of the spell landed on the monster: whatever was kept was a misread. */
   forgetNoEffect(spell: string, monster: string): void;
+  /** How many times this realm's kept answers have changed: a price made with them is stale when this moves. */
+  noEffectChanges(): number;
 }
 
 /** Keeps and learns nothing: a session with no realm lore. */
 export const NO_EFFECTS_KEPT: NoEffectLore = {
   hasNoEffect: () => false,
   observeNoEffect: () => {},
-  forgetNoEffect: () => {}
+  forgetNoEffect: () => {},
+  noEffectChanges: () => 0
 };
 
 /** What a realm's wire taught about its attack spells: which are instant, and what each cannot touch. */

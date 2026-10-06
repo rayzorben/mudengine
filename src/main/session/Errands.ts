@@ -46,7 +46,7 @@ import { chargedInCopper, expectedCopper } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { FightSink } from '../../shared/fights';
-import type { KillExpLore } from '../../shared/lore';
+import type { KillExpLore, NoEffectLore } from '../../shared/lore';
 import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
@@ -115,7 +115,7 @@ import {
   chooseAttackSpell,
   poolOf,
   thresholdHeal,
-  type SpellChoiceInput
+  type KillCasting
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
 import { gearEffect } from '../../shared/blessingeffects';
@@ -207,7 +207,7 @@ export interface RealmClass extends ProwessClass {
 }
 
 /** What `chooseAttackSpell` is handed about the caster, before a target. */
-export type CastingInput = Omit<SpellChoiceInput, 'target' | 'excluded'>;
+export type CastingInput = KillCasting;
 
 /**
  * The realm's answers these read, and no more: the router's, the catalogue's
@@ -253,14 +253,20 @@ export type ErrandsWorld = Pick<
   | 'withinSteps'
 >;
 
+/** What the survey and the odds read of the realm's kept no-effect answers; `AttackSpells` writes them. */
+type NoEffectReader = Pick<NoEffectLore, 'hasNoEffect' | 'noEffectChanges'>;
+
 /** What the answers are read from: the realm, the character, the fight record. */
 export interface ErrandsParts {
   readonly world: ErrandsWorld | undefined;
   readonly tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
   /** What this character has measured dealing a round, for the survey. */
   readonly fightRecord: Pick<FightSink, 'measured'>;
-  /** The rooms' refills the wire timed, and what its kills paid solo, on this realm (`RealmLore`). */
-  readonly lore: SpawnLore & KillExpLore;
+  /**
+   * The rooms' refills the wire timed, what its kills paid solo, and which
+   * spells had no effect on which monsters, on this realm (`RealmLore`).
+   */
+  readonly lore: SpawnLore & KillExpLore & NoEffectReader;
 }
 
 /** What the session that built this answers for it. */
@@ -285,6 +291,7 @@ export class Errands implements SessionModule {
   private readonly tracker: ErrandsParts['tracker'];
   private readonly fightRecord: ErrandsParts['fightRecord'];
   private readonly kills: KillExpLore;
+  private readonly noEffects: NoEffectReader;
   /** The refill clocks the wire timed, where the world database states none. */
   private readonly clocks: RoomClocks;
   /** How many times faster than the server's own clocks this realm runs, read off its rounds, kept per address. */
@@ -351,6 +358,7 @@ export class Errands implements SessionModule {
     this.fightRecord = parts.fightRecord;
     this.clocks = new RoomClocks(parts.lore);
     this.kills = parts.lore;
+    this.noEffects = parts.lore;
     this.navigation = new Navigation({
       world: () => this.world,
       tracker: parts.tracker,
@@ -1828,7 +1836,8 @@ export class Errands implements SessionModule {
       state.spellbook?.length ?? -1,
       state.vitals.manaMax,
       measured === null ? '-' : Math.round(measured.perRound),
-      speed
+      speed,
+      this.noEffectsKey()
     ].join('|');
     const live = as === this.tracker.current;
     if (live && (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world)) {
@@ -1868,6 +1877,7 @@ export class Errands implements SessionModule {
           (casting === null
             ? null
             : (castsToKill(casting, {
+                name: entity.name,
                 hp: verdicts[index]?.menace?.hp ?? entity.hp ?? null,
                 magicRes: entity.magicResist ?? null,
                 abilities: entity.abilities,
@@ -2626,8 +2636,14 @@ export class Errands implements SessionModule {
       family,
       // The class row says kai before a statline has: a Mystic never casts an attack from it.
       pool: poolOf(state.vitals.manaType, world.classNamed(state.className ?? '')?.mageryType),
-      killConfidence: tuning().spells.killConfidence
+      killConfidence: tuning().spells.killConfidence,
+      noEffectOn: (spell, monster) => this.noEffects.hasNoEffect(spell, monster)
     };
+  }
+
+  /** How many times the realm's kept no-effect answers have changed, as a key: a kill priced with them is stale when it moves. */
+  noEffectsKey(): string {
+    return String(this.noEffects.noEffectChanges());
   }
 
   /**

@@ -30,7 +30,10 @@ const STATE: CharacterState = {
 
 const SHEET = { level: 4, spellcasting: 69 } as unknown as ProwessSheet;
 
-function errands(spells: Partial<AutomationConfig['spells']>): Errands {
+function errands(
+  spells: Partial<AutomationConfig['spells']>,
+  kept: Map<string, string[]> = new Map()
+): Errands {
   const config: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
     spells: { ...DEFAULT_CONFIG.automation.spells, ...spells }
@@ -45,7 +48,11 @@ function errands(spells: Partial<AutomationConfig['spells']>): Errands {
       world,
       tracker: { current: STATE },
       fightRecord: {},
-      lore: {}
+      lore: {
+        hasNoEffect: (spell: string, monster: string) =>
+          kept.get(monster)?.includes(spell) ?? false,
+        noEffectChanges: () => [...kept.values()].flat().length
+      }
     } as unknown as ErrandsParts,
     { config: () => config, family: () => 'greatermud' } as unknown as ErrandsSession
   );
@@ -83,5 +90,27 @@ describe('the spell a round is priced on', () => {
     expect(
       errands({ autoChoose: false, attack: 'fireball' }).castingInput(STATE, SHEET, 'greatermud')
     ).toBeNull();
+  });
+});
+
+/*
+ * What the realm kept as having no effect (`NoEffectLore`) reaches the kill's
+ * price, and its key, so the odds and the survey are worked out again once a
+ * new answer is kept (2026-10-06).
+ */
+describe('the spells the realm kept as having no effect', () => {
+  it('are handed to the price, by monster', () => {
+    const kept = new Map([['acid slime', ['magic missile']]]);
+    const input = errands({ autoChoose: true }, kept).castingInput(STATE, SHEET, 'greatermud');
+    expect(input?.noEffectOn?.('magic missile', 'acid slime')).toBe(true);
+    expect(input?.noEffectOn?.('magic missile', 'giant rat')).toBe(false);
+  });
+
+  it('change the key a price is kept under when one is kept', () => {
+    const kept = new Map<string, string[]>();
+    const unit = errands({ autoChoose: true }, kept);
+    const before = unit.noEffectsKey();
+    kept.set('acid slime', ['magic missile']);
+    expect(unit.noEffectsKey()).not.toBe(before);
   });
 });

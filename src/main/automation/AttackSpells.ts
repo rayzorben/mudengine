@@ -30,6 +30,7 @@ import { spellKey } from '../../shared/spell-messages';
 import { spellReaches } from '../../shared/spellReach';
 import {
   chooseAttackSpell,
+  keptNoEffect,
   type SpellChoice,
   type SpellChoiceRefusal
 } from '../../shared/spellchoice';
@@ -636,8 +637,11 @@ export class AttackSpells {
       if (passedOver(spell.name) || (spell.short !== null && passedOver(spell.short))) {
         excluded.add(spell.name);
       }
-      if (this.realmLore.hasNoEffect(spell.name, target.name)) noEffect.add(spell.name);
     }
+    const kept = keptNoEffect(state.spellbook ?? [], target.name, (s, m) =>
+      this.realmLore.hasNoEffect(s, m)
+    );
+    for (const name of kept) noEffect.add(name);
     const book =
       only === undefined ? state.spellbook : (state.spellbook?.filter((s) => only(s.name)) ?? null);
     const choice = chooseAttackSpell(
