@@ -21,6 +21,8 @@ export interface HuntingConstants {
   roundSeconds: number;
   restTickSeconds: number;
   passiveTickSeconds: number;
+  /** The pass that refills a room a player stands in (`RegenTickTime`). */
+  roomRegenSeconds: number;
   killOverheadMs: number;
   /** One step where the pack's weight is unknown — the measured movement round. */
   stepMs: number;
@@ -45,6 +47,20 @@ export interface HuntingConstants {
    * the fewest rooms that reach it is the loop worth walking.
    */
   sizeTolerance: number;
+}
+
+/**
+ * What sitting gives back a second: the rest tick's figure every
+ * `restTickSeconds` (`CalcRestTick`: resting `HPRegen × 3`, meditating
+ * `GetBaseMARegen`) and the standing tick's every `passiveTickSeconds`
+ * (`DoHPTick`, which runs whatever the character is doing).
+ */
+export function sittingPerSecond(
+  perRestTick: number,
+  perStandingTick: number,
+  c: Pick<HuntingConstants, 'restTickSeconds' | 'passiveTickSeconds'>
+): number {
+  return perRestTick / c.restTickSeconds + perStandingTick / c.passiveTickSeconds;
 }
 
 /** One monster a spot spawns, priced against the character. */
@@ -262,7 +278,7 @@ export interface SpotEstimate {
  *
  * GreaterMUD's `Delay` of 0 is a clock too: the elapsed minutes are at once
  * past it, so the room is refilled at its next regen: the regen pass every
- * `passiveTickSeconds` for a room a player stands in (`RegenTickTime`, 121),
+ * `roomRegenSeconds` for a room a player stands in (`RegenTickTime`, 121),
  * and on every entry (`Player.cs:782`, `inEnteringRoom.Regen`). Read here as
  * the pass, the clock for a character standing in it; a loop that re-enters
  * it is priced by `refillsOnEntry`. Paradigm states 0 for its lairs, which
@@ -271,11 +287,11 @@ export interface SpotEstimate {
 export function respawnSeconds(
   delay: number | null | undefined,
   family: RealmFamily | null,
-  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds' | 'passiveTickSeconds'>,
+  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds' | 'roomRegenSeconds'>,
   arena = false
 ): number | null {
   if (delay === null || delay === undefined || !Number.isFinite(delay)) return null;
-  if (delay === 0) return refillsOnEntry(delay, family) ? constants.passiveTickSeconds : null;
+  if (delay === 0) return refillsOnEntry(delay, family) ? constants.roomRegenSeconds : null;
   const nominal = delay > 0 ? delay * (arena ? 1 : 60) : Math.abs(delay);
   if (family !== 'greatermud') return nominal;
   return Math.max(0, nominal - constants.greatermudRespawnOffsetSeconds);
@@ -708,22 +724,18 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
       manaNeed: number,
       standing: number
     ): { rest: number | null; meditate: number | null } => {
+      // Whole rest ticks, each with its share of the standing tick, which is always on.
+      const ticks = (need: number, perRestTick: number | null, perStanding: number | null) =>
+        perRestTick === null || perRestTick <= 0
+          ? null
+          : Math.ceil(
+              need / (sittingPerSecond(perRestTick, perStanding ?? 0, c) * c.restTickSeconds)
+            ) * c.restTickSeconds;
       const hp = Math.max(0, hpNeed - passiveHp(standing));
-      const rest =
-        hp === 0
-          ? 0
-          : ch.restingHealthPerTick === null || ch.restingHealthPerTick <= 0
-            ? null
-            : Math.ceil(hp / ch.restingHealthPerTick) * c.restTickSeconds;
-      // The standing rate ticks through a rest as well: the server's passive
-      // tick is always on, and a rest is only the health rate tripled.
+      const rest = hp === 0 ? 0 : ticks(hp, ch.restingHealthPerTick, ch.passiveHealthPerTick);
       const mana = Math.max(0, manaNeed - passiveMana(standing + (rest ?? 0)));
       const meditate =
-        mana === 0
-          ? 0
-          : ch.meditatingManaPerTick === null || ch.meditatingManaPerTick <= 0
-            ? null
-            : Math.ceil(mana / ch.meditatingManaPerTick) * c.restTickSeconds;
+        mana === 0 ? 0 : ticks(mana, ch.meditatingManaPerTick, ch.passiveManaPerTick);
       return { rest, meditate };
     };
 

@@ -9,6 +9,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import type { MobEntity } from '../../../shared/entities';
 import { PLAIN_ATTACK } from '../../../shared/prowess';
+import { statedBasis } from '../../../shared/stated';
 import { roomId, type WorldRoom, type WorldSpell } from '../../../shared/world';
 
 /*
@@ -215,6 +216,27 @@ describe('choosing blessings for the fight being hunted', () => {
     expect(notices.filter((each) => each === said)).toHaveLength(1);
     expect(made.chosen()).toBeNull();
     expect(decisions[0]).toMatchObject({ action: 'bless', acted: false });
+    made.dispose();
+  });
+
+  /* 2026-10-05: the sheet's figure is a 30s tick (`DoHPTick`); read on 121s it looked wrong for kai. */
+  it('reads a kai pool’s income off the stated MA Regen, with nothing watched', async () => {
+    const { made, tracker } = choice();
+    const read = standing(LAIR, 0, 0);
+    tracker.current = {
+      ...read,
+      stated: {
+        against: null,
+        healthRegen: null,
+        restingRegen: null,
+        baseManaRegen: 3,
+        manaRegen: 3,
+        round: null,
+        basis: statedBasis(read)
+      }
+    };
+    made.refresh(tracker.current);
+    await vi.waitFor(() => expect(made.chosen()).not.toBeNull());
     made.dispose();
   });
 

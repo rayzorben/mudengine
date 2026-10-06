@@ -33,10 +33,10 @@ import {
 import { bareStateOf, effectOf, sumEffects } from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import type { HuntingSpot } from '../../shared/hunting';
+import { sittingPerSecond, type HuntingSpot } from '../../shared/hunting';
 import { measuredManaRate, NO_MANA_WATCH, watchMana, type ManaWatch } from '../../shared/manaregen';
 import { EFFECT_TICK_SECONDS, scaledDuration } from '../../shared/menace';
-import { castOdds, REGEN_TICK_SECONDS } from '../../shared/prowess';
+import { castOdds } from '../../shared/prowess';
 import { castsOnSelf, sameSpell, spellTargeting } from '../../shared/spellcraft';
 import { statedNow } from '../../shared/stated';
 import { simulateFight } from '../../shared/survival';
@@ -417,18 +417,21 @@ function sampleOf(state: CharacterState): Parameters<typeof watchMana>[1] {
 }
 
 /**
- * What comes back: a mage's stated `MA Regen`, else the rise measured
- * standing. A kai pool is the measurement alone, since its stated figure is
- * not the wire's (todo 10). Meditating is the stated figure, else the
- * standing rate as a floor. Null while neither is known.
+ * What comes back: the stated `MA Regen` on the standing tick, kai and mana
+ * alike, else the rise measured standing. Meditating adds the base figure on
+ * every rest tick (`CalcRestTick`, `GetBaseMARegen`) to the standing tick;
+ * with no stated `MA Regen`, the standing rate is its floor. Null while neither is known.
  */
 function incomeOf(state: CharacterState, watch: ManaWatch): ManaIncome | null {
-  const stated = state.vitals.manaType === 'KAI' ? null : statedNow(state);
+  const stated = statedNow(state);
+  const ticks = tuning().hunting;
   const measured = measuredManaRate(watch, tuning().spells.manaRegenLeastSeconds);
-  const standing = stated?.mana !== undefined ? stated.mana / REGEN_TICK_SECONDS : measured;
+  const standing = stated?.mana !== undefined ? stated.mana / ticks.passiveTickSeconds : measured;
   if (standing === null) return null;
   const meditating =
-    stated?.meditating !== undefined ? stated.meditating / REGEN_TICK_SECONDS : standing;
+    stated?.meditating !== undefined && stated.mana !== undefined
+      ? sittingPerSecond(stated.meditating, stated.mana, ticks)
+      : standing;
   // Whole mana an hour, so a measurement refining by a fraction asks for no new choice.
   return {
     perHour: Math.round(standing * 3600),

@@ -614,7 +614,14 @@ const TUNING_DEFAULTS = {
      * How long the odds book (`OddsBook`) runs fights for before it hands the
      * socket's thread back. One fight is 3 to 6ms, so a slice holds one or two.
      */
-    survivalSliceMs: 8
+    survivalSliceMs: 8,
+    /**
+     * Books the odds book keeps for figures the character had before, so a
+     * blessing that lapses and is cast again picks its book up where it was.
+     * A lapse moves the figures twice, at the wear-off and at the next `st`,
+     * and the recast twice more, so three bring the first book back.
+     */
+    survivalBooksKept: 3
   },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {
@@ -780,8 +787,17 @@ const TUNING_DEFAULTS = {
     roundSeconds: 5,
     /** A resting regeneration tick, seconds (`Player.cs`: resting ticks at 15s, triple the rate). */
     restTickSeconds: 15,
-    /** A standing regeneration tick, seconds (`REGEN_TICK_SECONDS`). */
-    passiveTickSeconds: 121,
+    /**
+     * The standing regeneration tick, seconds: `DoHPTick`, every second
+     * `RestTickTime` fire, in a fight or out. On paramud festus, `MA Regen:
+     * 4/4`, rose 4 every 30s (2026-10-05).
+     */
+    passiveTickSeconds: 30,
+    /**
+     * The pass that refills a room a player stands in, seconds
+     * (`TimedEventManager.RegenTickTime`): it refills monsters, not players.
+     */
+    roomRegenSeconds: 121,
     /** Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`, 1.5s). */
     killOverheadMs: 1500,
     /** One step of a walk — the movement round measured at 1,239ms. */
