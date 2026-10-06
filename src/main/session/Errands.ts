@@ -7,7 +7,12 @@
  * `automation/` sees `WorldGraph`, and this is the layer that keeps it so. See
  * `mudengine-session` › *Travel and errands are adapters beside the session*.
  */
-import { fetchAct, type Plan, type PlannedFetch } from '../../shared/navigation';
+import {
+  fetchAct,
+  type NavigationOracle,
+  type Plan,
+  type PlannedFetch
+} from '../../shared/navigation';
 import { Navigation } from './navigation';
 import { exitGates } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
@@ -479,10 +484,18 @@ export class Errands implements SessionModule {
      */
     allowing: readonly string[] = []
   ): Route | string {
-    const state = this.tracker.current;
-    const here = state.room;
+    const traveller = this.travellerFor(kind, this.tracker.current, allowing);
+    return this.planFromHereAs(to, traveller, options);
+  }
+
+  /** `planFromHere` for a traveller already made, with the counters asked and a room run from said. */
+  private planFromHereAs(
+    to: RoomId,
+    traveller: Traveller,
+    options: RouteOptions = {}
+  ): Route | string {
+    const here = this.tracker.current.room;
     if (here.map === null || here.number === null) return t('session.loop.unknownRoom');
-    const traveller = this.travellerFor(kind, state, allowing);
     const plan =
       this.navigation.leg(roomId(here.map, here.number), to, traveller, options) ??
       t('session.loop.noRealmData');
@@ -491,6 +504,49 @@ export class Errands implements SessionModule {
       this.sayRanFrom(plan);
     }
     return plan;
+  }
+
+  /**
+   * One trip's traveller, kept out of the `walled` rooms, for many asks: the
+   * rooms it reaches from a room within so many moves, with the fewest moves
+   * to each, past only what this character can open now (`Navigation.within`);
+   * a leg from here (`planFromHere`); and the fights, weighed. Null while
+   * worldless.
+   */
+  tripReach(walled: ReadonlySet<RoomId> = new Set()): {
+    within(from: RoomId, steps: number): ReadonlyMap<RoomId, number>;
+    leg(to: RoomId): Route | string;
+    odds: NavigationOracle;
+  } | null {
+    const odds = this.navigation.weighing();
+    if (odds === null) return null;
+    const traveller = { ...this.travellerFor('trip', this.tracker.current), walled };
+    return {
+      within: (from, steps) => this.navigation.within(from, steps, traveller),
+      leg: (to) => this.planFromHereAs(to, traveller),
+      odds
+    };
+  }
+
+  /**
+   * Every monster in a room that may attack this character on its own, by
+   * name: its lair's and its residents, as the realm states them, and those
+   * the wire saw refill it (`SpawnLore.seen`), since the Newhaven Arena has no
+   * lair row. One that fights only when hit is left out (`attacksOnSight`
+   * false): the Newhaven healer is no danger to a passer-by. An unknown
+   * disposition or standing counts.
+   */
+  monstersIn(id: RoomId): string[] {
+    const world = this.world;
+    const room = world?.byId(id);
+    const stated =
+      world === undefined || room === undefined
+        ? []
+        : [...world.lairOf(room), ...world.residentEntities(room)].map((mob) => mob.name);
+    const mine = ownAlignment(this.tracker.current);
+    return [...new Set([...stated, ...this.clocks.seenIn(id)])].filter(
+      (name) => attacksOnSight(world?.mob(name)?.disposition ?? null, mine) !== false
+    );
   }
 
   /**

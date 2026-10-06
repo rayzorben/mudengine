@@ -235,6 +235,8 @@ export class AutoLoot implements SessionModule {
   private readonly coinWord: (coin: Denomination) => string;
   /** The room read again after a kill, since items drop unannounced (todo 814). */
   private readonly floor: FloorAfterKill;
+  /** Whether a `get` this module asked for is still waiting its turn: a walk out waits on it. */
+  readonly taking: () => boolean;
 
   constructor(
     private config: LootConfig,
@@ -254,9 +256,8 @@ export class AutoLoot implements SessionModule {
     this.onTheGround = deps.onTheGround;
     this.moveOnly = deps.moveOnly;
     this.coinWord = deps.coinWord ?? ((coin) => coin);
-    this.floor = new FloorAfterKill(queue, deps.rereads, () =>
-      queue.queued((intent) => intent.coalesceKey?.startsWith(TAKE_KEY) === true)
-    );
+    this.taking = () => queue.queued((intent) => intent.coalesceKey?.startsWith(TAKE_KEY) === true);
+    this.floor = new FloorAfterKill(queue, deps.rereads, this.taking);
   }
 
   /** Whether the floor read asked after a kill is unanswered — the walk waits on it. */

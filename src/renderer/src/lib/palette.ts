@@ -115,6 +115,8 @@ export interface PaletteDeps {
   toggleRail(): void;
   toggleDebug(): void;
   toggleLoops(): void;
+  /** The Search the area dialog, for the shown character. */
+  openAreaSearch(): void;
   reveal(ask: () => Promise<Revealed>): void;
   /** The console on screen, read when a command runs. */
   terminal(): PaletteTerminal | null;
@@ -473,6 +475,19 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       group: 'navigate' as const,
       keywords: ['hunt', 'hunting', 'where', 'lair', 'exp', 'experience', 'grind', 'rate', 'spot'],
       run: () => cards.show('hunting')
+    },
+    /*
+     * Walking every room near the character and searching each (`AreaSearch`).
+     * Not `search`'s keywords: that word is the backscroll's find.
+     */
+    {
+      id: 'area:search',
+      icon: 'search' as const,
+      label: t('palette.navigate.areaSearchLabel'),
+      group: 'navigate' as const,
+      keywords: ['area', 'rooms', 'hidden', 'secret', 'explore', 'nearby', 'sweep'],
+      movesFocus: true,
+      run: deps.openAreaSearch
     },
     {
       id: 'search',
