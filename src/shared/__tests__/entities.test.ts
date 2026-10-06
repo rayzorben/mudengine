@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { entityNumber, entityRows } from '../entities';
+import { entityNumber, entityRows, wornCopy } from '../entities';
 
 /*
  * The realm's own row number for a thing, and the one question it raises: a
@@ -67,5 +67,21 @@ describe('the realm’s number for a thing', () => {
       const both = entityNumber(of) !== null && entityRows(of) !== null;
       expect(both, JSON.stringify(of)).toBe(false);
     }
+  });
+});
+
+describe('the copy of an item already worn', () => {
+  it('is the worn item of that name, however the listing spells it', () => {
+    const worn = [{ name: 'iron ring' }, { name: 'copper ring (Finger)' }];
+    expect(wornCopy(worn, { name: 'copper ring' })).toBe(worn[1]);
+    expect(wornCopy(worn, { name: 'silver ring' })).toBeUndefined();
+  });
+
+  /* The server compares the realm's row: a name two rows share is two items where both are known. */
+  it('is not another row of a shared name', () => {
+    const worn = [{ name: 'iron key', row: { id: 7 } }];
+    expect(wornCopy(worn, { name: 'iron key', row: { id: 9 } })).toBeUndefined();
+    expect(wornCopy(worn, { name: 'iron key', ids: [7] })).toBe(worn[0]);
+    expect(wornCopy(worn, { name: 'iron key', ids: [7, 9] })).toBe(worn[0]);
   });
 });

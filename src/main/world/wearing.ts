@@ -6,12 +6,13 @@
  * difference at the sheet's scale (`REALM_ARMOUR_SCALE`), with both items'
  * figures read from the slot's realm rows as the rankings read them, and what
  * comes off stays in the pack. An item the pack already carries is put on, not
- * added. A worn item the realm does not hold makes the sheet's figure unknown.
+ * added; one already worn in its slot is left off (`wornCopy`). A worn
+ * item the realm does not hold makes the sheet's figure unknown.
  */
 import { WORN_SLOT_HOLDS } from '../../shared/items';
 import { REALM_ARMOUR_SCALE } from '../../shared/menace';
 import type { CharacterState } from '../../shared/character';
-import type { ItemEntity } from '../../shared/entities';
+import { wornCopy, type ItemEntity } from '../../shared/entities';
 import type { Wearing } from '../../shared/upgrades';
 import { nameAnswersTo } from '../../shared/world';
 import { figuresOf, weakestWorn, wornBySlot, type UpgradeRealm } from './gearUpgrades';
@@ -41,6 +42,7 @@ export function wearing(
     const code = on.wornSlotCode;
     if (on.id === undefined || code === undefined) continue;
     const wornHere = wornBySlot(out).get(code) ?? [];
+    if (wornCopy(wornHere, on) !== undefined) continue;
     const free = wornHere.length < (WORN_SLOT_HOLDS[code] ?? 1);
     const gear = slotGear(code, realm, asker);
     const off = free ? null : (weakestWorn(gear.rows, wornHere, gear.ranking) ?? null);

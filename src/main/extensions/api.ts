@@ -139,7 +139,8 @@ export interface ExtensionSessionHost {
   bestInSlot(perSlot: number, as?: CharacterState): SlotBest[];
   /**
    * The character (or `as`) wearing these items instead of the weakest worn
-   * in each one's slot, and which went on: none without a world.
+   * in each one's slot, and which went on: none without a world, and not one
+   * already worn in its slot, as the server puts no second copy on.
    */
   wearing(items: readonly string[], as?: CharacterState): Wearing;
   /** The attacks the class can make and a round of each, as it stands or as `as`. */
