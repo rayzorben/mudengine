@@ -193,6 +193,12 @@ export class AutoHunt implements SessionModule {
    * the first time. Bounded, because one unlucky cycle is not a correction.
    */
   private readonly correction = new Map<string, number>();
+  /**
+   * The level the corrections were measured at. A new level clears them: the
+   * survey then carries each spot's own measured ratio itself
+   * (`withMeasured`), and a correction kept on top would count it twice.
+   */
+  private correctedAt: number | null = null;
 
   constructor(
     private config: HuntingAutomationConfig,
@@ -372,6 +378,11 @@ export class AutoHunt implements SessionModule {
 
   /** Every state change: is this the moment to go hunting? */
   onCharacter(state: CharacterState): void {
+    const level = state.progress.level;
+    if (level !== null && level !== this.correctedAt) {
+      this.correction.clear();
+      this.correctedAt = level;
+    }
     if (!this.enabled || !this.config.enabled) return;
     if (state.phase !== 'in-game') return;
     if (this.phase.kind === 'walking') return;
@@ -497,7 +508,8 @@ export class AutoHunt implements SessionModule {
         perHour: measured.perHour,
         minutes: measured.minutes,
         level,
-        at: this.now()
+        at: this.now(),
+        estimated: this.phase.spot.estimate.modelPerHour ?? null
       });
     }
 

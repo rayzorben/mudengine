@@ -2919,7 +2919,8 @@ export function lairsAlong(steps: readonly RouteStep[]): {
     // room's own spell — `deadly` is set from either, and a room whose spell
     // takes the whole bar has no `danger` to be counted under.
     if (step.deadly === true && deadly === null) deadly = { room: step.to, name: step.name };
-    if (step.danger === undefined) continue;
+    // A room with no lair that monsters were timed walking into is priced too, and is no lair: its step says so.
+    if (step.danger === undefined || step.lair !== true) continue;
     count += 1;
     if (worst === null || step.danger > worst) worst = step.danger;
   }

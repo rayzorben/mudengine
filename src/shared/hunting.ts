@@ -195,6 +195,12 @@ export interface SpotEstimate {
   /** The answer, or null while a part it needs is unknown. */
   expPerHour: number | null;
   /**
+   * The model's own figure before a measured pace or a carried ratio scaled
+   * it (`withMeasured`): what a measured rate is kept beside. Absent before
+   * `withMeasured` has run.
+   */
+  modelPerHour?: number | null;
+  /**
    * What hunting it actually paid this character at this level, where a hunt
    * there lasted long enough to say, and when (todo 70). A measured rate
    * outranks `expPerHour` wherever a spot is ranked (`spotRate`).
@@ -1267,9 +1273,19 @@ export function spotRate(spot: HuntingSpot): number | null {
 export interface MeasuredRate {
   perHour: number;
   minutes: number;
-  /** The level it was measured at: another level is another character. */
+  /**
+   * The level it was measured at. The rate prices only this level; its ratio
+   * to `estimated` prices a level within `measuredLevels` of it.
+   */
   level: number;
   at: number;
+  /**
+   * The model's own figure for the spot when it was measured
+   * (`SpotEstimate.modelPerHour`). The rate's ratio to it prices the spot at a
+   * level within `measuredLevels` of this one. Absent on a rate kept before it
+   * was recorded.
+   */
+  estimated?: number | null;
 }
 
 export interface MeasuredUse {
@@ -1282,56 +1298,83 @@ export interface MeasuredUse {
   /** The bounds on the pace: one strange ground does not rescale the realm. */
   paceLeast: number;
   paceMost: number;
+  /** How many levels away a rate's ratio to its estimate still prices a spot (`tuning.hunting.measuredLevels`). */
+  levelsAcross: number;
 }
 
 /**
  * The survey with what was measured (todo 70): a spot hunted at this level
- * carries its measured rate, and every other spot's hourly figures are scaled
- * by the pace, the median of measured over estimated where both are known.
- * The model's arithmetic assumes the server's round and the database's
- * experience; a realm run faster (orohost runs about five times) or paying
- * more per kill measures above it, and the pace carries that to the grounds
- * not yet hunted. Pure.
+ * carries its measured rate; a spot hunted within `levelsAcross` levels is
+ * scaled by its own ratio of measured to the model's figure; every other
+ * spot's hourly figures are scaled by the pace, the median of measured over
+ * estimated at this level, or of those carried ratios while nothing is
+ * measured here yet. The model's arithmetic assumes the server's round and
+ * the database's experience; a realm run faster (orohost runs about five
+ * times) or paying more per kill measures above it, and the pace carries that
+ * to the grounds not yet hunted. Pure.
  */
 export function withMeasured(
   spots: readonly HuntingSpot[],
   rates: ReadonlyMap<string, MeasuredRate>,
   use: MeasuredUse
 ): { spots: HuntingSpot[]; pace: number | null } {
+  const fresh = (rate: MeasuredRate | undefined): rate is MeasuredRate =>
+    rate !== undefined && use.now - rate.at < use.forgetMs && rate.minutes >= use.minutesLeast;
   const valid = (rate: MeasuredRate | undefined): rate is MeasuredRate =>
-    rate !== undefined &&
-    use.level !== null &&
-    rate.level === use.level &&
-    use.now - rate.at < use.forgetMs &&
-    rate.minutes >= use.minutesLeast;
+    fresh(rate) && use.level !== null && rate.level === use.level;
+  const bound = (ratio: number): number => Math.min(use.paceMost, Math.max(use.paceLeast, ratio));
+  /*
+   * Within `levelsAcross` levels of the one it was measured at, a rate prices
+   * its spot by its ratio to the model's figure it was measured beside, so a
+   * ground that paid three times its estimate at level 12 is not priced at the
+   * bare estimate at 13 (2026-10-06, from the records of 10-03 to 10-05:
+   * Soul's Straw-Floored Passage, measured at 3.3 times its estimate at three
+   * levels, lost each new level to a spot that paid two thirds of its own).
+   */
+  const carried = (rate: MeasuredRate | undefined): number | null => {
+    if (!fresh(rate) || use.level === null || rate.level === use.level) return null;
+    if (Math.abs(rate.level - use.level) > use.levelsAcross) return null;
+    const was = rate.estimated ?? null;
+    return was === null || was <= 0 ? null : bound(rate.perHour / was);
+  };
   const ratios: number[] = [];
+  const across: number[] = [];
   for (const spot of spots) {
     const rate = rates.get(spot.key);
     const estimated = spot.estimate.expPerHour;
     if (valid(rate) && estimated !== null && estimated > 0) ratios.push(rate.perHour / estimated);
+    const ratio = carried(rate);
+    if (ratio !== null) across.push(ratio);
   }
-  const middle = median(ratios);
-  const pace = middle === null ? null : Math.min(use.paceMost, Math.max(use.paceLeast, middle));
-  const scaled = (value: number | null): number | null =>
-    value === null || pace === null ? value : value * pace;
+  // Nothing measured at this level yet: the realm's pace is read off the levels beside it.
+  const middle = median(ratios.length > 0 ? ratios : across);
+  const pace = middle === null ? null : bound(middle);
+  const by =
+    (factor: number | null) =>
+    (value: number | null): number | null =>
+      value === null || factor === null ? value : value * factor;
   return {
     pace,
     spots: spots.map((spot) => {
       const rate = rates.get(spot.key);
+      const modelled = {
+        ...spot.estimate,
+        modelPerHour: spot.estimate.modelPerHour ?? spot.estimate.expPerHour
+      };
       if (valid(rate)) {
         return {
           ...spot,
           estimate: {
-            ...spot.estimate,
+            ...modelled,
             measured: { perHour: rate.perHour, minutes: rate.minutes, at: rate.at }
           }
         };
       }
-      if (pace === null) return spot;
+      const scaled = by(carried(rate) ?? pace);
       return {
         ...spot,
         estimate: {
-          ...spot.estimate,
+          ...modelled,
           expPerHour: scaled(spot.estimate.expPerHour),
           ceilingPerHour: scaled(spot.estimate.ceilingPerHour),
           copperPerHour: scaled(spot.estimate.copperPerHour)

@@ -622,6 +622,35 @@ describe('going hunting on its own', () => {
     expect(started).toHaveLength(1);
   });
 
+  /*
+   * A correction is this level's: the survey carries a spot's measured ratio to
+   * the next level itself (`withMeasured`), and one kept on top counted it twice.
+   */
+  it('prices a lair afresh at a new level, its correction cleared', () => {
+    const level = (at: number, exp: number) =>
+      ready({ progress: { ...EMPTY_CHARACTER.progress, level: at, exp } });
+    const auto = hunt();
+    auto.onCharacter(level(12, 1_000));
+    here = '1/816';
+    auto.onWalkEnded(true, null, level(12, 1_000));
+    // 2,000 an hour against the 12,000 promised: a quarter, and the move to 30,000.
+    answer = advice([spot('lair:a', 12_000), spot('lair:b', 30_000, 'Sewer', 920)]);
+    clock += 900_000;
+    auto.onCharacter(level(12, 1_500));
+    expect(walked).toHaveLength(2);
+    // The walk there stops short, so the next choice is made fresh.
+    auto.onWalkEnded(false, null, level(12, 1_500));
+    // Level 13: the survey has the first lair at 12,000 and the other at 5,000.
+    answer = advice([spot('lair:a', 12_000), spot('lair:b', 5_000, 'Sewer', 920)]);
+    clock += 120_000;
+    notices.length = 0;
+    auto.onCharacter(level(13, 1_500));
+    // Still standing in it, so hunted where it stands, priced at the survey's 12,000 again.
+    expect(walked).toHaveLength(2);
+    expect(started).toHaveLength(2);
+    expect(notices.some((line) => line.includes('12,000'))).toBe(true);
+  });
+
   /* Todo 70: what a stay measured is kept, by spot and level, for the survey and the next session. */
   it('keeps what hunting a lair paid', () => {
     const auto = hunt();

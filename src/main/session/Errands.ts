@@ -110,6 +110,7 @@ import { carriedCount } from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import {
   lairPass,
+  roadPass,
   passShare,
   prowessSheetOf,
   weighVerdicts,
@@ -844,7 +845,7 @@ export class Errands implements SessionModule {
    * null as nothing: an unread sheet must not turn every lair into a wall.
    */
   private lairDanger(room: WorldRoom, state: CharacterState): number | null {
-    if (!this.world || !room.lair) return null;
+    if (!this.world) return null;
     /*
      * The damage is remembered per room; the share is taken against the
      * health the character has *now*, at every call, because that is the
@@ -878,10 +879,16 @@ export class Errands implements SessionModule {
     return this.lairPassHere(room, state)?.damage ?? null;
   }
 
-  /** The weighed pass for a room, remembered until the character's fitness moves. */
+  /**
+   * The weighed pass for a room, remembered until the character's fitness
+   * moves: its lair's, or for a room with none, what the wire timed coming
+   * into it (`RoomClocks.wanderers`).
+   */
   private lairPassHere(room: WorldRoom, state: CharacterState): LairPass | null {
-    if (!this.world || !room.lair) return null;
-    return this.lairCosts.at(this.fitness(state), roomId(room.map, room.room));
+    if (!this.world) return null;
+    const id = roomId(room.map, room.room);
+    if (!room.lair && this.clocks.wanderers(id) === null) return null;
+    return this.lairCosts.at(this.fitness(state), id);
   }
 
   /**
@@ -936,7 +943,9 @@ export class Errands implements SessionModule {
     const room = world.byId(id);
     if (!room) return null;
     const lair = world.lair(room, this.serverFamily);
-    if (lair === null || lair.mobs.length === 0) return null;
+    const stated = lair !== null && lair.mobs.length > 0;
+    const came = stated ? null : this.clocks.wanderers(id);
+    if (!stated && came === null) return null;
     const state = this.tracker.current;
     const { combat, magery, family, attack } = this.realmClass();
     /*
@@ -944,9 +953,13 @@ export class Errands implements SessionModule {
      * folds every row sharing it and takes the worst, and the guard post on
      * the Hillside Path was priced as an 830-HP gnoll scout that swings four
      * times a round when the row it names is the 100-HP one that lands a blow
-     * in twenty-five. See `WorldGraph.lairEntities`.
+     * in twenty-five. See `WorldGraph.lairEntities`. A room with no lair is
+     * priced by name, which is all the wire gave for who came.
      */
-    const entities = world.lairEntities(room);
+    const entities =
+      came === null
+        ? world.lairEntities(room)
+        : came.map((name) => world.buildMobEntity(name, { at: id }));
     if (entities.length === 0) return null;
     const verdicts = weighVerdicts(
       entities,
@@ -961,7 +974,9 @@ export class Errands implements SessionModule {
     const rounds = tuning().world.passRounds;
     const opens = (index: number): boolean | null =>
       attacksOnSight(entities[index]?.disposition ?? null, standing);
-    return lairPass(verdicts, lair.max, rounds, opens);
+    return came === null
+      ? lairPass(verdicts, lair?.max ?? null, rounds, opens)
+      : roadPass(verdicts, tuning().world.wanderersAtOnce, rounds, opens);
   }
 
   /**
@@ -1559,7 +1574,8 @@ export class Errands implements SessionModule {
       measuredForgetMs,
       measuredMinutesLeast,
       paceLeast,
-      paceMost
+      paceMost,
+      measuredLevels
     } = tuning().hunting;
     const c: HuntingConstants = {
       roundSeconds,
@@ -1941,7 +1957,8 @@ export class Errands implements SessionModule {
       forgetMs: measuredForgetMs,
       minutesLeast: measuredMinutesLeast,
       paceLeast,
-      paceMost
+      paceMost,
+      levelsAcross: measuredLevels
     };
     const rates = this.session.rates();
     const guessed = withMeasured(survey, rates, use).spots;
