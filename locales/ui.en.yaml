@@ -5509,7 +5509,8 @@ automation:
     whyStopped: the walk stopped before it arrived
     whyUnanswered: it is still in your inventory after the {verb}
     abandonedDied: 'Died: the walk to get rid of outgrown gear is canceled.'
-    keptTwin: 'Keeping {item}: you wear one by that name, and the game would take the worn one too.'
+    keptRare: 'Keeping {item}: the world data rates it rare.'
+    keptRarityUnknown: 'Keeping {item}: the world data does not say how rare it is.'
     keptUnpriced: 'Keeping {item}, though {worn} is worn instead: the world data has no single price
       for it.'
     keptNoWay: 'Keeping {item}: it cannot be dropped, and no shop that buys it can be reached.'

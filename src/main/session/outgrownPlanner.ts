@@ -12,6 +12,7 @@ import {
   type OutgrownEvents,
   type OutgrownPlanner
 } from '../automation/OutgrownGear';
+import { rarityBook, type RarityWorld } from '../world/itemRarity';
 import { outgrownItems } from '../world/outgrownItems';
 import { salePlaces } from '../world/salePlaces';
 import { slotAskerOf } from '../world/slotGear';
@@ -38,6 +39,7 @@ export interface OutgrownPlannerModules extends LegModules {
         | 'raceId'
         | 'namedClasses'
         | 'namedRaces'
+        | keyof RarityWorld
       >
     | undefined;
 }
@@ -82,7 +84,12 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
         keys: state.inventory.keys
       };
       const asker = slotAskerOf(state, world, errands.realmClass(), config.combat.attack);
-      return outgrownItems(state, world, asker).filter(
+      const realm = {
+        itemsWornIn: (worn: number) => world.itemsWornIn(worn),
+        item: (id: number) => world.item(id),
+        rarity: (id: number) => rarityBook(world).of(id).rarity
+      };
+      return outgrownItems(state, realm, asker).filter(
         (found) => !keptRegardless(found.item, kept)
       );
     },

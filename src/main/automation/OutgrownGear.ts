@@ -22,7 +22,8 @@ import {
   type OutgrownWay
 } from '../../shared/outgrown';
 import type { SalePlace } from '../../shared/selling';
-import { nameAnswersTo, roomId, type RoomId } from '../../shared/world';
+import { sheddable } from '../../shared/rarity';
+import { roomId, type RoomId } from '../../shared/world';
 import type { SessionModule } from './Module';
 
 export interface OutgrownPlanner extends HandoverPlanner {
@@ -146,9 +147,15 @@ export class OutgrownGear implements SessionModule {
   /** Where this item goes, or null where it is kept, said once with the reason. */
   private planFor(item: OutgrownItem, state: CharacterState): Plan | null {
     const name = item.item.name;
-    // `hide`, `sell` and `drop` take every item the name answers to, worn ones too.
-    if (state.inventory.items.some((each) => each.equipped && nameAnswersTo(each.name, name))) {
-      this.sayOnce(t('automation.outgrown.keptTwin', { item: name }));
+    // A spare of the item worn goes too: `hide`, `sell` and `drop` take an unworn copy
+    // first (`ItemContainer.GetItems`; `drop 12 iron` left Soul's worn staff in hand,
+    // `logs/2026-10-05_14-39-59_soul.log:275`).
+    if (!sheddable(item.rarity)) {
+      this.sayOnce(
+        item.rarity === 'unknown'
+          ? t('automation.outgrown.keptRarityUnknown', { item: name })
+          : t('automation.outgrown.keptRare', { item: name })
+      );
       return null;
     }
     if (item.copper === null) {
