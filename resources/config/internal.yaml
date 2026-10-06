@@ -229,6 +229,10 @@ tuning:
     # every thirty seconds, and a client that has asked for nothing is owed
     # nothing.
     #
+    # While logging in, the same number times the next prompt: owed when the
+    # connection opens and after each login answer, and the server echoing
+    # the answer back (`********`) does not count.
+    #
     # 0 switches it off. Whether the client then dials back is the character's
     # own `autoReconnect`.
     silentForMs: 15000

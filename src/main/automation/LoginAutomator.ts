@@ -52,7 +52,15 @@ import type { SessionModule } from './Module';
 
 export interface LoginEvents {
   notice?(message: string): void;
+  /** The next prompt is owed: the socket opened, or an answer reached the wire. */
+  promptOwed?(): void;
+  /** A prompt or the statline arrived, which pays what the way in owes. */
+  prompted?(): void;
 }
+
+/** The line ended because the server stopped talking, or is a prompt the classifier typed. */
+const endsAsPrompt = (block: Block): boolean =>
+  block.terminator === 'flush' || isPrompt(block.type);
 
 /**
  * Why a *lost* socket must not be dialled again.
@@ -168,7 +176,23 @@ export class LoginAutomator implements SessionModule {
     if (commandOf(command.trim().split(/\s+/)[0] ?? '') === 'Break') this.leaving = false;
   }
 
+  /**
+   * The socket opened. When this client is the one logging in, the first
+   * prompt is owed; without an account to send, the player is logging in.
+   */
+  opened(): void {
+    if (this.config.enabled) this.events.promptOwed?.();
+  }
+
   onBlock(block: Block): void {
+    /*
+     * Whatever the way in owes is paid by a prompt or the statline, never by
+     * the echo of an answer: Paradigm echoed `********` and then sent nothing
+     * for seven hours (`logs/2026-10-06_00-27-14_rayzor.mudcap.jsonl`). Once
+     * the realm is reached nothing more is owed; with no automated login
+     * nothing ever was, and the call finds nothing to pay.
+     */
+    if (!this.done && endsAsPrompt(block)) this.events.prompted?.();
     /*
      * The player asked to leave. A request, not the leaving: what it arms is
      * the reading of the menu that follows, which is the same menu the script
@@ -271,7 +295,7 @@ export class LoginAutomator implements SessionModule {
      * and not `Password` — a `when` short enough to appear inside a menu line
      * is a `when` that can answer one.
      */
-    const isPromptLine = block.terminator === 'flush' || isPrompt(block.type);
+    const isPromptLine = endsAsPrompt(block);
 
     /*
      * An account configured that the script has no row to send.
@@ -396,7 +420,9 @@ export class LoginAutomator implements SessionModule {
        * (the GreaterMUD family's table has no `q`). A stopped or switched-off
        * sequence sends nothing either.
        */
-      stillWanted: () => this.config.enabled && !this.done && !this.stopped
+      stillWanted: () => this.config.enabled && !this.done && !this.stopped,
+      // On the wire, so the next prompt is owed; the echo does not count.
+      onSent: () => this.events.promptOwed?.()
     });
   }
 

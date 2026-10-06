@@ -6888,6 +6888,65 @@ describe('SessionManager dead link', () => {
     expect(manager.state.phase).toBe('connected');
   });
 
+  /**
+   * The way in, against a realm that stops after echoing the password, as
+   * Paradigm did at 00:27:20 on 2026-10-06 and then said nothing for seven
+   * hours (`logs/2026-10-06_00-27-14_rayzor.mudcap.jsonl`). The echo answers
+   * the bytes, so only the prompt owed after it can notice.
+   */
+  async function loggingIn(sink: SessionSink): Promise<{ socket: net.Socket; heard: string[] }> {
+    manager = build(sink, {
+      automation: { ...DEFAULT_CONFIG.automation, enabled: false, onEnterRealm: [], rules: [] },
+      login: {
+        enabled: true,
+        username: 'vaelor',
+        password: 'secret',
+        steps: [
+          { when: 'Please enter your username', send: '{user}' },
+          { when: 'Please enter your password', send: '{password}' }
+        ]
+      }
+    });
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const heard: string[] = [];
+    socket.on('data', (chunk: Buffer) => heard.push(...chunk.toString('latin1').split('\r\n')));
+    socket.write('Please enter your username or "new": ');
+    await until(() => heard.includes('vaelor'));
+    socket.write('vaelor\r\nPlease enter your password: ');
+    await until(() => heard.includes('secret'));
+    return { socket, heard };
+  }
+
+  /** Above the quiet period (`IDLE_FLUSH_MS`) a prompt waits before it is read. */
+  const WAY_IN_MS = 600;
+
+  it('hangs up a login that gets no further than the echo, as a loss', async () => {
+    const { sink, notices, drops } = collect();
+    silentFor(WAY_IN_MS);
+    const { socket } = await loggingIn(sink);
+    socket.write('********\r\n');
+
+    await until(() => drops.length > 0);
+    expect(drops).toEqual([null]);
+    expect(notices.some(composes('session.connection.loginStalled'))).toBe(true);
+    expect(notices.some(composes('session.connection.deadLink'))).toBe(false);
+    expect(notices).toContain(t('session.connection.hungUp'));
+  });
+
+  it('lets a login that keeps answering into the realm', async () => {
+    const { sink, drops } = collect();
+    silentFor(WAY_IN_MS);
+    const { socket } = await loggingIn(sink);
+    socket.write('********\r\n[HP=100/MA=50]:');
+
+    // The positive control: the statline was read, so the way in is over.
+    await until(() => manager!.character.phase === 'in-game');
+    await new Promise((resolve) => setTimeout(resolve, WAY_IN_MS + 200));
+    expect(drops).toEqual([]);
+    expect(manager!.state.phase).toBe('connected');
+  });
+
   it('does not arm on a half-typed line', async () => {
     const { sink, drops, raw } = collect();
     silentFor(60);

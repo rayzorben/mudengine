@@ -220,6 +220,12 @@ const TUNING_DEFAULTS = {
      * nothing is owed nothing. Every command this family answers is answered
      * with at least a status line, and promptly.
      *
+     * On the way in the same number times the next prompt, owed when the
+     * socket opens and after each login answer, and the echo of an answer
+     * does not stop it: Paradigm echoed `********` and then sent nothing for
+     * seven hours (2026-10-06). Measured: a login step answered within 1s,
+     * the first prompt within 4s.
+     *
      * `0` switches it off. The keep-alive (`automation.idle`) is what supplies
      * the traffic on a character nobody is playing; with both off, a link that
      * dies while nothing is being sent stays undetected, which is the honest
@@ -2878,7 +2884,7 @@ export const DEFAULT_INTERNAL: InternalConfig = {
  * Floored at 1 like every other duration, `reconnect.silentForMs: 0` became a
  * one-millisecond deadline: the client called every connection dead a
  * millisecond after its first command and dialled again for ever. Its reader
- * (`LinkWatch.noteSent`) arms no timer at 0, so nothing spins.
+ * (`LinkWatch`) arms no timer at 0, so nothing spins.
  */
 const OFF_AT_ZERO: ReadonlySet<string> = new Set(['reconnect.silentForMs']);
 
