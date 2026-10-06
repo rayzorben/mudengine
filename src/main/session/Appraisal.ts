@@ -202,8 +202,8 @@ export class Appraisal {
     if (fights.length === 0) return null;
     const met = fights.map((who) => ({ name: who.name, subject: who.mob ?? {} }));
     const input = { ...character, ...this.setup.foes(state, character, met) };
-    // The recasts' rounds count down with the clock, so the key is what is drawn from, not the time.
-    const key = JSON.stringify({ ...input, recasts: input.recasts.length });
+    // A lapse's round decides when its effect goes, so it is keyed: one run a round while one is due.
+    const key = JSON.stringify(input);
     if (this.ran?.key === key) return this.ran.survival;
     this.ran = { key, survival: simulateFight(input) };
     return this.ran.survival;

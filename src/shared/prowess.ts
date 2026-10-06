@@ -135,9 +135,6 @@ const LIGHT_LOAD = 33;
  */
 const MAX_SUCCESS_RATE = 100;
 
-/** `TimedEventManager.RegenTickTime`, in seconds. */
-export const REGEN_TICK_SECONDS = 121;
-
 /** Every input present, or nothing computed. There is no default stat here. */
 function need(...values: Array<number | null>): number[] | null {
   const held: number[] = [];
@@ -799,7 +796,10 @@ function manaStat(sheet: ProwessSheet, mageryType: number | null): number | null
   }
 }
 
-/** What comes back per tick, and how long a tick is. */
+/**
+ * What comes back per tick. The ticks are `tuning.hunting`'s: the standing one
+ * every `passiveTickSeconds`, the rest tick every `restTickSeconds`.
+ */
 export interface Regeneration {
   health: Reckoning<number>;
   /** Null for a class that casts nothing — a Mystic's figure is the server's own 1. */
@@ -810,8 +810,6 @@ export interface Regeneration {
    * The same figure as `mana` wherever the bonus cannot be seen.
    */
   meditatingMana: Reckoning<number> | null;
-  /** Seconds between ticks while standing. Resting ticks every 15s at triple the health rate. */
-  tickSeconds: number;
   /** What resting returns per health tick — the sheet's `HP Regen: n/3n`. */
   restingHealth: Reckoning<number>;
 }
@@ -848,7 +846,6 @@ export function regeneration(
         said.meditating === undefined || !caster
           ? null
           : { value: said.meditating, from: 'stated' },
-      tickSeconds: REGEN_TICK_SECONDS,
       restingHealth: { value: said.resting, from: 'stated' }
     };
   }
@@ -879,9 +876,8 @@ export function regeneration(
     mana,
     // The formula above is `GetBaseMARegen`'s; the bonus is what it cannot see.
     meditatingMana: mana,
-    tickSeconds: REGEN_TICK_SECONDS,
     // The sheet prints `n/3n` and the rest tick is 15s: resting is three times
-    // the rate on a tick eight times as often, which is the whole reason a
+    // the rate on a tick twice as often, which is the whole reason a
     // character sits down.
     restingHealth: { value: hp * 3, from: 'bound' }
   };

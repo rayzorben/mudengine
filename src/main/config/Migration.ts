@@ -6812,6 +6812,8 @@ function theTuningBlockGainedKeys(
     addKey('spells', 'castSlackMs', DEFAULT_INTERNAL.tuning.spells.castSlackMs);
     // How often old session logs are looked for (todo 04, 2026-10-05).
     addKey('records', 'logSweepEveryMs', DEFAULT_INTERNAL.tuning.records.logSweepEveryMs);
+    // The room refill, split from the player's own tick (2026-10-05).
+    addKey('hunting', 'roomRegenSeconds', DEFAULT_INTERNAL.tuning.hunting.roomRegenSeconds);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -6849,6 +6851,17 @@ function theTuningBlockGainedKeys(
       changed = true;
     };
     raiseKey('hunting', 'maxSpots', 12, DEFAULT_INTERNAL.tuning.hunting.maxSpots);
+    /*
+     * 121 was `RegenTickTime`, which refills rooms; health and mana come back
+     * every 30s (`DoHPTick`, every second rest tick). A file still stating the
+     * shipped 121 takes the player's tick, and the refill has its own key.
+     */
+    raiseKey(
+      'hunting',
+      'passiveTickSeconds',
+      121,
+      DEFAULT_INTERNAL.tuning.hunting.passiveTickSeconds
+    );
     /*
      * The search ceiling, retired: a `Hidden/Searchable` exit is one the realm
      * says a search reveals, and giving up after two rolls of a skill check

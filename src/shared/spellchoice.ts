@@ -10,12 +10,15 @@
  */
 import { HAZARD_ABILITY } from './abilities';
 import type { Vitals } from './character';
+import type { SpellsConfig } from './config';
 import { magicResistance, scaledPower } from './menace';
 import { castOdds, MAGERY, type ProwessSheet } from './prowess';
 import type { RealmFamily } from './realm';
 import {
   castsOnOthers,
   castsOnSelf,
+  resolveSpell,
+  spellCost,
   spellTargeting,
   type CastableSpell,
   type SpellTargeting
@@ -377,6 +380,132 @@ export function chooseHealSpell(input: HealChoiceInput | { book: null }): HealCh
   }
   const most = [...candidates].sort((a, b) => b.expected - a.expected || byCost(a, b));
   return { chosen: most[0]!, why: 'most', considered: candidates, refusal: null };
+}
+
+/** The share of the bar the healing runs to: `healTo`, or the top where it states none. */
+export function healCeiling(healTo: number): number {
+  return healTo > 0 ? Math.min(1, healTo) : 1;
+}
+
+/**
+ * Hit points the healing wants back: the ceiling it runs to (`healCeiling`)
+ * less what the bar holds. Null while either figure is unread, which is
+ * unknown and never 0.
+ */
+export function healDeficit(
+  healTo: number,
+  hp: number | null,
+  hpMax: number | null
+): number | null {
+  if (hp === null || hpMax === null || hpMax <= 0) return null;
+  return Math.max(0, Math.ceil(healCeiling(healTo) * hpMax) - hp);
+}
+
+/**
+ * Whether a chosen heal is worth the round in a fight: casting ends the
+ * attack, so one expected to mend less than `floor`, what the round is worth
+ * (`FightHeal`), is not cast at all (todo 23).
+ */
+export function mendsTheRound(expected: number, floor: number): boolean {
+  return expected >= floor;
+}
+
+/** What `AutoHeal` casts for a deficit, and why. */
+export type HealPick<F> =
+  | { kind: 'configured'; why: 'switched-off' | 'no-figures' }
+  | { kind: 'refused'; refusal: HealChoiceRefusal | null }
+  | { kind: 'chosen'; choice: HealChoice; chosen: HealCandidate; deficit: number }
+  | { kind: 'too-little'; chosen: HealCandidate; deficit: number; floor: F };
+
+/**
+ * Which heal `AutoHeal` casts: under Auto Choose Best Heal, `chooseHealSpell`
+ * against the deficit; the configured spell with the switch off, the deficit
+ * unread, or the choice naming nothing, since a heal not cast is a death. In
+ * a fight (`inFight`, asked only then) a chosen heal that does not mend the
+ * round is not cast and does not fall back. `AutoHeal` casts by it and
+ * `thresholdHeal` prices by it.
+ */
+export function pickHeal<F extends { floor: number }>(
+  autoChooseHeal: boolean,
+  deficit: number | null,
+  choose: (deficit: number) => HealChoice,
+  inFight: ((deficit: number) => F) | null
+): HealPick<F> {
+  if (!autoChooseHeal) return { kind: 'configured', why: 'switched-off' };
+  if (deficit === null) return { kind: 'configured', why: 'no-figures' };
+  const choice = choose(deficit);
+  const chosen = choice.chosen;
+  if (chosen === null) return { kind: 'refused', refusal: choice.refusal };
+  const floor = inFight?.(deficit) ?? null;
+  if (floor !== null && !mendsTheRound(chosen.expected, floor.floor)) {
+    return { kind: 'too-little', chosen, deficit, floor };
+  }
+  return { kind: 'chosen', choice, chosen, deficit };
+}
+
+/** A heal priced for a fight or a cycle that is run rather than cast. */
+export interface PricedHeal {
+  realm: WorldSpell;
+  /** What one cast mends at this level (`healPower`). */
+  restores: [number, number];
+  /** The book's own figure, else the realm's; null where neither states one. */
+  cost: number | null;
+  /**
+   * What a cast is expected to mend, its odds folded in, where the choice
+   * named it, so a fight weighs it against the round (`mendsTheRound`); null
+   * for the configured spell, which is cast whatever the round is worth.
+   */
+  chosenMends: number | null;
+}
+
+export interface ThresholdHealInput extends Omit<HealCastInput, 'book'> {
+  book: HealCastInput['book'] | null;
+  spells: Pick<SpellsConfig, 'heal' | 'healTo' | 'autoChooseHeal'>;
+  /** The share of the bar the heal is cast under (`healFloor`). */
+  below: number;
+  hpMax: number | null;
+}
+
+/**
+ * The heal `AutoHeal` casts on this character when the bar falls under
+ * `below`, by `pickHeal` against the deficit there. The fight the simulator
+ * runs (`FightSetup`) and the hunting survey's cycle (`Errands`) both read
+ * it; a run fight weighs a chosen one against each round as `AutoHeal` does.
+ * Null where none would be cast, the level is unread, or the realm marks no
+ * heal on the row.
+ */
+export function thresholdHeal(input: ThresholdHealInput): PricedHeal | null {
+  const { spells, below, hpMax, book, level } = input;
+  if (below <= 0 || level === null) return null;
+  // Cast while the share is under `below`: the bar one point beneath it.
+  const hp = hpMax === null ? null : Math.max(0, Math.ceil(below * hpMax) - 1);
+  const pick = pickHeal(
+    spells.autoChooseHeal,
+    healDeficit(spells.healTo, hp, hpMax),
+    (deficit) =>
+      chooseHealSpell(book === null ? { book } : { ...input, book, deficit, aim: 'self' }),
+    null
+  );
+  switch (pick.kind) {
+    case 'chosen':
+    case 'too-little': {
+      const { realm, min, max, cost, expected } = pick.chosen;
+      return { realm, restores: [min, max], cost, chosenMends: expected };
+    }
+    case 'configured':
+    case 'refused': {
+      const configured = resolveSpell(spells.heal, book, input.realm);
+      const realm = configured.realm;
+      const restores = realm === null ? null : healPower(realm, level);
+      return realm === null || restores === null
+        ? null
+        : { realm, restores, cost: spellCost(configured), chosenMends: null };
+    }
+    default: {
+      const unreachable: never = pick;
+      return unreachable;
+    }
+  }
 }
 
 /**

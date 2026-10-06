@@ -10,6 +10,7 @@
  * reports how often the character walked out and what it cost on the way.
  * See mudengine-automation › *The verdict is also run as a fight*.
  */
+import { blessedPlayer, negated, sumEffects, type BlessingEffect } from './blessingeffects';
 import { between, mulberry32, sampledCount } from './dice';
 import { guardsFirst, type GuardSubject } from './guards';
 import { weighRoom, type MenacePlayer, type MenaceSubject, type MenaceWeights } from './menace';
@@ -31,6 +32,7 @@ import {
   type Reckoning
 } from './prowess';
 import type { RealmFamily } from './realm';
+import { mendsTheRound } from './spellchoice';
 import { rankByVerdict, targetOf, verdictFor, type TargetEntity } from './verdict';
 
 /** One thing in the room that will fight, as the realm knows it. */
@@ -50,6 +52,30 @@ export interface SurvivalHeal {
   cost: number;
   /** Never cast below this fraction of maximum mana; 0 always casts. */
   minMana: number;
+  /**
+   * What a cast is expected to mend where Auto Choose Best Heal named it: it
+   * is cast only in a round it mends (`mendsTheRound`). Null for the
+   * configured spell, cast whatever the round is worth.
+   */
+  chosenMends: number | null;
+}
+
+/** A blessing up that lapses during the fight. */
+export interface Recast {
+  /** The round it lapses in. */
+  round: number;
+  /**
+   * The mana its recast costs; null where this character does not recast it
+   * in a fight (somebody else's, not kept up, or unpriced), so it is gone.
+   */
+  cost: number | null;
+  /** The row's mana floor: never recast below this fraction of maximum mana; 0 always. */
+  minMana: number;
+  /**
+   * What it adds while up, taken off for the rest of the fight when it goes
+   * unrecast; null where it carries nothing the fight weighs.
+   */
+  effect: BlessingEffect | null;
 }
 
 /** What counts as safe and as merely risky: shares of fights survived that must be *exceeded*. */
@@ -90,8 +116,8 @@ export interface SurvivalInput {
   heal: SurvivalHeal | null;
   /** Health regained a round, from the regeneration tick. */
   regenPerRound: number;
-  /** Blessings that lapse during the fight: the round each lapses and what the recast costs. */
-  recasts: Array<{ round: number; cost: number }>;
+  /** Blessings that lapse during the fight, recast while the mana pays and lost when it does not. */
+  recasts: Recast[];
   levels: SurvivalLevels;
   trials: number;
   roundCap: number;
@@ -226,34 +252,54 @@ export function startFight(input: SurvivalInput): FightTrials | null {
   );
   const position = new Map(order.map((index, at) => [index, at]));
 
-  const sides: FoeSide[] = subjects.map((subject, index) => {
-    const target = targetOf(subject);
-    const blow = swing(
-      input.sheet,
-      input.weapon,
-      {
-        armourClass: target.armourClass ?? null,
-        damageResist: target.damageResist ?? null,
-        dodge: target.dodge ?? null,
-        health: subject.hp ?? null
-      },
-      input.family,
-      input.attack
-    );
-    return {
-      hp: subject.hp !== undefined && subject.hp > 0 ? subject.hp : 1,
-      model: worstModel(subject, input.player),
-      attack: blow !== null && blow.rounds !== null ? blow : null,
-      cast: input.casting[index] ?? null,
-      resist: Math.max(0, Math.trunc(target.damageResist ?? 0)),
-      death:
-        subject.deathSpell === undefined
-          ? null
-          : spellEffect(subject.spells?.[subject.deathSpell], 0, input.player)
-    };
-  });
+  /** Every foe compiled against the character as `player` and `sheet` say it fights. */
+  const compile = (player: MenacePlayer, sheet: ProwessSheet): FoeSide[] =>
+    subjects.map((subject, index) => {
+      const target = targetOf(subject);
+      const blow = swing(
+        sheet,
+        input.weapon,
+        {
+          armourClass: target.armourClass ?? null,
+          damageResist: target.damageResist ?? null,
+          dodge: target.dodge ?? null,
+          health: subject.hp ?? null
+        },
+        input.family,
+        input.attack
+      );
+      return {
+        hp: subject.hp !== undefined && subject.hp > 0 ? subject.hp : 1,
+        model: worstModel(subject, player),
+        attack: blow !== null && blow.rounds !== null ? blow : null,
+        cast: input.casting[index] ?? null,
+        resist: Math.max(0, Math.trunc(target.damageResist ?? 0)),
+        death:
+          subject.deathSpell === undefined
+            ? null
+            : spellEffect(subject.spells?.[subject.deathSpell], 0, player)
+      };
+    });
+  const sides = compile(input.player, input.sheet);
   // A fight the character cannot win is not one this can price.
   if (sides.every((side) => side.attack === null && side.cast === null)) return null;
+
+  /*
+   * The foes again once blessings have lapsed unrecast, by which ones (their
+   * indexes in the order lost, which the fixed rounds make one order per set),
+   * compiled the first time a trial loses them.
+   */
+  const lapses = new Map<string, FoeSide[]>([['', sides]]);
+  const sidesWithout = (lost: readonly number[]): FoeSide[] => {
+    const key = lost.join(',');
+    const known = lapses.get(key);
+    if (known !== undefined) return known;
+    const gone = sumEffects(lost.flatMap((at) => input.recasts[at]?.effect ?? []));
+    const less = gone === null ? input : lapsed(input.player, input.sheet, gone);
+    const compiled = compile(less.player, less.sheet);
+    lapses.set(key, compiled);
+    return compiled;
+  };
 
   const random = mulberry32(input.seed ?? 0x9e3779b9);
   const trials = Math.max(1, Math.trunc(input.trials));
@@ -271,6 +317,11 @@ export function startFight(input: SurvivalInput): FightTrials | null {
   let worstRound = 0;
   const leftovers: number[] = [];
 
+  /** Whether the pool is at or above a fraction of its maximum (`manaAtLeast`); 0 is no floor. */
+  const clearsFloor = (pool: number, minMana: number): boolean =>
+    minMana <= 0 ||
+    (input.manaMax !== null && input.manaMax > 0 && pool / input.manaMax >= minMana);
+
   let ran = 0;
   const trial = (): void => {
     const met =
@@ -281,12 +332,18 @@ export function startFight(input: SurvivalInput): FightTrials | null {
           );
     const alive = met.map((index) => sides[index]!.hp);
     const states: MobState[] = met.map(() => freshMobState());
+    // The foes as the character now meets them, and the top of its bar: a lapse moves both.
+    let facing = sides;
+    let top = hpMax;
+    const gone: number[] = [];
     let hp = input.hp;
     let mana = input.mana;
     let healing = false;
     let heals = 0;
     let regenCarry = 0;
     let held = 0;
+    // Recasts paid for and not yet cast (`recastNow`).
+    let recasting = 0;
     let lost = 0;
     let round = 0;
     let dead = false;
@@ -309,8 +366,8 @@ export function startFight(input: SurvivalInput): FightTrials | null {
 
       if (held > 0) {
         held -= 1;
-      } else if (!healed()) {
-        const side = sides[met[target]!]!;
+      } else if (!healed() && !recastNow()) {
+        const side = facing[met[target]!]!;
         const dealt = strike(side);
         alive[target] = alive[target]! - dealt;
         if (alive[target]! <= 0 && side.death !== null) {
@@ -324,7 +381,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       let roundHarm = 0;
       for (const [slot, index] of met.entries()) {
         if (alive[slot]! <= 0) continue;
-        const outcome = rollMobRound(random, sides[index]!.model, states[slot]!);
+        const outcome = rollMobRound(random, facing[index]!.model, states[slot]!);
         roundHarm += outcome.harm;
         held = Math.max(held, outcome.held);
         if (outcome.mended > 0) {
@@ -342,14 +399,10 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       regenCarry += input.regenPerRound;
       const whole = Math.floor(regenCarry);
       if (whole > 0) {
-        hp = Math.min(hpMax, hp + whole);
+        hp = Math.min(top, hp + whole);
         regenCarry -= whole;
       }
-      if (mana !== null) {
-        for (const recast of input.recasts) {
-          if (recast.round === round && mana >= recast.cost) mana -= recast.cost;
-        }
-      }
+      lapse();
       read(round, false);
     }
     read(Number.POSITIVE_INFINITY, !dead && alive.every((health) => health <= 0));
@@ -367,18 +420,60 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     function healed(): boolean {
       const heal = input.heal;
       if (heal === null || mana === null) return false;
-      const fraction = hp / hpMax;
+      const fraction = hp / top;
       const wants = fraction < heal.below || (heal.to > 0 && healing && fraction < heal.to);
       healing = wants;
       if (!wants) return false;
-      const floor =
-        heal.minMana <= 0 ||
-        (input.manaMax !== null && input.manaMax > 0 && mana / input.manaMax >= heal.minMana);
-      if (!floor || mana < heal.cost) return false;
-      hp = Math.min(hpMax, hp + between(random, heal.restores[0], heal.restores[1]));
+      if (!clearsFloor(mana, heal.minMana) || mana < heal.cost) return false;
+      if (heal.chosenMends !== null && !mendsTheRound(heal.chosenMends, roundWorth())) return false;
+      hp = Math.min(top, hp + between(random, heal.restores[0], heal.restores[1]));
       mana -= heal.cost;
       heals += 1;
       return true;
+    }
+
+    /**
+     * The character's turn spent on a recast paid for. A blessing is cast with
+     * `BreakCombat` (`Player.InitiateSpell`), so the round's swing goes with it.
+     */
+    function recastNow(): boolean {
+      if (recasting === 0) return false;
+      recasting -= 1;
+      return true;
+    }
+
+    /**
+     * What the round is worth to a heal, as `FightHeal` reads it: the mean
+     * taken a round so far, else what the foes standing are expected to deal.
+     */
+    function roundWorth(): number {
+      if (round > 1) return lost / (round - 1);
+      let expected = 0;
+      for (const [slot, index] of met.entries()) {
+        if (alive[slot]! > 0) expected += expectedHarm(facing[index]!.model);
+      }
+      return expected;
+    }
+
+    /**
+     * This round's lapses: recast where the mana pays, else gone for the rest
+     * of the fight, its effect off the character. Unknown mana pays for none.
+     */
+    function lapse(): void {
+      for (const [at, recast] of input.recasts.entries()) {
+        if (recast.round !== round) continue;
+        const { cost } = recast;
+        if (cost !== null && mana !== null && clearsFloor(mana, recast.minMana) && mana >= cost) {
+          mana -= cost;
+          recasting += 1;
+          continue;
+        }
+        if (recast.effect === null) continue;
+        gone.push(at);
+        facing = sidesWithout(gone);
+        top = Math.max(1, top - recast.effect.maxHp);
+        hp = Math.min(hp, top);
+      }
     }
 
     /** The character's blows at one foe this round. */
@@ -449,6 +544,27 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         }),
         trials
       };
+    }
+  };
+}
+
+/**
+ * The character once `gone` has lapsed: what it added taken off the monsters'
+ * side and the formula sheet, and the `stat all` figures dropped, since they
+ * carried it (`statedNow` drops them the same way once the buffs up move).
+ */
+function lapsed(
+  player: MenacePlayer,
+  sheet: ProwessSheet,
+  gone: BlessingEffect
+): { player: MenacePlayer; sheet: ProwessSheet } {
+  const off = negated(gone);
+  return {
+    player: blessedPlayer(player, off),
+    sheet: {
+      ...sheet,
+      stated: null,
+      effects: sumEffects([...(sheet.effects ? [sheet.effects] : []), off])
     }
   };
 }

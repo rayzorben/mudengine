@@ -3,7 +3,9 @@
  * (todo 03), in the background: fights run in slices of `survivalSliceMs`, so
  * the socket's thread is handed back between them. Run again from the start
  * when the character's fitness or its heal and casting settings move (a level
- * gained, a helm put on). What a reader asks for goes to the front. The Map
+ * gained, a helm put on); the last `survivalBooksKept` books are kept, so
+ * figures that move back (a blessing lapsing and cast again) pick theirs up
+ * where it was. What a reader asks for goes to the front. The Map
  * card's lair colours, the hunting grounds and the Combat card read it. See
  * mudengine-automation › *The verdict is also run as a fight*.
  */
@@ -62,6 +64,20 @@ export function fightBook(
 
 type Job = { kind: 'mob'; name: string } | { kind: 'lair'; key: string; room: WorldRoom };
 
+/** What is run for one set of figures, and what is still owed it. */
+interface Book {
+  /** The fitness and settings it is run for. */
+  readonly key: string;
+  readonly mobs: Map<string, Odds>;
+  readonly lairs: Map<string, Odds>;
+  queue: Job[];
+  /** Asked for by a reader: run first. A monster's is said when done; the verdict carries it. */
+  readonly asked: Set<string>;
+  readonly told: Set<string>;
+  /** The fight part way through its trials, carried into the next slice. */
+  running: { job: Job; trials: FightTrials } | null;
+}
+
 const UNREAD: Odds = { kind: 'unread' };
 const PENDING: Odds = { kind: 'pending' };
 const UNRUN: Odds = { kind: 'unrun' };
@@ -71,17 +87,11 @@ export class OddsBook implements SessionModule {
   private readonly world: OddsBookParts['world'];
   private readonly errands: OddsBookParts['errands'];
   private readonly setup: OddsBookParts['setup'];
-  /** The fitness and settings the book is run for; null while the character's figures are unread. */
-  private key: string | null = null;
-  private readonly mobs = new Map<string, Odds>();
-  private readonly lairs = new Map<string, Odds>();
-  private queue: Job[] = [];
-  /** Asked for by a reader: run first. A monster's is said when done; the verdict carries it. */
-  private readonly asked = new Set<string>();
-  private readonly told = new Set<string>();
+  /** The book for the character as it stands; null while its figures are unread. */
+  private book: Book | null = null;
+  /** Books for figures the character had before, oldest first. */
+  private readonly kept = new Map<string, Book>();
   private slice: NodeJS.Immediate | null = null;
-  /** The fight part way through its trials, carried into the next slice. */
-  private running: { job: Job; trials: FightTrials } | null = null;
 
   constructor(
     parts: OddsBookParts,
@@ -102,33 +112,18 @@ export class OddsBook implements SessionModule {
     if (world === undefined || state.phase !== 'in-game') return;
     if (this.setup.character(state, 'rested') === null) {
       // Nothing is run for a character nobody has read, and nothing kept from one that was.
-      if (this.key !== null) this.reset();
+      if (this.book !== null) this.reset();
       return;
     }
     const key = this.keyOf(state);
-    if (key === this.key) {
-      this.schedule();
-      return;
-    }
-    this.reset();
-    this.key = key;
-    const lairs = new Map<string, WorldRoom>();
-    for (const room of world.everyRoom()) {
-      if (room.lair === undefined) continue;
-      const each = lairKey(room.lair);
-      if (!lairs.has(each)) lairs.set(each, room);
-    }
-    this.queue = [
-      ...[...lairs].map(([each, room]): Job => ({ kind: 'lair', key: each, room })),
-      ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))
-    ];
+    if (key !== this.book?.key) this.open(key, world);
     this.schedule();
   }
 
   /** One monster fought alone. */
   mob(name: string): Odds {
-    if (this.key === null) return UNREAD;
-    const known = this.mobs.get(name);
+    if (this.book === null) return UNREAD;
+    const known = this.book.mobs.get(name);
     if (known !== undefined) return known;
     this.promote(`mob:${name}`, { kind: 'mob', name }, true);
     return PENDING;
@@ -150,9 +145,9 @@ export class OddsBook implements SessionModule {
   /** A lair's fight: as many as it holds at its cap, drawn from its rows. */
   lair(room: WorldRoom): Odds {
     if (room.lair === undefined) return UNRUN;
-    if (this.key === null) return UNREAD;
+    if (this.book === null) return UNREAD;
     const key = lairKey(room.lair);
-    const known = this.lairs.get(key);
+    const known = this.book.lairs.get(key);
     if (known !== undefined) return known;
     this.promote(`lair:${key}`, { kind: 'lair', key, room }, false);
     return PENDING;
@@ -160,20 +155,18 @@ export class OddsBook implements SessionModule {
 
   /** The lairs not yet run for the character as it stands: those queued and the one part way. */
   get lairsLeft(): number {
-    const running = this.running?.job.kind === 'lair' ? 1 : 0;
+    const book = this.book;
+    if (book === null) return 0;
+    const running = book.running?.job.kind === 'lair' ? 1 : 0;
     return (
-      running + this.queue.filter((job) => job.kind === 'lair' && !this.lairs.has(job.key)).length
+      running + book.queue.filter((job) => job.kind === 'lair' && !book.lairs.has(job.key)).length
     );
   }
 
   reset(): void {
     this.cancel();
-    this.key = null;
-    this.mobs.clear();
-    this.lairs.clear();
-    this.asked.clear();
-    this.told.clear();
-    this.queue = [];
+    this.book = null;
+    this.kept.clear();
   }
 
   dispose(): void {
@@ -184,16 +177,59 @@ export class OddsBook implements SessionModule {
     return `${this.errands.fitness(state)}#${this.setup.settingsKey(state)}`;
   }
 
+  /**
+   * The book for `key`: one kept from before, else a new one owing every lair
+   * and monster. The book put down is kept, part-run fight and all, the
+   * oldest past `survivalBooksKept` forgotten.
+   */
+  private open(key: string, world: OddsWorld): void {
+    this.cancel();
+    const kept = this.kept.get(key);
+    this.kept.delete(key);
+    if (this.book !== null) {
+      this.kept.set(this.book.key, this.book);
+      for (const oldest of this.kept.keys()) {
+        if (this.kept.size <= tuning().menace.survivalBooksKept) break;
+        this.kept.delete(oldest);
+      }
+    }
+    this.book = kept ?? { ...this.owed(world), key };
+  }
+
+  /** A new book's queue: every lair, once per spawn list, then every monster. */
+  private owed(world: OddsWorld): Omit<Book, 'key'> {
+    const lairs = new Map<string, WorldRoom>();
+    for (const room of world.everyRoom()) {
+      if (room.lair === undefined) continue;
+      const each = lairKey(room.lair);
+      if (!lairs.has(each)) lairs.set(each, room);
+    }
+    return {
+      mobs: new Map(),
+      lairs: new Map(),
+      queue: [
+        ...[...lairs].map(([each, room]): Job => ({ kind: 'lair', key: each, room })),
+        ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))
+      ],
+      asked: new Set(),
+      told: new Set(),
+      running: null
+    };
+  }
+
   private promote(id: string, job: Job, tell: boolean): void {
-    if (this.asked.has(id)) return;
-    this.asked.add(id);
-    if (tell) this.told.add(id);
-    this.queue.unshift(job);
+    const book = this.book;
+    if (book === null || book.asked.has(id)) return;
+    book.asked.add(id);
+    if (tell) book.told.add(id);
+    book.queue.unshift(job);
     this.schedule();
   }
 
   private schedule(): void {
-    if (this.slice !== null || (this.queue.length === 0 && this.running === null)) return;
+    const book = this.book;
+    if (this.slice !== null || book === null) return;
+    if (book.queue.length === 0 && book.running === null) return;
     this.slice = setImmediate(() => {
       this.slice = null;
       this.work();
@@ -203,7 +239,6 @@ export class OddsBook implements SessionModule {
   private cancel(): void {
     if (this.slice !== null) clearImmediate(this.slice);
     this.slice = null;
-    this.running = null;
   }
 
   /**
@@ -211,37 +246,39 @@ export class OddsBook implements SessionModule {
    * one carries on in the next slice. A key that moved stops it for `refresh`.
    */
   private work(): void {
+    const book = this.book;
+    if (book === null) return;
     const began = performance.now();
     const budget = tuning().menace.survivalSliceMs;
     const spent = (): boolean => performance.now() - began >= budget;
     let told = false;
     const record = (job: Job, odds: Odds): void => {
-      if (job.kind === 'mob') this.mobs.set(job.name, odds);
-      else this.lairs.set(job.key, odds);
-      if (this.told.delete(job.kind === 'mob' ? `mob:${job.name}` : `lair:${job.key}`)) told = true;
+      if (job.kind === 'mob') book.mobs.set(job.name, odds);
+      else book.lairs.set(job.key, odds);
+      if (book.told.delete(job.kind === 'mob' ? `mob:${job.name}` : `lair:${job.key}`)) told = true;
     };
-    while ((this.running !== null || this.queue.length > 0) && !spent()) {
+    while ((book.running !== null || book.queue.length > 0) && !spent()) {
       const state = this.tracker.current;
-      // The character moved under the book: start it again for the one there now.
-      if (this.keyOf(state) !== this.key) {
+      // The character moved under the book: open the one for the character there now.
+      if (this.keyOf(state) !== book.key) {
         this.refresh(state);
         return;
       }
-      if (this.running === null) {
-        const job = this.queue.shift()!;
-        const done = job.kind === 'mob' ? this.mobs.has(job.name) : this.lairs.has(job.key);
+      if (book.running === null) {
+        const job = book.queue.shift()!;
+        const done = job.kind === 'mob' ? book.mobs.has(job.name) : book.lairs.has(job.key);
         if (done) continue;
         const started = this.start(state, job);
         if ('kind' in started) {
           record(job, started);
           continue;
         }
-        this.running = { job, trials: started };
+        book.running = { job, trials: started };
       }
-      const { job, trials } = this.running;
+      const { job, trials } = book.running;
       trials.run(spent);
       if (!trials.done) break;
-      this.running = null;
+      book.running = null;
       record(job, { kind: 'run', survival: trials.result() });
     }
     if (told) this.session.ran();
