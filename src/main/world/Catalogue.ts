@@ -11,6 +11,7 @@
  */
 import { tuning } from '../app/tuning';
 import { spellElementOf } from '../../shared/spellchoice';
+import { natureOf } from '../../shared/spellReach';
 import {
   mobKey,
   NO_LOOKUP,
@@ -625,6 +626,7 @@ export class Catalogue {
       const byRow =
         rows.length === ids.length &&
         (!Array.isArray(record['pf']) || record['pf'].length === profiles.length);
+      const named: WorldMobRow[] = [];
       for (const [k, id] of ids.entries()) {
         this.mobsById.set(id, mob);
         if (!byRow) continue;
@@ -652,7 +654,21 @@ export class Catalogue {
         kept.averageDamage = stated('dmg');
         kept.charmLevel = stated('chl');
         if (row['und'] === 1) kept.undead = true;
+        if (version >= ROW_ABILITIES_SINCE) kept.abilities = readAbilities(row);
+        kept.nature = natureOf([{ abilities: kept.abilities, undead: kept.undead }]);
         this.rowsById.set(id, kept);
+        named.push(kept);
+      }
+      /*
+       * What the name is, where every row is read: one row is itself, and
+       * several agree or say nothing (`natureOf`). A list short of a row
+       * leaves it unsaid rather than answering for the rows it has, and so
+       * does a file from before any effects were written.
+       */
+      if (version >= ABILITIES_SINCE && ids.length <= 1) {
+        mob.nature = natureOf([{ abilities: mob.abilities ?? [], undead: mob.undead }]);
+      } else if (version >= ABILITIES_SINCE && named.length === ids.length) {
+        mob.nature = natureOf(named);
       }
     }
   }
@@ -1080,6 +1096,7 @@ export class Catalogue {
     if (known.follows !== undefined) entity.follows = known.follows;
     if (known.undead !== undefined) entity.undead = known.undead;
     if (known.abilities !== undefined) entity.abilities = known.abilities;
+    if (known.nature !== undefined) entity.nature = known.nature;
     if (known.averageDamage !== undefined) entity.averageDamage = known.averageDamage;
     if (known.charmLevel !== undefined) entity.charmLevel = known.charmLevel;
     if (known.casts !== undefined) entity.casts = known.casts;
@@ -1971,6 +1988,12 @@ const CURRENCY_SINCE = 47;
 /** The realm format that states a monster's coins (`BuiltMob.cs`). */
 const COINS_SINCE = 49;
 
+/** Format 14: a monster's `Abil-n` (`BuiltMob.ab`), absent where it states none. */
+const ABILITIES_SINCE = 14;
+
+/** Format 57: each of a name's rows carries its own `Abil-n` (`BuiltMobRow.ab`). */
+const ROW_ABILITIES_SINCE = 57;
+
 /**
  * `BuiltMob.cs` / `BuiltMobRow.cs` back into coin maxima. Absent from a file
  * that has them is a monster carrying none; absent before format 49 is unknown.
@@ -2013,7 +2036,22 @@ function overlayRow(entity: MobEntity, row: WorldMobRow | undefined): void {
   entity.averageDamage = row.averageDamage;
   entity.charmLevel = row.charmLevel;
   entity.undead = row.undead;
+  overlayAbilities(entity, row);
   if (entity.profiles !== undefined) entity.profiles = row.profile === null ? [] : [row.profile];
+}
+
+/**
+ * A row's own effects and nature in place of the name's (format 57). An older
+ * file carries none per row, and the name's stand.
+ */
+function overlayAbilities(
+  onto: Pick<WorldMob, 'abilities' | 'nature'>,
+  row: Pick<WorldMobRow, 'abilities' | 'nature'>
+): void {
+  if (row.nature !== undefined) onto.nature = row.nature;
+  if (row.abilities === undefined) return;
+  if (row.abilities.length > 0) onto.abilities = row.abilities;
+  else delete onto.abilities;
 }
 
 /**
@@ -2058,6 +2096,7 @@ export function mobAsRow(mob: WorldMob, row: WorldMobRow, choice: MobRowChoice):
   resolved.averageDamage = row.averageDamage;
   resolved.charmLevel = row.charmLevel;
   resolved.undead = row.undead;
+  overlayAbilities(resolved, row);
   if (mob.profiles !== undefined) resolved.profiles = row.profile === null ? [] : [row.profile];
   return resolved;
 }

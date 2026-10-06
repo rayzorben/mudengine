@@ -3452,6 +3452,66 @@ describe('lairs', () => {
     });
 
     /*
+     * Format 57: each row carries its own `Abil-n`, so a spell can be told it
+     * has no effect (`spellReaches`). A `zombie`'s three rows are all
+     * `NonLiving`, and harm is living-only.
+     */
+    describe('what each row is, for a spell', () => {
+      const rows = (...ab: Array<Array<[number, number]> | undefined>) =>
+        makeWorld(
+          [
+            { m: 1, r: 1, n: 'Graveyard', x: {}, lair: '(Max 1): 7,' },
+            { m: 1, r: 2, n: 'Field', x: {}, lair: '(Max 1): 9,' }
+          ],
+          {
+            mobs: [
+              {
+                n: 'zombie',
+                hp: 62,
+                hi: 130,
+                i: [7, 8],
+                d: 'h',
+                und: 1,
+                ab: [
+                  [5, -100],
+                  [109, 0]
+                ],
+                rw: [
+                  { hp: 62, und: 1, ab: ab[0] },
+                  { hp: 130, und: 1, ab: ab[1] }
+                ]
+              },
+              { n: 'giant rat', hp: 10, i: [9], d: 'h', ab: [[78, 0]] }
+            ]
+          },
+          57
+        );
+
+      it('is what every row agrees, and a row resolved here is its own', () => {
+        const graph = rows(
+          [
+            [5, -100],
+            [109, 0]
+          ],
+          [[109, 0]]
+        );
+        expect(graph.mob('zombie')?.nature).toMatchObject({ nonLiving: true, undead: true });
+        const here = graph.mobAt('zombie', '1/1')!;
+        expect(here.abilities).toEqual([
+          [5, -100],
+          [109, 0]
+        ]);
+        expect(graph.mob('giant rat')?.nature).toMatchObject({ nonLiving: false, animal: true });
+      });
+
+      it('is unsaid where the rows disagree, and a resolved row still says', () => {
+        const graph = rows([[109, 0]], undefined);
+        expect(graph.mob('zombie')?.nature?.nonLiving).toBeNull();
+        expect(graph.mobAt('zombie', '1/1')?.nature?.nonLiving).toBe(true);
+      });
+    });
+
+    /*
      * And a name off the wire is resolved by the room it was printed in
      * (todo 02). The wire carries no row number, so `gnoll scout` folded rows
      * 224 and 2204 and the card answered `100–830 hp` for a monster the room's

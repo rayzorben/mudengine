@@ -27,6 +27,7 @@ import type { MobEntity } from '../../shared/entities';
 import type { RealmFamily } from '../../shared/realm';
 import { resolveSpell, sameSpell, spellCost, spellingsOf } from '../../shared/spellcraft';
 import { spellKey } from '../../shared/spell-messages';
+import { spellReaches } from '../../shared/spellReach';
 import {
   chooseAttackSpell,
   type SpellChoice,
@@ -447,6 +448,8 @@ export class AttackSpells {
    */
   private wanted(state: CharacterState, target: SpellTarget, opening: boolean): Wanted | null {
     this.book = state.spellbook;
+    // The refusals are about the monster cast at, the one about to be opened on included.
+    this.onTarget(target.name);
     const { mana, manaMax } = state.vitals;
     const fraction = mana !== null && manaMax !== null && manaMax > 0 ? mana / manaMax : null;
     const above = (floor: number): boolean => floor <= 0 || fraction === null || fraction >= floor;
@@ -470,7 +473,12 @@ export class AttackSpells {
               (spell) => this.drain.choosable(spell)
             )
           : drain.single;
-        if (single !== null && single.length > 0 && this.usable(single, this.spells.attackCasts)) {
+        if (
+          single !== null &&
+          single.length > 0 &&
+          this.usable(single, this.spells.attackCasts) &&
+          !this.ruledOut(single, target)
+        ) {
           const cast = this.payable(state, single, false, opening);
           if (cast !== null) return cast;
         }
@@ -480,7 +488,12 @@ export class AttackSpells {
     const row = mobRuleFor(this.rules, target.name);
     const own: MobCast | undefined = row !== undefined && isBanded(row) ? row.cast : undefined;
     const spent = own !== undefined && !this.usable(own.spell, own.times);
-    if (own !== undefined && !spent && above(this.spells.minMana)) {
+    if (
+      own !== undefined &&
+      !spent &&
+      above(this.spells.minMana) &&
+      !this.ruledOut(own.spell, target)
+    ) {
       const cast = this.payable(state, own.spell, false, opening);
       if (cast !== null) return cast;
     }
@@ -512,11 +525,9 @@ export class AttackSpells {
      * `FailoverSpellAttacks`. No fallback, or the fallback refused too, and
      * the melee round carries it: the fallback is never cast *first*.
      */
-    const spell = this.ineffective.has(this.keyOf(attack))
-      ? this.spells.attackFallback.trim()
-      : attack;
+    const spell = this.ruledOut(attack, target) ? this.spells.attackFallback.trim() : attack;
     if (spell.length === 0 || !this.usable(spell, this.spells.attackCasts)) return null;
-    if (passedOver(spell)) return null;
+    if (passedOver(spell) || this.ruledOut(spell, target)) return null;
     return this.payable(state, spell, false, opening);
   }
 
@@ -535,6 +546,21 @@ export class AttackSpells {
     const floor = Math.max(this.spells.areaMinMana, this.spells.minMana);
     if (costly || crowd < this.spells.areaMinMobs || !above(floor)) return null;
     return this.payable(state, area, true, opening);
+  }
+
+  /**
+   * Whether `spell` is ruled out on `target`: refused on it this fight, or
+   * one the world database says has no effect on it (`spellReaches`), which
+   * this records for the fight and says once, since the server would answer
+   * it so and break the fight (`BreakCombat(false)`).
+   */
+  private ruledOut(spell: string, target: SpellTarget): boolean {
+    if (this.ineffective.has(this.keyOf(spell))) return true;
+    const row = resolveSpell(spell, this.book, this.realmSpell).realm;
+    if (row === null || spellReaches(row, target.entity?.nature) !== false) return false;
+    this.ineffective.add(this.keyOf(spell));
+    this.events.notice?.(t('automation.combat.spellNoEffectKnown', { spell, target: target.name }));
+    return true;
   }
 
   /** Neither refused on this monster nor past `cap` confirmed casts (0 is no cap). */
@@ -606,7 +632,8 @@ export class AttackSpells {
             target: {
               remaining: target.remaining,
               magicRes: target.entity?.magicResist ?? null,
-              abilities: target.entity?.abilities
+              abilities: target.entity?.abilities,
+              nature: target.entity?.nature
             },
             excluded,
             killConfidence: tuning().spells.killConfidence
@@ -665,6 +692,9 @@ export class AttackSpells {
         return;
       case 'all-resisted':
         this.events.notice?.(t('automation.spells.allResisted'));
+        return;
+      case 'no-effect':
+        this.events.notice?.(t('automation.spells.noEffect'));
         return;
       default: {
         const never: never = refusal;

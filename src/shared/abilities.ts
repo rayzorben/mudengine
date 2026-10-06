@@ -454,6 +454,21 @@ export const CLASS_STEALTH_ABILITY = 103;
  */
 export const ATTACK_ABILITY = { bash: 31, smash: 32, punch: 29, kick: 30, jumpkick: 35 } as const;
 
+/**
+ * What `Spell.CanSpellAffectTarget` reads to say a spell has no effect: three
+ * the spell carries (`AffectsLivingOnly`, `AffectsUndeadOnly`,
+ * `AffectsAnimalsOnly`) and three the monster does (`NonLiving`, `Animal`,
+ * `SpellImmu`). Undead is the monster row's own column, not an ability.
+ */
+export const SPELL_REACH_ABILITY = {
+  affectsLiving: 108,
+  affectsUndead: 23,
+  affectsAnimals: 80,
+  nonLiving: 109,
+  animal: 78,
+  spellImmunity: 139
+} as const;
+
 /** Each martial attack's damage bonus (`Player.PunchDamage` and the rest). */
 export const MARTIAL_DAMAGE_ABILITY = { punch: 92, kick: 93, jumpkick: 94 } as const;
 

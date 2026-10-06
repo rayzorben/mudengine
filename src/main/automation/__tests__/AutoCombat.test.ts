@@ -2021,6 +2021,21 @@ describe('casting in a fight', () => {
       ).toHaveLength(1);
     });
 
+    /* `Your spell has no effect on` ends the character's attack with no
+       `*Combat Off*` (`BreakCombat(false)`), so the attack verb goes at once:
+       Rayzor stood a round at 6 hit points waiting for the next tick. */
+    it('sends the attack verb on the no-effect line itself, not a round later', () => {
+      const auto = make(rounds(), true, spells());
+      auto.onCharacter(crowded(1));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      expect(sent).toEqual(['ma giant rat']);
+      auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
+      drain();
+      expect(sent).toEqual(['ma giant rat', 'a giant rat']);
+    });
+
     /* MegaMUD's MaxCastCnt, counted on the server's own repeats: a fizzle is
        not a cast and needs nothing sent, since the server casts again next
        round by itself (todo 816); the cap spent, the round changes to `a`. */
