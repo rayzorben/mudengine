@@ -17,8 +17,15 @@ import type { CharacterState } from './character';
 import type { RealmFamily } from './realm';
 import type { RoomId } from './world';
 
-/** The figures the model runs on. `tuning.hunting`, handed in whole. */
+/**
+ * The model's figures (`atSpeed` builds them). Every server clock among them
+ * is the realm's own, the server's divided by `speed`; a figure the world
+ * database states in the server's units (a lair's `Delay`, a monster's
+ * `RegenTime`) is divided where it is read.
+ */
 export interface HuntingConstants {
+  /** How many times faster than the server's own clocks the realm runs (`RealmSpeed`). */
+  speed: number;
   roundSeconds: number;
   restTickSeconds: number;
   passiveTickSeconds: number;
@@ -48,6 +55,43 @@ export interface HuntingConstants {
    * the fewest rooms that reach it is the loop worth walking.
    */
   sizeTolerance: number;
+}
+
+/** The server clocks `atSpeed` divides; the rest are the client's own or no clock at all. */
+type ServerClock =
+  | 'roundSeconds'
+  | 'restTickSeconds'
+  | 'passiveTickSeconds'
+  | 'roomRegenSeconds'
+  | 'stepMs'
+  | 'greatermudRespawnOffsetSeconds';
+
+/**
+ * The model's figures at a realm's speed (`RealmSpeed`, GreaterMUD's
+ * `GameSpeedMultiplier`): every server clock divided by it, the rest as given.
+ * The one place the tuning clocks are scaled, so no reader mixes the two.
+ */
+export function atSpeed<T extends Omit<HuntingConstants, 'speed'>>(
+  server: T,
+  speed: number
+): T & HuntingConstants {
+  const clocks = {} as Pick<HuntingConstants, ServerClock>;
+  for (const key of [
+    'roundSeconds',
+    'restTickSeconds',
+    'passiveTickSeconds',
+    'roomRegenSeconds',
+    'stepMs',
+    'greatermudRespawnOffsetSeconds'
+  ] as const satisfies readonly ServerClock[]) {
+    clocks[key] = server[key] / speed;
+  }
+  return { ...server, ...clocks, speed };
+}
+
+/** A monster's own clock, `Monsters.RegenTime` hours, in seconds at the realm's speed; null where it states none. */
+export function regenSeconds(hours: number | undefined, speed: number): number | null {
+  return hours === undefined ? null : (hours * 3600) / speed;
 }
 
 /**
@@ -294,12 +338,15 @@ export interface SpotEstimate {
 export function respawnSeconds(
   delay: number | null | undefined,
   family: RealmFamily | null,
-  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds' | 'roomRegenSeconds'>,
+  /** At the realm's speed (`atSpeed`); without `speed`, the server's own clocks. */
+  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds' | 'roomRegenSeconds'> &
+    Partial<Pick<HuntingConstants, 'speed'>>,
   arena = false
 ): number | null {
   if (delay === null || delay === undefined || !Number.isFinite(delay)) return null;
   if (delay === 0) return refillsOnEntry(delay, family) ? constants.roomRegenSeconds : null;
-  const nominal = delay > 0 ? delay * (arena ? 1 : 60) : Math.abs(delay);
+  // The stated figure is in the server's own time, so a sped-up realm runs it faster.
+  const nominal = (delay > 0 ? delay * (arena ? 1 : 60) : Math.abs(delay)) / (constants.speed ?? 1);
   if (family !== 'greatermud') return nominal;
   return Math.max(0, nominal - constants.greatermudRespawnOffsetSeconds);
 }

@@ -690,6 +690,15 @@ tuning:
     passiveTickSeconds: 30
     # The pass that refills the monsters of a room a player stands in.
     roomRegenSeconds: 121
+    # How many times faster than these clocks the realm runs is read off the
+    # rounds of a fight: a blow after speedQuietMs of quiet opens a round, a gap
+    # up to speedGapMostMs is still the same fight's, and the figure is read
+    # once speedRounds gaps are seen (the newest speedKept kept). Every clock
+    # above, and the step, divide by it.
+    speedQuietMs: 500
+    speedGapMostMs: 7500
+    speedRounds: 12
+    speedKept: 60
     killOverheadMs: 1500
     stepMs: 1250
     greatermudRespawnOffsetSeconds: 30

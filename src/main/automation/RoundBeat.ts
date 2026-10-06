@@ -10,8 +10,11 @@ import type { Block } from '../../shared/blocks';
 export class RoundBeat {
   private lastBlowAt = Number.NEGATIVE_INFINITY;
 
+  /** `quietMs`: the gap that opens a round; `combat.roundGapMs` but where a reader needs one that holds at any speed. */
+  constructor(private readonly quietMs: () => number = () => tuning().combat.roundGapMs) {}
+
   /** True when the block is a blow, either way and hit or miss, that opens a new round. */
-  onBlock(block: Block): boolean {
+  onBlock(block: Pick<Block, 'type' | 'at'>): boolean {
     switch (block.type) {
       case 'user-hits':
       case 'user-misses':
@@ -24,7 +27,7 @@ export class RoundBeat {
   }
 
   private blow(at: number): boolean {
-    const opens = at - this.lastBlowAt > tuning().combat.roundGapMs;
+    const opens = at - this.lastBlowAt > this.quietMs();
     this.lastBlowAt = at;
     return opens;
   }

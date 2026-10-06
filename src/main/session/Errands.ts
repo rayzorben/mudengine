@@ -30,6 +30,7 @@ import type { OddsReader } from './OddsBook';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { LairCosts } from '../world/LairCosts';
+import { RealmSpeed } from './RealmSpeed';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
 import { GROUNDS, type Ground, admitsFiller, groundRefills } from './huntGrounds';
 import { preferredEdges } from '../world/loopDraft';
@@ -44,6 +45,7 @@ import type { KillExpLore } from '../../shared/lore';
 import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
+  atSpeed,
   cashFloor,
   compareSpots,
   withMeasured,
@@ -54,6 +56,7 @@ import {
   moveDelayMs,
   orderRing,
   lapClock,
+  regenSeconds,
   respawnSeconds,
   NO_EXCLUSIONS,
   sizeLoop,
@@ -276,6 +279,8 @@ export class Errands implements SessionModule {
   private readonly kills: KillExpLore;
   /** The refill clocks the wire timed, where the world database states none. */
   private readonly clocks: RoomClocks;
+  /** How many times faster than the server's own clocks this realm runs, read off its rounds. */
+  private readonly speed = new RealmSpeed();
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
   private fitted: { state: CharacterState; key: string } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
@@ -371,6 +376,7 @@ export class Errands implements SessionModule {
     this.shunned.clear();
     this.ranFromSaid.clear();
     this.clocks.reset();
+    this.speed.reset();
   }
 
   /**
@@ -381,6 +387,11 @@ export class Errands implements SessionModule {
   onCharacter(state: CharacterState, block: Pick<Block, 'type'>): void {
     this.unrefuseWhatTheRoomPrints(state);
     this.clocks.onCharacter(state, block, this.tracker.pendingMoves > 0);
+  }
+
+  /** Every block, changed state or not: a round read for the realm's speed. */
+  onBlock(block: Pick<Block, 'type' | 'at'>): void {
+    this.speed.onBlock(block);
   }
 
   /** The server's family moved, so every remembered `fitness` is stale. */
@@ -1583,25 +1594,30 @@ export class Errands implements SessionModule {
       paceMost,
       measuredLevels
     } = tuning().hunting;
-    const c: HuntingConstants = {
-      roundSeconds,
-      restTickSeconds,
-      passiveTickSeconds,
-      roomRegenSeconds,
-      killOverheadMs,
-      stepMs,
-      greatermudRespawnOffsetSeconds,
-      backstabMultiplier,
-      maxLoopRooms,
-      maxSpots,
-      betterSpotRadius,
-      maxDamageShare,
-      trivialShare,
-      trivialLevelMargin,
-      clusterRadius,
-      fillerRadius,
-      sizeTolerance
-    };
+    // The server's clocks at this realm's speed (`RealmSpeed`): orohost runs every one five times as fast.
+    const speed = this.speed.multiplier;
+    const c: HuntingConstants = atSpeed(
+      {
+        roundSeconds,
+        restTickSeconds,
+        passiveTickSeconds,
+        roomRegenSeconds,
+        killOverheadMs,
+        stepMs,
+        greatermudRespawnOffsetSeconds,
+        backstabMultiplier,
+        maxLoopRooms,
+        maxSpots,
+        betterSpotRadius,
+        maxDamageShare,
+        trivialShare,
+        trivialLevelMargin,
+        clusterRadius,
+        fillerRadius,
+        sizeTolerance
+      },
+      speed
+    );
     const { combat, magery, mageryType, family, attack } = this.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery });
     const regen = regeneration(sheet, mageryType, family);
@@ -1621,12 +1637,9 @@ export class Errands implements SessionModule {
      * (`MoveCommand.cs:40`), where the family states one; the measured round
      * otherwise. A full pack slows the whole loop, and the estimate says so.
      */
-    const step = moveDelayMs(
-      state.inventory.encumbrance,
-      state.inventory.encumbranceMax,
-      family,
-      c.stepMs
-    );
+    const step =
+      moveDelayMs(state.inventory.encumbrance, state.inventory.encumbranceMax, family, stepMs) /
+      speed;
     const heal = this.healingCast(state, sheet, family);
     /*
      * `RestCommand.cs:28` refuses a poisoned character, immunity excepted
@@ -1776,7 +1789,7 @@ export class Errands implements SessionModule {
         ? null
         : (this.fightRecord.measured?.(level, {
             least: measuredFightsMin,
-            roundMs: roundSeconds * 1000,
+            roundMs: c.roundSeconds * 1000,
             openerRounds: backstab ? backstabMultiplier : 1
           }) ?? null);
     const learnedExp = this.kills.allKillExp();
@@ -1792,7 +1805,8 @@ export class Errands implements SessionModule {
       this.automationConfig.combat.attack,
       state.spellbook?.length ?? -1,
       state.vitals.manaMax,
-      measured === null ? '-' : Math.round(measured.perRound)
+      measured === null ? '-' : Math.round(measured.perRound),
+      speed
     ].join('|');
     const live = as === this.tracker.current;
     if (live && (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world)) {
@@ -1847,7 +1861,7 @@ export class Errands implements SessionModule {
          * priced as though it came back with the rest of the room.
          * `estimateSpot` weights its experience by how often it is up.
          */
-        regenSeconds: entity.regenHours === undefined ? null : entity.regenHours * 3600
+        regenSeconds: regenSeconds(entity.regenHours, speed)
       }));
       /*
        * The world database's clock; what the wire timed (`RoomClocks`)
@@ -2700,11 +2714,11 @@ export class Errands implements SessionModule {
     const world = this.world;
     const found = world?.byId(room);
     if (!world || !found?.lair) return null;
-    const { greatermudRespawnOffsetSeconds, roomRegenSeconds } = tuning().hunting;
-    const stated = respawnSeconds(found.delay ?? null, this.serverFamily, {
-      greatermudRespawnOffsetSeconds,
-      roomRegenSeconds
-    });
+    const stated = respawnSeconds(
+      found.delay ?? null,
+      this.serverFamily,
+      atSpeed(tuning().hunting, this.speed.multiplier)
+    );
     return (
       this.clocks.lairClock([room], (id) => this.isLair(id), stated === null)?.seconds ?? stated
     );

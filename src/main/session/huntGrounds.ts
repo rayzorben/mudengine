@@ -8,6 +8,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { MobEntity } from '../../shared/entities';
 import {
   refillsOnEntry,
+  regenSeconds,
   respawnSeconds,
   type HuntVia,
   type HuntingConstants,
@@ -47,10 +48,9 @@ interface GroundKind {
   fills: boolean;
 }
 
-const regenOf = (entities: readonly MobEntity[]): number | null => {
-  const hours = entities[0]?.regenHours;
-  return hours === undefined ? null : hours * 3600;
-};
+/** A placed monster's clock, `RegenTime` hours at the realm's speed. */
+const regenOf = (entities: readonly MobEntity[], speed: number): number | null =>
+  regenSeconds(entities[0]?.regenHours, speed);
 
 export const GROUNDS = {
   lair: {
@@ -64,8 +64,8 @@ export const GROUNDS = {
   },
   resident: {
     entities: (world, ground) => world.residentEntities(ground.room),
-    stated: (_ground, entities) => {
-      const respawn = regenOf(entities);
+    stated: (_ground, entities, _family, c) => {
+      const respawn = regenOf(entities, c.speed);
       return { clock: respawn === null ? null : 'regenTime', respawn };
     },
     lair: false,

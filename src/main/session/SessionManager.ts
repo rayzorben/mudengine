@@ -2781,7 +2781,7 @@ export class SessionManager {
      */
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
     this.extensions.onBlock(block);
-    for (const trip of [this.stashFetch, this.areaSearch]) trip.onBlock(block);
+    for (const each of [this.stashFetch, this.areaSearch, this.errands]) each.onBlock(block);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
     /*

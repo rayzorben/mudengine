@@ -6814,6 +6814,16 @@ function theTuningBlockGainedKeys(
     addKey('records', 'logSweepEveryMs', DEFAULT_INTERNAL.tuning.records.logSweepEveryMs);
     // The room refill, split from the player's own tick (2026-10-05).
     addKey('hunting', 'roomRegenSeconds', DEFAULT_INTERNAL.tuning.hunting.roomRegenSeconds);
+    // A spot's measured ratio carried to nearby levels; a road's monsters priced two at a time (2026-10-06).
+    addKey('hunting', 'measuredLevels', DEFAULT_INTERNAL.tuning.hunting.measuredLevels);
+    addKey('world', 'wanderersAtOnce', DEFAULT_INTERNAL.tuning.world.wanderersAtOnce);
+    // How long after a death the gear recovery holds other trips while it decides (2026-10-06).
+    addKey('gearRecovery', 'decideMs', DEFAULT_INTERNAL.tuning.gearRecovery.decideMs);
+    // The realm's speed, read off a fight's rounds (2026-10-06).
+    addKey('hunting', 'speedQuietMs', DEFAULT_INTERNAL.tuning.hunting.speedQuietMs);
+    addKey('hunting', 'speedGapMostMs', DEFAULT_INTERNAL.tuning.hunting.speedGapMostMs);
+    addKey('hunting', 'speedRounds', DEFAULT_INTERNAL.tuning.hunting.speedRounds);
+    addKey('hunting', 'speedKept', DEFAULT_INTERNAL.tuning.hunting.speedKept);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

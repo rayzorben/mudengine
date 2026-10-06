@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  atSpeed,
   type MeasuredRate,
   withMeasured,
   spotRate,
@@ -26,7 +27,7 @@ import {
 } from '../hunting';
 import { DEFAULT_INTERNAL } from '../internal';
 
-const C: HuntingConstants = DEFAULT_INTERNAL.tuning.hunting;
+const C: HuntingConstants = atSpeed(DEFAULT_INTERNAL.tuning.hunting, 1);
 
 /*
  * `Room.GetDelayInSeconds`: minutes, except an Arena room and a negative
@@ -45,6 +46,14 @@ describe('the respawn clock', () => {
     expect(respawnSeconds(-45, 'majormud', C)).toBe(45);
     expect(respawnSeconds(45, 'majormud', C, true)).toBe(45);
     expect(respawnSeconds(-10, 'greatermud', C)).toBe(0);
+  });
+
+  /* `GameSpeed`: a realm at 5 runs every clock five times as fast, a stated `Delay` with them. */
+  it('reads a stated delay at the realm’s speed', () => {
+    const fast = atSpeed(DEFAULT_INTERNAL.tuning.hunting, 5);
+    expect(fast).toMatchObject({ roundSeconds: 1, restTickSeconds: 3, roomRegenSeconds: 121 / 5 });
+    expect(respawnSeconds(2, 'majormud', fast)).toBe(24);
+    expect(respawnSeconds(2, 'greatermud', fast)).toBe(18);
   });
 
   it('states no clock for a room that states none', () => {
