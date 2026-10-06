@@ -285,7 +285,7 @@ describe('the odds book', () => {
     odds.dispose();
   });
 
-  /* Konami's trip gear fights each kit with the attack it would lay, not the one in force (2026-10-03). */
+  /* An extension's trip gear fights each kit with the attack it would lay, not the one in force (2026-10-03). */
   it('runs a what-if with the attack it is handed', () => {
     const asked: Array<string | undefined> = [];
     const { odds, tracker } = book((_state, _at, attack) => {

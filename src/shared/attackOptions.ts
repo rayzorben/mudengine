@@ -74,7 +74,7 @@ const bonusOf = (kind: AttackKind, abilities: Abilities): number =>
  * Each attack the class or race row allows and its round. Against monsters,
  * the round is what lands on them, the mean over them (`swing`): a bash's
  * bigger blow at fifteen less accuracy is a worse round than a punch against
- * armour, which the round before the roll cannot show (2026-10-05: Konami
+ * armour, which the round before the roll cannot show (2026-10-05: a planner
  * chose `aa` for Soul, 10 a round against a tortured spirit where the
  * server's own `st a` put punch at 35). A null target is a monster nobody can place, and
  * makes every round unknown. With none, the round before any armour.
