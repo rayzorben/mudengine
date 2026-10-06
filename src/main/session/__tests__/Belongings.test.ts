@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { Belongings, peekRoom, peekSpellbook } from '../Belongings';
+import { Belongings, peekLives, peekRoom, peekSpellbook } from '../Belongings';
 import type { BankBalance } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { t } from '../../app/i18n';
@@ -487,6 +487,43 @@ describe('the room this character last stood in', () => {
     const store = new Belongings({ file, realm: REALM });
     expect(store.recallRoom()).toBeNull();
     store.rememberRoom({ map: 1, room: 2146, confidence: 1 });
+    store.close();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(body);
+  });
+});
+
+/* The lives last read, for the ask before a dial (todo 07). See `LowLivesHold`. */
+describe('the lives this character last had', () => {
+  it('starts null, because none were ever read', () => {
+    expect(new Belongings({ file, realm: REALM }).recallLives()).toBeNull();
+  });
+
+  it('survives a restart, and can be read at launch for its own realm only', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberLives(2);
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallLives()).toMatchObject({ count: 2 });
+    expect(peekLives(file, REALM)).toMatchObject({ count: 2 });
+    expect(peekLives(file, 'elsewhere:23')).toBeNull();
+  });
+
+  it('goes with the rest when the player says this is somebody else', () => {
+    const store = new Belongings({ file, realm: REALM });
+    store.rememberLives(2);
+    expect(store.forget()).toBe(true);
+    store.close();
+    expect(new Belongings({ file, realm: REALM }).recallLives()).toBeNull();
+  });
+
+  it('refuses a file whose count is not a whole number, and names the field', () => {
+    const body = { version: 1, realm: REALM, banks: [], lives: { count: 'two', at: 1 } };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(body));
+    const said: string[] = [];
+    const store = new Belongings({ file, realm: REALM, notify: (message) => said.push(message) });
+    expect(store.recallLives()).toBeNull();
+    expect(said.join('\n')).toContain('lives');
+    store.rememberLives(1);
     store.close();
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual(body);
   });

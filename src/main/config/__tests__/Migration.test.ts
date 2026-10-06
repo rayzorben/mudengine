@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { isMap, isScalar, parse, parseDocument } from 'yaml';
 
+import { DEFAULT_LOW_LIVES } from '../../../shared/lives';
 import { migrateHome } from '../Migration';
 import { LoopStore } from '../LoopStore';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
@@ -53,6 +54,9 @@ function migrate(withTemplate = false): void {
     // the two that are about the template ask for it by name.
     template: withTemplate ? path.resolve('resources/config/default.yaml') : undefined,
     internalTemplate: withTemplate ? path.resolve('resources/config/internal.yaml') : undefined,
+    profileTemplate: withTemplate
+      ? path.resolve('resources/config/profile.default.yaml')
+      : undefined,
     note: (m) => said.push(m)
   });
 }
@@ -4599,6 +4603,46 @@ describe('stating auto-reconnect in a character file', () => {
     fs.writeFileSync(home.options, 'ui: {}\n', 'utf8');
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).not.toContain('autoReconnect');
+  });
+});
+
+/* `lowLives` (todo 07), stated in each character's file beside `autoReconnect`. */
+describe('stating the lives a character asks at', () => {
+  const write = (body: string): string => {
+    const profile = home.profile('vaelor');
+    fs.mkdirSync(profile.dir, { recursive: true });
+    fs.writeFileSync(profile.file, body, 'utf8');
+    return profile.file;
+  };
+
+  it("writes the default after autoReconnect, with the template's paragraph", () => {
+    const file = write(
+      'name: Vaelor\nserver: GreaterMUD (local)\nautoReconnect: true\naccent: amber\n'
+    );
+    migrate(true);
+
+    const text = fs.readFileSync(file, 'utf8');
+    expect(parse(text)).toMatchObject({ autoReconnect: true, lowLives: DEFAULT_LOW_LIVES });
+    expect(text.indexOf('lowLives')).toBeGreaterThan(text.indexOf('autoReconnect'));
+    expect(text.indexOf('lowLives')).toBeLessThan(text.indexOf('accent'));
+    const shipped = fs.readFileSync('resources/config/profile.default.yaml', 'utf8');
+    const paragraph = shipped.slice(
+      shipped.lastIndexOf('\n\n', shipped.indexOf('lowLives:')),
+      shipped.indexOf('lowLives:')
+    );
+    expect(text).toContain(paragraph.trim());
+    expect(
+      notesOf(said, 'notices.migration.lowLivesStated.one', 'notices.migration.lowLivesStated.many')
+    ).toHaveLength(1);
+  });
+
+  it('leaves a stated value alone, and is idempotent', () => {
+    const file = write('name: Vaelor\nserver: GreaterMUD (local)\nlowLives: 0\n');
+    migrate(true);
+    expect(parse(fs.readFileSync(file, 'utf8'))['lowLives']).toBe(0);
+    const once = fs.readFileSync(file, 'utf8');
+    migrate(true);
+    expect(fs.readFileSync(file, 'utf8')).toBe(once);
   });
 });
 

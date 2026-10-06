@@ -60,6 +60,7 @@ import { discoveryKey, type Discovery } from '../../shared/memory';
 import { realmKey } from '../world/RealmLore';
 import type { ShippedWorld } from '../../shared/worlds';
 import { CONDITION_WAIT_KEYS } from '../../shared/walk';
+import { DEFAULT_LOW_LIVES } from '../../shared/lives';
 
 export interface MigrationOptions {
   home: Home;
@@ -95,6 +96,8 @@ export interface MigrationOptions {
    * is wrong in the file it documents.
    */
   internalTemplate?: string;
+  /** The shipped character template, for the paragraph a key stated into every character's file carries. */
+  profileTemplate?: string;
   /**
    * The shipped shelf of loops, for the one migration that has to recognise a
    * loop somebody copied off it. A function rather than the list, so a client
@@ -258,6 +261,34 @@ function migrateAll(options: MigrationOptions): void {
   statedRunBetweenRounds(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
+  statedLowLives(home, note, options.profileTemplate);
+}
+
+/**
+ * `lowLives` (2026-10-05, todo 07): the lives at which the client asks before
+ * logging a character in, stated in every character's file beside
+ * `autoReconnect` with the template's paragraph. Absent already reads as the
+ * default, so nothing plays differently; the file says so. Idempotent: a key
+ * stays added whatever its value.
+ */
+function statedLowLives(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const shipped = templateOf(template)?.contents;
+  const row = isMap(shipped)
+    ? shipped.items.find((item) => keyText(item as Pair) === 'lowLives')
+    : undefined;
+  const comment = (row !== undefined && isScalar(row.key) && row.key.commentBefore) || undefined;
+  const stated = stateInEveryProfile(home, 'lowLives', DEFAULT_LOW_LIVES, comment, 'autoReconnect');
+  if (stated.length === 0) return;
+  const params = { count: stated.length, lives: DEFAULT_LOW_LIVES, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.lowLivesStated.one', params)
+      : t('notices.migration.lowLivesStated.many', params)
+  );
 }
 
 /**
@@ -6438,29 +6469,14 @@ function statedTheKeyPickup(home: Home, note: (message: string) => void): void {
 }
 
 function statedAutoReconnect(home: Home, note: (message: string) => void): void {
-  const stated: string[] = [];
-
-  for (const id of directories(home.profilesDir)) {
-    const file = home.profile(id).file;
-    edit(file, (document) => {
-      const root = document.contents;
-      if (!isMap(root) || root.has('autoReconnect')) return false;
-
-      const pair = document.createPair('autoReconnect', true) as Pair;
-      if (isScalar(pair.key)) pair.key.commentBefore = AUTO_RECONNECT_COMMENT;
-      // Beside the setting it is most easily confused with, so a file that
-      // gains it reads like the shipped template rather than like a patch.
-      const after = root.items.findIndex(
-        (item) => isScalar(item.key) && item.key.value === 'autoConnect'
-      );
-      if (after === -1) root.items.push(pair);
-      else root.items.splice(after + 1, 0, pair);
-
-      stated.push(file);
-      return true;
-    });
-  }
-
+  // Beside the setting it is most easily confused with.
+  const stated = stateInEveryProfile(
+    home,
+    'autoReconnect',
+    true,
+    AUTO_RECONNECT_COMMENT,
+    'autoConnect'
+  );
   if (stated.length === 0) return;
   const params = { count: stated.length, fileList: stated.join(', ') };
   note(
@@ -6468,6 +6484,37 @@ function statedAutoReconnect(home: Home, note: (message: string) => void): void 
       ? t('notices.migration.autoReconnectStated.one', params)
       : t('notices.migration.autoReconnectStated.many', params)
   );
+}
+
+/**
+ * A top-level key into every character's file that lacks it, with its
+ * paragraph, after `after` so a file that gains it reads like the shipped
+ * template rather than like a patch (at the end when `after` is absent).
+ * Idempotent: a key stays added whatever its value. The files it wrote.
+ */
+function stateInEveryProfile(
+  home: Home,
+  key: string,
+  value: unknown,
+  comment: string | undefined,
+  after: string
+): string[] {
+  const stated: string[] = [];
+  for (const id of directories(home.profilesDir)) {
+    const file = home.profile(id).file;
+    edit(file, (document) => {
+      const root = document.contents;
+      if (!isMap(root) || root.has(key)) return false;
+      const pair = document.createPair(key, value) as Pair;
+      if (comment !== undefined && isScalar(pair.key)) pair.key.commentBefore = comment;
+      const at = root.items.findIndex((item) => keyText(item as Pair) === after);
+      if (at === -1) root.items.push(pair);
+      else root.items.splice(at + 1, 0, pair);
+      stated.push(file);
+      return true;
+    });
+  }
+  return stated;
 }
 
 /**

@@ -33,6 +33,7 @@ import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
+import DialFields from './DialFields';
 import InvokeFields from './InvokeFields';
 import AttackFields from './AttackFields';
 import DrainFields from './DrainFields';
@@ -380,20 +381,7 @@ export default function CharacterForm({
             value={form.password}
           />
 
-          <CheckField
-            checked={form.autoConnect}
-            label={t('settings.profile.autoConnectLabel')}
-            name="auto-connect"
-            onChange={(value) => patch({ autoConnect: value })}
-          />
-
-          <CheckField
-            checked={form.autoReconnect}
-            hint={t('settings.profile.autoReconnectHint')}
-            label={t('settings.profile.autoReconnectLabel')}
-            name="auto-reconnect"
-            onChange={(value) => patch({ autoReconnect: value })}
-          />
+          <DialFields onChange={patch} value={form} />
 
           <FormField label={t('settings.profile.accentLabel')} name="accent">
             {() => (

@@ -74,6 +74,7 @@ import type { InvokeChoice } from './invoke';
 import type { ThemePreference } from './themes';
 import type { ProfileAccent } from './profiles';
 import type { LocateWord } from './locate';
+import type { LowLivesAnswer } from './lives';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
@@ -412,6 +413,8 @@ export interface ProfileEditable {
   autoConnect: boolean;
   /** Dial it again when a connection is *lost*. On unless the file says no. */
   autoReconnect: boolean;
+  /** Ask before logging in at this many lives left or fewer. See `Profile.lowLives`. */
+  lowLives: number;
   /** The name it refers to, or null when it spells the address out inline. */
   serverName: string | null;
   target: ConnectionTarget;
@@ -970,6 +973,8 @@ export const Invoke = {
   forget: 'world:forget',
   forgetFind: 'world:forget-find',
   forgetCharacter: 'session:forget-character',
+  /** The player's answer to `Push.lowLives`; the dial, if any, is main's. */
+  answerLowLives: 'session:answer-low-lives',
   /** The Combat Stats card's Reset: re-base it on the totals as they stand. See `StatsBaseline`. */
   resetStats: 'session:reset-stats',
   /**
@@ -1122,6 +1127,12 @@ export const Push = {
    */
   characterReset: 'session:character-reset',
   /**
+   * A dial was held: the character is down to `lowLives` or fewer with
+   * automation on, and nothing logs it in until the player answers
+   * (`Invoke.answerLowLives`). See `LowLivesHold`.
+   */
+  lowLives: 'session:low-lives',
+  /**
    * The rank each quest has been *seen* to reach: a line the player typed at
    * the step's asker, or the death of the monster the step is owned by.
    *
@@ -1137,6 +1148,13 @@ export const Push = {
    */
   questRun: 'world:quest-run-progress'
 } as const;
+
+/** The lives the record last read, when, and the floor they are at. See `Push.lowLives`. */
+export interface LowLivesAsk {
+  lives: number;
+  floor: number;
+  at: number;
+}
 
 /** Both characters, and why the client thinks they are two. See `Push.characterReset`. */
 export interface ResetNotice {
@@ -1540,6 +1558,8 @@ export interface IpcApi {
    * stopped being true. Whether there was anything to throw away.
    */
   forgetCharacter(session: SessionId): Promise<boolean>;
+  /** Answers the low-lives question; whether a dial went out. */
+  answerLowLives(session: SessionId, answer: LowLivesAnswer): Promise<boolean>;
   resetStats(session: SessionId): Promise<void>;
   names(session: SessionId): Promise<WorldNames>;
   /** Whether the arbiter took it. */
@@ -1578,6 +1598,7 @@ export interface IpcApi {
   onFinds(handler: (message: Addressed<Find[]>) => void): () => void;
   onShops(handler: (message: Addressed<Shelf[]>) => void): () => void;
   onCharacterReset(handler: (message: Addressed<ResetNotice>) => void): () => void;
+  onLowLives(handler: (message: Addressed<LowLivesAsk>) => void): () => void;
   onQuestSaid(handler: (message: Addressed<QuestWatched>) => void): () => void;
   onQuestRun(handler: (message: Addressed<QuestRunProgress>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;

@@ -80,6 +80,8 @@ import { IDLE_QUEST_RUN } from '@shared/quests';
 import type { Addressed, ResetNotice } from '@shared/ipc';
 import MovementPrompt from './components/MovementPrompt';
 import ResetPrompt from './components/ResetPrompt';
+import LowLivesPrompt from './components/LowLivesPrompt';
+import { useLowLivesAsk } from './hooks/useLowLivesAsk';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import { type ProfileSummary, type SessionId, type SessionSummary } from '@shared/ipc';
 import type { ConnectionState, TerminalActionName, TerminalSize } from '@shared/types';
@@ -500,6 +502,7 @@ export default function App() {
       activeTerminal()?.focus();
     });
   }, [activeTerminal]);
+  const { asked: livesAsked, answer: answerLowLives } = useLowLivesAsk(api, returnFocus);
 
   /*
    * The modals that hold the caret and hand it back on their own exit, each
@@ -1617,20 +1620,12 @@ export default function App() {
             ? null
             : { kind: wandered.kind, name: wandered.name, steps: wandered.steps }
         }
-        characterName={
-          profiles.find((profile) => profile.id === wandered?.session)?.name ??
-          wandered?.session ??
-          ''
-        }
+        characterName={wandered === null ? '' : profileNameFor(wandered.session)}
         onStay={stay}
         onWalk={walkOn}
       />
       <ResetPrompt
-        characterName={
-          profiles.find((profile) => profile.id === resetAsked?.session)?.name ??
-          resetAsked?.session ??
-          ''
-        }
+        characterName={resetAsked === null ? '' : profileNameFor(resetAsked.session)}
         notice={resetAsked?.payload ?? null}
         onForget={() => {
           const asked = resetAsked;
@@ -1642,6 +1637,11 @@ export default function App() {
           setResetAsked(null);
           returnFocus();
         }}
+      />
+      <LowLivesPrompt
+        ask={livesAsked?.payload ?? null}
+        characterName={livesAsked === null ? '' : profileNameFor(livesAsked.session)}
+        onAnswer={answerLowLives}
       />
       <SettingsScreen
         {...settingsApi}
