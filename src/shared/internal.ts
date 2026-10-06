@@ -519,12 +519,14 @@ const TUNING_DEFAULTS = {
     offBeatShare: 0.25,
     offBeatRounds: 3,
     /**
-     * The shortest gap between two attempts to open a fight on the same thing.
-     * Not pacing — pacing comes from the prompt — but a floor on *asking*: an
-     * attack refused for a reason this client cannot see leaves the room
-     * exactly as it was.
+     * How long an attack on one monster waits for the server's answer before
+     * another is sent, at the server's own speed: divided by the realm's
+     * speed, never under the least. An answer that says the attack did not
+     * start (a spell with no effect, a refused verb) ends the wait at once.
+     * Pacing comes from the prompt; this bounds an attack nobody answered.
      */
     engageCooldownMs: 4000,
+    engageCooldownLeastMs: 1000,
     /**
      * How long an arrival sentence stays pending its own state change. Short,
      * because what it bounds is the case where the change never comes.

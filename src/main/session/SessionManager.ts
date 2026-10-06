@@ -543,6 +543,7 @@ export class SessionManager {
       sentences = NO_SHIPPED_SENTENCES,
       words = UNSTATED_WORDS
     } = deps;
+    const notice = (message: string): void => sink.notice(message);
     this.tracker = new CharacterTracker(
       world,
       lore,
@@ -564,14 +565,14 @@ export class SessionManager {
         watched: () => this.questWatch.watched,
         odds: () => this.odds,
         askAbilities: (state) => this.routines.askAbilities(state),
-        notice: (message) => this.sink.notice(message)
+        notice
       }
     );
     this.vocabulary = new Vocabulary(
       { tracker: this.tracker, errands: this.errands, world, words },
       {
         locateRefused: () => [this.claims, this.locating].forEach((it) => it.locateRefused()),
-        notice: (message) => this.sink.notice(message)
+        notice
       }
     );
     const tally = () => this.tracker.current.tally;
@@ -632,9 +633,9 @@ export class SessionManager {
     this.world = world;
     this.promptDesign = new PromptDesign(
       { tracker: this.tracker, rewriter: this.rewriter },
-      { notice: (message) => this.sink.notice(message) }
+      { notice }
     );
-    this.statlineReport = new StatlineReport({ notice: (message) => this.sink.notice(message) });
+    this.statlineReport = new StatlineReport({ notice });
     this.marks = new Marks(
       { tracker: this.tracker, world },
       { enrich: () => this.internal.terminal.enrich }
@@ -740,7 +741,7 @@ export class SessionManager {
         // every automated command goes through.
         this.routines.noteSent();
       },
-      notice: (message) => this.sink.notice(message),
+      notice,
       /*
        * The emergency exception to the typing hold (see `CommandQueue.drain`):
        * committing the player's half-typed line goes through `send` — the
@@ -754,17 +755,15 @@ export class SessionManager {
     });
 
     const onTheGround = (): boolean => this.grounded.down;
+    const realmSpeed = (): number => this.errands.realmSpeed;
     const fled = (): readonly FledEntry[] => this.belongings.recallFled();
     // Under a timed spell the way in cast, the walk moves and nothing else does (todo 104).
     const moveOnly = (state: CharacterState): boolean => this.underTimedSpell(state) !== null;
-    this.routines = new Routines(automation, this.queue, {
-      notice: (message) => this.sink.notice(message),
-      onTheGround
-    });
+    this.routines = new Routines(automation, this.queue, { notice, onTheGround });
 
     // `abandon` is a loss: `close` reports `graceful` false, so the loop is held.
     this.link = new LinkWatch({
-      notice: (message) => this.sink.notice(message),
+      notice,
       hangUp: () => {
         this.hungUpDead = true;
         this.client.abandon();
@@ -774,13 +773,13 @@ export class SessionManager {
     // What the light, the errands and the travel tell the session:
     // a line for the console, and a decision for the safety trace.
     const reports = {
-      notice: (message: string): void => this.sink.notice(message),
+      notice,
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
     };
     // Walking a route is an outbound action: it proposes to the arbiter like
     // everything else, a verified step at a time.
     this.walker = new Walker(automation, this.queue, {
-      realmSpeed: () => this.errands.realmSpeed,
+      realmSpeed,
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
@@ -879,7 +878,7 @@ export class SessionManager {
       lightComing: (state) => this.light.couldReady(state),
       regrouping: (state) => this.remotes.regrouping(state),
       keyToUse: (keyId) => this.errands.keyToUse(keyId),
-      notice: (message) => this.sink.notice(message),
+      notice,
       progress: (progress) => {
         // The Combat Stats' `Moving` clock: only the walker knows a route is in progress.
         this.tracker.noteMoving(progress.status === 'walking');
@@ -893,7 +892,7 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       {
-        notice: (message) => this.sink.notice(message),
+        notice,
         // The choice found no book read: the routines ask once (todo 09).
         needBook: () => this.routines.askBook(this.tracker.current),
         // The round beat: the gear's off-round invocation (todo 00), the party listing (831).
@@ -917,7 +916,8 @@ export class SessionManager {
          * is unread, which never refuses.
          */
         canHide: () => holdsAbility(this.errands.capabilities(), CLASS_STEALTH_ABILITY),
-        onTheGround
+        onTheGround,
+        realmSpeed
       },
       automation.spells,
       (name) => this.world?.spellNamed(name) ?? null,
@@ -941,7 +941,7 @@ export class SessionManager {
      * both thresholds runs first and rests wherever it lands.
      */
     this.recovery = new Recovery(automation, this.queue, {
-      notice: (message) => this.sink.notice(message),
+      notice,
       /*
        * GreaterMUD's engine refuses `rest` outright while poisoned — unless
        * the character is *immune*, which the server's own test says lifts it
@@ -965,7 +965,7 @@ export class SessionManager {
      */
     this.loot = new AutoLoot(automation.loot, automation.supplies, automation.enabled, this.queue, {
       realmItem: (name) => this.world?.buildItemEntity(name) ?? wireItem(name),
-      notice: (message) => this.sink.notice(message),
+      notice,
       onTheGround,
       moveOnly,
       rereads: this.tracker,
@@ -990,9 +990,9 @@ export class SessionManager {
         itemsCasting: (spell) => this.world?.itemsCasting(spell) ?? [],
         spellById: (id) => this.world?.spellById(id) ?? null,
         spellsUp: (state) => this.errands.spellsUp(state),
-        realmSpeed: () => this.errands.realmSpeed
+        realmSpeed
       },
-      { notice: (message) => this.sink.notice(message) }
+      { notice }
     );
     this.light = new AutoLight(automation.movement, automation.enabled, this.queue, {
       ...reports,
@@ -1004,7 +1004,7 @@ export class SessionManager {
      * the step ahead, `hide` for standing still.
      */
     this.stealth = new AutoStealth(automation.combat, automation.enabled, this.queue, {
-      notice: (message) => this.sink.notice(message),
+      notice,
       escaping: () => this.travel.isRetreating(),
       moving: () => this.walker.walking || this.loops.progress.status === 'running',
       moveInFlight: () => this.tracker.pendingMoves > 0,
@@ -1040,7 +1040,7 @@ export class SessionManager {
         idOf: (name) => this.world?.itemIdNamed(name) ?? null
       },
       {
-        notice: (message) => this.sink.notice(message),
+        notice,
         escaping: () => this.travel.isRetreating(),
         /*
          * Standing still, which here means two facts. A move on the wire makes
@@ -1183,7 +1183,7 @@ export class SessionManager {
         }),
         stopLap,
         config: () => this.automationConfig,
-        notice: (message) => this.sink.notice(message)
+        notice
       }),
       reports
     );
@@ -1316,7 +1316,7 @@ export class SessionManager {
       },
       // A press that banks nothing has to say why, or it is indistinguishable
       // from a button that does not work — which is what it was.
-      { notice: (message) => this.sink.notice(message) }
+      { notice }
     );
     /*
      * The other half of running several characters at once: `@health` answered
@@ -1334,8 +1334,8 @@ export class SessionManager {
     const switchNow = (name: AutomationSwitch, on: boolean): boolean =>
       this.sink.switchAutomationNow?.(name, on) ?? false;
     this.remotes = new Remotes(automation, this.queue, {
-      notice: (message) => this.sink.notice(message),
-      ...new RemoteMoves(this, this.errands, (message) => this.sink.notice(message)).events,
+      notice,
+      ...new RemoteMoves(this, this.errands, notice).events,
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
       switchCombat: (on) => switchNow('combat', on),
@@ -1380,18 +1380,18 @@ export class SessionManager {
     // All four casters share one realm lookup, handing over the realm's whole
     // row, read at the point of use because `this.world` arrives with `useRealm`.
     const realmSpell = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;
-    this.castRound = new CastRound(reports, undefined, () => this.errands.realmSpeed);
+    this.castRound = new CastRound(reports, undefined, realmSpeed);
     this.heal = new AutoHeal(
       automation.spells,
       automation.enabled,
       this.queue,
       undefined,
       realmSpell,
-      { notice: (message) => this.sink.notice(message) },
+      { notice },
       () => this.errands.realmClass(),
       this.castRound,
       (state) => this.appraisal.fightPerRound(state),
-      () => this.errands.realmSpeed
+      realmSpeed
     );
     this.potions = new Potions(automation.health, automation.enabled, this.queue);
     this.cures = new Cures(
@@ -1400,7 +1400,7 @@ export class SessionManager {
       this.queue,
       undefined,
       realmSpell,
-      { notice: (message) => this.sink.notice(message) },
+      { notice },
       this.castRound
     );
     /* And the blessing a chosen carried item casts when used. See `AutoInvoke`. */
@@ -1431,7 +1431,7 @@ export class SessionManager {
         handsOf: (name) => this.errands.gearHandsOf(name),
         opensWithBackstab: (weapons) => this.combat.opensWithBackstab(weapons)
       },
-      { notice: (message) => this.sink.notice(message) }
+      { notice }
     );
     // The party half of two modules that already exist: whom to swing at, and
     // when to sit down. Configured rather than constructed with it, so the
@@ -1546,7 +1546,7 @@ export class SessionManager {
           this.hunt.noteLapStopped();
           return this.errands.betterHuntingWords();
         },
-        notice: (message) => this.sink.notice(message),
+        notice,
         progress: (progress) => {
           this.travel.noteLap(progress);
           this.carryOver.remember();
@@ -1606,15 +1606,12 @@ export class SessionManager {
         combat: this.combat,
         vocabulary: this.vocabulary
       },
-      { notice: (message) => this.sink.notice(message) }
+      { notice }
     );
     this.locating = new Locating({ tracker: this.tracker, claims: this.claims }, sink);
 
     // Rules propose; the queue disposes. Nothing here reaches the socket.
-    this.rules = new RuleEngine(this.queue, {
-      notice: (message) => this.sink.notice(message),
-      onTheGround
-    });
+    this.rules = new RuleEngine(this.queue, { notice, onTheGround });
     this.rules.load(automation.rules, automation.combat.mobRules);
 
     const book = fightBook(
@@ -1661,7 +1658,7 @@ export class SessionManager {
       safety: () => this.publisher.automation.safety,
       target: () => this.state.target,
       relayer: () => this.configure(...this.configured),
-      notice: (message) => this.sink.notice(message),
+      notice,
       changed: () => this.publisher.publishAutomation(),
       deps: deps.extensions
     });
@@ -1678,10 +1675,10 @@ export class SessionManager {
     const safetySession = {
       config: () => this.automationConfig,
       disconnect: (by: ConnectionEnd) => this.disconnect(by),
-      notice: (message: string) => this.sink.notice(message)
+      notice
     };
     this.safety = new Safety(safetyParts, safetySession);
-    this.rowOverrides = new RowOverrides(automation, { notice: (text) => this.sink.notice(text) });
+    this.rowOverrides = new RowOverrides(automation, { notice });
     this.fleeGoto = new FleeGoto(safetyParts, safetySession);
 
     /*
@@ -1690,7 +1687,7 @@ export class SessionManager {
      */
     this.publisher.useSecret(login.password);
     this.login = new LoginAutomator(login, this.queue, {
-      notice: (message) => this.sink.notice(message),
+      notice,
       promptOwed: () => this.link.owePrompt(),
       prompted: () => this.link.notePrompt()
     });

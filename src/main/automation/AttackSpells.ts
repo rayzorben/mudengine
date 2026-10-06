@@ -206,7 +206,7 @@ export class AttackSpells {
   }
 
   /** Whether the spell the server repeats is one the player typed: theirs to change. */
-  get playerCasting(): boolean {
+  private get playerCasting(): boolean {
     return this.repeating?.kind === 'spell' && this.repeating.by === 'player';
   }
 

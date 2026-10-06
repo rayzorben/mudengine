@@ -182,6 +182,8 @@ export interface AutoCombatEvents extends AttackSpellEvents {
    * read a character down as standing.
    */
   onTheGround(): boolean;
+  /** How many times faster than the server's clocks the realm runs (`RealmSpeed`); 1 where unread. */
+  realmSpeed?(): number;
 }
 
 /**
@@ -416,6 +418,14 @@ export class AutoCombat implements SessionModule {
    * nothing, and the room's occupants are the only names ever put in it.
    */
   private readonly opened = new Map<string, number>();
+  /**
+   * The last attack the server said no to (`answeredNo`): the wait it ended
+   * still holds for that same command, so a refusal that changed nothing
+   * cannot be answered by sending it straight back.
+   */
+  private refusedLast: { key: string; command: string; at: number } | null = null;
+  /** Whose attack went last: an answer to the player's is theirs (`answeredNo`). */
+  private lastAttackBy: 'module' | 'player' = 'module';
 
   /**
    * The monster this fight is committed to, by key, until it leaves the room.
@@ -663,6 +673,8 @@ export class AutoCombat implements SessionModule {
     this.cannotBackstabWith.clear();
     this.spell.reset();
     this.sentAttack = null;
+    this.refusedLast = null;
+    this.lastAttackBy = 'module';
     this.offBy = null;
     this.broken.forget();
     this.rounds = 0;
@@ -846,6 +858,7 @@ export class AutoCombat implements SessionModule {
       // the server repeats from then on (todo 816). An argument no monster
       // here answers to commits to nothing.
       this.spell.typed(command, state);
+      this.lastAttackBy = 'player';
       const reached = occupantNamed(state.room.occupants, aim ?? '');
       const chosen = state.room.occupants.find((who) => who.kind === 'mob' && who.name === reached);
       this.focus = chosen === undefined ? null : mobKey(chosen.name);
@@ -962,13 +975,13 @@ export class AutoCombat implements SessionModule {
        * `*Combat Off*` (`InitiateSpell`, `BreakCombat(false)`): Rayzor stood a
        * round at 6 hit points before the next tick sent the attack verb. The
        * round's change goes now, and a fight the cast was opening is opened
-       * again now (`reopen`).
+       * again now (`answeredNo`).
        */
       case 'spell-ineffective': {
         this.spell.heard(block, this.state);
         const fighting = this.inAFight();
         if (fighting !== null) this.roundChange(fighting);
-        else this.reopen(block.groups['target'] ?? null);
+        else this.answeredNo(block.groups['target'] ?? null);
         return;
       }
       case 'spell-cast':
@@ -1017,6 +1030,8 @@ export class AutoCombat implements SessionModule {
               ? t('automation.combat.verbRefused', { verb })
               : t('automation.combat.verbRefusedWeapon', { verb })
         );
+        // The verb is out of the chain now, so the next attack in it goes on this line.
+        if (this.inAFight() === null) this.answeredNo(null);
         return;
       }
 
@@ -1128,22 +1143,32 @@ export class AutoCombat implements SessionModule {
   }
 
   /**
-   * The cast this module opened a fight with had no effect on `named`: the
-   * server broke the attack before it engaged, so nothing is fighting and the
-   * engage cooldown the opening armed guards a fight that never started.
-   * Rayzor's slime swung for five seconds before that cooldown let `aa` go
-   * (2026-10-06, paramud). Released, and the fight decided again on this
-   * line: the spell is ruled out now, so the fallback or the attack verb
-   * goes. A cast the player typed is theirs, and left alone.
+   * The server said no to the attack this module sent, before any fight
+   * started: a spell with no effect on `named` (`BreakCombat(false)`) or a
+   * verb the character does not know. Nothing is fighting, so the wait for
+   * the attack's answer (`opened`) has its answer: it ends, and the fight is
+   * decided again on this line, where the refusal just recorded moves the
+   * attack to the next in the chain (the fallback spell, the attack verb,
+   * the plain `a`). Rayzor's slime swung for five seconds while that wait ran
+   * out (2026-10-06, paramud). An answer to the player's own attack is theirs.
    */
-  private reopen(named: string | null): void {
+  private answeredNo(named: string | null): void {
     const state = this.state;
     const focus = this.focus;
-    if (state === null || focus === null || this.sentAttack?.action.kind !== 'spell') return;
-    if (this.spell.playerCasting || (named !== null && mobKey(named) !== focus)) return;
+    const sent = this.sentAttack;
+    if (state === null || focus === null || sent === null || this.lastAttackBy === 'player') return;
+    if (named !== null && mobKey(named) !== focus) return;
+    this.refusedLast = { key: focus, command: sent.command, at: Date.now() };
     this.opened.delete(focus);
     if (!this.acting || state.phase !== 'in-game' || this.events.onTheGround()) return;
     this.decide(state);
+  }
+
+  /** How long an attack on one monster waits for its answer: `engageCooldownMs` at the realm's speed. */
+  private get engageCooldown(): number {
+    const { engageCooldownMs, engageCooldownLeastMs } = tuning().combat;
+    const speed = Math.max(1, this.events.realmSpeed?.() ?? 1);
+    return Math.max(engageCooldownLeastMs, engageCooldownMs / speed);
   }
 
   /**
@@ -2109,7 +2134,7 @@ export class AutoCombat implements SessionModule {
   private stillEngaged(state: CharacterState): string | null {
     if (this.opened.size === 0) return null;
     const now = Date.now();
-    const cooldown = tuning().combat.engageCooldownMs;
+    const cooldown = this.engageCooldown;
     for (const who of state.room.occupants) {
       if (who.kind !== 'mob') continue;
       const asked = this.opened.get(mobKey(who.name));
@@ -2128,7 +2153,7 @@ export class AutoCombat implements SessionModule {
    */
   private swing(target: string, why: string): boolean {
     const now = Date.now();
-    const cooldown = tuning().combat.engageCooldownMs;
+    const cooldown = this.engageCooldown;
     const key = mobKey(target);
     const asked = this.opened.get(key);
     if (asked !== undefined && now - asked < cooldown) return false;
@@ -2159,6 +2184,14 @@ export class AutoCombat implements SessionModule {
       action: { kind: 'melee' } as const,
       reason: t('automation.combat.reason', { why: because })
     };
+    const refused = this.refusedLast;
+    if (
+      refused !== null &&
+      refused.key === key &&
+      refused.command === proposal.command &&
+      now - refused.at < cooldown
+    )
+      return false;
 
     // Past the cooldown an entry answers nothing, so the map holds only what
     // is still deciding something — the room's occupants, at most.
@@ -2182,7 +2215,7 @@ export class AutoCombat implements SessionModule {
       coalesceKey: `attack:${key}`,
       // Worthless if it arrives late: by then the thing has moved, died, or is
       // already fighting somebody else, and the command opens a *new* fight.
-      expiresAt: now + tuning().combat.engageCooldownMs,
+      expiresAt: now + cooldown,
       // Asked again at the send (todo 74): queued before a death, it went out in the temple.
       stillWanted: () => this.state === null || canStillHit(this.state, key),
       reason: proposal.reason,
@@ -2192,6 +2225,7 @@ export class AutoCombat implements SessionModule {
 
   private attackSent(proposal: Proposal): void {
     this.sentAttack = proposal;
+    this.lastAttackBy = 'module';
     this.spell.sent(proposal.action);
   }
 

@@ -41,7 +41,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the search's recording, out to `Records.noted` beside the shop list's (todo 02, shops).
   // Lowered by the errands' one list, read from `Travel.errandUnderWay` (area search).
   // Lowered by moving the dead link's sentence into `LinkWatch`, which times what was owed.
-  'src/main/session/SessionManager.ts': 3546,
+  // Lowered by one `notice` and one `realmSpeed` for every module the constructor wires.
+  'src/main/session/SessionManager.ts': 3543,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2420,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
