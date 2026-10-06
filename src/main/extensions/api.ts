@@ -26,6 +26,7 @@ import type { LayerWrite } from '../../shared/extensions';
 import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
 import type { HuntingAdvice, HuntOrder, HuntWait } from '../../shared/hunting';
+import type { ItemRarity } from '../../shared/rarity';
 import type { TuningConfig } from '../../shared/internal';
 import type { Stash } from '../../shared/stash';
 import type { Odds } from '../../shared/survival';
@@ -149,6 +150,13 @@ export interface ExtensionSessionHost {
   spellScrolls(as?: CharacterState): SpellScroll[];
   /** The character (or `as`) with these `Spells` rows in its book, and the names that went in. */
   learning(spells: readonly number[], as?: CharacterState): Learning;
+  /**
+   * How rare an `Items` row is, from the world database (todo 13): the band,
+   * the hours to one copy at its quickest source, and every source. Null with
+   * no world database. A name may hold several rows (`buildItemEntity(name).ids`),
+   * and which of them matters is the extension's to say.
+   */
+  rarity(item: number): ItemRarity | null;
   /** The safety trace, newest first. */
   safety(): readonly SafetyDecision[];
   /** An escape, a move, a walk, an errand: the character is someone else's for now. */

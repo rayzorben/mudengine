@@ -2412,6 +2412,40 @@ cards:
         unless the maximum number already exist.
       placedLabel: Lies in
       priceNote: 'Base value: {price} (before markup)'
+      # How rare it is (todo 13): the time to one copy at its quickest source,
+      # from the world database, and every source with its own figure.
+      rarity:
+        label: Rarity
+        hint: How long the game takes to make one at its quickest source, from the world database.
+        band:
+          common: common
+          uncommon: uncommon
+          rare: rare
+          veryRare: very rare
+          extremelyRare: extremely rare
+          unknown: unknown
+        every: ' · one every {clock}'
+        limited: ' · limited, the realm holds only so many'
+        sourcesLabel: Comes from
+        more: '+{count} more'
+        noFigure: unknown
+        questReward: quest reward
+        uses: 'uses up {items}'
+        perRun: '{percent}% each time'
+        shop: '{shop} restocks {amount} every {minutes} min'
+        shopChance: '{shop} restocks {amount} every {minutes} min, {percent}% of the time'
+        placed: 'put back in {room} each night'
+        drop: '{monster} drops it {percent}%'
+        arrive: '{monster} brings it on arriving'
+        death: '{monster} leaves it on dying'
+        fight: '{monster} makes it in a fight'
+        attack: "{monster}'s attack makes it"
+        use: 'using {item}'
+        ask: 'ask {who} {say}'
+        say: '{say} in {room}'
+        sayRooms:
+          one: '{say} in {room} and 1 other room'
+          many: '{say} in {room} and {count} other rooms'
       shopPlaces: (in {count} places)
       shopRouteTitle: Plan a route to {room}
       soldByLabel: Sold by

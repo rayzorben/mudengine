@@ -509,9 +509,17 @@ export function rollOf(line: TbLine): number | null {
 }
 
 /**
+ * Whether a phrase is a step's argument rather than something a person says:
+ * one holding a digit. A roll table's lines read as phrases are not 180
+ * things to type.
+ */
+export function isStepArgument(phrase: string): boolean {
+  return /\d/.test(phrase);
+}
+
+/**
  * A keyword table: `word:block` per line, the shape a monster's greeting takes.
- * Several words routinely reach one block. A word holding a digit is a step's
- * argument rather than something a person says.
+ * Several words routinely reach one block; one that `isStepArgument` is not a word.
  */
 export function keywordTable(block: Pick<Textblock, 'lines'>): Map<number, string[]> {
   const table = new Map<number, string[]>();
@@ -520,7 +528,7 @@ export function keywordTable(block: Pick<Textblock, 'lines'>): Map<number, strin
     const last = line.steps[line.steps.length - 1]!;
     if (last.verb !== 'show' || !isDigits(last.text)) continue;
     const word = line.fields.slice(0, -1).join(':').trim();
-    if (word.length === 0 || /\d/.test(word)) continue;
+    if (word.length === 0 || isStepArgument(word)) continue;
     const held = table.get(last.block);
     if (held === undefined) table.set(last.block, [word]);
     else if (!held.includes(word)) held.push(word);

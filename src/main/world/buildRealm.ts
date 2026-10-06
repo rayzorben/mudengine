@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { RealmSource } from './RealmSource';
-import { number, text } from './values';
+import { BLANK_AS_NUMBER, abilityPairs, dropSlots, number, shopSlots, text } from './values';
 import type { ArchiveIdentity, ShippedWorld } from '../../shared/worlds';
 import { itemsInScripts, leversAsked, leversInScript, parseRoomScript } from './roomScript';
 import { parseAction } from './instructions';
@@ -17,6 +17,7 @@ import { gateNames, nameGate } from './navigation/stepGates';
 import type { ScriptLine } from '../../shared/world';
 import { scriptLines } from './navigation/scriptWays';
 import { readTextblocks } from './navigation/textblock';
+import { indexSupply, itemsInSupply, slotRestocks, type BuiltSupply } from './supplyIndex';
 import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
 import {
@@ -110,8 +111,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 53 | **A room's commands ship their gates typed** (`RoomCommand.gates`, by the one `gatesOf`), and a portal's conditions are judged by the router as any exit's: a script's level, class, race, alignment, ability, carried item or price walls the way when it shuts, and what only standing there settles (an empty room, an item on the floor, a roll) is priced, never pruned. `need` strings, `Requirement.unread` and the runtime string readers (`readAbilityGate`, the summons pattern) are gone. A line stops at a step the server cannot run, so `17/10747`'s misspelt `nononsters` lever no longer opens anything. What a command summons is `summons` |
  * | 54 | **What a spell's script does to whoever it is cast on** (`BuiltSpell.st`, `navigation/scriptWays.ts`). A cast exit runs its post-spell after the step, and a script that can move the character (a teleport, a cast that lands elsewhere, a roll or a shown block that does) was a flat unread price. Such a spell carries its lines in order, each the gates ahead of its first moving step and whether it moves; the first line that passes is what happens, and a run where none does moves nobody. The Great Pyramid's fourth-floor arch is `checkability 134 9:addexp 0` ahead of two lines that cast `arch fail`, so it is free at DaoLordQuest 9 and a scatter's wall below. In the shipped Paradigm (`pmud.zip`), 63 spells: 48 always move, 6 have a line that moves nobody, 9 a chain that cannot be followed |
  * | 55 | **Who may learn a spell.** `Spells.Magery` and `MageryLVL` and `Classes.MageryType` were read by nothing, so a scroll could not be told apart from one the class is refused: `Spell.CanPlayerUseSpell` refuses a spell whose magery type is not the class's (0 is any class's) or whose magery level is above the class's, and `read` answers `Unable to learn magic missile!` to a Warrior. `BuiltSpell.mt`/`ml` and `BuiltClass.mt` carry the codes, read as the server's `SpellMageryType` (1 Mage, 2 Priest, 3 Druid, 4 Bard, 5 Mystic): gmud.zip, pmud.zip and stock 1.11p all give the Mage, Gypsy and Warlock 1 and magic missile 1, the four holy classes 2 and minor healing 2, the Mystic 5 — todo 20 |
+ * | 56 | **How often the realm makes each item** (`BuiltSupply`, `supplyIndex.ts`). `Shops.Time-n` was never read, `DropItem%-n` and `RegenTime` without a `GameLimit` were dropped, and what a chest, a monster's `CreateSpell` or fight spells, or a typed phrase hands over at what odds was in `TBInfo`, which does not ship. The header's `supply` carries the restocking shelves, the stated clocks, the roaming groups and every run with the items and monsters one run makes, read through the one text-block reader; `itemRarity.ts` settles the rates and `Catalogue.summonersOf` reads the runs, so a monster brought in by another's `CreateSpell` is found where its summoner is. Every item the supply names joins the item index |
  */
-export const REALM_FORMAT = 55;
+export const REALM_FORMAT = 56;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -204,6 +206,8 @@ export interface BuiltRealm {
      * nothing, rather than a promise of a book with nothing in it.
      */
     quests: Quest[];
+    /** What the realm makes and how often its tables say (format 56). See `supplyIndex.ts`. */
+    supply: BuiltSupply;
   };
   /** Counts worth reporting, and worth refusing an empty realm on. */
   stats: {
@@ -915,19 +919,6 @@ export function placedItems(raw: unknown): number[] {
 }
 
 /**
- * What a *blank* looks like once a text value has been read out of a numeric
- * column: `0x2020`, two ASCII spaces, little-endian.
- *
- * 348 rows of the shipped realm's `Items.Speed` read as this. Nothing in the
- * database distinguishes it from a real 8224, and no column in it has a
- * plausible value there — weapon speeds run 900–3000, a monster's armour class
- * tops out at 9999 — so it is refused wherever a new column is read. It costs
- * one impossible value and removes the whole class of bug where an empty cell
- * becomes a confident number.
- */
-export const BLANK_AS_NUMBER = 8224;
-
-/**
  * A monster's own regeneration clock in hours, or null where it has none —
  * format 36.
  *
@@ -977,15 +968,6 @@ function coinMaxima(row: Record<string, unknown>): CoinMaxima | null {
 function compactCoins(maxima: CoinMaxima): number[] {
   return DENOMINATIONS.map((coin) => maxima[coin]);
 }
-
-/**
- * How many `Abil-n` slots a row has.
- *
- * Twenty on `Items` and ten on `Monsters`, `Spells`, `Races` and `Classes`;
- * reading twenty everywhere is safe because a column that is not there reads as
- * absent, and one number is one fewer thing to keep in step with the schema.
- */
-export const ABILITY_SLOTS = 20;
 
 /**
  * How many `ClassRest-n` / `RaceRest-n` slots an item row has.
@@ -1177,31 +1159,6 @@ function compactProfile(profile: MobProfile): BuiltProfile {
     out.c = profile.casts.map((cast) => [cast.spell, cast.chance, cast.level]);
   }
   return out;
-}
-
-/**
- * The `Abil-n` / `AbilVal-n` pairs on one row, in slot order and undecoded.
- *
- * Five tables carry them — `Items`, `Monsters`, `Spells`, `Races` and
- * `Classes` — and until 2026-08-31 only the item half was ever written out, so
- * the client showed a spell's level and mana and never what casting it does. A
- * shared reader rather than the loop copied five times: the empty-slot rule
- * (`0`) and the blank-cell rule (`8224`) are properties of the *format*, and
- * five copies of them is five places for one of them to be forgotten.
- *
- * Kept as the realm's own numbers; `src/shared/abilities.ts` names them at the
- * point of display, because the reading is a claim from another client's
- * source and may be corrected while the number is what the realm said.
- */
-export function abilityPairs(row: Record<string, unknown>): Array<[number, number]> {
-  const pairs: Array<[number, number]> = [];
-  for (let slot = 0; slot < ABILITY_SLOTS; slot += 1) {
-    const which = number(row[`Abil-${slot}`]);
-    if (which === null || which <= 0 || which === BLANK_AS_NUMBER) continue;
-    const value = number(row[`AbilVal-${slot}`]);
-    pairs.push([which, value === null || value === BLANK_AS_NUMBER ? 0 : value]);
-  }
-  return pairs;
 }
 
 /**
@@ -1487,11 +1444,7 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    */
   const monsterTable = source.table('Monsters');
   for (const row of monsterTable?.rows ?? []) {
-    for (const [column, value] of Object.entries(row)) {
-      if (!/^DropItem-\d+$/.test(column)) continue;
-      const dropped = number(value);
-      if (dropped !== null && dropped > 0) neededItems.add(dropped);
-    }
+    for (const { item } of dropSlots(row)) neededItems.add(item);
   }
 
   /*
@@ -1535,6 +1488,10 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     if (hazard !== undefined) spell.hz = hazard;
   }
 
+  // What the realm makes and how often (format 56); every item it names is one somebody holds.
+  const supply = indexSupply(source, blocks, spells, rowProfile);
+  for (const id of itemsInSupply(supply)) neededItems.add(id);
+
   const items = indexItems(source, neededItems, fromScripts.from, itemLandings);
   const named = new Map(items.map((item) => [item.id, item.n]));
   const mobs = indexMobs(source, named);
@@ -1543,7 +1500,12 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   const classes = indexClasses(source);
   const names = gateNames(source, { classes, races, spells });
   // What each spell's script does to whoever it is cast on (format 54).
-  const abilitiesOf = new Map(spells.map((spell) => [spell.id, spell.ab ?? []]));
+  const abilitiesOf = new Map(
+    spells.map((spell) => [
+      spell.id,
+      { abilities: spell.ab ?? [], ...(spell.pw === undefined ? {} : { power: spell.pw }) }
+    ])
+  );
   for (const spell of spells) {
     const lines = scriptLines(spell.id, (id) => abilitiesOf.get(id), blocks);
     if (lines === null) continue;
@@ -1719,7 +1681,8 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
       ...(family === null ? {} : { family }),
       ...(shipped === undefined ? {} : { world: shipped.world, archive: shipped.archive }),
       itemNames,
-      quests
+      quests,
+      supply
     },
     stats: {
       rooms: placed,
@@ -1754,24 +1717,6 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
  * Sorted by id, like every other index here, so a realm converted at runtime
  * and one built by the script produce byte-identical output.
  */
-/**
- * Whether the realm refills a shop slot (format 50). By the shop's kind first:
- * a gang house shop never regenerates (`Shop.Regen`, "don't do any regen in gh
- * shops") and a deed shop (12) is filled to each deed's game limit whatever
- * its slot says (`Shop.FillShop`). Otherwise a slot is filled only where
- * `Max`, `Amount` and `%` are all above zero; a database that states none of
- * them is read as it was before, restocked.
- */
-export function slotRestocks(
-  kind: number | null,
-  figure: (field: 'Max' | 'Amount' | '%') => number | null
-): boolean {
-  if (kind === 11) return false;
-  if (kind === 12) return true;
-  const figures = (['Max', 'Amount', '%'] as const).map(figure);
-  if (figures.every((value) => value === null)) return true;
-  return figures.every((value) => (value ?? 0) > 0);
-}
 
 export function indexShops(source: RealmSource): BuiltShop[] {
   const shops = source.table('Shops');
@@ -1785,14 +1730,9 @@ export function indexShops(source: RealmSource): BuiltShop[] {
     const kind = number(row['ShopType']);
     const items: number[] = [];
     const restocked = new Set<number>();
-    for (const [column, value] of Object.entries(row)) {
-      const slot = /^Item-(\d+)$/.exec(column)?.[1];
-      if (slot === undefined) continue;
-      const item = number(value);
-      // Zero is the realm's empty slot, not item zero.
-      if (item === null || item <= 0) continue;
+    for (const { item, figure } of shopSlots(row)) {
       items.push(item);
-      if (slotRestocks(kind, (field) => number(row[`${field}-${slot}`]))) restocked.add(item);
+      if (slotRestocks(kind, figure)) restocked.add(item);
     }
     /*
      * A shop with nothing on its shelves is a placeholder — unless it is a
@@ -2339,11 +2279,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
      * is left out rather than written as a number.
      */
     if (itemNames !== undefined) {
-      for (const [column, value] of Object.entries(row)) {
-        if (!/^DropItem-\d+$/.test(column)) continue;
-        const dropped = number(value);
-        if (dropped === null || dropped <= 0) continue;
-        const named = itemNames.get(dropped);
+      for (const { item } of dropSlots(row)) {
+        const named = itemNames.get(item);
         if (named !== undefined && named.length > 0) entry.drops.add(named);
       }
     }

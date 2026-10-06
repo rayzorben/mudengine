@@ -26,7 +26,12 @@ export const SCRIPT_DEPTH = 8;
 
 type Blocks = ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>;
 export type SpellAbilities = ReadonlyArray<readonly [number, number]>;
-type Abilities = (spell: number) => SpellAbilities | undefined;
+/** A spell as its scripts are read: its ability pairs, and `MinBase..MaxBase`. */
+export interface SpellScriptRow {
+  abilities: SpellAbilities;
+  power?: readonly [number, number];
+}
+type Abilities = (spell: number) => SpellScriptRow | undefined;
 
 /** Whether a spell's own columns move whoever it lands on (`TeleportRoom`, `TeleportMap`). */
 export function castMoves(abilities: SpellAbilities): boolean {
@@ -36,13 +41,27 @@ export function castMoves(abilities: SpellAbilities): boolean {
 }
 
 /**
- * The text blocks a spell runs, every `TextBlock` column (`Spell.cs:1600`
- * runs each); `TextBlock 0` is none.
+ * The rows one ability column names: its value, or for 0 the spell's own
+ * roll, one of `MinBase..MaxBase` at random (`inMainValue`, `Spell.cs:1551`
+ * for a summons and `:1637` for a script); none where the spell has no power.
  */
-export function scriptsOf(abilities: SpellAbilities): number[] {
-  return abilities.flatMap(([ability, value]) =>
-    ability === HAZARD_ABILITY.textBlock && value > 0 ? [value] : []
-  );
+export function columnRows(value: number, power: readonly [number, number] | undefined): number[] {
+  if (value > 0) return [value];
+  const [low, high] = power ?? [0, 0];
+  if (low <= 0 || high < low) return [];
+  return Array.from({ length: high - low + 1 }, (_, index) => low + index);
+}
+
+/**
+ * The text blocks a spell runs: every `TextBlock` column (`Spell.cs:1600`
+ * runs each), as the blocks it may run, one taken at random.
+ */
+export function scriptsOf(spell: SpellScriptRow): number[][] {
+  return spell.abilities.flatMap(([ability, value]) => {
+    if (ability !== HAZARD_ABILITY.textBlock) return [];
+    const rows = columnRows(value, spell.power);
+    return rows.length > 0 ? [rows] : [];
+  });
 }
 
 /**
@@ -68,12 +87,12 @@ export function scriptLines(
   abilities: Abilities,
   blocks: Blocks
 ): ScriptLine[] | null {
-  const scripts = scriptsOf(abilities(spell) ?? []);
+  const scripts = scriptsOf(abilities(spell) ?? { abilities: [] }).flat();
   const block = scripts.length === 1 ? blocks.get(scripts[0]!) : undefined;
   if (block === undefined) {
-    // Several scripts run one after another, each with its own lines: whether
-    // the character stays is not one ordered list, so a spell where any moves
-    // is read as unread.
+    // Several scripts, run one after another or one of them at random, each
+    // with its own lines: whether the character stays is not one ordered
+    // list, so a spell where any moves is read as unread.
     const moves = scripts.map((id) => blockMoves(id, 'steps', abilities, blocks, 0));
     return moves.some((moved) => moved !== false) ? [{ gates: [], moves: 'unread' }] : null;
   }
@@ -133,9 +152,9 @@ function spellMoves(
 ): ScriptMoves {
   const row = abilities(spell);
   if (row === undefined) return 'unread';
-  if (castMoves(row)) return true;
+  if (castMoves(row.abilities)) return true;
   let unread = false;
-  for (const script of scriptsOf(row)) {
+  for (const script of scriptsOf(row).flat()) {
     const moves = blockMoves(script, 'steps', abilities, blocks, depth);
     if (moves === true) return true;
     if (moves === 'unread') unread = true;

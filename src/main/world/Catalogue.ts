@@ -72,6 +72,7 @@ import { DENOMINATIONS, type AttributeSpans, type Denomination } from '../../sha
 import type { SpellOption } from '../../shared/ipc';
 import type { RealmFamily } from '../../shared/realm';
 import type { RealmHeader } from './realmHeader';
+import { castBy, NO_SUPPLY, readSupply, type WorldSupply } from './supply';
 
 export class Catalogue {
   /**
@@ -99,6 +100,8 @@ export class Catalogue {
     catalogue.itemNames = (Array.isArray(header['itemNames']) ? header['itemNames'] : [])
       .map((name) => String(name).trim().toLowerCase())
       .filter((name) => name.length > 0);
+    // v56. An older file states no supply, so nothing is rated and nobody is summoned.
+    catalogue.supplied = readSupply(header['supply']);
     return catalogue;
   }
 
@@ -507,8 +510,10 @@ export class Catalogue {
   private readonly rowsById = new Map<number, WorldMobRow>();
   /** Item name -> the monsters that drop it, built with the first join. */
   private droppers: Map<string, string[]> | null = null;
-  /** Monster row → the monsters whose death spell summons it — `summonersOf`. */
+  /** Monster row → the monsters whose own spell summons it — `summonersOf`. */
   private summoners: Map<number, WorldMob[]> | null = null;
+  /** What the realm makes and what each run makes (format 56, `supply.ts`). */
+  private supplied: WorldSupply = NO_SUPPLY;
 
   /**
    * The monster index out of the header. Present from v3 on, with a
@@ -846,26 +851,28 @@ export class Catalogue {
     return [entity];
   }
 
+  supply(): WorldSupply {
+    return this.supplied;
+  }
+
   /**
-   * The monsters whose death brings this one into the world — a death spell
-   * summoning one of its rows (`HAZARD_ABILITY.summon`, realm data read since
-   * format 31). A monster the realm places nowhere is found where whatever
-   * summons it lives (todo 806): the amber talisman drops from the *dying*
-   * slaver leader, which no room spawns and the slaver leader's death spell
-   * does. One link, never a chain.
+   * The monsters whose own spell brings this one into the world: on arriving,
+   * in a fight or on dying (the supply's runs, format 56). A monster the realm
+   * places nowhere is found where whatever summons it lives (todo 806): the
+   * amber talisman drops from the *dying* slaver leader, which no room spawns
+   * and the slaver leader's death spell does, and the dark-elf weaponsmaster
+   * arrives with the queen's `CreateSpell`. One link, never a chain.
    */
   summonersOf(mob: WorldMob): WorldMob[] {
     if (this.summoners === null) {
       const index = new Map<number, WorldMob[]>();
-      for (const candidate of new Set(this.mobs.values())) {
-        const spell =
-          candidate.deathSpell === undefined
-            ? undefined
-            : this.spellsById.get(candidate.deathSpell);
-        for (const [ability, value] of spell?.abilities ?? []) {
-          if (ability !== HAZARD_ABILITY.summon || value <= 0) continue;
-          const held = index.get(value);
-          if (held === undefined) index.set(value, [candidate]);
+      for (const { by, monsters } of this.supplied.runs) {
+        const cast = castBy(by);
+        const candidate = cast === null ? undefined : this.mobsById.get(cast.monster);
+        if (candidate === undefined) continue;
+        for (const id of monsters.keys()) {
+          const held = index.get(id);
+          if (held === undefined) index.set(id, [candidate]);
           else if (!held.includes(candidate)) held.push(candidate);
         }
       }

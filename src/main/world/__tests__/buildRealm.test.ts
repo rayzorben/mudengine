@@ -8,7 +8,6 @@ import {
   indexItems,
   indexMobs,
   indexShops,
-  slotRestocks,
   indexSpells,
   indexRaces,
   indexItemNames,
@@ -18,6 +17,7 @@ import {
   rowProfile
 } from '../buildRealm';
 import { realmKind } from '../RealmSource';
+import { slotRestocks } from '../supplyIndex';
 import type { RealmSource, RealmTable } from '../RealmSource';
 
 /** A realm database made of literals, so the converter can be tested alone. */
