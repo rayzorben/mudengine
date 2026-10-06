@@ -23,6 +23,7 @@ import {
   type CastableSpell,
   type SpellTargeting
 } from './spellcraft';
+import { spellReaches, type MonsterNature } from './spellReach';
 import type { WorldSpell } from './world';
 
 /** The pool a book is spent from: the wire's word, else the class row's magery type; null unknown. */
@@ -88,6 +89,8 @@ export interface SpellTarget {
   magicRes: number | null;
   /** `Monsters.Abil-n`, where the realm places the monster. */
   abilities: ReadonlyArray<readonly [number, number]> | undefined;
+  /** What it is, as the server asks before a spell lands (`spellReaches`); absent unknown. */
+  nature?: MonsterNature | undefined;
 }
 
 export interface SpellChoiceInput {
@@ -124,7 +127,7 @@ export interface SpellCandidate {
 }
 
 export type SpellChoiceRefusal =
-  'no-book' | 'empty-book' | 'kai' | 'no-attack-spells' | 'all-resisted' | 'no-mana';
+  'no-book' | 'empty-book' | 'kai' | 'no-attack-spells' | 'all-resisted' | 'no-effect' | 'no-mana';
 
 /** A refusal meaning the book holds no attack spell or power this character casts. */
 export function attacksWithNothing(refusal: SpellChoiceRefusal | null): boolean {
@@ -165,6 +168,7 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
   const candidates: SpellCandidate[] = [];
   let attackSpells = 0;
   let affordable = 0;
+  let noEffect = 0;
   for (const spell of input.book) {
     if (input.excluded.has(spell.name)) continue;
     const realm = input.realm(spell.name);
@@ -178,6 +182,11 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
     const cost = spell.cost ?? realm.mana ?? null;
     if (input.mana !== null && cost !== null && cost > input.mana) continue;
     affordable += 1;
+    // The server answers `Your spell has no effect on` and breaks the fight.
+    if (spellReaches(realm, input.target?.nature) === false) {
+      noEffect += 1;
+      continue;
+    }
 
     const [rawMin, rawMax] = scaledPower(realm, input.level ?? required ?? 1);
     const element = elementFactor(realm.element, input.target);
@@ -209,8 +218,10 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
   if (attackSpells === 0)
     return { chosen: null, why: null, considered: [], refusal: 'no-attack-spells' };
   if (affordable === 0) return { chosen: null, why: null, considered: [], refusal: 'no-mana' };
-  if (candidates.length === 0)
-    return { chosen: null, why: null, considered: [], refusal: 'all-resisted' };
+  if (candidates.length === 0) {
+    const refusal = noEffect === affordable ? 'no-effect' : 'all-resisted';
+    return { chosen: null, why: null, considered: [], refusal };
+  }
 
   const byCost = (a: SpellCandidate, b: SpellCandidate): number =>
     (a.cost ?? Number.MAX_SAFE_INTEGER) - (b.cost ?? Number.MAX_SAFE_INTEGER);
@@ -521,13 +532,23 @@ export function thresholdHeal(input: ThresholdHealInput): PricedHeal | null {
  */
 export function castsToKill(
   input: Omit<SpellChoiceInput, 'target' | 'excluded'> | { book: null },
-  monster: { hp: number | null; magicRes: number | null; abilities?: Array<[number, number]> }
+  monster: {
+    hp: number | null;
+    magicRes: number | null;
+    abilities?: SpellTarget['abilities'];
+    nature?: SpellTarget['nature'];
+  }
 ): { rounds: number; mana: number | null; spell: string } | null {
   if (input.book === null) return null;
   if (monster.hp === null || monster.hp <= 0) return null;
   const choice = chooseAttackSpell({
     ...input,
-    target: { remaining: monster.hp, magicRes: monster.magicRes, abilities: monster.abilities },
+    target: {
+      remaining: monster.hp,
+      magicRes: monster.magicRes,
+      abilities: monster.abilities,
+      nature: monster.nature
+    },
     excluded: new Set()
   });
   const chosen = choice.chosen;

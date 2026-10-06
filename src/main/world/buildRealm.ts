@@ -112,8 +112,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 54 | **What a spell's script does to whoever it is cast on** (`BuiltSpell.st`, `navigation/scriptWays.ts`). A cast exit runs its post-spell after the step, and a script that can move the character (a teleport, a cast that lands elsewhere, a roll or a shown block that does) was a flat unread price. Such a spell carries its lines in order, each the gates ahead of its first moving step and whether it moves; the first line that passes is what happens, and a run where none does moves nobody. The Great Pyramid's fourth-floor arch is `checkability 134 9:addexp 0` ahead of two lines that cast `arch fail`, so it is free at DaoLordQuest 9 and a scatter's wall below. In the shipped Paradigm (`pmud.zip`), 63 spells: 48 always move, 6 have a line that moves nobody, 9 a chain that cannot be followed |
  * | 55 | **Who may learn a spell.** `Spells.Magery` and `MageryLVL` and `Classes.MageryType` were read by nothing, so a scroll could not be told apart from one the class is refused: `Spell.CanPlayerUseSpell` refuses a spell whose magery type is not the class's (0 is any class's) or whose magery level is above the class's, and `read` answers `Unable to learn magic missile!` to a Warrior. `BuiltSpell.mt`/`ml` and `BuiltClass.mt` carry the codes, read as the server's `SpellMageryType` (1 Mage, 2 Priest, 3 Druid, 4 Bard, 5 Mystic): gmud.zip, pmud.zip and stock 1.11p all give the Mage, Gypsy and Warlock 1 and magic missile 1, the four holy classes 2 and minor healing 2, the Mystic 5 — todo 20 |
  * | 56 | **How often the realm makes each item** (`BuiltSupply`, `supplyIndex.ts`). `Shops.Time-n` was never read, `DropItem%-n` and `RegenTime` without a `GameLimit` were dropped, and what a chest, a monster's `CreateSpell` or fight spells, or a typed phrase hands over at what odds was in `TBInfo`, which does not ship. The header's `supply` carries the restocking shelves, the stated clocks, the roaming groups and every run with the items and monsters one run makes, read through the one text-block reader; `itemRarity.ts` settles the rates and `Catalogue.summonersOf` reads the runs, so a monster brought in by another's `CreateSpell` is found where its summoner is. Every item the supply names joins the item index |
+ * | 57 | **What each row is, for a spell.** `BuiltMobRow` dropped `Abil-n`, so a name's effects were the union of its rows and a spell could not be told it has no effect: a `zombie` is three rows, all `NonLiving`, and a Priest at level 1 cast `harm` (`AffectsLivingOnly`) at one, was told *Your spell has no effect on big zombie.* and lost the round. `BuiltMobRow.ab` carries each row's own pairs; `Catalogue` overlays them on a resolved row and reads what every row agrees the name is (`natureOf`) for `spellReaches` (2026-10-06)
  */
-export const REALM_FORMAT = 56;
+export const REALM_FORMAT = 57;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -843,6 +844,8 @@ export interface BuiltMobRow {
   dmg?: number;
   chl?: number;
   und?: 1;
+  /** This row's own `Abil-n` pairs (format 57), absent where it states none. */
+  ab?: Array<[number, number]>;
 }
 
 /**
@@ -2258,6 +2261,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       own.dmg = stated('AvgDmg');
       own.chl = stated('CharmLVL');
       if (number(row['Undead']) === 1) own.und = 1;
+      const effects = abilityPairs(row);
+      if (effects.length > 0) own.ab = effects;
       entry.rows.push(own);
     }
     /*
