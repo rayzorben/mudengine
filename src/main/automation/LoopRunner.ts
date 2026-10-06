@@ -39,6 +39,7 @@
 import {
   dueStop,
   NO_LOOP,
+  sameWalk,
   splitStop,
   type Loop,
   type LoopProgress,
@@ -413,6 +414,21 @@ export class LoopRunner implements SessionModule {
       forward: this.forward,
       bounce: this.loop?.bounce ?? false
     };
+  }
+
+  /**
+   * The lap running takes another loop's stops, their clocks and lingers,
+   * where it walks the same rooms (`sameWalk`): an order for the same spot
+   * priced again at the realm's speed (2026-10-06). Its place, its name and
+   * every room's last clearing are kept. False where nothing runs or the rooms
+   * differ.
+   */
+  retime(loop: Loop): boolean {
+    const running = this.loop;
+    if (running === null || this.status !== 'running' || !sameWalk(running, loop)) return false;
+    this.loop = { ...running, stops: loop.stops };
+    this.publish();
+    return true;
   }
 
   /** Start looping. Returns a refusal, or null once it is running. */

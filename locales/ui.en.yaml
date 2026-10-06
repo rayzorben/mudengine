@@ -4994,6 +4994,7 @@ automation:
     started: Hunting {loopName}, for about {rate} exp an hour.
     # An extension steering the hunt (todo 84).
     steeredAway: an extension chose another spot
+    reordered: an extension changed this spot's loop
     takingOver: 'stopping {loopName} to walk to the spot an extension chose'
     refusalSteeredGone: The spot an extension chose is no longer on the hunting list.
     stoppedForBetter: '{mob} pays better'

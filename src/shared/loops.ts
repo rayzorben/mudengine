@@ -274,6 +274,13 @@ export function asLoops(value: unknown, limits?: LoopLimits): Loop[] {
   return loops;
 }
 
+/** Two loops that walk the same rooms in the same order and the same way, whatever their clocks. */
+export function sameWalk(a: Loop, b: Loop): boolean {
+  if ((a.bounce ?? false) !== (b.bounce ?? false) || a.stops.length !== b.stops.length)
+    return false;
+  return a.stops.every((stop, at) => stop.room === b.stops[at]?.room);
+}
+
 /**
  * Whether two lists of loops say the same thing.
  *
