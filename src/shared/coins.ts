@@ -137,6 +137,18 @@ export function chargedInCopper(counterPrice: number, charm: number | null): num
 }
 
 /**
+ * What selling one pays, in copper: `SellCommand` halves the base in copper,
+ * with no counter's markup, then adds `(charm − 50)` percent of that half, in
+ * integers. An unread charm is priced at the sheet's floor (0: half of the
+ * half), since this answers *is the walk worth it* and unknown is never the
+ * reassuring answer.
+ */
+export function soldForCopper(price: number, currency: Denomination, charm: number | null): number {
+  const half = Math.trunc((COPPER_PER[currency] * price) / 2);
+  return half + Math.trunc((((charm ?? 0) - 50) * half) / 100);
+}
+
+/**
  * A `CurrencyEntity` from counts by denomination, with the total the ladder
  * above produces.
  *
