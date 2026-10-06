@@ -762,17 +762,10 @@ export class SessionManager {
       onTheGround
     });
 
+    // `abandon` is a loss: `close` reports `graceful` false, so the loop is held.
     this.link = new LinkWatch({
-      dead: (seconds) => {
-        // Said before the socket goes, so the console reads in the order it
-        // happened: this is why the connection dropped, then that it dropped.
-        // A safety feature that acts without saying so is one nobody can tell
-        // from a bug.
-        this.sink.notice(t('session.connection.deadLink', { seconds }));
-        // Hung up as a *loss*, not a disconnect: `close` reports `graceful`
-        // false, so the loop is held rather than stopped and `Reconnect` dials
-        // back if this character asked it to. Whether it does is not decided
-        // here.
+      notice: (message) => this.sink.notice(message),
+      hangUp: () => {
         this.hungUpDead = true;
         this.client.abandon();
       }
@@ -1699,7 +1692,11 @@ export class SessionManager {
      * arbiter at `user` priority and outranks anything automated.
      */
     this.publisher.useSecret(login.password);
-    this.login = new LoginAutomator(login, this.queue, this.sink);
+    this.login = new LoginAutomator(login, this.queue, {
+      notice: (message) => this.sink.notice(message),
+      promptOwed: () => this.link.owePrompt(),
+      prompted: () => this.link.notePrompt()
+    });
     /*
      * The modules, in the order `connect` puts them down; `connect`,
      * `leftTheRealm`, `configure` and `dispose` walk this list and nothing
@@ -2082,6 +2079,7 @@ export class SessionManager {
       this.client.resize(this.lastSize);
       this.publisher.patch({ phase: 'connected', connectedAt: Date.now(), detail: null });
       this.sink.notice(t('session.connection.connected', { host: target.host, port: target.port }));
+      this.login.opened();
     } catch (error) {
       if (error instanceof DialCancelled) return this.publisher.state; // `close` reports it
       this.publisher.patch({ phase: 'error', detail: errorMessage(error) });
