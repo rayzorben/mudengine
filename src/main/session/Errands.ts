@@ -36,7 +36,12 @@ import { GROUNDS, type Ground, admitsFiller, groundRefills } from './huntGrounds
 import { preferredEdges } from '../world/loopDraft';
 import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shared/abilities';
 import type { Block } from '../../shared/blocks';
-import { ownAlignment, packRows, type CharacterState } from '../../shared/character';
+import {
+  fightIsRunning,
+  ownAlignment,
+  packRows,
+  type CharacterState
+} from '../../shared/character';
 import { chargedInCopper, expectedCopper } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
@@ -382,12 +387,13 @@ export class Errands implements SessionModule {
 
   /**
    * Every character line, with its block: an exit the room prints given back,
-   * and a refill timed (an arrival while a move is unanswered is the next
-   * room's).
+   * a refill timed (an arrival while a move is unanswered is the next room's),
+   * and a rise in health timed for the realm's speed.
    */
-  onCharacter(state: CharacterState, block: Pick<Block, 'type'>): void {
+  onCharacter(state: CharacterState, block: Pick<Block, 'type' | 'at'>): void {
     this.unrefuseWhatTheRoomPrints(state);
     this.clocks.onCharacter(state, block, this.tracker.pendingMoves > 0);
+    this.speed.healthRose(state.vitals.hp, state.vitals.resting, fightIsRunning(state), block.at);
   }
 
   /** Where the realm's speed is kept, for the address about to be dialled (`SessionManager.useRealm`). */

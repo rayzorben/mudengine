@@ -100,6 +100,50 @@ describe('the realm’s speed', () => {
     expect(speed.multiplier).toBe(1);
   });
 
+  /* 2026-10-06, orohost: a Mage's slimes left no rounds to read in 25 minutes; the standing tick came every 5.8 to 6.1 s. */
+  it('reads the realm’s speed off the standing tick out of a fight', () => {
+    const { speedRounds } = tuning().hunting;
+    const speed = new RealmSpeed();
+    let hp = 40;
+    let at = 0;
+    // The first line is the health it starts from, the first rise the tick the gaps run from.
+    for (let tick = 0; tick <= speedRounds + 1; tick += 1) {
+      // The standing tick, every second rest tick: 30 s on the server, 6 s at speed 5, give or take.
+      at += tick % 2 === 0 ? 6020 : 5920;
+      hp += 1;
+      speed.healthRose(hp, false, false, at);
+    }
+    expect(speed.multiplier).toBe(5);
+  });
+
+  /* Review, 2026-10-06: the standing gain comes on every second rest tick, so counted by the rest tick a speed of 4 read 2. */
+  it('reads an even speed off standing rises, and the rest tick off resting ones', () => {
+    const { speedRounds } = tuning().hunting;
+    const standing = new RealmSpeed();
+    for (let tick = 0; tick <= speedRounds + 1; tick += 1)
+      standing.healthRose(40 + tick, false, false, tick * 7520);
+    expect(standing.multiplier).toBe(4);
+    const resting = new RealmSpeed();
+    for (let tick = 0; tick <= speedRounds + 1; tick += 1)
+      resting.healthRose(40 + tick * 3, true, false, tick * 3010);
+    expect(resting.multiplier).toBe(5);
+  });
+
+  it('counts no rise in a fight, nor a gap past the longest, nor a fall', () => {
+    const speed = new RealmSpeed();
+    speed.healthRose(40, false, false, 0);
+    speed.healthRose(41, false, false, 1000); // the tick the next gap runs from
+    speed.healthRose(42, false, true, 3000); // a heal mid-fight is off the tick
+    speed.healthRose(30, false, false, 4000); // a blow: health fell
+    speed.healthRose(31, false, false, 60_000); // 59 s on: past the longest gap counted
+    for (let tick = 1; tick < tuning().hunting.speedRounds; tick += 1)
+      speed.healthRose(31 + tick, false, false, 60_000 + tick * 6000);
+    // One short of a reading: the rise mid-fight and the long gap were not counted.
+    expect(speed.multiplier).toBe(1);
+    speed.healthRose(50, false, false, 60_000 + tuning().hunting.speedRounds * 6000);
+    expect(speed.multiplier).toBe(5);
+  });
+
   it('is the server’s own until enough rounds are seen, and again after a reset', () => {
     const speed = new RealmSpeed();
     fight(speed, 0, 3, 1000);
