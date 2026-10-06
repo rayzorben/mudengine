@@ -86,6 +86,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     toggleRail: vi.fn(),
     toggleDebug: vi.fn(),
     toggleLoops: vi.fn(),
+    openAreaSearch: vi.fn(),
     reveal: vi.fn(),
     terminal: () => null,
     say: vi.fn(),

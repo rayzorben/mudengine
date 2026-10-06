@@ -86,6 +86,10 @@ const api: IpcApi = {
     ipcRenderer.invoke(Invoke.startMoving, session, loop, confirmed),
   collectThenWalk: (session, items, route, run) =>
     ipcRenderer.invoke(Invoke.collectThenWalk, session, items, route, run),
+  previewAreaSearch: (session, radius) =>
+    ipcRenderer.invoke(Invoke.previewAreaSearch, session, radius),
+  searchArea: (session, radius, searches) =>
+    ipcRenderer.invoke(Invoke.searchArea, session, radius, searches),
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
   stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),

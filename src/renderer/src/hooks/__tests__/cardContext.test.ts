@@ -91,6 +91,7 @@ const stable: Omit<CardContextInputs, 'nameIndexes'> = {
   reverseLoop: noop,
   send: noop,
   openLoops: noop,
+  openAreaSearch: noop,
   dial: noop,
   hangUp: noop,
   sayRefusal: () => noop,

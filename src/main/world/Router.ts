@@ -161,6 +161,13 @@ export interface Traveller {
    */
   shunned?: ReadonlySet<RoomId>;
   /**
+   * Rooms this traveller never walks into, with no way round them or not: the
+   * area search's rooms whose fight is lost or not yet weighed, which it left
+   * out and so may not walk through either. Pruned in the route and in
+   * `withinSteps` alike, so nothing behind one is reached. Absent walls none.
+   */
+  walled?: ReadonlySet<RoomId>;
+  /**
    * This character's `Classes` row id, for a class-gated exit.
    *
    * The stat sheet prints the realm's own word (`Class: Paladin`) and the
@@ -1118,6 +1125,7 @@ export class Router {
     const who = traveller === undefined ? undefined : this.insideOf(traveller, [from]);
     const open = (exit: WorldExit | PortalExit): boolean => {
       if (who === undefined) return true;
+      if (who.walled?.has(this.beyond(exit)) === true) return false;
       const next = this.rooms.get(this.beyond(exit));
       return next === undefined || this.keptOut(who, exit, next) === null;
     };
@@ -2436,6 +2444,7 @@ export class Router {
     // explanation lifts the words instead (`route`). See `Traveller.keepOut`.
     if (into !== null && this.keptOut(traveller, exit, into) !== null) return null;
     if (into !== null && !openGates && ranFrom(traveller, into)) return null;
+    if (into !== null && traveller.walled?.has(roomId(into.map, into.room)) === true) return null;
     /*
      * **A draw costs a move here, whatever it costs everywhere else.**
      * `edgePenalty` walls one, and that is the right answer for every reader

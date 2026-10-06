@@ -77,11 +77,12 @@ import { DEFAULT_INTERNAL, type InternalConfig } from '@shared/internal';
 import { roomsWithFinds } from '@shared/finds';
 import { movementOf } from '@shared/movement';
 import { IDLE_QUEST_RUN } from '@shared/quests';
-import type { Addressed, ResetNotice } from '@shared/ipc';
 import MovementPrompt from './components/MovementPrompt';
-import ResetPrompt from './components/ResetPrompt';
+import ResetGate from './components/ResetGate';
 import LowLivesPrompt from './components/LowLivesPrompt';
 import { useLowLivesAsk } from './hooks/useLowLivesAsk';
+import AreaSearchDialog from './components/AreaSearchDialog';
+import { useAreaSearch } from './hooks/useAreaSearch';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import { type ProfileSummary, type SessionId, type SessionSummary } from '@shared/ipc';
 import type { ConnectionState, TerminalActionName, TerminalSize } from '@shared/types';
@@ -179,17 +180,6 @@ export default function App() {
 
   const view = views[session] ?? EMPTY_VIEW;
   const { state, character, walk, automation } = view;
-  /**
-   * The client thinks the character in the realm is not the one its records are
-   * about, and is asking.
-   *
-   * Addressed, and held in `App` rather than remembered anywhere: main asks
-   * once per session (`SessionManager.watchForReset`), so a dialog that
-   * survived a reload would be one nobody could answer. Null is *nothing
-   * noticed*.
-   */
-  const [resetAsked, setResetAsked] = useState<Addressed<ResetNotice> | null>(null);
-
   const [internalConfig, setInternalConfig] = useState<InternalConfig>(DEFAULT_INTERNAL);
   useEffect(() => {
     /*
@@ -548,6 +538,7 @@ export default function App() {
     returnFocus,
     say: noticeTo
   });
+  const area = useAreaSearch(session, returnFocus);
 
   /** What the shown character asks its realm. */
   const {
@@ -659,9 +650,6 @@ export default function App() {
    */
   useEffect(() => {
     const off = [
-      // Not folded into a view: it is a question about a character rather than
-      // a fact about one, and it is answered once.
-      api.onCharacterReset((message) => setResetAsked(message)),
       // A notice with no session is about the client rather than a character —
       // an options file that failed to parse belongs to nobody — and still has
       // to be seen, so it is shown wherever the player is looking.
@@ -1047,6 +1035,7 @@ export default function App() {
     toggleRail,
     toggleDebug,
     toggleLoops,
+    openAreaSearch: area.open,
     reveal,
     terminal: activeTerminal,
     say: noticeTo
@@ -1213,6 +1202,7 @@ export default function App() {
     reverseLoop,
     send: sayOnChannel,
     openLoops: toggleLoops,
+    openAreaSearch: area.open,
     dial,
     hangUp,
     sayRefusal,
@@ -1624,25 +1614,13 @@ export default function App() {
         onStay={stay}
         onWalk={walkOn}
       />
-      <ResetPrompt
-        characterName={resetAsked === null ? '' : profileNameFor(resetAsked.session)}
-        notice={resetAsked?.payload ?? null}
-        onForget={() => {
-          const asked = resetAsked;
-          setResetAsked(null);
-          if (asked) void api.forgetCharacter(asked.session);
-          returnFocus();
-        }}
-        onKeep={() => {
-          setResetAsked(null);
-          returnFocus();
-        }}
-      />
+      <ResetGate api={api} profiles={profiles} returnFocus={returnFocus} />
       <LowLivesPrompt
         ask={livesAsked?.payload ?? null}
         characterName={livesAsked === null ? '' : profileNameFor(livesAsked.session)}
         onAnswer={answerLowLives}
       />
+      <AreaSearchDialog api={api} area={area} profiles={profiles} />
       <SettingsScreen
         {...settingsApi}
         maximaFor={maximaFor}

@@ -39,7 +39,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `@comeback-room`'s walk, out to `RemoteMoves` beside `@goto` (todo 17).
   // Lowered by one switch writer for routes and `@auto-combat` (todo 02).
   // Lowered by the search's recording, out to `Records.noted` beside the shop list's (todo 02, shops).
-  'src/main/session/SessionManager.ts': 3553,
+  // Lowered by the errands' one list, read from `Travel.errandUnderWay` (area search).
+  'src/main/session/SessionManager.ts': 3550,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2420,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
@@ -49,7 +50,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the strips' cards and the drag's marks, out whole (`StripCards`,
   // `DragMarks`), and the rail's grid (`RailGrid`, todo 09).
   // Lowered by the palette taking the pane widths whole (todo 01).
-  'src/renderer/src/App.tsx': 1658,
+  // Lowered by the reset prompt's question, out with its state (`ResetGate`, area search).
+  'src/renderer/src/App.tsx': 1636,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   'src/main/automation/Walker.ts': 1933,

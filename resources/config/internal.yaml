@@ -94,7 +94,8 @@ palette:
 # `loop:open` (the shelf of every loop), `loop:build` (the card a loop is drawn
 # on, by clicking rooms on the map), `move:toggle` -- one key for the whole
 # transport, which goes or stops whichever of a route and a loop is on -- and
-# `move:back`, one room back the way the character came, per press.
+# `move:back`, one room back the way the character came, per press, and
+# `area:search`, which walks every room within so many steps and searches each.
 toolbar:
   pinned:
     - connect
@@ -123,6 +124,8 @@ toolbar:
     # a door that shut behind you is answered too (it asks first when the way
     # back is not a single step).
     - 'move:back'
+    # Every room within so many steps, each searched: the dialog asks how far.
+    - 'area:search'
     # Timing Run it to the combat rounds: a step into a lair waits for the round.
     - runBetweenRounds
 
@@ -871,6 +874,18 @@ tuning:
     searches: 4
     collectMs: 8000
     expiresMs: 6000
+
+  # Searching every room near the character -- `AreaSearch`. `maxRadius` and
+  # `maxSearches` bound the dialog, which opens on `firstRadius` and
+  # `firstSearches`; `collectMs` waits for a search's answer; `missedInARow`
+  # rooms with no way there end the search.
+  areaSearch:
+    maxRadius: 15
+    maxSearches: 10
+    firstRadius: 3
+    firstSearches: 1
+    collectMs: 8000
+    missedInARow: 3
 
   # Looking for what a room did not print — `AutoSearch`. Shorter than the
   # loot's on purpose: a search is about the room the character is standing in,

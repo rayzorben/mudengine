@@ -35,6 +35,7 @@ import type {
   QuestWatched,
   RoomAsk
 } from './quests';
+import type { AreaSearchPreview } from './areaSearch';
 import type { HuntingAdvice } from './hunting';
 import type {
   AlertsUiConfig,
@@ -690,6 +691,16 @@ export const Invoke = {
    */
   collectThenWalk: 'walk:collect',
   /**
+   * What searching every room within so many steps would walk, for the
+   * dialog: the room count, the walking, and the rooms left out and why.
+   */
+  previewAreaSearch: 'area:preview',
+  /**
+   * Search every room within so many steps, each so many times. Returns why
+   * it could not start, or null. See `AreaSearch.start`.
+   */
+  searchArea: 'area:search',
+  /**
    * Start moving: begin the loop named, or pick back up whatever was stopped.
    *
    * The one play button. A character is routing, looping or stopped
@@ -1249,6 +1260,10 @@ export interface IpcApi {
     route: Route,
     run?: boolean
   ): Promise<string | null>;
+  /** What searching every room within `radius` steps would walk; null, the dialog's first radius. */
+  previewAreaSearch(session: SessionId, radius: number | null): Promise<AreaSearchPreview>;
+  /** Search every room within `radius` steps, `searches` times each; why not, or null. */
+  searchArea(session: SessionId, radius: number, searches: number): Promise<string | null>;
   /** Stop moving, whichever of the two is running. Keeps its place. */
   stopMoving(session: SessionId): Promise<void>;
   /**
