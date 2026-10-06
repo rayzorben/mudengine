@@ -93,7 +93,7 @@ import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
 import { slotGear } from './world/slotGear';
-import { atSpeed, NO_EXCLUSIONS, NO_FLOOR, type HuntingAdvice } from '../shared/hunting';
+import { atSpeed, NO_EXCLUSIONS, NO_FLOOR, NOT_KEPT, type HuntingAdvice } from '../shared/hunting';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
 import { WindowRegistry } from './windows/WindowRegistry';
@@ -1399,6 +1399,7 @@ function createHost(): SessionHost {
     playersFor,
     destinationsFor,
     playersAt,
+    speedAt: (target) => worldBook?.keptSpeed(realmAddress(target)) ?? NOT_KEPT,
     findsFor,
     shopsFor,
     // What the realm called itself, by the address it was dialled at, so the

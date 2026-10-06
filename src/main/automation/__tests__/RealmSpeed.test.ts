@@ -85,6 +85,21 @@ describe('the realm’s speed', () => {
     expect(slow.multiplier).toBe(1);
   });
 
+  /* 2026-10-06: a caster's fights of a round or two took eleven minutes to read 5 on orohost. */
+  it('starts from the figure kept from the last connection, and keeps each new one', () => {
+    let kept: number | null = 5;
+    const remembered: number[] = [];
+    const speed = new RealmSpeed();
+    speed.useKept({ recall: () => kept, remember: (each) => void remembered.push(each) });
+    expect(speed.multiplier).toBe(5);
+    fight(speed, 0, tuning().hunting.speedRounds + 1, 5000);
+    expect(speed.multiplier).toBe(1);
+    expect(remembered).toEqual([1]);
+    kept = 1;
+    speed.reset();
+    expect(speed.multiplier).toBe(1);
+  });
+
   it('is the server’s own until enough rounds are seen, and again after a reset', () => {
     const speed = new RealmSpeed();
     fight(speed, 0, 3, 1000);

@@ -164,7 +164,7 @@ import type {
   TerminalSize
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
-import type { HuntingAdvice } from '../../shared/hunting';
+import { NOT_KEPT, type HuntingAdvice } from '../../shared/hunting';
 import type { SessionSink } from './SessionSink';
 
 /**
@@ -984,10 +984,9 @@ export class SessionManager {
      * a torch not lit in a dark room is a decision somebody will ask about.
      */
     /*
-     * And the ward a room wants, kept up off the pack (todo 105): the realm
-     * says which spell stops a room's effect and which item's use casts it;
-     * this uses the item before the step and when the spell lapses, on its
-     * own clock at the realm's speed. The stated countdowns are the router's.
+     * And the ward a room wants, kept up off the pack (todo 105): the realm names the spell that
+     * stops a room's effect and the item whose use casts it, used before the step and when the
+     * spell lapses, on its own clock at the realm's speed. The stated countdowns are the router's.
      */
     this.wards = new Wards(
       automation.health,
@@ -2514,7 +2513,7 @@ export class SessionManager {
   }
 
   /**
-   * What the realm about to be dialled knows about its players.
+   * What the realm about to be dialled knows of its players, and its speed last read (`kept`).
    *
    * The host calls this with the *dialled* address before `connect`, because a
    * character can be dialled at a saved realm other than its own and what it
@@ -2525,8 +2524,9 @@ export class SessionManager {
    * is pushed, so the flyout on this tab says what the realm knows; no module
    * is told, since a fact absorbed is not a fact this character observed.
    */
-  useRealm(players: RealmPlayers, belongings: CharacterRecord = NO_RECORD): void {
+  useRealm(players: RealmPlayers, belongings: CharacterRecord = NO_RECORD, kept = NOT_KEPT): void {
     this.forgetPlayers();
+    this.errands.useSpeed(kept);
     // What the realm said it lacks, and its family. See `Vocabulary.forgetRealm`.
     this.vocabulary.forgetRealm();
     this.tracker.useRealm(players);
