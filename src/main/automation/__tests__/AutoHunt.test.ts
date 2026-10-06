@@ -15,7 +15,7 @@ import {
   type HuntingSpot,
   type SpotEstimate
 } from '../../../shared/hunting';
-import { sameWalk, type Loop } from '../../../shared/loops';
+import { retimed, type Loop } from '../../../shared/loops';
 import type { Route } from '../../../shared/world';
 
 const config = (over: Partial<HuntingAutomationConfig> = {}): HuntingAutomationConfig => ({
@@ -128,8 +128,9 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
       lap = null;
     },
     retimeLoop: (loop) => {
-      if (lap === null || !sameWalk(lap, loop)) return false;
-      lap = { ...lap, stops: loop.stops };
+      const next = lap === null ? null : retimed(lap, loop);
+      if (next === null) return false;
+      lap = next;
       return true;
     },
     moveInFlight: () => false,
@@ -1048,6 +1049,21 @@ describe('a hunt order', () => {
     here = '1/816';
     auto.onWalkEnded(true, null, at(1_000));
     expect(started.at(-1)?.stops).toEqual(quicker.loop.stops);
+  });
+
+  /* 2026-10-06, run 15: the same ring planned from its far room came listed from there. */
+  it('keeps its lap for the same rooms listed in another order', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    const turned = order();
+    turned.loop = { ...turned.loop, stops: [...turned.loop.stops].reverse() };
+    auto.steer(turned);
+    expect(stops).toEqual([]);
+    expect(lap?.stops.map((stop) => stop.room)).toEqual(
+      order().loop.stops.map((stop) => stop.room)
+    );
   });
 
   it('sets off on the newest loop for its key where it was walking there', () => {
