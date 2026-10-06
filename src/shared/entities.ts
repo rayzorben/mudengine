@@ -35,11 +35,12 @@
  * card reads it the way it reads a name.
  *
  * Dependency-free like everything in `src/shared/`, and its imports are
- * **type-only** — a type-only cycle is erased and harmless where a value cycle
- * is not (see the module-cycle rule in `CLAUDE.md`).
+ * **type-only** but for `sameItem` from `items.ts`, which imports nothing — a
+ * type-only cycle is erased and harmless where a value cycle is not (see the
+ * module-cycle rule in `CLAUDE.md`).
  */
 import type { Alignment } from './alignment';
-import type { ItemKind } from './items';
+import { sameItem, type ItemKind } from './items';
 import type { AlignmentCost, MobAvoid, MobDisposition } from './mobs';
 import type {
   MapObstacle,
@@ -532,6 +533,27 @@ export function entityNumber(of: Numbered): number | null {
   if (of.row !== undefined) return of.row.id;
   if (of.ids !== undefined) return of.ids.length === 1 ? of.ids[0]! : null;
   return of.id ?? null;
+}
+
+/**
+ * The copy of this item among `worn`, or undefined. The server will not put on
+ * a second of the same item, the other finger included (`EquipCommand.Execute`:
+ * `You are already wearing copper ring!`; 2026-10-06, a copper ring asked for
+ * every three seconds for the finger the iron ring was on), and readying the
+ * weapon already in hand changes nothing. The server compares the realm's row,
+ * so two rows sharing a name are two items where both rows are known
+ * (`entityNumber`); the name decides otherwise.
+ */
+export function wornCopy<T extends Numbered & { name: string }>(
+  worn: readonly T[],
+  item: Numbered & { name: string }
+): T | undefined {
+  const row = entityNumber(item);
+  return worn.find((each) => {
+    if (!sameItem(each.name, item.name)) return false;
+    const its = entityNumber(each);
+    return row === null || its === null || its === row;
+  });
 }
 
 /**

@@ -196,6 +196,16 @@ describe('putting on everything the realm says can be worn', () => {
     expect(plan.commands).toEqual([]);
   });
 
+  /* `You are already wearing copper ring!`: a spare is never put on the other finger. */
+  it('leaves a spare of an item already worn', () => {
+    const plan = equipAllPlan(
+      [worn('copper ring', 'Finger'), carried({ name: 'copper ring' })],
+      wearable,
+      10
+    );
+    expect(plan.commands).toEqual([]);
+  });
+
   /* Asking twice puts the spare on the same hands, which the server refuses. */
   it('asks once for two of one name', () => {
     const plan = equipAllPlan(

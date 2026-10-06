@@ -16,7 +16,7 @@
  */
 import { alignmentBand, type Alignment } from './alignment';
 import type { CarriedItem } from './character';
-import type { ItemEntity } from './entities';
+import { wornCopy, type ItemEntity } from './entities';
 import type { UiLookup } from './i18n';
 import {
   ARMOUR_TYPE,
@@ -162,14 +162,17 @@ export function restorePlan(
  * An item the realm does not know is **not** offered. That is the refuse-
  * rather-than-guess rule: a private realm's own item is exactly the case where
  * the client knows nothing, and a broadcast `wear` is what a wrong guess costs.
+ * Nor is a spare of an item already on (`wornCopy`): a second copper ring
+ * earns `You are already wearing copper ring!`.
  */
 export function equipAllPlan(
   items: readonly CarriedItem[],
   wearable: (name: string) => boolean,
   max: number
 ): GearPlan {
+  const on = items.filter((item) => item.equipped);
   const wanted = items
-    .filter((item) => !item.equipped && wearable(item.name))
+    .filter((item) => !item.equipped && wearable(item.name) && wornCopy(on, item) === undefined)
     .map((item) => item.name);
   return capped(dedupe(wanted).map(equip), [], max);
 }

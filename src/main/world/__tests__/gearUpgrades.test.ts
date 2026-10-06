@@ -166,15 +166,36 @@ describe('what counts as an upgrade', () => {
     const fingers = (state: CharacterState) =>
       gearUpgrades(state, ringRealm, asker, 3).find((slot) => slot.slot === 'Finger');
     const one = wearing({ name: 'silver ring', equipped: true, wornSlotCode: 4 });
-    expect(fingers(one)?.offers.map((offer) => offer.name)).toEqual(
-      expect.arrayContaining(['gold ring', 'silver ring', 'copper ring'])
-    );
+    expect(
+      fingers(one)
+        ?.offers.map((offer) => offer.name)
+        .sort()
+    ).toEqual(['copper ring', 'gold ring']);
     const two = wearing(
       { name: 'silver ring', equipped: true, wornSlotCode: 4 },
       { name: 'copper ring', equipped: true, wornSlotCode: 4 }
     );
     expect(fingers(two)?.worn).toBe('copper ring');
-    expect(fingers(two)?.offers.map((offer) => offer.name)).toEqual(['gold ring', 'silver ring']);
+    expect(fingers(two)?.offers.map((offer) => offer.name)).toEqual(['gold ring']);
+  });
+
+  /* 2026-10-06: a copper ring asked for every three seconds for the finger the iron ring was on, beside a copper ring. */
+  it('is never a second copy of an item already worn in the slot', () => {
+    const rings = [
+      { id: 11, name: 'iron ring', worn: 4, kind: 'armour', armour: { ac: 1 } },
+      { id: 12, name: 'copper ring', worn: 4, kind: 'armour', armour: { ac: 2 } }
+    ] as WorldItem[];
+    const ringRealm = {
+      ...realm(),
+      itemsWornIn: (worn: number) => rings.filter((item) => item.worn === worn)
+    };
+    const state = wearing(
+      { name: 'iron ring', equipped: true, wornSlotCode: 4 },
+      { name: 'copper ring', equipped: true, wornSlotCode: 4 }
+    );
+    const fingers = gearUpgrades(state, ringRealm, asker, 3).find((slot) => slot.slot === 'Finger');
+    expect(fingers?.worn).toBe('iron ring');
+    expect(fingers?.offers).toEqual([]);
   });
 });
 
@@ -287,6 +308,11 @@ describe('the character wearing other gear', () => {
   it('changes nothing for a name the realm does not hold', () => {
     const state = wearing({ name: 'leather cap', equipped: true, wornSlotCode: 2 });
     expect(wearingItems(state, ['glass jug'], gear, asker)).toEqual({ state, worn: [] });
+  });
+
+  it('leaves off an item already worn in its slot', () => {
+    const state = wearing({ name: 'leather cap', equipped: true, wornSlotCode: 2 });
+    expect(wearingItems(state, ['leather cap'], gear, asker)).toEqual({ state, worn: [] });
   });
 
   it('puts on a copy the pack already carries, adding no weight', () => {
