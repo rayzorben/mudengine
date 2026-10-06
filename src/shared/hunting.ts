@@ -1169,6 +1169,14 @@ export interface HuntingAssumptions {
   family: RealmFamily | null;
   hpMax: number | null;
   restingHealthPerTick: number | null;
+  /**
+   * Health regained per standing tick (`DoHPTick`, every
+   * `constants.passiveTickSeconds`, resting, fighting or walking), a floor
+   * until `stat all` states it; null where the sheet does not state it and the
+   * family's arithmetic cannot give it. A tick that comes at full health adds
+   * nothing.
+   */
+  passiveHealthPerTick: number | null;
   backstab: boolean;
   stepMs: number;
   heal: HealingCast | null;

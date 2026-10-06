@@ -2436,6 +2436,7 @@ function registerIpc(): void {
           family: null,
           hpMax: null,
           restingHealthPerTick: null,
+          passiveHealthPerTick: null,
           backstab: false,
           stepMs: tuning().hunting.stepMs,
           heal: null,

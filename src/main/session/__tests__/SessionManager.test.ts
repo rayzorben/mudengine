@@ -8240,6 +8240,9 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(orc?.estimate.unknown).toContain('rounds');
     expect(advice.assumptions.measured).toBeNull();
     expect(asked).toHaveLength(0);
+    // The standing tick's health, read off the sheet's `HP Regen: 6/18`.
+    expect(advice.assumptions.passiveHealthPerTick).toBe(6);
+    expect(advice.assumptions.restingHealthPerTick).toBe(18);
   });
 
   /*
