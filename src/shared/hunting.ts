@@ -13,6 +13,7 @@ import type { MeasuredOutput } from './fights';
 import type { UiLookup } from './i18n';
 import type { Loop, LoopStop } from './loops';
 import type { MobAffliction } from './menace';
+import type { CharacterState } from './character';
 import type { RealmFamily } from './realm';
 import type { RoomId } from './world';
 
@@ -1070,6 +1071,15 @@ export function addFiller(
  */
 export type HuntVia = 'lair' | 'resident' | 'seen';
 
+/** How the survey is asked: for the character as it stands or as `as`, and what it keeps that it would leave out. */
+export interface SurveyAsk {
+  as?: CharacterState;
+  /** The spots beneath this level, marked `estimate.trivial`. */
+  beneath?: boolean;
+  /** The spots the level ready would shut once trained, marked `closesWithTraining`. */
+  gated?: boolean;
+}
+
 /** One suggestion: a lair, the rooms that hold it, and what it is worth. */
 export interface HuntingSpot {
   /** The lair's signature, stable across asks. */
@@ -1097,6 +1107,13 @@ export interface HuntingSpot {
   roomCount: number;
   /** Steps round the ring and along every detour, as measured. */
   loopSteps: number;
+  /**
+   * With a level ready to train, training it shuts the way back here (a lair
+   * behind an exit for levels up to the current one, such as `Level: 0 to
+   * 5`). Set only where the survey was asked to keep such grounds (`gated`);
+   * otherwise they are left out and counted.
+   */
+  closesWithTraining?: true;
   estimate: SpotEstimate;
 }
 

@@ -8111,6 +8111,12 @@ describe('the hunting survey prices a kill off the fight record', () => {
     advice = await settled();
     expect(advice.excluded.gated).toBe(2);
     expect(advice.spots).toHaveLength(0);
+    // Asked to keep them, for a planner weighing the training against them (2026-10-06): kept, and marked.
+    const kept = manager!['errands'].huntingGrounds(null, null, { gated: true });
+    expect(kept.excluded.gated).toBe(0);
+    const marked = [...kept.spots, ...kept.unmeasured];
+    expect(marked).toHaveLength(2);
+    expect(marked.every((spot) => spot.closesWithTraining === true)).toBe(true);
   });
 
   /*
@@ -8128,7 +8134,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
       }
     });
     const survey = (as: CharacterState): HuntingAdvice =>
-      manager!['errands'].huntingGrounds(null, null, as);
+      manager!['errands'].huntingGrounds(null, null, { as });
     expect(survey(holding({ min: 2, max: 12, kind: 1 })).assumptions.backstab).toBe(false);
     expect(survey(holding({ min: 2, max: 8, kind: 2 })).assumptions.backstab).toBe(true);
     // An empty hand backstabs (`AttackCommand.cs:115`).

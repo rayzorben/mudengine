@@ -25,7 +25,7 @@ import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
-import type { HuntingAdvice, HuntOrder, HuntWait } from '../../shared/hunting';
+import type { HuntingAdvice, HuntOrder, HuntWait, SurveyAsk } from '../../shared/hunting';
 import type { ItemRarity } from '../../shared/rarity';
 import type { TuningConfig } from '../../shared/internal';
 import type { Stash } from '../../shared/stash';
@@ -88,9 +88,11 @@ export interface ExtensionSessionHost {
    * priced afresh each time, so it is one piece of an extension's work, never
    * several in a turn. `beneath` keeps the spots beneath this level, marked
    * `estimate.trivial`, which the hunt's own survey leaves out, so steer one
-   * with an order.
+   * with an order. With a level ready to train, `gated` keeps the spots
+   * training it would shut, marked `closesWithTraining`; otherwise the survey
+   * leaves them out (`excluded.gated`).
    */
-  huntingGrounds(options?: { as?: CharacterState; beneath?: boolean }): HuntingAdvice;
+  huntingGrounds(options?: SurveyAsk): HuntingAdvice;
   realmClass(): RealmClass;
   capabilities(): Capabilities;
   /**
