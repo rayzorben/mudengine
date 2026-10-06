@@ -806,11 +806,17 @@ const TUNING_DEFAULTS = {
      * cases, and orohost's rounds come a second apart), the longest gap between
      * openings that is still one fight's (half again the server's round), how
      * many gaps are needed before the figure is read, and how many are kept.
+     * Once some speed explains `speedShare` of the gaps, the figure is the
+     * slowest speed that explains `speedShare` of what the best explains, a gap
+     * being explained where it is a whole number of the speed's rounds, give or
+     * take `speedSlack` of a round (orohost's are within 53 ms of a 1 s round).
      */
     speedQuietMs: 500,
     speedGapMostMs: 7500,
     speedRounds: 12,
     speedKept: 60,
+    speedSlack: 0.15,
+    speedShare: 0.8,
     /** Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`, 1.5s). */
     killOverheadMs: 1500,
     /** One step of a walk — the movement round measured at 1,239ms. */

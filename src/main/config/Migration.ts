@@ -6824,6 +6824,8 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'speedGapMostMs', DEFAULT_INTERNAL.tuning.hunting.speedGapMostMs);
     addKey('hunting', 'speedRounds', DEFAULT_INTERNAL.tuning.hunting.speedRounds);
     addKey('hunting', 'speedKept', DEFAULT_INTERNAL.tuning.hunting.speedKept);
+    addKey('hunting', 'speedSlack', DEFAULT_INTERNAL.tuning.hunting.speedSlack);
+    addKey('hunting', 'speedShare', DEFAULT_INTERNAL.tuning.hunting.speedShare);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
