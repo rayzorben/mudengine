@@ -93,6 +93,14 @@ export interface ExtensionSessionHost {
    * leaves them out (`excluded.gated`).
    */
   huntingGrounds(options?: SurveyAsk): HuntingAdvice;
+  /**
+   * How many times faster than the server's own clocks the realm runs, read
+   * off this session's rounds (GreaterMUD's `GameSpeedMultiplier`: orohost 5):
+   * 1 until `tuning.hunting.speedRounds` rounds are read. The survey is priced
+   * at it (`assumptions.constants.speed` is the figure a survey was priced at),
+   * so a survey asked before it changed is priced at the old figure.
+   */
+  realmSpeed(): number;
   realmClass(): RealmClass;
   capabilities(): Capabilities;
   /**

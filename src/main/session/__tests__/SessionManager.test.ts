@@ -8041,6 +8041,8 @@ describe('the hunting survey prices a kill off the fight record', () => {
     }
     await settled();
     expect(asked.at(-1)?.ask.roundMs).toBe(1000);
+    // The figure an extension reads (`ExtensionSessionHost.realmSpeed`).
+    expect(manager!['errands'].realmSpeed).toBe(5);
   });
 
   /*
