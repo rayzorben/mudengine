@@ -1588,7 +1588,7 @@ export class SessionManager {
         combat: this.combat,
         supplies: this.supplies,
         trainLevel: this.trainLevel,
-        outgrown: this.outgrown,
+        ...{ outgrown: this.outgrown, recoverGear: this.recoverGear },
         ...{ stashFetch: this.stashFetch, areaSearch: this.areaSearch },
         hunt: this.hunt,
         itemErrand: this.itemErrand,
@@ -3195,7 +3195,7 @@ export class SessionManager {
    * what it came for.
    */
   private errandHeld(): boolean {
-    return this.travel.escaping || this.travel.errandUnderWay();
+    return this.travel.escaping || this.travel.holdsTrips();
   }
 
   /** The passage last said, so going in and coming out are each said once. */

@@ -758,7 +758,10 @@ tuning:
   # Going back for the kit after a death — `GearRecovery`. `collectMs` is how
   # long the pack has to reflect the `get`s before the kit is put on with what
   # arrived; `expiresMs` drops a command still queued when the room has changed.
+  # `decideMs` is how long after a death the inventory and stats have to come
+  # back before the recovery is refused; until then no other trip starts.
   gearRecovery:
+    decideMs: 20000
     collectMs: 8000
     expiresMs: 6000
 
