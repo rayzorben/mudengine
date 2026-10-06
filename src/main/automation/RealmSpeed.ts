@@ -1,7 +1,8 @@
 /**
  * How many times faster than the server's own clocks this realm runs
  * (GreaterMUD's `GameSpeedMultiplier`: orohost 5, paramud 1), read off a
- * fight's blows. A blow after `speedQuietMs` of quiet opens a round at any
+ * fight's blows and off health rising out of a fight on the realm's tick
+ * (`healthRose`). A blow after `speedQuietMs` of quiet opens a round at any
  * speed; a gap between openings up to `speedGapMostMs` in one room is counted
  * (a room shown starts again: the next room's rounds keep their own time), and
  * once `speedRounds` are seen the figure is the slowest whole speed whose round
@@ -74,6 +75,9 @@ export class RealmSpeed {
   private gaps: number[] = [];
   /** The figure, worked out when a gap is counted rather than on every read. */
   private figure: number | null = null;
+  /** The health on the last line, and when it last rose out of a fight, resting or standing. */
+  private lastHp: number | null = null;
+  private lastRise: { at: number; resting: boolean } | null = null;
 
   /** Where the figure is kept for the address dialled; nowhere until `useKept`. */
   private kept: KeptSpeed = NOT_KEPT;
@@ -91,26 +95,57 @@ export class RealmSpeed {
 
   /** A blow at `at`: one that opens a round times the gap from the last opening. */
   blow(at: number): void {
-    const { speedQuietMs, speedGapMostMs, speedKept } = tuning().hunting;
-    const { roundSeconds, speedRounds, speedSlack, speedShare } = tuning().hunting;
+    const { speedQuietMs, speedGapMostMs } = tuning().hunting;
     const opens = at - this.lastBlowAt > speedQuietMs;
     this.lastBlowAt = at;
     if (!opens) return;
-    if (this.opened !== null && at - this.opened <= speedGapMostMs) {
-      this.gaps.push(at - this.opened);
-      if (this.gaps.length > speedKept) this.gaps.splice(0, this.gaps.length - speedKept);
-      const serverRoundMs = roundSeconds * 1000;
-      const fit = {
-        least: speedRounds,
-        slack: speedSlack,
-        share: speedShare,
-        fastest: Math.max(1, Math.floor(serverRoundMs / speedQuietMs))
-      };
-      const read = speedOf(this.gaps, serverRoundMs, fit);
-      if (read !== null && read !== this.figure) this.kept.remember(read);
-      this.figure = read ?? this.figure;
-    }
+    if (this.opened !== null && at - this.opened <= speedGapMostMs) this.count(at - this.opened);
     this.opened = at;
+  }
+
+  /**
+   * A line's health. GreaterMUD runs one rest tick for the whole realm
+   * (`TimedEventManager`): a resting character gains on every one, and the
+   * standing gain (`DoHPTick`) comes on every second, so two rises are a whole
+   * number of ticks apart: of the standing tick where both were standing, of
+   * the rest tick where either end was resting. That gap is counted in rounds
+   * beside the blows', up to `speedGapMostMs` in rounds. A caster killing in a
+   * round or two leaves few blows to read (2026-10-06: none in 25 minutes on
+   * orohost, where the standing tick came every 5.8 to 6.1 s). Counted by the
+   * rest tick, a standing gap is always an even number of ticks, and at an even
+   * speed half the speed would fit them all. A heal, a potion or gear with
+   * health put on raises health off the tick; a rise in a fight, where a heal
+   * is likeliest, is not counted and does not move the last rise.
+   */
+  healthRose(hp: number | null, resting: boolean, fighting: boolean, at: number): void {
+    const before = this.lastHp;
+    this.lastHp = hp;
+    if (hp === null || before === null || hp <= before || fighting) return;
+    const { roundSeconds, restTickSeconds, passiveTickSeconds, speedGapMostMs } = tuning().hunting;
+    const last = this.lastRise;
+    this.lastRise = { at, resting };
+    if (last === null) return;
+    const tick = resting || last.resting ? restTickSeconds : passiveTickSeconds;
+    const gap = ((at - last.at) * roundSeconds) / tick;
+    if (gap <= speedGapMostMs) this.count(gap);
+  }
+
+  /** One gap in ms of the realm's rounds: kept, and the figure worked out again. */
+  private count(gap: number): void {
+    const { speedQuietMs, speedKept, roundSeconds } = tuning().hunting;
+    const { speedRounds, speedSlack, speedShare } = tuning().hunting;
+    this.gaps.push(gap);
+    if (this.gaps.length > speedKept) this.gaps.splice(0, this.gaps.length - speedKept);
+    const serverRoundMs = roundSeconds * 1000;
+    const fit = {
+      least: speedRounds,
+      slack: speedSlack,
+      share: speedShare,
+      fastest: Math.max(1, Math.floor(serverRoundMs / speedQuietMs))
+    };
+    const read = speedOf(this.gaps, serverRoundMs, fit);
+    if (read !== null && read !== this.figure) this.kept.remember(read);
+    this.figure = read ?? this.figure;
   }
 
   /** The realm's figure: until enough rounds are seen, the one kept for this server, else 1. */
@@ -123,5 +158,7 @@ export class RealmSpeed {
     this.opened = null;
     this.gaps = [];
     this.figure = null;
+    this.lastHp = null;
+    this.lastRise = null;
   }
 }
