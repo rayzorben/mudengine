@@ -245,7 +245,7 @@ export type ErrandsWorld = Pick<
 /** What the answers are read from: the realm, the character, the fight record. */
 export interface ErrandsParts {
   readonly world: ErrandsWorld | undefined;
-  readonly tracker: Pick<CharacterTracker, 'current'>;
+  readonly tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
   /** What this character has measured dealing a round, for the survey. */
   readonly fightRecord: Pick<FightSink, 'measured'>;
   /** The rooms' refills the wire timed, and what its kills paid solo, on this realm (`RealmLore`). */
@@ -373,10 +373,14 @@ export class Errands implements SessionModule {
     this.clocks.reset();
   }
 
-  /** Every character line, with its block: an exit the room prints given back, and a refill timed. */
+  /**
+   * Every character line, with its block: an exit the room prints given back,
+   * and a refill timed (an arrival while a move is unanswered is the next
+   * room's).
+   */
   onCharacter(state: CharacterState, block: Pick<Block, 'type'>): void {
     this.unrefuseWhatTheRoomPrints(state);
-    this.clocks.onCharacter(state, block);
+    this.clocks.onCharacter(state, block, this.tracker.pendingMoves > 0);
   }
 
   /** The server's family moved, so every remembered `fitness` is stale. */
