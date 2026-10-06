@@ -109,11 +109,7 @@ export type { RouteOptions, Traveller } from './Router';
 
 /**
  * How a lever is filed and looked up: the exit it opens, not the room that
- * holds it.
- *
- * One spelling, used by the index and by every question put to it, because two
- * spellings of a key agree exactly until one of them is edited — the same
- * reason `refusedEdges` keys through one expression.
+ * holds it. One spelling, since two agree only until one of them is edited.
  */
 function leverKey(room: RoomId, direction: string): string {
   return `${room}|${direction}`;
@@ -464,6 +460,10 @@ export class WorldGraph {
 
   summonersOf(mob: WorldMob): WorldMob[] {
     return this.catalogue.summonersOf(mob);
+  }
+
+  supply(): ReturnType<Catalogue['supply']> {
+    return this.catalogue.supply();
   }
 
   buildItemEntity(

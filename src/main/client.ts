@@ -29,6 +29,7 @@ import { migrateHome } from './config/Migration';
 import { CHARACTER_RECORDS, homeAt, homeRoot, type Home } from './app/home';
 import { WorldGraph, type Traveller } from './world/WorldGraph';
 import { wearerOf } from './world/wearer';
+import { rarityBook } from './world/itemRarity';
 import { RealmLibrary } from './world/RealmLibrary';
 import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
@@ -45,6 +46,7 @@ import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, unrouted } from '../shared/world';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
+import type { ItemRarity } from '../shared/rarity';
 import {
   dropAllPlan,
   equip,
@@ -2641,6 +2643,10 @@ function registerIpc(): void {
       const peace = rowPeaceFor(rules, mob.name);
       if (peace !== null) rowPeace[mob.name] = peace;
     }
+    // And how rare each item named is, from the realm's supply (todo 13).
+    const book = found.items.length > 0 ? rarityBook(world) : null;
+    const rarity: Record<number, ItemRarity> = {};
+    for (const item of found.items) if (book !== null) rarity[item.id] = book.of(item.id);
     return {
       ...found,
       ...(Object.keys(learned).length > 0 ? { learned } : {}),
@@ -2648,7 +2654,8 @@ function registerIpc(): void {
       ...(Object.keys(shopPlaces).length > 0 ? { shopPlaces } : {}),
       ...(Object.keys(mobPlaces).length > 0 ? { mobPlaces } : {}),
       ...(Object.keys(verdicts).length > 0 ? { verdicts } : {}),
-      ...(Object.keys(rowPeace).length > 0 ? { rowPeace } : {})
+      ...(Object.keys(rowPeace).length > 0 ? { rowPeace } : {}),
+      ...(Object.keys(rarity).length > 0 ? { rarity } : {})
     };
   });
 

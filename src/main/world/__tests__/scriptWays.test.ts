@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { HAZARD_ABILITY } from '../../../shared/abilities';
-import { scriptLines } from '../navigation/scriptWays';
+import { columnRows, scriptLines, scriptsOf } from '../navigation/scriptWays';
 import { readLines } from '../navigation/textblock';
 
 const blocks = (rows: Record<number, string>) =>
@@ -22,7 +22,8 @@ const ROWS: Record<number, Array<[number, number]>> = {
     [HAZARD_ABILITY.textBlock, 41]
   ]
 };
-const abilities = (spell: number) => ROWS[spell];
+const abilities = (spell: number) =>
+  ROWS[spell] === undefined ? undefined : { abilities: ROWS[spell] };
 
 describe('a spell script as its lines in order', () => {
   /* The pyramid's fourth-floor arch, `pyramid 4 arch pass` over `arch fail`. */
@@ -70,5 +71,23 @@ describe('a spell script as its lines in order', () => {
     const two = blocks({ 40: 'addexp 0', 41: 'teleport 1 1' });
     expect(scriptLines(4, abilities, two)).toEqual([{ gates: [], moves: 'unread' }]);
     expect(scriptLines(4, abilities, blocks({ 40: 'addexp 0', 41: 'message 3' }))).toBeNull();
+  });
+});
+
+describe('the blocks a spell runs', () => {
+  /* `inMainValue`: a column of 0 is one of the spell's own `MinBase..MaxBase`. */
+  it('takes the spell’s own roll for a column of 0, and nothing with no power', () => {
+    expect(columnRows(9, [1, 2])).toEqual([9]);
+    expect(columnRows(0, [20, 22])).toEqual([20, 21, 22]);
+    expect(columnRows(0, [0, 0])).toEqual([]);
+    expect(
+      scriptsOf({
+        abilities: [
+          [HAZARD_ABILITY.textBlock, 0],
+          [HAZARD_ABILITY.textBlock, 7]
+        ],
+        power: [20, 21]
+      })
+    ).toEqual([[20, 21], [7]]);
   });
 });

@@ -327,14 +327,19 @@ describe('what a room’s spell does to whoever stands in it', () => {
     expect(hazard.unread).toBe(true);
   });
 
-  /* `TextBlock 0` is the realm's *no script*, not a script it lost. */
-  it('reads a text block of zero as no script at all', () => {
-    const hazard = resolveHazard(
-      1,
-      spells({ 1: { abilities: [[HAZARD_ABILITY.textBlock, 0]], power: [5160, 5160] } }),
-      blocks({})
-    );
-    expect(hazard).toMatchObject({ damage: 0, unread: false });
+  /*
+   * `TextBlock 0` is the spell's own roll (`inMainValue`, `Spell.cs:1637`):
+   * `bristlewood` names block 5160 by its power, and the block is its
+   * wandering-monster table. With no power it is no script at all.
+   */
+  it('reads a text block of zero as the block its power names', () => {
+    const forest = spells({
+      1: { abilities: [[HAZARD_ABILITY.textBlock, 0]], power: [5160, 5160] },
+      2: { abilities: [[HAZARD_ABILITY.textBlock, 0]], power: [0, 0] }
+    });
+    const table = blocks({ 5160: 'random 5161', 5161: '80:addevil 0\n100:summon 40' });
+    expect(resolveHazard(1, forest, table)).toMatchObject({ damage: 0, summons: true });
+    expect(resolveHazard(2, forest, blocks({}))).toMatchObject({ damage: 0, unread: false });
   });
 
   /*

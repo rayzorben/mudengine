@@ -62,7 +62,7 @@
  */
 import { ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
 import type { Quest, QuestStep, QuestWay } from '../../shared/quests';
-import { abilityPairs } from './buildRealm';
+import { abilityPairs } from './values';
 import { readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
 import { itemsInScripts } from './roomScript';

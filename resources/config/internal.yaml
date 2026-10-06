@@ -866,6 +866,25 @@ tuning:
     sellFromCopper: 1000
     confirmMs: 8000
 
+  # How rare an item is, from the world database. The figure is the hours to
+  # one copy at the item's quickest source; under commonHours is common, under
+  # uncommonHours uncommon, under rareHours rare, under veryRareHours very rare,
+  # anything slower extremely rare. lairSeconds is how often a lair refills when
+  # its room states no Delay, roamSeconds how often a roaming monster comes,
+  # onDemandSeconds how often a phrase that asks nothing is said, placedHours how
+  # often the nightly cleanup puts a placed item back. passes caps how many times
+  # the monster and item rates are worked out, since each feeds the other.
+  rarity:
+    commonHours: 1
+    uncommonHours: 24
+    rareHours: 168
+    veryRareHours: 720
+    lairSeconds: 300
+    roamSeconds: 600
+    onDemandSeconds: 60
+    placedHours: 24
+    passes: 20
+
   # Fetching named items from a stash — `StashFetch`. Up to `searches` bare
   # searches before settling for the open floor (each search rolls every hidden
   # item against Perception); `collectMs` waits for a search's answer and for
@@ -1810,6 +1829,10 @@ tuning:
 
     # Framed lines kept for the Stream card.
     lineLogLimit: 200
+
+    # Where an item comes from, on the Reference card: this many sources,
+    # quickest first, then a count of the rest.
+    raritySourcesShown: 6
 
     # Remembered conversation. Generous, because the point of keeping it is
     # that somebody can come back to what they missed.
