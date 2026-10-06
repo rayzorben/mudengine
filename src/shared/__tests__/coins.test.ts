@@ -11,6 +11,7 @@ import {
   currencyOfCode,
   expectedCopper,
   quotedInCopper,
+  soldForCopper,
   takeCoins
 } from '../coins';
 
@@ -108,6 +109,18 @@ describe("a counter's price", () => {
     expect(chargedInCopper(500, 70)).toBe(480);
     expect(chargedInCopper(500, 40)).toBe(510);
     expect(chargedInCopper(500, null)).toBe(550);
+  });
+
+  /*
+   * The wire, 2026-10-04: Soul (charm 60) sold a silk robe, 15 gold in the
+   * realm's row, `for 825 copper farthings`: half of 1,500, and 10% of that.
+   */
+  it('pays half the base for a sale, charm counted from 50, an unread charm at the floor', () => {
+    expect(soldForCopper(15, 'gold', 60)).toBe(825);
+    expect(soldForCopper(15, 'gold', 50)).toBe(750);
+    expect(soldForCopper(15, 'gold', 40)).toBe(675);
+    expect(soldForCopper(15, 'gold', null)).toBe(375);
+    expect(soldForCopper(0, 'silver', 60)).toBe(0);
   });
 });
 

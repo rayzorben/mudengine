@@ -5,9 +5,11 @@
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import type { AreaSearch } from '../automation/AreaSearch';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { Blessings } from '../automation/Blessings';
 import type { CommandQueue } from '../automation/CommandQueue';
+import { asSellAsk, type SellTrip } from '../automation/SellTrip';
 import { asStashFetchAsk, type StashFetch } from '../automation/StashFetch';
 import type { ErrandStage, Supplies } from '../automation/Supplies';
 import type { TrainErrand } from '../automation/TrainErrand';
@@ -19,6 +21,7 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import { bestInSlot } from '../world/bestInSlot';
 import { gearUpgrades, type UpgradeRealm } from '../world/gearUpgrades';
 import { rarityBook, type RarityWorld } from '../world/itemRarity';
+import { salePlaces } from '../world/salePlaces';
 import { learnerOf, learning } from '../world/learning';
 import { slotAskerOf, type SlotAsker } from '../world/slotGear';
 import { spellScrolls } from '../world/spellScrolls';
@@ -66,7 +69,11 @@ export interface ExtensionWiring {
   blessings: Pick<Blessings, 'entries'>;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
-  stashFetch: Pick<StashFetch, 'fetch' | 'current'>;
+  hostTrips: {
+    stash: Pick<StashFetch, 'fetch' | 'current'>;
+    sell: Pick<SellTrip, 'sell' | 'current'>;
+  };
+  areaSearch: Pick<AreaSearch, 'last'>;
   trainLevel: Pick<TrainErrand, 'heading' | 'refusal' | 'trainersAhead'>;
   walker: Pick<Walker, 'progress'>;
   queue: Pick<CommandQueue, 'offer'>;
@@ -211,6 +218,14 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         const world = wiring.world();
         return world === undefined ? null : rarityBook(world).of(item);
       },
+      areaSearched: () => wiring.areaSearch.last,
+      salePlaces: (item) => {
+        const world = wiring.world();
+        const state = tracker.current;
+        const here = roomAddress(state.room);
+        if (world === undefined || here === null) return [];
+        return salePlaces(item, state.progress.charm, world, here, errands.travellerNow(state));
+      },
       safety: wiring.safety,
       busy: wiring.busy,
       backscroll: (lines) => deps?.backscroll(lines) ?? Promise.resolve(''),
@@ -250,13 +265,25 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         record: () => tracker.current.stash,
         fetch: (ask) => {
           const parsed = asStashFetchAsk(ask);
-          if (parsed !== null) return wiring.stashFetch.fetch(parsed, tracker.current);
-          const why = t('automation.stashFetch.refusalUnreadable');
+          if (parsed !== null) return wiring.hostTrips.stash.fetch(parsed, tracker.current);
+          const why = t('automation.hostTrip.refusalUnreadable');
           wiring.notice(t('automation.stashFetch.refused', { why }));
           return why;
         },
         get current() {
-          return wiring.stashFetch.current;
+          return wiring.hostTrips.stash.current;
+        }
+      },
+      selling: {
+        sell: (ask) => {
+          const parsed = asSellAsk(ask);
+          if (parsed !== null) return wiring.hostTrips.sell.sell(parsed, tracker.current);
+          const why = t('automation.hostTrip.refusalUnreadable');
+          wiring.notice(t('automation.sellTrip.refused', { why }));
+          return why;
+        },
+        get current() {
+          return wiring.hostTrips.sell.current;
         }
       },
       walk: () => wiring.walker.progress,

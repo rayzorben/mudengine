@@ -8,6 +8,7 @@ import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import type { SafetyDecision } from '../../../shared/automation';
 import { wireItem } from '../../../shared/entities';
 import type { Route } from '../../../shared/world';
+import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 
 const automation: AutomationConfig = {
@@ -95,14 +96,21 @@ const drain = (): void => void vi.advanceTimersByTime(500);
 describe('fetching from a stash', () => {
   it('walks to the room as a leg, holding the lap, and reports the trip', () => {
     const fetch = make();
-    expect(fetch.fetch({ room: VAULT, items: ['katana'], search: true }, inVault())).toBeNull();
+    expect(
+      fetch.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault())
+    ).toBeNull();
     expect(held).toBe(1);
-    expect(fetch.current).toEqual({ room: VAULT, items: ['katana'], stage: 'walking' });
+    expect(fetch.current).toEqual({
+      room: VAULT,
+      items: ['katana'],
+      source: 'stash',
+      stage: 'walking'
+    });
   });
 
   it('searches on arrival, and takes what the search turned up', () => {
     const fetch = make();
-    fetch.fetch({ room: VAULT, items: ['katana'], search: true }, inVault());
+    fetch.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault());
     here = VAULT;
     fetch.onWalkEnded(true, null, inVault());
     drain();
@@ -120,10 +128,27 @@ describe('fetching from a stash', () => {
     expect(decisions.at(-1)).toMatchObject({ action: 'fetch from stash', acted: true });
   });
 
+  it('says a find taken as a find, not as the stash', () => {
+    const fetch = make();
+    fetch.fetch({ room: VAULT, items: ['katana'], search: true, source: 'finds' }, inVault());
+    here = VAULT;
+    fetch.onWalkEnded(true, null, inVault());
+    drain();
+    fetch.onBlock(block('room-hidden-items', { items: 'katana' }));
+    fetch.onCharacter(inVault({ hidden: [wireItem('katana')] }));
+    drain();
+    fetch.onCharacter(inVault({}, ['katana']));
+    expect(notices.at(-1)).toBe(t('automation.stashFetch.finds.done', { items: 'katana' }));
+    expect(decisions.at(-1)).toMatchObject({ action: 'fetch a find', acted: true });
+  });
+
   it('searches on while one named item is still unseen, though another turned up', () => {
     const fetch = make();
     here = VAULT;
-    fetch.fetch({ room: VAULT, items: ['katana', 'padded gloves'], search: true }, inVault());
+    fetch.fetch(
+      { room: VAULT, items: ['katana', 'padded gloves'], search: true, source: 'stash' },
+      inVault()
+    );
     drain();
     fetch.onBlock(block('room-hidden-items', { items: 'katana' }));
     fetch.onCharacter(inVault({ hidden: [wireItem('katana')] }));
@@ -138,7 +163,7 @@ describe('fetching from a stash', () => {
   it('searches again when a search finds nothing, then settles for the open floor', () => {
     const fetch = make();
     here = VAULT;
-    fetch.fetch({ room: VAULT, items: ['katana'], search: true }, inVault());
+    fetch.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault());
     const nothing = block('user-search-failed');
     for (let at = 1; at < tuning().stashFetch.searches; at += 1) {
       drain();
@@ -159,7 +184,7 @@ describe('fetching from a stash', () => {
     const fetch = make();
     here = VAULT;
     expect(
-      fetch.fetch({ room: VAULT, items: ['katana'], search: false }, inVault())
+      fetch.fetch({ room: VAULT, items: ['katana'], search: false, source: 'stash' }, inVault())
     ).not.toBeNull();
     expect(fetch.busy).toBe(false);
     expect(released).toBe(1);
@@ -168,29 +193,36 @@ describe('fetching from a stash', () => {
 
   it('refuses out loud while fighting, with automation off, or already on a trip', () => {
     const fighting = { ...inVault(), inCombat: true };
-    expect(make().fetch({ room: VAULT, items: ['katana'], search: true }, fighting)).not.toBeNull();
     expect(
-      make({}, false).fetch({ room: VAULT, items: ['katana'], search: true }, inVault())
+      make().fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, fighting)
+    ).not.toBeNull();
+    expect(
+      make({}, false).fetch(
+        { room: VAULT, items: ['katana'], search: true, source: 'stash' },
+        inVault()
+      )
     ).not.toBeNull();
     const busy = make();
-    busy.fetch({ room: VAULT, items: ['katana'], search: true }, inVault());
-    expect(busy.fetch({ room: VAULT, items: ['katana'], search: true }, inVault())).not.toBeNull();
+    busy.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault());
+    expect(
+      busy.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault())
+    ).not.toBeNull();
     expect(decisions.filter((d) => !d.acted)).toHaveLength(3);
   });
 
   it('refuses a route that is blocked, and gives the lap back', () => {
     const blocked = { ...ROUTE, blocked: true, reason: 'a locked door' } as Route;
     const fetch = make({ routeTo: () => blocked });
-    expect(fetch.fetch({ room: VAULT, items: ['katana'], search: true }, inVault())).toBe(
-      'a locked door'
-    );
+    expect(
+      fetch.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault())
+    ).toBe('a locked door');
     expect(released).toBe(1);
     expect(fetch.busy).toBe(false);
   });
 
   it('is dropped by a death, and the lap goes back', () => {
     const fetch = make();
-    fetch.fetch({ room: VAULT, items: ['katana'], search: true }, inVault());
+    fetch.fetch({ room: VAULT, items: ['katana'], search: true, source: 'stash' }, inVault());
     fetch.abandon();
     expect(fetch.busy).toBe(false);
     expect(released).toBe(1);
@@ -202,7 +234,12 @@ describe("an extension's ask", () => {
     expect(asStashFetchAsk({ room: '1/2150', items: ['katana'], search: true })).toEqual({
       room: VAULT,
       items: ['katana'],
-      search: true
+      search: true,
+      source: 'stash'
+    });
+    expect(asStashFetchAsk({ room: '1/2150', items: ['katana'], source: 'finds' })).toMatchObject({
+      search: false,
+      source: 'finds'
     });
     expect(asStashFetchAsk({ room: 'the vault', items: ['katana'] })).toBeNull();
     expect(asStashFetchAsk({ room: '1/2150', items: ['katana', 3] })).toBeNull();

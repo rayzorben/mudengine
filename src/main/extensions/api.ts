@@ -15,6 +15,7 @@
  * Types only, and stable: an extension built against them imports nothing
  * else of the client's main process.
  */
+import type { AreaSearched } from '../../shared/areaSearch';
 import type { AttackOption } from '../../shared/attackOptions';
 import type { SafetyDecision } from '../../shared/automation';
 import type { Capabilities } from '../../shared/abilities';
@@ -27,6 +28,7 @@ import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
 import type { HuntingAdvice, HuntOrder, HuntWait, SurveyAsk } from '../../shared/hunting';
 import type { ItemRarity } from '../../shared/rarity';
+import type { SaleTrip, SalePlace } from '../../shared/selling';
 import type { TuningConfig } from '../../shared/internal';
 import type { Stash } from '../../shared/stash';
 import type { Odds } from '../../shared/survival';
@@ -34,6 +36,7 @@ import type { SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
 import type { RoomId, Route, WorldRoom } from '../../shared/world';
 import type { WalkProgress } from '../../shared/walk';
 import type { Intent, Offered } from '../automation/CommandQueue';
+import type { SellAsk } from '../automation/SellTrip';
 import type { StashFetchAsk, StashTrip } from '../automation/StashFetch';
 import type { TrainerAhead } from '../automation/TrainErrand';
 import type { RealmClass } from '../session/Errands';
@@ -45,6 +48,7 @@ export type ExtensionWorld = Pick<
   | 'size'
   | 'buildMobEntity'
   | 'buildItemEntity'
+  | 'item'
   | 'byId'
   | 'lairEntities'
   | 'residentEntities'
@@ -175,6 +179,18 @@ export interface ExtensionSessionHost {
    * and which of them matters is the extension's to say.
    */
   rarity(item: number): ItemRarity | null;
+  /**
+   * The player's last Search the area, once over: each room searched and
+   * what its floors held as the walk went on. Null before one has ended.
+   */
+  areaSearched(): AreaSearched | null;
+  /**
+   * The counters that buy an `Items` row, nearest first, each with the moves
+   * from here and what one sale pays (`SellCommand`: half the row's price in
+   * copper, charm counted). None unplaced, with no world, or for a row the
+   * realm states no price for.
+   */
+  salePlaces(item: number): SalePlace[];
   /** The safety trace, newest first. */
   safety(): readonly SafetyDecision[];
   /** An escape, a move, a walk, an errand: the character is someone else's for now. */
@@ -213,10 +229,21 @@ export interface ExtensionSessionHost {
     /**
      * One trip to `room` (`map/room`) for the named items, searching first
      * where `search` is set, since a hidden pile is listed only by a search;
-     * its refusal, or null once under way. Every refusal and ending is said.
+     * its refusal, or null once under way. Every refusal and ending is said,
+     * as the character's own stash or, with `source: 'finds'`, as what a
+     * search turned up (`areaSearched`).
      */
     fetch(ask: StashFetchAsk): string | null;
     readonly current: StashTrip | null;
+  };
+  selling: {
+    /**
+     * One trip to the counter in `room` (`map/room`) to `sell` each named item,
+     * each name taking its whole stack; its refusal, or null once under way.
+     * Every refusal and ending is said.
+     */
+    sell(ask: SellAsk): string | null;
+    readonly current: SaleTrip | null;
   };
   walk(): WalkProgress;
   /** A command proposed to the queue, like any module's. */

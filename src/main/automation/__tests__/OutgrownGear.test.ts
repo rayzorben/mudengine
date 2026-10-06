@@ -9,7 +9,8 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import type { ItemEntity } from '../../../shared/entities';
 import type { OutgrownItem } from '../../../shared/outgrown';
-import type { BuyingPlace, Route } from '../../../shared/world';
+import type { SalePlace } from '../../../shared/selling';
+import type { Route } from '../../../shared/world';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -44,14 +45,12 @@ const outgrown = (name: string, copper: number | null, over: Partial<ItemEntity>
   }) as OutgrownItem;
 
 const ROUTE = { steps: [{}, {}, {}], cost: 3, blocked: false } as unknown as Route;
-const COUNTER: BuyingPlace = {
-  map: 1,
-  room: 20,
-  roomName: 'General Store',
+const COUNTER: SalePlace = {
   shop: 'General Store',
-  markup: 0,
-  detour: 4,
-  moves: 4
+  at: { map: 1, room: 20 },
+  roomName: 'General Store',
+  moves: 4,
+  copper: 1_000
 };
 
 let sent: string[];
@@ -64,7 +63,7 @@ let walked: Route[];
 let held: number;
 let released: number;
 let house: ReturnType<OutgrownPlanner['ganghouse']>;
-let counter: BuyingPlace | null;
+let counter: SalePlace | null;
 let busy: boolean;
 
 const planner = (): OutgrownPlanner => ({

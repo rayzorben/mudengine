@@ -1,6 +1,7 @@
 /**
  * Going to a room and taking named items out of what was hidden there (todo
- * 05, 2026-10-03). Started only by an extension through the host
+ * 05, 2026-10-03): the character's own stash, or what a search turned up
+ * there (todo 17, the area search's finds). Started only by an extension through the host
  * (`stash.fetch`), never by the client itself: the client supplies the walk,
  * the searches and the pick-up (`Collect`), and decides nothing about what to
  * fetch or when. Yields to a fight, a rest, a move, a walk and every other
@@ -15,57 +16,48 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
-import { asRoomReference, roomId, type RoomId } from '../../shared/world';
+import { roomId, type RoomId } from '../../shared/world';
+import { asRoomAndItems, tripRefusal, type TripPlanner } from './askedTrip';
 import type { SessionModule } from './Module';
 
-export interface StashFetchPlanner extends CollectPlanner {
-  moveInFlight(): boolean;
-  walking(): boolean;
-  /** An escape or another trip has the character. */
-  busy(): boolean;
-  looping(): boolean;
-  /** Holds the lap for the trip, and gives it back. */
-  hold(): void;
-  release(): void;
-}
+export interface StashFetchPlanner extends CollectPlanner, TripPlanner {}
 
 export interface StashFetchEvents {
   notice?(message: string): void;
   decided?(decision: SafetyDecision): void;
 }
 
-/** What an extension asks for: the room, the items as the pack names them, and whether to search. */
+/** Whose the pile is: what the character hid, or what a search turned up. */
+export type FetchSource = 'stash' | 'finds';
+
+/** What an extension asks for: the room, the items as the pack names them, whether to search, and whose. */
 export interface StashFetchAsk {
   room: RoomId;
   items: readonly string[];
   search: boolean;
+  source: FetchSource;
 }
 
 /** The trip under way, as a card reads it. */
 export interface StashTrip {
   room: RoomId;
   items: readonly string[];
+  source: FetchSource;
   stage: CollectStage;
 }
 
-/**
- * An extension's ask, parsed at the boundary: an extension is JavaScript the
- * client did not build, so a room that is not `map/room` or a list with no
- * name in it is no ask at all.
- */
+/** An extension's ask, parsed at the boundary (`asRoomAndItems`); unread, the stash's. */
 export function asStashFetchAsk(value: unknown): StashFetchAsk | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const { room, items, search } = value as Record<string, unknown>;
-  const place = typeof room === 'string' ? asRoomReference(room) : null;
-  if (place === null || !Array.isArray(items)) return null;
-  const named = items.filter(
-    (item): item is string => typeof item === 'string' && item.trim().length > 0
-  );
-  if (named.length !== items.length) return null;
-  return { room: roomId(place.map, place.room), items: named, search: search === true };
+  const asked = asRoomAndItems(value);
+  if (asked === null) return null;
+  const { search, source } = value as Record<string, unknown>;
+  return { ...asked, search: search === true, source: source === 'finds' ? 'finds' : 'stash' };
 }
 
-const ACTION = 'fetch from stash';
+/** The trace's word for the trip. */
+function actionOf(source: FetchSource): string {
+  return source === 'finds' ? 'fetch a find' : 'fetch from stash';
+}
 
 export class StashFetch implements SessionModule {
   private readonly collect: Collect;
@@ -95,7 +87,7 @@ export class StashFetch implements SessionModule {
   configure(enabled: boolean): void {
     this.enabled = enabled;
     // Switched off mid-trip: nothing is taken on arrival, and the lap goes back.
-    if (!enabled && this.trip !== null) this.finish(t('automation.stashFetch.endedSwitchedOff'));
+    if (!enabled && this.trip !== null) this.finish(t('automation.hostTrip.endedSwitchedOff'));
   }
 
   reset(): void {
@@ -110,12 +102,13 @@ export class StashFetch implements SessionModule {
   get current(): StashTrip | null {
     const stage = this.collect.stage;
     if (this.trip === null || stage === null) return null;
-    return { room: this.trip.ask.room, items: this.trip.ask.items, stage };
+    const { room, items, source } = this.trip.ask;
+    return { room, items, source, stage };
   }
 
   /** A death: the room it was walking to is somewhere else now. */
   abandon(): void {
-    if (this.trip !== null) this.finish(t('automation.stashFetch.endedDied'));
+    if (this.trip !== null) this.finish(t('automation.hostTrip.endedDied'));
   }
 
   /** One trip; its refusal, said and traced, or null once under way. */
@@ -126,9 +119,10 @@ export class StashFetch implements SessionModule {
         (entry) =>
           entry.map !== null && entry.room !== null && roomId(entry.map, entry.room) === ask.room
       )?.name ?? ask.room;
-    const why = this.whyNot(ask, state);
+    const trip = { enabled: this.enabled, running: this.trip !== null };
+    const why = tripRefusal(ask.items, trip, state, this.planner);
     if (why !== null) {
-      this.refuse(ask.items, place, why);
+      this.refuse(ask, place, why);
       return why;
     }
     const held = this.planner.looping();
@@ -143,7 +137,10 @@ export class StashFetch implements SessionModule {
           ? { times: searches, reason: t('automation.stashFetch.reasonSearch') }
           : null,
         key: 'stash',
-        reason: (item) => t('automation.stashFetch.reasonTaking', { item }),
+        reason: (item) =>
+          ask.source === 'finds'
+            ? t('automation.stashFetch.finds.reasonTaking', { item })
+            : t('automation.stashFetch.reasonTaking', { item }),
         collectMs,
         expiresMs
       },
@@ -151,7 +148,7 @@ export class StashFetch implements SessionModule {
     );
     if (started.kind === 'refused') {
       this.release();
-      this.refuse(ask.items, place, started.why);
+      this.refuse(ask, place, started.why);
       return started.why;
     }
     if (started.kind === 'walking') {
@@ -179,29 +176,12 @@ export class StashFetch implements SessionModule {
     this.collect.onWalkEnded(arrived, reason, state);
   }
 
-  private whyNot(ask: StashFetchAsk, state: CharacterState): string | null {
-    if (!this.enabled) return t('automation.stashFetch.refusalSwitchedOff');
-    if (state.phase !== 'in-game') return t('automation.stashFetch.refusalNotInRealm');
-    if (this.trip !== null) return t('automation.stashFetch.refusalBusy');
-    if (ask.items.length === 0) return t('automation.stashFetch.refusalNothingNamed');
-    if (state.inCombat || state.combat.attackers.length > 0) {
-      return t('automation.stashFetch.refusalFighting');
-    }
-    if (state.vitals.resting || state.vitals.meditating) {
-      return t('automation.stashFetch.refusalResting');
-    }
-    if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) {
-      return t('automation.stashFetch.refusalBusy');
-    }
-    return null;
-  }
-
   private ended(end: CollectEnd): void {
     switch (end.kind) {
       case 'not-reached':
         this.finish(
-          t('automation.stashFetch.endedNotReached', {
-            why: end.why ?? t('automation.stashFetch.whyStopped')
+          t('automation.hostTrip.endedNotReached', {
+            why: end.why ?? t('automation.hostTrip.whyStopped')
           })
         );
         return;
@@ -242,15 +222,20 @@ export class StashFetch implements SessionModule {
     if (trip === null) return;
     this.release();
     if (refused === null || taken.length > 0) {
-      this.events.notice?.(t('automation.stashFetch.done', { items: taken.join(', ') }));
+      const items = taken.join(', ');
+      this.events.notice?.(
+        trip.ask.source === 'finds'
+          ? t('automation.stashFetch.finds.done', { items })
+          : t('automation.stashFetch.done', { items })
+      );
       this.events.decided?.({
         at: this.now(),
-        action: ACTION,
-        because: this.because(trip.ask.items, trip.place),
+        action: actionOf(trip.ask.source),
+        because: this.because(trip.ask, trip.place),
         acted: true
       });
     }
-    if (refused !== null) this.refuse(trip.ask.items, trip.place, refused);
+    if (refused !== null) this.refuse(trip.ask, trip.place, refused);
   }
 
   private release(): void {
@@ -259,17 +244,23 @@ export class StashFetch implements SessionModule {
     if (held) this.planner.release();
   }
 
-  private because(items: readonly string[], place: string): string {
-    return t('automation.stashFetch.because', { items: items.join(', '), room: place });
+  private because(ask: StashFetchAsk, room: string): string {
+    const items = ask.items.join(', ');
+    return ask.source === 'finds'
+      ? t('automation.stashFetch.finds.because', { items, room })
+      : t('automation.stashFetch.because', { items, room });
   }
 
-  private refuse(items: readonly string[], place: string, why: string): void {
-    const sentence = t('automation.stashFetch.refused', { why });
+  private refuse(ask: StashFetchAsk, place: string, why: string): void {
+    const sentence =
+      ask.source === 'finds'
+        ? t('automation.stashFetch.finds.refused', { why })
+        : t('automation.stashFetch.refused', { why });
     this.events.notice?.(sentence);
     this.events.decided?.({
       at: this.now(),
-      action: ACTION,
-      because: this.because(items, place),
+      action: actionOf(ask.source),
+      because: this.because(ask, place),
       acted: false,
       refused: sentence
     });
