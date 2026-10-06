@@ -49,6 +49,7 @@ import {
   cashFloor,
   compareSpots,
   withMeasured,
+  type KeptSpeed,
   type MeasuredRate,
   type MeasuredUse,
   NO_FLOOR,
@@ -279,7 +280,7 @@ export class Errands implements SessionModule {
   private readonly kills: KillExpLore;
   /** The refill clocks the wire timed, where the world database states none. */
   private readonly clocks: RoomClocks;
-  /** How many times faster than the server's own clocks this realm runs, read off its rounds. */
+  /** How many times faster than the server's own clocks this realm runs, read off its rounds, kept per address. */
   private readonly speed = new RealmSpeed();
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
   private fitted: { state: CharacterState; key: string } | null = null;
@@ -387,6 +388,11 @@ export class Errands implements SessionModule {
   onCharacter(state: CharacterState, block: Pick<Block, 'type'>): void {
     this.unrefuseWhatTheRoomPrints(state);
     this.clocks.onCharacter(state, block, this.tracker.pendingMoves > 0);
+  }
+
+  /** Where the realm's speed is kept, for the address about to be dialled (`SessionManager.useRealm`). */
+  useSpeed(kept: KeptSpeed): void {
+    this.speed.useKept(kept);
   }
 
   /** Every block, changed state or not: a round read for the realm's speed. */

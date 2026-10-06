@@ -89,6 +89,18 @@ export function atSpeed<T extends Omit<HuntingConstants, 'speed'>>(
   return { ...server, ...clocks, speed };
 }
 
+/**
+ * Where the realm's speed is kept between connections, by the address dialled
+ * (`WorldBook`), so a connection's first survey and first fight run at it.
+ */
+export interface KeptSpeed {
+  recall(): number | null;
+  remember(speed: number): void;
+}
+
+/** Nowhere: a test, or a session with no home to write to. */
+export const NOT_KEPT: KeptSpeed = { recall: () => null, remember: () => {} };
+
 /** A monster's own clock, `Monsters.RegenTime` hours, in seconds at the realm's speed; null where it states none. */
 export function regenSeconds(hours: number | undefined, speed: number): number | null {
   return hours === undefined ? null : (hours * 3600) / speed;

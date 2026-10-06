@@ -54,6 +54,7 @@ import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
 import type { CharacterRecord, KeptLives, KeptRoom } from '../../shared/belongings';
+import type { KeptSpeed } from '../../shared/hunting';
 import type { LowLivesAnswer } from '../../shared/lives';
 import type { TalkSink } from './TalkLog';
 import { isTalkBlock } from '../../shared/talk';
@@ -204,6 +205,12 @@ export interface SessionHostOptions {
    * learns there is that realm's; `connect` re-keys the session with this.
    */
   playersAt(target: ConnectionTarget): RealmPlayers;
+  /**
+   * Where the realm's speed is kept for the address about to be dialled
+   * (`WorldBook`), so every character dialling it starts on the figure last
+   * read. Optional for a test, which keeps nothing.
+   */
+  speedAt?(target: ConnectionTarget): KeptSpeed;
   /**
    * Where *this character's own* record is kept — what each bank holds and what
    * was in each worn slot — for the address it is about to dial.
@@ -712,7 +719,11 @@ export class SessionHost {
 
     // Keyed on where this connection actually goes, not where the character's
     // file says it lives: the two differ when a saved realm is dialled ad hoc.
-    slot.manager.useRealm(this.options.playersAt(target), this.options.belongingsAt(id, target));
+    slot.manager.useRealm(
+      this.options.playersAt(target),
+      this.options.belongingsAt(id, target),
+      this.options.speedAt?.(target)
+    );
     return slot.manager.connect(target);
   }
 

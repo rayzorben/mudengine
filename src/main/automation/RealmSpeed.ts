@@ -5,13 +5,15 @@
  * speed; a gap between openings up to `speedGapMostMs` in one room is counted
  * (a room shown starts again: the next room's rounds keep their own time), and
  * once `speedRounds` are seen the figure is the slowest whole speed whose round
- * the gaps are whole numbers of (`speedOf`); before then, the server's own
- * speed, and where a stretch of gaps fits no speed, the figure already read.
+ * the gaps are whole numbers of (`speedOf`); before then, the figure last
+ * read on this server (`KeptSpeed`, `WorldBook`), else the server's own
+ * speed; and where a stretch of gaps fits no speed, the figure already read.
  * One per session (`Errands`), read by the survey and every `RoundBeat`. See
  * `mudengine-automation` › parts/loops.md › *The survey runs on the realm's clocks*.
  */
 import { tuning } from '../app/tuning';
 import type { Block, BlockType } from '../../shared/blocks';
+import { NOT_KEPT, type KeptSpeed } from '../../shared/hunting';
 
 /** A blow either way, hit or miss: what a round is read off. */
 export function isBlow(type: BlockType): boolean {
@@ -44,7 +46,11 @@ export interface SpeedFit {
  * Gaps of two rounds only at speed 4 or 6 read as 2 or 3; and with single-round
  * gaps a speed of 1/`slack` or more (7 at 0.15) reads one under.
  */
-export function speedOf(gaps: readonly number[], serverRoundMs: number, fit: SpeedFit): number | null {
+export function speedOf(
+  gaps: readonly number[],
+  serverRoundMs: number,
+  fit: SpeedFit
+): number | null {
   if (gaps.length < Math.max(1, fit.least)) return null;
   const explained: number[] = [];
   for (let speed = 1; speed <= fit.fastest; speed += 1) {
@@ -69,6 +75,14 @@ export class RealmSpeed {
   /** The figure, worked out when a gap is counted rather than on every read. */
   private figure: number | null = null;
 
+  /** Where the figure is kept for the address dialled; nowhere until `useKept`. */
+  private kept: KeptSpeed = NOT_KEPT;
+
+  /** The address about to be dialled's store (`WorldBook`), handed over before `connect`. */
+  useKept(kept: KeptSpeed): void {
+    this.kept = kept;
+  }
+
   /** Every block: a blow counts, and a room shown starts the rounds again. */
   onBlock(block: Pick<Block, 'type' | 'at'>): void {
     if (isBlow(block.type)) this.blow(block.at);
@@ -92,14 +106,16 @@ export class RealmSpeed {
         share: speedShare,
         fastest: Math.max(1, Math.floor(serverRoundMs / speedQuietMs))
       };
-      this.figure = speedOf(this.gaps, serverRoundMs, fit) ?? this.figure;
+      const read = speedOf(this.gaps, serverRoundMs, fit);
+      if (read !== null && read !== this.figure) this.kept.remember(read);
+      this.figure = read ?? this.figure;
     }
     this.opened = at;
   }
 
-  /** The realm's figure: 1 until enough rounds are seen. */
+  /** The realm's figure: until enough rounds are seen, the one kept for this server, else 1. */
   get multiplier(): number {
-    return this.figure ?? 1;
+    return this.figure ?? this.kept.recall() ?? 1;
   }
 
   reset(): void {
