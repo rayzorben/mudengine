@@ -985,10 +985,9 @@ export class SessionManager {
      */
     /*
      * And the ward a room wants, kept up off the pack (todo 105): the realm
-     * says which spell stops a room's effect and which item's use casts it,
-     * and this uses the item before the step and again when the spell
-     * lapses. The stated countdowns are the router's; this module's own clock
-     * is the walk's.
+     * says which spell stops a room's effect and which item's use casts it;
+     * this uses the item before the step and when the spell lapses, on its
+     * own clock at the realm's speed. The stated countdowns are the router's.
      */
     this.wards = new Wards(
       automation.health,
@@ -998,7 +997,8 @@ export class SessionManager {
         hazardAt: (room) => this.errands.hazardAt(room),
         itemsCasting: (spell) => this.world?.itemsCasting(spell) ?? [],
         spellById: (id) => this.world?.spellById(id) ?? null,
-        spellsUp: (state) => this.errands.spellsUp(state)
+        spellsUp: (state) => this.errands.spellsUp(state),
+        realmSpeed: () => this.errands.realmSpeed
       },
       { notice: (message) => this.sink.notice(message) }
     );

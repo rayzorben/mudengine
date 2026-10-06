@@ -548,7 +548,7 @@ describe('what a monster afflicts', () => {
       spells: { 40: venom, 66: HOLD, 41: blind },
       deathSpell: 41
     });
-    expect(afflictionsOf(snake)).toEqual([
+    expect(afflictionsOf(snake, 1)).toEqual([
       { kind: 'poison', seconds: 30 },
       { kind: 'held', seconds: 12 },
       { kind: 'blinded', seconds: null }
@@ -560,8 +560,8 @@ describe('what a monster afflicts', () => {
       casts: [{ spell: 42, chance: 1, level: 1 }],
       spells: { 42: shield }
     });
-    expect(afflictionsOf(turtle)).toEqual([]);
-    expect(afflictionsOf({})).toEqual([]);
+    expect(afflictionsOf(turtle, 1)).toEqual([]);
+    expect(afflictionsOf({}, 1)).toEqual([]);
   });
 
   it('keeps the longest stated length, and an unstated one over any stated one', () => {
@@ -570,10 +570,12 @@ describe('what a monster afflicts', () => {
     const two = fighter(50, [blow({ onHit: 40 }), blow({ onHit: 43 })], {
       spells: { 40: venom, 43: long }
     });
-    expect(afflictionsOf(two)).toEqual([{ kind: 'poison', seconds: 120 }]);
+    expect(afflictionsOf(two, 1)).toEqual([{ kind: 'poison', seconds: 120 }]);
+    // A realm five times faster counts its effect ticks five times faster.
+    expect(afflictionsOf(two, 5)).toEqual([{ kind: 'poison', seconds: 24 }]);
     const three = fighter(50, [blow({ onHit: 40 }), blow({ onHit: 44 })], {
       spells: { 40: venom, 44: vague }
     });
-    expect(afflictionsOf(three)).toEqual([{ kind: 'poison', seconds: null }]);
+    expect(afflictionsOf(three, 1)).toEqual([{ kind: 'poison', seconds: null }]);
   });
 });
