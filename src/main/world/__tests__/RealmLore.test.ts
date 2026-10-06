@@ -631,6 +631,18 @@ describe('the spells a realm said have no effect on a monster', () => {
     expect(store().forRealm('paradigm.sqlite', world).hasNoEffect('harm', 'giant rat')).toBe(false);
   });
 
+  it('counts a change, and not a repeat, for a price to key on', () => {
+    const realm = store().forRealm('gmud.sqlite', world);
+    const start = realm.noEffectChanges();
+    realm.observeNoEffect('harm', 'giant rat', 7);
+    const kept = realm.noEffectChanges();
+    expect(kept).toBeGreaterThan(start);
+    realm.observeNoEffect('harm', 'giant rat', 8);
+    expect(realm.noEffectChanges()).toBe(kept);
+    realm.forgetNoEffect('harm', 'giant rat');
+    expect(realm.noEffectChanges()).toBeGreaterThan(kept);
+  });
+
   it('forgets one the wire took back, on disk too', () => {
     const lore = store();
     const realm = lore.forRealm('gmud.sqlite', world);

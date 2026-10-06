@@ -38,7 +38,7 @@ import type { WorldSpell } from '../../shared/world';
 
 export interface FightSetupParts {
   readonly world: Pick<WorldGraph, 'spellNamed'> | undefined;
-  readonly errands: Pick<Errands, 'castingInput' | 'menacePlayer' | 'realmClass'>;
+  readonly errands: Pick<Errands, 'castingInput' | 'menacePlayer' | 'realmClass' | 'noEffectsKey'>;
   /** Which lapsing blessings are recast mid-fight; built after the book, so asked for at use. */
   readonly blessings: () => Pick<Blessings, 'recastFloor'>;
 }
@@ -173,11 +173,12 @@ export class FightSetup {
         subject,
         ...(waits === true ? { waits } : {})
       })),
-      casting: met.map(({ subject }) => {
+      casting: met.map(({ name, subject }) => {
         const kill =
           casting === null
             ? null
             : castsToKill(casting, {
+                name,
                 hp: subject.hp ?? null,
                 magicRes: subject.magicResist ?? null,
                 abilities: subject.abilities,
@@ -209,7 +210,8 @@ export class FightSetup {
       spells.autoChoose,
       state.spellbook?.length ?? -1,
       state.vitals.hpMax,
-      state.vitals.manaMax
+      state.vitals.manaMax,
+      this.errands.noEffectsKey()
     ].join('|');
   }
 

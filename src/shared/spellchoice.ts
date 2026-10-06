@@ -13,6 +13,7 @@ import type { Vitals } from './character';
 import type { SpellsConfig } from './config';
 import { magicResistance, scaledPower } from './menace';
 import { castOdds, castsARound, MAGERY, manaARound, type ProwessSheet } from './prowess';
+import type { NoEffectLore } from './lore';
 import type { RealmFamily } from './realm';
 import {
   castsOnOthers,
@@ -559,8 +560,10 @@ export function thresholdHeal(input: ThresholdHealInput): PricedHeal | null {
  * the monster's health is unknown — an unknown is never a number of rounds.
  */
 export function castsToKill(
-  input: Omit<SpellChoiceInput, 'target' | 'excluded'> | { book: null },
+  input: KillCasting | { book: null },
   monster: {
+    /** Its name as the room prints it, for the spells the realm kept as having no effect on it. */
+    name?: string | undefined;
     hp: number | null;
     magicRes: number | null;
     abilities?: SpellTarget['abilities'];
@@ -577,7 +580,11 @@ export function castsToKill(
       abilities: monster.abilities,
       nature: monster.nature
     },
-    excluded: new Set()
+    excluded: new Set(),
+    noEffect:
+      monster.name === undefined || input.noEffectOn === undefined
+        ? input.noEffect
+        : keptNoEffect(input.book, monster.name, input.noEffectOn)
   });
   const chosen = choice.chosen;
   if (chosen === null || chosen.perRound <= 0) return null;
@@ -588,6 +595,25 @@ export function castsToKill(
     spell: chosen.spell.name
   };
 }
+
+/** Whether the realm kept the spell, by name, as having no effect on the monster. */
+export type NoEffectOn = NoEffectLore['hasNoEffect'];
+
+/** The spells in `book` the realm kept as having no effect on `monster`, by the book's spelling. */
+export function keptNoEffect(
+  book: ReadonlyArray<CastableSpell>,
+  monster: string,
+  noEffectOn: NoEffectOn
+): Set<string> {
+  return new Set(
+    book.filter((spell) => noEffectOn(spell.name, monster)).map((spell) => spell.name)
+  );
+}
+
+/** What a kill's price is chosen from: the caster before a target, and the spells the realm kept as having no effect. */
+export type KillCasting = Omit<SpellChoiceInput, 'target' | 'excluded'> & {
+  noEffectOn?: NoEffectOn | undefined;
+};
 
 /**
  * Whether `chooseAttackSpell` weighs this realm row at all: aimed at a single

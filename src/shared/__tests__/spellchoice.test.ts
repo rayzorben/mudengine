@@ -357,6 +357,20 @@ describe('casts to kill', () => {
   it('answers nothing for a book spent from kai', () => {
     expect(castsToKill({ ...input, pool: 'KAI' }, { hp: 60, magicRes: null })).toBeNull();
   });
+
+  /* The server said lightning bolt has no effect on an acid slime, and the
+     realm kept it (`NoEffectLore`): the odds and the survey price no kill by it. */
+  it('prices no casting where the realm kept the only spell as having no effect on it', () => {
+    const kept = {
+      ...input,
+      noEffectOn: (spell: string, monster: string) =>
+        spell === 'lightning bolt' && monster === 'acid slime'
+    };
+    expect(castsToKill(kept, { name: 'acid slime', hp: 60, magicRes: null })).toBeNull();
+    // The controls: another monster, and a monster nobody named.
+    expect(castsToKill(kept, { name: 'giant rat', hp: 60, magicRes: null })).not.toBeNull();
+    expect(castsToKill(kept, { hp: 60, magicRes: null })).not.toBeNull();
+  });
 });
 
 /*

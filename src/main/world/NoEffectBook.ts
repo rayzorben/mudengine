@@ -14,6 +14,7 @@ export type NoEffectRow = Readonly<Record<string, number>>;
 
 export class NoEffectBook {
   private readonly realms = new Map<string, Map<string, NoEffectRow>>();
+  private readonly revisions = new Map<string, number>();
 
   /** `changed` schedules the file's write. */
   constructor(private readonly changed: () => void) {}
@@ -33,7 +34,7 @@ export class NoEffectBook {
       this.realms.set(realm, table);
     }
     table.set(who, { ...table.get(who), [name]: at });
-    this.changed();
+    this.revise(realm);
   }
 
   forget(realm: string, monster: string, spell: string): void {
@@ -45,12 +46,26 @@ export class NoEffectBook {
     const rest = Object.fromEntries(Object.entries(row).filter(([kept]) => kept !== name));
     if (Object.keys(rest).length === 0) table.delete(who);
     else table.set(who, rest);
-    this.changed();
+    this.revise(realm);
+  }
+
+  /** How many times a realm's answers have changed since the file was read. */
+  changes(realm: string): number {
+    return this.revisions.get(realm) ?? 0;
   }
 
   /** The section as the file holds it, per realm: replaces what was held for each realm read. */
   load(tables: ReadonlyMap<string, Map<string, NoEffectRow>>): void {
-    for (const [realm, table] of tables) this.realms.set(realm, table);
+    for (const [realm, table] of tables) {
+      this.realms.set(realm, table);
+      this.revisions.set(realm, this.changes(realm) + 1);
+    }
+  }
+
+  /** A realm's answers changed: counted, and the file's write scheduled. */
+  private revise(realm: string): void {
+    this.revisions.set(realm, this.changes(realm) + 1);
+    this.changed();
   }
 
   /** Every realm's monsters, for the file. */

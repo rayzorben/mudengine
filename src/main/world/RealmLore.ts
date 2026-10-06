@@ -223,6 +223,10 @@ export class RealmLore {
         this.load();
         this.noEffects.forget(key, rowOf(monster), spell);
       },
+      noEffectChanges: () => {
+        this.load();
+        return this.noEffects.changes(key);
+      },
       // Filed under the realm's row name, as a death sentence is.
       observeKillExp: (name, exp, at) => this.observeKillExp(key, rowOf(name), exp, at),
       killExpFor: (name) => this.killExpTable(key).get(rowOf(name))?.exp ?? null,
