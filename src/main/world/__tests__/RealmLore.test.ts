@@ -611,6 +611,40 @@ describe('the attack spells a realm answered instantly', () => {
 });
 
 /*
+ * `Your spell has no effect on <monster>.` is the realm's fact (2026-10-06):
+ * the server asks only the monster's type row and the spell, so it is kept
+ * under the row name and holds for every size of the monster.
+ */
+describe('the spells a realm said have no effect on a monster', () => {
+  it('persists under the row name, per realm, and reads back', () => {
+    const lore = store();
+    lore.forRealm('gmud.sqlite', world).observeNoEffect('Harm', 'big giant rat', 7);
+    lore.flush();
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).noEffects['gmud.sqlite']).toEqual({
+      'giant rat': { harm: 7 }
+    });
+    const again = store().forRealm('gmud.sqlite', world);
+    expect(again.hasNoEffect('harm', 'fat giant rat')).toBe(true);
+    // The controls: another spell, another monster, another realm.
+    expect(again.hasNoEffect('magic missile', 'giant rat')).toBe(false);
+    expect(again.hasNoEffect('harm', 'cave bear')).toBe(false);
+    expect(store().forRealm('paradigm.sqlite', world).hasNoEffect('harm', 'giant rat')).toBe(false);
+  });
+
+  it('forgets one the wire took back, on disk too', () => {
+    const lore = store();
+    const realm = lore.forRealm('gmud.sqlite', world);
+    realm.observeNoEffect('harm', 'giant rat', 7);
+    realm.observeNoEffect('cause light wounds', 'giant rat', 7);
+    realm.forgetNoEffect('harm', 'thin giant rat');
+    lore.flush();
+    const again = store().forRealm('gmud.sqlite', world);
+    expect(again.hasNoEffect('harm', 'giant rat')).toBe(false);
+    expect(again.hasNoEffect('cause light wounds', 'giant rat')).toBe(true);
+  });
+});
+
+/*
  * Todo 70: what a realm pays for a kill is not the database's figure (Paradigm
  * paid 300 for a cave bear rated 100), so a solo kill's figure is kept per
  * realm, under the realm's own row name.

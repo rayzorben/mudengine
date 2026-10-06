@@ -6,7 +6,7 @@ import { notesOf } from '../../app/copyMatch';
 import type { Block } from '../../../shared/blocks';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
-import type { InstantSpellLore } from '../../../shared/lore';
+import { NO_EFFECTS_KEPT, type InstantSpellLore } from '../../../shared/lore';
 import type { RealmFamily } from '../../../shared/realm';
 import type { WorldSpell } from '../../../shared/world';
 
@@ -115,7 +115,7 @@ describe('the name an instant spell is kept under for the realm', () => {
       { notice: (message) => notices.push(message) },
       (name) => (name === 'word' || name === 'exalted word' ? exalted : null),
       () => ({ combat: null, magery: null, crits: 0, family: null }),
-      lore
+      { ...NO_EFFECTS_KEPT, ...lore }
     );
     return { spells, notices };
   };

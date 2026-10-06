@@ -26,6 +26,7 @@ import { rowNameOf } from '../../shared/mobs';
 import { learnRefill, type LearnedSpawns, type RefillTimed } from '../../shared/spawns';
 import { mobKey, type RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
+import { NoEffectBook, readNoEffectRow, type NoEffectRow } from './NoEffectBook';
 import { t } from '../app/i18n';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
@@ -99,6 +100,12 @@ interface LoreFile {
    */
   instants?: Record<string, Record<string, LearnedInstant>>;
   /**
+   * The spells each realm said have no effect on each monster, keyed by the
+   * monster's row name, then the spell's. See `NoEffectLore`. Optional for the
+   * same reason `slots` is.
+   */
+  noEffects?: Record<string, Record<string, NoEffectRow>>;
+  /**
    * How soon each room made its monsters again, per realm, keyed by room,
    * timed on the wire where the world database states no clock. See
    * `src/shared/spawns.ts`. Optional for the same reason `slots` is.
@@ -155,6 +162,8 @@ export class RealmLore {
   private readonly spawns = new Map<string, Map<RoomId, LearnedSpawns>>();
   /** The attack spells each realm answered instantly, by spell. See `LoreFile.instants`. */
   private readonly instants = new Map<string, Map<string, LearnedInstant>>();
+  /** What each realm said a spell has no effect on. See `LoreFile.noEffects`. */
+  private readonly noEffects = new NoEffectBook(() => this.schedule());
   /** What each realm paid for a solo kill, by row name. See `LoreFile.killExp`. */
   private readonly killExp = new Map<string, Map<string, LearnedKillExp>>();
   private timer: NodeJS.Timeout | null = null;
@@ -172,6 +181,9 @@ export class RealmLore {
    */
   forRealm(realm: string, world: WorldGraph | undefined): RealmLoreView {
     const key = realmKey(realm);
+    // The realm's own row, so `large cave bear` is `cave bear` (`rowNameOf`).
+    const rowOf = (name: string): string =>
+      rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined);
     return {
       maximumFor: (name, at) => this.maximumFor(key, world, name, at ?? null),
       observe: (name, outcome) => this.observe(key, name, outcome),
@@ -194,27 +206,26 @@ export class RealmLore {
        * auto-combat went on attacking it. `rowNameOf` is that one rule, shared
        * now with the kill a quest step names.
        */
-      observeDeath: (name, text, at) =>
-        this.observeDeath(
-          key,
-          rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined),
-          text,
-          at
-        ),
+      observeDeath: (name, text, at) => this.observeDeath(key, rowOf(name), text, at),
       isInstantSpell: (spell) => this.isInstant(key, spell),
       observeInstantSpell: (spell, at) => this.observeInstant(key, spell, at),
       forgetInstantSpell: (spell) => this.forgetInstant(key, spell),
-      // Filed under the realm's row name, as a death sentence is, so `large cave bear` is `cave bear`.
-      observeKillExp: (name, exp, at) =>
-        this.observeKillExp(
-          key,
-          rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined),
-          exp,
-          at
-        ),
-      killExpFor: (name) =>
-        this.killExpTable(key).get(rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined))
-          ?.exp ?? null,
+      // Filed under the realm's row, as a death sentence is: the server asks the monster's type.
+      hasNoEffect: (spell, monster) => {
+        this.load();
+        return this.noEffects.has(key, rowOf(monster), spell);
+      },
+      observeNoEffect: (spell, monster, at) => {
+        this.load();
+        this.noEffects.observe(key, rowOf(monster), spell, at);
+      },
+      forgetNoEffect: (spell, monster) => {
+        this.load();
+        this.noEffects.forget(key, rowOf(monster), spell);
+      },
+      // Filed under the realm's row name, as a death sentence is.
+      observeKillExp: (name, exp, at) => this.observeKillExp(key, rowOf(name), exp, at),
+      killExpFor: (name) => this.killExpTable(key).get(rowOf(name))?.exp ?? null,
       allKillExp: () =>
         new Map([...this.killExpTable(key)].map(([name, entry]) => [name, entry.exp])),
       spawnsAt: (room) => this.spawnTable(key).get(room) ?? null,
@@ -751,6 +762,12 @@ export class RealmLore {
     })) {
       this.instants.set(realm, table);
     }
+    this.noEffects.load(
+      readTables(file.noEffects, (name, value) => {
+        const row = readNoEffectRow(value);
+        return row && mobKey(name).length > 0 ? [mobKey(name), row] : null;
+      })
+    );
     for (const [realm, table] of readTables(file.killExp, (name, value) => {
       const entry = readKillExpEntry(value);
       return entry && name.length > 0 ? [name, entry] : null;
@@ -805,6 +822,7 @@ export class RealmLore {
     const deaths = writeTables(this.deaths);
     const effects = writeTables(this.effects);
     const instants = writeTables(this.instants);
+    const noEffects = writeTables(this.noEffects.tables());
     const spawns = writeTables(this.spawns);
     const killExp = writeTables(this.killExp);
 
@@ -822,6 +840,7 @@ export class RealmLore {
             ...(Object.keys(deaths).length > 0 ? { deaths } : {}),
             ...(Object.keys(effects).length > 0 ? { effects } : {}),
             ...(Object.keys(instants).length > 0 ? { instants } : {}),
+            ...(Object.keys(noEffects).length > 0 ? { noEffects } : {}),
             ...(Object.keys(spawns).length > 0 ? { spawns } : {}),
             ...(Object.keys(killExp).length > 0 ? { killExp } : {})
           } satisfies LoreFile,
@@ -895,7 +914,9 @@ function readTables<V>(
 }
 
 /** One per-realm section of the file, written: empty realms left out, rows by name. */
-function writeTables<V>(tables: Map<string, Map<string, V>>): Record<string, Record<string, V>> {
+function writeTables<V>(
+  tables: ReadonlyMap<string, ReadonlyMap<string, V>>
+): Record<string, Record<string, V>> {
   const out: Record<string, Record<string, V>> = {};
   for (const [realm, table] of tables) {
     if (table.size === 0) continue;

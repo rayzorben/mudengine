@@ -21,7 +21,7 @@ import { castAimedAt } from '../../shared/aim';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
-import { NO_INSTANT_SPELLS, type InstantSpellLore } from '../../shared/lore';
+import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import { isBanded, mobRuleFor, type MobCast, type MobRule } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
 import type { RealmFamily } from '../../shared/realm';
@@ -118,7 +118,7 @@ export class AttackSpells {
    * Spells known to be instant, by every spelling, for this connection. The
    * realm's table cannot say (no `Spell Type` in any of the three `.mdb`s), so
    * the wire does: such a spell never opens a fight and is cast each round.
-   * What the wire taught is the realm's (`realmInstants`, todo 820); this is
+   * What the wire taught is the realm's (`realmLore`, todo 820); this is
    * what the connection has learned or read back, and said.
    */
   private readonly instant = new Set<string>();
@@ -147,8 +147,8 @@ export class AttackSpells {
     private readonly events: AttackSpellEvents,
     private readonly realmSpell: (name: string) => WorldSpell | null,
     private readonly realmClass: () => ProwessClass & { family: RealmFamily | null },
-    /** The attack spells this realm has answered instantly before, kept past the connection. */
-    private readonly realmInstants: InstantSpellLore = NO_INSTANT_SPELLS,
+    /** What this realm's wire taught before, kept past the connection: instant spells, and what each has no effect on. */
+    private readonly realmLore: AttackSpellLore = NO_ATTACK_SPELL_LORE,
     realmSpellById: (id: number) => WorldSpell | null = () => null
   ) {
     this.drain = new DrainWhenHurt(
@@ -205,6 +205,11 @@ export class AttackSpells {
     );
   }
 
+  /** Whether the spell the server repeats is one the player typed: theirs to change. */
+  get playerCasting(): boolean {
+    return this.repeating?.kind === 'spell' && this.repeating.by === 'player';
+  }
+
   /** What an attack or a cast this module proposed does once it has gone. */
   sent(action: Action): void {
     this.awaiting =
@@ -252,8 +257,8 @@ export class AttackSpells {
    * a spell the player cast is theirs, left alone either way.
    */
   change(state: CharacterState, target: SpellTarget, melee: string): Proposal | null {
+    if (this.playerCasting) return null;
     const repeating = this.repeating;
-    if (repeating?.kind === 'spell' && repeating.by === 'player') return null;
     const book = state.spellbook;
     const wanted = this.wanted(state, target, false);
     if (wanted !== null) {
@@ -332,7 +337,8 @@ export class AttackSpells {
       this.awaiting?.afterOff === true
     )
       this.awaiting = { ...this.awaiting, afterOff: false };
-    else if (block.type === 'spell-ineffective') this.noteIneffective();
+    else if (block.type === 'spell-ineffective')
+      this.noteIneffective(block.groups['target'] ?? null);
     else if (block.type === 'spell-failed') this.noteFizzle(block.groups['spell'] ?? '', book);
     else if (block.type === 'spell-cast') this.noteCast(block, book);
     else if (block.type === 'user-hits') this.noteHit(block, book);
@@ -384,7 +390,7 @@ export class AttackSpells {
     const spellings = spellingsOf(spell, book, this.realmSpell);
     if (spellings.some((name) => this.instant.has(name))) return true;
     const name = this.nameOf(spell, book);
-    if (name === null || !this.realmInstants.isInstantSpell(name)) return false;
+    if (name === null || !this.realmLore.isInstantSpell(name)) return false;
     for (const spelling of spellings) this.instant.add(spelling);
     this.events.notice?.(t('automation.combat.spellInstantRemembered', { spell }));
     return true;
@@ -405,7 +411,7 @@ export class AttackSpells {
     if (!spellings.some((spelling) => this.instant.has(spelling))) return;
     for (const spelling of spellings) this.instant.delete(spelling);
     const name = this.nameOf(awaiting.spell, book);
-    if (name !== null) this.realmInstants.forgetInstantSpell(name);
+    if (name !== null) this.realmLore.forgetInstantSpell(name);
     this.events.notice?.(t('automation.combat.spellNotInstant', { spell: awaiting.spell }));
   }
 
@@ -432,7 +438,7 @@ export class AttackSpells {
       this.events.notice?.(t('automation.combat.spellInstantUnkept', { spell: awaiting.spell }));
       return true;
     }
-    this.realmInstants.observeInstantSpell(kept, Date.now());
+    this.realmLore.observeInstantSpell(kept, Date.now());
     this.events.notice?.(t('automation.combat.spellInstant', { spell: awaiting.spell }));
     return true;
   }
@@ -550,17 +556,30 @@ export class AttackSpells {
 
   /**
    * Whether `spell` is ruled out on `target`: refused on it this fight, or
-   * one the world database says has no effect on it (`spellReaches`), which
-   * this records for the fight and says once, since the server would answer
-   * it so and break the fight (`BreakCombat(false)`).
+   * one the world database (`spellReaches`) or the server on an earlier
+   * fight says has no effect on it, which this records for the fight and
+   * says once, since the server would answer it so and break the fight
+   * (`BreakCombat(false)`).
    */
   private ruledOut(spell: string, target: SpellTarget): boolean {
     if (this.ineffective.has(this.keyOf(spell))) return true;
-    const row = resolveSpell(spell, this.book, this.realmSpell).realm;
-    if (row === null || spellReaches(row, target.entity?.nature) !== false) return false;
+    const known = this.knownNoEffect(spell, target);
+    if (known === null) return false;
     this.ineffective.add(this.keyOf(spell));
-    this.events.notice?.(t('automation.combat.spellNoEffectKnown', { spell, target: target.name }));
+    this.events.notice?.(
+      known === 'world'
+        ? t('automation.combat.spellNoEffectKnown', { spell, target: target.name })
+        : t('automation.combat.spellNoEffectHeard', { spell, target: target.name })
+    );
     return true;
+  }
+
+  /** Who says `spell` has no effect on `target` before it is cast: the world database, the realm's wire, or nobody. */
+  private knownNoEffect(spell: string, target: SpellTarget): 'world' | 'heard' | null {
+    const row = resolveSpell(spell, this.book, this.realmSpell).realm;
+    if (row !== null && spellReaches(row, target.entity?.nature) === false) return 'world';
+    const name = this.nameOf(spell, this.book);
+    return name !== null && this.realmLore.hasNoEffect(name, target.name) ? 'heard' : null;
   }
 
   /** Neither refused on this monster nor past `cap` confirmed casts (0 is no cap). */
@@ -591,10 +610,11 @@ export class AttackSpells {
   /**
    * The best attack spell for this target, now, from the book the client has
    * read and the realm's own figures — `chooseAttackSpell`. The spells the
-   * server has refused on this target and the ones capped this fight are
-   * excluded, which is how the fallback derives itself; so is a row's spell
-   * once spent. A choice that changes is said; a refusal is said once per
-   * kind, and an unread book is asked for. `only` narrows the book (the
+   * server has said have no effect on this monster, this fight or before on
+   * the realm, and the ones capped this fight are left out, which is how the
+   * fallback derives itself; so is a row's spell once spent. A choice that
+   * changes is said; a refusal is said once per kind, and an unread book is
+   * asked for. `only` narrows the book (the
    * drains); finding nothing there is not said, since the ordinary choice is
    * asked next.
    */
@@ -605,7 +625,8 @@ export class AttackSpells {
     only?: (spell: string) => boolean
   ): string | null {
     const { combat, magery, crits, family } = this.realmClass();
-    const excluded = new Set<string>(this.ineffective);
+    const excluded = new Set<string>();
+    const noEffect = new Set<string>(this.ineffective);
     if (this.spells.attackCasts > 0) {
       for (const [spell, count] of this.casts) {
         if (count >= this.spells.attackCasts) excluded.add(spell);
@@ -615,6 +636,7 @@ export class AttackSpells {
       if (passedOver(spell.name) || (spell.short !== null && passedOver(spell.short))) {
         excluded.add(spell.name);
       }
+      if (this.realmLore.hasNoEffect(spell.name, target.name)) noEffect.add(spell.name);
     }
     const book =
       only === undefined ? state.spellbook : (state.spellbook?.filter((s) => only(s.name)) ?? null);
@@ -636,6 +658,7 @@ export class AttackSpells {
               nature: target.entity?.nature
             },
             excluded,
+            noEffect,
             killConfidence: tuning().spells.killConfidence
           }
     );
@@ -712,12 +735,17 @@ export class AttackSpells {
    * `Your spell has no effect on <name>.` — immunity (`Player.cs:5919`). The
    * sentence never names the spell; the one the server is repeating is the
    * one it is about. Said once per spell per target, because what the client
-   * does next is a decision a person should be able to read back.
+   * does next is a decision a person should be able to read back. A
+   * single-target spell is kept for the realm against the monster the
+   * sentence names (`keep`), and only then: `… against this monster!` is a
+   * guard that moved in to protect the target (`Player.cs:6195`), and
+   * `… in this room!` the room.
    */
-  private noteIneffective(): void {
+  private noteIneffective(monster: string | null): void {
     const cast = this.repeated;
     if (cast === null || this.ineffective.has(this.keyOf(cast.spell))) return;
     this.ineffective.add(this.keyOf(cast.spell));
+    if (!cast.area && monster !== null) this.keep(cast.spell, monster);
     const fallback = this.spells.attackFallback.trim();
     if (cast.area) {
       this.events.notice?.(t('automation.combat.spellIneffectiveArea', { spell: cast.spell }));
@@ -742,6 +770,37 @@ export class AttackSpells {
   }
 
   /**
+   * The server said a single-target spell has no effect on `monster`: kept
+   * for the realm under the spell's name (`nameOf`), so no later fight casts
+   * it at one, and said the first time. An area spell is not kept: one
+   * monster it cannot touch says nothing about the rest of a room. A name
+   * the realm cannot settle is kept for this fight only, and said.
+   */
+  private keep(spell: string, monster: string): void {
+    const name = this.nameOf(spell, this.book);
+    if (name === null) {
+      this.events.notice?.(t('automation.combat.spellNoEffectUnkept', { spell, target: monster }));
+      return;
+    }
+    if (this.realmLore.hasNoEffect(name, monster)) return;
+    this.realmLore.observeNoEffect(name, monster, Date.now());
+    this.events.notice?.(t('automation.combat.spellNoEffectKept', { spell, target: monster }));
+  }
+
+  /**
+   * A cast of `spell` landed on `monster`: a kept no-effect for the two was
+   * a misread, and is forgotten and said. Only the player's own cast can
+   * show it, since nothing here casts a kept spell at that monster.
+   */
+  private landed(spell: string, monster: string | undefined): void {
+    const name = this.nameOf(spell, this.book);
+    if (monster === undefined || name === null || !this.realmLore.hasNoEffect(name, monster))
+      return;
+    this.realmLore.forgetNoEffect(name, monster);
+    this.events.notice?.(t('automation.combat.spellNoEffectForgotten', { spell, target: monster }));
+  }
+
+  /**
    * A cast the server confirmed in the `You cast X on Y` frame, counted
    * against the spell it is repeating and no other: a heal confirmed in the
    * same round is a different spell. A fizzle confirms nothing.
@@ -749,6 +808,7 @@ export class AttackSpells {
   private noteCast(block: Block, book: CharacterState['spellbook']): void {
     if (block.groups['caster'] !== 'You' || block.groups['announced'] !== undefined) return;
     const said = (block.groups['spell'] ?? '').trim().toLowerCase();
+    this.landed(said, block.groups['target']);
     if (this.noteInstant(said, book)) return;
     const cast = this.repeated;
     if (cast === null || !spellingsOf(cast.spell, book, this.realmSpell).includes(said)) return;
@@ -767,6 +827,8 @@ export class AttackSpells {
     const names = (spell: string): string | undefined =>
       spellingsOf(spell, book, this.realmSpell).find((name) => line.startsWith(`cast ${name} `));
     const awaited = this.awaiting === null ? undefined : names(this.awaiting.spell);
+    const struck = awaited ?? (this.repeated === null ? undefined : names(this.repeated.spell));
+    if (struck !== undefined) this.landed(struck, block.groups['target']);
     if (awaited !== undefined && this.noteInstant(awaited, book)) return;
     const cast = this.repeated;
     if (cast === null || cast.area) return;

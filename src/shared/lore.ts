@@ -259,11 +259,42 @@ export const NO_INSTANT_SPELLS: InstantSpellLore = {
 };
 
 /**
+ * Which spells a realm's wire has said have no effect on which monsters:
+ * `Your spell has no effect on <monster>.` The server asks only the
+ * monster's type row and the spell (`Spell.CanSpellAffectTarget`), so the
+ * answer holds for the next one and for every size of it. The world database
+ * answers it first where its rows agree (`spellReaches`); this keeps what the
+ * server said where they do not, or where the realm has no file. Keyed by the
+ * realm's name for the spell and its row name for the monster.
+ */
+export interface NoEffectLore {
+  /** Whether this realm has said the spell, by its name, has no effect on the monster. */
+  hasNoEffect(spell: string, monster: string): boolean;
+  /** The realm said the spell, by its name, has no effect on the monster. */
+  observeNoEffect(spell: string, monster: string, at: number): void;
+  /** A cast of the spell landed on the monster: whatever was kept was a misread. */
+  forgetNoEffect(spell: string, monster: string): void;
+}
+
+/** Keeps and learns nothing: a session with no realm lore. */
+export const NO_EFFECTS_KEPT: NoEffectLore = {
+  hasNoEffect: () => false,
+  observeNoEffect: () => {},
+  forgetNoEffect: () => {}
+};
+
+/** What a realm's wire taught about its attack spells: which are instant, and what each cannot touch. */
+export type AttackSpellLore = InstantSpellLore & NoEffectLore;
+
+/** A realm that has taught nothing about its attack spells. */
+export const NO_ATTACK_SPELL_LORE: AttackSpellLore = { ...NO_INSTANT_SPELLS, ...NO_EFFECTS_KEPT };
+
+/**
  * One realm's lore as a session is handed it: the monsters' half for the
  * parser, the spells' half for the fight, the rooms' refills for the hunting
  * survey, each consumer typed to its own.
  */
-export type RealmLoreView = MobLore & InstantSpellLore & SpawnLore & KillExpLore;
+export type RealmLoreView = MobLore & AttackSpellLore & SpawnLore & KillExpLore;
 
 /** A lore that knows nothing and learns nothing. The zero-realm client. */
 export const NO_LORE: RealmLoreView = {
@@ -277,7 +308,7 @@ export const NO_LORE: RealmLoreView = {
   observeDeath: () => {},
   observeKillExp: () => {},
   ...NO_KILL_EXP,
-  ...NO_INSTANT_SPELLS,
+  ...NO_ATTACK_SPELL_LORE,
   ...NO_SPAWNS
 };
 
