@@ -9,6 +9,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import type { ItemEntity } from '../../../shared/entities';
 import type { OutgrownItem } from '../../../shared/outgrown';
+import type { Rarity } from '../../../shared/rarity';
 import type { SalePlace } from '../../../shared/selling';
 import type { Route } from '../../../shared/world';
 
@@ -36,12 +37,18 @@ function packed(...carried: ItemEntity[]): CharacterState {
   };
 }
 
-const outgrown = (name: string, copper: number | null, over: Partial<ItemEntity> = {}) =>
+const outgrown = (
+  name: string,
+  copper: number | null,
+  over: Partial<ItemEntity> = {},
+  rarity: Rarity = 'common'
+) =>
   ({
     item: entity(name, { id: 7, ...over }),
     slot: 'Feet',
     worn: 'cloth shoes',
-    copper
+    copper,
+    rarity
   }) as OutgrownItem;
 
 const ROUTE = { steps: [{}, {}, {}], cost: 3, blocked: false } as unknown as Route;
@@ -155,14 +162,25 @@ describe('getting rid of outgrown gear', () => {
     expect(sent).toEqual(['sell silver ring']);
   });
 
-  it('keeps an item a worn one answers to, since the verb would take the worn one too', () => {
+  /* Todo 14: the game takes an unworn copy first, so a spare of the worn item goes. */
+  it('drops a spare of the item worn', () => {
     const errand = trip();
     found = [outgrown('cloth shoes', 200)];
-    const state = packed(entity('cloth shoes'));
+    errand.onCharacter(packed(entity('cloth shoes')));
+    expect(sent).toEqual(['drop cloth shoes']);
+  });
+
+  it('keeps a rare item and one whose rarity is unknown, saying so once each', () => {
+    const errand = trip();
+    found = [outgrown('sandals', 200, {}, 'rare'), outgrown('slippers', 200, { id: 8 }, 'unknown')];
+    const state = packed(entity('sandals'), entity('slippers'));
     errand.onCharacter(state);
     errand.onCharacter({ ...state, inventory: { ...state.inventory } });
     expect(sent).toEqual([]);
-    expect(notices).toEqual([t('automation.outgrown.keptTwin', { item: 'cloth shoes' })]);
+    expect(notices).toEqual([
+      t('automation.outgrown.keptRare', { item: 'sandals' }),
+      t('automation.outgrown.keptRarityUnknown', { item: 'slippers' })
+    ]);
   });
 
   it('keeps an item with no one price, saying so', () => {
