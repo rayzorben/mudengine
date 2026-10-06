@@ -85,3 +85,17 @@ export const GROUNDS = {
 export function groundRefills(via: HuntVia, room: WorldRoom, family: RealmFamily | null): boolean {
   return GROUNDS[via].lair && refillsOnEntry(room.delay, family);
 }
+
+/**
+ * Whether another group's room may be taken as a filler beside a ring: a
+ * ground that fills (`GROUNDS`), on a clock (a room with none is hunted on
+ * luck), and not one the level ready shuts once trained for a ring that stays
+ * open, whose rate would then rest on a lair it cannot keep (2026-10-06).
+ */
+export function admitsFiller<
+  T extends { respawn: number | null; group: { via: HuntVia }; closes: boolean }
+>(ring: { closes: boolean }, other: T | undefined): other is T & { respawn: number } {
+  if (other === undefined || other.respawn === null || !GROUNDS[other.group.via].fills)
+    return false;
+  return !other.closes || ring.closes;
+}

@@ -31,7 +31,7 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { LairCosts } from '../world/LairCosts';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
-import { GROUNDS, groundRefills, type Ground } from './huntGrounds';
+import { GROUNDS, type Ground, admitsFiller, groundRefills } from './huntGrounds';
 import { preferredEdges } from '../world/loopDraft';
 import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shared/abilities';
 import type { Block } from '../../shared/blocks';
@@ -68,7 +68,8 @@ import {
   type SpotCharacter,
   type SpotEstimate,
   type SpotInput,
-  type SpotMob
+  type SpotMob,
+  type SurveyAsk
 } from '../../shared/hunting';
 import { matchStop, type RoomMatch } from '../../shared/loops';
 import { bareName, sameItem } from '../../shared/items';
@@ -179,6 +180,8 @@ interface HuntPriced extends HuntPrice {
   rooms: HuntingRoom[];
   /** The odds book ran the lair's fight and it is safe (`SpotInput.fightRun`). */
   fightRun: boolean;
+  /** Training the level ready shuts the way back to it (kept only where the survey was asked `gated`). */
+  closes: boolean;
 }
 
 /** The character's own side of the combat arithmetic. See `Errands.realmClass`. */
@@ -1545,8 +1548,7 @@ export class Errands implements SessionModule {
   huntingGrounds(
     radius: number | null,
     measure: string | null = null,
-    as: CharacterState = this.tracker.current,
-    beneath = false
+    { as = this.tracker.current, beneath = false, gated = false }: SurveyAsk = {}
   ): HuntingAdvice {
     const state = as;
     const world = this.world;
@@ -1857,8 +1859,11 @@ export class Errands implements SessionModule {
     const survey: HuntingSpot[] = [];
     const afterTraining = this.reachAfterTraining(state, reach);
     for (const [key, group] of groups) {
-      // Behind a gate the next level shuts, with that level about to be trained (todo 71).
-      if (afterTraining !== null && !group.rooms.some((room) => afterTraining.has(room.id))) {
+      // Behind a gate the next level shuts, with that level about to be trained (todo 71): left out,
+      // or kept and marked for a caller weighing the training against the ground it shuts.
+      const closes =
+        afterTraining !== null && !group.rooms.some((room) => afterTraining.has(room.id));
+      if (closes && !gated) {
         excluded.gated += 1;
         continue;
       }
@@ -1901,7 +1906,17 @@ export class Errands implements SessionModule {
         continue;
       }
       const fightRun = odds?.kind === 'run';
-      const entry: HuntPriced = { key, group, mobs, clock, respawn, refills, rooms, fightRun };
+      const entry: HuntPriced = {
+        key,
+        group,
+        mobs,
+        clock,
+        respawn,
+        refills,
+        rooms,
+        fightRun,
+        closes
+      };
       /*
        * A first estimate to rank on and to exclude by: the nearest rooms, the
        * ring's length guessed from the sweep's distances — out to the farthest
@@ -1947,6 +1962,7 @@ export class Errands implements SessionModule {
         walk: loop,
         roomCount: rooms.length,
         loopSteps: guessed,
+        ...(closes ? { closesWithTraining: true as const } : {}),
         estimate
       });
     }
@@ -2024,7 +2040,7 @@ export class Errands implements SessionModule {
       current,
       limits,
       { horizon: tuning().train.statHorizon, places: tuning().train.statPlaces },
-      (as) => this.huntingGrounds(null, null, as).spots
+      (as) => this.huntingGrounds(null, null, { as }).spots
     );
   }
 
@@ -2084,10 +2100,7 @@ export class Errands implements SessionModule {
         const key = groupOfRoom.get(id);
         if (key === undefined || key === own.key) continue;
         const other = byKey.get(key);
-        // A filler is a ground that fills (`GROUNDS`) another admissible
-        // group holds, on a clock: a room with none is hunted on luck.
-        if (other === undefined || other.respawn === null || !GROUNDS[other.group.via].fills)
-          continue;
+        if (!admitsFiller(own, other)) continue;
         const found = world.byId(id);
         if (!found) continue;
         seen.add(id);
