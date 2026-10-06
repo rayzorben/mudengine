@@ -225,8 +225,8 @@ export function resolveHazard(
      */
     if (row === undefined) return void (unread = true);
     const mean = Math.abs(row.power[0] + row.power[1]) / 2;
-    // `TextBlock 0` is the realm's *no script*, not a script it lost.
-    for (const script of scriptsOf(row.abilities)) walkBlock(script, depth + 1, 'steps');
+    // `TextBlock 0` is the spell's own roll (`columnRows`), and with no power it is no script.
+    for (const script of scriptsOf(row).flat()) walkBlock(script, depth + 1, 'steps');
     if (castMoves(row.abilities)) {
       relocates = true;
       widen('relocates');

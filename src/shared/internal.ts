@@ -1148,6 +1148,28 @@ const TUNING_DEFAULTS = {
     /** A `hide`, `sell` or `drop` that leaves the pack holding as many after this is refused. */
     confirmMs: 8000
   },
+  /**
+   * How rare an item is — `world/itemRarity.ts` (todo 13). The bands are the
+   * hours to one copy at the item's quickest source: under `commonHours` is
+   * common, under `uncommonHours` uncommon, under `rareHours` rare, under
+   * `veryRareHours` very rare, and anything slower extremely rare.
+   */
+  rarity: {
+    commonHours: 1,
+    uncommonHours: 24,
+    rareHours: 168,
+    veryRareHours: 720,
+    /** A lair whose room states no `Delay` is taken to refill this often. */
+    lairSeconds: 300,
+    /** A monster `Summoned By` puts in a roaming group comes once this often. */
+    roamSeconds: 600,
+    /** A phrase that asks nothing (a price, an item shown) is said this often. */
+    onDemandSeconds: 60,
+    /** An item placed in a room is put back by the nightly cleanup this often. */
+    placedHours: 24,
+    /** Monster and item rates feed each other; worked out this many times at most. */
+    passes: 20
+  },
   /** Fetching named items from a stash — `StashFetch` (todo 05). */
   stashFetch: {
     /**
@@ -2396,6 +2418,8 @@ const TUNING_DEFAULTS = {
     webReconnectMs: 1500,
     /** Framed lines kept for the Stream card. */
     lineLogLimit: 200,
+    /** Where an item comes from, on the Reference card: this many, quickest first, then a count. */
+    raritySourcesShown: 6,
     /**
      * Remembered conversation. Generous, because the point of keeping it is
      * that somebody can come back to what they missed.

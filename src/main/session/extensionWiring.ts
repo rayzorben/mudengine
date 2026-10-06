@@ -18,6 +18,7 @@ import { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import { bestInSlot } from '../world/bestInSlot';
 import { gearUpgrades, type UpgradeRealm } from '../world/gearUpgrades';
+import { rarityBook, type RarityWorld } from '../world/itemRarity';
 import { learnerOf, learning } from '../world/learning';
 import { slotAskerOf, type SlotAsker } from '../world/slotGear';
 import { spellScrolls } from '../world/spellScrolls';
@@ -59,7 +60,7 @@ export interface ExtensionWiring {
     | 'priceAt'
     | 'reachKey'
   >;
-  world(): ExtensionWorld | undefined;
+  world(): (ExtensionWorld & RarityWorld) | undefined;
   odds: Pick<OddsBook, 'lair' | 'lairsLeft' | 'mob' | 'mobAs'>;
   blessings: Pick<Blessings, 'entries'>;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
@@ -197,6 +198,10 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         const world = wiring.world();
         const state = as ?? tracker.current;
         return world === undefined ? { state, learned: [] } : learning(state, spells, world);
+      },
+      rarity: (item) => {
+        const world = wiring.world();
+        return world === undefined ? null : rarityBook(world).of(item);
       },
       safety: wiring.safety,
       busy: wiring.busy,

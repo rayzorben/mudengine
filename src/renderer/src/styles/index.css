@@ -8124,7 +8124,8 @@ button.quest-plan-back {
 }
 
 /*
- * Where a script hands an item over: one act per line, not a run of names.
+ * Where a script hands an item over, and where the realm makes one (its
+ * rarity's sources): one act per line, not a run of names.
  *
  * `Sold by` and `Dropped by` are lists and read as one comma-separated
  * sentence; this is a *sentence per entry* — a verb, a monster, the words, a
@@ -8132,11 +8133,19 @@ button.quest-plan-back {
  * it. A block per handover, and the whole thing wraps, on the panel's measured
  * width.
  */
-.reference-detail .item-given {
+.reference-detail .item-given,
+.reference-detail .item-rarity {
   display: flex;
   flex-direction: column;
   gap: 2px;
   line-height: 1.5;
+}
+
+/* The time to one copy leads each source, in the figures' register, so the column reads down. */
+.reference-detail .rarity-clock {
+  margin-right: 6px;
+  color: var(--text-hi);
+  font-family: var(--font-mono);
 }
 
 /*

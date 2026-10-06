@@ -2,6 +2,7 @@ import { SupplyControl, type SupplyList } from './SupplyControls';
 import { Fragment, useState } from 'react';
 import EntityNumber from './EntityNumber';
 import MobFactRow from './MobFactRow';
+import RarityRows from './RarityRows';
 import { t } from '../lib/i18n';
 import { ago } from '../lib/players';
 import { DISPOSITION_WORD } from '@shared/mobs';
@@ -31,6 +32,7 @@ import type {
 } from '@shared/world';
 import type { MobLoreEntry } from '@shared/lore';
 import type { FightSummary } from '@shared/fights';
+import type { ItemRarity } from '@shared/rarity';
 import { entryNumber, entryWord, type ReferenceEntry } from '../lib/reference';
 
 /** A mean as a figure: whole above ten, one decimal below, never a rounded-away zero. */
@@ -942,6 +944,7 @@ function GivenBy({
 
 function ItemDetail({
   item,
+  rarity,
   realm,
   names,
   shopPlaces,
@@ -950,6 +953,7 @@ function ItemDetail({
   supplies
 }: {
   item: WorldItem;
+  rarity: ItemRarity | null;
   realm: RealmFamily | null;
   names: EffectNames;
   shopPlaces: Record<string, ShopPlace>;
@@ -969,7 +973,7 @@ function ItemDetail({
     !item.from?.length &&
     item.placed === undefined &&
     !item.abilities?.length;
-  if (nothing && supplies === null) {
+  if (nothing && supplies === null && rarity === null) {
     return <div className="empty">{t('cards.reference.item.noDetail')}</div>;
   }
 
@@ -1064,6 +1068,7 @@ function ItemDetail({
           />
         </>
       )}
+      {rarity !== null && <RarityRows rarity={rarity} />}
     </dl>
   );
 }
@@ -1456,6 +1461,7 @@ export default function ReferenceDetail({
       {entry.kind === 'item' && (
         <ItemDetail
           item={entry.item}
+          rarity={entry.rarity}
           names={names}
           onResize={onResize}
           onRoom={onRoom}

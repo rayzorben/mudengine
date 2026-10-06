@@ -8,6 +8,7 @@
  * Dependency-free: the graph is built in the main process, routes are rendered
  * in the renderer.
  */
+import type { ItemRarity } from './rarity';
 import { asGates, type AbilityBounds, type Gate } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellchoice';
@@ -1584,6 +1585,8 @@ export interface WorldLookup {
    * which is the honest answer rather than an empty list reading as *nowhere*.
    */
   mobPlaces?: Record<string, MobPlaces>;
+  /** How rare each item named is, by the item's row (`world/itemRarity.ts`, todo 13). */
+  rarity?: Record<number, ItemRarity>;
 }
 
 /** The answer to a query that found nothing. */
