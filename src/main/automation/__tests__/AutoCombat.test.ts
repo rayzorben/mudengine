@@ -138,10 +138,13 @@ let decisions: EngageDecision[];
 let queue: CommandQueue;
 /** On the ground, as `Grounded.down` answers it (todo 760). */
 let down: boolean;
+/** The realm's speed (`RealmSpeed`). */
+let speed: number;
 
 beforeEach(() => {
   vi.useFakeTimers();
   down = false;
+  speed = 1;
   sent = [];
   notices = [];
   decisions = [];
@@ -173,7 +176,8 @@ function make(
       notice: (m) => notices.push(m),
       decided: (decision) => decisions.push(decision),
       ...(canHide === undefined ? {} : { canHide }),
-      onTheGround: () => down
+      onTheGround: () => down,
+      realmSpeed: () => speed
     },
     spells ?? DEFAULT_CONFIG.automation.spells,
     undefined,
@@ -1330,7 +1334,7 @@ describe('a verb the realm refuses', () => {
       state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('kobold thief', 'hostile')] } })
     );
     drain();
-    expect(sent).toEqual(['bash giant rat', 'a kobold thief']);
+    expect(sent).toEqual(['bash giant rat', 'a giant rat', 'a kobold thief']);
     expect(
       notices.filter((n) => n === t('automation.combat.verbRefused', { verb: 'bash' }))
     ).toHaveLength(1);
@@ -1345,13 +1349,63 @@ describe('a verb the realm refuses', () => {
     drain();
     expect(sent).toEqual(['kic giant rat']);
 
+    // The plain attack goes on the refusal itself: nothing is fighting, and the rat swings.
     auto.onBlock(block('attack-refused', { skill: 'kicking' }));
+    drain();
+    expect(sent).toEqual(['kic giant rat', 'a giant rat']);
     auto.onCharacter(
       state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('kobold thief', 'hostile')] } })
     );
     drain();
-    expect(sent).toEqual(['kic giant rat', 'a kobold thief']);
+    expect(sent).toEqual(['kic giant rat', 'a giant rat', 'a kobold thief']);
     expect(notices).toEqual([t('automation.combat.attackStandsIn', { verb: 'kick', plain: 'a' })]);
+  });
+
+  /* The wait for an attack's answer is a bound on an attack nobody answered,
+     at the realm's speed: orohost runs five rounds to the server's one. */
+  it('sends an unanswered attack again after the wait at the realm speed, not before', () => {
+    const rat = state({
+      room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] }
+    });
+    speed = 5;
+    const auto = make(combat());
+    auto.onCharacter(rat);
+    drain();
+    vi.advanceTimersByTime(400);
+    auto.onCharacter(rat);
+    expect(sent).toEqual(['a giant rat']);
+    vi.advanceTimersByTime(200);
+    auto.onCharacter(rat);
+    expect(sent).toEqual(['a giant rat', 'a giant rat']);
+  });
+
+  it("waits the whole 4 s where the realm runs at the server's speed (the control)", () => {
+    const rat = state({
+      room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] }
+    });
+    const auto = make(combat());
+    auto.onCharacter(rat);
+    drain();
+    vi.advanceTimersByTime(600);
+    auto.onCharacter(rat);
+    expect(sent).toEqual(['a giant rat']);
+  });
+
+  /* An answer that rules nothing out leaves the same attack next in the
+     chain: it is not sent straight back, only once the wait has run. */
+  it('does not send straight back an attack the answer changed nothing about', () => {
+    const rat = state({
+      room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] }
+    });
+    const auto = make(combat());
+    auto.onCharacter(rat);
+    drain();
+    auto.onBlock(block('spell-ineffective'));
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+    vi.advanceTimersByTime(4000);
+    auto.onCharacter(rat);
+    expect(sent).toEqual(['a giant rat', 'a giant rat']);
   });
 
   it('says a refused opener is dropped, after the attack was refused too', () => {
