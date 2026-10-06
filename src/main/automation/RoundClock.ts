@@ -3,10 +3,10 @@
  * one beat for a whole connection (five one-second ticks, `TimedEventManager`
  * `CombatTickTime`), so every round seen is numbered on that beat and the
  * beat is a line fitted through the last `roundSamples` of them: the period
- * its slope, once known to `roundPeriodSureMs`, `hunting.roundSeconds` until
- * then. A round's first blow lands 250 ms from the beat at the median and
- * 470 ms at p90, so no single round sets it. Rounds off the beat in a row
- * (`offBeatRounds`) start a new one. See `mudengine-automation` ›
+ * its slope, once known to `roundPeriodSureMs`, the server's round at the
+ * realm's speed until then. A round's first blow lands 250 ms from the beat at
+ * the median and 470 ms at p90, so no single round sets it. Rounds off the
+ * beat in a row (`offBeatRounds`) start a new one. See `mudengine-automation` ›
  * parts/walking.md › *A run steps in the off-rounds*.
  */
 import { tuning } from '../app/tuning';
@@ -52,12 +52,17 @@ export function fitBeat(seen: readonly Seen[], nominalMs: number, sureMs: number
 }
 
 export class RoundClock {
-  private readonly beat = new RoundBeat();
+  private readonly beat: RoundBeat;
   /** The latest rounds on the beat, oldest first. */
   private seen: Seen[] = [];
   /** Rounds off the beat since the last one on it. */
   private off: number[] = [];
   private fitted: Beat | null = null;
+
+  /** `speed`: the session's figure for the realm's speed (`RealmSpeed`). */
+  constructor(speed: () => number = () => 1) {
+    this.beat = new RoundBeat(speed);
+  }
 
   onBlock(block: Block): void {
     if (this.beat.onBlock(block)) this.note(block.at);
@@ -96,9 +101,9 @@ export class RoundClock {
     this.refit();
   }
 
-  /** A new beat from `rounds`, numbered at the nominal period. */
+  /** A new beat from `rounds`, numbered at the nominal period: the server's round at the realm's speed. */
   private restart(rounds: readonly number[]): void {
-    const nominal = tuning().hunting.roundSeconds * 1000;
+    const nominal = this.nominalMs();
     const first = rounds[0]!;
     this.seen = rounds.map((at) => ({ at, n: Math.round((at - first) / nominal) }));
     this.off = [];
@@ -107,6 +112,11 @@ export class RoundClock {
 
   private refit(): void {
     const { roundPeriodSureMs } = tuning().combat;
-    this.fitted = fitBeat(this.seen, tuning().hunting.roundSeconds * 1000, roundPeriodSureMs);
+    this.fitted = fitBeat(this.seen, this.nominalMs(), roundPeriodSureMs);
+  }
+
+  /** The server's round at the realm's speed (`RoundBeat.roundMs`). */
+  private nominalMs(): number {
+    return this.beat.roundMs;
   }
 }

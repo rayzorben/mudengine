@@ -487,7 +487,8 @@ const TUNING_DEFAULTS = {
      * The quiet that separates two rounds' blows (`RoundBeat`). Measured
      * 2026-09-26 over 120 recorded sessions: gaps inside one round are under
      * 250 ms in 99% of cases and at most 1.5 s, and gaps between rounds are
-     * 2.5 s at the least and 5 s typically.
+     * 2.5 s at the least and 5 s typically. The server's figure: a realm that
+     * runs faster divides it by its speed (`RealmSpeed`), down to `speedQuietMs`.
      */
     roundGapMs: 2000,
     /**

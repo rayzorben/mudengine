@@ -120,3 +120,16 @@ describe('fitBeat', () => {
     });
   });
 });
+
+describe('a realm that runs faster', () => {
+  /* orohost runs at 5 (`GameSpeed`): a round a second, numbered on the realm's beat. */
+  it('numbers the rounds of a realm that runs faster on its own beat', () => {
+    const fast = Array.from({ length: 40 }, (_, i) => 100_000 + i * 1000 + ((i % 3) - 1) * 60);
+    const clock = new RoundClock(() => 5);
+    for (const at of fast) clock.onBlock(blockOf('user-hits', '', {}, at));
+    const next = clock.next(fast.at(-1)! + 10);
+    expect(next.known && next.periodMs).toBeCloseTo(1000, -1);
+    // The next round falls on the fitted beat whatever the last blow's jitter.
+    expect(nextAt(clock, fast.at(-1)! + 10)).toBeCloseTo(140_000, -2);
+  });
+});

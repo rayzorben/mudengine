@@ -197,9 +197,11 @@ export class AutoHeal implements SessionModule {
     /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
     private readonly gate: CastGate = OPEN_CAST_GATE,
     /** What the monsters in the fight are expected to deal a round (`FightHeal`). */
-    realmPerRound: (state: CharacterState) => number | null = () => null
+    realmPerRound: (state: CharacterState) => number | null = () => null,
+    /** The session's figure for the realm's speed (`RealmSpeed`), which sets where a round begins. */
+    speed: () => number = () => 1
   ) {
-    this.fight = new FightHeal(realmPerRound);
+    this.fight = new FightHeal(realmPerRound, speed);
   }
 
   configure(config: SpellsConfig, enabled: boolean): void {
