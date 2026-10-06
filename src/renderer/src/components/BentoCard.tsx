@@ -11,6 +11,7 @@ import {
 
 import Icon, { type IconName } from './Icon';
 import PopupMenu from './PopupMenu';
+import { faceIndex, keptPick } from '../lib/faces';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { writeClipboard } from '../lib/clipboard';
@@ -169,11 +170,10 @@ export interface BentoCardProps {
   /**
    * Which face is showing, for a card that decides that for itself.
    *
-   * Ordinarily a card does not: the player picks a face and it stays picked,
-   * which is what the internal state below is. The Navigation card is the
-   * exception — starting a loop or planning a route is a decision about *what
-   * the character is doing*, and the card that reports it should be showing
-   * the half that is happening rather than waiting to be told.
+   * Ordinarily a card does not: the player picks a face and it stays picked
+   * while that face is offered, which is what the internal state below is.
+   * The Self, Vitals and Stats cards pass it to remember their face per
+   * character.
    *
    * By tab **id**, never by index: a card's face list changes shape (the Room
    * card's `Shop` appears with the room), and an index would silently point at
@@ -358,19 +358,21 @@ export default function BentoCard({
   returnFocus,
   children
 }: BentoCardProps) {
-  const [own, setOwn] = useState(0);
+  const [picked, setPicked] = useState<string | null>(null);
   /*
    * The controlled id wins where it is given and names a face this card still
-   * has; otherwise the card's own state, clamped, because a face list can
-   * shrink under a stored index. A caller that names a face that has gone gets
-   * the first one rather than a blank body.
+   * has; otherwise the player's pick, by id (`faceIndex`). A pick whose face
+   * has gone is dropped during the render, so that face coming back later
+   * does not take the card over.
    */
-  const named = active === undefined ? -1 : (tabs?.findIndex((tab) => tab.id === active) ?? -1);
-  const at = tabs && tabs.length > 0 ? (named >= 0 ? named : Math.min(own, tabs.length - 1)) : 0;
+  const ids = tabs?.map((tab) => tab.id) ?? [];
+  if (keptPick(ids, picked) !== picked) setPicked(null);
+  const at = faceIndex(ids, active, picked);
   const show = (index: number): void => {
-    setOwn(index);
     const id = tabs?.[index]?.id;
-    if (id !== undefined) onActive?.(id);
+    if (id === undefined) return;
+    setPicked(id);
+    onActive?.(id);
   };
   const shown = tabs && tabs.length > 0 ? tabs[at]!.content : children;
   const body = useRef<HTMLDivElement | null>(null);
