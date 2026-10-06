@@ -798,6 +798,18 @@ const TUNING_DEFAULTS = {
      * (`TimedEventManager.RegenTickTime`): it refills monsters, not players.
      */
     roomRegenSeconds: 121,
+    /**
+     * Reading how many times faster than these clocks the realm runs
+     * (`RealmSpeed`, GreaterMUD's `GameSpeedMultiplier`): the quiet that opens
+     * a round at any speed (a round's blows land within 250 ms in 99% of
+     * cases, and orohost's rounds come a second apart), the longest gap between
+     * openings that is still one fight's (half again the server's round), how
+     * many gaps are needed before the figure is read, and how many are kept.
+     */
+    speedQuietMs: 500,
+    speedGapMostMs: 7500,
+    speedRounds: 12,
+    speedKept: 60,
     /** Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`, 1.5s). */
     killOverheadMs: 1500,
     /** One step of a walk — the movement round measured at 1,239ms. */

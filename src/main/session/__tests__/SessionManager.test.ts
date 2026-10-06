@@ -8021,6 +8021,28 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(goblin?.estimate.unknown).not.toContain('rounds');
   });
 
+  /* orohost runs every clock five times as fast (`GameSpeed`): a round a second, the rest ticks and the walk with it. */
+  it('prices the rounds at the realm’s speed once a fight’s rounds are read', async () => {
+    const { fights, asked } = record();
+    await surveyed(fights);
+    const socket = await client();
+    let now = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'], now });
+    try {
+      for (let round = 1; round <= DEFAULT_INTERNAL.tuning.hunting.speedRounds + 1; round += 1) {
+        socket.write(
+          `The orc rogue slashes you for 1 damage!\r\n[HP=${148 - round}/MA=5]:` + PROMPT_REPAINT
+        );
+        await until(() => manager!.character.vitals.hp === 148 - round);
+        vi.setSystemTime((now += 1000));
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+    await settled();
+    expect(asked.at(-1)?.ask.roundMs).toBe(1000);
+  });
+
   /*
    * Todo 71: a dungeon whose only way in is a stair for levels up to 10.
    * Standing inside it at level 10 with a level ready, every lair in it is one
