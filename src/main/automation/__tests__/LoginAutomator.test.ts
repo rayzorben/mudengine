@@ -514,6 +514,95 @@ describe('safety', () => {
   });
 });
 
+/**
+ * What the way in owes, for `LinkWatch` to time. The realm echoes an answer
+ * before it does anything with it, so only the next prompt pays: Paradigm
+ * echoed `********` and then sent nothing for seven hours
+ * (`logs/2026-10-06_00-27-14_rayzor.mudcap.jsonl`).
+ */
+describe('what the way in owes', () => {
+  let owes: string[];
+  let watched: LoginAutomator;
+
+  beforeEach(() => {
+    owes = [];
+    watched = new LoginAutomator(credentials, queue, {
+      promptOwed: () => owes.push('owed'),
+      prompted: () => owes.push('prompted')
+    });
+  });
+
+  it('owes the first prompt when the socket opens, only when it is logging in', () => {
+    watched.opened();
+    expect(owes).toEqual(['owed']);
+
+    const manual: string[] = [];
+    new LoginAutomator({ ...credentials, enabled: false }, queue, {
+      promptOwed: () => manual.push('owed')
+    }).opened();
+    expect(manual).toEqual([]);
+  });
+
+  it('owes the next prompt once each answer is on the wire, and the echo pays nothing', () => {
+    watched.onBlock(block('prompt-username', USERNAME));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['vaelor']);
+    // The prompt pays what was owed before its answer owes the next one.
+    expect(owes).toEqual(['prompted', 'owed']);
+
+    watched.onBlock(block('unknown', 'vaelor', 'newline'));
+    watched.onBlock(block('prompt-password', PASSWORD));
+    vi.advanceTimersByTime(50);
+    watched.onBlock(block('unknown', '********', 'newline'));
+    expect(sent).toEqual(['vaelor', 'secret']);
+    expect(owes).toEqual(['prompted', 'owed', 'prompted', 'owed']);
+  });
+
+  it('is paid by the statline, and owes nothing in the realm', () => {
+    watched.onBlock(block('status-line', '[HP=33]:'));
+    expect(owes).toEqual(['prompted']);
+    watched.onBlock(block('status-line', '[HP=34]:'));
+    watched.onBlock(block('prompt-selection', 'Please enter your selection: '));
+    vi.advanceTimersByTime(50);
+    expect(owes).toEqual(['prompted']);
+  });
+
+  it('owes nothing at a prompt it has no row for', () => {
+    const bare = new LoginAutomator({ ...credentials, steps: [] }, queue, {
+      promptOwed: () => owes.push('owed'),
+      prompted: () => owes.push('prompted')
+    });
+    bare.onBlock(block('prompt-username', USERNAME));
+    vi.advanceTimersByTime(50);
+    // The prompt arrived, so it paid; nothing went out, so nothing is owed.
+    expect(owes).toEqual(['prompted']);
+    expect(sent).toEqual([]);
+  });
+
+  it('owes nothing at the menu after leaving the realm', () => {
+    watched.onBlock(block('status-line', '[HP=34]:'));
+    watched.onBlock(
+      block('user-exits-realm', 'You will exit after a period of silent meditation.')
+    );
+    watched.onBlock(block('prompt-menu', '[PARADIGM]: '));
+    vi.advanceTimersByTime(50);
+    // The positive control: the exit was read, so the menu is the way out.
+    expect(watched.standDown).toBe('left-realm');
+    expect(sent).toEqual([]);
+    expect(owes).toEqual(['prompted']);
+  });
+
+  it('owes nothing for an answer that never went out', () => {
+    queue.noteTyping(true);
+    watched.onBlock(block('prompt-username', USERNAME));
+    watched.onBlock(block('status-line', '[HP=33]:'));
+    queue.noteTyping(false);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual([]);
+    expect(owes).toEqual(['prompted', 'prompted']);
+  });
+});
+
 describe('config', () => {
   it('refuses to enable itself without credentials', () => {
     // Enabling with a blank username would send empty answers at a live
