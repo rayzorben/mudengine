@@ -79,7 +79,7 @@ import { t } from '../app/i18n';
 import type { EngageDecision } from '../../shared/automation';
 import { avoided, type FledEntry } from '../../shared/fled';
 import type { Block } from '../../shared/blocks';
-import { NO_INSTANT_SPELLS, type InstantSpellLore } from '../../shared/lore';
+import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import {
   ownAlignment,
   sameVisit,
@@ -534,17 +534,26 @@ export class AutoCombat implements SessionModule {
       family: null
     }),
     /**
-     * The attack spells this realm's wire has answered instantly before
-     * (todo 820), so the opening an instant spell cannot make is paid once per
-     * realm rather than once per connection. See `AttackSpells.isInstant`.
+     * What this realm's wire taught about its attack spells before: the ones
+     * answered instantly (todo 820), so the opening an instant spell cannot
+     * make is paid once per realm rather than once per connection
+     * (`AttackSpells.isInstant`), and what each has no effect on, so that
+     * round is paid once per realm (`AttackSpells.keep`).
      */
-    instants: InstantSpellLore = NO_INSTANT_SPELLS,
+    spellLore: AttackSpellLore = NO_ATTACK_SPELL_LORE,
     /** The realm's spell by row id, for what one ends in (`servesOf`: a drain's heal). */
     realmSpellById: (id: number) => WorldSpell | null = () => null,
     /** What opening a fight is weighed against. See `OpeningGuard`. */
     private readonly guard: OpeningGuard | null = null
   ) {
-    this.spell = new AttackSpells(spells, events, realmSpell, realmClass, instants, realmSpellById);
+    this.spell = new AttackSpells(
+      spells,
+      events,
+      realmSpell,
+      realmClass,
+      spellLore,
+      realmSpellById
+    );
     this.spell.configure(undefined, config.mobRules);
   }
 
@@ -952,12 +961,14 @@ export class AutoCombat implements SessionModule {
        * `Your spell has no effect on` ends this character's attack with no
        * `*Combat Off*` (`InitiateSpell`, `BreakCombat(false)`): Rayzor stood a
        * round at 6 hit points before the next tick sent the attack verb. The
-       * round's change goes now.
+       * round's change goes now, and a fight the cast was opening is opened
+       * again now (`reopen`).
        */
       case 'spell-ineffective': {
         this.spell.heard(block, this.state);
         const fighting = this.inAFight();
         if (fighting !== null) this.roundChange(fighting);
+        else this.reopen(block.groups['target'] ?? null);
         return;
       }
       case 'spell-cast':
@@ -1107,8 +1118,32 @@ export class AutoCombat implements SessionModule {
       this.confirmArrival(was, state);
     }
 
+    this.decide(state);
+  }
+
+  /** Hit back at what is swinging, or else open a fight on what the room offers. */
+  private decide(state: CharacterState): void {
     if (this.retaliation(state)) return;
     this.engage(state);
+  }
+
+  /**
+   * The cast this module opened a fight with had no effect on `named`: the
+   * server broke the attack before it engaged, so nothing is fighting and the
+   * engage cooldown the opening armed guards a fight that never started.
+   * Rayzor's slime swung for five seconds before that cooldown let `aa` go
+   * (2026-10-06, paramud). Released, and the fight decided again on this
+   * line: the spell is ruled out now, so the fallback or the attack verb
+   * goes. A cast the player typed is theirs, and left alone.
+   */
+  private reopen(named: string | null): void {
+    const state = this.state;
+    const focus = this.focus;
+    if (state === null || focus === null || this.sentAttack?.action.kind !== 'spell') return;
+    if (this.spell.playerCasting || (named !== null && mobKey(named) !== focus)) return;
+    this.opened.delete(focus);
+    if (!this.acting || state.phase !== 'in-game' || this.events.onTheGround()) return;
+    this.decide(state);
   }
 
   /**

@@ -30,7 +30,7 @@ import { GUARDED_BY_ABILITY } from '../../../shared/guards';
 import { WEAPON_HAND } from '../../../shared/items';
 import type { RealmFamily } from '../../../shared/realm';
 import type { MobAttack, WorldSpell } from '../../../shared/world';
-import type { InstantSpellLore } from '../../../shared/lore';
+import type { AttackSpellLore } from '../../../shared/lore';
 import { RealmLore } from '../../world/RealmLore';
 import type { ProwessClass } from '../../../shared/prowess';
 
@@ -161,7 +161,7 @@ function make(
   /** Whether the class can get into the shadows; undefined is unknown (todo 28). */
   canHide?: () => boolean | null,
   /** What the realm's wire taught about its attack spells (todo 820). */
-  instants?: InstantSpellLore,
+  spellLore?: AttackSpellLore,
   /** What opening a fight is weighed against (`OpeningGuard`). */
   guard?: OpeningGuard
 ): AutoCombat {
@@ -178,7 +178,7 @@ function make(
     spells ?? DEFAULT_CONFIG.automation.spells,
     undefined,
     realmClass,
-    instants,
+    spellLore,
     undefined,
     guard ?? null
   );
@@ -2225,6 +2225,38 @@ describe('an attack spell opens the fight', () => {
     expect(sent).toEqual(['harm tall kobold thief']);
   });
 
+  /* `Your spell has no effect on` answers the opening cast before any
+     engagement (`BreakCombat(false)`), so nothing is fighting, and the engage
+     cooldown the cast armed held the attack back until the monster swung:
+     five seconds a slime on paramud (Rayzor, 2026-10-06). The engagement
+     that followed then cast the same spell again. */
+  it('opens again with the attack verb on the no-effect line itself', () => {
+    const auto = make(fights(), true, caster());
+    auto.onCharacter(standing());
+    drain();
+    expect(sent).toEqual(['harm tall kobold thief']);
+    auto.onBlock(block('spell-ineffective', { target: 'tall kobold thief' }));
+    drain();
+    expect(sent).toEqual(['harm tall kobold thief', 'a tall kobold thief']);
+    engaged(auto);
+    auto.onBlock(block('user-hits'));
+    round();
+    expect(sent).toEqual(['harm tall kobold thief', 'a tall kobold thief']);
+  });
+
+  it('leaves the opening to the player when the cast that had no effect was theirs', () => {
+    const auto = make(fights(), true, caster());
+    auto.onCharacter({
+      ...standing(),
+      spellbook: [{ name: 'harm', short: 'harm', level: 1, cost: 1 }]
+    });
+    drain();
+    auto.noteUserCommand('harm tall kobold thief');
+    auto.onBlock(block('spell-ineffective', { target: 'tall kobold thief' }));
+    drain();
+    expect(sent).toEqual(['harm tall kobold thief']);
+  });
+
   it('sends nothing more while the server repeats the spell', () => {
     const auto = make(fights(), true, caster());
     auto.onCharacter(standing());
@@ -2561,6 +2593,110 @@ describe('an attack spell opens the fight', () => {
       expect(fs.existsSync(file)).toBe(true);
       fs.rmSync(file);
       expect(connect(launch(), 'hold person').opened).toEqual(['hold tall kobold thief']);
+    });
+  });
+
+  /*
+   * `Your spell has no effect on <monster>.` is kept for the realm, so the
+   * round it costs is paid once per monster rather than once a fight (the
+   * user, 2026-10-06, after Rayzor cast harm at every acid slime).
+   */
+  describe('a spell with no effect, remembered per realm', () => {
+    const book = [{ name: 'harm', short: 'harm', level: 1, cost: 1 }];
+    const rat = state({
+      room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] },
+      vitals: vitals(40)
+    });
+    let dir: string;
+    let file: string;
+    beforeEach(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-no-effect-'));
+      file = path.join(dir, 'mob-lore.json');
+    });
+    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    const launch = () => new RealmLore({ file, saveDelayMs: 0 });
+    /** One connection, standing in `room`, and the unit that opened there. */
+    const connect = (lore: RealmLore, room: CharacterState = standing()): AutoCombat => {
+      sent = [];
+      const auto = make(
+        fights(),
+        true,
+        caster(),
+        undefined,
+        undefined,
+        lore.forRealm('greatermud', undefined)
+      );
+      auto.onCharacter({ ...room, spellbook: book });
+      drain();
+      return auto;
+    };
+    /** The first connection pays the round: harm, and the server's answer. */
+    const learnHarm = (): void => {
+      const lore = launch();
+      const auto = connect(lore);
+      expect(sent).toEqual(['harm tall kobold thief']);
+      auto.onBlock(block('spell-ineffective', { target: 'tall kobold thief' }));
+      lore.flush();
+    };
+
+    it('says the first time that it is kept', () => {
+      learnHarm();
+      expect(notices).toContain(
+        t('automation.combat.spellNoEffectKept', { spell: 'harm', target: 'tall kobold thief' })
+      );
+    });
+
+    it('opens the next connection with the attack verb, and says why', () => {
+      learnHarm();
+      notices = [];
+      connect(launch());
+      expect(sent).toEqual(['a tall kobold thief']);
+      expect(notices).toContain(
+        t('automation.combat.spellNoEffectHeard', { spell: 'harm', target: 'tall kobold thief' })
+      );
+    });
+
+    /* `Your spell has no effect against this monster!` is a guard that moved
+       in to protect the target (`Player.cs:6195`): nothing about the target. */
+    it('keeps nothing from the sentence that names no monster', () => {
+      const lore = launch();
+      const auto = connect(lore);
+      auto.onCharacter({ ...fighting(), spellbook: book });
+      auto.onBlock(block('spell-ineffective'));
+      lore.flush();
+      connect(launch());
+      expect(sent).toEqual(['harm tall kobold thief']);
+    });
+
+    it('still casts it at another monster (the control)', () => {
+      learnHarm();
+      connect(launch(), rat);
+      expect(sent).toEqual(['harm giant rat']);
+    });
+
+    it("casts it again once the player's own cast lands, and says so", () => {
+      learnHarm();
+      const lore = launch();
+      const auto = connect(lore);
+      auto.noteUserCommand('harm tall kobold thief');
+      auto.onBlock(
+        block('user-hits', {
+          attacker: 'You',
+          line: 'cast harm at tall kobold thief',
+          target: 'tall kobold thief',
+          damage: '9'
+        })
+      );
+      expect(notices).toContain(
+        t('automation.combat.spellNoEffectForgotten', {
+          spell: 'harm',
+          target: 'tall kobold thief'
+        })
+      );
+      lore.flush();
+      connect(launch());
+      expect(sent).toEqual(['harm tall kobold thief']);
     });
   });
 

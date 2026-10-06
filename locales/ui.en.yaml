@@ -5123,6 +5123,14 @@ automation:
     # The world database rules the spell out before it is cast (`spellReaches`), not the server.
     spellNoEffectKnown: 'Not casting {spell} at {target}: the world database says it has no effect
       on it.'
+    # The server said so on an earlier fight, kept per realm (`NoEffectLore`).
+    spellNoEffectHeard: 'Not casting {spell} at {target}: it had no effect on one before.'
+    spellNoEffectKept: '{spell} has no effect on {target}; it is not cast at one again on this realm.'
+    spellNoEffectUnkept:
+      "{spell} has no effect on {target}. Neither the spellbook nor the world data
+      confirms the spell's name, so this is forgotten after this fight."
+    # The player's own cast landed on a monster kept as one the spell has no effect on.
+    spellNoEffectForgotten: '{spell} landed on {target}, so it is cast at one again on this realm.'
     whyUnweighed: 'first of {count} here: the world data cannot rate {target}, and unknown is not
       safe'
     hazardList: '; {list}'
@@ -5189,11 +5197,11 @@ automation:
       fight.'
     allResisted: 'Auto Choose Best Spell: this target resists every attack spell in the book; your
       regular attacks carry the fight.'
-    # The world database says no spell in the book can touch this monster (`spellReaches`):
-    # living-only against non-living, undead-only against the living, animals-only against
-    # anything but an animal, or spell immunity.
-    noEffect: 'Auto Choose Best Spell: the world database says none of your attack spells has any
-      effect on this monster; your regular attacks carry the fight.'
+    # The world database (`spellReaches`: living-only against non-living, undead-only against
+    # the living, animals-only against anything but an animal, or spell immunity) or the server's
+    # own answer, this fight or kept for the realm, says no spell in the book can touch it.
+    noEffect: 'Auto Choose Best Spell: none of your attack spells has any effect on this monster;
+      your regular attacks carry the fight.'
     drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
     drainEnds: Health is back up; casting the attack spells again.
     drainNone: No drain spell to cast; casting the attack spells.

@@ -213,6 +213,23 @@ describe('choosing the round spell', () => {
     const only = chooseAttackSpell(input({ book: [BOOK[2]!], realm, target: nonLiving }));
     expect(only.refusal).toBe('no-effect');
   });
+
+  /* The server's own answer, this fight or kept for the realm, counts as the
+     world database's does, so the refusal says no effect rather than that
+     nothing in the book attacks. */
+  it('leaves out a spell the server said has no effect, and says so when nothing is left', () => {
+    expect(chooseAttackSpell(input({ noEffect: new Set(['fire jet']) })).chosen?.spell.name).toBe(
+      'magic missile'
+    );
+    const none = chooseAttackSpell(
+      input({ book: [BOOK[0]!], noEffect: new Set(['magic missile']) })
+    );
+    expect(none.refusal).toBe('no-effect');
+    // The control: left out as capped instead, the book has nothing that attacks.
+    expect(
+      chooseAttackSpell(input({ book: [BOOK[0]!], excluded: new Set(['magic missile']) })).refusal
+    ).toBe('no-attack-spells');
+  });
 });
 
 describe('the round, not the cast', () => {

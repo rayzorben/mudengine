@@ -107,8 +107,14 @@ export interface SpellChoiceInput {
    */
   pool: Vitals['manaType'];
   target: SpellTarget | null;
-  /** Spells refused on this target or capped this fight, by the book's spelling. */
+  /** Spells capped this fight or passed over, by the book's spelling. */
   excluded: ReadonlySet<string>;
+  /**
+   * Spells the server has said have no effect on this target, this fight or
+   * before on the realm, by the book's spelling: counted with the ones the
+   * world database rules out, so the refusal names the reason.
+   */
+  noEffect?: ReadonlySet<string> | undefined;
   /** How sure a kill has to be before the cheapest killer outranks the hardest hitter. */
   killConfidence: number;
 }
@@ -189,7 +195,10 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
     if (input.mana !== null && cost !== null && cost > input.mana) continue;
     affordable += 1;
     // The server answers `Your spell has no effect on` and breaks the fight.
-    if (spellReaches(realm, input.target?.nature) === false) {
+    if (
+      input.noEffect?.has(spell.name) === true ||
+      spellReaches(realm, input.target?.nature) === false
+    ) {
       noEffect += 1;
       continue;
     }
