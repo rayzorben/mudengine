@@ -33,12 +33,19 @@ import {
 } from './prowess';
 import type { RealmFamily } from './realm';
 import { mendsTheRound } from './spellchoice';
-import { rankByVerdict, targetOf, verdictFor, type TargetEntity } from './verdict';
+import { prowessTargetOf, rankByVerdict, targetOf, verdictFor, type TargetEntity } from './verdict';
 
 /** One thing in the room that will fight, as the realm knows it. */
 export interface SurvivalFoe {
   name: string;
   subject: MenaceSubject & TargetEntity & GuardSubject;
+  /**
+   * Swings only once the character has struck it: a monster that does not
+   * attack on sight (`Mob.ShouldMobAttackTarget`), met in a lair the
+   * character hunts, and brought in by its own `RecentAttackers` alone.
+   * Absent swings from the first round.
+   */
+  waits?: boolean;
 }
 
 /** The heal the automation would cast, as it is configured. */
@@ -224,9 +231,8 @@ export interface FightTrials {
 export function startFight(input: SurvivalInput): FightTrials | null {
   const { foes, hpMax } = input;
   if (foes.length === 0 || input.hp <= 0 || hpMax <= 0) return null;
-  if (foes.some((foe) => foe.subject.profiles === undefined || foe.subject.profiles.length === 0)) {
-    return null;
-  }
+  // Unread is not priced; a row stating no attack at all (the drunken gambler) deals nothing.
+  if (foes.some((foe) => foe.subject.profiles === undefined)) return null;
 
   /*
    * The order the character takes them in is the engine's: `rankByVerdict`
@@ -256,18 +262,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
   const compile = (player: MenacePlayer, sheet: ProwessSheet): FoeSide[] =>
     subjects.map((subject, index) => {
       const target = targetOf(subject);
-      const blow = swing(
-        sheet,
-        input.weapon,
-        {
-          armourClass: target.armourClass ?? null,
-          damageResist: target.damageResist ?? null,
-          dodge: target.dodge ?? null,
-          health: subject.hp ?? null
-        },
-        input.family,
-        input.attack
-      );
+      const blow = swing(sheet, input.weapon, prowessTargetOf(subject), input.family, input.attack);
       return {
         hp: subject.hp !== undefined && subject.hp > 0 ? subject.hp : 1,
         model: worstModel(subject, player),
@@ -332,6 +327,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
           );
     const alive = met.map((index) => sides[index]!.hp);
     const states: MobState[] = met.map(() => freshMobState());
+    const swinging = met.map((index) => foes[index]!.waits !== true);
     // The foes as the character now meets them, and the top of its bar: a lapse moves both.
     let facing = sides;
     let top = hpMax;
@@ -368,6 +364,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         held -= 1;
       } else if (!healed() && !recastNow()) {
         const side = facing[met[target]!]!;
+        swinging[target] = true;
         const dealt = strike(side);
         alive[target] = alive[target]! - dealt;
         if (alive[target]! <= 0 && side.death !== null) {
@@ -377,10 +374,10 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         }
       }
 
-      // Every foe still standing takes its round.
+      // Every foe still standing and in the fight takes its round.
       let roundHarm = 0;
       for (const [slot, index] of met.entries()) {
-        if (alive[slot]! <= 0) continue;
+        if (alive[slot]! <= 0 || !swinging[slot]) continue;
         const outcome = rollMobRound(random, facing[index]!.model, states[slot]!);
         roundHarm += outcome.harm;
         held = Math.max(held, outcome.held);
@@ -450,7 +447,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       if (round > 1) return lost / (round - 1);
       let expected = 0;
       for (const [slot, index] of met.entries()) {
-        if (alive[slot]! > 0) expected += expectedHarm(facing[index]!.model);
+        if (alive[slot]! > 0 && swinging[slot]) expected += expectedHarm(facing[index]!.model);
       }
       return expected;
     }
@@ -574,7 +571,7 @@ function lapsed(
  * (`expectedHarm`): a name holding several rows is met as its worst.
  */
 function worstModel(subject: MenaceSubject, player: MenacePlayer): MobModel {
-  let worst: MobModel | null = null;
+  let worst: MobModel = { slots: [], casts: [], resist: 0 };
   let most = -1;
   for (const profile of subject.profiles ?? []) {
     const model = mobModel(subject, profile, player);
@@ -584,5 +581,5 @@ function worstModel(subject: MenaceSubject, player: MenacePlayer): MobModel {
       worst = model;
     }
   }
-  return worst!;
+  return worst;
 }

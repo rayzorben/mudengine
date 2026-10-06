@@ -32,6 +32,7 @@ import type { RealmFamily } from '../../../shared/realm';
 import type { MobAttack, WorldSpell } from '../../../shared/world';
 import type { InstantSpellLore } from '../../../shared/lore';
 import { RealmLore } from '../../world/RealmLore';
+import type { ProwessClass } from '../../../shared/prowess';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -156,7 +157,7 @@ function make(
   config: CombatConfig,
   enabled = true,
   spells?: SpellsConfig,
-  realmClass?: () => { combat: number | null; magery: number | null; family: RealmFamily | null },
+  realmClass?: () => ProwessClass & { family: RealmFamily | null },
   /** Whether the class can get into the shadows; undefined is unknown (todo 28). */
   canHide?: () => boolean | null,
   /** What the realm's wire taught about its attack spells (todo 820). */
@@ -522,7 +523,7 @@ describe('which one to go for', () => {
   /* The character's own side of the arithmetic: a sheet `prowess` can read, a
      sword in hand, the class row the sheet does not print, and the server's
      family — the four things `verdictFor` needs before rounds are knowable. */
-  const armed = () => ({ combat: 4, magery: null, family: 'greatermud' as const });
+  const armed = () => ({ combat: 4, magery: null, crits: 0, family: 'greatermud' as const });
   const sword: ItemEntity = {
     name: 'short sword',
     source: 'hybrid',
@@ -1610,6 +1611,7 @@ describe('casting in a fight', () => {
       min: ANY,
       max: ANY,
       expected: ANY,
+      perRound: ANY,
       cost: ANY
     });
     auto.onCharacter(fight);
@@ -2291,7 +2293,7 @@ describe('an attack spell opens the fight', () => {
         fights(),
         true,
         caster({ attack: '', areaAttack: 'pclo', areaMinMobs: 1, areaMinMana: 0 }),
-        () => ({ combat: null, magery: null, family })
+        () => ({ combat: null, magery: null, crits: 0, family })
       );
       auto.onCharacter(standing());
       drain();

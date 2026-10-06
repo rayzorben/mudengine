@@ -207,8 +207,8 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   ): BlessingCandidate[] {
     const level = bare.progress.level;
     if (bare.spellbook === null || level === null) return [];
-    const { combat, magery, family } = this.errands.realmClass();
-    const sheet = prowessSheetOf(bare, { combat, magery });
+    const { combat, magery, crits, family } = this.errands.realmClass();
+    const sheet = prowessSheetOf(bare, { combat, magery, crits });
     const own = config.spells.blessings.filter((row) => row.target === 'self');
     return bare.spellbook.flatMap((known): BlessingCandidate[] => {
       const spell = spellOf(known.name);

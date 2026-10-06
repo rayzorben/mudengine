@@ -114,6 +114,7 @@ import {
   type HealChoice
 } from '../../shared/spellchoice';
 import { healTargets, planHeal } from '../../shared/healplan';
+import type { ProwessClass } from '../../shared/prowess';
 import { prowessSheetOf } from '../../shared/verdict';
 import type { RealmFamily } from '../../shared/realm';
 import type { WorldSpell } from '../../shared/world';
@@ -189,11 +190,12 @@ export class AutoHeal implements SessionModule {
      * is not known until a stat sheet has been read. It decides `castOdds`,
      * which is how often a cast works at all.
      */
-    private readonly realmClass: () => {
-      combat: number | null;
-      magery: number | null;
-      family: RealmFamily | null;
-    } = () => ({ combat: null, magery: null, family: null }),
+    private readonly realmClass: () => ProwessClass & { family: RealmFamily | null } = () => ({
+      combat: null,
+      magery: null,
+      crits: 0,
+      family: null
+    }),
     /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
     private readonly gate: CastGate = OPEN_CAST_GATE,
     /** What the monsters in the fight are expected to deal a round (`FightHeal`). */
@@ -375,7 +377,7 @@ export class AutoHeal implements SessionModule {
     }
     if (wanted.length === 0) return false;
 
-    const { combat, magery, family } = this.realmClass();
+    const { combat, magery, crits, family } = this.realmClass();
     const { healTo } = this.config;
     const plan =
       state.spellbook === null
@@ -385,7 +387,7 @@ export class AutoHeal implements SessionModule {
             realm: this.realmSpell,
             level: state.progress.level,
             mana: state.vitals.mana,
-            sheet: prowessSheetOf(state, { combat, magery }),
+            sheet: prowessSheetOf(state, { combat, magery, crits }),
             family,
             targets: figured,
             ceiling: healCeiling(healTo),
@@ -483,7 +485,7 @@ export class AutoHeal implements SessionModule {
       deficit,
       (wanted) => {
         if (state.spellbook === null) return chooseHealSpell({ book: null });
-        const { combat, magery, family } = this.realmClass();
+        const { combat, magery, crits, family } = this.realmClass();
         return chooseHealSpell({
           book: state.spellbook,
           realm: this.realmSpell,
@@ -491,7 +493,7 @@ export class AutoHeal implements SessionModule {
           mana: state.vitals.mana,
           deficit: wanted,
           aim,
-          sheet: prowessSheetOf(state, { combat, magery }),
+          sheet: prowessSheetOf(state, { combat, magery, crits }),
           family
         });
       },

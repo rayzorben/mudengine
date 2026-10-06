@@ -238,6 +238,53 @@ describe('the odds book', () => {
     odds.dispose();
   });
 
+  /*
+   * 2026-10-05: a lair's passive monster swung from the first round. It waits
+   * to be struck; one whose answer turns on a standing nobody has read swings.
+   */
+  it('marks the lair monsters that do not attack on sight as waiting to be struck', async () => {
+    const met: Array<{ name: string; waits?: boolean }> = [];
+    const passive = { ...ogre, name: 'gambler', disposition: 'passive' } as MobEntity;
+    const hostile = { ...ogre, name: 'ogre', disposition: 'hostile' } as MobEntity;
+    const guard = { ...ogre, name: 'guard', disposition: 'hates-evil' } as MobEntity;
+    const tracker = { current: inGame(10) };
+    const world = {
+      mobNames: () => [],
+      buildMobEntity: () => undefined,
+      everyRoom: function* () {
+        yield lairRoom;
+      },
+      lairEntities: () => [passive, hostile, guard]
+    } as unknown as OddsWorld;
+    const odds = new OddsBook(
+      {
+        tracker,
+        world,
+        errands: { fitness: () => 'fit' },
+        setup: {
+          character: () => CHARACTER,
+          foes: (_state, _character, foes) => {
+            met.push(...foes.map(({ name, waits }) => ({ name, waits })));
+            return {
+              foes: foes.map(({ name, subject }) => ({ name, subject })),
+              casting: foes.map(() => null)
+            };
+          },
+          settingsKey: () => 'settings'
+        }
+      },
+      { ran: vi.fn() }
+    );
+    odds.refresh(tracker.current);
+    await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
+    expect(met).toEqual([
+      { name: 'gambler', waits: true },
+      { name: 'ogre', waits: false },
+      { name: 'guard', waits: false }
+    ]);
+    odds.dispose();
+  });
+
   /* Konami's trip gear fights each kit with the attack it would lay, not the one in force (2026-10-03). */
   it('runs a what-if with the attack it is handed', () => {
     const asked: Array<string | undefined> = [];

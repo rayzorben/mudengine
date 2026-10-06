@@ -54,6 +54,7 @@ export type FightCharacter = Omit<SurvivalInput, 'foes' | 'casting' | 'draw'>;
 export interface FightFoe {
   name: string;
   subject: SurvivalFoe['subject'] & { magicResist?: number };
+  waits?: SurvivalFoe['waits'];
 }
 
 export class FightSetup {
@@ -102,8 +103,8 @@ export class FightSetup {
   ): FightCharacter | null {
     const { hp, mana, manaMax } = state.vitals;
     if (state.vitals.hpMax === null) return null;
-    const { combat, magery, mageryType, family, attack } = this.errands.realmClass(verb);
-    const read = prowessSheetOf(state, { combat, magery });
+    const { combat, magery, crits, mageryType, family, attack } = this.errands.realmClass(verb);
+    const read = prowessSheetOf(state, { combat, magery, crits });
     const own = this.errands.menacePlayer(state);
     const hpMax = state.vitals.hpMax + (set ? set.maxHp : 0);
     // What is up, or blessed, comes on top of what the gear worn adds (`gearEffect`).
@@ -166,7 +167,11 @@ export class FightSetup {
   ): Pick<SurvivalInput, 'foes' | 'casting'> {
     const casting = this.errands.castingInput(state, character.sheet, character.family);
     return {
-      foes: met.map(({ name, subject }) => ({ name, subject })),
+      foes: met.map(({ name, subject, waits }) => ({
+        name,
+        subject,
+        ...(waits === true ? { waits } : {})
+      })),
       casting: met.map(({ subject }) => {
         const kill =
           casting === null
@@ -178,7 +183,7 @@ export class FightSetup {
               });
         return kill === null || subject.hp === undefined
           ? null
-          : { perRound: subject.hp / kill.rounds, manaPerRound: kill.mana ?? 0 };
+          : { perRound: kill.perRound, manaPerRound: kill.mana ?? 0 };
       })
     };
   }

@@ -32,6 +32,7 @@ import {
   type SpellChoice,
   type SpellChoiceRefusal
 } from '../../shared/spellchoice';
+import type { ProwessClass } from '../../shared/prowess';
 import { prowessSheetOf } from '../../shared/verdict';
 import { mobKey, type WorldSpell } from '../../shared/world';
 
@@ -144,11 +145,7 @@ export class AttackSpells {
     private spells: SpellsConfig,
     private readonly events: AttackSpellEvents,
     private readonly realmSpell: (name: string) => WorldSpell | null,
-    private readonly realmClass: () => {
-      combat: number | null;
-      magery: number | null;
-      family: RealmFamily | null;
-    },
+    private readonly realmClass: () => ProwessClass & { family: RealmFamily | null },
     /** The attack spells this realm has answered instantly before, kept past the connection. */
     private readonly realmInstants: InstantSpellLore = NO_INSTANT_SPELLS,
     realmSpellById: (id: number) => WorldSpell | null = () => null
@@ -581,7 +578,7 @@ export class AttackSpells {
     passedOver: (spell: string) => boolean,
     only?: (spell: string) => boolean
   ): string | null {
-    const { combat, magery, family } = this.realmClass();
+    const { combat, magery, crits, family } = this.realmClass();
     const excluded = new Set<string>(this.ineffective);
     if (this.spells.attackCasts > 0) {
       for (const [spell, count] of this.casts) {
@@ -603,7 +600,7 @@ export class AttackSpells {
             realm: this.realmSpell,
             level: state.progress.level,
             mana: state.vitals.mana,
-            sheet: prowessSheetOf(state, { combat, magery }),
+            sheet: prowessSheetOf(state, { combat, magery, crits }),
             family,
             pool: state.vitals.manaType,
             target: {
@@ -637,6 +634,7 @@ export class AttackSpells {
       min: chosen.min,
       max: chosen.max,
       expected: Math.round(chosen.expected),
+      perRound: Math.round(chosen.perRound),
       cost: chosen.cost ?? '?'
     };
     this.events.notice?.(

@@ -26,7 +26,7 @@ function unit(): { spells: AttackSpells; notices: string[] } {
     { ...DEFAULT_CONFIG.automation.spells, attack: 'harm', autoChoose: false, minMana: 0 },
     { notice: (message) => notices.push(message) },
     () => null,
-    () => ({ combat: null, magery: null, family: null })
+    () => ({ combat: null, magery: null, crits: 0, family: null })
   );
   return { spells, notices };
 }
@@ -114,7 +114,7 @@ describe('the name an instant spell is kept under for the realm', () => {
       { ...DEFAULT_CONFIG.automation.spells, attack: 'word', autoChoose: false, minMana: 0 },
       { notice: (message) => notices.push(message) },
       (name) => (name === 'word' || name === 'exalted word' ? exalted : null),
-      () => ({ combat: null, magery: null, family: null }),
+      () => ({ combat: null, magery: null, crits: 0, family: null }),
       lore
     );
     return { spells, notices };
@@ -182,7 +182,7 @@ describe('breaking an area spell that has emptied the room', () => {
       { ...DEFAULT_CONFIG.automation.spells, areaAttack: 'fireball', minMana: 0 },
       {},
       () => null,
-      () => ({ combat: null, magery: null, family })
+      () => ({ combat: null, magery: null, crits: 0, family })
     );
     spells.sent(action);
     return spells;

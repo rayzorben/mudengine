@@ -4,6 +4,8 @@ import {
   accuracy,
   BARE_HAND,
   castOdds,
+  castsARound,
+  manaARound,
   critChance,
   dodge,
   MAGERY,
@@ -14,7 +16,7 @@ import {
   swingsPerRound,
   type ProwessSheet
 } from '../prowess';
-import { dodgedFraction } from '../menace';
+import { dodgedFraction, hitChance } from '../menace';
 
 /** A level-10 fighter with ordinary stats, every input read. */
 const SHEET: ProwessSheet = {
@@ -220,6 +222,26 @@ describe('a swing at a target', () => {
   });
 });
 
+describe('casts a round — Player.DoMagicRound', () => {
+  it('spends the energy of each attempt out of a thousand, at most twenty', () => {
+    expect(castsARound({ energy: 500 })).toBe(2);
+    expect(castsARound({ energy: 333 })).toBe(3);
+    expect(castsARound({ energy: 1000 })).toBe(1);
+    expect(castsARound({ energy: 50 })).toBe(20);
+    expect(castsARound({ energy: 1 })).toBe(20);
+  });
+
+  it('reads a row stating no energy, or none at all, as one attempt', () => {
+    expect(castsARound({})).toBe(1);
+    expect(castsARound({ energy: 0 })).toBe(1);
+  });
+
+  it('charges every attempt its listed cost where the odds are unread', () => {
+    expect(manaARound({ energy: 500 }, 3, SHEET, 'majormud')).toBe(6);
+    expect(manaARound({ energy: 500 }, null, SHEET, 'greatermud')).toBeNull();
+  });
+});
+
 describe('cast odds — Spell.Cast', () => {
   it('is spellcasting plus the spell’s own difficulty, capped at certain', () => {
     // 40 + 15 = 55.
@@ -325,6 +347,22 @@ describe('what the server stated', () => {
   it('wins over the transcription, and says so', () => {
     expect(accuracy(STATED, SWORD, 'greatermud')).toEqual({ value: 105, from: 'stated' });
     expect(swingsPerRound(STATED, SWORD, 'greatermud')).toEqual({ value: 3.584, from: 'stated' });
+  });
+
+  /*
+   * 2026-10-05, Festus's `st a`: a bash rolls `CalcAccuracy` on strength and
+   * agility (`BashCombatRound.Acc`) at half the plain round's blows, and a
+   * smash at half as much again as a bash's accuracy.
+   */
+  it('gives a bash and a smash their own accuracy and blows from the plain round', () => {
+    // Plain stats term: (60−50)/3 + 0 + (55−50)/10 = 3. Bash's: (55−50)/3 + (60−50)/6 = 2.
+    const target = { armourClass: 40, damageResist: 0, dodge: null, health: 100 };
+    const bash = swing(STATED, SWORD, target, 'greatermud', { kind: 'bash', bonus: 0 })!;
+    expect(bash.lands.value).toBe(hitChance(105 - 3 + 2 - 15, 40));
+    expect(bash.swings).toEqual({ value: 1.792, from: 'stated' });
+    const smash = swing(STATED, SWORD, target, 'greatermud', { kind: 'smash', bonus: 0 })!;
+    expect(smash.lands.value).toBe(hitChance(Math.trunc(((105 - 3 + 2) * 3) / 2) - 25, 40));
+    expect(smash.swings?.value).toBe(1);
   });
 
   it('is the server’s figure on any family, and for a bare hand', () => {
@@ -469,6 +507,13 @@ describe('a critical blow', () => {
     const sharp = { ...SHEET, intellect: 400, combatLevel: 7 };
     expect(critChance(sharp, 'kick', 'greatermud')?.value).toBe(0.36);
     expect(critChance({ ...sharp, intellect: 900 }, 'kick', 'greatermud')?.value).toBe(0.65);
+  });
+
+  // The Mystic row's Crits 10 (2026-10-05): two thirds of Soul's 15 at level 14.
+  it('counts the class and race rows’ crits', () => {
+    expect(critChance({ ...SHEET, classCrits: 10 }, 'attack', 'greatermud')?.value).toBeCloseTo(
+      0.14
+    );
   });
 
   it('never comes of a bash or a smash, and is unknown off GreaterMUD', () => {

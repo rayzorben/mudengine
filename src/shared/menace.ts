@@ -164,8 +164,10 @@ const RESISTED_BY_ANYONE = 2;
 /** MME's `IsSpellResisted` clamps the resistance it halves at 196. */
 const RESIST_ROLL_CEILING = 196;
 /**
- * The realm's rows state armour class and damage resistance at ten times the
- * sheet's figure: an item's `ac: 10` is one point of armour class on `st`.
+ * An item's and a spell effect's armour class and damage resistance rows are
+ * ten times the sheet's figure: an item's `ac: 10` is one point on `st`. A
+ * monster's row is not: the server multiplies it on load (`MobType.cs:76`,
+ * `targetOf`).
  */
 export const REALM_ARMOUR_SCALE = 10;
 /** MME's `GMUD_HIT_MIN` and `GMUD_HIT_CAP`: no blow is ever certain to miss. */

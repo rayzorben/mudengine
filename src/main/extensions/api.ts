@@ -140,8 +140,13 @@ export interface ExtensionSessionHost {
    * in each one's slot, and which went on: none without a world.
    */
   wearing(items: readonly string[], as?: CharacterState): Wearing;
-  /** The attacks the class can make and a round of each, as it stands or as `as`. */
-  attacks(as?: CharacterState): AttackOption[];
+  /**
+   * The attacks the class can make and a round of each, as it stands or as
+   * `as`: what lands on the monsters `against` names, their armour counted,
+   * unknown where one is a name the world database cannot place; with none
+   * named, the round before any armour.
+   */
+  attacks(as?: CharacterState, against?: readonly string[]): AttackOption[];
   /**
    * The scrolls a counter sells that teach a spell the character (or `as`)
    * does not know and the server would not refuse it (`learnVerdict`; a

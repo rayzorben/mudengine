@@ -5,15 +5,18 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import type { WorldSpell } from '../../../shared/world';
 import { FightSetup, type FightCharacter, type FightSetupParts } from '../FightSetup';
 
-// Three casts kill, two mana each: the answer the book gives for any foe here.
+// Three rounds kill at 12.5 a round, two mana a round: the answer the book gives for any foe here.
 vi.mock('../../../shared/spellchoice', async (actual) => ({
   ...(await actual<typeof import('../../../shared/spellchoice')>()),
-  castsToKill: () => ({ rounds: 3, mana: 2, spell: 'magic missile' })
+  castsToKill: () => ({ rounds: 3, perRound: 12.5, mana: 2, spell: 'magic missile' })
 }));
 
 describe('FightSetup.foes', () => {
-  /* 2026-10-04: the per-cast mana was divided by the rounds, so a caster's pool lasted three times as long as it does. */
-  it('prices a caster one cast a round: the damage spread over the kill, the mana of each cast', () => {
+  /*
+   * 2026-10-04: the per-cast mana was divided by the rounds, so a caster's pool lasted three times as long as it does.
+   * 2026-10-05: the damage was the health over whole rounds, 70 / ceil(70 / 13.4) = 11.7 for a round worth 13.4.
+   */
+  it("prices a caster at the spell's own round: its damage and its mana, never the health over whole rounds", () => {
     const setup = new FightSetup(
       {
         world: undefined,
@@ -25,7 +28,23 @@ describe('FightSetup.foes', () => {
     const { casting } = setup.foes(EMPTY_CHARACTER, {} as FightCharacter, [
       { name: 'orc rogue', subject: { hp: 30 } as never }
     ]);
-    expect(casting).toEqual([{ perRound: 10, manaPerRound: 2 }]);
+    expect(casting).toEqual([{ perRound: 12.5, manaPerRound: 2 }]);
+  });
+
+  it('hands on a monster that waits to be struck, and nothing for one that does not', () => {
+    const setup = new FightSetup(
+      {
+        world: undefined,
+        errands: { castingInput: () => null } as unknown as FightSetupParts['errands'],
+        blessings: () => ({ recastFloor: () => null })
+      },
+      { config: () => DEFAULT_CONFIG.automation }
+    );
+    const { foes } = setup.foes(EMPTY_CHARACTER, {} as FightCharacter, [
+      { name: 'gambler', subject: { hp: 70 } as never, waits: true },
+      { name: 'ogre', subject: { hp: 30 } as never, waits: false }
+    ]);
+    expect(foes.map((foe) => foe.waits)).toEqual([true, undefined]);
   });
 });
 

@@ -30,7 +30,7 @@ import type { AutomationConfig } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
 import type { ConnectionTarget } from '../../shared/types';
-import { prowessSheetOf, wieldedWeapon } from '../../shared/verdict';
+import { prowessSheetOf, prowessTargetOf, wieldedWeapon } from '../../shared/verdict';
 import { roomAddress, unrouted } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { OddsBook } from './OddsBook';
@@ -170,14 +170,21 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         };
         return wearing(state, items, realm, askerOf(state, world));
       },
-      attacks: (as) => {
+      attacks: (as, against = []) => {
         const state = as ?? tracker.current;
-        const { combat, magery, family } = errands.realmClass();
+        const { combat, magery, crits, family } = errands.realmClass();
+        const world = wiring.world();
+        // A name the world database cannot place is no armour anybody knows: its round is unknown.
+        const targets = against.map((name) => {
+          const mob = world?.buildMobEntity(name, { at: null });
+          return mob === undefined || mob.source === 'wire' ? null : prowessTargetOf(mob);
+        });
         return attackOptions(
-          prowessSheetOf(state, { combat, magery }),
+          prowessSheetOf(state, { combat, magery, crits }),
           wieldedWeapon(state.inventory.items),
           errands.capabilities().abilities,
-          family
+          family,
+          targets
         );
       },
       spellScrolls: (as) => {

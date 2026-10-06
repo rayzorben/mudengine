@@ -182,6 +182,37 @@ describe('the room’s fight, run', () => {
     expect(simulateFight(fight({ foes: [] }))).toBeNull();
   });
 
+  /*
+   * 2026-10-05: a lair's monsters all swung from the first round, where the
+   * server lets one that does not attack on sight in only once it is struck
+   * (`Mob.ShouldMobAttackTarget`, `RecentAttackers`).
+   */
+  it('brings a monster that waits into the fight only when it is struck', () => {
+    const three = (waits: boolean): SurvivalInput['foes'] =>
+      [1, 2, 3].map((n) => ({
+        name: `ogre ${n}`,
+        subject: { hp: 60, profiles: [biter(80, 12, 22)] },
+        waits
+      }));
+    const all = simulateFight(
+      fight({ foes: three(false), casting: [null, null, null], horizons: [1] })
+    )!;
+    const one = simulateFight(
+      fight({ foes: three(true), casting: [null, null, null], horizons: [1] })
+    )!;
+    expect(one.survives).toBeGreaterThan(all.survives);
+    expect(one.horizons[0]!.lost.mean).toBeLessThan(all.horizons[0]!.lost.mean / 2);
+  });
+
+  // The drunken gambler's row names no attack: a fight against it is run, and costs nothing.
+  it('runs a monster that states no attack as one that deals nothing', () => {
+    const run = simulateFight(
+      fight({ foes: [{ name: 'gambler', subject: { hp: 30, profiles: [] } }] })
+    )!;
+    expect(run.survives).toBe(1);
+    expect(run.lostMean).toBe(0);
+  });
+
   it('reads the same twice, and differently under another seed', () => {
     const foes = [1, 2].map((n) => ({
       name: `orc ${n}`,
