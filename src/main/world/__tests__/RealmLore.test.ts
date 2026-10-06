@@ -7,6 +7,7 @@ import { RealmLore, realmKey } from '../RealmLore';
 import type { WorldGraph } from '../WorldGraph';
 import { mobNameCandidates } from '../../../shared/mobs';
 import { SpellMessageBook } from '../../../shared/spell-messages';
+import { SPAWNS_VERSION } from '../../../shared/spawns';
 import { t } from '../../app/i18n';
 import { complaint } from './complaint';
 
@@ -153,15 +154,16 @@ describe('keeping what was learned', () => {
   it('keeps the refills it timed per realm and reads them back', () => {
     const first = store();
     const view = first.forRealm('gmud.sqlite', world);
-    view.observeRefill({ room: '1/2156', seconds: 32, names: ['cave bear'] }, 5);
-    view.observeRefill({ room: '1/2156', seconds: 19, names: ['cave bear'] }, 6);
+    view.observeRefill({ room: '1/2156', seconds: 32, names: ['cave bear'], lair: true }, 5);
+    view.observeRefill({ room: '1/2156', seconds: 19, names: ['cave bear'], lair: true }, 6);
     first.flush();
 
     const again = store();
     expect(again.forRealm('gmud.sqlite', world).spawnsAt('1/2156')).toEqual({
       refills: [32, 19],
       seen: { 'cave bear': 2 },
-      at: 6
+      at: 6,
+      v: SPAWNS_VERSION
     });
     expect(again.forRealm('other.sqlite', world).spawnsAt('1/2156')).toBeNull();
   });

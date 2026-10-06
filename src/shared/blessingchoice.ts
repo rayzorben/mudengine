@@ -19,7 +19,6 @@
  */
 import type { BlessingConfig } from './blessings';
 import { exclusive, type BlessingEffect } from './blessingeffects';
-import { ROUND_SECONDS } from './menace';
 import type { WorldSpell } from './world';
 
 /** Why a blessing, or the whole choice, came to nothing. */
@@ -114,6 +113,8 @@ export interface BlessingChoiceInput {
   hpMax: number | null;
   /** Heal casts a derived row's mana floor keeps affordable after the blessing. */
   healReserve: number;
+  /** The realm's round, seconds: the server's over its speed (`atSpeed`), as the income's ticks are. */
+  roundSeconds: number;
 }
 
 export interface BlessingPick {
@@ -307,7 +308,7 @@ function healsPerHour(input: BlessingChoiceInput, run: FightRun): number {
   const fightsPerHour =
     input.cycle !== null && input.cycle.cycleSeconds > 0
       ? (input.cycle.fights * 3600) / input.cycle.cycleSeconds
-      : 3600 / Math.max(ROUND_SECONDS, run.rounds * ROUND_SECONDS);
+      : 3600 / Math.max(input.roundSeconds, run.rounds * input.roundSeconds);
   return run.heals * fightsPerHour * input.healCost;
 }
 

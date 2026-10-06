@@ -87,6 +87,7 @@ import {
   type RoomOccupant
 } from '../../shared/character';
 import { attackAim, castAimedAt, occupantNamed } from '../../shared/aim';
+import { PLAIN_ATTACK_VERB } from '../../shared/attackOptions';
 import { commandOf, REREAD_ROOM } from '../../shared/commands';
 import {
   DEFAULT_CONFIG,
@@ -985,10 +986,14 @@ export class AutoCombat implements SessionModule {
          * server's own wording is *with this weapon*, and the pack listing the
          * client would name it from can be absent or a minute old.
          */
+        // When the verb refused is the configured attack, the notice says the plain attack goes in its place.
+        const standsIn = blamed.blames === 'character' && answersTo(skill, this.config.attack);
         this.events.notice?.(
-          blamed.blames === 'character'
-            ? t('automation.combat.verbRefused', { verb })
-            : t('automation.combat.verbRefusedWeapon', { verb })
+          standsIn
+            ? t('automation.combat.attackStandsIn', { verb, plain: PLAIN_ATTACK_VERB })
+            : blamed.blames === 'character'
+              ? t('automation.combat.verbRefused', { verb })
+              : t('automation.combat.verbRefusedWeapon', { verb })
         );
         return;
       }
@@ -2015,7 +2020,7 @@ export class AutoCombat implements SessionModule {
     }
     const word = (text: string): string => text.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
     const verb = word(command);
-    return verb === word(this.config.attack) || verb === word(this.config.opener)
+    return verb === word(this.attackVerb()) || verb === word(this.config.opener)
       ? 'attack'
       : 'other';
   }
@@ -2101,7 +2106,7 @@ export class AutoCombat implements SessionModule {
       opener === null && state !== null
         ? this.spell.opening(state, this.spellTarget(state, target), because)
         : null;
-    const verb = opener ?? this.config.attack;
+    const verb = opener ?? this.attackVerb();
     if (cast === null && verb.length === 0) return false;
     const proposal = cast ?? {
       command: `${verb} ${target}`,
@@ -2278,6 +2283,16 @@ export class AutoCombat implements SessionModule {
   }
 
   /**
+   * `combat.attack`, or the plain attack once the game has refused it for
+   * this character: a Mage left with a Mystic's `kic` was told `You don't
+   * know the first thing about kicking!` 21 times in one session and never
+   * landed a blow with it (orohost, `logs/2026-10-05_14-39-59_main:722`).
+   */
+  private attackVerb(): string {
+    return this.isRefused(this.config.attack, 'character') ? PLAIN_ATTACK_VERB : this.config.attack;
+  }
+
+  /**
    * Whether a configured word is one of the spellings of a refused verb, or
    * of one refused for what `blames` names when it is given.
    */
@@ -2362,7 +2377,7 @@ export class AutoCombat implements SessionModule {
     const change = this.spell.change(
       state,
       this.spellTarget(state, target),
-      this.config.attack.trim()
+      this.attackVerb().trim()
     );
     if (change === null) return;
     this.queue.enqueue({

@@ -8,6 +8,7 @@ import {
   matchStop,
   nextStop,
   readStop,
+  retimed,
   sameLoops,
   splitStop,
   UNCATEGORISED,
@@ -430,5 +431,39 @@ describe('reading a room asked for', () => {
   it('keeps every room a shared name could be, and finds none for a name nothing has', () => {
     expect(matchStop(readStop('town gates'), named)).toEqual({ kind: 'several', rooms: gates });
     expect(matchStop(readStop('BFOT'), named)).toEqual({ kind: 'none' });
+  });
+});
+
+/* 2026-10-06, run 15: the same azure slime ring planned from its far room came listed backwards. */
+describe('a lap given another loop’s stops', () => {
+  const lap: Loop = {
+    name: 'Slimes',
+    stops: [
+      { room: 'A 9/2', every: 356 },
+      { room: 'B 9/4', every: 356 }
+    ]
+  };
+
+  it('keeps its own order and takes each room’s new stop, whatever order the other lists them in', () => {
+    const listed: Loop = {
+      name: 'Other',
+      stops: [
+        { room: 'B 9/4', every: 71 },
+        { room: 'A 9/2', every: 70 }
+      ]
+    };
+    expect(retimed(lap, listed)).toEqual({
+      name: 'Slimes',
+      stops: [
+        { room: 'A 9/2', every: 70 },
+        { room: 'B 9/4', every: 71 }
+      ]
+    });
+  });
+
+  it('is nothing on other rooms, more rooms, or a bounce for a ring', () => {
+    expect(retimed(lap, { name: 'x', stops: [{ room: 'A 9/2' }, { room: 'C 9/9' }] })).toBeNull();
+    expect(retimed(lap, { name: 'x', stops: [...lap.stops, { room: 'C 9/9' }] })).toBeNull();
+    expect(retimed(lap, { ...lap, bounce: true })).toBeNull();
   });
 });

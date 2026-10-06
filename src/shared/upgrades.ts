@@ -66,7 +66,10 @@ export interface SlotBest extends SlotWorn {
   items: GearSource[];
 }
 
-/** The character wearing other items, and the names that went on; one the realm does not hold, or not kit, did not. */
+/**
+ * The character wearing other items, and the names that went on; one the realm
+ * does not hold, not kit, or already worn in its slot did not.
+ */
 export interface Wearing {
   state: CharacterState;
   worn: string[];

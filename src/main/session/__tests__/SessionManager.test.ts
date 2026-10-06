@@ -32,7 +32,7 @@ import { NO_REALM_PLAYERS, type PlayerRegistry } from '../../../shared/players';
 import type { Find, RealmFinds, Sighting } from '../../../shared/finds';
 import type { RealmShops, Shelf } from '../../../shared/shops';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
-import type { HuntingAdvice } from '../../../shared/hunting';
+import type { HuntingAdvice, KeptSpeed } from '../../../shared/hunting';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
@@ -41,7 +41,7 @@ import type { Route } from '../../../shared/world';
 import type { ExtensionSessionHost } from '../../extensions/api';
 import type { Errands } from '../Errands';
 import { NO_LORE } from '../../../shared/lore';
-import type { LearnedSpawns } from '../../../shared/spawns';
+import { SPAWNS_VERSION, type LearnedSpawns } from '../../../shared/spawns';
 import type { QuestWatched } from '../../../shared/quests';
 import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../../shared/belongings';
 import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
@@ -8015,7 +8015,8 @@ describe('the hunting survey prices a kill off the fight record', () => {
     dragon = false,
     goodOrc = false,
     spawns?: Map<string, LearnedSpawns>,
-    opener = ''
+    opener = '',
+    kept?: KeptSpeed
   ): Promise<void> {
     const { sink } = collect();
     manager = build(sink, {
@@ -8039,6 +8040,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
             }
           })
     });
+    if (kept !== undefined) manager.useRealm(NO_REALM_PLAYERS, NO_RECORD, kept);
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
     socket.write('[HP=148/MA=5]:' + PROMPT_REPAINT);
@@ -8060,6 +8062,18 @@ describe('the hunting survey prices a kill off the fight record', () => {
     );
   }
 
+  /* 2026-10-06: read afresh on each connection, orohost's speed took a caster eleven minutes. */
+  it('prices the first survey of a connection at the speed kept for the address dialled', async () => {
+    const remembered: number[] = [];
+    await surveyed(undefined, [], false, false, undefined, '', {
+      recall: () => 5,
+      remember: (speed) => void remembered.push(speed)
+    });
+    const advice = await settled();
+    expect(advice.assumptions.constants.speed).toBe(5);
+    expect(remembered).toEqual([]);
+  });
+
   it('prices the rounds as the monster’s health over the measured round', async () => {
     const { fights, asked } = record();
     await surveyed(fights);
@@ -8078,6 +8092,30 @@ describe('the hunting survey prices a kill off the fight record', () => {
     const goblin = rows.find((spot) => spot.mobs[0]?.name === 'goblin');
     expect(goblin?.mobs[0]?.rounds).toBe(4);
     expect(goblin?.estimate.unknown).not.toContain('rounds');
+  });
+
+  /* orohost runs every clock five times as fast (`GameSpeed`): a round a second, the rest ticks and the walk with it. */
+  it('prices the rounds at the realm’s speed once a fight’s rounds are read', async () => {
+    const { fights, asked } = record();
+    await surveyed(fights);
+    const socket = await client();
+    let now = Date.now();
+    vi.useFakeTimers({ toFake: ['Date'], now });
+    try {
+      for (let round = 1; round <= DEFAULT_INTERNAL.tuning.hunting.speedRounds + 1; round += 1) {
+        socket.write(
+          `The orc rogue slashes you for 1 damage!\r\n[HP=${148 - round}/MA=5]:` + PROMPT_REPAINT
+        );
+        await until(() => manager!.character.vitals.hp === 148 - round);
+        vi.setSystemTime((now += 1000));
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+    await settled();
+    expect(asked.at(-1)?.ask.roundMs).toBe(1000);
+    // The figure an extension reads (`ExtensionSessionHost.realmSpeed`).
+    expect(manager!['errands'].realmSpeed).toBe(5);
   });
 
   /*
@@ -8170,6 +8208,12 @@ describe('the hunting survey prices a kill off the fight record', () => {
     advice = await settled();
     expect(advice.excluded.gated).toBe(2);
     expect(advice.spots).toHaveLength(0);
+    // Asked to keep them, for a planner weighing the training against them (2026-10-06): kept, and marked.
+    const kept = manager!['errands'].huntingGrounds(null, null, { gated: true });
+    expect(kept.excluded.gated).toBe(0);
+    const marked = [...kept.spots, ...kept.unmeasured];
+    expect(marked).toHaveLength(2);
+    expect(marked.every((spot) => spot.closesWithTraining === true)).toBe(true);
   });
 
   /*
@@ -8187,7 +8231,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
       }
     });
     const survey = (as: CharacterState): HuntingAdvice =>
-      manager!['errands'].huntingGrounds(null, null, as);
+      manager!['errands'].huntingGrounds(null, null, { as });
     expect(survey(holding({ min: 2, max: 12, kind: 1 })).assumptions.backstab).toBe(false);
     expect(survey(holding({ min: 2, max: 8, kind: 2 })).assumptions.backstab).toBe(true);
     // An empty hand backstabs (`AttackCommand.cs:115`).
@@ -8221,7 +8265,8 @@ describe('the hunting survey prices a kill off the fight record', () => {
     const gaps = (refills: number[], seen: Record<string, number>): LearnedSpawns => ({
       refills,
       seen,
-      at: 1
+      at: 1,
+      v: SPAWNS_VERSION
     });
     await surveyed(
       record().fights,
@@ -8268,6 +8313,9 @@ describe('the hunting survey prices a kill off the fight record', () => {
     expect(orc?.estimate.unknown).toContain('rounds');
     expect(advice.assumptions.measured).toBeNull();
     expect(asked).toHaveLength(0);
+    // The standing tick's health, read off the sheet's `HP Regen: 6/18`.
+    expect(advice.assumptions.passiveHealthPerTick).toBe(6);
+    expect(advice.assumptions.restingHealthPerTick).toBe(18);
   });
 
   /*

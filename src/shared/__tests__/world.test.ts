@@ -167,7 +167,8 @@ describe('lairsAlong', () => {
     name: 'Somewhere',
     requirement: null,
     dark: false,
-    ...(danger === undefined ? {} : { danger }),
+    // A priced lair step carries the realm's lair mark, as the router writes it.
+    ...(danger === undefined ? {} : { danger, lair: true as const }),
     ...(deadly === undefined ? {} : { deadly })
   });
 
@@ -205,6 +206,12 @@ describe('lairsAlong', () => {
       worst: null,
       deadly: { room: '1/2', name: 'Magma' }
     });
+  });
+
+  /* 2026-10-06: a room with no lair that monsters were timed walking into is priced on its step, and is no lair. */
+  it('leaves a room with no lair out of the lairs, priced or not', () => {
+    const road: RouteStep = { ...step(), danger: 0.1, name: 'Main Road' };
+    expect(lairsAlong([step(0.05), road])).toEqual({ count: 1, worst: 0.05, deadly: null });
   });
 
   /* The first, in walking order: a later one is a room nobody reaches. */

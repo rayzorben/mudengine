@@ -64,6 +64,8 @@ let notices: string[];
 let queue: CommandQueue;
 let stated: number[];
 let clock: number;
+/** The realm's speed: the effect tick is the server's over it. */
+let speed: number;
 
 const sources = (over: Partial<WardSources> = {}): WardSources => ({
   hazardAt: (room) => (room === '12/300' ? { spell: DESERT, hazard: DESERT_HAZARD } : null),
@@ -71,6 +73,7 @@ const sources = (over: Partial<WardSources> = {}): WardSources => ({
   spellById: (id) =>
     id === 711 ? WATERSKIN_SPELL : id === 683 ? DESERT : id === 712 ? DESERT_DAMAGE : null,
   spellsUp: () => stated,
+  realmSpeed: () => speed,
   ...over
 });
 
@@ -80,6 +83,7 @@ beforeEach(() => {
   notices = [];
   stated = [];
   clock = Date.now();
+  speed = 1;
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
 });
 
@@ -162,6 +166,19 @@ describe('keeping a room’s ward up', () => {
     expect(sent).toEqual(['use waterskin']);
     // Past them: used again.
     clock += 901 * 1000;
+    wards.onCharacter(standing([carried('waterskin')]), '12/300');
+    expect(sent).toEqual(['use waterskin', 'use waterskin']);
+  });
+
+  /* orohost runs five times faster: a waterskin's six hundred ticks are six minutes there and thirty on paramud. */
+  it('times its own clock at the realm’s speed', () => {
+    speed = 5;
+    const wards = make();
+    wards.beforeStep('12/300', standing([carried('waterskin')]));
+    clock += 359 * 1000;
+    wards.onCharacter(standing([carried('waterskin')]), '12/300');
+    expect(sent).toEqual(['use waterskin']);
+    clock += 2 * 1000;
     wards.onCharacter(standing([carried('waterskin')]), '12/300');
     expect(sent).toEqual(['use waterskin', 'use waterskin']);
   });

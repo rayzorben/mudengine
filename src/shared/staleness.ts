@@ -87,7 +87,9 @@ export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }
  *   prints only the welcome.
  * - **`user-dies`** — the pack: the death dropped it and the purse
  *   (`Player.Killed`), the tracker empties both, and only a listing says what
- *   loyal or cursed item stayed.
+ *   loyal or cursed item stayed. And the sheet: the armour class, damage resist
+ *   and magic resistance went with the gear, and `GearRecovery` reads the
+ *   armour class to tell a stripped character from a dressed one (2026-10-06).
  * - **`user-stats-assigned`** — the sheet, and only the sheet. It is the exit
  *   from the stat-assignment screen, which rewrites six attributes and
  *   recalculates the maximum hit points (`AssignStatsState`, `SetStats` then
@@ -97,7 +99,7 @@ export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }
 export const STALE_AFTER = {
   'user-levels': ['sheet', 'experience', 'chart'],
   'user-trains': ['sheet', 'experience', 'chart', 'pack'],
-  'user-dies': ['pack'],
+  'user-dies': ['pack', 'sheet'],
   'user-stats-assigned': ['sheet']
 } as const satisfies Partial<Record<BlockType, readonly StaleFact[]>>;
 

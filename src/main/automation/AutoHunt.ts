@@ -68,6 +68,8 @@ export interface HuntPlanner {
   runningLoop(): string | null;
   /** Stops the lap this started, and the leg it is walking. */
   stopLoop(reason: string): void;
+  /** The lap running takes this loop's stops, their clocks and lingers, where it walks the same rooms (`LoopRunner.retime`); false otherwise. */
+  retimeLoop(loop: Loop): boolean;
   moveInFlight(): boolean;
   walking(): boolean;
   /** An escape in flight, an armed retreat, an errand: not now. */
@@ -193,6 +195,12 @@ export class AutoHunt implements SessionModule {
    * the first time. Bounded, because one unlucky cycle is not a correction.
    */
   private readonly correction = new Map<string, number>();
+  /**
+   * The level the corrections were measured at. A new level clears them: the
+   * survey then carries each spot's own measured ratio itself
+   * (`withMeasured`), and a correction kept on top would count it twice.
+   */
+  private correctedAt: number | null = null;
 
   constructor(
     private config: HuntingAutomationConfig,
@@ -256,12 +264,14 @@ export class AutoHunt implements SessionModule {
    * The spot an extension names (todo 84): only that key, an order it
    * planned itself (`HuntOrder`, run as given), nowhere (null), or this
    * module's own choice (undefined). Every guard below still holds; what
-   * changes is which spots are candidates. A lap this module started for
-   * another spot is ended, since the plan has moved on.
+   * changes is which spots are candidates. A lap or a walk this module
+   * started for another spot, or for nowhere, is ended, since the plan has
+   * moved on; an order for the spot already in hand goes through `reorder`.
    */
   steer(key: Steer): void {
     if (keyOf(key) === keyOf(this.steered)) {
       this.steered = key;
+      if (typeof key === 'object' && key !== null) this.reorder(key);
       // The same spot planned again: whatever was refused before is asked again now.
       if (named(key) && this.phase.kind === 'idle') this.rejudge();
       return;
@@ -271,9 +281,70 @@ export class AutoHunt implements SessionModule {
     const running = this.planner.runningLoop();
     this.inherited = named(key) && running !== null && !this.mine() ? running : null;
     this.rejudge();
-    if (key === undefined || this.phase.kind !== 'hunting' || this.phase.key === keyOf(key)) return;
-    if (this.mine()) this.planner.stopLoop(t('automation.hunt.steeredAway'));
+    if (key === undefined || this.phase.kind === 'idle') return;
+    const inHand = this.phase.kind === 'walking' ? this.phase.target.key : this.phase.key;
+    if (inHand === keyOf(key)) {
+      if (typeof key === 'object' && key !== null) this.reorder(key);
+      return;
+    }
+    // A walk to the spot left behind is stopped too, or its arrival would start that spot's loop.
+    if (this.phase.kind === 'walking' || this.mine())
+      this.stopOwn(t('automation.hunt.steeredAway'));
+    else this.idle();
+  }
+
+  /**
+   * The same spot ordered again, perhaps with another loop (2026-10-06, run
+   * 13: priced again at the realm's speed, the order was a five-room loop on
+   * 71-second clocks, and the hunt went on with the one-room loop on
+   * 356-second clocks it was first given). A walk to the same start starts the
+   * new loop on arrival; a lap on the same rooms takes the new stops in place;
+   * a lap or a walk on other rooms, or an order with no stops, is stopped, and
+   * the next line sets off on the order as given or says why it cannot.
+   */
+  private reorder(order: HuntOrder): void {
+    const target = orderTarget(order);
+    const phase = this.phase;
+    switch (phase.kind) {
+      case 'idle':
+        return;
+      case 'walking':
+        if (target !== null && phase.target.start.id === target.start.id) {
+          this.phase = { ...phase, target };
+          return;
+        }
+        break;
+      case 'hunting':
+        // A lap that is not this module's is left to whoever started it.
+        if (!this.mine()) return;
+        if (target !== null && this.planner.retimeLoop(order.loop)) {
+          this.phase = {
+            ...phase,
+            spot: target.spot,
+            expected: target.expected,
+            copper: target.copper,
+            filler: target.spot.filler.length
+          };
+          this.planner.fightFor(monstersOf(target.spot));
+          return;
+        }
+        break;
+      default: {
+        const never: never = phase;
+        return never;
+      }
+    }
+    this.stopOwn(t('automation.hunt.reordered'));
+  }
+
+  /**
+   * Goes idle, then stops the lap or walk this module started. Idle first:
+   * `Walker.stop` reports `ended` at once, and a hunt still walking would read
+   * its own stop as the start not reached.
+   */
+  private stopOwn(reason: string): void {
     this.idle();
+    this.planner.stopLoop(reason);
   }
 
   private rejudge(): void {
@@ -372,6 +443,11 @@ export class AutoHunt implements SessionModule {
 
   /** Every state change: is this the moment to go hunting? */
   onCharacter(state: CharacterState): void {
+    const level = state.progress.level;
+    if (level !== null && level !== this.correctedAt) {
+      this.correction.clear();
+      this.correctedAt = level;
+    }
     if (!this.enabled || !this.config.enabled) return;
     if (state.phase !== 'in-game') return;
     if (this.phase.kind === 'walking') return;
@@ -497,7 +573,8 @@ export class AutoHunt implements SessionModule {
         perHour: measured.perHour,
         minutes: measured.minutes,
         level,
-        at: this.now()
+        at: this.now(),
+        estimated: this.phase.spot.estimate.modelPerHour ?? null
       });
     }
 
@@ -622,14 +699,12 @@ export class AutoHunt implements SessionModule {
    * **The lap is stopped before anything walks.** One movement at a time at
    * every door: `Walker.start` supersedes a leg silently and raises no
    * `ended`, so a lap left running would wait for a leg that never comes and
-   * then read this journey's arrival as its own. The phase goes idle first, so
-   * the stop is not read as the player standing the hunt down
-   * (`noteStopped`). The reason is said in the runner's own words.
+   * then read this journey's arrival as its own. It goes idle and stops the lap
+   * first (`stopOwn`). The reason is said in the runner's own words.
    */
   private relocate(state: CharacterState, spot: HuntingSpot, because: string, stop: string): void {
     this.events.decided?.({ at: this.now(), action: ACTION, because, acted: true });
-    this.idle();
-    this.planner.stopLoop(stop);
+    this.stopOwn(stop);
     // The spot the comparison was made on, not a second sweep of the realm.
     const target = spotTarget(spot);
     if (target === null) this.refuse(t('automation.hunt.refusalNoRooms'));

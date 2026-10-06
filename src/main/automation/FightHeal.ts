@@ -24,7 +24,7 @@ export interface FightHealFloor {
 }
 
 export class FightHeal implements SessionModule {
-  private readonly beat = new RoundBeat();
+  private readonly beat: RoundBeat;
   private started = false;
   private closedRounds = 0;
   private closedDamage = 0;
@@ -32,8 +32,12 @@ export class FightHeal implements SessionModule {
 
   constructor(
     /** What the monsters in the fight are expected to deal this character a round, or null. */
-    private readonly realmPerRound: (state: CharacterState) => number | null
-  ) {}
+    private readonly realmPerRound: (state: CharacterState) => number | null,
+    /** The session's figure for the realm's speed (`RealmSpeed`). */
+    speed: () => number = () => 1
+  ) {
+    this.beat = new RoundBeat(speed);
+  }
 
   onBlock(block: Block): void {
     if (this.beat.onBlock(block)) this.closeRound();

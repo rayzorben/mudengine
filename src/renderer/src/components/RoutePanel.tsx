@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import MapView from './MapView';
 import ClearField from './ClearField';
 import Icon from './Icon';
-import { commandsOf, runsOf, stepSignature } from '../lib/route';
+import { commandsOf, runsOf, stepDanger, stepSignature } from '../lib/route';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { useRoomSearch } from '../hooks/useRoomSearch';
@@ -293,15 +293,19 @@ function chips(step: RouteStep) {
           {t('cards.route.stepKeptOut', { word: step.keptOut })}
         </span>
       )}
-      {step.danger !== undefined && (
-        <span className={step.deadly === true ? 'chip bad' : 'chip warn'}>
-          {step.deadly === true
-            ? t('cards.route.stepDeadly')
-            : t('cards.route.stepLair', {
-                percent: Math.max(1, Math.round(step.danger * 100))
-              })}
-        </span>
-      )}
+      {(() => {
+        const danger = stepDanger(step);
+        if (danger === null) return null;
+        return (
+          <span className={danger.kind === 'deadly' ? 'chip bad' : 'chip warn'}>
+            {danger.kind === 'deadly'
+              ? t('cards.route.stepDeadly')
+              : danger.kind === 'lair'
+                ? t('cards.route.stepLair', { percent: danger.percent })
+                : t('cards.route.stepRoad', { percent: danger.percent })}
+          </span>
+        );
+      })()}
     </>
   );
 }

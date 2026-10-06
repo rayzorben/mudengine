@@ -18,7 +18,9 @@
  * duration from the moment the use went out, a tick every three seconds —
  * `EffectSpellTickTime`, the clock `SpellEffectManager.Tick` counts
  * `DurationLeft` down on (docs/greatermud/combat.md) — so a waterskin's six
- * hundred ticks are thirty minutes. When the room's harm lands (*You suffer
+ * hundred ticks are thirty minutes, and six minutes on orohost, which runs
+ * five times as fast (`GameSpeed.Scale` divides every timed event,
+ * 2026-10-06; `effectSeconds`). When the room's harm lands (*You suffer
  * in the desert heat…*, spell 712's cast message), the ward is down whatever
  * that clock says, and the item is used at once. A dive through the oasis pool took it off 18 minutes
  * into the thirty (2026-10-04). The router prices on none of this
@@ -39,7 +41,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { HealthConfig } from '../../shared/config';
 import { bareName } from '../../shared/items';
-import { EFFECT_TICK_SECONDS } from '../../shared/menace';
+import { effectSeconds } from '../../shared/menace';
 import {
   hazardAvoided,
   nameAnswersTo,
@@ -59,14 +61,13 @@ export interface WardSources {
   spellById(id: number): WorldSpell | null;
   /** The spells the server has stated up with a countdown still running. */
   spellsUp(state: CharacterState): readonly number[];
+  /** How many times faster than the server's clocks the realm runs (`RealmSpeed`); the effect tick is three seconds over it. */
+  realmSpeed(): number;
 }
 
 export interface WardEvents {
   notice?(message: string): void;
 }
-
-/** One tick of a spell's duration, on the server's own clock. */
-const TICK_MS = EFFECT_TICK_SECONDS * 1000;
 
 export class Wards implements SessionModule {
   /** When each ward this module used lapses, by spell, on the client's own clock. */
@@ -221,7 +222,12 @@ export class Wards implements SessionModule {
             hazard: cast.name
           }),
           onSent: () => {
-            if (lasts !== undefined && lasts > 0) this.until.set(id, this.now() + lasts * TICK_MS);
+            if (lasts !== undefined && lasts > 0) {
+              this.until.set(
+                id,
+                this.now() + effectSeconds(lasts, this.sources.realmSpeed()) * 1000
+              );
+            }
           }
         });
         this.events.notice?.(

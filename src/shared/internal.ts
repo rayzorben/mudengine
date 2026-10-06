@@ -493,7 +493,8 @@ const TUNING_DEFAULTS = {
      * The quiet that separates two rounds' blows (`RoundBeat`). Measured
      * 2026-09-26 over 120 recorded sessions: gaps inside one round are under
      * 250 ms in 99% of cases and at most 1.5 s, and gaps between rounds are
-     * 2.5 s at the least and 5 s typically.
+     * 2.5 s at the least and 5 s typically. The server's figure: a realm that
+     * runs faster divides it by its speed (`RealmSpeed`), down to `speedQuietMs`.
      */
     roundGapMs: 2000,
     /**
@@ -804,6 +805,24 @@ const TUNING_DEFAULTS = {
      * (`TimedEventManager.RegenTickTime`): it refills monsters, not players.
      */
     roomRegenSeconds: 121,
+    /**
+     * Reading how many times faster than these clocks the realm runs
+     * (`RealmSpeed`, GreaterMUD's `GameSpeedMultiplier`): the quiet that opens
+     * a round at any speed (a round's blows land within 250 ms in 99% of
+     * cases, and orohost's rounds come a second apart), the longest gap between
+     * openings that is still one fight's (half again the server's round), how
+     * many gaps are needed before the figure is read, and how many are kept.
+     * Once some speed explains `speedShare` of the gaps, the figure is the
+     * slowest speed that explains `speedShare` of what the best explains, a gap
+     * being explained where it is a whole number of the speed's rounds, give or
+     * take `speedSlack` of a round (orohost's are within 53 ms of a 1 s round).
+     */
+    speedQuietMs: 500,
+    speedGapMostMs: 7500,
+    speedRounds: 12,
+    speedKept: 60,
+    speedSlack: 0.15,
+    speedShare: 0.8,
     /** Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`, 1.5s). */
     killOverheadMs: 1500,
     /** One step of a walk — the movement round measured at 1,239ms. */
@@ -884,6 +903,11 @@ const TUNING_DEFAULTS = {
     measuredMinutesLeast: 10,
     paceLeast: 0.2,
     paceMost: 10,
+    /**
+     * A rate measured this many levels away still prices its spot, by its
+     * ratio to the model's figure it was measured beside (`withMeasured`).
+     */
+    measuredLevels: 3,
     /**
      * How many refills a room must have been timed over before its timed
      * clock prices it, where the world database states none
@@ -1014,6 +1038,12 @@ const TUNING_DEFAULTS = {
   },
   /** Going back for the kit after a death — `GearRecovery`. */
   gearRecovery: {
+    /**
+     * How long after a death is first seen the inventory and stats have to come
+     * back before the recovery is refused; until then no other trip starts, so
+     * nothing walks the character away first.
+     */
+    decideMs: 20000,
     /** How long the pack has to reflect the `get`s before the kit is put on with what arrived. */
     collectMs: 8000,
     /** A `get` or `wear` still queued after this is for a room already left. */
@@ -2225,6 +2255,11 @@ const TUNING_DEFAULTS = {
      * says.
      */
     hazardSupplyCount: 2,
+    /**
+     * How many monsters a pass is priced against in a room with no lair where
+     * the wire timed monsters walking in (`RoomClocks.wanderers`).
+     */
+    wanderersAtOnce: 2,
     /**
      * How many rounds of a lair's blows one pass through the room is priced
      * at. In and out is one round from whatever attacks on sight; two prices

@@ -430,6 +430,7 @@ tuning:
 
     # The quiet between two rounds' blows: the first blow after it opens a new
     # round. Measured: inside a round at most 1.5 s, between rounds 2.5 s or more.
+    # The server's figure: a realm that runs faster divides it by its speed.
     roundGapMs: 2000
 
     # How long a command proposed on the round tick (a change of attack, a
@@ -694,6 +695,20 @@ tuning:
     passiveTickSeconds: 30
     # The pass that refills the monsters of a room a player stands in.
     roomRegenSeconds: 121
+    # How many times faster than these clocks the realm runs is read off the
+    # rounds of a fight: a blow after speedQuietMs of quiet opens a round, a gap
+    # up to speedGapMostMs is still the same fight's, and the figure is read
+    # once speedRounds gaps are seen (the newest speedKept kept). Once some
+    # speed explains speedShare of the gaps, the figure is the slowest speed
+    # that explains speedShare of what the best explains, a gap being explained
+    # where it is a whole number of the speed's rounds, give or take speedSlack
+    # of a round. Every clock above, and the step, divide by it.
+    speedQuietMs: 500
+    speedGapMostMs: 7500
+    speedRounds: 12
+    speedKept: 60
+    speedSlack: 0.15
+    speedShare: 0.8
     killOverheadMs: 1500
     stepMs: 1250
     greatermudRespawnOffsetSeconds: 30
@@ -718,12 +733,16 @@ tuning:
     measuredMinutesLeast: 10
     paceLeast: 0.2
     paceMost: 10
+    # A rate measured this many levels away still prices its spot, by what it
+    # paid over the estimate it was measured beside.
+    measuredLevels: 3
 
     # Where the world database states no lair clock (a MegaMUD export has no
     # Delay column) or no lair at all (an arena), the client times the gap
     # from the kill that emptied the room to the next monster in. A room's
     # timed clock prices it after this many refills; this many are kept. A
-    # lair's gap under refillShortestSeconds is the lair's second monster coming in.
+    # lair's gap under refillShortestSeconds is left out; most were the next
+    # room's spawn on entry.
     refillsLeast: 3
     refillShortestSeconds: 3
     refillsKept: 12
@@ -759,7 +778,10 @@ tuning:
   # Going back for the kit after a death — `GearRecovery`. `collectMs` is how
   # long the pack has to reflect the `get`s before the kit is put on with what
   # arrived; `expiresMs` drops a command still queued when the room has changed.
+  # `decideMs` is how long after a death the inventory and stats have to come
+  # back before the recovery is refused; until then no other trip starts.
   gearRecovery:
+    decideMs: 20000
     collectMs: 8000
     expiresMs: 6000
 
@@ -1686,6 +1708,10 @@ tuning:
     # way, and the plan cannot know how many times the walk will stop: two is
     # one spare. A thing that is not spent is fetched once whatever this says.
     hazardSupplyCount: 2
+
+    # How many monsters a pass is priced against in a room with no lair where
+    # monsters were timed walking in.
+    wanderersAtOnce: 2
 
     # How many rounds of a lair's blows one pass through the room is priced at.
     # In and out is one round from whatever attacks on sight; two prices every

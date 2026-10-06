@@ -26,6 +26,19 @@ import { median } from './median';
 import type { CharacterState } from './character';
 import { mobKey, roomAddress, type RoomId } from './world';
 
+/**
+ * How the refills of an entry stamped with it were timed: with this
+ * character's own moves accounted for (`RefillWatch.observe`, `moving`). An
+ * entry without it was timed before 2026-10-06, when walking into a room that
+ * spawned on entry read as the room left refilling: a room with no lair is not
+ * priced from it (`RoomClocks.refilling`, `wanderers`, `seenIn`), a lair still
+ * reads it behind `refillShortestSeconds`, and the next refill timed there
+ * starts it afresh: a lair's keeping its gaps at or above that floor, any
+ * other room's keeping none (outside a lair the next room's spawn lands over
+ * the floor too: 25 of 510 on orohost).
+ */
+export const SPAWNS_VERSION = 2;
+
 /** What standing in one room has taught about its refills. */
 export interface LearnedSpawns {
   /** Seconds from the room emptied to the next monster in, newest last. */
@@ -34,48 +47,68 @@ export interface LearnedSpawns {
   seen: Record<string, number>;
   /** Epoch ms of the newest refill. */
   at: number;
+  /** `SPAWNS_VERSION` where the refills were timed that way; absent on an older entry. */
+  v?: number;
 }
 
-/** One refill timed: the room, the gap, and who came. */
+/** Whether an entry was timed with this character's moves accounted for (`SPAWNS_VERSION`). */
+export function timedWithMoves(entry: LearnedSpawns | null | undefined): entry is LearnedSpawns {
+  return entry?.v === SPAWNS_VERSION;
+}
+
+/** One refill timed: the room, the gap, who came, and whether the realm states a lair there. */
 export interface RefillTimed {
   room: RoomId;
   seconds: number;
   names: string[];
+  lair: boolean;
 }
 
 /**
- * Folds one refill into a room's entry, keeping the newest `keep` gaps. Pure:
- * a new entry every time, so the store knows to write.
+ * Folds one refill into a room's entry, keeping the newest `keep` gaps, and
+ * stamps it (`SPAWNS_VERSION`); an older entry starts afresh, a lair's keeping
+ * its gaps at or above `shortest`. Pure: a new entry every time, so the store
+ * knows to write.
  */
 export function learnRefill(
   entry: LearnedSpawns | undefined,
-  refill: Pick<RefillTimed, 'seconds' | 'names'>,
+  refill: Pick<RefillTimed, 'seconds' | 'names' | 'lair'>,
   at: number,
-  keep: number
+  keep: number,
+  shortest: number
 ): LearnedSpawns {
-  const seen = { ...(entry?.seen ?? {}) };
+  // An entry timed the old way starts afresh: its names gone, and its gaps too, except a lair's at or above the floor.
+  const kept = timedWithMoves(entry) ? entry : undefined;
+  const old =
+    kept?.refills ?? (refill.lair ? entry?.refills.filter((gap) => gap >= shortest) : null) ?? [];
+  const seen = { ...(kept?.seen ?? {}) };
   for (const name of refill.names) {
     const key = mobKey(name);
     if (key.length > 0) seen[key] = (seen[key] ?? 0) + 1;
   }
   return {
-    refills: [...(entry?.refills ?? []), refill.seconds].slice(-Math.max(1, keep)),
+    refills: [...old, refill.seconds].slice(-Math.max(1, keep)),
     seen,
-    at
+    at,
+    v: SPAWNS_VERSION
   };
 }
 
 /**
  * A room's timed clock, the median gap, once it has `least` refills; null before.
  *
- * A gap under `shortest` seconds is left out: in a lair, the room read empty
- * and then full again within a second of a kill is the lair's second monster
- * coming in (the Dungeon Entrance's 0.4 to 0.9 s). An arena's sub-second
- * refills are real (the Newhaven Arena's 0.005 to 0.8 s), so its reader
- * passes no floor. On orohost such gaps were half of every lair's
- * record, and their median, 0.76 s, was the realm's usual clock: every lair
- * with no clock of its own was priced as filling the moment it emptied
- * (2026-10-03, a level-11 Mystic stood in an empty Iron Grate for four hours).
+ * A gap under `shortest` seconds is left out of a lair's. Most were not the
+ * lair at all: the server spawns the room a character walks into before it
+ * prints that room (`Player.EnteringRoom` calls `Room.Regen`, then
+ * `ShowRoom`), so until 2026-10-06 the next room's spawn was timed as this
+ * one refilling (72 of 80 of the Dungeon Entrance's sub-2 s gaps were the
+ * arena's spawn on entry). The rest is a death sentence that read two of one
+ * name as one and the survivor listed again. An arena's sub-second refills
+ * are real (the Newhaven Arena's 0.005 to 0.8 s), so its reader passes no
+ * floor. On orohost such gaps were half of every lair's record, and their
+ * median, 0.76 s, was the realm's usual clock: every lair with no clock of
+ * its own was priced as filling the moment it emptied (2026-10-03, a level-11
+ * Mystic stood in an empty Iron Grate for four hours).
  */
 export function refillClock(
   entry: LearnedSpawns | null | undefined,
@@ -110,6 +143,8 @@ export function usualClock(
 export interface RefillHeld {
   room: RoomId;
   names: string[];
+  /** The realm states a lair here, so only its own monsters count. */
+  lair: boolean;
   /** Something here nobody has said is a player or a monster (`RoomOccupant.kind`). */
   unsure: boolean;
 }
@@ -133,7 +168,12 @@ export function refillCount(state: CharacterState): RefillHeld | null {
     .filter((who) => who.kind === 'mob')
     .map((who) => who.mob?.name ?? who.name)
     .filter((name) => lair.size === 0 || ofLair(name));
-  return { room, names, unsure: state.room.occupants.some((who) => who.kind === 'unknown') };
+  return {
+    room,
+    names,
+    lair: lair.size > 0,
+    unsure: state.room.occupants.some((who) => who.kind === 'unknown')
+  };
 }
 
 /**
@@ -144,14 +184,27 @@ export function refillCount(state: CharacterState): RefillHeld | null {
  * ground of every street wanderers pass along. Leaving drops the clock, since
  * walking back in regenerates a room on entry (`Player.cs:782`), which is not
  * its clock; so does anything here nobody has placed, which may be a monster.
+ * And so does a monster arriving while one of this character's moves is
+ * unanswered (`moving`): the server spawns the room walked into before it
+ * prints it, so the arrival is the next room's (2026-10-06: 266 of 267 such
+ * arrivals outside a lair were listed in the next room's `Also here:`, and
+ * Slum Street, Bend was priced as refilling every half second).
  */
 export class RefillWatch {
   private room: RoomId | null = null;
   private count = 0;
   private emptiedAt: number | null = null;
 
-  /** `killed`: the line that brought this was a death (`mob-dies`, or the experience line). */
-  observe(held: RefillHeld | null, at: number, killed: boolean): RefillTimed | null {
+  /**
+   * `killed`: the line that brought this was a death (`mob-dies`, or the
+   * experience line); `moving`: a move of this character's is unanswered.
+   */
+  observe(
+    held: RefillHeld | null,
+    at: number,
+    killed: boolean,
+    moving = false
+  ): RefillTimed | null {
     if (held === null || held.room !== this.room) {
       this.room = held?.room ?? null;
       this.count = held?.names.length ?? 0;
@@ -169,9 +222,13 @@ export class RefillWatch {
       return null;
     }
     if (before === 0 && this.count > 0 && this.emptiedAt !== null) {
+      if (moving) {
+        this.emptiedAt = null;
+        return null;
+      }
       const seconds = (at - this.emptiedAt) / 1000;
       this.emptiedAt = null;
-      return { room: held.room, seconds, names: [...held.names] };
+      return { room: held.room, seconds, names: [...held.names], lair: held.lair };
     }
     return null;
   }

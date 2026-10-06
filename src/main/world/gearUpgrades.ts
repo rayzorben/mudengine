@@ -12,7 +12,7 @@
  */
 import { USED_NOT_WORN, WORN_SLOT, WORN_SLOT_HOLDS } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
-import type { ItemEntity } from '../../shared/entities';
+import { wornCopy, type ItemEntity } from '../../shared/entities';
 import type { GearCounter, GearOffer, GearRow, SlotUpgrade, SlotWorn } from '../../shared/upgrades';
 import {
   meanBlow,
@@ -88,7 +88,9 @@ export function scanSlots(
         free
       },
       gear,
-      better: betterThan(gear.rows, weakest?.figures ?? null, free, gear.ranking)
+      better: betterThan(gear.rows, weakest?.figures ?? null, free, gear.ranking).filter(
+        (row) => wornCopy(wornHere, { name: row.name, id: row.id }) === undefined
+      )
     };
   });
 }

@@ -22,7 +22,7 @@ export interface HuntPlannerModules {
   combat: Pick<AutoCombat, 'huntFor'>;
   belongings: Pick<Belongings, 'rememberHuntRate'>;
   walker: Pick<Walker, 'start' | 'walking'>;
-  loops: Pick<LoopRunner, 'progress'>;
+  loops: Pick<LoopRunner, 'progress' | 'retime'>;
   travel: Pick<Travel, 'startLoop'>;
 }
 
@@ -53,6 +53,7 @@ export function huntPlanner(parts: HuntPlannerParts): HuntPlanner {
       return progress.status === 'running' ? (progress.name ?? null) : null;
     },
     stopLoop: parts.stopLap,
+    retimeLoop: (loop) => m().loops.retime(loop),
     moveInFlight: () => m().tracker.pendingMoves > 0,
     walking: () => m().walker.walking,
     busy: parts.busy,

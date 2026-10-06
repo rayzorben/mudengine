@@ -43,9 +43,12 @@ export interface AttackOption {
 
 type Abilities = ReadonlyArray<readonly [number, number]> | null;
 
+/** The plain attack's word, which every class has: what stands in for an attack the game refuses. */
+export const PLAIN_ATTACK_VERB = 'a';
+
 /** The verb each attack is offered as: the realm's shortest spelling. */
 const ATTACKS: ReadonlyArray<{ verb: string; kind: AttackKind }> = [
-  { verb: 'a', kind: 'attack' },
+  { verb: PLAIN_ATTACK_VERB, kind: 'attack' },
   { verb: 'aa', kind: 'bash' },
   { verb: 'sm', kind: 'smash' },
   { verb: 'pu', kind: 'punch' },

@@ -65,6 +65,38 @@ describe('starting a loop', () => {
     expect(notices[0]).toBe(t('automation.loops.started', { loopName: 'Arena', stopCount: 2 }));
   });
 
+  /* 2026-10-06: an order for the same spot priced again at the realm's speed. */
+  it('takes another loop’s clocks in place where it walks the same rooms, and nothing else', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.start(loop, state());
+    const timed: Loop = {
+      ...loop,
+      name: 'Other',
+      stops: loop.stops.map((stop) => ({ ...stop, every: 12 }))
+    };
+    expect(runner.retime(timed)).toBe(true);
+    expect(walked).toEqual(['Arena']);
+    expect(runner.progress).toMatchObject({ status: 'running', name: 'Arena', stop: 1, stops: 2 });
+    // The same rooms listed from the other end: the lap keeps its own order.
+    const listed: Loop = {
+      ...loop,
+      stops: [
+        { room: 'Road', every: 30 },
+        { room: 'Arena', every: 40 }
+      ]
+    };
+    expect(runner.retime(listed)).toBe(true);
+    expect(runner.progress).toMatchObject({ status: 'running', stop: 1, stops: 2 });
+    expect(runner.place?.loop.stops).toEqual([
+      { room: 'Arena', every: 40 },
+      { room: 'Road', every: 30 }
+    ]);
+    expect(runner.retime({ ...loop, stops: [{ room: 'Arena' }] })).toBe(false);
+    expect(runner.retime({ ...loop, bounce: true })).toBe(false);
+    expect(new LoopRunner(p, {}).retime(loop)).toBe(false);
+  });
+
   it('starts from the stop it is already standing in', () => {
     const { planner: p, walked } = planner({ here: (stop) => stop.name === 'Road' });
     const runner = new LoopRunner(p, {});
