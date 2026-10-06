@@ -220,3 +220,84 @@ describe('breaking an area spell that has emptied the room', () => {
     expect(repeating('majormud').breakEmptied(one, elsewhere)).toBe(null);
   });
 });
+
+/*
+ * Rayzor, 2026-10-05: `harm` is `AffectsLivingOnly` and every zombie row is
+ * `NonLiving`, so the server answers `Your spell has no effect on big zombie.`
+ * and breaks the fight. The world database says so before the cast.
+ */
+describe('a spell the world database says has no effect', () => {
+  const harm: WorldSpell = { id: 12, name: 'harm', level: 1, targets: 8, abilities: [[108, 0]] };
+  const hammer: WorldSpell = {
+    id: 16,
+    name: 'spiritual hammer',
+    short: 'hamm',
+    level: 4,
+    targets: 8
+  };
+  const book = [
+    { name: 'harm', short: 'harm', level: 1, cost: 1 },
+    { name: 'spiritual hammer', short: 'hamm', level: 4, cost: 2 }
+  ];
+  const fighting: CharacterState = {
+    ...EMPTY_CHARACTER,
+    spellbook: book,
+    vitals: { ...EMPTY_CHARACTER.vitals, mana: 20, manaMax: 22, manaType: 'MA' }
+  };
+  const zombie = (nonLiving: boolean | null) => ({
+    name: 'big zombie',
+    entity: {
+      name: 'zombie',
+      rawName: 'big zombie',
+      source: 'hybrid' as const,
+      charmed: false,
+      disposition: 'hostile' as const,
+      uncertain: false,
+      costly: 'never' as const,
+      nature: { nonLiving, animal: false, undead: true, spellImmunity: [0, 0] as const }
+    },
+    remaining: null
+  });
+  const unit = (fallback: string) => {
+    const notices: string[] = [];
+    const spells = new AttackSpells(
+      {
+        ...DEFAULT_CONFIG.automation.spells,
+        attack: 'harm',
+        attackFallback: fallback,
+        autoChoose: false,
+        minMana: 0
+      },
+      { notice: (message) => notices.push(message) },
+      (name) =>
+        name === 'harm' ? harm : name === 'spiritual hammer' || name === 'hamm' ? hammer : null,
+      () => ({ combat: null, magery: null, family: null })
+    );
+    return { spells, notices };
+  };
+
+  it('opens with the attack verb rather than the configured spell, and says why', () => {
+    const { spells, notices } = unit('');
+    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(notices).toEqual([
+      t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'big zombie' })
+    ]);
+    // Said once for the fight, however often it is asked.
+    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(notices).toHaveLength(1);
+  });
+
+  it('casts the fallback instead where one is set', () => {
+    const { spells } = unit('hamm');
+    expect(spells.opening(fighting, zombie(true), 'in the room')?.command).toBe('hamm big zombie');
+  });
+
+  it('casts it where the rows disagree, and on the living (the control)', () => {
+    expect(unit('').spells.opening(fighting, zombie(null), 'in the room')?.command).toBe(
+      'harm big zombie'
+    );
+    expect(unit('').spells.opening(fighting, zombie(false), 'in the room')?.command).toBe(
+      'harm big zombie'
+    );
+  });
+});

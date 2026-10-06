@@ -12,6 +12,7 @@ import type { ItemRarity } from './rarity';
 import { asGates, type AbilityBounds, type Gate } from './gates';
 import type { Alignment } from './alignment';
 import type { SpellElement } from './spellchoice';
+import type { MonsterNature } from './spellReach';
 import type { FightSummary } from './fights';
 import type { MobLoreEntry } from './lore';
 import type { ItemKind } from './items';
@@ -1868,6 +1869,10 @@ export interface WorldMobRow {
   averageDamage?: number;
   charmLevel?: number;
   undead?: boolean;
+  /** This row's own `Abil-n` (format 57); absent on an older realm file. */
+  abilities?: Array<[number, number]>;
+  /** What this row is, as a spell asks (`natureOf`). */
+  nature?: MonsterNature;
 }
 
 /**
@@ -2070,9 +2075,14 @@ export interface WorldMob {
    * Which reduction is right depends on the ability's *shape*, and a shape is
    * a display judgement this file must not bake in — see `BuiltMob.ab`. The
    * card reduces (`effectValues`): the cautious high end of a magnitude, every
-   * member of a set.
+   * member of a set. A resolved row carries its own (format 57).
    */
   abilities?: Array<[number, number]>;
+  /**
+   * What every row sharing this name agrees it is, as a spell asks before it
+   * lands (`natureOf`, `spellReaches`): a resolved row's own.
+   */
+  nature?: MonsterNature;
 }
 
 /**

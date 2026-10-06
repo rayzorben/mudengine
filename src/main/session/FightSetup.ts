@@ -19,6 +19,7 @@ import {
   type BlessingEffect
 } from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
+import type { MobEntity } from '../../shared/entities';
 import type { AutomationConfig } from '../../shared/config';
 import { ROUND_SECONDS } from '../../shared/menace';
 import { regeneration, type ProwessSheet } from '../../shared/prowess';
@@ -53,7 +54,7 @@ export type FightCharacter = Omit<SurvivalInput, 'foes' | 'casting' | 'draw'>;
 /** A foe as the room or the realm hands it over. */
 export interface FightFoe {
   name: string;
-  subject: SurvivalFoe['subject'] & { magicResist?: number };
+  subject: SurvivalFoe['subject'] & Pick<MobEntity, 'magicResist' | 'nature'>;
 }
 
 export class FightSetup {
@@ -174,7 +175,8 @@ export class FightSetup {
             : castsToKill(casting, {
                 hp: subject.hp ?? null,
                 magicRes: subject.magicResist ?? null,
-                abilities: subject.abilities
+                abilities: subject.abilities,
+                nature: subject.nature
               });
         return kill === null || subject.hp === undefined
           ? null

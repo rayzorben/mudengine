@@ -176,6 +176,43 @@ describe('choosing the round spell', () => {
     );
     expect(partly.chosen).toMatchObject({ min: 10, max: 20 });
   });
+
+  /*
+   * Rayzor, 2026-10-05: `harm` is `AffectsLivingOnly` and a zombie is
+   * `NonLiving`, and the server answered `Your spell has no effect on big
+   * zombie.` and broke the fight at 6 hit points.
+   */
+  it('never casts a spell the world database says has no effect on the target', () => {
+    const living: WorldSpell = { ...REALM['fire jet']!, abilities: [[108, 0]] };
+    const nonLiving = {
+      remaining: 100,
+      magicRes: null,
+      abilities: [[66, 100]] as Array<[number, number]>,
+      nature: { nonLiving: true, animal: false, undead: true, spellImmunity: [0, 0] as const }
+    };
+    const realm = (name: string): WorldSpell | null =>
+      name === 'fire jet' ? living : (REALM[name] ?? null);
+    const choice = chooseAttackSpell(input({ realm, target: nonLiving }));
+    expect(choice.chosen?.spell.name).toBe('magic missile');
+    // The control: on a living target the jet is still the hardest hitter.
+    expect(
+      chooseAttackSpell(
+        input({
+          realm,
+          target: { ...nonLiving, nature: { ...nonLiving.nature, nonLiving: false } }
+        })
+      ).chosen?.spell.name
+    ).toBe('fire jet');
+    // Where the rows disagree it is cast, and the server's answer settles it.
+    expect(
+      chooseAttackSpell(
+        input({ realm, target: { ...nonLiving, nature: { ...nonLiving.nature, nonLiving: null } } })
+      ).chosen?.spell.name
+    ).toBe('fire jet');
+    // Nothing that touches it: said as its own refusal, not as resisted.
+    const only = chooseAttackSpell(input({ book: [BOOK[2]!], realm, target: nonLiving }));
+    expect(only.refusal).toBe('no-effect');
+  });
 });
 
 describe('the element column', () => {
@@ -235,6 +272,18 @@ describe('casts to kill', () => {
     expect(castsToKill(input, { hp: 120, magicRes: null })!.rounds).toBeGreaterThanOrEqual(
       answer!.rounds
     );
+  });
+
+  it('prices no casting where the only spell has no effect on the monster', () => {
+    const living = (name: string): WorldSpell | null => {
+      const row = realm(name);
+      return row === null ? null : { ...row, abilities: [[108, 0]] };
+    };
+    const zombie = { nonLiving: true, animal: false, undead: true, spellImmunity: [0, 0] as const };
+    expect(
+      castsToKill({ ...input, realm: living }, { hp: 60, magicRes: null, nature: zombie })
+    ).toBeNull();
+    expect(castsToKill({ ...input, realm: living }, { hp: 60, magicRes: null })).not.toBeNull();
   });
 
   it('answers nothing where the book is unread, the health unknown, or nothing casts', () => {

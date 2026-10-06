@@ -1812,7 +1812,8 @@ export class Errands implements SessionModule {
             : (castsToKill(casting, {
                 hp: verdicts[index]?.menace?.hp ?? entity.hp ?? null,
                 magicRes: entity.magicResist ?? null,
-                abilities: entity.abilities
+                abilities: entity.abilities,
+                nature: entity.nature
               })?.rounds ?? null)) ??
           verdicts[index]?.rounds?.value ??
           recorded(verdicts[index]?.menace?.hp ?? entity.hp ?? null),

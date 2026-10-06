@@ -56,6 +56,7 @@ import type {
 } from './world';
 import type { RoomCandidate, RoomLight } from './character';
 import type { CoinMaxima } from './coins';
+import type { MonsterNature } from './spellReach';
 
 /**
  * Where an entity's facts came from.
@@ -267,6 +268,8 @@ export interface MobEntity {
   /** Resolved drop table, so a target can be chosen by what it carries. */
   drops?: ItemEntity[];
   abilities?: Array<[number, number]>;
+  /** What it is, as a spell asks before it lands (`WorldMob.nature`). */
+  nature?: MonsterNature;
   /** The average damage a blow does — `Monsters.AvgDmg`. */
   averageDamage?: number;
   /** The level at which it can be charmed — `Monsters.CharmLVL`. */

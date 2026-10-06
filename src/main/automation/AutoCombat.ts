@@ -948,7 +948,18 @@ export class AutoCombat implements SessionModule {
         this.arrivedAt = Date.now();
         return;
 
-      case 'spell-ineffective':
+      /*
+       * `Your spell has no effect on` ends this character's attack with no
+       * `*Combat Off*` (`InitiateSpell`, `BreakCombat(false)`): Rayzor stood a
+       * round at 6 hit points before the next tick sent the attack verb. The
+       * round's change goes now.
+       */
+      case 'spell-ineffective': {
+        this.spell.heard(block, this.state);
+        const fighting = this.inAFight();
+        if (fighting !== null) this.roundChange(fighting);
+        return;
+      }
       case 'spell-cast':
         this.spell.heard(block, this.state);
         return;
@@ -2324,11 +2335,8 @@ export class AutoCombat implements SessionModule {
    * with nothing to cast at, which is exactly when the spell is not.
    */
   private round(): void {
-    const state = this.state;
-    if (!this.acting || this.events.onTheGround()) return;
-    if (state === null || state.phase !== 'in-game') return;
-    if (this.retreating) return;
-    if (!state.inCombat) return;
+    const state = this.inAFight();
+    if (state === null) return;
 
     this.rounds += 1;
     this.refresh();
@@ -2337,6 +2345,15 @@ export class AutoCombat implements SessionModule {
     // round's own command and anything riding the beat is spending what is
     // left of it.
     this.events.round?.(state);
+  }
+
+  /** The state, while this character is in a fight this module may act in; else null. */
+  private inAFight(): CharacterState | null {
+    const state = this.state;
+    if (!this.acting || this.events.onTheGround()) return null;
+    if (state === null || state.phase !== 'in-game') return null;
+    if (this.retreating || !state.inCombat) return null;
+    return state;
   }
 
   /**
