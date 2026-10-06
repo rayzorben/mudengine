@@ -5076,6 +5076,9 @@ automation:
       been seen start with the normal attack instead.'
     verbRefused: The game refused {verb}; dropping it from this character's attacks for this
       session.
+    # The configured attack refused: the plain attack is sent in its place.
+    attackStandsIn: The game refused {verb}, the attack this character is set to; attacking with
+      "{plain}" instead for this session.
     verbRefusedWeapon: The game refused {verb} because of the weapon in hand, not the character; it
       comes back when you change weapons.
     verbBack: '{verb} is back: the weapon the game refused it with is no longer in hand.'

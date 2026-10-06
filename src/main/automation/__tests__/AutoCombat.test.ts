@@ -1335,6 +1335,34 @@ describe('a verb the realm refuses', () => {
     ).toHaveLength(1);
   });
 
+  /* orohost, logs/2026-10-05_14-39-59_main:722: a Mage set to `kic` was beaten from 38 to 7 health by a thug, refused each time. */
+  it('turns a refused attack into the plain one', () => {
+    const auto = make(combat({ attack: 'kic' }));
+    auto.onCharacter(
+      state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] } })
+    );
+    drain();
+    expect(sent).toEqual(['kic giant rat']);
+
+    auto.onBlock(block('attack-refused', { skill: 'kicking' }));
+    auto.onCharacter(
+      state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('kobold thief', 'hostile')] } })
+    );
+    drain();
+    expect(sent).toEqual(['kic giant rat', 'a kobold thief']);
+    expect(notices).toEqual([t('automation.combat.attackStandsIn', { verb: 'kick', plain: 'a' })]);
+  });
+
+  it('says a refused opener is dropped, after the attack was refused too', () => {
+    const auto = make(combat({ attack: 'kic', opener: 'ju' }));
+    auto.onBlock(block('attack-refused', { skill: 'kicking' }));
+    auto.onBlock(block('attack-refused', { skill: 'jumpkicking' }));
+    expect(notices).toEqual([
+      t('automation.combat.attackStandsIn', { verb: 'kick', plain: 'a' }),
+      t('automation.combat.verbRefused', { verb: 'jumpkick' })
+    ]);
+  });
+
   /* The config says `bs`; the realm says `backstab`. Same verb. */
   it('recognises the verb through the realm’s abbreviations', () => {
     const auto = make(combat({ opener: 'bs' }));
