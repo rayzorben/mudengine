@@ -19,12 +19,13 @@ import { sourceFiles as sources } from './sources';
  */
 const BUILT_ONCE: Record<string, { count: number; because: string }> = {
   'src/main/parse/patterns.ts': {
-    count: 6,
+    count: 13,
     because:
       'the room-light alternation is built from `ROOM_LIGHTS` so the union the tracker ' +
       'branches on and the pattern that produces it cannot drift, and the five presence and ' +
       'tracking rules share `COMPASS`, built from `DIRECTION_NAME` (todo 826, 2026-09-26); ' +
-      'module-level, in `RULES`'
+      'the seven item sentences share `ITEM_NAME`, the letters a world-database item name ' +
+      'takes (2026-10-06); module-level, in `RULES`'
   },
   'src/shared/statline.ts': {
     count: 1,

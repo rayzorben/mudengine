@@ -164,7 +164,7 @@ import type {
   TerminalSize
 } from '../../shared/types';
 import { tuning } from '../app/tuning';
-import type { HuntingAdvice } from '../../shared/hunting';
+import { NOT_KEPT, type HuntingAdvice } from '../../shared/hunting';
 import type { SessionSink } from './SessionSink';
 
 /**
@@ -780,6 +780,7 @@ export class SessionManager {
     // Walking a route is an outbound action: it proposes to the arbiter like
     // everything else, a verified step at a time.
     this.walker = new Walker(automation, this.queue, {
+      realmSpeed: () => this.errands.realmSpeed,
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
@@ -790,12 +791,8 @@ export class SessionManager {
       stepping: (command, direction, to, landing) => {
         this.remotes.stepping(command, direction, to, this.tracker.current);
         if (landing !== undefined && direction !== 'portal') {
-          /*
-           * An exit whose cast moves the character, which answers with **two**
-           * room blocks: the room the exit table names, then the room the
-           * spell put them in. Both are this command's answer, so both are
-           * queued. See `Expectations.hintCast`.
-           */
+          // An exit whose cast moves the character answers with two room blocks, the exit
+          // table's and the spell's: both are this command's (`Expectations.hintCast`).
           this.tracker.hintCast(command, direction, landingRooms(landing));
           return;
         }
@@ -980,11 +977,9 @@ export class SessionManager {
      * a torch not lit in a dark room is a decision somebody will ask about.
      */
     /*
-     * And the ward a room wants, kept up off the pack (todo 105): the realm
-     * says which spell stops a room's effect and which item's use casts it,
-     * and this uses the item before the step and again when the spell
-     * lapses. The stated countdowns are the router's; this module's own clock
-     * is the walk's.
+     * And the ward a room wants, kept up off the pack (todo 105): the realm names the spell that
+     * stops a room's effect and the item whose use casts it, used before the step and when the
+     * spell lapses, on its own clock at the realm's speed. The stated countdowns are the router's.
      */
     this.wards = new Wards(
       automation.health,
@@ -994,7 +989,8 @@ export class SessionManager {
         hazardAt: (room) => this.errands.hazardAt(room),
         itemsCasting: (spell) => this.world?.itemsCasting(spell) ?? [],
         spellById: (id) => this.world?.spellById(id) ?? null,
-        spellsUp: (state) => this.errands.spellsUp(state)
+        spellsUp: (state) => this.errands.spellsUp(state),
+        realmSpeed: () => this.errands.realmSpeed
       },
       { notice: (message) => this.sink.notice(message) }
     );
@@ -1384,7 +1380,7 @@ export class SessionManager {
     // All four casters share one realm lookup, handing over the realm's whole
     // row, read at the point of use because `this.world` arrives with `useRealm`.
     const realmSpell = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;
-    this.castRound = new CastRound(reports);
+    this.castRound = new CastRound(reports, undefined, () => this.errands.realmSpeed);
     this.heal = new AutoHeal(
       automation.spells,
       automation.enabled,
@@ -1394,7 +1390,8 @@ export class SessionManager {
       { notice: (message) => this.sink.notice(message) },
       () => this.errands.realmClass(),
       this.castRound,
-      (state) => this.appraisal.fightPerRound(state)
+      (state) => this.appraisal.fightPerRound(state),
+      () => this.errands.realmSpeed
     );
     this.potions = new Potions(automation.health, automation.enabled, this.queue);
     this.cures = new Cures(
@@ -1581,7 +1578,7 @@ export class SessionManager {
         combat: this.combat,
         supplies: this.supplies,
         trainLevel: this.trainLevel,
-        outgrown: this.outgrown,
+        ...{ outgrown: this.outgrown, recoverGear: this.recoverGear },
         ...{ stashFetch: this.stashFetch, areaSearch: this.areaSearch },
         hunt: this.hunt,
         itemErrand: this.itemErrand,
@@ -2514,7 +2511,7 @@ export class SessionManager {
   }
 
   /**
-   * What the realm about to be dialled knows about its players.
+   * What the realm about to be dialled knows of its players, and its speed last read (`kept`).
    *
    * The host calls this with the *dialled* address before `connect`, because a
    * character can be dialled at a saved realm other than its own and what it
@@ -2525,8 +2522,9 @@ export class SessionManager {
    * is pushed, so the flyout on this tab says what the realm knows; no module
    * is told, since a fact absorbed is not a fact this character observed.
    */
-  useRealm(players: RealmPlayers, belongings: CharacterRecord = NO_RECORD): void {
+  useRealm(players: RealmPlayers, belongings: CharacterRecord = NO_RECORD, kept = NOT_KEPT): void {
     this.forgetPlayers();
+    this.errands.useSpeed(kept);
     // What the realm said it lacks, and its family. See `Vocabulary.forgetRealm`.
     this.vocabulary.forgetRealm();
     this.tracker.useRealm(players);
@@ -2779,7 +2777,7 @@ export class SessionManager {
      */
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
     this.extensions.onBlock(block);
-    for (const trip of [this.stashFetch, this.areaSearch]) trip.onBlock(block);
+    for (const each of [this.stashFetch, this.areaSearch, this.errands]) each.onBlock(block);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
     /*
@@ -3193,7 +3191,7 @@ export class SessionManager {
    * what it came for.
    */
   private errandHeld(): boolean {
-    return this.travel.escaping || this.travel.errandUnderWay();
+    return this.travel.escaping || this.travel.holdsTrips();
   }
 
   /** The passage last said, so going in and coming out are each said once. */

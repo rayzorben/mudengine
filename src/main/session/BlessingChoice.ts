@@ -33,9 +33,9 @@ import {
 import { bareStateOf, effectOf, sumEffects } from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import { sittingPerSecond, type HuntingSpot } from '../../shared/hunting';
+import { atSpeed, sittingPerSecond, type HuntingSpot } from '../../shared/hunting';
 import { measuredManaRate, NO_MANA_WATCH, watchMana, type ManaWatch } from '../../shared/manaregen';
-import { EFFECT_TICK_SECONDS, scaledDuration } from '../../shared/menace';
+import { effectSeconds, scaledDuration } from '../../shared/menace';
 import { castOdds } from '../../shared/prowess';
 import { castsOnSelf, sameSpell, spellTargeting } from '../../shared/spellcraft';
 import { statedNow } from '../../shared/stated';
@@ -46,7 +46,7 @@ import { lairKey, parseLair, roomId, type WorldRoom, type WorldSpell } from '../
 export interface BlessingChoiceParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
   readonly world: Pick<WorldGraph, 'spellNamed' | 'byId' | 'lairEntities'> | undefined;
-  readonly errands: Pick<Errands, 'fitness' | 'realmClass'>;
+  readonly errands: Pick<Errands, 'fitness' | 'realmClass' | 'realmSpeed'>;
   readonly setup: Pick<FightSetup, 'blessed' | 'foes' | 'settingsKey'>;
   readonly hunt: Pick<AutoHunt, 'quarry'>;
 }
@@ -131,7 +131,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
     const spellOf = (name: string): WorldSpell | null => world.spellNamed(name) ?? null;
     const bare = bareStateOf(state, spellOf);
     const candidates = this.candidatesOf(bare, config, spellOf);
-    const income = incomeOf(state, this.mana);
+    const income = incomeOf(state, this.mana, this.errands.realmSpeed);
     const base = [
       this.errands.fitness(bare),
       this.setup.settingsKey(bare),
@@ -140,6 +140,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
     ].join('#');
     const context = [
       base,
+      this.errands.realmSpeed,
       JSON.stringify(fight.cycle),
       JSON.stringify(income),
       JSON.stringify(candidates.map(({ name, cost, duration, row }) => [name, cost, duration, row]))
@@ -158,7 +159,8 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       minGain: tuning().spells.blessMinGain,
       manaMax: bare.vitals.manaMax,
       hpMax: bare.vitals.hpMax,
-      healReserve: tuning().spells.blessHealReserve
+      healReserve: tuning().spells.blessHealReserve,
+      roundSeconds: atSpeed(tuning().hunting, this.errands.realmSpeed).roundSeconds
     });
     this.take(choice, fight);
   }
@@ -230,7 +232,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
             measured !== null && measured > 0
               ? { seconds: measured, from: 'measured' }
               : ticks > 0
-                ? { seconds: ticks * EFFECT_TICK_SECONDS, from: 'realm' }
+                ? { seconds: effectSeconds(ticks, this.errands.realmSpeed), from: 'realm' }
                 : null,
           row: row ?? null
         }
@@ -420,11 +422,12 @@ function sampleOf(state: CharacterState): Parameters<typeof watchMana>[1] {
  * What comes back: the stated `MA Regen` on the standing tick, kai and mana
  * alike, else the rise measured standing. Meditating adds the base figure on
  * every rest tick (`CalcRestTick`, `GetBaseMARegen`) to the standing tick;
- * with no stated `MA Regen`, the standing rate is its floor. Null while neither is known.
+ * with no stated `MA Regen`, the standing rate is its floor. Both ticks are
+ * the realm's, the server's over `speed`. Null while neither is known.
  */
-function incomeOf(state: CharacterState, watch: ManaWatch): ManaIncome | null {
+function incomeOf(state: CharacterState, watch: ManaWatch, speed: number): ManaIncome | null {
   const stated = statedNow(state);
-  const ticks = tuning().hunting;
+  const ticks = atSpeed(tuning().hunting, speed);
   const measured = measuredManaRate(watch, tuning().spells.manaRegenLeastSeconds);
   const standing = stated?.mana !== undefined ? stated.mana / ticks.passiveTickSeconds : measured;
   if (standing === null) return null;

@@ -8,6 +8,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { MobEntity } from '../../shared/entities';
 import {
   refillsOnEntry,
+  regenSeconds,
   respawnSeconds,
   type HuntVia,
   type HuntingConstants,
@@ -47,10 +48,9 @@ interface GroundKind {
   fills: boolean;
 }
 
-const regenOf = (entities: readonly MobEntity[]): number | null => {
-  const hours = entities[0]?.regenHours;
-  return hours === undefined ? null : hours * 3600;
-};
+/** A placed monster's clock, `RegenTime` hours at the realm's speed. */
+const regenOf = (entities: readonly MobEntity[], speed: number): number | null =>
+  regenSeconds(entities[0]?.regenHours, speed);
 
 export const GROUNDS = {
   lair: {
@@ -64,8 +64,8 @@ export const GROUNDS = {
   },
   resident: {
     entities: (world, ground) => world.residentEntities(ground.room),
-    stated: (_ground, entities) => {
-      const respawn = regenOf(entities);
+    stated: (_ground, entities, _family, c) => {
+      const respawn = regenOf(entities, c.speed);
       return { clock: respawn === null ? null : 'regenTime', respawn };
     },
     lair: false,
@@ -84,4 +84,18 @@ export const GROUNDS = {
 /** Whether this ground refills each time a player walks in (`refillsOnEntry`). */
 export function groundRefills(via: HuntVia, room: WorldRoom, family: RealmFamily | null): boolean {
   return GROUNDS[via].lair && refillsOnEntry(room.delay, family);
+}
+
+/**
+ * Whether another group's room may be taken as a filler beside a ring: a
+ * ground that fills (`GROUNDS`), on a clock (a room with none is hunted on
+ * luck), and not one the level ready shuts once trained for a ring that stays
+ * open, whose rate would then rest on a lair it cannot keep (2026-10-06).
+ */
+export function admitsFiller<
+  T extends { respawn: number | null; group: { via: HuntVia }; closes: boolean }
+>(ring: { closes: boolean }, other: T | undefined): other is T & { respawn: number } {
+  if (other === undefined || other.respawn === null || !GROUNDS[other.group.via].fills)
+    return false;
+  return !other.closes || ring.closes;
 }

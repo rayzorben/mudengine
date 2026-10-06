@@ -410,6 +410,22 @@ export function lairPass(
 }
 
 /**
+ * One pass through a room with no lair that monsters were timed walking into
+ * (`RoomClocks.wanderers`): the worst of them, `atOnce` at most, never `sure`. What came in after a kill says nothing about who
+ * stands there when a walk arrives, so the router caps it below the wall
+ * (`passShare`) and the walk's health reserve still counts it whole.
+ */
+export function roadPass(
+  verdicts: ReadonlyArray<Verdict>,
+  atOnce: number,
+  rounds: number,
+  attacks: (index: number) => boolean | null
+): LairPass | null {
+  const pass = lairPass(verdicts, Math.min(verdicts.length, atOnce), rounds, attacks);
+  return pass === null ? null : { ...pass, sure: false };
+}
+
+/**
  * A weighed pass as a share of the bar the router prices against, capped where
  * the wire cannot settle that the fight happens at all.
  *

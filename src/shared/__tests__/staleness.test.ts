@@ -54,4 +54,9 @@ describe('what a sentence made stale', () => {
     expect(staleAfter('room-name')).toEqual([]);
     expect(staleAfter('user-levels')).toEqual(['sheet', 'experience', 'chart']);
   });
+
+  /* The armour went with the kit: the sheet is what says the armour class again. */
+  it('asks the sheet again after a death, as well as the pack', () => {
+    expect(staleAfter('user-dies')).toEqual(['pack', 'sheet']);
+  });
 });

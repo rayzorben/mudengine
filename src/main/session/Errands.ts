@@ -21,6 +21,7 @@ import type { WalkKind } from '../../shared/walk';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
+import { RealmSpeed } from '../automation/RealmSpeed';
 import type { KeyedWay } from '../automation/AutoKeys';
 import type { RestAwayPlanner } from '../automation/RestAway';
 import type { WardSources } from '../automation/Wards';
@@ -31,11 +32,16 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { LairCosts } from '../world/LairCosts';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
-import { GROUNDS, groundRefills, type Ground } from './huntGrounds';
+import { GROUNDS, type Ground, admitsFiller, groundRefills } from './huntGrounds';
 import { preferredEdges } from '../world/loopDraft';
 import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shared/abilities';
 import type { Block } from '../../shared/blocks';
-import { ownAlignment, packRows, type CharacterState } from '../../shared/character';
+import {
+  fightIsRunning,
+  ownAlignment,
+  packRows,
+  type CharacterState
+} from '../../shared/character';
 import { chargedInCopper, expectedCopper } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
 import type { AutomationConfig, SupplyItem } from '../../shared/config';
@@ -44,9 +50,11 @@ import type { KillExpLore } from '../../shared/lore';
 import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
+  atSpeed,
   cashFloor,
   compareSpots,
   withMeasured,
+  type KeptSpeed,
   type MeasuredRate,
   type MeasuredUse,
   NO_FLOOR,
@@ -54,6 +62,7 @@ import {
   moveDelayMs,
   orderRing,
   lapClock,
+  regenSeconds,
   respawnSeconds,
   NO_EXCLUSIONS,
   sizeLoop,
@@ -68,7 +77,8 @@ import {
   type SpotCharacter,
   type SpotEstimate,
   type SpotInput,
-  type SpotMob
+  type SpotMob,
+  type SurveyAsk
 } from '../../shared/hunting';
 import { matchStop, type RoomMatch } from '../../shared/loops';
 import { bareName, sameItem } from '../../shared/items';
@@ -113,6 +123,7 @@ import { carriedCount } from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import {
   lairPass,
+  roadPass,
   passShare,
   prowessSheetOf,
   weighVerdicts,
@@ -182,6 +193,8 @@ interface HuntPriced extends HuntPrice {
   rooms: HuntingRoom[];
   /** The odds book ran the lair's fight and it is safe (`SpotInput.fightRun`). */
   fightRun: boolean;
+  /** Training the level ready shuts the way back to it (kept only where the survey was asked `gated`). */
+  closes: boolean;
 }
 
 /** The character's own side of the combat arithmetic. See `Errands.realmClass`. */
@@ -243,7 +256,7 @@ export type ErrandsWorld = Pick<
 /** What the answers are read from: the realm, the character, the fight record. */
 export interface ErrandsParts {
   readonly world: ErrandsWorld | undefined;
-  readonly tracker: Pick<CharacterTracker, 'current'>;
+  readonly tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
   /** What this character has measured dealing a round, for the survey. */
   readonly fightRecord: Pick<FightSink, 'measured'>;
   /** The rooms' refills the wire timed, and what its kills paid solo, on this realm (`RealmLore`). */
@@ -274,6 +287,8 @@ export class Errands implements SessionModule {
   private readonly kills: KillExpLore;
   /** The refill clocks the wire timed, where the world database states none. */
   private readonly clocks: RoomClocks;
+  /** How many times faster than the server's own clocks this realm runs, read off its rounds, kept per address. */
+  private readonly speed = new RealmSpeed();
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
   private fitted: { state: CharacterState; key: string } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
@@ -369,12 +384,33 @@ export class Errands implements SessionModule {
     this.shunned.clear();
     this.ranFromSaid.clear();
     this.clocks.reset();
+    this.speed.reset();
   }
 
-  /** Every character line, with its block: an exit the room prints given back, and a refill timed. */
-  onCharacter(state: CharacterState, block: Pick<Block, 'type'>): void {
+  /**
+   * Every character line, with its block: an exit the room prints given back,
+   * a refill timed (an arrival while a move is unanswered is the next room's),
+   * and a rise in health timed for the realm's speed.
+   */
+  onCharacter(state: CharacterState, block: Pick<Block, 'type' | 'at'>): void {
     this.unrefuseWhatTheRoomPrints(state);
-    this.clocks.onCharacter(state, block);
+    this.clocks.onCharacter(state, block, this.tracker.pendingMoves > 0);
+    this.speed.healthRose(state.vitals.hp, state.vitals.resting, fightIsRunning(state), block.at);
+  }
+
+  /** Where the realm's speed is kept, for the address about to be dialled (`SessionManager.useRealm`). */
+  useSpeed(kept: KeptSpeed): void {
+    this.speed.useKept(kept);
+  }
+
+  /** Every block, changed state or not: a round read for the realm's speed. */
+  onBlock(block: Pick<Block, 'type' | 'at'>): void {
+    this.speed.onBlock(block);
+  }
+
+  /** The session's figure for the realm's speed (`RealmSpeed`): the survey's, and every round reader's. */
+  get realmSpeed(): number {
+    return this.speed.multiplier;
   }
 
   /** The server's family moved, so every remembered `fitness` is stale. */
@@ -846,7 +882,7 @@ export class Errands implements SessionModule {
    * null as nothing: an unread sheet must not turn every lair into a wall.
    */
   private lairDanger(room: WorldRoom, state: CharacterState): number | null {
-    if (!this.world || !room.lair) return null;
+    if (!this.world) return null;
     /*
      * The damage is remembered per room; the share is taken against the
      * health the character has *now*, at every call, because that is the
@@ -880,10 +916,16 @@ export class Errands implements SessionModule {
     return this.lairPassHere(room, state)?.damage ?? null;
   }
 
-  /** The weighed pass for a room, remembered until the character's fitness moves. */
+  /**
+   * The weighed pass for a room, remembered until the character's fitness
+   * moves: its lair's, or for a room with none, what the wire timed coming
+   * into it (`RoomClocks.wanderers`).
+   */
   private lairPassHere(room: WorldRoom, state: CharacterState): LairPass | null {
-    if (!this.world || !room.lair) return null;
-    return this.lairCosts.at(this.fitness(state), roomId(room.map, room.room));
+    if (!this.world) return null;
+    const id = roomId(room.map, room.room);
+    if (!room.lair && this.clocks.wanderers(id) === null) return null;
+    return this.lairCosts.at(this.fitness(state), id);
   }
 
   /**
@@ -940,7 +982,9 @@ export class Errands implements SessionModule {
     const room = world.byId(id);
     if (!room) return null;
     const lair = world.lair(room, this.serverFamily);
-    if (lair === null || lair.mobs.length === 0) return null;
+    const stated = lair !== null && lair.mobs.length > 0;
+    const came = stated ? null : this.clocks.wanderers(id);
+    if (!stated && came === null) return null;
     const state = this.tracker.current;
     const { combat, magery, crits, family, attack } = this.realmClass();
     /*
@@ -948,9 +992,13 @@ export class Errands implements SessionModule {
      * folds every row sharing it and takes the worst, and the guard post on
      * the Hillside Path was priced as an 830-HP gnoll scout that swings four
      * times a round when the row it names is the 100-HP one that lands a blow
-     * in twenty-five. See `WorldGraph.lairEntities`.
+     * in twenty-five. See `WorldGraph.lairEntities`. A room with no lair is
+     * priced by name, which is all the wire gave for who came.
      */
-    const entities = world.lairEntities(room);
+    const entities =
+      came === null
+        ? world.lairEntities(room)
+        : came.map((name) => world.buildMobEntity(name, { at: id }));
     if (entities.length === 0) return null;
     const verdicts = weighVerdicts(
       entities,
@@ -965,7 +1013,9 @@ export class Errands implements SessionModule {
     const rounds = tuning().world.passRounds;
     const opens = (index: number): boolean | null =>
       attacksOnSight(entities[index]?.disposition ?? null, standing);
-    return lairPass(verdicts, lair.max, rounds, opens);
+    return came === null
+      ? lairPass(verdicts, lair?.max ?? null, rounds, opens)
+      : roadPass(verdicts, tuning().world.wanderersAtOnce, rounds, opens);
   }
 
   /**
@@ -1534,8 +1584,7 @@ export class Errands implements SessionModule {
   huntingGrounds(
     radius: number | null,
     measure: string | null = null,
-    as: CharacterState = this.tracker.current,
-    beneath = false
+    { as = this.tracker.current, beneath = false, gated = false }: SurveyAsk = {}
   ): HuntingAdvice {
     const state = as;
     const world = this.world;
@@ -1563,27 +1612,33 @@ export class Errands implements SessionModule {
       measuredForgetMs,
       measuredMinutesLeast,
       paceLeast,
-      paceMost
+      paceMost,
+      measuredLevels
     } = tuning().hunting;
-    const c: HuntingConstants = {
-      roundSeconds,
-      restTickSeconds,
-      passiveTickSeconds,
-      roomRegenSeconds,
-      killOverheadMs,
-      stepMs,
-      greatermudRespawnOffsetSeconds,
-      backstabMultiplier,
-      maxLoopRooms,
-      maxSpots,
-      betterSpotRadius,
-      maxDamageShare,
-      trivialShare,
-      trivialLevelMargin,
-      clusterRadius,
-      fillerRadius,
-      sizeTolerance
-    };
+    // The server's clocks at this realm's speed (`RealmSpeed`): orohost runs every one five times as fast.
+    const speed = this.speed.multiplier;
+    const c: HuntingConstants = atSpeed(
+      {
+        roundSeconds,
+        restTickSeconds,
+        passiveTickSeconds,
+        roomRegenSeconds,
+        killOverheadMs,
+        stepMs,
+        greatermudRespawnOffsetSeconds,
+        backstabMultiplier,
+        maxLoopRooms,
+        maxSpots,
+        betterSpotRadius,
+        maxDamageShare,
+        trivialShare,
+        trivialLevelMargin,
+        clusterRadius,
+        fillerRadius,
+        sizeTolerance
+      },
+      speed
+    );
     const { combat, magery, crits, mageryType, family, attack } = this.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery, crits });
     const regen = regeneration(sheet, mageryType, family);
@@ -1603,12 +1658,9 @@ export class Errands implements SessionModule {
      * (`MoveCommand.cs:40`), where the family states one; the measured round
      * otherwise. A full pack slows the whole loop, and the estimate says so.
      */
-    const step = moveDelayMs(
-      state.inventory.encumbrance,
-      state.inventory.encumbranceMax,
-      family,
-      c.stepMs
-    );
+    const step =
+      moveDelayMs(state.inventory.encumbrance, state.inventory.encumbranceMax, family, stepMs) /
+      speed;
     const heal = this.healingCast(state, sheet, family);
     /*
      * `RestCommand.cs:28` refuses a poisoned character, immunity excepted
@@ -1641,6 +1693,7 @@ export class Errands implements SessionModule {
       family,
       hpMax: state.vitals.hpMax,
       restingHealthPerTick: character.restingHealthPerTick,
+      passiveHealthPerTick: character.passiveHealthPerTick,
       backstab,
       stepMs: step,
       heal,
@@ -1758,7 +1811,7 @@ export class Errands implements SessionModule {
         ? null
         : (this.fightRecord.measured?.(level, {
             least: measuredFightsMin,
-            roundMs: roundSeconds * 1000,
+            roundMs: c.roundSeconds * 1000,
             openerRounds: backstab ? backstabMultiplier : 1
           }) ?? null);
     const learnedExp = this.kills.allKillExp();
@@ -1774,7 +1827,8 @@ export class Errands implements SessionModule {
       this.automationConfig.combat.attack,
       state.spellbook?.length ?? -1,
       state.vitals.manaMax,
-      measured === null ? '-' : Math.round(measured.perRound)
+      measured === null ? '-' : Math.round(measured.perRound),
+      speed
     ].join('|');
     const live = as === this.tracker.current;
     if (live && (this.huntPrices?.key !== priceKey || this.huntPrices.world !== world)) {
@@ -1822,14 +1876,14 @@ export class Errands implements SessionModule {
           recorded(verdicts[index]?.menace?.hp ?? entity.hp ?? null),
         perRound: verdicts[index]?.menace?.perRound ?? null,
         nakedPerRound: bare[index]?.perRound ?? null,
-        afflictions: afflictionsOf(entity),
+        afflictions: afflictionsOf(entity, speed),
         /*
          * A row the realm gives a clock of its own (todo 09): the Gravedigger
          * is 1,500 points on an hour's regeneration, and a lair holding it was
          * priced as though it came back with the rest of the room.
          * `estimateSpot` weights its experience by how often it is up.
          */
-        regenSeconds: entity.regenHours === undefined ? null : entity.regenHours * 3600
+        regenSeconds: regenSeconds(entity.regenHours, speed)
       }));
       /*
        * The world database's clock; what the wire timed (`RoomClocks`)
@@ -1845,8 +1899,11 @@ export class Errands implements SessionModule {
     const survey: HuntingSpot[] = [];
     const afterTraining = this.reachAfterTraining(state, reach);
     for (const [key, group] of groups) {
-      // Behind a gate the next level shuts, with that level about to be trained (todo 71).
-      if (afterTraining !== null && !group.rooms.some((room) => afterTraining.has(room.id))) {
+      // Behind a gate the next level shuts, with that level about to be trained (todo 71): left out,
+      // or kept and marked for a caller weighing the training against the ground it shuts.
+      const closes =
+        afterTraining !== null && !group.rooms.some((room) => afterTraining.has(room.id));
+      if (closes && !gated) {
         excluded.gated += 1;
         continue;
       }
@@ -1889,7 +1946,17 @@ export class Errands implements SessionModule {
         continue;
       }
       const fightRun = odds?.kind === 'run';
-      const entry: HuntPriced = { key, group, mobs, clock, respawn, refills, rooms, fightRun };
+      const entry: HuntPriced = {
+        key,
+        group,
+        mobs,
+        clock,
+        respawn,
+        refills,
+        rooms,
+        fightRun,
+        closes
+      };
       /*
        * A first estimate to rank on and to exclude by: the nearest rooms, the
        * ring's length guessed from the sweep's distances — out to the farthest
@@ -1935,6 +2002,7 @@ export class Errands implements SessionModule {
         walk: loop,
         roomCount: rooms.length,
         loopSteps: guessed,
+        ...(closes ? { closesWithTraining: true as const } : {}),
         estimate
       });
     }
@@ -1945,7 +2013,8 @@ export class Errands implements SessionModule {
       forgetMs: measuredForgetMs,
       minutesLeast: measuredMinutesLeast,
       paceLeast,
-      paceMost
+      paceMost,
+      levelsAcross: measuredLevels
     };
     const rates = this.session.rates();
     const guessed = withMeasured(survey, rates, use).spots;
@@ -2011,7 +2080,7 @@ export class Errands implements SessionModule {
       current,
       limits,
       { horizon: tuning().train.statHorizon, places: tuning().train.statPlaces },
-      (as) => this.huntingGrounds(null, null, as).spots
+      (as) => this.huntingGrounds(null, null, { as }).spots
     );
   }
 
@@ -2071,10 +2140,7 @@ export class Errands implements SessionModule {
         const key = groupOfRoom.get(id);
         if (key === undefined || key === own.key) continue;
         const other = byKey.get(key);
-        // A filler is a ground that fills (`GROUNDS`) another admissible
-        // group holds, on a clock: a room with none is hunted on luck.
-        if (other === undefined || other.respawn === null || !GROUNDS[other.group.via].fills)
-          continue;
+        if (!admitsFiller(own, other)) continue;
         const found = world.byId(id);
         if (!found) continue;
         seen.add(id);
@@ -2662,11 +2728,11 @@ export class Errands implements SessionModule {
     const world = this.world;
     const found = world?.byId(room);
     if (!world || !found?.lair) return null;
-    const { greatermudRespawnOffsetSeconds, roomRegenSeconds } = tuning().hunting;
-    const stated = respawnSeconds(found.delay ?? null, this.serverFamily, {
-      greatermudRespawnOffsetSeconds,
-      roomRegenSeconds
-    });
+    const stated = respawnSeconds(
+      found.delay ?? null,
+      this.serverFamily,
+      atSpeed(tuning().hunting, this.speed.multiplier)
+    );
     return (
       this.clocks.lairClock([room], (id) => this.isLair(id), stated === null)?.seconds ?? stated
     );

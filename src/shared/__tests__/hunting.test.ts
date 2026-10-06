@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  atSpeed,
   type MeasuredRate,
   withMeasured,
   spotRate,
@@ -26,7 +27,7 @@ import {
 } from '../hunting';
 import { DEFAULT_INTERNAL } from '../internal';
 
-const C: HuntingConstants = DEFAULT_INTERNAL.tuning.hunting;
+const C: HuntingConstants = atSpeed(DEFAULT_INTERNAL.tuning.hunting, 1);
 
 /*
  * `Room.GetDelayInSeconds`: minutes, except an Arena room and a negative
@@ -45,6 +46,14 @@ describe('the respawn clock', () => {
     expect(respawnSeconds(-45, 'majormud', C)).toBe(45);
     expect(respawnSeconds(45, 'majormud', C, true)).toBe(45);
     expect(respawnSeconds(-10, 'greatermud', C)).toBe(0);
+  });
+
+  /* `GameSpeed`: a realm at 5 runs every clock five times as fast, a stated `Delay` with them. */
+  it('reads a stated delay at the realm’s speed', () => {
+    const fast = atSpeed(DEFAULT_INTERNAL.tuning.hunting, 5);
+    expect(fast).toMatchObject({ roundSeconds: 1, restTickSeconds: 3, roomRegenSeconds: 121 / 5 });
+    expect(respawnSeconds(2, 'majormud', fast)).toBe(24);
+    expect(respawnSeconds(2, 'greatermud', fast)).toBe(18);
   });
 
   it('states no clock for a room that states none', () => {
@@ -984,7 +993,8 @@ describe('what hunting measured', () => {
     forgetMs: 600_000,
     minutesLeast: 10,
     paceLeast: 0.2,
-    paceMost: 10
+    paceMost: 10,
+    levelsAcross: 3
   };
   const rate = (perHour: number, over: Partial<MeasuredRate> = {}): MeasuredRate => ({
     perHour,
@@ -1020,6 +1030,36 @@ describe('what hunting measured', () => {
       );
       expect(pace).toBeNull();
       expect(spotRate(spots[0]!)).toBe(8_000);
+    }
+  });
+
+  /* 2026-10-05: Straw-Floored Passage paid 3.3 times its estimate at levels 10, 12 and 14, and was priced bare at each new level. */
+  it('carries what a spot paid over its estimate to a level near the one it was measured at', () => {
+    const { spots, pace } = withMeasured(
+      [spot('passage', 9_000, 9_000), spot('plateau', 20_000, 20_000)],
+      new Map([
+        ['passage', rate(30_000, { level: 4, estimated: 10_000 })],
+        ['plateau', rate(13_000, { level: 4, estimated: 20_000 })]
+      ]),
+      use
+    );
+    expect(spots[0]!.estimate.expPerHour).toBe(27_000);
+    expect(spots[1]!.estimate.expPerHour).toBe(13_000);
+    expect(spots[0]!.estimate.measured).toBeUndefined();
+    expect(spots[0]!.estimate.modelPerHour).toBe(9_000);
+    // Nothing measured at level 5: the pace is the levels beside it.
+    expect(pace).toBeCloseTo((3 + 0.65) / 2);
+  });
+
+  it('carries nothing from a level too far away, or from a rate kept without its estimate', () => {
+    for (const far of [rate(30_000, { level: 1, estimated: 10_000 }), rate(30_000, { level: 4 })]) {
+      const { spots, pace } = withMeasured(
+        [spot('passage', 9_000, 9_000)],
+        new Map([['passage', far]]),
+        use
+      );
+      expect(pace).toBeNull();
+      expect(spotRate(spots[0]!)).toBe(9_000);
     }
   });
 

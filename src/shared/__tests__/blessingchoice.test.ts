@@ -65,6 +65,7 @@ function input(overrides: Partial<BlessingChoiceInput>): BlessingChoiceInput {
     manaMax: 40,
     hpMax: 100,
     healReserve: 2,
+    roundSeconds: 5,
     ...overrides
   };
 }
@@ -153,6 +154,26 @@ describe('choosing the blessings that pay', () => {
     expect(choice.by).toBe('health');
     expect(choice.picks.map((pick) => pick.candidate.name)).toEqual(['tortoise']);
     expect(choice.picks[0]!.gain).toBeCloseTo(0.08);
+  });
+
+  /* With no spot hunted the fights run back to back: a round is a second on orohost and five on paramud. */
+  it('counts the heals of back-to-back fights at the realm’s round', () => {
+    const at = (roundSeconds: number) => {
+      const choice = chooseBlessings(
+        input({
+          cycle: null,
+          run: fight({ survives: 0.95, rounds: 6, lostMean: 40, heals: 1 }),
+          candidates: [candidate('tortoise', { armourClass: 2 }, 3)],
+          healCost: 2,
+          income: { perHour: 400, meditatingPerSecond: 0 },
+          roundSeconds
+        })
+      );
+      if (choice.kind !== 'chosen') throw new Error(choice.why);
+      return { picks: choice.picks.map((pick) => pick.candidate.name), passed: choice.passed };
+    };
+    expect(at(5).picks).toEqual(['tortoise']);
+    expect(at(1)).toEqual({ picks: [], passed: [{ name: 'tortoise', why: 'over-budget' }] });
   });
 
   it('keeps a derived row’s mana floor for the heals after it', () => {

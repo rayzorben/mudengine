@@ -119,6 +119,7 @@ function travel(
     supplies: { current: null, considerBeforeRoute: vi.fn(), abandon: vi.fn() },
     trainLevel: { busy: false, abandon: vi.fn() },
     outgrown: { busy: false, abandon: vi.fn() },
+    recoverGear: { busy: false, deciding: () => false },
     stashFetch: { busy: false, abandon: vi.fn() },
     areaSearch: { busy: false, abandon: vi.fn(), stop: vi.fn() },
     hunt: { noteStopped: vi.fn(), noteLapStopped: vi.fn() },
@@ -188,6 +189,17 @@ describe('escaping a monster its row names, out of a fight', () => {
     });
     scripted.considerEscape(state);
     expect(sent).toEqual(['n']);
+  });
+
+  /* 2026-10-06, on review: a death the gear recovery has not decided on holds trips and goes nowhere itself. */
+  it('stays while the gear recovery decides, which holds every other trip', () => {
+    const state = beside();
+    const { travel: deciding, parts, sent } = travel(state, 'none', false);
+    parts.recoverGear.deciding = () => true;
+    deciding.considerEscape(state);
+    expect(sent).toEqual([]);
+    expect(deciding.holdsTrips()).toBe(true);
+    expect(deciding.errandUnderWay()).toBe(false);
   });
 
   /*

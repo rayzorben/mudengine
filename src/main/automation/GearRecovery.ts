@@ -42,6 +42,8 @@ const ACTION = 'recover gear';
 export class GearRecovery implements SessionModule {
   /** The death last acted on, so one death is one attempt. */
   private handled: number | null = null;
+  /** The death first seen undecided while on, and when: the window `deciding` holds trips for runs from here. */
+  private seen: { death: number; at: number } | null = null;
   /**
    * Recoveries that have failed in a row (todo 21).
    *
@@ -85,6 +87,29 @@ export class GearRecovery implements SessionModule {
     );
   }
 
+  /** The walk back and the pick-up under way: a trip, as `Travel.errandUnderWay` counts one. */
+  get busy(): boolean {
+    return this.collect.busy;
+  }
+
+  /**
+   * A death not yet decided on: from the first sight of it until the pack and
+   * the sheet read since say whether the gear was lost, for `decideMs` at most.
+   * Holds every other trip (`Travel.holdsTrips`), so nothing walks the
+   * character off first, and is not going anywhere itself: a stopped character
+   * still stays put (2026-10-06: an extension set off from the temple to buy a
+   * staff, then hunted, and the gear was never gone back for). Read off the
+   * state rather than off `onCharacter`, so the line that brings the death
+   * holds as well, whichever module reads it first.
+   */
+  deciding(state: CharacterState): boolean {
+    const death = state.lastDeath;
+    if (!this.enabled || !this.config.recoverGear || death === null || death.at === this.handled)
+      return false;
+    const since = this.seen?.death === death.at ? this.seen.at : this.now();
+    return this.now() - since < tuning().gearRecovery.decideMs;
+  }
+
   configure(config: MovementConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
@@ -92,6 +117,7 @@ export class GearRecovery implements SessionModule {
 
   reset(): void {
     this.handled = null;
+    this.seen = null;
     this.collect.cancel();
     this.failures = 0;
     this.saidSpent = false;
@@ -108,6 +134,18 @@ export class GearRecovery implements SessionModule {
 
     const death = state.lastDeath;
     if (death === null || death.at === this.handled) return;
+    // Timed from the first sight, not the death: a reconnect after one is when the gear is fetched.
+    if (this.seen?.death !== death.at) this.seen = { death: death.at, at: this.now() };
+    // The pack or the sheet still unread after `decideMs`: refused out loud, or the gear is left behind and nothing says so.
+    const unread = state.inventory.listedAt === null || state.inventory.listedAt < death.at;
+    if (
+      (unread || state.progress.armourClass === null) &&
+      this.now() - this.seen.at >= tuning().gearRecovery.decideMs
+    ) {
+      this.handled = death.at;
+      this.refuse(t('automation.gearRecovery.refusalUnread'));
+      return;
+    }
     /*
      * The strip, from two signals, because either alone has an innocent
      * reading: the loadout remembers items the pack — read *after* the death
@@ -116,8 +154,7 @@ export class GearRecovery implements SessionModule {
      * character with its helm in the pack is stripped; a zero armour class
      * alone is a level-one character in a shirt.
      */
-    if (state.inventory.listedAt === null || state.inventory.listedAt < death.at) return;
-    if (state.progress.armourClass === null) return;
+    if (unread || state.progress.armourClass === null) return;
     const missing = this.missing(state);
     if (missing.length === 0 || state.progress.armourClass !== 0) {
       this.handled = death.at;

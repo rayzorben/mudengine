@@ -53,6 +53,7 @@ export interface ExtensionWiring {
   errands: Pick<
     Errands,
     | 'huntingGrounds'
+    | 'realmSpeed'
     | 'realmClass'
     | 'capabilities'
     | 'travellerNow'
@@ -129,8 +130,8 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         return target === null ? null : `${target.host}:${target.port}`;
       },
       world: wiring.world,
-      huntingGrounds: (options) =>
-        errands.huntingGrounds(null, null, options?.as, options?.beneath ?? false),
+      huntingGrounds: (options) => errands.huntingGrounds(null, null, options),
+      realmSpeed: () => errands.realmSpeed,
       realmClass: () => errands.realmClass(),
       capabilities: () => errands.capabilities(),
       leg: (from, to) => {

@@ -91,3 +91,39 @@ describe('what a realm has said it runs', () => {
     expect(notices.join(' ')).toContain('worlds.json');
   });
 });
+
+/* 2026-10-06: read afresh on each connection, the speed took a caster eleven minutes on orohost. */
+describe('how fast an address’s clocks run', () => {
+  it('keeps the speed last read by address, across launches, beside the world', () => {
+    const first = book();
+    expect(first.speedAt('orohost:2427')).toBeNull();
+    first.learn('orohost:2427', 'greatermud');
+    first.keptSpeed('orohost:2427').remember(5);
+    const again = book();
+    expect(again.keptSpeed('orohost:2427').recall()).toBe(5);
+    expect(again.speedAt('paramud:23')).toBeNull();
+    expect(again.at('orohost:2427')).toBe(first.at('orohost:2427'));
+  });
+
+  it('writes only a new figure, and reads nothing that is not a whole speed of at least 1', () => {
+    const kept = book();
+    kept.learnSpeed('orohost:2427', 5);
+    const written = fs.statSync(file).mtimeMs;
+    fs.utimesSync(file, 0, 0);
+    kept.learnSpeed('orohost:2427', 5);
+    expect(fs.statSync(file).mtimeMs).toBe(0);
+    expect(book().speedAt('orohost:2427')).toBe(5);
+    expect(written).toBeGreaterThan(0);
+    const text = JSON.parse(fs.readFileSync(file, 'utf8'));
+    text.speeds['bad:1'] = { speed: 'fast' };
+    text.speeds['half:1'] = { speed: 2.5 };
+    text.speeds['none:1'] = { speed: 0 };
+    fs.writeFileSync(file, JSON.stringify(text));
+    const read = book();
+    expect([read.speedAt('bad:1'), read.speedAt('half:1'), read.speedAt('none:1')]).toEqual([
+      null,
+      null,
+      null
+    ]);
+  });
+});

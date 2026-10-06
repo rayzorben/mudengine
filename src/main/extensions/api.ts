@@ -25,7 +25,7 @@ import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
-import type { HuntingAdvice, HuntOrder, HuntWait } from '../../shared/hunting';
+import type { HuntingAdvice, HuntOrder, HuntWait, SurveyAsk } from '../../shared/hunting';
 import type { ItemRarity } from '../../shared/rarity';
 import type { TuningConfig } from '../../shared/internal';
 import type { Stash } from '../../shared/stash';
@@ -88,9 +88,21 @@ export interface ExtensionSessionHost {
    * priced afresh each time, so it is one piece of an extension's work, never
    * several in a turn. `beneath` keeps the spots beneath this level, marked
    * `estimate.trivial`, which the hunt's own survey leaves out, so steer one
-   * with an order.
+   * with an order. With a level ready to train, `gated` keeps the spots
+   * training it would shut, marked `closesWithTraining`; otherwise the survey
+   * leaves them out (`excluded.gated`).
    */
-  huntingGrounds(options?: { as?: CharacterState; beneath?: boolean }): HuntingAdvice;
+  huntingGrounds(options?: SurveyAsk): HuntingAdvice;
+  /**
+   * How many times faster than the server's own clocks the realm runs, read
+   * off this session's rounds (GreaterMUD's `GameSpeedMultiplier`: orohost 5).
+   * Until a figure is read (at least `tuning.hunting.speedRounds` gaps), the one
+   * last read on this server (kept per address), else 1. The
+   * survey is priced at it (`assumptions.constants.speed` is the figure a
+   * survey was priced at), so a survey asked before it changed is priced at the
+   * old figure.
+   */
+  realmSpeed(): number;
   realmClass(): RealmClass;
   capabilities(): Capabilities;
   /**
@@ -137,7 +149,8 @@ export interface ExtensionSessionHost {
   bestInSlot(perSlot: number, as?: CharacterState): SlotBest[];
   /**
    * The character (or `as`) wearing these items instead of the weakest worn
-   * in each one's slot, and which went on: none without a world.
+   * in each one's slot, and which went on: none without a world, and not one
+   * already worn in its slot, as the server puts no second copy on.
    */
   wearing(items: readonly string[], as?: CharacterState): Wearing;
   /**

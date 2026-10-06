@@ -680,14 +680,17 @@ function isKeptRoom(value: unknown): value is KeptRoom {
   return typeof confidence === 'number' && confidence >= 0 && confidence <= 1;
 }
 
-/** Each spot's measured rate: four finite figures. */
+/** Each spot's measured rate: four finite figures, and the estimate beside it absent, null or finite. */
 function isHuntRates(value: unknown): value is Record<string, MeasuredRate> {
   if (typeof value !== 'object' || value === null) return false;
+  const finite = (figure: unknown): boolean =>
+    typeof figure === 'number' && Number.isFinite(figure);
   return Object.values(value).every((rate: unknown) => {
     if (typeof rate !== 'object' || rate === null) return false;
-    const { perHour, minutes, level, at } = rate as Record<string, unknown>;
-    return [perHour, minutes, level, at].every(
-      (figure) => typeof figure === 'number' && Number.isFinite(figure)
+    const { perHour, minutes, level, at, estimated } = rate as Record<string, unknown>;
+    return (
+      [perHour, minutes, level, at].every(finite) &&
+      (estimated === undefined || estimated === null || finite(estimated))
     );
   });
 }

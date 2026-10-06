@@ -13,11 +13,19 @@ import type { MeasuredOutput } from './fights';
 import type { UiLookup } from './i18n';
 import type { Loop, LoopStop } from './loops';
 import type { MobAffliction } from './menace';
+import type { CharacterState } from './character';
 import type { RealmFamily } from './realm';
 import type { RoomId } from './world';
 
-/** The figures the model runs on. `tuning.hunting`, handed in whole. */
+/**
+ * The model's figures (`atSpeed` builds them). Every server clock among them
+ * is the realm's own, the server's divided by `speed`; a figure the world
+ * database states in the server's units (a lair's `Delay`, a monster's
+ * `RegenTime`) is divided where it is read.
+ */
 export interface HuntingConstants {
+  /** How many times faster than the server's own clocks the realm runs (`RealmSpeed`). */
+  speed: number;
   roundSeconds: number;
   restTickSeconds: number;
   passiveTickSeconds: number;
@@ -47,6 +55,55 @@ export interface HuntingConstants {
    * the fewest rooms that reach it is the loop worth walking.
    */
   sizeTolerance: number;
+}
+
+/** The server clocks `atSpeed` divides; the rest are the client's own or no clock at all. */
+type ServerClock =
+  | 'roundSeconds'
+  | 'restTickSeconds'
+  | 'passiveTickSeconds'
+  | 'roomRegenSeconds'
+  | 'stepMs'
+  | 'greatermudRespawnOffsetSeconds';
+
+/**
+ * The model's figures at a realm's speed (`RealmSpeed`, GreaterMUD's
+ * `GameSpeedMultiplier`): every server clock divided by it, the rest as given.
+ * The one place the tuning clocks are scaled, so no reader mixes the two.
+ */
+export function atSpeed<T extends Omit<HuntingConstants, 'speed'>>(
+  server: T,
+  speed: number
+): T & HuntingConstants {
+  const clocks = {} as Pick<HuntingConstants, ServerClock>;
+  for (const key of [
+    'roundSeconds',
+    'restTickSeconds',
+    'passiveTickSeconds',
+    'roomRegenSeconds',
+    'stepMs',
+    'greatermudRespawnOffsetSeconds'
+  ] as const satisfies readonly ServerClock[]) {
+    clocks[key] = server[key] / speed;
+  }
+  return { ...server, ...clocks, speed };
+}
+
+/**
+ * Where the realm's speed is kept between connections, by the address dialled
+ * (`WorldBook`), so a connection's first survey and first fight run at it.
+ */
+export interface KeptSpeed {
+  recall(): number | null;
+  remember(speed: number): void;
+}
+
+/** Nowhere: a test, or a session with no home to write to. */
+export const NOT_KEPT: KeptSpeed = { recall: () => null, remember: () => {} };
+
+/** A monster's own clock, `Monsters.RegenTime` hours, in seconds at the realm's speed; null where it states none. */
+export function regenSeconds(hours: number | undefined, speed: number): number | null {
+  return hours === undefined ? null : (hours * 3600) / speed;
 }
 
 /**
@@ -195,6 +252,12 @@ export interface SpotEstimate {
   /** The answer, or null while a part it needs is unknown. */
   expPerHour: number | null;
   /**
+   * The model's own figure before a measured pace or a carried ratio scaled
+   * it (`withMeasured`): what a measured rate is kept beside. Absent before
+   * `withMeasured` has run.
+   */
+  modelPerHour?: number | null;
+  /**
    * What hunting it actually paid this character at this level, where a hunt
    * there lasted long enough to say, and when (todo 70). A measured rate
    * outranks `expPerHour` wherever a spot is ranked (`spotRate`).
@@ -287,12 +350,15 @@ export interface SpotEstimate {
 export function respawnSeconds(
   delay: number | null | undefined,
   family: RealmFamily | null,
-  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds' | 'roomRegenSeconds'>,
+  /** At the realm's speed (`atSpeed`); without `speed`, the server's own clocks. */
+  constants: Pick<HuntingConstants, 'greatermudRespawnOffsetSeconds' | 'roomRegenSeconds'> &
+    Partial<Pick<HuntingConstants, 'speed'>>,
   arena = false
 ): number | null {
   if (delay === null || delay === undefined || !Number.isFinite(delay)) return null;
   if (delay === 0) return refillsOnEntry(delay, family) ? constants.roomRegenSeconds : null;
-  const nominal = delay > 0 ? delay * (arena ? 1 : 60) : Math.abs(delay);
+  // The stated figure is in the server's own time, so a sped-up realm runs it faster.
+  const nominal = (delay > 0 ? delay * (arena ? 1 : 60) : Math.abs(delay)) / (constants.speed ?? 1);
   if (family !== 'greatermud') return nominal;
   return Math.max(0, nominal - constants.greatermudRespawnOffsetSeconds);
 }
@@ -1064,6 +1130,15 @@ export function addFiller(
  */
 export type HuntVia = 'lair' | 'resident' | 'seen';
 
+/** How the survey is asked: for the character as it stands or as `as`, and what it keeps that it would leave out. */
+export interface SurveyAsk {
+  as?: CharacterState;
+  /** The spots beneath this level, marked `estimate.trivial`. */
+  beneath?: boolean;
+  /** The spots the level ready would shut once trained, marked `closesWithTraining`. */
+  gated?: boolean;
+}
+
 /** One suggestion: a lair, the rooms that hold it, and what it is worth. */
 export interface HuntingSpot {
   /** The lair's signature, stable across asks. */
@@ -1091,6 +1166,13 @@ export interface HuntingSpot {
   roomCount: number;
   /** Steps round the ring and along every detour, as measured. */
   loopSteps: number;
+  /**
+   * With a level ready to train, training it shuts the way back here (a lair
+   * behind an exit for levels up to the current one, such as `Level: 0 to
+   * 5`). Set only where the survey was asked to keep such grounds (`gated`);
+   * otherwise they are left out and counted.
+   */
+  closesWithTraining?: true;
   estimate: SpotEstimate;
 }
 
@@ -1099,6 +1181,14 @@ export interface HuntingAssumptions {
   family: RealmFamily | null;
   hpMax: number | null;
   restingHealthPerTick: number | null;
+  /**
+   * Health regained per standing tick (`DoHPTick`, every
+   * `constants.passiveTickSeconds`, resting, fighting or walking), a floor
+   * until `stat all` states it; null where the sheet does not state it and the
+   * family's arithmetic cannot give it. A tick that comes at full health adds
+   * nothing.
+   */
+  passiveHealthPerTick: number | null;
   backstab: boolean;
   stepMs: number;
   heal: HealingCast | null;
@@ -1267,9 +1357,19 @@ export function spotRate(spot: HuntingSpot): number | null {
 export interface MeasuredRate {
   perHour: number;
   minutes: number;
-  /** The level it was measured at: another level is another character. */
+  /**
+   * The level it was measured at. The rate prices only this level; its ratio
+   * to `estimated` prices a level within `measuredLevels` of it.
+   */
   level: number;
   at: number;
+  /**
+   * The model's own figure for the spot when it was measured
+   * (`SpotEstimate.modelPerHour`). The rate's ratio to it prices the spot at a
+   * level within `measuredLevels` of this one. Absent on a rate kept before it
+   * was recorded.
+   */
+  estimated?: number | null;
 }
 
 export interface MeasuredUse {
@@ -1282,56 +1382,83 @@ export interface MeasuredUse {
   /** The bounds on the pace: one strange ground does not rescale the realm. */
   paceLeast: number;
   paceMost: number;
+  /** How many levels away a rate's ratio to its estimate still prices a spot (`tuning.hunting.measuredLevels`). */
+  levelsAcross: number;
 }
 
 /**
  * The survey with what was measured (todo 70): a spot hunted at this level
- * carries its measured rate, and every other spot's hourly figures are scaled
- * by the pace, the median of measured over estimated where both are known.
- * The model's arithmetic assumes the server's round and the database's
- * experience; a realm run faster (orohost runs about five times) or paying
- * more per kill measures above it, and the pace carries that to the grounds
- * not yet hunted. Pure.
+ * carries its measured rate; a spot hunted within `levelsAcross` levels is
+ * scaled by its own ratio of measured to the model's figure; every other
+ * spot's hourly figures are scaled by the pace, the median of measured over
+ * estimated at this level, or of those carried ratios while nothing is
+ * measured here yet. The model's arithmetic assumes the server's round and
+ * the database's experience; a realm run faster (orohost runs about five
+ * times) or paying more per kill measures above it, and the pace carries that
+ * to the grounds not yet hunted. Pure.
  */
 export function withMeasured(
   spots: readonly HuntingSpot[],
   rates: ReadonlyMap<string, MeasuredRate>,
   use: MeasuredUse
 ): { spots: HuntingSpot[]; pace: number | null } {
+  const fresh = (rate: MeasuredRate | undefined): rate is MeasuredRate =>
+    rate !== undefined && use.now - rate.at < use.forgetMs && rate.minutes >= use.minutesLeast;
   const valid = (rate: MeasuredRate | undefined): rate is MeasuredRate =>
-    rate !== undefined &&
-    use.level !== null &&
-    rate.level === use.level &&
-    use.now - rate.at < use.forgetMs &&
-    rate.minutes >= use.minutesLeast;
+    fresh(rate) && use.level !== null && rate.level === use.level;
+  const bound = (ratio: number): number => Math.min(use.paceMost, Math.max(use.paceLeast, ratio));
+  /*
+   * Within `levelsAcross` levels of the one it was measured at, a rate prices
+   * its spot by its ratio to the model's figure it was measured beside, so a
+   * ground that paid three times its estimate at level 12 is not priced at the
+   * bare estimate at 13 (2026-10-06, from the records of 10-03 to 10-05:
+   * Soul's Straw-Floored Passage, measured at 3.3 times its estimate at three
+   * levels, lost each new level to a spot that paid two thirds of its own).
+   */
+  const carried = (rate: MeasuredRate | undefined): number | null => {
+    if (!fresh(rate) || use.level === null || rate.level === use.level) return null;
+    if (Math.abs(rate.level - use.level) > use.levelsAcross) return null;
+    const was = rate.estimated ?? null;
+    return was === null || was <= 0 ? null : bound(rate.perHour / was);
+  };
   const ratios: number[] = [];
+  const across: number[] = [];
   for (const spot of spots) {
     const rate = rates.get(spot.key);
     const estimated = spot.estimate.expPerHour;
     if (valid(rate) && estimated !== null && estimated > 0) ratios.push(rate.perHour / estimated);
+    const ratio = carried(rate);
+    if (ratio !== null) across.push(ratio);
   }
-  const middle = median(ratios);
-  const pace = middle === null ? null : Math.min(use.paceMost, Math.max(use.paceLeast, middle));
-  const scaled = (value: number | null): number | null =>
-    value === null || pace === null ? value : value * pace;
+  // Nothing measured at this level yet: the realm's pace is read off the levels beside it.
+  const middle = median(ratios.length > 0 ? ratios : across);
+  const pace = middle === null ? null : bound(middle);
+  const by =
+    (factor: number | null) =>
+    (value: number | null): number | null =>
+      value === null || factor === null ? value : value * factor;
   return {
     pace,
     spots: spots.map((spot) => {
       const rate = rates.get(spot.key);
+      const modelled = {
+        ...spot.estimate,
+        modelPerHour: spot.estimate.modelPerHour ?? spot.estimate.expPerHour
+      };
       if (valid(rate)) {
         return {
           ...spot,
           estimate: {
-            ...spot.estimate,
+            ...modelled,
             measured: { perHour: rate.perHour, minutes: rate.minutes, at: rate.at }
           }
         };
       }
-      if (pace === null) return spot;
+      const scaled = by(carried(rate) ?? pace);
       return {
         ...spot,
         estimate: {
-          ...spot.estimate,
+          ...modelled,
           expPerHour: scaled(spot.estimate.expPerHour),
           ceilingPerHour: scaled(spot.estimate.ceilingPerHour),
           copperPerHour: scaled(spot.estimate.copperPerHour)

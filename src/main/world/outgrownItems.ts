@@ -3,7 +3,9 @@
  * for a slot that is full and holds something at least as good, by the ranking
  * the upgrades are bought by (`gearUpgrades`). An item for a slot with room in
  * it (a second ring finger, an empty off-hand) could still be worn, and is not
- * listed. Each with its worth in copper where the realm's rows agree on one.
+ * listed; a spare of an item already worn never could (`wornCopy`), and
+ * `OutgrownGear` keeps one whatever is listed, since `sell` takes the worn
+ * copy too. Each with its worth in copper where the realm's rows agree on one.
  */
 import { WORN_SLOT_HOLDS } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';

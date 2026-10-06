@@ -275,6 +275,25 @@ export function asLoops(value: unknown, limits?: LoopLimits): Loop[] {
 }
 
 /**
+ * The running lap with another loop's stops, where both are on the same rooms
+ * and both rings or both bounces, whatever their clocks and whatever order the
+ * other lists its rooms in; null where they are not. Each room takes the other
+ * loop's stop for that room, and the lap keeps its own order, so its index and
+ * the rooms it was started on still point into it. The survey starts a ring
+ * from the room nearest the character (`orderRing`), so the same ring planned
+ * from another of its rooms comes listed from there (2026-10-06, run 15).
+ */
+export function retimed(running: Loop, loop: Loop): Loop | null {
+  if ((running.bounce ?? false) !== (loop.bounce ?? false)) return null;
+  if (running.stops.length !== loop.stops.length) return null;
+  const rooms = (each: Loop): string[] => each.stops.map((stop) => stop.room).sort();
+  const theirs = rooms(loop);
+  if (!rooms(running).every((room, at) => room === theirs[at])) return null;
+  const byRoom = new Map(loop.stops.map((stop) => [stop.room, stop]));
+  return { ...running, stops: running.stops.map((stop) => byRoom.get(stop.room) ?? stop) };
+}
+
+/**
  * Whether two lists of loops say the same thing.
  *
  * One consumer, and it is worth naming because the obvious guess is wrong:

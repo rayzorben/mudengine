@@ -3,11 +3,13 @@ import path from 'node:path';
 
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import { asShippedWorld, worldOfRealm, type ShippedWorld } from '../../shared/worlds';
+import type { KeptSpeed } from '../../shared/hunting';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 
 /**
- * Which bundled world each realm has said it runs, by the address dialled.
+ * What the server at each address dialled has shown itself to be: the bundled
+ * world it runs, and how fast its clocks run.
  *
  * A realm names its data at its own menu — `[MAJORMUD]:`, `[PARADIGM]:` — but
  * a session's world is bound when the session is built, before anything has
@@ -15,6 +17,12 @@ import { t } from '../app/i18n';
  * realm that has never said anything walks the default world, announced, until
  * it does. Keyed by address like `PlayerBook`: the word is the server's, and
  * two realm entries dialling one address are one realm.
+ *
+ * The speed (2026-10-06): GreaterMUD divides every clock by
+ * `GameSpeed.Multiplier`, read off a fight's rounds (`RealmSpeed`). Read afresh
+ * on each connection, it took a caster eleven minutes on orohost, and every
+ * plan until then was priced at the server's speed. Kept by address like the
+ * world, every character dialling it starts on the figure last read.
  *
  * **Written the moment it is learned**, synchronously and atomically: one small
  * record, once per connection, and the one moment it matters is the next
@@ -35,13 +43,21 @@ interface WorldEntry {
   at: number;
 }
 
+interface SpeedEntry {
+  speed: number;
+  at: number;
+}
+
 interface WorldFile {
   v: number;
   realms: Record<string, WorldEntry>;
+  /** Absent in a file written before speeds were kept. */
+  speeds?: Record<string, SpeedEntry>;
 }
 
 export class WorldBook {
   private readonly known = new Map<string, WorldEntry>();
+  private readonly speeds = new Map<string, SpeedEntry>();
   private loaded = false;
   /** True once the file was found unparseable; nothing is written over it. */
   private suspended = false;
@@ -67,6 +83,29 @@ export class WorldBook {
     this.known.set(address, { world, realm, at });
     this.save();
     return world;
+  }
+
+  /** The realm's speed this address was last read at, or null where it never was. */
+  speedAt(address: string): number | null {
+    this.load();
+    return this.speeds.get(address)?.speed ?? null;
+  }
+
+  /** A speed read off this address's rounds, written only where it changed. */
+  learnSpeed(address: string, speed: number, at = Date.now()): void {
+    this.load();
+    // `speedOf` reads whole speeds of at least 1; only one already held is passed over.
+    if (this.speeds.get(address)?.speed === speed) return;
+    this.speeds.set(address, { speed, at });
+    this.save();
+  }
+
+  /** The two as the session's port (`KeptSpeed`), for the address about to be dialled. */
+  keptSpeed(address: string): KeptSpeed {
+    return {
+      recall: () => this.speedAt(address),
+      remember: (speed) => this.learnSpeed(address, speed)
+    };
   }
 
   private load(): void {
@@ -111,21 +150,27 @@ export class WorldBook {
       const entry = readEntry(value);
       if (entry !== null) this.known.set(address, entry);
     }
+    const speeds = (parsed as Record<string, unknown>)['speeds'];
+    if (typeof speeds !== 'object' || speeds === null) return;
+    for (const [address, value] of Object.entries(speeds)) {
+      const entry = readSpeed(value);
+      if (entry !== null) this.speeds.set(address, entry);
+    }
   }
 
   /** Temp file and rename, like every other file this client owns. */
   private save(): void {
     if (this.suspended) return;
-    const realms: WorldFile['realms'] = {};
-    for (const [address, entry] of [...this.known].sort(([a], [b]) => (a < b ? -1 : 1))) {
-      realms[address] = entry;
-    }
+    const byAddress = <T>(map: Map<string, T>): Record<string, T> =>
+      Object.fromEntries([...map].sort(([a], [b]) => (a < b ? -1 : 1)));
+    const realms = byAddress(this.known);
+    const speeds = byAddress(this.speeds);
     const temporary = `${this.options.file}.tmp-${process.pid}`;
     try {
       fs.mkdirSync(path.dirname(this.options.file), { recursive: true });
       fs.writeFileSync(
         temporary,
-        `${JSON.stringify({ v: 1, realms } satisfies WorldFile, null, 2)}\n`
+        `${JSON.stringify({ v: 1, realms, ...(this.speeds.size > 0 ? { speeds } : {}) } satisfies WorldFile, null, 2)}\n`
       );
       fs.renameSync(temporary, this.options.file);
     } catch (error) {
@@ -142,6 +187,19 @@ export class WorldBook {
       }
     }
   }
+}
+
+/** A speed the server can run at: `GameSpeed.Multiplier`, a whole number of at least 1. */
+function isSpeed(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1;
+}
+
+/** One speed, or null: a whole speed (`isSpeed`), the time a number. */
+function readSpeed(value: unknown): SpeedEntry | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { speed, at } = value as Record<string, unknown>;
+  if (!isSpeed(speed)) return null;
+  return { speed, at: typeof at === 'number' && Number.isFinite(at) ? at : 0 };
 }
 
 /** One entry, or null: the world parsed, the word checked, the time a number. */
