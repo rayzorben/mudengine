@@ -1677,6 +1677,7 @@ export class Errands implements SessionModule {
       family,
       hpMax: state.vitals.hpMax,
       restingHealthPerTick: character.restingHealthPerTick,
+      passiveHealthPerTick: character.passiveHealthPerTick,
       backstab,
       stepMs: step,
       heal,
