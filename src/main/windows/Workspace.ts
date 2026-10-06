@@ -177,6 +177,22 @@ export class Workspace {
     this.owned.set(toWindow, target);
   }
 
+  /**
+   * Of `views`, the ones drawing the rail that has the character's tab: where
+   * its notices are printed, since a view without its tab has no console for
+   * it. A character nobody claims is the main window's, one whose session is
+   * still being built included. `railOf` names the rail a view draws; on a
+   * host with no second window every view draws the main window's.
+   */
+  viewsWithTab(
+    session: SessionId,
+    views: readonly number[],
+    railOf: (view: number) => number
+  ): number[] {
+    const rail = this.windowOf(session) ?? this.options.mainWindowId();
+    return views.filter((view) => railOf(view) === rail);
+  }
+
   /** Every window that currently holds a tab, for republishing. */
   windows(): number[] {
     return [...this.owned.keys()];

@@ -582,7 +582,7 @@ function memoryFor(id: SessionId): WorldMemory | undefined {
   if (realm === undefined) return undefined;
 
   const store = new WorldMemory(home.record('memory', id), realm, (message) =>
-    announce('memory', message)
+    announce('memory', message, 'warn', id)
   );
   memories.set(id, store);
   return store;
@@ -633,7 +633,7 @@ function fightsFor(id: SessionId): FightSink {
   if (existing) return existing;
   const log = new FightLog(
     home.record('fights', id),
-    { notice: (message) => announce('fights', message) },
+    { notice: (message) => announce('fights', message, 'warn', id) },
     fightsSegmented
   );
   fightLogs.set(id, log);
@@ -664,7 +664,7 @@ function talkFor(id: SessionId): TalkSink {
   const log = new TalkLog(
     home.record('talk', id),
     config?.config.logging.conversationDays ?? DEFAULT_CONFIG.logging.conversationDays,
-    { notice: (message) => announce('talk', message) }
+    { notice: (message) => announce('talk', message, 'warn', id) }
   );
   talkLogs.set(id, log);
   return log;
@@ -696,7 +696,7 @@ function belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord 
   const record = new Belongings({
     file: home.record('belongings', id),
     realm,
-    notify: (message) => announce('belongings', message)
+    notify: (message) => announce('belongings', message, 'warn', id)
   });
   belongings.set(id, record);
   return record;
@@ -939,10 +939,28 @@ function push(channel: string, payload: unknown): void {
   windows.toAll(channel, payload);
 }
 
+/**
+ * A character's notice goes only to the windows whose rail has its tab
+ * (`Workspace.viewsWithTab`): any other window printed it in whichever tab it
+ * showed. By tab rather than `toAttached`, because a notice said before the
+ * console attaches is held for it there (`heldNotices`) and would otherwise be
+ * lost. One about the client goes to every window.
+ */
+function pushNotice(payload: Notice): void {
+  const about = payload.session;
+  if (about === null || !workspace) {
+    push(Push.notice, payload);
+    return;
+  }
+  for (const windowId of workspace.viewsWithTab(about, windows.ids(), railOf)) {
+    windows.toWindow(windowId, Push.notice, payload);
+  }
+}
+
 /** An engine message. A null session means it is about the client, not a character. */
 function notice(message: string, session: SessionId | null = null): void {
   const payload: Notice = { session, message };
-  push(Push.notice, payload);
+  pushNotice(payload);
   /*
    * And to stdout.
    *
@@ -962,7 +980,12 @@ function notice(message: string, session: SessionId | null = null): void {
  * record that survives the window closing. One helper because the nine stores
  * that report this way had each restated the pair inline.
  */
-function announce(prefix: string, message: string, level: 'log' | 'warn' = 'warn'): void {
+function announce(
+  prefix: string,
+  message: string,
+  level: 'log' | 'warn' = 'warn',
+  session: SessionId | null = null
+): void {
   /*
    * The push, then the record — the same two places `notice` writes to, and
    * deliberately not by calling it. It did, and so every line a store reported
@@ -972,9 +995,9 @@ function announce(prefix: string, message: string, level: 'log' | 'warn' = 'warn
    * stays; `notice` keeps its own for the callers that speak for the client
    * rather than for a store.
    */
-  const payload: Notice = { session: null, message };
-  push(Push.notice, payload);
-  console[level](`${prefix}: ${message}`);
+  const payload: Notice = { session, message };
+  pushNotice(payload);
+  console[level](session === null ? `${prefix}: ${message}` : `${prefix}[${session}]: ${message}`);
 }
 
 function createConfig(): ConfigStore {
@@ -1438,7 +1461,7 @@ function createHost(): SessionHost {
     toDiagnostics: (channel, message) => windows.toDiagnostics(channel, message),
     toDebugging: (channel, message) => windows.toDebugging(channel, message),
     toAll: (channel, payload) => windows.toAll(channel, payload),
-    notice: (payload) => push(Push.notice, payload)
+    notice: pushNotice
   });
 }
 
@@ -2760,7 +2783,7 @@ function registerIpc(): void {
 
     for (const command of plan.commands) manager.ask(command);
     const said = action === 'restore' ? restoreNotices(plan, state.loadout) : planNotices(plan);
-    for (const message of said) announce('gear', message);
+    for (const message of said) announce('gear', message, 'warn', session);
     return plan.commands.length;
   });
 
