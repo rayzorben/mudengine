@@ -21,7 +21,7 @@ import type { QuestRunner } from '../automation/QuestRunner';
 import type { Supplies } from '../automation/Supplies';
 import type { OutgrownGear } from '../automation/OutgrownGear';
 import { personStop } from '../automation/personStop';
-import type { StashFetch } from '../automation/StashFetch';
+import type { HostTrips } from './hostTrips';
 import type { AreaSearch } from '../automation/AreaSearch';
 import type { TrainErrand } from '../automation/TrainErrand';
 import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
@@ -162,7 +162,7 @@ export interface TravelParts {
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon'>;
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
-  readonly stashFetch: Pick<StashFetch, 'busy' | 'abandon'>;
+  readonly hostTrips: Pick<HostTrips, 'busy' | 'abandon'>;
   readonly areaSearch: Pick<AreaSearch, 'busy' | 'abandon' | 'stop'>;
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
   readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
@@ -226,7 +226,7 @@ export class Travel implements SessionModule {
   private readonly supplies: TravelParts['supplies'];
   private readonly trainLevel: TravelParts['trainLevel'];
   private readonly outgrown: TravelParts['outgrown'];
-  private readonly stashFetch: TravelParts['stashFetch'];
+  private readonly hostTrips: TravelParts['hostTrips'];
   private readonly areaSearch: TravelParts['areaSearch'];
   private readonly hunt: TravelParts['hunt'];
   private readonly itemErrand: TravelParts['itemErrand'];
@@ -427,7 +427,7 @@ export class Travel implements SessionModule {
     this.supplies = parts.supplies;
     this.trainLevel = parts.trainLevel;
     this.outgrown = parts.outgrown;
-    this.stashFetch = parts.stashFetch;
+    this.hostTrips = parts.hostTrips;
     this.areaSearch = parts.areaSearch;
     this.hunt = parts.hunt;
     this.itemErrand = parts.itemErrand;
@@ -1145,7 +1145,7 @@ export class Travel implements SessionModule {
       this.supplies.current !== null ||
       this.trainLevel.busy ||
       this.outgrown.busy ||
-      this.stashFetch.busy ||
+      this.hostTrips.busy ||
       this.areaSearch.busy ||
       this.itemErrand.running ||
       this.questRunner.running
@@ -2377,7 +2377,7 @@ export class Travel implements SessionModule {
     // And the walk to the ganghouse or a counter with outgrown gear (todo 12).
     this.outgrown.abandon();
     // And a fetch from a stash, on the same terms (todo 05).
-    this.stashFetch.abandon();
+    this.hostTrips.abandon();
     // And a search of the area: its rooms are around the room it died in.
     this.areaSearch.abandon();
     // And the hunt: the lair it was walking to is several maps from the

@@ -53,7 +53,7 @@ import {
 import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand } from '../automation/ItemErrand';
 import type { OutgrownGear } from '../automation/OutgrownGear';
-import type { StashFetch } from '../automation/StashFetch';
+import { hostTrips, type HostTrips } from './hostTrips';
 import type { AreaSearch } from '../automation/AreaSearch';
 import { QuestRunner } from '../automation/QuestRunner';
 import { EquipmentManager } from '../automation/EquipmentManager';
@@ -106,7 +106,7 @@ import { trainPlanner } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
-import { areaSearchTrip, gearRecoveryTrip, stashFetchTrip } from './collectPlanner';
+import { areaSearchTrip, gearRecoveryTrip } from './collectPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
@@ -445,7 +445,7 @@ export class SessionManager {
   private readonly trainLevel: TrainErrand;
   /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
   private readonly outgrown: OutgrownGear;
-  private readonly stashFetch: StashFetch;
+  private readonly hostTrips: HostTrips;
   readonly areaSearch: AreaSearch;
   /** Where this character should be at all, and the lap that puts it there — todo 05. */
   private readonly hunt: AutoHunt;
@@ -790,7 +790,7 @@ export class SessionManager {
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
-        const later = [this.stashFetch, this.areaSearch, this.hunt, this.questRunner];
+        const later = [this.hostTrips, this.areaSearch, this.hunt, this.questRunner];
         for (const each of [...trips, ...later])
           each.onWalkEnded(arrived, reason, this.tracker.current);
       },
@@ -1141,7 +1141,7 @@ export class SessionManager {
       busy: escaping
     });
     const held = () => this.errandHeld();
-    this.stashFetch = stashFetchTrip(automation, this.queue, reports, { ...trip, busy: held });
+    this.hostTrips = hostTrips(automation, this.queue, reports, { ...trip, busy: held });
     this.areaSearch = areaSearchTrip(automation, this.queue, reports, { ...trip, busy: held });
     this.trainLevel = new TrainErrand(
       automation.train,
@@ -1589,7 +1589,7 @@ export class SessionManager {
         supplies: this.supplies,
         trainLevel: this.trainLevel,
         outgrown: this.outgrown,
-        ...{ stashFetch: this.stashFetch, areaSearch: this.areaSearch },
+        ...{ hostTrips: this.hostTrips, areaSearch: this.areaSearch },
         hunt: this.hunt,
         itemErrand: this.itemErrand,
         questRunner: this.questRunner,
@@ -1663,7 +1663,7 @@ export class SessionManager {
       ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },
       blessings: this.blessings,
       ...{ supplies: this.supplies, trainLevel: this.trainLevel, queue: this.queue, fled },
-      stashFetch: this.stashFetch,
+      ...{ hostTrips: this.hostTrips, areaSearch: this.areaSearch },
       world: () => this.world,
       odds: this.odds,
       config: () => this.automationConfig,
@@ -1733,7 +1733,7 @@ export class SessionManager {
       },
       { module: this.trainLevel, configure: (a) => this.trainLevel.configure(a.train, a.enabled) },
       { module: this.outgrown, configure: (a) => this.outgrown.configure(a.outgrown, a.enabled) },
-      { module: this.stashFetch, configure: (a) => this.stashFetch.configure(a.enabled) },
+      { module: this.hostTrips, configure: (a) => this.hostTrips.configure(a.enabled) },
       { module: this.areaSearch, configure: (a) => this.areaSearch.configure(a.enabled) },
       {
         module: this.hunt,
@@ -2781,7 +2781,7 @@ export class SessionManager {
      */
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
     this.extensions.onBlock(block);
-    for (const trip of [this.stashFetch, this.areaSearch]) trip.onBlock(block);
+    for (const trip of [this.hostTrips, this.areaSearch]) trip.onBlock(block);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
     /*
@@ -3032,7 +3032,7 @@ export class SessionManager {
         this.recoverGear.onCharacter(state);
         this.trainLevel.onCharacter(state);
         this.outgrown.onCharacter(state);
-        for (const trip of [this.stashFetch, this.areaSearch]) trip.onCharacter(state);
+        for (const trip of [this.hostTrips, this.areaSearch]) trip.onCharacter(state);
         /*
          * And where the character should be at all, which is the last of the
          * *going somewhere* decisions and rightly so: it only ever acts when

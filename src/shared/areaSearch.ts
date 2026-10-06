@@ -127,3 +127,46 @@ export interface AreaSearchPreview {
       }
     | { refused: string };
 }
+
+/** One thing a searched room's floor held as the search walked on. */
+export interface FloorThing {
+  /** As the room listed it, the count split off. */
+  name: string;
+  /** How many the listing named; one where it named none. */
+  count: number;
+  /** Turned up by the search (`room.hidden`), so taking it wants a search first; else in the open. */
+  hidden: boolean;
+}
+
+/** A room the search searched, and what lay there when the walk went on. */
+export interface SearchedRoom {
+  room: RoomId;
+  name: string;
+  /** Null where the client could not say the character stood there (unplaced) when it was read. */
+  floor: FloorThing[] | null;
+}
+
+/** How a search ended: every room done, or what stopped it. */
+export type AreaSearchEnding =
+  | 'searched'
+  | 'stopped'
+  | 'died'
+  | 'switched-off'
+  | 'left-realm'
+  | 'ran-away'
+  | 'attacked'
+  | 'missed';
+
+/**
+ * The player's last Search the area, once over, however it ended: the rooms
+ * searched in the order walked, each with what both its floors still held
+ * when the walk went on, what the loot took already left out. Coins are not
+ * listed: the loot's coin settings are what takes them.
+ */
+export interface AreaSearched {
+  startedAt: number;
+  endedAt: number;
+  ending: AreaSearchEnding;
+  radius: number;
+  rooms: SearchedRoom[];
+}

@@ -8,18 +8,27 @@
  * a room the plan left out for its fight (`AreaPlan.lose`, `unread`). A leg
  * a fight ended is planned again once; a room the walk still cannot reach is
  * passed over. A run away, being attacked with auto-combat off, leaving the
- * realm, a death, the player's stop and three rooms missed in a row end it. See `mudengine-automation` ›
- * *Searching the area walks each room once*.
+ * realm, a death, the player's stop and three rooms missed in a row end it.
+ * The run is kept once over (`last`): each room searched and what its floors
+ * held as the walk went on. See `mudengine-automation` › *Searching the area
+ * walks each room once*.
  */
 import { Collect, type CollectEnd, type CollectPlanner } from './Collect';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { AreaPlan, AreaSearchPreview } from '../../shared/areaSearch';
+import type {
+  AreaPlan,
+  AreaSearched,
+  AreaSearchEnding,
+  AreaSearchPreview,
+  FloorThing,
+  SearchedRoom
+} from '../../shared/areaSearch';
 import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
-import type { RoomId, Route } from '../../shared/world';
+import { roomAddress, type RoomId, type Route } from '../../shared/world';
 import type { SessionModule } from './Module';
 
 export interface AreaSearchPlanner extends Omit<CollectPlanner, 'routeTo'> {
@@ -52,6 +61,11 @@ export interface AreaSearchEvents {
 interface Run {
   plan: AreaPlan;
   searches: number;
+  startedAt: number;
+  /** The rooms searched, in the order walked, each with its floors as last read there. */
+  rooms: SearchedRoom[];
+  /** The room just searched, whose floors are read on every line while the character stands in it. */
+  leaving: SearchedRoom | null;
   /** The rooms searched, and those passed over. */
   done: Set<RoomId>;
   searched: number;
@@ -70,9 +84,23 @@ interface Run {
 
 const ACTION = 'search the area';
 
+/** What both floors of the room stood in hold, coins aside. */
+function floorOf(state: CharacterState): FloorThing[] {
+  const { items, hidden } = state.room;
+  const thing =
+    (hidden: boolean) =>
+    (item: { name: string; count?: number }): FloorThing => ({
+      name: item.name,
+      count: item.count ?? 1,
+      hidden
+    });
+  return [...items.map(thing(false)), ...hidden.map(thing(true))];
+}
+
 export class AreaSearch implements SessionModule {
   private readonly collect: Collect;
   private run: Run | null = null;
+  private ran: AreaSearched | null = null;
 
   constructor(
     private enabled: boolean,
@@ -85,14 +113,14 @@ export class AreaSearch implements SessionModule {
     this.collect = new Collect(
       queue,
       { ...planner, routeTo: (room) => planner.routeAround(room, walled()) },
-      { ended: (end) => this.ended(end) },
+      { ended: (end, state) => this.ended(end, state) },
       now
     );
   }
 
   configure(enabled: boolean): void {
     this.enabled = enabled;
-    if (!enabled) this.finish(t('automation.areaSearch.endedSwitchedOff'));
+    if (!enabled) this.finish('switched-off', t('automation.areaSearch.endedSwitchedOff'));
   }
 
   reset(): void {
@@ -102,6 +130,11 @@ export class AreaSearch implements SessionModule {
 
   get busy(): boolean {
     return this.run !== null;
+  }
+
+  /** The last search, once over; null before one has ended. */
+  get last(): AreaSearched | null {
+    return this.ran;
   }
 
   /**
@@ -141,6 +174,9 @@ export class AreaSearch implements SessionModule {
     this.run = {
       plan,
       searches,
+      startedAt: this.now(),
+      rooms: [],
+      leaving: null,
       done: new Set(),
       searched: 0,
       missed: 0,
@@ -162,12 +198,12 @@ export class AreaSearch implements SessionModule {
 
   /** The player's stop, through `Travel.stopMoving`: ended before the walk's end is heard. */
   stop(reason: string): void {
-    this.finish(t('automation.areaSearch.endedStopped', { why: reason }));
+    this.finish('stopped', t('automation.areaSearch.endedStopped', { why: reason }));
   }
 
   /** A death: the rooms are somewhere else now. */
   abandon(): void {
-    this.finish(t('automation.areaSearch.endedDied'));
+    this.finish('died', t('automation.areaSearch.endedDied'));
   }
 
   onBlock(block: Block): void {
@@ -177,9 +213,10 @@ export class AreaSearch implements SessionModule {
   onCharacter(state: CharacterState): void {
     const run = this.run;
     if (run === null) return;
+    this.reread(run, state);
     const ended = this.endedBy(state);
     if (ended !== null) {
-      this.finish(ended);
+      this.finish(ended.ending, ended.why);
       return;
     }
     this.collect.onCharacter(state);
@@ -193,12 +230,16 @@ export class AreaSearch implements SessionModule {
   }
 
   /** What ends the search whatever room it is in, or null. */
-  private endedBy(state: CharacterState): string | null {
-    if (state.phase !== 'in-game') return t('automation.areaSearch.endedLeftRealm');
-    if (this.planner.escaping()) return t('automation.areaSearch.endedRanAway');
+  private endedBy(state: CharacterState): { ending: AreaSearchEnding; why: string } | null {
+    if (state.phase !== 'in-game') {
+      return { ending: 'left-realm', why: t('automation.areaSearch.endedLeftRealm') };
+    }
+    if (this.planner.escaping()) {
+      return { ending: 'ran-away', why: t('automation.areaSearch.endedRanAway') };
+    }
     // Nothing fights back, so the next room is only further into whatever is here.
     if (this.planner.fighting() && !this.planner.fightsBack()) {
-      return t('automation.areaSearch.endedAttacked');
+      return { ending: 'attacked', why: t('automation.areaSearch.endedAttacked') };
     }
     return null;
   }
@@ -235,11 +276,13 @@ export class AreaSearch implements SessionModule {
   private next(state: CharacterState): void {
     const run = this.run;
     if (run === null) return;
+    this.reread(run, state);
+    run.leaving = null;
     // Each pass marks a room done or starts a walk, so this ends.
     while (this.run === run) {
       const room = run.plan.tour.find((each) => !run.done.has(each));
       if (room === undefined) {
-        this.finish(null);
+        this.finish('searched', null);
         return;
       }
       const to = this.firstOnTheWay(run, room);
@@ -276,7 +319,7 @@ export class AreaSearch implements SessionModule {
     return route.steps.find((step) => tour.has(step.to) && !run.done.has(step.to))?.to ?? room;
   }
 
-  private ended(end: CollectEnd): void {
+  private ended(end: CollectEnd, state: CharacterState): void {
     const run = this.run;
     if (run === null) return;
     const room = run.target;
@@ -294,10 +337,10 @@ export class AreaSearch implements SessionModule {
       // No search went out (the queue would take none): the room was not searched.
       case 'nothing-here':
         if (end.searches === 0) this.missed(run, room);
-        else this.searchedIn(run, room);
+        else this.searchedIn(run, room, state);
         break;
       case 'taken':
-        this.searchedIn(run, room);
+        this.searchedIn(run, room, state);
         break;
       default: {
         const never: never = end;
@@ -307,10 +350,17 @@ export class AreaSearch implements SessionModule {
     if (this.run === run) run.between = true;
   }
 
-  private searchedIn(run: Run, room: RoomId): void {
+  private searchedIn(run: Run, room: RoomId, state: CharacterState): void {
     run.done.add(room);
     run.searched += 1;
     run.missedInARow = 0;
+    const searched = {
+      room,
+      name: this.planner.nameOf(room),
+      floor: roomAddress(state.room) === room ? floorOf(state) : null
+    };
+    run.rooms.push(searched);
+    run.leaving = searched;
     this.events.notice?.(
       t('automation.areaSearch.searched', {
         room: this.planner.nameOf(room),
@@ -320,23 +370,40 @@ export class AreaSearch implements SessionModule {
     );
   }
 
+  /**
+   * The room just searched, read again on every line the character stands in
+   * it: what the loot takes comes off it as the pack confirms, so however the
+   * search ends, its last room is as the character left it.
+   */
+  private reread(run: Run, state: CharacterState): void {
+    const left = run.leaving;
+    if (left !== null && roomAddress(state.room) === left.room) left.floor = floorOf(state);
+  }
+
   private missed(run: Run, room: RoomId): void {
     run.done.add(room);
     run.missed += 1;
     run.missedInARow += 1;
     this.events.notice?.(t('automation.areaSearch.missed', { room: this.planner.nameOf(room) }));
     if (run.missedInARow >= tuning().areaSearch.missedInARow) {
-      this.finish(t('automation.areaSearch.endedMissed', { missed: run.missedInARow }));
+      this.finish('missed', t('automation.areaSearch.endedMissed', { missed: run.missedInARow }));
     }
   }
 
   /** The run over: what came of it said and traced. */
-  private finish(refused: string | null): void {
+  private finish(ending: AreaSearchEnding, refused: string | null): void {
     const run = this.run;
     this.collect.cancel();
     this.run = null;
     if (run === null) return;
     const { searched, missed } = run;
+    this.ran = {
+      startedAt: run.startedAt,
+      endedAt: this.now(),
+      ending,
+      radius: run.plan.radius,
+      rooms: run.rooms
+    };
     const because = t('automation.areaSearch.because', { radius: run.plan.radius });
     if (refused !== null) this.events.notice?.(refused);
     this.events.notice?.(t('automation.areaSearch.done', { searched, missed }));
