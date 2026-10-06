@@ -240,7 +240,13 @@ export class RealmLore {
     const table = this.spawnTable(realm);
     table.set(
       refill.room,
-      learnRefill(table.get(refill.room), refill, at, tuning().hunting.refillsKept)
+      learnRefill(
+        table.get(refill.room),
+        refill,
+        at,
+        tuning().hunting.refillsKept,
+        tuning().hunting.refillShortestSeconds
+      )
     );
     this.schedule();
   }
@@ -901,7 +907,7 @@ function writeTables<V>(tables: Map<string, Map<string, V>>): Record<string, Rec
 /** One room's timed refills, or null when the row holds no gap. */
 function readSpawnsEntry(value: unknown): LearnedSpawns | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { refills, seen, at } = value as Record<string, unknown>;
+  const { refills, seen, at, v } = value as Record<string, unknown>;
   const gaps = Array.isArray(refills)
     ? refills.filter(
         (gap): gap is number => typeof gap === 'number' && Number.isFinite(gap) && gap >= 0
@@ -917,7 +923,8 @@ function readSpawnsEntry(value: unknown): LearnedSpawns | null {
   return {
     refills: gaps,
     seen: counts,
-    at: typeof at === 'number' && Number.isFinite(at) ? at : 0
+    at: typeof at === 'number' && Number.isFinite(at) ? at : 0,
+    ...(typeof v === 'number' && Number.isFinite(v) ? { v } : {})
   };
 }
 

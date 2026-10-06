@@ -41,7 +41,7 @@ import type { Route } from '../../../shared/world';
 import type { ExtensionSessionHost } from '../../extensions/api';
 import type { Errands } from '../Errands';
 import { NO_LORE } from '../../../shared/lore';
-import type { LearnedSpawns } from '../../../shared/spawns';
+import { SPAWNS_VERSION, type LearnedSpawns } from '../../../shared/spawns';
 import type { QuestWatched } from '../../../shared/quests';
 import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../../shared/belongings';
 import { NOTHING_UNDERWAY, type Underway } from '../../../shared/underway';
@@ -8168,7 +8168,8 @@ describe('the hunting survey prices a kill off the fight record', () => {
     const gaps = (refills: number[], seen: Record<string, number>): LearnedSpawns => ({
       refills,
       seen,
-      at: 1
+      at: 1,
+      v: SPAWNS_VERSION
     });
     await surveyed(
       record().fights,

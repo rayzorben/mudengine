@@ -722,7 +722,8 @@ tuning:
     # Delay column) or no lair at all (an arena), the client times the gap
     # from the kill that emptied the room to the next monster in. A room's
     # timed clock prices it after this many refills; this many are kept. A
-    # lair's gap under refillShortestSeconds is the lair's second monster coming in.
+    # lair's gap under refillShortestSeconds is left out; most were the next
+    # room's spawn on entry.
     refillsLeast: 3
     refillShortestSeconds: 3
     refillsKept: 12

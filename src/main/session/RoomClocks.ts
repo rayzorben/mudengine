@@ -10,6 +10,7 @@ import {
   RefillWatch,
   refillClock,
   refillCount,
+  timedWithMoves,
   usualClock,
   type LearnedSpawns,
   type SpawnLore
@@ -35,11 +36,15 @@ export class RoomClocks {
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  /** Every character line, with the block that brought it: only a death starts a clock. */
-  onCharacter(state: CharacterState, block: Pick<Block, 'type'>): void {
+  /**
+   * Every character line, with the block that brought it: only a death starts
+   * a clock, and an arrival while `moving` (a move of this character's
+   * unanswered) is the next room's.
+   */
+  onCharacter(state: CharacterState, block: Pick<Block, 'type'>, moving: boolean): void {
     const at = this.now();
     const killed = block.type === 'mob-dies' || block.type === 'user-gain-experience';
-    const timed = this.watch.observe(refillCount(state), at, killed);
+    const timed = this.watch.observe(refillCount(state), at, killed, moving);
     if (timed === null) return;
     this.lore.observeRefill(timed, at);
     this.came.clear();
@@ -57,10 +62,11 @@ export class RoomClocks {
    * asked for because the database states none, the realm's usual lair clock
    * over every lair `isLair` admits. Null while nothing is timed.
    *
-   * A lair's gap under `refillShortestSeconds` is left out: the room read
-   * empty and full again within a second of a kill is the lair's second
-   * monster coming in. An arena's are real refills, and `refilling` keeps
-   * them: the Newhaven Arena's timed gaps on orohost run 0.005 to 0.8 s.
+   * A lair's gap under `refillShortestSeconds` is left out (`refillClock`
+   * says why). An arena's are real refills, and `refilling` keeps them: the
+   * Newhaven Arena's timed gaps on orohost run 0.005 to 0.8 s. A lair reads
+   * entries timed before moves were accounted for as well, the floor having
+   * kept out all but a few of the next room's spawns (3 of 389 on orohost).
    *
    * Outranks it because the `Delay` reading is the client's and the gap is
    * the server's: orohost runs the Paradigm data, whose Small Cavern states
@@ -90,7 +96,13 @@ export class RoomClocks {
 
   /** The monsters the wire saw refill this room, by `mobKey`. */
   seenIn(room: RoomId): string[] {
-    return Object.keys(this.lore.spawnsAt(room)?.seen ?? {});
+    return Object.keys(this.stamped(room)?.seen ?? {});
+  }
+
+  /** A room's entry where it was timed with the moves accounted for (`SPAWNS_VERSION`); null otherwise. */
+  private stamped(room: RoomId): LearnedSpawns | null {
+    const entry = this.lore.spawnsAt(room);
+    return timedWithMoves(entry) ? entry : null;
   }
 
   /** Rooms `isLair` does not admit that have a timed clock: an arena, read off the wire. */
@@ -98,7 +110,7 @@ export class RoomClocks {
     const least = tuning().hunting.refillsLeast;
     const rooms: RefillingRoom[] = [];
     for (const [room, entry] of this.lore.allSpawns()) {
-      if (isLair(room)) continue;
+      if (isLair(room) || !timedWithMoves(entry)) continue;
       // An arena refills within a second (the Newhaven Arena), so no gap is too short here.
       const clock = refillClock(entry, least);
       if (clock === null) continue;
@@ -119,7 +131,7 @@ export class RoomClocks {
   wanderers(room: RoomId): string[] | null {
     const kept = this.came.get(room);
     if (kept !== undefined) return kept;
-    const entry = this.lore.spawnsAt(room);
+    const entry = this.stamped(room);
     const names =
       entry === null || refillClock(entry, tuning().hunting.refillsLeast) === null
         ? []
