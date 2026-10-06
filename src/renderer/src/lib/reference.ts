@@ -11,6 +11,7 @@ import type { Numbered } from '@shared/entities';
 import type { FightSummary } from '@shared/fights';
 import { ITEM_KIND_WORD } from '@shared/items';
 import type { MobLoreEntry } from '@shared/lore';
+import type { ItemRarity } from '@shared/rarity';
 import type { RowPeace } from '@shared/mobRules';
 import type { Verdict } from '@shared/verdict';
 import type {
@@ -38,7 +39,8 @@ export type ReferenceEntry =
       /** The character's row saying it does not attack first; null where none does. */
       peace: RowPeace | null;
     }
-  | { kind: 'item'; name: string; item: WorldItem }
+  /** `rarity` is null where the lookup carried none. */
+  | { kind: 'item'; name: string; item: WorldItem; rarity: ItemRarity | null }
   | { kind: 'spell'; name: string; spell: WorldSpell }
   | { kind: 'race'; name: string; race: WorldRace }
   | { kind: 'class'; name: string; className: WorldClass };
@@ -55,7 +57,12 @@ export function flattenLookup(found: WorldLookup): ReferenceEntry[] {
       places: found.mobPlaces?.[mob.name] ?? null,
       peace: found.rowPeace?.[mob.name] ?? null
     })),
-    ...found.items.map((item): ReferenceEntry => ({ kind: 'item', name: item.name, item })),
+    ...found.items.map((item): ReferenceEntry => ({
+      kind: 'item',
+      name: item.name,
+      item,
+      rarity: found.rarity?.[item.id] ?? null
+    })),
     ...found.spells.map((spell): ReferenceEntry => ({ kind: 'spell', name: spell.name, spell })),
     ...found.races.map((race): ReferenceEntry => ({ kind: 'race', name: race.name, race })),
     ...found.classes.map((entry): ReferenceEntry => ({
