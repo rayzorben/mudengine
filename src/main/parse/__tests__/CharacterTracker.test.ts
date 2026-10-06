@@ -11865,6 +11865,28 @@ describe('what a search turns up', () => {
     expect(tracker.current.room.hiddenCash?.copper).toBe(4);
   });
 
+  /*
+   * `GetCommand` takes from the open floor, then from what this character's
+   * search showed: a find picked up is no longer lying there, and one the open
+   * floor also lists comes off the open floor first.
+   */
+  it('loses what is picked up, the open floor first', () => {
+    const tracker = play([
+      '[HP=40/MA=8]:',
+      'Sewer Tunnel',
+      'You notice a rusty key here.',
+      'Obvious exits: north',
+      '[HP=40/MA=8]:',
+      { send: 'search' },
+      'You notice scroll of minor healing, rusty key here.',
+      'You took scroll of minor healing.',
+      'You took rusty key.'
+    ]);
+
+    expect(tracker.current.room.items).toEqual([]);
+    expect(tracker.current.room.hidden.map((item) => item.name)).toEqual(['rusty key']);
+  });
+
   it('is left behind when the character walks out', () => {
     const tracker = play([
       ...inTheShop,

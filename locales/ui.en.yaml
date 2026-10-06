@@ -5296,6 +5296,26 @@ automation:
     because: '{items} were hidden in {room}'
     reasonTaking: picking up {item} from the stash
     refused: 'Not fetching from the stash: {why}'
+    endedLeft: the character left the room before picking anything up
+    endedNothingHere:
+      one: none of it was in the room after one search
+      many: none of it was in the room after {searches} searches
+    endedNothingOnTheFloor: none of it was on the floor, and nothing was searched for
+    endedMissed: 'not picked up: {items}'
+    finds:
+      reasonTaking: picking up {item}, which a search turned up here
+      done: 'Picked up what the search turned up: {items}.'
+      because: 'a search turned up {items} in {room}'
+      refused: 'Not going back for what the search turned up: {why}'
+  sellTrip:
+    reasonSelling: selling {item} at {shop}
+    going: 'Walking to {shop} to sell {items} ({steps} steps).'
+    done: 'Sold at {shop}: {items}.'
+    because: '{items} to sell at {shop}'
+    refused: 'Not selling: {why}'
+    refusalNoCounter: 'there is no shop in {room}'
+    endedUnsold: 'not sold: {items}'
+  hostTrip:
     refusalSwitchedOff: automation is off
     refusalNotInRealm: the character is not in the realm
     refusalBusy: the character is walking, or already on another trip
@@ -5306,12 +5326,6 @@ automation:
     endedSwitchedOff: automation was turned off
     endedDied: the character died
     endedNotReached: 'the walk stopped short: {why}'
-    endedLeft: the character left the room before picking anything up
-    endedNothingHere:
-      one: none of it was in the room after one search
-      many: none of it was in the room after {searches} searches
-    endedNothingOnTheFloor: none of it was on the floor, and nothing was searched for
-    endedMissed: 'not picked up: {items}'
     whyStopped: the walk stopped
   areaSearch:
     reasonSearch: searching every room nearby

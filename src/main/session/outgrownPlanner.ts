@@ -13,6 +13,7 @@ import {
   type OutgrownPlanner
 } from '../automation/OutgrownGear';
 import { outgrownItems } from '../world/outgrownItems';
+import { salePlaces } from '../world/salePlaces';
 import { slotAskerOf } from '../world/slotGear';
 import type { WorldGraph } from '../world/WorldGraph';
 import { ownGang, type CharacterState } from '../../shared/character';
@@ -116,13 +117,8 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
       const here = roomAddress(tracker.current.room);
       const id = found.item.row?.id ?? found.item.id;
       if (world === undefined || here === null || id === undefined) return null;
-      const traveller = errands.travellerNow(tracker.current);
-      // Any counter that takes it in, a recycler's too: this is selling.
-      const places = world.stockingPlaces([id], here, null, traveller, true);
-      return places.reduce<(typeof places)[number] | null>(
-        (best, place) => (best === null || place.moves < best.moves ? place : best),
-        null
-      );
+      const { charm } = tracker.current.progress;
+      return salePlaces(id, charm, world, here, errands.travellerNow(tracker.current))[0] ?? null;
     },
     busy: parts.busy,
     release: parts.release

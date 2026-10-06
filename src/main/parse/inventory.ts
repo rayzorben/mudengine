@@ -511,14 +511,26 @@ export function withRoomItem(
  * An entry with no count is one, so it goes as it always did. The name is
  * still all the floor can be searched by, which is why the count is the only
  * thing this can be more careful about.
+ *
+ * The open floor first, then what a search turned up: `GetCommand` takes from
+ * the room's visible items and only then from the hidden ones the taker's
+ * search showed, so a find picked up no longer reads as still lying there.
  */
 export function withoutRoomItem(state: CharacterState, item: string, count = 1): CharacterState {
-  const index = state.room.items.findIndex((there) => sameItem(there.name, item));
-  if (index < 0) return state;
-  const there = state.room.items[index]!;
+  const open = lessOf(state.room.items, item, count);
+  if (open !== null) return { ...state, room: { ...state.room, items: open } };
+  const hidden = lessOf(state.room.hidden, item, count);
+  return hidden === null ? state : { ...state, room: { ...state.room, hidden } };
+}
+
+/** The floor with `count` of the item off it, or null where the floor does not list it. */
+function lessOf(floor: readonly ItemEntity[], item: string, count: number): ItemEntity[] | null {
+  const index = floor.findIndex((there) => sameItem(there.name, item));
+  if (index < 0) return null;
+  const there = floor[index]!;
   const left = (there.count ?? 1) - Math.max(1, count);
-  const items = [...state.room.items];
+  const items = [...floor];
   if (left <= 0) items.splice(index, 1);
   else items[index] = { ...there, count: left };
-  return { ...state, room: { ...state.room, items } };
+  return items;
 }

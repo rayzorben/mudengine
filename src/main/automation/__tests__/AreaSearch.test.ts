@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import type { AreaPlan } from '../../../shared/areaSearch';
+import { wireItem } from '../../../shared/entities';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { RoomId, Route } from '../../../shared/world';
 
@@ -189,6 +190,79 @@ describe('searching the area', () => {
     taking = false;
     area.onCharacter(state());
     expect(walks).toEqual(['1/2']);
+  });
+
+  it('keeps what each room searched still held once the loot had taken its share', () => {
+    const area = make({ plan: () => ({ ...PLAN, tour: ['1/1', '1/2'] }) });
+    const at = (room: number, hidden: string[], open: string[] = []): CharacterState => {
+      const s = state();
+      return {
+        ...s,
+        room: {
+          ...s.room,
+          map: 1,
+          number: room,
+          hidden: hidden.map((name) => wireItem(name)),
+          items: open.map((name) => wireItem(name))
+        }
+      };
+    };
+    expect(area.last).toBeNull();
+    area.start(2, 1, at(1, []));
+    drain();
+    area.onBlock(block('room-hidden-items'));
+    taking = true;
+    area.onCharacter(at(1, ['rusty key', 'scroll of minor healing']));
+    // The loot took the key: the walk goes on once it has, and the floor is read then.
+    taking = false;
+    area.onCharacter(at(1, ['scroll of minor healing'], ['torch']));
+    expect(walks).toEqual(['1/2']);
+    expect(area.last).toBeNull();
+
+    here = '1/2';
+    area.onWalkEnded(true, null, at(2, []));
+    drain();
+    nothing(area);
+    area.onCharacter(state());
+    expect(area.busy).toBe(false);
+    expect(area.last).toMatchObject({
+      ending: 'searched',
+      radius: 2,
+      rooms: [
+        {
+          room: '1/1',
+          name: 'room 1/1',
+          floor: [
+            { name: 'torch', count: 1, hidden: false },
+            { name: 'scroll of minor healing', count: 1, hidden: true }
+          ]
+        },
+        // Read while unplaced: not known, rather than empty.
+        { room: '1/2', floor: null }
+      ]
+    });
+  });
+
+  it("keeps the last room as the loot left it when the player's stop ends the search there", () => {
+    const area = make();
+    const at = (hidden: string[]): CharacterState => {
+      const s = state();
+      return {
+        ...s,
+        room: { ...s.room, map: 1, number: 1, hidden: hidden.map((name) => wireItem(name)) }
+      };
+    };
+    area.start(2, 1, at([]));
+    drain();
+    area.onBlock(block('room-hidden-items'));
+    taking = true;
+    area.onCharacter(at(['rusty key', 'scroll of minor healing']));
+    area.onCharacter(at(['scroll of minor healing']));
+    area.stop('you pressed stop');
+    expect(area.last).toMatchObject({
+      ending: 'stopped',
+      rooms: [{ room: '1/1', floor: [{ name: 'scroll of minor healing', count: 1, hidden: true }] }]
+    });
   });
 
   it("ends on the player's stop, and plans nothing after", () => {
