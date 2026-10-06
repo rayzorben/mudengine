@@ -217,6 +217,17 @@ const COMPASS = Object.values(DIRECTION_NAME)
   .filter((name) => name !== 'up' && name !== 'down')
   .join('|');
 
+/**
+ * An item's name in a sentence about it. The names come from the world
+ * database, and 148 of gmud.zip's 2,140 carry `-`, `'` or `.` (counted over
+ * its converted items: `iron-capped staff`, `thief's kit`, `scroll of prot.
+ * from evil`). Read as `[\w ]`, `You just bought iron-capped staff for 78
+ * copper farthings.` and `You are now holding iron-capped staff.` went unread
+ * on orohost (`logs/2026-10-04_20-37-18_soul:549`): the buy was never
+ * confirmed, and the session logs of 2026-10-04 and 05 hold 22 of them.
+ */
+const ITEM_NAME = "[\\w' .-]";
+
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
   { type: 'prompt-username', pattern: /^Please enter your username or "new":/ },
@@ -1857,7 +1868,7 @@ export const RULES: Rule[] = [
   { type: 'player-gets', pattern: /^You took (?:(?<count>\d+) )?(?<item>.+)\./ },
   { type: 'player-drops', pattern: /^(?<player>\w+) drops (?<item>.+)\./ },
   { type: 'player-drops', pattern: /^You dropped (?:(?<count>\d+) )?(?<item>.+)\./ },
-  { type: 'user-equipped', pattern: /^You are now wearing (?<item>[\w ]+)\.$/ },
+  { type: 'user-equipped', pattern: new RegExp(`^You are now wearing (?<item>${ITEM_NAME}+)\\.$`) },
   /*
    * Wielding, captured beside the wearing line it mirrors:
    *
@@ -1870,8 +1881,8 @@ export const RULES: Rule[] = [
    * type would be a second thing for every consumer to handle for no fact it
    * could then state.
    */
-  { type: 'user-equipped', pattern: /^You are now holding (?<item>[\w ]+)\.$/ },
-  { type: 'user-equipped', pattern: /^You lit the (?<item>[\w ]+)\.$/ },
+  { type: 'user-equipped', pattern: new RegExp(`^You are now holding (?<item>${ITEM_NAME}+)\\.$`) },
+  { type: 'user-equipped', pattern: new RegExp(`^You lit the (?<item>${ITEM_NAME}+)\\.$`) },
   { type: 'user-equipped-failed', pattern: /^You may not wear that item!/ },
   // `wear` for something already on, captured live while recovering a kit.
   { type: 'user-equipped-failed', pattern: /^You are already wearing (?<item>.+?)!$/ },
@@ -1882,7 +1893,7 @@ export const RULES: Rule[] = [
   },
   {
     type: 'user-removed',
-    pattern: /^You have removed (?<item>[\w ]+?)(?: and extinguished it)?\.$/
+    pattern: new RegExp(`^You have removed (?<item>${ITEM_NAME}+?)(?: and extinguished it)?\\.$`)
   },
   /*
    * A readied light burning down, in the two spellings on record: `Your torch
@@ -1894,7 +1905,9 @@ export const RULES: Rule[] = [
    */
   {
     type: 'light-out',
-    pattern: /^Your (?<item>[\w ]+?) (?:flickers and goes out|runs out of oil, and goes out)\.$/
+    pattern: new RegExp(
+      `^Your (?<item>${ITEM_NAME}+?) (?:flickers and goes out|runs out of oil, and goes out)\\.$`
+    )
   },
   {
     type: 'user-buys',
@@ -1903,8 +1916,9 @@ export const RULES: Rule[] = [
     // are on the wire and the second was read while the first was not. The
     // coin is any on the ladder: MajorMUD quotes `30 gold crowns` and `1
     // platinum piece` (bearfather, `2026-09-17_16-16-56_soul:1027,1213`; 815).
-    pattern:
-      /^You just bought (?:(?<quantity>\d+) )?(?<item>[\w ]+) for (?:(?<price>\d+) (?<coin>[a-z]+(?: [a-z]+)?)|nothing)\.$/
+    pattern: new RegExp(
+      `^You just bought (?:(?<quantity>\\d+) )?(?<item>${ITEM_NAME}+) for (?:(?<price>\\d+) (?<coin>[a-z]+(?: [a-z]+)?)|nothing)\\.$`
+    )
   },
   /*
    * Selling, captured beside the buying line it mirrors:
@@ -1918,7 +1932,9 @@ export const RULES: Rule[] = [
    */
   {
     type: 'user-sells',
-    pattern: /^You sold (?:(?<count>\d+) )?(?<item>[\w '-]+) for (?<price>\d+) copper farthings\.$/
+    pattern: new RegExp(
+      `^You sold (?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+) for (?<price>\\d+) copper farthings\\.$`
+    )
   },
   { type: 'user-list', pattern: /^The following items are for sale here:$/ },
   /*
