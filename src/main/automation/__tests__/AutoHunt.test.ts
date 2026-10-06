@@ -15,7 +15,7 @@ import {
   type HuntingSpot,
   type SpotEstimate
 } from '../../../shared/hunting';
-import type { Loop } from '../../../shared/loops';
+import { sameWalk, type Loop } from '../../../shared/loops';
 import type { Route } from '../../../shared/world';
 
 const config = (over: Partial<HuntingAutomationConfig> = {}): HuntingAutomationConfig => ({
@@ -92,6 +92,8 @@ let answer: HuntingAdvice;
 let here: string | null;
 /** The name of the lap the fake planner has running, as main answers it. */
 let running: string | null;
+/** The lap running, as the runner holds it: its clocks are what `retimeLoop` changes. */
+let lap: Loop | null;
 /** Every reason a lap was stopped with. */
 let stops: string[];
 let clock: number;
@@ -116,12 +118,19 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
     runLoop: (loop) => {
       started.push(loop);
       running = loop.name;
+      lap = loop;
       return null;
     },
     runningLoop: () => running,
     stopLoop: (reason) => {
       stops.push(reason);
       running = null;
+      lap = null;
+    },
+    retimeLoop: (loop) => {
+      if (lap === null || !sameWalk(lap, loop)) return false;
+      lap = { ...lap, stops: loop.stops };
+      return true;
     },
     moveInFlight: () => false,
     walking: () => false,
@@ -148,6 +157,7 @@ beforeEach(() => {
   surveys = 0;
   here = '1/1';
   running = null;
+  lap = null;
   stops = [];
   noted = [];
   fought = [];
@@ -930,5 +940,129 @@ describe('a hunt order', () => {
     auto.steer(order('joined:a+c'));
     expect(stops).toHaveLength(1);
     expect(auto.hunting).toBe(false);
+  });
+
+  /* 2026-10-06, run 13: the same spot ordered again at the realm's speed, on new clocks and more rooms. */
+  it('takes the same key’s new clocks in place, and sets off again where its rooms change', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    const quicker = order();
+    quicker.loop = {
+      ...quicker.loop,
+      stops: quicker.loop.stops.map((stop) => ({ ...stop, every: 12 }))
+    };
+    auto.steer(quicker);
+    expect(stops).toEqual([]);
+    expect(lap?.stops.map((stop) => stop.every)).toEqual(quicker.loop.stops.map(() => 12));
+    expect(auto.hunting).toBe(true);
+    const fewer = order();
+    fewer.loop = { ...fewer.loop, stops: fewer.loop.stops.slice(0, 1) };
+    auto.steer(fewer);
+    expect(stops).toEqual([t('automation.hunt.reordered')]);
+    auto.onCharacter(at(1_000));
+    expect(started.at(-1)?.stops).toEqual(fewer.loop.stops);
+  });
+
+  it('stops a walk to another start for the same key, and sets off on the new order', () => {
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    expect(walked).toHaveLength(1);
+    const elsewhere = order();
+    const b = spot('lair:b', 9_000, 'Sewer', 920);
+    elsewhere.start = b.walk[0]!;
+    elsewhere.loop = { ...elsewhere.loop, stops: [...elsewhere.loop.stops].reverse() };
+    auto.steer(elsewhere);
+    expect(stops).toEqual([t('automation.hunt.reordered')]);
+    auto.onCharacter(at(1_000));
+    expect(walked).toHaveLength(2);
+  });
+
+  it('leaves a lap that is not its own alone when the same key is ordered again', () => {
+    here = '1/816';
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    // The player starts a lap of their own.
+    running = 'their own';
+    lap = { name: 'their own', stops: [{ room: 'Elsewhere' }] };
+    const fewer = order();
+    fewer.loop = { ...fewer.loop, stops: fewer.loop.stops.slice(0, 1) };
+    auto.steer(fewer);
+    expect(stops).toEqual([]);
+    expect(lap.name).toBe('their own');
+  });
+
+  it('stops a walk to a spot steered away from, so it does not start that spot on arrival', () => {
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    expect(walked).toHaveLength(1);
+    auto.steer(order('joined:a+c'));
+    expect(stops).toEqual([t('automation.hunt.steeredAway')]);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at(1_000));
+    expect(started).toEqual([]);
+  });
+
+  /* A stop that ends the walk at once reports it: the phase is idle by then, so no refusal is said. */
+  it('says nothing of a walk its own reorder stopped', () => {
+    let made: AutoHunt | null = null;
+    const auto = hunt({
+      stopLoop: (reason) => {
+        stops.push(reason);
+        made?.onWalkEnded(false, reason, at(1_000));
+      }
+    });
+    made = auto;
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    const elsewhere = order();
+    elsewhere.start = spot('lair:b', 9_000, 'Sewer', 920).walk[0]!;
+    auto.steer(elsewhere);
+    expect(stops).toHaveLength(1);
+    expect(notices).not.toContain(
+      t('automation.hunt.refusalNotReached', {
+        room: order().start.name,
+        why: t('automation.hunt.reordered')
+      })
+    );
+    expect(auto.refusal).toBeNull();
+  });
+
+  it('keeps a walk to the spot named again after a hand-back, and starts the order on arrival', () => {
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    expect(walked).toHaveLength(1);
+    auto.steer(undefined);
+    const quicker = order();
+    quicker.loop = {
+      ...quicker.loop,
+      stops: quicker.loop.stops.map((stop) => ({ ...stop, every: 12 }))
+    };
+    auto.steer(quicker);
+    expect(stops).toEqual([]);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at(1_000));
+    expect(started.at(-1)?.stops).toEqual(quicker.loop.stops);
+  });
+
+  it('sets off on the newest loop for its key where it was walking there', () => {
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    expect(walked).toHaveLength(1);
+    const quicker = order();
+    quicker.loop = {
+      ...quicker.loop,
+      stops: quicker.loop.stops.map((stop) => ({ ...stop, every: 12 }))
+    };
+    auto.steer(quicker);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at(1_000));
+    expect(started.at(-1)?.stops).toEqual(quicker.loop.stops);
   });
 });
