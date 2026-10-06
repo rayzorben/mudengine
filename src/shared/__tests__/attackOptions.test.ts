@@ -54,7 +54,7 @@ describe('the attacks offered', () => {
   });
 
   /*
-   * 2026-10-05: Konami chose `aa` for Soul (level 14 Mystic) against a
+   * 2026-10-05: a planner chose `aa` for Soul (level 14 Mystic) against a
    * tortured spirit (AC 50) on the bash's bigger blow before the roll. The server's
    * own `st a 408` puts punch 35, attack 22, kick 14, bash 10, jumpkick 3.
    */
