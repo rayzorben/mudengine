@@ -81,6 +81,7 @@ import MovementPrompt from './components/MovementPrompt';
 import ResetGate from './components/ResetGate';
 import LowLivesPrompt from './components/LowLivesPrompt';
 import { useLowLivesAsk } from './hooks/useLowLivesAsk';
+import { useConsoleNotices } from './hooks/useConsoleNotices';
 import AreaSearchDialog from './components/AreaSearchDialog';
 import { useAreaSearch } from './hooks/useAreaSearch';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
@@ -445,7 +446,6 @@ export default function App() {
 
   /** Bumped when a terminal registers or leaves, so effects can react to it. */
   const [handleTick, setHandleTick] = useState(0);
-  const pendingNotices = useRef<string[]>([]);
 
   /** The character on screen, for callbacks that must not go stale. */
   const activeRef = useRef(session);
@@ -598,14 +598,7 @@ export default function App() {
     window.requestAnimationFrame(() => handle.focus());
   }, [session, handleTick]);
 
-  /** Engine messages arriving before there is a terminal to print them into. */
-  useEffect(() => {
-    if (pendingNotices.current.length === 0) return;
-    const handle = terminals.current.get(session);
-    if (!handle) return;
-    for (const message of pendingNotices.current) handle.notice(message);
-    pendingNotices.current = [];
-  }, [session, handleTick]);
+  const sayOnScreen = useConsoleNotices(api, terminals, activeRef, session, sessions, handleTick);
 
   /**
    * Throughput is reported for the character being watched.
@@ -645,19 +638,11 @@ export default function App() {
   }, [returnFocus]);
 
   /*
-   * What arrives about the client and its roster rather than about a
-   * character's facts, which `useSessionViews` keeps.
+   * The lists of tabs and characters, which are about the client rather than
+   * a character's facts (`useSessionViews` keeps those).
    */
   useEffect(() => {
     const off = [
-      // A notice with no session is about the client rather than a character —
-      // an options file that failed to parse belongs to nobody — and still has
-      // to be seen, so it is shown wherever the player is looking.
-      api.onNotice(({ session: from, message }) => {
-        const handle = terminals.current.get(from ?? activeRef.current);
-        if (handle) handle.notice(message);
-        else pendingNotices.current.push(message);
-      }),
       // Not addressed: these *are* the lists of addresses.
       api.onSessions(setSessions),
       api.onProfiles((list) => {
@@ -755,21 +740,13 @@ export default function App() {
     },
     [api, showSession]
   );
-  const sayAboutAlerts = useCallback(
-    (message: string) => {
-      const handle = activeTerminal();
-      if (handle) handle.notice(message);
-      else pendingNotices.current.push(message);
-    },
-    [activeTerminal]
-  );
   useDesktopAlerts({
     subjects: views,
     // The player's own rows, and the only thing that decides what is raised
     // outside the window: a row marked `notify`, and its own `whileFocused`.
     rules: config.ui.alerts.rules,
     onOpen: openAlerted,
-    onRefused: sayAboutAlerts
+    onRefused: sayOnScreen
   });
 
   /**

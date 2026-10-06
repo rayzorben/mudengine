@@ -84,6 +84,32 @@ describe('a character moved to its own window', () => {
   it('says which window holds it', () => {
     expect(popped().windowOf('thorn')).toBe(2);
   });
+
+  /* A notice printed by a window without the character's tab went into
+     whichever tab that window showed (user, 2026-10-06). */
+  it("sends the character's notices only to the window holding its tab", () => {
+    const space = popped();
+    const own = (view: number): number => view;
+    expect(space.viewsWithTab('thorn', [1, 2], own)).toEqual([2]);
+    expect(space.viewsWithTab('vaelor', [1, 2], own)).toEqual([1]);
+  });
+
+  /* A store reports from inside the session's construction, before the
+     character is in any window's tabs. */
+  it("sends a character's notices to the main window before its session exists", () => {
+    const space = popped();
+    all = [...all, 'newcomer'];
+    const own = (view: number): number => view;
+    expect(space.viewsWithTab('newcomer', [1, 2], own)).toEqual([1]);
+    all = all.filter((id) => id !== 'newcomer');
+    expect(space.viewsWithTab('newcomer', [1, 2], own)).toEqual([1]);
+  });
+
+  /* A second browser tab is another look at the main window's rail. */
+  it('sends them to every view drawing that rail', () => {
+    expect(popped().viewsWithTab('vaelor', [1, 3], () => 1)).toEqual([1, 3]);
+    expect(popped().viewsWithTab('thorn', [1, 3], () => 1)).toEqual([]);
+  });
 });
 
 /*
