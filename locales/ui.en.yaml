@@ -5281,6 +5281,8 @@ automation:
     refusalUnplaced: 'the client does not know where the character died, and {count} items are missing'
     refusalNoRoute: 'no route back to {room}: {why}'
     refusalNotReached: 'the walk back to {room} ended early: {why}'
+    refusalUnread: no inventory or stats came back after the death, so the client cannot tell what
+      was lost
     # The bounds on trying again (todo 21): a recovery walks a freshly dead,
     # stripped character back to the room that killed it, and lives are finite.
     refusalLives: 'Not going back for your gear: {lives} lives left, and the minimum is {floor}.

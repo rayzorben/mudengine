@@ -1013,6 +1013,12 @@ const TUNING_DEFAULTS = {
   },
   /** Going back for the kit after a death — `GearRecovery`. */
   gearRecovery: {
+    /**
+     * How long after a death is first seen the inventory and stats have to come
+     * back before the recovery is refused; until then no other trip starts, so
+     * nothing walks the character away first.
+     */
+    decideMs: 20000,
     /** How long the pack has to reflect the `get`s before the kit is put on with what arrived. */
     collectMs: 8000,
     /** A `get` or `wear` still queued after this is for a room already left. */

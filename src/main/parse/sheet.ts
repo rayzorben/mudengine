@@ -201,6 +201,15 @@ export function died(s: CharacterState, at: number): CharacterState {
       wealth: 0,
       coins: { runic: 0, platinum: 0, gold: 0, silver: 0, copper: 0 }
     },
+    /*
+     * And what the gear gave went with it (the armour class, the damage
+     * resist, and the magic resistance items add, `Player.MRes`), so the three
+     * are unknown until the `st` asked after says them (`STALE_AFTER`). Kept, they
+     * read a stripped character as dressed: `GearRecovery` waits on an armour
+     * class of 0 and decided, on the old figure, that nothing was lost
+     * (2026-10-06, Vaelor's gear left in Slum Street without a word).
+     */
+    progress: { ...s.progress, armourClass: null, damageResist: null, magicRes: null },
     // Where it died, kept for the kit lying there (`GearRecovery`): the
     // room the character was standing in when the sentence arrived.
     lastDeath: {

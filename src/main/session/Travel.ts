@@ -19,6 +19,7 @@ import type { LoopRunner } from '../automation/LoopRunner';
 import type { SessionModule } from '../automation/Module';
 import type { QuestRunner } from '../automation/QuestRunner';
 import type { Supplies } from '../automation/Supplies';
+import type { GearRecovery } from '../automation/GearRecovery';
 import type { OutgrownGear } from '../automation/OutgrownGear';
 import { personStop } from '../automation/personStop';
 import type { StashFetch } from '../automation/StashFetch';
@@ -162,6 +163,7 @@ export interface TravelParts {
   readonly supplies: Pick<Supplies, 'current' | 'considerBeforeRoute' | 'abandon'>;
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
+  readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
   readonly stashFetch: Pick<StashFetch, 'busy' | 'abandon'>;
   readonly areaSearch: Pick<AreaSearch, 'busy' | 'abandon' | 'stop'>;
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
@@ -226,6 +228,7 @@ export class Travel implements SessionModule {
   private readonly supplies: TravelParts['supplies'];
   private readonly trainLevel: TravelParts['trainLevel'];
   private readonly outgrown: TravelParts['outgrown'];
+  private readonly recoverGear: TravelParts['recoverGear'];
   private readonly stashFetch: TravelParts['stashFetch'];
   private readonly areaSearch: TravelParts['areaSearch'];
   private readonly hunt: TravelParts['hunt'];
@@ -427,6 +430,7 @@ export class Travel implements SessionModule {
     this.supplies = parts.supplies;
     this.trainLevel = parts.trainLevel;
     this.outgrown = parts.outgrown;
+    this.recoverGear = parts.recoverGear;
     this.stashFetch = parts.stashFetch;
     this.areaSearch = parts.areaSearch;
     this.hunt = parts.hunt;
@@ -1138,18 +1142,28 @@ export class Travel implements SessionModule {
   /**
    * An errand or a quest run has the character, in any phase: one waiting on
    * a listing or a level stands still and walks nowhere, and is still under
-   * way. The one list, read here and by `SessionManager.errandHeld`.
+   * way. The one list, read here and by `holdsTrips`.
    */
   errandUnderWay(): boolean {
     return (
       this.supplies.current !== null ||
       this.trainLevel.busy ||
       this.outgrown.busy ||
+      this.recoverGear.busy ||
       this.stashFetch.busy ||
       this.areaSearch.busy ||
       this.itemErrand.running ||
       this.questRunner.running
     );
+  }
+
+  /**
+   * What holds a hunt or an extension's next trip: an errand under way, or a
+   * death the gear recovery has not decided on yet. Not `goingSomewhere`: an
+   * undecided death walks nowhere, and a stopped character stays put.
+   */
+  holdsTrips(): boolean {
+    return this.errandUnderWay() || this.recoverGear.deciding(this.tracker.current);
   }
 
   /**

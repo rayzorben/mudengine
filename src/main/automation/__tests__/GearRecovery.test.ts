@@ -8,6 +8,7 @@ import type { SafetyDecision } from '../../../shared/automation';
 import type { Route } from '../../../shared/world';
 import { wireItem } from '../../../shared/entities';
 import { t } from '../../app/i18n';
+import { tuning } from '../../app/tuning';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -91,6 +92,7 @@ const planner = (over: Partial<RecoveryPlanner> = {}): RecoveryPlanner => ({
 
 beforeEach(() => {
   vi.useFakeTimers();
+  vi.setSystemTime(DIED_AT + 1000);
   sent = [];
   notices = [];
   decisions = [];
@@ -134,6 +136,61 @@ describe('noticing the strip', () => {
     auto.onCharacter({ ...s, inventory: { ...s.inventory, listedAt: DIED_AT - 1 } });
     auto.onCharacter({ ...s, progress: { ...s.progress, armourClass: null } });
     expect(walked).toEqual([]);
+  });
+
+  /* 2026-10-06: an extension walked the character to a shop from the temple, and the gear was never gone back for. */
+  it('holds other trips from the death until it decides', () => {
+    const auto = make();
+    const s = stripped();
+    const unread = { ...s, progress: { ...s.progress, armourClass: null } };
+    // The line that brings the death holds before this module has read it.
+    expect(auto.deciding(unread)).toBe(true);
+    auto.onCharacter(unread);
+    expect(auto.deciding(unread)).toBe(true);
+    expect(auto.busy).toBe(false);
+    auto.onCharacter(s);
+    expect(walked).toHaveLength(1);
+    expect(auto.busy).toBe(true);
+    const dressed = { ...s, progress: { ...s.progress, armourClass: 9 } };
+    const decided = make();
+    decided.onCharacter(dressed);
+    expect(decided.deciding(dressed)).toBe(false);
+  });
+
+  it('refuses out loud when the inventory or the stats do not come back in time', () => {
+    const auto = make();
+    const s = stripped();
+    const unread = { ...s, progress: { ...s.progress, armourClass: null } };
+    auto.onCharacter(unread);
+    vi.advanceTimersByTime(tuning().gearRecovery.decideMs);
+    auto.onCharacter(unread);
+    expect(auto.deciding(unread)).toBe(false);
+    expect(decisions.map((d) => d.refused)).toEqual([t('automation.gearRecovery.refusalUnread')]);
+    auto.onCharacter(s);
+    expect(walked).toEqual([]);
+  });
+
+  /* `lastDeath` survives the socket: a reconnect after a death is when the gear is fetched. */
+  it('times the window from when it first sees the death, so a reconnect long after still fetches', () => {
+    vi.setSystemTime(DIED_AT + 10 * tuning().gearRecovery.decideMs);
+    const auto = make();
+    auto.reset();
+    const s = stripped();
+    auto.onCharacter({
+      ...s,
+      inventory: { ...s.inventory, listedAt: null },
+      progress: { ...s.progress, armourClass: null }
+    });
+    expect(decisions).toEqual([]);
+    expect(auto.deciding(s)).toBe(true);
+    auto.onCharacter(s);
+    expect(walked).toHaveLength(1);
+  });
+
+  it('holds nothing while switched off', () => {
+    const auto = make(movement({ recoverGear: false }));
+    auto.onCharacter(stripped());
+    expect(auto.deciding(stripped())).toBe(false);
   });
 
   /* Either signal alone has an innocent reading. */

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import { CharacterTracker } from '../CharacterTracker';
-import { StatusLine } from '../sheet';
+import { died, StatusLine } from '../sheet';
 import { blockOf } from '../../../shared/__tests__/blocks';
 
 /*
@@ -118,5 +118,19 @@ describe('what the tracker forgets, and when', () => {
     expect(tracker.readPrompt('[HP=10/20]:')?.exact).toBe(true);
     tracker.reset();
     expect(tracker.readPrompt('[HP=10/20]:')?.exact).toBeNull();
+  });
+});
+
+/* 2026-10-06: the armour class kept through a death read a stripped character as dressed, and no gear was gone back for. */
+describe('a death', () => {
+  it('leaves what the gear gave unknown until the stats say it', () => {
+    const dressed: CharacterState = {
+      ...EMPTY_CHARACTER,
+      progress: { ...EMPTY_CHARACTER.progress, armourClass: 12, damageResist: 3, magicRes: 40 }
+    };
+    const after = died(dressed, T);
+    expect(after.progress.armourClass).toBeNull();
+    expect(after.progress.damageResist).toBeNull();
+    expect(after.progress.magicRes).toBeNull();
   });
 });
