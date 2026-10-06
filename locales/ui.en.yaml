@@ -5120,6 +5120,9 @@ automation:
     drainIneffective: '{spell} has no effect here; the attack spells carry this fight.'
     spellIneffectiveNoFallback: '{spell} has no effect here and no fallback spell is set; your
       regular attacks carry this fight.'
+    # The world database rules the spell out before it is cast (`spellReaches`), not the server.
+    spellNoEffectKnown: 'Not casting {spell} at {target}: the world database says it has no effect
+      on it.'
     whyUnweighed: 'first of {count} here: the world data cannot rate {target}, and unknown is not
       safe'
     hazardList: '; {list}'
@@ -5186,6 +5189,11 @@ automation:
       fight.'
     allResisted: 'Auto Choose Best Spell: this target resists every attack spell in the book; your
       regular attacks carry the fight.'
+    # The world database says no spell in the book can touch this monster (`spellReaches`):
+    # living-only against non-living, undead-only against the living, animals-only against
+    # anything but an animal, or spell immunity.
+    noEffect: 'Auto Choose Best Spell: the world database says none of your attack spells has any
+      effect on this monster; your regular attacks carry the fight.'
     drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
     drainEnds: Health is back up; casting the attack spells again.
     drainNone: No drain spell to cast; casting the attack spells.
