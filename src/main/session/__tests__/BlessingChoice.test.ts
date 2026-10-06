@@ -148,7 +148,7 @@ const config: AutomationConfig = {
   spells: { ...DEFAULT_CONFIG.automation.spells, autoChooseBlessings: true }
 };
 
-function choice(on: AutomationConfig = config) {
+function choice(on: AutomationConfig = config, realmSpeed = 1) {
   const tracker = { current: standing(LAIR, 0, 0) };
   const runs = { count: 0 };
   const notices: string[] = [];
@@ -161,6 +161,7 @@ function choice(on: AutomationConfig = config) {
       lairEntities: () => [ogre]
     } as unknown as BlessingChoiceParts['world'],
     errands: {
+      realmSpeed,
       fitness: (state) => `ac ${state.progress.armourClass} dr ${state.progress.damageResist}`,
       realmClass: () => ({
         combat: 4,
@@ -238,6 +239,46 @@ describe('choosing blessings for the fight being hunted', () => {
     made.refresh(tracker.current);
     await vi.waitFor(() => expect(made.chosen()).not.toBeNull());
     made.dispose();
+  });
+
+  /* orohost runs five times faster: a blessing's stated duration is a fifth there, against an income measured in real time. */
+  it('weighs a measured income against the realm’s durations, a fifth as long on a realm five times faster', async () => {
+    const slow = choice(config, 1);
+    slow.measure();
+    await vi.waitFor(() => expect(slow.made.chosen()).not.toBeNull());
+    expect(slow.made.chosen()!.map((row) => row.spell)).toEqual(['way of the tortoise']);
+    slow.made.dispose();
+    const fast = choice(config, 5);
+    fast.measure();
+    await vi.waitFor(() => expect(fast.made.chosen()).not.toBeNull());
+    expect(fast.made.chosen()).toEqual([]);
+    fast.made.dispose();
+  });
+
+  it('chooses the same off a stated MA Regen at any speed, its ticks and the durations both the realm’s', async () => {
+    const chosen = async (speed: number) => {
+      const { made, tracker } = choice(config, speed);
+      const read = standing(LAIR, 0, 0);
+      tracker.current = {
+        ...read,
+        stated: {
+          against: null,
+          healthRegen: null,
+          restingRegen: null,
+          baseManaRegen: 3,
+          manaRegen: 3,
+          round: null,
+          basis: statedBasis(read)
+        }
+      };
+      made.refresh(tracker.current);
+      await vi.waitFor(() => expect(made.chosen()).not.toBeNull());
+      const rows = made.chosen()!.map((row) => row.spell);
+      made.dispose();
+      return rows;
+    };
+    expect(await chosen(1)).toEqual(['way of the tortoise']);
+    expect(await chosen(5)).toEqual(['way of the tortoise']);
   });
 
   it('chooses once the pool has been watched rising, the blessing that pays', async () => {

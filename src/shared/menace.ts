@@ -158,6 +158,15 @@ export const ROUND_ENERGY = 1000;
 export const MOB_ATTEMPTS = 6;
 export const EFFECT_TICK_SECONDS = 3;
 export const ROUND_SECONDS = 5;
+
+/**
+ * A spell's `Dur`, in effect ticks, as seconds at the realm's speed: GreaterMUD
+ * shortens every timed event by `GameSpeed.Multiplier` (`TimedEvent`), the
+ * three-second `EffectSpellTickTime` with them (0.6 s on orohost, 2026-10-06).
+ */
+export function effectSeconds(ticks: number, speed: number): number {
+  return (ticks * EFFECT_TICK_SECONDS) / speed;
+}
 const MAGIC_RES_CEILING = 150;
 const MAGIC_RES_PIVOT = 50;
 const RESISTED_BY_ANYONE = 2;
@@ -578,8 +587,8 @@ export type AfflictionKind = 'poison' | 'blinded' | 'held';
 export interface MobAffliction {
   kind: AfflictionKind;
   /**
-   * Seconds the longest such spell holds — `Spells.Dur` in three-second
-   * effect ticks — or null where any spell of the kind states no duration,
+   * Seconds the longest such spell holds at the realm's speed (`Spells.Dur`
+   * in effect ticks, `effectSeconds`), or null where any spell of the kind states no duration,
    * because a poison of unknown length is not shortened by another whose
    * length is known.
    */
@@ -593,7 +602,7 @@ export interface MobAffliction {
  * estimate is about every visit and not one fight. A spell that lands on the
  * caster is not an affliction. Duration as `hazardOf` reads it.
  */
-export function afflictionsOf(mob: MenaceSubject): MobAffliction[] {
+export function afflictionsOf(mob: MenaceSubject, speed: number): MobAffliction[] {
   const spells = mob.spells ?? {};
   const longest = new Map<AfflictionKind, number | null>();
   const note = (id: number | undefined): void => {
@@ -601,7 +610,7 @@ export function afflictionsOf(mob: MenaceSubject): MobAffliction[] {
     const spell = spells[id];
     if (spell === undefined || landsOnCaster(spell)) return;
     const ticks = spell.duration ?? 0;
-    const seconds = ticks > 0 ? ticks * EFFECT_TICK_SECONDS : null;
+    const seconds = ticks > 0 ? effectSeconds(ticks, speed) : null;
     for (const [ability] of spell.abilities ?? []) {
       const kind: AfflictionKind | null =
         ability === HAZARD_ABILITY.poison

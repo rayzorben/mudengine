@@ -1860,7 +1860,7 @@ export class Errands implements SessionModule {
           recorded(verdicts[index]?.menace?.hp ?? entity.hp ?? null),
         perRound: verdicts[index]?.menace?.perRound ?? null,
         nakedPerRound: bare[index]?.perRound ?? null,
-        afflictions: afflictionsOf(entity),
+        afflictions: afflictionsOf(entity, speed),
         /*
          * A row the realm gives a clock of its own (todo 09): the Gravedigger
          * is 1,500 points on an hour's regeneration, and a lair holding it was
