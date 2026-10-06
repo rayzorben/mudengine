@@ -181,17 +181,18 @@ describe('the monster’s side of the roll', () => {
     uncertain: false,
     costly: 'never',
     hp: 60,
-    armour: 400,
-    damageResist: 30,
+    armour: 40,
+    damageResist: 3,
     abilities: [
       [1, 5],
       [34, 12]
     ]
   };
 
-  /* `PlayerAttackType.GetDefense` is `(AC + secondary) / 10`; the sheet's own
-     figure is already divided, so the realm's column is divided here, once. */
-  it('divides the realm’s armour and resistance by ten, and reads dodge off slot 34', () => {
+  /* The server loads the column times ten (`MobType.cs:76`) and `GetDefense` divides by ten, so the
+     column is the sheet's figure as it stands. 2026-10-05: it was divided again, and a blood
+     skeleton's 50 read 5 (Festus 99.8% to hit where the wire has 80.7%). */
+  it('takes the realm’s armour and resistance as they stand, and reads dodge off slot 34', () => {
     expect(targetOf(thug)).toEqual({ armourClass: 40, damageResist: 3, dodge: 12, hp: 60 });
   });
 
@@ -207,7 +208,7 @@ describe('the character’s side of the sheet', () => {
       progress: { ...EMPTY_CHARACTER.progress, level: 10, agility: 60, strength: 55 },
       inventory: { ...EMPTY_CHARACTER.inventory, encumbrance: 30, encumbranceMax: 120 }
     };
-    const sheet = prowessSheetOf(state, { combat: 4, magery: null });
+    const sheet = prowessSheetOf(state, { combat: 4, magery: null, crits: 0 });
     expect(sheet.level).toBe(10);
     expect(sheet.agility).toBe(60);
     expect(sheet.combatLevel).toBe(4);
@@ -222,7 +223,9 @@ describe('the character’s side of the sheet', () => {
       progress: EMPTY_CHARACTER.progress,
       inventory: { ...EMPTY_CHARACTER.inventory, encumbrance: 30, encumbranceMax: null }
     };
-    expect(prowessSheetOf(state, { combat: null, magery: null }).encumbrancePercent).toBeNull();
+    expect(
+      prowessSheetOf(state, { combat: null, magery: null, crits: 0 }).encumbrancePercent
+    ).toBeNull();
   });
 });
 

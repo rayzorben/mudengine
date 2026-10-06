@@ -178,6 +178,25 @@ describe('choosing the round spell', () => {
   });
 });
 
+describe('the round, not the cast', () => {
+  // A weaker spell the server casts twice a round outhits a stronger one it casts once.
+  it('ranks the hardest hitter by its damage a round', () => {
+    const realm = (name: string): WorldSpell | null =>
+      name === 'magic missile'
+        ? { ...REALM['magic missile']!, energy: 500 }
+        : name === 'fire jet'
+          ? { ...REALM['fire jet']!, power: [30, 34], energy: 1000 }
+          : null;
+    const choice = chooseAttackSpell(
+      input({ realm, target: { remaining: 500, magicRes: null, abilities: [] } })
+    );
+    expect(choice.why).toBe('hardest');
+    expect(choice.chosen?.spell.name).toBe('magic missile');
+    expect(choice.chosen?.casts).toBe(2);
+    expect(choice.chosen?.perRound).toBeCloseTo(44);
+  });
+});
+
 describe('the element column', () => {
   it('reads Spell.GetSpellAttackType’s seven codes and nothing else', () => {
     expect([0, 1, 2, 3, 4, 5, 6].map(spellElementOf)).toEqual([
@@ -235,6 +254,31 @@ describe('casts to kill', () => {
     expect(castsToKill(input, { hp: 120, magicRes: null })!.rounds).toBeGreaterThanOrEqual(
       answer!.rounds
     );
+  });
+
+  /*
+   * 2026-10-05: Vaelor's magic missile (500 energy) goes twice a round on the
+   * wire (`Player.DoMagicRound`), and the survey and the fight run gave it one,
+   * so every caster fight read twice as long as it is.
+   */
+  it('casts as often as the energy buys in a round, and charges the mana of every attempt', () => {
+    const twice = (name: string): WorldSpell | null => {
+      const row = realm(name);
+      return row === null ? null : { ...row, energy: 500, difficulty: 15 };
+    };
+    const once = castsToKill(
+      { ...input, realm: (name) => ({ ...realm(name)!, difficulty: 15 }) },
+      {
+        hp: 60,
+        magicRes: null
+      }
+    )!;
+    const both = castsToKill({ ...input, realm: twice }, { hp: 60, magicRes: null })!;
+    expect(both.perRound).toBeCloseTo(once.perRound * 2);
+    expect(both.rounds).toBeLessThan(once.rounds);
+    // 80% lands at 3 mana, a failure costs 1: 2.6 an attempt, two attempts.
+    expect(once.mana).toBeCloseTo(2.6);
+    expect(both.mana).toBeCloseTo(5.2);
   });
 
   it('answers nothing where the book is unread, the health unknown, or nothing casts', () => {

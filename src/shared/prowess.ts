@@ -1,5 +1,5 @@
 import type { BlessingEffect } from './blessingeffects';
-import { dodgedFraction, hitChance } from './menace';
+import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
 import type { RealmFamily } from './realm';
 import type { StatedProwess } from './stated';
 import type { WorldItem, WorldSpell } from './world';
@@ -114,12 +114,22 @@ export interface ProwessSheet {
    * kick. Absent or null is none.
    */
   effects?: BlessingEffect | null;
+  /**
+   * The class and race rows' `Crits` (58), which `Player.GetCrits` sums with
+   * the stats' (the Mystic row's 10 is two thirds of a level-14 Mystic's 15).
+   * Absent is none.
+   */
+  classCrits?: number;
 }
 
-/** What of a class the sheet cannot state. See `ProwessSheet.combatLevel`. */
+/**
+ * What of a class the sheet cannot state, from the world database's class
+ * and race rows: `ProwessSheet.combatLevel`, `mageryLevel` and `classCrits`.
+ */
 export interface ProwessClass {
-  combat?: number;
-  magery?: number;
+  combat: number | null;
+  magery: number | null;
+  crits: number;
 }
 
 /** What of a weapon the arithmetic reads — `Items.Min/Max/Accy/Speed/StrReq`. */
@@ -195,10 +205,7 @@ export function accuracy(
   if (enc !== null && enc < LIGHT_LOAD) acc += Math.trunc(15 - enc / 10);
   const levelValue = Math.floor(Math.sqrt(level));
   acc += (levelValue * (combat - 1) + (combat * 2 + Math.trunc(level / 2) - 2)) * 2;
-  acc +=
-    Math.trunc((agility - 50) / 3) +
-    Math.trunc((intellect - 50) / 6) +
-    Math.trunc((charm - 50) / 10);
+  acc += plainStatsTerm(agility, intellect, charm);
   /*
    * `IsWeaponHeavy` — the weapon asks for more strength than the character
    * has. Only chargeable when both halves are known: a weapon whose `StrReq`
@@ -221,6 +228,30 @@ export function accuracy(
     value: Math.max(1, acc),
     from: weapon === null && enc !== null ? 'source' : 'bound'
   };
+}
+
+/** `Player.CalcAccuracy`'s stats term for the plain round: agility, intellect and charm. */
+function plainStatsTerm(agility: number, intellect: number, charm: number): number {
+  return (
+    Math.trunc((agility - 50) / 3) +
+    Math.trunc((intellect - 50) / 6) +
+    Math.trunc((charm - 50) / 10)
+  );
+}
+
+/**
+ * A bash's accuracy before its own modifier (`BashCombatRound.Acc`):
+ * `CalcAccuracy` with strength and agility in place of the plain round's
+ * stats term, so the plain figure, stated or worked out, has its term
+ * swapped. Festus's `st a` prints the plain 135 and the bash 138. The plain
+ * figure where a stat is unread.
+ */
+function bashAim(plain: number, sheet: ProwessSheet): number {
+  const held = need(sheet.agility, sheet.intellect, sheet.charm, sheet.strength);
+  if (held === null) return plain;
+  const [agility, intellect, charm, strength] = held as [number, number, number, number];
+  const own = Math.trunc((strength - 50) / 3) + Math.trunc((agility - 50) / 6);
+  return plain - plainStatsTerm(agility, intellect, charm) + own;
 }
 
 /**
@@ -290,7 +321,12 @@ export function swingsPerRound(
 
 /** Blows a round of 1,000 energy buys, rounded to three decimals as the sheet prints them. */
 function swingsFor(energy: number): number {
-  return Math.round((1000 / energy) * 1000) / 1000;
+  return thousandths(1000 / energy);
+}
+
+/** A figure to three decimals, as the server's `Math.Round(x, 3)` keeps blows a round. */
+function thousandths(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 /** `CalcEnergyUsedWithEncum`, the body of `swingsPerRound` above. */
@@ -336,18 +372,33 @@ export const SWING_METHODS = ['attack', 'bash', 'smash'] as const;
 export type SwingMethod = (typeof SWING_METHODS)[number];
 
 /**
- * What each method does to the round (`AttackTypes/*CombatRound.cs`): the
- * pre-roll multiplier on the weapon's range, the damage multiplier rolled
- * between its two ends, and the energy one blow costs. A bash is two blows'
- * energy at 2.5–3× a 1.1× range; a smash spends the whole round on one blow at
- * 5× a 1.2× range.
+ * What each method does to the round (`AttackTypes/*CombatRound.cs`,
+ * `GreaterMUD.Module`): the pre-roll multiplier on the weapon's range, the
+ * damage multiplier rolled between its two ends, the blows a round from the
+ * plain round's, and the accuracy from the plain round's, before
+ * `ACCURACY_MOD`. A bash is half the plain round's blows (`Swings / 2`) at
+ * 2.5–3× a 1.1× range, on strength and agility; a smash is one blow at 5× a
+ * 1.2× range, at half as much again as a bash's accuracy.
  */
 const METHOD: Readonly<
-  Record<SwingMethod, { preRoll: number; multiplier: number; energy(perSwing: number): number }>
+  Record<
+    SwingMethod,
+    {
+      preRoll: number;
+      multiplier: number;
+      swings(plain: number): number;
+      aim(plain: number, sheet: ProwessSheet): number;
+    }
+  >
 > = {
-  attack: { preRoll: 1, multiplier: 1, energy: (perSwing) => perSwing },
-  bash: { preRoll: 1.1, multiplier: 2.75, energy: (perSwing) => perSwing * 2 },
-  smash: { preRoll: 1.2, multiplier: 5, energy: () => 1000 }
+  attack: { preRoll: 1, multiplier: 1, swings: (plain) => plain, aim: (plain) => plain },
+  bash: { preRoll: 1.1, multiplier: 2.75, swings: (plain) => thousandths(plain / 2), aim: bashAim },
+  smash: {
+    preRoll: 1.2,
+    multiplier: 5,
+    swings: () => 1,
+    aim: (plain, sheet) => Math.trunc((bashAim(plain, sheet) * 3) / 2)
+  }
 };
 
 /**
@@ -496,7 +547,7 @@ function blowOf(
     low: Math.floor((held.min + strong.low) * how.preRoll),
     high: Math.floor((held.max + strong.high) * how.preRoll),
     multiplier: how.multiplier,
-    blows: Math.min(MAX_SWINGS, swingsFor(how.energy(perSwing.value))),
+    blows: Math.min(MAX_SWINGS, how.swings(swingsFor(perSwing.value))),
     from: perSwing.from
   };
 }
@@ -566,7 +617,8 @@ export function critChance(
       Math.trunc((agility - 50) / 20) +
       Math.trunc((charm - 50) / 30)
   );
-  const crits = fromStats + (sheet.effects?.crits ?? 0) + Math.max(0, 7 - combat);
+  const crits =
+    fromStats + (sheet.classCrits ?? 0) + (sheet.effects?.crits ?? 0) + Math.max(0, 7 - combat);
   return { value: Math.min(CRIT_MAX, Math.max(0, crits)) / 100, from: 'bound' };
 }
 
@@ -605,7 +657,7 @@ export interface Swing {
 
 /** What of a target the swing reads. `menace.ts` reads the mirror of it. */
 export interface ProwessTarget {
-  /** `Monsters.ArmourClass`, already divided down the way the sheet prints it. */
+  /** `Monsters.ArmourClass`, as the realm states it: the sheet's scale (`targetOf`). */
   armourClass: number | null;
   /** `Monsters.DamageResist`, likewise. */
   damageResist: number | null;
@@ -638,10 +690,9 @@ export function swing(
   const acc = accuracy(sheet, weapon, family);
   if (acc === null) return null;
   // The roll is made at the accuracy the attack itself moves (`fixedAcc`).
-  const aim =
-    acc.value +
-    ACCURACY_MOD[attack.kind] +
-    (isMartial(attack.kind) ? (sheet.effects?.martialAccuracy[attack.kind] ?? 0) : 0);
+  const aim = isMartial(attack.kind)
+    ? acc.value + ACCURACY_MOD[attack.kind] + (sheet.effects?.martialAccuracy[attack.kind] ?? 0)
+    : METHOD[attack.kind].aim(acc.value, sheet) + ACCURACY_MOD[attack.kind];
 
   const hit = hitChance(aim, target.armourClass);
   const dodged = dodgedFraction(target.dodge, aim);
@@ -659,13 +710,15 @@ export function swing(
   const blow = stated === undefined ? blowOf(sheet, weapon, attack, family) : null;
   const low = stated?.min ?? (blow === null ? null : Math.floor(blow.low * blow.multiplier));
   const high = stated?.max ?? (blow === null ? null : Math.floor(blow.high * blow.multiplier));
-  // The plain attack's blows are the sheet's where it printed them.
-  const swings: Reckoning<number> | null =
-    attack.kind === 'attack'
-      ? swingsPerRound(sheet, weapon ?? BARE_HAND, family)
-      : blow === null
-        ? null
-        : { value: blow.blows, from: blow.from };
+  // A weapon's blows are the plain round's, the sheet's where it printed them, as the method takes them.
+  let swings: Reckoning<number> | null;
+  if (isMartial(attack.kind)) {
+    swings = blow === null ? null : { value: blow.blows, from: blow.from };
+  } else {
+    const plain = swingsPerRound(sheet, weapon ?? BARE_HAND, family);
+    const method = METHOD[attack.kind];
+    swings = plain === null ? null : { value: method.swings(plain.value), from: plain.from };
+  }
 
   /*
    * `damage = rand(min, max) - DR / 10`, and a blow reduced to nothing is a
@@ -697,7 +750,7 @@ export function swing(
 
   let rounds: Reckoning<number> | null = null;
   if (mean !== null && mean > 0 && target.health !== null && target.health > 0) {
-    const perRound = lands * mean * Math.min(MAX_SWINGS, swings?.value ?? 1);
+    const perRound = landedPerRound(lands, mean, swings);
     if (perRound > 0) rounds = { value: target.health / perRound, from: 'bound' };
   }
 
@@ -712,6 +765,18 @@ export function swing(
     range: low !== null && high !== null && high >= low ? { low, high } : null,
     rounds
   };
+}
+
+/** What a round lands: the blows a round, capped at `MAX_SWINGS`, that land, at the mean blow. */
+function landedPerRound(lands: number, mean: number, swings: Reckoning<number> | null): number {
+  return lands * mean * Math.min(MAX_SWINGS, swings?.value ?? 1);
+}
+
+/** What a round of a `swing` lands on its target; null where the blow's range or blows are unknown. */
+export function swingRound(blow: Swing): number | null {
+  return blow.range === null || blow.swings === null
+    ? null
+    : landedPerRound(blow.lands.value, blow.damage.value, blow.swings);
 }
 
 /** What a cast is expected to cost and how often it works. */
@@ -765,6 +830,40 @@ export function castOdds(
           from: 'source' as const
         };
   return { chance: { value: chance, from: 'source' }, expectedMana };
+}
+
+/** `Player.DoMagicRound`'s loop bound: no more attempts than this in one round. */
+const MAGIC_ROUND_ATTEMPTS = 20;
+
+/**
+ * How many times the server tries a combat spell in one round
+ * (`Player.DoMagicRound`, `Player.cs:6262`): the round starts at 1,000 energy
+ * and every attempt, landed or failed, spends the spell's `EnergyCost`, so
+ * magic missile at 500 goes twice. The wire agrees (an acid slime fight's
+ * first round, a hit and a fail before the slime swung). A row stating no
+ * energy is read as one attempt, the old reading, never the twenty a zero
+ * would buy.
+ */
+export function castsARound(spell: Pick<WorldSpell, 'energy'>): number {
+  const energy = spell.energy;
+  if (energy === undefined || energy <= 0) return 1;
+  return Math.max(1, Math.min(MAGIC_ROUND_ATTEMPTS, Math.floor(ROUND_ENERGY / energy)));
+}
+
+/**
+ * The mana a round of the spell costs at `cost` a cast: every attempt
+ * `castsARound` makes, a failed one charged half (`castOdds`), the listed
+ * cost where the odds are unread. Null where the cost is.
+ */
+export function manaARound(
+  spell: Pick<WorldSpell, 'energy' | 'difficulty'>,
+  cost: number | null,
+  sheet: ProwessSheet,
+  family: RealmFamily | null
+): number | null {
+  if (cost === null) return null;
+  const each = castOdds({ mana: cost, difficulty: spell.difficulty }, sheet, family)?.expectedMana;
+  return castsARound(spell) * (each?.value ?? cost);
 }
 
 /**

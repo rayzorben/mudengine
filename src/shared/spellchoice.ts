@@ -12,7 +12,7 @@ import { HAZARD_ABILITY } from './abilities';
 import type { Vitals } from './character';
 import type { SpellsConfig } from './config';
 import { magicResistance, scaledPower } from './menace';
-import { castOdds, MAGERY, type ProwessSheet } from './prowess';
+import { castOdds, castsARound, MAGERY, manaARound, type ProwessSheet } from './prowess';
 import type { RealmFamily } from './realm';
 import {
   castsOnOthers,
@@ -118,9 +118,15 @@ export interface SpellCandidate {
   max: number;
   /** Mean damage a cast is expected to do, the cast's own odds folded in. */
   expected: number;
+  /** Attempts the server makes in one round (`castsARound`). */
+  casts: number;
+  /** Mean damage a round: `expected` for every attempt. */
+  perRound: number;
   /** Chance one cast finishes the monster, where its remaining health is known. */
   killChance: number | null;
   cost: number | null;
+  /** Mana a round: every attempt, a failed one charged half (`castOdds`); null where the cost is. */
+  manaPerRound: number | null;
 }
 
 export type SpellChoiceRefusal =
@@ -196,6 +202,7 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
     const odds = castOdds(realm, input.sheet, input.family)?.chance.value ?? 1;
     const lands = odds * (1 - resist);
     const expected = ((min + max) / 2) * lands;
+    const casts = castsARound(realm);
     const remaining = input.target?.remaining ?? null;
     let killChance: number | null = null;
     if (remaining !== null && remaining > 0) {
@@ -203,7 +210,18 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
       const enough = Math.max(0, Math.min(rolls, max - remaining + 1));
       killChance = lands * (enough / rolls);
     }
-    candidates.push({ spell, realm, min, max, expected, killChance, cost });
+    candidates.push({
+      spell,
+      realm,
+      min,
+      max,
+      expected,
+      casts,
+      perRound: expected * casts,
+      killChance,
+      cost,
+      manaPerRound: manaARound(realm, cost, input.sheet, input.family)
+    });
   }
 
   if (attackSpells === 0)
@@ -222,7 +240,8 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
   if (killers.length > 0) {
     return { chosen: killers[0]!, why: 'kills', considered: candidates, refusal: null };
   }
-  const hardest = [...candidates].sort((a, b) => b.expected - a.expected || byCost(a, b));
+  // By the round, since the server repeats a cheap-energy spell inside one (`castsARound`).
+  const hardest = [...candidates].sort((a, b) => b.perRound - a.perRound || byCost(a, b));
   return { chosen: hardest[0]!, why: 'hardest', considered: candidates, refusal: null };
 }
 
@@ -509,20 +528,20 @@ export function thresholdHeal(input: ThresholdHealInput): PricedHeal | null {
 }
 
 /**
- * How many casts of the spell this character would choose bring a monster of
- * `hp` hit points down, and what each cast costs — the caster's half of a
- * fight the lair survey prices (todo 108, 2026-09-13). `verdictFor` gets a
- * melee character's rounds from the swing; a caster has no swing worth the
- * name, and this is the same question asked of the book: the spell
- * `chooseAttackSpell` picks against this monster's resistances, at one cast a
- * round, over its full pool. Null where nothing casts, nothing is affordable,
- * everything is resisted, or the monster's health is unknown — an unknown is
- * never a number of rounds.
+ * How many rounds of the spell this character would choose bring a monster of
+ * `hp` hit points down, its damage a round, and its mana a round — the
+ * caster's half of a fight the lair survey prices (todo 108, 2026-09-13).
+ * `verdictFor` gets a melee character's rounds from the swing; a caster has
+ * no swing worth the name, and this is the same question asked of the book:
+ * the spell `chooseAttackSpell` picks against this monster's resistances, as
+ * many casts a round as its energy buys (`castsARound`), over its full pool.
+ * Null where nothing casts, nothing is affordable, everything is resisted, or
+ * the monster's health is unknown — an unknown is never a number of rounds.
  */
 export function castsToKill(
   input: Omit<SpellChoiceInput, 'target' | 'excluded'> | { book: null },
   monster: { hp: number | null; magicRes: number | null; abilities?: Array<[number, number]> }
-): { rounds: number; mana: number | null; spell: string } | null {
+): { rounds: number; perRound: number; mana: number | null; spell: string } | null {
   if (input.book === null) return null;
   if (monster.hp === null || monster.hp <= 0) return null;
   const choice = chooseAttackSpell({
@@ -531,10 +550,11 @@ export function castsToKill(
     excluded: new Set()
   });
   const chosen = choice.chosen;
-  if (chosen === null || chosen.expected <= 0) return null;
+  if (chosen === null || chosen.perRound <= 0) return null;
   return {
-    rounds: Math.max(1, Math.ceil(monster.hp / chosen.expected)),
-    mana: chosen.cost,
+    rounds: Math.max(1, Math.ceil(monster.hp / chosen.perRound)),
+    perRound: chosen.perRound,
+    mana: chosen.manaPerRound,
     spell: chosen.spell.name
   };
 }

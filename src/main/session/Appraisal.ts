@@ -125,8 +125,8 @@ export class Appraisal {
   get verdict(): RoomVerdict {
     const state = this.tracker.current;
     if (state.phase !== 'in-game' || state.room.occupants.length === 0) return EMPTY_ROOM_VERDICT;
-    const { combat, magery, family, attack } = this.errands.realmClass();
-    const sheet = prowessSheetOf(state, { combat, magery });
+    const { combat, magery, crits, family, attack } = this.errands.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery, crits });
     const weapon = wieldedWeapon(state.inventory.items);
     const appraisal = appraiseRoom(
       state.room.occupants,
@@ -159,8 +159,8 @@ export class Appraisal {
    */
   appraise(names: readonly string[]): Record<string, Verdict> {
     const state = this.tracker.current;
-    const { combat, magery, family, attack } = this.errands.realmClass();
-    const sheet = prowessSheetOf(state, { combat, magery });
+    const { combat, magery, crits, family, attack } = this.errands.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery, crits });
     const weapon = wieldedWeapon(state.inventory.items);
     const player = this.errands.menacePlayer(state);
     const verdicts: Record<string, Verdict> = {};

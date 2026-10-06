@@ -4,14 +4,15 @@ import {
   type MenacePlayer,
   type MenaceSubject,
   type MenaceWeights,
-  REALM_ARMOUR_SCALE,
   weighRoom
 } from './menace';
 import {
   PLAIN_ATTACK,
   swing,
   type ProwessAttack,
+  type ProwessClass,
   type ProwessSheet,
+  type ProwessTarget,
   type ProwessWeapon,
   type Reckoning
 } from './prowess';
@@ -134,13 +135,14 @@ export type TargetEntity = Pick<MobEntity, 'armour' | 'damageResist' | 'abilitie
 /**
  * The monster's side of the roll, in the sheet's units.
  *
- * `Monsters.ArmourClass` and `DamageResist` are the server's internal figures,
- * and the roll divides both by ten — `PlayerAttackType.GetDefense` is
- * `(target.AC + secondary) / 10`, the blow is `rand(min, max) − DR / 10`
- * (docs/greatermud/combat.md) — which is also the form the character's own
- * sheet already prints. So `prowess.swing` takes the divided figure from both
- * sides and the division happens here, once. Dodge is the row's `Abil-n = 34`
- * slot, in points, and there is no unit to convert.
+ * `Monsters.ArmourClass` and `DamageResist` are already in them: the server
+ * multiplies both columns by ten when it loads the row (`MobType.cs:76`), and
+ * the roll divides by ten again — `PlayerAttackType.GetDefense` is
+ * `(target.AC + secondary) / 10`, the blow `rand(min, max) − DR / 10`. Read
+ * divided a second time, a blood skeleton's 50 was 5 and Festus landed 99.8%
+ * where the wire has 45,597 of 56,495 (80.7%, the formula's 80.8% at the
+ * accuracy 135 `st a` prints). Dodge is the row's `Abil-n = 34` slot, in
+ * points, and there is no unit to convert.
  *
  * **`AutoCombat` used to pass `{}` here.** `hitChance` takes an unread armour
  * class as none — the answer that makes every blow land — so with the entity
@@ -160,12 +162,21 @@ export function targetOf(entity: TargetEntity | undefined): {
   if (entity === undefined) return {};
   const dodge = entity.abilities?.find(([id]) => id === DODGE_ABILITY)?.[1];
   return {
-    ...(entity.armour !== undefined ? { armourClass: entity.armour / REALM_ARMOUR_SCALE } : {}),
-    ...(entity.damageResist !== undefined
-      ? { damageResist: entity.damageResist / REALM_ARMOUR_SCALE }
-      : {}),
+    ...(entity.armour !== undefined ? { armourClass: entity.armour } : {}),
+    ...(entity.damageResist !== undefined ? { damageResist: entity.damageResist } : {}),
     ...(dodge !== undefined ? { dodge } : {}),
     ...(entity.hp !== undefined ? { hp: entity.hp } : {})
+  };
+}
+
+/** The monster as a blow meets it (`swing`): `targetOf`'s figures, its health, null where unstated. */
+export function prowessTargetOf(entity: TargetEntity | undefined): ProwessTarget {
+  const target = targetOf(entity);
+  return {
+    armourClass: target.armourClass ?? null,
+    damageResist: target.damageResist ?? null,
+    dodge: target.dodge ?? null,
+    health: target.hp ?? null
   };
 }
 
@@ -183,7 +194,7 @@ export function targetOf(entity: TargetEntity | undefined): {
 export function prowessSheetOf(
   state: Pick<CharacterState, 'progress' | 'inventory'> &
     Partial<Pick<CharacterState, 'stated' | 'buffs' | 'className' | 'party' | 'name'>>,
-  cls: { combat: number | null; magery: number | null }
+  cls: ProwessClass
 ): ProwessSheet {
   const { encumbrance, encumbranceMax } = state.inventory;
   return {
@@ -202,7 +213,8 @@ export function prowessSheetOf(
         ? null
         : (100 * encumbrance) / encumbranceMax,
     stated: statedNow(state),
-    effects: gearEffect(state.inventory.items)
+    effects: gearEffect(state.inventory.items),
+    classCrits: cls.crits
   };
 }
 

@@ -18,9 +18,12 @@ import {
   martialRoundDamage,
   PLAIN_ATTACK,
   roundDamage,
+  swing,
+  swingRound,
   type AttackKind,
   type ProwessAttack,
   type ProwessSheet,
+  type ProwessTarget,
   type ProwessWeapon,
   type Reckoning
 } from './prowess';
@@ -30,7 +33,11 @@ export interface AttackOption {
   /** What is typed: the realm's shortest spelling. */
   verb: string;
   kind: AttackKind;
-  /** Damage a round before the target's armour, dodge and a miss; null where it cannot be worked out. */
+  /**
+   * Damage a round: what lands on the monsters it was priced against, their
+   * armour, dodge and resistance counted, else before any of them; null where
+   * it cannot be worked out.
+   */
   perRound: Reckoning<number> | null;
 }
 
@@ -60,21 +67,53 @@ const KIND_OF: Partial<Record<CommandName, AttackKind>> = {
 const bonusOf = (kind: AttackKind, abilities: Abilities): number =>
   isMartial(kind) && abilities !== null ? abilitySum(abilities, MARTIAL_DAMAGE_ABILITY[kind]) : 0;
 
+/**
+ * Each attack the class or race row allows and its round. Against monsters,
+ * the round is what lands on them, the mean over them (`swing`): a bash's
+ * bigger blow at fifteen less accuracy is a worse round than a punch against
+ * armour, which the round before the roll cannot show (2026-10-05: Konami
+ * chose `aa` for Soul, 10 a round against a tortured spirit where the
+ * server's own `st a` put punch at 35). A null target is a monster nobody can place, and
+ * makes every round unknown. With none, the round before any armour.
+ */
 export function attackOptions(
   sheet: ProwessSheet,
   weapon: ProwessWeapon | null,
   abilities: Abilities,
-  family: RealmFamily | null
+  family: RealmFamily | null,
+  against: ReadonlyArray<ProwessTarget | null> = []
 ): AttackOption[] {
   const options: AttackOption[] = [];
   for (const { verb, kind } of ATTACKS) {
     if (kind !== 'attack' && !carriesAbility(abilities, ATTACK_ABILITY[kind])) continue;
-    const perRound = isMartial(kind)
-      ? martialRoundDamage(sheet, kind, bonusOf(kind, abilities), family)
-      : roundDamage(sheet, weapon ?? BARE_HAND, kind, family);
+    const bonus = bonusOf(kind, abilities);
+    const perRound =
+      against.length > 0
+        ? landedOn(sheet, weapon, { kind, bonus }, family, against)
+        : isMartial(kind)
+          ? martialRoundDamage(sheet, kind, bonus, family)
+          : roundDamage(sheet, weapon ?? BARE_HAND, kind, family);
     options.push({ verb, kind, perRound });
   }
   return options;
+}
+
+/** What a round of the attack lands, the mean over the monsters; null where any target or blow is unknown. */
+function landedOn(
+  sheet: ProwessSheet,
+  weapon: ProwessWeapon | null,
+  attack: ProwessAttack,
+  family: RealmFamily | null,
+  against: ReadonlyArray<ProwessTarget | null>
+): Reckoning<number> | null {
+  let total = 0;
+  for (const target of against) {
+    const blow = target === null ? null : swing(sheet, weapon, target, family, attack);
+    const round = blow === null ? null : swingRound(blow);
+    if (round === null) return null;
+    total += round;
+  }
+  return { value: total / against.length, from: 'bound' };
 }
 
 /**

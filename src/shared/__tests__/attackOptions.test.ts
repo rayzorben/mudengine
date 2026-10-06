@@ -52,6 +52,48 @@ describe('the attacks offered', () => {
     expect(options.map((option) => option.verb)).toEqual(['a', 'pu', 'kic', 'ju']);
     for (const option of options) expect(option.perRound?.value).toBeGreaterThan(0);
   });
+
+  /*
+   * 2026-10-05: Konami chose `aa` for Soul (level 14 Mystic) against a
+   * tortured spirit (AC 50) on the bash's bigger blow before the roll. The server's
+   * own `st a 408` puts punch 35, attack 22, kick 14, bash 10, jumpkick 3.
+   */
+  it('prices what lands on the monsters named, so armour turns the choice as the server does', () => {
+    const soul: ProwessSheet = {
+      ...SHEET,
+      level: 14,
+      agility: 90,
+      charm: 70,
+      combatLevel: 5,
+      encumbrancePercent: 12,
+      classCrits: 10
+    };
+    const basher = [
+      [ATTACK_ABILITY.punch, 1],
+      [ATTACK_ABILITY.kick, 1],
+      [ATTACK_ABILITY.jumpkick, 1],
+      [ATTACK_ABILITY.bash, 1]
+    ] as const;
+    const staff = { min: 2, max: 11, speed: 1300 };
+    const spirit = { armourClass: 50, damageResist: 0, dodge: null, health: 150 };
+    const order = (options: ReturnType<typeof attackOptions>): string[] =>
+      [...options]
+        .sort((a, b) => (b.perRound?.value ?? 0) - (a.perRound?.value ?? 0))
+        .map((option) => option.verb);
+    expect(order(attackOptions(soul, staff, basher, 'greatermud'))[0]).toBe('aa');
+    expect(order(attackOptions(soul, staff, basher, 'greatermud', [spirit]))).toEqual([
+      'pu',
+      'a',
+      'kic',
+      'aa',
+      'ju'
+    ]);
+  });
+
+  it('prices nothing against a monster nobody can place', () => {
+    const options = attackOptions(SHEET, null, MYSTIC, 'greatermud', [null]);
+    for (const option of options) expect(option.perRound).toBeNull();
+  });
 });
 
 /*
@@ -88,7 +130,7 @@ describe('a martial attack with gear on', () => {
 
   it('punches harder in the gloves, and kicks no harder', () => {
     const round = (equipped: boolean, verb: string): number => {
-      const sheet = prowessSheetOf(wearing(equipped), { combat: 3, magery: null });
+      const sheet = prowessSheetOf(wearing(equipped), { combat: 3, magery: null, crits: 0 });
       const option = attackOptions(sheet, null, MYSTIC, 'greatermud').find(
         (each) => each.verb === verb
       );

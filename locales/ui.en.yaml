@@ -5167,8 +5167,8 @@ automation:
   spells:
     choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): even its lowest roll kills what is left
       of the target.'
-    choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast, {cost} mana): the
-      strongest spell your mana can pay for.'
+    choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast and {perRound} a round,
+      {cost} mana): the strongest spell your mana can pay for.'
     noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the game for it.
     emptyBook: 'Auto Choose Best Spell: the spellbook is empty; this character has no spells yet.'
     noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'

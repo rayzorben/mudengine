@@ -20,7 +20,8 @@ import {
   type FightSetupParts,
   type FightSetupSession
 } from './FightSetup';
-import type { CharacterState } from '../../shared/character';
+import { ownAlignment, type CharacterState } from '../../shared/character';
+import { attacksOnSight } from '../../shared/mobs';
 import { startFight, type FightTrials, type Odds } from '../../shared/survival';
 import { lairKey, parseLair, type WorldRoom } from '../../shared/world';
 
@@ -297,8 +298,16 @@ export class OddsBook implements SessionModule {
       if (entity === undefined || entity.source === 'wire') return UNRUN;
       met = [{ name: job.name, subject: entity }];
     } else {
-      // Everything it spawns, at its cap: a lair is hunted, so all of it fights.
-      met = world.lairEntities(job.room).map((entity) => ({ name: entity.name, subject: entity }));
+      /*
+       * Everything it spawns, at its cap: a lair is hunted, so all of it is
+       * fought, and what does not attack on sight joins only when struck.
+       */
+      const standing = ownAlignment(state);
+      met = world.lairEntities(job.room).map((entity) => ({
+        name: entity.name,
+        subject: entity,
+        waits: attacksOnSight(entity.disposition, standing) === false
+      }));
       draw = parseLair(job.room.lair ?? '').max ?? 1;
     }
     if (met.length === 0) return UNRUN;

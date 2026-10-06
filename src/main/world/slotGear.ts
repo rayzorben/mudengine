@@ -10,7 +10,12 @@
 import { commandOf } from '../../shared/commands';
 import { equipBlock, type Wearer } from '../../shared/gear';
 import { WEAPON_CLASS, WEAPON_WORN, WORN_SLOT } from '../../shared/items';
-import { roundDamage, type ProwessSheet, type SwingMethod } from '../../shared/prowess';
+import {
+  roundDamage,
+  type ProwessClass,
+  type ProwessSheet,
+  type SwingMethod
+} from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
 import {
   meanBlow,
@@ -37,7 +42,7 @@ export interface SlotAsker {
 export function slotAskerOf(
   state: CharacterState,
   world: WearerRealm | null,
-  cls: { combat: number | null; magery: number | null; family: RealmFamily | null },
+  cls: ProwessClass & { family: RealmFamily | null },
   attack: string
 ): SlotAsker {
   return {

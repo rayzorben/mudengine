@@ -165,6 +165,7 @@ function choice(on: AutomationConfig = config) {
       realmClass: () => ({
         combat: 4,
         magery: null,
+        crits: 0,
         mageryType: null,
         family: 'greatermud',
         attack: PLAIN_ATTACK

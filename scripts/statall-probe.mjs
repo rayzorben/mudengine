@@ -232,8 +232,8 @@ async function main() {
   const sheet = runs.find((entry) => entry.command === 'stat all');
   if (sheet) {
     const state = session.character;
-    const row = world.classNamed(state.className ?? '') ?? null;
-    const cls = { combat: row?.combat ?? null, magery: row?.magery ?? null };
+    // The class half as the client reads it: one reading, the session's own.
+    const cls = session.realmClass;
     // The arithmetic is what is graded, so the sheet this run just read is
     // withheld: handed in, every figure would be the server's own, twice.
     const inputs = { ...prowessSheetOf(state, cls), stated: null };

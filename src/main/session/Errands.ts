@@ -79,9 +79,12 @@ import {
   regeneration,
   swing,
   type ProwessAttack,
+  type ProwessClass,
   type ProwessSheet
 } from '../../shared/prowess';
 import { attackFor } from '../../shared/attackOptions';
+import { EFFECT_ABILITY } from '../../shared/abilities';
+import { abilitySum } from '../../shared/light';
 import { chooseByExp } from '../../shared/statGains';
 import type { RealmFamily } from '../../shared/realm';
 import {
@@ -95,7 +98,7 @@ import {
   type QuestPlan,
   type QuestWatched
 } from '../../shared/quests';
-import { healFloor, holdsMovement, spellServes } from '../../shared/spellcraft';
+import { healFloor, holdsMovement, resolveSpell, spellServes } from '../../shared/spellcraft';
 import {
   attacksWithNothing,
   castsToKill,
@@ -131,7 +134,8 @@ import {
   type RoomId,
   type Route,
   type TrainerChoice,
-  type WorldRoom
+  type WorldRoom,
+  type WorldSpell
 } from '../../shared/world';
 
 /** Nowhere to get an item. */
@@ -181,9 +185,7 @@ interface HuntPriced extends HuntPrice {
 }
 
 /** The character's own side of the combat arithmetic. See `Errands.realmClass`. */
-export interface RealmClass {
-  combat: number | null;
-  magery: number | null;
+export interface RealmClass extends ProwessClass {
   /** `Classes.MageryType`, which stat the mana tick is figured off (`regeneration`). */
   mageryType: number | null;
   family: RealmFamily | null;
@@ -907,6 +909,8 @@ export class Errands implements SessionModule {
       progress.charm,
       progress.strength,
       state.className,
+      // The race row's crits and martial rows (`realmClass`).
+      state.race,
       JSON.stringify(wieldedWeapon(state.inventory.items)),
       // The martial rows of what is worn (`gearEffect`): gloves move a punch and leave the printed sheet as it is.
       JSON.stringify(gearEffect(state.inventory.items)),
@@ -938,7 +942,7 @@ export class Errands implements SessionModule {
     const lair = world.lair(room, this.serverFamily);
     if (lair === null || lair.mobs.length === 0) return null;
     const state = this.tracker.current;
-    const { combat, magery, family, attack } = this.realmClass();
+    const { combat, magery, crits, family, attack } = this.realmClass();
     /*
      * By the rows the lair names, never by name (todo 01, 2026-09-10): a name
      * folds every row sharing it and takes the worst, and the guard post on
@@ -952,7 +956,7 @@ export class Errands implements SessionModule {
       entities,
       this.menacePlayer(state),
       tuning().menace,
-      prowessSheetOf(state, { combat, magery }),
+      prowessSheetOf(state, { combat, magery, crits }),
       wieldedWeapon(state.inventory.items),
       family,
       attack
@@ -1580,8 +1584,8 @@ export class Errands implements SessionModule {
       fillerRadius,
       sizeTolerance
     };
-    const { combat, magery, mageryType, family, attack } = this.realmClass();
-    const sheet = prowessSheetOf(state, { combat, magery });
+    const { combat, magery, crits, mageryType, family, attack } = this.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery, crits });
     const regen = regeneration(sheet, mageryType, family);
     /*
      * The opener is `bs` and the weapon in hand lets it land: a weapon the
@@ -2440,39 +2444,23 @@ export class Errands implements SessionModule {
 
   /**
    * What a round costs this character in mana, for the hunting model
-   * (todo 26, 2026-09-12).
-   *
-   * **Only from a spell the player has actually configured.** A character with
-   * a blank `spells.attack` fights with `combat.attack`, which costs nothing
-   * from the pool — so null here, and the estimate is exactly the melee one.
-   * A derived spell under `autoChoose` is not read: it is chosen per target
-   * from what is in front of the character, and a hunting estimate is about a
-   * room the character is not standing in.
-   *
-   * Null too where the realm cannot price the spell, which is the standing
-   * rule: an unknown cost is never zero, and zeroing it would report a
-   * caster's cycle as free.
+   * (todo 26, 2026-09-12): the round spell `castingInput` reads, against an
+   * unread monster, so under Auto Choose Best Spell the hardest hitter the
+   * pool can pay for (todo 108). Null where nothing casts, which leaves the
+   * melee estimate as it was, and where the realm cannot price the spell: an
+   * unknown cost is never zero.
    */
   private castingCost(state: CharacterState): {
     manaPerRound: number | null;
     manaMax: number | null;
   } {
-    const name = this.automationConfig.spells.attack.trim();
-    if (name.length > 0) {
-      const spell = this.world?.spellNamed(name) ?? null;
-      return { manaPerRound: spell?.mana ?? null, manaMax: state.vitals.manaMax };
-    }
-    /*
-     * Under `autoChoose` the round spell is derived, so the survey prices the
-     * one the book would yield against an unread monster — the hardest hitter
-     * the pool can pay for (todo 108). Null where nothing casts.
-     */
-    const { combat, magery, family } = this.realmClass();
-    const casting = this.castingInput(state, prowessSheetOf(state, { combat, magery }), family);
+    const { combat, magery, crits, family } = this.realmClass();
+    const sheet = prowessSheetOf(state, { combat, magery, crits });
+    const casting = this.castingInput(state, sheet, family);
     if (casting === null) return { manaPerRound: null, manaMax: null };
     const choice = chooseAttackSpell({ ...casting, target: null, excluded: new Set() });
     return {
-      manaPerRound: choice.chosen?.cost ?? null,
+      manaPerRound: choice.chosen?.manaPerRound ?? null,
       manaMax: state.vitals.manaMax
     };
   }
@@ -2494,12 +2482,14 @@ export class Errands implements SessionModule {
    */
   realmClass(attack = this.automationConfig.combat.attack): RealmClass {
     const row = this.world?.classNamed(this.tracker.current.className ?? '') ?? null;
+    const abilities = this.capabilities().abilities;
     return {
       combat: row?.combat ?? null,
       magery: row?.magery ?? null,
       mageryType: row?.mageryType ?? null,
       family: this.serverFamily,
-      attack: attackFor(attack, this.capabilities().abilities)
+      attack: attackFor(attack, abilities),
+      crits: abilities === null ? 0 : abilitySum(abilities, EFFECT_ABILITY.crits)
     };
   }
 
@@ -2530,32 +2520,38 @@ export class Errands implements SessionModule {
    * and the character's dodge. `AutoCombat.weigh` reads the same.
    */
   menacePlayer(state: CharacterState): MenacePlayer {
-    const { combat, magery, family } = this.realmClass();
+    const { combat, magery, crits, family } = this.realmClass();
     return {
       armourClass: state.progress.armourClass,
       damageResist: state.progress.damageResist,
       magicRes: state.progress.magicRes,
       ...protectionOf(state, (name) => this.world?.spellNamed(name) ?? null),
-      dodge: dodge(prowessSheetOf(state, { combat, magery }), family)?.value ?? null
+      dodge: dodge(prowessSheetOf(state, { combat, magery, crits }), family)?.value ?? null
     };
   }
 
   /**
    * What `chooseAttackSpell` needs to say which spell this character would
-   * cast, or null where the character does not cast by derivation: the switch
-   * off, the book unread, or no realm to price it against (todo 108).
+   * cast a round, as `AttackSpells` picks it: the whole book under Auto
+   * Choose Best Spell (todo 108), else the book's entry for `spells.attack`
+   * (2026-10-05: a spell typed there was charged its mana and priced as
+   * melee). Null where neither casts, the book is unread or lacks the spell,
+   * or no realm can price it.
    */
   castingInput(
     state: CharacterState,
     sheet: ProwessSheet,
     family: RealmFamily | null
   ): CastingInput | null {
-    if (!this.automationConfig.spells.autoChoose) return null;
+    const { autoChoose, attack } = this.automationConfig.spells;
     if (state.spellbook === null || this.world === undefined) return null;
     const world = this.world;
+    const realm = (name: string): WorldSpell | null => world.spellNamed(name) ?? null;
+    const named = autoChoose ? null : resolveSpell(attack, state.spellbook, realm).known;
+    if (!autoChoose && named === null) return null;
     return {
-      book: state.spellbook,
-      realm: (name) => world.spellNamed(name) ?? null,
+      book: named === null ? state.spellbook : [named],
+      realm,
       level: state.progress.level,
       // The full pool: the survey prices a fight begun rested, not the one in progress.
       mana: state.vitals.manaMax ?? state.vitals.mana,
