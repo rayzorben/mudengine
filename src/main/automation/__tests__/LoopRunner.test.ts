@@ -70,10 +70,28 @@ describe('starting a loop', () => {
     const { planner: p, walked } = planner();
     const runner = new LoopRunner(p, {});
     runner.start(loop, state());
-    const timed: Loop = { ...loop, name: 'Other', stops: loop.stops.map((stop) => ({ ...stop, every: 12 })) };
+    const timed: Loop = {
+      ...loop,
+      name: 'Other',
+      stops: loop.stops.map((stop) => ({ ...stop, every: 12 }))
+    };
     expect(runner.retime(timed)).toBe(true);
     expect(walked).toEqual(['Arena']);
     expect(runner.progress).toMatchObject({ status: 'running', name: 'Arena', stop: 1, stops: 2 });
+    // The same rooms listed from the other end: the lap keeps its own order.
+    const listed: Loop = {
+      ...loop,
+      stops: [
+        { room: 'Road', every: 30 },
+        { room: 'Arena', every: 40 }
+      ]
+    };
+    expect(runner.retime(listed)).toBe(true);
+    expect(runner.progress).toMatchObject({ status: 'running', stop: 1, stops: 2 });
+    expect(runner.place?.loop.stops).toEqual([
+      { room: 'Arena', every: 40 },
+      { room: 'Road', every: 30 }
+    ]);
     expect(runner.retime({ ...loop, stops: [{ room: 'Arena' }] })).toBe(false);
     expect(runner.retime({ ...loop, bounce: true })).toBe(false);
     expect(new LoopRunner(p, {}).retime(loop)).toBe(false);
