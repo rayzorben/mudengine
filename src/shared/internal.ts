@@ -879,6 +879,11 @@ const TUNING_DEFAULTS = {
     paceLeast: 0.2,
     paceMost: 10,
     /**
+     * A rate measured this many levels away still prices its spot, by its
+     * ratio to the model's figure it was measured beside (`withMeasured`).
+     */
+    measuredLevels: 3,
+    /**
      * How many refills a room must have been timed over before its timed
      * clock prices it, where the world database states none
      * (`src/shared/spawns.ts`). One gap is a wanderer as often as a refill.
@@ -2219,6 +2224,11 @@ const TUNING_DEFAULTS = {
      * says.
      */
     hazardSupplyCount: 2,
+    /**
+     * How many monsters a pass is priced against in a room with no lair where
+     * the wire timed monsters walking in (`RoomClocks.wanderers`).
+     */
+    wanderersAtOnce: 2,
     /**
      * How many rounds of a lair's blows one pass through the room is priced
      * at. In and out is one round from whatever attacks on sight; two prices

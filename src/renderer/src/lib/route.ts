@@ -27,6 +27,22 @@ export interface StepRun {
  * what would have read identically — never two rooms whose shares differ in
  * a digit the chip does not show.
  */
+/**
+ * What waits in the room a step enters, as its chip says it: a lair, or a room
+ * with no lair that monsters were timed walking into (`stepRoad`), and the
+ * share of the bar a pass takes, at least 1%; deadly; or nothing.
+ */
+export function stepDanger(
+  step: RouteStep
+): { kind: 'deadly' } | { kind: 'lair' | 'road'; percent: number } | null {
+  if (step.danger === undefined) return null;
+  if (step.deadly === true) return { kind: 'deadly' };
+  return {
+    kind: step.lair === true ? 'lair' : 'road',
+    percent: Math.max(1, Math.round(step.danger * 100))
+  };
+}
+
 export function stepSignature(step: RouteStep): string {
   const gate = step.obstacle?.label ?? step.requirement?.kind ?? '';
   const hazard =
@@ -37,12 +53,9 @@ export function stepSignature(step: RouteStep): string {
         : step.hazard * 100 < 1
           ? '<1'
           : String(Math.round(step.hazard * 100));
+  const danger = stepDanger(step);
   const lair =
-    step.danger === undefined
-      ? ''
-      : step.deadly === true
-        ? 'deadly'
-        : String(Math.max(1, Math.round(step.danger * 100)));
+    danger === null ? '' : danger.kind === 'deadly' ? 'deadly' : `${danger.kind}${danger.percent}`;
   // And the kept-out word, so a step wearing it keeps its own row (todo 806).
   return [step.name, gate, hazard, lair, step.keptOut ?? ''].join('|');
 }

@@ -11,6 +11,7 @@ import {
   refillClock,
   refillCount,
   usualClock,
+  type LearnedSpawns,
   type SpawnLore
 } from '../../shared/spawns';
 import type { RoomId } from '../../shared/world';
@@ -26,6 +27,8 @@ export interface RefillingRoom {
 
 export class RoomClocks {
   private readonly watch = new RefillWatch();
+  /** `wanderers` per room, asked on every room a route search expands; dropped when a refill is timed. */
+  private readonly came = new Map<RoomId, string[] | null>();
 
   constructor(
     private readonly lore: SpawnLore,
@@ -37,11 +40,14 @@ export class RoomClocks {
     const at = this.now();
     const killed = block.type === 'mob-dies' || block.type === 'user-gain-experience';
     const timed = this.watch.observe(refillCount(state), at, killed);
-    if (timed !== null) this.lore.observeRefill(timed, at);
+    if (timed === null) return;
+    this.lore.observeRefill(timed, at);
+    this.came.clear();
   }
 
   reset(): void {
     this.watch.reset();
+    this.came.clear();
   }
 
   /**
@@ -96,11 +102,37 @@ export class RoomClocks {
       // An arena refills within a second (the Newhaven Arena), so no gap is too short here.
       const clock = refillClock(entry, least);
       if (clock === null) continue;
-      const names = Object.entries(entry.seen)
-        .sort(([, a], [, b]) => b - a)
-        .map(([name]) => name);
+      const names = cameIn(entry);
       if (names.length > 0) rooms.push({ room, clock, names });
     }
     return rooms;
   }
+
+  /**
+   * The monsters the wire timed coming into a room, commonest first, on the
+   * evidence `refilling` reads; null where it is too thin. Asked by route
+   * pricing for a room whose lair the world database does not fill, such as
+   * the Darkwood Main Road: its 1/1392 saw thugs and orc rogues
+   * come in twelve times, and nothing priced the walk past them (2026-10-04,
+   * Vaelor dead ten times on that road).
+   */
+  wanderers(room: RoomId): string[] | null {
+    const kept = this.came.get(room);
+    if (kept !== undefined) return kept;
+    const entry = this.lore.spawnsAt(room);
+    const names =
+      entry === null || refillClock(entry, tuning().hunting.refillsLeast) === null
+        ? []
+        : cameIn(entry);
+    const answer = names.length === 0 ? null : names;
+    this.came.set(room, answer);
+    return answer;
+  }
+}
+
+/** Who came into a room, by `mobKey`, commonest first. */
+function cameIn(entry: LearnedSpawns): string[] {
+  return Object.entries(entry.seen)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name]) => name);
 }

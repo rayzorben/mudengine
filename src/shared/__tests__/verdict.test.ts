@@ -4,6 +4,7 @@ import {
   lairPass,
   passShare,
   lairPassage,
+  roadPass,
   appraiseRoom,
   prowessSheetOf,
   rankByPriority,
@@ -450,6 +451,18 @@ describe('lairPassage', () => {
     it('is null when the pass itself is', () => {
       expect(lairPass([hitting(90)], 1, 1, only([false]))).toBeNull();
       expect(lairPass([], 1, 1, everybody)).toBeNull();
+    });
+  });
+
+  /* 2026-10-06: thugs timed coming into the Darkwood Main Road, where no lair is stated. */
+  describe('through a room with no lair that monsters were timed walking into', () => {
+    it('is never sure, however hostile what came, and meets at most so many at once', () => {
+      expect(roadPass([hitting(12), hitting(30), hitting(20)], 2, 1, everybody)).toEqual({
+        damage: 60,
+        sure: false
+      });
+      expect(roadPass([hitting(30)], 2, 1, everybody)).toEqual({ damage: 30, sure: false });
+      expect(roadPass([hitting(30)], 2, 1, () => false)).toBeNull();
     });
   });
 });

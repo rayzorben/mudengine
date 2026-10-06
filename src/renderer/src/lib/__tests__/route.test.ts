@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commandsOf, runsOf, stepSignature } from '../route';
+import { commandsOf, runsOf, stepDanger, stepSignature } from '../route';
 import type { RouteStep } from '@shared/world';
 
 const step = (name: string, over: Partial<RouteStep> = {}): RouteStep => ({
@@ -70,5 +70,14 @@ describe('folding a route list', () => {
       'n s e'
     );
     expect(commandsOf([step('a')])).toBe('s');
+  });
+
+  /* 2026-10-06: a lair and a room with no lair that monsters walk into say different chips at the same share. */
+  it('keeps a lair and a room monsters walk into apart at the same share', () => {
+    const lair = step('Main Road', { danger: 0.1, lair: true });
+    const room = step('Main Road', { danger: 0.1 });
+    expect(stepSignature(lair)).not.toBe(stepSignature(room));
+    expect(stepDanger(lair)).toEqual({ kind: 'lair', percent: 10 });
+    expect(stepDanger(room)).toEqual({ kind: 'road', percent: 10 });
   });
 });

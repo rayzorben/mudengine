@@ -714,6 +714,9 @@ tuning:
     measuredMinutesLeast: 10
     paceLeast: 0.2
     paceMost: 10
+    # A rate measured this many levels away still prices its spot, by what it
+    # paid over the estimate it was measured beside.
+    measuredLevels: 3
 
     # Where the world database states no lair clock (a MegaMUD export has no
     # Delay column) or no lair at all (an arena), the client times the gap
@@ -1682,6 +1685,10 @@ tuning:
     # way, and the plan cannot know how many times the walk will stop: two is
     # one spare. A thing that is not spent is fetched once whatever this says.
     hazardSupplyCount: 2
+
+    # How many monsters a pass is priced against in a room with no lair where
+    # monsters were timed walking in.
+    wanderersAtOnce: 2
 
     # How many rounds of a lair's blows one pass through the room is priced at.
     # In and out is one round from whatever attacks on sight; two prices every

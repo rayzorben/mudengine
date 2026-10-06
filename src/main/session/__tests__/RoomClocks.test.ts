@@ -51,4 +51,15 @@ describe('the clocks the wire timed', () => {
     });
     expect(subject.refilling(isLair)).toEqual([{ room: '1/9', clock: 0, names: ['rat'] }]);
   });
+
+  /* 2026-10-04: thugs and orc rogues came into the Darkwood Main Road's 1/1392 twelve times, and Vaelor died there ten. */
+  it('names who came into a road often enough to price a walk past them, and nobody where it is thin', () => {
+    const subject = clocks({
+      '1/1392': { refills: [0.5, 0.6, 0.7], seen: { 'orc rogue': 3, 'fierce thug': 7 }, at: 0 },
+      '1/8': timed([5])
+    });
+    expect(subject.wanderers('1/1392')).toEqual(['fierce thug', 'orc rogue']);
+    expect(subject.wanderers('1/8')).toBeNull();
+    expect(subject.wanderers('1/77')).toBeNull();
+  });
 });
