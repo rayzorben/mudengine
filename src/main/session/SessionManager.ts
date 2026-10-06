@@ -787,6 +787,7 @@ export class SessionManager {
     // Walking a route is an outbound action: it proposes to the arbiter like
     // everything else, a verified step at a time.
     this.walker = new Walker(automation, this.queue, {
+      realmSpeed: () => this.errands.realmSpeed,
       ended: (arrived, reason) => {
         this.travel.walkEnded(arrived);
         const trips = [this.loops, this.supplies, this.recoverGear, this.trainLevel, this.outgrown];
@@ -797,12 +798,8 @@ export class SessionManager {
       stepping: (command, direction, to, landing) => {
         this.remotes.stepping(command, direction, to, this.tracker.current);
         if (landing !== undefined && direction !== 'portal') {
-          /*
-           * An exit whose cast moves the character, which answers with **two**
-           * room blocks: the room the exit table names, then the room the
-           * spell put them in. Both are this command's answer, so both are
-           * queued. See `Expectations.hintCast`.
-           */
+          // An exit whose cast moves the character answers with two room blocks, the exit
+          // table's and the spell's: both are this command's (`Expectations.hintCast`).
           this.tracker.hintCast(command, direction, landingRooms(landing));
           return;
         }
@@ -1391,7 +1388,7 @@ export class SessionManager {
     // All four casters share one realm lookup, handing over the realm's whole
     // row, read at the point of use because `this.world` arrives with `useRealm`.
     const realmSpell = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;
-    this.castRound = new CastRound(reports);
+    this.castRound = new CastRound(reports, undefined, () => this.errands.realmSpeed);
     this.heal = new AutoHeal(
       automation.spells,
       automation.enabled,
@@ -1401,7 +1398,8 @@ export class SessionManager {
       { notice: (message) => this.sink.notice(message) },
       () => this.errands.realmClass(),
       this.castRound,
-      (state) => this.appraisal.fightPerRound(state)
+      (state) => this.appraisal.fightPerRound(state),
+      () => this.errands.realmSpeed
     );
     this.potions = new Potions(automation.health, automation.enabled, this.queue);
     this.cures = new Cures(

@@ -25,13 +25,17 @@ export class CastRound implements CastGate, SessionModule {
   /** When this round's cast was spent, by us or as the server's refusal says; null for none yet. */
   private spentAt: number | null = null;
   private roundAt = 0;
-  private readonly beat = new RoundBeat();
+  private readonly beat: RoundBeat;
   private saidHeld = false;
 
   constructor(
     private readonly events: CastRoundEvents = {},
-    private readonly now: () => number = () => Date.now()
-  ) {}
+    private readonly now: () => number = () => Date.now(),
+    /** The session's figure for the realm's speed (`RealmSpeed`). */
+    speed: () => number = () => 1
+  ) {
+    this.beat = new RoundBeat(speed);
+  }
 
   onBlock(block: Block): void {
     if (this.beat.onBlock(block)) this.roundAt = block.at;
@@ -66,7 +70,7 @@ export class CastRound implements CastGate, SessionModule {
 
   private open(): boolean {
     if (this.spentAt === null || this.roundAt > this.spentAt) return true;
-    const round = tuning().hunting.roundSeconds * 1000 + tuning().spells.castSlackMs;
+    const round = this.beat.roundMs + tuning().spells.castSlackMs;
     return this.now() - this.spentAt >= round;
   }
 

@@ -62,7 +62,7 @@ function untimed(why: Untimed): string {
 }
 
 export class OffRounds {
-  private readonly rounds = new RoundClock();
+  private readonly rounds: RoundClock;
   /** Whether the walk now going is a run. */
   private running = false;
   /** Which of the timing's answers was last said this walk, so each is said once. */
@@ -72,9 +72,11 @@ export class OffRounds {
 
   constructor(
     private readonly steps: StepTimes,
-    private readonly events: Pick<WalkerEvents, 'notice'>,
+    private readonly events: Pick<WalkerEvents, 'notice' | 'realmSpeed'>,
     private readonly now: () => number = () => Date.now()
-  ) {}
+  ) {
+    this.rounds = new RoundClock(() => events.realmSpeed?.() ?? 1);
+  }
 
   onBlock(block: Block): void {
     this.rounds.onBlock(block);

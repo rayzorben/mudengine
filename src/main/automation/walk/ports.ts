@@ -18,6 +18,8 @@ import type {
 } from '../../../shared/world';
 
 export interface WalkerEvents {
+  /** The session's figure for the realm's speed (`RealmSpeed`), which sets the rounds a run steps between. */
+  realmSpeed?(): number;
   notice?(message: string): void;
   /** Progress changed, so the renderer can redraw. */
   progress?(progress: WalkProgress): void;

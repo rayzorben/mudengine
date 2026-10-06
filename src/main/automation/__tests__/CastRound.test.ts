@@ -10,6 +10,7 @@ import type { SafetyDecision } from '../../../shared/automation';
 import type { Block } from '../../../shared/blocks';
 import { EMPTY_CHARACTER, NO_AFFLICTIONS, type CharacterState } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../../shared/config';
+import { blockOf } from '../../../shared/__tests__/blocks';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -149,5 +150,38 @@ describe('one heal, blessing or cure a round', () => {
     expect(gate.mayCast('protection')).toBe(false);
     gate.reset();
     expect(gate.mayCast('protection')).toBe(true);
+  });
+});
+
+/* orohost runs at 5 (`GameSpeed`): a round a second, and a heal was held five of them because the beat read the fight as one round. */
+describe('a cast a round, on a realm that runs faster', () => {
+  it('opens the next cast on the next round, a second on', () => {
+    let at = 1_000_000;
+    const round = new CastRound(
+      {},
+      () => at,
+      () => 5
+    );
+    const hit = (): void => round.onBlock(blockOf('mob-hits', '', {}, at));
+    hit();
+    round.noteCast();
+    expect(round.mayCast('protection')).toBe(false);
+    at += 1000;
+    hit();
+    expect(round.mayCast('protection')).toBe(true);
+  });
+
+  it('holds it the server’s round and its slack where no blow opens the next', () => {
+    let at = 1_000_000;
+    const round = new CastRound(
+      {},
+      () => at,
+      () => 5
+    );
+    round.noteCast();
+    at += 1000;
+    expect(round.mayCast('protection')).toBe(false);
+    at += tuning().spells.castSlackMs;
+    expect(round.mayCast('protection')).toBe(true);
   });
 });

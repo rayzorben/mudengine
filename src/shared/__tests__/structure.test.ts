@@ -40,7 +40,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by one switch writer for routes and `@auto-combat` (todo 02).
   // Lowered by the search's recording, out to `Records.noted` beside the shop list's (todo 02, shops).
   // Lowered by the errands' one list, read from `Travel.errandUnderWay` (area search).
-  'src/main/session/SessionManager.ts': 3550,
+  'src/main/session/SessionManager.ts': 3548,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2420,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).

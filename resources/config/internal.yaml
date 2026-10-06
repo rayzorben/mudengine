@@ -426,6 +426,7 @@ tuning:
 
     # The quiet between two rounds' blows: the first blow after it opens a new
     # round. Measured: inside a round at most 1.5 s, between rounds 2.5 s or more.
+    # The server's figure: a realm that runs faster divides it by its speed.
     roundGapMs: 2000
 
     # How long a command proposed on the round tick (a change of attack, a

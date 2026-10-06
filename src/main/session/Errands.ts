@@ -21,6 +21,7 @@ import type { WalkKind } from '../../shared/walk';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
+import { RealmSpeed } from '../automation/RealmSpeed';
 import type { KeyedWay } from '../automation/AutoKeys';
 import type { RestAwayPlanner } from '../automation/RestAway';
 import type { WardSources } from '../automation/Wards';
@@ -30,7 +31,6 @@ import type { OddsReader } from './OddsBook';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { LairCosts } from '../world/LairCosts';
-import { RealmSpeed } from './RealmSpeed';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
 import { GROUNDS, type Ground, admitsFiller, groundRefills } from './huntGrounds';
 import { preferredEdges } from '../world/loopDraft';
@@ -392,6 +392,11 @@ export class Errands implements SessionModule {
   /** Every block, changed state or not: a round read for the realm's speed. */
   onBlock(block: Pick<Block, 'type' | 'at'>): void {
     this.speed.onBlock(block);
+  }
+
+  /** The session's figure for the realm's speed (`RealmSpeed`): the survey's, and every round reader's. */
+  get realmSpeed(): number {
+    return this.speed.multiplier;
   }
 
   /** The server's family moved, so every remembered `fitness` is stale. */
