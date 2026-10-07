@@ -31,8 +31,8 @@ import type { CharacterState } from '@shared/character';
 import type { SupplyItem } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 import { CAN_SEE_FROM, lightPhrase } from '@shared/light';
-import { carriedCount, withSupply } from '@shared/supplies';
-import type { SupplyList } from './SupplyControls';
+import { carriedCount } from '@shared/supplies';
+import { CountInput, type SupplyList } from './SupplyControls';
 import { useRememberedChoice } from '../hooks/useRemembered';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -376,16 +376,11 @@ function SelfCard({
       value: (row) => row.min,
       cell: (row) =>
         supplies ? (
-          <input
-            aria-label={t('cards.self.supplies.min')}
+          <CountInput
             className="supply-cell"
-            defaultValue={row.min}
-            inputMode="numeric"
-            key={`${row.name}-min-${row.min}`}
-            onBlur={(event) => commitCount(supplies, row, 'min', event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') event.currentTarget.blur();
-            }}
+            label={t('cards.self.supplies.min')}
+            onCommit={(min) => editCount(supplies, row.name, { min })}
+            value={row.min}
           />
         ) : (
           row.min
@@ -399,16 +394,11 @@ function SelfCard({
       value: (row) => row.max,
       cell: (row) =>
         supplies ? (
-          <input
-            aria-label={t('cards.self.supplies.max')}
+          <CountInput
             className="supply-cell"
-            defaultValue={row.max}
-            inputMode="numeric"
-            key={`${row.name}-max-${row.max}`}
-            onBlur={(event) => commitCount(supplies, row, 'max', event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') event.currentTarget.blur();
-            }}
+            label={t('cards.self.supplies.max')}
+            onCommit={(max) => editCount(supplies, row.name, { max })}
+            value={row.max}
           />
         ) : (
           row.max
@@ -445,7 +435,7 @@ function SelfCard({
         supplies ? (
           <button
             className="row-action"
-            onClick={() => supplies.save(withSupply(supplies.items, row.name, null))}
+            onClick={() => supplies.edit(row.name, () => null)}
             onMouseDown={keepFocus}
             title={t('cards.self.supplies.removeTooltip', { item: row.name })}
             type="button"
@@ -537,17 +527,16 @@ function SelfCard({
   );
 }
 
-function commitCount(
+/**
+ * A count typed on a row, written onto that row as the newest list has it. A
+ * row removed while the figure was being typed stays removed.
+ */
+function editCount(
   supplies: SupplyList,
-  row: SupplyItem,
-  field: 'min' | 'max',
-  text: string
+  name: string,
+  count: Pick<SupplyItem, 'min'> | Pick<SupplyItem, 'max'>
 ): void {
-  const parsed = Number.parseInt(text, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return;
-  const value = Math.min(1000, parsed);
-  if (value === row[field]) return;
-  supplies.save(withSupply(supplies.items, row.name, { ...row, [field]: value }));
+  supplies.edit(name, (current) => (current === null ? null : { ...current, ...count }));
 }
 
 function selfCopy(character: CharacterState, title: string): string {

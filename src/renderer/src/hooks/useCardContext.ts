@@ -23,6 +23,7 @@ import type { ToolbarSubject } from '../lib/toolbar';
 import type { CharacterState } from '@shared/character';
 import type { AppConfig, AutomationSwitches, RemotesConfig, SupplyItem } from '@shared/config';
 import { canRestore, type GearAction } from '@shared/gear';
+import { supplyFor, withSupply } from '@shared/supplies';
 import type { Find } from '@shared/finds';
 import type { HuntingRoom } from '@shared/hunting';
 import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
@@ -468,18 +469,35 @@ export function useCardContext({
       {
         items: SupplyItem[];
         save: AddressedActions['setSupplies'];
-        bundle: { items: SupplyItem[]; save: AddressedActions['setSupplies'] };
+        bundle: SupplyList;
+        /** The last list written, until the next list arrives. */
+        written: SupplyItem[] | null;
       }
     >()
   );
   const suppliesBundle = useCallback(
-    (sid: SessionId): { items: SupplyItem[]; save: AddressedActions['setSupplies'] } => {
+    (sid: SessionId): SupplyList => {
       const items = suppliesFor(sid);
       const save = boundFor(sid).setSupplies;
       const cached = suppliesCache.current.get(sid);
       if (cached && cached.items === items && cached.save === save) return cached.bundle;
-      const bundle = { items, save };
-      suppliesCache.current.set(sid, { items, save, bundle });
+      const bundle: SupplyList = {
+        items,
+        // The newest list and not this bundle's: a count field closed after a
+        // row was removed holds the bundle from before the removal, and Max
+        // committed before Min's write comes back would put the old Min back.
+        edit: (name, change) => {
+          const entry = suppliesCache.current.get(sid);
+          const newest = entry?.written ?? entry?.items ?? items;
+          const current = supplyFor(newest, name);
+          const next = change(current);
+          if (next === current) return;
+          const list = withSupply(newest, name, next);
+          if (entry) entry.written = list;
+          save(list);
+        }
+      };
+      suppliesCache.current.set(sid, { items, save, bundle, written: null });
       return bundle;
     },
     [boundFor, suppliesFor]
