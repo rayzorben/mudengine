@@ -19,6 +19,8 @@
 import type { BlockType } from '../../shared/blocks';
 import { ROOM_LIGHTS, type Afflictions } from '../../shared/character';
 import { DIRECTION_NAME } from '../../shared/world';
+import { escapeRegExp } from '../../shared/regex';
+import { TITLES_WITH_OF } from '../../shared/titles';
 
 export interface Rule {
   type: BlockType;
@@ -227,6 +229,11 @@ const COMPASS = Object.values(DIRECTION_NAME)
  * confirmed, and the session logs of 2026-10-04 and 05 hold 22 of them.
  */
 const ITEM_NAME = "[\\w' .-]";
+
+/** The rank titles with ` of ` inside them, as one alternation (the `who` row). */
+const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(/ /g, '\\s+')).join(
+  '|'
+);
 
 export const RULES: Rule[] = [
   /* ---------------------------------------------------------- session */
@@ -2493,9 +2500,13 @@ export const BATCH_RULES: BatchRule[] = [
      *              Rand                  -  Apprentice of Mudengine
      *
      * The seam is therefore ` of `, not the double space the corpus alone
-     * suggested — the wire wins. A title is a class-and-rank string and none
-     * in either realm contains `of`; the gang name is anything at all after
-     * it. Glued into `title` it put `Squire  of EyeExploredDora` on the Realm
+     * suggested — the wire wins. The gang name is anything at all after it.
+     * Some rank titles contain ` of ` themselves, and cut at the first one
+     * `Master of the Way of The Coma Machine` read as `Master` in the gang
+     * `the Way of The Coma Machine` (live, 2026-10-07). So the title tries
+     * `TITLES_WITH_OF` whole first. `Lord` alone is a title too, so a row
+     * `Lord of Nature` reads as the longer title and no gang; nothing in the
+     * row tells the two apart. Glued into `title` it put `Squire  of EyeExploredDora` on the Realm
      * card as a rank, and — the half that mattered — left the only realm-wide
      * statement of gang membership read by nothing. The status flag stays
      * last, so a gang whose last word is one to three capitals would lose it
@@ -2515,7 +2526,9 @@ export const BATCH_RULES: BatchRule[] = [
     // client has never met.
     maxLines: 'roster',
     qualifiers: [
-      /^\s*(?:(?<alignment>Saint|Good|Neutral|Seedy|Outlaw|Criminal|Villain|Lawful|FIEND)\s+)?(?<name>[A-Z][\w'-]*)(?:\s+(?<last>[A-Z][\w'-]*))?\s+[-x]\s+(?<title>.+?)(?:\s+of (?<gang>.+?))?(?:\s+(?<flags>[A-Z]{1,3}))?\s*$/
+      new RegExp(
+        `^\\s*(?:(?<alignment>Saint|Good|Neutral|Seedy|Outlaw|Criminal|Villain|Lawful|FIEND)\\s+)?(?<name>[A-Z][\\w'-]*)(?:\\s+(?<last>[A-Z][\\w'-]*))?\\s+[-x]\\s+(?<title>${TITLE_WITH_OF}|.+?)(?:\\s+of (?<gang>.+?))?(?:\\s+(?<flags>[A-Z]{1,3}))?\\s*$`
+      )
     ]
   },
   {

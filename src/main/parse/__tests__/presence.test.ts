@@ -26,6 +26,7 @@ import {
   type RoomOccupant
 } from '../../../shared/character';
 import { NO_PLAYERS } from '../../../shared/players';
+import { Classifier } from '../Classifier';
 
 /*
  * The cluster lifted out of `CharacterTracker` on 2026-08-29. The behaviour is
@@ -36,6 +37,50 @@ import { NO_PLAYERS } from '../../../shared/players';
 const state = (over: Partial<CharacterState> = {}): CharacterState => ({
   ...structuredClone(EMPTY_CHARACTER),
   ...over
+});
+
+/*
+ * Rows from a live Paradigm `who`, 2026-10-07. The row was cut at its first
+ * ` of `, and some rank titles have one inside them, so `Master of the Way`
+ * read as `Master` in the gang `the Way of The Coma Machine`.
+ */
+describe('a rank title with of inside it', () => {
+  const rows = (lines: string[]): Array<Record<string, string>> => {
+    const classifier = new Classifier();
+    let found: Array<Record<string, string>> = [];
+    let seq = 0;
+    for (const text of ['         Current Adventurers', ...lines, '[HP=63/63,MA=42/42]:']) {
+      seq += 1;
+      const { batch } = classifier.classify({
+        seq,
+        at: seq,
+        text,
+        plain: text,
+        terminator: 'newline'
+      });
+      if (batch?.type === 'who-list') found = batch.rows ?? [];
+    }
+    return found;
+  };
+
+  it('keeps the title whole and the gang after it', () => {
+    const roster = rosterFrom(
+      rows([
+        '         Tiny Yoda             -  Master of the Way of The Coma Machine',
+        '    Good Beanis Weanis         -  Lord of Nature of YOL9X',
+        '         Rage Bloodwrath       -  Lord of Nature',
+        '         Tomoe Gomez           -  Master Hunter of House of Rage',
+        '    Good Moozoo Kangaroo       -  Master of the Way of Fickle Shrubberies'
+      ])
+    );
+    expect(roster.map(({ title, gang }) => [title, gang])).toEqual([
+      ['Master of the Way', 'The Coma Machine'],
+      ['Lord of Nature', 'YOL9X'],
+      ['Lord of Nature', null],
+      ['Master Hunter', 'House of Rage'],
+      ['Master of the Way', 'Fickle Shrubberies']
+    ]);
+  });
 });
 
 describe('reading a listing', () => {
