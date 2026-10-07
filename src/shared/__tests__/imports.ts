@@ -40,9 +40,9 @@ export function resolveImport(spec: string, from: string): string {
   if (resolved !== undefined && !resolved.isExternalLibraryImport) {
     return repoPath(resolved.resolvedFileName);
   }
-  // A Vite asset (`?raw`) resolves by path; the compiler does not know it.
+  // A `.yaml` module resolves by path; the compiler does not know it.
   if (spec.startsWith('.')) {
-    return repoPath(path.resolve(path.dirname(containing), spec.split('?')[0] ?? spec));
+    return repoPath(path.resolve(path.dirname(containing), spec));
   }
   return spec;
 }
