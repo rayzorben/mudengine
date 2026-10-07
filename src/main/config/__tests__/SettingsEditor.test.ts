@@ -714,17 +714,15 @@ describe('what a character plays against, and what keeps it alive', () => {
    * changes what the next character starts with rather than reaching back into
    * this one. That is the whole of "Global is just defaults".
    */
-  it('states it on creation even when it answers nobody', () => {
+  it('states it on creation, copied whole from Global', () => {
     editor.saveProfile('vaelor', draft());
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
     expect(automation['remotes']).toEqual({
-      enabled: false,
+      enabled: true,
       gangpath: false,
       autoJoin: false,
       gang: [],
-      // Copied from Global, which is where the shipped party list lives. The
-      // switch is off, so it grants nobody anything until somebody turns
-      // answering on -- which is the point of stating it either way.
+      // Copied from Global, which is where the shipped party list lives.
       party: [...DEFAULT_CONFIG.automation.remotes.party],
       players: {}
     });

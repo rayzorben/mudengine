@@ -11662,33 +11662,40 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     answering.slice(0, 200)
   );
 
-  check(
-    await evaluate(`
+  // The switch ships on (2026-10-07), so it is turned off and then on again,
+  // each time read back from the file: the form saves itself.
+  const clickAnswering = (checked) =>
+    evaluate(`
       (() => {
         const box = document.querySelector('.settings-check[data-field="remotes-enabled"]');
         const input = box?.querySelector('input');
-        if (!input || input.checked) return false;
+        if (!input || input.checked !== ${checked}) return false;
         input.click();
         return true;
       })()
-    `),
-    'answering can be switched on'
-  );
-  // The form saves itself, so the assertion is on the file rather than a click.
-  const answersInFile = await readUntil(
-    () =>
-      (async () => {
-        const file = path.join(PROFILES_DIR, 'smoke', 'profile.yaml');
-        if (!fs.existsSync(file)) return '(no profile file)';
-        return fs.readFileSync(file, 'utf8');
-      })(),
-    (answersInFile) => /remotes:\s*\n\s*enabled: true/.test(answersInFile)
-  );
-  check(
-    /remotes:\s*\n\s*enabled: true/.test(answersInFile),
-    'and it reaches this character’s own file, not only the options file',
-    (answersInFile.match(/remotes:[\s\S]{0,40}/)?.[0] ?? '(no remotes block)').replace(/\n/g, ' | ')
-  );
+    `);
+  const answeringInFile = async (value) => {
+    const shape = new RegExp(`remotes:\\s*\\n\\s*enabled: ${value}`);
+    const text = await readUntil(
+      () =>
+        (async () => {
+          const file = path.join(PROFILES_DIR, 'smoke', 'profile.yaml');
+          if (!fs.existsSync(file)) return '(no profile file)';
+          return fs.readFileSync(file, 'utf8');
+        })(),
+      (text) => shape.test(text)
+    );
+    return [
+      shape.test(text),
+      (text.match(/remotes:[\s\S]{0,40}/)?.[0] ?? '(no remotes block)').replace(/\n/g, ' | ')
+    ];
+  };
+  check(await clickAnswering(true), 'answering ships on and can be switched off');
+  const [offInFile, offDetail] = await answeringInFile(false);
+  check(offInFile, 'and off reaches this character’s own file', offDetail);
+  check(await clickAnswering(false), 'answering can be switched on again');
+  const [onInFile, onDetail] = await answeringInFile(true);
+  check(onInFile, 'and it reaches this character’s own file, not only the options file', onDetail);
 
   /*
    * And the grid that arrived with the per-command gate: fifty-seven rows, of
@@ -14615,10 +14622,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     `document.querySelector('.player-flyout')?.innerText.replace(/\\s+/g, ' ') ?? ''`
   );
   /*
-   * With `remotes.enabled` off -- which is the shipped default and what this
-   * run uses -- the face says so rather than showing a gate that cannot matter.
-   * The two states need different actions from the reader: "off entirely" and
-   * "on, and this person has been granted nothing".
+   * With `remotes.enabled` off the face says so rather than showing a gate
+   * that cannot matter; with it on, as this run leaves it, it says what this
+   * person is granted. The two states need different actions from the reader:
+   * "off entirely" and "on, and this person has been granted nothing".
    */
   // The value beside the `answering` heading, as the whole of its text.
   const answering = JSON.parse(

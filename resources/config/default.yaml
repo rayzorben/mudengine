@@ -1109,10 +1109,10 @@ automation:
   # shows its reply format, and inventing one would put a guess on another
   # player's screen in a shape their client cannot read.
   #
-  # Off by default. `enabled` is the *switch* -- be reachable at all -- and the
-  # two lists below are the *gate*. With the switch on and nothing granted,
-  # nobody is answered, which is the honest starting point for a channel by
-  # which somebody else's typing moves this character.
+  # On by default. `enabled` is the *switch* -- be reachable at all -- and the
+  # lists below are the *gate*. With the switch on, only what is granted is
+  # answered: as shipped that is the party list's three names, and nothing that
+  # moves this character on somebody else's say.
   #
   # `gangpath` is whether `gb @exp` from somebody in the gang is answered `gb
   # {Made: ...}` on the gang's own channel. Its own switch because a gangpath
@@ -1181,7 +1181,7 @@ automation:
   # There is no ground meaning "everybody", and the absence is deliberate: it is
   # not a reason, it is the absence of a gate.
   remotes:
-    enabled: false
+    enabled: true
     gangpath: false
     autoJoin: false
     gang: []

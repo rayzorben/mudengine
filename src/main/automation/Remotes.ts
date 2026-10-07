@@ -16,9 +16,9 @@
  *
  * ## Three rules it keeps
  *
- * - **Off by default**, like everything automated in this client. What it turns
- *   on is a channel by which somebody else's typing moves this character, and
- *   that is not a thing to have without having chosen it.
+ * - **The switch ships on and the lists decide** (the user, 2026-10-07). Only
+ *   the party list's three names ship granted; `@do` and every other remote
+ *   that moves this character answers nobody until a player is granted it.
  * - **Answered on the channel it was asked on.** A telepath is answered by
  *   telepath (`/Sackhunter {HP=600/600}`), a say in the room by a directed say
  *   (`Vulcan says (to you) "{ok}"`), a gangpath on the gangpath. Both shapes
