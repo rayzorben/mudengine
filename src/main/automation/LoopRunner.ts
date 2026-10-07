@@ -411,6 +411,7 @@ export class LoopRunner implements SessionModule {
         : null,
       startedAt: this.startedAt,
       expAtStart: this.expAtStart,
+      reached: this.lapBegunAt !== null,
       forward: this.forward,
       bounce: this.loop?.bounce ?? false
     };

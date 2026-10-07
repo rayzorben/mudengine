@@ -693,6 +693,12 @@ export interface LoopProgress {
    * known then — in which case nothing about experience made is claimed.
    */
   expAtStart: number | null;
+  /**
+   * Whether this run has stood on the loop since Start or play. False while
+   * the first leg is the walk out to it, which the Navigation card draws as
+   * routing (`navigationFace`).
+   */
+  reached: boolean;
   /** Which way round a bounce loop is being walked. Always true otherwise. */
   forward: boolean;
   bounce: boolean;
@@ -711,6 +717,7 @@ export const NO_LOOP: LoopProgress = {
   hold: null,
   startedAt: null,
   expAtStart: null,
+  reached: false,
   forward: true,
   bounce: false
 };

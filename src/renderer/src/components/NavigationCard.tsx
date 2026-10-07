@@ -5,7 +5,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { CharacterState } from '@shared/character';
 import { loopIsResting, type LoopProgress } from '@shared/loops';
-import { movementOf } from '@shared/movement';
+import { movementOf, navigationFace } from '@shared/movement';
 import {
   isAfflictionHold,
   walkIsResting,
@@ -52,11 +52,12 @@ export interface NavigationCardProps extends CardChrome {
  * the card never said plainly which of them was happening.
  *
  * A player has three words for this and the card now uses them: **routing**,
- * **looping**, **stopped**. `movementOf` (`src/shared/movement.ts`) answers
+ * **looping**, **stopped**. `navigationFace` (`src/shared/movement.ts`) answers
  * which, and the card draws that one and no other — looping hides the route,
  * routing hides the lap, and neither says *Not currently moving*. A loop's legs
- * are routes, but that is the mechanism rather than the thing happening, and a
- * card that reported the mechanism was reporting the client's own footwork.
+ * between stops are drawn as the lap, since a card reporting them as routes
+ * would report the client's own footwork; the walk out to the first stop is
+ * drawn as routing, because until then there is no lap to report.
  *
  * The transport is the movement's: play or stop in the heading beside the
  * chip naming the state they change, with reverse beside them on a bounce loop
@@ -79,8 +80,10 @@ function NavigationCard({
   ...chrome
 }: NavigationCardProps) {
   const movement = movementOf(walk, loop);
+  // A lap walking out to its loop is drawn as the route there (`navigationFace`).
+  const face = navigationFace(walk, loop);
   const running = loop.status === 'running';
-  const live = movement.kind === 'loop';
+  const live = face === 'loop';
 
   /*
    * A one-second tick, only while there is something to count: how long the
@@ -466,7 +469,7 @@ function NavigationCard({
    * the card follows.
    */
   const tabs: CardTab[] =
-    movement.kind === 'route'
+    face === 'route'
       ? [
           {
             id: 'route',
@@ -486,7 +489,7 @@ function NavigationCard({
                 .join('\n')
           }
         ]
-      : movement.kind === 'loop'
+      : face === 'loop'
         ? [
             {
               id: 'loop',
@@ -520,13 +523,7 @@ function NavigationCard({
   return (
     <BentoCard
       {...chrome}
-      badge={
-        movement.kind === 'loop'
-          ? loopChip(loop)
-          : movement.kind === 'route'
-            ? walkChip(walk)
-            : null
-      }
+      badge={face === 'loop' ? loopChip(loop) : face === 'route' ? walkChip(walk) : null}
       className="navigation-card"
       headingActions={controls}
       tabs={tabs}

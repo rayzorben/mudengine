@@ -18,6 +18,7 @@
  */
 import type { CommandQueue } from './CommandQueue';
 import { cannotSneakHere } from './Walker';
+import { SNEAK_KEY } from './walk/Sneak';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
@@ -141,7 +142,7 @@ export class AutoStealth implements SessionModule {
       this.queue.enqueue({
         command: 'sn',
         priority: 'movement',
-        coalesceKey: 'sneak',
+        coalesceKey: SNEAK_KEY,
         expiresAt: now + expiresMs,
         reason: t('automation.stealth.reasonSneak', { verb: opener })
       });
