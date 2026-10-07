@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { NO_LOOP, type LoopProgress, type LoopStatus } from '../loops';
-import { movementOf, NOT_MOVING } from '../movement';
+import { movementOf, navigationFace, NOT_MOVING } from '../movement';
 import { IDLE_WALK, type WalkProgress, type WalkStatus } from '../walk';
 
 /** A journey the player asked for, unless said otherwise. */
@@ -108,5 +108,38 @@ describe('what a character is doing about going anywhere', () => {
       moving: false,
       resumable: false
     });
+  });
+});
+
+/* The lap is the movement from the press, but the card draws the walk out to
+   the loop as the route it is, and the lap once the character stands on it. */
+describe('which face the Navigation card draws', () => {
+  const out = (reached: boolean): LoopProgress => ({ ...lap('running'), reached });
+
+  it('draws the walk out to a lap as routing', () => {
+    expect(movementOf(walking('walking', false), out(false)).kind).toBe('loop');
+    expect(navigationFace(walking('walking', false), out(false))).toBe('route');
+  });
+
+  /* A lap started again after a stop finds the last run's stopped leg on
+     the walker; that is not the way there, so the card shows the lap. */
+  it('does not draw the last run’s stopped leg as the way there', () => {
+    expect(navigationFace(walking('stopped', false), out(false))).toBe('loop');
+  });
+
+  it('draws the lap once the character has stood on it', () => {
+    expect(navigationFace(walking('walking', false), out(true))).toBe('loop');
+  });
+
+  /* Held before the first leg is walked (a fight at the start), there is no
+     route to draw, so the lap is what the card reports. */
+  it('draws the lap when nothing is being walked yet', () => {
+    expect(navigationFace(IDLE_WALK, out(false))).toBe('loop');
+  });
+
+  it('agrees with the movement everywhere else', () => {
+    expect(navigationFace(walking('stopped'), lap('stopped'))).toBe('route');
+    expect(navigationFace(IDLE_WALK, lap('stopped'))).toBe('loop');
+    expect(navigationFace(IDLE_WALK, NO_LOOP)).toBeNull();
   });
 });
