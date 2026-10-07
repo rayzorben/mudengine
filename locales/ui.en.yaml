@@ -5070,6 +5070,7 @@ automation:
       character is set for.
     refusalNoRooms: The best lair within reach has no room to stand in.
     refusalNoRoute: 'No route to {room}: {why}'
+    refusalSetOff: 'Not going to {room}: {why}'
     refusalNothingReachable: Nothing within reach is worth hunting.
     refusalNotReached: 'Did not reach {room}: {why}'
     started: Hunting {loopName}, for about {rate} exp an hour.

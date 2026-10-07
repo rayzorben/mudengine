@@ -448,6 +448,12 @@ export const TRAPS_ABILITY = 1002;
 export const CLASS_STEALTH_ABILITY = 103;
 
 /**
+ * `SeeHidden` on a monster row: `Mob.cs:1833` never targets a sneaking player
+ * unless the monster carries it, so a sneak past one buys nothing.
+ */
+export const SEE_HIDDEN_ABILITY = 57;
+
+/**
  * The attacks a class or race row grants: `AttackCommand.cs` refuses a bash or
  * a smash without its ability. GreaterMUD refuses the three martial attacks
  * outside the Mystic (`ClassID 15`), which is the class carrying all three.

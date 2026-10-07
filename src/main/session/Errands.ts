@@ -1617,7 +1617,7 @@ export class Errands implements SessionModule {
   huntingGrounds(
     radius: number | null,
     measure: string | null = null,
-    { as = this.tracker.current, beneath = false, gated = false }: SurveyAsk = {}
+    { as = this.tracker.current, beneath = false, gated = false, page = 0 }: SurveyAsk = {}
   ): HuntingAdvice {
     const state = as;
     const world = this.world;
@@ -2061,10 +2061,13 @@ export class Errands implements SessionModule {
      * are handed back unmeasured rather than dropped: measuring all 910 of
      * Paradigm's cost 1.1s, and a list cut at twenty-four is not the realm.
      * The one a reader opened is measured too, so what it walks is a ring.
+     * A later `page` measures the next `maxSpots` down the same order.
      */
-    const rest = guessed.slice(c.maxSpots);
+    // An extension's ask: a page that is not a whole number is the first.
+    const first = (Number.isInteger(page) && page > 0 ? page : 0) * c.maxSpots;
+    const rest = [...guessed.slice(0, first), ...guessed.slice(first + c.maxSpots)];
     const opened = rest.findIndex((spot) => spot.key === measure);
-    const chosen = guessed.slice(0, c.maxSpots);
+    const chosen = guessed.slice(first, first + c.maxSpots);
     if (opened !== -1) chosen.push(rest[opened]!);
     // Measured from the survey's own spots, so none is paced twice.
     const unpaced = new Map(survey.map((spot) => [spot.key, spot]));

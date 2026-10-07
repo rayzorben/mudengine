@@ -1928,19 +1928,37 @@ export class Travel implements SessionModule {
      * reported success (on review). Nothing is walking now, whatever was
      * before.
      */
-    if (!this.walker.walking) {
+    const stopped = this.stoppedAtStart();
+    if (stopped !== null) {
       this.walkAsked = false;
       this.walkRun = false;
-      return this.walker.progress.reason ?? t('automation.walk.stoppedAtStart');
+      return stopped;
     }
     // What this route crosses that `keepOutOf` names, the player having chosen
     // it on the panel over the way round: planned again the same way later.
     const last = route.steps.at(-1);
     this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
     this.clearFor(route);
-    const off = run ? this.combatOffForRun() : false;
-    if (typeof off === 'string') this.walker.stop(off);
-    return typeof off === 'string' ? off : null;
+    return run ? this.beginRun() : null;
+  }
+
+  /** Null where the walk `Walker.start` just answered for is going; otherwise why it stopped inside `start`. */
+  stoppedAtStart(): string | null {
+    return this.walker.walking
+      ? null
+      : (this.walker.progress.reason ?? t('automation.walk.stoppedAtStart'));
+  }
+
+  /**
+   * The walk just started is a run: auto-combat off for the way, and the walk
+   * stopped, with the reason, where the file will not take the write. The one
+   * way a run begins, the player's and the hunt's (todo 15).
+   */
+  beginRun(): string | null {
+    const off = this.combatOffForRun();
+    if (typeof off !== 'string') return null;
+    this.walker.stop(off);
+    return off;
   }
 
   /**

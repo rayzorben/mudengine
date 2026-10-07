@@ -1137,6 +1137,11 @@ export interface SurveyAsk {
   beneath?: boolean;
   /** The spots the level ready would shut once trained, marked `closesWithTraining`. */
   gated?: boolean;
+  /**
+   * Which `maxSpots` of the ranked guesses are measured: 0, the default, the
+   * best; 1 the next, and so on. The rest come back in `unmeasured`.
+   */
+  page?: number;
 }
 
 /** One suggestion: a lair, the rooms that hold it, and what it is worth. */
@@ -1565,6 +1570,12 @@ export interface HuntOrder {
   spot: HuntingSpot;
   expPerHour: number | null;
   copperPerHour: number | null;
+  /**
+   * Walked to the start as a run (todo 15): combat off for the way, steps
+   * timed between rounds, combat on again at arrival. Absent is a walk that
+   * fights what it meets. `runRisk` prices the way.
+   */
+  run?: boolean;
 }
 
 /**
