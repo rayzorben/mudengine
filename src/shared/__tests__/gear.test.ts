@@ -7,6 +7,7 @@ import {
   offRoundPlan,
   overlayFor,
   swapPlan,
+  wearPlan,
   equip,
   equipAllPlan,
   equipBlock,
@@ -604,5 +605,39 @@ describe('what else the server checks before an item goes on', () => {
   it('refuses no kind to a class nothing has read', () => {
     const plate: EquipRestrictions = { kind: 'armour', armour: { kind: 9 } };
     expect(equipBlock(plate, UNKNOWN_WEARER)).toBeNull();
+  });
+});
+
+describe('putting on what was just bought', () => {
+  it('takes the weakest of a full ring kind off first, and the off-hand before a two-hander', () => {
+    const pack = [
+      carried({ name: 'silver ring' }),
+      carried({ name: 'greataxe' }),
+      worn('brass ring', 'Finger'),
+      worn('copper ring', 'Finger'),
+      worn('round shield', OFF_HAND)
+    ];
+    expect(
+      wearPlan(
+        [
+          { name: 'silver ring', replaces: 'brass ring', hands: null },
+          { name: 'greataxe', replaces: null, hands: 2 }
+        ],
+        pack
+      )
+    ).toEqual(['remove brass ring', 'wear silver ring', 'remove round shield', 'wear greataxe']);
+  });
+
+  it('asks nothing for an item the pack lacks or already wears', () => {
+    const pack = [worn('leather cap', 'Head')];
+    expect(
+      wearPlan(
+        [
+          { name: 'leather cap', replaces: null, hands: null },
+          { name: 'iron helm', replaces: null, hands: null }
+        ],
+        pack
+      )
+    ).toEqual([]);
   });
 });

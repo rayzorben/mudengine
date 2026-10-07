@@ -120,6 +120,7 @@ export function useCardRenderers({
       view.notices,
       view.players,
       view.questRun,
+      view.gearTrip,
       view.questSaid,
       view.shops,
       view.statsBase,

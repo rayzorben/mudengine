@@ -901,6 +901,7 @@ palette:
       one: '{stopCount} stop'
     buildLabel: Build a loop on the map
     huntLabel: Where should I hunt?
+    gearLabel: What gear should I get?
     routeLabel: Route to room
     searchLabel: Search the console
     areaSearchLabel: Search the area…
@@ -1584,6 +1585,76 @@ cards:
     oneRoomNoLoop: One room is a place to stand, not a loop
     loopName: 'Hunt: {area} ({mob})'
     copyRow: '{mobs}: {rate} exp/hr, {rooms} rooms, {steps} steps'
+  gear:
+    title: Gear
+    caption: Each slot, what is worn there and what is better
+    find: Find a slot or an item
+    loading: Looking through every item for each slot…
+    none: Nothing to show until the world database and the character's sheet are read.
+    failed: 'Could not ask: {why}'
+    refresh: Check again
+    unread: Class, race, level or alignment is not read yet, so some items may be left out that could be worn.
+    budget: Cash to spend
+    cash: 'Purse {purse}, {banked} in the bank'
+    cashBanksOnly: 'Purse not read, {banked} in the bank'
+    cashUnread: Cash not read yet (type `i` and `bank`)
+    copper: '{copper} copper'
+    unpriced: no price
+    columns:
+      slot: Slot
+      worn: Worn
+      best: Best in slot
+      buy: Buy now
+      take: Buy
+    takeLabel: 'Buy for {slot}'
+    nothingWorn: nothing
+    nothingPicked: nothing within the cash
+    wornIsBest: what is worn is the best
+    sold: '{shop}, {price}'
+    soldMore: '{shop}, {price} (and {more} more shops)'
+    dropped: 'dropped by {monsters}'
+    nowhere: not sold, no known drop
+    gainArmour: '+{ac} AC'
+    gainRound: '+{damage} damage a round'
+    level: 'level {level}'
+    pick: Buy
+    unpick: Don't buy
+    pickedNone: Nothing picked.
+    pickedCost:
+      one: '1 item for {cost}, of {budget} to spend.'
+      many: '{count} items for {cost}, of {budget} to spend.'
+    unpricedCount:
+      one: 1 has no price.
+      many: '{count} have no price.'
+    plan: Plan the trip
+    planning: Planning…
+    replan: Plan again
+    tripFace: Trip
+    tripSummary:
+      one: '1 stop, {moves} steps, {owed}.'
+      many: '{stops} stops, {moves} steps, {owed}.'
+    tripPurseUnread: The purse is not read, so no bank is on the way; type `i` first.
+    tripBlocked: A stop below has no way there as it stands, and the trip ends there.
+    tripShort: 'The banks on record are {short} short.'
+    tripLeft: 'Left out: {items}.'
+    leftNotSold: '{item} (no shop sells it)'
+    leftUnreachable: '{item} (no shop selling it can be reached)'
+    stopBank: 'Withdraw {amount} at {bank}'
+    stopShop: '{shop}: {items}'
+    legSteps:
+      one: 1 step
+      many: '{steps} steps'
+    legNoWay: no way there as it stands
+    legNeeds: 'needs {items} first'
+    legHazard: '{spell} ({rooms} rooms)'
+    runTooltip: Go with auto-combat off, and turn it back on at the last shop
+    walkTooltip: Walk to each bank and shop in turn and buy
+    stop: Stop
+    copyRow: '{slot}: {worn}; best {best}'
+    trip:
+      nothingPicked: nothing is picked to buy
+      tooMany: '{items} items and banks are more than one trip takes ({most})'
+      noWay: no shop selling any of them can be reached from here
   quests:
     anyOf: Any one of
     badge:
@@ -5346,6 +5417,28 @@ automation:
     refused: 'Not selling: {why}'
     refusalNoCounter: 'there is no shop in {room}'
     endedUnsold: 'not sold: {items}'
+  gearTrip:
+    because: buying the gear picked on the Gear card
+    going:
+      one: 'Going to buy gear: 1 stop, {moves} steps.'
+      many: 'Going to buy gear: {stops} stops, {moves} steps.'
+    refused: 'Not going to buy gear: {why}'
+    refusalEscaping: the character is running
+    refusalUnreadable: the items picked could not be read
+    reasonWithdraw: 'withdrawing {amount} for the gear'
+    reasonBuy: 'buying {item} at {shop}'
+    reasonWear: putting on the gear just bought
+    withdrew: 'Withdrew {amount} at {bank}.'
+    bankShort: '{bank} holds {held}, which is not enough; going on to the shops.'
+    bankSilent: '{bank} did not answer; going on to the shops.'
+    bought: 'Bought {items}.'
+    notSold: 'Not bought: {items}.'
+    notReached: 'did not reach {place}: {why}'
+    tooManyLegs: 'too many tries to reach {place}'
+    stoppedByPlayer: you pressed Stop
+    notWorn: 'Not put on, the command queue would not take: {commands}'
+    ended: 'Gear trip stopped: {why}'
+    done: 'Gear trip done: bought {bought} of {wanted}.'
   hostTrip:
     refusalSwitchedOff: automation is off
     refusalNotInRealm: the character is not in the realm

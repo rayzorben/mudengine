@@ -7,7 +7,7 @@
  * `OutgrownGear` keeps one whatever is listed, since `sell` takes the worn
  * copy too. Each with its worth in copper where the realm's rows agree on one.
  */
-import { WORN_SLOT_HOLDS } from '../../shared/items';
+import { placesIn } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
 import { counterPriceInCopper } from '../../shared/coins';
 import type { ItemEntity } from '../../shared/entities';
@@ -49,7 +49,7 @@ export function outgrownItems(
     const code = item.wornSlotCode;
     if (item.equipped || code === undefined || !WEAR_SLOTS.includes(code)) continue;
     const wornHere = worn.get(code) ?? [];
-    if (wornHere.length < (WORN_SLOT_HOLDS[code] ?? 1)) continue;
+    if (wornHere.length < placesIn(code)) continue;
     const gear = slots.get(code) ?? slotGear(code, realm, asker);
     slots.set(code, gear);
     const weakest = weakestWorn(gear.rows, wornHere, gear.ranking);

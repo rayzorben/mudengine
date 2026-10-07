@@ -15,6 +15,7 @@ import type { CardChrome } from './BentoCard';
 import CombatCard from './CombatCard';
 import ConversationCard from './ConversationCard';
 import GangCard from './GangCard';
+import GearCard from './GearCard';
 import HuntingCard from './HuntingCard';
 import InventoryCard from './InventoryCard';
 import ExtensionCard from './ExtensionCard';
@@ -435,6 +436,29 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loadHunting={ctx.loadHunting}
           runLoop={ctx.chooseOnMap === null ? null : ctx.runHunt}
           session={ctx.session}
+        />
+      );
+    case 'gear':
+      /*
+       * Unconditional, like the hunting: a character with nothing better to
+       * wear is a fact the card states. Re-asked when what is worn or the
+       * level moves, since every row's answer is against what is worn.
+       */
+      return (
+        <GearCard
+          {...chrome}
+          banks={character.banks}
+          goGear={ctx.goGear}
+          kitKey={`${character.progress.level ?? ''}|${character.inventory.items
+            .filter((item) => item.equipped)
+            .map((item) => item.name)
+            .join(',')}`}
+          loadGear={ctx.loadGear}
+          planGear={ctx.planGear}
+          purse={character.inventory.wealth}
+          session={ctx.session}
+          stopGear={ctx.stopGear}
+          trip={view.gearTrip}
         />
       );
     case 'stats':

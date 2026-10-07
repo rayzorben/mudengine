@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import MapView from './MapView';
 import ClearField from './ClearField';
 import Icon from './Icon';
+import PlanFights from './PlanFights';
 import { commandsOf, runsOf, stepDanger, stepSignature } from '../lib/route';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
@@ -21,14 +22,12 @@ import {
   roomId,
   trapsAlong,
   type Direction,
-  type PlanFight,
   type RoomId,
   type Route,
   type RouteBlock,
   type RouteStep,
   type WorldRoom
 } from '@shared/world';
-import { fightWords } from '@shared/navigation';
 import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
 import type { Replanned, WalkStart } from '@shared/movement';
@@ -97,26 +96,6 @@ function roundWay(route: Route): Route | null {
 }
 
 /** Every item's name, for the one sentence that names what is fetched. */
-/**
- * The fights a planned way takes, with the odds: shown, and the player
- * decides (the user, 2026-10-03). Nothing where it takes none.
- */
-function PlanFights({ fights }: { fights: readonly PlanFight[] | undefined }) {
-  if (fights === undefined || fights.length === 0) return null;
-  return (
-    <div className="route-needs" data-route-fights={fights.length}>
-      {t('cards.route.fightsAlong')}
-      <ul className="route-blocked">
-        {fights.map((fight, index) => (
-          <li data-odds={fight.odds.kind} key={`${fight.monsters.join()}-${index}`}>
-            {fightWords(fight, t)}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function named(items: ReadonlyArray<{ name: string }>): string {
   return items.map((item) => item.name).join(', ');
 }

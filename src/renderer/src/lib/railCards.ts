@@ -73,6 +73,8 @@ const PREFERRED: Record<CardId, GridBox> = {
   reference: { x: 29, y: 114, w: 20, h: 13 },
   inventory: { x: 0, y: 120, w: 29, h: 16 },
   hunting: { x: 29, y: 127, w: 20, h: 13 },
+  // The budget, a slot table and the plan's press, under Banks.
+  gear: { x: 29, y: 165, w: 20, h: 18 },
   // A five-column table, Carrying's width for the same reason.
   shops: { x: 0, y: 136, w: 29, h: 14 },
   gang: { x: 29, y: 140, w: 20, h: 13 },

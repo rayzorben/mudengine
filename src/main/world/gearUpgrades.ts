@@ -10,7 +10,7 @@
  * best alone offered a level-10 character two weapons at 3.6M and 3.9M
  * copper and nothing it could buy (2026-10-01).
  */
-import { USED_NOT_WORN, WORN_SLOT, WORN_SLOT_HOLDS } from '../../shared/items';
+import { placesIn, USED_NOT_WORN, WORN_SLOT } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
 import { wornCopy, type ItemEntity } from '../../shared/entities';
 import type { GearCounter, GearOffer, GearRow, SlotUpgrade, SlotWorn } from '../../shared/upgrades';
@@ -74,7 +74,7 @@ export function scanSlots(
   return WEAR_SLOTS.map((code) => {
     const gear = slotGear(code, realm, asker);
     const wornHere = worn.get(code) ?? [];
-    const free = Math.max(0, (WORN_SLOT_HOLDS[code] ?? 1) - wornHere.length);
+    const free = Math.max(0, placesIn(code) - wornHere.length);
     const weakest = weakestWorn(gear.rows, wornHere, gear.ranking);
     const current = weakest?.item.name ?? null;
     const wornRow = gear.rows.find((row) => row.name.toLowerCase() === current?.toLowerCase());

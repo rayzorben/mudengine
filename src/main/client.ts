@@ -95,6 +95,7 @@ import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
 import { slotGear } from './world/slotGear';
+import { asGearPicks } from '../shared/gearTrip';
 import { atSpeed, NO_EXCLUSIONS, NO_FLOOR, NOT_KEPT, type HuntingAdvice } from '../shared/hunting';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
@@ -2244,7 +2245,8 @@ function registerIpc(): void {
       finds: manager?.foundHere ?? [],
       shops: slot ? [...(shopsFor(session)?.all ?? [])] : [],
       questSaid: { ...(manager?.questProgress ?? {}) },
-      questRun: manager?.questRunProgress ?? IDLE_QUEST_RUN,
+      questRun: manager?.questDesk.progress ?? IDLE_QUEST_RUN,
+      gearTrip: manager?.gearDesk.progress ?? null,
       // The Talk card's history. Only for a session that exists: attach never
       // creates one, so it must not conjure a log for a stale id either.
       talk: slot ? talkFor(session).backlog() : []
@@ -2411,14 +2413,14 @@ function registerIpc(): void {
      * the realm's own blocks answers null rather than being looked up.
      */
     if (typeof block !== 'number' || !Number.isInteger(block)) return null;
-    return host?.get(session)?.manager?.questErrand(block) ?? null;
+    return host?.get(session)?.manager?.questDesk.errand(block) ?? null;
   });
   handle(Invoke.questPlan, (_caller, session: SessionId, block: unknown, marked: unknown) => {
     // Parsed like the errand's block, and for the same reason: a chain's plan
     // is an A* per step, and only one of the realm's own blocks earns it.
     if (typeof block !== 'number' || !Number.isInteger(block)) return null;
     const rank = typeof marked === 'number' && Number.isInteger(marked) ? marked : null;
-    return host?.get(session)?.manager?.questPlan(block, rank) ?? null;
+    return host?.get(session)?.manager?.questDesk.plan(block, rank) ?? null;
   });
   handle(Invoke.questRun, (_caller, session: SessionId, block: unknown, marked: unknown) => {
     if (typeof block !== 'number' || !Number.isInteger(block)) {
@@ -2427,10 +2429,30 @@ function registerIpc(): void {
     const rank = typeof marked === 'number' && Number.isInteger(marked) ? marked : null;
     const manager = host?.get(session)?.manager;
     if (manager === undefined || manager === null) return t('automation.quests.refusalNotInRealm');
-    return manager.questRun(block, rank);
+    return manager.questDesk.run(block, rank);
   });
   handle(Invoke.questStop, (_caller, session: SessionId) => {
-    host?.get(session)?.manager?.questStop();
+    host?.get(session)?.manager?.questDesk.stop();
+  });
+  handle(Invoke.gearChoices, (_caller, session: SessionId) => {
+    return host?.get(session)?.manager?.gearDesk.choices() ?? null;
+  });
+  handle(Invoke.gearPlan, (_caller, session: SessionId, picks: unknown) => {
+    // Parsed at the boundary: the plan is a sweep per counter and an A* per leg.
+    const parsed = asGearPicks(picks);
+    if (parsed === null) return null;
+    return host?.get(session)?.manager?.gearDesk.plan(parsed) ?? null;
+  });
+  handle(Invoke.gearTrip, (_caller, session: SessionId, picks: unknown, run: unknown) => {
+    const parsed = asGearPicks(picks);
+    if (parsed === null) return t('automation.gearTrip.refusalUnreadable');
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined || manager === null)
+      return t('automation.hostTrip.refusalNotInRealm');
+    return manager.gearDesk.go(parsed, run === true);
+  });
+  handle(Invoke.gearStop, (_caller, session: SessionId) => {
+    host?.get(session)?.manager?.gearDesk.stop();
   });
   handle(
     Invoke.localMap,

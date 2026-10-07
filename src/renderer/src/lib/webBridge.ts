@@ -280,6 +280,10 @@ export function createWebBridge(): IpcApi {
     questErrand: (session, block) => invoke(Invoke.questErrand, session, block),
     questPlan: (session, block, marked) => invoke(Invoke.questPlan, session, block, marked),
     questRun: (session, block, marked) => invoke(Invoke.questRun, session, block, marked),
+    gearChoices: (session) => invoke(Invoke.gearChoices, session),
+    gearPlan: (session, picks) => invoke(Invoke.gearPlan, session, picks),
+    gearTrip: (session, picks, run) => invoke(Invoke.gearTrip, session, picks, run),
+    gearStop: (session) => invoke(Invoke.gearStop, session),
     questStop: (session) => invoke(Invoke.questStop, session),
     localMap: (session, map, room, radius) => invoke(Invoke.localMap, session, map, room, radius),
     roomBrief: (session, map, room) => invoke(Invoke.roomBrief, session, map, room),
@@ -329,6 +333,7 @@ export function createWebBridge(): IpcApi {
     onLowLives: (handler) => subscribe(Push.lowLives, handler),
     onQuestSaid: (handler) => subscribe(Push.questSaid, handler),
     onQuestRun: (handler) => subscribe(Push.questRun, handler),
+    onGearTrip: (handler) => subscribe(Push.gearTrip, handler),
     onConfig: (handler) => subscribe(Push.config, handler),
     onInternal: (handler) => subscribe(Push.internal, handler)
   };

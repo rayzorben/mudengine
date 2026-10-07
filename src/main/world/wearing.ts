@@ -9,7 +9,7 @@
  * added; one already worn in its slot is left off (`wornCopy`). A worn
  * item the realm does not hold makes the sheet's figure unknown.
  */
-import { WORN_SLOT_HOLDS } from '../../shared/items';
+import { placesIn } from '../../shared/items';
 import { REALM_ARMOUR_SCALE } from '../../shared/menace';
 import type { CharacterState } from '../../shared/character';
 import { wornCopy, type ItemEntity } from '../../shared/entities';
@@ -43,7 +43,7 @@ export function wearing(
     if (on.id === undefined || code === undefined) continue;
     const wornHere = wornBySlot(out).get(code) ?? [];
     if (wornCopy(wornHere, on) !== undefined) continue;
-    const free = wornHere.length < (WORN_SLOT_HOLDS[code] ?? 1);
+    const free = wornHere.length < placesIn(code);
     const gear = slotGear(code, realm, asker);
     const off = free ? null : (weakestWorn(gear.rows, wornHere, gear.ranking) ?? null);
     const onFigures = figuresOf(gear.rows, on);

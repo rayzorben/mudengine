@@ -54,6 +54,8 @@ import { AutoHunt } from '../automation/AutoHunt';
 import { ItemErrand } from '../automation/ItemErrand';
 import type { OutgrownGear } from '../automation/OutgrownGear';
 import { hostTrips, type HostTrips } from './hostTrips';
+import { gearDesk, type GearDesk } from './gearDesk';
+import { questDesk, type QuestDesk } from './questDesk';
 import type { AreaSearch } from '../automation/AreaSearch';
 import { QuestRunner } from '../automation/QuestRunner';
 import { EquipmentManager } from '../automation/EquipmentManager';
@@ -129,7 +131,7 @@ import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
 import { NO_SHOPS, type RealmShops } from '../../shared/shops';
-import type { QuestErrand, QuestPlan, QuestRunProgress, QuestWatched } from '../../shared/quests';
+import type { QuestWatched } from '../../shared/quests';
 import { identityOf, resetSignals } from '../../shared/reset';
 import { DEFAULT_INTERNAL, type InternalConfig } from '../../shared/internal';
 import type { RealmFamily } from '../../shared/realm';
@@ -387,6 +389,9 @@ export class SessionManager {
   /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
   private readonly outgrown: OutgrownGear;
   private readonly hostTrips: HostTrips;
+  /** The Gear and Quests cards' questions. */
+  readonly gearDesk: GearDesk;
+  readonly questDesk: QuestDesk;
   readonly areaSearch: AreaSearch;
   /** Where this character should be at all, and the lap that puts it there — todo 05. */
   private readonly hunt: AutoHunt;
@@ -1071,7 +1076,8 @@ export class SessionManager {
       busy: escaping
     });
     const held = () => this.errandHeld();
-    this.hostTrips = hostTrips(automation, this.queue, reports, { ...trip, busy: held });
+    const tripReports = { ...reports, gearTrip: sink.gearTrip?.bind(sink) };
+    this.hostTrips = hostTrips(automation, this.queue, tripReports, { ...trip, busy: held });
     this.areaSearch = areaSearchTrip(automation, this.queue, reports, { ...trip, busy: held });
     this.trainLevel = new TrainErrand(
       automation.train,
@@ -1588,11 +1594,20 @@ export class SessionManager {
     );
     this.grounded = new Grounded(this.publisher, sink);
     this.statHold = new StatScreenHold(this.queue, this.publisher, sink, () => this.dropTyped());
+    this.gearDesk = gearDesk({
+      ...{ tracker: this.tracker, errands: this.errands, world: () => this.world },
+      ...{ attack: () => this.automationConfig.combat.attack, travel: () => this.travel },
+      trip: () => this.hostTrips.gear
+    });
+    this.questDesk = questDesk({
+      ...{ world: () => this.world, errands: this.errands, runner: this.questRunner },
+      state: () => this.tracker.current
+    });
     this.extensions = sessionExtensions({
       ...{ tracker: this.tracker, errands: this.errands, hunt: this.hunt, walker: this.walker },
       blessings: this.blessings,
       ...{ supplies: this.supplies, trainLevel: this.trainLevel, queue: this.queue, fled },
-      ...{ hostTrips: this.hostTrips, areaSearch: this.areaSearch },
+      ...{ hostTrips: this.hostTrips, areaSearch: this.areaSearch, gear: this.gearDesk.reads },
       world: () => this.world,
       odds: this.odds,
       config: () => this.automationConfig,
@@ -3295,49 +3310,9 @@ export class SessionManager {
     return this.errands.trainers();
   }
 
-  /** The order one quest step's items are best fetched in. See `Errands.questErrand`. */
-  questErrand(block: number): QuestErrand | null {
-    return this.errands.questErrand(block);
-  }
-
-  /** The plan to reach one step of a quest from here. See `Errands.questPlan`. */
-  questPlan(block: number, marked: number | null): Promise<QuestPlan | null> {
-    return this.errands.questPlan(block, marked);
-  }
-
   /** Where this character should hunt. See `Errands.huntingGrounds`. */
   huntingGrounds(radius: number | null, measure: string | null = null): HuntingAdvice {
     return this.errands.huntingGrounds(radius, measure);
-  }
-
-  /**
-   * Run the plan to one step (todo 102): the card's *Run it*.
-   *
-   * The plan is drawn afresh here rather than taken from the card, for the
-   * reason `walkPlan` redraws a route: it is true from the room it was drawn
-   * in, and the press may come a minute later. What the card showed and what
-   * is run are the same plan whenever the character has not moved, and the
-   * run's own progress says which steps it is on either way. Returns the
-   * refusal for the press, or null once it is under way.
-   */
-  async questRun(block: number, marked: number | null): Promise<string | null> {
-    const quest = this.world
-      ?.quests()
-      .find((each) => each.steps.some((step) => step.block === block));
-    if (quest === undefined) return t('automation.quests.refusalUnknownStep', { block });
-    const plan = await this.errands.questPlan(block, marked);
-    if (plan === null) return t('automation.quests.refusalNoPlan');
-    return this.questRunner.start(plan, quest, this.tracker.current);
-  }
-
-  /** The card's *Stop*: the run and whatever it started, put down out loud. */
-  questStop(): void {
-    this.questRunner.stop(t('automation.quests.whyStopped'));
-  }
-
-  /** How the quest run is going, for a window that has just attached. */
-  get questRunProgress(): QuestRunProgress {
-    return this.questRunner.progress;
   }
 
   /** Collect what the way needs, then walk it. See `Travel.collectThenWalk`. */

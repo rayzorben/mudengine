@@ -4054,13 +4054,16 @@ button.quest-plan-back {
  * (the monsters, the rooms) drawn as rows with the figure quiet at the end,
  * and the loop's controls in the Navigation card's own row.
  */
-.hunt-head {
+.hunt-head,
+.gear-head {
   display: flex;
   align-items: center;
   gap: var(--gap);
   padding: 0 var(--pad) var(--gap-tight, 6px);
 }
-.hunt-head .hunt-note {
+.hunt-head .hunt-note,
+.gear-head .hunt-note,
+.gear-actions .hunt-note {
   color: var(--text-lo);
   font-size: var(--font-size-small, 0.9em);
 }
@@ -4088,7 +4091,8 @@ button.quest-plan-back {
  * card's own `overflow: hidden` — which is what a lair with a dozen rooms did
  * to every card shorter than the list.
  */
-.hunt-detail {
+.hunt-detail,
+.gear-detail {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
@@ -4124,12 +4128,78 @@ button.quest-plan-back {
  * rather than clips at the rail's narrow end, where three buttons do not fit
  * on one line — a control on a second line is still a control.
  */
-.hunt-actions {
+.hunt-actions,
+.gear-actions {
   flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-start;
   padding: var(--gap) var(--pad) 0;
   border-top: 1px solid var(--seam);
+}
+
+/* ================================================================ gear card */
+/*
+ * The Hunting card's grammar: a head, a table, the opened row's detail as the
+ * second moving part, and the presses anchored under both. The head wraps the
+ * budget's slider and figure onto their own line at the rail's narrow end.
+ */
+.gear-head {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+.gear-budget {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--gap);
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.gear-budget .card-settings-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.gear-budget-figure {
+  flex: 0 0 9ch;
+  width: 9ch;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.gear-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.gear-actions .hunt-note {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.gear-item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+}
+.gear-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-tight, 6px);
+}
+.gear-options li[data-picked='true'] b {
+  color: var(--accent);
+}
+.gear-stops > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gear-leg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
 }
 
 /* ======================================================= loop builder card */

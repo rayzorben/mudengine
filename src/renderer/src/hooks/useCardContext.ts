@@ -25,6 +25,7 @@ import type { AppConfig, AutomationSwitches, RemotesConfig, SupplyItem } from '@
 import { canRestore, type GearAction } from '@shared/gear';
 import { supplyFor, withSupply } from '@shared/supplies';
 import type { Find } from '@shared/finds';
+import type { GearPick } from '@shared/gearTrip';
 import type { HuntingRoom } from '@shared/hunting';
 import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
@@ -115,6 +116,11 @@ export interface CardContext {
   stopRun(): void;
   /** Where to hunt from where this character stands — addressed, like the book. */
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  /** The Gear card's slots, its trip planned, walked or run, and stopped — addressed, like the book. */
+  loadGear(): ReturnType<IpcApi['gearChoices']>;
+  planGear(picks: GearPick[]): ReturnType<IpcApi['gearPlan']>;
+  goGear(picks: GearPick[], run: boolean): ReturnType<IpcApi['gearTrip']>;
+  stopGear(): void;
   /**
    * Walks a loop the Hunting card built, filed nowhere or under this
    * character — the builder's own save, offered for the *shown* character
@@ -209,6 +215,10 @@ export interface AddressedActions {
   runPlan(block: number, marked: number | null): ReturnType<IpcApi['questRun']>;
   stopRun(): void;
   loadHunting(measure: string | null): ReturnType<IpcApi['huntingGrounds']>;
+  loadGear(): ReturnType<IpcApi['gearChoices']>;
+  planGear(picks: GearPick[]): ReturnType<IpcApi['gearPlan']>;
+  goGear(picks: GearPick[], run: boolean): ReturnType<IpcApi['gearTrip']>;
+  stopGear(): void;
   startMoving(loop: string | null): void;
   stopMoving(): void;
   /** Re-base the Combat Stats card to this character's totals as they stand. */
@@ -244,6 +254,10 @@ export type CardApi = Pick<
   | 'questRun'
   | 'questStop'
   | 'huntingGrounds'
+  | 'gearChoices'
+  | 'gearPlan'
+  | 'gearTrip'
+  | 'gearStop'
   | 'stopMoving'
   | 'startLoop'
   | 'reverseLoop'
@@ -419,6 +433,14 @@ export function useCardContext({
         runPlan: (block, marked) => api.questRun(sid, block, marked),
         stopRun: () => void api.questStop(sid),
         loadHunting: (measure) => api.huntingGrounds(sid, measure),
+        loadGear: () => api.gearChoices(sid),
+        planGear: (picks) => api.gearPlan(sid, picks),
+        goGear: (picks, run) =>
+          api.gearTrip(sid, picks, run).then((refused) => {
+            sayRefusalRef.current(sid)(refused);
+            return refused;
+          }),
+        stopGear: () => void api.gearStop(sid),
         startMoving: (loop) => startMovingRef.current(sid, loop, null),
         stopMoving: () => void api.stopMoving(sid),
         // Through a ref like `selectPlayer` beside it: this one changes the
@@ -558,6 +580,10 @@ export function useCardContext({
         runPlan: bound.runPlan,
         stopRun: bound.stopRun,
         loadHunting: bound.loadHunting,
+        loadGear: bound.loadGear,
+        planGear: bound.planGear,
+        goGear: bound.goGear,
+        stopGear: bound.stopGear,
         runHunt: shown ? runHunt : null,
         createHunt: shown ? createHunt : null,
         realmAt,

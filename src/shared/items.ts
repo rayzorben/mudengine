@@ -75,6 +75,11 @@ export const ITEM_KIND_WORD: Record<ItemKind, string> = {
  */
 export const WORN_SLOT_HOLDS: Readonly<Record<number, number>> = { 4: 2, 14: 2 };
 
+/** The places a worn slot holds (`WORN_SLOT_HOLDS`), one where the table names none. */
+export function placesIn(code: number): number {
+  return WORN_SLOT_HOLDS[code] ?? 1;
+}
+
 /**
  * `Worn` code 17, the listing's word for the lit light's slot (`torch
  * (Readied/79)`). Named because re-equipping leaves it to `AutoLight`, which

@@ -918,6 +918,20 @@ tuning:
     placedHours: 24
     passes: 20
 
+  # The Gear card and the trip that buys from it. `perSlot` better items are
+  # listed per slot; one trip buys at most `tripItems` (the order is solved
+  # exactly and each item doubles the table, vaults counting as items) and
+  # weighs the nearest `counters` of each; a buy the pack does not confirm in
+  # `confirmMs` is refused, a vault silent for `vaultMs` is that vault's
+  # refusal, and a stop is given up on after `maxLegs` legs.
+  gear:
+    perSlot: 20
+    tripItems: 10
+    counters: 3
+    confirmMs: 8000
+    vaultMs: 8000
+    maxLegs: 4
+
   # Fetching named items from a stash — `StashFetch`. Up to `searches` bare
   # searches before settling for the open floor (each search rolls every hidden
   # item against Perception); `collectMs` waits for a search's answer and for

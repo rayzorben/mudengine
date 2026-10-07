@@ -18,24 +18,18 @@ import type { ExtensionSessionHost, ExtensionWorld, ShopTrip } from '../extensio
 import type { LoadedExtension } from '../extensions/ExtensionLoader';
 import { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
-import { bestInSlot } from '../world/bestInSlot';
-import { gearUpgrades, type UpgradeRealm } from '../world/gearUpgrades';
 import { rarityBook, type RarityWorld } from '../world/itemRarity';
 import { salePlaces } from '../world/salePlaces';
 import { learnerOf, learning } from '../world/learning';
-import { slotAskerOf, type SlotAsker } from '../world/slotGear';
 import { spellScrolls } from '../world/spellScrolls';
-import { wearing } from '../world/wearing';
-import { attackOptions } from '../../shared/attackOptions';
 import type { SafetyDecision } from '../../shared/automation';
-import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
 import type { ConnectionTarget } from '../../shared/types';
-import { prowessSheetOf, prowessTargetOf, wieldedWeapon } from '../../shared/verdict';
 import { roomAddress, unrouted } from '../../shared/world';
 import type { Errands } from './Errands';
+import type { GearReads } from './gearReads';
 import type { OddsBook } from './OddsBook';
 
 /** What the client's host hands a session for its extensions. */
@@ -74,6 +68,7 @@ export interface ExtensionWiring {
     sell: Pick<SellTrip, 'sell' | 'current'>;
   };
   areaSearch: Pick<AreaSearch, 'last'>;
+  gear: GearReads;
   trainLevel: Pick<TrainErrand, 'heading' | 'refusal' | 'trainersAhead'>;
   walker: Pick<Walker, 'progress'>;
   queue: Pick<CommandQueue, 'offer'>;
@@ -111,19 +106,6 @@ function tripStage(stage: ErrandStage): ShopTrip['stage'] {
 
 export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
   const { tracker, errands, deps } = wiring;
-  const askerOf = (state: CharacterState, world: ExtensionWorld): SlotAsker =>
-    slotAskerOf(state, world, errands.realmClass(), wiring.config().combat.attack);
-  /** The realm's gear as the slot rankings read it, priced from where `state` stands; null unplaced. */
-  const gearRealm = (state: CharacterState, world: ExtensionWorld): UpgradeRealm | null => {
-    const here = roomAddress(state.room);
-    if (here === null) return null;
-    const traveller = errands.travellerNow(state);
-    return {
-      itemsWornIn: (worn) => world.itemsWornIn(worn),
-      stockingPlaces: (items) => world.stockingPlaces(items, here, null, traveller),
-      priceAt: (name, at) => errands.priceAt(name, at)
-    };
-  };
   return new SessionExtensions(
     deps?.extensions ?? [],
     (extension, kit): ExtensionSessionHost => ({
@@ -153,48 +135,10 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       blessings: () => wiring.blessings.entries(),
       fled: wiring.fled,
       trainersAhead: (levels) => wiring.trainLevel.trainersAhead(levels, errands.reachKey()),
-      gearUpgrades: (perSlot, as) => {
-        const world = wiring.world();
-        const state = as ?? tracker.current;
-        const realm = world === undefined ? null : gearRealm(state, world);
-        if (world === undefined || realm === null) return [];
-        return gearUpgrades(state, realm, askerOf(state, world), perSlot);
-      },
-      bestInSlot: (perSlot, as) => {
-        const world = wiring.world();
-        const state = as ?? tracker.current;
-        const realm = world === undefined ? null : gearRealm(state, world);
-        if (world === undefined || realm === null) return [];
-        const dropsOf = (item: string) => world.buildItemEntity(item).droppedBy ?? [];
-        return bestInSlot(state, { ...realm, dropsOf }, askerOf(state, world), perSlot);
-      },
-      wearing: (items, as) => {
-        const world = wiring.world();
-        const state = as ?? tracker.current;
-        if (world === undefined) return { state, worn: [] };
-        const realm = {
-          itemsWornIn: (worn: number) => world.itemsWornIn(worn),
-          buildItemEntity: (name: string) => world.buildItemEntity(name)
-        };
-        return wearing(state, items, realm, askerOf(state, world));
-      },
-      attacks: (as, against = []) => {
-        const state = as ?? tracker.current;
-        const { combat, magery, crits, family } = errands.realmClass();
-        const world = wiring.world();
-        // A name the world database cannot place is no armour anybody knows: its round is unknown.
-        const targets = against.map((name) => {
-          const mob = world?.buildMobEntity(name, { at: null });
-          return mob === undefined || mob.source === 'wire' ? null : prowessTargetOf(mob);
-        });
-        return attackOptions(
-          prowessSheetOf(state, { combat, magery, crits }),
-          wieldedWeapon(state.inventory.items),
-          errands.capabilities().abilities,
-          family,
-          targets
-        );
-      },
+      gearUpgrades: (perSlot, as) => wiring.gear.gearUpgrades(perSlot, as),
+      bestInSlot: (perSlot, as) => wiring.gear.bestInSlot(perSlot, as),
+      wearing: (items, as) => wiring.gear.wearing(items, as),
+      attacks: (as, against) => wiring.gear.attacks(as, against),
       spellScrolls: (as) => {
         const world = wiring.world();
         const state = as ?? tracker.current;

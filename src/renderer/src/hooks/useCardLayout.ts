@@ -52,6 +52,7 @@ const DEFAULT_AWAY: readonly CardId[] = [
   'builder',
   'quests',
   'hunting',
+  'gear',
   'extension'
 ];
 

@@ -541,6 +541,8 @@ export class SessionHost {
           this.options.toAll(Push.questSaid, { session: id, payload: progress }),
         questRun: (progress) =>
           this.options.toAll(Push.questRun, { session: id, payload: progress }),
+        gearTrip: (progress) =>
+          this.options.toAll(Push.gearTrip, { session: id, payload: progress }),
         command: (command, source) => {
           // Already through `Publisher.reportable`, which is the one place
           // this client redacts a password. Both records take the same value.

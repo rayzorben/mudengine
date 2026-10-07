@@ -1215,6 +1215,24 @@ const TUNING_DEFAULTS = {
     /** Monster and item rates feed each other; worked out this many times at most. */
     passes: 20
   },
+  /** The Gear card and the trip that buys from it — `gearReads`, `gearTripPlan`, `GearTrip`. */
+  gear: {
+    /** Better items listed per slot, best first. */
+    perSlot: 20,
+    /**
+     * The most items one trip buys: the order is solved exactly, and the table
+     * doubles with each item (vaults count as items).
+     */
+    tripItems: 10,
+    /** The nearest counters of each item weighed for the order. */
+    counters: 3,
+    /** A `buy` the pack does not confirm within this is refused. */
+    confirmMs: 8000,
+    /** A `bank` or `withdraw` unanswered this long is that vault's refusal. */
+    vaultMs: 8000,
+    /** Legs one stop may take (a fight ends a leg) before the trip gives up on it. */
+    maxLegs: 4
+  },
   /** Fetching named items from a stash — `StashFetch` (todo 05). */
   stashFetch: {
     /**
