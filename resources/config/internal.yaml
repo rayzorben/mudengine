@@ -1001,6 +1001,9 @@ tuning:
     # Sneaking stops being asked for after this many failures in a row, until
     # the next connection or level.
     sneakGiveUp: 4
+    # How long a step waits, from the send, for the answer to the sn ahead of
+    # it before it goes without knowing whether the character is sneaking.
+    sneakAnswerMs: 5000
 
     # How long one hold lasts before the walk tries the step again.
     holdMs: 1500
