@@ -5439,6 +5439,8 @@ automation:
       percentages; only their own client answering @health says how much a heal must cover.
   login:
     credentialMissing: No {credentialType} configured — finish logging in yourself.
+    heldAtMenu: Automation is off, so the login stopped at the realm's menu. Press E to enter the
+      realm.
     leftOnPurpose: You left the realm on purpose; automatic login is paused until the next
       connection.
     noAccountRow: This character has a username and password, but its login steps have no row that
