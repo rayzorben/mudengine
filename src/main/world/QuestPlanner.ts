@@ -313,7 +313,13 @@ export class QuestPlanner {
     const order = tour(
       this.router,
       from,
-      { things: placed.map((item) => item.rooms), places: errandPlaces, end, by: 'cost' },
+      {
+        things: placed.map((item) => item.rooms),
+        places: errandPlaces,
+        exact: errandItems,
+        end,
+        by: 'cost'
+      },
       traveller
     );
     const named = (item: (typeof placed)[number]) => ({

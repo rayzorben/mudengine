@@ -1220,10 +1220,11 @@ const TUNING_DEFAULTS = {
     /** Better items listed per slot, best first. */
     perSlot: 20,
     /**
-     * The most items one trip buys: the order is solved exactly, and the table
-     * doubles with each item (vaults count as items).
+     * The most stops a trip's order is solved exactly for (items at the same
+     * counters are one stop, a vault is one). The table doubles with each, so
+     * a longer trip is ordered nearest first and then shortened by swaps.
      */
-    tripItems: 10,
+    exactStops: 10,
     /** The nearest counters of each item weighed for the order. */
     counters: 3,
     /** A `buy` the pack does not confirm within this is refused. */
