@@ -909,13 +909,12 @@ export interface CombatConfig {
  * makes running several characters at once workable. The vocabulary and the two
  * reply shapes captures actually show are in `src/shared/remotes.ts`.
  *
- * **Off by default, and this one is not merely convention.** What it turns on
- * is a channel by which somebody else's typing moves this character: `@do` runs
- * a command as though it were typed. `@kill` and `@hangup` are refused outright
- * and always will be, but the switch is what somebody chooses when they decide
- * to be reachable at all.
+ * The switch ships on (the user, 2026-10-07) and the lists decide. What ships
+ * granted is the party list's three names, none of which moves this character
+ * on somebody else's say; `@do` and the rest answer nobody until a player is
+ * granted them. `@kill` and `@hangup` are refused outright and always will be.
  *
- * **`enabled` is the switch; the two lists are the gate.** Until 2026-08-28
+ * **`enabled` is the switch; the lists are the gate.** Until 2026-08-28
  * there was only the switch, so turning it on answered *everybody*; until
  * 2026-08-29 the gate was three *grounds* — `named`, `party`, `gang` — and a
  * ground allowed somebody **every** command. Both shapes could not express the
@@ -2774,7 +2773,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     // nothing, so the default is safe and the first item added starts working.
     supplies: { enabled: true, items: [] },
     remotes: {
-      enabled: false,
+      enabled: true,
       gangpath: false,
       autoJoin: false,
       gang: [],
