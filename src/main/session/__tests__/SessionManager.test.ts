@@ -8307,6 +8307,11 @@ describe('the hunting survey prices a kill off the fight record', () => {
     const opened = manager!.huntingGrounds(null, rough);
     expect(opened.spots.map((spot) => spot.key)).toContain(rough);
     expect(opened.unmeasured).toHaveLength(0);
+
+    // And the next page measures the next spot down, leaving the first rough.
+    const next = manager!['errands'].huntingGrounds(null, null, { page: 1 });
+    expect(next.spots.map((spot) => spot.key)).toEqual([rough]);
+    expect(next.unmeasured.map((spot) => spot.key)).toEqual(advice.spots.map((spot) => spot.key));
   });
 
   /*

@@ -86,6 +86,10 @@ const ROUTE: Route = {
 let notices: string[];
 let decisions: SafetyDecision[];
 let walked: Route[];
+/** Whether each walk was asked as a run, in order. */
+let runs: boolean[];
+/** How many times combat was turned back on after a run. */
+let combatOn: number;
 let started: Loop[];
 let surveys: number;
 let answer: HuntingAdvice;
@@ -111,10 +115,12 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
     },
     routeTo: () => ROUTE,
     noteRate: (key, rate) => void noted.push({ key, perHour: rate.perHour }),
-    walk: (route) => {
+    walk: (route, run) => {
       walked.push(route);
+      runs.push(run);
       return null;
     },
+    combatOnAfterRun: () => void (combatOn += 1),
     runLoop: (loop) => {
       started.push(loop);
       running = loop.name;
@@ -154,6 +160,8 @@ beforeEach(() => {
   notices = [];
   decisions = [];
   walked = [];
+  runs = [];
+  combatOn = 0;
   started = [];
   surveys = 0;
   here = '1/1';
@@ -878,6 +886,37 @@ describe('a hunt order', () => {
     expect(started.map((loop) => loop.name)).toEqual(['Graveyard and Sewer']);
     expect(surveys).toBe(0);
     expect(auto.heading).toEqual({ walking: false, place: 'Graveyard and Sewer' });
+  });
+
+  it('runs there when the order says to, and turns combat back on at the spot', () => {
+    const auto = hunt();
+    auto.steer({ ...order(), run: true });
+    auto.onCharacter(at(1_000));
+    expect(runs).toEqual([true]);
+    expect(combatOn).toBe(0);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at(1_000));
+    expect(combatOn).toBe(1);
+    expect(started.map((loop) => loop.name)).toEqual(['Graveyard and Sewer']);
+  });
+
+  it('walks there fighting when the order says nothing of a run', () => {
+    const auto = hunt();
+    auto.steer(order());
+    auto.onCharacter(at(1_000));
+    expect(runs).toEqual([false]);
+    here = '1/816';
+    auto.onWalkEnded(true, null, at(1_000));
+    expect(combatOn).toBe(0);
+  });
+
+  it('leaves combat off where a run stops short', () => {
+    const auto = hunt();
+    auto.steer({ ...order(), run: true });
+    auto.onCharacter(at(1_000));
+    auto.onWalkEnded(false, 'blocked', at(1_000));
+    expect(combatOn).toBe(0);
+    expect(started).toEqual([]);
   });
 
   it('stays put where the survey has a better spot, and keeps no rate of its own', () => {

@@ -31,6 +31,7 @@ import { roomAddress, unrouted } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { GearReads } from './gearReads';
 import type { OddsBook } from './OddsBook';
+import { runRiskOf } from './runRisk';
 
 /** What the client's host hands a session for its extensions. */
 export interface ExtensionDeps {
@@ -126,6 +127,20 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       leg: (from, to) => {
         const way = errands.routeBetween(from, to, 'walk');
         return typeof way === 'string' ? unrouted(way) : way;
+      },
+      runRisk: (route) => {
+        const world = wiring.world();
+        if (world === undefined) return { death: null, lairs: [] };
+        const { roundSeconds, stepMs } = tuning().hunting;
+        return runRiskOf(route, {
+          state: tracker.current,
+          movement: wiring.config().movement,
+          family: errands.realmClass().family,
+          world,
+          lairOdds: (room) => wiring.odds.lair(room),
+          roundSeconds,
+          stepMs
+        });
       },
       priceAt: (name, shop) => errands.priceAt(name, shop),
       lairOdds: (room) => wiring.odds.lair(room),

@@ -54,7 +54,9 @@ export interface HuntPlanner {
    * nothing at all is a character walking across the realm with the
    * Navigation card saying *stopped*.
    */
-  walk(route: Route): string | null;
+  walk(route: Route, run: boolean): string | null;
+  /** Auto-combat back on where a run turned it off for the way (`Travel.combatOnAfterRun`). */
+  combatOnAfterRun(): void;
   /** Runs a loop that is filed nowhere. Returns a refusal, or null. */
   runLoop(loop: Loop): string | null;
   /**
@@ -100,6 +102,8 @@ interface Target {
   start: HuntingRoom;
   expected: number | null;
   copper: number | null;
+  /** Walked there as a run: combat off for the way, on again at the spot (`HuntOrder.run`). */
+  run: boolean;
 }
 
 /** What the spot to hunt is: a survey key, an order, nowhere, or this module's own choice. */
@@ -910,9 +914,9 @@ export class AutoHunt implements SessionModule {
      * being on is the consent — so what is owed is the same figure, said,
      * before the character sets off. See `decisions.md`.
      */
-    const refused = this.planner.walk(route);
+    const refused = this.planner.walk(route, target.run);
     if (refused !== null) {
-      this.refuse(t('automation.hunt.refusalNoRoute', { room: first.name, why: refused }));
+      this.refuse(t('automation.hunt.refusalSetOff', { room: first.name, why: refused }));
       return;
     }
     this.phase = { kind: 'walking', to: first.id, target };
@@ -948,6 +952,7 @@ export class AutoHunt implements SessionModule {
       );
       return;
     }
+    if (target.run) this.planner.combatOnAfterRun();
     this.start(target, state);
   }
 
@@ -1043,7 +1048,8 @@ function spotTarget(spot: HuntingSpot): Target | null {
     loop: huntLoop(spot, t),
     start,
     expected: spot.estimate.expPerHour,
-    copper: spot.estimate.copperPerHour
+    copper: spot.estimate.copperPerHour,
+    run: false
   };
 }
 
@@ -1056,7 +1062,8 @@ function orderTarget(order: HuntOrder): Target | null {
     loop: order.loop,
     start: order.start,
     expected: order.expPerHour,
-    copper: order.copperPerHour
+    copper: order.copperPerHour,
+    run: order.run === true
   };
 }
 

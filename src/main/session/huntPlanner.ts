@@ -23,7 +23,7 @@ export interface HuntPlannerModules {
   belongings: Pick<Belongings, 'rememberHuntRate'>;
   walker: Pick<Walker, 'start' | 'walking'>;
   loops: Pick<LoopRunner, 'progress' | 'retime'>;
-  travel: Pick<Travel, 'startLoop'>;
+  travel: Pick<Travel, 'startLoop' | 'stoppedAtStart' | 'beginRun' | 'combatOnAfterRun'>;
 }
 
 export interface HuntPlannerParts {
@@ -41,7 +41,14 @@ export function huntPlanner(parts: HuntPlannerParts): HuntPlanner {
     survey: (radius) => m().errands.huntingGrounds(radius),
     noteRate: (key, rate) => m().belongings.rememberHuntRate(key, rate),
     routeTo: (room) => m().errands.planFromHere(room),
-    walk: (route) => m().walker.start(route, m().tracker.current),
+    // A run is timed to the rounds with combat off for the way, as *Run it* is (todo 15).
+    walk: (route, run) => {
+      const { walker, tracker, travel } = m();
+      const refused =
+        walker.start(route, tracker.current, { offRounds: run }) ?? travel.stoppedAtStart();
+      return refused !== null || !run ? refused : travel.beginRun();
+    },
+    combatOnAfterRun: () => m().travel.combatOnAfterRun(),
     runLoop: (loop) => {
       const answer = m().travel.startLoop(loop);
       return 'refused' in answer ? answer.refused : null;

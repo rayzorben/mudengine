@@ -28,6 +28,7 @@ import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
 import type { HuntingAdvice, HuntOrder, HuntWait, SurveyAsk } from '../../shared/hunting';
 import type { ItemRarity } from '../../shared/rarity';
+import type { RunRisk } from '../../shared/runPass';
 import type { SaleTrip, SalePlace } from '../../shared/selling';
 import type { TuningConfig } from '../../shared/internal';
 import type { Stash } from '../../shared/stash';
@@ -115,6 +116,13 @@ export interface ExtensionSessionHost {
    * first, a fight on it is lost or not yet worked out, or there is no realm.
    */
   leg(from: RoomId, to: RoomId): Route;
+  /**
+   * What running a route risks, with combat off and the character sneaking
+   * where its settings say: each hostile lair's chance of getting a round in
+   * and of that round killing, and the chance of dying on the way (null while
+   * a lair's fight has not run). A hunt order with `run` walks this way.
+   */
+  runRisk(route: Route): RunRisk;
   /** A counter's price in copper at that room, charm aside. */
   priceAt(name: string, shop: RoomId): number | null;
   /** The simulator's run of a lair's fight. */
