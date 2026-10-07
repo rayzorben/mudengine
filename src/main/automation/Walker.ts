@@ -75,7 +75,7 @@ import type { SessionModule } from './Module';
 import { WalkClock } from './walk/clock';
 import type { WalkerEvents, WalkInFlight } from './walk/ports';
 import { Holds } from './walk/Holds';
-import { SneakBeforeStep } from './walk/Sneak';
+import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { StepTimes } from './walk/StepTimes';
@@ -602,6 +602,7 @@ export class Walker implements SessionModule {
      */
     if (this.status === 'walking') {
       this.clock.clear();
+      this.sneak.forget();
       const dropped = this.route?.steps.at(-1)?.name;
       if (!this.quiet && dropped !== undefined) {
         this.events.notice?.(t('automation.walk.superseded', { destination: dropped }));
@@ -747,6 +748,7 @@ export class Walker implements SessionModule {
   stop(reason: string, quiet = false): void {
     if (this.status !== 'walking') return;
     this.clock.clear();
+    this.sneak.forget();
     // The outstanding step is not going to be answered as this step any more.
     this.stepTimes.abandoned();
     this.cancelQueued();
@@ -846,7 +848,15 @@ export class Walker implements SessionModule {
   onBlock(block: Block): void {
     this.offRounds.onBlock(block);
     if (this.status !== 'walking') return;
-    if (block.type === 'user-sneak-failed') this.sneak.refused();
+    // The `sn` the step was held behind is answered: send the step, or the
+    // `sn` again after a refusal (`SneakBeforeStep.answered`).
+    if (isSneakAnswer(block.type)) {
+      if (this.sneak.answered(block.type)) {
+        this.clock.clear();
+        this.retry(this.events.stateNow?.(), false);
+      }
+      return;
+    }
 
     /*
      * The character died, so the route is over and it is over for a *reason*.
@@ -1577,7 +1587,10 @@ export class Walker implements SessionModule {
        */
       if (this.levers.pullLeversFirst(step, now)) return;
     }
-    if (now !== undefined) this.sneak.ask(now, this.config.movement.sneak);
+    if (now !== undefined && this.sneak.ask(now, this.config.movement.sneak)) {
+      this.awaitSneak();
+      return;
+    }
     /*
      * And where the realm's own spell will put the character, for an exit
      * whose cast moves them — a draw *or* an address. Both answer with two
@@ -1591,6 +1604,21 @@ export class Walker implements SessionModule {
     this.events.stepping?.(step.command, step.direction, step.to, moves ? cast : undefined);
     this.askedWhereAt = null;
     this.dispatch(step, step.command, t('automation.walk.reasonStepping', { stepName: step.name }));
+  }
+
+  /**
+   * The step is held behind its `sn` until the server answers it. Given the
+   * step's own time and no longer: a lost answer sends the step unsneaked,
+   * said, rather than holding the walk.
+   */
+  private awaitSneak(): void {
+    this.publish();
+    this.clock.afterStep(this.config.walk.stepTimeoutMs, () => {
+      if (this.status !== 'walking') return;
+      this.sneak.unanswered();
+      this.events.notice?.(t('automation.walk.sneakUnanswered'));
+      this.retry(this.events.stateNow?.(), false);
+    });
   }
 
   /**

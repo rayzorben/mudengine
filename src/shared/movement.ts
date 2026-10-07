@@ -17,7 +17,8 @@
  *
  * So this is the one reading of the two progresses, and it is here — pure, in
  * `shared/` — because three surfaces have to agree about it: the Navigation
- * card draws one face and no more, the toolbar draws one transport button, and
+ * card draws one face and no more (`navigationFace`, which differs only for a
+ * lap still walking out to its loop), the toolbar draws one transport button, and
  * `walkNotices` withholds the arrival of a leg that is not a journey. Three
  * copies of "is this a loop?" is three places to disagree.
  */
@@ -88,6 +89,23 @@ export function movementOf(walk: WalkProgress, loop: LoopProgress): Movement {
   if (loop.status === 'stopped') return { kind: 'loop', moving: false, resumable: true };
   if (walk.status === 'idle') return NOT_MOVING;
   return { kind: 'route', moving: false, resumable: false };
+}
+
+/**
+ * Which face the Navigation card draws: `movementOf`'s kind, except that a lap
+ * still walking out to its loop is drawn as routing. The lap is the movement
+ * from the press (play, the toolbar and `walkNotices` read it so), but until
+ * the character stands on a stop there is no lap to report, only a way there.
+ */
+export function navigationFace(walk: WalkProgress, loop: LoopProgress): MovementKind | null {
+  const { kind } = movementOf(walk, loop);
+  // Walking only: a stopped walk under a lap just started is the last run's
+  // leg, and a fight on the way out holds the leg (`walking`) rather than
+  // ending it.
+  if (kind === 'loop' && loop.status === 'running' && !loop.reached && walk.status === 'walking') {
+    return 'route';
+  }
+  return kind;
 }
 
 /**

@@ -28,8 +28,14 @@
  * `Stealth` is three-state for the reason this needs: `unknown` means nobody
  * has said, which is not `sneaking`, and a character that believes it is
  * hidden and is not walks into a lair in the open.
+ *
+ * **The step waits for the `sn`'s answer** (user, 2026-10-07): a loop sent
+ * `sn`, got `You don't think you're sneaking.` and stepped east into a goblin
+ * anyway, because the step was queued behind the `sn` unanswered. A refusal
+ * asks again; the bare `Attempting to sneak...` lets the step go.
  */
 import type { CommandQueue } from '../CommandQueue';
+import type { BlockType } from '../../../shared/blocks';
 import type { CharacterState } from '../../../shared/character';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -46,9 +52,14 @@ export class SneakBeforeStep {
    * less what is in the room), so it is read off the answers.
    */
   private sneakRefusals = { count: 0, level: null as number | null };
+  /**
+   * The `sn` the step is held behind: `awaited` until the server answers it,
+   * `heard` once it has, which lets the next ask send the step.
+   */
+  private answer: 'none' | 'awaited' | 'heard' = 'none';
 
   constructor(
-    private readonly queue: Pick<CommandQueue, 'enqueue'>,
+    private readonly queue: Pick<CommandQueue, 'offer'>,
     private readonly events: Pick<WalkerEvents, 'notice'>,
     /** A room the server refuses `sn` in (`cannotSneakHere`). */
     private readonly blocked: (state: CharacterState) => boolean
@@ -57,14 +68,29 @@ export class SneakBeforeStep {
   /** A new connection, possibly another server: everything counted starts again. */
   reset(): void {
     this.sneakRefusals = { count: 0, level: null };
+    this.forget();
   }
 
-  ask(state: CharacterState, wanted: boolean): void {
-    if (!wanted) return;
+  /** The walk ended or moved on: no step is held behind an `sn` any more. */
+  forget(): void {
+    this.answer = 'none';
+  }
+
+  /**
+   * Asks for an `sn` ahead of the step when one is wanted. True while the
+   * step must wait for its answer (`answered`); false when the step can go.
+   */
+  ask(state: CharacterState, wanted: boolean): boolean {
+    if (this.answer === 'heard') {
+      this.answer = 'none';
+      return false;
+    }
+    if (this.answer === 'awaited') return true;
+    if (!wanted) return false;
     // Sneaking, by the tracker's own reading: the refusals in a row are over.
     if (state.stealth === 'sneaking') {
       if (this.sneakRefusals.count < tuning().walk.sneakGiveUp) this.sneakRefusals.count = 0;
-      return;
+      return false;
     }
     /*
      * **A sheet that says `Stealth: 0` is never asked to sneak** (todo 104).
@@ -79,26 +105,62 @@ export class SneakBeforeStep {
         this.saidNoStealth = true;
         this.events.notice?.(t('automation.walk.sneakNoSkill'));
       }
-      return;
+      return false;
     }
-    if (this.blocked(state)) return;
+    if (this.blocked(state)) return false;
     // Refused too often in a row at this level: stopped until it changes.
     if (this.sneakRefusals.level !== state.progress.level) {
       this.sneakRefusals = { count: 0, level: state.progress.level };
     }
-    if (this.sneakRefusals.count >= tuning().walk.sneakGiveUp) return;
-    this.queue.enqueue({
+    if (this.sneakRefusals.count >= tuning().walk.sneakGiveUp) return false;
+    const offered = this.queue.offer({
       command: 'sn',
       priority: 'movement',
       coalesceKey: 'sneak',
       reason: t('automation.walk.reasonSneak')
     });
+    // `joined`: `AutoStealth`'s `sn` under the same key, whose answer is as good.
+    if (offered !== 'queued' && offered !== 'joined') return false;
+    this.answer = 'awaited';
+    return true;
+  }
+
+  /**
+   * The server answered an `sn`. True when a step was waiting on it, which
+   * the walker then sends again: a refusal asks once more (up to
+   * `sneakGiveUp`), anything else lets the step go.
+   */
+  answered(type: SneakAnswer): boolean {
+    if (type === 'user-sneak-failed') this.refused();
+    if (this.answer !== 'awaited') return false;
+    this.answer = type === 'user-sneak-failed' ? 'none' : 'heard';
+    return true;
+  }
+
+  /** No answer came in the step's own time: the step goes without one. */
+  unanswered(): void {
+    if (this.answer === 'awaited') this.answer = 'heard';
   }
 
   /** One more sneak refused; at the limit, said once. See `sneakRefusals`. */
-  refused(): void {
+  private refused(): void {
     this.sneakRefusals.count += 1;
     if (this.sneakRefusals.count !== tuning().walk.sneakGiveUp) return;
     this.events.notice?.(t('automation.walk.sneakGaveUp', { count: this.sneakRefusals.count }));
   }
+}
+
+/**
+ * The server's answers to `sn`: the bare attempt, the refusal glued to it, and
+ * `You may not sneak right now!`. `Sneaking...` is a move's receipt, not one.
+ */
+export type SneakAnswer = Extract<
+  BlockType,
+  'user-sneak-initiate' | 'user-sneak-failed' | 'user-cant-sneak'
+>;
+
+export function isSneakAnswer(type: BlockType): type is SneakAnswer {
+  return (
+    type === 'user-sneak-initiate' || type === 'user-sneak-failed' || type === 'user-cant-sneak'
+  );
 }
