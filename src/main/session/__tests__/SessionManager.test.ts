@@ -6518,6 +6518,65 @@ describe('what this character costs to move', () => {
   });
 
   /*
+   * 2026-10-06: a hidden exit wanting several items states each on an action,
+   * and only the first was in the key, so carrying the pearl (Paradigm's
+   * 17/3042) moved nothing and a kept sweep or trainer route stayed shut.
+   */
+  it('moves the key for every item a way asks for, not only the first', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-gates-'));
+    const file = path.join(dir, 'rooms.jsonl.gz');
+    const action = (item: number): object => ({
+      say: ['put it in hole'],
+      item,
+      at: { map: 1, room: 1 }
+    });
+    fs.writeFileSync(
+      file,
+      zlib.gzipSync(
+        [
+          JSON.stringify({
+            v: 23,
+            source: 'test',
+            rooms: 2,
+            generatedAt: 'x',
+            items: [
+              { id: 1921, n: 'diamond' },
+              { id: 1923, n: 'pearl' }
+            ]
+          }),
+          JSON.stringify({
+            m: 1,
+            r: 1,
+            n: 'Shadowy Passage',
+            x: {
+              n: {
+                m: 1,
+                r: 2,
+                i: 'Hidden/Needs 2 Actions, any order',
+                a: [action(1921), action(1923)]
+              }
+            }
+          }),
+          JSON.stringify({ m: 1, r: 2, n: 'Beyond', x: {} })
+        ].join('\n') + '\n'
+      )
+    );
+    const world = WorldGraph.load(file);
+    fs.rmSync(dir, { recursive: true, force: true });
+    const { sink } = collect();
+    manager = build(sink, { world });
+    const errands = manager['errands'];
+    const base = manager.character;
+    const key = errands.reachKey(base);
+    expect(errands.reachKey({ ...base, inventory: { ...base.inventory, rows: [1921] } })).not.toBe(
+      key
+    );
+    expect(errands.reachKey({ ...base, inventory: { ...base.inventory, rows: [1923] } })).not.toBe(
+      key
+    );
+  });
+
+  /*
    * And the ways and places routes keep out of (todo 806), from the file, with
    * nothing allowed: only a route the player chose on the panel may cross one,
    * and never a lap's leg.

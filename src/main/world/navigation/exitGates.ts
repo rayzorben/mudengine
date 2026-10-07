@@ -10,6 +10,21 @@ import type { Requirement } from '../../../shared/world';
 const kept = new WeakMap<Requirement, readonly Gate[] | null>();
 
 /**
+ * Every item a way asks the pack about: a `carry` or `lack` gate it states
+ * (`exitGates`), or one on a line of its script, which the router reads in
+ * `scriptPrice`. For `Errands.reachKey`, so carrying or dropping one moves it.
+ */
+export function itemsAsked(requirement: Requirement): number[] {
+  const gates = [
+    ...(exitGates(requirement) ?? []),
+    ...(requirement.script ?? []).flatMap((line) => line.gates)
+  ];
+  return gates.flatMap((gate) =>
+    gate.kind === 'carry' || gate.kind === 'lack' ? [gate.item] : []
+  );
+}
+
+/**
  * The gates an exit states: empty for an exit that states none, null for one
  * whose instruction names a gate it gives no figure for (`Class:` with no
  * number, `Alignment:` with no word), which is priced as unread.
