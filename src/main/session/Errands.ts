@@ -193,6 +193,8 @@ interface HuntPriced extends HuntPrice {
   rooms: HuntingRoom[];
   /** The odds book ran the lair's fight and it is safe (`SpotInput.fightRun`). */
   fightRun: boolean;
+  /** The share of the odds book's fights here won, null where it has not run (`SpotInput.wins`). */
+  wins: number | null;
   /** Training the level ready shuts the way back to it (kept only where the survey was asked `gated`). */
   closes: boolean;
 }
@@ -1978,6 +1980,7 @@ export class Errands implements SessionModule {
         continue;
       }
       const fightRun = odds?.kind === 'run';
+      const wins = odds?.kind === 'run' ? odds.survival.won : null;
       const entry: HuntPriced = {
         key,
         group,
@@ -1987,6 +1990,7 @@ export class Errands implements SessionModule {
         refills,
         rooms,
         fightRun,
+        wins,
         closes
       };
       /*
@@ -2008,7 +2012,8 @@ export class Errands implements SessionModule {
           loopSteps: guessed,
           character,
           filler: [],
-          fightRun
+          fightRun,
+          ...(wins === null ? {} : { wins })
         },
         c
       );
@@ -2159,7 +2164,8 @@ export class Errands implements SessionModule {
       character,
       filler: [],
       refillsOnEntry: own.refills,
-      fightRun: own.fightRun
+      fightRun: own.fightRun,
+      ...(own.wins === null ? {} : { wins: own.wins })
     });
     const sized = sizeLoop(base, candidates.length, c);
     const ring = order.slice(0, sized.rooms);

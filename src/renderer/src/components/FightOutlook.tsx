@@ -9,7 +9,8 @@ import { horizonsShown, percent } from '../lib/outlook';
  * How the room's fight goes, read part way (todo 03): at each of the rounds
  * the run was read at, the share of fights the character is still alive in,
  * the share already won, and the health lost by then, on average and at
- * most; the worst single round; and each monster fought on its own, out of
+ * most; how the fights ended, won or run from (todo 16); the worst single
+ * round; and each monster fought on its own, out of
  * the odds book. The rounds stop at the first that reads 100% won. Beneath
  * the survival meter, which is the fight's end.
  */
@@ -40,6 +41,13 @@ export default function FightOutlook({ verdict }: { verdict: RoomVerdict }) {
         ))}
       {survival !== null && (
         <>
+          <dt>{t('cards.combat.outlook.endLabel')}</dt>
+          <dd>
+            {t('cards.combat.outlook.endFigure', {
+              won: percent(survival.won),
+              ran: percent(survival.ran)
+            })}
+          </dd>
           <dt>{t('cards.combat.outlook.worstLabel')}</dt>
           <dd>{t('cards.combat.outlook.worstFigure', { hp: survival.worstRound })}</dd>
         </>

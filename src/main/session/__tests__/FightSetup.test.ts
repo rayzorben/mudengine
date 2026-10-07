@@ -88,7 +88,8 @@ describe('FightSetup.character', () => {
   });
   const setup = (
     recasts: (spell: string) => number | null,
-    spells: Partial<AutomationConfig['spells']> = {}
+    spells: Partial<AutomationConfig['spells']> = {},
+    retreat: Partial<AutomationConfig['safety']['retreat']> = {}
   ): FightSetup =>
     new FightSetup(
       {
@@ -107,7 +108,8 @@ describe('FightSetup.character', () => {
             magicRes: 0,
             dodge: 5
           }),
-          castingInput: () => null
+          castingInput: () => null,
+          noEffectsKey: () => ''
         } as unknown as FightSetupParts['errands'],
         blessings: () => ({ recastFloor: recasts })
       },
@@ -120,6 +122,10 @@ describe('FightSetup.character', () => {
             healBelow: 0.5,
             healTo: 0.9,
             ...spells
+          },
+          safety: {
+            ...DEFAULT_CONFIG.automation.safety,
+            retreat: { ...DEFAULT_CONFIG.automation.safety.retreat, ...retreat }
           }
         })
       }
@@ -154,5 +160,23 @@ describe('FightSetup.character', () => {
     const chosen = setup(() => null, { autoChooseHeal: true }).character(state(), 'rested')!;
     expect(chosen.heal?.restores).toEqual([40, 60]);
     expect(chosen.heal?.cost).toBe(10);
+  });
+
+  /* todo 16: the fight runs at the retreat line, and the odds book's key holds still as the pack fills. */
+  it('runs at the retreat line, rested with the pack priced full, and keys the odds on the line alone', () => {
+    const on = setup(() => null, {}, { enabled: true, belowHealth: 0.3 });
+    const light = state({
+      inventory: { ...EMPTY_CHARACTER.inventory, encumbrance: 0, encumbranceMax: 1000 }
+    });
+    const heavy = state({
+      inventory: { ...EMPTY_CHARACTER.inventory, encumbrance: 900, encumbranceMax: 1000 }
+    });
+    expect(on.character(light, 'now')!.retreat).toMatchObject({ belowHealth: 0.3, caught: 0.22 });
+    expect(on.character(light, 'rested')!.retreat!.caught).toBeCloseTo(0.62);
+    expect(on.settingsKey(light)).toBe(on.settingsKey(heavy));
+    expect(setup(() => null, {}, { enabled: true, belowHealth: 0.5 }).settingsKey(light)).not.toBe(
+      on.settingsKey(light)
+    );
+    expect(setup(() => null, {}, { enabled: false }).character(light, 'now')!.retreat).toBeNull();
   });
 });

@@ -234,6 +234,12 @@ export interface SpotInput {
    * casting magic missile could hunt (worst 60% of the bar, every fight won).
    */
   fightRun?: boolean;
+  /**
+   * The share of the odds book's fights here won (todo 16): a fight run from
+   * pays nothing, so the lair's exp and copper are priced at this share.
+   * Absent where the fight has not run, priced as every fight won.
+   */
+  wins?: number;
 }
 
 export type HuntingUnknown =
@@ -708,8 +714,8 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   const primaryFor = (cycle: number | null, worth: Worth = EXPERIENCE): number | null => {
     const each = weighed(input.mobs, primary.spawns, cycle, worth);
     // Over every room of the ring — `roomCycle`'s own arithmetic, re-run with
-    // the weights.
-    return each === null ? null : each * rooms;
+    // the weights — and only for the fights won.
+    return each === null ? null : each * rooms * (given.wins ?? 1);
   };
 
   /** What the fillers add to one cycle, each paid at the share it is found up. */
