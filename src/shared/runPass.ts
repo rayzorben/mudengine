@@ -4,6 +4,8 @@
  * source, read 2026-10-05; the reasoning is in `mudengine-automation` ›
  * *A hunt order can be run to its start*.
  */
+import { moveDelayMs } from './hunting';
+import type { RealmFamily } from './realm';
 import type { RoomId } from './world';
 
 /** One lair a run passes. */
@@ -32,6 +34,25 @@ export interface RunRisk {
 export function caughtChance(moveMs: number, roundMs: number): number {
   if (roundMs <= 0) return 1;
   return Math.min(1, Math.max(0, moveMs / roundMs));
+}
+
+/**
+ * The chance of being caught leaving or passing a room with a pack this
+ * heavy: `caughtChance` of the move delay, an unweighed pack priced full, the
+ * slowest step and the likeliest to be caught.
+ */
+export function passCaught(
+  encumbrance: number | null,
+  encumbranceMax: number | null,
+  family: RealmFamily | null,
+  stepMs: number,
+  roundMs: number
+): number {
+  const move =
+    encumbrance === null || encumbranceMax === null
+      ? moveDelayMs(1, 1, family, stepMs)
+      : moveDelayMs(encumbrance, encumbranceMax, family, stepMs);
+  return caughtChance(move, roundMs);
 }
 
 /**

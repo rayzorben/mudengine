@@ -9,15 +9,8 @@ import { SEE_HIDDEN_ABILITY, carriesAbility } from '../../shared/abilities';
 import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
 import type { MobEntity } from '../../shared/entities';
-import { moveDelayMs } from '../../shared/hunting';
 import type { RealmFamily } from '../../shared/realm';
-import {
-  caughtChance,
-  runDeath,
-  sneakHolds,
-  type RunLair,
-  type RunRisk
-} from '../../shared/runPass';
+import { passCaught, runDeath, sneakHolds, type RunLair, type RunRisk } from '../../shared/runPass';
 import type { Odds } from '../../shared/survival';
 import { parseLair, type RoomId, type Route, type WorldRoom } from '../../shared/world';
 
@@ -51,12 +44,13 @@ function killsOf(odds: Odds): number | null {
 export function runRiskOf(route: Route, parts: RunRiskParts): RunRisk {
   const { state, world } = parts;
   const { encumbrance, encumbranceMax } = state.inventory;
-  // An unweighed pack is priced full, the slowest step and the likeliest to be caught.
-  const unread = encumbrance === null || encumbranceMax === null;
-  const move = unread
-    ? moveDelayMs(1, 1, parts.family, parts.stepMs)
-    : moveDelayMs(encumbrance, encumbranceMax, parts.family, parts.stepMs);
-  const exposed = caughtChance(move, parts.roundSeconds * 1000);
+  const exposed = passCaught(
+    encumbrance,
+    encumbranceMax,
+    parts.family,
+    parts.stepMs,
+    parts.roundSeconds * 1000
+  );
   const stealth = state.progress.stealthSkill;
   // The walker sneaks before each step where the setting asks and the sheet allows (`walk/Sneak.ts`).
   const sneaks = parts.movement.sneak && stealth !== null && stealth > 0;

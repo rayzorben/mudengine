@@ -24,6 +24,7 @@ import type { AutomationConfig } from '../../shared/config';
 import { ROUND_SECONDS } from '../../shared/menace';
 import { regeneration, type ProwessSheet } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
+import { passCaught } from '../../shared/runPass';
 import { healFloor, resolveSpell, spellCost } from '../../shared/spellcraft';
 import { castsToKill, thresholdHeal } from '../../shared/spellchoice';
 import {
@@ -31,7 +32,8 @@ import {
   type Recast,
   type SurvivalFoe,
   type SurvivalHeal,
-  type SurvivalInput
+  type SurvivalInput,
+  type SurvivalRetreat
 } from '../../shared/survival';
 import { prowessSheetOf, wieldedWeapon } from '../../shared/verdict';
 import type { WorldSpell } from '../../shared/world';
@@ -57,6 +59,9 @@ export interface FightFoe {
   subject: SurvivalFoe['subject'] & Pick<MobEntity, 'magicResist' | 'nature'>;
   waits?: SurvivalFoe['waits'];
 }
+
+/** A pack nobody has weighed, which `passCaught` prices full. */
+const FULL_PACK = { encumbrance: null, encumbranceMax: null } as const;
 
 export class FightSetup {
   private readonly world: FightSetupParts['world'];
@@ -147,6 +152,7 @@ export class FightSetup {
           ? 0
           : (regen.health.value * ROUND_SECONDS) / tuning().hunting.passiveTickSeconds,
       recasts: at === 'rested' ? [] : this.recasts(state, roundCap),
+      retreat: this.retreat(state, family, at),
       levels: {
         safeAbove: tuning().menace.survivalSafeAbove,
         riskyAbove: tuning().menace.survivalRiskyAbove
@@ -199,6 +205,7 @@ export class FightSetup {
     const { spells, combat } = this.session.config();
     return [
       JSON.stringify(this.up(state)),
+      JSON.stringify(this.retreat(state, this.errands.realmClass().family, 'rested')),
       combat.attack,
       spells.heal,
       spells.autoChooseHeal,
@@ -258,6 +265,30 @@ export class FightSetup {
   private up(state: CharacterState): BlessingEffect | null {
     const level = state.progress.level;
     return level === null ? null : effectsUp(state.buffs, this.spellOf, level);
+  }
+
+  /**
+   * The run the character makes in a fight (todo 16), as `safety.retreat`
+   * says, and the chance the monsters land a round while it leaves, from the
+   * pack it carries; null where the retreat is off and it fights on. Rested,
+   * the pack is priced full: the odds book is kept for any pack, and a key
+   * that moved with every pickup would run every lair again (on review).
+   */
+  private retreat(
+    state: CharacterState,
+    family: RealmFamily | null,
+    at: 'now' | 'rested'
+  ): SurvivalRetreat | null {
+    const { retreat } = this.session.config().safety;
+    if (!retreat.enabled) return null;
+    const { roundSeconds, stepMs } = tuning().hunting;
+    const { encumbrance, encumbranceMax } = at === 'now' ? state.inventory : FULL_PACK;
+    return {
+      belowHealth: retreat.belowHealth,
+      belowMana: retreat.belowMana,
+      whenOutnumbered: retreat.whenOutnumbered,
+      caught: passCaught(encumbrance, encumbranceMax, family, stepMs, roundSeconds * 1000)
+    };
   }
 
   /**

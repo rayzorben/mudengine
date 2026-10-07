@@ -2002,6 +2002,8 @@ cards:
       byRound: 'By round {rounds}'
       standing: '{standing}% alive, {won}% won'
       lost: '{mean} hp lost, {most} at most'
+      endLabel: At the end
+      endFigure: '{won}% won, {ran}% run from'
       worstLabel: Worst round
       worstFigure: '{hp} hp'
       aloneLabel: Alone

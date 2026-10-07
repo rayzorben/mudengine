@@ -68,6 +68,7 @@ function fight(overrides: Partial<SurvivalInput> = {}): SurvivalInput {
     heal: null,
     regenPerRound: 0,
     recasts: [],
+    retreat: null,
     levels: { safeAbove: 0.95, riskyAbove: 0.6 },
     trials: 200,
     roundCap: 100,
@@ -113,6 +114,48 @@ describe('the room’s fight, run', () => {
     expect(result!.survives).toBe(0);
     expect(result!.level).toBe('deadly');
     expect(result!.hpLeft).toBeNull();
+  });
+
+  /* todo 16: Vaelor runs at 30% health, and a lost fight read as a death. */
+  it('runs at the retreat line, and a run is walked out of', () => {
+    const dragon = [{ name: 'dragon', subject: { hp: 5000, profiles: [biter(400, 60, 90)] } }];
+    const retreat = { belowHealth: 0.5, belowMana: 0, whenOutnumbered: 0, caught: 0 };
+    const away = simulateFight(fight({ foes: dragon, retreat }))!;
+    expect(away.survives).toBe(1);
+    expect(away.ran).toBe(1);
+    expect(away.won).toBe(0);
+    // Caught leaving every time, the round it lands is the last.
+    const caught = simulateFight(fight({ foes: dragon, retreat: { ...retreat, caught: 1 } }))!;
+    expect(caught.survives).toBe(0);
+    expect(caught.ran).toBe(0);
+  });
+
+  it('counts a fight won, and runs from none of a room of rats', () => {
+    const retreat = { belowHealth: 0.3, belowMana: 0, whenOutnumbered: 0, caught: 0.22 };
+    const result = simulateFight(fight({ retreat }))!;
+    expect(result.won).toBe(1);
+    expect(result.ran).toBe(0);
+  });
+
+  it('runs from as many swinging at once as the retreat says', () => {
+    const foes = [1, 2].map((n) => ({
+      name: `rat ${n}`,
+      subject: { hp: 500, profiles: [biter(20, 1, 3)] }
+    }));
+    const retreat = { belowHealth: 0, belowMana: 0, whenOutnumbered: 2, caught: 0 };
+    const result = simulateFight(fight({ foes, casting: [null, null], retreat }))!;
+    expect(result.ran).toBe(1);
+    expect(result.survives).toBe(1);
+  });
+
+  it('runs at the mana line, where the pool is known', () => {
+    const foes = [{ name: 'rat', subject: { hp: 500, profiles: [biter(20, 1, 3)] } }];
+    const casting = [{ perRound: 1, manaPerRound: 30 }];
+    const retreat = { belowHealth: 0, belowMana: 0.5, whenOutnumbered: 0, caught: 0 };
+    expect(simulateFight(fight({ foes, casting, retreat }))!.ran).toBe(1);
+    expect(simulateFight(fight({ foes, casting, retreat, mana: null, manaMax: null }))!.ran).toBe(
+      0
+    );
   });
 
   it('counts a heal the automation would cast, and it raises the odds', () => {

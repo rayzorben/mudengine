@@ -106,6 +106,7 @@ const CHARACTER: FightCharacter = {
   heal: null,
   regenPerRound: 0,
   recasts: [],
+  retreat: null,
   levels: { safeAbove: 0.6, riskyAbove: 0.25 },
   trials: 40,
   roundCap: 80,

@@ -190,6 +190,14 @@ describe('what a spot pays', () => {
     expect(plain.copperPerHour).toBe(0);
   });
 
+  /* todo 16: a fight run from pays nothing. */
+  it('pays exp and copper only for the share of fights won', () => {
+    const all = estimateSpot(singles({ mobs: [mutant({ copper: 50.5 })] }), C);
+    const half = estimateSpot(singles({ mobs: [mutant({ copper: 50.5 })], wins: 0.5 }), C);
+    expect(half.expPerCycle).toBeCloseTo(all.expPerCycle! / 2, 5);
+    expect(half.copperPerCycle).toBeCloseTo(all.copperPerCycle! / 2, 5);
+  });
+
   it("weighs a filler's copper at the share of laps it is found up", () => {
     const filler: FillerInput = {
       spawns: 1,

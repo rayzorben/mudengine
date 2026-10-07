@@ -85,6 +85,20 @@ export interface Recast {
   effect: BlessingEffect | null;
 }
 
+/**
+ * When the character runs, as `Travel.considerEscape` decides it
+ * (`safety.retreat`): at or under a share of its health, at or under a share
+ * of its mana (0 never), or with this many swinging at it (0 never). Leaving
+ * costs at most the round the monsters may land while it is still in the
+ * room, `caught` of the time (`caughtChance`).
+ */
+export interface SurvivalRetreat {
+  belowHealth: number;
+  belowMana: number;
+  whenOutnumbered: number;
+  caught: number;
+}
+
 /** What counts as safe and as merely risky: shares of fights survived that must be *exceeded*. */
 export interface SurvivalLevels {
   safeAbove: number;
@@ -125,6 +139,8 @@ export interface SurvivalInput {
   regenPerRound: number;
   /** Blessings that lapse during the fight, recast while the mana pays and lost when it does not. */
   recasts: Recast[];
+  /** The run the character makes; null fights to the end. */
+  retreat: SurvivalRetreat | null;
   levels: SurvivalLevels;
   trials: number;
   roundCap: number;
@@ -151,8 +167,12 @@ export interface SurvivalHorizon {
 }
 
 export interface Survival {
-  /** The share of fights the character walked out of, 0..1. */
+  /** The share of fights the character walked out of, alive, 0..1: won, run from, or still going at the cap. */
   survives: number;
+  /** The share of fights won: every foe down. */
+  won: number;
+  /** The share of fights run from (`SurvivalInput.retreat`), alive. */
+  ran: number;
   level: SurvivalLevel;
   /** Rounds a fight took, on average. Measured, since it was run. */
   rounds: Reckoning<number>;
@@ -305,6 +325,8 @@ export function startFight(input: SurvivalInput): FightTrials | null {
   const reads = horizons.map(() => ({ standing: 0, won: 0, lost: [] as number[] }));
   const count = input.draw === undefined ? null : Math.max(1, Math.trunc(input.draw));
   let survived = 0;
+  let wonTotal = 0;
+  let ranTotal = 0;
   let roundsTotal = 0;
   let healsTotal = 0;
   let downTotal = 0;
@@ -343,6 +365,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     let lost = 0;
     let round = 0;
     let dead = false;
+    let fled = false;
     let next = 0;
 
     const read = (upTo: number, won: boolean): void => {
@@ -374,20 +397,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         }
       }
 
-      // Every foe still standing and in the fight takes its round.
-      let roundHarm = 0;
-      for (const [slot, index] of met.entries()) {
-        if (alive[slot]! <= 0 || !swinging[slot]) continue;
-        const outcome = rollMobRound(random, facing[index]!.model, states[slot]!);
-        roundHarm += outcome.harm;
-        held = Math.max(held, outcome.held);
-        if (outcome.mended > 0) {
-          alive[slot] = Math.min(sides[index]!.hp, alive[slot]! + outcome.mended);
-        }
-      }
-      hp -= roundHarm;
-      lost += roundHarm;
-      worstRound = Math.max(worstRound, roundHarm);
+      foesRound();
       if (hp <= 0) {
         dead = true;
         break;
@@ -400,10 +410,17 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         regenCarry -= whole;
       }
       lapse();
+      if (retreats()) {
+        leave();
+        break;
+      }
       read(round, false);
     }
-    read(Number.POSITIVE_INFINITY, !dead && alive.every((health) => health <= 0));
+    const won = !dead && alive.every((health) => health <= 0);
+    read(Number.POSITIVE_INFINITY, won);
 
+    if (won) wonTotal += 1;
+    if (fled && !dead) ranTotal += 1;
     roundsTotal += round;
     healsTotal += heals;
     downTotal += input.hp - Math.max(0, hp);
@@ -411,6 +428,50 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     if (!dead) {
       survived += 1;
       leftovers.push(Math.max(0, hp));
+    }
+
+    /** Whether the character runs now, by its `safety.retreat`, with a foe still up. */
+    function retreats(): boolean {
+      const rule = input.retreat;
+      if (rule === null || alive.every((health) => health <= 0)) return false;
+      if (hp / top <= rule.belowHealth) return true;
+      const pool = input.manaMax;
+      if (
+        rule.belowMana > 0 &&
+        mana !== null &&
+        pool !== null &&
+        pool > 0 &&
+        mana / pool <= rule.belowMana
+      ) {
+        return true;
+      }
+      const swingingNow = met.filter((_, slot) => alive[slot]! > 0 && swinging[slot]).length;
+      return rule.whenOutnumbered > 0 && swingingNow >= rule.whenOutnumbered;
+    }
+
+    /** Out of the room: the round the foes may still land while it goes (`caught`), then gone. */
+    function leave(): void {
+      fled = true;
+      if (random() >= input.retreat!.caught) return;
+      foesRound();
+      if (hp <= 0) dead = true;
+    }
+
+    /** Every foe still standing and in the fight takes its round, against the character. */
+    function foesRound(): void {
+      let harm = 0;
+      for (const [slot, index] of met.entries()) {
+        if (alive[slot]! <= 0 || !swinging[slot]) continue;
+        const outcome = rollMobRound(random, facing[index]!.model, states[slot]!);
+        harm += outcome.harm;
+        held = Math.max(held, outcome.held);
+        if (outcome.mended > 0) {
+          alive[slot] = Math.min(sides[index]!.hp, alive[slot]! + outcome.mended);
+        }
+      }
+      hp -= harm;
+      lost += harm;
+      worstRound = Math.max(worstRound, harm);
     }
 
     /** The character's turn spent on the heal `AutoHeal` would cast, if it would. */
@@ -519,6 +580,8 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       leftovers.sort((a, b) => a - b);
       return {
         survives,
+        won: wonTotal / trials,
+        ran: ranTotal / trials,
         level: survivalLevel(survives, input.levels),
         rounds: { value: roundsTotal / trials, from: 'measured' },
         hpLeft: leftovers.length === 0 ? null : leftovers[Math.floor(leftovers.length / 2)]!,
