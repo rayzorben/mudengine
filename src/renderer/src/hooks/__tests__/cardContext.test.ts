@@ -10,6 +10,7 @@ import { EMPTY_VIEW, type SessionView } from '../useSessionViews';
 import { ZERO_METER } from '../useStreamPressure';
 import { useToolbarPins } from '../useToolbarPins';
 import { mount } from './mount';
+import type { SupplyItem } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 
 /*
@@ -151,6 +152,51 @@ describe('useCardContext', () => {
     const first = out.current?.contextFor;
     probe.render(createElement(Probe, { inputs: { ...inputs }, out }));
     expect(out.current?.contextFor).toBe(first);
+  });
+
+  it('edits the newest supplies list, not the one a field was drawn from', () => {
+    const out: MutableRefObject<Contexts | null> = { current: null };
+    const writes: SupplyItem[][] = [];
+    const api = new Proxy(
+      {},
+      {
+        get: (_, key) =>
+          key === 'setSupplies'
+            ? (_sid: SessionId, items: SupplyItem[]) => {
+                writes.push(items);
+                return pending();
+              }
+            : pending
+      }
+    ) as CardContextInputs['api'];
+    const torch: SupplyItem = { name: 'torch', min: 1, max: 2, shop: '', at: null };
+    const rope: SupplyItem = { name: 'rope', min: 1, max: 1, shop: '', at: null };
+    const drawn = [torch, rope];
+    probe.render(
+      createElement(Probe, {
+        inputs: { ...stable, api, nameIndexes: {}, suppliesFor: () => drawn },
+        out
+      })
+    );
+    const list = out.current?.suppliesBundle(SHOWN);
+
+    // Min left, then Max closed before Min's write has come back.
+    list?.edit('torch', (row) => row && { ...row, min: 3 });
+    list?.edit('torch', (row) => row && { ...row, max: 5 });
+    expect(writes.at(-1)?.find((row) => row.name === 'torch')).toMatchObject({ min: 3, max: 5 });
+
+    // The torch row removed, then a field drawn before the removal closed.
+    const removed = [rope];
+    probe.render(
+      createElement(Probe, {
+        inputs: { ...stable, api, nameIndexes: {}, suppliesFor: () => removed },
+        out
+      })
+    );
+    out.current?.suppliesBundle(SHOWN);
+    const before = writes.length;
+    list?.edit('torch', (row) => row && { ...row, max: 9 });
+    expect(writes).toHaveLength(before);
   });
 });
 
