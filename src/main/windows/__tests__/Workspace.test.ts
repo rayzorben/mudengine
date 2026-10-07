@@ -264,6 +264,43 @@ describe('the order the rail was dragged into', () => {
     expect(second.sessionsFor(1)).toEqual(['soul', 'vaelor', 'thorn']);
   });
 
+  /*
+   * Quitting closes the main window last, and `ElectronHost` saves after the
+   * close with no main window left. That save used to write `windows: []`.
+   */
+  it('comes back after the main window closed and the arrangement was saved', () => {
+    const first = workspace();
+    first.open(1);
+    first.reorder(1, ['soul', 'vaelor', 'thorn']);
+    first.save();
+    first.close(1);
+    main = null;
+    first.save();
+
+    main = 1;
+    const second = workspace();
+    second.open(1);
+    expect(second.sessionsFor(1)).toEqual(['soul', 'vaelor', 'thorn']);
+  });
+
+  /* On Cmd Q `before-quit` tears the host down before the window closes. */
+  it('comes back when the characters were gone by the time the window closed', () => {
+    const first = workspace();
+    first.open(1);
+    first.reorder(1, ['soul', 'vaelor', 'thorn']);
+    const characters = all;
+    all = [];
+    first.close(1);
+    main = null;
+    first.save();
+
+    all = characters;
+    main = 1;
+    const second = workspace();
+    second.open(1);
+    expect(second.sessionsFor(1)).toEqual(['soul', 'vaelor', 'thorn']);
+  });
+
   /* A character made since the arrangement joins the end rather than
      displacing it. */
   it('appends a character the remembered order has never heard of', () => {

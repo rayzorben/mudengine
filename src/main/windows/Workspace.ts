@@ -29,7 +29,8 @@ export class Workspace {
   /** Window id → the characters whose tabs live there, in rail order. */
   private readonly owned = new Map<number, SessionId[]>();
   /**
-   * What the file said, read once.
+   * What the file said, read once, and the main rail's order once its window
+   * has closed.
    *
    * Read lazily rather than in the constructor because the constructor runs
    * before the session host exists, and every list here is filtered against
@@ -126,8 +127,18 @@ export class Workspace {
    */
   close(windowId: number): SessionId[] {
     const orphans = this.owned.get(windowId) ?? [];
-    this.owned.delete(windowId);
     const main = this.options.mainWindowId();
+    /*
+     * The main window closing has nobody to hand back to: it is the app
+     * ending, or on macOS the frame going while the app stays. Its rail order
+     * is kept as the remembered one, so the save that follows writes it and a
+     * window opened later (`open`) takes it back. Dropping it wrote
+     * `windows: []` on every quit, and the rail came back in profile order.
+     * Unfiltered, like everything `read` holds: a quit that tore the host down
+     * first (Cmd Q, a signal) leaves `sessionsFor` nothing to answer with.
+     */
+    if (windowId === main) this.read().main = orphans;
+    this.owned.delete(windowId);
     if (main !== null && main !== windowId) {
       const home = this.owned.get(main) ?? [];
       this.owned.set(main, [...home, ...orphans.filter((id) => !home.includes(id))]);
@@ -230,6 +241,9 @@ export class Workspace {
     const kept = this.restored
       ? []
       : this.read().popouts.map((sessions) => ({ main: false, sessions }));
+    // With no main window open, its rail order is the one `close` kept.
+    const keptMain =
+      main !== null && this.owned.has(main) ? [] : [{ main: true, sessions: this.read().main }];
     const layout = {
       v: 1,
       windows: [
@@ -237,6 +251,7 @@ export class Workspace {
           main: id === main,
           sessions: this.owned.get(id) ?? []
         })),
+        ...keptMain,
         ...kept
       ]
     };
