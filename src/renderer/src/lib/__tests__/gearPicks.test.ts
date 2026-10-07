@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { basketOf, cashAt, costOf, picksOf, roomFor, toggled, tripPicks } from '../gearPicks';
+import {
+  buysOf,
+  cashAt,
+  costOf,
+  declineKey,
+  roomFor,
+  suggestionsOf,
+  toggled,
+  tripPicks
+} from '../gearPicks';
 import type { GearChoice, GearChoices, GearSlot } from '@shared/upgrades';
 
 function item(slot: string, id: number, ac: number, charged: number | null): GearChoice {
@@ -58,20 +67,27 @@ describe('the Gear card picks', () => {
 
   it('buys one ring in place of the weakest when every finger is worn', () => {
     expect(roomFor(CHOICES.slots[1]!)).toBe(1);
-    const basket = basketOf(CHOICES, 200);
-    expect(basket.get('Finger')?.map((each) => each.item)).toEqual([3]);
-    expect(tripPicks(CHOICES, basket)).toContainEqual({
+    const suggested = suggestionsOf(CHOICES, 200, {});
+    expect(suggested.get('Finger')?.map((each) => each.item)).toEqual([3]);
+    expect(tripPicks(CHOICES, suggested)).toContainEqual({
       item: 3,
       name: 'item 3',
       replaces: 'brass ring'
     });
   });
 
-  it('lays the player picks over the budget, and counts what has no price', () => {
-    const basket = basketOf(CHOICES, 200);
-    const picked = picksOf(CHOICES, basket, { Head: [1], Legs: [5], Finger: [] });
-    expect([...picked.keys()]).toEqual(['Head', 'Legs']);
-    expect(costOf(picked)).toEqual({ copper: 1000, unpriced: 1, count: 2 });
+  it('pays for what the player chose first, and suggests the rest from what is left', () => {
+    // The 1,000 copper helm chosen leaves 45 of 1,045: the 50 copper ring no longer fits.
+    const suggested = suggestionsOf(CHOICES, 1045, { Head: [1] });
+    expect(suggested.get('Head')?.map((each) => each.item)).toEqual([1]);
+    expect(suggested.get('Finger')?.map((each) => each.item)).toEqual([4]);
+  });
+
+  it('leaves a declined suggestion out of the buys, and counts what has no price', () => {
+    const suggested = suggestionsOf(CHOICES, 200, { Legs: [5] });
+    const buys = buysOf(suggested, new Set([declineKey('Finger', 3)]));
+    expect([...buys.keys()].sort()).toEqual(['Head', 'Legs']);
+    expect(costOf(buys)).toEqual({ copper: 100, unpriced: 1, count: 2 });
   });
 
   it('swaps a one-place pick and adds to a ring kind up to its room', () => {
