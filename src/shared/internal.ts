@@ -1327,6 +1327,13 @@ const TUNING_DEFAULTS = {
      * (`You don't think you're sneaking.`), until the next connection or level.
      */
     sneakGiveUp: 4,
+    /**
+     * How long a step waits, from the send, for the answer to the `sn` ahead
+     * of it before it goes without knowing whether the character is sneaking.
+     * The answer comes in the same read as the prompt after it; this is a
+     * lost line, not a slow server, so it is the step's own order of time.
+     */
+    sneakAnswerMs: 5_000,
     /** How long one hold lasts before the walk tries the step again. */
     holdMs: 1_500,
     /** How many holds run back to back before it walks on regardless. */

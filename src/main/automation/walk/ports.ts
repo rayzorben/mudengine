@@ -295,4 +295,6 @@ export interface WalkInFlight {
   stop(reason: string): void;
   /** The step again, behind what was just answered or queued ahead of it. */
   stepAgain(): void;
+  /** The step again unless a hold (a fight, health, a rest) takes the walk first. */
+  stepWhenFree(): void;
 }
