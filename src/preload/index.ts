@@ -1,8 +1,10 @@
 /**
  * The only bridge between the sandboxed renderer and the main process.
  *
- * Every method here mirrors an entry in the `IpcApi` contract; subscription
- * helpers return an unsubscribe function so React effects can clean up without
+ * Every method here mirrors an entry in the `IpcApi` contract, exposed as
+ * `WireApi`: each push is handed over as its JSON text, and the window's
+ * `lib/wire.ts` makes the `IpcApi` everything else reads. Subscription helpers
+ * return an unsubscribe function so React effects can clean up without
  * leaking listeners across hot reloads.
  *
  * Anything belonging to a session takes its id as the first argument, and every
@@ -12,50 +14,21 @@
  */
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
-import {
-  Invoke,
-  Push,
-  Send,
-  type Addressed,
-  type IpcApi,
-  type Notice,
-  type SessionId,
-  type ProfileSummary,
-  type SessionSummary
-} from '../shared/ipc';
-import type { Block } from '../shared/blocks';
-import type { Discovery } from '../shared/memory';
-import type { Find } from '../shared/finds';
-import type { Shelf } from '../shared/shops';
-import type { LowLivesAsk, ResetNotice } from '../shared/ipc';
-import type { CharacterState } from '../shared/character';
-import type { PlayerRegistry } from '../shared/players';
-import type { DebugRecord } from '../shared/debug';
-import type { ConfigSnapshot } from '../shared/config';
-import type { InternalConfig } from '../shared/internal';
-import type { LoopProgress } from '../shared/loops';
-import type { WalkProgress } from '../shared/walk';
-import type { AutomationSnapshot } from '../shared/automation';
-import type { RoomVerdict } from '../shared/verdict';
-import type { CombatTally } from '../shared/tally';
-import type { QuestRunProgress, QuestWatched, RoomAsk } from '../shared/quests';
-import type {
-  ConnectionState,
-  ConnectionTarget,
-  LostEnter,
-  StreamChunk,
-  StreamLine,
-  TelnetEvent,
-  TerminalSize
-} from '../shared/types';
+import { Invoke, Push, Send, type PushText, type SessionId, type WireApi } from '../shared/ipc';
+import type { ConnectionTarget, LostEnter, TerminalSize } from '../shared/types';
 
-function subscribe<T>(channel: string, handler: (payload: T) => void): () => void {
-  const listener = (_event: IpcRendererEvent, payload: T): void => handler(payload);
+/**
+ * A push, handed to the window as the JSON text main sent: a string crosses
+ * the context bridge as one copy, an object property by property
+ * (`PUSH_METHODS`). The window parses it (`lib/wire.ts`).
+ */
+function subscribe(channel: string, handler: (text: PushText) => void): () => void {
+  const listener = (_event: IpcRendererEvent, text: PushText): void => handler(text);
   ipcRenderer.on(channel, listener);
   return () => ipcRenderer.removeListener(channel, listener);
 }
 
-const api: IpcApi = {
+const api: WireApi = {
   // The preload is only ever Electron's; the web bridge says `web` of itself.
   host: 'electron',
 
@@ -177,32 +150,32 @@ const api: IpcApi = {
   terminalAct: (session, action) => ipcRenderer.invoke(Invoke.terminalAct, session, action),
   askRemote: (session, who, name) => ipcRenderer.invoke(Invoke.askRemote, session, who, name),
 
-  onData: (handler) => subscribe<Addressed<StreamChunk>>(Push.data, handler),
-  onState: (handler) => subscribe<Addressed<ConnectionState>>(Push.state, handler),
-  onTelnet: (handler) => subscribe<Addressed<TelnetEvent>>(Push.telnet, handler),
-  onLine: (handler) => subscribe<Addressed<StreamLine>>(Push.line, handler),
-  onDebug: (handler) => subscribe<Addressed<DebugRecord>>(Push.debug, handler),
-  onBlock: (handler) => subscribe<Addressed<Block>>(Push.block, handler),
-  onCharacter: (handler) => subscribe<Addressed<CharacterState>>(Push.character, handler),
-  onPlayers: (handler) => subscribe<Addressed<PlayerRegistry>>(Push.players, handler),
-  onWalk: (handler) => subscribe<Addressed<WalkProgress>>(Push.walk, handler),
-  onLoop: (handler) => subscribe<Addressed<LoopProgress>>(Push.loop, handler),
-  onAutomation: (handler) => subscribe<Addressed<AutomationSnapshot>>(Push.automation, handler),
-  onVerdict: (handler) => subscribe<Addressed<RoomVerdict>>(Push.verdict, handler),
-  onAsks: (handler) => subscribe<Addressed<RoomAsk[]>>(Push.asks, handler),
-  onStatsBase: (handler) => subscribe<Addressed<CombatTally | null>>(Push.statsBase, handler),
-  onNotice: (handler) => subscribe<Notice>(Push.notice, handler),
-  onSessions: (handler) => subscribe<SessionSummary[]>(Push.sessions, handler),
-  onProfiles: (handler) => subscribe<ProfileSummary[]>(Push.profiles, handler),
-  onLearned: (handler) => subscribe<Addressed<Discovery[]>>(Push.learned, handler),
-  onFinds: (handler) => subscribe<Addressed<Find[]>>(Push.finds, handler),
-  onShops: (handler) => subscribe<Addressed<Shelf[]>>(Push.shops, handler),
-  onCharacterReset: (handler) => subscribe<Addressed<ResetNotice>>(Push.characterReset, handler),
-  onLowLives: (handler) => subscribe<Addressed<LowLivesAsk>>(Push.lowLives, handler),
-  onQuestSaid: (handler) => subscribe<Addressed<QuestWatched>>(Push.questSaid, handler),
-  onQuestRun: (handler) => subscribe<Addressed<QuestRunProgress>>(Push.questRun, handler),
-  onConfig: (handler) => subscribe<ConfigSnapshot>(Push.config, handler),
-  onInternal: (handler) => subscribe<InternalConfig>(Push.internal, handler)
+  onData: (handler) => subscribe(Push.data, handler),
+  onState: (handler) => subscribe(Push.state, handler),
+  onTelnet: (handler) => subscribe(Push.telnet, handler),
+  onLine: (handler) => subscribe(Push.line, handler),
+  onDebug: (handler) => subscribe(Push.debug, handler),
+  onBlock: (handler) => subscribe(Push.block, handler),
+  onCharacter: (handler) => subscribe(Push.character, handler),
+  onPlayers: (handler) => subscribe(Push.players, handler),
+  onWalk: (handler) => subscribe(Push.walk, handler),
+  onLoop: (handler) => subscribe(Push.loop, handler),
+  onAutomation: (handler) => subscribe(Push.automation, handler),
+  onVerdict: (handler) => subscribe(Push.verdict, handler),
+  onAsks: (handler) => subscribe(Push.asks, handler),
+  onStatsBase: (handler) => subscribe(Push.statsBase, handler),
+  onNotice: (handler) => subscribe(Push.notice, handler),
+  onSessions: (handler) => subscribe(Push.sessions, handler),
+  onProfiles: (handler) => subscribe(Push.profiles, handler),
+  onLearned: (handler) => subscribe(Push.learned, handler),
+  onFinds: (handler) => subscribe(Push.finds, handler),
+  onShops: (handler) => subscribe(Push.shops, handler),
+  onCharacterReset: (handler) => subscribe(Push.characterReset, handler),
+  onLowLives: (handler) => subscribe(Push.lowLives, handler),
+  onQuestSaid: (handler) => subscribe(Push.questSaid, handler),
+  onQuestRun: (handler) => subscribe(Push.questRun, handler),
+  onConfig: (handler) => subscribe(Push.config, handler),
+  onInternal: (handler) => subscribe(Push.internal, handler)
 };
 
-contextBridge.exposeInMainWorld('mudengine', api);
+contextBridge.exposeInMainWorld('mudengineWire', api);

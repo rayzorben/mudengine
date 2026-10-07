@@ -40,6 +40,7 @@ import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Ho
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
 import type { WebSocketConnection } from './web/sockets';
+import { serialise } from './serialise';
 import { TabOutbox } from './web/outbox';
 import { Send } from '../../shared/ipc';
 
@@ -198,16 +199,11 @@ export function createWebHost(layout: Layout): Host {
 
   const push = (tab: Tab, message: RpcOutbound): void => {
     if (!tab.connection.open) return;
-    let text: string;
-    try {
-      text = JSON.stringify(message);
-    } catch (error) {
-      // A payload JSON cannot carry is a defect in the thing that pushed it,
-      // and one worth naming: the tab would otherwise wait for a reply that
-      // never comes.
-      console.error(`web: could not serialise a message on ${message.k}: ${errorMessage(error)}`);
+    const { text, error } = serialise(message, `a web message on ${message.k}`);
+    if (text === null) {
+      // A reply the tab is waiting on is answered with the failure.
       if (message.k === 'reply') {
-        tab.connection.send(JSON.stringify({ k: 'reply', id: message.id, e: errorMessage(error) }));
+        tab.connection.send(JSON.stringify({ k: 'reply', id: message.id, e: error }));
       }
       return;
     }

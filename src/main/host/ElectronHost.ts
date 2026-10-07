@@ -30,6 +30,8 @@ import { t } from '../app/i18n';
 import { ownTheProfile } from '../app/instance';
 import type { QuitAnswer } from '../app/quit';
 import type { Caller, ClientHooks, Host, Layout, Transport } from './Host';
+import { RepeatedCharacters } from './repeats';
+import { serialise } from './serialise';
 import { EXTENSION_SCHEME } from '../../shared/extensions';
 
 export function createElectronHost(layout: Layout): Host {
@@ -59,12 +61,29 @@ export function createElectronHost(layout: Layout): Host {
     };
   }
 
+  /** Each window's repeated characters, so a reply's replay and a push share one record. */
+  const repeats = new WeakMap<Electron.WebContents, RepeatedCharacters>();
+
+  /**
+   * A push to one window, as its JSON text (`PUSH_METHODS`), unless it is
+   * the character that window already holds.
+   */
+  function push(contents: Electron.WebContents, channel: string, payload: unknown): void {
+    if (contents.isDestroyed()) return;
+    const { text } = serialise(payload, `a desktop push on ${channel}`);
+    if (text === null) return;
+    let seen = repeats.get(contents);
+    if (seen === undefined) {
+      seen = new RepeatedCharacters();
+      repeats.set(contents, seen);
+    }
+    if (!seen.repeats(channel, payload, text)) contents.send(channel, text);
+  }
+
   /** Who sent this, as the client wants to know it. */
   const callerOf = (sender: Electron.WebContents): Caller => ({
     windowId: BrowserWindow.fromWebContents(sender)?.id ?? -1,
-    send: (channel, payload) => {
-      if (!sender.isDestroyed()) sender.send(channel, payload);
-    }
+    send: (channel, payload) => push(sender, channel, payload)
   });
 
   const transport: Transport = {
@@ -157,7 +176,7 @@ export function createElectronHost(layout: Layout): Host {
     client.windows.add({
       id: window.id,
       isDestroyed: () => window.isDestroyed(),
-      send: (channel, payload) => window.webContents.send(channel, payload)
+      send: (channel, payload) => push(window.webContents, channel, payload)
     });
     client.workspace()?.open(window.id);
     for (const session of options.owns ?? []) client.workspace()?.move(session, window.id);
