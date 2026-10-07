@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
+import { yamlPlugin } from './scripts/lib/yaml-module.mjs';
+
 /**
  * The iteration suite: everything except the tests that convert a real Access
  * database.
@@ -12,6 +14,8 @@ import { defineConfig } from 'vitest/config';
  * pre-commit gate runs that.
  */
 export default defineConfig({
+  // A `.yaml` import is its parsed value, as the app builds it.
+  plugins: [yamlPlugin()],
   // The same aliases the app builds with, so renderer code can be unit-tested
   // rather than only exercised through the smoke run. `src/shared` is reached
   // as `@shared` everywhere outside the main process.

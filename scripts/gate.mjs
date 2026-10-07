@@ -332,6 +332,8 @@ const CONFIGS = [
   'tsconfig.web.json',
   'vitest.config.ts',
   'vitest.realm.config.ts',
+  // What a `.yaml` import becomes, in the build and in every test run.
+  'scripts/lib/yaml-module.mjs',
   '.prettierrc',
   '.prettierrc.json',
   '.prettierrc.yaml',

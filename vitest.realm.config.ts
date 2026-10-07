@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
+import { yamlPlugin } from './scripts/lib/yaml-module.mjs';
+
 /**
  * The tests that convert a real Access database, kept out of the iteration
  * suite by `vitest.config.ts`'s `exclude` and run by `npm run test:realm`.
@@ -15,6 +17,8 @@ import { defineConfig } from 'vitest/config';
  * the ordinary suite instead.
  */
 export default defineConfig({
+  // A `.yaml` import is its parsed value, as the app builds it.
+  plugins: [yamlPlugin()],
   resolve: {
     alias: {
       '@shared': resolve('src/shared'),

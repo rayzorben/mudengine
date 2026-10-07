@@ -133,12 +133,18 @@ const STATE_FILES = ['internal.yaml', 'mob-lore.json', 'workspace.json'];
  * Sixty-seven steps each read and parsed every file they might touch — the
  * options file and each profile, on every launch — and that was most of the
  * two seconds the window waited on this (todo 02, 2026-09-23: 12ms a parse of
- * a 51 KB options file, 3.6ms a clone). A step is handed a clone, so one that
- * changes a document and answers *unchanged* leaves no trace, exactly as a
- * fresh parse did; the text is the key and a write drops the entry, so what a
- * step reads is always a parse of what is on disk. Only for one run.
+ * a 51 KB options file). Every step is handed the one parse, not a clone: a
+ * clone of each settings file per step was 1.2s of the 1.6s this took on the
+ * player's 21 files (2026-10-06). So a step that answers *unchanged* must not
+ * have changed the document, which `edit` checks under the test suite; one
+ * that throws drops the parse. The text is the key and a write drops the
+ * entry, so what a step reads is always a parse of what is on disk. Only for
+ * one run.
  */
 let parsed: Map<string, { text: string; document: Document }> | null = null;
+
+/** Under the test suite, a step answering *unchanged* is held to it. */
+const CHECK_DECLINED_EDITS = process.env['VITEST'] !== undefined;
 
 /**
  * Brings whatever is on disk up to the current shape. Safe to call every launch.
@@ -6916,9 +6922,9 @@ function editOptions(home: Home, change: (document: Document) => boolean): void 
 }
 
 /**
- * The document in `file`, fresh for the caller to change: a clone of this
- * run's parse while the text is unchanged (`parsed`), else a new parse. Null
- * for a file that will not parse, which is left alone.
+ * The document in `file`: this run's parse while the text is unchanged
+ * (`parsed`), else a new parse. Null for a file that will not parse, which is
+ * left alone.
  */
 function documentOf(file: string): Document | null {
   let text: string;
@@ -6928,7 +6934,7 @@ function documentOf(file: string): Document | null {
     return null;
   }
   const kept = parsed?.get(file);
-  if (kept !== undefined && kept.text === text) return kept.document.clone();
+  if (kept !== undefined && kept.text === text) return kept.document;
   let document: Document;
   try {
     document = parseDocument(text);
@@ -6936,7 +6942,7 @@ function documentOf(file: string): Document | null {
     return null;
   }
   if (document.errors.length > 0) return null;
-  parsed?.set(file, { text, document: document.clone() });
+  parsed?.set(file, { text, document });
   return document;
 }
 
@@ -6961,27 +6967,37 @@ function edit(file: string, change: (document: Document) => boolean): void {
   const document = documentOf(file);
   if (document === null) return;
 
+  const before = CHECK_DECLINED_EDITS ? String(document) : '';
   let changed = false;
   try {
     changed = change(document);
   } catch {
+    // Part way through, the shared parse may be half changed.
+    parsed?.delete(file);
     return;
   }
-  if (!changed) return;
+  if (!changed) {
+    if (CHECK_DECLINED_EDITS && String(document) !== before) {
+      throw new Error(`a migration step changed ${file} and answered unchanged`);
+    }
+    return;
+  }
 
   try {
     fs.copyFileSync(file, `${file}.bak`);
     const temporary = `${file}.tmp-${process.pid}`;
     fs.writeFileSync(temporary, String(document), 'utf8');
     fs.renameSync(temporary, file);
-    /*
-     * Parsed again by the next step, not kept: a step may set a plain value
-     * into a map, which prints the same but is not the node a parse makes.
-     */
-    parsed?.delete(file);
   } catch {
     // Reported by the store that reads it next; a failed move is not a reason
     // to refuse to start.
+  } finally {
+    /*
+     * Parsed again by the next step, not kept: a step may set a plain value
+     * into a map, which prints the same but is not the node a parse makes,
+     * and a write that failed left the change in this parse and not on disk.
+     */
+    parsed?.delete(file);
   }
 }
 
