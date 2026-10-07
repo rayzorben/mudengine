@@ -35,6 +35,7 @@ import { sliceLines, splitMarks } from '../lib/chunks';
 import { tuning } from '../lib/tuning';
 import { silenceQueries } from '../lib/terminalQueries';
 import { edgeOf, type ScrollEdge } from '../lib/pages';
+import { whenIdle } from '../lib/idle';
 
 /** The handle the parent uses to drive the terminal once it has mounted. */
 export interface TerminalHandle {
@@ -288,6 +289,8 @@ export default function TerminalView({
 
   /** Read through a ref so the terminal's own listeners see the current value. */
   const reportRef = useRef(reportSize);
+  /** Puts the console on its WebGL renderer, if it is not yet; null before mount. */
+  const webglRef = useRef<(() => void) | null>(null);
 
   /**
    * Read at search time rather than captured at mount, so the overview-ruler
@@ -310,6 +313,7 @@ export default function TerminalView({
     reportRef.current = reportSize;
     const term = termRef.current;
     if (!reportSize || wasReporting || !term) return;
+    webglRef.current?.();
     fitRef.current?.fit();
     handlers.current.onResize({ cols: term.cols, rows: term.rows });
   }, [reportSize]);
@@ -631,13 +635,29 @@ export default function TerminalView({
     // WebGL keeps frame times flat during combat bursts. It is unavailable in
     // some VMs and on stale drivers, and it can be lost at runtime, so both
     // failure paths fall back to the DOM renderer rather than breaking.
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch {
-      // DOM renderer remains active; nothing further to do.
-    }
+    let rendered = false;
+    const drawWithWebgl = (): void => {
+      waiting();
+      if (rendered) return;
+      rendered = true;
+      try {
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => webgl.dispose());
+        term.loadAddon(webgl);
+      } catch {
+        // DOM renderer remains active; nothing further to do.
+      }
+    };
+    /*
+     * The shown console takes it at once; one nobody is looking at waits for
+     * the window to go idle (`hiddenWebglMs`), or for being shown. Every loaded
+     * character mounts a console, and their WebGL set-up was about 430ms of the
+     * window's first second and a half on the player's machine (2026-10-06).
+     */
+    let waiting = (): void => {};
+    if (reportRef.current) drawWithWebgl();
+    else waiting = whenIdle(drawWithWebgl, tuning().hiddenWebglMs);
+    webglRef.current = drawWithWebgl;
 
     termRef.current = term;
 
@@ -1008,6 +1028,8 @@ export default function TerminalView({
     observer.observe(mount);
 
     return () => {
+      waiting();
+      webglRef.current = null;
       window.removeEventListener('keydown', watchEnter, { capture: true });
       if (enterTimer !== null) clearTimeout(enterTimer);
       links.dispose();

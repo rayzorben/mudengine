@@ -2100,6 +2100,13 @@ const TUNING_DEFAULTS = {
      */
     wallCost: 100_000,
     /**
+     * How many sweeps of the rooms within reach the navigation engine keeps
+     * for one character as it stands (`Navigation.withinNow`): the hunting
+     * survey's whole realm and each spot's ring rooms (`hunting.maxSpots`
+     * spots of up to `hunting.maxLoopRooms` rooms).
+     */
+    keptSweeps: 512,
+    /**
      * What a room-script teleport costs over an ordinary step, so the router
      * prefers plain corridors unless the portal genuinely shortens the way —
      * usually across maps, which is what most of them are for.
@@ -2743,6 +2750,12 @@ const TUNING_DEFAULTS = {
      * frame.
      */
     restoreSliceChars: 65536,
+    /**
+     * The longest a console nobody is looking at waits, once mounted, for an
+     * idle moment to take its WebGL renderer; the shown one takes it at once,
+     * and a hidden one when it is shown.
+     */
+    hiddenWebglMs: 3000,
     /**
      * How many lines of backscroll a console holds, and how many more each
      * *Load more* at its top brings back from main. Main keeps
