@@ -5952,6 +5952,8 @@ automation:
     # Todo 104: the sheet's own figure decides, from `SneakCommand.cs`'s roll.
     sneakGaveUp: 'Not sneaking before steps: the last {count} tries failed. Trying again after
       a level or a reconnect.'
+    sneakUnanswered: No answer to sn, so the step goes without knowing whether this character is
+      sneaking.
     sneakNoSkill: 'Not sneaking before steps: this character has no Stealth (the stats say 0), so
       the game refuses every attempt. Auto-Sneak on Move is ignored for this session.'
     reasonStepping: walking to {stepName}

@@ -291,16 +291,26 @@ const writeProfiles = () => {
       '    retreat:',
       '      enabled: true',
       '      belowHealth: 0.1',
+      /*
+       * Resting under the fixture's health too, for the same reason: the
+       * smoke loop starts on its first stop, and a lap standing on a stop at
+       * 98/400 holds to rest and never sends the step the loop checks read.
+       */
+      '  health:',
+      '    restBelow: 0.2',
       ''
     ].join('\n'),
     'utf8'
   );
 
   /*
-   * A loop over the two shops beside the fixture's room (1/2140), so the
-   * palette carries a "Loop:" command and starting it sends a real step. The
-   * fixture never answers the rooms; the check stops the loop and settles the
-   * in-flight move itself, like the route-panel check above.
+   * A loop from the fixture's room (1/2140) over the two shops beside it, so
+   * the palette carries a "Loop:" command and starting it sends a real step.
+   * The fixture never answers the rooms; the check stops the loop and settles
+   * the in-flight move itself, like the route-panel check above. The first stop
+   * is the room the character stands in, so the lap is reached at Start: a lap
+   * still walking out to its loop is drawn as routing (`navigationFace`), and
+   * the checks below are of the Loop face.
    *
    * A **file in the character's own loops directory**, which is where a loop
    * lives now -- and driving it from there is what proves the scope reaches
@@ -312,6 +322,7 @@ const writeProfiles = () => {
     [
       'name: Smoke loop',
       'stops:',
+      "  - 'Newhaven, Village Entrance 1/2140'",
       "  - 'Newhaven, Weapons Shop 1/2141'",
       "  - 'Newhaven, Armour Shop 1/2142'",
       ''

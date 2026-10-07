@@ -1880,16 +1880,66 @@ describe('a locked barrier in the way', () => {
 });
 
 describe('sneaking before a route', () => {
-  const sneaking = (): Walker =>
+  const sneaking = (now?: () => CharacterState): Walker =>
     new Walker({ ...config, movement: { ...config.movement, sneak: true } }, queue, {
-      notice: (m) => notices.push(m)
+      notice: (m) => notices.push(m),
+      ...(now === undefined ? {} : { stateNow: now })
     });
 
   it('sneaks first when asked to', () => {
     const walk = sneaking();
     walk.start(ROUTE, at(1, 1));
     vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn']);
+    walk.onBlock(block('user-sneak-initiate'));
+    vi.advanceTimersByTime(200);
     expect(sent).toEqual(['sn', 'e']);
+    walk.dispose();
+  });
+
+  /*
+   * Reported 2026-10-07: `sn`, `You don't think you're sneaking.`, and the
+   * loop stepped east into a goblin in plain sight. A refusal asks again and
+   * the step waits for an attempt the server did not refuse.
+   */
+  it('asks again after a refused sneak, and steps only once one is not refused', () => {
+    const walk = sneaking(() => at(1, 1));
+    walk.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn']);
+    walk.onBlock(block('user-sneak-failed'));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn', 'sn']);
+    walk.onBlock(block('user-sneak-initiate'));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn', 'sn', 'e']);
+    walk.dispose();
+  });
+
+  /* The stat screen's hold drops what is queued, the `sn` included. */
+  it('says so when the queue drops the sneak before it is sent', () => {
+    const walk = sneaking(() => at(1, 1));
+    // A half-typed line, so the `sn` waits in the queue.
+    queue.noteTyping(true);
+    walk.start(ROUTE, at(1, 1));
+    expect(sent).not.toContain('sn');
+    queue.hold('train stats');
+    vi.advanceTimersByTime(tuning().walk.sneakAnswerMs);
+    expect(sent).not.toContain('sn');
+    expect(notices).toContain(t('automation.walk.sneakUnanswered'));
+    // The step itself is refused by the same hold, and the walk stops on it.
+    expect(walk.progress.status).toBe('stopped');
+    walk.dispose();
+  });
+
+  it('steps without an answer once the wait for one has gone, and says so', () => {
+    const walk = sneaking();
+    walk.start(ROUTE, at(1, 1));
+    vi.advanceTimersByTime(tuning().walk.sneakAnswerMs - 1);
+    expect(sent).toEqual(['sn']);
+    vi.advanceTimersByTime(1);
+    expect(sent).toEqual(['sn', 'e']);
+    expect(notices).toContain(t('automation.walk.sneakUnanswered'));
     walk.dispose();
   });
 
@@ -1938,18 +1988,23 @@ describe('sneaking before a route', () => {
    * refusals in a row the walk stops asking, said once.
    */
   it('stops asking after too many sneaks refused in a row, and says so once', () => {
-    const walk = sneaking();
     const base = at(1, 1);
+    const walk = sneaking(() => base);
     walk.start(ROUTE, base);
     vi.advanceTimersByTime(200);
-    expect(sent).toEqual(['sn', 'e']);
-    for (let i = 0; i < tuning().walk.sneakGiveUp; i += 1) {
+    const giveUp = tuning().walk.sneakGiveUp;
+    for (let i = 0; i < giveUp; i += 1) {
+      // Each refusal comes with its prompt, which is the queue's credit.
+      queue.notePrompt();
       walk.onBlock(block('user-sneak-failed'));
+      vi.advanceTimersByTime(200);
     }
+    // One `sn` per refusal, then the step goes unsneaked.
+    expect(sent).toEqual([...Array<string>(giveUp).fill('sn'), 'e']);
     walk.onCharacter({ ...base, room: { ...base.room, number: 2 } });
     vi.advanceTimersByTime(200);
-    expect(sent.length).toBeGreaterThan(2);
-    expect(sent.slice(2)).not.toContain('sn');
+    expect(sent.length).toBeGreaterThan(giveUp + 1);
+    expect(sent.slice(giveUp + 1)).not.toContain('sn');
     const said = t('automation.walk.sneakGaveUp', { count: tuning().walk.sneakGiveUp });
     expect(notices.filter((line) => line === said)).toHaveLength(1);
     walk.dispose();
@@ -1959,6 +2014,9 @@ describe('sneaking before a route', () => {
     const walk = sneaking();
     const base = at(1, 1);
     walk.start(ROUTE, { ...base, progress: { ...base.progress, stealthSkill: null } });
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn']);
+    walk.onBlock(block('user-sneak-initiate'));
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['sn', 'e']);
     walk.dispose();
@@ -2036,6 +2094,9 @@ describe('sneaking before a route', () => {
     now = at(1, 1, { stealth: 'seen' });
     walk.onBlock(block('door-changed', { barrier: 'door', state: 'open' }));
     vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['e', 'open e', 'sn']);
+    walk.onBlock(block('user-sneak-initiate'));
+    vi.advanceTimersByTime(200);
     expect(sent).toEqual(['e', 'open e', 'sn', 'e']);
     walk.dispose();
   });
@@ -2064,6 +2125,9 @@ describe('sneaking before a route', () => {
         }
       })
     );
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['sn']);
+    walk.onBlock(block('user-sneak-initiate'));
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['sn', 'e']);
     walk.dispose();
@@ -4531,6 +4595,8 @@ describe('a fight on the way', () => {
     });
     walk.start(ROUTE, at(1, 1));
     await vi.advanceTimersByTimeAsync(50);
+    walk.onBlock(block('user-sneak-initiate'));
+    await vi.advanceTimersByTimeAsync(50);
     expect(sent).toEqual(['sn', 'e']);
 
     walk.onCharacter(fighting(1, 1));
@@ -4538,8 +4604,42 @@ describe('a fight on the way', () => {
     current = at(1, 1);
     walk.onCharacter(at(1, 1));
     await vi.advanceTimersByTimeAsync(50);
+    walk.onBlock(block('user-sneak-initiate'));
+    await vi.advanceTimersByTimeAsync(50);
 
     expect(sent).toEqual(['sn', 'e']);
+    walk.dispose();
+  });
+
+  /*
+   * A fight that starts while the `sn` is out holds the step even once the
+   * `sn` is answered, and the fight's end asks for a fresh one: the fight
+   * broke whatever the answer said.
+   */
+  it('holds the step for a fight that starts before the sneak is answered', async () => {
+    let current = at(1, 1);
+    const walk = new Walker({ ...config, movement: { ...config.movement, sneak: true } }, queue, {
+      willFight: () => true,
+      notice: (m) => notices.push(m),
+      stateNow: () => current
+    });
+    walk.start(ROUTE, current);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['sn']);
+
+    current = fighting(1, 1);
+    walk.onCharacter(current);
+    walk.onBlock(block('user-sneak-initiate'));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['sn']);
+
+    current = at(1, 1);
+    walk.onCharacter(current);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['sn', 'sn']);
+    walk.onBlock(block('user-sneak-initiate'));
+    await vi.advanceTimersByTimeAsync(50);
+    expect(sent).toEqual(['sn', 'sn', 'e']);
     walk.dispose();
   });
 
