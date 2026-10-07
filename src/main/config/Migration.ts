@@ -6831,6 +6831,10 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'speedRounds', DEFAULT_INTERNAL.tuning.hunting.speedRounds);
     addKey('hunting', 'speedKept', DEFAULT_INTERNAL.tuning.hunting.speedKept);
     addKey('hunting', 'speedSlack', DEFAULT_INTERNAL.tuning.hunting.speedSlack);
+    // The sweeps of what is within reach kept for the hunting survey (2026-10-06).
+    addKey('world', 'keptSweeps', DEFAULT_INTERNAL.tuning.world.keptSweeps);
+    // How long a console nobody is looking at waits for its WebGL renderer (2026-10-06).
+    addKey('view', 'hiddenWebglMs', DEFAULT_INTERNAL.tuning.view.hiddenWebglMs);
     addKey('hunting', 'speedShare', DEFAULT_INTERNAL.tuning.hunting.speedShare);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
