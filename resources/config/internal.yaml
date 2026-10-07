@@ -919,14 +919,15 @@ tuning:
     passes: 20
 
   # The Gear card and the trip that buys from it. `perSlot` better items are
-  # listed per slot; one trip buys at most `tripItems` (the order is solved
-  # exactly and each item doubles the table, vaults counting as items) and
-  # weighs the nearest `counters` of each; a buy the pack does not confirm in
+  # listed per slot; a trip's order is solved exactly up to `exactStops` stops
+  # (items at the same counters are one stop, a vault is one; each doubles the
+  # table) and past that is nearest first, shortened by swaps; it weighs the
+  # nearest `counters` of each; a buy the pack does not confirm in
   # `confirmMs` is refused, a vault silent for `vaultMs` is that vault's
   # refusal, and a stop is given up on after `maxLegs` legs.
   gear:
     perSlot: 20
-    tripItems: 10
+    exactStops: 10
     counters: 3
     confirmMs: 8000
     vaultMs: 8000

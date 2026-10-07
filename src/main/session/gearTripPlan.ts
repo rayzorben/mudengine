@@ -48,14 +48,8 @@ export async function planGearTrip(
   };
   if (world === undefined) return { ...empty, refusal: t('session.loop.noRealmData') };
   if (here === null) return { ...empty, refusal: t('session.loop.unknownRoom') };
-  const { tripItems, counters } = tuning().gear;
+  const { exactStops, counters } = tuning().gear;
   if (picks.length === 0) return { ...empty, refusal: t('cards.gear.trip.nothingPicked') };
-  if (picks.length > tripItems) {
-    return {
-      ...empty,
-      refusal: t('cards.gear.trip.tooMany', { items: picks.length, most: tripItems })
-    };
-  }
   // As the character stands: no room run from is walked round (`GearTripPlanner.routeTo`).
   const traveller = parts.errands.travellerNow(state);
   const left: GearTripPlan['left'] = [];
@@ -101,14 +95,6 @@ export async function planGearTrip(
     short = drawn.short;
   }
 
-  // The vaults are items of the order too, and each doubles the table.
-  if (things.length > tripItems) {
-    return {
-      ...empty,
-      left,
-      refusal: t('cards.gear.trip.tooMany', { items: things.length, most: tripItems })
-    };
-  }
   const cash = new Set(things.flatMap((thing, index) => (thing.kind === 'cash' ? [index] : [])));
   const order = tour(
     world,
@@ -120,6 +106,7 @@ export async function planGearTrip(
           : [...thing.rooms.keys()]
       ),
       places: counters,
+      exact: exactStops,
       end: null,
       first: cash,
       by: 'moves'

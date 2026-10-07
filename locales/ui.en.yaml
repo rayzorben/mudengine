@@ -1659,7 +1659,6 @@ cards:
     copyRow: '{slot}: {worn}; best {best}'
     trip:
       nothingPicked: nothing is picked to buy
-      tooMany: '{items} items and banks are more than one trip takes ({most})'
       noWay: no shop selling any of them can be reached from here
   quests:
     anyOf: Any one of
