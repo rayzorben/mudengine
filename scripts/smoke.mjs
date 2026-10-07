@@ -6053,6 +6053,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'a press on the channel picker is not swallowed, so the dropdown can drop down'
   );
   // Back to gossip, so the rest of this run sees the card as it was found.
+  const railBefore = await evaluate(`document.querySelector('.rail')?.scrollTop ?? null`);
   await evaluate(`
     (() => {
       const select = document.querySelector('.conversation-say select');
@@ -6065,6 +6066,22 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     })()
   `);
   await valued('.conversation-say select', 'gos');
+  /*
+   * Picking a channel hands the caret to the box beside it without scrolling
+   * the rail. The rail's scroll arrived a frame later and closed any popup
+   * opened from a card in it, such as the settings panel opened next. Only a
+   * rail that can scroll tests this.
+   */
+  await painted();
+  const railAfter = await evaluate(`document.querySelector('.rail')?.scrollTop ?? null`);
+  const railScrolls = await evaluate(
+    `(() => { const rail = document.querySelector('.rail'); return !!rail && rail.scrollHeight > rail.clientHeight; })()`
+  );
+  check(
+    railScrolls && railBefore !== null && railAfter === railBefore,
+    'and picking a channel hands the caret over without scrolling the rail',
+    `${railBefore} -> ${railAfter}, rail ${railScrolls ? 'scrolls' : 'cannot scroll'}`
+  );
 
   /*
    * And the option goes back off, which is also the assertion that it is an

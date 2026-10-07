@@ -567,7 +567,9 @@ function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
             onChange={(event) => {
               const chosen = picker.options.find((entry) => entry.word === event.target.value);
               if (chosen) picker.point(chosen);
-              inputRef.current?.focus();
+              // The box is beside the picker and already in view. Scrolling the
+              // rail to it closed the card's settings panel on its next frame.
+              inputRef.current?.focus({ preventScroll: true });
             }}
             onKeyDown={(event) => {
               /*
