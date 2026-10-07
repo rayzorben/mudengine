@@ -1587,60 +1587,67 @@ cards:
     copyRow: '{mobs}: {rate} exp/hr, {rooms} rooms, {steps} steps'
   gear:
     title: Gear
-    caption: Each slot, what is worn there and what is better
-    find: Find a slot or an item
     loading: Looking through every item for each slot…
     none: Nothing to show until the world database and the character's sheet are read.
     failed: 'Could not ask: {why}'
     refresh: Check again
     unread: Class, race, level or alignment is not read yet, so some items may be left out that could be worn.
-    budget: Cash to spend
-    cash: 'Purse {purse}, {banked} in the bank'
-    cashBanksOnly: 'Purse not read, {banked} in the bank'
-    cashUnread: Cash not read yet (type `i` and `bank`)
+    budget: To spend
+    purse: 'Purse {copper}'
+    purseUnread: Purse not read
+    bank: 'Bank {copper}'
+    bankUnread: Bank not read
+    cashUnread: Cash not read yet. Type `i` for the purse and `bank` at a bank.
     copper: '{copper} copper'
     unpriced: no price
-    columns:
-      slot: Slot
-      worn: Worn
-      best: Best in slot
-      buy: Buy now
-      take: Buy
-    takeLabel: 'Buy for {slot}'
-    nothingWorn: nothing
-    nothingPicked: nothing within the cash
-    wornIsBest: what is worn is the best
-    sold: '{shop}, {price}'
-    soldMore: '{shop}, {price} (and {more} more shops)'
-    dropped: 'dropped by {monsters}'
-    nowhere: not sold, no known drop
-    gainArmour: '+{ac} AC'
-    gainRound: '+{damage} damage a round'
-    level: 'level {level}'
-    pick: Buy
-    unpick: Don't buy
-    pickedNone: Nothing picked.
-    pickedCost:
-      one: '1 item for {cost}, of {budget} to spend.'
-      many: '{count} items for {cost}, of {budget} to spend.'
     unpricedCount:
       one: 1 has no price.
       many: '{count} have no price.'
+    worn: Worn
+    best: Best
+    nothingWorn: nothing
+    bestWorn: Wearing the best
+    bestInSlot: Best in slot
+    outOfReach: Nothing better is sold within the cash to spend.
+    sold: '{shop}'
+    soldMore: '{shop} and {more} more'
+    dropped: 'Dropped by {monsters}'
+    nowhere: Not sold, no known drop
+    gainArmour: '+{ac} AC'
+    gainRound: '+{damage} damage a round'
+    level: 'level {level}'
+    buying: Buying
+    declined: Not buying
+    buyingAt: 'Buying · {shop}'
+    declinedAt: 'Not buying · {shop}'
+    itemPrice: '{item} · {price}'
+    declineTitle: Click to leave it
+    buyTitle: Click to buy it
+    otherChoices:
+      one: 1 other choice
+      many: '{count} other choices'
+    hideChoices: Hide the choices
+    backToSuggestion: Back to the suggestion
+    pickedNone: Nothing to buy.
+    pickedCost:
+      one: '1 item for {cost}, of {budget}'
+      many: '{count} items for {cost}, of {budget}'
     plan: Plan the trip
     planning: Planning…
     replan: Plan again
+    going: Buying the gear…
+    stop: Stop
     tripFace: Trip
-    tripSummary:
-      one: '1 stop, {moves} steps, {owed}.'
-      many: '{stops} stops, {moves} steps, {owed}.'
+    figureStops: Stops
+    figureSteps: Steps
+    figureCost: Cost
+    figureShort: Short
+    withdraw: 'Withdraw {amount}'
     tripPurseUnread: The purse is not read, so no bank is on the way; type `i` first.
     tripBlocked: A stop below has no way there as it stands, and the trip ends there.
-    tripShort: 'The banks on record are {short} short.'
     tripLeft: 'Left out: {items}.'
     leftNotSold: '{item} (no shop sells it)'
     leftUnreachable: '{item} (no shop selling it can be reached)'
-    stopBank: 'Withdraw {amount} at {bank}'
-    stopShop: '{shop}: {items}'
     legSteps:
       one: 1 step
       many: '{steps} steps'
@@ -1649,7 +1656,6 @@ cards:
     legHazard: '{spell} ({rooms} rooms)'
     runTooltip: Go with auto-combat off, and turn it back on at the last shop
     walkTooltip: Walk to each bank and shop in turn and buy
-    stop: Stop
     copyRow: '{slot}: {worn}; best {best}'
     trip:
       nothingPicked: nothing is picked to buy
