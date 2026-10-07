@@ -75,7 +75,7 @@ import type { SessionModule } from './Module';
 import { WalkClock } from './walk/clock';
 import type { WalkerEvents, WalkInFlight } from './walk/ports';
 import { Holds } from './walk/Holds';
-import { SneakBeforeStep } from './walk/Sneak';
+import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { StepTimes } from './walk/StepTimes';
@@ -250,9 +250,10 @@ export class Walker implements SessionModule {
       step: () => this.route?.steps[this.index],
       publish: () => this.publish(),
       stop: (reason) => this.stop(reason),
-      stepAgain: () => this.sendCurrent(false)
+      stepAgain: () => this.sendCurrent(false),
+      stepWhenFree: () => this.retry(this.events.stateNow?.(), false)
     };
-    this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere);
+    this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere, inFlight, this.clock);
     this.offRounds = new OffRounds(this.stepTimes, events);
     this.holds = new Holds(
       config,
@@ -846,7 +847,7 @@ export class Walker implements SessionModule {
   onBlock(block: Block): void {
     this.offRounds.onBlock(block);
     if (this.status !== 'walking') return;
-    if (block.type === 'user-sneak-failed') this.sneak.refused();
+    if (isSneakAnswer(block.type)) return this.sneak.answered(block.type);
 
     /*
      * The character died, so the route is over and it is over for a *reason*.
@@ -1552,8 +1553,7 @@ export class Walker implements SessionModule {
      * for here is lit before the character moves. Only a fresh send — a
      * retry behind a door is the same step into the same room.
      *
-     * The sneak is asked on **every** send and after the light, which is the
-     * one thing here that is not per-step-per-room: see `SneakBeforeStep.ask`.
+     * The sneak is asked on **every** send, after the light: `SneakBeforeStep`.
      */
     const now = this.events.stateNow?.() ?? from;
     if (now !== undefined) this.noteRoomBehind(now);
@@ -1577,7 +1577,7 @@ export class Walker implements SessionModule {
        */
       if (this.levers.pullLeversFirst(step, now)) return;
     }
-    if (now !== undefined) this.sneak.ask(now, this.config.movement.sneak);
+    if (now !== undefined && this.sneak.ask(now, this.config.movement.sneak)) return;
     /*
      * And where the realm's own spell will put the character, for an exit
      * whose cast moves them — a draw *or* an address. Both answer with two
