@@ -2,9 +2,10 @@
  * Which self blessings are kept up under `automation.spells.autoChooseBlessings`
  * (todo 10): the fight being hunted (AutoHunt's spot, else the lair in the
  * room, else the last choice stands), the spellbook's self blessings as
- * candidates, and `chooseBlessings` over runs of that fight, one run a
- * `survivalSliceMs` slice as `OddsBook` runs them. Every run is on the bare
- * character (`bareStateOf`), so a buff going up or down asks for none again.
+ * candidates, and `chooseBlessings` over runs of that fight, each set up in
+ * `survivalSliceMs` slices and run by the simulator, as `OddsBook` runs them.
+ * Every run is on the bare character (`bareStateOf`), so a buff going up or
+ * down asks for none again.
  * `blessingsFor` builds `Blessings` with this as its `chosen` port. See
  * mudengine-automation › *Recovery*.
  */
@@ -39,7 +40,8 @@ import { effectSeconds, scaledDuration } from '../../shared/menace';
 import { castOdds } from '../../shared/prowess';
 import { castsOnSelf, sameSpell, spellTargeting } from '../../shared/spellcraft';
 import { statedNow } from '../../shared/stated';
-import { simulateFight } from '../../shared/survival';
+import type { FightSimulator } from '../../shared/simulator';
+import type { Survival, SurvivalInput } from '../../shared/survival';
 import { prowessSheetOf } from '../../shared/verdict';
 import { lairKey, parseLair, roomId, type WorldRoom, type WorldSpell } from '../../shared/world';
 
@@ -49,6 +51,7 @@ export interface BlessingChoiceParts {
   readonly errands: Pick<Errands, 'fitness' | 'realmClass' | 'realmSpeed'>;
   readonly setup: Pick<FightSetup, 'blessed' | 'foes' | 'settingsKey'>;
   readonly hunt: Pick<AutoHunt, 'quarry'>;
+  readonly simulator: FightSimulator;
 }
 
 export interface BlessingChoiceSession {
@@ -82,6 +85,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   private readonly errands: BlessingChoiceParts['errands'];
   private readonly setup: BlessingChoiceParts['setup'];
   private readonly hunt: BlessingChoiceParts['hunt'];
+  private readonly simulator: FightSimulator;
   /** The rows chosen, or null where the list stands. */
   private rows: readonly BlessingConfig[] | null = null;
   /** The last fight chosen for, kept while nothing is hunted. */
@@ -91,6 +95,8 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   /** Runs of the fight, by fight and set, oldest first. Null is a fight that cannot be run. */
   private readonly runs = new Map<string, FightRun | null>();
   private readonly jobs = new Map<string, Job>();
+  /** Runs with the simulator, by key, and how to drop each. */
+  private readonly running = new Map<string, () => void>();
   private slice: NodeJS.Immediate | null = null;
   private mana: ManaWatch = NO_MANA_WATCH;
   /** The last thing said, so a refusal or a choice is said once. */
@@ -105,6 +111,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
     this.errands = parts.errands;
     this.setup = parts.setup;
     this.hunt = parts.hunt;
+    this.simulator = parts.simulator;
   }
 
   /** The rows `Blessings` keeps up while the switch is on; null keeps the list. */
@@ -145,7 +152,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       JSON.stringify(income),
       JSON.stringify(candidates.map(({ name, cost, duration, row }) => [name, cost, duration, row]))
     ].join('#');
-    if (context === this.context && this.jobs.size === 0) return;
+    if (context === this.context && this.jobs.size === 0 && this.running.size === 0) return;
     this.context = context;
 
     const first = this.setup.blessed(bare, null);
@@ -253,7 +260,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       .join('+')}`;
     const kept = this.runs.get(key);
     if (kept !== undefined) return kept;
-    if (!this.jobs.has(key)) {
+    if (!this.jobs.has(key) && !this.running.has(key)) {
       this.jobs.set(key, { bare, fight, set });
       this.schedule();
     }
@@ -271,23 +278,45 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   private cancel(): void {
     if (this.slice !== null) clearImmediate(this.slice);
     this.slice = null;
+    for (const drop of this.running.values()) drop();
+    this.running.clear();
   }
 
-  /** Runs until the slice is spent, then chooses again with what was run. */
+  /** Sets runs up until the slice is spent, each to the simulator; one with no fight is kept now. */
   private work(): void {
     const began = performance.now();
     const budget = tuning().menace.survivalSliceMs;
+    let kept = false;
     for (const [key, job] of this.jobs) {
       if (performance.now() - began >= budget) break;
       this.jobs.delete(key);
-      this.keep(key, this.run(job));
+      const input = this.inputOf(job);
+      if (input === null) {
+        this.keep(key, null);
+        kept = true;
+        continue;
+      }
+      this.running.set(
+        key,
+        this.simulator.run(input, (survival) => {
+          this.running.delete(key);
+          this.keep(key, survival === null ? null : fightRunOf(survival));
+          this.chooseAgain();
+        })
+      );
     }
-    this.context = null;
     if (this.jobs.size > 0) this.schedule();
+    if (kept) this.chooseAgain();
+  }
+
+  /** Chooses again with what has been run. */
+  private chooseAgain(): void {
+    this.context = null;
     this.refresh(this.tracker.current);
   }
 
-  private run({ bare, fight, set }: Job): FightRun | null {
+  /** The job's fight as the simulator takes it; null where none can be set up. */
+  private inputOf({ bare, fight, set }: Job): SurvivalInput | null {
     const world = this.world;
     const character = this.setup.blessed(bare, sumEffects(set.map((each) => each.effect)));
     if (world === undefined || character === null) return null;
@@ -295,19 +324,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       .lairEntities(fight.room)
       .map((entity) => ({ name: entity.name, subject: entity }));
     if (met.length === 0) return null;
-    const survival = simulateFight({
-      ...character,
-      ...this.setup.foes(bare, character, met),
-      draw: fight.draw
-    });
-    return survival === null
-      ? null
-      : {
-          survives: survival.survives,
-          rounds: survival.rounds.value,
-          lostMean: survival.lostMean,
-          heals: survival.heals
-        };
+    return { ...character, ...this.setup.foes(bare, character, met), draw: fight.draw };
   }
 
   /** Remembered, the oldest forgotten past `blessChoiceRuns`. */
@@ -439,5 +456,15 @@ function incomeOf(state: CharacterState, watch: ManaWatch, speed: number): ManaI
   return {
     perHour: Math.round(standing * 3600),
     meditatingPerSecond: Math.round(meditating * 3600) / 3600
+  };
+}
+
+/** What the choice reads of a run. */
+function fightRunOf(survival: Survival): FightRun {
+  return {
+    survives: survival.survives,
+    rounds: survival.rounds.value,
+    lostMean: survival.lostMean,
+    heals: survival.heals
   };
 }

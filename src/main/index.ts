@@ -53,4 +53,5 @@ const { host } = web
       host: module.createElectronHost(layout)
     }));
 
-startClient(host);
+// The fight simulator's worker, built as its own entry beside this one.
+startClient(host, { simulatorWorker: path.join(outMain, 'simulatorWorker.js') });

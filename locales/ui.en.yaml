@@ -137,6 +137,9 @@ notices:
     servers:
       noHost: '{file} does not name a host, so it is not a realm'
       readError: '{file} could not be read: {message}'
+  simulator:
+    workerFailed: 'Fight odds now take longer to work out, and the terminal can lag while they do
+      ({error}).'
   desktopAlerts:
     refused: Desktop notifications are on, but this system blocks them. Nothing will show outside
       the window until they are allowed.

@@ -36,6 +36,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { RealmLoreView } from '../../shared/lore';
 import type { SpellLore } from '../../shared/spell-messages';
 import type { ShippedSentences } from '../../shared/sentences';
+import type { FightSimulator } from '../../shared/simulator';
 import type { FightSink } from '../../shared/fights';
 import type { RealmMemory } from '../../shared/memory';
 import type { RealmFinds } from '../../shared/finds';
@@ -139,6 +140,8 @@ export interface SessionHostOptions {
    * Optional: a host without them leaves both to the frames and the lore.
    */
   sentences?(): ShippedSentences;
+  /** Where every session's fight trials run: the app's one worker pool (`SimulatorPool`). */
+  simulator?: FightSimulator;
   /**
    * Where what *this character* learns about the realm is kept.
    *
@@ -558,6 +561,7 @@ export class SessionHost {
         shops: this.options.shopsFor?.(id),
         lastRoom: this.options.lastRoomFor?.(id),
         sentences: this.options.sentences?.(),
+        simulator: this.options.simulator,
         words: () => this.options.wordsFor(id),
         extensions: this.extensionsFor(id)
       }

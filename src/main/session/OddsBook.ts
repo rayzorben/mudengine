@@ -1,7 +1,8 @@
 /**
  * Every monster and every lair's fight run for this character at full health
- * (todo 03), in the background: fights run in slices of `survivalSliceMs`, so
- * the socket's thread is handed back between them. Run again from the start
+ * (todo 03), in the background: each fight is set up here, in slices of
+ * `survivalSliceMs`, and run by the simulator (`FightSimulator`: worker
+ * threads in the app), one at a time. Run again from the start
  * when the character's fitness or its heal and casting settings move (a level
  * gained, a helm put on); the last `survivalBooksKept` books are kept, so
  * figures that move back (a blessing lapsing and cast again) pick theirs up
@@ -22,7 +23,9 @@ import {
 } from './FightSetup';
 import { ownAlignment, type CharacterState } from '../../shared/character';
 import { attacksOnSight } from '../../shared/mobs';
-import { startFight, type FightTrials, type Odds } from '../../shared/survival';
+import { SlicedSimulator } from './slicedSimulator';
+import type { FightSimulator } from '../../shared/simulator';
+import { simulateFight, type Odds, type SurvivalInput } from '../../shared/survival';
 import { lairKey, parseLair, type WorldRoom } from '../../shared/world';
 
 export type OddsWorld = Pick<
@@ -35,6 +38,7 @@ export interface OddsBookParts {
   readonly world: OddsWorld | undefined;
   readonly errands: Pick<Errands, 'fitness'>;
   readonly setup: Pick<FightSetup, 'character' | 'foes' | 'settingsKey'>;
+  readonly simulator: FightSimulator;
 }
 
 export interface OddsBookSession {
@@ -56,11 +60,12 @@ export type SessionOdds = Pick<
  * runs the room as it stands with the same `FightSetup`.
  */
 export function fightBook(
-  parts: FightSetupParts & Omit<OddsBookParts, 'setup'>,
-  session: FightSetupSession & OddsBookSession
-): { setup: FightSetup; odds: OddsBook } {
+  parts: FightSetupParts & Omit<OddsBookParts, 'setup' | 'simulator'>,
+  session: FightSetupSession & OddsBookSession,
+  simulator: FightSimulator = new SlicedSimulator()
+): { setup: FightSetup; odds: OddsBook; simulator: FightSimulator } {
   const setup = new FightSetup(parts, session);
-  return { setup, odds: new OddsBook({ ...parts, setup }, session) };
+  return { setup, odds: new OddsBook({ ...parts, setup, simulator }, session), simulator };
 }
 
 type Job = { kind: 'mob'; name: string } | { kind: 'lair'; key: string; room: WorldRoom };
@@ -75,8 +80,6 @@ interface Book {
   /** Asked for by a reader: run first. A monster's is said when done; the verdict carries it. */
   readonly asked: Set<string>;
   readonly told: Set<string>;
-  /** The fight part way through its trials, carried into the next slice. */
-  running: { job: Job; trials: FightTrials } | null;
 }
 
 const UNREAD: Odds = { kind: 'unread' };
@@ -88,11 +91,14 @@ export class OddsBook implements SessionModule {
   private readonly world: OddsBookParts['world'];
   private readonly errands: OddsBookParts['errands'];
   private readonly setup: OddsBookParts['setup'];
+  private readonly simulator: FightSimulator;
   /** The book for the character as it stands; null while its figures are unread. */
   private book: Book | null = null;
   /** Books for figures the character had before, oldest first. */
   private readonly kept = new Map<string, Book>();
   private slice: NodeJS.Immediate | null = null;
+  /** The fight with the simulator, and how to drop it. */
+  private running: { book: Book; job: Job; drop: () => void } | null = null;
 
   constructor(
     parts: OddsBookParts,
@@ -102,6 +108,7 @@ export class OddsBook implements SessionModule {
     this.world = parts.world;
     this.errands = parts.errands;
     this.setup = parts.setup;
+    this.simulator = parts.simulator;
   }
 
   /**
@@ -137,10 +144,10 @@ export class OddsBook implements SessionModule {
    * fights with, where not `combat.attack`'s.
    */
   mobAs(name: string, as: CharacterState, attack?: string): Odds {
-    const started = this.start(as, { kind: 'mob', name }, attack);
-    if ('kind' in started) return started;
-    started.run(() => false);
-    return { kind: 'run', survival: started.result() };
+    const input = this.inputOf(as, { kind: 'mob', name }, attack);
+    if ('kind' in input) return input;
+    const survival = simulateFight(input);
+    return survival === null ? UNRUN : { kind: 'run', survival };
   }
 
   /** A lair's fight: as many as it holds at its cap, drawn from its rows. */
@@ -158,7 +165,7 @@ export class OddsBook implements SessionModule {
   get lairsLeft(): number {
     const book = this.book;
     if (book === null) return 0;
-    const running = book.running?.job.kind === 'lair' ? 1 : 0;
+    const running = this.running?.book === book && this.running.job.kind === 'lair' ? 1 : 0;
     return (
       running + book.queue.filter((job) => job.kind === 'lair' && !book.lairs.has(job.key)).length
     );
@@ -213,8 +220,7 @@ export class OddsBook implements SessionModule {
         ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))
       ],
       asked: new Set(),
-      told: new Set(),
-      running: null
+      told: new Set()
     };
   }
 
@@ -229,65 +235,76 @@ export class OddsBook implements SessionModule {
 
   private schedule(): void {
     const book = this.book;
-    if (this.slice !== null || book === null) return;
-    if (book.queue.length === 0 && book.running === null) return;
+    if (this.slice !== null || this.running !== null || book === null) return;
+    if (book.queue.length === 0) return;
     this.slice = setImmediate(() => {
       this.slice = null;
       this.work();
     });
   }
 
+  /** Stops setting fights up, and hands the one with the simulator back to its book's queue. */
   private cancel(): void {
     if (this.slice !== null) clearImmediate(this.slice);
     this.slice = null;
+    const running = this.running;
+    if (running === null) return;
+    this.running = null;
+    running.drop();
+    running.book.queue.unshift(running.job);
   }
 
   /**
-   * Fights until the slice is spent, then yields, a fight's trials included:
-   * one carries on in the next slice. A key that moved stops it for `refresh`.
+   * Sets fights up until one goes to the simulator or the slice is spent: a
+   * job that cannot be fought is recorded here. A key that moved stops it
+   * for `refresh`.
    */
   private work(): void {
     const book = this.book;
     if (book === null) return;
     const began = performance.now();
     const budget = tuning().menace.survivalSliceMs;
-    const spent = (): boolean => performance.now() - began >= budget;
     let told = false;
-    const record = (job: Job, odds: Odds): void => {
-      if (job.kind === 'mob') book.mobs.set(job.name, odds);
-      else book.lairs.set(job.key, odds);
-      if (book.told.delete(job.kind === 'mob' ? `mob:${job.name}` : `lair:${job.key}`)) told = true;
-    };
-    while ((book.running !== null || book.queue.length > 0) && !spent()) {
+    while (book.queue.length > 0 && performance.now() - began < budget) {
       const state = this.tracker.current;
       // The character moved under the book: open the one for the character there now.
       if (this.keyOf(state) !== book.key) {
         this.refresh(state);
         return;
       }
-      if (book.running === null) {
-        const job = book.queue.shift()!;
-        const done = job.kind === 'mob' ? book.mobs.has(job.name) : book.lairs.has(job.key);
-        if (done) continue;
-        const started = this.start(state, job);
-        if ('kind' in started) {
-          record(job, started);
-          continue;
-        }
-        book.running = { job, trials: started };
+      const job = book.queue.shift()!;
+      const done = job.kind === 'mob' ? book.mobs.has(job.name) : book.lairs.has(job.key);
+      if (done) continue;
+      const input = this.inputOf(state, job);
+      if ('kind' in input) {
+        told = this.record(book, job, input) || told;
+        continue;
       }
-      const { job, trials } = book.running;
-      trials.run(spent);
-      if (!trials.done) break;
-      book.running = null;
-      record(job, { kind: 'run', survival: trials.result() });
+      this.running = {
+        book,
+        job,
+        drop: this.simulator.run(input, (survival) => {
+          this.running = null;
+          const odds: Odds = survival === null ? UNRUN : { kind: 'run', survival };
+          if (this.record(book, job, odds)) this.session.ran();
+          this.schedule();
+        })
+      };
+      break;
     }
     if (told) this.session.ran();
     this.schedule();
   }
 
-  /** The job's fight set up for its trials, or what it comes to where none can be run. */
-  private start(state: CharacterState, job: Job, attack?: string): Odds | FightTrials {
+  /** Writes a job's odds into its book: whether a reader asked to be told. */
+  private record(book: Book, job: Job, odds: Odds): boolean {
+    if (job.kind === 'mob') book.mobs.set(job.name, odds);
+    else book.lairs.set(job.key, odds);
+    return book.told.delete(job.kind === 'mob' ? `mob:${job.name}` : `lair:${job.key}`);
+  }
+
+  /** The job's fight as the simulator takes it, or what it comes to where none can be set up. */
+  private inputOf(state: CharacterState, job: Job, attack?: string): Odds | SurvivalInput {
     const world = this.world;
     const character = this.setup.character(state, 'rested', attack);
     if (world === undefined || character === null) return UNRUN;
@@ -311,12 +328,10 @@ export class OddsBook implements SessionModule {
       draw = parseLair(job.room.lair ?? '').max ?? 1;
     }
     if (met.length === 0) return UNRUN;
-    return (
-      startFight({
-        ...character,
-        ...this.setup.foes(state, character, met),
-        ...(draw === undefined ? {} : { draw })
-      }) ?? UNRUN
-    );
+    return {
+      ...character,
+      ...this.setup.foes(state, character, met),
+      ...(draw === undefined ? {} : { draw })
+    };
   }
 }

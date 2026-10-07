@@ -5,10 +5,15 @@
  * `src/renderer/src/lib/i18n.ts`). Parsing its 300 KB with `yaml` cost each
  * side about 200ms of every launch (2026-10-06); `JSON.parse` of the same
  * value is a few. One function, used by the Vite plugin (the bundle and the
- * tests) and by the Node hook (`yaml-hook.mjs`, the scripts), so the bundle,
- * the tests and the scripts agree on what the import is. A file that does not parse fails the build.
+ * tests), by the Node hook (`yaml-hook.mjs`, the scripts) and by an esbuild
+ * plugin (an extension's own build), so all of them agree on what the import is. A file that does not parse fails the build.
  */
+import { readFile } from 'node:fs/promises';
+
 import { parse } from 'yaml';
+
+/** What a YAML file is called; no `g` flag, so a test keeps no state. */
+const YAML_FILE = /\.ya?ml$/;
 
 /**
  * A `.yaml` module: the dev server's own queries (`?import`, `?t=` on a hot
@@ -16,7 +21,7 @@ import { parse } from 'yaml';
  */
 export function isYaml(id) {
   const [file = '', query = ''] = id.split('?');
-  return /\.ya?ml$/.test(file) && !/(^|&)(raw|url|inline)(=|&|$)/.test(query);
+  return YAML_FILE.test(file) && !/(^|&)(raw|url|inline)(=|&|$)/.test(query);
 }
 
 /** The module source for a YAML file's text. */
@@ -30,6 +35,19 @@ export function yamlPlugin() {
     name: 'mudengine-yaml-module',
     transform(code, id) {
       return isYaml(id) ? { code: yamlModule(code), map: null } : null;
+    }
+  };
+}
+
+/** The esbuild plugin, for a build that bundles these sources outside Vite. */
+export function yamlEsbuildPlugin() {
+  return {
+    name: 'mudengine-yaml-module',
+    setup(build) {
+      build.onLoad({ filter: YAML_FILE }, async (args) => ({
+        contents: yamlModule(await readFile(args.path, 'utf8')),
+        loader: 'js'
+      }));
     }
   };
 }

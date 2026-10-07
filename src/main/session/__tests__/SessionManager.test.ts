@@ -6,13 +6,8 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import iconv from 'iconv-lite';
 
-import {
-  BUSY_PHASES,
-  editorInput,
-  IDLE_FLUSH_MS,
-  SessionManager,
-  type SessionDeps
-} from '../SessionManager';
+import { editorInput } from '../editorInput';
+import { BUSY_PHASES, IDLE_FLUSH_MS, SessionManager, type SessionDeps } from '../SessionManager';
 import type { SessionSink } from '../SessionSink';
 import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
 import { WorldGraph } from '../../world/WorldGraph';
