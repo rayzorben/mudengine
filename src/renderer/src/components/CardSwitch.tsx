@@ -456,7 +456,6 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
           loadGear={ctx.loadGear}
           planGear={ctx.planGear}
           purse={character.inventory.wealth}
-          session={ctx.session}
           stopGear={ctx.stopGear}
           trip={view.gearTrip}
         />

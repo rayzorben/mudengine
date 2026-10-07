@@ -4054,16 +4054,13 @@ button.quest-plan-back {
  * (the monsters, the rooms) drawn as rows with the figure quiet at the end,
  * and the loop's controls in the Navigation card's own row.
  */
-.hunt-head,
-.gear-head {
+.hunt-head {
   display: flex;
   align-items: center;
   gap: var(--gap);
   padding: 0 var(--pad) var(--gap-tight, 6px);
 }
-.hunt-head .hunt-note,
-.gear-head .hunt-note,
-.gear-actions .hunt-note {
+.hunt-head .hunt-note {
   color: var(--text-lo);
   font-size: var(--font-size-small, 0.9em);
 }
@@ -4091,8 +4088,7 @@ button.quest-plan-back {
  * card's own `overflow: hidden` — which is what a lair with a dozen rooms did
  * to every card shorter than the list.
  */
-.hunt-detail,
-.gear-detail {
+.hunt-detail {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
@@ -4128,8 +4124,7 @@ button.quest-plan-back {
  * rather than clips at the rail's narrow end, where three buttons do not fit
  * on one line — a control on a second line is still a control.
  */
-.hunt-actions,
-.gear-actions {
+.hunt-actions {
   flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-start;
@@ -4139,67 +4134,599 @@ button.quest-plan-back {
 
 /* ================================================================ gear card */
 /*
- * The Hunting card's grammar: a head, a table, the opened row's detail as the
- * second moving part, and the presses anchored under both. The head wraps the
- * budget's slider and figure onto their own line at the rail's narrow end.
+ * A tile per slot on a tonal ground, tinted by what the slot is doing: green
+ * buying, red declined, the accent wearing its best, plain where the cash
+ * reaches nothing better. The suggestion is the tile's one control, a filled
+ * tonal pill with its mark in a disc; the budget is a glass panel with the
+ * figure set large; the spend is a thin meter beside the one filled button.
+ * Opaque enough to read over the console when the card floats.
  */
-.gear-head {
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-}
-.gear-budget {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--gap);
-  flex: 1 1 100%;
-  min-width: 0;
-}
-.gear-budget .card-settings-field {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.gear-budget-figure {
-  flex: 0 0 9ch;
-  width: 9ch;
-  font-family: var(--font-mono);
-  text-align: right;
-}
-.gear-actions {
-  display: flex;
+/* A chip whose words are names (an item, a shop): as written, not in capitals. */
+.chip.cased {
   align-items: center;
-  gap: var(--gap);
-}
-.gear-actions .hunt-note {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.gear-item {
   display: inline-flex;
-  flex-wrap: wrap;
-  align-items: baseline;
   gap: 4px;
+  letter-spacing: 0.01em;
+  text-transform: none;
 }
-.gear-options {
+
+.chip.cased .icon {
+  height: 12px;
+  width: 12px;
+}
+
+.gear-budget {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), var(--ink-raised));
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-1), var(--glass-rim);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.gear-budget-top {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  justify-content: space-between;
+}
+
+.gear-cash {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gear-budget-figure {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+}
+
+.gear-budget-figure > span,
+.gear-lines dt,
+.gear-figure-label {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.gear-budget-figure > input {
+  background: transparent;
+  border: none;
+  border-bottom: var(--rule) solid var(--ink-edge);
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-ui) + 4px);
+  font-weight: 600;
+  padding: 2px 0;
+  text-align: right;
+  width: 11ch;
+}
+
+.gear-budget-figure > input:focus {
+  border-bottom-color: var(--accent);
+  outline: none;
+}
+
+/* The track is filled up to the thumb with a hard stop. */
+.gear-slider {
+  appearance: none;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--fill, 0%),
+    color-mix(in srgb, var(--text-lo) var(--tone), transparent) var(--fill, 0%)
+  );
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  height: 6px;
+  margin: 6px 0 4px;
+  width: 100%;
+}
+
+.gear-slider::-webkit-slider-thumb {
+  appearance: none;
+  background: var(--text-hi);
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: var(--elev-2);
+  height: 18px;
+  transition: transform var(--dur-tint) var(--ease-out);
+  width: 18px;
+}
+
+.gear-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+.gear-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.gear-reach {
+  color: var(--text-lo);
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+.gear-slots {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
+  transition: opacity var(--dur-surface) var(--ease-out);
+}
+
+.gear-slots[data-loading='true'] {
+  opacity: 0.6;
+}
+
+.gear-slot {
+  --slot-tone: var(--text-lo);
+  background: color-mix(in srgb, var(--slot-tone) var(--tone-wash), var(--ink-raised));
+  border: var(--rule) solid color-mix(in srgb, var(--slot-tone) var(--tone), transparent);
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-1), var(--glass-rim);
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
-  gap: var(--gap-tight, 6px);
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  transition:
+    background var(--dur-surface) var(--ease-out),
+    border-color var(--dur-surface) var(--ease-out);
 }
-.gear-options li[data-picked='true'] b {
-  color: var(--accent);
+
+.gear-slot[data-state='buy'] {
+  --slot-tone: var(--ok);
 }
-.gear-stops > li {
+
+.gear-slot[data-state='declined'] {
+  --slot-tone: var(--danger);
+}
+
+.gear-slot[data-state='best'] {
+  --slot-tone: var(--accent);
+}
+
+.gear-slot-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.gear-slot-glyph {
+  background: color-mix(in srgb, var(--slot-tone) var(--tone), transparent);
+  border-radius: 50%;
+  color: var(--slot-tone);
+  display: grid;
+  flex: 0 0 auto;
+  height: 26px;
+  place-items: center;
+  width: 26px;
+}
+
+.gear-slot-name {
+  color: var(--text-hi);
+  flex: 1 1 auto;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  min-width: 0;
+  text-transform: uppercase;
+}
+
+.gear-lines {
+  align-items: baseline;
+  column-gap: 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin: 0;
+  row-gap: 4px;
+}
+
+.gear-lines dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.gear-worn {
+  color: var(--text-hi);
+}
+
+.gear-empty {
+  color: var(--text-lo-quiet);
+  font-style: italic;
+}
+
+.gear-best,
+.gear-toggle-body,
+.gear-stop-what {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
-.gear-leg {
+
+.gear-item-name {
+  color: var(--text-hi);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.gear-meta {
+  align-items: center;
+  color: var(--text-lo);
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: var(--font-micro);
+  gap: 6px;
+}
+
+.gear-suggest {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The suggestion: green to buy, red declined, the mark in a disc of its tone. */
+.gear-toggle {
+  --toggle-tone: var(--ok);
+  align-items: center;
+  background: color-mix(in srgb, var(--toggle-tone) var(--tone), var(--ink-card));
+  border: var(--rule) solid color-mix(in srgb, var(--toggle-tone) var(--tone-strong), transparent);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  height: auto;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.gear-toggle[data-buy='false'] {
+  --toggle-tone: var(--danger);
+}
+
+.gear-toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--toggle-tone) var(--tone-strong), var(--ink-card));
+  border-color: var(--toggle-tone);
+  box-shadow: var(--elev-2);
+}
+
+.gear-toggle:active:not(:disabled) {
+  box-shadow: var(--elev-1);
+  transform: translateY(1px);
+}
+
+.gear-toggle[data-buy='false'] .gear-item-name {
+  color: var(--text);
+  text-decoration: line-through;
+}
+
+.gear-toggle-mark {
+  background: color-mix(in srgb, var(--toggle-tone) var(--tone-strong), transparent);
+  border-radius: 50%;
+  color: var(--toggle-tone);
+  display: grid;
+  height: 22px;
+  place-items: center;
+  width: 22px;
+}
+
+.gear-toggle-mark .icon {
+  height: 13px;
+  stroke-width: 2.6;
+  width: 13px;
+}
+
+.gear-gain,
+.gear-price {
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gear-gain {
+  color: var(--toggle-tone, var(--accent));
+}
+
+.gear-price {
+  color: var(--text-hi);
+}
+
+/* A narrow tile puts the gain under the name rather than squeezing the name. */
+@container (max-width: 300px) {
+  .gear-toggle {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .gear-toggle .gear-gain {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+.gear-slot-foot {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  gap: 12px;
+}
+
+.gear-link {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: var(--accent);
+  font-size: var(--font-micro);
+  height: auto;
+  padding: 0;
+}
+
+.gear-link:hover:not(:disabled) {
+  background: none;
+  border: none;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.gear-options {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gear-option {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), transparent);
+  border: var(--rule) solid transparent;
+  box-shadow: none;
+  display: grid;
+  gap: 2px 10px;
+  grid-template-areas:
+    'name gain price'
+    'meta meta meta';
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  height: auto;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.gear-option-name {
+  align-items: baseline;
+  color: var(--text-hi);
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-area: name;
+}
+
+.gear-option > .gear-meta {
+  grid-area: meta;
+}
+
+.gear-option > .gear-gain {
+  grid-area: gain;
+}
+
+.gear-option > .gear-price {
+  grid-area: price;
+}
+
+.gear-option[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--slot-tone) var(--tone-weak), transparent);
+  border-color: var(--slot-tone);
+}
+
+/* The foot of both faces: what it comes to, and the presses. */
+.gear-bar {
+  align-items: center;
+  border-top: var(--rule) solid var(--ink-line);
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  padding: 10px 2px 0;
+}
+
+.gear-bar-figures {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gear-bar-words {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+}
+
+.gear-spend.meter {
+  border-radius: var(--r-pill);
+  height: 6px;
+  margin: 0;
+}
+
+.gear-spend .fill {
+  background: var(--ok);
+  border-radius: var(--r-pill);
+}
+
+.gear-bar-spacer {
+  flex: 1 1 auto;
+}
+
+.gear-bar button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.gear-plan {
+  padding: 0 16px;
+}
+
+/* The trip: its figures, then the stops as a stepper joined by a line. */
+.gear-figures {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+}
+
+.gear-figure {
+  background: color-mix(in srgb, var(--accent) var(--tone-wash), var(--ink-raised));
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-1), var(--glass-rim);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.gear-figure[data-tone='warn'] {
+  background: color-mix(in srgb, var(--pending) var(--tone-weak), var(--ink-raised));
+}
+
+.gear-figure-value {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-ui) + 3px);
+  font-weight: 600;
+}
+
+.gear-figure[data-tone='warn'] .gear-figure-value {
+  color: var(--pending);
+}
+
+.gear-stops.progression {
+  --node: 28px;
+  gap: 0;
+}
+
+.gear-stops.progression > li {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: var(--node) minmax(0, 1fr);
+  padding: 0;
+  position: relative;
+}
+
+.gear-stops.progression > li::before {
+  content: none;
+}
+
+.gear-stops.progression > li::after {
+  background: color-mix(in srgb, var(--text-lo) var(--tone), transparent);
+  bottom: 0;
+  content: '';
+  left: calc(var(--node) / 2 - 1px);
+  position: absolute;
+  top: calc(var(--node) + 2px);
+  width: 2px;
+}
+
+.gear-stops.progression > li:last-child::after {
+  display: none;
+}
+
+.gear-stop-mark {
+  background: var(--ink-raised);
+  border: 2px solid color-mix(in srgb, var(--text-lo) var(--tone-strong), transparent);
+  border-radius: 50%;
+  color: var(--text-lo);
+  display: grid;
+  height: var(--node);
+  place-items: center;
+  position: relative;
+  width: var(--node);
+  z-index: 1;
+}
+
+.gear-stops [data-kind='bank'] .gear-stop-mark {
+  color: var(--mark-bank);
+}
+
+.gear-stops [data-progress='now'] .gear-stop-mark {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) var(--tone-weak), transparent);
+  color: var(--accent);
+}
+
+.gear-stops [data-progress='done'] .gear-stop-mark {
+  background: color-mix(in srgb, var(--ok) var(--tone-strong), var(--ink-raised));
+  border-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
+  color: var(--ok);
+}
+
+.gear-stop {
+  background: color-mix(in srgb, var(--text-lo) var(--tone-wash), var(--ink-raised));
+  border: var(--rule) solid transparent;
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-1), var(--glass-rim);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+/* The progression grammar's words on the stop's own name: now the accent, done quiet. */
+.gear-stops [data-progress='now'] .gear-stop {
+  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
+}
+
+.gear-stops [data-progress='now'] .gear-stop-what > .gear-item-name {
+  color: var(--accent);
+}
+
+.gear-stops [data-progress='done'] .gear-stop-what > .gear-item-name {
+  color: var(--text-lo-quiet);
+}
+
+.gear-stop-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.gear-stop-items,
+.gear-leg,
+.plan-fights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.plan-fight[data-odds='win'] {
+  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
+  color: var(--ok);
+}
+
+.plan-fight[data-odds='lose'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
 }
 
 /* ======================================================= loop builder card */

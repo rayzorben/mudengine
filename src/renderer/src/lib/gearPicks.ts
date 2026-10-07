@@ -7,12 +7,48 @@
 import { t } from './i18n';
 import { bankedCopper } from '@shared/coins';
 import type { GearPick } from '@shared/gearTrip';
-import { withinBudget } from '@shared/gearWorth';
+import { withinBudget, type GearGain } from '@shared/gearWorth';
+import { share } from '@shared/tally';
 import type { GearChoice, GearChoices, GearSlot } from '@shared/upgrades';
 
 /** A copper figure as the card says it. */
 export function copperWords(value: number): string {
   return t('cards.gear.copper', { copper: value.toLocaleString() });
+}
+
+/** A track filled to `part` of `whole`, as a width; empty where the whole is nothing. */
+export function widthOf(part: number, whole: number): string {
+  return `${Math.min(100, (share(part, whole) ?? 0) * 100)}%`;
+}
+
+/** What an item adds, as the sheet says it; empty where nothing can be said. */
+export function gainWords(gain: GearGain): string {
+  const parts: string[] = [];
+  if (gain.armourClass !== null && gain.armourClass !== 0) {
+    parts.push(t('cards.gear.gainArmour', { ac: Math.round(gain.armourClass * 10) / 10 }));
+  }
+  if (gain.perRound !== null && gain.perRound !== 0) {
+    parts.push(t('cards.gear.gainRound', { damage: Math.round(gain.perRound * 10) / 10 }));
+  }
+  return parts.join(' ');
+}
+
+/** Where an item comes from: the shop, else who drops it, else neither. */
+export function sourceWords(item: GearChoice): string {
+  if (item.sold !== null) {
+    return item.counters > 1
+      ? t('cards.gear.soldMore', { shop: item.sold.shop, more: item.counters - 1 })
+      : t('cards.gear.sold', { shop: item.sold.shop });
+  }
+  if (item.droppedBy.length > 0) {
+    return t('cards.gear.dropped', { monsters: item.droppedBy.slice(0, 3).join(', ') });
+  }
+  return t('cards.gear.nowhere');
+}
+
+/** A price, or that the realm states none. */
+export function priceWords(charged: number | null): string {
+  return charged === null ? t('cards.gear.unpriced') : copperWords(charged);
 }
 
 /** How many picks have no price, said as a count; empty where none. */
@@ -50,39 +86,65 @@ export function roomFor(slot: Pick<GearSlot, 'places' | 'free'>): number {
   return Math.min(slot.places, slot.free + 1);
 }
 
-/** What `budget` buys, by slot: each slot's items, at most `roomFor` it. */
-export function basketOf(choices: GearChoices, budget: number): Map<string, GearChoice[]> {
-  const places = new Map(choices.slots.map((slot) => [slot.slot, roomFor(slot)]));
-  const basket = new Map<string, GearChoice[]>();
-  for (const item of withinBudget(
-    buyable(choices.slots),
-    budget,
-    (slot) => places.get(slot) ?? 1
-  )) {
-    basket.set(item.slot, [...(basket.get(item.slot) ?? []), item]);
-  }
-  return basket;
+/**
+ * The player's say over the suggestions: items chosen for a slot in place of
+ * what the budget would buy there, and suggestions declined, keyed by
+ * `declineKey`. A decline keeps its item on the card, so a click never swaps
+ * what is under the pointer.
+ */
+export interface GearSay {
+  chosen: Readonly<Record<string, readonly number[]>>;
+  declined: ReadonlySet<string>;
 }
 
-/** The player's picks per slot by item row; a slot not named takes the basket's. */
-export type PickOverrides = Readonly<Record<string, readonly number[]>>;
+export const NO_SAY: GearSay = { chosen: {}, declined: new Set() };
 
-/** What each slot buys: the player's pick where there is one, else the basket's. */
-export function picksOf(
+export function declineKey(slot: string, item: number): string {
+  return `${slot}#${item}`;
+}
+
+/**
+ * What each slot suggests: the items the player chose, paid for first, then
+ * what the rest of the budget buys in the other slots (`withinBudget`), at
+ * most `roomFor` a slot.
+ */
+export function suggestionsOf(
   choices: GearChoices,
-  basket: ReadonlyMap<string, readonly GearChoice[]>,
-  overrides: PickOverrides
+  budget: number,
+  chosen: GearSay['chosen']
 ): Map<string, GearChoice[]> {
-  const picked = new Map<string, GearChoice[]>();
+  const suggested = new Map<string, GearChoice[]>();
+  let fixed = 0;
   for (const slot of choices.slots) {
-    const ids = overrides[slot.slot];
-    const items =
-      ids === undefined
-        ? [...(basket.get(slot.slot) ?? [])]
-        : ids.flatMap((id) => slot.items.filter((item) => item.item === id));
-    if (items.length > 0) picked.set(slot.slot, items);
+    const ids = chosen[slot.slot];
+    if (ids === undefined) continue;
+    const items = ids.flatMap((id) => slot.items.filter((item) => item.item === id));
+    suggested.set(slot.slot, items);
+    fixed += items.reduce((sum, item) => sum + (item.charged ?? 0), 0);
   }
-  return picked;
+  const open = choices.slots.filter((slot) => chosen[slot.slot] === undefined);
+  const places = new Map(open.map((slot) => [slot.slot, roomFor(slot)]));
+  for (const item of withinBudget(
+    buyable(open),
+    Math.max(0, budget - fixed),
+    (slot) => places.get(slot) ?? 1
+  )) {
+    suggested.set(item.slot, [...(suggested.get(item.slot) ?? []), item]);
+  }
+  return suggested;
+}
+
+/** What the trip buys: the suggestions less what the player declined. */
+export function buysOf(
+  suggested: ReadonlyMap<string, readonly GearChoice[]>,
+  declined: GearSay['declined']
+): Map<string, GearChoice[]> {
+  const buys = new Map<string, GearChoice[]>();
+  for (const [slot, items] of suggested) {
+    const kept = items.filter((item) => !declined.has(declineKey(slot, item.item)));
+    if (kept.length > 0) buys.set(slot, kept);
+  }
+  return buys;
 }
 
 /** The copper the picks cost, and how many have no price. */
