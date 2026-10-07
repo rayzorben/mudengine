@@ -858,9 +858,7 @@ export function swapPlan(
    */
   const removals: string[] = [];
   if (weapon !== undefined && handsOf(weapon.item) === 2) {
-    const held = items.find(
-      (item) => item.equipped && (item.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
-    );
+    const held = inOffHand(items);
     if (held !== undefined && !kit.has(OFF_HAND.toLowerCase())) removals.push(unequip(held.name));
   }
 
@@ -871,6 +869,44 @@ export function swapPlan(
     ...rest.map((row) => equip(row.item))
   ];
   return capped(commands, missing, max);
+}
+
+/** What is worn in the off-hand, which a two-handed weapon needs taken off first. */
+function inOffHand(items: readonly CarriedItem[]): CarriedItem | undefined {
+  return items.find(
+    (item) => item.equipped && (item.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
+  );
+}
+
+/** A bought item to put on: what it must replace where its kind is full, and its hands. */
+export interface WearWanted {
+  name: string;
+  /**
+   * The weakest worn, where the item is one of several places of a kind and
+   * every one is worn: the server puts it on the first place whatever is
+   * there (`EquipCommand.Execute`), so the weakest comes off first. Null where
+   * a place is free or the kind has one place, as `wear` then swaps it.
+   */
+  replaces: string | null;
+  hands: 1 | 2 | null;
+}
+
+/**
+ * Bought items put on: a full kind's weakest off first, the off-hand off
+ * before a two-handed weapon (`swapPlan`'s ordering), an item the pack does
+ * not hold or already wears left alone.
+ */
+export function wearPlan(wanted: readonly WearWanted[], items: readonly CarriedItem[]): string[] {
+  const commands: string[] = [];
+  for (const want of wanted) {
+    const held = items.filter((item) => sameItem(item.name, want.name));
+    if (held.length === 0 || held.some((item) => item.equipped)) continue;
+    if (want.replaces !== null) commands.push(unequip(want.replaces));
+    const offHand = want.hands === 2 ? inOffHand(items) : undefined;
+    if (offHand !== undefined) commands.push(unequip(offHand.name));
+    commands.push(equip(want.name));
+  }
+  return commands;
 }
 
 /**

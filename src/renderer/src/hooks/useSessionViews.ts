@@ -7,6 +7,7 @@
  * inside the patch that holds the previous state. See `mudengine-ui` › *The
  * window redraws what changed*.
  */
+import type { GearTripProgress } from '@shared/gearTrip';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { keepRoster } from '../lib/roster';
@@ -145,6 +146,8 @@ export interface SessionView {
   questSaid: QuestWatched;
   /** How a run of a quest's plan is going, or how the last one ended. */
   questRun: QuestRunProgress;
+  /** The gear trip under way, or the last one as it ended; null before any. */
+  gearTrip: GearTripProgress | null;
 }
 
 const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
@@ -168,7 +171,8 @@ export const EMPTY_VIEW: SessionView = {
   finds: [],
   shops: [],
   questSaid: {},
-  questRun: IDLE_QUEST_RUN
+  questRun: IDLE_QUEST_RUN,
+  gearTrip: null
 };
 
 /**
@@ -229,6 +233,7 @@ export type ViewFeeds = Pick<
   | 'onShops'
   | 'onQuestSaid'
   | 'onQuestRun'
+  | 'onGearTrip'
   | 'onAutomation'
   | 'onVerdict'
   | 'onAsks'
@@ -352,7 +357,8 @@ export function useSessionViews(
         finds: snapshot.finds,
         shops: snapshot.shops,
         questSaid: snapshot.questSaid,
-        questRun: snapshot.questRun
+        questRun: snapshot.questRun,
+        gearTrip: snapshot.gearTrip
       }));
     },
     [patchView]
@@ -449,6 +455,9 @@ export function useSessionViews(
       ),
       feeds.onQuestRun(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, questRun: payload }))
+      ),
+      feeds.onGearTrip(({ session: id, payload }) =>
+        patchView(id, (v) => ({ ...v, gearTrip: payload }))
       ),
       feeds.onAutomation(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, automation: payload }))

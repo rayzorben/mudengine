@@ -5,6 +5,7 @@
  * neither).
  */
 import type { CharacterState } from './character';
+import type { GearGain } from './gearWorth';
 
 /** An item the realm puts in a slot, and what it gives there. */
 export interface GearRow {
@@ -36,6 +37,8 @@ export interface GearSource extends GearRow {
   sold: GearCounter | null;
   /** The monsters whose drop list names it, as the realm names them. */
   droppedBy: readonly string[];
+  /** How many counters stock it; `sold` is the one least out of the way. */
+  counters: number;
 }
 
 /** One slot: what is worn there. */
@@ -73,4 +76,27 @@ export interface SlotBest extends SlotWorn {
 export interface Wearing {
   state: CharacterState;
   worn: string[];
+}
+
+/** One better item for the Gear card: where it comes from, what it gives, what this character pays. */
+export interface GearChoice extends GearSource {
+  /** The slot it goes in, as `SlotWorn.slot` names it. */
+  slot: string;
+  /** What `sold` charges this character, charm applied; null where it is not sold or not priced. */
+  charged: number | null;
+  gain: GearGain;
+}
+
+/** One slot on the Gear card: what is worn and the better items, best first. */
+export interface GearSlot extends SlotWorn {
+  /** The places of the slot's kind (two ring fingers). */
+  places: number;
+  items: GearChoice[];
+}
+
+/** The Gear card's reading for one character. */
+export interface GearChoices {
+  slots: GearSlot[];
+  /** Where class, race, level or alignment is unread, so a row may be refused that would not be. */
+  unread: boolean;
 }

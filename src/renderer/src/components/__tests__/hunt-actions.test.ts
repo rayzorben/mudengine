@@ -51,7 +51,7 @@ describe("the hunting card's three buttons", () => {
 
   it('shrinks for nothing, whatever height the card is at', () => {
     const css = read('src/renderer/src/styles/index.css');
-    const rule = css.slice(css.indexOf('.hunt-actions {'));
+    const rule = css.slice(css.indexOf('.hunt-actions,'));
     expect(rule.slice(0, rule.indexOf('}'))).toContain('flex: 0 0 auto');
   });
 });

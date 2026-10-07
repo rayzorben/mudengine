@@ -1,8 +1,9 @@
 /**
  * Walking to a room and parting with named items there by one verb (`sell`,
- * `hide`, `drop`), one item at a time: the pack holding fewer is the
- * confirmation, and silence past `tuning.outgrown.confirmMs` after the verb
- * went out is a refusal. Out of `OutgrownGear`, so getting rid of outgrown
+ * `hide`, `drop`), or taking them in (`buy`), one item at a time: the pack
+ * holding fewer (more, for `receives`) is the confirmation, and silence past
+ * `confirmMs` (`tuning.outgrown.confirmMs` unsaid) after the verb went out is
+ * a refusal. Out of `OutgrownGear`, so getting rid of outgrown
  * gear and an extension's sale are one walk and one confirmation. The owner
  * says what each ending means; this reports which ending it was. See
  * `mudengine-automation` › *Outgrown gear is stashed, sold or dropped*.
@@ -33,6 +34,9 @@ export interface HandoverAsk {
   key: string;
   /** Why each verb is sent, as the trace says it. */
   reason(item: string): string;
+  /** The verb puts the item in the pack (`buy`) rather than taking it out. */
+  receives?: boolean;
+  confirmMs?: number;
 }
 
 export type HandoverStart =
@@ -42,7 +46,8 @@ export type HandoverEnd =
   /** The walk stopped short, or arrived somewhere else; `why` is the walk's reason. */
   | { kind: 'not-reached'; why: string | null }
   /**
-   * Every item had its verb: `gone` the pack lost, `unanswered` it did not
+   * Every item had its verb: `gone` the pack lost (or gained, for
+   * `receives`), `unanswered` it did not
    * once the verb went out, `unsent` the queue would not take or dropped unsent.
    */
   | { kind: 'handed'; gone: string[]; unanswered: string[]; unsent: string[] };
@@ -140,8 +145,9 @@ export class Handover {
     if (phase.kind !== 'acting') return;
     const { ask, index, before, queuedAt, sentAt, outcome } = phase;
     const item = ask.items[index]!;
-    const confirmMs = tuning().outgrown.confirmMs;
-    if (carriedCount(state, item) < before) outcome.gone.push(item);
+    const confirmMs = ask.confirmMs ?? tuning().outgrown.confirmMs;
+    const now = carriedCount(state, item);
+    if (ask.receives === true ? now > before : now < before) outcome.gone.push(item);
     // Dropped from the queue unsent: nothing was refused.
     else if (sentAt === null && this.now() - queuedAt >= confirmMs) outcome.unsent.push(item);
     else if (sentAt !== null && this.now() - sentAt >= confirmMs) outcome.unanswered.push(item);

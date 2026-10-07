@@ -476,6 +476,15 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       keywords: ['hunt', 'hunting', 'where', 'lair', 'exp', 'experience', 'grind', 'rate', 'spot'],
       run: () => cards.show('hunting')
     },
+    // The Gear card: the best in each slot, what the cash buys, and the trip.
+    {
+      id: 'gear:what',
+      icon: 'search' as const,
+      label: t('palette.navigate.gearLabel'),
+      group: 'navigate' as const,
+      keywords: ['gear', 'kit', 'armour', 'armor', 'weapon', 'buy', 'shop', 'slot', 'upgrade'],
+      run: () => cards.show('gear')
+    },
     /*
      * Walking every room near the character and searching each (`AreaSearch`).
      * Not `search`'s keywords: that word is the backscroll's find.

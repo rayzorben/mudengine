@@ -3008,7 +3008,7 @@ describe('the plan to a step', () => {
 
   it('prices the step from where the character stands', async () => {
     await placed();
-    const plan = await manager!.questPlan(1, null);
+    const plan = await manager!.questDesk.plan(1, null);
     expect(plan?.from).toBe('1/1');
     expect(plan?.steps[0]?.moves).toBe(1);
   });
@@ -3016,7 +3016,7 @@ describe('the plan to a step', () => {
   // Todo 00: the counter's price on the row, and the whole set against the purse.
   it('prices what it buys, and calls an unread purse unread rather than short', async () => {
     await placed(true);
-    const plan = await manager!.questPlan(1, null);
+    const plan = await manager!.questDesk.plan(1, null);
     const source = plan?.steps[0]?.items[0]?.source;
     expect(source).toMatchObject({ how: 'buy', copper: 500 });
     // Charm unread, so priced at its floor: ten percent on.
@@ -3025,8 +3025,8 @@ describe('the plan to a step', () => {
 
   it('answers null to an ask a later one superseded', async () => {
     await placed();
-    const first = manager!.questPlan(1, null);
-    const second = manager!.questPlan(1, null);
+    const first = manager!.questDesk.plan(1, null);
+    const second = manager!.questDesk.plan(1, null);
     expect(await first).toBeNull();
     expect((await second)?.from).toBe('1/1');
   });
@@ -3082,9 +3082,9 @@ describe('the plan to a step', () => {
         () =>
           manager!.character.abilities?.complete === true && manager!.character.room.number === 2
       );
-      expect(await manager!.questRun(1, null)).toBeNull();
+      expect(await manager!.questDesk.run(1, null)).toBeNull();
       // Step one is this character's to do, not assumed done off the last one's rank.
-      expect(manager!.questRunProgress).toMatchObject({
+      expect(manager!.questDesk.progress).toMatchObject({
         status: 'running',
         steps: [{ block: 1, state: 'now' }]
       });

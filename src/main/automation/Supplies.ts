@@ -58,7 +58,7 @@
  * is kept stocked*.
  */
 import type { CommandQueue } from './CommandQueue';
-import { balanceOf, fightIsRunning, type CharacterState } from '../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../shared/character';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
@@ -70,6 +70,7 @@ import { carriedCount } from '../../shared/supplies';
 import { nameAnswersTo, roomId, type CashPlace, type RoomId, type Route } from '../../shared/world';
 import type { SessionModule } from './Module';
 import { stoppedByPerson } from './personStop';
+import { Withdrawal, type WithdrawalEnd } from './Withdrawal';
 
 export interface SupplyPlanner {
   /** Where the character is, or null while it is not placed. */
@@ -115,8 +116,6 @@ export interface BankLeg {
   shortfall: number;
   owed: number;
   wealth: number;
-  /** The withdrawal asked for, so a `withdraw` the player typed is not taken for it. */
-  amount: number | null;
   /** Vaults already found wanting, so the next is the fallback. */
   tried: RoomId[];
 }
@@ -182,6 +181,8 @@ export class Supplies implements SessionModule {
    * off, through fights, was given up at five minutes on the way there.
    */
   private errandTimer: NodeJS.Timeout | null = null;
+  /** The vault's balance and payout, while the errand stands in one. */
+  private readonly withdrawal: Withdrawal;
 
   constructor(
     private config: SuppliesConfig,
@@ -190,7 +191,9 @@ export class Supplies implements SessionModule {
     private readonly planner: SupplyPlanner,
     private readonly events: SupplyEvents = {},
     private readonly now: () => number = () => Date.now()
-  ) {}
+  ) {
+    this.withdrawal = new Withdrawal(queue, { ended: (end) => this.vaultEnded(end) }, now);
+  }
 
   configure(config: SuppliesConfig, enabled: boolean): void {
     this.config = config;
@@ -201,6 +204,7 @@ export class Supplies implements SessionModule {
   reset(): void {
     this.clearTimer();
     this.clearErrandTimer();
+    this.withdrawal.cancel();
     this.errand = null;
     this.retryAt.clear();
     this.reported.clear();
@@ -348,7 +352,8 @@ export class Supplies implements SessionModule {
         return;
       }
       case 'balance':
-        this.readBalance(errand, state);
+        this.withdrawal.onCharacter(state);
+        if (this.withdrawal.stage === 'withdrawing') errand.stage = 'withdrawing';
         return;
       case 'walking':
       case 'buying':
@@ -411,10 +416,8 @@ export class Supplies implements SessionModule {
 
   onBlock(block: Block, state: CharacterState): void {
     const errand = this.errand;
-    if (errand?.stage === 'withdrawing' && block.type === 'user-withdraws') {
-      // Only the errand's own: a `withdraw` the player typed is not the vault paying this.
-      if (Number(block.groups['amount']) === errand.bank?.amount)
-        this.withdrew(errand, block, state);
+    if (errand?.stage === 'withdrawing') {
+      this.withdrawal.onBlock(block);
       return;
     }
     if (errand === null || errand.stage !== 'buying' || block.type !== 'user-buys') return;
@@ -651,6 +654,7 @@ export class Supplies implements SessionModule {
   private toBank(errand: Errand, shortfall: number, owed: number, wealth: number): boolean {
     // Whatever the last place was waiting on is owed nothing now.
     this.clearTimer();
+    this.withdrawal.cancel();
     this.queue.cancel((intent) => ERRAND_ASKS.has(intent.coalesceKey ?? ''));
     const tried = errand.bank?.tried ?? [];
     const place = this.planner
@@ -673,7 +677,7 @@ export class Supplies implements SessionModule {
       return false;
     }
     const room = roomId(place.map, place.room);
-    errand.bank = { place, room, shortfall, owed, wealth, amount: null, tried: [...tried, room] };
+    errand.bank = { place, room, shortfall, owed, wealth, tried: [...tried, room] };
     errand.banked = true;
     errand.legs = 0;
     errand.stage = 'walking';
@@ -701,42 +705,38 @@ export class Supplies implements SessionModule {
     return true;
   }
 
-  /**
-   * `bank` has been asked at the vault: read the figure it stated, and
-   * withdraw the shortfall and the buffer — never more than it holds, since a
-   * withdrawal over the balance is answered with silence (`WithdrawCommand`).
-   */
-  private readBalance(errand: Errand, state: CharacterState): void {
-    const leg = errand.bank;
-    if (leg === null) return;
-    const held = balanceOf({ id: leg.place.shop, name: leg.place.name }, state.banks);
-    if (held === null || held.at < errand.askedAt) return;
-    this.clearTimer();
-    if (held.copper < leg.shortfall) {
-      this.nextVault(
-        errand,
-        t('automation.supplies.bankShort', {
-          bank: leg.place.name,
-          held: held.copper.toLocaleString(),
-          short: leg.shortfall.toLocaleString()
-        })
-      );
-      return;
+  /** What the vault did: paid, so on to the counter; else the next vault the record names. */
+  private vaultEnded(end: WithdrawalEnd): void {
+    const errand = this.errand;
+    const leg = errand?.bank ?? null;
+    if (errand === null || leg === null) return;
+    switch (end.kind) {
+      case 'paid':
+        this.withdrew(errand, end.amount);
+        return;
+      case 'short':
+        this.nextVault(
+          errand,
+          t('automation.supplies.bankShort', {
+            bank: leg.place.name,
+            held: end.held.toLocaleString(),
+            short: leg.shortfall.toLocaleString()
+          })
+        );
+        return;
+      case 'silent':
+        this.nextVault(
+          errand,
+          end.stage === 'balance'
+            ? t('automation.supplies.refusalNoBalance', { bank: leg.place.name })
+            : t('automation.supplies.refusalNoPayout', { bank: leg.place.name })
+        );
+        return;
+      default: {
+        const never: never = end;
+        return never;
+      }
     }
-    const amount = Math.min(held.copper, leg.shortfall + tuning().supplies.cashBuffer);
-    leg.amount = amount;
-    errand.stage = 'withdrawing';
-    this.queue.enqueue({
-      command: `withdraw ${amount}`,
-      priority: 'probe',
-      coalesceKey: 'supplies:withdraw',
-      expiresAt: this.now() + tuning().supplies.expiresMs,
-      reason: t('automation.supplies.reasonWithdraw', {
-        amount: amount.toLocaleString(),
-        item: errand.item.name
-      })
-    });
-    this.armTimer(errand, t('automation.supplies.refusalNoPayout', { bank: leg.place.name }), true);
   }
 
   /**
@@ -751,25 +751,20 @@ export class Supplies implements SessionModule {
   }
 
   /** The vault paid out: on to the counter, with the errand's clock started again. */
-  private withdrew(errand: Errand, block: Block, state: CharacterState): void {
-    this.clearTimer();
+  private withdrew(errand: Errand, amount: number): void {
     const bank = errand.bank?.place.name ?? '';
     errand.bank = null;
     errand.legs = 0;
     errand.stage = 'walking';
     this.armErrandTimer(errand);
     this.events.notice?.(
-      t('automation.supplies.withdrew', {
-        amount: (block.groups['amount'] ?? '').trim(),
-        bank,
-        shop: errand.shopName
-      })
+      t('automation.supplies.withdrew', { amount: String(amount), bank, shop: errand.shopName })
     );
     if (this.planner.here() === errand.room) {
       this.arrive(errand);
       return;
     }
-    this.leg(errand, state);
+    this.leg(errand);
   }
 
   /** Plan and start a walk to the shop from wherever the character is. */
@@ -835,18 +830,22 @@ export class Supplies implements SessionModule {
     if (errand.bank !== null) {
       // At the vault: the balance first, since the record may be stale.
       errand.stage = 'balance';
-      this.queue.enqueue({
-        command: 'bank',
-        priority: 'probe',
-        coalesceKey: 'supplies:bank',
-        expiresAt: this.now() + tuning().supplies.expiresMs,
-        reason: t('automation.supplies.reasonBalance', { bank: errand.bank.place.name })
+      const { place, shortfall } = errand.bank;
+      const { cashBuffer, buyTimeoutMs, expiresMs } = tuning().supplies;
+      const item = errand.item.name;
+      this.withdrawal.start({
+        vault: { shop: place.shop, name: place.name },
+        need: shortfall,
+        wanted: shortfall + cashBuffer,
+        key: 'supplies',
+        reasons: {
+          balance: t('automation.supplies.reasonBalance', { bank: place.name }),
+          withdraw: (amount) =>
+            t('automation.supplies.reasonWithdraw', { amount: amount.toLocaleString(), item })
+        },
+        answerMs: buyTimeoutMs,
+        expiresMs
       });
-      this.armTimer(
-        errand,
-        t('automation.supplies.refusalNoBalance', { bank: errand.bank.place.name }),
-        true
-      );
       return;
     }
     errand.stage = 'listing';
@@ -875,17 +874,13 @@ export class Supplies implements SessionModule {
     this.armTimer(errand, t('automation.supplies.refusalUnconfirmed', { item: errand.item.name }));
   }
 
-  /**
-   * A deadline on the counter answering, for the refusals nothing reads. At a
-   * vault (`orNextVault`) silence is that vault's refusal, not the errand's.
-   */
-  private armTimer(errand: Errand, refusal: string, orNextVault = false): void {
+  /** A deadline on the counter answering, for the refusals nothing reads. */
+  private armTimer(errand: Errand, refusal: string): void {
     this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
       if (this.errand !== errand) return;
-      if (orNextVault) this.nextVault(errand, refusal);
-      else this.finish(errand, false, refusal);
+      this.finish(errand, false, refusal);
     }, tuning().supplies.buyTimeoutMs);
     this.timer.unref?.();
   }
@@ -946,6 +941,7 @@ export class Supplies implements SessionModule {
   ): void {
     this.clearTimer();
     this.clearErrandTimer();
+    this.withdrawal.cancel();
     this.errand = null;
     if (ok) {
       const have =

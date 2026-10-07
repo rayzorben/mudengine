@@ -27,6 +27,8 @@ import type { PlayerRegistry } from './players';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
 import type { SlotGear } from './slotGear';
+import type { GearPick, GearTripPlan, GearTripProgress } from './gearTrip';
+import type { GearChoices } from './upgrades';
 import type {
   Quest,
   QuestErrand,
@@ -284,6 +286,8 @@ export interface AttachSnapshot {
   questSaid: QuestWatched;
   /** How a run of a quest's plan is going, or how the last one ended. See `QuestRunner`. */
   questRun: QuestRunProgress;
+  /** The gear trip under way, or the last one as it ended; null before any. See `GearTrip`. */
+  gearTrip: GearTripProgress | null;
   /**
    * The Talk card's history — the conversation log's tail, oldest first, so a
    * restart restores the conversation instead of starting the card empty.
@@ -963,6 +967,14 @@ export const Invoke = {
   questRun: 'world:quest-run',
   /** Stop the run, and everything it started. */
   questStop: 'world:quest-stop',
+  /** The Gear card's slots: what is worn, and the better items with where each comes from. */
+  gearChoices: 'world:gear',
+  /** The trip to buy the picked items, from where the character stands. */
+  gearPlan: 'world:gear-plan',
+  /** Walk or run that trip, planned again from here. The refusal, or null once under way. */
+  gearTrip: 'world:gear-trip',
+  /** Stop the gear trip. */
+  gearStop: 'world:gear-stop',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
   /** Everything the realm knows about one room, for a room nobody is in. */
@@ -1157,7 +1169,9 @@ export const Push = {
    * How a run of a quest's plan is going, on every change — which step it is
    * on, what it is doing, and why it stopped. See `QuestRunProgress`.
    */
-  questRun: 'world:quest-run-progress'
+  questRun: 'world:quest-run-progress',
+  /** How the gear trip is going, on every change. See `GearTripProgress`. */
+  gearTrip: 'world:gear-trip-progress'
 } as const;
 
 /** The lives the record last read, when, and the floor they are at. See `Push.lowLives`. */
@@ -1462,6 +1476,19 @@ export interface IpcApi {
   questRun(session: SessionId, block: number, marked: number | null): Promise<string | null>;
   /** Stop the run, and everything it started. */
   questStop(session: SessionId): Promise<void>;
+  /**
+   * The Gear card's reading: per slot what is worn and the better items this
+   * character can wear at its level, best first, each with the counter least
+   * out of the way, what it charges, and the monsters that drop it. Addressed
+   * and asked on demand: it ranks every slot and prices every weapon's round.
+   * Null while no session or realm data is loaded.
+   */
+  gearChoices(session: SessionId): Promise<GearChoices | null>;
+  /** The trip to buy `picks`, from here: vaults first where the purse is short, then the counters. */
+  gearPlan(session: SessionId, picks: readonly GearPick[]): Promise<GearTripPlan | null>;
+  /** Walk (or `run`) the trip, planned again from here. The refusal, or null once under way. */
+  gearTrip(session: SessionId, picks: readonly GearPick[], run: boolean): Promise<string | null>;
+  gearStop(session: SessionId): Promise<void>;
   localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
   /**
    * The realm's whole answer about one room — its ways out, the place it
@@ -1616,6 +1643,7 @@ export interface IpcApi {
   onLowLives(handler: (message: Addressed<LowLivesAsk>) => void): () => void;
   onQuestSaid(handler: (message: Addressed<QuestWatched>) => void): () => void;
   onQuestRun(handler: (message: Addressed<QuestRunProgress>) => void): () => void;
+  onGearTrip(handler: (message: Addressed<GearTripProgress | null>) => void): () => void;
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
 }
@@ -1654,6 +1682,7 @@ export const PUSH_METHODS = [
   'onLowLives',
   'onQuestSaid',
   'onQuestRun',
+  'onGearTrip',
   'onConfig',
   'onInternal'
 ] as const satisfies ReadonlyArray<keyof IpcApi>;

@@ -40,6 +40,7 @@ import type { Catalogue } from './Catalogue';
 import { handoverSource } from './navigation/sources';
 import type { PlannerRooms } from './PlannerRooms';
 import { plan, leg, type PlanRealm } from './navigation/plan';
+import { tour } from './navigation/tour';
 import type { Router, Traveller } from './Router';
 import {
   fetchAct,
@@ -308,57 +309,29 @@ export class QuestPlanner {
 
     const end =
       step.room !== undefined && this.rooms.has(step.room as RoomId) ? (step.room as RoomId) : null;
-    const asked = new Set<RoomId>(placed.flatMap((item) => item.rooms));
-    if (end !== null) asked.add(end);
-    const reach = this.router.sweepTo(from, asked, traveller);
-
-    /*
-     * The nearest few places for each, because a monster that drops one of
-     * these spawns in up to sixteen rooms and every one of them is a sweep.
-     * Nearest **to the start**, which is the one distance already in hand — a
-     * place further off than three others is not where the shortest walk goes
-     * unless it was going that way anyway, and the ones kept are then weighed
-     * against the whole walk rather than picked by this distance.
-     */
-    const nodes: Array<{ item: number; room: RoomId }> = [];
-    const wanted: Array<{ id: number; name?: string }> = [];
-    for (const item of placed) {
-      const named = item.name === undefined ? {} : { name: item.name };
-      const reachable = item.rooms
-        .filter((room) => reach.has(room))
-        .sort((a, b) => reach.get(a)!.cost - reach.get(b)!.cost)
-        .slice(0, errandPlaces);
-      if (reachable.length === 0) {
-        answer.left.push({ id: item.id, ...named, why: 'unreachable' });
-        continue;
-      }
-      const at = wanted.length;
-      wanted.push({ id: item.id, ...named });
-      for (const room of reachable) nodes.push({ item: at, room });
+    // Chosen in the router's units, so the order prices the lair and the door; reported in moves.
+    const order = tour(
+      this.router,
+      from,
+      { things: placed.map((item) => item.rooms), places: errandPlaces, end, by: 'cost' },
+      traveller
+    );
+    const named = (item: (typeof placed)[number]) => ({
+      id: item.id,
+      ...(item.name === undefined ? {} : { name: item.name })
+    });
+    for (const thing of order?.unreached ?? []) {
+      answer.left.push({ ...named(placed[thing]!), why: 'unreachable' });
     }
-    if (wanted.length === 0) return { ...answer, refusal: t('cards.quests.errand.noWay') };
-
-    const kept = new Set<RoomId>(nodes.map((node) => node.room));
-    if (end !== null) kept.add(end);
-    const between = new Map<RoomId, Map<RoomId, { cost: number; moves: number }>>();
-    for (const room of kept) {
-      if (room === end && !nodes.some((node) => node.room === end)) continue;
-      between.set(room, this.router.sweepTo(room, kept, traveller));
+    if (order === null || order.stops.length === 0) {
+      return { ...answer, refusal: t('cards.quests.errand.noWay') };
     }
-
-    const order = this.bestOrder(nodes, reach, between, end);
-    if (order === null) return { ...answer, refusal: t('cards.quests.errand.noWay') };
-
-    let previous: RoomId | null = null;
-    for (const index of order) {
-      const node = nodes[index]!;
-      const measured = (previous === null ? reach : between.get(previous)!).get(node.room)!;
+    for (const stop of order.stops) {
       answer.legs.push({
-        item: wanted[node.item]!,
-        ...this.errandLeg(node.room),
-        moves: measured.moves
+        item: named(placed[stop.thing]!),
+        ...this.errandLeg(stop.room),
+        moves: stop.moves
       });
-      previous = node.room;
     }
     /*
      * And the way back, where the step names a room and the walk can close on
@@ -367,9 +340,8 @@ export class QuestPlanner {
      * cannot get home from the last thing it picks up, which is what the card
      * reads to decide whether to draw it.
      */
-    if (end !== null && previous !== null) {
-      const home = between.get(previous)!.get(end);
-      if (home !== undefined) answer.legs.push({ ...this.errandLeg(end), moves: home.moves });
+    if (end !== null && order.home !== null) {
+      answer.legs.push({ ...this.errandLeg(end), moves: order.home });
     }
     answer.moves = answer.legs.reduce((total, leg) => total + leg.moves, 0);
     return answer;
@@ -379,87 +351,6 @@ export class QuestPlanner {
   private errandLeg(room: RoomId): { room: string; place?: string } {
     const name = this.rooms.get(room)?.name.trim() ?? '';
     return { room, ...(name.length > 0 ? { place: name } : {}) };
-  }
-
-  /**
-   * The cheapest order to visit one place for each item in, ending at `end`.
-   *
-   * Held and Karp's table — the cheapest way to have collected each *subset*
-   * of the items and be standing at each place — which is what makes this
-   * exact rather than a nearest-first walk. The subset is over **items**
-   * while the position is over **places**, so a thing that can be got in
-   * three rooms costs three columns and not three items' worth of table.
-   *
-   * `null` where no order reaches every item: a pair the realm's one-way
-   * exits keep apart is a walk nobody can take, and the refusal above says so
-   * rather than dropping an item out of a list presented as complete.
-   */
-  private bestOrder(
-    nodes: ReadonlyArray<{ item: number; room: RoomId }>,
-    reach: ReadonlyMap<RoomId, { cost: number; moves: number }>,
-    between: ReadonlyMap<RoomId, ReadonlyMap<RoomId, { cost: number; moves: number }>>,
-    end: RoomId | null
-  ): number[] | null {
-    const items = new Set(nodes.map((node) => node.item)).size;
-    const full = (1 << items) - 1;
-    const width = nodes.length;
-    const best = new Float64Array((full + 1) * width).fill(Number.POSITIVE_INFINITY);
-    const came = new Int32Array((full + 1) * width).fill(-1);
-
-    for (let at = 0; at < width; at += 1) {
-      const first = reach.get(nodes[at]!.room);
-      if (first !== undefined) best[(1 << nodes[at]!.item) * width + at] = first.cost;
-    }
-    for (let mask = 1; mask <= full; mask += 1) {
-      for (let at = 0; at < width; at += 1) {
-        const cost = best[mask * width + at]!;
-        if (!Number.isFinite(cost)) continue;
-        const onward = between.get(nodes[at]!.room);
-        if (onward === undefined) continue;
-        for (let next = 0; next < width; next += 1) {
-          const bit = 1 << nodes[next]!.item;
-          if ((mask & bit) !== 0) continue;
-          const leg = onward.get(nodes[next]!.room);
-          if (leg === undefined) continue;
-          const total = cost + leg.cost;
-          const slot = (mask | bit) * width + next;
-          if (total >= best[slot]!) continue;
-          best[slot] = total;
-          came[slot] = at;
-        }
-      }
-    }
-
-    let cheapest = Number.POSITIVE_INFINITY;
-    let last = -1;
-    for (let at = 0; at < width; at += 1) {
-      const cost = best[full * width + at]!;
-      if (!Number.isFinite(cost)) continue;
-      /*
-       * The way home is part of the order and not a figure added after it: the
-       * nearest four things to fetch in the wrong order end a long way from
-       * the asker. Where the walk cannot close at all — a one-way exit out of
-       * the last room — the order is still the right one for the pickups, so
-       * the return leg costs nothing here and is left off the plan above.
-       */
-      const home = end === null ? 0 : (between.get(nodes[at]!.room)?.get(end)?.cost ?? null);
-      const total = cost + (home ?? 0);
-      if (total >= cheapest) continue;
-      cheapest = total;
-      last = at;
-    }
-    if (last === -1) return null;
-
-    const walk: number[] = [];
-    let mask = full;
-    let cursor = last;
-    while (cursor !== -1) {
-      walk.unshift(cursor);
-      const before = came[mask * width + cursor]!;
-      mask &= ~(1 << nodes[cursor]!.item);
-      cursor = before;
-    }
-    return walk;
   }
 
   /**

@@ -4,6 +4,7 @@
  * session can take a `Pick` of it without reaching up into the manager. Its
  * optional members are diagnostics by design. See `mudengine-session`.
  */
+import type { GearTripProgress } from '../../shared/gearTrip';
 import type { StandDown } from '../automation/LoginAutomator';
 import type { AutomationSnapshot } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
@@ -108,6 +109,8 @@ export interface SessionSink {
   questSaid?(progress: QuestWatched): void;
   /** How a run of a quest's plan is going, on every change. See `QuestRunner`. */
   questRun?(progress: QuestRunProgress): void;
+  /** How the gear trip is going, on every change. See `GearTrip`. */
+  gearTrip?(progress: GearTripProgress | null): void;
   /**
    * A command the client committed to the wire, reassembled from keystrokes.
    * One place does this, so a capture and the tracker cannot disagree.

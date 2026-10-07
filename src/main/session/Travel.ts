@@ -596,7 +596,7 @@ export class Travel implements SessionModule {
    * *Run it* is off for the way there (the user, 2026-10-03): the arrival
    * turns auto-combat on, and a run stopped short leaves it off.
    */
-  private combatOnAfterRun(): void {
+  combatOnAfterRun(): void {
     if (this.session.config().combat.enabled) return;
     this.session.notice(
       this.session.switchAutomation('combat', true)
@@ -1756,7 +1756,7 @@ export class Travel implements SessionModule {
    * the seconds the run was for. A walk that is refused anyway leaves the
    * switch off as it was.
    */
-  private switchedOnFor(walk: () => string | null): string | null {
+  switchedOnFor(walk: () => string | null): string | null {
     if (this.session.config().enabled) return walk();
     if (!this.session.switchAutomation('automation', true))
       return t('session.walk.automationNotOn');
@@ -1938,14 +1938,21 @@ export class Travel implements SessionModule {
     const last = route.steps.at(-1);
     this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
     this.clearFor(route);
-    if (!run || !this.session.config().combat.enabled) return null;
-    if (!this.session.switchAutomation('combat', false)) {
-      const reason = t('automation.combat.runRefused');
-      this.walker.stop(reason);
-      return reason;
-    }
+    const off = run ? this.combatOffForRun() : false;
+    if (typeof off === 'string') this.walker.stop(off);
+    return typeof off === 'string' ? off : null;
+  }
+
+  /**
+   * *Run it* turns auto-combat off for the way, written and read back before
+   * the first step. True where it was on and is now off, false where it was
+   * already off, the refusal where the file would not take the write.
+   */
+  combatOffForRun(): boolean | string {
+    if (!this.session.config().combat.enabled) return false;
+    if (!this.session.switchAutomation('combat', false)) return t('automation.combat.runRefused');
     this.session.notice(t('automation.combat.runningCombatOff'));
-    return null;
+    return true;
   }
 
   /**

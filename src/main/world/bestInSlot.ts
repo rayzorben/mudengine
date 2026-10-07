@@ -37,9 +37,12 @@ export function bestInSlot(
       .filter((row) => level === null || wearableAt(row.minLevel, level))
       .slice(0, perSlot)
   }));
-  const nearest = nearestCounters(
-    realm.stockingPlaces([...new Set(slots.flatMap((slot) => slot.better.map((row) => row.id)))])
-  );
+  const places = realm.stockingPlaces([
+    ...new Set(slots.flatMap((slot) => slot.better.map((row) => row.id)))
+  ]);
+  const nearest = nearestCounters(places);
+  const counters = new Map<number, number>();
+  for (const place of places) counters.set(place.item, (counters.get(place.item) ?? 0) + 1);
   return slots.flatMap(({ worn, better }): SlotBest[] => {
     if (better.length === 0 && worn.worn === null) return [];
     const items = better.map((row): GearSource => {
@@ -47,7 +50,8 @@ export function bestInSlot(
       return {
         ...gearRowOf(row),
         sold: place === undefined ? null : counterOf(place, row.name, realm),
-        droppedBy: realm.dropsOf(row.name)
+        droppedBy: realm.dropsOf(row.name),
+        counters: counters.get(row.id) ?? 0
       };
     });
     return [{ ...worn, items }];

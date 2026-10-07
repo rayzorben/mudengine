@@ -49,6 +49,7 @@ describe('a rail that has never been arranged', () => {
       'shops',
       'quests',
       'hunting',
+      'gear',
       'conversation',
       'stats',
       'extension'

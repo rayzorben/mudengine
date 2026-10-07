@@ -160,6 +160,13 @@ export const CARDS = [
    */
   { id: 'hunting', label: t('cards.hunting.title') },
   /*
+   * What to wear: the best in each slot from anywhere, what the cash there is
+   * buys now, and a trip to go and buy it. Put away by default and reached
+   * through the palette (*What gear should I get?*), for the Hunting card's
+   * reason: a question asked between evenings.
+   */
+  { id: 'gear', label: t('cards.gear.title') },
+  /*
    * There is no Shop card. A shop is a property of a *room*, so it is a face of
    * the Room card — `ROOM · SHOP`, and `TEMPLE`, `BANK` or `TRAINER` where the
    * realm says so. As a card of its own it appeared and disappeared from the

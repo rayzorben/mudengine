@@ -124,6 +124,10 @@ const api: WireApi = {
   questPlan: (session, block, marked) =>
     ipcRenderer.invoke(Invoke.questPlan, session, block, marked),
   questRun: (session, block, marked) => ipcRenderer.invoke(Invoke.questRun, session, block, marked),
+  gearChoices: (session) => ipcRenderer.invoke(Invoke.gearChoices, session),
+  gearPlan: (session, picks) => ipcRenderer.invoke(Invoke.gearPlan, session, picks),
+  gearTrip: (session, picks, run) => ipcRenderer.invoke(Invoke.gearTrip, session, picks, run),
+  gearStop: (session) => ipcRenderer.invoke(Invoke.gearStop, session),
   questStop: (session) => ipcRenderer.invoke(Invoke.questStop, session),
   localMap: (session, map, room, radius) =>
     ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
@@ -174,6 +178,7 @@ const api: WireApi = {
   onLowLives: (handler) => subscribe(Push.lowLives, handler),
   onQuestSaid: (handler) => subscribe(Push.questSaid, handler),
   onQuestRun: (handler) => subscribe(Push.questRun, handler),
+  onGearTrip: (handler) => subscribe(Push.gearTrip, handler),
   onConfig: (handler) => subscribe(Push.config, handler),
   onInternal: (handler) => subscribe(Push.internal, handler)
 };
