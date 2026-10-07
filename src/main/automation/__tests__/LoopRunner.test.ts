@@ -257,6 +257,7 @@ describe('when the lap actually begins', () => {
     runner.start(loop, state());
     // Started and walking out from town; those steps are not the lap.
     expect(runner.progress.startedAt).not.toBeNull();
+    expect(runner.progress.reached).toBe(false);
     expect(begun()).toBe(0);
   });
 
@@ -264,6 +265,7 @@ describe('when the lap actually begins', () => {
     const { runner, begun } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
+    expect(runner.progress.reached).toBe(true);
     expect(begun()).toBe(1);
   });
 
