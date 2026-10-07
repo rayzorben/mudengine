@@ -11,6 +11,7 @@ import { leg, plan } from '../world/navigation/plan';
 import { planRealmOf } from '../world/navigation/realm';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { unfoughtShare } from '../../shared/danger';
+import type { CharacterState } from '../../shared/character';
 import type { NavigationOracle, Plan } from '../../shared/navigation';
 import {
   roomAddress,
@@ -39,11 +40,21 @@ export interface NavigationParts {
       >
     | undefined;
   tracker: Pick<CharacterTracker, 'current'>;
-  errands: Pick<Errands, 'travellerNow' | 'priceAt'>;
+  errands: Pick<Errands, 'travellerNow' | 'reachKey' | 'priceAt'>;
   odds(): OddsReader;
 }
 
+/** The sweeps `withinNow` keeps, for one realm, one tuning and one `reachKey`. */
+interface KeptReach {
+  readonly world: object;
+  readonly tuning: object;
+  readonly key: string;
+  readonly sweeps: Map<string, ReadonlyMap<RoomId, number>>;
+}
+
 export class Navigation {
+  private kept: KeptReach | null = null;
+
   constructor(private readonly parts: NavigationParts) {}
 
   /** The plan from where the character stands to `to`, or null while unplaced or worldless. */
@@ -74,6 +85,36 @@ export class Navigation {
    */
   within(from: RoomId, steps: number, traveller: Traveller): ReadonlyMap<RoomId, number> {
     return this.parts.world()?.withinSteps(from, steps, traveller) ?? new Map();
+  }
+
+  /**
+   * `within` for the character as `state` stands (`travellerNow`), kept while
+   * the realm, the tuning and what decides a way (`Errands.reachKey`) are the
+   * same: the hunting survey sweeps the whole realm and each spot's rooms
+   * again on every ask, about 90ms a whole-realm sweep on GreaterMUD
+   * (2026-10-06). At most `world.keptSweeps` are kept.
+   */
+  withinNow(
+    from: RoomId,
+    steps: number,
+    state: CharacterState = this.parts.tracker.current
+  ): ReadonlyMap<RoomId, number> {
+    const world = this.parts.world();
+    if (world === undefined) return new Map();
+    const key = this.parts.errands.reachKey(state);
+    const now = tuning();
+    let kept = this.kept;
+    if (kept === null || kept.world !== world || kept.tuning !== now || kept.key !== key) {
+      kept = { world, tuning: now, key, sweeps: new Map() };
+      this.kept = kept;
+    }
+    const at = `${from}#${steps}`;
+    const known = kept.sweeps.get(at);
+    if (known !== undefined) return known;
+    if (kept.sweeps.size >= tuning().world.keptSweeps) kept.sweeps.clear();
+    const swept = this.within(from, steps, this.parts.errands.travellerNow(state));
+    kept.sweeps.set(at, swept);
+    return swept;
   }
 
   /** This character's fights and purse, weighed for a plan made elsewhere; null while worldless. */

@@ -14,7 +14,7 @@ import {
   type PlannedFetch
 } from '../../shared/navigation';
 import { Navigation } from './navigation';
-import { exitGates } from '../world/navigation/exitGates';
+import { exitGates, itemsAsked } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import type { WalkKind } from '../../shared/walk';
@@ -223,6 +223,7 @@ export type ErrandsWorld = Pick<
   | 'droppingPlaces'
   | 'everyRoom'
   | 'namedExitItems'
+  | 'portalsFrom'
   | 'errand'
   | 'findByName'
   | 'get'
@@ -304,6 +305,8 @@ export class Errands implements SessionModule {
   private readonly navigation: Navigation;
   /** Every toll the realm's exits charge, in copper, cheapest first; read once. */
   private tolls: number[] | null = null;
+  /** `gateItems`, read once per realm. */
+  private gated: ReadonlySet<number> | null = null;
   /**
    * The hunting survey's pricing pass, remembered until the character's
    * fitness moves (todo 00, 2026-09-13). Weighing 1,260 groups costs main
@@ -762,7 +765,7 @@ export class Errands implements SessionModule {
    * field of `travellerNow`, so a field added there is in it. The copper
    * carried is there only as how many of the realm's tolls it covers, since
    * a toll is the one exit it opens and the figure itself moves on every kill;
-   * the pack only as the items an exit asks for.
+   * the pack only as the items a way asks for (`gateItems`).
    * Its readers (`danger`, `hazard`) are asked live and are not.
    * `TrainErrand.trainersAhead` keeps its routes while this stays the same.
    */
@@ -772,9 +775,9 @@ export class Errands implements SessionModule {
       wealth === null || wealth === undefined
         ? null
         : this.tollPrices().filter((toll) => toll <= wealth).length;
-    // Only what the pack holds that an exit asks for: loot and purchases open no way (2026-10-02:
+    // Only what the pack holds that a way asks for: loot and purchases open no way (2026-10-02:
     // a staff bought every 12 s planned every trainer route again each time).
-    const opens = new Set(this.world?.namedExitItems() ?? []);
+    const opens = this.gateItems();
     const carried = keys?.filter((id) => opens.has(id));
     return JSON.stringify({ ...reach, keys: carried, tollsPaid }, (_key, value: unknown) =>
       typeof value === 'function'
@@ -784,6 +787,28 @@ export class Errands implements SessionModule {
           : value
     );
   }
+  /**
+   * Every item a way asks the pack about: what an exit names (`namedExitItems`)
+   * and each item an exit's or a portal's gates or script lines ask for
+   * (`itemsAsked`). The names alone missed three of the four items a hidden
+   * exit wants, and two portals, on Paradigm (2026-10-06), so carrying one
+   * moved no `reachKey`.
+   */
+  private gateItems(): ReadonlySet<number> {
+    if (this.gated !== null) return this.gated;
+    const world = this.world;
+    const items = new Set<number>(world?.namedExitItems() ?? []);
+    for (const room of world?.everyRoom() ?? []) {
+      const ways = [...room.exits, ...(world?.portalsFrom(roomId(room.map, room.room)) ?? [])];
+      for (const way of ways) {
+        if (way.requirement === undefined || way.requirement === null) continue;
+        for (const item of itemsAsked(way.requirement)) items.add(item);
+      }
+    }
+    this.gated = items;
+    return items;
+  }
+
   /** The tolls the realm's exits charge (`Requirement.tollCopper`), cheapest first. */
   private tollPrices(): number[] {
     if (this.tolls !== null) return this.tolls;
@@ -1736,11 +1761,7 @@ export class Errands implements SessionModule {
      * stands still. The sweep is still one pass over the rooms; what changed
      * is that an impassable exit is not an exit.
      */
-    const reach = this.navigation.within(
-      from,
-      radius ?? Number.POSITIVE_INFINITY,
-      this.travellerNow(state)
-    );
+    const reach = this.navigation.withinNow(from, radius ?? Number.POSITIVE_INFINITY, state);
     /*
      * Grouped by what spawns, not by name: two rooms naming the same rows at
      * the same cap are one hunting ground with two rooms in it, which is
@@ -2120,9 +2141,8 @@ export class Errands implements SessionModule {
     // Priced by the traveller, as the survey's own sweep is: a ring whose
     // rooms are separated by a door this character cannot open is not a ring
     // it can walk, and the step count would be a fiction either way.
-    const priced = this.travellerNow(this.tracker.current);
     for (const room of candidates) {
-      sweeps.set(room.id, this.navigation.within(room.id, c.clusterRadius, priced));
+      sweeps.set(room.id, this.navigation.withinNow(room.id, c.clusterRadius));
     }
     const distance = (a: RoomId, b: RoomId): number | null =>
       sweeps.get(a)?.get(b) ?? sweeps.get(b)?.get(a) ?? null;
