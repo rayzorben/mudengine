@@ -114,6 +114,24 @@ describe('answering the sequence', () => {
     expect(sent).toEqual(['vaelor', 'secret', 'P', '1', 'E']);
   });
 
+  it('stops at the realm menu while automation is off, and says so once', () => {
+    login.configure(credentials, false);
+    fullSequence();
+    login.onBlock(block('prompt-menu', '[PARADIGM]: '));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['vaelor', 'secret', 'P', '1']);
+    expect(notices.filter((m) => m === t('automation.login.heldAtMenu'))).toHaveLength(1);
+  });
+
+  it('enters the realm once automation is back on', () => {
+    login.configure(credentials, false);
+    fullSequence();
+    login.configure(credentials, true);
+    login.onBlock(block('prompt-menu', '[PARADIGM]: '));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['vaelor', 'secret', 'P', '1', 'E']);
+  });
+
   it('answers a realm-specific prompt from the extra list', () => {
     login.onBlock(block('unknown', '(N)onstop, (Q)uit, or (C)ontinue?'));
     vi.advanceTimersByTime(50);
@@ -392,13 +410,16 @@ describe('safety', () => {
     edited.onBlock(block('unknown', 'Continue: '));
     vi.advanceTimersByTime(50);
     // Reindexed by an edit, so what index 0 meant is no longer what it means.
-    edited.configure({
-      ...credentials,
-      steps: [
-        { when: 'Accept the rules', send: '1' },
-        { when: 'Continue', send: 'y' }
-      ]
-    });
+    edited.configure(
+      {
+        ...credentials,
+        steps: [
+          { when: 'Accept the rules', send: '1' },
+          { when: 'Continue', send: 'y' }
+        ]
+      },
+      true
+    );
     edited.onBlock(block('unknown', 'Continue: '));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual(['y', 'y']);
@@ -414,7 +435,7 @@ describe('safety', () => {
   it('does not re-send a credential the realm already has after an edit', () => {
     login.onBlock(block('prompt-username', USERNAME));
     vi.advanceTimersByTime(50);
-    login.configure({ ...credentials, steps: [{ when: 'Login ID', send: '{user}' }] });
+    login.configure({ ...credentials, steps: [{ when: 'Login ID', send: '{user}' }] }, true);
     login.onBlock(block('unknown', 'Login ID: '));
     vi.advanceTimersByTime(50);
     expect(sent).toEqual(['vaelor']);

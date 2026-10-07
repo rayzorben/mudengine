@@ -119,14 +119,22 @@ export class LoginAutomator implements SessionModule {
   /** The player asked to leave; the next menu is them arriving there, not a way in. */
   private leaving = false;
   private done = false;
+  /** The realm's menu came up with automation off and was left alone: said once. */
+  private saidHeldAtMenu = false;
 
+  /**
+   * @param entersRealm the master switch: off, the login stops at the realm's
+   *   menu, the last prompt before the realm, and leaves `E` to the player.
+   */
   constructor(
     private config: LoginConfig,
     private readonly queue: CommandQueue,
-    private readonly events: LoginEvents = {}
+    private readonly events: LoginEvents = {},
+    private entersRealm = true
   ) {}
 
-  configure(config: LoginConfig): void {
+  configure(config: LoginConfig, entersRealm: boolean): void {
+    this.entersRealm = entersRealm;
     /*
      * A changed script invalidates what has been used, because `used` is keyed
      * by *index*.
@@ -151,6 +159,7 @@ export class LoginAutomator implements SessionModule {
     this.why = null;
     this.leaving = false;
     this.done = false;
+    this.saidHeldAtMenu = false;
   }
 
   /** True once a status line has been seen: the sequence is over. */
@@ -254,6 +263,19 @@ export class LoginAutomator implements SessionModule {
      * reads that type.
      */
     if (block.type === 'prompt-new-password') return;
+
+    /*
+     * The realm's own menu, whose answer is the way into the game. With
+     * automation off the login stops here, and the player types `E` to enter
+     * the realm.
+     */
+    if (block.type === 'prompt-menu' && !this.entersRealm) {
+      if (!this.saidHeldAtMenu) {
+        this.saidHeldAtMenu = true;
+        this.events.notice?.(t('automation.login.heldAtMenu'));
+      }
+      return;
+    }
 
     /*
      * Every prompt, matched on its own text — the account's two included.

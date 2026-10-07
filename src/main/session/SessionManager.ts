@@ -1681,16 +1681,13 @@ export class SessionManager {
     this.rowOverrides = new RowOverrides(automation, { notice });
     this.fleeGoto = new FleeGoto(safetyParts, safetySession);
 
-    /*
-     * Answering the login is on the *player's* behalf, so it goes through the
-     * arbiter at `user` priority and outranks anything automated.
-     */
     this.publisher.useSecret(login.password);
-    this.login = new LoginAutomator(login, this.queue, {
-      notice,
-      promptOwed: () => this.link.owePrompt(),
-      prompted: () => this.link.notePrompt()
-    });
+    this.login = new LoginAutomator(
+      login,
+      this.queue,
+      { notice, promptOwed: () => this.link.owePrompt(), prompted: () => this.link.notePrompt() },
+      automation.enabled
+    );
     /*
      * The modules, in the order `connect` puts them down; `connect`,
      * `leftTheRealm`, `configure` and `dispose` walk this list and nothing
@@ -2503,7 +2500,7 @@ export class SessionManager {
     );
     for (const { configure } of this.modules) configure?.(automation);
     this.loops.configure(automation.health, automation.movement, automation.walk);
-    this.login.configure(login);
+    this.login.configure(login, automation.enabled);
     this.publisher.useSecret(login.password);
   }
 
