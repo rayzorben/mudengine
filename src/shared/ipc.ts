@@ -1619,3 +1619,54 @@ export interface IpcApi {
   onConfig(handler: (snapshot: ConfigSnapshot) => void): () => void;
   onInternal(handler: (config: InternalConfig) => void): () => void;
 }
+
+/**
+ * The members of `IpcApi` that subscribe to a push, listed for the desktop
+ * bridge. On the desktop main sends each push as its JSON text and the preload
+ * hands the text to the window unparsed, because Electron's context bridge
+ * copies an object property by property and a string in one piece: copying
+ * the objects was 5.6s of a minute of the player's window with four
+ * characters connected, the window's longest stalls (2026-10-06). The window
+ * parses the text (`lib/wire.ts`). The web bridge already receives text.
+ */
+export const PUSH_METHODS = [
+  'onData',
+  'onState',
+  'onTelnet',
+  'onLine',
+  'onDebug',
+  'onBlock',
+  'onCharacter',
+  'onPlayers',
+  'onWalk',
+  'onLoop',
+  'onAutomation',
+  'onVerdict',
+  'onAsks',
+  'onStatsBase',
+  'onNotice',
+  'onSessions',
+  'onProfiles',
+  'onLearned',
+  'onFinds',
+  'onShops',
+  'onCharacterReset',
+  'onLowLives',
+  'onQuestSaid',
+  'onQuestRun',
+  'onConfig',
+  'onInternal'
+] as const satisfies ReadonlyArray<keyof IpcApi>;
+
+export type PushMethod = (typeof PUSH_METHODS)[number];
+
+/** An `on…` member of `IpcApi` missing from `PUSH_METHODS`: `never` while the list is whole. */
+export type UnlistedPush = Exclude<Extract<keyof IpcApi, `on${string}`>, PushMethod>;
+
+/** A push as main sends it to a desktop window: the payload's JSON text. */
+export type PushText = string;
+
+/** What the preload exposes: `IpcApi`, with every push handed over as its text. */
+export type WireApi = Omit<IpcApi, PushMethod> & {
+  readonly [K in PushMethod]: (handler: (text: PushText) => void) => () => void;
+};

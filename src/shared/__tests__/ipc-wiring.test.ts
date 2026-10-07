@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Invoke, Push, Send } from '../ipc';
+import { Invoke, PUSH_METHODS, Push, Send, type UnlistedPush } from '../ipc';
 
 /**
  * Channel names and payload types are declared together so a mismatch is a
@@ -51,6 +51,12 @@ const defines = (source: string, key: string): boolean =>
 describe('the IPC contract is wired at both ends', () => {
   it('has channels to check', () => {
     expect(Object.keys(Invoke).length).toBeGreaterThan(20);
+  });
+
+  it('lists every push for the desktop bridge, which parses only what it lists', () => {
+    expectTypeOf<UnlistedPush>().toBeNever();
+    // One method per push channel, and no channel listed twice.
+    expect(new Set(PUSH_METHODS).size).toBe(Object.keys(Push).length);
   });
 
   it('handles every invocable channel in main', () => {
