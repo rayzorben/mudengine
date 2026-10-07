@@ -1809,7 +1809,7 @@ export class Walker implements SessionModule {
    *
    * An empty line is answered with a status line and a reprint of the room the
    * character is standing in — measured, in the capture that produced
-   * `SessionManager.editorInput` (twenty Escapes and an Enter, answered with a
+   * `session/editorInput.ts` (twenty Escapes and an Enter, answered with a
    * bare room reprint, because the server had kept none of them). That is
    * exactly the fact a stalled step is waiting for, for one command.
    *

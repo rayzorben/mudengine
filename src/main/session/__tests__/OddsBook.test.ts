@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { OddsBook, type OddsBookParts, type OddsWorld } from '../OddsBook';
+import { SlicedSimulator } from '../slicedSimulator';
 import type { FightCharacter } from '../FightSetup';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { MobEntity } from '../../../shared/entities';
@@ -109,7 +110,8 @@ function book(character: OddsBookParts['setup']['character'] = () => CHARACTER):
         casting: met.map(() => null)
       }),
       settingsKey: () => 'settings'
-    }
+    },
+    simulator: new SlicedSimulator()
   };
   const ran = vi.fn();
   return { odds: new OddsBook(parts, { ran }), tracker, ran };
@@ -271,7 +273,8 @@ describe('the odds book', () => {
             };
           },
           settingsKey: () => 'settings'
-        }
+        },
+        simulator: new SlicedSimulator()
       },
       { ran: vi.fn() }
     );

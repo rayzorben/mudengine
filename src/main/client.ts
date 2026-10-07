@@ -85,6 +85,8 @@ import { segmentFightLogs } from './session/fightLogMigration';
 import { fightsPerSegment } from './session/fightSegments';
 import { worldLeg } from './session/navigation';
 import { NO_TALK, TalkLog, type TalkSink } from './session/TalkLog';
+import { SimulatorPool } from './app/simulatorPool';
+import { SlicedSimulator } from './session/slicedSimulator';
 import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
 import type { MovementStart, WalkStart } from '../shared/movement';
@@ -296,6 +298,10 @@ let extensions: readonly LoadedExtension[] = [];
 const recorders = new Set<FlightRecorder>();
 /** Deletes session logs past `logging.keepDays` (todo 04). */
 let logSweep: LogSweep | null = null;
+/** The worker threads every session's fight trials run on (`SimulatorPool`). */
+let simulators: SimulatorPool | null = null;
+/** Where the simulator's worker was built, as the entry states it (`index.ts`). */
+let simulatorWorker = '';
 
 /**
  * The realm knowledge base, loaded once.
@@ -1398,6 +1404,7 @@ function createHost(): SessionHost {
     loreFor,
     spellLoreFor,
     sentences,
+    simulator: simulators ?? undefined,
     memoryFor: splitMemoryFor,
     fightsFor,
     talkFor,
@@ -3206,8 +3213,9 @@ function guardTheProcess(): void {
  * behind the same channels. What differs is asked of `platform` at the point
  * it differs.
  */
-export function startClient(host: Host): void {
+export function startClient(host: Host, built: { simulatorWorker: string }): void {
   platform = host;
+  simulatorWorker = built.simulatorWorker;
   asked = homeRoot(process.env, host.defaultHome);
   home = homeAt(asked.root);
 
@@ -3368,6 +3376,12 @@ function build(): void {
   );
   // As soon as the tuning is read, so the start of the client is sampled under the player's numbers.
   record('main', mainThreadProfiler());
+  // Before any session, which asks it for every fight its odds book runs.
+  simulators = new SimulatorPool(
+    simulatorWorker,
+    (message) => announce('simulator', message),
+    () => new SlicedSimulator()
+  );
   lore = createLore();
   playerBook = createPlayerBook();
   destinations = createDestinations();
@@ -3479,6 +3493,7 @@ function teardown(): void {
   for (const recorder of recorders) settle('flight recorder', () => recorder.dispose());
   recorders.clear();
   settle('log sweep', () => logSweep?.dispose());
+  settle('simulator', () => simulators?.dispose());
   settle('internal', () => internal?.dispose());
   // Written before the sessions go: what the last fight taught is scheduled
   // lazily, and quitting is exactly when that schedule has not fired yet.

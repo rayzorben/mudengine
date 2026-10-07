@@ -112,7 +112,13 @@ export default defineConfig({
     build: {
       minify: 'esbuild',
       chunkSizeWarningLimit: CHUNK_LIMIT_KB.main,
-      rollupOptions: { input: { index: resolve('src/main/index.ts') } }
+      rollupOptions: {
+        input: {
+          index: resolve('src/main/index.ts'),
+          // A worker thread's own entry, beside `index.js` (`app/simulatorPool.ts`).
+          simulatorWorker: resolve('src/main/app/simulatorWorker.ts')
+        }
+      }
     }
   },
   preload: {

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { t } from '../../app/i18n';
 import { BlessingChoice, type BlessingChoiceParts } from '../BlessingChoice';
 import type { FightCharacter } from '../FightSetup';
+import { SlicedSimulator } from '../slicedSimulator';
 import type { SafetyDecision } from '../../../shared/automation';
 import { blessedPlayer } from '../../../shared/blessingeffects';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
@@ -186,7 +187,8 @@ function choice(on: AutomationConfig = config, realmSpeed = 1) {
       },
       settingsKey: () => 'settings'
     },
-    hunt: { quarry: null }
+    hunt: { quarry: null },
+    simulator: new SlicedSimulator()
   };
   const made = new BlessingChoice(parts, {
     config: () => on,

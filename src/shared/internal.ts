@@ -620,10 +620,17 @@ const TUNING_DEFAULTS = {
     survivalSafeAbove: 0.6,
     survivalRiskyAbove: 0.25,
     /**
-     * How long the odds book (`OddsBook`) runs fights for before it hands the
-     * socket's thread back. One fight is 3 to 6ms, so a slice holds one or two.
+     * How long fights run on the socket's thread before it is handed back,
+     * where no worker runs them (`SlicedSimulator`: the tests, the probes, a
+     * pool whose worker failed), and how long the odds book sets fights up
+     * for at a time. One fight is 3 to 6ms, so a slice holds one or two.
      */
     survivalSliceMs: 8,
+    /**
+     * How many worker threads run the fights the odds book and the blessing
+     * choice ask for (`SimulatorPool`), off the thread that holds the sockets.
+     */
+    simulatorThreads: 2,
     /**
      * Books the odds book keeps for figures the character had before, so a
      * blessing that lapses and is cast again picks its book up where it was.
@@ -2750,12 +2757,6 @@ const TUNING_DEFAULTS = {
      * frame.
      */
     restoreSliceChars: 65536,
-    /**
-     * The longest a console nobody is looking at waits, once mounted, for an
-     * idle moment to take its WebGL renderer; the shown one takes it at once,
-     * and a hidden one when it is shown.
-     */
-    hiddenWebglMs: 3000,
     /**
      * How many lines of backscroll a console holds, and how many more each
      * *Load more* at its top brings back from main. Main keeps

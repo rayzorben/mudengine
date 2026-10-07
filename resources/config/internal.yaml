@@ -547,9 +547,14 @@ tuning:
 
     survivalRiskyAbove: 0.25
 
-    # How long the background run of every monster and lair holds the thread
-    # before handing it back, in milliseconds. One fight is 3 to 6ms.
+    # How long the background run of every monster and lair holds the main
+    # thread before handing it back, in milliseconds, where no worker runs the
+    # fights. One fight is 3 to 6ms.
     survivalSliceMs: 8
+
+    # How many worker threads run those fights, off the thread that holds the
+    # sockets. At least one; lowering it stops no worker already started.
+    simulatorThreads: 2
 
     # How many runs of every monster and lair are kept for the figures the
     # character had before, so a blessing that wears off and is cast again
@@ -2081,11 +2086,6 @@ tuning:
     # xterm parses one write in one go, so a whole restored backscroll was a
     # second-long freeze per character; slices this size keep each short.
     restoreSliceChars: 65536
-
-    # The longest a console nobody is looking at waits, once mounted, for an
-    # idle moment to take its WebGL renderer; the shown one takes it at once,
-    # and a hidden one when it is shown.
-    hiddenWebglMs: 3000
 
     # How many lines of backscroll a console holds, and how many more each
     # Load more at its top brings back. The client keeps terminal.scrollback;

@@ -6833,8 +6833,8 @@ function theTuningBlockGainedKeys(
     addKey('hunting', 'speedSlack', DEFAULT_INTERNAL.tuning.hunting.speedSlack);
     // The sweeps of what is within reach kept for the hunting survey (2026-10-06).
     addKey('world', 'keptSweeps', DEFAULT_INTERNAL.tuning.world.keptSweeps);
-    // How long a console nobody is looking at waits for its WebGL renderer (2026-10-06).
-    addKey('view', 'hiddenWebglMs', DEFAULT_INTERNAL.tuning.view.hiddenWebglMs);
+    // The worker threads that run the odds book's and the blessing choice's fights (2026-10-06).
+    addKey('menace', 'simulatorThreads', DEFAULT_INTERNAL.tuning.menace.simulatorThreads);
     addKey('hunting', 'speedShare', DEFAULT_INTERNAL.tuning.hunting.speedShare);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
@@ -6849,6 +6849,8 @@ function theTuningBlockGainedKeys(
     };
 
     dropKey('combat', 'movePendingMs');
+    // The hidden console's WebGL wait, taken back the day after (2026-10-07).
+    dropKey('view', 'hiddenWebglMs');
     /*
      * The Hunting card's reach, retired with the reach chips (todo 00,
      * 2026-09-13): the survey sweeps everything the exits reach, and distance
