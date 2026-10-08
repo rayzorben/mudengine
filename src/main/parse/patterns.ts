@@ -1079,11 +1079,18 @@ export const RULES: Rule[] = [
    * a verb can be two words: `The red wyvern swoops down at Fatty!` read with
    * a one-word verb made a monster called `red wyvern swoops` (todo 834).
    * A player's capitalised name is one by grammar; an article never is.
+   *
+   * Paramud ends some monsters' misses at another player with a space before
+   * the CRLF (`The big cave worm lunges at Beanis! `; `The big acid slime
+   * flails at Beanis!` in the same session has none). Wire 2026-10-08: 102
+   * such lines in one session, all unread and offered to the effect lore as
+   * onsets, so the trailing space is allowed. GreaterMUD's `Mob.cs:1754`
+   * writes none.
    */
   {
     type: 'player-misses',
     pattern:
-      /^\s*(?<line>(?!You\b)(?:(?<first>[A-Z][\w'-]*)|[a-z][\w'-]*)(?: [\w'-]+)+?) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!$/,
+      /^\s*(?<line>(?!You\b)(?:(?<first>[A-Z][\w'-]*)|[a-z][\w'-]*)(?: [\w'-]+)+?) at (?<target>(?!you\b)[\w' -]+?)(?: with (?:his|her|its|their) (?<weapon>[\w' -]+?))?!\s*$/,
     resolve: 'attacker',
     nameFallback: true
   },
