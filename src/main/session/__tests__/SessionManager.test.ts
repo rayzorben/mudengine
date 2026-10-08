@@ -27,7 +27,7 @@ import { NO_REALM_PLAYERS, type PlayerRegistry } from '../../../shared/players';
 import type { Find, RealmFinds, Sighting } from '../../../shared/finds';
 import type { RealmShops, Shelf } from '../../../shared/shops';
 import type { FightSink, MeasureAsk, MeasuredOutput } from '../../../shared/fights';
-import type { HuntingAdvice, KeptSpeed } from '../../../shared/hunting';
+import type { HuntingAdvice, KeptSpeed, MeasuredRate } from '../../../shared/hunting';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning, tuning } from '../../app/tuning';
 import type { RewriteDesign } from '../../../shared/rewrites';
@@ -5651,6 +5651,33 @@ describe('auto-combat off while being hit', () => {
     expect(flips).toEqual([]);
     expect(wire()).not.toContain('slime beast');
   });
+
+  /* 2026-10-08: a run that turned it off ended with the launch, and the next launch fought nothing all night. */
+  it('is turned back on at the dial when the record says a run turned it off', async () => {
+    const collected = collect();
+    const flips: boolean[] = [];
+    let kept: Underway = { ...NOTHING_UNDERWAY, combatOffForRun: true };
+    const record: CharacterRecord = {
+      ...NO_RECORD,
+      recallUnderway: () => kept,
+      rememberUnderway: (underway) => {
+        kept = underway;
+      }
+    };
+    const sink: SessionSink = {
+      ...collected.sink,
+      switchAutomationNow: (_name, on) => {
+        flips.push(on);
+        return true;
+      }
+    };
+    manager = build(sink, { automation: config(false) });
+    manager.useRealm(NO_REALM_PLAYERS, record);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    await until(() => flips.length > 0);
+    expect(flips).toEqual([true]);
+    expect(collected.notices).toContain(t('automation.combat.onAfterLaunch'));
+  });
 });
 
 /*
@@ -8312,6 +8339,32 @@ describe('the hunting survey prices a kill off the fight record', () => {
     const next = manager!['errands'].huntingGrounds(null, null, { page: 1 });
     expect(next.spots.map((spot) => spot.key)).toEqual([rough]);
     expect(next.unmeasured.map((spot) => spot.key)).toEqual(advice.spots.map((spot) => spot.key));
+  });
+
+  /* 2026-10-08: a spot measured at 37.7k ranked 72nd behind paced guesses, past every page read. */
+  it('measures on the first page a spot measured at this level, and one the asker names', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      hunting: { ...DEFAULT_INTERNAL.tuning.hunting, maxSpots: 1 }
+    });
+    await surveyed(record().fights);
+    const advice = await settled();
+    const rough = advice.unmeasured[0]!.key;
+    // Positive control: guessed alone it is off the first page.
+    expect(advice.spots.map((spot) => spot.key)).not.toContain(rough);
+
+    const errands = manager!['errands'];
+    const asked = errands.huntingGrounds(null, null, { measure: [rough] });
+    expect(asked.spots.map((spot) => spot.key)).toContain(rough);
+    expect(asked.unmeasured).toHaveLength(0);
+    // Named on the first page only: a later page does not measure it twice.
+    expect(errands.huntingGrounds(null, null, { page: 1, measure: [rough] }).spots).toHaveLength(1);
+
+    const rate: MeasuredRate = { perHour: 1, minutes: 30, level: 10, at: Date.now() };
+    errands['session'].rates = () => new Map([[rough, rate]]);
+    const paid = errands.huntingGrounds(null, null);
+    expect(paid.spots.map((spot) => spot.key)).toContain(rough);
+    expect(paid.spots.find((spot) => spot.key === rough)?.estimate.measured?.perHour).toBe(1);
   });
 
   /*

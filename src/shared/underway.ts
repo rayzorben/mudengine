@@ -37,9 +37,15 @@ export interface CarriedRoute {
 export interface Underway {
   lap: CarriedLap | null;
   route: CarriedRoute | null;
+  /**
+   * A run turned auto-combat off and had not given it back. What a run turns
+   * off is the run's, so the next dial gives it back (2026-10-08: Soul's run
+   * ended short on one launch and the next fought nothing for eight hours).
+   */
+  combatOffForRun: boolean;
 }
 
-export const NOTHING_UNDERWAY: Underway = { lap: null, route: null };
+export const NOTHING_UNDERWAY: Underway = { lap: null, route: null, combatOffForRun: false };
 
 /** Where `Underway` is kept between launches. Written as it changes, read at `connect`. */
 export interface UnderwaySink {
@@ -55,7 +61,9 @@ export const NO_UNDERWAY: UnderwaySink = {
 
 /** Whether two readings say the same; the lap's loop is compared by reference, as the runner holds one. */
 export function sameUnderway(a: Underway, b: Underway): boolean {
-  return sameLap(a.lap, b.lap) && sameRoute(a.route, b.route);
+  return (
+    sameLap(a.lap, b.lap) && sameRoute(a.route, b.route) && a.combatOffForRun === b.combatOffForRun
+  );
 }
 
 function sameLap(a: CarriedLap | null, b: CarriedLap | null): boolean {
@@ -81,7 +89,11 @@ function sameRoute(a: CarriedRoute | null, b: CarriedRoute | null): boolean {
 /** Parses a record read off disk. A part that does not parse is nothing carried, never a guess. */
 export function asUnderway(value: unknown): Underway {
   if (!isRecord(value)) return NOTHING_UNDERWAY;
-  return { lap: asLap(value['lap']), route: asCarriedRoute(value['route']) };
+  return {
+    lap: asLap(value['lap']),
+    route: asCarriedRoute(value['route']),
+    combatOffForRun: value['combatOffForRun'] === true
+  };
 }
 
 function asLap(value: unknown): CarriedLap | null {

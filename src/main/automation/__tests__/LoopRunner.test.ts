@@ -287,6 +287,22 @@ describe('when the lap wants auto-combat on', () => {
     expect(wanted()).toBe(2);
   });
 
+  /* 2026-10-08: Soul's hunt restarted with archers shooting and combat off; the lap waited for a fight nothing fought. */
+  it('is at once when the lap starts into a fight, before waiting it out', () => {
+    const { runner, wanted } = counted(planner().planner);
+    expect(runner.start(loop, state({ inCombat: true }))).toBeNull();
+    expect(runner.progress.hold).toBe('fight');
+    expect(wanted()).toBe(1);
+  });
+
+  it('is at once when play on a stopped lap lands in a fight', () => {
+    const { runner, wanted } = counted(planner().planner);
+    runner.start(loop, state());
+    runner.stop('asked');
+    expect(runner.resume(state({ inCombat: true }))).toBeNull();
+    expect(wanted()).toBe(1);
+  });
+
   it('is at the first stop reached after play on a stopped lap', () => {
     const { runner, wanted } = counted(planner().planner);
     runner.start(loop, state());

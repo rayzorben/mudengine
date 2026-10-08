@@ -1144,6 +1144,10 @@ export class LoopRunner implements SessionModule {
      * moment the fight ends. Not a failure: nothing about the stop is wrong.
      */
     if (this.fighting) {
+      // A lap started or played into a fight wants auto-combat first, as it
+      // would on reaching the loop: off, nobody hits back and the fight it
+      // waits for never ends (2026-10-08, Soul shot at for 49 minutes).
+      if (this.lapBegunAt === null) this.events.wantsCombat?.();
       this.waiting = true;
       return null;
     }

@@ -1660,7 +1660,13 @@ export class Errands implements SessionModule {
   huntingGrounds(
     radius: number | null,
     measure: string | null = null,
-    { as = this.tracker.current, beneath = false, gated = false, page = 0 }: SurveyAsk = {}
+    {
+      as = this.tracker.current,
+      beneath = false,
+      gated = false,
+      page = 0,
+      measure: asked = []
+    }: SurveyAsk = {}
   ): HuntingAdvice {
     const state = as;
     const world = this.world;
@@ -2112,9 +2118,20 @@ export class Errands implements SessionModule {
     // An extension's ask: a page that is not a whole number is the first.
     const first = (Number.isInteger(page) && page > 0 ? page : 0) * c.maxSpots;
     const rest = [...guessed.slice(0, first), ...guessed.slice(first + c.maxSpots)];
-    const opened = rest.findIndex((spot) => spot.key === measure);
-    const chosen = guessed.slice(first, first + c.maxSpots);
-    if (opened !== -1) chosen.push(rest[opened]!);
+    /*
+     * And, on the first page, every spot measured at this level and every one
+     * the asker names, wherever its guess ranks: a spot paying 37.7k measured
+     * ranked 72nd behind paced guesses, one past three pages, and Vaelor stood
+     * all night with every spot on the pages cut (2026-10-08).
+     */
+    const wanted = new Set(asked);
+    const extra = rest.filter(
+      (spot) =>
+        spot.key === measure ||
+        (first === 0 && (wanted.has(spot.key) || spot.estimate.measured !== undefined))
+    );
+    const chosen = [...guessed.slice(first, first + c.maxSpots), ...extra];
+    const taken = new Set(extra);
     // Measured from the survey's own spots, so none is paced twice.
     const unpaced = new Map(survey.map((spot) => [spot.key, spot]));
     const measuredSpots = chosen.map((spot) =>
@@ -2137,7 +2154,7 @@ export class Errands implements SessionModule {
       radius,
       swept: reach.size,
       spots: known,
-      unmeasured: opened === -1 ? rest : rest.filter((_, at) => at !== opened),
+      unmeasured: rest.filter((spot) => !taken.has(spot)),
       excluded,
       assumptions: { ...assumptions, measured },
       floor,

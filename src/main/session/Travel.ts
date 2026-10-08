@@ -405,6 +405,8 @@ export class Travel implements SessionModule {
   private walkAsked = false;
   /** And whether it was asked for with *Run it*: auto-combat off until it arrives (todo 06). */
   private walkRun = false;
+  /** A run under way turned auto-combat off: kept across a launch (`Underway`), ended with the run. */
+  private combatHeldOff = false;
   /** True only inside `startAsked`'s own `Walker.start`. See `walkStarted`. */
   private startingAsked = false;
   /**
@@ -586,6 +588,8 @@ export class Travel implements SessionModule {
     // Arrived, the choice to cross is spent: see `crossing`.
     if (arrived && this.walkAsked) this.crossing = null;
     if (arrived && this.walkAsked) this.combatOnAfterRun(true);
+    // The player's run stopped short leaves it off, and the run is over: nothing is owed at a relaunch.
+    else if (this.walkAsked && this.walkRun) this.combatHeldOff = false;
     this.clearFor(null);
     this.walkAsked = false;
     this.walkRun = false;
@@ -616,10 +620,31 @@ export class Travel implements SessionModule {
     this.combatBackOn(t('automation.combat.onForLap'), t('automation.combat.onForLapRefused'));
   }
 
+  /**
+   * The last launch closed inside a run that had turned auto-combat off: what
+   * the run turned off is given back at the dial (`CarryOver.takeUp`). A run
+   * carried on from the record turns it off again as it walks.
+   */
+  combatBackAfterLaunch(): void {
+    this.combatHeldOff = true;
+    this.combatBackOn(
+      t('automation.combat.onAfterLaunch'),
+      t('automation.combat.onAfterLaunchRefused')
+    );
+  }
+
+  /** Whether a run under way turned auto-combat off and has not given it back; on, by whoever, owes nothing. */
+  get combatOffForRunNow(): boolean {
+    return this.combatHeldOff && !this.session.config().combat.enabled;
+  }
+
   /** Writes auto-combat on where it is off, and says so, or says the file refused. */
   private combatBackOn(said: string, refused: string): void {
-    if (this.session.config().combat.enabled) return;
-    this.session.notice(this.session.switchAutomation('combat', true) ? said : refused);
+    const was = this.session.config().combat.enabled;
+    const on = was || this.session.switchAutomation('combat', true);
+    // On, by whoever: the run has nothing left to give back.
+    if (on) this.combatHeldOff = false;
+    if (!was) this.session.notice(on ? said : refused);
   }
 
   /** Whether the walk in progress is one the player asked for. */
@@ -1987,6 +2012,7 @@ export class Travel implements SessionModule {
   combatOffForRun(): boolean | string {
     if (!this.session.config().combat.enabled) return false;
     if (!this.session.switchAutomation('combat', false)) return t('automation.combat.runRefused');
+    this.combatHeldOff = true;
     this.session.notice(t('automation.combat.runningCombatOff'));
     return true;
   }

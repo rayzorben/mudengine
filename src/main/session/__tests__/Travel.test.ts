@@ -549,6 +549,48 @@ describe('a route run with auto-combat off', () => {
     expect(made.notices).toContain(t('automation.combat.onForLapRefused'));
   });
 
+  /* 2026-10-08: a run ended short on one launch and the next fought nothing for eight hours. */
+  it('owes it back only while the run that turned it off is under way', () => {
+    const { travel: moving, combat } = running(fighting);
+    expect(moving.combatOffForRunNow).toBe(false);
+    moving.walkRoute(ROUTE, true);
+    expect(moving.combatOffForRunNow).toBe(true);
+    // The player's run stopped short leaves it off, and owes nothing at a relaunch.
+    moving.walkEnded(false);
+    expect(combat.on).toBe(false);
+    expect(moving.combatOffForRunNow).toBe(false);
+  });
+
+  it('owes nothing once the switch is on, whoever turned it on', () => {
+    const { travel: moving, combat } = running(fighting);
+    moving.walkRoute(ROUTE, true);
+    expect(moving.combatOffForRunNow).toBe(true);
+    // The player turns it on from the card, past `Travel`.
+    combat.on = true;
+    expect(moving.combatOffForRunNow).toBe(false);
+  });
+
+  it('gives it back at the next launch, and says why', () => {
+    const { travel: moving, combat, notices } = running(switchedOff);
+    moving.combatBackAfterLaunch();
+    expect(combat.flips).toEqual([true]);
+    expect(notices).toContain(t('automation.combat.onAfterLaunch'));
+    expect(moving.combatOffForRunNow).toBe(false);
+  });
+
+  it('keeps owing it when the file will not take it at the launch', () => {
+    const made = travel(
+      beside(),
+      'stepping',
+      false,
+      { on: true, writes: false },
+      { settings: switchedOff }
+    );
+    made.travel.combatBackAfterLaunch();
+    expect(made.notices).toContain(t('automation.combat.onAfterLaunchRefused'));
+    expect(made.travel.combatOffForRunNow).toBe(true);
+  });
+
   it('turns it on at the lap and says so', () => {
     const { travel: moving, combat, notices } = running(switchedOff);
     moving.combatOnForLap();
