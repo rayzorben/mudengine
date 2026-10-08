@@ -109,6 +109,17 @@ describe('dodge — Player.Dodge', () => {
     expect(dodge(SHEET, 'greatermud')).toEqual({ value: 14, from: 'bound' });
   });
 
+  it('takes a whole tenth of the whole percent, as the server divides', () => {
+    // 1% and 9% keep the whole 10; 15% gives 10 - 1 = 9, never 8.5 truncated to 8.
+    expect(dodge({ ...SHEET, encumbrancePercent: 1 }, 'greatermud')?.value).toBe(16);
+    expect(dodge({ ...SHEET, encumbrancePercent: 9 }, 'greatermud')?.value).toBe(16);
+    expect(dodge({ ...SHEET, encumbrancePercent: 15 }, 'greatermud')?.value).toBe(15);
+    // `CalcAccuracy` divides the whole percent as a float: 15 - 1.5 truncates to 13, a point under 10%'s 14.
+    expect(accuracy({ ...SHEET, encumbrancePercent: 15 }, SWORD, 'greatermud')?.value).toBe(
+      (accuracy({ ...SHEET, encumbrancePercent: 10 }, SWORD, 'greatermud')?.value ?? 0) - 1
+    );
+  });
+
   it('never goes below nothing', () => {
     const feeble = { ...SHEET, charm: 10, agility: 10, level: 1, encumbrancePercent: 90 };
     expect(dodge(feeble, 'greatermud')?.value).toBe(0);

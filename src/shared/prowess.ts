@@ -99,7 +99,9 @@ export interface ProwessSheet {
    * The server reads *below 33%* as the threshold for two separate bonuses, so
    * this is the one input where absence changes an answer rather than removing
    * it. Unread is taken as **at or above** the threshold — the bonus is not
-   * granted — because unknown is never the reassuring answer.
+   * granted — because unknown is never the reassuring answer. A whole number
+   * (`loadPercent`); dodge then takes a whole tenth of it and accuracy a
+   * fractional one, as `Player.Dodge` and `CalcAccuracy` each divide.
    */
   encumbrancePercent: number | null;
   /**
@@ -273,7 +275,7 @@ export function dodge(sheet: ProwessSheet, family: RealmFamily | null): Reckonin
 
   let value = Math.trunc((charm - 50) / 5) + Math.trunc(level / 5) + Math.trunc((agility - 50) / 3);
   const enc = sheet.encumbrancePercent;
-  if (enc !== null && enc < LIGHT_LOAD) value += Math.trunc(10 - enc / 10);
+  if (enc !== null && enc < LIGHT_LOAD) value += 10 - Math.trunc(enc / 10);
   value += sheet.effects?.dodge ?? 0;
   return { value: Math.max(0, value), from: 'bound' };
 }

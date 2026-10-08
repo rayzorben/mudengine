@@ -13,6 +13,7 @@
 import type { Denomination } from './character';
 import { DENOMINATIONS } from './character';
 import { copperSpread } from './coins';
+import { loadPercent } from './load';
 import { entityNumber, type ItemEntity } from './entities';
 import type { ReadEffect } from './abilities';
 import type { EquipVerdict } from './gear';
@@ -831,10 +832,7 @@ export function carriedRow(row: InventoryRow, t: UiLookup): Row {
 export function inventoryScope(facts: InventoryFacts, t: UiLookup): Row {
   const coins: Record<string, Value> = {};
   for (const which of DENOMINATIONS) coins[which] = facts.coins[which] ?? 0;
-  const percent =
-    facts.encumbrance !== null && facts.encumbranceMax !== null && facts.encumbranceMax > 0
-      ? Math.round((100 * facts.encumbrance) / facts.encumbranceMax)
-      : null;
+  const percent = loadPercent(facts.encumbrance, facts.encumbranceMax);
   return {
     items: facts.items.map((row) => carriedRow(row, t)),
     itemCount: facts.items.length,

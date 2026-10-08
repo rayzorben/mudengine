@@ -12,6 +12,7 @@
  * what it was computed from moves*.
  */
 import type { CharacterState } from './character';
+import { loadPercent } from './load';
 
 /** The plain round's row — `WriteCombatBeforeDefenses` / `…AfterDefenses`. */
 export interface StatedRound {
@@ -93,10 +94,7 @@ export function statedBasis(state: BasisState): StatedBasis {
     effects
   ]);
   const { encumbrance, encumbranceMax } = inventory;
-  const share =
-    encumbrance === null || encumbranceMax === null || encumbranceMax <= 0
-      ? null
-      : Math.trunc((100 * encumbrance) / encumbranceMax);
+  const share = loadPercent(encumbrance, encumbranceMax);
   const own = state.party?.members.find((member) => member.name === state.name);
   return { gear, load: `${gear}|${JSON.stringify([share, own?.rank ?? null])}` };
 }
