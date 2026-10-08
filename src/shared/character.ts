@@ -104,6 +104,15 @@ export const NO_AFFLICTIONS: Afflictions = {
   confused: 'unknown'
 };
 
+/** What a death leaves: `Player.Killed` ends every spell effect (`RemoveSpellAbilities`, `Player.cs:1503`), so each condition is `no`. */
+export const AFFLICTIONS_ENDED: Afflictions = {
+  blind: 'no',
+  poisoned: 'no',
+  diseased: 'no',
+  held: 'no',
+  confused: 'no'
+};
+
 /**
  * A duration spell the wire has confirmed on this character.
  *

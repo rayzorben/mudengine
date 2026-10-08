@@ -152,7 +152,8 @@ describe('Levers, put down', () => {
       stepAgain: () => {},
       kind: () => 'walk' as const,
       destination: () => ROUTE.steps.at(-1),
-      detour: () => {
+      detour: (_route: unknown, _state: unknown, ahead?: () => void) => {
+        ahead?.();
         walk.detours += 1;
       }
     };

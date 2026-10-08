@@ -10,6 +10,7 @@
  * taught is its helper's, `effects.ts` (`EffectTracker`).
  */
 import {
+  AFFLICTIONS_ENDED,
   NO_COMBAT,
   type Affliction,
   type Afflictions,
@@ -181,6 +182,12 @@ export function died(s: CharacterState, at: number): CharacterState {
     inCombat: false,
     combat: NO_COMBAT,
     buffs: [],
+    // And every condition a spell put on it: a knockdown kept through the
+    // death read the character in the temple as held, and no route or lap
+    // moved it again (2026-10-07, Soul for 15 minutes after `You are flat on
+    // your back!`). `stoodUp` only releases on a landed step, and the server
+    // ends every spell effect at the death (`RemoveSpellAbilities`).
+    afflictions: AFFLICTIONS_ENDED,
     // The death ends the state the drop began: a character in the temple
     // is standing, and the status line two lines away will say so anyway.
     // Cleared here so nothing is held between the two (todo 20).

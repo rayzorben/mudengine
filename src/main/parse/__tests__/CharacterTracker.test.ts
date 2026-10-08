@@ -8942,6 +8942,36 @@ describe('what the server has said is wrong with the character', () => {
       expect(up.current.afflictions.held).toBe('no');
     });
 
+    /* 2026-10-07: Soul knocked down, killed, and held in the temple until somebody looked. */
+    it('lets go of every condition at a death', () => {
+      const lore = knockdownLore();
+      const down = play(
+        ['[HP=143/MA=29]:', 'You are flat on your back!'],
+        holdRealm(),
+        undefined,
+        undefined,
+        undefined,
+        lore
+      );
+      expect(down.current.afflictions.held).toBe('yes');
+      const dead = play(
+        ['[HP=143/MA=29]:', 'You are flat on your back!', '[HP=-35/MA=29]:You have been killed!'],
+        holdRealm(),
+        undefined,
+        undefined,
+        undefined,
+        lore
+      );
+      expect(dead.current.afflictions).toEqual({
+        blind: 'no',
+        poisoned: 'no',
+        diseased: 'no',
+        held: 'no',
+        confused: 'no'
+      });
+      expect(dead.current.buffs).toEqual([]);
+    });
+
     /*
      * The whole of the reported failure: `Exits.Move` calls
      * `CheckForHoldPerson()` and returns before anybody moves, so no room is
