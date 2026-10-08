@@ -585,7 +585,7 @@ export class Travel implements SessionModule {
     }
     // Arrived, the choice to cross is spent: see `crossing`.
     if (arrived && this.walkAsked) this.crossing = null;
-    if (arrived && this.walkAsked && this.walkRun) this.combatOnAfterRun(true);
+    if (arrived && this.walkAsked) this.combatOnAfterRun(true);
     this.clearFor(null);
     this.walkAsked = false;
     this.walkRun = false;
@@ -593,21 +593,33 @@ export class Travel implements SessionModule {
   }
 
   /**
-   * *Run it* is off for the way there (the user, 2026-10-03): the arrival
-   * turns auto-combat on, and the player's run stopped short leaves it off.
-   * A hunt's run that turned it off gives it back however it ended (`AutoHunt.idle`).
+   * A route the player asked for arrives with auto-combat on, walked or run
+   * (the user, 2026-10-03 for run it, 2026-10-08 for any). A route stopped
+   * short leaves it as it was, except a hunt's run that turned it off, which
+   * gives it back however it ended (`AutoHunt.idle`).
    */
   combatOnAfterRun(arrived: boolean): void {
-    if (this.session.config().combat.enabled) return;
-    const on = this.session.switchAutomation('combat', true);
     if (arrived)
-      this.session.notice(
-        on ? t('automation.combat.onAfterRun') : t('automation.combat.onAfterRunRefused')
+      this.combatBackOn(
+        t('automation.combat.onAfterRun'),
+        t('automation.combat.onAfterRunRefused')
       );
     else
-      this.session.notice(
-        on ? t('automation.combat.onAfterRunEnded') : t('automation.combat.onAfterRunEndedRefused')
+      this.combatBackOn(
+        t('automation.combat.onAfterRunEnded'),
+        t('automation.combat.onAfterRunEndedRefused')
       );
+  }
+
+  /** The lap is at its first stop: it fights (`LoopEvents.wantsCombat`). */
+  combatOnForLap(): void {
+    this.combatBackOn(t('automation.combat.onForLap'), t('automation.combat.onForLapRefused'));
+  }
+
+  /** Writes auto-combat on where it is off, and says so, or says the file refused. */
+  private combatBackOn(said: string, refused: string): void {
+    if (this.session.config().combat.enabled) return;
+    this.session.notice(this.session.switchAutomation('combat', true) ? said : refused);
   }
 
   /** Whether the walk in progress is one the player asked for. */

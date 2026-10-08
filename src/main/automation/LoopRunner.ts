@@ -95,6 +95,12 @@ export interface LoopEvents {
    * a carried lap that had already reached its first stop. See `beginLap`.
    */
   lapBegun?(): void;
+  /**
+   * The lap fights, so auto-combat goes on: when the lap begins (`lapBegun`'s
+   * moment) and at the first stop reached each time it comes round. Turned off on the
+   * way out or partway round, it is off only until then (the user, 2026-10-08).
+   */
+  wantsCombat?(): void;
 }
 
 export interface LoopPlanner {
@@ -173,6 +179,8 @@ export class LoopRunner implements SessionModule {
   private index = 0;
   private forward = true;
   private laps = 0;
+  /** The lap came round since the last stop reached: the next one turns combat on. */
+  private cameRound = false;
   /**
    * When each stop was last **left cleared**, keyed by the stop's own room
    * text, against the clock a stop may state (`LoopStop.every`, todo 15).
@@ -438,6 +446,7 @@ export class LoopRunner implements SessionModule {
     this.loop = loop;
     this.stopRooms = loop.stops.map((stop) => this.planner.roomOf(splitStop(stop)));
     this.laps = 0;
+    this.cameRound = false;
     this.failures = 0;
     this.locates = 0;
     this.hurt = false;
@@ -616,6 +625,7 @@ export class LoopRunner implements SessionModule {
     this.reason = null;
     this.index = 0;
     this.laps = 0;
+    this.cameRound = false;
     this.failures = 0;
     this.clearedAt.clear();
     this.sawMonster = false;
@@ -1165,9 +1175,11 @@ export class LoopRunner implements SessionModule {
       // Standing on the loop already, whichever branch is taken: `first` moves
       // to the next stop rather than dwelling on the one under its feet, and
       // that is still a lap that has begun.
-      this.beginLap();
       if (!first) this.arrive();
-      else this.step();
+      else {
+        this.beginLap();
+        this.step();
+      }
       return null;
     }
     const route = this.planner.routeTo(target);
@@ -1315,18 +1327,25 @@ export class LoopRunner implements SessionModule {
    *
    * Progress is deliberately not published from here: both callers publish
    * on their own next line, and a second push would be the same fact twice.
+   * True when this call began the lap, which also asks for auto-combat
+   * (`LoopEvents.wantsCombat`).
    */
-  private beginLap(): void {
-    if (this.lapBegunAt !== null) return;
+  private beginLap(): boolean {
+    if (this.lapBegunAt !== null) return false;
     this.lapBegunAt = this.now();
     this.events.lapBegun?.();
+    this.events.wantsCombat?.();
+    return true;
   }
 
   /** Arrived at a stop: dwell — the configured linger, or long enough to fight. */
   private arrive(): void {
     const loop = this.loop;
     if (!loop) return;
-    this.beginLap();
+    // A timed stop 0 may be skipped, so the first stop reached after the lap
+    // came round stands for it.
+    if (!this.beginLap() && this.cameRound) this.events.wantsCombat?.();
+    this.cameRound = false;
     const stop = loop.stops[this.index];
     const dwell = stop?.linger ? stop.linger * 1000 : tuning().loop.dwellMs;
     this.lingerUntil = this.now() + dwell;
@@ -1475,7 +1494,10 @@ export class LoopRunner implements SessionModule {
     this.index = next.index;
     this.forward = next.forward;
     // A lap is the list run through once, however it is walked.
-    if (next.lapped) this.laps += 1;
+    if (next.lapped) {
+      this.laps += 1;
+      this.cameRound = true;
+    }
     this.publish();
     this.advance(false);
   }

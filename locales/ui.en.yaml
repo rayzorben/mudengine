@@ -5117,6 +5117,8 @@ automation:
     onAfterRunRefused: "Arrived, but auto-combat could not be turned on in the character's file."
     onAfterRunEnded: 'The run stopped short: auto-combat back on.'
     onAfterRunEndedRefused: "The run stopped short, but auto-combat could not be turned on in the character's file."
+    onForLap: 'On the loop: auto-combat back on.'
+    onForLapRefused: "On the loop, but auto-combat could not be turned on in the character's file."
     runRefused: "Not running it: auto-combat could not be turned off in the character's file."
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something arrived that the world data could not place'

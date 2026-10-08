@@ -1476,8 +1476,7 @@ export class SessionManager {
          * putting a ring on the first candidate.
          */
         roomOf: (stop) => this.errands.stopRoom(stop),
-        // Where the character is standing, read at the moment the lap stops.
-        // See `LoopRunner.stoppedIn` and `resumeLoop`.
+        // Where the character stands as the lap stops (`LoopRunner.stoppedIn`).
         hereNow: () => roomAddress(this.tracker.current.room),
         onTheGround
       },
@@ -1500,7 +1499,8 @@ export class SessionManager {
           this.sink.loop?.(progress);
         },
         locate: () => this.claims.askWhereIAm(),
-        lapBegun: () => this.statsBaseline.rebase()
+        lapBegun: () => this.statsBaseline.rebase(),
+        wantsCombat: () => this.travel.combatOnForLap()
       }
     );
     /*

@@ -240,6 +240,66 @@ describe('starting a loop', () => {
 });
 
 /*
+ * The user, 2026-10-08: auto-combat turned off on the way out is turned on
+ * when the lap reaches the loop, and turned off partway round it is turned on
+ * at the first stop reached once the lap comes round.
+ */
+describe('when the lap wants auto-combat on', () => {
+  function counted(p: LoopPlanner) {
+    let wanted = 0;
+    const runner = new LoopRunner(p, { wantsCombat: () => (wanted += 1) });
+    return { runner, wanted: () => wanted };
+  }
+
+  it('is not while walking out to the loop', () => {
+    const { runner, wanted } = counted(planner().planner);
+    runner.start(loop, state());
+    expect(runner.progress.startedAt).not.toBeNull();
+    expect(wanted()).toBe(0);
+  });
+
+  it('is the first stop reached', () => {
+    const { runner, wanted } = counted(planner().planner);
+    runner.start(loop, state());
+    runner.onWalkEnded(true, null, state());
+    expect(runner.progress.reached).toBe(true);
+    expect(wanted()).toBe(1);
+  });
+
+  it('is at once when the character was already standing on the loop', () => {
+    const { runner, wanted } = counted(planner({ here: (stop) => stop.name === 'Road' }).planner);
+    runner.start(loop, state());
+    expect(wanted()).toBe(1);
+  });
+
+  it('is again each time the lap comes round to its first stop, and only then', () => {
+    const { runner, wanted } = counted(planner().planner);
+    runner.start(loop, state());
+    reachNext(runner);
+    expect(wanted()).toBe(1);
+    // Road, the second stop: nothing.
+    reachNext(runner);
+    expect(runner.progress.stop).toBe(1);
+    expect(wanted()).toBe(1);
+    // Round to the Arena again.
+    runner.onWalkEnded(true, null, state());
+    expect(runner.progress.stop).toBe(1);
+    expect(wanted()).toBe(2);
+  });
+
+  it('is at the first stop reached after play on a stopped lap', () => {
+    const { runner, wanted } = counted(planner().planner);
+    runner.start(loop, state());
+    runner.onWalkEnded(true, null, state());
+    runner.stop('asked');
+    runner.resume(state());
+    expect(wanted()).toBe(1);
+    runner.onWalkEnded(true, null, state());
+    expect(wanted()).toBe(2);
+  });
+});
+
+/*
  * todo 01, 2026-09-06, and todo 02, 2026-09-30: *"statistics should be reset
  * right when the loop starts ... literally the first room of the loop, reset
  * statistics. every time."* `lapBegun` is that moment; the Combat Stats card
