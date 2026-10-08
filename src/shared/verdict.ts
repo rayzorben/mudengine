@@ -22,6 +22,7 @@ import type { RealmFamily } from './realm';
 import type { Odds, Survival } from './survival';
 import { BACKSTAB_ABILITY, DODGE_ABILITY, carriesAbility } from './abilities';
 import { statedNow } from './stated';
+import { loadPercent } from './load';
 import { gearEffect } from './blessingeffects';
 import type { CharacterState, RoomOccupant } from './character';
 import type { MobEntity } from './entities';
@@ -208,10 +209,7 @@ export function prowessSheetOf(
     spellcasting: state.progress.spellcasting,
     combatLevel: cls.combat,
     mageryLevel: cls.magery,
-    encumbrancePercent:
-      encumbrance === null || encumbranceMax === null || encumbranceMax <= 0
-        ? null
-        : (100 * encumbrance) / encumbranceMax,
+    encumbrancePercent: loadPercent(encumbrance, encumbranceMax),
     stated: statedNow(state),
     effects: gearEffect(state.inventory.items),
     classCrits: cls.crits

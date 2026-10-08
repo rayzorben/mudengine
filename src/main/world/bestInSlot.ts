@@ -8,6 +8,7 @@
 import type { CharacterState } from '../../shared/character';
 import type { GearSource, SlotBest } from '../../shared/upgrades';
 import {
+  cheapestWearable,
   counterOf,
   gearRowOf,
   nearestCounters,
@@ -22,7 +23,12 @@ export interface BestRealm extends UpgradeRealm {
   dropsOf(item: string): readonly string[];
 }
 
-/** Each slot's better items from anywhere, best first, at most `perSlot` of them. */
+/**
+ * Each slot's better items from anywhere, best first, at most `perSlot` of
+ * them, and the cheapest a counter sells besides, as `gearUpgrades` keeps: the
+ * realm's best twenty weapons were drops and dear rows, so a naked level-1
+ * Ninja was never offered the club Newhaven sells (2026-10-07, Yang).
+ */
 export function bestInSlot(
   state: CharacterState,
   realm: BestRealm,
@@ -33,9 +39,7 @@ export function bestInSlot(
   const slots = scanSlots(state, realm, asker).map((slot) => ({
     ...slot,
     // Unknown level never refuses, as the equip check does not.
-    better: slot.better
-      .filter((row) => level === null || wearableAt(row.minLevel, level))
-      .slice(0, perSlot)
+    better: slot.better.filter((row) => level === null || wearableAt(row.minLevel, level))
   }));
   const places = realm.stockingPlaces([
     ...new Set(slots.flatMap((slot) => slot.better.map((row) => row.id)))
@@ -45,7 +49,7 @@ export function bestInSlot(
   for (const place of places) counters.set(place.item, (counters.get(place.item) ?? 0) + 1);
   return slots.flatMap(({ worn, better }): SlotBest[] => {
     if (better.length === 0 && worn.worn === null) return [];
-    const items = better.map((row): GearSource => {
+    const source = (row: (typeof better)[number]): GearSource => {
       const place = nearest.get(row.id);
       return {
         ...gearRowOf(row),
@@ -53,7 +57,13 @@ export function bestInSlot(
         droppedBy: realm.dropsOf(row.name),
         counters: counters.get(row.id) ?? 0
       };
+    };
+    const items = better.slice(0, perSlot).map(source);
+    const cheapest = cheapestWearable(better, level, (row) => {
+      const place = nearest.get(row.id);
+      return place === undefined ? null : counterOf(place, row.name, realm).copper;
     });
+    if (cheapest !== null && better.indexOf(cheapest) >= perSlot) items.push(source(cheapest));
     return [{ ...worn, items }];
   });
 }

@@ -191,7 +191,7 @@ export function gearUpgrades(
       sold.push({ ...gearRowOf(row), ...counterOf(place, row.name, realm) });
     }
     const offers = sold.slice(0, perSlot);
-    const cheapest = cheapestWearable(sold, level);
+    const cheapest = cheapestWearable(sold, level, (offer) => offer.copper);
     if (cheapest !== null && !offers.includes(cheapest)) offers.push(cheapest);
     if (offers.length === 0 && worn.worn === null) continue;
     upgrades.push({ ...worn, offers });
@@ -230,13 +230,19 @@ export function wearableAt(minLevel: number | null, level: number): boolean {
   return (minLevel ?? 0) <= level;
 }
 
-/** The cheapest priced offer a character of this level may wear; none while the level is unread. */
-function cheapestWearable(offers: readonly GearOffer[], level: number | null): GearOffer | null {
+/** The cheapest priced row a character of this level may wear; none while the level is unread. */
+export function cheapestWearable<T extends { minLevel: number | null }>(
+  rows: readonly T[],
+  level: number | null,
+  copperOf: (row: T) => number | null
+): T | null {
   if (level === null) return null;
-  let best: GearOffer | null = null;
-  for (const offer of offers) {
-    if (offer.copper === null || !wearableAt(offer.minLevel, level)) continue;
-    if (best === null || offer.copper < (best.copper ?? Infinity)) best = offer;
+  let best: T | null = null;
+  let least = Infinity;
+  for (const row of rows) {
+    const copper = copperOf(row);
+    if (copper === null || !wearableAt(row.minLevel, level)) continue;
+    if (copper < least) [best, least] = [row, copper];
   }
   return best;
 }

@@ -253,6 +253,14 @@ describe('the best a slot takes from anywhere', () => {
     ]);
   });
 
+  it('keeps the cheapest a counter sells past the cut', () => {
+    const state = { ...wearing(), progress: { ...wearing().progress, level: 20 } };
+    const head = bestInSlot(state, { ...realm(), dropsOf: drops }, asker, 1).find(
+      (slot) => slot.slot === 'Head'
+    );
+    expect(head?.items.map((item) => item.name)).toEqual(['iron helm', 'leather cap']);
+  });
+
   it('leaves out what the level cannot wear yet', () => {
     const level = (row: WorldItem) => (row.name === 'iron helm' ? { ...row, minLevel: 30 } : row);
     const gated = { ...realm(), dropsOf: drops };
