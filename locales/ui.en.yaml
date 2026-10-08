@@ -5466,7 +5466,6 @@ automation:
     refusalNothingNamed: no items were named
     refusalUnreadable: 'the extension asked with a room that is not map/room, or an item that is not a name'
     refusalFighting: the character is fighting
-    refusalResting: the character is resting
     endedSwitchedOff: automation was turned off
     endedDied: the character died
     endedNotReached: 'the walk stopped short: {why}'

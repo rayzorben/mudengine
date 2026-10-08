@@ -50,7 +50,9 @@ export interface TripPlanner {
 /**
  * Why the character may not set off now on a trip for `items`: the trip
  * switched off or already under way, nothing named, or the character not
- * free. Null where it may.
+ * free. A resting character sets off: the first step ends the rest, and the
+ * walk holds to rest where `restBelow` says to (`Holds.holdForHealth`). Null
+ * where it may.
  */
 export function tripRefusal(
   items: readonly string[],
@@ -64,9 +66,6 @@ export function tripRefusal(
   if (items.length === 0) return t('automation.hostTrip.refusalNothingNamed');
   if (state.inCombat || state.combat.attackers.length > 0) {
     return t('automation.hostTrip.refusalFighting');
-  }
-  if (state.vitals.resting || state.vitals.meditating) {
-    return t('automation.hostTrip.refusalResting');
   }
   if (planner.moveInFlight() || planner.walking() || planner.busy()) {
     return t('automation.hostTrip.refusalBusy');

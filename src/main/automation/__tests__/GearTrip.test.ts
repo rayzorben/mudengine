@@ -261,6 +261,18 @@ describe('a gear trip', () => {
     expect(decisions.filter((d) => d.acted === false)).toHaveLength(3);
   });
 
+  it('sets off from a rest; the walk decides whether to rest on the way', () => {
+    const resting = structuredClone(current);
+    resting.vitals = { ...resting.vitals, resting: true };
+    expect(make().start(PLAN, false, resting)).toBeNull();
+    expect(log).toContain('walk');
+    log.length = 0;
+    const meditating = structuredClone(current);
+    meditating.vitals = { ...meditating.vitals, meditating: true };
+    expect(make().start(PLAN, false, meditating)).toBeNull();
+    expect(log).toContain('walk');
+  });
+
   it('ends a walk that stops short for anything but a fight, and gives the lap back', () => {
     const trip = make();
     trip.start(PLAN, false, current);
