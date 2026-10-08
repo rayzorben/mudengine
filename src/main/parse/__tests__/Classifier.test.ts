@@ -27,7 +27,13 @@ function line(plain: string, raw = plain): StreamLine {
  * the line and names nobody, which is the honest degradation rather than the
  * behaviour under test.
  */
-const KNOWN = new Set(['orc rogue', 'giant rat', 'cave rat', 'massive ice dragon']);
+const KNOWN = new Set([
+  'orc rogue',
+  'giant rat',
+  'cave rat',
+  'massive ice dragon',
+  'big cave worm'
+]);
 const NAMES = {
   present: () => [],
   mob: (name: string) =>
@@ -3437,6 +3443,14 @@ describe('a miss between two others with a two-word verb', () => {
     const g = expectType('The red wyvern swoops down at Fatty!', 'player-misses');
     expect(g['attacker']).toBeUndefined();
     expect(g['target']).toBe('Fatty');
+  });
+
+  it('reads paramud’s miss at another player, which ends in a space', () => {
+    // Paramud's wire, 2026-10-08: the server writes a space before the CRLF.
+    expect(expectType('The big cave worm lunges at Beanis! ', 'player-misses')).toMatchObject({
+      attacker: 'The big cave worm',
+      target: 'Beanis'
+    });
   });
 
   it('still names a player swinging at a monster with one verb', () => {
