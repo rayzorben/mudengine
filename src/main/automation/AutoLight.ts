@@ -33,8 +33,10 @@
  *   recorded (`SafetyDecision`) so somebody who packed a torch and stood in the
  *   dark can read why it was not lit.
  * - **Light over a spent light.** The server answers `You already have
- *   something lit!` while anything sits in the readied slot, a burnt-out torch
- *   included, so the spent one is removed first — two commands, in order.
+ *   something lit!` while anything sits in the readied slot, so a listing that
+ *   shows one at no charge has it removed first, two commands in order. A
+ *   light that burns out is destroyed by the server and leaves the slot empty
+ *   (`withoutReadied`), so the usual case is the one `light`.
  * - **Say the same thing twice.** One decision per room per answer; a
  *   corridor of six dark rooms with nothing to light is one line, not six.
  * - **Put a light out mid-route.** `extinguishInLight` fires only while nothing

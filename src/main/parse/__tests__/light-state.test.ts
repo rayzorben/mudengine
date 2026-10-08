@@ -97,30 +97,42 @@ describe('the rest of the stat sheet', () => {
 });
 
 describe('a light burning down', () => {
-  /* `Your torch flickers and goes out.` — live, 2026-09-03. The torch stays
-     readied and in the pack; only its charge is gone. */
-  it('sets the readied torch to no charge and leaves the spare alone', () => {
+  /* `Your torch flickers and goes out.`: the server destroys the readied light
+     (`TickLightSources`); `remove torch` behind it has no effect on Paradigm
+     (rayzor, 2026-10-08). */
+  it('takes the readied torch out of the pack and leaves the spares', () => {
     const { tracker, feed, pack } = feeder();
     feed('[HP=86/MA=3]:');
     pack('You are carrying torch (Readied/11), 2 torch, token of Silvermere');
     feed('Your torch flickers and goes out.');
     const torches = tracker.current.inventory.items.filter((item) => item.name === 'torch');
     expect(torches.map((item) => [item.equipped, item.charges])).toEqual([
-      [true, 0],
       [false, null],
       [false, null]
     ]);
   });
 
-  it('reads the lamp’s spelling from the corpus too', () => {
+  /* rayzor, 2026-10-08 07:21: the second burnout of the session left the lit
+     torch lit in the client's eyes, and nothing lit the third. */
+  it('takes the second torch lit as well, leaving only the last', () => {
     const { tracker, feed, pack } = feeder();
     feed('[HP=86/MA=3]:');
-    pack('You are carrying lantern (Readied/240)');
+    pack('You are carrying 3 torch, copper cross');
+    feed('You lit the torch.');
+    feed('Your torch flickers and goes out.');
+    feed('You lit the torch.');
+    feed('Your torch flickers and goes out.');
+    const torches = tracker.current.inventory.items.filter((item) => item.name === 'torch');
+    expect(torches.map((item) => [item.equipped, item.charges])).toEqual([[false, null]]);
+  });
+
+  it('reads the lamp’s spelling from the corpus too, by the one readied row', () => {
+    const { tracker, feed, pack } = feeder();
+    feed('[HP=86/MA=3]:');
+    pack('You are carrying lantern (Readied/240), lantern');
+    // `lamp` is not `lantern` by name, but only one thing sits in `Readied`.
     feed('Your lamp runs out of oil, and goes out.');
-    // `lamp` is not `lantern` by the server's own matching, so nothing moves:
-    // the sentence names the kind rather than the item, and the next listing
-    // corrects it. Refusing beats guessing which light went out.
-    expect(tracker.current.inventory.items[0]?.charges).toBe(240);
+    expect(tracker.current.inventory.items.map((item) => item.equipped)).toEqual([false]);
   });
 });
 

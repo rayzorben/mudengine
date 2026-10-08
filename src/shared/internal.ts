@@ -423,6 +423,16 @@ const TUNING_DEFAULTS = {
     /** How many times it is asked again before the client gives up and says so. */
     unreadRetries: 3,
     /**
+     * How old the pack (`i`), the sheet (`st`) and `exp` may get before each
+     * is asked again. A broadcast the client misreads stays wrong until the
+     * next `i` or `st` replaces it: rayzor's pack held a burnt-out torch as lit for 18
+     * minutes (2026-10-08) until the player typed `i`. `probe` band, never
+     * during a fight.
+     */
+    packRefreshMs: 120_000,
+    sheetRefreshMs: 300_000,
+    experienceRefreshMs: 300_000,
+    /**
      * How long a command the server threw away waits before it is sent again.
      *
      * `You fumble in confusion!` is `ActionFigure.CheckConfusion` discarding

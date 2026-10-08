@@ -1006,6 +1006,90 @@ describe('asking again for what entering the realm never read', () => {
   });
 });
 
+/*
+ * A listing grows old (`tuning.queue.*RefreshMs`): rayzor's pack held a
+ * destroyed torch as lit for 18 minutes until the player typed `i`.
+ */
+describe('asking i, st and exp again once they are old', () => {
+  const block = (type: string) =>
+    ({ type, seq: 1, at: Date.now(), domain: 'items', groups: {} }) as never;
+  const sending = () => {
+    const config: AutomationConfig = {
+      ...DEFAULT_CONFIG.automation,
+      enabled: true,
+      idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+      onEnterRealm: []
+    };
+    const sent: string[] = [];
+    const queue = new CommandQueue(
+      { ...config, pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 } },
+      { send: (command) => sent.push(command) }
+    );
+    const routines = new Routines(config, queue, { onTheGround: () => false });
+    return { routines, sent };
+  };
+  const PACK = DEFAULT_INTERNAL.tuning.queue.packRefreshMs;
+  const fighting: CharacterState = { ...inRealm, inCombat: true };
+
+  it('asks i again once the pack is old, and not before', () => {
+    const { routines, sent } = sending();
+    routines.onCharacter(inRealm);
+    routines.onBlock(block('user-inventory'));
+    vi.advanceTimersByTime(PACK - 1_000);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+    vi.advanceTimersByTime(1_000);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['i']);
+    // Asked once a period while no answer comes, not on every status line.
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['i']);
+  });
+
+  it('counts from the last answer, whoever asked', () => {
+    const { routines, sent } = sending();
+    routines.onCharacter(inRealm);
+    routines.onBlock(block('user-inventory'));
+    vi.advanceTimersByTime(PACK - 1_000);
+    routines.onBlock(block('user-inventory'));
+    vi.advanceTimersByTime(1_000);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+    vi.advanceTimersByTime(PACK);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['i']);
+  });
+
+  it('waits out a fight', () => {
+    const { routines, sent } = sending();
+    routines.onCharacter(inRealm);
+    routines.onBlock(block('user-inventory'));
+    vi.advanceTimersByTime(PACK);
+    routines.onCharacter(fighting);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual([]);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['i']);
+  });
+
+  it('never asks what no answer has read yet', () => {
+    const { routines, sent } = sending();
+    routines.onCharacter(inRealm);
+    routines.onBlock(block('user-inventory'));
+    vi.advanceTimersByTime(PACK * 10);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    // Positive control: the pack was asked; the sheet nobody read was not.
+    expect(sent).toEqual(['i']);
+  });
+});
+
 describe('asking again, bounded', () => {
   it('gives up after its tries, and says so', () => {
     const config: AutomationConfig = {

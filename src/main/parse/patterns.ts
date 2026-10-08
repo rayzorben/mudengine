@@ -1905,10 +1905,9 @@ export const RULES: Rule[] = [
   /*
    * A readied light burning down, in the two spellings on record: `Your torch
    * flickers and goes out.` (live, 2026-09-03, festus) and `Your lamp runs out
-   * of oil, and goes out.` (the corpus). The torch stays readied and in the
-   * pack — the listing would print `(Readied/0)` — so this is the charge
-   * reaching zero and nothing else; `AutoLight` removes it before lighting the
-   * next one, because the server refuses to light over an occupied slot.
+   * of oil, and goes out.` (the corpus). It is the item's destruct message:
+   * the server takes the light out of the readied slot and destroys it
+   * (`TickLightSources`), so the next light can be lit at once.
    */
   {
     type: 'light-out',
