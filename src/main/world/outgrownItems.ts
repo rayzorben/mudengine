@@ -3,15 +3,15 @@
  * for a slot that is full and holds something at least as good, by the ranking
  * the upgrades are bought by (`gearUpgrades`). An item for a slot with room in
  * it (a second ring finger, an empty off-hand) could still be worn, and is not
- * listed; a spare of an item already worn never could (`wornCopy`), and
- * `OutgrownGear` keeps one whatever is listed, since `sell` takes the worn
- * copy too. Each with its worth in copper where the realm's rows agree on one.
+ * listed; a spare of an item already worn never could, and is listed. Each
+ * with its worth in copper and its rarity where the realm's rows agree on one.
  */
 import { placesIn } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
 import { counterPriceInCopper } from '../../shared/coins';
 import type { ItemEntity } from '../../shared/entities';
 import type { OutgrownItem } from '../../shared/outgrown';
+import type { Rarity } from '../../shared/rarity';
 import type { WorldItem } from '../../shared/world';
 import { figuresOf, versusWorn, WEAR_SLOTS, weakestWorn, wornBySlot } from './gearUpgrades';
 import { slotGear, type SlotAsker } from './slotGear';
@@ -19,13 +19,26 @@ import { slotGear, type SlotAsker } from './slotGear';
 export interface OutgrownRealm {
   itemsWornIn(worn: number): readonly WorldItem[];
   item(id: number): WorldItem | undefined;
+  rarity(id: number): Rarity;
+}
+
+/** The realm rows a carried name may be. */
+function idsOf(item: ItemEntity): readonly number[] {
+  return item.row !== undefined
+    ? [item.row.id]
+    : (item.ids ?? (item.id === undefined ? [] : [item.id]));
+}
+
+/** One rarity for the name: `unknown` where it names no row or its rows differ. */
+function rarityOf(item: ItemEntity, realm: OutgrownRealm): Rarity {
+  const rarities = idsOf(item).map((id) => realm.rarity(id));
+  const first = rarities[0];
+  return first === undefined || rarities.some((rarity) => rarity !== first) ? 'unknown' : first;
 }
 
 /** One price for the name, in copper, or null: a shared name whose rows differ has no one worth. */
 function copperOf(item: ItemEntity, realm: OutgrownRealm): number | null {
-  const ids =
-    item.row !== undefined ? [item.row.id] : (item.ids ?? (item.id === undefined ? [] : [item.id]));
-  const prices = ids.map((id) => {
+  const prices = idsOf(item).map((id) => {
     const row = realm.item(id);
     return row?.price === undefined || row.currency === undefined
       ? null
@@ -59,7 +72,8 @@ export function outgrownItems(
       item,
       slot: gear.slot,
       worn: weakest.item.name,
-      copper: copperOf(item, realm)
+      copper: copperOf(item, realm),
+      rarity: rarityOf(item, realm)
     });
   }
   return found;

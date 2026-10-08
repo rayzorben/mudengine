@@ -1,6 +1,6 @@
 /**
  * Going to a counter and selling named items there, each by `sell <item>`
- * (`SellCommand` takes the whole stack the name answers to). Started only by
+ * (`SellCommand` takes one, an unworn copy first). Started only by
  * an extension through the host (`selling.sell`), never by the client itself:
  * the client supplies the walk and the confirmation (`Handover`) and decides
  * nothing about what to sell or where. Yields to a fight, a rest, a move, a
