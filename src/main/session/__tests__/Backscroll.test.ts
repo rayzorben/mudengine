@@ -6,6 +6,7 @@ import path from 'node:path';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 import { Backscroll } from '../Backscroll';
+import { stampOf } from '../../../shared/stamps';
 import { segmentBackscrolls } from '../backscrollMigration';
 
 let home = '';
@@ -129,6 +130,16 @@ describe('Backscroll', () => {
     expect(await all(scroll)).toBe(expected);
     scroll.close();
     expect(fs.readFileSync(path.join(dir, '0001.log'), 'utf8')).toBe(expected);
+  });
+
+  /* Todo 25: every chunk opens with its time, and the repaint is still a repaint. */
+  it('drops the erased row when each chunk carries its time', async () => {
+    const scroll = await opened(100);
+    scroll.write(stampOf(1) + 'Newhaven Village Entrance\r\n');
+    for (let i = 2; i < 40; i += 1) scroll.write(stampOf(i) + '\x1b[79D\x1b[K[HP=30]:');
+    expect(await all(scroll)).toBe(
+      stampOf(1) + 'Newhaven Village Entrance\r\n' + stampOf(39) + '\x1b[79D\x1b[K[HP=30]:'
+    );
   });
 
   it('keeps a row the repaint cannot reach, and one a carriage return has folded', async () => {

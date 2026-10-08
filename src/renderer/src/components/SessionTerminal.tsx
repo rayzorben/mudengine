@@ -44,6 +44,8 @@ export interface SessionTerminalProps {
   /** Clicking a pane makes it the one the keyboard talks to. */
   onFocusPane(session: SessionId): void;
   settings: TerminalConfig;
+  /** Each line's time at the right edge: `terminal.timestamps`, or the palette's toggle. */
+  timestamps: boolean;
   fontStack: string;
   palette: TerminalPalette;
   /** Publishes the handle so the window can focus and search this terminal. */
@@ -93,6 +95,7 @@ function SessionTerminal({
   flow,
   onFocusPane,
   settings,
+  timestamps,
   fontStack,
   palette,
   onHandle,
@@ -122,6 +125,18 @@ function SessionTerminal({
   shownRef.current = shown;
   const pages = useBackscrollPages(api, session, handleRef, settings.scrollback);
   const { attached: pageAttached } = pages;
+
+  /*
+   * A line's time is drawn as its text is parsed, so the lines already held
+   * have none when the times are turned on; the page held is written again.
+   * Off needs nothing: the console lets go of the times it drew.
+   */
+  const { redraw } = pages;
+  const timesDrawn = useRef(timestamps);
+  useEffect(() => {
+    if (timestamps && !timesDrawn.current && attached.current) redraw();
+    timesDrawn.current = timestamps;
+  }, [timestamps, redraw]);
 
   const handleReady = useCallback(
     (handle: TerminalHandle) => {
@@ -332,6 +347,7 @@ function SessionTerminal({
         // the last one it was really shown at.
         reportSize={shown}
         settings={settings}
+        timestamps={timestamps}
         scrollback={pages.hold}
         onEdge={pages.onEdge}
       />

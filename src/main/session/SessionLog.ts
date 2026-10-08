@@ -26,7 +26,7 @@ import path from 'node:path';
 import { LOG_SUFFIX, slug, stamp } from './filename';
 import { stripAnsi } from '../net/LineTokenizer';
 import type { ConnectionTarget } from '../../shared/types';
-import { errorMessage } from '../../shared/values';
+import { clockOf, dayOf, errorMessage } from '../../shared/values';
 
 export interface SessionLogOptions {
   /** Directory to write into. Created if missing. */
@@ -44,6 +44,10 @@ export class SessionLog {
   private written = 0;
   private stopped = false;
   private file = '';
+  /** Whether the last write left a line unfinished, so the next continues it. */
+  private lineOpen = false;
+  /** The date last written, `YYYY-MM-DD`. */
+  private day = '';
 
   constructor(private readonly options: SessionLogOptions) {}
 
@@ -76,6 +80,8 @@ export class SessionLog {
     void this.close();
     this.stopped = false;
     this.written = 0;
+    this.lineOpen = false;
+    this.day = '';
 
     const label = slug(session.length > 0 ? session : `${target.host}_${target.port}`);
     /*
@@ -120,10 +126,37 @@ export class SessionLog {
     }
   }
 
-  /** Appends decoded server output. ANSI is stripped; CR is normalised away. */
-  write(text: string): void {
+  /**
+   * Appends decoded server output. ANSI is stripped; CR is normalised away.
+   * Each line carries the time the read that opened it was decoded, the
+   * same socket read the console's time comes from (todo 25).
+   */
+  write(text: string, at = Date.now()): void {
     if (!this.active) return;
-    this.append(stripAnsi(text).replace(/\r\n?/g, '\n'));
+    const plain = stripAnsi(text).replace(/\r\n?/g, '\n');
+    if (plain.length > 0) this.append(this.timed(plain, at));
+  }
+
+  /** `[HH:MM:SS] ` before each line this text opens, and a day's date before its first. */
+  private timed(text: string, at: number): string {
+    const time = `[${clockOf(at)}] `;
+    const day = dayOf(at);
+    let out = '';
+    let from = 0;
+    while (from < text.length) {
+      if (!this.lineOpen) {
+        if (day !== this.day) out += `--- ${day} ---\n`;
+        this.day = day;
+        out += time;
+        this.lineOpen = true;
+      }
+      const end = text.indexOf('\n', from);
+      if (end === -1) return out + text.slice(from);
+      out += text.slice(from, end + 1);
+      this.lineOpen = false;
+      from = end + 1;
+    }
+    return out;
   }
 
   /**

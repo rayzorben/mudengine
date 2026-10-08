@@ -104,11 +104,23 @@ export function errorMessage(error: unknown): string {
 /** One day in milliseconds: what a setting counted in days is compared in. */
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
+const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
+
+/** `HH:MM:SS` in local time, or with another separator: the session log and the console's times. */
+export function clockOf(at: number, separator = ':'): string {
+  const d = new Date(at);
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => pad(n)).join(separator);
+}
+
+/** `YYYY-MM-DD` in local time. */
+export function dayOf(at: number): string {
+  const d = new Date(at);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** `HH:MM:SS.mmm` in local time: a line of a log read against the moment it happened. */
 export function timeOfDay(at: number): string {
-  const d = new Date(at);
-  const pad = (n: number, width = 2): string => String(n).padStart(width, '0');
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+  return `${clockOf(at)}.${pad(new Date(at).getMilliseconds(), 3)}`;
 }
 
 /**

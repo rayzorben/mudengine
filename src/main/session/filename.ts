@@ -6,6 +6,7 @@
  * formatters in step by hand is how the names drift apart. One copy, imported
  * by both.
  */
+import { clockOf, dayOf } from '../../shared/values';
 
 /** What a session log's name ends in. */
 export const LOG_SUFFIX = '.log';
@@ -25,11 +26,7 @@ export function slug(value: string): string {
  * navigation is an alphabetical file listing.
  */
 export function stamp(at: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return (
-    `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}` +
-    `_${pad(at.getHours())}-${pad(at.getMinutes())}-${pad(at.getSeconds())}`
-  );
+  return `${dayOf(at.getTime())}_${clockOf(at.getTime(), '-')}`;
 }
 
 /** `stamp`'s shape and the `_` after it. */

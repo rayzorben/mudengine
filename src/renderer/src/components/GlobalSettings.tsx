@@ -557,6 +557,13 @@ export default function GlobalSettings({
                   name="global-cursor-blink"
                   onChange={(value) => patch('terminal', { cursorBlink: value })}
                 />
+                <CheckField
+                  checked={draft.terminal.timestamps}
+                  hint={t('settings.client.appearance.timestampsHint')}
+                  label={t('settings.client.appearance.timestampsLabel')}
+                  name="global-timestamps"
+                  onChange={(value) => patch('terminal', { timestamps: value })}
+                />
               </div>
               <TextField
                 hint={t('settings.client.appearance.uiFontHint')}

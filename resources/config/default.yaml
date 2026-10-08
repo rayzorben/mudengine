@@ -189,6 +189,12 @@ terminal:
   # block | underline | bar
   cursorStyle: block
 
+  # The time beside each line, at the right edge of the console: when it
+  # arrived, or for a command you typed, when its echo came back. Turned on
+  # and off from the command palette too, which remembers its choice until
+  # this line is edited. The session log always records the time.
+  timestamps: false
+
 ui:
   font:
     # The chrome around the terminal. Monospace by default so the whole client

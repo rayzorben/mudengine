@@ -42,6 +42,8 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     debugOpen: false,
     hud: 'on',
     setHud: vi.fn(),
+    timestamps: 'off',
+    setTimestamps: vi.fn(),
     density: 'comfortable',
     densityPreference: 'auto',
     cycleDensity: vi.fn(),
@@ -150,6 +152,13 @@ describe('the palette commands', () => {
     const setHud = vi.fn();
     find('hud', { setHud }).run();
     expect(setHud).toHaveBeenCalledWith('off');
+  });
+
+  it('turns the times in the console on and off', () => {
+    const setTimestamps = vi.fn();
+    find('timestamps', { setTimestamps }).run();
+    find('timestamps', { setTimestamps, timestamps: 'on' }).run();
+    expect(setTimestamps.mock.calls).toEqual([['on'], ['off']]);
   });
 
   it("starts a loop on the shown character and says a refusal in that character's console", async () => {

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { isSwitch, type Switch } from '../lib/switch';
+
 /**
  * A setting with two sources: the options file and a quick in-app control.
  *
@@ -129,4 +131,12 @@ export function useOverridablePreference<T extends string>(
   );
 
   return [value, choose];
+}
+
+/** A boolean setting under the same rule: the palette's choice, until the file's value changes. */
+export function useOverridableSwitch(
+  storageKey: string,
+  configured: boolean
+): [Switch, (next: Switch) => void] {
+  return useOverridablePreference(storageKey, configured ? 'on' : 'off', isSwitch);
 }
