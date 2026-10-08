@@ -59,6 +59,7 @@ import type { KeptSpeed } from '../../shared/hunting';
 import type { LowLivesAnswer } from '../../shared/lives';
 import type { TalkSink } from './TalkLog';
 import { isTalkBlock } from '../../shared/talk';
+import { stampChunk, unstamped } from '../../shared/stamps';
 import { SessionDebug } from './SessionDebug';
 
 export interface SessionSlot {
@@ -448,8 +449,9 @@ export class SessionHost {
          * and must be what it would have painted.
          */
         data: (chunk) => {
-          slot.backscroll.write(chunk.text);
-          this.options.toAttached(Push.data, { session: id, payload: chunk });
+          const painted = stampChunk(chunk);
+          slot.backscroll.write(painted.text);
+          this.options.toAttached(Push.data, { session: id, payload: painted });
         },
         line: (line) => {
           // The capture is a record and gets every line; the push is a paint
@@ -742,7 +744,8 @@ export class SessionHost {
       home: given.home,
       records: (name) => given.records(name, id),
       keep: (writes) => given.keep(id, writes),
-      backscroll: async (lines) => (await this.slots.get(id)?.backscroll.page(lines))?.text ?? ''
+      backscroll: async (lines) =>
+        unstamped((await this.slots.get(id)?.backscroll.page(lines))?.text ?? '')
     };
   }
 

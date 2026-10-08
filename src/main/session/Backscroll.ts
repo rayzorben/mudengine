@@ -17,6 +17,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { stripAnsi } from '../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../net/stream-quirks';
+import { afterStamp, unstamped } from '../../shared/stamps';
 import { segmentPath, segmentsIn, segmentsInAsync } from './segmentFiles';
 
 /** A segment's suffix, and the old one-file backscroll's. */
@@ -132,7 +133,7 @@ export class Backscroll {
 
   write(text: string): void {
     if (text.length === 0 || this.phase === 'closed') return;
-    if (text.startsWith(PROMPT_REPAINT)) this.coalesceRepaint();
+    if (text.startsWith(PROMPT_REPAINT, afterStamp(text))) this.coalesceRepaint();
     const chunk = measure(text);
     this.chunks.push(chunk);
     this.openLines += chunk.lines;
@@ -440,11 +441,11 @@ export class Backscroll {
     if (start === this.chunks.length || (start === 0 && this.phase === 'opening')) return;
     const last = this.chunks[start - 1];
     const left = last === undefined ? '' : last.text.slice(last.text.lastIndexOf('\n') + 1);
-    let width = stripAnsi(left).length;
+    let width = stripAnsi(unstamped(left)).length;
     if (left.includes('\r')) return;
     for (const chunk of this.chunks.slice(start)) {
       if (chunk.text.includes('\r')) return;
-      width += stripAnsi(chunk.text).length;
+      width += stripAnsi(unstamped(chunk.text)).length;
     }
     if (width > REPAINT_REACH) return;
     if (this.phase === 'open' && this.written > start) {

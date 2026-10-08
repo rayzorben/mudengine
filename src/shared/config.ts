@@ -261,6 +261,8 @@ export interface TerminalConfig {
   scrollback: number;
   cursorBlink: boolean;
   cursorStyle: 'block' | 'underline' | 'bar';
+  /** Each line's time at the console's right edge: when it arrived, or a command's echo (todo 25). */
+  timestamps: boolean;
 }
 
 /**
@@ -2568,7 +2570,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     },
     scrollback: 100_000,
     cursorBlink: true,
-    cursorStyle: 'block'
+    cursorStyle: 'block',
+    timestamps: false
   },
   ui: {
     font: {
@@ -3129,7 +3132,8 @@ export function normalizeConfig(input: unknown): AppConfig {
         terminal['cursorStyle'],
         ['block', 'underline', 'bar'] as const,
         DEFAULT_CONFIG.terminal.cursorStyle
-      )
+      ),
+      timestamps: bool(terminal['timestamps'], DEFAULT_CONFIG.terminal.timestamps)
     },
     ui: {
       font: normalizeFont(ui['font'], DEFAULT_CONFIG.ui.font),

@@ -916,6 +916,7 @@ palette:
     focusLabel: Put the cursor back in the console
     hideCardsLabel: Hide the cards
     hideDiagnosticsLabel: Hide diagnostics
+    hideTimestampsLabel: Hide the times in the console
     hudNotInRealmHint: not in the realm
     jumpLabel: Jump to latest
     logsLabel: Show the session logs
@@ -925,6 +926,7 @@ palette:
     profilesNoneHint: none yet
     showCardsLabel: Show the cards
     showDiagnosticsLabel: Show diagnostics
+    showTimestampsLabel: Show the times in the console
     debugHint: raw, framed, classified
     hideDebugLabel: Hide the debug window
     showDebugLabel: Show the debug window
@@ -3517,6 +3519,8 @@ settings:
         decides the console by itself. Set it back to "Follow the theme" to use this again.
       cursorBar: Bar
       cursorBlink: Blink Cursor
+      timestampsLabel: Show Line Times
+      timestampsHint: The time each line arrived, at the console's right edge.
       cursorBlock: Block
       cursorStyleLabel: Cursor
       cursorUnderline: Underline

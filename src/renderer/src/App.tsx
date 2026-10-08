@@ -60,7 +60,7 @@ import { useDensity } from './hooks/useDensity';
 import { useAlerts } from './hooks/useAlerts';
 import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
-import { useOverridablePreference } from './hooks/usePreference';
+import { useOverridablePreference, useOverridableSwitch } from './hooks/usePreference';
 import { useTheme } from './hooks/useTheme';
 import { useStreamPressure } from './hooks/useStreamPressure';
 import { t } from './lib/i18n';
@@ -281,15 +281,10 @@ export default function App() {
     config.ui.console.palette
   );
 
-  /**
-   * Same precedence as density and theme: the palette toggle is remembered, and
-   * an edit to `ui.showHud` in the options file overrides the memory.
-   */
-  const [hudPreference, setHudPreference] = useOverridablePreference(
-    'mudengine.hud',
-    config.ui.showHud ? 'on' : 'off',
-    (value): value is 'on' | 'off' => value === 'on' || value === 'off'
-  );
+  /* Same precedence as density and theme: a palette toggle is remembered until an edit to
+     `ui.showHud` or `terminal.timestamps` in the options file overrides it. */
+  const [hud, setHud] = useOverridableSwitch('mudengine.hud', config.ui.showHud);
+  const [times, setTimes] = useOverridableSwitch('mudengine.times', config.terminal.timestamps);
   /**
    * The diagnostics cards, for this run of the client only.
    *
@@ -698,7 +693,7 @@ export default function App() {
    *
    * So the rail keeps its space and says what it is waiting for instead.
    */
-  const hudOpen = hudPreference === 'on';
+  const hudOpen = hud === 'on';
   /**
    * The HUD appears on its own, without the diagnostics rail.
    *
@@ -975,8 +970,10 @@ export default function App() {
     loggingEnabled: config.logging.enabled,
     railOpen,
     debugOpen,
-    hud: hudPreference,
-    setHud: setHudPreference,
+    hud,
+    setHud,
+    timestamps: times,
+    setTimestamps: setTimes,
     density,
     densityPreference: preference,
     cycleDensity: cycle,
@@ -1346,6 +1343,7 @@ export default function App() {
                   walk={views[entry.id]?.walk ?? null}
                   onStopRun={stopRunFor}
                   session={entry.id}
+                  timestamps={times === 'on'}
                   settings={config.terminal}
                   shown={at >= 0}
                 />

@@ -28,6 +28,12 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       'takes (2026-10-06); the `who` row tries `TITLES_WITH_OF` whole before cutting at ' +
       '` of ` (2026-10-07); module-level, in `RULES` and `BATCH_RULES`'
   },
+  'src/shared/stamps.ts': {
+    count: 1,
+    because:
+      'the stamp pattern is built from `STAMP_OSC` so the number main writes and the one ' +
+      '`unstamped` removes cannot drift (todo 25, 2026-10-07); module-level'
+  },
   'src/shared/statline.ts': {
     count: 1,
     because:

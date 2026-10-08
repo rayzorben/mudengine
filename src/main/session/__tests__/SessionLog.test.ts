@@ -63,7 +63,24 @@ describe('what a session log keeps', () => {
   it('normalises CR away, so a line is a line', async () => {
     const log = open();
     log.write('one\r\ntwo\r\n');
-    expect(await contents(log)).toMatch(/one\ntwo\n$/);
+    expect(await contents(log)).toMatch(/\] one\n\[[\d:]+\] two\n$/);
+  });
+
+  /* Todo 25: a line in the log is matched to the console's time and to a note. */
+  it('puts the time a line arrived before it, and the date when the day turns', async () => {
+    const log = open();
+    log.write('You say "hi"\r\n[HP=', new Date(2026, 9, 7, 23, 59, 58).getTime());
+    log.write('20]:', new Date(2026, 9, 7, 23, 59, 59).getTime());
+    log.write('\r\nThe sun rises.\r\n', new Date(2026, 9, 8, 0, 0, 1).getTime());
+    const text = await contents(log);
+    expect(text.split('\n').slice(1)).toEqual([
+      '--- 2026-10-07 ---',
+      '[23:59:58] You say "hi"',
+      '[23:59:58] [HP=20]:',
+      '--- 2026-10-08 ---',
+      '[00:00:01] The sun rises.',
+      ''
+    ]);
   });
 
   /*

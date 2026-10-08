@@ -23,6 +23,8 @@ export interface BackscrollPages {
   onEdge(edge: ScrollEdge): void;
   /** How many lines main kept older than the page the attach handed over. */
   attached(older: number): void;
+  /** Rewrite the lines held, for what the console draws off the text as it is parsed (each line's time). */
+  redraw(): void;
 }
 
 export function useBackscrollPages(
@@ -67,29 +69,39 @@ export function useBackscrollPages(
     [page, keep, nextPage]
   );
 
-  const load = useCallback(() => {
-    const to = handle.current;
-    if (to === null || loadingRef.current) return;
-    const lines = widened(holdRef.current, page, keep);
-    loadingRef.current = true;
-    setLoading(true);
-    setOffer(0);
-    const finish = (): void => {
-      loadingRef.current = false;
-      setLoading(false);
-    };
-    api.backscrollPage(session, lines).then(
-      (got) => {
-        older.current = got.older;
-        setHold(lines);
-        to.refill(got.text, lines, finish);
-      },
-      (error: unknown) => {
-        finish();
-        to.notice(t('terminal.loadMoreFailed', { message: errorMessage(error) }));
-      }
-    );
-  }, [api, session, handle, page, keep]);
+  /** Asks main for a page of `lines` and rewrites the console with it. */
+  const fetchPage = useCallback(
+    (lines: number) => {
+      const to = handle.current;
+      if (to === null || loadingRef.current) return;
+      loadingRef.current = true;
+      setLoading(true);
+      setOffer(0);
+      const finish = (): void => {
+        loadingRef.current = false;
+        setLoading(false);
+      };
+      api.backscrollPage(session, lines).then(
+        (got) => {
+          older.current = got.older;
+          setHold(lines);
+          to.refill(got.text, lines, finish);
+        },
+        (error: unknown) => {
+          finish();
+          to.notice(t('terminal.loadMoreFailed', { message: errorMessage(error) }));
+        }
+      );
+    },
+    [api, session, handle]
+  );
+
+  const load = useCallback(
+    () => fetchPage(widened(holdRef.current, page, keep)),
+    [fetchPage, page, keep]
+  );
+
+  const redraw = useCallback(() => fetchPage(holdRef.current), [fetchPage]);
 
   const attached = useCallback((count: number) => {
     older.current = count;
@@ -100,6 +112,7 @@ export function useBackscrollPages(
     more: offer > 0 && !loading ? { count: offer, load } : null,
     loading,
     onEdge,
-    attached
+    attached,
+    redraw
   };
 }

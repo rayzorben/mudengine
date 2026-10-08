@@ -56,7 +56,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the palette taking the pane widths whole (todo 01).
   // Lowered by the reset prompt's question, out with its state (`ResetGate`, area search).
   // Lowered by the notices' routing, out whole (`useConsoleNotices`, notice per character).
-  'src/renderer/src/App.tsx': 1613,
+  'src/renderer/src/App.tsx': 1611,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   'src/main/automation/Walker.ts': 1933,

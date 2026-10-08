@@ -34,6 +34,7 @@ import {
 import type { IpcApi, ProfileSummary, Revealed, SessionId, SessionSummary } from '@shared/ipc';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import type { ConnectionState, ConnectionTarget } from '@shared/types';
+import type { Switch } from './switch';
 
 /** The bridge calls a command makes, and nothing else of it. */
 export type PaletteApi = Pick<
@@ -73,8 +74,11 @@ export interface PaletteDeps {
   loggingEnabled: boolean;
   railOpen: boolean;
   debugOpen: boolean;
-  hud: 'on' | 'off';
-  setHud(value: 'on' | 'off'): void;
+  hud: Switch;
+  setHud(value: Switch): void;
+  /** Each line's time at the console's right edge (`terminal.timestamps`). */
+  timestamps: Switch;
+  setTimestamps(value: Switch): void;
   density: Density;
   densityPreference: DensityPreference;
   cycleDensity(): void;
@@ -552,6 +556,17 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       group: 'view',
       keywords: ['hud', 'cards', 'rail', 'panel'],
       run: () => deps.setHud(deps.hud === 'on' ? 'off' : 'on')
+    },
+    {
+      id: 'timestamps',
+      icon: 'stopwatch' as const,
+      label:
+        deps.timestamps === 'on'
+          ? t('palette.view.hideTimestampsLabel')
+          : t('palette.view.showTimestampsLabel'),
+      group: 'view',
+      keywords: ['timestamp', 'time', 'clock', 'when', 'sent', 'received'],
+      run: () => deps.setTimestamps(deps.timestamps === 'on' ? 'off' : 'on')
     },
     {
       id: 'density',

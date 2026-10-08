@@ -13014,6 +13014,29 @@ tr:hover .row-action.worn,
 }
 
 /*
+ * Each line's time (todo 25), right-aligned at the console's edge on the row
+ * its block began, in the console's own face, smaller, and dimmed like the
+ * margin glyphs. A row whose text reaches it hides it (`data-covered`).
+ * `right: 0` because xterm writes no offset for a right-anchored decoration
+ * at `x: 0`, which left it at the row's start (measured 2026-10-07).
+ */
+.terminal-stamp {
+  color: inherit;
+  font-family: var(--font-terminal);
+  font-size: var(--font-micro);
+  line-height: 1;
+  opacity: 0.45;
+  pointer-events: none;
+  right: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.terminal-stamp[data-covered] {
+  visibility: hidden;
+}
+
+/*
  * The buttons after a marked line's text — [Deposit All], [go manhole].
  *
  * On the decoration layer with the glyph, so nothing in the character grid

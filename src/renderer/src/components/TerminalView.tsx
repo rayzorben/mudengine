@@ -34,6 +34,7 @@ import { GLYPH_CELLS, SGR_RESET } from '@shared/template';
 import { sliceLines, splitMarks } from '../lib/chunks';
 import { tuning } from '../lib/tuning';
 import { silenceQueries } from '../lib/terminalQueries';
+import { drawStamps, type ConsoleStamps } from '../lib/consoleStamps';
 import { edgeOf, type ScrollEdge } from '../lib/pages';
 
 /** The handle the parent uses to drive the terminal once it has mounted. */
@@ -133,6 +134,8 @@ export interface TerminalViewProps {
   onAct?(action: TerminalActionName): void;
   /** Live presentation options from the YAML file. */
   settings: TerminalConfig;
+  /** Each line's time at the right edge (todo 25); nothing is drawn while off. */
+  timestamps: boolean;
   /** Lines the console holds, a page of what main keeps (`lib/pages.ts`). */
   scrollback: number;
   /** The reader reached the oldest line held, the live edge, or left one. */
@@ -179,6 +182,7 @@ export default function TerminalView({
   onAct,
   reportSize = true,
   settings,
+  timestamps,
   scrollback,
   onEdge,
   fontStack,
@@ -187,6 +191,7 @@ export default function TerminalView({
   const mountRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const stampsRef = useRef<ConsoleStamps | null>(null);
   const [pinned, setPinned] = useState(true);
 
   /**
@@ -409,6 +414,7 @@ export default function TerminalView({
     // The terminal answers no query a server sends and turns on no reporting
     // mode: xterm's answer would be typed into the game (todo 832).
     silenceQueries(term);
+    stampsRef.current = drawStamps(term);
     term.loadAddon(fit);
     term.loadAddon(new Unicode11Addon());
     /*
@@ -1019,6 +1025,7 @@ export default function TerminalView({
       document.removeEventListener('mouseup', stopSelecting);
       term.dispose();
       termRef.current = null;
+      stampsRef.current = null;
       fitRef.current = null;
       // The writer holds the disposed terminal; the font measurement resolves
       // on its own schedule and must not write into it.
@@ -1047,6 +1054,8 @@ export default function TerminalView({
 
     if (metricsChanged) fitRef.current?.fit();
   }, [fontStack, settings, scrollback]);
+
+  useEffect(() => stampsRef.current?.show(timestamps), [timestamps]);
 
   /**
    * Repaints the grid when the theme changes.
