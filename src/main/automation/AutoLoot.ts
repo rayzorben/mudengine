@@ -71,7 +71,7 @@ import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { EncumbranceGate, LootConfig, SuppliesConfig } from '../../shared/config';
-import { carriedCount } from '../../shared/supplies';
+import { carriedCount, stockCeiling } from '../../shared/supplies';
 import { coinNamed, type Denomination } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
@@ -529,7 +529,7 @@ export class AutoLoot implements SessionModule {
     row: SuppliesConfig['items'][number],
     state: CharacterState
   ): { have: number; max: number } | null {
-    const ceiling = Math.max(row.min, row.max);
+    const ceiling = stockCeiling(row);
     if (bareName(row.name).length === 0 || ceiling <= 0) return null;
     const have = carriedCount(state, row.name);
     return have < ceiling ? { have, max: ceiling } : null;

@@ -28,6 +28,11 @@ export function carriedCount(state: CharacterState, name: string): number {
   return count;
 }
 
+/** How many of a row to carry: its maximum, never under its minimum. */
+export function stockCeiling(item: Pick<SupplyItem, 'min' | 'max'>): number {
+  return Math.max(item.min, item.max);
+}
+
 /** The row on the list that names this item, by the same matching, or null. */
 export function supplyFor(items: readonly SupplyItem[], name: string): SupplyItem | null {
   const typed = bareName(name);
@@ -50,5 +55,5 @@ export function withSupply(
   const rest = items.filter((item) => bareName(item.name) !== typed);
   if (row === null) return rest;
   if (row.min <= 0 && row.max <= 0 && row.shop.length === 0) return rest;
-  return [...rest, { ...row, max: Math.max(row.min, row.max) }];
+  return [...rest, { ...row, max: stockCeiling(row) }];
 }

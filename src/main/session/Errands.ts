@@ -123,7 +123,7 @@ import {
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
 import { gearEffect } from '../../shared/blessingeffects';
-import { carriedCount } from '../../shared/supplies';
+import { carriedCount, stockCeiling } from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import {
   lairPass,
@@ -1223,8 +1223,7 @@ export class Errands implements SessionModule {
     if (!this.automationConfig.enabled || !this.automationConfig.supplies.enabled) return [];
     if (packRows(state.inventory) === null) return [];
     const wanted = this.automationConfig.supplies.items.filter(
-      (row) =>
-        row.shop.trim().length > 0 && carriedCount(state, row.name) < Math.max(row.max, row.min)
+      (row) => row.shop.trim().length > 0 && carriedCount(state, row.name) < stockCeiling(row)
     );
     if (wanted.length === 0) return [];
     const named = world.itemsNamed(wanted.map((row) => row.name));
@@ -1304,7 +1303,7 @@ export class Errands implements SessionModule {
         name: row.name,
         held: false,
         hand: false,
-        count: Math.max(row.max, row.min),
+        count: stockCeiling(row),
         stock: row.min,
         source: {
           how: 'buy',
@@ -1440,7 +1439,7 @@ export class Errands implements SessionModule {
               name: row.row.name,
               held: false,
               hand: false,
-              count: Math.max(row.row.max, row.row.min),
+              count: stockCeiling(row.row),
               stock: row.row.min,
               source: {
                 how: 'buy',

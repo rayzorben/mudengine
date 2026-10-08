@@ -163,6 +163,32 @@ describe('choosing a light', () => {
     });
   });
 
+  it('falls back to a readable room when nothing carried lifts it out of the dim band', () => {
+    // −175: a full room wants 175, the torch gives 100 and reads it at −75.
+    expect(chooseLight(-175, 0, [torch, torch], true)).toEqual({
+      kind: 'ready',
+      light: torch,
+      guess: false
+    });
+    // The lamp reaches the full room, so it is still the dim choice.
+    expect(chooseLight(-175, 0, [torch, lamp], true)).toEqual({
+      kind: 'ready',
+      light: lamp,
+      guess: false
+    });
+    expect(chooseLight(-175, 0, [{ ...torch, lit: true }, lamp], true)).toEqual({
+      kind: 'ready',
+      light: lamp,
+      guess: false
+    });
+    expect(chooseLight(-175, 0, [{ ...torch, lit: true }, torch], true)).toEqual({ kind: 'lit' });
+    // −125 is readable already: a torch leaves it dim, so it burns for nothing.
+    expect(chooseLight(-125, 0, [torch], true)).toEqual({
+      kind: 'none',
+      reason: 'nothing reaches'
+    });
+  });
+
   it('does not light for a race that sees the room already', () => {
     expect(needsLightAt(-175, 200)).toBe(false);
     expect(chooseLight(-175, 200, [torch])).toEqual({ kind: 'unneeded' });

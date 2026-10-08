@@ -215,7 +215,8 @@ export function seenAt(level: number | undefined, sight: Sight): number | null {
  * trying is one command.
  *
  * `dim` widens the question from *readable* to *not dark at all*, which is
- * MegaMUD's "provide light in dimly-lit rooms".
+ * MegaMUD's "provide light in dimly-lit rooms", and falls back to *readable*
+ * where nothing carried reaches that far.
  */
 export type LightChoice =
   /** The room is readable by vision alone; nothing to light. */
@@ -231,19 +232,32 @@ export function chooseLight(
   lights: ReadonlyArray<CarriedLight>,
   dim = false
 ): LightChoice {
-  const enough = (reach: number): boolean => reach >= reachWanted(level, vision, dim);
-  if (enough(0)) return { kind: 'unneeded' };
-  const lit = lights.find((light) => light.lit && lightIsUsable(light));
-  if (lit !== undefined && (lit.reach === null || enough(lit.reach))) return { kind: 'lit' };
+  const wanted = reachWanted(level, vision, dim);
+  if (wanted <= 0) return { kind: 'unneeded' };
+  /*
+   * `dim` asks for more than readable, and in a room nothing carried lifts out
+   * of the dim band, the light that makes it readable is still the one to
+   * ready: refusing it walked Rayzor's sewer lap blind with twelve torches
+   * (−175, reach 100, 2026-10-07). A room already readable has no fallback.
+   */
+  const readable = reachWanted(level, vision);
+  const usable = lights.filter((light) => lightIsUsable(light));
+  // The full target where any usable light reaches it, else the readable one.
+  const target =
+    dim && readable > 0 && !usable.some((light) => light.reach !== null && light.reach >= wanted)
+      ? readable
+      : wanted;
+  const lit = usable.find((light) => light.lit);
+  if (lit !== undefined && (lit.reach === null || lit.reach >= target)) return { kind: 'lit' };
   if (lights.length === 0) return { kind: 'none', reason: 'nothing carried' };
-  const usable = lights.filter((light) => !light.lit && lightIsUsable(light));
-  if (usable.length === 0) return { kind: 'none', reason: 'nothing usable' };
-  const measured = usable
+  const unlit = usable.filter((light) => !light.lit);
+  if (unlit.length === 0) return { kind: 'none', reason: 'nothing usable' };
+  const measured = unlit
     .filter((light): light is CarriedLight & { reach: number } => light.reach !== null)
-    .filter((light) => enough(light.reach))
+    .filter((light) => light.reach >= target)
     .sort((a, b) => a.reach - b.reach);
   if (measured[0] !== undefined) return { kind: 'ready', light: measured[0], guess: false };
-  const unmeasured = usable.find((light) => light.reach === null);
+  const unmeasured = unlit.find((light) => light.reach === null);
   if (unmeasured !== undefined) return { kind: 'ready', light: unmeasured, guess: true };
   return { kind: 'none', reason: 'nothing reaches' };
 }

@@ -66,7 +66,7 @@ import type { SafetyDecision } from '../../shared/automation';
 import { chargedInCopper, quotedInCopper } from '../../shared/coins';
 import type { SuppliesConfig, SupplyItem } from '../../shared/config';
 import { bareName } from '../../shared/items';
-import { carriedCount } from '../../shared/supplies';
+import { carriedCount, stockCeiling } from '../../shared/supplies';
 import { nameAnswersTo, roomId, type CashPlace, type RoomId, type Route } from '../../shared/world';
 import type { SessionModule } from './Module';
 import { stoppedByPerson } from './personStop';
@@ -319,6 +319,7 @@ export class Supplies implements SessionModule {
           );
           return;
         }
+        if (this.recountAtCounter(errand, state)) return;
         const price = quotedInCopper(row.price);
         const wealth = state.inventory.wealth;
         /*
@@ -460,8 +461,10 @@ export class Supplies implements SessionModule {
       return;
     // Nothing is short until the pack has been read: an unlisted pack is not
     // an empty one, and an errand for torches the character is carrying is a
-    // walk to the shop for nothing.
-    if (state.inventory.items.length === 0 && state.inventory.wealth === null) return;
+    // walk to the shop for nothing. The listing, not the purse: the status
+    // line states wealth before `i` answers (Rayzor, 2026-10-07: 0 carried,
+    // six bought over six held, seven dropped).
+    if (state.inventory.listedAt === null) return;
     const now = this.now();
     for (const item of this.config.items) {
       if (item.min <= 0) continue;
@@ -514,10 +517,10 @@ export class Supplies implements SessionModule {
       return;
     // An unlisted pack is not an empty one, and it is not an overfull one
     // either: nothing is surplus until the pack has been read.
-    if (state.inventory.items.length === 0) return;
+    if (state.inventory.listedAt === null) return;
     const now = this.now();
     for (const row of this.config.items) {
-      const ceiling = Math.max(row.min, row.max);
+      const ceiling = stockCeiling(row);
       if (ceiling <= 0) continue;
       const have = carriedCount(state, row.name);
       if (have <= ceiling) {
@@ -616,7 +619,7 @@ export class Supplies implements SessionModule {
       room: found.room,
       shopName: found.name,
       have,
-      wanted: Math.max(item.max, item.min) - have,
+      wanted: stockCeiling(item) - have,
       bought: 0,
       legs: 0,
       askedAt: 0,
@@ -822,6 +825,26 @@ export class Supplies implements SessionModule {
         acted: true
       });
     }
+  }
+
+  /**
+   * The count bought is the shortfall in the pack as listed at the counter:
+   * a pick-up or a listing on the way may have filled it since the errand set
+   * off. A pack still unlisted keeps the errand's own figure. True when the
+   * errand has ended because nothing is short.
+   */
+  private recountAtCounter(errand: Errand, state: CharacterState): boolean {
+    if (state.inventory.listedAt === null) return false;
+    const have = carriedCount(state, errand.item.name);
+    const max = stockCeiling(errand.item);
+    const short = max - have;
+    if (short > 0) {
+      errand.have = have;
+      errand.wanted = short;
+      return false;
+    }
+    this.finish(errand, false, t('automation.supplies.refusalCarried', { have, max }));
+    return true;
   }
 
   /** Standing at the counter: ask what it sells before spending a `buy`. */

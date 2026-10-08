@@ -74,7 +74,8 @@ function character(torches: number, over: Partial<CharacterState> = {}): Charact
     inventory: {
       ...base.inventory,
       items: Array.from({ length: torches }, () => wireItem('torch')),
-      wealth: 5_000
+      wealth: 5_000,
+      listedAt: 1
     },
     ...over
   };
@@ -182,7 +183,8 @@ describe('noticing the pack is short', () => {
   it('does nothing until the pack has been read', () => {
     const { planner: p, log } = planner();
     const unread = character(0);
-    make(p).onCharacter({ ...unread, inventory: { ...unread.inventory, wealth: null } });
+    // The status line states the purse before `i` answers (Rayzor, 2026-10-07).
+    make(p).onCharacter({ ...unread, inventory: { ...unread.inventory, listedAt: null } });
     expect(log).toEqual([]);
   });
 
@@ -292,6 +294,35 @@ describe('at the counter', () => {
     drain();
     expect(log).toEqual(['hold']);
     expect(sent).toEqual(['list']);
+  });
+
+  it('buys the shortfall the recount at the counter finds', () => {
+    const { planner: p, arrive } = planner();
+    const auto = make(p);
+    auto.onCharacter(character(2));
+    arrive();
+    auto.onWalkEnded(true, null, character(4));
+    auto.onCharacter(listed(character(4)));
+    drain();
+    expect(sent).toEqual(['list', 'buy torch']);
+    // Max 5 with 4 carried: one, where the start's count was three.
+    expect(auto.current?.wanted).toBe(1);
+  });
+
+  it('buys nothing at the counter when the pack holds enough by then', () => {
+    const { planner: p, arrive } = planner();
+    const auto = make(p);
+    auto.onCharacter(character(2));
+    arrive();
+    const full = 5;
+    auto.onWalkEnded(true, null, character(full));
+    auto.onCharacter(listed(character(full)));
+    drain();
+    expect(sent).toEqual(['list']);
+    expect(auto.current).toBeNull();
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalCarried', { have: full, max: 5 })
+    );
   });
 
   it('refuses when the counter does not list the item', () => {
