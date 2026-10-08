@@ -11826,9 +11826,12 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       (() => {
         const box = document.querySelector('.settings-check[data-field="combat"]');
         const input = box?.querySelector('input');
-        if (!input || input.checked) return false;
+        if (!input) return false;
+        // An asked route that arrived earlier in this run turned it on (2026-10-08).
+        if (input.checked) input.click();
+        if (input.checked) return false;
         input.click();
-        return true;
+        return input.checked;
       })()
     `),
     'auto-combat can be switched on'

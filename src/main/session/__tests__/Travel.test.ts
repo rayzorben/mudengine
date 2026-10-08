@@ -449,6 +449,7 @@ describe('a route run with auto-combat off', () => {
     blocked: false
   } as unknown as Route;
   const fighting = { ...config, combat: { ...config.combat, enabled: true } };
+  const switchedOff = { ...config, combat: { ...config.combat, enabled: false } };
 
   function running(settings: AutomationConfig) {
     const made = travel(beside(), 'stepping', false, { on: true, writes: true }, { settings });
@@ -509,13 +510,50 @@ describe('a route run with auto-combat off', () => {
     expect(combat.on).toBe(false);
   });
 
-  it('never writes it for a route walked rather than run', () => {
-    const { travel: moving, combat } = running(config);
-    // Positive control: the walk started.
+  /* Any asked route arrives with it on, walked as well as run (the user, 2026-10-08). */
+  it('turns it on when a route walked rather than run arrives', () => {
+    const { travel: moving, combat, notices } = running(switchedOff);
     expect(moving.walkRoute(ROUTE)).toBeNull();
     expect(moving.walkIsAsked).toBe(true);
     moving.walkEnded(true);
+    expect(combat.flips).toEqual([true]);
+    expect(notices).toContain(t('automation.combat.onAfterRun'));
+  });
+
+  it('leaves it off when a walked route stops short', () => {
+    const { travel: moving, combat } = running(switchedOff);
+    // Positive control: the walk started and is the player's.
+    expect(moving.walkRoute(ROUTE)).toBeNull();
+    expect(moving.walkIsAsked).toBe(true);
+    moving.walkEnded(false);
     expect(combat.flips).toEqual([]);
+  });
+
+  it('leaves it off when an errand leg arrives', () => {
+    const { travel: moving, combat } = running(switchedOff);
+    moving.walkStarted();
+    expect(moving.walkIsAsked).toBe(false);
+    moving.walkEnded(true);
+    expect(combat.flips).toEqual([]);
+  });
+
+  it('says so when the file will not take it at the lap', () => {
+    const made = travel(
+      beside(),
+      'stepping',
+      false,
+      { on: true, writes: false },
+      { settings: switchedOff }
+    );
+    made.travel.combatOnForLap();
+    expect(made.notices).toContain(t('automation.combat.onForLapRefused'));
+  });
+
+  it('turns it on at the lap and says so', () => {
+    const { travel: moving, combat, notices } = running(switchedOff);
+    moving.combatOnForLap();
+    expect(combat.flips).toEqual([true]);
+    expect(notices).toContain(t('automation.combat.onForLap'));
   });
 });
 
