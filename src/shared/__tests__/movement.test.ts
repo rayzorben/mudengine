@@ -13,9 +13,9 @@ const walking = (status: WalkStatus, asked = true): WalkProgress => ({
 const lap = (status: LoopStatus): LoopProgress => ({ ...NO_LOOP, status, name: 'Arena' });
 
 /**
- * One reading of the two progresses, because three surfaces act on it: the
- * Navigation card draws one face, the toolbar draws one transport button, and
- * `walkNotices` withholds a leg's arrival. The ordering is the whole of it.
+ * One reading of the two progresses, because two surfaces act on it: the
+ * Navigation card draws one face and the toolbar draws one transport button.
+ * The ordering is the whole of it.
  */
 describe('what a character is doing about going anywhere', () => {
   it('is nothing at all before anything has been walked', () => {

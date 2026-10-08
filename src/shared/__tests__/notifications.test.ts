@@ -1,4 +1,3 @@
-import { NO_LOOP } from '../loops';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
@@ -189,7 +188,7 @@ describe('a route reaching where it was going', () => {
   const arrived = { ...IDLE_WALK, status: 'arrived' as const, destination: 'Bank of Godfrey' };
 
   it('alerts on the crossing into arrived, naming where', () => {
-    const raised = walkNotices(IDLE_WALK, arrived, NO_LOOP, 5, t);
+    const raised = walkNotices(IDLE_WALK, arrived, 5, t);
     expect(raised).toHaveLength(1);
     expect(raised[0]!.desktop).toBe('arrived');
     expect(raised[0]!.channel).toBe('movement');
@@ -197,32 +196,21 @@ describe('a route reaching where it was going', () => {
   });
 
   it('alerts once, not on every push while it stands arrived', () => {
-    expect(walkNotices(arrived, arrived, NO_LOOP, 6, t)).toHaveLength(0);
+    expect(walkNotices(arrived, arrived, 6, t)).toHaveLength(0);
   });
 
   it('says nothing about a walk that stopped', () => {
     const stopped = { ...IDLE_WALK, status: 'stopped' as const, reason: 'a shut door' };
-    expect(walkNotices(IDLE_WALK, stopped, NO_LOOP, 7, t)).toHaveLength(0);
+    expect(walkNotices(IDLE_WALK, stopped, 7, t)).toHaveLength(0);
   });
 
   /*
-   * A lap never arrives. Its legs do, every few seconds — a two-room lap
-   * raised one of these almost every five seconds, which is the client
-   * announcing its own footwork rather than telling anybody anything.
+   * A lap's leg, an errand, a collect, a hunt or a quest step lands without
+   * anybody having set off for it: a two-room lap raised one of these almost
+   * every five seconds.
    */
-  it('says nothing about a leg landing under a running loop', () => {
-    const looping = { ...NO_LOOP, status: 'running' as const, name: 'Arena' };
-    expect(walkNotices(IDLE_WALK, arrived, looping, 8, t)).toHaveLength(0);
-  });
-
-  /*
-   * And a lap that is merely *stopped* does not silence a route: the character
-   * is walking somewhere the player asked for, with a lap waiting to be
-   * pressed play on when it gets there.
-   */
-  it('still announces a route walked while a lap sits stopped', () => {
-    const waiting = { ...NO_LOOP, status: 'stopped' as const, name: 'Arena' };
-    expect(walkNotices(IDLE_WALK, arrived, waiting, 9, t)).toHaveLength(1);
+  it('says nothing about a walk nobody asked for', () => {
+    expect(walkNotices(IDLE_WALK, { ...arrived, asked: false }, 8, t)).toHaveLength(0);
   });
 });
 

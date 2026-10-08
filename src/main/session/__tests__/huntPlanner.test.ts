@@ -12,13 +12,13 @@ function planner(answers: {
   walking?: boolean;
   offRefused?: string | null;
 }) {
-  const asked: Array<{ offRounds: boolean | undefined }> = [];
+  const asked: Array<{ asked: boolean | undefined; offRounds: boolean | undefined }> = [];
   let runs = 0;
   const modules = {
     tracker: { current: EMPTY_CHARACTER, pendingMoves: 0 },
     walker: {
-      start: (_route: Route, _state: unknown, leg?: { offRounds?: boolean }) => {
-        asked.push({ offRounds: leg?.offRounds });
+      start: (_route: Route, _state: unknown, leg?: { asked?: boolean; offRounds?: boolean }) => {
+        asked.push({ asked: leg?.asked, offRounds: leg?.offRounds });
         return answers.start ?? null;
       },
       walking: answers.walking ?? true
@@ -41,7 +41,7 @@ describe("the hunt's walk", () => {
   it('runs timed to the rounds with combat off, and walks otherwise', () => {
     const ran = planner({});
     expect(ran.hunt.walk(ROUTE, true)).toEqual({ combatOff: true });
-    expect(ran.asked).toEqual([{ offRounds: true }]);
+    expect(ran.asked).toEqual([{ asked: false, offRounds: true }]);
     expect(ran.runs()).toBe(1);
     const walked = planner({});
     expect(walked.hunt.walk(ROUTE, false)).toEqual({ combatOff: false });

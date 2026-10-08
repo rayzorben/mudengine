@@ -391,7 +391,7 @@ export class GearTrip implements SessionModule {
       this.say(t('automation.gearTrip.ended', { why }), why);
     }
     trip.stage = 'ended';
-    this.last = this.progressOf(trip, ended);
+    this.last = this.progressOf(trip, ended, why === null);
     this.events.gearTrip?.(this.last);
   }
 
@@ -399,7 +399,7 @@ export class GearTrip implements SessionModule {
     this.events.gearTrip?.(this.progressOf(trip, null));
   }
 
-  private progressOf(trip: Trip, ended: string | null): GearTripProgress {
+  private progressOf(trip: Trip, ended: string | null, done = false): GearTripProgress {
     return {
       plan: trip.plan,
       stop: trip.stop,
@@ -407,7 +407,8 @@ export class GearTrip implements SessionModule {
       run: trip.run,
       bought: [...trip.bought],
       missed: [...trip.missed],
-      ended
+      ended,
+      done
     };
   }
 
