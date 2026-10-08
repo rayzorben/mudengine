@@ -1,9 +1,9 @@
 /**
  * What the character was doing, kept in its own record so a quit and a
  * relaunch pick it up the way a dropped connection does (todo 01,
- * 2026-09-30): the lap and the route the player asked for, written whenever
- * either publishes and handed back at the next dial, where
- * `Travel.pickUpAfterLoss` walks on once the character is placed. See
+ * 2026-09-30): the lap, the route the player asked for and auto-combat a run
+ * turned off, written whenever either publishes and handed back at the next
+ * dial, where `Travel.pickUpAfterLoss` walks on once the character is placed. See
  * `mudengine-session` › *Every close carries the loop and the route*.
  */
 import type { LoopRunner } from '../automation/LoopRunner';
@@ -22,7 +22,10 @@ export class CarryOver {
 
   constructor(
     private readonly loops: Pick<LoopRunner, 'place' | 'carry'>,
-    private readonly travel: Pick<Travel, 'owed' | 'owe'>,
+    private readonly travel: Pick<
+      Travel,
+      'owed' | 'owe' | 'combatOffForRunNow' | 'combatBackAfterLaunch'
+    >,
     /** The record for the realm being dialled, as `SessionManager.useRealm` keeps it. */
     private readonly record: () => UnderwaySink
   ) {}
@@ -36,6 +39,7 @@ export class CarryOver {
   takeUp(): void {
     const owed = this.owed ?? NOTHING_UNDERWAY;
     this.owed = null;
+    if (owed.combatOffForRun) this.travel.combatBackAfterLaunch();
     if (owed.route !== null) this.travel.owe(owed.route);
     if (owed.lap !== null) this.loops.carry(owed.lap);
     this.remember();
@@ -44,7 +48,11 @@ export class CarryOver {
   /** The lap or the walk published: what is underway now. The record writes only a change. */
   remember(): void {
     if (this.owed !== null || this.done) return;
-    this.record().rememberUnderway({ lap: this.loops.place, route: this.travel.owed });
+    this.record().rememberUnderway({
+      lap: this.loops.place,
+      route: this.travel.owed,
+      combatOffForRun: this.travel.combatOffForRunNow
+    });
   }
 
   /**

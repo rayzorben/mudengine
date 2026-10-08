@@ -6,6 +6,7 @@ import path from 'node:path';
 import { Belongings, peekLives, peekRoom, peekSpellbook } from '../Belongings';
 import type { BankBalance } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
+import { NOTHING_UNDERWAY } from '../../../shared/underway';
 import { t } from '../../app/i18n';
 
 let dir = '';
@@ -724,11 +725,12 @@ describe('what this character was doing when the app closed', () => {
 
   it('keeps the lap and the route and hands them back to the next launch', () => {
     const first = new Belongings({ file, realm: REALM });
-    first.rememberUnderway({ lap, route });
+    first.rememberUnderway({ lap, route, combatOffForRun: true });
     first.close();
 
     const back = new Belongings({ file, realm: REALM }).recallUnderway();
     expect(back.route).toEqual(route);
+    expect(back.combatOffForRun).toBe(true);
     expect(back.lap).toMatchObject({ index: 1, laps: 3, running: true, expAtStart: null });
     expect(back.lap?.loop.stops).toHaveLength(2);
   });
@@ -736,9 +738,17 @@ describe('what this character was doing when the app closed', () => {
   it('writes nothing for a session with nothing underway', () => {
     const book = new Belongings({ file, realm: REALM });
     book.rememberBanks([balance()]);
-    book.rememberUnderway({ lap: null, route: null });
+    book.rememberUnderway(NOTHING_UNDERWAY);
     book.close();
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).not.toHaveProperty('underway');
+  });
+
+  /* Nothing walking, but a run had turned auto-combat off: that alone is kept. */
+  it('keeps auto-combat a run turned off when nothing else is underway', () => {
+    const book = new Belongings({ file, realm: REALM });
+    book.rememberUnderway({ ...NOTHING_UNDERWAY, combatOffForRun: true });
+    book.close();
+    expect(new Belongings({ file, realm: REALM }).recallUnderway().combatOffForRun).toBe(true);
   });
 
   /* A part that does not parse is nothing carried; the balances beside it still load. */
@@ -755,7 +765,7 @@ describe('what this character was doing when the app closed', () => {
       'utf8'
     );
     const book = new Belongings({ file, realm: REALM });
-    expect(book.recallUnderway()).toEqual({ lap: null, route: null });
+    expect(book.recallUnderway()).toEqual(NOTHING_UNDERWAY);
     expect(book.recallBanks()).toHaveLength(1);
   });
 });
@@ -764,9 +774,12 @@ describe('a change after the record was closed', () => {
   /* A realm switch closes the old record, then clears what was underway on it. */
   it('is written at once rather than on a timer nothing waits for', () => {
     const book = new Belongings({ file, realm: REALM });
-    book.rememberUnderway({ lap: null, route: { to: '1/2140', name: 'Town Square', run: false } });
+    book.rememberUnderway({
+      ...NOTHING_UNDERWAY,
+      route: { to: '1/2140', name: 'Town Square', run: false }
+    });
     book.close();
-    book.rememberUnderway({ lap: null, route: null });
+    book.rememberUnderway(NOTHING_UNDERWAY);
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).not.toHaveProperty('underway');
   });
 });

@@ -502,9 +502,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
       ...(this.statsBase !== null ? { statsBase: this.statsBase } : {}),
       ...(this.room !== null ? { room: this.room } : {}),
       ...(this.lives !== null ? { lives: this.lives } : {}),
-      ...(this.underway.lap === null && this.underway.route === null
-        ? {}
-        : { underway: this.underway })
+      ...(sameUnderway(this.underway, NOTHING_UNDERWAY) ? {} : { underway: this.underway })
     };
     const temporary = `${this.options.file}.tmp`;
     try {

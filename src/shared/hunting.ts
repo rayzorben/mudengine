@@ -1148,6 +1148,11 @@ export interface SurveyAsk {
    * best; 1 the next, and so on. The rest come back in `unmeasured`.
    */
   page?: number;
+  /**
+   * Spots measured on the first page wherever their guess ranks: the ones an
+   * extension has been paid by. Every spot measured at this level is already.
+   */
+  measure?: readonly string[];
 }
 
 /** One suggestion: a lair, the rooms that hold it, and what it is worth. */
