@@ -122,6 +122,7 @@ let notices: string[];
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
 let trainer: boolean;
+let settled: boolean;
 /** What the exp-rate weighing answers (`train.pick: exp`). */
 let byExp: ReturnType<StatScreenPlanner['byExp']>;
 let weighed: number;
@@ -134,6 +135,7 @@ beforeEach(() => {
   notices = [];
   decisions = [];
   trainer = true;
+  settled = true;
   byExp = { wanted: { ...NOTHING }, chose: null };
   weighed = 0;
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
@@ -152,6 +154,7 @@ const make = (config = train({ health: 71 }), enabled = true): StatScreen =>
     {
       atTrainer: () => trainer,
       byExp: () => {
+        if (!settled) return null;
         weighed += 1;
         return byExp;
       },
@@ -509,6 +512,18 @@ describe('spending where the exp rate rises most', () => {
     expect(sent).toEqual([]);
     expect(weighed).toBe(1);
     expect(notices).toEqual([t('automation.train.byExpNothing', { cp: 10 })]);
+  });
+
+  it('waits for the fight odds before weighing, and weighs once they are run', () => {
+    settled = false;
+    const auto = make(byExpConfig());
+    auto.onCharacter(atTheTrainer());
+    auto.onCharacter(atTheTrainer());
+    expect(weighed).toBe(0);
+    expect(notices).toEqual([t('automation.train.byExpWaiting', { cp: 10 })]);
+    settled = true;
+    auto.onCharacter(atTheTrainer());
+    expect(weighed).toBe(1);
   });
 
   it('weighs once a level at a trainer, and again at the next level', () => {

@@ -28,7 +28,7 @@ function planner(answers: {
       stoppedAtStart: () => ((answers.walking ?? true) ? null : 'stopped at the start'),
       beginRun: () => {
         runs += 1;
-        return answers.offRefused ?? null;
+        return answers.offRefused ?? true;
       },
       combatOnAfterRun: () => undefined
     }
@@ -40,11 +40,11 @@ function planner(answers: {
 describe("the hunt's walk", () => {
   it('runs timed to the rounds with combat off, and walks otherwise', () => {
     const ran = planner({});
-    expect(ran.hunt.walk(ROUTE, true)).toBeNull();
+    expect(ran.hunt.walk(ROUTE, true)).toEqual({ combatOff: true });
     expect(ran.asked).toEqual([{ offRounds: true }]);
     expect(ran.runs()).toBe(1);
     const walked = planner({});
-    expect(walked.hunt.walk(ROUTE, false)).toBeNull();
+    expect(walked.hunt.walk(ROUTE, false)).toEqual({ combatOff: false });
     expect(walked.runs()).toBe(0);
   });
 

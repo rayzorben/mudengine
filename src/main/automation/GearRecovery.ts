@@ -110,9 +110,18 @@ export class GearRecovery implements SessionModule {
     return this.now() - since < tuning().gearRecovery.decideMs;
   }
 
+  /**
+   * Switched off, a trip under way ends, as the area search's and the gear
+   * trip's do: only `onCharacter` ends a pick-up, and it returns while off, so
+   * the trip held every other one for the rest of the session (2026-10-07:
+   * Konami turned recovery off mid-trip and Vaelor stood in the temple).
+   */
   configure(config: MovementConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
+    if ((enabled && config.recoverGear) || !this.collect.busy) return;
+    this.collect.cancel();
+    this.refuse(t('automation.gearRecovery.refusalSwitchedOff'));
   }
 
   reset(): void {

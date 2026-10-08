@@ -5115,6 +5115,8 @@ automation:
     runningCombatOff: 'Running it: auto-combat is off until you arrive.'
     onAfterRun: 'Arrived: auto-combat back on.'
     onAfterRunRefused: "Arrived, but auto-combat could not be turned on in the character's file."
+    onAfterRunEnded: 'The run stopped short: auto-combat back on.'
+    onAfterRunEndedRefused: "The run stopped short, but auto-combat could not be turned on in the character's file."
     runRefused: "Not running it: auto-combat could not be turned off in the character's file."
     reason: 'auto-combat: {why}'
     reasonArrivalUnplaced: 'auto-combat: something arrived that the world data could not place'
@@ -5347,6 +5349,7 @@ automation:
       {gain} an hour for {cost} CP.'
     byExpNothing: 'Auto Train Stats: {cp} CP unspent, and no stat raises the exp rate at the places
       this character can hunt. Keeping them for a later level.'
+    byExpWaiting: 'Auto Train Stats: {cp} CP unspent; weighing them once the fight odds are worked out.'
     byExpUnread: "Auto Train Stats: {cp} CP unspent, but the race's stat ranges are not read yet, so
       no stat can be weighed."
     whyByExpNothing: no stat raises the exp rate
@@ -5402,6 +5405,7 @@ automation:
     refusalTries: 'Not going back for your gear: {tries} trips in a row failed to reach it. Recover
       it by hand, or raise the limit under Movement.'
     refusalLeft: the character is no longer where it died
+    refusalSwitchedOff: Recover gear was turned off
     refusalNothingHere: none of your gear is on this floor ({items}); someone took it, or the
       cleanup removed it
     whyStopped: the walk stopped

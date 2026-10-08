@@ -90,6 +90,7 @@ let walked: Route[];
 let runs: boolean[];
 /** How many times combat was turned back on after a run. */
 let combatOn: number;
+let combatWasOn: boolean;
 let started: Loop[];
 let surveys: number;
 let answer: HuntingAdvice;
@@ -118,7 +119,7 @@ function hunt(over: Partial<HuntPlanner> = {}, over2: Partial<HuntingAutomationC
     walk: (route, run) => {
       walked.push(route);
       runs.push(run);
-      return null;
+      return { combatOff: run && combatWasOn };
     },
     combatOnAfterRun: () => void (combatOn += 1),
     runLoop: (loop) => {
@@ -162,6 +163,7 @@ beforeEach(() => {
   walked = [];
   runs = [];
   combatOn = 0;
+  combatWasOn = true;
   started = [];
   surveys = 0;
   here = '1/1';
@@ -910,13 +912,46 @@ describe('a hunt order', () => {
     expect(combatOn).toBe(0);
   });
 
-  it('leaves combat off where a run stops short', () => {
+  it('turns combat back on where its run stops short', () => {
+    const auto = hunt();
+    auto.steer({ ...order(), run: true });
+    auto.onCharacter(at(1_000));
+    auto.onWalkEnded(false, 'blocked', at(1_000));
+    expect(combatOn).toBe(1);
+    expect(started).toEqual([]);
+  });
+
+  it('turns combat back on where its run is steered away, stopped or reset', () => {
+    for (const end of [
+      (auto: AutoHunt) => auto.steer(null),
+      (auto: AutoHunt) => auto.noteStopped(),
+      (auto: AutoHunt) => auto.reset()
+    ]) {
+      combatOn = 0;
+      const auto = hunt();
+      auto.steer({ ...order(), run: true });
+      auto.onCharacter(at(1_000));
+      end(auto);
+      expect(combatOn).toBe(1);
+    }
+  });
+
+  it('leaves alone a switch the player had off before the run', () => {
+    combatWasOn = false;
     const auto = hunt();
     auto.steer({ ...order(), run: true });
     auto.onCharacter(at(1_000));
     auto.onWalkEnded(false, 'blocked', at(1_000));
     expect(combatOn).toBe(0);
-    expect(started).toEqual([]);
+  });
+
+  it('keeps what its run turned off across an order for the same rooms', () => {
+    const auto = hunt();
+    auto.steer({ ...order(), run: true });
+    auto.onCharacter(at(1_000));
+    auto.steer(order());
+    auto.onWalkEnded(false, 'blocked', at(1_000));
+    expect(combatOn).toBe(1);
   });
 
   it('stays put where the survey has a better spot, and keeps no rate of its own', () => {

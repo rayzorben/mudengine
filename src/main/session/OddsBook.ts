@@ -50,7 +50,7 @@ export interface OddsBookSession {
 export type OddsReader = Pick<OddsBook, 'mob' | 'lair'>;
 
 /** The readers, and the lair's fight as it stands without queueing it (the router's). */
-export type OddsPeeker = OddsReader & Pick<OddsBook, 'lairKnown'>;
+export type OddsPeeker = OddsReader & Pick<OddsBook, 'lairKnown' | 'lairsLeft'>;
 
 /** What the session holds of the book: the readers, the what-if, and its life. */
 export type SessionOdds = Pick<

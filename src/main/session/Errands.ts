@@ -2156,7 +2156,9 @@ export class Errands implements SessionModule {
     state: CharacterState,
     current: Record<TrainedAttribute, number>,
     limits: Record<TrainedAttribute, StatLimits>
-  ): ReturnType<typeof chooseByExp> {
+  ): ReturnType<typeof chooseByExp> | null {
+    // The survey leaves out every lair not yet run, so a weighing now prices too few spots.
+    if (this.session.odds().lairsLeft > 0) return null;
     return chooseByExp(
       state,
       current,
