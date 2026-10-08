@@ -181,7 +181,8 @@ describe('a gear trip', () => {
     expect(log.at(-1)).toBe('release');
     expect(progress.at(-1)).toMatchObject({
       stage: 'ended',
-      bought: ['leather cap', 'copper ring']
+      bought: ['leather cap', 'copper ring'],
+      done: true
     });
     expect(notices.at(-1)).toBe(t('automation.gearTrip.done', { bought: 2, wanted: 2 }));
   });

@@ -430,7 +430,7 @@ export function useSessionViews(
       ),
       feeds.onWalk(({ session: id, payload }) =>
         patchView(id, (v) => {
-          const raised = alerts.walk(id, v.walk, payload, v.loop);
+          const raised = alerts.walk(id, v.walk, payload);
           return {
             ...v,
             walk: payload,
@@ -454,10 +454,16 @@ export function useSessionViews(
         patchView(id, (v) => ({ ...v, questSaid: payload }))
       ),
       feeds.onQuestRun(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, questRun: payload }))
+        patchView(id, (v) => {
+          const raised = alerts.questRun(id, v.questRun, payload);
+          return { ...v, questRun: payload, ...heard(v, raised, shownRef.current.has(id)) };
+        })
       ),
       feeds.onGearTrip(({ session: id, payload }) =>
-        patchView(id, (v) => ({ ...v, gearTrip: payload }))
+        patchView(id, (v) => {
+          const raised = alerts.gearTrip(id, v.gearTrip, payload);
+          return { ...v, gearTrip: payload, ...heard(v, raised, shownRef.current.has(id)) };
+        })
       ),
       feeds.onAutomation(({ session: id, payload }) =>
         patchView(id, (v) => ({ ...v, automation: payload }))

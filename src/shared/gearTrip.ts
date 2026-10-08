@@ -96,6 +96,8 @@ export interface GearTripProgress {
   missed: string[];
   /** How the trip ended, where it has. */
   ended: string | null;
+  /** True when the trip reached its last stop; `missed` lists what it could not buy. */
+  done: boolean;
 }
 
 /** The items a plan buys, in walking order. */

@@ -16,11 +16,10 @@
  * and play picks it back up from wherever the character now stands.
  *
  * So this is the one reading of the two progresses, and it is here — pure, in
- * `shared/` — because three surfaces have to agree about it: the Navigation
+ * `shared/` — because two surfaces have to agree about it: the Navigation
  * card draws one face and no more (`navigationFace`, which differs only for a
- * lap still walking out to its loop), the toolbar draws one transport button, and
- * `walkNotices` withholds the arrival of a leg that is not a journey. Three
- * copies of "is this a loop?" is three places to disagree.
+ * lap still walking out to its loop), and the toolbar draws one transport
+ * button.
  */
 import type { LoopProgress } from './loops';
 import type { WalkProgress } from './walk';
@@ -54,8 +53,7 @@ export const NOT_MOVING: Movement = { kind: null, moving: false, resumable: fals
  *
  * 1. A **running loop** is the movement. Its legs are walks it owns, so the
  *    walk underneath is that loop's footwork rather than anything the player
- *    asked for — which is why no arrival is announced during one
- *    (`walkNotices`): a two-room lap would announce one every five seconds.
+ *    asked for.
  * 2. Otherwise a **walking route** is, because somebody asked for it just now.
  * 3. Otherwise a **route the player asked for that arrived or stopped**,
  *    because the card goes on reporting the journey that ended — "it stopped
@@ -94,7 +92,7 @@ export function movementOf(walk: WalkProgress, loop: LoopProgress): Movement {
 /**
  * Which face the Navigation card draws: `movementOf`'s kind, except that a lap
  * still walking out to its loop is drawn as routing. The lap is the movement
- * from the press (play, the toolbar and `walkNotices` read it so), but until
+ * from the press (play and the toolbar read it so), but until
  * the character stands on a stop there is no lap to report, only a way there.
  */
 export function navigationFace(walk: WalkProgress, loop: LoopProgress): MovementKind | null {

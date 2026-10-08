@@ -27,8 +27,6 @@ import { occupantAttacksOnSight } from './mobRules';
 import type { Block, BlockType } from './blocks';
 import type { UiLookup } from './i18n';
 import type { WalkProgress } from './walk';
-import type { LoopProgress } from './loops';
-import { movementOf } from './movement';
 import type { ConnectionState } from './types';
 
 /**
@@ -1192,12 +1190,12 @@ export function vitalNotices(
  * is planned, and one notice per push while it stands is the same figure
  * announced over and over.
  *
- * **A loop never arrives** (2026-09-11). Its legs do, every few seconds — a
- * two-room lap raised one notice and one desktop alert almost every five
- * seconds, which is the client announcing its own footwork. An arrival is *I
- * set off for somewhere and I am there*, and a lap sets off for nowhere. So
- * the loop is handed in and `movementOf` decides: while the movement is the
- * lap, the walk underneath it is the lap's business and says nothing.
+ * **Only a journey the player asked for arrives** (2026-10-07). A lap's legs
+ * arrive every few seconds (a two-room lap raised a notice almost every five
+ * seconds, 2026-09-11), and an errand, a collect, a hunt or a quest step each
+ * walk legs nobody set off on. `WalkProgress.asked` is that fact, decided in
+ * main where the walk is started. The end of a quest run or a gear trip is
+ * the player's own and is said by `planNotices`.
  *
  * `at` is passed rather than read off a clock, so this stays as pure as the
  * rest of the module; the caller stamps it with the moment the push landed.
@@ -1205,34 +1203,29 @@ export function vitalNotices(
 export function walkNotices(
   before: WalkProgress,
   after: WalkProgress,
-  loop: LoopProgress,
   at: number,
   t: UiLookup
 ): Notice[] {
-  /*
-   * The lap is the movement *and* it is going, so this walk is one of its
-   * legs. A lap that is merely stopped silences nothing: the character is
-   * walking somewhere the player asked for, with a lap waiting to be pressed
-   * play on when it gets there.
-   */
-  const { kind, moving } = movementOf(after, loop);
-  if (kind === 'loop' && moving) return [];
+  if (!after.asked) return [];
   if (after.status !== 'arrived' || before.status === 'arrived') return [];
   const text =
     after.destination === null
       ? t('cards.alerts.walk.arrivedSomewhere')
       : t('cards.alerts.walk.arrived', { destination: after.destination });
-  return [
-    {
-      id: `walk${at}`,
-      at,
-      severity: 'info',
-      channel: 'movement',
-      desktop: 'arrived',
-      event: 'arrived',
-      text
-    }
-  ];
+  return [arrivalNotice(`walk${at}`, at, text)];
+}
+
+/** An arrival, however it was reached: the one shape the Arrived row claims. */
+export function arrivalNotice(id: string, at: number, text: string): Notice {
+  return {
+    id,
+    at,
+    severity: 'info',
+    channel: 'movement',
+    desktop: 'arrived',
+    event: 'arrived',
+    text
+  };
 }
 
 /**

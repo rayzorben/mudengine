@@ -15,7 +15,7 @@ import type { Block } from '@shared/blocks';
 import type { CharacterState } from '@shared/character';
 import type { AlertsUiConfig, VitalsUiConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
-import type { LoopProgress } from '@shared/loops';
+import type { GearTripProgress } from '@shared/gearTrip';
 import {
   alertQuiet,
   linkNotices,
@@ -31,6 +31,8 @@ import {
   type AlertQuiet,
   type Notice
 } from '@shared/notifications';
+import { gearTripNotices, questRunNotices } from '@shared/planNotices';
+import type { QuestRunProgress } from '@shared/quests';
 import type { ConnectionState } from '@shared/types';
 import type { WalkProgress } from '@shared/walk';
 
@@ -44,8 +46,12 @@ export interface AlertRaiser {
   link(id: SessionId, was: ConnectionState, now: ConnectionState): Notice[];
   /** A status line, from the character before it to the character after. */
   character(id: SessionId, was: CharacterState, now: CharacterState): Notice[];
-  /** The walk, with the lap it may be the footwork of. */
-  walk(id: SessionId, was: WalkProgress, now: WalkProgress, loop: LoopProgress): Notice[];
+  /** The walk: a journey the player asked for arriving. */
+  walk(id: SessionId, was: WalkProgress, now: WalkProgress): Notice[];
+  /** A quest run, finishing. */
+  questRun(id: SessionId, was: QuestRunProgress, now: QuestRunProgress): Notice[];
+  /** A gear trip, finishing. */
+  gearTrip(id: SessionId, was: GearTripProgress | null, now: GearTripProgress | null): Notice[];
   /** A block, read against the character it happened to. */
   block(id: SessionId, block: Block, character: CharacterState): Notice[];
 }
@@ -143,10 +149,11 @@ export function useAlerts(vitals: VitalsUiConfig, alerts: AlertsUiConfig): Alert
           ...partyNotices(was, now, vitalsRef.current.hp, t)
         ]),
       // The route reaching where it was going: the one piece of good news
-      // kept, because it is the moment somebody who walked away wants. The lap
-      // is handed in because a lap never arrives: while it is the movement,
-      // the walk underneath is its own footwork.
-      walk: (id, was, now, loop) => worth(id, walkNotices(was, now, loop, Date.now(), t)),
+      // kept, because it is the moment somebody who walked away wants. Only a
+      // route the player asked for; a plan they started arrives at its end.
+      walk: (id, was, now) => worth(id, walkNotices(was, now, Date.now(), t)),
+      questRun: (id, was, now) => worth(id, questRunNotices(was, now, Date.now())),
+      gearTrip: (id, was, now) => worth(id, gearTripNotices(was, now, Date.now())),
       block: (id, block, character) => worth(id, [noticeFor(block, t, character)])
     };
   });
