@@ -5685,6 +5685,7 @@ automation:
     abandonedConnectionClosed: the connection closed
     abandonedSwitchedOff: Auto-Buy was turned off
     refusalNotSold: '{shop} does not list {item}'
+    refusalCarried: '{have} carried, keeping at most {max}'
     refusalCannotAfford: '{item} costs {price} copper and you have {wealth}'
     refusalUnreachable: 'could not reach {shop}: {why}'
     refusalNoShop: 'nowhere to buy {item}: {why}'
