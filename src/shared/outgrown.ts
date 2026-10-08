@@ -14,6 +14,7 @@ import {
 } from './abilities';
 import type { ItemEntity } from './entities';
 import { bareName, type ItemKind } from './items';
+import type { Rarity } from './rarity';
 import { nameAnswersTo } from './world';
 
 /** What becomes of an outgrown item: `hide` in the ganghouse, `sell` at a counter, `drop`. */
@@ -28,6 +29,8 @@ export interface OutgrownItem {
   worn: string;
   /** Its base price in copper; null where the realm states none or its rows disagree. */
   copper: number | null;
+  /** How rare the realm makes it; `unknown` where its rows disagree or none is rated. */
+  rarity: Rarity;
 }
 
 /** The command each way sends, as the server reads it (`StashCommand`, `SellCommand`, `DropCommand`). */

@@ -247,7 +247,7 @@ export interface ExtensionSessionHost {
   selling: {
     /**
      * One trip to the counter in `room` (`map/room`) to `sell` each named item,
-     * each name taking its whole stack; its refusal, or null once under way.
+     * each name taking one copy, an unworn one first; its refusal, or null once under way.
      * Every refusal and ending is said.
      */
     sell(ask: SellAsk): string | null;

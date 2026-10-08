@@ -35,7 +35,8 @@ const ITEMS = [
 
 const realm: OutgrownRealm = {
   itemsWornIn: (worn) => ITEMS.filter((item) => item.worn === worn),
-  item: (id) => ITEMS.find((item) => item.id === id)
+  item: (id) => ITEMS.find((item) => item.id === id),
+  rarity: (id) => (id === 5 ? 'rare' : 'common')
 };
 
 const asker = { wearer: UNKNOWN_WEARER, sheet: SHEET, family: 'greatermud' as const, attack: 'a' };
@@ -89,5 +90,23 @@ describe('the gear the character has outgrown', () => {
     const shared = { ...row(1), id: 1, ids: [1, 5] };
     const state = carrying({ ...row(2), equipped: true }, shared);
     expect(outgrownItems(state, realm, asker)[0]?.copper).toBeNull();
+  });
+
+  it("carries the realm's rarity, unknown where the rows a shared name holds disagree", () => {
+    const state = carrying({ ...row(2), equipped: true }, row(1));
+    expect(outgrownItems(state, realm, asker)[0]?.rarity).toBe('common');
+    const shared = carrying({ ...row(2), equipped: true }, { ...row(1), ids: [1, 5] });
+    expect(outgrownItems(shared, realm, asker)[0]?.rarity).toBe('unknown');
+  });
+
+  /* Todo 14: Soul carried 12 spare iron-capped staffs beside the one in hand. */
+  it('is a spare of the item worn', () => {
+    const state = carrying({ ...row(2), equipped: true }, row(2));
+    expect(outgrownItems(state, realm, asker)).toEqual([
+      expect.objectContaining({
+        worn: 'cloth shoes',
+        item: expect.objectContaining({ name: 'cloth shoes' })
+      })
+    ]);
   });
 });

@@ -58,6 +58,16 @@ export interface ItemRarity {
   sources: RaritySource[];
 }
 
+/**
+ * Whether gear may be got rid of: only a common or uncommon item. A rare one,
+ * a limited one (never below rare) and one whose rarity is unknown are kept
+ * whatever the ranking says (todo 14, the user: "as long as they are not
+ * 'rare'").
+ */
+export function sheddable(rarity: Rarity): boolean {
+  return rarity === 'common' || rarity === 'uncommon';
+}
+
 /** The band an hours figure falls in. */
 export function bandOf(hours: number, bounds: RarityThresholds): RarityBand {
   if (hours < bounds.commonHours) return 'common';
