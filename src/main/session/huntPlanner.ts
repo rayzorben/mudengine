@@ -46,9 +46,11 @@ export function huntPlanner(parts: HuntPlannerParts): HuntPlanner {
       const { walker, tracker, travel } = m();
       const refused =
         walker.start(route, tracker.current, { offRounds: run }) ?? travel.stoppedAtStart();
-      return refused !== null || !run ? refused : travel.beginRun();
+      if (refused !== null) return refused;
+      const off = run ? travel.beginRun() : false;
+      return typeof off === 'string' ? off : { combatOff: off };
     },
-    combatOnAfterRun: () => m().travel.combatOnAfterRun(),
+    combatOnAfterRun: (arrived) => m().travel.combatOnAfterRun(arrived),
     runLoop: (loop) => {
       const answer = m().travel.startLoop(loop);
       return 'refused' in answer ? answer.refused : null;

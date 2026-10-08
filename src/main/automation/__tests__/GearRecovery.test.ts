@@ -187,6 +187,19 @@ describe('noticing the strip', () => {
     expect(walked).toHaveLength(1);
   });
 
+  it('ends a trip under way when it is switched off, and says so', () => {
+    const auto = make();
+    auto.onCharacter(stripped());
+    expect(auto.busy).toBe(true);
+    auto.configure({ ...movement(), recoverGear: false }, true);
+    expect(auto.busy).toBe(false);
+    expect(notices.at(-1)).toBe(
+      t('automation.gearRecovery.refused', {
+        refused: t('automation.gearRecovery.refusalSwitchedOff')
+      })
+    );
+  });
+
   it('holds nothing while switched off', () => {
     const auto = make(movement({ recoverGear: false }));
     auto.onCharacter(stripped());

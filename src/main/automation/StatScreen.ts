@@ -36,13 +36,14 @@ export interface StatScreenPlanner {
   atTrainer(): boolean;
   /**
    * The figures to aim at where points go where they raise the exp rate most
-   * (`train.pick: exp`, todo 83), and the stat chosen with what it was worth.
+   * (`train.pick: exp`, todo 83), and the stat chosen with what it was worth;
+   * null while the fight odds the weighing reads are still being worked out.
    */
   byExp(
     state: CharacterState,
     current: Record<TrainedAttribute, number>,
     limits: Record<TrainedAttribute, StatLimits>
-  ): { wanted: Record<TrainedAttribute, number>; chose: StatGain | null };
+  ): { wanted: Record<TrainedAttribute, number>; chose: StatGain | null } | null;
   /** Bytes straight to the wire, past the held queue: the one exemption. */
   write(bytes: string): void;
 }
@@ -239,6 +240,8 @@ export function echoesStatScreenAsk(block: Pick<Block, 'type' | 'text'>): boolea
 
 export class StatScreen implements SessionModule {
   private phase: Phase = { kind: 'idle' };
+  /** The wait for the fight odds is said once a wait. */
+  private oddsSaid = false;
   /** The `train stats` this proposed and has not yet seen answered. */
   private proposed = false;
   /** The last situation acted on or declined, so one situation is one attempt and one sentence. */
@@ -267,6 +270,7 @@ export class StatScreen implements SessionModule {
     this.phase = { kind: 'idle' };
     this.proposed = false;
     this.handled = null;
+    this.oddsSaid = false;
     this.aimed = null;
   }
 
@@ -339,7 +343,21 @@ export class StatScreen implements SessionModule {
         this.decide(false, t('automation.train.whyByExpUnread'), cp);
         return;
       }
-      const { wanted, chose } = this.planner.byExp(state, sheet.current, sheet.limits);
+      const weighed = this.planner.byExp(state, sheet.current, sheet.limits);
+      /*
+       * Weighed before the fight odds are run, the survey priced one spot and
+       * no stat was worth a point, and that stood for the level (2026-10-06:
+       * Soul kept 15 CP at level 16; with the odds run, Agility was worth
+       * 5,106 an hour). Not filed as handled, so a later line weighs it.
+       */
+      if (weighed === null) {
+        this.handled = null;
+        if (!this.oddsSaid) this.events.notice?.(t('automation.train.byExpWaiting', { cp }));
+        this.oddsSaid = true;
+        return;
+      }
+      this.oddsSaid = false;
+      const { wanted, chose } = weighed;
       this.aimed = wanted;
       if (chose === null) {
         this.events.notice?.(t('automation.train.byExpNothing', { cp }));

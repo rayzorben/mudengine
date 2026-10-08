@@ -585,7 +585,7 @@ export class Travel implements SessionModule {
     }
     // Arrived, the choice to cross is spent: see `crossing`.
     if (arrived && this.walkAsked) this.crossing = null;
-    if (arrived && this.walkAsked && this.walkRun) this.combatOnAfterRun();
+    if (arrived && this.walkAsked && this.walkRun) this.combatOnAfterRun(true);
     this.clearFor(null);
     this.walkAsked = false;
     this.walkRun = false;
@@ -594,15 +594,20 @@ export class Travel implements SessionModule {
 
   /**
    * *Run it* is off for the way there (the user, 2026-10-03): the arrival
-   * turns auto-combat on, and a run stopped short leaves it off.
+   * turns auto-combat on, and the player's run stopped short leaves it off.
+   * A hunt's run that turned it off gives it back however it ended (`AutoHunt.idle`).
    */
-  combatOnAfterRun(): void {
+  combatOnAfterRun(arrived: boolean): void {
     if (this.session.config().combat.enabled) return;
-    this.session.notice(
-      this.session.switchAutomation('combat', true)
-        ? t('automation.combat.onAfterRun')
-        : t('automation.combat.onAfterRunRefused')
-    );
+    const on = this.session.switchAutomation('combat', true);
+    if (arrived)
+      this.session.notice(
+        on ? t('automation.combat.onAfterRun') : t('automation.combat.onAfterRunRefused')
+      );
+    else
+      this.session.notice(
+        on ? t('automation.combat.onAfterRunEnded') : t('automation.combat.onAfterRunEndedRefused')
+      );
   }
 
   /** Whether the walk in progress is one the player asked for. */
@@ -1939,7 +1944,8 @@ export class Travel implements SessionModule {
     const last = route.steps.at(-1);
     this.crossing = last === undefined ? null : { to: last.to, words: crossedWords(route) };
     this.clearFor(route);
-    return run ? this.beginRun() : null;
+    const off = run ? this.beginRun() : false;
+    return typeof off === 'string' ? off : null;
   }
 
   /** Null where the walk `Walker.start` just answered for is going; otherwise why it stopped inside `start`. */
@@ -1952,12 +1958,12 @@ export class Travel implements SessionModule {
   /**
    * The walk just started is a run: auto-combat off for the way, and the walk
    * stopped, with the reason, where the file will not take the write. The one
-   * way a run begins, the player's and the hunt's (todo 15).
+   * way a run begins, the player's and the hunt's (todo 15). As
+   * `combatOffForRun`: whether this run turned the switch off, or the refusal.
    */
-  beginRun(): string | null {
+  beginRun(): boolean | string {
     const off = this.combatOffForRun();
-    if (typeof off !== 'string') return null;
-    this.walker.stop(off);
+    if (typeof off === 'string') this.walker.stop(off);
     return off;
   }
 

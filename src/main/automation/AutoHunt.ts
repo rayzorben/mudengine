@@ -54,9 +54,9 @@ export interface HuntPlanner {
    * nothing at all is a character walking across the realm with the
    * Navigation card saying *stopped*.
    */
-  walk(route: Route, run: boolean): string | null;
+  walk(route: Route, run: boolean): string | { combatOff: boolean };
   /** Auto-combat back on where a run turned it off for the way (`Travel.combatOnAfterRun`). */
-  combatOnAfterRun(): void;
+  combatOnAfterRun(arrived: boolean): void;
   /** Runs a loop that is filed nowhere. Returns a refusal, or null. */
   runLoop(loop: Loop): string | null;
   /**
@@ -102,7 +102,7 @@ interface Target {
   start: HuntingRoom;
   expected: number | null;
   copper: number | null;
-  /** Walked there as a run: combat off for the way, on again at the spot (`HuntOrder.run`). */
+  /** Walked there as a run: combat off for the way, on again when the walk ends (`HuntOrder.run`). */
   run: boolean;
 }
 
@@ -111,7 +111,7 @@ type Steer = string | HuntOrder | null | undefined;
 
 type Phase =
   | { kind: 'idle' }
-  | { kind: 'walking'; to: RoomId; target: Target }
+  | { kind: 'walking'; to: RoomId; target: Target; combatOff: boolean }
   | {
       kind: 'hunting';
       key: string;
@@ -247,10 +247,8 @@ export class AutoHunt implements SessionModule {
      * lap a different realm stopped is let go there. The measurement starts over
      * from the first line back, as the lap's own rate does.
      */
-    this.phase =
-      this.phase.kind === 'hunting'
-        ? { ...this.phase, from: null, saidCompany: false }
-        : { kind: 'idle' };
+    if (this.phase.kind !== 'hunting') this.idle();
+    else this.phase = { ...this.phase, from: null, saidCompany: false };
     this.said = null;
     this.simulating = false;
     this.judgedFor = null;
@@ -914,12 +912,12 @@ export class AutoHunt implements SessionModule {
      * being on is the consent — so what is owed is the same figure, said,
      * before the character sets off. See `decisions.md`.
      */
-    const refused = this.planner.walk(route, target.run);
-    if (refused !== null) {
-      this.refuse(t('automation.hunt.refusalSetOff', { room: first.name, why: refused }));
+    const walk = this.planner.walk(route, target.run);
+    if (typeof walk === 'string') {
+      this.refuse(t('automation.hunt.refusalSetOff', { room: first.name, why: walk }));
       return;
     }
-    this.phase = { kind: 'walking', to: first.id, target };
+    this.phase = { kind: 'walking', to: first.id, target, combatOff: walk.combatOff };
     // Said once the walk is actually going: a refusal used to arrive under
     // *Walking 40 steps to …*, which is the client narrating what it did not do.
     const far = route.steps.length > tuning().walk.resumeAskSteps;
@@ -942,8 +940,9 @@ export class AutoHunt implements SessionModule {
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     if (this.phase.kind !== 'walking') return;
     const { to, target } = this.phase;
-    this.idle();
-    if (!arrived || this.planner.here() !== to) {
+    const reached = arrived && this.planner.here() === to;
+    this.idle(reached);
+    if (!reached) {
       this.refuse(
         t('automation.hunt.refusalNotReached', {
           room: target.start.name,
@@ -952,7 +951,6 @@ export class AutoHunt implements SessionModule {
       );
       return;
     }
-    if (target.run) this.planner.combatOnAfterRun();
     this.start(target, state);
   }
 
@@ -986,9 +984,17 @@ export class AutoHunt implements SessionModule {
     });
   }
 
-  /** Nothing hunted: the lap's monsters, if one was, go back to the engage policy. */
-  private idle(): void {
+  /**
+   * Nothing hunted: the lap's monsters, if one was, go back to the engage
+   * policy, and a run that turned the switch off gives it back however its
+   * walk ended; a switch the player had off stays off. Left off, every walk after a run cut short by a death went
+   * out unable to hit back (2026-10-07: Vaelor died three times on Slum
+   * Street, Soul stood under a moaning spirit until dead).
+   */
+  private idle(arrived = false): void {
     if (this.phase.kind === 'hunting') this.planner.fightFor([]);
+    if (this.phase.kind === 'walking' && this.phase.combatOff)
+      this.planner.combatOnAfterRun(arrived);
     this.phase = { kind: 'idle' };
   }
 
