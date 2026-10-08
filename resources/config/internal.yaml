@@ -380,6 +380,15 @@ tuning:
     # How many times it is asked again before the client gives up and says so.
     unreadRetries: 3
 
+    # How old the pack (i), the sheet (st) and exp may get before each is
+    # asked again. A sentence the client misreads stays wrong until the next
+    # i or st replaces it. Asked in the lowest band, never during a fight.
+    packRefreshMs: 120000
+
+    sheetRefreshMs: 300000
+
+    experienceRefreshMs: 300000
+
     # How long a command the server threw away waits before it is sent again.
     #
     # `You fumble in confusion!` is the server discarding whatever was sent

@@ -342,21 +342,32 @@ export function withEquipped(
 }
 
 /**
- * A readied light's charge, restated by a sentence rather than a listing.
+ * A readied light burnt out: the server destroyed it.
  *
- * `Your torch flickers and goes out.` is the count reaching zero: the torch is
- * still readied and still carried, and `(Readied/0)` is what the next `i`
- * would print. Only the equipped instance is touched — a spare torch in the
- * pack is a different torch — and an item nothing equipped answers to is left
- * alone rather than guessed at.
+ * `TickLightSources` prints the light's destruct message (`Your torch
+ * flickers and goes out.`), then unequips the readied slot and poofs the item
+ * whatever the item is. Paradigm agrees on the wire: `remove torch` behind the
+ * sentence is `Your command had no effect.` (rayzor, 2026-10-07 and -08, three
+ * times) and the next `i` lists one torch fewer. Kept as a spent torch, the
+ * second burnout of a session marked the gone one out again and left the lit
+ * one burning in the client's eyes, so nothing was lit for 18 minutes.
+ *
+ * The equipped instance by the server's name, else the one equipped row the
+ * listing put in `Readied` (`lamp` is not `lantern`, but only one thing sits
+ * in that slot). Neither found, nothing moves.
  */
-export function withCharges(state: CharacterState, item: string, charges: number): CharacterState {
+export function withoutReadied(state: CharacterState, item: string): CharacterState {
   const items = state.inventory.items;
-  const at = items.findIndex((held) => held.equipped && sameItem(held.name, item));
+  let at = items.findIndex((held) => held.equipped && sameItem(held.name, item));
+  if (at === -1) {
+    const readied = items.flatMap((held, index) =>
+      held.equipped && held.slot === 'Readied' ? [index] : []
+    );
+    if (readied.length === 1) at = readied[0]!;
+  }
   if (at === -1) return state;
-  if (items[at]!.charges === charges) return state;
-  const changed = items.map((held, index) => (index === at ? { ...held, charges } : held));
-  return { ...state, inventory: { ...state.inventory, items: changed } };
+  const kept = items.filter((_, index) => index !== at);
+  return { ...state, inventory: { ...state.inventory, items: kept } };
 }
 
 /**

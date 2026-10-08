@@ -616,10 +616,10 @@ export type BlockType =
   /**
    * `Your torch flickers and goes out.` — a readied light has burnt down.
    * Captured live (2026-09-03, festus) and, as `Your lamp runs out of oil, and
-   * goes out.`, in the corpus. Its own type rather than a removal: the torch
-   * is still readied and still in the pack, and what changed is that it gives
-   * no light, which is the `charges: 0` the listing would print as
-   * `(Readied/0)`.
+   * goes out.`, in the corpus. Its own type rather than a removal: it names
+   * no slot and no count, and the server has destroyed the readied light
+   * (`TickLightSources`), so the pack loses the equipped instance, never a
+   * spare.
    */
   | 'light-out'
   | 'user-buys'

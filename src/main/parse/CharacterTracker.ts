@@ -1852,10 +1852,10 @@ export class CharacterTracker {
       }
 
       /*
-       * The readied light burnt down. Still readied, still carried, and giving
-       * nothing — the `(Readied/0)` the listing would print, stated by the
-       * sentence so `AutoLight` can ready the next one without waiting for an
-       * `i`. See `withCharges`.
+       * The readied light burnt down, and the server destroyed it with the
+       * sentence: gone from the slot and the pack, so `AutoLight` sees the
+       * spare torches as the lights left and readies the next one without
+       * waiting for an `i`. See `withoutReadied`.
        */
       case 'light-out':
         return lightOut(s, g['item']);

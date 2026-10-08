@@ -5881,6 +5881,7 @@ automation:
     reasonEnterRealm: entering the realm, or automation switched on
     reasonUnread: 'no answer yet from entering the realm'
     reasonIdle: idle
+    reasonAged: checked again after a few minutes
     reasonPartyChanged: the party changed
     reasonPar: Par Frequency
     reasonLookAtPlayer: Looking at someone this character has not seen before

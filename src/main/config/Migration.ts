@@ -6836,6 +6836,9 @@ function theTuningBlockGainedKeys(
     // The worker threads that run the odds book's and the blessing choice's fights (2026-10-06).
     addKey('menace', 'simulatorThreads', DEFAULT_INTERNAL.tuning.menace.simulatorThreads);
     addKey('hunting', 'speedShare', DEFAULT_INTERNAL.tuning.hunting.speedShare);
+    // How old each listing may get before it is asked again (2026-10-08).
+    for (const key of ['packRefreshMs', 'sheetRefreshMs', 'experienceRefreshMs'] as const)
+      addKey('queue', key, DEFAULT_INTERNAL.tuning.queue[key]);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

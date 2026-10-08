@@ -34,7 +34,7 @@ import type { Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
 import type { WorldSpell } from '../../shared/world';
 import type { WorldGraph } from '../world/WorldGraph';
-import { withCharges, withoutItem } from './inventory';
+import { withoutItem, withoutReadied } from './inventory';
 import { STATUS_LINE } from './patterns';
 
 type Groups = Block['groups'];
@@ -581,10 +581,10 @@ export function encumbranceStated(s: CharacterState, g: Groups): CharacterState 
   };
 }
 
-/** `light-out`: the readied light gives nothing now. Null when nothing moved. */
+/** `light-out`: the readied light is gone from the pack. Null when nothing moved. */
 export function lightOut(s: CharacterState, item: string | undefined): CharacterState | null {
   if (!item) return null;
-  const next = withCharges(s, item, 0);
+  const next = withoutReadied(s, item);
   return next === s ? null : next;
 }
 

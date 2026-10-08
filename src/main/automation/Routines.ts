@@ -51,7 +51,7 @@ import { PARTY_LISTING_KEY, PartyListing } from './PartyListing';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { AutomationConfig } from '../../shared/config';
-import type { CharacterState } from '../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
 import {
   isStaleSentence,
@@ -66,6 +66,7 @@ import { SET_STATLINE } from '../../shared/statline';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 import { StaleFacts } from './StaleFacts';
+import { AgedFacts } from './AgedFacts';
 
 export interface RoutineEvents {
   notice?(message: string): void;
@@ -156,6 +157,8 @@ export class Routines implements SessionModule {
   private readonly partyListing: PartyListing;
   /** What a sentence made stale, asked until a send carries it. */
   private readonly stale: StaleFacts;
+  /** What `i`, `st` or `exp` answered a while ago. */
+  private readonly aged = new AgedFacts();
 
   constructor(
     private config: AutomationConfig,
@@ -191,6 +194,7 @@ export class Routines implements SessionModule {
     this.inRealm = false;
     this.partyListing.reset();
     this.stale.reset();
+    this.aged.reset();
     this.stopIdle();
   }
 
@@ -322,7 +326,12 @@ export class Routines implements SessionModule {
      */
     this.askRoster();
     this.askUnread();
-    if (this.config.enabled) this.stale.ask();
+    if (this.config.enabled) {
+      // An old listing waits for the fight to end; what is already owed does not.
+      const aged = fightIsRunning(state) ? [] : this.aged.due(Date.now());
+      if (aged.length > 0) this.stale.owe(aged, t('automation.routines.reasonAged'));
+      else this.stale.ask();
+    }
     // And the party listing on its clock (todo 831).
     this.partyListing.onCharacter(state);
   }
@@ -578,6 +587,7 @@ export class Routines implements SessionModule {
   onBlock(block: Block): void {
     for (const fact of readBy(block.type)) this.read.add(fact);
     this.stale.answered(block.type);
+    this.aged.answered(block.type, Date.now());
     if (!this.config.enabled) return;
     if (block.type === 'spellbook-refused') {
       const book = block.groups?.['book'];
