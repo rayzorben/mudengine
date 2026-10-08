@@ -623,6 +623,16 @@ export class EffectTracker {
   }
 
   /**
+   * A block's transition, read for causes. A death ends every effect and
+   * condition in one line, which says nothing about which caused which, so
+   * what was half-learned goes with them instead (`leaveRealm`).
+   */
+  transition(type: Block['type'], before: CharacterState, after: CharacterState, at: number): void {
+    if (type === 'user-dies') this.leaveRealm();
+    else this.deduceCauses(before, after, at);
+  }
+
+  /**
    * What an effect nothing can name turns out to *do*.
    *
    * The client already reads this for a named spell, from the realm's own

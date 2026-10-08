@@ -24,7 +24,7 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { countThreats } from '../RuleEngine';
 import type { WalkClock } from './clock';
-import type { WalkerEvents, WalkInFlight } from './ports';
+import { isLeverPull, type IntentFilter, type WalkerEvents, type WalkInFlight } from './ports';
 
 /** What the holds ask of the walk they stand still, answered by `Walker`. */
 export interface HoldsWalk extends Pick<
@@ -39,8 +39,8 @@ export interface HoldsWalk extends Pick<
   carryOn(state: CharacterState): void;
   /** The journey planned again from `here`: carried on, arrived, or stopped. */
   onward(state: CharacterState, here: RoomId): void;
-  /** Every movement command not yet on the wire, taken back. */
-  cancelQueued(): void;
+  /** Every movement command not yet on the wire, taken back, but what `sparing` keeps. */
+  cancelQueued(sparing?: IntentFilter): void;
 }
 
 export type HoldsEvents = Pick<
@@ -615,9 +615,9 @@ export class Holds {
        * Anything still queued goes with it, for `Walker.stop`'s reason: a movement
        * intent that reaches the wire mid-round walks the character out of a
        * fight it is in. What has already gone cannot be recalled, which is
-       * what `resumeFromFight` waits for.
+       * what `resumeFromFight` waits for. A lever is kept: it moves nobody.
        */
-      this.walk.cancelQueued();
+      this.walk.cancelQueued(isLeverPull);
       this.hold = 'fight';
       this.walk.publish();
     }

@@ -5065,7 +5065,8 @@ describe('a way something else opens', () => {
    */
   const withLevers = (
     levers: readonly RemoteLever[],
-    plans: Record<string, Route | string> = {}
+    plans: Record<string, Route | string> = {},
+    willFight?: () => boolean
   ): {
     walk: Walker;
     /** Every room a route was asked for, and every edge written off. */
@@ -5096,7 +5097,8 @@ describe('a way something else opens', () => {
           return plans[`${from}->${to}`] ?? 'no route';
         },
         refused: (from, direction, why) => asked.push(`refused:${from}|${direction}:${why}`),
-        ended: (arrived, reason) => ends.push([arrived, reason])
+        ended: (arrived, reason) => ends.push([arrived, reason]),
+        ...(willFight === undefined ? {} : { willFight })
       }
     );
     return {
@@ -5146,6 +5148,59 @@ describe('a way something else opens', () => {
     expect(moves(sent)).toEqual(['e', 'open e', 'w', 'pull lever', 'e']);
     expect(asked).toEqual(['1/9', '1/2']);
     expect(walk.progress.status).toBe('walking');
+    walk.dispose();
+  });
+
+  /*
+   * 2026-10-07, Soul in the labyrinth: three levers in the Dead End, queued
+   * before the way back was drawn, and the redraw dropped the two not yet
+   * sent. Only `turn sun right` went, and the passage stayed shut.
+   */
+  it('pulls every lever in the room before the way back, not only the one already sent', () => {
+    const three = ['turn sun right', 'push moon', 'push star'].map((say) => ({ ...LEVER, say }));
+    const { walk, arrive } = withLevers(three, { '1/9': TO_LEVER, '1/2': BACK });
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    arrive(9);
+    vi.advanceTimersByTime(config.pacing.ackTimeoutMs * 3 + 200);
+    expect(moves(sent)).toEqual([
+      'e',
+      'open e',
+      'w',
+      'turn sun right',
+      'push moon',
+      'push star',
+      'e'
+    ]);
+    walk.dispose();
+  });
+
+  /* And a fight in the lever room holds the step out, never the levers: a lever moves nobody. */
+  it('pulls every lever in the room when a fight holds the step back', () => {
+    const three = ['turn sun right', 'push moon', 'push star'].map((say) => ({ ...LEVER, say }));
+    const { walk, arrive } = withLevers(three, { '1/9': TO_LEVER, '1/2': BACK }, () => true);
+    walk.start(GATED, at(1, 1));
+    walk.onBlock(block('direction-failed', { barrier: 'gate' }));
+    vi.advanceTimersByTime(200);
+    walk.onBlock(block('open-failed', { barrier: 'gate', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    // The levers are queued on arriving, and the queue's window is shut; then something attacks.
+    arrive(9);
+    walk.onCharacter(at(1, 9, { inCombat: true }));
+    expect(walk.progress.hold).toBe('fight');
+    vi.advanceTimersByTime(config.pacing.ackTimeoutMs * 3 + 200);
+    // What the hold's own re-ask sends later is its business; the levers all go first.
+    expect(moves(sent).slice(0, 6)).toEqual([
+      'e',
+      'open e',
+      'w',
+      'turn sun right',
+      'push moon',
+      'push star'
+    ]);
     walk.dispose();
   });
 

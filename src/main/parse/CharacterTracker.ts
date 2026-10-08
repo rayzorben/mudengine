@@ -873,8 +873,8 @@ export class CharacterTracker {
     if (tally !== this.state.tally) this.belongings.rememberStats(tally);
     // Folded from the same place and for the same reason `trackPlayers` is: a
     // condition can move in any of a dozen cases, and this reads the
-    // transition rather than any one of them. See `EffectTracker.deduceCauses`.
-    this.effects.deduceCauses(before, base, block.at);
+    // transition rather than any one of them. See `EffectTracker.transition`.
+    this.effects.transition(block.type, before, base, block.at);
     const idle = !next && base === this.state && tally === this.state.tally;
     if (!idle) this.state = { ...base, tally, updatedAt: block.at };
     this.company.remember(known, block.type === 'room-exits');

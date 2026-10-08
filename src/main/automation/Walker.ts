@@ -73,7 +73,7 @@ import { countMobs } from './RuleEngine';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 import { WalkClock } from './walk/clock';
-import type { WalkerEvents, WalkInFlight } from './walk/ports';
+import type { IntentFilter, WalkerEvents, WalkInFlight } from './walk/ports';
 import { Holds } from './walk/Holds';
 import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
 import { Levers } from './walk/Levers';
@@ -264,7 +264,7 @@ export class Walker implements SessionModule {
         recheck: (state) => this.onCharacter(state),
         carryOn: (state) => this.carryOn(state),
         onward: (state, here) => this.onward(state, here),
-        cancelQueued: () => this.cancelQueued()
+        cancelQueued: (sparing) => this.cancelQueued(sparing)
       },
       this.clock
     );
@@ -272,7 +272,7 @@ export class Walker implements SessionModule {
       ...inFlight,
       kind: () => this.kind,
       destination: () => this.route?.steps.at(-1),
-      detour: (route, state) => this.detour(route, state)
+      detour: (route, state, ahead) => this.detour(route, state, ahead)
     });
     this.barriers = new Barriers(
       config,
@@ -1470,9 +1470,10 @@ export class Walker implements SessionModule {
     this.redraw(replanned, state);
   }
 
-  /** A fresh plan in place of this one, from its first step: the old one's step still queued goes. */
-  private redraw(route: Route, state: CharacterState): void {
+  /** A fresh plan in place of this one, from its first step: the old one's queued step goes, `ahead` before the new. */
+  private redraw(route: Route, state: CharacterState, ahead?: () => void): void {
     this.cancelQueued();
+    ahead?.();
     this.walked += this.index;
     this.route = route;
     this.index = 0;
@@ -1481,14 +1482,13 @@ export class Walker implements SessionModule {
 
   /**
    * A lever errand's plan in place of this one. Its first step is not behind
-   * the old door: the ladder, the lock and the rounds run at it all belong to
-   * the step being left behind, so they are forgotten here rather than left
-   * to `sendCurrent`, which `carryOn` may hold.
+   * the old door: the ladder, the lock and the rounds run at it belong to the
+   * step left behind, forgotten here, not left to `sendCurrent` (`carryOn` may hold).
    */
-  private detour(route: Route, state: CharacterState): void {
+  private detour(route: Route, state: CharacterState, ahead?: () => void): void {
     this.barriers.forget();
     this.barriers.passed();
-    this.redraw(route, state);
+    this.redraw(route, state, ahead);
   }
 
   /**
@@ -1860,11 +1860,11 @@ export class Walker implements SessionModule {
     this.queue.cancel((intent) => intent.coalesceKey === NUDGE_KEY);
   }
 
-  private cancelQueued(): void {
+  private cancelQueued(sparing: IntentFilter = () => false): void {
     // Anything not yet on the wire is still revisable; that is the point of the
     // queue. What has already gone cannot be recalled, and pretending otherwise
     // is how a "stopped" walk takes one more step.
-    this.queue.cancel((intent) => intent.priority === 'movement');
+    this.queue.cancel((intent) => intent.priority === 'movement' && !sparing(intent));
     this.forgetNudge();
   }
 

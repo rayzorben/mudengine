@@ -8,6 +8,7 @@
  */
 import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
+import type { Intent } from '../CommandQueue';
 import type {
   Direction,
   Landing,
@@ -298,3 +299,16 @@ export interface WalkInFlight {
   /** The step again unless a hold (a fight, health, a rest) takes the walk first. */
   stepWhenFree(): void;
 }
+
+/** Which queued intents a cancel keeps. */
+export type IntentFilter = (intent: Pick<Intent, 'coalesceKey'>) => boolean;
+
+/**
+ * The prefix of a lever command's coalescing key, new for every pull so none
+ * joins another (`Levers.pull`). The fight hold's cancel spares it: a lever
+ * moves nobody, and one dropped leaves the gate shut (2026-10-07, the
+ * labyrinth's three).
+ */
+export const LEVER_PULL = 'lever-pull:';
+export const isLeverPull: IntentFilter = (intent) =>
+  intent.coalesceKey?.startsWith(LEVER_PULL) === true;

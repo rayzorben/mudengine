@@ -23,7 +23,7 @@ import type { WalkKind } from '../../../shared/walk';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { CommandQueue } from '../CommandQueue';
-import type { WalkerEvents, WalkInFlight } from './ports';
+import { LEVER_PULL, type WalkerEvents, type WalkInFlight } from './ports';
 
 /** What the lever errand asks of the walk it interrupts, answered by `Walker`. */
 export interface LeversWalk extends Pick<WalkInFlight, 'quiet' | 'stop' | 'stepAgain'> {
@@ -31,8 +31,12 @@ export interface LeversWalk extends Pick<WalkInFlight, 'quiet' | 'stop' | 'stepA
   kind(): WalkKind;
   /** The journey's last step: where an errand comes back to. */
   destination(): RouteStep | undefined;
-  /** `route` in place of the plan, at a fresh step, and carried on from there. */
-  detour(route: Route, state: CharacterState): void;
+  /**
+   * `route` in place of the plan, at a fresh step, and carried on from there.
+   * `ahead` is queued after the old plan's unsent commands are dropped and
+   * before the first step: the levers pulled where the route begins.
+   */
+  detour(route: Route, state: CharacterState, ahead?: () => void): void;
 }
 
 export type LeversEvents = Pick<
@@ -88,6 +92,8 @@ export class Levers {
    * errand a fight interrupted (`suspended`), whose gate is still being opened.
    */
   private detoured = new Set<string>();
+  /** Lever commands queued, for each one's own key (`LEVER_PULL`). */
+  private pulls = 0;
   /**
    * The errands a stopped walk was on, and the journey's own destination, kept
    * for the next walk there. A loop's leg ends at every fight and the loop
@@ -255,15 +261,10 @@ export class Levers {
     if (!openableHere(need)) return false;
     if (this.levered >= tuning().walk.leverTries) return false;
     this.levered += 1;
-    for (const act of need!.actions!) {
-      const phrase = act.say[0];
-      if (phrase === undefined) continue;
-      this.queue.enqueue({
-        command: phrase,
-        priority: 'movement',
-        reason: t('automation.walk.reasonLever', { stepName: step.name, phrase })
-      });
-    }
+    this.pull(
+      need!.actions!.flatMap((act) => act.say.slice(0, 1)),
+      step.name
+    );
     // And the step again behind them, as `search` and `open` both do.
     // `Walker.sendCurrent` re-arms the deadline so the walk does not time out on the
     // levers' own round trip.
@@ -359,7 +360,10 @@ export class Levers {
     const here = rooms.get(step.from);
     if (here !== undefined) {
       this.detoured.add(key);
-      this.pull(here, step.name);
+      this.pull(
+        here.map((lever) => lever.say),
+        step.name
+      );
       this.walk.stepAgain();
       return true;
     }
@@ -415,13 +419,14 @@ export class Levers {
     return true;
   }
 
-  /** Queues each lever in the room the character is standing in. */
-  private pull(levers: readonly RemoteLever[], stepName: string): void {
-    for (const lever of levers) {
+  /** Queues each lever phrase, in order, in the room the character is standing in. */
+  private pull(phrases: readonly string[], stepName: string): void {
+    for (const phrase of phrases) {
       this.queue.enqueue({
-        command: lever.say,
+        command: phrase,
         priority: 'movement',
-        reason: t('automation.walk.reasonLever', { stepName, phrase: lever.say })
+        coalesceKey: `${LEVER_PULL}${(this.pulls += 1)}`,
+        reason: t('automation.walk.reasonLever', { stepName, phrase })
       });
     }
   }
@@ -458,13 +463,7 @@ export class Levers {
      * strictly worse than one command spent mid-round. The **step** that
      * follows is held the ordinary way, by `Walker.carryOn`.
      */
-    for (const phrase of done.say) {
-      this.queue.enqueue({
-        command: phrase,
-        priority: 'movement',
-        reason: t('automation.walk.reasonLever', { stepName: errand.backName, phrase })
-      });
-    }
+    const pull = (): void => this.pull(done.say, errand.backName);
 
     /*
      * The next lever room, or the journey the errand interrupted. Both are
@@ -493,6 +492,7 @@ export class Levers {
       return true;
     }
     if (on.steps.length === 0) {
+      pull();
       /*
        * Nowhere to walk.
        *
@@ -518,8 +518,11 @@ export class Levers {
     // arriving is its arrival, or the journey's where there is none.
     if (next === undefined) this.errands.pop();
     // The way on starts at a fresh step, and the gate the errand was for is
-    // several steps ahead rather than one command away.
-    this.walk.detour(on, state);
+    // several steps ahead rather than one command away. The levers go in
+    // after the old plan's unsent commands are dropped: queued before, the
+    // redraw cancelled all but the first (2026-10-07, Soul sent `turn sun
+    // right` of three and the labyrinth stayed shut).
+    this.walk.detour(on, state, pull);
     return true;
   }
 
