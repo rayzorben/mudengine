@@ -287,6 +287,27 @@ describe('a spell the world database says has no effect', () => {
     expect(notices).toHaveLength(1);
   });
 
+  it('says it once per monster for the connection', () => {
+    const { spells, notices } = unit('');
+    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    spells.fightEnded();
+    // Still ruled out on the next fight with one, without saying it again.
+    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(notices).toHaveLength(1);
+    // Another monster is said once in its turn.
+    expect(
+      spells.opening(fighting, { ...zombie(true), name: 'small zombie' }, 'in the room')
+    ).toBeNull();
+    expect(notices).toEqual([
+      t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'big zombie' }),
+      t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'small zombie' })
+    ]);
+    // A new connection says it again.
+    spells.reset();
+    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(notices).toHaveLength(3);
+  });
+
   it('casts the fallback instead where one is set', () => {
     const { spells } = unit('hamm');
     expect(spells.opening(fighting, zombie(true), 'in the room')?.command).toBe('hamm big zombie');

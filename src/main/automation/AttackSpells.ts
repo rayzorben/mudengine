@@ -125,6 +125,8 @@ export class AttackSpells {
   private readonly instant = new Set<string>();
   /** Spells the server has said have no effect on the book's monster, by `keyOf`. */
   private readonly ineffective = new Set<string>();
+  /** Spell and monster pairs already said to be ruled out before a cast, for this connection. */
+  private readonly saidNoEffect = new Set<string>();
   /** Confirmed casts against the book's monster, by `keyOf` — the caps. */
   private readonly casts = new Map<string, number>();
   /** The character's spellbook as of the last state handed in: what `keyOf` resolves against. */
@@ -172,6 +174,7 @@ export class AttackSpells {
   reset(): void {
     this.fightEnded();
     this.instant.clear();
+    this.saidNoEffect.clear();
     this.drain.reset();
     this.saidChoice = null;
     this.saidChoiceRefusal = null;
@@ -559,14 +562,17 @@ export class AttackSpells {
    * Whether `spell` is ruled out on `target`: refused on it this fight, or
    * one the world database (`spellReaches`) or the server on an earlier
    * fight says has no effect on it, which this records for the fight and
-   * says once, since the server would answer it so and break the fight
-   * (`BreakCombat(false)`).
+   * says once per monster for the connection, since the server would answer
+   * it so and break the fight (`BreakCombat(false)`).
    */
   private ruledOut(spell: string, target: SpellTarget): boolean {
     if (this.ineffective.has(this.keyOf(spell))) return true;
     const known = this.knownNoEffect(spell, target);
     if (known === null) return false;
     this.ineffective.add(this.keyOf(spell));
+    const pair = `${this.keyOf(spell)}\u0000${mobKey(target.name)}`;
+    if (this.saidNoEffect.has(pair)) return true;
+    this.saidNoEffect.add(pair);
     this.events.notice?.(
       known === 'world'
         ? t('automation.combat.spellNoEffectKnown', { spell, target: target.name })
