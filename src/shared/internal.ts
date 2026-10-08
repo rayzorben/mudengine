@@ -2196,17 +2196,18 @@ const TUNING_DEFAULTS = {
      * the rounds spent inside (`passRounds`), as a share of the health the
      * character has *now*. The step costs `dangerCost × share / (1 − share)`:
      * a tenth of the bar costs about two doors, a quarter about five, a half
-     * this figure, and the price climbs without bound as a pass approaches
-     * the whole bar — up to `deadlyShare`, where it is a wall. Two hundred is
-     * about what resting half a bar back takes, in commands: `HPRegen`, three
-     * times over, every fifteen seconds (docs/greatermud/player-and-world.md).
+     * this figure, and the price climbs as a pass approaches the whole bar,
+     * up to `nearWallCost` at `deadlyShare`. Used where the lair's fight has
+     * not been run; a run fight prices the room as a run (`runDeathCost`).
+     * Two hundred is about what resting half a bar back takes, in commands:
+     * `HPRegen`, three times over, every fifteen seconds
+     * (docs/greatermud/player-and-world.md).
      */
     dangerCost: 200,
     /**
      * The share of current health one pass is expected to take at which a
-     * lair is priced as a wall (`wallCost`): walked only when there is no
-     * other way at all, never preferred while there is. One is *expected to
-     * die there*.
+     * lair is priced at `nearWallCost`, and a room spell at `wallCost`. One is
+     * *expected to die there*.
      */
     deadlyShare: 1,
     /**
@@ -2308,6 +2309,37 @@ const TUNING_DEFAULTS = {
      * every lair as if the character stood a round longer in each.
      */
     passRounds: 1,
+    /**
+     * What a lair whose run kills half the time costs to route through, in
+     * plain steps (todo 23). A room is priced by the chance of dying running
+     * past it with combat off (`lairRunner`): `runDeathCost × death / (1 − death)`,
+     * a tenth costing about 220 steps and a twentieth about 105, capped at
+     * `nearWallCost`.
+     */
+    runDeathCost: 2000,
+    /**
+     * The most a lair pass ever costs: near a wall, so any way round that is
+     * survivable is taken, and finite, so the only way there is still planned
+     * and its chance shown (the user, 2026-10-07: *near hard walls, not always
+     * a hard wall*). `wallCost` is what a door nobody can open costs.
+     */
+    nearWallCost: 20000,
+    /** The chance of dying on a run past a lair at which the step is called deadly and a way round is asked for. */
+    deadlyRun: 0.5,
+    /** The chance of dying on a run past a lair at or above which a way round it is looked for (`otherWay`). */
+    otherWayRun: 0.05,
+    /**
+     * Rounds of blows a lair monster's first tick on a runner lands. An idle
+     * monster banks energy to 1,999 (`Mob.cs:1797`), up to two rounds' worth,
+     * so two; GreaterMUD2 banks none, and one prices it.
+     */
+    runFirstRounds: 2,
+    /**
+     * How many rooms a follower is counted for. A follower stays a move at
+     * `follows`² (`Exits.cs:166-185,262-267`), so one that always follows is
+     * on for every room of this; one at 70% is gone in about two.
+     */
+    runFollowRooms: 6,
     /**
      * How many times nearer than every other row sharing its name a monster
      * has to spawn before the room is taken to have resolved which row it is

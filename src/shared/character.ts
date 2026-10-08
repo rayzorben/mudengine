@@ -13,7 +13,7 @@ import type { Sight } from './light';
 import type { Alignment } from './alignment';
 import type { Loadout } from './gear';
 import type { Stash } from './stash';
-import type { AlignmentCost, MobDisposition } from './mobs';
+import type { AlignmentCost, MobDisposition, Standing } from './mobs';
 import type {
   CurrencyEntity,
   ExitEntity,
@@ -1785,6 +1785,11 @@ export function ownAlignment(state: Pick<CharacterState, 'name' | 'online'>): Al
   if (state.name === null) return null;
   const mine = state.name.toLowerCase();
   return state.online.find((entry) => entry.name.toLowerCase() === mine)?.alignment ?? null;
+}
+
+/** What a monster weighs about this character before it is struck (`attacksOnSight`). */
+export function standingOf(state: Pick<CharacterState, 'name' | 'online' | 'inventory'>): Standing {
+  return { alignment: ownAlignment(state), pack: packRows(state.inventory) };
 }
 
 /**

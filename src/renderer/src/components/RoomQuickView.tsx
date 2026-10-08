@@ -34,7 +34,7 @@ import { usePopoverFrame } from '../hooks/usePopoverFrame';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { PopoverAnchor } from '../lib/popover';
-import type { Alignment } from '@shared/character';
+import type { Standing } from '@shared/mobs';
 import { errorMessage } from '@shared/values';
 import { lightPhrase } from '@shared/light';
 import { DIRECTION_NAME, type Direction, type RoomBrief, type RoomId } from '@shared/world';
@@ -82,8 +82,8 @@ export interface RoomQuickViewProps {
   asked: RoomAsked;
   /** Asks the character's own realm. Two characters may be on two realms. */
   load(room: RoomId): Promise<RoomBrief | null>;
-  /** How the realm ranks the reader, for the lair's hostility words. */
-  mine: Alignment | null;
+  /** How the reader stands with a monster, for the lair's hostility words. */
+  standing: Standing;
   onDismiss(): void;
   /**
    * The pointer entered or left the panel, so the caller's linger can be
@@ -97,7 +97,7 @@ export interface RoomQuickViewProps {
 export default function RoomQuickView({
   asked,
   load,
-  mine,
+  standing,
   onDismiss,
   onPointerEnter,
   onPointerLeave
@@ -178,7 +178,7 @@ export default function RoomQuickView({
         ) : brief === null ? (
           <div className="empty">{t('cards.roomPeek.unknownRoom')}</div>
         ) : (
-          <RoomFacts brief={brief} mine={mine} />
+          <RoomFacts brief={brief} standing={standing} />
         )}
         {/*
          * The one action, below the facts and above nothing: what the reader
@@ -213,7 +213,7 @@ export default function RoomQuickView({
  * under their own heading, because *what spawns here* is a list of things and
  * the rest of this is one fact per line.
  */
-function RoomFacts({ brief, mine }: { brief: RoomBrief; mine: Alignment | null }) {
+function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }) {
   const dark = brief.light === undefined ? null : lightPhrase(brief.light);
   /*
    * **One label column for the panel, across two `<dl>`s.** An `auto` track is
@@ -374,7 +374,7 @@ function RoomFacts({ brief, mine }: { brief: RoomBrief; mine: Alignment | null }
       {brief.lair !== undefined && (
         <>
           <h3 className="peek-heading">{t('cards.room.tabs.lair')}</h3>
-          <LairList lair={brief.lair} mine={mine} />
+          <LairList lair={brief.lair} standing={standing} />
         </>
       )}
       {/*

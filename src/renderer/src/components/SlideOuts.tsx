@@ -11,7 +11,6 @@
 import { useCallback } from 'react';
 
 import GangFlyout from './GangFlyout';
-import { ownAlignment } from './LairList';
 import PlayerFlyout from './PlayerFlyout';
 import ReferencePopover, { type ReferencePopoverProps } from './ReferencePopover';
 import RoomQuickView, { type RoomQuickViewProps } from './RoomQuickView';
@@ -19,7 +18,7 @@ import SlotQuickView from './SlotQuickView';
 import { EMPTY_VIEW, type SessionView } from '../hooks/useSessionViews';
 import type { SlideOutSlot } from '../hooks/useSlideOuts';
 import { t } from '../lib/i18n';
-import type { CharacterState } from '@shared/character';
+import { standingOf, type CharacterState } from '@shared/character';
 import type { RemotesConfig } from '@shared/config';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { RemoteName } from '@shared/remotes';
@@ -124,7 +123,7 @@ export default function SlideOuts({
         <RoomQuickView
           asked={peek}
           load={loadRoomBrief}
-          mine={ownAlignment(character)}
+          standing={standingOf(character)}
           onDismiss={slot.dismissPeek}
           onPointerEnter={slot.holdPeek}
           onPointerLeave={slot.endPeek}

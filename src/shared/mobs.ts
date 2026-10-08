@@ -23,8 +23,19 @@
  * Dependency-free: the build script derives it, the tracker applies it, the
  * renderer draws it and the arbiter acts on it.
  */
+import { abilityValues, NO_ATTACK_IF_ITEM_ABILITY } from './abilities';
 import { alignmentBand } from './alignment';
 import type { Alignment } from './character';
+
+/**
+ * What a monster weighs about a player who has not struck it: where the realm
+ * ranks them (null until a `who` lists them) and the realm rows of their
+ * listed pack, worn and carried (null until it is listed, `packRows`).
+ */
+export interface Standing {
+  alignment: Alignment | null;
+  pack: readonly number[] | null;
+}
 
 /**
  * What a monster does about a player who has done nothing to it.
@@ -221,12 +232,15 @@ export function worstDisposition(all: Iterable<MobDisposition>): MobDisposition 
 }
 
 /**
- * Whether a monster will open the fight, given how the realm ranks you.
+ * Whether a monster will open the fight, given how the realm ranks you and
+ * what you hold.
  *
  * Three answers, not two. `null` is *nobody can say*, and it is the honest one
  * whenever a conditional monster meets a character whose standing has not been
  * read yet — the roster is what carries an alignment, and it arrives from a
- * `who` listing rather than from anything the character does.
+ * `who` listing rather than from anything the character does. A monster that
+ * spares a holder of an item keeps the realm's answer until the pack is
+ * listed, since login lists no pack and a guardian of another gang does attack.
  *
  * Unknown must never read as `false` here for the same reason an unknown
  * maximum must never read as `0` on a meter: it would say "this is safe" about
@@ -234,8 +248,29 @@ export function worstDisposition(all: Iterable<MobDisposition>): MobDisposition 
  */
 export function attacksOnSight(
   disposition: MobDisposition | null,
-  mine: Alignment | null
+  abilities: ReadonlyArray<readonly [number, number]> | undefined,
+  standing: Standing
 ): boolean | null {
+  const byAlignment = attacksAt(disposition, standing.alignment);
+  if (byAlignment === false) return false;
+  return sparesHolder(abilities, standing.pack) ? false : byAlignment;
+}
+
+/**
+ * Whether a monster passes over this listed pack (`NO_ATTACK_IF_ITEM_ABILITY`):
+ * `Mob.TryFindTarget` drops a player holding any item it names after the
+ * alignment test. An unlisted pack counts as holding none of its items.
+ */
+function sparesHolder(
+  abilities: ReadonlyArray<readonly [number, number]> | undefined,
+  pack: readonly number[] | null
+): boolean {
+  if (pack === null) return false;
+  return abilityValues(abilities, NO_ATTACK_IF_ITEM_ABILITY).some((item) => pack.includes(item));
+}
+
+/** The alignment half of `attacksOnSight`: the disposition against where the realm ranks you. */
+function attacksAt(disposition: MobDisposition | null, mine: Alignment | null): boolean | null {
   if (disposition === null) return null;
   if (disposition === 'hostile') return true;
   if (disposition === 'passive') return false;

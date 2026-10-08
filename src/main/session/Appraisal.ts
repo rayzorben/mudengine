@@ -13,7 +13,7 @@ import type { Errands } from './Errands';
 import type { FightSetup } from './FightSetup';
 import type { OddsReader } from './OddsBook';
 import {
-  ownAlignment,
+  standingOf,
   packRows,
   type CharacterState,
   type RoomOccupant
@@ -240,7 +240,7 @@ export class Appraisal {
    * one the player's row says does not attack first (`attacksFirst`).
    */
   private foesOf(state: CharacterState): RoomOccupant[] {
-    const standing = ownAlignment(state);
+    const standing = standingOf(state);
     const fighting = new Set(
       [...state.combat.attackers, state.combat.target ?? '']
         .filter((name) => name.length > 0)

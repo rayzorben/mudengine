@@ -82,3 +82,20 @@ export function commandsOf(steps: readonly RouteStep[]): string {
   }
   return words.join(' ');
 }
+
+/**
+ * The rooms a way crosses into a kept-out word from (todo 23): the room each
+ * way in leaves, named once, in order; null for the room the walk starts in,
+ * which the route does not name. The card says *at Dragon's Teeth Hills*, so
+ * a way through a different vortex than the reader expected is in view.
+ */
+export function keptOutRooms(steps: readonly RouteStep[]): Array<string | null> {
+  const rooms: Array<string | null> = [];
+  steps.forEach((step, index) => {
+    // The way in only: a word a room's name says flags every step inside it.
+    if (step.keptOut === undefined || steps[index - 1]?.keptOut !== undefined) return;
+    const from = index === 0 ? null : (steps[index - 1]?.name ?? null);
+    if (!rooms.includes(from)) rooms.push(from);
+  });
+  return rooms;
+}

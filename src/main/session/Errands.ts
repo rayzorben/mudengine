@@ -27,11 +27,14 @@ import type { RestAwayPlanner } from '../automation/RestAway';
 import type { WardSources } from '../automation/Wards';
 import type { WalkerEvents } from '../automation/walk/ports';
 import type { ItemSources } from '../automation/ItemErrand';
-import type { OddsReader } from './OddsBook';
+import type { OddsPeeker } from './OddsBook';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import { LairCosts } from '../world/LairCosts';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
+import { lairRunner, runRiskOf, type RunRiskParts } from './runRisk';
+import { withChances } from './routeChances';
+import type { RunRisk } from '../../shared/runPass';
 import { GROUNDS, type Ground, admitsFiller, groundRefills } from './huntGrounds';
 import { preferredEdges } from '../world/loopDraft';
 import { capabilitiesOf, poisonRefusesRest, type Capabilities } from '../../shared/abilities';
@@ -39,6 +42,7 @@ import type { Block } from '../../shared/blocks';
 import {
   fightIsRunning,
   ownAlignment,
+  standingOf,
   packRows,
   type CharacterState
 } from '../../shared/character';
@@ -281,7 +285,7 @@ export interface ErrandsSession {
   /** The rank each quest has been seen to reach this session. */
   watched(): QuestWatched;
   /** A lair's fight, or one monster's, for this character rested (`OddsBook`). */
-  odds(): OddsReader;
+  odds(): OddsPeeker;
   /** What hunting each spot paid this character (`Belongings`, todo 70). */
   rates(): ReadonlyMap<string, MeasuredRate>;
   /** The one `abil` of the session (`Routines.askAbilities`). */
@@ -594,10 +598,11 @@ export class Errands implements SessionModule {
       world === undefined || room === undefined
         ? []
         : [...world.lairOf(room), ...world.residentEntities(room)].map((mob) => mob.name);
-    const mine = ownAlignment(this.tracker.current);
-    return [...new Set([...stated, ...this.clocks.seenIn(id)])].filter(
-      (name) => attacksOnSight(world?.mob(name)?.disposition ?? null, mine) !== false
-    );
+    const standing = standingOf(this.tracker.current);
+    return [...new Set([...stated, ...this.clocks.seenIn(id)])].filter((name) => {
+      const mob = world?.mob(name);
+      return attacksOnSight(mob?.disposition ?? null, mob?.abilities, standing) !== false;
+    });
   }
 
   /**
@@ -699,6 +704,8 @@ export class Errands implements SessionModule {
     allowing: readonly string[] = []
   ): Traveller {
     const pack = this.packContents(state);
+    const parts = this.runParts(state, 'lairKnown');
+    const run = parts === null ? null : lairRunner(parts);
     return {
       level: state.progress.level ?? null,
       strength: state.progress.strength ?? null,
@@ -746,6 +753,10 @@ export class Errands implements SessionModule {
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
       // What waits in each room, against this character as they stand now.
       danger: (room) => this.lairDanger(room, state),
+      // And the chance of dying running past it, where its fight has run (todo 23).
+      ...(run === null
+        ? {}
+        : { runDeath: (room: WorldRoom, from: RoomId) => run(room, from)?.death ?? null }),
       // And the same figure before the division, for the walker's rest
       // before a trap: a reserve in hit points, not a share of a bar that
       // was read at planning time.
@@ -844,7 +855,7 @@ export class Errands implements SessionModule {
       this.world?.hazardOf(room, state.progress.level)?.relocates === true
         ? (priced.hazard?.(room) ?? null)
         : null;
-    return { ...priced, danger: undefined, hazard: relocates };
+    return { ...priced, danger: undefined, runDeath: undefined, hazard: relocates };
   }
 
   /**
@@ -901,6 +912,37 @@ export class Errands implements SessionModule {
       hazard.unread === true || hazard.summons === true ? tuning().world.unreadHazardShare : null;
     if (read === null) return unread;
     return unread === null ? read : Math.max(read, unread);
+  }
+
+  /**
+   * What running with combat off is reckoned against (todo 23): the character
+   * as it stands, the walk's sneak, the round and the step at the realm's
+   * speed, and every lair by its own fight in the odds book. Null with no
+   * world database.
+   */
+  private runParts(
+    state: CharacterState,
+    /** `lair` queues an unrun fight (a route to be read); `lairKnown` does not (a search). */
+    read: 'lair' | 'lairKnown' = 'lair'
+  ): RunRiskParts | null {
+    const world = this.world;
+    if (!world) return null;
+    const { roundSeconds, stepMs } = atSpeed(tuning().hunting, this.speed.multiplier);
+    return {
+      state,
+      movement: this.automationConfig.movement,
+      family: this.realmClass().family,
+      world,
+      lairOdds: (room) => this.session.odds()[read](room),
+      roundSeconds,
+      stepMs
+    };
+  }
+
+  /** The risk of running this route as the character stands (`runRiskOf`). */
+  runRisk(route: Route): RunRisk {
+    const parts = this.runParts(this.tracker.current);
+    return parts === null ? { death: null, lairs: [] } : runRiskOf(route, parts);
   }
 
   /**
@@ -1044,10 +1086,10 @@ export class Errands implements SessionModule {
       family,
       attack
     );
-    const standing = ownAlignment(state);
+    const standing = standingOf(state);
     const rounds = tuning().world.passRounds;
     const opens = (index: number): boolean | null =>
-      attacksOnSight(entities[index]?.disposition ?? null, standing);
+      attacksOnSight(entities[index]?.disposition ?? null, entities[index]?.abilities, standing);
     return came === null
       ? lairPass(verdicts, lair?.max ?? null, rounds, opens)
       : roadPass(verdicts, tuning().world.wanderersAtOnce, rounds, opens);
@@ -2833,7 +2875,11 @@ export class Errands implements SessionModule {
     options: RouteOptions = {}
   ): Route | string {
     const traveller = this.travellerFor(kind, this.tracker.current);
-    return this.navigation.leg(from, to, traveller, options) ?? t('session.loop.noRealmData');
+    const way = this.navigation.leg(from, to, traveller, options);
+    if (way === null) return t('session.loop.noRealmData');
+    // A route planned to be read carries each way's chance for its buttons (todo 23).
+    const parts = options.alternatives === true ? this.runParts(this.tracker.current) : null;
+    return parts === null ? way : withChances(way, parts);
   }
 }
 

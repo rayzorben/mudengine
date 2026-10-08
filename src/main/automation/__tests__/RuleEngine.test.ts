@@ -14,6 +14,7 @@ import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../.
 import { classifyOccupant, type MobDisposition } from '../../../shared/mobs';
 import type { Block } from '../../../shared/blocks';
 import type { Rule } from '../../../shared/rules';
+import type { MobEntity } from '../../../shared/entities';
 
 function stateWith(patch: Partial<CharacterState>): CharacterState {
   return { ...structuredClone(EMPTY_CHARACTER), phase: 'in-game', ...patch };
@@ -136,6 +137,28 @@ describe('reading state', () => {
     expect(countThreats(here, rows)).toBe(1);
     expect(readField('threats', here, { mobRules: rows })).toBe(1);
     expect(readField('threats', here)).toBe(3);
+  });
+
+  /*
+   * Todo 24: the onyx guardian names the onyx emblem (1042) in
+   * `NoAttackIfItemNum`, so a listed pack holding it leaves it out. An
+   * unlisted pack keeps the realm's answer, and so does the control, the
+   * listed pack without it.
+   */
+  it('leaves out a guardian whose item the pack holds', () => {
+    const guardian: RoomOccupant = {
+      ...mob('onyx guardian', 'hostile'),
+      mob: { abilities: [[185, 1042]] } as MobEntity
+    };
+    const room = { ...EMPTY_CHARACTER.room, occupants: [guardian] };
+    const packed = (rows: number[], listedAt: number | null): CharacterState => ({
+      ...EMPTY_CHARACTER,
+      room,
+      inventory: { ...EMPTY_CHARACTER.inventory, rows, listedAt }
+    });
+    expect(countThreats(packed([5, 1042], 1), [])).toBe(0);
+    expect(countThreats(packed([1042], null), [])).toBe(1);
+    expect(countThreats(packed([5], 1), [])).toBe(1);
   });
 });
 

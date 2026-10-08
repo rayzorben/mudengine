@@ -16,13 +16,14 @@
 
 import {
   isHostile,
-  ownAlignment,
+  standingOf,
   vitalLevel,
   type CharacterState,
   type VitalLevel,
   type VitalThresholds
 } from './character';
-import { attacksOnSight, DISPOSITION_WORD } from './mobs';
+import { DISPOSITION_WORD } from './mobs';
+import { occupantAttacksOnSight } from './mobRules';
 import type { Block, BlockType } from './blocks';
 import type { UiLookup } from './i18n';
 import type { WalkProgress } from './walk';
@@ -1499,7 +1500,7 @@ export function roomNotices(before: CharacterState, after: CharacterState, t: Ui
   const at = noticedAt(after);
   const standing = new Map(after.online.map((entry) => [entry.name.toLowerCase(), entry]));
   const wasHere = new Set(before.room.occupants.map((who) => who.name.toLowerCase()));
-  const mine = ownAlignment(after);
+  const me = standingOf(after);
 
   const notices: Notice[] = [];
   for (const who of after.room.occupants) {
@@ -1521,7 +1522,7 @@ export function roomNotices(before: CharacterState, after: CharacterState, t: Ui
      * same rule an unknown maximum follows.
      */
     if (who.kind === 'mob') {
-      if (attacksOnSight(who.disposition, mine) !== true) continue;
+      if (occupantAttacksOnSight(who, me) !== true) continue;
       const arrived = t('cards.alerts.room.mobArrived', {
         name: who.name,
         dispositionWord: DISPOSITION_WORD[who.disposition ?? 'hostile']

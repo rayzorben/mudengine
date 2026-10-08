@@ -12,7 +12,7 @@ import { PRIORITY, type CommandQueue } from './CommandQueue';
 import type { Block } from '../../shared/blocks';
 import {
   isHostile,
-  ownAlignment,
+  standingOf,
   type CharacterState,
   type RoomOccupant
 } from '../../shared/character';
@@ -60,9 +60,9 @@ export function countMobs(occupants: readonly RoomOccupant[]): number {
  * disposition beside the row's, and the override is said once.
  */
 export function countThreats(state: CharacterState, rules: readonly MobRule[]): number {
-  const mine = ownAlignment(state);
+  const standing = standingOf(state);
   return state.room.occupants.filter(
-    (who) => who.kind === 'mob' && attacksFirst(who, mine, rules) === true
+    (who) => who.kind === 'mob' && attacksFirst(who, standing, rules) === true
   ).length;
 }
 

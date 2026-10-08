@@ -6,8 +6,8 @@
  * folds the blow cases in `CharacterTracker.reduce` call. Out of the tracker
  * with todo 723; `mudengine-wire` › `parts/combat.md`.
  */
-import { ownAlignment, type CharacterState, type PartyFight } from '../../shared/character';
-import { attacksOnSight } from '../../shared/mobs';
+import { standingOf, type CharacterState, type PartyFight } from '../../shared/character';
+import { occupantAttacksOnSight } from '../../shared/mobRules';
 import { mobKey } from '../../shared/world';
 
 /**
@@ -85,7 +85,7 @@ export function swingingAtMe(s: CharacterState, attacker: string | undefined): s
   // Not a monster the room has placed — a player, an `unknown`, or somebody
   // no listing has named. None of those is the realm's to answer for.
   if (who === undefined || who.kind !== 'mob') return attacker;
-  return attacksOnSight(who.disposition, ownAlignment(s)) === false ? undefined : attacker;
+  return occupantAttacksOnSight(who, standingOf(s)) === false ? undefined : attacker;
 }
 
 /**

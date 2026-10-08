@@ -5,9 +5,8 @@
  * thing everywhere. The rules: `mudengine-automation` › `parts/combat.md` ›
  * *One list per monster, not two* and *A row may say what a monster is*.
  */
-import type { Alignment } from './alignment';
 import type { RoomOccupant } from './character';
-import { attacksOnSight, type MobAvoid } from './mobs';
+import { attacksOnSight, type MobAvoid, type Standing } from './mobs';
 import { int, isRecord, str } from './values';
 import { mobKey } from './world';
 
@@ -220,11 +219,19 @@ export function rowPeaceFor(rules: readonly MobRule[], name: string): RowPeace |
  * on what the monster does, which no row changes (`HangUp.ts`).
  */
 export function attacksFirst(
-  who: Pick<RoomOccupant, 'name' | 'disposition'>,
-  mine: Alignment | null,
+  who: Pick<RoomOccupant, 'name' | 'disposition' | 'mob'>,
+  standing: Standing,
   rules: readonly MobRule[]
 ): boolean | null {
-  return rowPeaceFor(rules, who.name) === null ? attacksOnSight(who.disposition, mine) : false;
+  return rowPeaceFor(rules, who.name) === null ? occupantAttacksOnSight(who, standing) : false;
+}
+
+/** `attacksOnSight` for a monster the room listed: its disposition and its row's effects. */
+export function occupantAttacksOnSight(
+  who: Pick<RoomOccupant, 'disposition' | 'mob'>,
+  standing: Standing
+): boolean | null {
+  return attacksOnSight(who.disposition, who.mob?.abilities, standing);
 }
 
 /**

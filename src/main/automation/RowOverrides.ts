@@ -9,10 +9,9 @@
  * is believed, and shown beside the realm's*.
  */
 import { t } from '../app/i18n';
-import { ownAlignment, type CharacterState } from '../../shared/character';
+import { standingOf, type CharacterState } from '../../shared/character';
 import type { AutomationConfig, CombatConfig } from '../../shared/config';
-import { attacksOnSight } from '../../shared/mobs';
-import { rowPeaceFor, type RowPeace } from '../../shared/mobRules';
+import { occupantAttacksOnSight, rowPeaceFor, type RowPeace } from '../../shared/mobRules';
 import { mobKey } from '../../shared/world';
 import type { SessionModule } from './Module';
 
@@ -61,11 +60,11 @@ export class RowOverrides implements SessionModule {
   onCharacter(state: CharacterState): void {
     const rules = this.settings.combat.mobRules;
     if (!this.settings.enabled || rules.length === 0 || state.phase !== 'in-game') return;
-    const mine = ownAlignment(state);
+    const standing = standingOf(state);
     for (const who of state.room.occupants) {
       if (who.kind !== 'mob') continue;
       const peace = rowPeaceFor(rules, who.name);
-      if (peace === null || attacksOnSight(who.disposition, mine) !== true) continue;
+      if (peace === null || occupantAttacksOnSight(who, standing) !== true) continue;
       const key = mobKey(who.name);
       if (this.said.has(key)) continue;
       this.said.add(key);

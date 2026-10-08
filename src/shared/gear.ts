@@ -14,6 +14,7 @@
  * second copy of "which of these can be worn" would have the card offering a
  * button main then refuses.
  */
+import { abilityValues } from './abilities';
 import { alignmentBand, type Alignment } from './alignment';
 import type { CarriedItem } from './character';
 import { wornCopy, type ItemEntity } from './entities';
@@ -369,7 +370,7 @@ const CLASS_OK = 59;
 
 /** The classes an item names as allowed it: its `ClassRest` list and its `ClassOk` pairs. */
 export function classesAllowed(item: Pick<EquipRestrictions, 'classes' | 'abilities'>): number[] {
-  const classOk = (item.abilities ?? []).filter(([id]) => id === CLASS_OK).map(([, v]) => v);
+  const classOk = abilityValues(item.abilities, CLASS_OK);
   return [...(item.classes ?? []), ...classOk];
 }
 
