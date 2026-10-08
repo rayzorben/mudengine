@@ -2993,7 +2993,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   const plan = await readUntil(
     () =>
       evaluate(
-        `document.querySelector('.route-panel .route-summary')?.innerText.replace(/\\s+/g, ' ') ?? null`
+        // Without the buttons, whose chances are percentages (todo 23).
+        `(() => { const head = document.querySelector('.route-panel .route-summary'); if (!head) return null; const presses = head.querySelector('.route-presses')?.innerText ?? ''; return head.innerText.replace(presses, '').replace(/\\s+/g, ' '); })()`
       ),
     (plan) => plan !== null
   );

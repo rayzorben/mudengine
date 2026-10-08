@@ -2645,9 +2645,15 @@ export interface RouteStep {
    */
   danger?: number;
   /**
-   * Whether `danger` reached the share the router walls at
-   * (`tuning.world.deadlyShare`), decided in main where the number lives. A
-   * step wearing it is on a route with no other way.
+   * The chance of dying running past this room's lair with combat off, the
+   * figure the router priced the step by (`Traveller.runDeath`, todo 23).
+   * Absent where the room has no lair or its fight has not run.
+   */
+  runDeath?: number;
+  /**
+   * Whether the character is expected to die here: a run at
+   * `tuning.world.deadlyRun`, an unrun lair's `danger` or the room's `hazard`
+   * at `deadlyShare`, decided in main where the numbers live.
    */
   deadly?: boolean;
   /**
@@ -3463,6 +3469,14 @@ export interface Route {
    */
   otherWay?: Route;
   /**
+   * The chance of coming through alive, each way of walking it (todo 23):
+   * `run` with combat off, every lair passed at the walk's pace
+   * (`runRiskOf`); `walk` fighting every lair whose monsters attack on
+   * sight (the odds book's fights). Null where a lair on the way has not been
+   * run. Set on the routes planned for the panel, the alternatives included.
+   */
+  chances?: RouteChances;
+  /**
    * The way this character would take carrying what stops the rooms on it,
    * where that is materially shorter than the plan — the river with a log
    * raft against the slums without one. Its `hazards[].needs` name what to
@@ -3752,6 +3766,12 @@ export function asRoomIds(value: unknown, limit: number): RoomId[] | null {
     ids.push(roomId(reference.map, reference.room));
   }
   return ids;
+}
+
+/** A route's chance of coming through alive, run and walked (`Route.chances`). */
+export interface RouteChances {
+  run: number | null;
+  walk: number | null;
 }
 
 /**

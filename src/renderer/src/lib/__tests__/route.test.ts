@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { commandsOf, runsOf, stepDanger, stepSignature } from '../route';
+import { commandsOf, keptOutRooms, runsOf, stepDanger, stepSignature } from '../route';
 import type { RouteStep } from '@shared/world';
 
 const step = (name: string, over: Partial<RouteStep> = {}): RouteStep => ({
@@ -79,5 +79,28 @@ describe('folding a route list', () => {
     expect(stepSignature(lair)).not.toBe(stepSignature(room));
     expect(stepDanger(lair)).toEqual({ kind: 'lair', percent: 10 });
     expect(stepDanger(room)).toEqual({ kind: 'road', percent: 10 });
+  });
+});
+
+/* Todo 23: the card names where a way crosses a kept-out word, so another vortex is in view. */
+describe('where a way crosses what the player keeps out of', () => {
+  it('names the room each crossing leaves, once, and the start as unnamed', () => {
+    const steps = [
+      step('Main Road'),
+      step('Dragon’s Teeth Hills'),
+      step('Black Wasteland', { keptOut: 'vortex' }),
+      step('Black Wasteland'),
+      step('Hazy Swamp', { keptOut: 'vortex' })
+    ];
+    expect(keptOutRooms(steps)).toEqual(['Dragon’s Teeth Hills', 'Black Wasteland']);
+    expect(keptOutRooms([step('Black Wasteland', { keptOut: 'vortex' })])).toEqual([null]);
+    expect(keptOutRooms([step('Main Road')])).toEqual([]);
+    // A word a room's name says flags every step inside it; only the way in is named.
+    const plane = [
+      step('Black Wasteland'),
+      step('Negative Power Plane', { keptOut: 'Negative Power Plane' }),
+      step('Negative Power Plane', { keptOut: 'Negative Power Plane' })
+    ];
+    expect(keptOutRooms(plane)).toEqual(['Black Wasteland']);
   });
 });

@@ -81,7 +81,7 @@ import { avoided, type FledEntry } from '../../shared/fled';
 import type { Block } from '../../shared/blocks';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import {
-  ownAlignment,
+  standingOf,
   sameVisit,
   type CharacterState,
   type RoomOccupant
@@ -104,6 +104,7 @@ import {
   leavesAlone,
   mobRuleFor,
   LEAVING_STANCES,
+  occupantAttacksOnSight,
   peaceOf,
   stanceHere,
   stopsToKill,
@@ -125,7 +126,7 @@ import {
 } from '../../shared/verdict';
 import type { RealmFamily } from '../../shared/realm';
 import { dodge, type ProwessAttack, type ProwessClass } from '../../shared/prowess';
-import { attacksOnSight, type MobAvoid } from '../../shared/mobs';
+import type { MobAvoid } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
@@ -1260,7 +1261,7 @@ export class AutoCombat implements SessionModule {
      * of it — it has not swung, so picking it is opening on it: a stranger's
      * claim, a guard left alone that protects it, the two caps.
      */
-    const mine = ownAlignment(state);
+    const me = standingOf(state);
     const { maxMonsterExperience: worth, maxTargetHealth: cap } = this.config;
     // Nothing is opened beside a monster the character leaves for (`besideStance`).
     const beside = this.besideStance(state) !== null;
@@ -1272,7 +1273,7 @@ export class AutoCombat implements SessionModule {
         !this.isPlayer(state, who.name) &&
         !who.uncertain &&
         who.costly === 'never' &&
-        attacksFirst(who, mine, this.config.mobRules) === true &&
+        attacksFirst(who, me, this.config.mobRules) === true &&
         avoidedFor(who, this.config.mobRules) === null &&
         this.claimOn(state, who.name) === null &&
         !standing.some((guard) => this.leftAlone(guard.name) && protects(guard, who) !== false) &&
@@ -1742,7 +1743,7 @@ export class AutoCombat implements SessionModule {
   private choose(state: CharacterState): Choice | null {
     const mobs = state.room.occupants.filter((who) => who.kind === 'mob');
     if (mobs.length === 0) return null;
-    const mine = ownAlignment(state);
+    const me = standingOf(state);
 
     // Every monster's own reason, which a guard's ward also quotes.
     const reasons = new Map<RoomOccupant, string>();
@@ -1828,7 +1829,7 @@ export class AutoCombat implements SessionModule {
        * times (2026-10-04).
        */
       const fled =
-        attacksOnSight(who.disposition, mine) === false ? this.fledFrom(state, who.name) : null;
+        occupantAttacksOnSight(who, me) === false ? this.fledFrom(state, who.name) : null;
       if (fled !== null) {
         decline(who, fled);
         continue;
@@ -1866,7 +1867,7 @@ export class AutoCombat implements SessionModule {
       if (peaceOf(row) !== null && this.config.engage !== 'all') {
         decline(
           who,
-          attacksOnSight(who.disposition, mine) === true
+          occupantAttacksOnSight(who, me) === true
             ? t('automation.combat.refusedRowNotHostileOverRealm', { target: who.name })
             : t('automation.combat.refusedRowNotHostile', { target: who.name })
         );
@@ -1886,7 +1887,7 @@ export class AutoCombat implements SessionModule {
         if (who.costly === 'never') bystanders.add(who);
         continue;
       }
-      if (this.config.engage !== 'all' && attacksOnSight(who.disposition, mine) !== true) {
+      if (this.config.engage !== 'all' && occupantAttacksOnSight(who, me) !== true) {
         decline(who, t('automation.combat.refusedNotHostile', { target: who.name }));
         bystanders.add(who);
         continue;

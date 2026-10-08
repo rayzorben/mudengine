@@ -11,7 +11,7 @@ import RowPeaceChip from './RowPeaceChip';
 import { avoidNote } from '../lib/avoid';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
-import LairList, { lairCopyText, ownAlignment } from './LairList';
+import LairList, { lairCopyText } from './LairList';
 import {
   DIRECTION_NAME,
   roomId,
@@ -22,11 +22,17 @@ import {
 import { type Discovery } from '@shared/memory';
 import type { Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
-import type { Alignment, CharacterState, RoomExit, RoomOccupant } from '@shared/character';
+import {
+  standingOf,
+  type CharacterState,
+  type RoomExit,
+  type RoomOccupant
+} from '@shared/character';
 import type { RoomVerdict } from '@shared/verdict';
 import type { RoomAsk } from '@shared/quests';
 import { gatesWords } from '@shared/gateWords';
-import { attacksOnSight, DISPOSITION_WORD } from '@shared/mobs';
+import { DISPOSITION_WORD, type Standing } from '@shared/mobs';
+import { occupantAttacksOnSight } from '@shared/mobRules';
 import { countedLabel } from '@shared/items';
 
 export interface RoomCardProps extends CardChrome {
@@ -385,7 +391,7 @@ function RoomCard({
                       id: 'lair',
                       label: t('cards.room.tabs.lair'),
                       content: (
-                        <LairList inspect={inspect} lair={lair} mine={ownAlignment(character)} />
+                        <LairList inspect={inspect} lair={lair} standing={standingOf(character)} />
                       ),
                       copyText: () => lairCopyText(lair)
                     }
@@ -474,7 +480,7 @@ function RoomCard({
  * and a player nobody has listed yet look identical from here, and reassuring
  * somebody that a stranger is harmless is the guess this project refuses.
  */
-function describe(who: RoomOccupant, mine: Alignment | null): string {
+function describe(who: RoomOccupant, standing: Standing): string {
   if (who.kind === 'player') {
     return who.free ? t('cards.room.occupant.playerFree') : t('cards.room.occupant.player');
   }
@@ -482,7 +488,7 @@ function describe(who: RoomOccupant, mine: Alignment | null): string {
   if (who.disposition === null) return t('cards.room.occupant.unplacedMonster');
 
   const word = DISPOSITION_WORD[who.disposition];
-  const sure = attacksOnSight(who.disposition, mine);
+  const sure = occupantAttacksOnSight(who, standing);
   const parts = [sure === null ? t('cards.room.occupant.dependsOnStanding', { word }) : word];
   if (who.uncertain) parts.push(t('cards.room.occupant.uncertainName'));
   /*
@@ -510,7 +516,7 @@ function RoomBody({
   answers: RoomCommand[];
 }) {
   const { room, phase } = character;
-  const mine = ownAlignment(character);
+  const standing = standingOf(character);
   const light = lightNote(room);
   /*
    * What the vault holds, on the **first** face rather than only on the Bank
@@ -815,13 +821,13 @@ function RoomBody({
                             className={`occupant ${who.kind} lookup`}
                             onClick={(event) => inspect(who.name, event.currentTarget)}
                             onMouseDown={keepFocus}
-                            title={describe(who, mine)}
+                            title={describe(who, standing)}
                             type="button"
                           >
                             {who.name}
                           </button>
                         ) : (
-                          <span className={`occupant ${who.kind}`} title={describe(who, mine)}>
+                          <span className={`occupant ${who.kind}`} title={describe(who, standing)}>
                             {who.name}
                           </span>
                         )}
@@ -829,7 +835,7 @@ function RoomBody({
                         one thing on this line worth deciding on. A word, not a
                         hue: docs/ui-design.md §6, and this is the readout a
                         decision about whether to keep walking is made off. */}
-                        {attacksOnSight(who.disposition, mine) === true && (
+                        {occupantAttacksOnSight(who, standing) === true && (
                           <span className={`chip warn${who.uncertain ? ' quiet' : ''}`}>
                             {who.uncertain
                               ? t('cards.room.occupant.hostileUncertainChip')
@@ -858,7 +864,7 @@ function RoomBody({
                         there, on the name's own tooltip.
                       */}
                         {who.costly !== 'never' && (
-                          <span className="chip quiet" title={describe(who, mine)}>
+                          <span className="chip quiet" title={describe(who, standing)}>
                             {who.costly === 'always'
                               ? t('cards.room.occupant.alignCostChip')
                               : t('cards.room.occupant.alignCostUncertainChip')}

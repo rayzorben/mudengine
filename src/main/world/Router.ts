@@ -222,6 +222,14 @@ export interface Traveller {
    */
   danger?: (room: WorldRoom) => number | null;
   /**
+   * The chance of dying running past a room's lair with combat off, stepping
+   * in from `from` (todo 23, the session's `lairRunner`): the rounds its monsters
+   * get in at the walk's pace, followers counted, against the odds book's
+   * fight of the lair. Null where the room has no lair or its fight has not
+   * run; `danger` prices those. `runPenalty` turns it into route cost.
+   */
+  runDeath?: (room: WorldRoom, from: RoomId) => number | null;
+  /**
    * The same pass in hit points — `danger` before the division. Carried onto
    * the step (`RouteStep.lairDamage`) for the walker's rest before a trap,
    * which needs a reserve in points rather than a share of a bar that was
@@ -716,14 +724,49 @@ function gatedShut(
  * second kind. The router then minimised the count of walls and nothing
  * else, and chose a keyed door and 472 steps to save five of them.
  */
-export function dangerPenalty(share: number | null): number {
+export function dangerPenalty(
+  share: number | null,
+  ceiling: number = tuning().world.wallCost
+): number {
   if (share === null || !Number.isFinite(share) || share <= 0) return 0;
-  const { wallCost, deadlyShare, dangerCost } = tuning().world;
-  if (share >= deadlyShare) return wallCost;
-  // Capped at the wall, so a share just under `deadlyShare` never prices
+  const { deadlyShare, dangerCost } = tuning().world;
+  if (share >= deadlyShare) return ceiling;
+  // Capped at the ceiling, so a share just under `deadlyShare` never prices
   // above the room that reached it.
   const remaining = Math.max(1 - share, 1e-6);
-  return Math.min(wallCost, Math.round((dangerCost * share) / remaining));
+  return Math.min(ceiling, Math.round((dangerCost * share) / remaining));
+}
+
+/**
+ * Whether a step is one the character is expected to die on: a run past its
+ * lair at `deadlyRun`, or where the lair's fight has not run its pass's share
+ * at `deadlyShare`; or a room spell taking the whole bar. The two facts are
+ * different and what they mean for the reader is the same one.
+ */
+function stepIsDeadly(
+  runDeath: number | null,
+  danger: number | null,
+  hazard: number | null
+): boolean {
+  const { deadlyRun, deadlyShare } = tuning().world;
+  const lair = runDeath !== null ? runDeath >= deadlyRun : (danger ?? 0) >= deadlyShare;
+  return lair || (hazard ?? 0) >= deadlyShare;
+}
+
+/**
+ * What a lair costs to route past, priced as a run (todo 23): the chance of
+ * dying on it, `runDeathCost × death / (1 − death)`, up to `nearWallCost`.
+ * **Never a wall** (the user, 2026-10-07): a run that likely kills is dear
+ * enough that any way round it is taken, and the only way there is still
+ * planned with its chance on the button. Where the fight has not run, the
+ * pass's share prices it on `dangerPenalty`'s slope under the same ceiling.
+ */
+export function runPenalty(death: number | null, share: number | null): number {
+  const { nearWallCost, runDeathCost } = tuning().world;
+  if (death === null) return dangerPenalty(share, nearWallCost);
+  if (!Number.isFinite(death) || death <= 0) return 0;
+  const remaining = Math.max(1 - death, 1e-6);
+  return Math.min(nearWallCost, Math.round((runDeathCost * death) / remaining));
 }
 
 /**
@@ -1290,7 +1333,10 @@ export class Router {
     if (met.size === 0) return through;
     const rooms = [...met].map(([id, name]) => ({ id, name }));
     const round = this.wayFor(from, to, goal, { ...plain, shunned: fled }, options);
-    return !round.blocked && round.cost < tuning().world.wallCost
+    // Survivable: nothing walled and no step the character is expected to die on.
+    return !round.blocked &&
+      round.cost < tuning().world.wallCost &&
+      !round.steps.some((step) => step.deadly === true)
       ? { ...round, ranFrom: { round: true, rooms } }
       : { ...through, ranFrom: { round: false, rooms } };
   }
@@ -1583,11 +1629,16 @@ export class Router {
     traveller: Traveller,
     draws: boolean
   ): Route | null {
-    const { otherWayShare } = tuning().world;
+    const { otherWayShare, otherWayRun } = tuning().world;
     const worst = new Set<RoomId>();
     const walls = new Set<string>();
     for (const step of route.steps) {
-      if (step.deadly === true || (step.hazard ?? 0) >= otherWayShare) worst.add(step.to);
+      if (
+        step.deadly === true ||
+        (step.hazard ?? 0) >= otherWayShare ||
+        (step.runDeath ?? 0) >= otherWayRun
+      )
+        worst.add(step.to);
       const edge = `${step.from}|${step.direction}`;
       // A door the realm names a word for is not something to search round:
       // `stepCost` prices it as the lever it is, so this has to read it the
@@ -2515,8 +2566,12 @@ export class Router {
         : 1;
     // And what is waiting in the room being stepped into: a lair priced
     // against this character, or nothing where nothing can be weighed.
+    const death = into === null ? null : (traveller.runDeath?.(into, from) ?? null);
+    // The pass's share only where no run was read: it is the dearer call.
     const risk =
-      into === null || traveller.danger === undefined ? 0 : dangerPenalty(traveller.danger(into));
+      into === null
+        ? 0
+        : runPenalty(death, death === null ? (traveller.danger?.(into) ?? null) : null);
     /*
      * And what the room itself does to whoever stands in it. Priced on the
      * same slope as a lair and for the same reason — the step from
@@ -2963,6 +3018,10 @@ export class Router {
         arriving === undefined || traveller.lairDamage === undefined
           ? null
           : traveller.lairDamage(arriving);
+      const runDeath =
+        arriving === undefined || traveller.runDeath === undefined
+          ? null
+          : traveller.runDeath(arriving, prev);
       steps.unshift({
         from: prev,
         to: cursor,
@@ -2998,6 +3057,7 @@ export class Router {
         ...(arriving?.lair !== undefined ? { lair: true as const } : {}),
         ...(danger !== null && danger > 0 ? { danger } : {}),
         ...(lairDamage !== null && lairDamage > 0 ? { lairDamage } : {}),
+        ...(runDeath !== null ? { runDeath } : {}),
         // And what the room itself does to whoever stands in it, by the same
         // rule and from the same call the router priced the step with.
         ...(hazard !== null && hazard > 0 ? { hazard } : {}),
@@ -3013,15 +3073,16 @@ export class Router {
          * two facts are different and what they mean for the reader is the
          * same one: you are expected to die there.
          */
-        ...(Math.max(danger ?? 0, hazard ?? 0) >= tuning().world.deadlyShare
-          ? { deadly: true }
-          : {}),
+        ...(stepIsDeadly(runDeath, danger, hazard) ? { deadly: true } : {}),
         /*
          * And a lair the router could not weigh (an unread bar, a monster the
          * arithmetic cannot price), which is not a lair that costs nothing:
          * the kept-out cards say so rather than *no lairs* (todo 806).
          */
-        ...(arriving?.lair !== undefined && traveller.danger !== undefined && danger === null
+        ...(arriving?.lair !== undefined &&
+        traveller.danger !== undefined &&
+        danger === null &&
+        runDeath === null
           ? { lairUnweighed: true }
           : {}),
         // And the kept-out word it crosses, allowed or not, for the chip and

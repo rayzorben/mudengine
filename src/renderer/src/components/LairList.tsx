@@ -15,17 +15,17 @@ import { Fragment } from 'react';
 import EntityNumber, { entityNumberText } from './EntityNumber';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import type { Alignment, CharacterState } from '@shared/character';
-import { attacksOnSight, DISPOSITION_WORD } from '@shared/mobs';
+import { attacksOnSight, DISPOSITION_WORD, type Standing } from '@shared/mobs';
 import type { WorldLair, WorldMob } from '@shared/world';
 
 export interface LairListProps {
   lair: WorldLair;
   /**
-   * How the realm ranks the reader, which two of the seven monster alignments
-   * decide hostility by. Null reads as *unknown*, never as harmless.
+   * How the reader stands with a monster: the alignment two of the seven
+   * monster alignments decide by, and the pack a guardian looks for. Unknown
+   * reads as *unknown*, never as harmless.
    */
-  mine: Alignment | null;
+  standing: Standing;
   /**
    * Opens the realm's answer beside a clicked monster. Absent where there is
    * nowhere to open one — a pinned float, a panel already hanging off a name
@@ -33,19 +33,6 @@ export interface LairListProps {
    * is worse than none.
    */
   inspect?(name: string, anchor: HTMLElement): void;
-}
-
-/**
- * How the realm ranks this character, from the one place it is printed.
- *
- * The stat sheet carries no standing, so the `who` roster's own row for the
- * character is it — which means null for the first seconds of every session,
- * and null must read as *unknown* rather than as *not hostile*.
- */
-export function ownAlignment(character: CharacterState): Alignment | null {
-  if (character.name === null) return null;
-  const self = character.name.toLowerCase();
-  return character.online.find((entry) => entry.name.toLowerCase() === self)?.alignment ?? null;
 }
 
 /**
@@ -117,7 +104,7 @@ export function lairCopyText(lair: WorldLair): string {
   ].join('\n');
 }
 
-export default function LairList({ lair, mine, inspect }: LairListProps) {
+export default function LairList({ lair, standing, inspect }: LairListProps) {
   if (lair.mobs.length === 0) {
     /*
      * The realm marks this a lair and this client's data names none of what
@@ -152,7 +139,7 @@ export default function LairList({ lair, mine, inspect }: LairListProps) {
       )}
       <dl className="readout lair-list">
         {lair.mobs.map((mob) => {
-          const sure = attacksOnSight(mob.disposition, mine);
+          const sure = attacksOnSight(mob.disposition, mob.abilities, standing);
           return (
             /*
              * Keyed by the row, not the name: a descriptor naming two rows of

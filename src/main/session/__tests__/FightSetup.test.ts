@@ -109,7 +109,8 @@ describe('FightSetup.character', () => {
             dodge: 5
           }),
           castingInput: () => null,
-          noEffectsKey: () => ''
+          noEffectsKey: () => '',
+          realmSpeed: 1
         } as unknown as FightSetupParts['errands'],
         blessings: () => ({ recastFloor: recasts })
       },

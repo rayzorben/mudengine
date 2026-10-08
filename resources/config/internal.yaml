@@ -1667,14 +1667,15 @@ tuning:
     # holds at once, for the rounds spent inside (`passRounds`), as a share of
     # the health you have *now*. The step costs `dangerCost × share / (1 − share)`:
     # a tenth of the bar costs about two doors, a quarter about five, a half
-    # this figure, and the price climbs without bound as a pass approaches the
-    # whole bar — up to `deadlyShare`, where it is a wall. Two hundred is about
-    # what resting half a bar back takes, in commands.
+    # this figure, and the price climbs as a pass approaches the whole bar, up
+    # to `nearWallCost` at `deadlyShare`. Used where the lair's fight has not
+    # been run; a run fight prices the room as a run (`runDeathCost`). Two
+    # hundred is about what resting half a bar back takes, in commands.
     dangerCost: 200
 
     # The share of current health one pass is expected to take at which a lair
-    # is priced as a wall: walked only when there is no other way at all, never
-    # preferred while there is. One is *expected to die there*.
+    # is priced at `nearWallCost`, and a room spell at `wallCost`. One is
+    # *expected to die there*.
     deadlyShare: 1
 
     # The most of the bar a pass *nobody can say will happen* may be priced at,
@@ -1747,6 +1748,35 @@ tuning:
     # In and out is one round from whatever attacks on sight; two prices every
     # lair as if you stood a round longer in each.
     passRounds: 1
+
+    # What a lair whose run kills half the time costs to route through, in
+    # plain steps. A room is priced by the chance of dying running past it with
+    # combat off: `runDeathCost × death / (1 − death)`, a tenth costing about
+    # 220 steps and a twentieth about 105, capped at `nearWallCost`.
+    runDeathCost: 2000
+
+    # The most a lair pass ever costs: near a wall, so any way round that is
+    # survivable is taken, and finite, so the only way there is still planned
+    # and its chance shown. `wallCost` is what a door nobody can open costs.
+    nearWallCost: 20000
+
+    # The chance of dying on a run past a lair at which the step is called
+    # deadly and a way round is asked for.
+    deadlyRun: 0.5
+
+    # The chance of dying on a run past a lair at or above which a way round it
+    # is looked for.
+    otherWayRun: 0.05
+
+    # Rounds of blows a lair monster's first tick on a runner lands. An idle
+    # monster banks energy for up to two rounds, so two; GreaterMUD2 banks
+    # none, and one prices it.
+    runFirstRounds: 2
+
+    # How many rooms a follower is counted for. A follower stays a move at
+    # its follow rate squared, so one that always follows is on for every room
+    # of this; one at 70% is gone in about two.
+    runFollowRooms: 6
 
     # How many times nearer than every other row sharing its name a monster has
     # to spawn before the room is taken to have resolved which row it is.

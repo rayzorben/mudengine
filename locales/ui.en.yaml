@@ -2938,6 +2938,8 @@ cards:
       ask: 'This way crosses {wordList}, which you avoid. Choose a way:'
       groupAria: The way through {wordList}, or the way around it
       through: 'Through {wordList}'
+      crossesAt: 'at {roomList}'
+      hereRoom: where you stand
       round: Around it
       roundFetching: Around it, fetching {itemList} first
       noRound: No way around
@@ -2981,6 +2983,12 @@ cards:
     walkTooltip: Walk this route (Enter or Alt G)
     # Todo 06: turn off, go.
     runButton: Run it
+    # Todo 23: the chance of coming through alive, each way of walking it.
+    runButtonChance: Run it ({percent}%)
+    walkButtonChance: Walk it ({percent}%)
+    # A lair on the way whose fight has not been run yet.
+    runButtonUnread: Run it (?%)
+    walkButtonUnread: Walk it (?%)
     runTooltip: Walk this route with auto-combat off, and turn it back on when you arrive (Alt R)
   session:
     encoding: Encoding

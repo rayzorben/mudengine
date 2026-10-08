@@ -21,7 +21,7 @@ import {
   type FightSetupParts,
   type FightSetupSession
 } from './FightSetup';
-import { ownAlignment, type CharacterState } from '../../shared/character';
+import { standingOf, type CharacterState } from '../../shared/character';
 import { attacksOnSight } from '../../shared/mobs';
 import { SlicedSimulator } from './slicedSimulator';
 import type { FightSimulator } from '../../shared/simulator';
@@ -49,10 +49,13 @@ export interface OddsBookSession {
 /** What a reader asks the book: one monster alone, or a lair. */
 export type OddsReader = Pick<OddsBook, 'mob' | 'lair'>;
 
+/** The readers, and the lair's fight as it stands without queueing it (the router's). */
+export type OddsPeeker = OddsReader & Pick<OddsBook, 'lairKnown'>;
+
 /** What the session holds of the book: the readers, the what-if, and its life. */
 export type SessionOdds = Pick<
   OddsBook,
-  'refresh' | 'mob' | 'mobAs' | 'lair' | 'lairsLeft' | 'reset' | 'dispose'
+  'refresh' | 'mob' | 'mobAs' | 'lair' | 'lairKnown' | 'lairsLeft' | 'reset' | 'dispose'
 >;
 
 /**
@@ -148,6 +151,17 @@ export class OddsBook implements SessionModule {
     if ('kind' in input) return input;
     const survival = simulateFight(input);
     return survival === null ? UNRUN : { kind: 'run', survival };
+  }
+
+  /**
+   * A lair's fight as the book holds it, queueing nothing: a route search
+   * touches every lair it expands, and queueing each would run fights for
+   * rooms nobody walks (todo 23). Pending until `lair` has asked for it.
+   */
+  lairKnown(room: WorldRoom): Odds {
+    if (room.lair === undefined) return UNRUN;
+    if (this.book === null) return UNREAD;
+    return this.book.lairs.get(lairKey(room.lair)) ?? PENDING;
   }
 
   /** A lair's fight: as many as it holds at its cap, drawn from its rows. */
@@ -319,11 +333,11 @@ export class OddsBook implements SessionModule {
        * Everything it spawns, at its cap: a lair is hunted, so all of it is
        * fought, and what does not attack on sight joins only when struck.
        */
-      const standing = ownAlignment(state);
+      const standing = standingOf(state);
       met = world.lairEntities(job.room).map((entity) => ({
         name: entity.name,
         subject: entity,
-        waits: attacksOnSight(entity.disposition, standing) === false
+        waits: attacksOnSight(entity.disposition, entity.abilities, standing) === false
       }));
       draw = parseLair(job.room.lair ?? '').max ?? 1;
     }

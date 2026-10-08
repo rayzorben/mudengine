@@ -4,7 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import { WorldGraph, dangerPenalty, edgeBlock, edgePenalty, edgeWall } from '../WorldGraph';
+import {
+  WorldGraph,
+  dangerPenalty,
+  edgeBlock,
+  edgePenalty,
+  edgeWall,
+  runPenalty
+} from '../WorldGraph';
 import type { RouteOptions, Traveller } from '../WorldGraph';
 import { leg } from '../navigation/plan';
 import { planRealmOf } from '../navigation/realm';
@@ -6528,17 +6535,17 @@ describe('what waits in a room prices the way through it', () => {
     expect(dangerPenalty(null)).toBe(0);
   });
 
-  it('walls a deadly lair, walks it when there is no other way, and marks the step', () => {
+  it('prices a deadly lair near a wall, walks it when there is no other way, and marks the step', () => {
     const graph = makeWorld(twoWays());
     const round = graph.route(roomId(1, 1), roomId(1, 4), { danger: lairs(1.2) });
     expect(round.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
 
-    // Only the lair leads on: still offered, priced as a wall, and said.
+    // Only the lair leads on: still offered, priced near a wall but under one, and said.
     const onlyWay = makeWorld(twoWays().filter((room) => room['r'] !== 3 && room['r'] !== 5));
     const through = onlyWay.route(roomId(1, 1), roomId(1, 4), { danger: lairs(1.2) });
     expect(through.blocked).toBe(false);
     expect(through.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
-    expect(through.cost).toBeGreaterThanOrEqual(100_000);
+    expect(through.cost).toBe(2 + 20_000);
     expect(through.steps[0]).toMatchObject({ danger: 1.2, deadly: true });
     // Nothing gated stood on a shorter way, so nothing is claimed to be needed.
     expect(through.blocks).toBeUndefined();
@@ -6548,6 +6555,65 @@ describe('what waits in a room prices the way through it', () => {
     const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), { danger: () => null });
     expect(route.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
     expect(route.cost).toBe(2);
+  });
+});
+
+/*
+ * Todo 23: a lair whose fight has run is priced as a run past it with combat
+ * off, the chance of dying on it, on a slope that ends near a wall. Festus's
+ * vortex way crossed one lair priced as its worst monster standing there, a
+ * wall, and the plan took 280 steps round a 48-step way.
+ */
+describe('a lair is priced as a run past it', () => {
+  const twoWays = (): Array<Record<string, unknown>> => [
+    { m: 1, r: 1, n: 'Gate', x: { n: { m: 1, r: 2 }, e: { m: 1, r: 3 } } },
+    { m: 1, r: 2, n: 'Lair', lair: '(Max 1): 7,', x: { s: { m: 1, r: 1 }, n: { m: 1, r: 4 } } },
+    { m: 1, r: 3, n: 'Long Way', x: { w: { m: 1, r: 1 }, n: { m: 1, r: 5 } } },
+    { m: 1, r: 5, n: 'Longer Way', x: { s: { m: 1, r: 3 }, w: { m: 1, r: 4 } } },
+    { m: 1, r: 4, n: 'Keep', x: { s: { m: 1, r: 2 }, e: { m: 1, r: 5 } } }
+  ];
+  const runs = (death: number | null) => (room: { name: string }) =>
+    room.name === 'Lair' ? death : null;
+
+  it('costs the chance of dying on a slope capped near the wall', () => {
+    expect(runPenalty(0, null)).toBe(0);
+    expect(runPenalty(0.05, null)).toBe(105);
+    expect(runPenalty(0.5, null)).toBe(2000);
+    expect(runPenalty(0.9, null)).toBe(18_000);
+    expect(runPenalty(1, null)).toBe(20_000);
+    // Unrun, the pass's share prices it under the same ceiling.
+    expect(runPenalty(null, 0.5)).toBe(200);
+    expect(runPenalty(null, 31)).toBe(20_000);
+    expect(runPenalty(null, null)).toBe(0);
+  });
+
+  it('runs through a lair that seldom kills, and says the chance on the step', () => {
+    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), {
+      danger: runs(1.4),
+      runDeath: runs(0.0001)
+    });
+    expect(route.steps.map((step) => step.name)).toEqual(['Lair', 'Keep']);
+    expect(route.steps[0]).toMatchObject({ runDeath: 0.0001 });
+    expect(route.steps[0]?.deadly).toBeUndefined();
+  });
+
+  it('goes round a run that likely kills, and walks it as the only way', () => {
+    const graph = makeWorld(twoWays());
+    const round = graph.route(roomId(1, 1), roomId(1, 4), { runDeath: runs(0.6) });
+    expect(round.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
+    const onlyWay = makeWorld(twoWays().filter((room) => room['r'] !== 3 && room['r'] !== 5));
+    const through = onlyWay.route(roomId(1, 1), roomId(1, 4), { runDeath: runs(0.6) });
+    expect(through.blocked).toBe(false);
+    expect(through.cost).toBe(2 + 3000);
+    expect(through.steps[0]).toMatchObject({ runDeath: 0.6, deadly: true });
+  });
+
+  it('prices by the pass where the fight has not run', () => {
+    const route = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), {
+      danger: runs(0.5),
+      runDeath: runs(null)
+    });
+    expect(route.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
   });
 });
 

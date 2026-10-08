@@ -15,8 +15,10 @@ import {
   nameAtEnd,
   nameLeading,
   readOccupant,
+  type Standing,
   worstDisposition
 } from '../mobs';
+import type { Alignment } from '../alignment';
 
 /*
  * The table is `Mob.ShouldMobAttackTarget`, transcribed. Every case here is a
@@ -131,30 +133,33 @@ describe('the code a realm file carries', () => {
  * resolved into whichever answer looked more likely.
  */
 describe('whether a monster will open the fight', () => {
+  /** A character the realm ranks so, with a listed pack holding nothing. */
+  const ranked = (alignment: Alignment | null): Standing => ({ alignment, pack: [] });
+
   it('is certain for the two unconditional kinds', () => {
-    expect(attacksOnSight('hostile', null)).toBe(true);
-    expect(attacksOnSight('passive', 'FIEND')).toBe(false);
+    expect(attacksOnSight('hostile', undefined, ranked(null))).toBe(true);
+    expect(attacksOnSight('passive', undefined, ranked('FIEND'))).toBe(false);
   });
 
   it('is unknown for a conditional monster met by an unknown standing', () => {
-    expect(attacksOnSight('hates-good', null)).toBeNull();
-    expect(attacksOnSight('hates-evil', null)).toBeNull();
+    expect(attacksOnSight('hates-good', undefined, ranked(null))).toBeNull();
+    expect(attacksOnSight('hates-evil', undefined, ranked(null))).toBeNull();
   });
 
   it('has a LawfulEvil monster attack the well-behaved and leave outlaws alone', () => {
-    expect(attacksOnSight('hates-good', 'Saint')).toBe(true);
-    expect(attacksOnSight('hates-good', 'Good')).toBe(true);
-    expect(attacksOnSight('hates-good', 'Neutral')).toBe(true);
-    expect(attacksOnSight('hates-good', 'Outlaw')).toBe(false);
-    expect(attacksOnSight('hates-good', 'FIEND')).toBe(false);
+    expect(attacksOnSight('hates-good', undefined, ranked('Saint'))).toBe(true);
+    expect(attacksOnSight('hates-good', undefined, ranked('Good'))).toBe(true);
+    expect(attacksOnSight('hates-good', undefined, ranked('Neutral'))).toBe(true);
+    expect(attacksOnSight('hates-good', undefined, ranked('Outlaw'))).toBe(false);
+    expect(attacksOnSight('hates-good', undefined, ranked('FIEND'))).toBe(false);
   });
 
   it('has a LawfulGood monster attack outlaws and nobody else', () => {
-    expect(attacksOnSight('hates-evil', 'Outlaw')).toBe(true);
-    expect(attacksOnSight('hates-evil', 'Villain')).toBe(true);
-    expect(attacksOnSight('hates-evil', 'Neutral')).toBe(false);
+    expect(attacksOnSight('hates-evil', undefined, ranked('Outlaw'))).toBe(true);
+    expect(attacksOnSight('hates-evil', undefined, ranked('Villain'))).toBe(true);
+    expect(attacksOnSight('hates-evil', undefined, ranked('Neutral'))).toBe(false);
     // Seedy spans 30 up to 40 and the test is `>= 40`, so it is never attacked.
-    expect(attacksOnSight('hates-evil', 'Seedy')).toBe(false);
+    expect(attacksOnSight('hates-evil', undefined, ranked('Seedy'))).toBe(false);
   });
 
   /*
@@ -163,7 +168,7 @@ describe('whether a monster will open the fight', () => {
    * a distinction nothing on screen makes.
    */
   it('admits it cannot say for a Seedy character meeting a LawfulEvil monster', () => {
-    expect(attacksOnSight('hates-good', 'Seedy')).toBeNull();
+    expect(attacksOnSight('hates-good', undefined, ranked('Seedy'))).toBeNull();
   });
 
   /*
@@ -174,13 +179,50 @@ describe('whether a monster will open the fight', () => {
    * fight and sent the route round the town square.
    */
   it('answers for Lawful exactly as it does for Saint', () => {
-    expect(attacksOnSight('hates-good', 'Lawful')).toBe(attacksOnSight('hates-good', 'Saint'));
-    expect(attacksOnSight('hates-evil', 'Lawful')).toBe(attacksOnSight('hates-evil', 'Saint'));
-    expect(attacksOnSight('hates-evil', 'Lawful')).toBe(false);
+    expect(attacksOnSight('hates-good', undefined, ranked('Lawful'))).toBe(
+      attacksOnSight('hates-good', undefined, ranked('Saint'))
+    );
+    expect(attacksOnSight('hates-evil', undefined, ranked('Lawful'))).toBe(
+      attacksOnSight('hates-evil', undefined, ranked('Saint'))
+    );
+    expect(attacksOnSight('hates-evil', undefined, ranked('Lawful'))).toBe(false);
   });
 
   it('says nothing at all about a monster nothing can place', () => {
-    expect(attacksOnSight(null, 'Saint')).toBeNull();
+    expect(attacksOnSight(null, undefined, ranked('Saint'))).toBeNull();
+  });
+
+  /*
+   * `NoAttackIfItemNum` (185): the onyx guardian names the onyx emblem (1042)
+   * and the onyx captain's star (2149), and `Mob.TryFindTarget` passes over a
+   * player holding either, worn or carried (`gmud.zip`, 2026-10-07).
+   */
+  describe('a monster that leaves alone a holder of its item', () => {
+    const guardian: Array<[number, number]> = [
+      [57, 0],
+      [146, 528],
+      [185, 1042],
+      [185, 2149]
+    ];
+    const holding = (pack: number[] | null): Standing => ({ alignment: 'Neutral', pack });
+
+    it('leaves alone a character holding any one of its items', () => {
+      expect(attacksOnSight('hostile', guardian, holding([7, 2149]))).toBe(false);
+      expect(attacksOnSight('hostile', guardian, holding([1042]))).toBe(false);
+    });
+
+    it('attacks a character holding none of them', () => {
+      expect(attacksOnSight('hostile', guardian, holding([7, 528]))).toBe(true);
+    });
+
+    it('keeps the realm answer before the pack is listed', () => {
+      expect(attacksOnSight('hostile', guardian, holding(null))).toBe(true);
+      expect(attacksOnSight('hates-good', guardian, { alignment: null, pack: null })).toBeNull();
+    });
+
+    it('stays passive whatever the pack holds', () => {
+      expect(attacksOnSight('passive', guardian, holding(null))).toBe(false);
+    });
   });
 });
 

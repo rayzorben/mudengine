@@ -499,6 +499,8 @@ export class Catalogue {
   private readonly mobs = new Map<string, WorldMob>();
   /** By the realm's own number, for lairs. Empty on a realm built before v9. */
   private readonly mobsById = new Map<number, WorldMob>();
+  /** Each lair descriptor's monsters, built on first ask (`lairEntities`). */
+  private readonly lairsKept = new Map<string, MobEntity[]>();
   /**
    * Each row answering for itself, by row number — format 32.
    *
@@ -841,6 +843,10 @@ export class Catalogue {
    */
   lairEntities(room: WorldRoom): MobEntity[] {
     if (!room.lair) return [];
+    // Kept per descriptor: the rows are never written after the read, and a
+    // route search asks for every lair it expands (todo 23).
+    const kept = this.lairsKept.get(room.lair);
+    if (kept !== undefined) return kept;
     const entities: MobEntity[] = [];
     for (const id of parseLair(room.lair).ids) {
       const mob = this.mobsById.get(id);
@@ -849,6 +855,7 @@ export class Catalogue {
       overlayRow(entity, this.rowsById.get(id));
       entities.push(entity);
     }
+    this.lairsKept.set(room.lair, entities);
     return entities;
   }
 

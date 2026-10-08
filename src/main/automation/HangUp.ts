@@ -2,11 +2,11 @@ import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import {
   fightIsRunning,
-  ownAlignment,
+  standingOf,
   type Adventurer,
   type CharacterState
 } from '../../shared/character';
-import { attacksOnSight } from '../../shared/mobs';
+import { occupantAttacksOnSight } from '../../shared/mobRules';
 import type { SessionModule } from './Module';
 
 /**
@@ -189,12 +189,12 @@ export class HangUpWatch implements SessionModule {
      * too — unknown is never the reassuring answer — worded as the doubt it
      * is, so the refusal says what it does and does not know.
      */
-    const mine = ownAlignment(state);
+    const standing = standingOf(state);
     const onSight: string[] = [];
     const unplaced: string[] = [];
     for (const who of state.room.occupants) {
       if (who.kind !== 'mob') continue;
-      const verdict = attacksOnSight(who.disposition, mine);
+      const verdict = occupantAttacksOnSight(who, standing);
       if (verdict === true && !onSight.includes(who.name)) onSight.push(who.name);
       else if (verdict === null && !unplaced.includes(who.name)) unplaced.push(who.name);
     }

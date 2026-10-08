@@ -4,7 +4,8 @@ import MapView from './MapView';
 import ClearField from './ClearField';
 import Icon from './Icon';
 import PlanFights from './PlanFights';
-import { commandsOf, runsOf, stepDanger, stepSignature } from '../lib/route';
+import { commandsOf, keptOutRooms, runsOf, stepDanger, stepSignature } from '../lib/route';
+import { percent } from '../lib/outlook';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { useRoomSearch } from '../hooks/useRoomSearch';
@@ -1057,6 +1058,13 @@ export default function RoutePanel({
                           >
                             <strong>{t('cards.route.keptOut.through', { wordList })}</strong>
                             <span>
+                              {t('cards.route.keptOut.crossesAt', {
+                                roomList: keptOutRooms(route.steps)
+                                  .map((room) => room ?? t('cards.route.keptOut.hereRoom'))
+                                  .join(', ')
+                              })}
+                            </span>
+                            <span>
                               {t('cards.route.routeSummary', { stepCount: route.steps.length })}
                             </span>
                             <span className="route-way-cost">{survival(route)}</span>
@@ -1405,7 +1413,13 @@ export default function RoutePanel({
                         title={t('cards.route.runTooltip')}
                         type="button"
                       >
-                        {t('cards.route.runButton')}
+                        {shown.chances === undefined
+                          ? t('cards.route.runButton')
+                          : shown.chances.run === null
+                            ? t('cards.route.runButtonUnread')
+                            : t('cards.route.runButtonChance', {
+                                percent: percent(shown.chances.run)
+                              })}
                       </button>
                       {/* The one filled control in this panel, per §3.3: walking
                       is the action, everything else here is reading. */}
@@ -1416,7 +1430,13 @@ export default function RoutePanel({
                         title={t('cards.route.walkTooltip')}
                         type="submit"
                       >
-                        {t('cards.route.walkButton')}
+                        {shown.chances === undefined
+                          ? t('cards.route.walkButton')
+                          : shown.chances.walk === null
+                            ? t('cards.route.walkButtonUnread')
+                            : t('cards.route.walkButtonChance', {
+                                percent: percent(shown.chances.walk)
+                              })}
                       </button>
                     </div>
                   </div>

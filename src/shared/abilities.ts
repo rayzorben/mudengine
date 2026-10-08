@@ -362,12 +362,28 @@ export const GANG_HOUSE_DEED_ABILITY = 181;
 export const GANG_HOUSE_ITEM_ABILITY = 183;
 export const GANG_SHOP_ITEM_ABILITY = 184;
 
+/**
+ * `NoAttackIfItemNum` on a monster, once per item: a player holding any of
+ * them, worn or carried, is never its target unless they struck it first
+ * (`Mob.TryFindTarget`). Every gang house guardian names its house's emblem
+ * and captain's star (`gmud.zip`, 2026-10-07).
+ */
+export const NO_ATTACK_IF_ITEM_ABILITY = 185;
+
 /** Whether a row's pairs carry an ability at all, whatever its value. */
 export function carriesAbility(
   pairs: ReadonlyArray<readonly [number, number]> | null | undefined,
   id: number
 ): boolean {
   return pairs?.some(([which]) => which === id) ?? false;
+}
+
+/** Every value a row's pairs state for one ability, in order; none where it is absent. */
+export function abilityValues(
+  pairs: ReadonlyArray<readonly [number, number]> | null | undefined,
+  id: number
+): number[] {
+  return (pairs ?? []).filter(([which]) => which === id).map(([, value]) => value);
 }
 
 /**

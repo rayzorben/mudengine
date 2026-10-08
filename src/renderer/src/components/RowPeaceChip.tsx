@@ -1,7 +1,6 @@
 import { t } from '../lib/i18n';
-import { ownAlignment, type CharacterState } from '@shared/character';
-import { attacksOnSight } from '@shared/mobs';
-import type { RowPeace } from '@shared/mobRules';
+import { standingOf, type CharacterState } from '@shared/character';
+import { occupantAttacksOnSight, type RowPeace } from '@shared/mobRules';
 import { rowPeaceIn, type RoomVerdict } from '@shared/verdict';
 import { mobKey } from '@shared/world';
 
@@ -33,7 +32,7 @@ export default function RowPeaceChip({
   const key = mobKey(name);
   const who = character.room.occupants.find((occupant) => mobKey(occupant.name) === key);
   const realmHostile =
-    who !== undefined && attacksOnSight(who.disposition, ownAlignment(character)) === true;
+    who !== undefined && occupantAttacksOnSight(who, standingOf(character)) === true;
   return (
     <span
       className="chip quiet"

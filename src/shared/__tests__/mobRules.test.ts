@@ -14,6 +14,7 @@ import {
   type MobRule
 } from '../mobRules';
 import type { RoomOccupant } from '../character';
+import type { Standing } from '../mobs';
 
 /**
  * Todo 818: MegaMUD's relationships beside the bands (`MOB_STANCES`), and its
@@ -21,10 +22,11 @@ import type { RoomOccupant } from '../character';
  * module means the same thing by a row.
  */
 describe('a row may say what a monster is', () => {
-  const hostile = (name: string): Pick<RoomOccupant, 'name' | 'disposition'> => ({
+  const hostile = (name: string): Pick<RoomOccupant, 'name' | 'disposition' | 'mob'> => ({
     name,
     disposition: 'hostile'
   });
+  const unranked: Standing = { alignment: null, pack: [] };
 
   it('reads the three new stances and drops what fights from them', () => {
     const rows = normalizeMobRules([
@@ -106,12 +108,12 @@ describe('a row may say what a monster is', () => {
     ];
     expect(peaceOf(rules[0])).toBe('friend');
     expect(peaceOf(rules[1])).toBe('not-hostile');
-    expect(attacksFirst(hostile('Old Hermit'), null, rules)).toBe(false);
-    expect(attacksFirst(hostile('thug'), null, rules)).toBe(false);
+    expect(attacksFirst(hostile('Old Hermit'), unranked, rules)).toBe(false);
+    expect(attacksFirst(hostile('thug'), unranked, rules)).toBe(false);
     // The control: no claim, and the realm answers as it always did.
     expect(peaceOf(rules[2])).toBeNull();
-    expect(attacksFirst(hostile('black ooze'), null, rules)).toBe(true);
-    expect(attacksFirst(hostile('thug'), null, [])).toBe(true);
+    expect(attacksFirst(hostile('black ooze'), unranked, rules)).toBe(true);
+    expect(attacksFirst(hostile('thug'), unranked, [])).toBe(true);
   });
 
   it('finds the monster a stance names in the room, and only a monster', () => {

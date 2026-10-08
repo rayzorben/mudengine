@@ -24,6 +24,7 @@ import type { AutomationConfig } from '../../shared/config';
 import { ROUND_SECONDS } from '../../shared/menace';
 import { regeneration, type ProwessSheet } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
+import { atSpeed } from '../../shared/hunting';
 import { passCaught } from '../../shared/runPass';
 import { healFloor, resolveSpell, spellCost } from '../../shared/spellcraft';
 import { castsToKill, thresholdHeal } from '../../shared/spellchoice';
@@ -40,7 +41,10 @@ import type { WorldSpell } from '../../shared/world';
 
 export interface FightSetupParts {
   readonly world: Pick<WorldGraph, 'spellNamed'> | undefined;
-  readonly errands: Pick<Errands, 'castingInput' | 'menacePlayer' | 'realmClass' | 'noEffectsKey'>;
+  readonly errands: Pick<
+    Errands,
+    'castingInput' | 'menacePlayer' | 'realmClass' | 'noEffectsKey' | 'realmSpeed'
+  >;
   /** Which lapsing blessings are recast mid-fight; built after the book, so asked for at use. */
   readonly blessings: () => Pick<Blessings, 'recastFloor'>;
 }
@@ -281,7 +285,7 @@ export class FightSetup {
   ): SurvivalRetreat | null {
     const { retreat } = this.session.config().safety;
     if (!retreat.enabled) return null;
-    const { roundSeconds, stepMs } = tuning().hunting;
+    const { roundSeconds, stepMs } = atSpeed(tuning().hunting, this.errands.realmSpeed);
     const { encumbrance, encumbranceMax } = at === 'now' ? state.inventory : FULL_PACK;
     return {
       belowHealth: retreat.belowHealth,

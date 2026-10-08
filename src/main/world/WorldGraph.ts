@@ -104,7 +104,7 @@ import { QuestPlanner } from './QuestPlanner';
 import type { PlannerRooms } from './PlannerRooms';
 
 // Read only by `WorldGraph.test.ts`, which todo 710 kept unchanged; goes when a router-only test exists.
-export { dangerPenalty, edgeBlock, edgePenalty, edgeWall } from './Router';
+export { dangerPenalty, edgeBlock, edgePenalty, edgeWall, runPenalty } from './Router';
 export type { RouteOptions, Traveller } from './Router';
 
 /**
