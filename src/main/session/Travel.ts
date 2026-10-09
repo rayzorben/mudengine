@@ -70,7 +70,12 @@ const FOLLOWING = '\0following';
  * console can tell *retracing north* from *taking the only exit the server
  * printed*, and into `AutomationSnapshot.safety` so it survives the scrollback.
  */
-type EscapeRung = 'retrace' | 'doubles-back' | 'known' | 'printed';
+type EscapeRung = 'unfollowed' | 'retrace' | 'doubles-back' | 'known' | 'printed';
+
+/** A way out: the direction, the rung that chose it, and for `unfollowed` the room it reaches. */
+type WayOut =
+  | { direction: Direction; how: 'unfollowed'; room: string }
+  | { direction: Direction; how: Exclude<EscapeRung, 'unfollowed'> };
 
 /**
  * One sentence per rung, so the console says which one answered.
@@ -78,11 +83,14 @@ type EscapeRung = 'retrace' | 'doubles-back' | 'known' | 'printed';
  * A switch of literal `t()` calls rather than a rung → key map, because
  * `i18n-coverage.test.ts` reads literal calls out of the source and a lookup
  * would be a dynamic one — which the same test fails the build for, and rightly:
- * a key nothing literally asks for is a key nobody can tell is dead. The four
+ * a key nothing literally asks for is a key nobody can tell is dead. The cases
  * are exhaustive over `EscapeRung`, which the compiler checks.
  */
-function escapeNotice(how: EscapeRung, direction: Direction, why: string): string {
-  switch (how) {
+function escapeNotice(out: WayOut, why: string): string {
+  const { direction } = out;
+  switch (out.how) {
+    case 'unfollowed':
+      return t('session.safety.escapeUnfollowed', { direction, room: out.room, why });
     case 'retrace':
       return t('session.safety.escapeRetrace', { direction, why });
     case 'doubles-back':
@@ -1211,16 +1219,22 @@ export class Travel implements SessionModule {
   /**
    * Which way out, and how well the client knows it.
    *
-   * Four rungs, tried in order, every one of them a **direction** — there is no
+   * Five rungs, tried in order, every one of them a **direction** — there is no
    * command for running away on this server family, and the eleven refusals
    * that settled that are written up in `NOT_COMMANDS` (`shared/commands.ts`).
    * The ladder is not configurable because each rung is strictly better than
    * the one under it and nobody would knowingly choose a worse one; what *is*
    * configurable is how far to go afterwards (`RetreatConfig.strategy`).
    *
+   * 0. **`unfollowed`** — an exit into a room in no monster's group
+   *    (`WorldRoom.noFollow`, format 58). The server moves a monster only into
+   *    a room of its own group, so no grouped monster follows, whichever way
+   *    the character came: from the fortress's hallway 15/1073 that is the
+   *    Main Gate west, though the way back was east. Not taken from such a
+   *    room: what fights there is in no listed group, so its group is unknown.
    * 1. **`retrace`** — the opposite of the last confirmed move, when the
    *    character still stands where it landed. The only rung that names a room
-   *    this character was *alive* in moments ago, which is why it is first.
+   *    this character was *alive* in moments ago.
    * 2. **`doubles-back`** — an exit of this room that the realm data says leads
    *    to a room further back along the trail. The same claim one link looser,
    *    and it is what answers a retreat that has already run once: after one
@@ -1243,10 +1257,7 @@ export class Travel implements SessionModule {
    * a noted one is still taken over nothing. Rung 1 ignores the sort entirely:
    * the character came through that passage, whatever the realm says it wants.
    */
-  private wayOut(
-    state: CharacterState,
-    tried: ReadonlySet<Direction> = new Set()
-  ): { direction: Direction; how: EscapeRung } | null {
+  private wayOut(state: CharacterState, tried: ReadonlySet<Direction> = new Set()): WayOut | null {
     const here =
       state.room.map !== null && state.room.number !== null
         ? roomId(state.room.map, state.room.number)
@@ -1268,6 +1279,31 @@ export class Travel implements SessionModule {
 
     /** A room this character has just run out of is not a way out of anywhere. */
     const forbidden = new Set(this.ranFrom.map((entry) => entry.room));
+
+    const placed = (exit: (typeof exits)[number]): RoomId | null =>
+      exit.targetMap !== null && exit.targetRoom !== null
+        ? roomId(exit.targetMap, exit.targetRoom)
+        : null;
+
+    /*
+     * The rungs other than the retrace, over the exits that do not lead back
+     * into something this character has already run out of. A `printed` exit
+     * whose destination is unknown cannot be excluded, since nothing says where
+     * it goes, which is the limit of the weakest rung.
+     */
+    const away = exits.filter((exit) => {
+      const to = placed(exit);
+      return to === null || !forbidden.has(to);
+    });
+
+    const standsUnfollowed = here !== null && this.world?.byId(here)?.noFollow === true;
+    for (const exit of standsUnfollowed ? [] : away) {
+      const to = placed(exit);
+      const room = to === null ? undefined : this.world?.byId(to);
+      if (room?.noFollow === true) {
+        return { direction: exit.direction, how: 'unfollowed', room: room.name };
+      }
+    }
 
     if (here !== null) {
       const back = this.tracker.wayBackFrom(here);
@@ -1323,22 +1359,6 @@ export class Travel implements SessionModule {
     // Every room run out of is on the trail by construction — the escape's own
     // move put it there — so it has to come back out of the set the same way.
     for (const room of forbidden) behind.delete(room);
-
-    const placed = (exit: (typeof exits)[number]): RoomId | null =>
-      exit.targetMap !== null && exit.targetRoom !== null
-        ? roomId(exit.targetMap, exit.targetRoom)
-        : null;
-
-    /*
-     * The bottom three rungs, over the exits that do not lead back into
-     * something this character has already run out of. A `printed` exit whose
-     * destination is unknown cannot be excluded — nothing says where it goes —
-     * which is the honest limit of the weakest rung.
-     */
-    const away = exits.filter((exit) => {
-      const to = placed(exit);
-      return to === null || !forbidden.has(to);
-    });
 
     const doublesBack = away.find((exit) => {
       const to = placed(exit);
@@ -1434,7 +1454,7 @@ export class Travel implements SessionModule {
       this.retreat = { room: safety.safeHavenRoom, armedAt: now, from: here };
     }
 
-    this.session.notice(escapeNotice(out.how, out.direction, why));
+    this.session.notice(escapeNotice(out, why));
     /*
      * **Recorded on the outcome, not the send.** `acted: true` used to be
      * written here, at the moment the byte left — so `The door is closed!`

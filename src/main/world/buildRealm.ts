@@ -18,7 +18,14 @@ import type { ScriptLine } from '../../shared/world';
 import { scriptLines } from './navigation/scriptWays';
 import { readTextblocks } from './navigation/textblock';
 import { indexSupply, itemsInSupply, slotRestocks, type BuiltSupply } from './supplyIndex';
-import type { MobAttack, MobCast, MobProfile, RequirementAction } from '../../shared/world';
+import { groupedRooms } from './monsterGroups';
+import {
+  roomId,
+  type MobAttack,
+  type MobCast,
+  type MobProfile,
+  type RequirementAction
+} from '../../shared/world';
 import { familyOfBuild, isEmptyBuild, type RealmBuild, type RealmFamily } from '../../shared/realm';
 import {
   alignmentCost,
@@ -113,8 +120,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 55 | **Who may learn a spell.** `Spells.Magery` and `MageryLVL` and `Classes.MageryType` were read by nothing, so a scroll could not be told apart from one the class is refused: `Spell.CanPlayerUseSpell` refuses a spell whose magery type is not the class's (0 is any class's) or whose magery level is above the class's, and `read` answers `Unable to learn magic missile!` to a Warrior. `BuiltSpell.mt`/`ml` and `BuiltClass.mt` carry the codes, read as the server's `SpellMageryType` (1 Mage, 2 Priest, 3 Druid, 4 Bard, 5 Mystic): gmud.zip, pmud.zip and stock 1.11p all give the Mage, Gypsy and Warlock 1 and magic missile 1, the four holy classes 2 and minor healing 2, the Mystic 5 — todo 20 |
  * | 56 | **How often the realm makes each item** (`BuiltSupply`, `supplyIndex.ts`). `Shops.Time-n` was never read, `DropItem%-n` and `RegenTime` without a `GameLimit` were dropped, and what a chest, a monster's `CreateSpell` or fight spells, or a typed phrase hands over at what odds was in `TBInfo`, which does not ship. The header's `supply` carries the restocking shelves, the stated clocks, the roaming groups and every run with the items and monsters one run makes, read through the one text-block reader; `itemRarity.ts` settles the rates and `Catalogue.summonersOf` reads the runs, so a monster brought in by another's `CreateSpell` is found where its summoner is. Every item the supply names joins the item index |
  * | 57 | **What each row is, for a spell.** `BuiltMobRow` dropped `Abil-n`, so a name's effects were the union of its rows and a spell could not be told it has no effect: a `zombie` is three rows, all `NonLiving`, and a Priest at level 1 cast `harm` (`AffectsLivingOnly`) at one, was told *Your spell has no effect on big zombie.* and lost the round. `BuiltMobRow.ab` carries each row's own pairs; `Catalogue` overlays them on a resolved row and reads what every row agrees the name is (`natureOf`) for `spellReaches` (2026-10-06)
+ * | 58 | **A room no monster can follow into.** The server moves a monster only into a room of its own group (`Mob.CanMoveThroughExit`), and the export lists each monster's group rooms in `Summoned By`. A room nobody lists is `WorldRoom.noFollow`: Fortress of the Crimson Flame, Main Gate (15/1054) among the fortress's hallways, 5,096 of gmud.zip's 55,806 rooms. The run takes an exit into one first (`monsterGroups.ts`) |
  */
-export const REALM_FORMAT = 57;
+export const REALM_FORMAT = 58;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1252,6 +1260,8 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
    * another map, so neither half can be finished while the rows are being read.
    */
   const levers: Lever[] = [];
+  // Rooms some monster group may follow a player into (format 58).
+  const grouped = groupedRooms(source);
 
   // Sorted the way the build script's query sorted, so a realm converted at
   // runtime and one built at build time produce byte-identical output.
@@ -1334,6 +1344,8 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
      */
     const delay = number(row['Delay']);
     if (delay !== null && delay !== 0 && delay !== BLANK_AS_NUMBER) room['dl'] = delay;
+    // In no monster's group, so no monster follows a player in (format 58).
+    if (grouped !== null && !grouped.has(roomId(map, roomNumber))) room['nf'] = 1;
     /*
      * What the realm puts on this room's floor and puts back at the nightly
      * cleanup, within each item's game limit — format 42

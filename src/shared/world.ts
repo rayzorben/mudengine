@@ -2202,6 +2202,12 @@ export interface WorldRoom {
    */
   delay?: number;
   /**
+   * In no monster's group (format 58): the server moves a monster only into a
+   * room of its own group, so nothing follows a player in here. A monster the
+   * realm data places in no group at all may still. Absent is unknown.
+   */
+  noFollow?: true;
+  /**
    * The realm's own light level, graded −999 … +1000. Absent means the realm
    * recorded none, which is an ordinary lit room.
    *
