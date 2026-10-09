@@ -2041,3 +2041,47 @@ describe('holding for mana', () => {
     expect(runner.progress.hold).toBeNull();
   });
 });
+
+/* 2026-10-09: festus pressed Loop resting at 165/320 under `restBelow` 0.85, and the first leg went. */
+describe('starting or playing hurt', () => {
+  const hp = (value: number) =>
+    state({ vitals: { ...EMPTY_CHARACTER.vitals, hp: value, hpMax: 100 } });
+
+  it('rests before the first leg of a lap started under the floor', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelow: 0.85, restTo: 0.85 });
+    expect(runner.start(loop, hp(50))).toBeNull();
+    expect(runner.progress).toMatchObject({ status: 'running', hold: 'health' });
+    expect(walked).toEqual([]);
+    runner.onCharacter(hp(90));
+    expect(walked).toEqual(['Arena']);
+  });
+
+  it('rests before walking on when played under the floor', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelow: 0.85, restTo: 0.85 });
+    runner.start(loop, hp(100));
+    expect(walked).toEqual(['Arena']);
+    runner.stop(t('session.walk.stoppedByPlayer'));
+    expect(runner.resume(hp(50))).toBeNull();
+    expect(runner.progress.hold).toBe('health');
+    expect(walked).toEqual(['Arena']);
+    runner.onCharacter(hp(90));
+    expect(walked).toEqual(['Arena', 'Arena']);
+  });
+
+  it('still wants auto-combat when started hurt in a fight', () => {
+    const { planner: p, walked } = planner();
+    let wanted = 0;
+    const runner = new LoopRunner(p, { wantsCombat: () => (wanted += 1) });
+    runner.configure({ ...DEFAULT_CONFIG.automation.health, restBelow: 0.85, restTo: 0.85 });
+    runner.start(
+      loop,
+      state({ inCombat: true, vitals: { ...EMPTY_CHARACTER.vitals, hp: 50, hpMax: 100 } })
+    );
+    expect(wanted).toBe(1);
+    expect(walked).toEqual([]);
+  });
+});
