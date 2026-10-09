@@ -340,6 +340,12 @@ function NavigationCard({
     </>
   );
 
+  const stopLabel = t('cards.navigation.loop.meterLabel', {
+    stop: loop.stop,
+    stops: loop.stops,
+    stopName: loop.stopName ?? '—'
+  });
+
   /*
    * The loop: which one, how far round it, and what it has bought.
    *
@@ -366,11 +372,9 @@ function NavigationCard({
         <div className="meter walk-meter" data-level={running ? 'ok' : 'unknown'}>
           <div className="fill" style={{ width: `${(loop.stop / loop.stops) * 100}%` }} />
           <span className="meter-label">
-            {t('cards.navigation.loop.meterLabel', {
-              stop: loop.stop,
-              stops: loop.stops,
-              stopName: loop.stopName ?? '—'
-            })}
+            <span className="meter-text" title={stopLabel}>
+              {stopLabel}
+            </span>
           </span>
         </div>
       )}
