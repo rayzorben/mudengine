@@ -20,6 +20,7 @@ import type { BlockType } from '../../shared/blocks';
 import { ROOM_LIGHTS, type Afflictions } from '../../shared/character';
 import { DIRECTION_NAME } from '../../shared/world';
 import { escapeRegExp } from '../../shared/regex';
+import { STATED_ATTACK_ROWS } from '../../shared/stated';
 import { TITLES_WITH_OF } from '../../shared/titles';
 
 export interface Rule {
@@ -218,6 +219,9 @@ function onsetRule(condition: keyof Afflictions): Rule {
 const COMPASS = Object.values(DIRECTION_NAME)
   .filter((name) => name !== 'up' && name !== 'down')
   .join('|');
+
+/** The attack titles `stat all` prints a row under, off the one table that reads them. */
+const STATED_ATTACK_TITLES = Object.keys(STATED_ATTACK_ROWS).join('|');
 
 /**
  * An item's name in a sentence about it. The names come from the world
@@ -2918,9 +2922,10 @@ export const BATCH_RULES: BatchRule[] = [
      * The header is not `st`'s (`Lives/CP:`), and a sheet glued behind a
      * prompt is found on the tail as every batch is. Only the figures
      * something reads are qualified (`src/shared/stated.ts`): both
-     * regeneration lines, the two headings and the plain `Attack` row, whose
-     * `QnD(Total)` and `(+xtra)` columns are optional, as the server blanks
-     * them. `Bash`, `Backstab` and the rest are printed and not read.
+     * regeneration lines, the two headings and each attack's row
+     * (`STATED_ATTACK_ROWS`), whose `QnD(Total)` and `(+xtra)` columns are
+     * optional, as the server blanks them; the total in brackets is read.
+     * `Backstab` is printed and not read.
      * `maxLines` is a backstop above the longest shape: nine rows, two
      * headings, seven attacks, a blank and a spell table as long as the last
      * fight's casts; the prompt ends it long before.
@@ -2933,7 +2938,9 @@ export const BATCH_RULES: BatchRule[] = [
       /^HP Regen:\s+(?<healthRegen>-?\d+)\/(?<restingRegen>-?\d+)\s+AC vs Evil:/,
       /^MA Regen:\s+(?<baseManaRegen>-?\d+)\/(?<manaRegen>-?\d+)\s+Shadow:/,
       /^(?<section>Attacks)(?: against <(?<against>.+)>)?:\s*$/,
-      /^Attack\s+(?<swings>\d+(?:\.\d+)?)\s+(?<accuracy>-?\d+)\s+(?<min>-?\d+)\s+(?<max>-?\d+)\s+(?:-?\d+\(-?\d+\)\s+)?-?\d+(?:\(-?\d+\))?\s*$/,
+      new RegExp(
+        `^(?<attack>${STATED_ATTACK_TITLES})\\s+(?<swings>\\d+(?:\\.\\d+)?)\\s+(?<accuracy>-?\\d+)\\s+(?<min>-?\\d+)\\s+(?<max>-?\\d+)\\s+(?:-?\\d+\\((?<crits>-?\\d+)\\)\\s+)?-?\\d+(?:\\(-?\\d+\\))?\\s*$`
+      ),
       /^(?<section>Spells)(?: against <.+>)?:\s*$/
     ]
   },

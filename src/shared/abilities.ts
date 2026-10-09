@@ -751,8 +751,8 @@ export const PROTECTION_ABILITY = { evil: 24, good: 25 } as const;
 /**
  * The rows a blessing up moves on the character, as the server reads each
  * (`blessingeffects.ts`): `ActionFigure.AC`/`DR`, `Player.MaxDamage`,
- * `CalcAccuracy`, `DodgeBonus`, `MRes`, `Crits`, `BonusMaxHP`, `HPRegen`; and
- * `RemovesSpell`, which takes another spell off.
+ * `CalcAccuracy`, `DodgeBonus`, `MRes`, `Crits`, `BonusMaxHP`, `HPRegen`,
+ * `Player.Speed`; and `RemovesSpell`, which takes another spell off.
  */
 export const EFFECT_ABILITY = {
   armourClass: 2,
@@ -762,6 +762,7 @@ export const EFFECT_ABILITY = {
   dodge: DODGE_ABILITY,
   magicRes: 36,
   crits: 58,
+  speed: 87,
   maxHp: 88,
   removesSpell: 122,
   hpRegen: 123

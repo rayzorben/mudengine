@@ -13,19 +13,42 @@
  */
 import type { CharacterState } from './character';
 import { loadPercent } from './load';
+import type { AttackKind } from './prowess';
 
-/** The plain round's row — `WriteCombatBeforeDefenses` / `…AfterDefenses`. */
+/**
+ * The rows `Player.ShowStatAll` prints under `Attacks:`, by the title it
+ * prints, and the attack each is. A Mystic's sheet adds the three martial
+ * rows; `Backstab` is one blow, not a round, and nothing reads it.
+ */
+export const STATED_ATTACK_ROWS: Readonly<Record<string, AttackKind>> = {
+  Attack: 'attack',
+  Bash: 'bash',
+  Smash: 'smash',
+  Punch: 'punch',
+  Kick: 'kick',
+  Jumpkick: 'jumpkick'
+};
+
+/** One attack's row — `WriteCombatBeforeDefenses` / `…AfterDefenses`. */
 export interface StatedRound {
   /** Blows a round, uncapped: `PlayerAttackType.Swings`, a fraction. */
   swings: number;
-  /** `Acc + AttackTypeAccMod` — the character's own on either form of the sheet. */
+  /** `Acc + AttackTypeAccMod`: the accuracy this attack rolls with, on either form of the sheet. */
   accuracy: number;
   /**
-   * The blow's range. Before any defence on the character's own sheet; on one
-   * run against a monster, after its damage resistance and floored at zero.
+   * The blow's range, the attack's multipliers applied. Before any defence on
+   * the character's own sheet; on one run against a monster, after its damage
+   * resistance and floored at zero.
    */
   min: number;
   max: number;
+  /**
+   * `QnD(Total)`'s total, `PlayerAttackType.GetCrits`: the stats, gear,
+   * spells, class rows and quick-and-deadly, capped. Null where the server
+   * blanks it (a bash or a smash cannot crit) and on a sheet run against a
+   * monster, where the column is the share of every swing that crits.
+   */
+  crits: number | null;
 }
 
 /**
@@ -53,21 +76,29 @@ export interface StatedSheet {
    */
   baseManaRegen: number | null;
   manaRegen: number | null;
-  round: StatedRound | null;
+  /** Each attack's row the sheet printed. */
+  rounds: Partial<Record<AttackKind, StatedRound>>;
   basis: StatedBasis;
+}
+
+/** What of one attack's row still holds. */
+export interface StatedAttack {
+  accuracy?: number;
+  swings?: number;
+  /** The range, off the character's own sheet only. */
+  damage?: { min: number; max: number };
+  /** Per cent of landed blows that crit, off the character's own sheet only. */
+  crits?: number;
 }
 
 /** What of a sheet still holds for the character as it stands now. */
 export interface StatedProwess {
-  accuracy?: number;
-  swings?: number;
   health?: number;
   resting?: number;
   /** Mana a passive tick returns, and a meditating one. */
   mana?: number;
   meditating?: number;
-  /** The plain round's range, off the character's own sheet only. */
-  damage?: { min: number; max: number };
+  attacks?: Partial<Record<AttackKind, StatedAttack>>;
 }
 
 type BasisState = Pick<CharacterState, 'progress' | 'inventory'> &
@@ -126,23 +157,29 @@ export function statedNow(
   if (sheet.baseManaRegen !== null && sheet.baseManaRegen >= 0) {
     figures.meditating = sheet.baseManaRegen;
   }
-  const round = sheet.round;
-  // Against a monster the range is after its resistance: not the character's.
-  if (round !== null && sheet.against === null) {
-    figures.damage = { min: round.min, max: round.max };
+  // Crits move with the load too: quick-and-deadly is the energy six blows leave.
+  const loaded = now.load === sheet.basis.load;
+  const attacks: Partial<Record<AttackKind, StatedAttack>> = {};
+  for (const [kind, round] of Object.entries(sheet.rounds) as Array<[AttackKind, StatedRound]>) {
+    const held: StatedAttack = {};
+    // Against a monster the range is after its resistance: not the character's.
+    if (sheet.against === null) held.damage = { min: round.min, max: round.max };
+    if (loaded) {
+      held.accuracy = round.accuracy;
+      held.swings = round.swings;
+      if (round.crits !== null) held.crits = round.crits;
+    }
+    if (Object.keys(held).length > 0) attacks[kind] = held;
   }
-  if (round !== null && now.load === sheet.basis.load) {
-    figures.accuracy = round.accuracy;
-    figures.swings = round.swings;
-  }
+  if (Object.keys(attacks).length > 0) figures.attacks = attacks;
   return Object.keys(figures).length === 0 ? null : figures;
 }
 
 /**
  * The batch's rows, read in order.
  *
- * An `Attack` row after the `Spells` heading is a spell whose short name
- * happens to be the title, and is not read.
+ * A row after the `Spells` heading whose short name happens to be an attack's
+ * title is a spell, and is not read.
  */
 export function readStatAll(
   rows: ReadonlyArray<Record<string, string>>,
@@ -159,7 +196,7 @@ export function readStatAll(
     restingRegen: null,
     baseManaRegen: null,
     manaRegen: null,
-    round: null,
+    rounds: {},
     basis
   };
   let table: 'none' | 'attacks' | 'spells' = 'none';
@@ -181,14 +218,17 @@ export function readStatAll(
       sheet.baseManaRegen = whole(row['baseManaRegen']);
       sheet.manaRegen = whole(row['manaRegen']);
     }
-    if (row['swings'] === undefined || table !== 'attacks' || sheet.round !== null) continue;
+    const kind = STATED_ATTACK_ROWS[row['attack'] ?? ''];
+    if (kind === undefined || table !== 'attacks' || sheet.rounds[kind] !== undefined) continue;
     const swings = whole(row['swings']);
     const accuracy = whole(row['accuracy']);
     const min = whole(row['min']);
     const max = whole(row['max']);
     if (swings === null || accuracy === null || min === null || max === null) continue;
-    sheet.round = { swings, accuracy, min, max };
+    const crits = sheet.against === null ? whole(row['crits']) : null;
+    sheet.rounds[kind] = { swings, accuracy, min, max, crits };
   }
-  const anything = sheet.healthRegen !== null || sheet.manaRegen !== null || sheet.round !== null;
+  const anything =
+    sheet.healthRegen !== null || sheet.manaRegen !== null || Object.keys(sheet.rounds).length > 0;
   return anything ? sheet : null;
 }

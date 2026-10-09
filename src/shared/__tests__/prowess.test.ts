@@ -345,13 +345,11 @@ describe('what the server stated', () => {
   const STATED: ProwessSheet = {
     ...SHEET,
     stated: {
-      accuracy: 105,
-      swings: 3.584,
       health: 6,
       resting: 18,
       mana: 11,
       meditating: 8,
-      damage: { min: 8, max: 25 }
+      attacks: { attack: { accuracy: 105, swings: 3.584, damage: { min: 8, max: 25 } } }
     }
   };
 
@@ -374,6 +372,29 @@ describe('what the server stated', () => {
     const smash = swing(STATED, SWORD, target, 'greatermud', { kind: 'smash', bonus: 0 })!;
     expect(smash.lands.value).toBe(hitChance(Math.trunc(((105 - 3 + 2) * 3) / 2) - 25, 40));
     expect(smash.swings?.value).toBe(1);
+  });
+
+  /* `st a` prints a row per attack (`ShowStatAll`), which outranks the arithmetic above. */
+  it('takes an attack’s own row where the sheet printed one', () => {
+    const target = { armourClass: 40, damageResist: 0, dodge: null, health: 100 };
+    const sheet: ProwessSheet = {
+      ...STATED,
+      stated: {
+        attacks: {
+          ...STATED.stated!.attacks,
+          bash: { accuracy: 138, swings: 1.792, damage: { min: 22, max: 82 } },
+          kick: { accuracy: 120, swings: 2.5, damage: { min: 6, max: 14 }, crits: 20 }
+        }
+      }
+    };
+    const bash = swing(sheet, SWORD, target, 'greatermud', { kind: 'bash', bonus: 0 })!;
+    expect(bash.lands.value).toBe(hitChance(138, 40));
+    expect(bash.range).toEqual({ low: 22, high: 82 });
+    expect(bash.damage.from).toBe('stated');
+    const kick = swing(sheet, SWORD, target, 'greatermud', { kind: 'kick', bonus: 0 })!;
+    expect(kick.lands.value).toBe(hitChance(120, 40));
+    expect(kick.swings).toEqual({ value: 2.5, from: 'stated' });
+    expect(kick.crit).toEqual({ value: 0.2, from: 'stated' });
   });
 
   it('is the server’s figure on any family, and for a bare hand', () => {
@@ -403,8 +424,8 @@ describe('what the server stated', () => {
     const target = { armourClass: 0, damageResist: 0, dodge: null, health: 100 };
     const hit = swing(STATED, null, target, 'greatermud')!;
     // The stated range's mean, and a critical's share at three times its top.
-    const crit = critChance(STATED, 'attack', 'greatermud')!.value;
-    const top = STATED.stated!.damage!.max;
+    const crit = critChance(STATED, 'attack', null, 'greatermud')!.value;
+    const top = STATED.stated!.attacks!.attack!.damage!.max;
     expect(hit.damage.value).toBeCloseTo((1 - crit) * 16.5 + crit * 3 * top, 6);
     expect(hit.damage.from).toBe('stated');
     expect(hit.swings).toEqual({ value: 3.584, from: 'stated' });
@@ -443,7 +464,10 @@ describe('damage a round, by how the weapon is swung', () => {
   });
 
   it('ignores what stat all said about the weapon in hand', () => {
-    const stated = { ...SHEET, stated: { swings: 5, damage: { min: 1, max: 2 } } };
+    const stated = {
+      ...SHEET,
+      stated: { attacks: { attack: { swings: 5, damage: { min: 1, max: 2 } } } }
+    };
     expect(roundDamage(stated, blade, 'attack', 'greatermud')).toEqual(
       roundDamage(SHEET, blade, 'attack', 'greatermud')
     );
@@ -490,7 +514,7 @@ describe('a fight without a weapon', () => {
   it('swings the bare hand, 1–3 at speed 1200, when nothing is wielded', () => {
     const fist = swing(bare, null, target, 'greatermud')!;
     const blows = Math.min(6, swingsPerRound(bare, BARE_HAND, 'greatermud')!.value);
-    const crit = critChance(bare, 'attack', 'greatermud')!.value;
+    const crit = critChance(bare, 'attack', null, 'greatermud')!.value;
     expect(fist.range).toEqual({ low: 1, high: 3 });
     expect(fist.damage.value).toBeCloseTo((1 - crit) * 2 + crit * 9, 6);
     expect(fist.rounds?.value).toBeCloseTo(60 / (fist.lands.value * fist.damage.value * blows), 6);
@@ -505,7 +529,7 @@ describe('a fight without a weapon', () => {
     const kicked = swing(bare, null, armoured, 'greatermud', { kind: 'kick', bonus: 0 })!;
     expect(kicked.lands.value).toBeLessThan(swing(bare, null, armoured, 'greatermud')!.lands.value);
     // Level 10: 3–9, times 1.33 and floored: 3–11, a mean of 7 and a critical of 33.
-    const crit = critChance(bare, 'kick', 'greatermud')!.value;
+    const crit = critChance(bare, 'kick', null, 'greatermud')!.value;
     expect(kick.range).toEqual({ low: 3, high: 11 });
     expect(kick.damage.value).toBeCloseTo((1 - crit) * 7 + crit * 33, 6);
   });
@@ -514,22 +538,44 @@ describe('a fight without a weapon', () => {
 describe('a critical blow', () => {
   it('is the stats’ share and a poor fighter’s bonus, capped at 65%', () => {
     // Level 10, intellect 50, agility 60, charm 55: 1 from the stats; combat 4 adds 3.
-    expect(critChance(SHEET, 'attack', 'greatermud')).toEqual({ value: 0.04, from: 'bound' });
+    expect(critChance(SHEET, 'attack', null, 'greatermud')).toEqual({ value: 0.04, from: 'bound' });
     const sharp = { ...SHEET, intellect: 400, combatLevel: 7 };
-    expect(critChance(sharp, 'kick', 'greatermud')?.value).toBe(0.36);
-    expect(critChance({ ...sharp, intellect: 900 }, 'kick', 'greatermud')?.value).toBe(0.65);
+    expect(critChance(sharp, 'kick', null, 'greatermud')?.value).toBe(0.36);
+    expect(critChance({ ...sharp, intellect: 900 }, 'kick', null, 'greatermud')?.value).toBe(0.65);
   });
 
   // The Mystic row's Crits 10 (2026-10-05): two thirds of Soul's 15 at level 14.
   it('counts the class and race rows’ crits', () => {
-    expect(critChance({ ...SHEET, classCrits: 10 }, 'attack', 'greatermud')?.value).toBeCloseTo(
-      0.14
+    expect(
+      critChance({ ...SHEET, classCrits: 10 }, 'attack', null, 'greatermud')?.value
+    ).toBeCloseTo(0.14);
+  });
+
+  /*
+   * `GetQndCrits`: level 30, combat 5, agility 100, an empty pack, a punch at
+   * 1150 costs 105 energy a blow, so six leave 370 of the round's 1,000: 9.
+   */
+  it('adds quick-and-deadly for an attack faster than six blows a round', () => {
+    const quick = { ...SHEET, level: 30, combatLevel: 5, agility: 100, encumbrancePercent: 0 };
+    const slow = { ...quick, agility: 50, level: 10 };
+    const punch = critChance(quick, 'punch', null, 'greatermud')!.value;
+    const without = critChance(
+      quick,
+      'punch',
+      { min: 1, max: 2, speed: 1, strength: 999 },
+      'greatermud'
+    )!.value;
+    expect(punch - without).toBeCloseTo(0.09, 6);
+    // None for a weapon too heavy, or a character too slow for six blows.
+    expect(critChance(slow, 'punch', null, 'greatermud')!.value).toBeCloseTo(
+      critChance(slow, 'punch', { min: 1, max: 2, speed: 1, strength: 999 }, 'greatermud')!.value,
+      6
     );
   });
 
   it('never comes of a bash or a smash, and is unknown off GreaterMUD', () => {
-    expect(critChance(SHEET, 'bash', 'greatermud')).toEqual({ value: 0, from: 'source' });
-    expect(critChance(SHEET, 'attack', 'majormud')).toBeNull();
+    expect(critChance(SHEET, 'bash', null, 'greatermud')).toEqual({ value: 0, from: 'source' });
+    expect(critChance(SHEET, 'attack', null, 'majormud')).toBeNull();
   });
 });
 
