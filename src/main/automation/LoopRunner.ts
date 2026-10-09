@@ -486,6 +486,7 @@ export class LoopRunner implements SessionModule {
     this.events.notice?.(
       t('automation.loops.started', { loopName: loop.name, stopCount: loop.stops.length })
     );
+    this.holdForVitals(state);
     this.publish();
     return this.advance(true);
   }
@@ -569,6 +570,7 @@ export class LoopRunner implements SessionModule {
     // A pause of any length is not a lap earning nothing.
     this.anchorRate(state);
     this.events.notice?.(t('automation.loops.resumed'));
+    this.holdForVitals(state);
     this.publish();
     return this.advance(false);
   }
@@ -1067,7 +1069,7 @@ export class LoopRunner implements SessionModule {
     }
     const fraction =
       state.vitals.hp !== null && state.vitals.hpMax ? state.vitals.hp / state.vitals.hpMax : null;
-    if (this.holdForVital('health', state) || this.holdForVital('mana', state)) return;
+    if (this.holdForVitals(state)) return;
     if (this.escaped) {
       /*
        * Three facts, and every one of them is *the reason for running away is
@@ -1148,6 +1150,17 @@ export class LoopRunner implements SessionModule {
       // would on reaching the loop: off, nobody hits back and the fight it
       // waits for never ends (2026-10-08, Soul shot at for 49 minutes).
       if (this.lapBegunAt === null) this.events.wantsCombat?.();
+      this.waiting = true;
+      return null;
+    }
+
+    /*
+     * Nor while the lap is held for health or mana. Start and play reach here
+     * without a status line between, so `onCharacter`'s hold alone let the
+     * first leg go (2026-10-09: festus pressed Loop resting at 165/320 under
+     * `restBelow` 0.85, and `e` went 3ms after the lap started).
+     */
+    if (this.hurt || this.drained) {
       this.waiting = true;
       return null;
     }
@@ -1435,6 +1448,10 @@ export class LoopRunner implements SessionModule {
    * (`stillFor`). Taken only by a running lap; an unknown figure never
    * holds and lets a held lap go.
    */
+  private holdForVitals(state: CharacterState): boolean {
+    return this.holdForVital('health', state) || this.holdForVital('mana', state);
+  }
+
   private holdForVital(vital: 'health' | 'mana', state: CharacterState): boolean {
     const was = vital === 'health' ? this.hurt : this.drained;
     const margin = tuning().loop.resumeMarginWhenUncapped;
