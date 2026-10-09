@@ -5888,6 +5888,7 @@ automation:
     reasonPar: Par Frequency
     reasonLookAtPlayer: Looking at someone this character has not seen before
     reasonRosterUnknown: a name appeared that the who list does not explain
+    reasonSearcherUnlisted: '{player} is searching here and the room did not list them'
     reasonSpellbook: reading the spellbook
     reasonTrained: trained, so your stats, the exp table and your cash have all changed
     reasonStatsTrained: stats were trained, so the stat display changed

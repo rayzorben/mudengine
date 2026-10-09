@@ -172,6 +172,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/session/StatScreenHold.ts',
       // The leader's failed bash, helped with (todo 03).
       'src/main/automation/LeaderDoors.ts',
+      // A player searching here whom the room did not list.
+      'src/main/automation/UnlistedSearcher.ts',
       'src/main/parse/expectations.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))

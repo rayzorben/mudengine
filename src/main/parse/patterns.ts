@@ -1271,6 +1271,13 @@ export const RULES: Rule[] = [
     pattern: /^(?<player>[A-Z][\w'-]*) is looking (?<at>around the room|at you)\.$/
   },
   /*
+   * `Player.TrySearch` breaks the searcher's stealth and then says this to the
+   * room (GreaterMUD `Player.cs:1326`, source; captures 001, 012, 029), so a
+   * searcher missing from `Also here:` is standing here, and a reprint now
+   * names them.
+   */
+  { type: 'player-searches', pattern: /^(?<player>[A-Z][\w'-]*) is searching the area\.$/ },
+  /*
    * A *monster* walking in, which is a different sentence and a different fact.
    *
    * `A large lashworm crawls into the room from the above!` — and the arrival

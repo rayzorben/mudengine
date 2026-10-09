@@ -67,6 +67,7 @@ import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 import { StaleFacts } from './StaleFacts';
 import { AgedFacts } from './AgedFacts';
+import { UnlistedSearcher } from './UnlistedSearcher';
 
 export interface RoutineEvents {
   notice?(message: string): void;
@@ -159,6 +160,8 @@ export class Routines implements SessionModule {
   private readonly stale: StaleFacts;
   /** What `i`, `st` or `exp` answered a while ago. */
   private readonly aged = new AgedFacts();
+  /** A player searching here whom the room did not list. See `UnlistedSearcher`. */
+  private readonly searcher: UnlistedSearcher;
 
   constructor(
     private config: AutomationConfig,
@@ -167,6 +170,7 @@ export class Routines implements SessionModule {
   ) {
     this.partyListing = new PartyListing(queue, () => this.config);
     this.stale = new StaleFacts(queue);
+    this.searcher = new UnlistedSearcher(queue);
   }
 
   configure(config: AutomationConfig): void {
@@ -195,6 +199,7 @@ export class Routines implements SessionModule {
     this.partyListing.reset();
     this.stale.reset();
     this.aged.reset();
+    this.searcher.reset();
     this.stopIdle();
   }
 
@@ -249,6 +254,7 @@ export class Routines implements SessionModule {
    * answer questions.
    */
   onCharacter(state: CharacterState): void {
+    this.searcher.onCharacter(state);
     if (state.phase !== 'in-game') {
       /*
        * Out of the realm — the socket gone, or the exit to the menu — there is
@@ -589,6 +595,7 @@ export class Routines implements SessionModule {
     this.stale.answered(block.type);
     this.aged.answered(block.type, Date.now());
     if (!this.config.enabled) return;
+    this.searcher.onBlock(block);
     if (block.type === 'spellbook-refused') {
       const book = block.groups?.['book'];
       if (this.bookCorrected || (book !== 'spells' && book !== 'powers')) return;
