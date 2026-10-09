@@ -69,7 +69,6 @@ const listing = {
 describe('leading the party through a portal', () => {
   let sent: string[];
   let queue: CommandQueue;
-  let asked: string[];
   const config = (party: Partial<AutomationConfig['party']> = {}): AutomationConfig => ({
     ...CONFIG,
     pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 },
@@ -77,12 +76,11 @@ describe('leading the party through a portal', () => {
   });
   const drain = (): void => void vi.advanceTimersByTime(500);
   const regroup = (party: Partial<AutomationConfig['party']> = {}): PartyRegroup =>
-    new PartyRegroup(config(party), queue, { askJoin: (member) => asked.push(member) });
+    new PartyRegroup(config(party), queue);
 
   beforeEach(() => {
     vi.useFakeTimers();
     sent = [];
-    asked = [];
     queue = new CommandQueue(config(), { send: (command) => sent.push(command) });
   });
   afterEach(() => {
@@ -136,7 +134,6 @@ describe('leading the party through a portal', () => {
     it.onCharacter(state('3/681', [], ['Soul']));
     drain();
     expect(sent).toEqual(['.@party go vortex', PAR, 'invite Soul']);
-    expect(asked).toEqual(['Soul']);
     expect(it.regrouping(far)).toBe(true);
 
     it.onCharacter(state('3/681', ['Soul', 'Yang']));

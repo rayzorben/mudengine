@@ -1829,7 +1829,13 @@ const TUNING_DEFAULTS = {
      * how often it re-reads the listing in a fight; a healer that could not
      * answer the first request hears the second about as often.
      */
-    healAskAgainMs: 15_000
+    healAskAgainMs: 15_000,
+    /**
+     * How long after a `@join` to somebody this character invited the party
+     * listing is asked again, and so how often the `@join` is repeated while
+     * the listing still prints them `[Invited]` (todo 01, the user's figure).
+     */
+    inviteAgainMs: 5_000
   },
   /**
    * How many commands one press or one `@` may spend.

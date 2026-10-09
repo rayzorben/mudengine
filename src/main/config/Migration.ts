@@ -6839,6 +6839,8 @@ function theTuningBlockGainedKeys(
     // How old each listing may get before it is asked again (2026-10-08).
     for (const key of ['packRefreshMs', 'sheetRefreshMs', 'experienceRefreshMs'] as const)
       addKey('queue', key, DEFAULT_INTERNAL.tuning.queue[key]);
+    // How often an invitation nobody has answered is followed up (todo 01, 2026-10-09).
+    addKey('remotes', 'inviteAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteAgainMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

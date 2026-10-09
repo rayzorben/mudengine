@@ -1816,12 +1816,13 @@ describe('@heal', () => {
     peers.configure(asking(0.5, { enabled: false }));
     peers.onCharacter(inParty(10, 'Soul'));
     drain();
-    expect(sent).toEqual([]);
+    // Rend's invitation is followed up with `@join` (todo 01); no heal is asked.
+    expect(sent).toEqual(['/Rend @join']);
     // The positive control: the same bar, in a party, with it on.
     peers.configure(asking(0.5));
     peers.onCharacter(inParty(10, 'Soul'));
     drain();
-    expect(sent).toEqual(['.@heal']);
+    expect(sent).toEqual(['/Rend @join', '.@heal']);
   });
 
   it('asks on its own setting, with answering other players switched off', () => {

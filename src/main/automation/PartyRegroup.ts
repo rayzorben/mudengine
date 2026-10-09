@@ -21,8 +21,6 @@ import { partyListingIntent } from './PartyListing';
 
 export interface PartyRegroupEvents {
   notice?(message: string): void;
-  /** `@join` to a member invited back, as MegaMUD's leader sends it behind `invite` (captures/112). */
-  askJoin?(member: string, state: CharacterState): void;
 }
 
 /** `invite <name>`, one per name however it was asked for: an `@invite` and a regroup are one invitation. */
@@ -185,8 +183,8 @@ export class PartyRegroup {
       if (joined.has(key) || !here.has(key) || gathering.invited.has(key)) continue;
       gathering.invited.add(key);
       this.events.notice?.(t('automation.party.reinvited', { member }));
+      // The `@join` behind it is `InviteFollowUp`'s, off the `[Invited]` row this puts up.
       this.queue.enqueue(inviteIntent(member, t('automation.party.reasonReinvite', { member })));
-      this.events.askJoin?.(member, state);
     }
   }
 
