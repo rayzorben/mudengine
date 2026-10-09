@@ -704,6 +704,7 @@ export class Errands implements SessionModule {
     allowing: readonly string[] = []
   ): Traveller {
     const pack = this.packContents(state);
+    const up = this.spellsUp(state);
     const parts = this.runParts(state, 'lairKnown');
     const run = parts === null ? null : lairRunner(parts);
     return {
@@ -747,7 +748,7 @@ export class Errands implements SessionModule {
       counters: state.abilities,
       // And the wards the server has stated up with a clock still running,
       // for a room spell one of them stops (todo 105).
-      spellsUp: this.spellsUp(state),
+      spellsUp: up,
       ...pack,
       refused: this.refusedEdges,
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
@@ -762,14 +763,15 @@ export class Errands implements SessionModule {
       // was read at planning time.
       lairDamage: (room) => this.lairCost(room, state),
       /*
-       * And what the room itself does to whoever stands in it — with the pack
-       * resolved **once**, here, rather than per call: this runs for every room
-       * the A* expands that casts anything, and `packContents` walks the whole
-       * listing and normalises every name. `danger` is spared it because
-       * `LairCosts` remembers per room; this has nothing to remember, so the
-       * one thing it depends on is hoisted instead.
+       * And what the room itself does to whoever stands in it, with the pack
+       * and the wards resolved once, here, rather than per call: this runs for
+       * every room the A* expands that casts anything, `packContents` walks the
+       * whole listing and normalises every name, and `spellsUp` scans the spell
+       * table per ward (178ms of a 1.25s route, 2026-10-09). `danger` is spared
+       * it because `LairCosts` remembers per room; this has nothing to
+       * remember, so what it depends on is hoisted instead.
        */
-      hazard: (room) => this.roomHazard(room, state, pack.keys)
+      hazard: (room) => this.roomHazard(room, state, pack.keys, up)
     };
   }
 
@@ -869,7 +871,12 @@ export class Errands implements SessionModule {
    * of the Silver River from a wall into a corridor — and the bar, and both
    * are read at the call.
    */
-  private roomHazard(room: WorldRoom, state: CharacterState, carrying?: number[]): number | null {
+  private roomHazard(
+    room: WorldRoom,
+    state: CharacterState,
+    carrying: readonly number[],
+    up: readonly number[]
+  ): number | null {
     if (!this.world) return null;
     // The character's own level: the realm gates some effects on it, and a
     // sandstorm that cannot catch this character is not a price it pays.
@@ -877,8 +884,7 @@ export class Errands implements SessionModule {
     if (hazard === null) return null;
     // Carrying what stops it is not *unknown*, it is *free*: the room costs a
     // plain step, which is what it is for that character.
-    if (hazardAvoided(hazard, carrying ?? this.packContents(state).keys, this.spellsUp(state)))
-      return null;
+    if (hazardAvoided(hazard, carrying, up)) return null;
     /*
      * **A room that moves you is a wall, exactly as an exit that casts one
      * is** (`edgePenalty`'s `spellEffect === 'relocates'`). The walker's next
