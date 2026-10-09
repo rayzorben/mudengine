@@ -172,7 +172,7 @@ export default function LoopPicker({
                   data-taken={taken ? 'true' : 'false'}
                   onClick={() => onToggle(loop)}
                   onMouseDown={keepFocus}
-                  onMouseEnter={() => nav.point(index)}
+                  {...nav.hover(index)}
                   type="button"
                 >
                   <Icon name={taken ? 'check' : 'plus'} />

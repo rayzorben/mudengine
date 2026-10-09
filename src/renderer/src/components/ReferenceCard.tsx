@@ -168,7 +168,7 @@ function ReferenceCard({
                   data-active={list.isActive(index) ? 'true' : 'false'}
                   key={entryKey(entry, index)}
                   onClick={() => setChosen(entry)}
-                  onMouseEnter={() => list.point(index)}
+                  {...list.hover(index)}
                   role="option"
                 >
                   <span className="what">{entry.name}</span>

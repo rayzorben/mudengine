@@ -1827,7 +1827,7 @@ export default function RoutePanel({
                   <li
                     data-active={list.isActive(index) ? 'true' : 'false'}
                     key={`${room.map}/${room.room}`}
-                    onMouseEnter={() => list.point(index)}
+                    {...list.hover(index)}
                   >
                     <button
                       onClick={() => choose(room)}

@@ -442,7 +442,7 @@ export default function CommandPalette({
                       data-grouped={block.boxed ? 'true' : undefined}
                       key={command.id}
                       onClick={() => choose(command)}
-                      onMouseEnter={() => list.point(index)}
+                      {...list.hover(index)}
                       role="option"
                     >
                       <Icon name={command.icon} />

@@ -189,7 +189,7 @@ export function SpellCombo({
                 onChange(spell.name);
                 setOpen(false);
               }}
-              onMouseEnter={() => navigation.point(index)}
+              {...navigation.hover(index)}
               role="option"
             >
               <span>{spell.name}</span>
