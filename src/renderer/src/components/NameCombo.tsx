@@ -143,7 +143,7 @@ export default function NameCombo({
                 onChange(option);
                 setOpen(false);
               }}
-              onMouseEnter={() => navigation.point(index)}
+              {...navigation.hover(index)}
               role="option"
             >
               <span>{option}</span>

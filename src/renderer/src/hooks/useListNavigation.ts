@@ -12,8 +12,15 @@ export interface ListNavigation<T> {
   cursor: number;
   /** The highlighted option, if the list is not empty. */
   active: T | undefined;
-  /** Point at an option — from a hover, so the mouse and the keyboard agree. */
-  point(index: number): void;
+  /**
+   * Spread on an option's row, so pointing at it highlights it and the mouse
+   * and the keyboard agree. The highlight follows the pointer when it moves
+   * over a row. A list drawn under a resting pointer fires `mouseenter` on
+   * whatever row lands there, and Enter would take an option nobody pointed
+   * at (measured 2026-10-09 on a room list: row 5, under where a drag had
+   * left the pointer).
+   */
+  hover(index: number): { onMouseMove(): void };
   /**
    * Attach to the text input.
    *
@@ -58,8 +65,9 @@ export interface ListNavigationOptions<T> {
  * - The input keeps the caret and keeps typing. Arrows do not steal it.
  * - The highlight is clamped, not wrapped past the ends by accident — it wraps
  *   deliberately, which is what a short list wants.
- * - Hovering points at an option, so the mouse and the keyboard never disagree
- *   about what Enter would do.
+ * - Moving the pointer over an option points at it, so the mouse and the
+ *   keyboard never disagree about what Enter would do. A pointer at rest
+ *   leaves the highlight where it is.
  * - The highlight is scrolled into view, because a selection you cannot see is
  *   a selection you will not trust.
  */
@@ -138,7 +146,7 @@ export function useListNavigation<T>({
   return {
     cursor: at,
     active: items[at],
-    point: setCursor,
+    hover: (index: number) => ({ onMouseMove: () => setCursor(index) }),
     onKeyDown,
     listRef,
     isActive: (index: number) => index === at

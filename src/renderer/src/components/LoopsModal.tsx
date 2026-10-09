@@ -332,7 +332,7 @@ export default function LoopsModal({
                           data-grouped="true"
                           key={row.key}
                           onClick={() => choose(row)}
-                          onMouseEnter={() => nav.point(at)}
+                          {...nav.hover(at)}
                           role="option"
                         >
                           <Icon name="route" />
