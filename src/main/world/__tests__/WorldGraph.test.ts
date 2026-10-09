@@ -4762,6 +4762,55 @@ describe('ways and places kept out of', () => {
     expect(route.keptOut?.round.steps).toHaveLength(13);
   });
 
+  /*
+   * The way through is priced past its moves (lairs, hazards), so it can cross
+   * the vortex where the way round is no longer: no choice is asked then.
+   */
+  it('walks round without asking where the way round is no more moves', () => {
+    const graph = makeWorld([
+      {
+        m: 1,
+        r: 1,
+        n: 'Mossy Tunnel',
+        x: { s: { m: 1, r: 4 } },
+        cmd: [{ say: ['go vortex'], to: '3/1' }]
+      },
+      { m: 3, r: 1, n: 'Black Wasteland', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 4, n: 'Scalding Pool', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Goal', x: {} }
+    ]);
+    const hazard = (room: WorldRoom): number | null =>
+      room.name === 'Scalding Pool' ? 0.05 : null;
+    // Unlisted, the price takes the vortex over the pool at the same moves.
+    expect(graph.route('1/1', '1/2', { hazard }).steps[0]?.command).toBe('go vortex');
+    const route = graph.route('1/1', '1/2', { keepOut: vortex, hazard }, { alternatives: true });
+    expect(route.keptOut).toBeUndefined();
+    expect(route.steps.map((step) => step.to)).toEqual(['1/4', '1/2']);
+  });
+
+  it('still asks where the way round crosses a door the character cannot force', () => {
+    const graph = makeWorld([
+      {
+        m: 1,
+        r: 1,
+        n: 'Mossy Tunnel',
+        x: { s: { m: 1, r: 4, i: 'Door [1000 picklocks/strength]' } },
+        cmd: [{ say: ['go vortex'], to: '3/1' }]
+      },
+      { m: 3, r: 1, n: 'Black Wasteland', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 4, n: 'Warehouse', x: { e: { m: 1, r: 2 } } },
+      { m: 1, r: 2, n: 'Goal', x: {} }
+    ]);
+    const route = graph.route(
+      '1/1',
+      '1/2',
+      { keepOut: vortex, packKnown: true, keys: [] },
+      { alternatives: true }
+    );
+    expect(route.steps[0]?.command).toBe('go vortex');
+    expect(route.keptOut?.round.walls?.length).toBe(1);
+  });
+
   it('walks through where the player chose to, and still says so on the step', () => {
     const route = tunnel().route('1/1', '1/2', {
       keepOut: { words: ['vortex'], allowed: ['vortex'] }

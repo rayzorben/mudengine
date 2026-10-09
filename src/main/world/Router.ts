@@ -30,6 +30,7 @@ import {
   openableHere,
   roomId,
   sameLanding,
+  walkable,
   type Direction,
   type Landing,
   type RemoteLever,
@@ -1383,6 +1384,10 @@ export class Router {
         if (through.blocked || crossed.length === 0) return through;
         // The way round's keys, where it wants some, are the navigation engine's.
         const round = this.plan(from, to, goal, traveller, {}, traveller);
+        // No choice to make where the way round is walkable and no more
+        // moves: it is walked, with its own alternatives (the user, 2026-10-09).
+        if (walkable(round) && round.steps.length <= through.steps.length)
+          return this.plan(from, to, goal, traveller, options, traveller);
         return { ...through, keptOut: { words: crossed, round } };
       }
     }
