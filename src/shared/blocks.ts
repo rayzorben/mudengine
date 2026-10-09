@@ -828,6 +828,8 @@ export type BlockType =
    * happens. Captured live (`npm run probe:pvp`) and in the corpus.
    */
   | 'player-looks'
+  /** `<Name> is searching the area.`: somebody in this room searched, and is no longer hidden. */
+  | 'player-searches'
   /** `The room is barely visible` / `dimly lit` — whether the occupants can be seen at all. */
   | 'room-light'
   /**
@@ -1080,6 +1082,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'room-light': 'room',
   'room-unseen': 'room',
   'player-looks': 'presence',
+  'player-searches': 'presence',
   'player-dies': 'presence',
   'player-rests': 'presence',
   'user-rests': 'status',
