@@ -2414,6 +2414,19 @@ kbd {
   margin-bottom: 6px;
 }
 
+/* A stop's name can be wider than the rail; the bar stays one line high and
+   the name ends in an ellipsis. `min-width: 0` lets the flex item shrink. */
+.walk-meter .meter-label {
+  padding-inline: 1ch;
+}
+
+.walk-meter .meter-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The route bar is progress, not a vital: neutral, never the health hues. A
    walk at one step of twenty is not a condition to be alarmed about. */
 .walk-meter .fill {
