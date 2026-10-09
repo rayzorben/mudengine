@@ -20,7 +20,6 @@
  * enforced below rather than trusted, since this script reads a config file it
  * did not write.
  */
-import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
@@ -28,6 +27,7 @@ import YAML from 'yaml';
 import { HOST, PORT, isLocalRealm } from './lib/local-realm.mjs';
 import { homePaths } from './lib/home.mjs';
 import { holdPort } from './lib/port-lock.mjs';
+import { spawnElectron, useVirtualDisplay } from './lib/display.mjs';
 
 /** Fixed before launch, so only files this run produced are examined later. */
 const startedAt = Date.now();
@@ -312,57 +312,19 @@ const args = [
   `--remote-debugging-port=${CDP_PORT}`
 ];
 
-// A virtual display when there is a real one to protect: the client takes
-// keyboard focus on launch by design, and a check has no business doing that to
-// whoever is at the keyboard.
-const hasXvfb =
-  process.platform === 'linux' &&
-  // Either kind of session counts. A Wayland-only desktop has no `DISPLAY` at
-  // all, and checking for that alone concluded there was nothing to protect.
-  Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY) &&
-  spawnSync('sh', ['-c', 'command -v xvfb-run'], { stdio: 'ignore' }).status === 0;
-/*
- * Refuse to open a real window over someone's session.
- *
- * The app takes keyboard focus on launch by design -- it is the focus policy --
- * and a test has no business doing that to whoever is at the keyboard. When
- * there is a desktop session and no way to hide from it, that is a reason to
- * stop rather than to carry on and hope. Pass --windowed to watch deliberately.
- */
-const wantsWindow = process.argv.includes('--windowed');
-const hasSession = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-if (hasSession && !hasXvfb && !wantsWindow) {
-  console.error(
-    '\nThere is a desktop session here and no `xvfb-run` to hide behind, so this\n' +
-      'would open a window and take your keyboard. Install xvfb, or pass --windowed\n' +
-      'if you meant to watch it.\n'
-  );
-  process.exit(1);
-}
-
 // `detached` so the whole tree can be signalled: under `xvfb-run` -- a shell
 // wrapper -- killing the child leaves Electron alive, holding the debugging
 // port, and the next run attaches to the previous session's state.
-/*
- * Force the X11 backend and hide the real compositor.
- *
- * `xvfb-run` sets `DISPLAY` to a virtual X server, but Electron prefers Wayland
- * when `WAYLAND_DISPLAY` is set and connects to the *real* compositor anyway --
- * so the window opens on the user's actual desktop and takes their keyboard,
- * which is the exact thing running under Xvfb was supposed to prevent. It
- * happened: a run stole focus mid-sentence and the typing went into the game's
- * login prompt, which rejected it.
- */
-const xvfbEnv = { ...appEnv };
-delete xvfbEnv.WAYLAND_DISPLAY;
-
-const child = hasXvfb
-  ? spawn('xvfb-run', ['-a', electron, '--ozone-platform=x11', ...args], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: xvfbEnv,
-      detached: true
-    })
-  : spawn(electron, args, { stdio: ['ignore', 'pipe', 'pipe'], env: appEnv, detached: true });
+const child = spawnElectron(
+  useVirtualDisplay(process.argv.includes('--windowed')),
+  electron,
+  args,
+  {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: appEnv,
+    detached: true
+  }
+);
 
 const NOISE =
   /Fontconfig|wayland|GPU|dbus|Vulkan|MESA|gbm|EGL|invalid |DevTools|Failed to shutdown/i;

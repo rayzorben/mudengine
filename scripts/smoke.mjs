@@ -17,7 +17,7 @@ import net from 'node:net';
 import fs from 'node:fs';
 import zlib from 'node:zlib';
 import path from 'node:path';
-import { execSync, spawn, spawnSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { parseDocument } from 'yaml';
 
 import { judgeFailures } from './lib/smoke-baseline.mjs';
@@ -33,7 +33,9 @@ import {
   sentence
 } from '../src/main/app/copyMatch.ts';
 import { escapeRegExp } from '../src/shared/regex.ts';
+import { normalizeInternal } from '../src/shared/internal.ts';
 import { holdPort } from './lib/port-lock.mjs';
+import { spawnElectron, useVirtualDisplay } from './lib/display.mjs';
 
 /*
  * Every pattern here is case-blind: a CSS `text-transform` reaches
@@ -131,7 +133,7 @@ const CONFIG = path.join(HOME, 'global', 'default.yaml');
  * `LinkWatch.test.ts` owns that behaviour; the fixture cannot honestly
  * exercise it. The shipped template otherwise, comments and all.
  */
-{
+const SNAP_DISTANCE = (() => {
   const internal = parseDocument(fs.readFileSync('resources/config/internal.yaml', 'utf8'));
   if (!internal.hasIn(['tuning', 'reconnect', 'silentForMs'])) {
     throw new Error('internal.yaml has no tuning.reconnect.silentForMs to switch off');
@@ -139,7 +141,10 @@ const CONFIG = path.join(HOME, 'global', 'default.yaml');
   internal.setIn(['tuning', 'reconnect', 'silentForMs'], 0);
   fs.mkdirSync(HOME, { recursive: true });
   fs.writeFileSync(path.join(HOME, 'internal.yaml'), internal.toString(), 'utf8');
-}
+  // How near a dragged card must come to another's edge to snap to it, as the
+  // app reads it from this file.
+  return normalizeInternal(internal.toJS()).tuning.view.snapDistance;
+})();
 const SMOKE_FONT = 'LucidaProgrammer Nerd Font Mono';
 const SMOKE_FONT_SIZE = 15;
 fs.mkdirSync(path.dirname(CONFIG), { recursive: true });
@@ -759,80 +764,16 @@ const electronArgs = [
   `--remote-debugging-port=${CDP_PORT}`
 ];
 
-/**
- * Run on a throwaway X display when there is a real one to protect.
- *
- * The app takes keyboard focus on launch — deliberately, it is the focus policy
- * — but a *test* has no business doing that to whoever is at the keyboard. It
- * bit us for real: a smoke run stole focus mid-sentence and the typing went
- * into the game's username prompt, which failed the login and looked exactly
- * like a bug in the client.
- *
- * Only when `DISPLAY` is set, since that is the only case with a session to
- * interrupt; headless CI already has nothing to steal.
- */
-const hasXvfb =
-  process.platform === 'linux' &&
-  // Either kind of session counts. A Wayland-only desktop has no `DISPLAY` at
-  // all, and checking for that alone concluded there was nothing to protect.
-  Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY) &&
-  spawnSync('sh', ['-c', 'command -v xvfb-run'], { stdio: 'ignore' }).status === 0;
-/*
- * Refuse to open a real window over someone's session.
- *
- * The app takes keyboard focus on launch by design -- it is the focus policy --
- * and a test has no business doing that to whoever is at the keyboard. When
- * there is a desktop session and no way to hide from it, that is a reason to
- * stop rather than to carry on and hope. Pass --windowed to watch deliberately.
- */
-const wantsWindow = process.argv.includes('--windowed');
-const hasSession = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-if (hasSession && !hasXvfb && !wantsWindow) {
-  console.error(
-    '\nThere is a desktop session here and no `xvfb-run` to hide behind, so this\n' +
-      'would open a window and take your keyboard. Install xvfb, or pass --windowed\n' +
-      'if you meant to watch it.\n'
-  );
-  process.exit(1);
-}
+const virtual = useVirtualDisplay(process.argv.includes('--windowed'));
+if (virtual) console.log('running on a virtual display -- your focus is left alone\n');
 
-if (hasXvfb) console.log('running on a virtual display -- your focus is left alone\n');
-
-/*
- * `detached` puts the app in its own process group so the whole tree can be
- * signalled at the end.
- *
- * `xvfb-run` is a shell wrapper, so `child.kill()` reaps the wrapper and leaves
- * Electron running -- still holding the debugging port and still connected to
- * the fake host. Runs then accumulate: the next one attaches to the *first*
- * leftover instance rather than the app it just launched, and reports that
- * app's state as though it were this run's. It reads as a baffling assertion
- * failure about numbers nothing in the fixture produces.
- */
-/*
- * Force the X11 backend and hide the real compositor.
- *
- * `xvfb-run` sets `DISPLAY` to a virtual X server, but Electron prefers Wayland
- * when `WAYLAND_DISPLAY` is set and connects to the *real* compositor anyway --
- * so the window opens on the user's actual desktop and takes their keyboard,
- * which is the exact thing running under Xvfb was supposed to prevent. It
- * happened: a run stole focus mid-sentence and the typing went into the game's
- * login prompt, which rejected it.
- */
-const xvfbEnv = { ...appEnv };
-delete xvfbEnv.WAYLAND_DISPLAY;
-
-const child = hasXvfb
-  ? spawn('xvfb-run', ['-a', electron, '--ozone-platform=x11', ...electronArgs], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: xvfbEnv,
-      detached: true
-    })
-  : spawn(electron, electronArgs, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: appEnv,
-      detached: true
-    });
+// `detached` puts the app in its own process group so the whole tree can be
+// signalled at the end.
+const child = spawnElectron(virtual, electron, electronArgs, {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  env: appEnv,
+  detached: true
+});
 
 /** Signal the app's whole process group, not just the process we spawned. */
 const killApp = (signal) => {
@@ -1100,6 +1041,20 @@ async function gone(selector) {
   return waitFor(
     async () => !(await evaluate(`!!document.querySelector(${JSON.stringify(selector)})`))
   );
+}
+
+/**
+ * Puts the route panel away by its own close, so nothing below reads a panel
+ * a check left standing; its scrim takes the next real press anywhere in the
+ * window. Escape cannot be trusted for it: once a walk is asked for, the
+ * caret is back in the terminal and Escape goes to the game. The close is
+ * addressed as the *direct* child of the search row: `ClearField` keeps a
+ * clear button in the DOM whether or not it is drawn, so `.route-search
+ * button` is that one and empties the field instead.
+ */
+async function closeRoutePanel() {
+  await evaluate(`document.querySelector('.route-panel .route-search > button')?.click()`);
+  return gone('.route-panel');
 }
 
 /**
@@ -2762,16 +2717,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     !(await evaluate(`!!document.querySelector('.room-peek')`)),
     'and the panel goes with it, because one thing is open at a time'
   );
-  /*
-   * Away again, so nothing below reads a panel this check left standing. The
-   * panel's own close, addressed as the *direct* child of the search row:
-   * `ClearField` keeps a clear button in the DOM whether or not it is drawn,
-   * so `.route-search button` is that one and empties the field instead.
-   */
-  await evaluate(`document.querySelector('.route-panel .route-search > button')?.click()`);
-  await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
   check(
-    !(await evaluate(`!!document.querySelector('.route-panel')`)),
+    await closeRoutePanel(),
     'and the route panel closes on its own ✕, leaving nothing standing'
   );
 }
@@ -3415,6 +3362,13 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `before ${JSON.stringify(beforeWalk)} after ${JSON.stringify(afterWalk)}`
   );
   /*
+   * A refusal leaves the panel standing. Whether this walk is refused depends
+   * on a move from above still being unanswered.
+   */
+  if (afterWalk.open) {
+    check(await closeRoutePanel(), 'and a refused walk leaves a panel that closes');
+  }
+  /*
    * And the caret is back in the terminal. Typing is what stops a walk, so
    * the hand that started one has to be able to type at once.
    */
@@ -3500,17 +3454,17 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       'and Alt G walks the plan on screen, as Walk it does',
       JSON.stringify(altWalk)
     );
-    if (altWalk.open) await press('Escape', 'Escape', 27);
-    await waitFor(async () => !(await evaluate(`!!document.querySelector('.route-panel')`)));
+    if (altWalk.open) {
+      check(await closeRoutePanel(), 'and a refused Alt G leaves a panel that closes');
+    }
   }
 
   // Leave nothing running, and put the caret back where it lives.
   await evaluate(`(window.mudengine.stopMoving('${SESSION}'), true)`);
-  if (afterWalk.open) await press('Escape', 'Escape', 27);
   /*
    * Both effects, waited for: the transport turning from stop into play is the
    * walk having actually ended rather than the message having merely been
-   * sent, and the panel gone is the Escape landing. Read off the transport and
+   * sent, and no panel is left standing above it. Read off the transport and
    * not the heading — a *stopped* route is still drawn as a route, so a
    * heading that stops saying ROUTE is a thing that never happens.
    */
@@ -8826,10 +8780,20 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     const held = (await boxOf(`[data-card-float="${movingId}"] header[data-grab]`)) ?? NOWHERE;
     check(held.w > 0, 'and each offers its heading as the handle it is dragged by');
     const start = { x: held.x + held.w / 2, y: held.y + held.h / 2 };
+    /*
+     * Past the other's bottom edge by more than the snap reach, measured: a
+     * fixed 260px landed inside that reach once the window was sized for a
+     * 1920x1080 screen, and the card snapped onto the edge instead of
+     * clearing it.
+     */
+    const lifted = (await boxOf(`[data-card-float="${anchorId}"]`)) ?? NOWHERE;
+    const liftedOwn = (await boxOf(`[data-card-float="${movingId}"]`)) ?? NOWHERE;
+    check(lifted.h > 0 && liftedOwn.h > 0, 'and both cards are drawn before one is moved');
+    const clear = lifted.bottom - liftedOwn.y + 2 * SNAP_DISTANCE;
     await press(start.x, start.y);
-    await moveTo(start.x, start.y + 130);
-    await moveTo(start.x, start.y + 260);
-    await release(start.x, start.y + 260);
+    await moveTo(start.x, start.y + clear / 2);
+    await moveTo(start.x, start.y + clear);
+    await release(start.x, start.y + clear);
     await sleep(150);
 
     const anchorBox = (await boxOf(`[data-card-float="${anchorId}"]`)) ?? NOWHERE;

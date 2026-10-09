@@ -29,7 +29,7 @@
  * that says where credentials may go. It skips, with the exit code that
  * means skipped, when no such character is configured.
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -37,6 +37,7 @@ import path from 'node:path';
 import { localProfile, skip } from './lib/local-realm.mjs';
 import { homePaths } from './lib/home.mjs';
 import { judgeFailures } from './lib/smoke-baseline.mjs';
+import { spawnElectron, useVirtualDisplay } from './lib/display.mjs';
 // The UI's own words, from the dictionary the app renders (run under
 // `scripts/lib/register.mjs`): a row is typed for by its key, never its wording,
 // and a key the dictionary lacks throws rather than being typed as itself.
@@ -407,39 +408,22 @@ const browserEnv = {
 // behave as a plain Node runtime: no app, no window. See CLAUDE.md.
 delete browserEnv.ELECTRON_RUN_AS_NODE;
 
-const hasSession = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-const hasXvfb =
-  process.platform === 'linux' &&
-  hasSession &&
-  spawnSync('sh', ['-c', 'command -v xvfb-run'], { stdio: 'ignore' }).status === 0;
-const wantsWindow = process.argv.includes('--windowed');
-if (hasSession && !hasXvfb && !wantsWindow) {
-  console.error(
-    '\nThere is a desktop session here and no `xvfb-run` to hide behind, so this\n' +
-      'would open a window and take your keyboard. Install xvfb, or pass --windowed\n' +
-      'if you meant to watch it.\n'
-  );
-  process.exit(1);
-}
-if (hasXvfb) delete browserEnv.WAYLAND_DISPLAY;
-
 const browserArgs = [
   'scripts/lib/browser.mjs',
   '--no-sandbox',
   `--user-data-dir=${BROWSER_PROFILE}`,
   `--remote-debugging-port=${CDP_PORT}`
 ];
-browser = hasXvfb
-  ? spawn('xvfb-run', ['-a', electron, '--ozone-platform=x11', ...browserArgs], {
-      stdio: ['ignore', 'ignore', 'pipe'],
-      env: browserEnv,
-      detached: true
-    })
-  : spawn(electron, browserArgs, {
-      stdio: ['ignore', 'ignore', 'pipe'],
-      env: browserEnv,
-      detached: true
-    });
+browser = spawnElectron(
+  useVirtualDisplay(process.argv.includes('--windowed')),
+  electron,
+  browserArgs,
+  {
+    stdio: ['ignore', 'ignore', 'pipe'],
+    env: browserEnv,
+    detached: true
+  }
+);
 const NOISE =
   /Fontconfig|wayland|GPU|dbus|Vulkan|MESA|gbm|EGL|invalid |DevTools|Failed to shutdown|swiftshader|WebGL/i;
 browser.stderr.on('data', (chunk) => {
