@@ -43,13 +43,14 @@
 import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync, spawn, spawnSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 
 import { analyse, loadMapper, spread } from './lib/cpuprofile.mjs';
 // The palette row is typed for by its dictionary key, never its wording (run
 // under `scripts/lib/register.mjs`); a key the dictionary lacks throws.
 import { copyOf } from '../src/main/app/copyMatch.ts';
 import { holdPort } from './lib/port-lock.mjs';
+import { spawnElectron, useVirtualDisplay } from './lib/display.mjs';
 
 /** The palette's row that shows the Talk card, as the palette labels it. */
 const SHOW_TALK = copyOf('palette.layout.showCardLabel', {
@@ -330,20 +331,7 @@ if (!fs.existsSync('out/main/index.js')) {
 const appEnv = { ...process.env, MUDENGINE_HOME: HOME };
 delete appEnv.ELECTRON_RUN_AS_NODE;
 
-const hasSession = Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-const hasXvfb =
-  process.platform === 'linux' &&
-  hasSession &&
-  spawnSync('sh', ['-c', 'command -v xvfb-run'], { stdio: 'ignore' }).status === 0;
-if (hasSession && !hasXvfb && !wantsWindow) {
-  console.error(
-    '\nThere is a desktop session here and no `xvfb-run` to hide behind, so this\n' +
-      'would open a window and take your keyboard. Install xvfb, or pass --windowed\n' +
-      'if you meant to watch it.\n'
-  );
-  process.exit(1);
-}
-const virtual = hasXvfb && !wantsWindow;
+const virtual = useVirtualDisplay(wantsWindow);
 
 const electronArgs = [
   'out/main/index.js',
@@ -359,19 +347,15 @@ const electronArgs = [
    */
   ...(virtual ? ['--enable-unsafe-swiftshader'] : [])
 ];
-const xvfbEnv = { ...appEnv };
-delete xvfbEnv.WAYLAND_DISPLAY;
 
 console.log(`\nmudengine UI profile -- fake host on 127.0.0.1:${PORT}${hudOff ? ', HUD off' : ''}\n`);
 if (virtual) log('running on a virtual display -- the GPU there is SwiftShader, not yours');
 
-const child = virtual
-  ? spawn('xvfb-run', ['-a', '-s', '-screen 0 1920x1080x24', electron, '--ozone-platform=x11', ...electronArgs], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: xvfbEnv,
-      detached: true
-    })
-  : spawn(electron, electronArgs, { stdio: ['ignore', 'pipe', 'pipe'], env: appEnv, detached: true });
+const child = spawnElectron(virtual, electron, electronArgs, {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  env: appEnv,
+  detached: true
+});
 
 const killApp = (signal) => {
   try {

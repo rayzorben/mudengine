@@ -21,7 +21,6 @@
  * Launches the *built* app, so it exercises the real wiring. Nothing connects:
  * there is no server here and none is configured to autoconnect.
  */
-import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
@@ -30,6 +29,7 @@ import YAML from 'yaml';
 // `scripts/lib/register.mjs`): the form is found by its key, never its wording.
 import { phrase, sentence } from '../src/main/app/copyMatch.ts';
 import { holdPort } from './lib/port-lock.mjs';
+import { spawnElectron, useVirtualDisplay } from './lib/display.mjs';
 
 /*
  * What the settings screen's character picker says it is showing: its own
@@ -88,40 +88,22 @@ const electron =
 const appEnv = { ...process.env, MUDENGINE_HOME: CONFIG_DIR };
 delete appEnv.ELECTRON_RUN_AS_NODE;
 
-const hasXvfb =
-  process.platform === 'linux' &&
-  Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY) &&
-  spawnSync('sh', ['-c', 'command -v xvfb-run'], { stdio: 'ignore' }).status === 0;
-
-/*
- * Refuse to open a real window over somebody's session.
- *
- * The app takes keyboard focus on launch by design, and a test has no business
- * doing that to whoever is at the keyboard — it happened once, and the typing
- * went into the game's login prompt.
- */
-if (Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY) && !hasXvfb) {
-  console.error(
-    '\nThere is a desktop session here and no `xvfb-run` to hide behind, so this\n' +
-      'would open a window and take your keyboard.\n'
-  );
-  process.exit(1);
-}
-
 const args = [
   'out/main/index.js',
   '--no-sandbox',
   `--user-data-dir=${PROFILE}`,
-  `--remote-debugging-port=${CDP_PORT}`,
-  // Electron prefers Wayland over the DISPLAY xvfb-run just set, and would
-  // connect to the real compositor.
-  '--ozone-platform=x11'
+  `--remote-debugging-port=${CDP_PORT}`
 ];
-if (hasXvfb) delete appEnv.WAYLAND_DISPLAY;
 
-const child = hasXvfb
-  ? spawn('xvfb-run', ['-a', electron, ...args], { env: appEnv, detached: true })
-  : spawn(electron, args, { env: appEnv, detached: true });
+const child = spawnElectron(
+  useVirtualDisplay(process.argv.includes('--windowed')),
+  electron,
+  args,
+  {
+    env: appEnv,
+    detached: true
+  }
+);
 
 const output = [];
 child.stdout.on('data', (data) => output.push(data.toString()));

@@ -27,7 +27,8 @@
  * Nothing here touches a realm, a character or a credential — the host it dials
  * is one it starts itself.
  */
-import { spawn, execSync } from 'node:child_process'
+import { execSync } from 'node:child_process'
+import { spawnElectron, useVirtualDisplay } from './lib/display.mjs'
 import net from 'node:net'
 import fs from 'node:fs'
 
@@ -57,10 +58,9 @@ fs.rmSync(cfgHome, { recursive: true, force: true })
 fs.mkdirSync(`${cfgHome}/global`, { recursive: true })
 fs.writeFileSync(`${cfgHome}/global/default.yaml`, `connection:\n  host: 127.0.0.1\n  port: ${port}\n  encoding: cp437\n  autoConnect: true\nlogging:\n  enabled: false\n`)
 const env = { ...process.env, MUDENGINE_HOME: cfgHome }
-delete env.WAYLAND_DISPLAY
 delete env.ELECTRON_RUN_AS_NODE
-const child = spawn('xvfb-run', ['-a', './node_modules/electron/dist/electron', '--ozone-platform=x11',
-  'out/main/index.js', '--no-sandbox', '--user-data-dir=/tmp/sig5profile'], {
+const child = spawnElectron(useVirtualDisplay(false), './node_modules/electron/dist/electron',
+  ['out/main/index.js', '--no-sandbox', '--user-data-dir=/tmp/sig5profile'], {
   stdio: ['ignore','pipe','pipe'], env, detached: true
 })
 let out = ''
