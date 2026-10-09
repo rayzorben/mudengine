@@ -7,6 +7,7 @@
  * by damage a round swung the way `combat.attack` swings (attack, bash or
  * smash); any other verb swings no weapon, so the ranking is a plain attack's.
  */
+import { gearEffect, NO_EFFECT, sumEffects } from '../../shared/blessingeffects';
 import { commandOf } from '../../shared/commands';
 import { equipBlock, type Wearer } from '../../shared/gear';
 import { WEAPON_CLASS, WEAPON_WORN, WORN_SLOT } from '../../shared/items';
@@ -32,6 +33,7 @@ import { wearerOf, type WearerRealm } from './wearer';
 /** Who is asking, and how they swing. */
 export interface SlotAsker {
   wearer: Wearer;
+  /** The sheet with the weapon hand empty, so a candidate's rows replace the hand's rather than add to them. */
   sheet: ProwessSheet;
   family: RealmFamily | null;
   /** `combat.attack`, the verb the character opens a fight with. */
@@ -45,9 +47,10 @@ export function slotAskerOf(
   cls: ProwessClass & { family: RealmFamily | null },
   attack: string
 ): SlotAsker {
+  const items = state.inventory.items.filter((item) => !(item.equipped && item.kind === 'weapon'));
   return {
     wearer: wearerOf(state, world),
-    sheet: prowessSheetOf(state, cls),
+    sheet: prowessSheetOf({ ...state, inventory: { ...state.inventory, items } }, cls),
     family: cls.family,
     attack
   };
@@ -95,8 +98,16 @@ function rowOf(item: WorldItem, asker: SlotAsker, method: SwingMethod | null): S
     perRound:
       weapon === undefined || method === null
         ? null
-        : roundDamage(asker.sheet, weapon, method, asker.family)
+        : roundDamage(holding(asker.sheet, item), weapon, method, asker.family)
   };
+}
+
+/** The sheet with the candidate in hand: its `MaxDamage` and `Speed` rows on top of the rest of the gear. */
+function holding(sheet: ProwessSheet, item: WorldItem): ProwessSheet {
+  const own = gearEffect([{ equipped: true, abilities: item.abilities }]);
+  return own === null
+    ? sheet
+    : { ...sheet, effects: sumEffects([sheet.effects ?? NO_EFFECT, own]) };
 }
 
 /** Larger first, an absent figure last. */

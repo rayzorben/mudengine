@@ -2619,7 +2619,7 @@ describe('the stat all sheet', () => {
     return { batch, seen };
   };
 
-  it('reads both regeneration lines and the plain round, and nothing it does not use', () => {
+  it('reads both regeneration lines and each attack’s row, and nothing it does not use', () => {
     const { batch } = feed([...STAT_ALL, '[HP=259/259,MA=49/49]:']);
     expect(batch?.type).toBe('user-stat-all');
     expect(batch?.rows).toEqual([
@@ -2627,7 +2627,8 @@ describe('the stat all sheet', () => {
       { baseManaRegen: '3', manaRegen: '3' },
       { section: 'Attacks' },
       // No `QnD(Total)` on a bash, and `(+xtra)` on both: optional columns.
-      { swings: '3.584', accuracy: '105', min: '8', max: '25' },
+      { attack: 'Attack', swings: '3.584', accuracy: '105', min: '8', max: '25', crits: '3' },
+      { attack: 'Bash', swings: '1.792', accuracy: '105', min: '22', max: '82' },
       { section: 'Spells' }
     ]);
   });
@@ -2648,7 +2649,14 @@ describe('the stat all sheet', () => {
       '[HP=156/MA=13]:'
     ]);
     expect(batch?.rows).toContainEqual({ section: 'Attacks', against: 'black orc captain' });
-    expect(batch?.rows).toContainEqual({ swings: '2.32', accuracy: '86', min: '5', max: '22' });
+    expect(batch?.rows).toContainEqual({
+      attack: 'Attack',
+      swings: '2.32',
+      accuracy: '86',
+      min: '5',
+      max: '22',
+      crits: '2'
+    });
   });
 
   it('reads a sheet without the extra column, and a negative figure', () => {
@@ -2659,7 +2667,14 @@ describe('the stat all sheet', () => {
       'Attack       2.817     79     0     0     0(-2)            0      ',
       '[HP=148/MA=13]:'
     ]);
-    expect(batch?.rows).toContainEqual({ swings: '2.817', accuracy: '79', min: '0', max: '0' });
+    expect(batch?.rows).toContainEqual({
+      attack: 'Attack',
+      swings: '2.817',
+      accuracy: '79',
+      min: '0',
+      max: '0',
+      crits: '-2'
+    });
   });
 
   /* Walking into a room called `Attacks` is the failure the abilities listing had. */

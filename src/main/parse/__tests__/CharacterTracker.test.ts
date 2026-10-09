@@ -11025,7 +11025,13 @@ describe('the stat all sheet', () => {
   it('keeps the figures, and they hold while nothing has moved', () => {
     const state = play(sheet).current;
     expect(state.stated).toMatchObject({ healthRegen: 6, restingRegen: 18, manaRegen: 3 });
-    expect(statedNow(state)).toMatchObject({ accuracy: 105, swings: 3.584, health: 6 });
+    expect(statedNow(state)).toMatchObject({
+      health: 6,
+      attacks: {
+        attack: { accuracy: 105, swings: 3.584, crits: 3 },
+        bash: { accuracy: 105, swings: 1.792, damage: { min: 22, max: 82 } }
+      }
+    });
   });
 });
 

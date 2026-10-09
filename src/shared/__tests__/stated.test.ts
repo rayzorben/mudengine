@@ -8,7 +8,8 @@ const ROWS: Array<Record<string, string>> = [
   { healthRegen: '6', restingRegen: '18' },
   { baseManaRegen: '3', manaRegen: '4' },
   { section: 'Attacks' },
-  { swings: '3.584', accuracy: '105', min: '8', max: '25' },
+  { attack: 'Attack', swings: '3.584', accuracy: '105', min: '8', max: '25', crits: '3' },
+  { attack: 'Bash', swings: '1.792', accuracy: '105', min: '22', max: '82' },
   { section: 'Spells' }
 ];
 
@@ -59,7 +60,10 @@ describe('reading stat all', () => {
       restingRegen: 18,
       baseManaRegen: 3,
       manaRegen: 4,
-      round: { swings: 3.584, accuracy: 105, min: 8, max: 25 }
+      rounds: {
+        attack: { swings: 3.584, accuracy: 105, min: 8, max: 25, crits: 3 },
+        bash: { swings: 1.792, accuracy: 105, min: 22, max: 82, crits: null }
+      }
     });
   });
 
@@ -67,16 +71,19 @@ describe('reading stat all', () => {
     const rows = ROWS.map((row) =>
       row['section'] === 'Attacks' ? { ...row, against: 'black orc captain' } : row
     );
-    expect(readStatAll(rows, statedBasis(STATE))?.against).toBe('black orc captain');
+    const sheet = readStatAll(rows, statedBasis(STATE));
+    expect(sheet?.against).toBe('black orc captain');
+    // There the column is the share of every swing that crits, not the attack's crits.
+    expect(sheet?.rounds.attack?.crits).toBeNull();
   });
 
   it('reads no round out of the spell table', () => {
     const rows: Array<Record<string, string>> = [
       { healthRegen: '6', restingRegen: '18' },
       { section: 'Spells' },
-      { swings: '1', accuracy: '100', min: '5', max: '9' }
+      { attack: 'Attack', swings: '1', accuracy: '100', min: '5', max: '9' }
     ];
-    expect(readStatAll(rows, statedBasis(STATE))?.round).toBeNull();
+    expect(readStatAll(rows, statedBasis(STATE))?.rounds).toEqual({});
   });
 
   it('answers nothing for a sheet with nothing on it', () => {
@@ -87,13 +94,14 @@ describe('reading stat all', () => {
 describe('what of a sheet still holds', () => {
   it('holds every figure while nothing it was computed from has moved', () => {
     expect(statedNow(sheetOf(STATE))).toEqual({
-      accuracy: 105,
-      swings: 3.584,
       health: 6,
       resting: 18,
       mana: 4,
       meditating: 3,
-      damage: { min: 8, max: 25 }
+      attacks: {
+        attack: { accuracy: 105, swings: 3.584, damage: { min: 8, max: 25 }, crits: 3 },
+        bash: { accuracy: 105, swings: 1.792, damage: { min: 22, max: 82 } }
+      }
     });
   });
 
@@ -109,7 +117,7 @@ describe('what of a sheet still holds', () => {
         )
       }
     };
-    expect(statedNow(dark)?.accuracy).toBe(105);
+    expect(statedNow(dark)?.attacks?.attack?.accuracy).toBe(105);
   });
 
   /* `Player.cs`: a KaiBound Mystic's `MARegen` is `-1`, a sentinel and not a rate. */
@@ -135,8 +143,9 @@ describe('what of a sheet still holds', () => {
   });
 
   /*
-   * The pack's share moves accuracy and swings (`CalcAccuracy`,
-   * `CalcEnergyUsedWithEncum`) and nothing else that is read.
+   * The pack's share moves accuracy, swings and the crits quick-and-deadly
+   * adds (`CalcAccuracy`, `CalcEnergyUsedWithEncum`) and nothing else that is
+   * read.
    */
   it('keeps the regeneration and the range when only the load moves', () => {
     const read = sheetOf(STATE);
@@ -146,15 +155,18 @@ describe('what of a sheet still holds', () => {
       resting: 18,
       mana: 4,
       meditating: 3,
-      damage: { min: 8, max: 25 }
+      attacks: {
+        attack: { damage: { min: 8, max: 25 } },
+        bash: { damage: { min: 22, max: 82 } }
+      }
     });
   });
 
   it('takes no range from a sheet run against a monster', () => {
     const read = sheetOf(STATE);
     const against = { ...read, stated: { ...read.stated!, against: 'black orc captain' } };
-    expect(statedNow(against)).not.toHaveProperty('damage');
-    expect(statedNow(against)?.accuracy).toBe(105);
+    expect(statedNow(against)?.attacks?.attack).not.toHaveProperty('damage');
+    expect(statedNow(against)?.attacks?.attack?.accuracy).toBe(105);
   });
 
   it('is nothing before a sheet is read', () => {

@@ -6,12 +6,23 @@ import {
   effectOf,
   effectsUp,
   exclusive,
+  gearEffect,
+  negated,
   NO_EFFECT,
+  PLAIN_SPEED,
   sumEffects
 } from '../blessingeffects';
 import { EMPTY_CHARACTER } from '../character';
 import { abilityValueAt, protectionOf } from '../menace';
-import { accuracy, critChance, dodge, regeneration, swing, type ProwessSheet } from '../prowess';
+import {
+  accuracy,
+  critChance,
+  dodge,
+  regeneration,
+  swing,
+  swingsPerRound,
+  type ProwessSheet
+} from '../prowess';
 import type { WorldSpell } from '../world';
 
 /*
@@ -134,8 +145,10 @@ describe('a blessing read as the simulator reads it', () => {
     expect(effectOf(TORTOISE, 10)).toMatchObject({ damageResist: 2 });
   });
 
-  it('weighs nothing for a spell that only moves what is not simulated', () => {
-    expect(effectOf(MANTIS, 10)).toBeNull();
+  // `Player.Speed`: the mantis's Speed 85 is the weapon's speed times 0.85.
+  it('weighs a Speed row, and nothing for a spell that only moves what is not simulated', () => {
+    expect(effectOf(MANTIS, 10)).toMatchObject({ speed: 85, accuracy: 0 });
+    expect(effectOf({ ...MANTIS, abilities: [[115, 8537]] }, 10)).toBeNull();
   });
 
   it('sums a set and says null for nothing', () => {
@@ -237,8 +250,8 @@ describe('a blessing reaches the formulas, never a stated figure', () => {
       accuracy(SHEET, null, 'greatermud')!.value
     );
     expect(dodge(blessed, 'greatermud')!.value).toBe(dodge(SHEET, 'greatermud')!.value + 3);
-    expect(critChance(blessed, 'attack', 'greatermud')!.value).toBeCloseTo(
-      critChance(SHEET, 'attack', 'greatermud')!.value + 0.04
+    expect(critChance(blessed, 'attack', null, 'greatermud')!.value).toBeCloseTo(
+      critChance(SHEET, 'attack', null, 'greatermud')!.value + 0.04
     );
     expect(regeneration(blessed, null, 'greatermud')!.health.value).toBeGreaterThan(
       regeneration(SHEET, null, 'greatermud')!.health.value
@@ -258,7 +271,44 @@ describe('a blessing reaches the formulas, never a stated figure', () => {
   });
 
   it('leaves a stated figure as stated', () => {
-    const stated = { ...blessed, stated: { accuracy: 77 } };
+    const stated = { ...blessed, stated: { attacks: { attack: { accuracy: 77 } } } };
     expect(accuracy(stated, null, 'greatermud')).toEqual({ value: 77, from: 'stated' });
+  });
+});
+
+/*
+ * `Player.GetAbility` reads the worn items' rows beside the class and race
+ * (todo 17, 2026-10-09): Festus's `st a` implied Accuracy and MaxDamage from
+ * gear that the formula paths never saw.
+ */
+describe('the gear worn', () => {
+  const worn = (abilities: Array<[number, number]>, equipped = true) => ({ equipped, abilities });
+
+  it('adds its Accuracy, MaxDamage and Crits rows, and only while worn', () => {
+    const effect = gearEffect([
+      worn([
+        [22, 5],
+        [4, 3]
+      ]),
+      worn([
+        [4, 1],
+        [58, 2]
+      ]),
+      worn([[22, 40]], false)
+    ])!;
+    expect(effect).toMatchObject({ accuracy: 5, maxDamage: 4, crits: 2, speed: PLAIN_SPEED });
+    expect(gearEffect([worn([[22, 40]], false)])).toBeNull();
+  });
+
+  it('multiplies the Speed rows, so a chronostaff swings more often', () => {
+    const effect = gearEffect([worn([[87, 98]]), worn([[87, 50]])])!;
+    expect(effect.speed).toBe(49);
+    const fast = { ...SHEET, effects: gearEffect([worn([[87, 50]])]) };
+    const blade = { min: 3, max: 9, speed: 2000 };
+    expect(swingsPerRound(fast, blade, 'greatermud')!.value).toBeGreaterThan(
+      swingsPerRound(SHEET, blade, 'greatermud')!.value
+    );
+    // Taken off again, the speed is the weapon's own.
+    expect(sumEffects([effect, negated(effect)])).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import type { BlessingEffect } from './blessingeffects';
+import { PLAIN_SPEED, type BlessingEffect } from './blessingeffects';
 import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
 import type { RealmFamily } from './realm';
 import type { StatedProwess } from './stated';
@@ -110,10 +110,9 @@ export interface ProwessSheet {
    */
   stated?: StatedProwess | null;
   /**
-   * Blessings up, and the martial rows of what is worn (`gearEffect`),
-   * counted on the formula paths only (`blessingeffects.ts`): a figure
-   * `stat all` stated already carries what was up, and it states no punch or
-   * kick. Absent or null is none.
+   * Blessings up, and the rows of what is worn (`gearEffect`), counted on
+   * the formula paths only (`blessingeffects.ts`): a figure `stat all`
+   * stated already carries both. Absent or null is none.
    */
   effects?: BlessingEffect | null;
   /**
@@ -175,19 +174,19 @@ function need(...values: Array<number | null>): number[] | null {
  * would move every downstream figure by a tenth. A character in a party is
  * therefore quoted its solo accuracy, which is the front-rank case minus ten.
  *
- * Accuracy abilities are gear and spells the client cannot enumerate, so the
- * base is the server's own `1` — the value it uses when a character has none.
- * That makes this a **lower bound** for a character wearing anything that
- * grants accuracy, which is why it is labelled `bound` rather than `source`
- * whenever a weapon is in hand: a bound that under-promises is the safe
- * direction for a number that decides whether to start a fight.
+ * The `Accuracy` rows are those of the gear worn and the spells up
+ * (`ProwessSheet.effects`), and the server's own `1` where they sum to
+ * nothing. An item the realm cannot name carries rows unseen, which is why
+ * this is labelled `bound` rather than `source` whenever a weapon is in hand:
+ * a bound that under-promises is the safe direction for a number that
+ * decides whether to start a fight.
  */
 export function accuracy(
   sheet: ProwessSheet,
   weapon: ProwessWeapon | null,
   family: RealmFamily | null
 ): Reckoning<number> | null {
-  const said = sheet.stated?.accuracy;
+  const said = sheet.stated?.attacks?.attack?.accuracy;
   if (said !== undefined) return { value: said, from: 'stated' };
   if (family !== 'greatermud') return null;
   const held = need(sheet.level, sheet.agility, sheet.intellect, sheet.charm, sheet.combatLevel);
@@ -314,7 +313,7 @@ export function swingsPerRound(
   family: RealmFamily | null
 ): Reckoning<number> | null {
   // Unarmed too: the sheet prints the bare-handed round, which no formula here has.
-  const said = sheet.stated?.swings;
+  const said = sheet.stated?.attacks?.attack?.swings;
   if (said !== undefined) return { value: said, from: 'stated' };
   const energy = energyPerSwing(sheet, weapon, family);
   if (energy === null) return null;
@@ -338,7 +337,11 @@ function energyPerSwing(
   family: RealmFamily | null
 ): Reckoning<number> | null {
   if (family !== 'greatermud') return null;
-  const speed = weapon?.speed;
+  // `GetModifiedSpeed`: the weapon's speed times `Player.Speed`, the `Speed` rows' product.
+  const speed =
+    weapon?.speed === undefined
+      ? undefined
+      : Math.trunc((weapon.speed * (sheet.effects?.speed ?? PLAIN_SPEED)) / PLAIN_SPEED);
   if (speed === undefined || speed <= 0) return null;
   const held = need(sheet.level, sheet.agility, sheet.combatLevel);
   if (held === null) return null;
@@ -590,17 +593,22 @@ const CRIT_MAX = 65;
 
 /**
  * The chance a landed blow is critical, 0–0.65 (`PlayerAttackType.GetCrits`):
- * `Player.CritsFromStats` (a point per ten levels, per ten intellect over 50,
- * per twenty agility over 50 and per thirty charm over 50, at least 1), and
- * seven less the class's combat level for a class that fights poorly. None
- * for a bash or a smash. A `bound`: the crits gear and spells add and the
- * quick-and-deadly bonus are not seen.
+ * the attack's row of `stat all` where it holds, else `Player.CritsFromStats`
+ * (a point per ten levels, per ten intellect over 50, per twenty agility over
+ * 50 and per thirty charm over 50, at least 1), the class and race rows, the
+ * `Crits` rows of gear and spells (`ProwessSheet.effects`), quick-and-deadly
+ * (`quickAndDeadly`), and seven less the class's combat level for a class
+ * that fights poorly. None for a bash or a smash. A `bound`: an item the
+ * realm cannot name carries rows unseen.
  */
 export function critChance(
   sheet: ProwessSheet,
   attack: AttackKind,
+  weapon: ProwessWeapon | null,
   family: RealmFamily | null
 ): Reckoning<number> | null {
+  const said = sheet.stated?.attacks?.[attack]?.crits;
+  if (said !== undefined) return { value: said / 100, from: 'stated' };
   if (family !== 'greatermud') return null;
   if (!CRITTABLE.has(attack)) return { value: 0, from: 'source' };
   const held = need(sheet.level, sheet.intellect, sheet.agility, sheet.charm, sheet.combatLevel);
@@ -620,8 +628,43 @@ export function critChance(
       Math.trunc((charm - 50) / 30)
   );
   const crits =
-    fromStats + (sheet.classCrits ?? 0) + (sheet.effects?.crits ?? 0) + Math.max(0, 7 - combat);
+    fromStats +
+    (sheet.classCrits ?? 0) +
+    (sheet.effects?.crits ?? 0) +
+    quickAndDeadly(sheet, weapon, attack, family) +
+    Math.max(0, 7 - combat);
   return { value: Math.min(CRIT_MAX, Math.max(0, crits)) / 100, from: 'bound' };
+}
+
+/** `CalcQuickAndDeadlyBonus`: a crit point per this much energy six blows leave of a round's. */
+const QUICK_AND_DEADLY_ENERGY = 40;
+
+/**
+ * Quick-and-deadly crits (`PlayerAttackType.GetQndCrits`): what is left of
+ * the 1,000 energy a round starts with after six blows, a point per 40, so
+ * only an attack faster than six blows a round earns any. None with a weapon
+ * heavier than the character's strength (`IsWeaponHeavy`), or where either
+ * figure is unread. An unread pack is taken as full, as the swings are, so
+ * the figure is a floor.
+ */
+function quickAndDeadly(
+  sheet: ProwessSheet,
+  weapon: ProwessWeapon | null,
+  attack: AttackKind,
+  family: RealmFamily | null
+): number {
+  const strReq = weapon?.strength;
+  if (strReq !== undefined && (sheet.strength === null || strReq > sheet.strength)) return 0;
+  // A martial attack swings at its own speed; its range moves no energy.
+  const held = isMartial(attack)
+    ? { min: 0, max: 0, speed: MARTIAL[attack].speed }
+    : (weapon ?? BARE_HAND);
+  const energy = energyPerSwing(sheet, held, family);
+  if (energy === null) return 0;
+  return Math.max(
+    0,
+    Math.floor((ROUND_ENERGY - energy.value * MAX_SWINGS) / QUICK_AND_DEADLY_ENERGY)
+  );
 }
 
 /**
@@ -689,32 +732,31 @@ export function swing(
 ): Swing | null {
   // The hit roll below is GreaterMUD's, whoever stated the accuracy.
   if (family !== 'greatermud') return null;
-  const acc = accuracy(sheet, weapon, family);
-  if (acc === null) return null;
-  // The roll is made at the accuracy the attack itself moves (`fixedAcc`).
-  const aim = isMartial(attack.kind)
-    ? acc.value + ACCURACY_MOD[attack.kind] + (sheet.effects?.martialAccuracy[attack.kind] ?? 0)
-    : METHOD[attack.kind].aim(acc.value, sheet) + ACCURACY_MOD[attack.kind];
+  // This attack's own row of `stat all`, where it was printed and still holds.
+  const said = sheet.stated?.attacks?.[attack.kind];
+  const aim = said?.accuracy ?? aimOf(sheet, weapon, attack, family);
+  if (aim === null) return null;
 
   const hit = hitChance(aim, target.armourClass);
   const dodged = dodgedFraction(target.dodge, aim);
   const lands = Math.max(0, hit * (1 - dodged));
 
   /*
-   * What `stat all` printed holds for the plain attack only: the sheet's own
-   * range and blows, with every damage modifier applied and one for a bare
-   * hand. Any other attack, and a plain one the sheet has not stated, is the
-   * blow its own `CombatRound` makes: the weapon's range, else the bare
+   * The attack's row of `stat all`, where it printed one: the range and blows
+   * with every damage modifier applied. An attack the sheet has not stated is
+   * the blow its own `CombatRound` makes: the weapon's range, else the bare
    * hand's 1–3, else a martial attack's level range (2026-10-01: a Mystic who
    * lost the staff kicked for 28 a round while every spot read unpriced).
    */
-  const stated = attack.kind === 'attack' ? sheet.stated?.damage : undefined;
+  const stated = said?.damage;
   const blow = stated === undefined ? blowOf(sheet, weapon, attack, family) : null;
   const low = stated?.min ?? (blow === null ? null : Math.floor(blow.low * blow.multiplier));
   const high = stated?.max ?? (blow === null ? null : Math.floor(blow.high * blow.multiplier));
   // A weapon's blows are the plain round's, the sheet's where it printed them, as the method takes them.
   let swings: Reckoning<number> | null;
-  if (isMartial(attack.kind)) {
+  if (said?.swings !== undefined) {
+    swings = { value: said.swings, from: 'stated' };
+  } else if (isMartial(attack.kind)) {
     swings = blow === null ? null : { value: blow.blows, from: blow.from };
   } else {
     const plain = swingsPerRound(sheet, weapon ?? BARE_HAND, family);
@@ -744,7 +786,7 @@ export function swing(
    * A critical blow is `rand(2 × max, 4 × max)`, three times the top of the
    * range on average, before the multiplier and the target's resistance.
    */
-  const crit = critChance(sheet, attack.kind, family);
+  const crit = critChance(sheet, attack.kind, weapon, family);
   if (mean !== null && high !== null && crit !== null && crit.value > 0) {
     const critical = Math.max(0, 3 * high - resist);
     mean = (1 - crit.value) * mean + crit.value * critical;
@@ -767,6 +809,24 @@ export function swing(
     range: low !== null && high !== null && high >= low ? { low, high } : null,
     rounds
   };
+}
+
+/**
+ * The accuracy an attack rolls with (`fixedAcc`, `Acc + AttackTypeAccMod`),
+ * worked out from the plain round's: what `stat all` prints on the attack's
+ * own row.
+ */
+function aimOf(
+  sheet: ProwessSheet,
+  weapon: ProwessWeapon | null,
+  attack: ProwessAttack,
+  family: RealmFamily | null
+): number | null {
+  const acc = accuracy(sheet, weapon, family);
+  if (acc === null) return null;
+  return isMartial(attack.kind)
+    ? acc.value + ACCURACY_MOD[attack.kind] + (sheet.effects?.martialAccuracy[attack.kind] ?? 0)
+    : METHOD[attack.kind].aim(acc.value, sheet) + ACCURACY_MOD[attack.kind];
 }
 
 /** What a round lands: the blows a round, capped at `MAX_SWINGS`, that land, at the mean blow. */

@@ -405,7 +405,7 @@ describe('the blow the sheet states', () => {
     const stated = simulateFight(
       fight({
         foes: [tough],
-        sheet: { ...SHEET, stated: { damage: { min: 40, max: 60 } } }
+        sheet: { ...SHEET, stated: { attacks: { attack: { damage: { min: 40, max: 60 } } } } }
       })
     )!;
     expect(stated.rounds.value).toBeLessThan(armed.rounds.value / 3);

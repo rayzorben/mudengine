@@ -9,9 +9,10 @@
  * tops every blow (`Player.MaxDamage`), the martial rows move only their own
  * attack (`PunchAcc`, `PunchDamage` and the rest), `Crits` adds to
  * `Player.Crits`, `MaxHP` to `BonusMaxHP` and `HPRegen` is a percentage of
- * the regeneration tick. `Speed`, stealth and backstab rows, and a poison
- * immunity are not weighed. See mudengine-automation › *Recovery*.
- * `gearEffect` reads the martial rows of the gear worn into the same shape.
+ * the regeneration tick, and `Speed` multiplies the weapon's speed
+ * (`Player.Speed`). Stealth and backstab rows, and a poison immunity, are not
+ * weighed. See mudengine-automation › *Recovery*. `gearEffect` reads the
+ * gear worn into the same shape.
  *
  * Dependency-free, like everything in `shared/`.
  */
@@ -52,6 +53,24 @@ export interface BlessingEffect {
   maxHp: number;
   /** Per cent of the regeneration tick (`Player.HPRegen`). */
   hpRegen: number;
+  /**
+   * `Player.Speed`: the `Speed` rows multiplied, as a percentage of the
+   * weapon's speed (energy a blow), `PLAIN_SPEED` for none. Below it is faster.
+   */
+  speed: number;
+}
+
+/** `Player.Speed` with no `Speed` row: the weapon's own speed. */
+export const PLAIN_SPEED = 100;
+
+/** A speed to three places, so an effect added and taken off again leaves exactly `PLAIN_SPEED`. */
+function thousandthsOf(speed: number): number {
+  return Math.round(speed * 1000) / 1000;
+}
+
+/** `Player.Speed`: each `Speed` row scales what the rows before it left, truncated as the server does. */
+function speedOf(rows: ReadonlyArray<number>): number {
+  return rows.reduce((speed, row) => Math.trunc((speed * row) / 100), PLAIN_SPEED);
 }
 
 /** Nothing up. */
@@ -66,7 +85,8 @@ export const NO_EFFECT: Readonly<BlessingEffect> = {
   martialDamage: { punch: 0, kick: 0, jumpkick: 0 },
   crits: 0,
   maxHp: 0,
-  hpRegen: 0
+  hpRegen: 0,
+  speed: PLAIN_SPEED
 };
 
 /**
@@ -86,12 +106,14 @@ export function effectOf(spell: WorldSpell, level: number): BlessingEffect | nul
     martialDamage: martialRows(MARTIAL_DAMAGE_ABILITY, at),
     crits: at(EFFECT_ABILITY.crits),
     maxHp: at(EFFECT_ABILITY.maxHp),
-    hpRegen: at(EFFECT_ABILITY.hpRegen)
+    hpRegen: at(EFFECT_ABILITY.hpRegen),
+    // A spell with no `Speed` row reads 0 here, which is no row at all.
+    speed: at(EFFECT_ABILITY.speed) || PLAIN_SPEED
   };
   return isNothing(effect) ? null : effect;
 }
 
-/** An effect taken off: every figure negated, so `sumEffects` and `blessedPlayer` remove it. */
+/** An effect taken off: every figure negated, and the speed inverted, so `sumEffects` and `blessedPlayer` remove it. */
 export function negated(effect: BlessingEffect): BlessingEffect {
   const martial = (rows: Readonly<Record<MartialKind, number>>): Record<MartialKind, number> =>
     martialRows(rows, (value) => -value);
@@ -106,7 +128,8 @@ export function negated(effect: BlessingEffect): BlessingEffect {
     martialDamage: martial(effect.martialDamage),
     crits: -effect.crits,
     maxHp: -effect.maxHp,
-    hpRegen: -effect.hpRegen
+    hpRegen: -effect.hpRegen,
+    speed: (PLAIN_SPEED * PLAIN_SPEED) / effect.speed
   };
 }
 
@@ -131,17 +154,18 @@ export function sumEffects(effects: ReadonlyArray<BlessingEffect>): BlessingEffe
     ...Object.values(total.martialAccuracy),
     ...Object.values(total.martialDamage)
   ].some((value) => value !== 0);
-  return moves ? total : null;
+  return moves || total.speed !== PLAIN_SPEED ? total : null;
 }
 
 /**
- * What the gear worn adds to a martial attack: the `PunchDmg`, `KickDmg`,
- * `JumpKDmg` rows and their accuracy rows on every equipped item, summed as
- * `Player.GetAbility` sums `WornItemAbilities` beside the class and race rows.
- * Only the martial rows: `stat all` states no punch or kick, so nothing else
- * carries them, where the plain attack's figures it prints carry the rest of
- * the gear already. Clawed gloves are +3 and +3 (2026-10-03, a Mystic whose
- * punches were priced bare-handed). Null where nothing worn has one.
+ * What the gear worn adds to the round: the `Accuracy`, `MaxDamage`, `Crits`
+ * and `Speed` rows and the martial ones (`PunchDmg`, `PunchAcc` and the rest)
+ * on every equipped item, as `Player.GetAbility` reads `WornItemAbilities`
+ * beside the class and race rows. Clawed gloves are +3 and +3 (2026-10-03, a
+ * Mystic whose punches were priced bare-handed). The armour rows are not
+ * read: the sheet's printed armour class carries them. A figure `stat all`
+ * stated carries all of this already, so it counts on the formula paths
+ * only. Null where nothing worn has one.
  */
 export function gearEffect(
   items: ReadonlyArray<{ equipped: boolean; abilities?: ReadonlyArray<readonly [number, number]> }>
@@ -151,6 +175,10 @@ export function gearEffect(
   return sumEffects([
     {
       ...NO_EFFECT,
+      accuracy: sum(EFFECT_ABILITY.accuracy),
+      maxDamage: sum(EFFECT_ABILITY.maxDamage),
+      crits: sum(EFFECT_ABILITY.crits),
+      speed: speedOf(worn.filter(([id]) => id === EFFECT_ABILITY.speed).map(([, value]) => value)),
       martialAccuracy: martialRows(MARTIAL_ACCURACY_ABILITY, sum),
       martialDamage: martialRows(MARTIAL_DAMAGE_ABILITY, sum)
     }
@@ -260,6 +288,7 @@ function add(a: BlessingEffect, b: BlessingEffect): BlessingEffect {
     martialDamage: martial(a.martialDamage, b.martialDamage),
     crits: a.crits + b.crits,
     maxHp: a.maxHp + b.maxHp,
-    hpRegen: a.hpRegen + b.hpRegen
+    hpRegen: a.hpRegen + b.hpRegen,
+    speed: thousandthsOf((a.speed * b.speed) / PLAIN_SPEED)
   };
 }

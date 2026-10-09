@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { UNKNOWN_WEARER, type Wearer } from '../../../shared/gear';
 import type { ProwessSheet } from '../../../shared/prowess';
 import { armourPerWeight } from '../../../shared/slotGear';
 import type { WorldItem } from '../../../shared/world';
-import { slotGear, type SlotAsker } from '../slotGear';
+import { slotAskerOf, slotGear, type SlotAsker } from '../slotGear';
 import { wearerOf } from '../wearer';
 import { WorldGraph } from '../WorldGraph';
 
@@ -131,5 +132,55 @@ describe.runIf(fs.existsSync(PARADIGM))("a slot's gear on the shipped world", ()
       const heavy = (item.armour?.kind ?? 0) > 1;
       expect(heavy && !(item.classes ?? []).includes(mage!.id)).toBe(false);
     }
+  });
+});
+
+/*
+ * A weapon's own `MaxDamage` and `Speed` rows count for that weapon only (todo
+ * 17, 2026-10-09): the asker's sheet leaves the hand out, and each candidate
+ * adds its own.
+ */
+describe("a weapon's own rows", () => {
+  it('count for the weapon that carries them', () => {
+    const plain = sword(1, 'longsword', 5, 10, 1500);
+    const keen = { ...sword(2, 'keen longsword', 5, 10, 1500), abilities: [[4, 5]] } as WorldItem;
+    const [first, second] = slotGear(1, realm([plain, keen]), asker()).rows;
+    expect(first!.name).toBe('keen longsword');
+    expect(first!.perRound!.value).toBeGreaterThan(second!.perRound!.value);
+  });
+
+  it('leave the asker when the hand holds them', () => {
+    const state: CharacterState = {
+      ...EMPTY_CHARACTER,
+      inventory: {
+        ...EMPTY_CHARACTER.inventory,
+        items: [
+          {
+            name: 'keen longsword',
+            slot: 'Weapon Hand',
+            source: 'wire',
+            equipped: true,
+            charges: null,
+            kind: 'weapon',
+            abilities: [[4, 5]]
+          },
+          {
+            name: 'ruby ring',
+            slot: 'Finger',
+            source: 'wire',
+            equipped: true,
+            charges: null,
+            abilities: [[4, 2]]
+          }
+        ]
+      }
+    };
+    const made = slotAskerOf(
+      state,
+      null,
+      { combat: 4, magery: null, crits: 0, family: 'greatermud' },
+      'a'
+    );
+    expect(made.sheet.effects?.maxDamage).toBe(2);
   });
 });
