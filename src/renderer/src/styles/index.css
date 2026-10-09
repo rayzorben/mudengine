@@ -2414,6 +2414,21 @@ kbd {
   margin-bottom: 6px;
 }
 
+/* A loop or destination name can be wider than the rail; the heading stays
+   one line and ends in an ellipsis. A destination drawn as a lookup button
+   truncates inside the button, since an ellipsis does not reach into it. */
+.walk-name {
+  display: block;
+}
+
+.walk-name,
+.walk-name > button.lookup {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* A stop's name can be wider than the rail; the bar stays one line high and
    the name ends in an ellipsis. `min-width: 0` lets the flex item shrink. */
 .walk-meter .meter-label {
@@ -9286,6 +9301,9 @@ button.lookup:focus-visible {
   .line-log .text,
   .route-steps .step-name,
   .quest-name-cell > button.lookup,
+  .walk-name,
+  .walk-name > button.lookup,
+  .walk-meter .meter-text,
   .quest-track-head .quiet-note,
   button.lookup.quest-where,
   .builder-waypoint .step-name,

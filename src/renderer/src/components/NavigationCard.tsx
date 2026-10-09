@@ -271,7 +271,9 @@ function NavigationCard({
     <>
       {canPick && picker}
       <div className="walk-destination">
-        {walk.destination === null ? '—' : place(walk.destination, walk.destinationRoom)}
+        <span className="walk-name" title={walk.destination ?? undefined}>
+          {walk.destination === null ? '—' : place(walk.destination, walk.destinationRoom)}
+        </span>
       </div>
 
       {/* Steps confirmed, not steps sent: the difference is the whole design.
@@ -366,7 +368,15 @@ function NavigationCard({
    */
   const loopFace = (
     <>
-      {canPick ? picker : <div className="walk-destination">{loop.name ?? '—'}</div>}
+      {canPick ? (
+        picker
+      ) : (
+        <div className="walk-destination">
+          <span className="walk-name" title={loop.name ?? undefined}>
+            {loop.name ?? '—'}
+          </span>
+        </div>
+      )}
 
       {loop.stops > 0 && (
         <div className="meter walk-meter" data-level={running ? 'ok' : 'unknown'}>
