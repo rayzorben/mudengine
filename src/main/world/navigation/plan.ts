@@ -26,6 +26,7 @@ import {
   blockItem,
   describeBlock,
   itemDemanded,
+  walkable,
   type FightOdds,
   type RoomId,
   type Route
@@ -51,11 +52,6 @@ export interface PlanRealm {
   keysNamed(): readonly number[];
   /** An item's name, for a reader. */
   itemName(item: number): string | undefined;
-}
-
-/** A route this character can walk: found, and crossing no wall. */
-function walkable(route: Route): boolean {
-  return !route.blocked && (route.walls ?? []).length === 0;
 }
 
 /** Why a route is no way: the router's reason, or the walls it crosses in its own words. */

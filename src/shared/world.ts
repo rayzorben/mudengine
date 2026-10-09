@@ -3672,6 +3672,11 @@ export function needsAlong(route: Route): Array<{ id: number; name: string }> {
   return (route.needs ?? []).filter((item) => demanded.has(item.id));
 }
 
+/** A route this character can walk: found, and crossing no wall. */
+export function walkable(route: Route): boolean {
+  return !route.blocked && (route.walls ?? []).length === 0;
+}
+
 /**
  * The way the player picked, with the choice taken off it (todo 806): main
  * walks no route still carrying `keptOut`, since that is a choice nobody made.
