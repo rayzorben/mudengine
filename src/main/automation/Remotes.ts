@@ -102,6 +102,7 @@ import type { SessionModule } from './Module';
 import { AutoJoin, joinIntent } from './AutoJoin';
 import { restoreNotices } from './gearNotices';
 import { restorePlan } from '../../shared/gear';
+import { InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
 import { LeaderDoors } from './LeaderDoors';
 import type { Direction, RoomId } from '../../shared/world';
@@ -361,6 +362,8 @@ export class Remotes implements SessionModule {
   private readonly autoJoin: AutoJoin;
   /** Leading the party through a room's own command, and waiting for it. See `PartyRegroup`. */
   private readonly regroup: PartyRegroup;
+  /** `@join` to somebody invited who has not joined, until they do. See `InviteFollowUp`. */
+  private readonly invites: InviteFollowUp;
   /** Picking or bashing a door the leader is failing to bash. See `LeaderDoors`. */
   private readonly leaderDoors: LeaderDoors;
 
@@ -380,6 +383,9 @@ export class Remotes implements SessionModule {
   ) {
     this.autoJoin = new AutoJoin(config, queue, { notice: (message) => events.notice?.(message) });
     this.regroup = new PartyRegroup(config, queue, {
+      notice: (message) => events.notice?.(message)
+    });
+    this.invites = new InviteFollowUp(config, queue, {
       notice: (message) => events.notice?.(message),
       askJoin: (member, state) => this.ask(member, 'join', state)
     });
@@ -392,6 +398,7 @@ export class Remotes implements SessionModule {
     this.config = config;
     this.autoJoin.configure(config);
     this.regroup.configure(config);
+    this.invites.configure(config);
     this.leaderDoors.configure(config);
   }
 
@@ -421,6 +428,7 @@ export class Remotes implements SessionModule {
   onBlock(block: Block, state: CharacterState): void {
     // The party's own switch, not the remotes': the regroup answers nobody's `@`.
     this.regroup.onBlock(block);
+    this.invites.onBlock(block, state);
     this.leaderDoors.onBlock(block, state);
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     this.autoJoin.onBlock(block, state);
@@ -650,6 +658,7 @@ export class Remotes implements SessionModule {
    */
   onCharacter(state: CharacterState): void {
     this.regroup.onCharacter(state);
+    this.invites.onCharacter(state);
     if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
     this.askForHeal(state);
     const margin = tuning().loop.resumeMarginWhenUncapped;
@@ -837,12 +846,14 @@ export class Remotes implements SessionModule {
     this.seen = false;
     this.autoJoin.reset();
     this.regroup.reset();
+    this.invites.reset();
     this.leaderDoors.reset();
   }
 
-  /** The regroup's clock is the one thing here that outlives a call. */
+  /** The regroup's and the invitation's clocks are what here outlive a call. */
   dispose(): void {
     this.regroup.dispose();
+    this.invites.dispose();
   }
 
   /**

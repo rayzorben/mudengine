@@ -1373,6 +1373,11 @@ tuning:
     # MegaMUD re-reads the party listing every 15s in a fight (ParPeriod).
     healAskAgainMs: 15000
 
+    # How long after a @join to somebody this character invited the party
+    # listing is asked again, and so how often the @join is repeated while the
+    # listing still prints them [Invited].
+    inviteAgainMs: 5000
+
   # How many commands one press or one `@` may spend.
   #
   # One budget, because it is one budget: each `wear`, `get` or `drop` comes

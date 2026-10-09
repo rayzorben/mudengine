@@ -5758,6 +5758,8 @@ automation:
     regrouped: The party is back together; walking on.
     regroupLeft: Stopped waiting for the party; this character is not in the room the portal leads to.
     regroupGaveUp: 'Stopped waiting for the party: {members} did not rejoin within {minutes} min.'
+    # Todo 01: an invitation nobody has answered, followed up with @join.
+    askingInvited: '{member} has not joined yet; sending @join until they join or the party list stops showing them invited.'
     # Todo 03: a door the leader is failing to bash.
     reasonPickForLeader: 'picking the {barrier} {direction} for {leader}'
     reasonBashForLeader: 'bashing the {barrier} {direction} for {leader}'
