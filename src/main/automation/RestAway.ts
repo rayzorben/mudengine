@@ -27,7 +27,7 @@ export interface RestAwayPlanner {
   here(): RoomId | null;
   /** The room's effective respawn clock in seconds; null for a room with no lair or no clock. */
   lairClock(room: RoomId): number | null;
-  /** Adjacent rooms the realm holds that make no monsters, plain exits first. */
+  /** Adjacent rooms that make no monsters: plain exits first, then rooms no monster group reaches. */
   neighbours(room: RoomId): { direction: Direction; to: RoomId; name: string }[];
   moveInFlight(): boolean;
   /** The walker marching. */

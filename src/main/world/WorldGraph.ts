@@ -2198,11 +2198,11 @@ export class WorldGraph {
       result.lair = raw['lair'];
     }
     if (typeof raw['li'] === 'number') result.light = raw['li'];
-    // The lair's respawn clock as the realm states it — format 33.
+    // The lair's respawn clock (format 33); no monster follows in (format 58).
     if (typeof raw['dl'] === 'number' && raw['dl'] !== 0) result.delay = raw['dl'];
+    if (raw['nf'] === 1) result.noFollow = true;
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];
-    // What the realm puts on the floor — format 42. Before it the column was
-    // the raw string under another key, which nothing read and this does not.
+    // What the realm puts on the floor — format 42; before it, a raw string nothing read.
     const placed = Array.isArray(raw['pl'])
       ? raw['pl'].filter((id): id is number => Number.isInteger(id) && (id as number) > 0)
       : [];

@@ -4759,6 +4759,8 @@ session:
     escapePrinted: 'Running {direction}: {why}. It is an exit the room listed.'
     escapeReason: 'safety: {why}'
     escapeRetrace: 'Running {direction}, the way we came: {why}.'
+    # {room} is in no monster's group, so the server lets nothing follow in.
+    escapeUnfollowed: 'Running {direction} to {room}, a room no monster group reaches: {why}.'
     retreatBecause: Walking to the safe room ({room}) after running
     retreatDropped: 'Not walking to {room}: you were killed, and the game has moved you.'
     retreatGaveUp: 'Not walking to {room}: the fight never ended.'

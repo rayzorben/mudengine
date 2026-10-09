@@ -149,6 +149,7 @@ async function until(predicate: () => boolean, timeoutMs = 3000): Promise<void> 
 
 /** Every sentence an escape says when it moves, one per rung of the ladder. */
 const RUNNING = [
+  'session.safety.escapeUnfollowed',
   'session.safety.escapeRetrace',
   'session.safety.escapeDoublesBack',
   'session.safety.escapeKnown',
@@ -3169,6 +3170,45 @@ describe('which way out', () => {
 
     await until(() => notices.some(composes('session.safety.escapeRetrace', { direction: 's' })));
     await until(() => /\bs\r\n/.test(seen()));
+  });
+
+  /*
+   * Festus at the Crimson Fortress (paramud, 2026-10-09 t=4558): fought in the
+   * hallway 15/1073 having come west from 15/1071, he ran east the way he came
+   * and three monsters followed him twice. West was the Main Gate, which is in
+   * no monster's group, so nothing could have followed him there.
+   */
+  it('runs into a room no monster can follow into before retracing', async () => {
+    const { sink, notices } = collect();
+    const world = worldOf([
+      { m: 1, r: 10, n: 'Main Gate', nf: 1, x: { e: { m: 1, r: 11 } } },
+      { m: 1, r: 11, n: 'West Hallway', x: { w: { m: 1, r: 10 }, e: { m: 1, r: 12 } } },
+      { m: 1, r: 12, n: 'East Hallway', x: { w: { m: 1, r: 11 } } }
+    ]);
+    manager = build(sink, { world, automation: escaping() });
+    underWay(manager);
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    const seen = wire(socket);
+    socket.write('Health: 100/100 [100%]\r\n');
+    socket.write('Location:            1,12\r\nEast Hallway\r\nObvious exits: west\r\n');
+    await until(() => manager!.character.room.number === 12);
+
+    manager.send('w\r\n');
+    socket.write('West Hallway\r\nObvious exits: east, west\r\n');
+    await until(() => manager!.character.room.number === 11);
+
+    socket.write('*Combat Engaged*\r\n');
+    await until(() => manager!.character.inCombat);
+    socket.write('[HP=10]:\r\n');
+
+    await until(() =>
+      notices.some(
+        composes('session.safety.escapeUnfollowed', { direction: 'w', room: 'Main Gate' })
+      )
+    );
+    await until(() => /\bw\r\n[\s\S]*\bw\r\n/.test(seen()));
+    expect(notices.some(composes('session.safety.escapeRetrace'))).toBe(false);
   });
 
   /** At Haven Hall with a two-step route north to the Rat Lair under way. */

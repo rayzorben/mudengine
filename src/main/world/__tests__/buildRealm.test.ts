@@ -163,6 +163,32 @@ describe('converting a realm', () => {
   });
 
   /*
+   * Format 58. The server moves a monster only into a room of its own group,
+   * and `Summoned By` lists each monster's group rooms; the Crimson Fortress's
+   * Main Gate (15/1054) is in none, between hallways that are.
+   */
+  it('marks a room no monster group reaches, and only when the realm lists groups', () => {
+    const rooms = [
+      room({ 'Map Number': 15, 'Room Number': 1054, Name: 'Main Gate' }),
+      room({ 'Map Number': 15, 'Room Number': 1055, Name: 'Crimson Fortress, Hallway' }),
+      room({ 'Map Number': 15, 'Room Number': 1056, Name: 'Crimson Fortress, Hallway' })
+    ];
+    const monster = {
+      Number: 526,
+      Name: 'disenchanter',
+      'Summoned By': '[4]Group(lair): 15/1055,Group: 15/1056'
+    };
+    const lines = (tables: Record<string, Record<string, unknown>[]>): Record<string, unknown>[] =>
+      buildRealm(fake(tables), today).lines.map((line) => JSON.parse(line));
+    expect(lines({ Rooms: rooms, Monsters: [monster] }).map((r) => r['nf'])).toEqual([
+      1,
+      undefined,
+      undefined
+    ]);
+    expect(lines({ Rooms: rooms }).some((r) => 'nf' in r)).toBe(false);
+  });
+
+  /*
    * `Rooms.Placed` — format 42. What the realm puts on the floor and puts
    * back every night, as ids, each one named: the room refers to the item the
    * way a shop refers to its stock.

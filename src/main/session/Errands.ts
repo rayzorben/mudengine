@@ -2851,7 +2851,8 @@ export class Errands implements SessionModule {
 
   /**
    * The rooms next door the realm holds no lair and no resident in, plain
-   * exits first (`RestAwayPlanner.neighbours`).
+   * exits first and within them rooms no monster group reaches
+   * (`WorldRoom.noFollow`; `RestAwayPlanner.neighbours`).
    */
   neighbours(room: RoomId): ReturnType<RestAwayPlanner['neighbours']> {
     const found = this.world?.byId(room);
@@ -2875,9 +2876,10 @@ export class Errands implements SessionModule {
         if (!next || next.lair !== undefined || next.npcId !== undefined) return [];
         const direction = asDirection(exit.direction);
         if (direction === null) return [];
-        return [{ direction, to, name: next.name, plain: exit.requirement === null }];
+        const plain = exit.requirement === null;
+        return [{ direction, to, name: next.name, plain, noFollow: next.noFollow === true }];
       })
-      .sort((a, b) => Number(b.plain) - Number(a.plain))
+      .sort((a, b) => Number(b.plain) - Number(a.plain) || Number(b.noFollow) - Number(a.noFollow))
       .map(({ direction, to, name }) => ({ direction, to, name }));
   }
 
