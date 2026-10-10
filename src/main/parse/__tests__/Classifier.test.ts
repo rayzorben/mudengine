@@ -32,7 +32,9 @@ const KNOWN = new Set([
   'giant rat',
   'cave rat',
   'massive ice dragon',
-  'big cave worm'
+  'big cave worm',
+  'orc shaman',
+  'moaning spirit'
 ]);
 const NAMES = {
   present: () => [],
@@ -154,6 +156,26 @@ describe('combat', () => {
   it('keeps the modifier the realm hung on the front of a name', () => {
     const g = expectType('The huge cave rat bites you for 3 damage!', 'mob-hits');
     expect(g['attacker']).toBe('huge cave rat');
+  });
+
+  /*
+   * A monster's spell carries no article on Paradigm, and its name is the
+   * realm's lowercase spelling (orohost wire, todo 23). Each names its caster
+   * and counts as damage taken.
+   */
+  it('reads a monster’s spell on this character without an article', () => {
+    expect(expectType('orc shaman casts harm on you for 17 damage!', 'mob-hits')).toMatchObject({
+      attacker: 'orc shaman',
+      damage: '17'
+    });
+    expect(
+      expectType('moaning spirit draws the breath from your body for 7 damage!', 'mob-hits')
+    ).toMatchObject({ attacker: 'moaning spirit', damage: '7' });
+  });
+
+  it('leaves a lowercase blow nothing can name to the blow between others', () => {
+    expect(classify('gelatinous horror casts harm on you for 17 damage!').type).toBe('user-hits');
+    expect(classify('orc shaman casts harm on Youssef for 17 damage!').type).toBe('user-hits');
   });
 
   /*
