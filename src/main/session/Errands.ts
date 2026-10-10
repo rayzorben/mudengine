@@ -30,6 +30,8 @@ import type { ItemSources } from '../automation/ItemErrand';
 import type { OddsPeeker } from './OddsBook';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
+import type { MobEntity } from '../../shared/entities';
+import { spotJoiners } from './spotJoiners';
 import { LairCosts } from '../world/LairCosts';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
 import { lairRunner, runRiskOf, type RunRiskParts } from './runRisk';
@@ -87,7 +89,7 @@ import {
 import { matchStop, type RoomMatch } from '../../shared/loops';
 import { bareName, sameItem } from '../../shared/items';
 import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
-import { attacksOnSight, fightable } from '../../shared/mobs';
+import { attacksOnSight, fightable, waitsToBeStruck } from '../../shared/mobs';
 import {
   dodge,
   regeneration,
@@ -247,6 +249,7 @@ export type ErrandsWorld = Pick<
   | 'raceAbilities'
   | 'raceId'
   | 'residentEntities'
+  | 'joiners'
   | 'itemSources'
   | 'route'
   | 'shop'
@@ -601,7 +604,10 @@ export class Errands implements SessionModule {
     const standing = standingOf(this.tracker.current);
     return [...new Set([...stated, ...this.clocks.seenIn(id)])].filter((name) => {
       const mob = world?.mob(name);
-      return attacksOnSight(mob?.disposition ?? null, mob?.abilities, standing) !== false;
+      return !waitsToBeStruck(
+        { disposition: mob?.disposition ?? null, abilities: mob?.abilities },
+        standing
+      );
     });
   }
 
@@ -1932,11 +1938,26 @@ export class Errands implements SessionModule {
        */
       const entities = fightable(all);
       if (entities.length === 0) return 'evil';
+      const mobs = priceMobs(entities).map((mob, index) => {
+        const drawn = spotJoiners(entities[index]!, world.joiners, player, priceMobs);
+        return drawn.length === 0 ? mob : { ...mob, joiners: drawn };
+      });
+      /*
+       * The world database's clock; what the wire timed (`RoomClocks`)
+       * outranks it below, read past the price cache, since it belongs to
+       * the realm's rooms, whatever the character.
+       */
+      const { clock, respawn } = GROUNDS[group.via].stated(ground, entities, family, c);
+      const refills = groundRefills(group.via, group.sample, family);
+      return { mobs, clock, respawn, refills };
+    };
+    /** Monsters priced as the survey weighs a spawn: exp, coin, rounds, blows. */
+    const priceMobs = (entities: MobEntity[]): SpotMob[] => {
       const verdicts = weighVerdicts(entities, player, weights, sheet, weapon, family, attack);
       const bare = weighRoom(entities, naked, weights);
       const recorded = (hp: number | null): number | null =>
         measured === null || hp === null || hp <= 0 ? null : hp / measured.perRound;
-      const mobs: SpotMob[] = entities.map((entity, index) => ({
+      return entities.map((entity, index) => ({
         name: entity.name,
         /*
          * The realm's own figure where a solo kill has recorded one, else the
@@ -1972,14 +1993,6 @@ export class Errands implements SessionModule {
          */
         regenSeconds: regenSeconds(entity.regenHours, speed)
       }));
-      /*
-       * The world database's clock; what the wire timed (`RoomClocks`)
-       * outranks it below, read past the price cache, since it belongs to
-       * the realm's rooms, whatever the character.
-       */
-      const { clock, respawn } = GROUNDS[group.via].stated(ground, entities, family, c);
-      const refills = groundRefills(group.via, group.sample, family);
-      return { mobs, clock, respawn, refills };
     };
     const priced = new Map<string, HuntPriced>();
     const excluded = { ...NO_EXCLUSIONS };

@@ -257,6 +257,18 @@ export function attacksOnSight(
 }
 
 /**
+ * Whether a monster swings only once struck: the realm says it does not
+ * attack this character on sight, so the server brings it in by its own
+ * `RecentAttackers` alone. Unknown swings.
+ */
+export function waitsToBeStruck(
+  mob: { disposition: MobDisposition | null; abilities?: ReadonlyArray<readonly [number, number]> },
+  standing: Standing
+): boolean {
+  return attacksOnSight(mob.disposition, mob.abilities, standing) === false;
+}
+
+/**
  * Whether a monster passes over this listed pack (`NO_ATTACK_IF_ITEM_ABILITY`):
  * `Mob.TryFindTarget` drops a player holding any item it names after the
  * alignment test. An unlisted pack counts as holding none of its items.

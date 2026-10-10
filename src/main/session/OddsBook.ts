@@ -22,7 +22,7 @@ import {
   type FightSetupSession
 } from './FightSetup';
 import { standingOf, type CharacterState } from '../../shared/character';
-import { attacksOnSight } from '../../shared/mobs';
+import { waitsToBeStruck } from '../../shared/mobs';
 import { SlicedSimulator } from './slicedSimulator';
 import type { FightSimulator } from '../../shared/simulator';
 import { simulateFight, type Odds, type SurvivalInput } from '../../shared/survival';
@@ -63,11 +63,12 @@ export type SessionOdds = Pick<
  * runs the room as it stands with the same `FightSetup`.
  */
 export function fightBook(
-  parts: FightSetupParts & Omit<OddsBookParts, 'setup' | 'simulator'>,
+  parts: Omit<FightSetupParts, 'joiners'> &
+    Omit<OddsBookParts, 'setup' | 'simulator'> & { world: Pick<WorldGraph, 'joiners'> | undefined },
   session: FightSetupSession & OddsBookSession,
   simulator: FightSimulator = new SlicedSimulator()
 ): { setup: FightSetup; odds: OddsBook; simulator: FightSimulator } {
-  const setup = new FightSetup(parts, session);
+  const setup = new FightSetup({ ...parts, joiners: parts.world?.joiners }, session);
   return { setup, odds: new OddsBook({ ...parts, setup, simulator }, session), simulator };
 }
 
@@ -337,14 +338,15 @@ export class OddsBook implements SessionModule {
       met = world.lairEntities(job.room).map((entity) => ({
         name: entity.name,
         subject: entity,
-        waits: attacksOnSight(entity.disposition, entity.abilities, standing) === false
+        waits: waitsToBeStruck(entity, standing)
       }));
       draw = parseLair(job.room.lair ?? '').max ?? 1;
     }
     if (met.length === 0) return UNRUN;
+    // A lair's draw and a monster met alone come into the room with the fight, arrivals and all.
     return {
       ...character,
-      ...this.setup.foes(state, character, met),
+      ...this.setup.foes(state, character, met, 'arriving'),
       ...(draw === undefined ? {} : { draw })
     };
   }

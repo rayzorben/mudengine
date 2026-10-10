@@ -9,6 +9,7 @@
  * quickest source*.
  */
 import { HAZARD_ABILITY } from '../../shared/abilities';
+import { picksOf, type SummonPick } from '../../shared/summons';
 import type { MobProfile } from '../../shared/world';
 import type { BuiltSpell } from './buildRealm';
 import { columnRows, scriptsOf } from './navigation/scriptWays';
@@ -30,6 +31,9 @@ import { abilityPairs, dropSlots, number, shopSlots, text, type ShopSlotField } 
 
 /** `[row, copies]`: how many of each one run makes on average. */
 export type BuiltMade = Array<[number, number]>;
+
+/** Format 60: one pick per summons, `[row, chance]`, at most one row brought (`SummonPick`). */
+export type BuiltPicks = Array<Array<[number, number]>>;
 
 /**
  * What runs: a monster arriving (its drops are rolled then, `Mob.cs:713`, and
@@ -209,6 +213,37 @@ class Makings {
       }
       return out;
     });
+  }
+
+  /**
+   * Who one cast brings in, as the server summons (format 60): a pick for
+   * each Summon modifier, one row of `columnRows`'s alike (`Spell.cs:1506`);
+   * a script's yield and the end spell's picks beside them. A script states
+   * only its average, so its copies are picks of their own (`picksOf`).
+   */
+  summonPicks(id: number, seen: ReadonlySet<number> = new Set()): SummonPick[] {
+    if (seen.has(id)) return [];
+    const within = new Set([...seen, id]);
+    const spell = this.spells.get(id);
+    const row = {
+      abilities: spell?.ab ?? [],
+      ...(spell?.pw === undefined ? {} : { power: spell.pw })
+    };
+    const scripted = empty();
+    for (const candidates of scriptsOf(row)) {
+      for (const block of candidates)
+        add(scripted, this.block(block, 'steps'), 1 / candidates.length);
+    }
+    const picks: SummonPick[] = picksOf(scripted.monsters);
+    for (const [ability, value] of row.abilities) {
+      if (ability === HAZARD_ABILITY.endCast && value > 0)
+        picks.push(...this.summonPicks(value, within));
+      if (ability !== HAZARD_ABILITY.summon) continue;
+      const candidates = columnRows(value, row.power);
+      if (candidates.length > 0)
+        picks.push(candidates.map((monster) => [monster, rounded(1 / candidates.length)]));
+    }
+    return picks;
   }
 
   /** What a line's steps make, up to the first the server cannot run. */
@@ -465,6 +500,25 @@ export function indexSupply(
     }
   }
   return supply;
+}
+
+/** Who one cast of each spell brings into the caster's room (format 60), where anybody. */
+export function spellSummons(
+  blocks: ReadonlyMap<number, Textblock>,
+  spells: readonly BuiltSpell[]
+): Map<number, BuiltPicks> {
+  const makings = new Makings(blocks, new Map(spells.map((spell) => [spell.id, spell])));
+  const out = new Map<number, BuiltPicks>();
+  for (const spell of spells) {
+    const picks = makings.summonPicks(spell.id);
+    if (picks.length > 0) {
+      out.set(
+        spell.id,
+        picks.map((pick) => pick.map(([row, chance]): [number, number] => [row, rounded(chance)]))
+      );
+    }
+  }
+  return out;
 }
 
 /** Every item the supply names, so the item index can name it back. */

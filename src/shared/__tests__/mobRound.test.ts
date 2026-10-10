@@ -90,7 +90,7 @@ describe('the energy a round is paid from', () => {
       chance: 1,
       energy: 1000,
       castChance: 0,
-      effect: { low: 5, high: 5, resist: 0, ticks: 4, held: 0, mends: null }
+      effect: { low: 5, high: 5, resist: 0, ticks: 4, held: 0, mends: null, summons: [] }
     });
     const kept = freshMobState();
     rollMobRound(mulberry32(3), lasting, kept);
@@ -192,5 +192,30 @@ describe('choosing a name’s worst row', () => {
       BARE
     );
     expect(expectedHarm(spears)).toBeGreaterThan(expectedHarm(blows));
+  });
+});
+
+/* Todo 24: the half-orc sentry's call for aid is a between-round spell that only summons. */
+describe('a spell that brings a monster in', () => {
+  const callForAid: WorldSpell = {
+    id: 593,
+    name: 'summon orc warrior',
+    targets: 8,
+    abilities: [[12, 480]],
+    summons: [[[480, 1]]]
+  };
+
+  it('is an effect though it wounds nobody, and names the row it brings', () => {
+    expect(spellEffect(callForAid, 4, BARE)?.summons).toEqual([[[480, 1]]]);
+    expect(spellEffect({ ...callForAid, summons: undefined }, 4, BARE)).toBeNull();
+  });
+
+  it('reports the row in the round it lands, and none in a round it does not', () => {
+    const effect = spellEffect(callForAid, 4, { ...BARE, magicRes: 0 });
+    const always: MobModel = { slots: [], casts: [{ chance: 1, effect }], resist: 0 };
+    const never: MobModel = { slots: [], casts: [{ chance: 0, effect }], resist: 0 };
+    const random = mulberry32(5);
+    expect(rollMobRound(random, always, freshMobState()).summoned).toEqual([480]);
+    expect(rollMobRound(random, never, freshMobState()).summoned).toEqual([]);
   });
 });

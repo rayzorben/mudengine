@@ -201,7 +201,7 @@ export class Appraisal {
     const fights = this.foesOf(state);
     if (fights.length === 0) return null;
     const met = fights.map((who) => ({ name: who.name, subject: who.mob ?? {} }));
-    const input = { ...character, ...this.setup.foes(state, character, met) };
+    const input = { ...character, ...this.setup.foes(state, character, met, 'seen') };
     // A lapse's round decides when its effect goes, so it is keyed: one run a round while one is due.
     const key = JSON.stringify(input);
     if (this.ran?.key === key) return this.ran.survival;

@@ -527,3 +527,108 @@ describe('a monster whose blow is a spell', () => {
     expect(Math.abs(pool.survives - three.survives)).toBeLessThan(0.1);
   });
 });
+
+/*
+ * Todo 24, 2026-10-10: Soul died in the Foul Den when the half-orc sentry
+ * shouted for aid and a fat orc warrior came in; the survey had fought the
+ * sentry and the shaman alone. A summons is the realm's own data: the
+ * sentry's between-round spell names the warrior's row.
+ */
+describe('a fight that draws monsters in', () => {
+  const CALL: WorldSpell = {
+    id: 593,
+    name: 'summon orc warrior',
+    targets: 8,
+    summons: [[[480, 1]]]
+  };
+  const sentry = (chance: number, attacks = [biter(20, 1, 3)]): SurvivalInput['foes'][number] => ({
+    name: 'half-orc sentry',
+    subject: {
+      hp: 200,
+      profiles: [
+        {
+          attacks: attacks[0] === undefined ? [] : attacks[0].attacks,
+          casts: [{ spell: 593, chance, level: 4 }]
+        }
+      ],
+      spells: { 593: CALL }
+    }
+  });
+  const warrior = (hp = 150, profile = biter(60, 8, 14)) => ({
+    row: 480,
+    name: 'fat orc warrior',
+    subject: { hp, profiles: [profile] }
+  });
+
+  it('fights the warrior the sentry calls in, and costs more for it', () => {
+    const alone = simulateFight(fight({ foes: [sentry(0.8)], casting: [null] }))!;
+    const called = simulateFight(
+      fight({ foes: [sentry(0.8)], joiners: [warrior()], casting: [null, null] })
+    )!;
+    expect(called.rounds.value).toBeGreaterThan(alone.rounds.value + 1);
+    expect(called.lostMean).toBeGreaterThan(alone.lostMean);
+    expect(called.survives).toBeLessThan(alone.survives);
+  });
+
+  it('brings in what a death spell summons, and the fight is not won until it is down', () => {
+    const dying = {
+      name: 'ogre',
+      subject: {
+        hp: 12,
+        profiles: [biter(20, 1, 3)],
+        deathSpell: 593,
+        spells: { 593: CALL }
+      }
+    };
+    const plain = simulateFight(
+      fight({ foes: [{ ...dying, subject: { ...dying.subject, spells: {} } }] })
+    )!;
+    const summoning = simulateFight(
+      fight({ foes: [dying], joiners: [warrior()], casting: [null, null] })
+    )!;
+    expect(summoning.rounds.value).toBeGreaterThan(plain.rounds.value + 1);
+  });
+
+  it('meets what a monster brings with it as it arrives', () => {
+    const queen = { ...sentry(0), arrives: [[[480, 1]]] as const };
+    const without = simulateFight(
+      fight({ foes: [sentry(0)], joiners: [warrior()], casting: [null, null] })
+    )!;
+    const arriving = simulateFight(
+      fight({ foes: [queen], joiners: [warrior()], casting: [null, null] })
+    )!;
+    expect(arriving.rounds.value).toBeGreaterThan(without.rounds.value + 1);
+  });
+
+  it('stops bringing them in at twenty standing (`Room.TrySummon`)', () => {
+    // The sentry calls every round and swings at nobody; each warrior lands at most 1.
+    const caller = sentry(1, []);
+    caller.subject = { ...caller.subject, hp: 100_000 };
+    const run = simulateFight(
+      fight({
+        foes: [caller],
+        joiners: [warrior(100_000, biter(400, 1, 1))],
+        casting: [null, null],
+        player: { armourClass: 0, damageResist: 0, magicRes: 0 },
+        hp: 100_000,
+        hpMax: 100_000,
+        trials: 5,
+        roundCap: 60
+      })
+    )!;
+    expect(run.worstRound).toBeGreaterThan(10);
+    expect(run.worstRound).toBeLessThanOrEqual(19);
+  });
+
+  it('is no answer while a monster it may draw in is unread', () => {
+    expect(
+      simulateFight(
+        fight({
+          foes: [sentry(0.3)],
+          joiners: [{ ...warrior(), subject: { hp: 60 } }],
+          casting: [null, null]
+        })
+      )
+    ).toBeNull();
+  });
+});

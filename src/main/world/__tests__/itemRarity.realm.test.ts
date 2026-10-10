@@ -5,8 +5,10 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { buildRealm } from '../buildRealm';
+import { Catalogue } from '../Catalogue';
 import { rarityBook } from '../itemRarity';
 import { openRealm } from '../RealmSource';
+import type { RealmHeader } from '../realmHeader';
 import { number, text } from '../values';
 import { WorldGraph } from '../WorldGraph';
 
@@ -20,6 +22,7 @@ const archive = path.resolve('mdb/gmud.zip');
 const available = fs.existsSync(archive);
 let dir = '';
 let world: WorldGraph | null = null;
+let catalogue: Catalogue | null = null;
 
 beforeAll(() => {
   if (!available) return;
@@ -31,6 +34,7 @@ beforeAll(() => {
     const lines = [JSON.stringify(built.header), ...built.lines];
     fs.writeFileSync(file, zlib.gzipSync(lines.join('\n') + '\n'));
     world = WorldGraph.load(file);
+    catalogue = Catalogue.read(built.header as RealmHeader);
   } finally {
     source.close();
   }
@@ -56,7 +60,7 @@ describe.skipIf(!available)('item rarity on gmud.mdb', () => {
 
   it('finds the weaponsmaster where the queen is, since her arrival summons him', () => {
     const smith = world!.mob('dark-elf weaponsmaster');
-    expect(world!.summonersOf(smith!).map((mob) => mob.name)).toContain('dark-elf queen');
+    expect(catalogue!.summonersOf(smith!).map((mob) => mob.name)).toContain('dark-elf queen');
   });
 
   /*

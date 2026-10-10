@@ -88,6 +88,13 @@ function madeOf(value: unknown): Map<number, number> {
   return made;
 }
 
+/** A spell's summons as written (`BuiltPicks`, format 60), the malformed dropped. */
+export function picksRead(value: unknown): Array<Array<[number, number]>> {
+  return rowsOf(value)
+    .map((pick) => [...madeOf(pick)])
+    .filter((pick) => pick.length > 0);
+}
+
 function gateOf(record: Record<string, unknown>): SupplyGate {
   if (record['q'] === 1) return { kind: 'quest' };
   const uses = rowsOf(record['u']).filter(isCount);

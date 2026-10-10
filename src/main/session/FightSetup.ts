@@ -10,6 +10,7 @@ import { tuning } from '../app/tuning';
 import type { Blessings } from '../automation/Blessings';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
+import type { Joiners } from '../world/joiners';
 import {
   blessedPlayer,
   effectOf,
@@ -18,7 +19,8 @@ import {
   sumEffects,
   type BlessingEffect
 } from '../../shared/blessingeffects';
-import type { CharacterState } from '../../shared/character';
+import { standingOf, type CharacterState } from '../../shared/character';
+import { waitsToBeStruck } from '../../shared/mobs';
 import type { MobEntity } from '../../shared/entities';
 import type { AutomationConfig } from '../../shared/config';
 import { ROUND_SECONDS } from '../../shared/menace';
@@ -34,6 +36,7 @@ import {
   type SurvivalFoe,
   type SurvivalHeal,
   type SurvivalInput,
+  type SurvivalJoiner,
   type SurvivalRetreat
 } from '../../shared/survival';
 import { prowessSheetOf, wieldedWeapon } from '../../shared/verdict';
@@ -47,6 +50,8 @@ export interface FightSetupParts {
   >;
   /** Which lapsing blessings are recast mid-fight; built after the book, so asked for at use. */
   readonly blessings: () => Pick<Blessings, 'recastFloor'>;
+  /** Who a fight draws in; undefined with no world, which draws nobody. */
+  readonly joiners: Pick<Joiners, 'drawnIn' | 'arrivalsOf'> | undefined;
 }
 
 export interface FightSetupSession {
@@ -64,6 +69,13 @@ export interface FightFoe {
   waits?: SurvivalFoe['waits'];
 }
 
+/**
+ * How the foes meet the character: coming into the room with the fight (a
+ * lair's draw, a monster met alone), so what their `CreateSpell` brings comes
+ * too, or already there as the room was read, arrivals and all.
+ */
+export type FoesMet = 'arriving' | 'seen';
+
 /** A pack nobody has weighed, which `passCaught` prices full. */
 const FULL_PACK = { encumbrance: null, encumbranceMax: null } as const;
 
@@ -71,6 +83,7 @@ export class FightSetup {
   private readonly world: FightSetupParts['world'];
   private readonly errands: FightSetupParts['errands'];
   private readonly blessings: FightSetupParts['blessings'];
+  private readonly joiners: FightSetupParts['joiners'];
   private readonly spellOf = (name: string): WorldSpell | null =>
     this.world?.spellNamed(name) ?? null;
 
@@ -81,6 +94,7 @@ export class FightSetup {
     this.world = parts.world;
     this.errands = parts.errands;
     this.blessings = parts.blessings;
+    this.joiners = parts.joiners;
   }
 
   /**
@@ -168,22 +182,40 @@ export class FightSetup {
   }
 
   /**
-   * The foes, each with the casting price `castsToKill` gives where the
-   * character's blow is a spell: expected damage a round and its mana.
+   * The foes and the monsters they may draw in (`Joiners`), each with the
+   * casting price `castsToKill` gives where the character's blow is a spell:
+   * expected damage a round and its mana.
    */
   foes(
     state: CharacterState,
     character: FightCharacter,
-    met: readonly FightFoe[]
-  ): Pick<SurvivalInput, 'foes' | 'casting'> {
+    met: readonly FightFoe[],
+    how: FoesMet
+  ): Pick<SurvivalInput, 'foes' | 'joiners' | 'casting'> {
     const casting = this.errands.castingInput(state, character.sheet, character.family);
+    const arriving = how === 'arriving';
+    const standing = standingOf(state);
+    const joiners = (
+      this.joiners?.drawnIn(
+        met.map((foe) => foe.subject),
+        arriving
+      ) ?? []
+    ).map(({ row, entity }): SurvivalJoiner & FightFoe => ({
+      row,
+      name: entity.name,
+      subject: entity,
+      ...(waitsToBeStruck(entity, standing) ? { waits: true } : {}),
+      ...this.arrivals(entity)
+    }));
     return {
       foes: met.map(({ name, subject, waits }) => ({
         name,
         subject,
-        ...(waits === true ? { waits } : {})
+        ...(waits === true ? { waits } : {}),
+        ...(arriving ? this.arrivals(subject) : {})
       })),
-      casting: met.map(({ name, subject }) => {
+      ...(joiners.length > 0 ? { joiners } : {}),
+      casting: [...met, ...joiners].map(({ name, subject }) => {
         const kill =
           casting === null
             ? null
@@ -199,6 +231,12 @@ export class FightSetup {
           : { perRound: kill.perRound, manaPerRound: kill.mana ?? 0 };
       })
     };
+  }
+
+  /** What a monster's arrival brings, where it brings anyone. */
+  private arrivals(mob: Parameters<Joiners['arrivalsOf']>[0]): Pick<SurvivalFoe, 'arrives'> {
+    const arrives = this.joiners?.arrivalsOf(mob) ?? [];
+    return arrives.length > 0 ? { arrives } : {};
   }
 
   /**

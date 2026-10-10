@@ -11,7 +11,7 @@ import { SEE_HIDDEN_ABILITY, carriesAbility } from '../../shared/abilities';
 import { standingOf, type CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
 import type { MobEntity } from '../../shared/entities';
-import { attacksOnSight } from '../../shared/mobs';
+import { waitsToBeStruck } from '../../shared/mobs';
 import type { RealmFamily } from '../../shared/realm';
 import {
   followRooms,
@@ -58,7 +58,7 @@ export function openingOn(
 ): readonly MobEntity[] | null {
   if (mobs.length === 0) return null;
   const standing = standingOf(state);
-  return mobs.filter((mob) => attacksOnSight(mob.disposition, mob.abilities, standing) !== false);
+  return mobs.filter((mob) => !waitsToBeStruck(mob, standing));
 }
 
 /**
