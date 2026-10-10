@@ -9396,13 +9396,23 @@ button.lookup:focus-visible {
  * The head of the card rail: the put-away chip, auto layout and its undo at
  * the left, the client's mark at the right. One band tall (`--topbar-h`), the
  * band the chips fill, so the mark adds no height.
+ *
+ * It stays at the top of the rail while the cards scroll under it (user,
+ * 2026-10-06), on the window's own ground so no card shows through. Sticky
+ * keeps it in the flow, so the grid's cells are where they were; a drag
+ * measures the rail below the head (`RailGridView.seen`). Above the resize
+ * frames (2), under the float layer (40).
  */
 .card-rail-head {
   align-items: center;
+  background: var(--ink-void);
   display: flex;
   flex: 0 0 auto;
   gap: var(--gap);
   min-height: var(--topbar-h);
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 /*

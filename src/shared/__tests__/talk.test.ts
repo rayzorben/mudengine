@@ -281,8 +281,8 @@ describe('the time beside a line', () => {
 });
 
 describe('how a line is arranged', () => {
-  it("defaults to the realm's own sentence, which invents nothing", () => {
-    expect(DEFAULT_TALK_LAYOUT).toBe('original');
+  it('ships condensed and aligned, as festus has it', () => {
+    expect(DEFAULT_TALK_LAYOUT).toBe('condensed-aligned');
     expect(TALK_LAYOUTS).toContain(DEFAULT_TALK_LAYOUT);
   });
 

@@ -100,6 +100,14 @@ export function useRailGrid(): RailGrid {
       bounds: () => (element.current ? cardSizeBounds(element.current) : null),
       drawn: () => drawn.current,
       scroller: () => element.current?.parentElement ?? null,
+      seen: () => {
+        const rail = element.current?.parentElement;
+        if (!rail) return null;
+        const { left, top, right, bottom } = rail.getBoundingClientRect();
+        const head = rail.querySelector<HTMLElement>(':scope > .card-rail-head');
+        const under = head ? head.getBoundingClientRect().bottom : top;
+        return { left, top: Math.max(top, under), right, bottom };
+      },
       width: () => width.current,
       card: (id) =>
         element.current?.querySelector<HTMLElement>(`[data-rail-card="${id}"] > .card`) ?? null,

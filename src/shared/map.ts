@@ -144,8 +144,8 @@ export const STEP: Record<Direction, { dx: number; dy: number } | null> = {
 export const MAP_CELL = 10;
 
 /**
- * The middle of the density slider, and what the map is drawn at until
- * somebody moves it.
+ * What the map is drawn at until somebody moves the density slider: festus's
+ * setting, which ships (user, 2026-10-06).
  *
  * A fraction rather than a room count, because what the slider actually
  * chooses is *how small a room may be drawn* — the count still comes from the
@@ -154,7 +154,7 @@ export const MAP_CELL = 10;
  * renderer for the one case the dense end is not honoured: a window so large
  * that the widest fetch could not fill it.
  */
-export const DEFAULT_MAP_DENSITY = 0.5;
+export const DEFAULT_MAP_DENSITY = 0.79;
 
 /**
  * How many pixels one room may have, at this density.

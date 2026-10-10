@@ -5003,9 +5003,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
 
 // ------------------------------------------- assert: the optional rail cards
 //
-// Talk and Inventory are off by default and are brought back from the palette.
-// What belongs on a rail is one player's business — a healer watches different
-// things from a warrior — so the choice is remembered per character.
+// The rail ships as festus keeps it (todo 19): Map, Vitals, Combat, Combat
+// Stats, Navigation and Talk, the party floating, the rest put away and
+// brought back from the palette or the rail head. What belongs on a rail is
+// one player's business, so the choice is remembered per character. The
+// cards the checks below read that ship put away are put on the rail here.
 {
   // By the card's id and the key its title is under; the words typed are
   // the palette's own, so the row is found by `data-command` alone.
@@ -5086,14 +5088,31 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   };
 
   check(
-    !(await evaluate(`!!document.querySelector('.conversation-card')`)),
-    'Talk is not on the rail until it is asked for'
+    await evaluate(`!!document.querySelector('.rail .conversation-card')`),
+    'Talk is on the rail as shipped'
   );
-  check(await openCard('conversation', 'cards.talk.title'), 'and the palette offers it');
+  const shippedRail = JSON.parse(
+    await evaluate(`JSON.stringify(
+      [...document.querySelectorAll('.rail [data-rail-card]')].map((cell) => cell.dataset.railCard)
+    )`)
+  );
   check(
-    await evaluate(`!!document.querySelector('.conversation-card')`),
-    'which puts it on the rail'
+    ['map', 'vitals', 'combat', 'stats'].every((id) => shippedRail.includes(id)) &&
+      ['self', 'room', 'notifications', 'realm', 'players', 'reference'].every(
+        (id) => !shippedRail.includes(id)
+      ),
+    "and the rest of festus's rail with it, the other cards put away",
+    JSON.stringify(shippedRail)
   );
+  for (const [id, titleKey] of [
+    ['room', 'cards.room.title'],
+    ['self', 'cards.self.title'],
+    ['notifications', 'cards.alerts.title'],
+    ['realm', 'cards.realm.title'],
+    ['players', 'cards.players.title']
+  ]) {
+    check(await openCard(id, titleKey), `the palette puts the put-away ${id} card on the rail`);
+  }
 
   const said = (
     await evaluate(
@@ -6594,19 +6613,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     );
   }
 
-  /*
-   * Reference is on the rail already — it is not in `DEFAULT_AWAY`, which
-   * holds only Carrying and Talk — so the palette never offers to *show* it
-   * and asking it to would be asserting the opposite of the shipped layout.
-   *
-   * "A card the layout has never heard of appears anyway, in its shipped
-   * position" (CLAUDE.md) is the rule being checked here, and the honest test
-   * of it is that the card is simply there.
-   */
+  // Reference ships put away with festus's layout, so it is asked for here.
   check(
-    await evaluate(`!!document.querySelector('.reference-card')`),
-    'the Reference card is on the rail without being asked for'
+    await openCard('reference', 'cards.reference.title'),
+    'the palette offers the Reference card'
   );
+  check(await evaluate(`!!document.querySelector('.reference-card')`), 'and puts it on the rail');
   await evaluate(`
     (() => {
       const field = document.querySelector('.reference-card input');
@@ -7112,6 +7124,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return opened && (await evaluate(`!!document.querySelector('.reference-popover')`));
     };
     check(await reopen(), 'the answer opens again for the two-surface check');
+
+    // At the live edge first: a console held back does not scroll on output,
+    // and earlier checks leave it backscrolled. Its button going is the effect.
+    await evaluate(`(document.querySelector('.jump-latest')?.click(), true)`);
+    await gone('.jump-latest');
 
     // Counted at the window in capture, which is where the app listens and the
     // only place a scrolling element reports at all.
@@ -8637,7 +8654,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       () =>
         evaluate(`
       (() => {
-        const glyph = document.querySelector('.picker-menu [data-card-float-chip="stats"]');
+        const glyph = document.querySelector('.picker-menu [data-card-float-chip="reference"]');
         if (!glyph) return false;
         glyph.click();
         return true;
@@ -8649,12 +8666,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     await waitFor(
       async () =>
         await evaluate(
-          `!!document.querySelector('.float-layer [data-card-float="stats"] .stats-card')`
+          `!!document.querySelector('.float-layer [data-card-float="reference"] .reference-card')`
         )
     );
     check(
       await evaluate(
-        `!!document.querySelector('.float-layer [data-card-float="stats"] .stats-card')`
+        `!!document.querySelector('.float-layer [data-card-float="reference"] .reference-card')`
       ),
       'and pressing it floats the card instead of docking it'
     );
@@ -8662,12 +8679,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     // was written against.
     await evaluate(`
       (() => {
-        const close = document.querySelector('[data-card-float="stats"] .card-close');
+        const close = document.querySelector('[data-card-float="reference"] .card-close');
         if (close) close.click();
         return !!close;
       })()
     `);
-    await gone('[data-card-float="stats"]');
+    await gone('[data-card-float="reference"]');
   }
   /*
    * And two cards over the console line up with each other (todo 02).
@@ -10163,12 +10180,14 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
   // Now off the rail entirely, onto the console.
   const lifting = await railOrder();
+  // Party ships floating, so the float checked is the lifted card's own.
+  const liftedFloat = `.float-layer [data-card-float="${lifting[0]}"]`;
   const handle = await boxOf(`.rail [data-card="${lifting[0]}"] .card-grip`);
   const console_ = await boxOf('.terminal-layers');
   await drag(handle, { x: console_.x, y: console_.y }, willFloat);
 
   check(
-    await evaluate(`!!document.querySelector('.float-layer .float')`),
+    await evaluate(`!!document.querySelector('${liftedFloat}')`),
     'a card dragged onto the console floats there'
   );
   check((await railOrder()).includes(lifting[0]) === false, 'and leaves the rail');
@@ -10257,7 +10276,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     JSON.parse(
       await evaluate(`
       (() => {
-        const card = document.querySelector('.float > .card');
+        const card = document.querySelector('${liftedFloat} > .card');
         if (!card) return JSON.stringify({ error: 'no float' });
         const read = (colour) => {
           const tail = colour.slice(0, colour.lastIndexOf(')'));
@@ -10278,7 +10297,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   // the alphas are read once the arrival has finished.
   await waitFor(async () =>
     evaluate(
-      `(() => { const c = document.querySelector('.float > .card'); return !!c && c.getAnimations().length === 0; })()`
+      `(() => { const c = document.querySelector('${liftedFloat} > .card'); return !!c && c.getAnimations().length === 0; })()`
     )
   );
   const alphas = await readAlphas();
@@ -10315,7 +10334,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   const dragAlphaTo = (value) =>
     evaluate(`
     (() => {
-      const el = document.querySelector('.float > .card .card-alpha');
+      const el = document.querySelector('${liftedFloat} > .card .card-alpha');
       if (!el) return false;
       const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
       set.call(el, '${value}');
@@ -10371,9 +10390,9 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       return JSON.stringify(layout.floats ?? []);
     })()
   `);
-  const parsed = JSON.parse(floats);
+  const kept = JSON.parse(floats).find((float) => float.id === lifting[0]);
   check(
-    parsed.length === 1 && parsed[0].x <= 1 && parsed[0].y <= 1 && parsed[0].w <= 1,
+    kept !== undefined && kept.x <= 1 && kept.y <= 1 && kept.w <= 1,
     'and its place is remembered as a fraction of the workspace, not in pixels',
     floats
   );
@@ -10404,8 +10423,10 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
      * fixed sleep above it used to cover, badly — it was too short on a loaded
      * machine and the drag then had no source (`{"from":null}`).
      */
-    await waitFor(async () => evaluate(`!!document.querySelector('.float > .card .card-grip')`));
-    const grip = await boxOf('.float > .card .card-grip');
+    await waitFor(async () =>
+      evaluate(`!!document.querySelector('${liftedFloat} > .card .card-grip')`)
+    );
+    const grip = await boxOf(`${liftedFloat} > .card .card-grip`);
     /*
      * The bottom edge of the console: the strip appears there mid-drag, which
      * is what gives the drop somewhere to land — and it appears *because* of
@@ -10435,10 +10456,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
       'a card dragged to the foot of the console docks below it',
       docked
     );
-    check(
-      !(await evaluate(`!!document.querySelector('.float-layer .float')`)),
-      'and stops floating'
-    );
+    check(!(await evaluate(`!!document.querySelector('${liftedFloat}')`)), 'and stops floating');
     /* Docking is an explicit request to keep it in view, so it is exempt from
        the group toggle it is no longer part of. */
     check(
@@ -10460,7 +10478,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     const dockedGrip = await boxOf('.dock-below .card-grip');
     await drag(dockedGrip, { x: consoleBox.x, y: consoleBox.y }, willFloat);
     /* The float coming back is the positive control for the strip going. */
-    const floating = await shown('.float-layer .float');
+    const floating = await shown(liftedFloat);
     check(
       !(await evaluate(`!!document.querySelector('.dock-below')`)),
       'and the strip disappears once nothing is in it'
@@ -10469,18 +10487,17 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
   }
 
   // And back. A card that can only be lifted off is a card someone loses.
-  await shown('.float > .card .card-grip');
-  const back = await boxOf('.float > .card .card-grip');
-  const railBox = await boxOf('.rail');
-  await drag(back, { x: railBox.x, y: railBox.top + 6 }, gapIn('.rail-grid'));
+  await shown(`${liftedFloat} > .card .card-grip`);
+  const back = await boxOf(`${liftedFloat} > .card .card-grip`);
+  // Onto the grid's top row, under the rail head, which no card drops on.
+  await evaluate(`(document.querySelector('.workspace > .rail').scrollTop = 0, true)`);
+  const gridBox = await boxOf('.rail-grid');
+  await drag(back, { x: gridBox.x, y: gridBox.top + 6 }, gapIn('.rail-grid'));
   check(
     (await railOrder()).includes(lifting[0]),
     'and dragging it back onto the rail docks it again'
   );
-  check(
-    !(await evaluate(`!!document.querySelector('.float-layer .float')`)),
-    'leaving nothing floating'
-  );
+  check(!(await evaluate(`!!document.querySelector('${liftedFloat}')`)), 'and it no longer floats');
 }
 
 // ------------------------------------------ assert: settings without a text editor
@@ -13147,6 +13164,16 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'and, once that member answered @health, the maximum beside the percentage',
     JSON.stringify(members.map((m) => m.health))
   );
+  // Party ships floating; its row is measured on the rail, so it is docked.
+  await evaluate(`(document.querySelector('.workspace > .rail').scrollTop = 0, true)`);
+  await shown('[data-card-float="party"] > .card .card-grip');
+  const partyGrip = await boxOf('[data-card-float="party"] > .card .card-grip');
+  const partyGrid = await boxOf('.rail-grid');
+  await drag(partyGrip, { x: partyGrid.x, y: partyGrid.top + 6 }, gapIn('.rail-grid'));
+  check(
+    await shown('.rail .party-card'),
+    'the Party card, floating as shipped, docks onto the rail'
+  );
   /*
    * Measured at the rail's floor, where the row is narrowest: the meter with
    * the longer value must still sit inside its row, and the value must not be
@@ -13627,7 +13654,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 
 // ------------------------------- assert: what the fighting added up to
 //
-// The Combat Stats card, brought back from the shelf now that this run has a
+// The Combat Stats card, on the rail as shipped, now that this run has a
 // real fight behind it — damage dealt, damage taken and a kill.
 //
 // Two things are asserted and only one of them is about words. **The second
@@ -13638,37 +13665,8 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
 // changes when that regresses — which is why this is geometry.
 {
   check(
-    await evaluate(`
-      (() => {
-        const head = document.querySelector('.card-picker [data-card-picker]');
-        if (head) head.click();
-        return !!head;
-      })()
-    `),
-    'the put-away cards open from the head of the rail'
-  );
-  /*
-   * The chip appearing is the effect; pressing it is the action. Waiting on an
-   * expression that presses it would press it twice — the card docks, the chip
-   * goes, and the check then reports a card the client does not offer.
-   */
-  await waitFor(async () =>
-    evaluate(`!!document.querySelector('.picker-menu [data-card-chip="stats"]')`)
-  );
-  check(
-    await evaluate(`
-      (() => {
-        const chip = document.querySelector('.picker-menu [data-card-chip="stats"]');
-        if (chip) chip.click();
-        return !!chip;
-      })()
-    `),
-    'the Combat Stats card is offered among them'
-  );
-  await waitFor(async () => await evaluate(`!!document.querySelector('.stats-card')`));
-  check(
-    await evaluate(`!!document.querySelector('.stats-card')`),
-    'and docks onto the rail when its chip is pressed'
+    await evaluate(`!!document.querySelector('.rail .stats-card')`),
+    'the Combat Stats card is on the rail as shipped'
   );
 
   const readout = JSON.parse(
