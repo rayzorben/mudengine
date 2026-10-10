@@ -2,23 +2,42 @@
  * A route's chance of coming through alive, run and walked (todo 23), for the
  * panel's buttons: `Run it (98%)` off `runRiskOf`, `Walk it (3%)` off the odds
  * book's fight of every lair whose monsters attack on sight, as auto-combat
- * fights them. Laid on each way the panel can show.
+ * fights them, and of each wanderer that does at its chance (todo 25). Laid on
+ * each way the panel can show.
  */
-import type { Route, RouteChances } from '../../shared/world';
-import { openingOn, runRiskOf, type RunRiskParts } from './runRisk';
+import type { Odds } from '../../shared/survival';
+import type { Route, RouteChances, WorldRoom } from '../../shared/world';
+import { openingOn, opensOn, runRiskOf, type RunRiskParts } from './runRisk';
+import { wanderersOf } from './wanderersIn';
 
-/** The chance of surviving every lair fought on the way; null where one has not run. */
+/** The chance of dying fighting what is met in one room; null where a fight has not run. */
+function fightDeath(room: WorldRoom, parts: RunRiskParts): number | null {
+  const lost = (odds: Odds): number | null =>
+    odds.kind === 'run' ? 1 - odds.survival.survives : null;
+  if (room.lair !== undefined) {
+    const opening = openingOn(parts.world.lairEntities(room), parts.state);
+    return opening !== null && opening.length === 0 ? 0 : lost(parts.lairOdds(room));
+  }
+  let death = 0;
+  for (const { entity, chance } of wanderersOf(room, parts.world)) {
+    if (!opensOn(entity, parts.state)) continue;
+    const each = lost(parts.mobOdds(entity.name));
+    if (each === null) return null;
+    // One of them is met on a pass, so the deaths add at their chances.
+    death += chance * each;
+  }
+  return death;
+}
+
+/** The chance of surviving every lair and wanderer fought on the way; null where one has not run. */
 function walkChance(route: Route, parts: RunRiskParts): number | null {
   let lives = 1;
   for (const step of route.steps) {
-    if (step.lair !== true) continue;
     const room = parts.world.byId(step.to);
     if (room === undefined) continue;
-    const opening = openingOn(parts.world.lairEntities(room), parts.state);
-    if (opening !== null && opening.length === 0) continue;
-    const odds = parts.lairOdds(room);
-    if (odds.kind !== 'run') return null;
-    lives *= odds.survival.survives;
+    const death = fightDeath(room, parts);
+    if (death === null) return null;
+    lives *= 1 - death;
   }
   return lives;
 }

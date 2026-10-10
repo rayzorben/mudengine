@@ -49,6 +49,8 @@ function survival(way: Route): string {
   const spells = (way.hazards ?? []).filter((hazard) => hazard.corridor === undefined).length;
   // A lair nobody could weigh is not a lair that costs nothing.
   const unweighed = way.steps.filter((step) => step.lairUnweighed === true).length;
+  // Nor are wanderers whose fights have not run (todo 25).
+  const wandering = way.steps.filter((step) => step.wanderersUnweighed === true).length;
   const parts = [
     lairs.deadly !== null
       ? t('cards.route.keptOut.deadly', { roomName: lairs.deadly.name })
@@ -71,6 +73,11 @@ function survival(way: Route): string {
       : unweighed === 1
         ? t('cards.route.keptOut.unweighed.one')
         : t('cards.route.keptOut.unweighed.many', { count: unweighed }),
+    wandering === 0
+      ? null
+      : wandering === 1
+        ? t('cards.route.keptOut.wanderersUnweighed.one')
+        : t('cards.route.keptOut.wanderersUnweighed.many', { count: wandering }),
     traps.count === 0
       ? null
       : traps.count === 1

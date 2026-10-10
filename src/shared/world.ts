@@ -2222,6 +2222,12 @@ export interface WorldRoom {
    */
   noFollow?: true;
   /**
+   * The monster rows this room's group may put in it as a player walks in
+   * (format 61): `Room.Regen` draws one of them at `WANDERER_CHANCE` a
+   * player a pass, in a room with no lair. Absent where the realm lists none.
+   */
+  wanderers?: readonly number[];
+  /**
    * The realm's own light level, graded −999 … +1000. Absent means the realm
    * recorded none, which is an ordinary lit room.
    *
@@ -2665,9 +2671,9 @@ export interface RouteStep {
    */
   danger?: number;
   /**
-   * The chance of dying running past this room's lair with combat off, the
-   * figure the router priced the step by (`Traveller.runDeath`, todo 23).
-   * Absent where the room has no lair or its fight has not run.
+   * The chance of dying running past this room's lair, or its wanderers, with
+   * combat off, the figure the router priced the step by (`Traveller.runDeath`,
+   * todos 23 and 25). Absent where the room has neither or a fight has not run.
    */
   runDeath?: number;
   /**
@@ -2696,6 +2702,12 @@ export interface RouteStep {
    * it was weighed.
    */
   lairUnweighed?: true;
+  /**
+   * Whether this step enters a room of wanderers (`WorldRoom.wanderers`) the
+   * run could not price, a fight not yet run or a row the realm file lacks,
+   * so what may wander in is unknown rather than nothing (todo 25).
+   */
+  wanderersUnweighed?: true;
   /**
    * What that pass is expected to take in hit points — `danger` before the
    * division by the health the route was planned at. The walker's rest before

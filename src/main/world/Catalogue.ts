@@ -505,6 +505,8 @@ export class Catalogue {
   private readonly mobsById = new Map<number, WorldMob>();
   /** Each lair descriptor's monsters, built on first ask (`lairEntities`). */
   private readonly lairsKept = new Map<string, MobEntity[]>();
+  /** Each list of a room's wanderers weighed, built on first ask (`wandererEntities`). */
+  private readonly wanderersKept = new WeakMap<readonly number[], readonly MobEntity[]>();
   /**
    * Each row answering for itself, by row number — format 32.
    *
@@ -853,6 +855,22 @@ export class Catalogue {
     if (kept !== undefined) return kept;
     const entities = parseLair(room.lair).ids.flatMap((id) => this.rowEntity(id) ?? []);
     this.lairsKept.set(room.lair, entities);
+    return entities;
+  }
+
+  /**
+   * The rows a room's group may put in it as a player walks in
+   * (`WorldRoom.wanderers`), each weighed as itself, as `lairEntities` weighs
+   * a lair's. Kept per list, which the graph holds once. Empty where the
+   * room has none, or names only rows this table lacks.
+   */
+  wandererEntities(room: WorldRoom): readonly MobEntity[] {
+    const rows = room.wanderers;
+    if (rows === undefined) return [];
+    const kept = this.wanderersKept.get(rows);
+    if (kept !== undefined) return kept;
+    const entities = rows.flatMap((id) => this.rowEntity(id) ?? []);
+    this.wanderersKept.set(rows, entities);
     return entities;
   }
 

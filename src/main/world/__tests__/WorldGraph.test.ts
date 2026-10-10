@@ -6664,6 +6664,34 @@ describe('a lair is priced as a run past it', () => {
     });
     expect(route.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
   });
+
+  /*
+   * Todo 25: a room with no lair is run on its group's wanderers, and its pass
+   * share is the monsters the wire timed walking in; the two are different
+   * facts, so both are charged.
+   */
+  it('charges a lair-less room its wanderers’ run beside its pass share', () => {
+    const street = (): Array<Record<string, unknown>> =>
+      twoWays()
+        .filter((room) => room['r'] !== 3 && room['r'] !== 5)
+        .map((room) =>
+          room['r'] === 2 ? { ...room, n: 'Street', lair: undefined, wd: [7] } : room
+        );
+    const both = makeWorld(street()).route(roomId(1, 1), roomId(1, 4), {
+      danger: (room) => (room.name === 'Street' ? 0.5 : null),
+      runDeath: (room) => (room.name === 'Street' ? 0.05 : null)
+    });
+    expect(both.cost).toBe(2 + 105 + 200);
+    expect(both.steps[0]).toMatchObject({ runDeath: 0.05 });
+    expect(both.steps[0]?.deadly).toBeUndefined();
+    // Unrun, its share still counts and the step says the wanderers are unknown.
+    const unrun = makeWorld(street()).route(roomId(1, 1), roomId(1, 4), {
+      danger: (room) => (room.name === 'Street' ? 0.5 : null),
+      runDeath: () => null
+    });
+    expect(unrun.cost).toBe(2 + 200);
+    expect(unrun.steps[0]).toMatchObject({ wanderersUnweighed: true });
+  });
 });
 
 /*

@@ -44,7 +44,6 @@ import {
   type MobSpawn,
   type ItemPlaces,
   type PlaceGroup,
-  type RequirementAction,
   parseLair,
   type WorldShop,
   type RouteInvocation,
@@ -101,6 +100,7 @@ import { Router, type RouteOptions, type Traveller } from './Router';
 import type { Passage, PortalExit, RoomIndex } from './RoomIndex';
 import { Catalogue, mobAsRow } from './Catalogue';
 import { Joiners } from './joiners';
+import { readActions, readRows } from './roomColumns';
 import { headerOf, NO_HEADER, type RealmHeader } from './realmHeader';
 import { QuestPlanner } from './QuestPlanner';
 import type { PlannerRooms } from './PlannerRooms';
@@ -326,6 +326,8 @@ export class WorldGraph {
   private readonly planner: QuestPlanner;
   /** Who a fight draws in, over the catalogue (`joiners.ts`, todo 24). */
   readonly joiners: Joiners;
+  /** Each distinct list of a room's wanderers, held once (`readRows`). */
+  private readonly rowLists = new Map<string, readonly number[]>();
 
   constructor(catalogue: Catalogue, quests?: unknown) {
     this.catalogue = catalogue;
@@ -461,6 +463,10 @@ export class WorldGraph {
 
   residentEntities(room: WorldRoom): MobEntity[] {
     return this.catalogue.residentEntities(room);
+  }
+
+  wandererEntities(room: WorldRoom): readonly MobEntity[] {
+    return this.catalogue.wandererEntities(room);
   }
 
   supply(): ReturnType<Catalogue['supply']> {
@@ -2201,6 +2207,8 @@ export class WorldGraph {
     // The lair's respawn clock (format 33); no monster follows in (format 58).
     if (typeof raw['dl'] === 'number' && raw['dl'] !== 0) result.delay = raw['dl'];
     if (raw['nf'] === 1) result.noFollow = true;
+    const wanderers = readRows(raw['wd'], this.rowLists);
+    if (wanderers !== null) result.wanderers = wanderers;
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];
     // What the realm puts on the floor — format 42; before it, a raw string nothing read.
     const placed = Array.isArray(raw['pl'])
@@ -2332,49 +2340,6 @@ export class WorldGraph {
   itemSources(item: number): ItemSource[] {
     return this.sources.of(item);
   }
-}
-
-/**
- * The levers on one exit, parsed rather than cast — format 23.
- *
- * Every other field in `parseRoom` is type-checked and this one was taken
- * wholesale, while `describeObstacle` and `Levers.pullLevers` both reach
- * `act.say[0]!` behind a non-null assertion. A realm whose `Action …` cell has
- * a shape this build does not expect would put `undefined` into the obstacle
- * chip and give the walker a rung that sends nothing, returns true and spends
- * a lever budget. Parse, do not validate — the reviewer's find, 2026-09-06.
- *
- * A member that will not parse drops the **whole** list rather than shortening
- * it: `openableHere` counts what is left against nothing, so half a lever set
- * would read as a passage this room can open when it cannot.
- */
-function readActions(raw: unknown): RequirementAction[] {
-  if (!Array.isArray(raw) || raw.length === 0) return [];
-  const actions: RequirementAction[] = [];
-  for (const entry of raw) {
-    if (typeof entry !== 'object' || entry === null) return [];
-    const record = entry as Record<string, unknown>;
-    const say = record['say'];
-    if (!Array.isArray(say) || say.length === 0) return [];
-    if (!say.every((phrase): phrase is string => typeof phrase === 'string' && phrase.length > 0)) {
-      return [];
-    }
-    const action: RequirementAction = { say: [...say] };
-    const item = record['item'];
-    if (item !== undefined) {
-      if (typeof item !== 'number' || !Number.isInteger(item) || item <= 0) return [];
-      action.item = item;
-    }
-    const at = record['at'];
-    if (at !== undefined) {
-      if (typeof at !== 'object' || at === null) return [];
-      const place = at as Record<string, unknown>;
-      if (typeof place['map'] !== 'number' || typeof place['room'] !== 'number') return [];
-      action.at = { map: place['map'], room: place['room'] };
-    }
-    actions.push(action);
-  }
-  return actions;
 }
 
 /**
