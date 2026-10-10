@@ -39,33 +39,34 @@ const state = (over: Partial<CharacterState> = {}): CharacterState => ({
   ...over
 });
 
+/** The rows a `who` listing classifies into. */
+function rowsOf(lines: string[]): Array<Record<string, string>> {
+  const classifier = new Classifier();
+  let found: Array<Record<string, string>> = [];
+  let seq = 0;
+  for (const text of ['         Current Adventurers', ...lines, '[HP=63/63,MA=42/42]:']) {
+    seq += 1;
+    const { batch } = classifier.classify({
+      seq,
+      at: seq,
+      text,
+      plain: text,
+      terminator: 'newline'
+    });
+    if (batch?.type === 'who-list') found = batch.rows ?? [];
+  }
+  return found;
+}
+
 /*
  * Rows from a live Paradigm `who`, 2026-10-07. The row was cut at its first
  * ` of `, and some rank titles have one inside them, so `Master of the Way`
  * read as `Master` in the gang `the Way of The Coma Machine`.
  */
 describe('a rank title with of inside it', () => {
-  const rows = (lines: string[]): Array<Record<string, string>> => {
-    const classifier = new Classifier();
-    let found: Array<Record<string, string>> = [];
-    let seq = 0;
-    for (const text of ['         Current Adventurers', ...lines, '[HP=63/63,MA=42/42]:']) {
-      seq += 1;
-      const { batch } = classifier.classify({
-        seq,
-        at: seq,
-        text,
-        plain: text,
-        terminator: 'newline'
-      });
-      if (batch?.type === 'who-list') found = batch.rows ?? [];
-    }
-    return found;
-  };
-
   it('keeps the title whole and the gang after it', () => {
     const roster = rosterFrom(
-      rows([
+      rowsOf([
         '         Tiny Yoda             -  Master of the Way of The Coma Machine',
         '    Good Beanis Weanis         -  Lord of Nature of YOL9X',
         '         Rage Bloodwrath       -  Lord of Nature',
@@ -79,6 +80,25 @@ describe('a rank title with of inside it', () => {
       ['Lord of Nature', null],
       ['Master Hunter', 'House of Rage'],
       ['Master of the Way', 'Fickle Shrubberies']
+    ]);
+  });
+});
+
+/*
+ * Rows from a live Paradigm `who` (2026-10-09) and `probe:who`: the flag is
+ * only ever `S` or `M` (`getOpFlag`), so a gang ending in capitals keeps them.
+ */
+describe('a gang ending in capitals', () => {
+  it('keeps the whole gang and reads only S or M as the flag', () => {
+    const roster = rosterFrom(
+      rowsOf([
+        '         Jerin Silverhawk      -  Magus of Wizard of ID ',
+        '         Vaelor                -  Kai Warrior of Mudengine S'
+      ])
+    );
+    expect(roster.map(({ gang, flags }) => [gang, flags])).toEqual([
+      ['Wizard of ID', null],
+      ['Mudengine', 'S']
     ]);
   });
 });

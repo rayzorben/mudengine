@@ -2525,10 +2525,11 @@ export const BATCH_RULES: BatchRule[] = [
      * `Lord of Nature` reads as the longer title and no gang; nothing in the
      * row tells the two apart. Glued into `title` it put `Squire  of EyeExploredDora` on the Realm
      * card as a rank, and — the half that mattered — left the only realm-wide
-     * statement of gang membership read by nothing. The status flag stays
-     * last, so a gang whose last word is one to three capitals would lose it
-     * to `flags`: the same exposure a title has always had, and no gang seen
-     * on either realm has that shape.
+     * statement of gang membership read by nothing. The status flag is
+     * `getOpFlag()` (`Player.cs`): `S` for a sysop, `M` for a mudop, else
+     * nothing, written after a space. Any one to three capitals took the `ID`
+     * off the gang `Wizard of ID` (live, 2026-10-09); a gang whose last word
+     * is a lone `S` or `M` still loses it, and nothing in the row tells.
      *
      * The alignment column is eight wide and `Criminal` fills it, so that row
      * starts at the margin with no leading space (captures/076 again); the
@@ -2544,7 +2545,7 @@ export const BATCH_RULES: BatchRule[] = [
     maxLines: 'roster',
     qualifiers: [
       new RegExp(
-        `^\\s*(?:(?<alignment>Saint|Good|Neutral|Seedy|Outlaw|Criminal|Villain|Lawful|FIEND)\\s+)?(?<name>[A-Z][\\w'-]*)(?:\\s+(?<last>[A-Z][\\w'-]*))?\\s+[-x]\\s+(?<title>${TITLE_WITH_OF}|.+?)(?:\\s+of (?<gang>.+?))?(?:\\s+(?<flags>[A-Z]{1,3}))?\\s*$`
+        `^\\s*(?:(?<alignment>Saint|Good|Neutral|Seedy|Outlaw|Criminal|Villain|Lawful|FIEND)\\s+)?(?<name>[A-Z][\\w'-]*)(?:\\s+(?<last>[A-Z][\\w'-]*))?\\s+[-x]\\s+(?<title>${TITLE_WITH_OF}|.+?)(?:\\s+of (?<gang>.+?))?(?:\\s+(?<flags>[SM]))?\\s*$`
       )
     ]
   },
