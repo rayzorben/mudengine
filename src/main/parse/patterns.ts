@@ -234,6 +234,9 @@ const STATED_ATTACK_TITLES = Object.keys(STATED_ATTACK_ROWS).join('|');
  */
 const ITEM_NAME = "[\\w' .-]";
 
+/** The five coins as the server spells a count of them, one or many. */
+const COIN_NOUN = 'copper farthings?|silver nobles?|gold crowns?|platinum pieces?|runic coins?';
+
 /** The rank titles with ` of ` inside them, as one alternation (the `who` row). */
 const TITLE_WITH_OF = TITLES_WITH_OF.map((title) => escapeRegExp(title).replace(/ /g, '\\s+')).join(
   '|'
@@ -1879,8 +1882,7 @@ export const RULES: Rule[] = [
   },
   {
     type: 'user-gets-coins',
-    pattern:
-      /^You picked up (?<count>\d+) (?<coin>copper farthings?|silver nobles?|gold crowns?|platinum pieces?|runic coins?)\.?$/
+    pattern: new RegExp(`^You picked up (?<count>\\d+) (?<coin>${COIN_NOUN})\\.?$`)
   },
   /*
    * Somebody else's coins name no count and, on GreaterMUD, end without a full
@@ -1891,6 +1893,34 @@ export const RULES: Rule[] = [
   { type: 'player-gets', pattern: /^(?<player>\w+) picks up (?<item>some \w+(?: \w+)?)\.?$/ },
   { type: 'player-gets', pattern: /^(?<player>\w+) picks up (?<item>.+)\./ },
   { type: 'player-gets', pattern: /^You took (?:(?<count>\d+) )?(?<item>.+)\./ },
+  /*
+   * A give between two players in the room (`GiveCommand.cs`; orohost wire,
+   * `Killa gives you red iron axe.`, 2026-10-09). The stack's name carries
+   * its count and no article (`ItemStack.GetItemStackName`); coins end without
+   * a full stop, and `share` prints the receiving half the same way. The
+   * article guard keeps a named monster's `gives you a stern look` out of the
+   * pack.
+   */
+  {
+    type: 'user-given',
+    pattern: new RegExp(`^(?<player>\\w+) gives you (?<count>\\d+) (?<coin>${COIN_NOUN})$`)
+  },
+  {
+    type: 'user-given',
+    pattern: new RegExp(
+      `^(?<player>\\w+) gives you (?!(?:a|an|the|some|his|her|its|their) )(?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+)\\.$`
+    )
+  },
+  {
+    type: 'user-gives',
+    pattern: new RegExp(`^You give (?<count>\\d+) (?<coin>${COIN_NOUN}) to (?<target>.+)$`)
+  },
+  {
+    type: 'user-gives',
+    pattern: new RegExp(
+      `^You give (?:(?<count>\\d+) )?(?<item>${ITEM_NAME}+) to (?<target>[^.]+)\\.$`
+    )
+  },
   { type: 'player-drops', pattern: /^(?<player>\w+) drops (?<item>.+)\./ },
   { type: 'player-drops', pattern: /^You dropped (?:(?<count>\d+) )?(?<item>.+)\./ },
   { type: 'user-equipped', pattern: new RegExp(`^You are now wearing (?<item>${ITEM_NAME}+)\\.$`) },

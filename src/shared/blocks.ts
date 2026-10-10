@@ -659,6 +659,14 @@ export type BlockType =
    * put "17 copper farthings" in the pack listing.
    */
   | 'user-gets-coins'
+  /**
+   * `Killa gives you red iron axe.` or `Killa gives you 5 gold crowns`:
+   * another player handed this character an item (`item`) or coins (`coin`),
+   * with the server's `count` where it printed one.
+   */
+  | 'user-given'
+  /** `You give red iron axe to Killa.`: the same hand-over, from this side. */
+  | 'user-gives'
   // stealth
   | 'user-sneaking'
   | 'user-not-sneaking'
@@ -1041,6 +1049,8 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'shop-list': 'items',
   'room-coins': 'items',
   'user-gets-coins': 'items',
+  'user-given': 'items',
+  'user-gives': 'items',
 
   'user-sneaking': 'stealth',
   'user-not-sneaking': 'stealth',

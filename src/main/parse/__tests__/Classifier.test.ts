@@ -620,6 +620,21 @@ describe('conversation, movement, items', () => {
       player: 'Kenwood',
       item: 'some silver nobles'
     });
+    // A give: the stack carries its count, coins end without a stop.
+    expect(expectType('Killa gives you red iron axe.', 'user-given')).toMatchObject({
+      player: 'Killa',
+      item: 'red iron axe'
+    });
+    expect(expectType('Killa gives you 4 gold crowns', 'user-given')).toMatchObject({
+      count: '4',
+      coin: 'gold crowns'
+    });
+    expect(expectType('You give 2 padded gloves to Killa.', 'user-gives')).toMatchObject({
+      count: '2',
+      item: 'padded gloves',
+      target: 'Killa'
+    });
+    expect(expectType('You give 1 runic coin to Killa', 'user-gives')['coin']).toBe('runic coin');
     expect(
       expectType('You just bought 2 healing potion for 40 copper farthings.', 'user-buys')
     ).toMatchObject({ quantity: '2', item: 'healing potion', price: '40' });
