@@ -1667,6 +1667,8 @@ cards:
       noWay: no shop selling any of them can be reached from here
   quests:
     anyOf: Any one of
+    # A copied exp figure while the class's own routes are unread.
+    atLeast: at least {amount}
     badge:
       many: '{count} quests'
       one: '{count} quest'
@@ -1695,11 +1697,6 @@ cards:
       held: In your inventory
       missing: Not in your inventory
     caption: The realm's quests
-    columns:
-      exp: Exp
-      hide: Hide
-      level: Level
-      quest: Quest
     copyRow:
       many: '{name} ({id}): {stepCount} steps, {exp} exp'
       one: '{name} ({id}): {stepCount} step, {exp} exp'
@@ -1751,8 +1748,11 @@ cards:
       barredTitle: Quests this character is shut out of; each row says why
       done: Done
       doneTitle: This character has done every step of these
+      later: Later
+      laterTitle: Quests this character can start or carry on, but a step further on wants a
+        higher level
       open: Open
-      openTitle: What this character can do now, started or not
+      openTitle: Quests this character can do now; no step ahead wants a higher level
     hideHidden: Hide them again
     hideOne: Hide {name}
     none: This realm has no quests the client can read. A realm converted before quests were
@@ -1880,6 +1880,18 @@ cards:
       spellVerb: teaches
     showHidden: Show {count} hidden
     showOne: Show {name} again
+    # A quest tile (todo 38): the step further on that wants more levels, how
+    # far off that is, and the foot when the quest pays this character nothing
+    # it keeps.
+    tile:
+      ahead: step {rank} needs level {level}
+      levelsOff:
+        many: '{count} levels off'
+        one: '{count} level off'
+      paysNothing: Nothing this character keeps
+      # A class's routes pay differently and the class is not read yet.
+      unread: class rewards unknown
+      unreadTitle: Some steps pay by class, and this character's class has not been read yet
     side:
       any: Anyone
       evil: Evil

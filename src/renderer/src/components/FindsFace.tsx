@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
-import CardTable, { type Column, type Facet } from './CardTable';
+import CardTable, { type Column } from './CardTable';
+import type { Facet } from './ListTools';
 import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';

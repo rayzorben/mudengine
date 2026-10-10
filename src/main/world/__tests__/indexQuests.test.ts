@@ -364,3 +364,48 @@ describe('a step that rolls after a delay', () => {
     expect(blue?.delaySeconds).toBeUndefined();
   });
 });
+
+/**
+ * GoodCheck, abridged from Paradigm (todo 38): at GoodQuest rank 7, the step
+ * hands over Goru-Nezar's head and sets GoodCheck; GoodQuest rank 8 takes the
+ * head. Beside it a counter whose own item is kept, which stays a quest.
+ */
+const BOOKKEEPING = {
+  Rooms: [
+    { 'Map Number': 1, 'Room Number': 10, Name: 'Chancellor', CMD: 10 },
+    { 'Map Number': 3, 'Room Number': 668, Name: 'Lair', CMD: 20 },
+    { 'Map Number': 2, 'Room Number': 30, Name: 'Shrine', CMD: 30 }
+  ],
+  TBInfo: [
+    { Number: 9, Action: 'begin:giveability 126 7', LinkTo: 0 },
+    {
+      Number: 10,
+      Action: 'return:checkability 126 7:checkitem 684:takeitem 684:giveability 126 8',
+      LinkTo: 0
+    },
+    {
+      Number: 20,
+      Action: 'search:failability 216:checkability 126 7:giveitem 684:giveability 216 1',
+      LinkTo: 0
+    },
+    { Number: 30, Action: 'pray:failability 300:giveitem 999:giveability 300 1', LinkTo: 0 }
+  ]
+};
+
+describe('a counter that is only another quest’s bookkeeping', () => {
+  it('leaves out a counter whose only gives are itself and an item another quest takes', () => {
+    const ids = indexQuests(fake(BOOKKEEPING), naming).map((quest) => quest.id);
+    expect(ids).toContain(126);
+    expect(ids).not.toContain(216);
+  });
+
+  it('keeps a counter that pays something kept', () => {
+    const ids = indexQuests(fake(BOOKKEEPING), naming).map((quest) => quest.id);
+    expect(ids).toContain(300);
+  });
+
+  it('still says where the taken item is had, for the step that takes it', () => {
+    const from = itemsInReach(blocksInReach(fake(BOOKKEEPING), naming.spells)).from;
+    expect(from.get(684)).toEqual([{ k: 'room', at: '3/668', say: ['search'] }]);
+  });
+});

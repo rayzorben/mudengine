@@ -5,7 +5,8 @@ import { ago, AGO_GRAIN_SECONDS, place, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 
 import BentoCard, { type CardChrome } from './BentoCard';
-import CardTable, { type Column, type Facet } from './CardTable';
+import CardTable, { type Column } from './CardTable';
+import type { Facet } from './ListTools';
 import { knownPlayers, playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import type { SessionId } from '@shared/ipc';
 

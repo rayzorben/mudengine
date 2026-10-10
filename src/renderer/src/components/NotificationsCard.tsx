@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef } from 'react';
 
 import BentoCard, { type CardChrome } from './BentoCard';
-import CardTable, { type Column, type Facet } from './CardTable';
+import CardTable, { type Column } from './CardTable';
+import type { Facet } from './ListTools';
 import NamedText from './NamedText';
 import { clock } from '../lib/clock';
 import { t } from '../lib/i18n';

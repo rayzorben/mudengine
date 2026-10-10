@@ -16,6 +16,7 @@ import {
   itemsBrought,
   packHolds,
   planAct,
+  routesOf,
   stepRoll,
   type PlanItem,
   type PlanPlace,
@@ -223,7 +224,7 @@ export class QuestPlanner {
     // The step's own, and every route's: a class's route routinely asks for a
     // different thing, and an item placed on one route and not the others is
     // still an item somebody has to go and find.
-    for (const way of [step, ...(step.ways ?? [])]) {
+    for (const way of routesOf(step)) {
       for (const gate of way.needs) {
         if (gate.kind !== 'carry' && gate.kind !== 'lack') continue;
         if (!wanted.has(gate.item) || wanted.get(gate.item) === undefined) {

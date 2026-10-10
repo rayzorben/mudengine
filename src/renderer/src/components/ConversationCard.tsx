@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormE
 
 import OnCardSize from './OnCardSize';
 import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
-import { FindField } from './CardTable';
+import { FindField } from './ListTools';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import NamedText from './NamedText';

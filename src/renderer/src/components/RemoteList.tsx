@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { FindField } from './CardTable';
+import { FindField } from './ListTools';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import {

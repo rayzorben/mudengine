@@ -202,7 +202,7 @@ function GearCard({
         {slots.length === 0 ? (
           <p className="gear-reach">{loading ? t('cards.gear.loading') : t('cards.gear.none')}</p>
         ) : (
-          <ul className="gear-slots" data-loading={loading ? 'true' : 'false'}>
+          <ul className="gear-slots tile-grid" data-loading={loading ? 'true' : 'false'}>
             {slots.map((slot) => (
               <GearSlotTile
                 budget={budget}

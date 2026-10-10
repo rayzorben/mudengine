@@ -3940,7 +3940,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   check(openedQuests === 'clicked', 'the Quest Book is reachable from the palette', openedQuests);
   // The book itself, assembled in main and pushed: a card drawn before its rows
   // have arrived is what the check below would otherwise read as an empty realm.
-  await shown('.quest-card .quest-table tbody tr[data-standing]');
+  await shown('.quest-card .quest-tile');
 
   const book = JSON.parse(
     await evaluate(`
@@ -3948,10 +3948,10 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         const card = document.querySelector('.quest-card');
         if (!card) return JSON.stringify({ error: 'no card' });
         // The quests, not the shelves' heads, which are rows of the same body.
-        const rows = [...card.querySelectorAll('.quest-table tbody tr[data-standing]')];
+        const rows = [...card.querySelectorAll('.quest-tile')];
         return JSON.stringify({
           rows: rows.length,
-          shelves: [...card.querySelectorAll('.quest-table .table-group th')].map((th) =>
+          shelves: [...card.querySelectorAll('.quest-shelf-head')].map((th) =>
             th.innerText.replace(/\s+/g, ' ').trim()
           ),
           first: rows[0]?.innerText.replace(/\\s+/g, ' ').trim() ?? '',
@@ -3981,15 +3981,15 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
    */
   const hidQuest = await evaluate(`
     (() => {
-      const before = document.querySelectorAll('.quest-table tbody tr[data-standing]').length;
-      const hide = document.querySelector('.quest-table tbody tr .row-action');
+      const before = document.querySelectorAll('.quest-card .quest-tile').length;
+      const hide = document.querySelector('.quest-card .quest-tile-hide');
       if (!hide) return JSON.stringify({ error: 'no hide control' });
       hide.click();
       return JSON.stringify({ before });
     })()
   `);
   const afterHide = await readUntil(
-    () => evaluate(`document.querySelectorAll('.quest-table tbody tr[data-standing]').length`),
+    () => evaluate(`document.querySelectorAll('.quest-card .quest-tile').length`),
     (afterHide) => Number(afterHide) === JSON.parse(hidQuest).before - 1
   );
   check(
@@ -4008,7 +4008,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `document.querySelector('.quest-card [data-action="show-hidden"]')?.click() ?? null`
   );
   const restored = await readUntil(
-    () => evaluate(`document.querySelectorAll('.quest-table tbody tr[data-standing]').length`),
+    () => evaluate(`document.querySelectorAll('.quest-card .quest-tile').length`),
     (restored) => Number(restored) === JSON.parse(hidQuest).before
   );
   check(
@@ -4026,7 +4026,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   const openedQuest = JSON.parse(
     await evaluate(`
       (() => {
-        const name = document.querySelector('.quest-table tbody tr .lookup');
+        const name = document.querySelector('.quest-card .quest-tile-name');
         if (!name) return JSON.stringify({ error: 'no quest to open' });
         const label = name.innerText.trim();
         name.click();
@@ -4046,7 +4046,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           nodes: el.querySelectorAll('.quest-node').length,
           done: el.querySelectorAll('.quest-step[data-state="done"]').length,
           next: el.querySelectorAll('.quest-step[data-state="next"]').length,
-          marked: document.querySelectorAll('.quest-table tbody tr[data-open="true"]').length
+          marked: document.querySelectorAll('.quest-card .quest-tile[data-open="true"]').length
         });
       })()
     `)
@@ -4134,11 +4134,11 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return true;
     })()
   `);
-  await gone('.quest-table tbody tr[data-standing]');
+  await gone('.quest-card .quest-tile');
   const orphaned = JSON.parse(
     await evaluate(`
       (() => JSON.stringify({
-        rows: document.querySelectorAll('.quest-table tbody tr[data-standing]').length,
+        rows: document.querySelectorAll('.quest-card .quest-tile').length,
         track: !!document.querySelector('.quest-card .quest-track')
       }))()
     `)
@@ -4160,14 +4160,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   `);
   await waitFor(
     async () =>
-      Number(
-        await evaluate(`document.querySelectorAll('.quest-table tbody tr[data-standing]').length`)
-      ) === JSON.parse(hidQuest).before
+      Number(await evaluate(`document.querySelectorAll('.quest-card .quest-tile').length`)) ===
+      JSON.parse(hidQuest).before
   );
   check(
-    Number(
-      await evaluate(`document.querySelectorAll('.quest-table tbody tr[data-standing]').length`)
-    ) === JSON.parse(hidQuest).before,
+    Number(await evaluate(`document.querySelectorAll('.quest-card .quest-tile').length`)) ===
+      JSON.parse(hidQuest).before,
     'and clearing the filter brings the book back',
     'restored'
   );
@@ -4200,9 +4198,8 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     // read off: the find field is debounced, so the row standing here a moment
     // ago is the one the query before left.
     await readUntil(
-      () =>
-        evaluate(`document.querySelector('.quest-table tbody tr[data-standing]')?.innerText ?? ''`),
-      (row) => row.includes(query)
+      () => evaluate(`document.querySelector('.quest-card .quest-tile')?.innerText ?? ''`),
+      (row) => row.toLowerCase().includes(query.toLowerCase())
     );
     /*
      * Opened, and only if it is not open already -- the same click closes it,
@@ -4211,9 +4208,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      */
     await evaluate(`
       (() => {
-        const row = document.querySelector('.quest-table tbody tr[data-standing]');
+        const row = document.querySelector('.quest-card .quest-tile');
         if (!row) return false;
-        if (row.getAttribute('data-open') !== 'true') row.querySelector('.lookup')?.click();
+        if (row.getAttribute('data-open') !== 'true') row.querySelector('.quest-tile-name')?.click();
         return true;
       })()
     `);
@@ -4238,9 +4235,9 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
              * and that the box is inside its own cell's.
              */
             chips: (() => {
-              const chip = document.querySelector('.quest-table .quest-progress');
+              const chip = document.querySelector('.quest-card .quest-tile-count');
               if (!chip) return null;
-              const cell = chip.closest('td');
+              const cell = chip.closest('.quest-tile');
               const c = chip.getBoundingClientRect();
               const t = cell.getBoundingClientRect();
               return {
@@ -4552,12 +4549,12 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
   `);
   // The book unnarrowed, so the picture below is of the book and not of one row.
   await readUntil(
-    () => evaluate(`document.querySelectorAll('.quest-table tbody tr[data-standing]').length`),
+    () => evaluate(`document.querySelectorAll('.quest-card .quest-tile').length`),
     (rows) => Number(rows) > 1
   );
 
   // Opened again, so the picture below shows the track and not just the table.
-  await evaluate(`document.querySelector('.quest-table tbody tr .lookup')?.click() ?? null`);
+  await evaluate(`document.querySelector('.quest-card .quest-tile-name')?.click() ?? null`);
   await shown('.quest-card .quest-track');
 
   /*
