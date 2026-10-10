@@ -206,16 +206,48 @@ export function coinsPickedUp(
    * unknown would claim the pick-up was the whole purse — which is the
    * same refusal the old code already made about an unknown `wealth`.
    */
+  return { ...withCoinCount(s, denomination, picked), room };
+}
+
+/**
+ * One denomination's count moved by a stated lot. An uncounted denomination
+ * stays uncounted, and a count that would go below zero was stale, so it
+ * becomes unknown until the next listing.
+ */
+function withCoinCount(s: CharacterState, denomination: Denomination, by: number): CharacterState {
   const known = s.inventory.coins[denomination];
-  if (known === null) return { ...s, room };
+  if (known === null) return s;
+  const count = known + by < 0 ? null : known + by;
   return {
     ...s,
-    room,
-    inventory: {
-      ...s.inventory,
-      coins: { ...s.inventory.coins, [denomination]: known + picked }
-    }
+    inventory: { ...s.inventory, coins: { ...s.inventory.coins, [denomination]: count } }
   };
+}
+
+/**
+ * Coins given, either way (`GiveCommand.cs`, `ShareCommand.cs`): the
+ * denomination counts by the lot, and the purse by its copper, which the
+ * sentence states exactly.
+ */
+function coinsHanded(
+  s: CharacterState,
+  count: number,
+  coin: string,
+  received: boolean
+): CharacterState {
+  const denomination = coinNamed(coin);
+  if (denomination === undefined) return s;
+  const counted = withCoinCount(s, denomination, received ? count : -count);
+  const copper = quotedInCopper(`${count} ${coin}`);
+  if (received) return copper === null ? counted : (withSpend(counted, copper) ?? counted);
+  // The server let the coins go, so a purse that held fewer was stale: unknown, never 0.
+  const wealth = counted.inventory.wealth;
+  const stale =
+    counted.inventory.coins[denomination] === null && s.inventory.coins[denomination] !== null;
+  if (copper === null || stale || (wealth !== null && wealth < copper)) {
+    return { ...counted, inventory: { ...counted.inventory, wealth: null } };
+  }
+  return spent(counted, copper) ?? counted;
 }
 
 /**
@@ -343,6 +375,25 @@ export class Ledger {
     const carried = withItem(s, item, bought) ?? s;
     if (g['price'] === undefined) return carried;
     return spent(carried, quotedInCopper(`${g['price']} ${g['coin'] ?? ''}`)) ?? carried;
+  }
+
+  /**
+   * A give between players: `Killa gives you red iron axe.` into the
+   * pack, `You give red iron axe to Killa.` out of it, coins into or out of
+   * the purse. Neither touches the floor.
+   */
+  handed(
+    s: CharacterState,
+    g: Readonly<Record<string, string>>,
+    seq: number,
+    received: boolean
+  ): CharacterState | null {
+    const count = figure(g['count']) ?? 1;
+    if (g['coin'] !== undefined) return coinsHanded(s, count, g['coin'], received);
+    const item = g['item'];
+    if (!item) return null;
+    this.sources.notePack(seq, item, received, count);
+    return received ? withItem(s, item, count) : withoutItem(s, item, count);
   }
 
   /**

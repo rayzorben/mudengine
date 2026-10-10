@@ -1732,9 +1732,6 @@ export class CharacterTracker {
          * name is still all the floor can be searched by, but the pile is no
          * longer all-or-nothing: the room prints `66 bone key` and taking one
          * leaves sixty-five, which is what the next `You notice` will say.
-         * Before the count was split off the name never matched a counted
-         * entry at all, so this was documented as an approximation that
-         * cleared the entry and waited for the room to restate it.
          */
         const stash = withTaken(s.stash, placeOf(s.room), item, count);
         return { ...withoutRoomItem(withItem(s, item, count), item, count), stash };
@@ -1744,6 +1741,9 @@ export class CharacterTracker {
       case 'user-buys':
         return this.ledger.bought(s, g, block.seq);
 
+      case 'user-given':
+      case 'user-gives':
+        return this.ledger.handed(s, g, block.seq, block.type === 'user-given');
       /* `list`, in a shop: kept as the counter said it, each row checked against the stock. */
       case 'shop-list':
         return this.ledger.shopListed(s, rows ?? [], block.at);

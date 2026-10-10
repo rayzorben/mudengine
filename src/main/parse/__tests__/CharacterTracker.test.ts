@@ -3649,6 +3649,36 @@ describe('what is carried, between listings', () => {
     expect(held(tracker).some((i) => /torch/.test(i))).toBe(false);
   });
 
+  /* Something another player gave (`GiveCommand.cs`; orohost wire, 2026-10-09). */
+  it('adds what another player gave and removes what it gave away', () => {
+    const { tracker, feed } = carrying();
+    feed('Killa gives you red iron axe.');
+    expect(held(tracker)).toContain('red iron axe');
+    feed('Killa gives you 2 padded gloves.');
+    expect(held(tracker).filter((name) => name === 'padded gloves')).toHaveLength(2);
+    feed('You give a torch to Killa.');
+    expect(held(tracker).some((i) => /torch/.test(i))).toBe(false);
+    // A look from a named monster is not an item.
+    const before = held(tracker).length;
+    feed('Grimjaw gives you a stern look.');
+    expect(held(tracker)).toHaveLength(before);
+  });
+
+  it('moves the purse by coins handed over either way', () => {
+    const { tracker, feed } = carrying();
+    feed('Killa gives you 3 silver nobles');
+    expect(tracker.current.inventory.coins.silver).toBe(3);
+    expect(tracker.current.inventory.wealth).toBe(70);
+    feed('You give 2 silver nobles to Killa');
+    expect(tracker.current.inventory.coins.silver).toBe(1);
+    expect(tracker.current.inventory.wealth).toBe(50);
+    // More than were counted: the count was stale, so it is unknown.
+    feed('You give 5 silver nobles to Killa');
+    expect(tracker.current.inventory.coins.silver).toBeNull();
+    expect(tracker.current.inventory.wealth).toBeNull();
+    expect(tracker.current.inventory.items.map((i) => i.name)).not.toContain('silver nobles');
+  });
+
   /*
    * `player-gets` covers two different sentences and the `player` capture is
    * what separates them. Getting it backwards would put another player's loot

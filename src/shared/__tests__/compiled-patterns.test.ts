@@ -19,7 +19,7 @@ import { sourceFiles as sources } from './sources';
  */
 const BUILT_ONCE: Record<string, { count: number; because: string }> = {
   'src/main/parse/patterns.ts': {
-    count: 15,
+    count: 20,
     because:
       'the room-light alternation is built from `ROOM_LIGHTS` so the union the tracker ' +
       'branches on and the pattern that produces it cannot drift, and the five presence and ' +
@@ -27,7 +27,9 @@ const BUILT_ONCE: Record<string, { count: number; because: string }> = {
       'the seven item sentences share `ITEM_NAME`, the letters a world-database item name ' +
       'takes (2026-10-06); the `who` row tries `TITLES_WITH_OF` whole before cutting at ' +
       '` of ` (2026-10-07); the `stat all` attack rows take their titles from ' +
-      '`STATED_ATTACK_ROWS`, the table that reads them (todo 17, 2026-10-09); module-level, in ' +
+      '`STATED_ATTACK_ROWS`, the table that reads them (todo 17, 2026-10-09); the coin pick-up ' +
+      'and the four give sentences share `COIN_NOUN`, and two of those `ITEM_NAME` (2026-10-09); ' +
+      'module-level, in ' +
       '`RULES` and `BATCH_RULES`'
   },
   'src/shared/stamps.ts': {
