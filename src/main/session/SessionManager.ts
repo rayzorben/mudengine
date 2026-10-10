@@ -388,7 +388,7 @@ export class SessionManager {
   private readonly trainLevel: TrainErrand;
   /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
   private readonly outgrown: OutgrownGear;
-  private readonly hostTrips: HostTrips;
+  readonly hostTrips: HostTrips;
   /** The Gear and Quests cards' questions. */
   readonly gearDesk: GearDesk;
   readonly questDesk: QuestDesk;
@@ -1066,7 +1066,8 @@ export class SessionManager {
     const legs = () => ({
       ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
       ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light },
-      ...{ vocabulary: this.vocabulary, combat: this.combat, loot: this.loot }
+      ...{ vocabulary: this.vocabulary, combat: this.combat, loot: this.loot },
+      ...{ deposit: this.deposit }
     });
     const trip = { modules: legs, release: releaseErrand };
     // The gear after a death, a fetch from a stash and the area: walks and searches (`Collect`).
@@ -1250,10 +1251,8 @@ export class SessionManager {
       automation.enabled,
       this.queue,
       /*
-       * The counter in front of the character, as the realm's own shop row —
-       * `null` where the resolved room is not a bank at all. The *row* rather
-       * than a yes, so a character standing at a counter that is not the one
-       * it banks at can be told which fact stopped it (todo 00).
+       * The counter in front of the character as the realm's shop row, null where the room is
+       * not a bank: the row rather than a yes, so *not your bank* can be said (todo 00).
        */
       (state) => {
         const at = roomAddress(state.room);

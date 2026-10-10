@@ -334,6 +334,13 @@ export interface ItemLanding {
    * Never empty: an unresolvable guard drops the landing instead.
    */
   usableIn?: string[];
+  /**
+   * The copper a use takes from cash on hand, the chain's `price` steps ahead
+   * of the teleport added up; absent where it takes none or names an INI
+   * setting (`Misc.CheckForINISetting`). Short of it, the server refuses the
+   * use and spends nothing (`TextBlockPart.cs`, `price`).
+   */
+  fare?: number;
 }
 
 export function landingsOfItems(
@@ -353,8 +360,9 @@ export function landingsOfItems(
       for (const start of runs(value)) {
         const found = teleportInChain(read, start);
         if (found === null) continue;
+        const fare = found.fare > 0 ? { fare: found.fare } : {};
         if (found.needsItems.length === 0) {
-          if (!landings.has(id)) landings.set(id, { to: found.to });
+          if (!landings.has(id)) landings.set(id, { to: found.to, ...fare });
           break;
         }
         // Every `roomitem` on the way has to be satisfied at once, so the
@@ -371,7 +379,7 @@ export function landingsOfItems(
         // Unresolvable, or no room satisfies all of them: say nothing rather
         // than claim it works everywhere.
         if (where === null || where.length === 0) break;
-        if (!landings.has(id)) landings.set(id, { to: found.to, usableIn: where });
+        if (!landings.has(id)) landings.set(id, { to: found.to, usableIn: where, ...fare });
         break;
       }
       if (landings.has(id)) break;
@@ -420,9 +428,10 @@ const LINK_DEPTH = 8;
 function teleportInChain(
   read: BlocksInReach,
   start: number
-): { to: string; needsItems: number[] } | null {
+): { to: string; needsItems: number[]; fare: number } | null {
   let at: number | null = start;
   const needsItems: number[] = [];
+  let fare = 0;
   for (let depth = 0; depth < LINK_DEPTH && at !== null && at > 0; depth += 1) {
     const block: Textblock | undefined = read.blocks.get(at);
     if (block === undefined) return null;
@@ -432,8 +441,12 @@ function teleportInChain(
           if (step.item > 0) needsItems.push(step.item);
           continue;
         }
+        if (step.verb === 'price') {
+          fare += step.copper ?? 0;
+          continue;
+        }
         if (step.verb === 'teleport' && step.room > 0) {
-          return { to: `${step.map}/${step.room}`, needsItems };
+          return { to: `${step.map}/${step.room}`, needsItems, fare };
         }
       }
     }

@@ -174,6 +174,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/LeaderDoors.ts',
       // A player searching here whom the room did not list.
       'src/main/automation/UnlistedSearcher.ts',
+      // A token's uses left, and a use with none (the cash run).
+      'src/main/automation/CashRun.ts',
       'src/main/parse/expectations.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))

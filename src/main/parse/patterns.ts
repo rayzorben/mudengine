@@ -2035,6 +2035,18 @@ export const RULES: Rule[] = [
     type: 'user-withdraws',
     pattern: /^You withdrew (?<amount>\d+) copper farthings\.$/
   },
+  {
+    // A look at an item with charges: `token of Rhudaur`, its description,
+    // then this (the user's paste, paramud 2026-10-09).
+    type: 'item-uses-left',
+    pattern: /^Uses remaining: (?<uses>\d+)$/
+  },
+  {
+    // `UseCommand.cs`: the first for an item whose uses must be equipped,
+    // the second for one carried. Not yet seen on the wire.
+    type: 'item-used-up',
+    pattern: /^(?:That item has no more uses left!|There are no more uses in (?<item>.+)\.)$/
+  },
 
   /* ------------------------------------------------------------- room */
   /*

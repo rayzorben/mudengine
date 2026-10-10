@@ -102,6 +102,8 @@ app:
       one: '{name} is still in the realm.'
   area:
     invalid: The steps and the searches must each be a whole number in range.
+  cashRun:
+    invalid: 'Pick a loop, at least one coin, at least one token and how full.'
   remotes:
     invalidName: Unrecognized remote (@) command.
   route:
@@ -905,6 +907,7 @@ palette:
     routeLabel: Route to room
     searchLabel: Search the console
     areaSearchLabel: Search the area…
+    cashRunLabel: Cash run…
   noMatches: No matching command, and nothing in the realm by that name.
   pin:
     pinTitle: Pin to the top ({chord})
@@ -5453,7 +5456,6 @@ automation:
       one: 'Going to buy gear: 1 stop, {moves} steps.'
       many: 'Going to buy gear: {stops} stops, {moves} steps.'
     refused: 'Not going to buy gear: {why}'
-    refusalEscaping: the character is running
     refusalUnreadable: the items picked could not be read
     reasonWithdraw: 'withdrawing {amount} for the gear'
     reasonBuy: 'buying {item} at {shop}'
@@ -5464,12 +5466,48 @@ automation:
     bought: 'Bought {items}.'
     notSold: 'Not bought: {items}.'
     notReached: 'did not reach {place}: {why}'
-    tooManyLegs: 'too many tries to reach {place}'
     stoppedByPlayer: you pressed Stop
     notWorn: 'Not put on, the command queue would not take: {commands}'
     ended: 'Gear trip stopped: {why}'
     done: 'Gear trip done: bought {bought} of {wanted}.'
+  cashRun:
+    because: collecting cash on a loop and taking it to the bank by token
+    refused: 'Not starting the cash run: {why}'
+    refusalRunning: a cash run is already going
+    refusalPurseUnread: 'the cash on hand is not known yet; type i and try again'
+    refusalNoToken: the character carries none of the tokens picked
+    refusalWandered: the loop is stopped a long way off; press play on it first
+    started: 'Cash run on {loop}: tokens {tokens}, keeping the {wealth} copper on hand.'
+    reasonLook: 'looking at {token} for its uses left'
+    usesLeft:
+      one: '{token} has 1 use left.'
+      many: '{token} has {uses} uses left.'
+    usesUnread: '{token}: no uses left were read; it will be tried.'
+    roomNotClear: Full, but the monsters here stay; trying the next room.
+    reasonUse: 'using {token} to go to the bank'
+    didNotTake: '{token} did not take the character anywhere'
+    toBank: 'Walking to {bank}.'
+    noBank: no bank in reach of where the token landed
+    bankNotReached: 'did not reach {bank}: {why}'
+    banked: 'Deposited {amount} copper at {bank}; walking back to the loop.'
+    notBanked: 'No deposit at {bank}; walking back to the loop.'
+    shortOfFare: 'Only {gained} copper collected, less than the {fare} {token} costs; dropping it.'
+    notDropped: 'Not dropped, the pack holds an item the server would drop instead: {coins}'
+    endedShort: the cash collected would not pay for the token
+    tokensSpent: every token is used up
+    loopStopped: the loop stopped
+    stoppedByPlayer: you pressed Stop
+    done:
+      one: 'Cash run over after 1 trip to the bank: {why}. The loop goes on.'
+      many: 'Cash run over after {trips} trips to the bank: {why}. The loop goes on.'
+    ended:
+      one: 'Cash run stopped after 1 trip to the bank: {why}'
+      many: 'Cash run stopped after {trips} trips to the bank: {why}'
+    landedLost: 'the token landed in {room}, which the client cannot place, so no bank is chosen'
+    notDroppedInTime: the coins dropped did not leave the purse
   hostTrip:
+    endedEscaping: the character is running
+    tooManyLegs: 'too many tries to reach {place}'
     refusalSwitchedOff: automation is off
     refusalNotInRealm: the character is not in the realm
     refusalBusy: the character is walking, or already on another trip
@@ -6064,6 +6102,30 @@ areaSearch:
     kept in the room log and picked up as your loot settings say. Stop ends the search.'
   cancel: Cancel
   start: Search
+
+# The cash run: a loop walked collecting coins, banked by token each time the
+# character is full.
+cashRun:
+  title: 'Cash run: {name}'
+  loop: Loop
+  noLoops: This character has no loops. Add one from the Loops screen first.
+  coins: Coins to collect
+  tokens: Tokens to use, in the order picked
+  noTokens: The character carries no token that goes to a town from anywhere.
+  tokenFare: 'Lands at {lands}. Each use costs {fare} copper from cash on hand.'
+  tokenFree: 'Lands at {lands}.'
+  tokenOrder: '{order}. {token}'
+  full: Full at
+  fullMedium: Medium
+  fullHeavy: Heavy
+  whatHappens: 'Walks the loop picking up the coins chosen. When full, it waits for the room to be
+    empty of monsters, looks at the token for its uses left, uses it, and deposits what was collected
+    at the nearest bank, keeping what you had on hand when it started. Then it walks back to the
+    loop. A token with no uses left is passed over for the next. If what was collected is less than
+    the token costs, it is dropped and the run ends. When every token is used up the run ends and
+    the loop goes on. Stop ends it.'
+  cancel: Cancel
+  start: Start
 
 # The client thinks the character in the realm is not the one its records are
 # about, and is asking. It only ever asks: deleting the only copy of what

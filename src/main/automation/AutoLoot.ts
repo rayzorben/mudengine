@@ -70,7 +70,12 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
-import type { EncumbranceGate, LootConfig, SuppliesConfig } from '../../shared/config';
+import {
+  encumbranceAtLeast,
+  type EncumbranceGate,
+  type LootConfig,
+  type SuppliesConfig
+} from '../../shared/config';
 import { carriedCount, stockCeiling } from '../../shared/supplies';
 import { coinNamed, type Denomination } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
@@ -101,14 +106,6 @@ const COIN = /^(?<count>\d+) (?<coin>copper|silver|gold|platinum|runic)(?: [a-z]
 /** A take's coalesce key, by what it names: the floor read waits on the ones queued (todo 765). */
 const TAKE_KEY = 'loot:take:';
 
-/**
- * How the server's own grading words rank against each other.
- *
- * Only what has been seen or is named by MegaMUD: `None` appears in four
- * captures and `Medium` in one, and MegaMUD's own cash page offers *medium* and
- * *heavy*. Anything else is unranked and leaves every gate closed — see
- * `atLeast`.
- */
 /**
  * The server's own rule for whether a typed word names a carried thing.
  *
@@ -151,13 +148,6 @@ function pickedBeforeThePurse(
   }
   return undefined;
 }
-
-const GRADE_RANK: Readonly<Record<string, number>> = {
-  none: 0,
-  light: 1,
-  medium: 2,
-  heavy: 3
-};
 
 /** What the loot reads besides its configuration, named (todo 760). */
 export interface AutoLootDeps {
@@ -207,6 +197,11 @@ export class AutoLoot implements SessionModule {
    * door in the last realm is not a reason to hoard anything in this one.
    */
   private readonly wanted = new Set<string>();
+  /**
+   * The coins a cash run collects and the grade it collects them to, in place
+   * of the file's for as long as the run asks (`collectCoins`). Never written.
+   */
+  private coinsFor: { kinds: readonly Denomination[]; until: EncumbranceGate } | null = null;
 
   /**
    * Denominations already asked to drop, with the count the ask was for.
@@ -282,6 +277,35 @@ export class AutoLoot implements SessionModule {
     this.wanted.delete(name.trim());
   }
 
+  /**
+   * Coins of these kinds taken up to `until`, whatever the file says, until
+   * `collectCoinsAsConfigured`: a cash run's choice, session-scoped like
+   * `alsoTake`. A kind on the discard list is not shed meanwhile.
+   */
+  collectCoins(kinds: readonly Denomination[], until: EncumbranceGate): void {
+    this.coinsFor = { kinds: [...kinds], until };
+  }
+
+  collectCoinsAsConfigured(): void {
+    this.coinsFor = null;
+  }
+
+  /**
+   * Put these coins back on the floor, each through the clash check the
+   * discard list uses, and never taken up again in this room. Returns the
+   * kinds not dropped because the pack holds a namesake the server would drop
+   * instead.
+   */
+  dropCoins(counts: ReadonlyMap<Denomination, number>, state: CharacterState): Denomination[] {
+    const refused: Denomination[] = [];
+    for (const [coin, count] of counts) {
+      if (count <= 0) continue;
+      this.attempted.add(this.coinWord(coin).toLowerCase());
+      if (!this.shedCoin(coin, count, state)) refused.push(coin);
+    }
+    return refused;
+  }
+
   configure(config: LootConfig, supplies: SuppliesConfig, enabled: boolean): void {
     this.config = config;
     this.supplies = supplies;
@@ -293,6 +317,7 @@ export class AutoLoot implements SessionModule {
     this.shed.clear();
     this.saidClash.clear();
     this.wanted.clear();
+    this.coinsFor = null;
     this.floor.reset();
   }
 
@@ -324,28 +349,36 @@ export class AutoLoot implements SessionModule {
       const count = state.inventory.coins[coin];
       // Null is nobody has said, and 0 is nothing to shed. Neither is a drop.
       if (count === null || count <= 0) continue;
-      if (this.shed.has(coin)) continue;
-      /*
-       * The server tries the pack before the purse, so `drop 1 copper` with a
-       * copper ring in the pack drops the ring. Refused and said once, since
-       * the alternative is throwing away a piece of gear to tidy up some change.
-       */
-      const clash = pickedBeforeThePurse(state.inventory.items, coin, count);
-      if (clash !== undefined) {
-        if (this.saidClash.has(coin)) continue;
+      if (this.shed.has(coin) || this.coinsFor?.kinds.includes(coin) === true) continue;
+      this.shedCoin(coin, count, state);
+    }
+  }
+
+  /**
+   * `drop <count> <coin>`, unless the pack holds a namesake: the server tries
+   * the pack before the purse, so `drop 1 copper` with a copper ring in the
+   * pack drops the ring. Refused and said once per coin, since the
+   * alternative is throwing away a piece of gear to tidy up some change.
+   * False where refused.
+   */
+  private shedCoin(coin: Denomination, count: number, state: CharacterState): boolean {
+    const clash = pickedBeforeThePurse(state.inventory.items, coin, count);
+    if (clash !== undefined) {
+      if (!this.saidClash.has(coin)) {
         this.saidClash.add(coin);
         this.notice(t('automation.loot.discardBlocked', { coin, count, item: clash }));
-        continue;
       }
-      this.shed.set(coin, count);
-      this.queue.enqueue({
-        command: `drop ${count} ${coin}`,
-        priority: 'probe',
-        coalesceKey: `loot:shed:${coin}`,
-        expiresAt: Date.now() + tuning().loot.expiresMs,
-        reason: t('automation.loot.reasonDiscard', { count, coin })
-      });
+      return false;
     }
+    this.shed.set(coin, count);
+    this.queue.enqueue({
+      command: `drop ${count} ${coin}`,
+      priority: 'probe',
+      coalesceKey: `loot:shed:${coin}`,
+      expiresAt: Date.now() + tuning().loot.expiresMs,
+      reason: t('automation.loot.reasonDiscard', { count, coin })
+    });
+    return true;
   }
 
   onBlock(block: Block, state: CharacterState): void {
@@ -585,29 +618,15 @@ export class AutoLoot implements SessionModule {
    * already too loaded to be picking up more of it.
    */
   private wantsCoin(coin: string, state: CharacterState): boolean {
-    if (!this.config.coins) return false;
+    const { coins, coinKinds, stopAtGrade } = this.config;
+    const run = this.coinsFor;
+    if (run === null && !coins) return false;
     const wanted = coinNamed(coin);
     // A denomination this client cannot name is one a realm has renamed, and
     // it is left alone rather than guessed at — the rule the pack's own coin
     // counting already follows.
-    if (wanted === undefined || !this.config.coinKinds.includes(wanted)) return false;
-    return !this.atLeast(this.config.stopAtGrade, state.inventory.encumbranceWord);
-  }
-
-  /**
-   * Whether the server's own grading has reached the gate.
-   *
-   * The word, never a percentage this client computed — the thresholds behind
-   * the grades are unsampled and MegaMUD's "67% is Heavy" has never been seen
-   * on this wire. A word the ranking does not know leaves the gate **closed**,
-   * which is `drop.whenEncumbered`'s rule: unknown is not encumbered, and
-   * refusing to loot on a word nobody has sampled would be this client's
-   * ignorance stopping an automation that works.
-   */
-  private atLeast(gate: EncumbranceGate, word: string | null): boolean {
-    if (gate === 'never') return false;
-    const rank = GRADE_RANK[word?.trim().toLowerCase() ?? ''];
-    return rank !== undefined && rank >= GRADE_RANK[gate]!;
+    if (wanted === undefined || !(run?.kinds ?? coinKinds).includes(wanted)) return false;
+    return !encumbranceAtLeast(run?.until ?? stopAtGrade, state.inventory.encumbranceWord);
   }
 
   /**
@@ -622,7 +641,7 @@ export class AutoLoot implements SessionModule {
   private convert(state: CharacterState): void {
     const wanted = this.config.convertWith.trim();
     if (wanted.length === 0) return;
-    if (!this.atLeast(this.config.convertAt, state.inventory.encumbranceWord)) return;
+    if (!encumbranceAtLeast(this.config.convertAt, state.inventory.encumbranceWord)) return;
     const held = state.inventory.items.find((item) =>
       nameAnswersTo(bareName(item.name), bareName(wanted))
     );

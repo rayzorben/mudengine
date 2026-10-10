@@ -91,6 +91,7 @@ import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
 import type { MovementStart, WalkStart } from '../shared/movement';
 import type { AreaSearchPreview } from '../shared/areaSearch';
+import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
@@ -2009,6 +2010,18 @@ function registerIpc(): void {
       return manager.areaSearch.start(steps, times, manager.character);
     }
   );
+  // A cash run (`CashRun`): the tokens for the dialog, and its ask parsed at the boundary.
+  handle(Invoke.cashRunTokens, (_caller, session: SessionId): CashRunToken[] => {
+    const manager = host?.get(session)?.manager;
+    return manager === undefined ? [] : manager.hostTrips.cash.offered(manager.character);
+  });
+  handle(Invoke.startCashRun, (_caller, session: SessionId, ask: unknown): string | null => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined) return t('app.session.notConnected');
+    const parsed = asCashRunAsk(ask);
+    if (parsed === null) return t('app.cashRun.invalid');
+    return manager.hostTrips.cash.start(parsed, manager.character);
+  });
   handle(Invoke.stopMoving, (_caller, session: SessionId) => {
     host?.get(session)?.manager.stopMoving();
   });

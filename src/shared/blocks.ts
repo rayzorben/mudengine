@@ -644,6 +644,17 @@ export type BlockType =
    * tail before this can ever match. Captured live, `npm run probe:bank`.
    */
   | 'user-withdraws'
+  /**
+   * `Uses remaining: N`, the last line a look at a carried item with charges
+   * prints (`LookCommand.LookItem`); it names no item, so the command that
+   * asked says which. The user's paste, paramud 2026-10-09: `l silverm`.
+   */
+  | 'item-uses-left'
+  /**
+   * `That item has no more uses left!` or `There are no more uses in X.`, a
+   * `use` of an item with none left (`UseCommand.cs`; server source only).
+   */
+  | 'item-used-up'
   | 'user-list'
   | 'shop-list'
   /**
@@ -1045,6 +1056,8 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'bank-balance': 'items',
   'user-deposits': 'items',
   'user-withdraws': 'items',
+  'item-uses-left': 'items',
+  'item-used-up': 'items',
   'user-list': 'items',
   'shop-list': 'items',
   'room-coins': 'items',

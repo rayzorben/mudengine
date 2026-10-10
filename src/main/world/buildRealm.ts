@@ -121,8 +121,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 56 | **How often the realm makes each item** (`BuiltSupply`, `supplyIndex.ts`). `Shops.Time-n` was never read, `DropItem%-n` and `RegenTime` without a `GameLimit` were dropped, and what a chest, a monster's `CreateSpell` or fight spells, or a typed phrase hands over at what odds was in `TBInfo`, which does not ship. The header's `supply` carries the restocking shelves, the stated clocks, the roaming groups and every run with the items and monsters one run makes, read through the one text-block reader; `itemRarity.ts` settles the rates and `Catalogue.summonersOf` reads the runs, so a monster brought in by another's `CreateSpell` is found where its summoner is. Every item the supply names joins the item index |
  * | 57 | **What each row is, for a spell.** `BuiltMobRow` dropped `Abil-n`, so a name's effects were the union of its rows and a spell could not be told it has no effect: a `zombie` is three rows, all `NonLiving`, and a Priest at level 1 cast `harm` (`AffectsLivingOnly`) at one, was told *Your spell has no effect on big zombie.* and lost the round. `BuiltMobRow.ab` carries each row's own pairs; `Catalogue` overlays them on a resolved row and reads what every row agrees the name is (`natureOf`) for `spellReaches` (2026-10-06)
  * | 58 | **A room no monster can follow into.** The server moves a monster only into a room of its own group (`Mob.CanMoveThroughExit`), and the export lists each monster's group rooms in `Summoned By`. A room nobody lists is `WorldRoom.noFollow`: Fortress of the Crimson Flame, Main Gate (15/1054) among the fortress's hallways, 5,096 of gmud.zip's 55,806 rooms. The run takes an exit into one first (`monsterGroups.ts`) |
+ * | 59 | **What a token's trip costs.** A recall token's block runs `price 200000` ahead of its `teleport`, and the server takes that copper from cash on hand or refuses the use and spends nothing. `ItemLanding.fare` adds up the chain's `price` steps ahead of the teleport, and `BuiltItem.fare` carries it, so a cash run knows before it uses a token whether the cash it carries pays for the trip: 20 platinum for Silvermere and Rhudaur, 30 for Khazarad, in both gmud.zip and pmud.zip |
  */
-export const REALM_FORMAT = 58;
+export const REALM_FORMAT = 59;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -282,6 +283,8 @@ export interface BuiltItem {
    * describe is not one to offer. See `landingsOfItems`.
    */
   landsFrom?: string[];
+  /** The copper a use takes from cash on hand — format 59. See `ItemLanding.fare`. */
+  fare?: number;
   /**
    * What the realm charges for one, before a shop's markup.
    *
@@ -2618,6 +2621,7 @@ export function indexItems(
       if (landing !== undefined) {
         entry.lands = landing.to;
         if (landing.usableIn !== undefined) entry.landsFrom = [...landing.usableIn];
+        if (landing.fare !== undefined) entry.fare = landing.fare;
       }
       const effects = abilities.get(id);
       if (effects !== undefined) entry.ab = effects;

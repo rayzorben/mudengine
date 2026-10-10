@@ -606,6 +606,58 @@ describe('choosing which cash to take', () => {
  * differently from the other 454 items that cast a spell), so the player names
  * it and this only decides *when*.
  */
+describe("a cash run's coins", () => {
+  const noticed = (...items: string[]): Block => block('room-items', { items: items.join(', ') });
+  const heavy = (): CharacterState => {
+    const base = state();
+    return { ...base, inventory: { ...base.inventory, encumbranceWord: 'Heavy' } };
+  };
+
+  it('takes the coins the run asked for, to its grade, over the file, then the file again', () => {
+    const auto = make(loot({ coins: false, coinKinds: [] }));
+    auto.collectCoins(['platinum'], 'heavy');
+    auto.onBlock(noticed('15 copper farthings', '1 platinum piece'), state());
+    drain();
+    expect(sent).toEqual(['get platinum']);
+    auto.onBlock(block('room-name'), state());
+    auto.onBlock(noticed('2 platinum pieces'), heavy());
+    drain();
+    expect(sent).toEqual(['get platinum']);
+    auto.collectCoinsAsConfigured();
+    auto.onBlock(block('room-name'), state());
+    auto.onBlock(noticed('2 platinum pieces'), state());
+    drain();
+    expect(sent).toEqual(['get platinum']);
+  });
+
+  it('does not shed a coin the run collects', () => {
+    const auto = make(loot({ coins: true, coinKinds: ['gold'], discardKinds: ['copper'] }));
+    auto.collectCoins(['copper'], 'heavy');
+    const base = state();
+    auto.onCharacter({
+      ...base,
+      inventory: { ...base.inventory, coins: { ...base.inventory.coins, copper: 15 } }
+    });
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('drops the coins asked, and leaves them on the floor in this room', () => {
+    const auto = make(loot({ coins: true }));
+    const base = state();
+    const now = {
+      ...base,
+      inventory: { ...base.inventory, coins: { ...base.inventory.coins, gold: 50 } }
+    };
+    expect(auto.dropCoins(new Map([['gold', 50]]), now)).toEqual([]);
+    drain();
+    expect(sent).toEqual(['drop 50 gold']);
+    auto.onBlock(noticed('50 gold crowns'), state());
+    drain();
+    expect(sent).toEqual(['drop 50 gold']);
+  });
+});
+
 describe('converting cash with an item', () => {
   const carrying = (name: string, word: string | null): CharacterState => {
     const base = state();

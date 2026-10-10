@@ -573,6 +573,15 @@ describe('conversation, movement, items', () => {
     expect(expectType('Rayzor says "hi there"', 'conversation-local')['message']).toBe('hi there');
   });
 
+  it("reads a look's uses left and a use with none left", () => {
+    // The user's paste, paramud 2026-10-09: `l silverm`.
+    expect(expectType('Uses remaining: 2', 'item-uses-left')['uses']).toBe('2');
+    expectType('That item has no more uses left!', 'item-used-up');
+    expect(expectType('There are no more uses in token of Rhudaur.', 'item-used-up')['item']).toBe(
+      'token of Rhudaur'
+    );
+  });
+
   it('reads movement failures', () => {
     expectType('There is no exit in that direction!', 'direction-failed');
     expect(expectType('The door is closed!', 'direction-failed')['barrier']).toBe('door');

@@ -50,6 +50,7 @@ import {
   type RouteInvocation,
   type Landing,
   landingRooms,
+  landsFromAnywhere,
   sameLanding,
   scatters,
   type SpellHazard,
@@ -1948,7 +1949,6 @@ export class WorldGraph {
     if (this.landings !== null) return this.landings;
     const built: PortalExit[] = [];
     for (const item of this.catalogue.everyItem()) {
-      if (item.lands === undefined) continue;
       /*
        * **A landing bound to a room is not one of these.** It is an ordinary
        * way out of that room and `linkItemLandings` has already made it a
@@ -1957,11 +1957,11 @@ export class WorldGraph {
        * Alchemist's Hut is a block that fails on its first step and a server
        * that answers nothing at all.
        */
-      if (item.usableIn !== undefined) continue;
+      if (!landsFromAnywhere(item)) continue;
       const target = this.rooms.get(item.lands);
       // A landing outside the dataset is a hole in the data, not a way, by the
       // same rule the exit loop applies to an exit pointing nowhere.
-      if (target === undefined || item.name.length === 0) continue;
+      if (target === undefined) continue;
       const command = `use ${item.name}`;
       const exit: PortalExit = {
         direction: 'portal',

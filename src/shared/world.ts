@@ -652,6 +652,12 @@ export interface WorldItem {
    */
   usableIn?: RoomId[];
   /**
+   * The copper one use takes from cash on hand, or absent where it takes none
+   * — format 59. Short of it, the server refuses the use and spends nothing:
+   * a recall token's `price 200000` (`ItemLanding.fare`).
+   */
+  fare?: number;
+  /**
    * The rooms the realm puts one in — `Rooms.Placed`, format 42.
    *
    * The fourth answer to *where does this come from*, and the only one that
@@ -2772,6 +2778,16 @@ export interface RouteScatter {
    * (`Router.scatterMoves`).
    */
   moves: number;
+}
+
+/**
+ * Whether using an item takes the character to one room from wherever it
+ * stands: a landing bound to no room (Paradigm's recall tokens), never the
+ * potion of levitation, which works only at the waterfall (`usableIn`). The
+ * router's item portals and the cash run's tokens read this one rule.
+ */
+export function landsFromAnywhere(item: WorldItem): item is WorldItem & { lands: RoomId } {
+  return item.lands !== undefined && item.usableIn === undefined && item.name.length > 0;
 }
 
 /**

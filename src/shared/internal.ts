@@ -1244,6 +1244,23 @@ const TUNING_DEFAULTS = {
     /** Legs one stop may take (a fight ends a leg) before the trip gives up on it. */
     maxLegs: 4
   },
+  /** Collecting cash on a loop and taking it to the bank by token — `CashRun`. */
+  cashRun: {
+    /** A look or a use still queued after this is for a moment already gone. */
+    sendMs: 6000,
+    /** A look at a token unanswered by its uses left this long is unread. */
+    lookMs: 8000,
+    /** A token's use that has not moved the character this long did not take (its script waits ten seconds). */
+    useMs: 30000,
+    /** How long the deposit sentence is waited for at the bank. */
+    bankMs: 12000,
+    /** Banks weighed within this many moves of where the token lands. */
+    bankSteps: 40,
+    /** Full in a room whose monsters stay this long without a fight, the run walks on and tries the next room. */
+    clearMs: 20000,
+    /** Legs one walk to the bank may take (a fight ends a leg) before the run gives up. */
+    maxLegs: 4
+  },
   /** Fetching named items from a stash — `StashFetch` (todo 05). */
   stashFetch: {
     /**

@@ -44,7 +44,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by one `notice` and one `realmSpeed` for every module the constructor wires.
   // Lowered by the line editor's model of a keystroke chunk, out whole (`editorInput.ts`).
   // Lowered by the Quests card's questions, out to `questDesk` beside the Gear card's (`gearDesk`).
-  'src/main/session/SessionManager.ts': 3457,
+  'src/main/session/SessionManager.ts': 3456,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2420,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).

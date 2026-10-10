@@ -38,6 +38,7 @@ import type {
   RoomAsk
 } from './quests';
 import type { AreaSearchPreview } from './areaSearch';
+import type { CashRunAsk, CashRunToken } from './cashRun';
 import type { HuntingAdvice } from './hunting';
 import type {
   AlertsUiConfig,
@@ -704,6 +705,10 @@ export const Invoke = {
    * it could not start, or null. See `AreaSearch.start`.
    */
   searchArea: 'area:search',
+  /** The tokens the character carries that a cash run can use, for the dialog. */
+  cashRunTokens: 'cash:tokens',
+  /** Start a cash run (`CashRun.start`). Returns why it could not start, or null. */
+  startCashRun: 'cash:start',
   /**
    * Start moving: begin the loop named, or pick back up whatever was stopped.
    *
@@ -1278,6 +1283,10 @@ export interface IpcApi {
   previewAreaSearch(session: SessionId, radius: number | null): Promise<AreaSearchPreview>;
   /** Search every room within `radius` steps, `searches` times each; why not, or null. */
   searchArea(session: SessionId, radius: number, searches: number): Promise<string | null>;
+  /** The tokens the character carries that take it to a town from anywhere. */
+  cashRunTokens(session: SessionId): Promise<CashRunToken[]>;
+  /** Start a cash run; why not, or null. */
+  startCashRun(session: SessionId, ask: CashRunAsk): Promise<string | null>;
   /** Stop moving, whichever of the two is running. Keeps its place. */
   stopMoving(session: SessionId): Promise<void>;
   /**
