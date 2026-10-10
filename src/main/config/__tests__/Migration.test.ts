@@ -61,6 +61,14 @@ function migrate(withTemplate = false): void {
   });
 }
 
+/** A character's file with the given text, as `home` lays it out. */
+function profile(id: string, text: string): string {
+  const scope = home.profile(id);
+  fs.mkdirSync(scope.dir, { recursive: true });
+  fs.writeFileSync(scope.file, text, 'utf8');
+  return scope.file;
+}
+
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-home-'));
   home = homeAt(path.join(dir, 'home'));
@@ -891,13 +899,6 @@ describe('the hang-up refusal becoming whether the realm charges', () => {
     const automation = parsed['automation'] as Record<string, Record<string, unknown>>;
     return automation['safety']!['hangUp'] as Record<string, unknown>;
   };
-  const profile = (id: string, text: string): string => {
-    const file = path.join(home.profilesDir, id, 'profile.yaml');
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, text, 'utf8');
-    return file;
-  };
-
   it('gives the options file the new default, with its sentence', () => {
     fs.writeFileSync(home.options, block(true), 'utf8');
     migrate();
@@ -3410,13 +3411,6 @@ describe('the realm owns the world database', () => {
     return scope.file;
   };
 
-  const character = (id: string, body: string): string => {
-    const scope = home.profile(id);
-    fs.mkdirSync(scope.dir, { recursive: true });
-    fs.writeFileSync(scope.file, body, 'utf8');
-    return scope.file;
-  };
-
   const read = (file: string): Record<string, unknown> =>
     parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
 
@@ -3427,7 +3421,7 @@ describe('the realm owns the world database', () => {
 
   it('writes what a character stated onto the realm it names, and takes it off the character', () => {
     const server = realm('greatermud-local', 'GreaterMUD (local)');
-    const profile = character(
+    const own = profile(
       'vaelor',
       'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n'
     );
@@ -3435,17 +3429,17 @@ describe('the realm owns the world database', () => {
     migrate();
 
     expect(read(server)['database']).toBe('/realms/paradigm.mdb');
-    expect(read(profile)['world']).toBeUndefined();
+    expect(read(own)['world']).toBeUndefined();
     // And the character is otherwise untouched.
-    expect(read(profile)['server']).toBe('GreaterMUD (local)');
+    expect(read(own)['server']).toBe('GreaterMUD (local)');
   });
 
   /* Every character on that realm now walks it, including the ones that never
      stated a database and were silently on the shipped world. */
   it('reaches a character on the same realm that stated nothing', () => {
     realm('greatermud-local', 'GreaterMUD (local)');
-    character('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
-    const quiet = character('yang', 'server: GreaterMUD (local)\n');
+    profile('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
+    const quiet = profile('yang', 'server: GreaterMUD (local)\n');
 
     migrate();
 
@@ -3458,11 +3452,11 @@ describe('the realm owns the world database', () => {
      `world:` out of the schema it is a key nothing reads. */
   it('clears an empty world block without inventing a database', () => {
     const server = realm('greatermud-local', 'GreaterMUD (local)');
-    const profile = character('vaelor', 'server: GreaterMUD (local)\nworld: {}\n');
+    const own = profile('vaelor', 'server: GreaterMUD (local)\nworld: {}\n');
 
     migrate();
 
-    expect(read(profile)['world']).toBeUndefined();
+    expect(read(own)['world']).toBeUndefined();
     expect(read(server)['database']).toBeUndefined();
   });
 
@@ -3479,7 +3473,7 @@ describe('the realm owns the world database', () => {
     );
     const stated = realm('greatermud-local', 'GreaterMUD (local)');
     const quiet = realm('greatermud-test', 'GreaterMUD (test)');
-    character('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
+    profile('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
 
     migrate();
 
@@ -3498,7 +3492,7 @@ describe('the realm owns the world database', () => {
       'name: GreaterMUD (local)\nhost: orohost\ndatabase: /realms/chosen.mdb\n',
       'utf8'
     );
-    character('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/other.mdb\n');
+    profile('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/other.mdb\n');
 
     migrate();
 
@@ -3509,7 +3503,7 @@ describe('the realm owns the world database', () => {
      the comments are the documentation. */
   it('writes the reason beside the path', () => {
     const server = realm('greatermud-local', 'GreaterMUD (local)');
-    character('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
+    profile('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
 
     migrate();
 
@@ -3520,7 +3514,7 @@ describe('the realm owns the world database', () => {
      path out of somebody's own file. */
   it('says so, in counts', () => {
     realm('greatermud-local', 'GreaterMUD (local)');
-    character('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
+    profile('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
 
     migrate();
 
@@ -3532,7 +3526,7 @@ describe('the realm owns the world database', () => {
      nothing left to match. */
   it('does nothing on a second run', () => {
     const server = realm('greatermud-local', 'GreaterMUD (local)');
-    character('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
+    profile('vaelor', 'server: GreaterMUD (local)\nworld:\n  database: /realms/paradigm.mdb\n');
 
     migrate();
     const after = fs.readFileSync(server, 'utf8');
@@ -3546,11 +3540,11 @@ describe('the realm owns the world database', () => {
      else; here it simply has nowhere to put its database, and the key still
      goes rather than being left for something that no longer reads it. */
   it('drops the key from a character whose realm cannot be found', () => {
-    const profile = character('vaelor', 'world:\n  database: /realms/paradigm.mdb\n');
+    const own = profile('vaelor', 'world:\n  database: /realms/paradigm.mdb\n');
 
     migrate();
 
-    expect(read(profile)?.['world']).toBeUndefined();
+    expect(read(own)?.['world']).toBeUndefined();
   });
 });
 
@@ -7062,5 +7056,47 @@ describe('the heal kept its own mana floor', () => {
     ).toHaveLength(1);
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
+/*
+ * Five themes left the registry, 2026-10-10 (todo 40). A file naming one is
+ * moved to the nearest kept theme, comments and all, and says so.
+ */
+describe('the themes that were cut', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('moves the chrome and the console theme to the nearest kept one, keeping comments', () => {
+    fs.writeFileSync(
+      home.options,
+      'ui:\n  # Mine.\n  theme: ayu-light\n  console:\n    darkTheme: tokyo-night\n',
+      'utf8'
+    );
+    const festus = profile('festus', 'ui:\n  theme: one-dark\n');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const ui = (parse(text) as { ui: { theme: string; console: { darkTheme: string } } }).ui;
+    expect(ui.theme).toBe('light');
+    expect(ui.console.darkTheme).toBe('catppuccin-mocha');
+    expect(text).toContain('# Mine.');
+    expect((parse(fs.readFileSync(festus, 'utf8')) as { ui: { theme: string } }).ui.theme).toBe(
+      'dracula'
+    );
+    expect(notesOf(said, 'notices.migration.themeCut')).toHaveLength(3);
+  });
+
+  it('leaves a kept theme alone, and is safe to run again', () => {
+    fs.writeFileSync(home.options, 'ui:\n  theme: github-light\n', 'utf8');
+    const kept = profile('soul', 'ui:\n  theme: nord\n');
+    migrate();
+    const after = fs.readFileSync(home.options, 'utf8');
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(after);
+    expect((parse(fs.readFileSync(kept, 'utf8')) as { ui: { theme: string } }).ui.theme).toBe(
+      'nord'
+    );
+    expect(notesOf(said, 'notices.migration.themeCut')).toEqual([]);
   });
 });

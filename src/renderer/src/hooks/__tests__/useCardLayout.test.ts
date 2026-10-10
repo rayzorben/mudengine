@@ -433,9 +433,9 @@ describe('a card with nothing to say', () => {
 describe("a card's own palette", () => {
   it('reads both halves back', () => {
     const layout = normalizeLayout({
-      settings: { combat: { theme: { dark: 'nord', light: 'github-light' } } }
+      settings: { combat: { theme: { dark: 'nord', light: 'catppuccin-latte' } } }
     });
-    expect(layout.settings.combat?.theme).toEqual({ dark: 'nord', light: 'github-light' });
+    expect(layout.settings.combat?.theme).toEqual({ dark: 'nord', light: 'catppuccin-latte' });
   });
 
   /* An id this build no longer registers falls back to following the client,

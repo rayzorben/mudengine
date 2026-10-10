@@ -26,21 +26,26 @@ export const APPEARANCES: readonly Appearance[] = ['dark', 'light'];
 /** Built-in theme identifiers. Extend by adding to `THEMES` below. */
 export type ThemeId =
   | 'dark'
-  | 'light'
-  | 'one-dark'
   | 'dracula'
   | 'nord'
   | 'gruvbox-dark'
   | 'solarized-dark'
   | 'monokai'
-  | 'tokyo-night'
+  | 'catppuccin-mocha'
+  | 'rose-pine-moon'
+  | 'kanagawa'
+  | 'everforest-dark'
+  | 'night-owl'
+  | 'cobalt2'
+  | 'shades-of-purple'
+  | 'light'
   | 'solarized-light'
-  | 'github-light'
-  | 'one-light'
   | 'gruvbox-light'
   | 'catppuccin-latte'
   | 'rose-pine-dawn'
-  | 'ayu-light';
+  | 'everforest-light'
+  | 'kanagawa-lotus'
+  | 'tokyo-night-day';
 
 /** What the user may ask for: a specific theme, or "follow the OS". */
 export type ThemePreference = ThemeId | 'system';
@@ -284,45 +289,22 @@ const LIGHT: Theme = {
 /**
  * The editor themes people already have their eyes trained on.
  *
- * Seven dark and seven light, each derived from the scheme's own ground, ink
- * and five accents, with every text-bearing token then *fitted*: lightness is
- * nudged toward the ink until the pair clears 4.5:1 on the card, which the
- * registry test enforces. Surfaces step from the scheme's ground exactly as
- * the two house themes do (§3.3), so a theme is a palette, never a layout.
+ * Twelve dark and seven light, each derived from the scheme's published ground,
+ * ink and five accents, with every text-bearing token then *fitted*: lightness
+ * is nudged toward the ink until the pair clears 4.5:1 on the card, which the
+ * registry test enforces. Surfaces step from the scheme's ground as the two
+ * house themes do (§3.3), or are the scheme's own published surfaces where it
+ * has them (Catppuccin, Rosé Pine), so a theme is a palette, never a layout.
+ *
+ * Every theme's ground and card sit a measured distance from every other
+ * theme of its appearance (`themes.test.ts`); a theme closer than that to
+ * another is cut. See `mudengine-ui` › *Themes are data*.
  *
  * Chrome only. Every one shares the house terminal palette of its appearance,
  * because the console is a separate axis: `TERMINAL_THEMES` below is what
  * paints it, chosen by `ui.console.palette`.
  */
 const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
-  'one-dark': {
-    id: 'one-dark',
-    label: 'One Dark',
-    appearance: 'dark',
-    chrome: {
-      'ink-void': '#282c34',
-      'ink-card': '#30353e',
-      'ink-raised': '#393e4a',
-      'ink-line': '#404754',
-      'ink-edge': '#525a6b',
-      'text-hi': '#c8cdd5',
-      text: '#abb2bf',
-      'text-lo-normal': '#9ba0a2',
-      'text-lo-quiet': '#8a8f92',
-      accent: '#61afef',
-      ok: '#98c379',
-      pending: '#e5c07b',
-      danger: '#e6848d',
-      marker: '#cc84e0',
-      'on-accent': '#282c34',
-      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
-      'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
-      'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
-      'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
-      scrim: 'rgb(40 44 52 / 58%)'
-    },
-    terminal: DARK.terminal
-  },
   dracula: {
     id: 'dracula',
     label: 'Dracula',
@@ -463,31 +445,199 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
     },
     terminal: DARK.terminal
   },
-  'tokyo-night': {
-    id: 'tokyo-night',
-    label: 'Tokyo Night',
+  'catppuccin-mocha': {
+    id: 'catppuccin-mocha',
+    label: 'Catppuccin Mocha',
     appearance: 'dark',
     chrome: {
-      'ink-void': '#1a1b26',
-      'ink-card': '#212331',
-      'ink-raised': '#2a2b3d',
-      'ink-line': '#313347',
-      'ink-edge': '#414460',
-      'text-hi': '#ccd0e6',
-      text: '#a9b1d6',
-      'text-lo-normal': '#868ba2',
-      'text-lo-quiet': '#767a8f',
-      accent: '#7dcfff',
-      ok: '#9ece6a',
-      pending: '#e0af68',
-      danger: '#f7768e',
-      marker: '#bb9af7',
-      'on-accent': '#1a1b26',
+      'ink-void': '#181825',
+      'ink-card': '#1e1e2e',
+      'ink-raised': '#313244',
+      'ink-line': '#313244',
+      'ink-edge': '#45475a',
+      'text-hi': '#e1e6f8',
+      text: '#cdd6f4',
+      'text-lo-normal': '#9399b2',
+      'text-lo-quiet': '#81879e',
+      accent: '#89b4fa',
+      ok: '#a6e3a1',
+      pending: '#f9e2af',
+      danger: '#f38ba8',
+      marker: '#cba6f7',
+      'on-accent': '#181825',
       'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
       'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
       'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
       'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
-      scrim: 'rgb(26 27 38 / 58%)'
+      scrim: 'rgb(24 24 37 / 58%)'
+    },
+    terminal: DARK.terminal
+  },
+  'rose-pine-moon': {
+    id: 'rose-pine-moon',
+    label: 'Rosé Pine Moon',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#232136',
+      'ink-card': '#2a273f',
+      'ink-raised': '#393552',
+      'ink-line': '#44415a',
+      'ink-edge': '#56526e',
+      'text-hi': '#ecebf8',
+      text: '#e0def4',
+      'text-lo-normal': '#938fad',
+      'text-lo-quiet': '#837f9c',
+      accent: '#9ccfd8',
+      ok: '#539bb9',
+      pending: '#f6c177',
+      danger: '#eb6f92',
+      marker: '#c4a7e7',
+      'on-accent': '#232136',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
+      'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
+      'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
+      scrim: 'rgb(35 33 54 / 58%)'
+    },
+    terminal: DARK.terminal
+  },
+  'shades-of-purple': {
+    id: 'shades-of-purple',
+    label: 'Shades of Purple',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#2d2b55',
+      'ink-card': '#34325b',
+      'ink-raised': '#3e3c63',
+      'ink-line': '#46446a',
+      'ink-edge': '#575577',
+      'text-hi': '#ffffff',
+      text: '#ffffff',
+      'text-lo-normal': '#a599e9',
+      'text-lo-quiet': '#948ad4',
+      accent: '#fad000',
+      ok: '#3ad900',
+      pending: '#ff9d00',
+      danger: '#ff7298',
+      marker: '#c485ff',
+      'on-accent': '#2d2b55',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
+      'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
+      'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
+      scrim: 'rgb(45 43 85 / 58%)'
+    },
+    terminal: DARK.terminal
+  },
+  cobalt2: {
+    id: 'cobalt2',
+    label: 'Cobalt2',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#193549',
+      'ink-card': '#213c4f',
+      'ink-raised': '#2c4658',
+      'ink-line': '#354e5f',
+      'ink-edge': '#475d6d',
+      'text-hi': '#ffffff',
+      text: '#ffffff',
+      'text-lo-normal': '#aaaaaa',
+      'text-lo-quiet': '#959a9c',
+      accent: '#ffc600',
+      ok: '#3ad900',
+      pending: '#ff9d00',
+      danger: '#ff789c',
+      marker: '#9effff',
+      'on-accent': '#193549',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
+      'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
+      'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
+      scrim: 'rgb(25 53 73 / 58%)'
+    },
+    terminal: DARK.terminal
+  },
+  'night-owl': {
+    id: 'night-owl',
+    label: 'Night Owl',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#011627',
+      'ink-card': '#0a1e2f',
+      'ink-raised': '#162939',
+      'ink-line': '#203242',
+      'ink-edge': '#344452',
+      'text-hi': '#e6ebf3',
+      text: '#d6deeb',
+      'text-lo-normal': '#778989',
+      'text-lo-quiet': '#67797c',
+      accent: '#82aaff',
+      ok: '#addb67',
+      pending: '#ecc48d',
+      danger: '#ef5350',
+      marker: '#c792ea',
+      'on-accent': '#011627',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
+      'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
+      'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
+      scrim: 'rgb(1 22 39 / 58%)'
+    },
+    terminal: DARK.terminal
+  },
+  'everforest-dark': {
+    id: 'everforest-dark',
+    label: 'Everforest Dark',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#2d353b',
+      'ink-card': '#343c42',
+      'ink-raised': '#3e464b',
+      'ink-line': '#464e53',
+      'ink-edge': '#575d62',
+      'text-hi': '#e5ddcc',
+      text: '#d3c6aa',
+      'text-lo-normal': '#9fa9a2',
+      'text-lo-quiet': '#8f9994',
+      accent: '#7fbbb3',
+      ok: '#a7c080',
+      pending: '#dbbc7f',
+      danger: '#e98d8f',
+      marker: '#d699b6',
+      'on-accent': '#2d353b',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
+      'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
+      'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
+      scrim: 'rgb(45 53 59 / 58%)'
+    },
+    terminal: DARK.terminal
+  },
+  kanagawa: {
+    id: 'kanagawa',
+    label: 'Kanagawa',
+    appearance: 'dark',
+    chrome: {
+      'ink-void': '#1f1f28',
+      'ink-card': '#272730',
+      'ink-raised': '#32323a',
+      'ink-line': '#3a3a43',
+      'ink-edge': '#4c4c53',
+      'text-hi': '#eae7d6',
+      text: '#dcd7ba',
+      'text-lo-normal': '#91908a',
+      'text-lo-quiet': '#81807d',
+      accent: '#7e9cd8',
+      ok: '#98bb6c',
+      pending: '#e6c384',
+      danger: '#e46876',
+      marker: '#9b87bc',
+      'on-accent': '#1f1f28',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 6%)',
+      'glass-shadow': '0 6px 24px rgb(0 0 0 / 32%)',
+      'elev-1': '0 1px 2px rgb(0 0 0 / 30%)',
+      'elev-2': '0 3px 10px rgb(0 0 0 / 34%)',
+      scrim: 'rgb(31 31 40 / 58%)'
     },
     terminal: DARK.terminal
   },
@@ -516,62 +666,6 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
       'elev-1': '0 1px 2px rgb(40 34 22 / 8%)',
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
       scrim: 'rgb(252 241 210 / 62%)'
-    },
-    terminal: LIGHT.terminal
-  },
-  'github-light': {
-    id: 'github-light',
-    label: 'GitHub Light',
-    appearance: 'light',
-    chrome: {
-      'ink-void': '#f6f6f6',
-      'ink-card': '#ffffff',
-      'ink-raised': '#ffffff',
-      'ink-line': '#ebebeb',
-      'ink-edge': '#d1d1d1',
-      'text-hi': '#0e1012',
-      text: '#24292f',
-      'text-lo-normal': '#66696d',
-      'text-lo-quiet': '#7d8083',
-      accent: '#0969da',
-      ok: '#1a7f37',
-      pending: '#9a6700',
-      danger: '#cf222e',
-      marker: '#8250df',
-      'on-accent': '#ffffff',
-      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
-      'glass-shadow': '0 6px 22px rgb(40 34 22 / 8%)',
-      'elev-1': '0 1px 2px rgb(40 34 22 / 8%)',
-      'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
-      scrim: 'rgb(246 246 246 / 62%)'
-    },
-    terminal: LIGHT.terminal
-  },
-  'one-light': {
-    id: 'one-light',
-    label: 'One Light',
-    appearance: 'light',
-    chrome: {
-      'ink-void': '#f1f1f1',
-      'ink-card': '#fafafa',
-      'ink-raised': '#ffffff',
-      'ink-line': '#e6e6e6',
-      'ink-edge': '#cccccc',
-      'text-hi': '#212226',
-      text: '#383a42',
-      'text-lo-normal': '#707176',
-      'text-lo-quiet': '#85868a',
-      accent: '#2266f2',
-      ok: '#3a7e39',
-      pending: '#946601',
-      danger: '#d73024',
-      marker: '#a626a4',
-      'on-accent': '#ffffff',
-      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
-      'glass-shadow': '0 6px 22px rgb(40 34 22 / 8%)',
-      'elev-1': '0 1px 2px rgb(40 34 22 / 8%)',
-      'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
-      scrim: 'rgb(241 241 241 / 62%)'
     },
     terminal: LIGHT.terminal
   },
@@ -659,31 +753,87 @@ const EDITOR_THEMES: Record<Exclude<ThemeId, 'dark' | 'light'>, Theme> = {
     },
     terminal: LIGHT.terminal
   },
-  'ayu-light': {
-    id: 'ayu-light',
-    label: 'Ayu Light',
+  'everforest-light': {
+    id: 'everforest-light',
+    label: 'Everforest Light',
     appearance: 'light',
     chrome: {
-      'ink-void': '#f1f1f1',
-      'ink-card': '#fafafa',
-      'ink-raised': '#ffffff',
-      'ink-line': '#e6e6e6',
-      'ink-edge': '#cccccc',
-      'text-hi': '#44474b',
-      text: '#5c6166',
-      'text-lo-normal': '#6f7177',
-      'text-lo-quiet': '#84868b',
-      accent: '#1576b2',
-      ok: '#5a7c00',
-      pending: '#9d630d',
-      danger: '#df0f0f',
-      marker: '#8b5ac4',
+      'ink-void': '#e8dfca',
+      'ink-card': '#f3ead3',
+      'ink-raised': '#faf7ed',
+      'ink-line': '#e4dcc6',
+      'ink-edge': '#d1c9b5',
+      'text-hi': '#374044',
+      text: '#5c6a72',
+      'text-lo-normal': '#626b61',
+      'text-lo-quiet': '#787e72',
+      accent: '#2b6f94',
+      ok: '#616f01',
+      pending: '#886200',
+      danger: '#b53e3c',
+      marker: '#9e4b84',
       'on-accent': '#ffffff',
       'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
       'glass-shadow': '0 6px 22px rgb(40 34 22 / 8%)',
       'elev-1': '0 1px 2px rgb(40 34 22 / 8%)',
       'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
-      scrim: 'rgb(241 241 241 / 62%)'
+      scrim: 'rgb(232 223 202 / 62%)'
+    },
+    terminal: LIGHT.terminal
+  },
+  'tokyo-night-day': {
+    id: 'tokyo-night-day',
+    label: 'Tokyo Night Day',
+    appearance: 'light',
+    chrome: {
+      'ink-void': '#d7d8dd',
+      'ink-card': '#e1e2e7',
+      'ink-raised': '#f3f3f5',
+      'ink-line': '#d4d4d9',
+      'ink-edge': '#c2c2c7',
+      'text-hi': '#213a73',
+      text: '#365fbd',
+      'text-lo-normal': '#5c627f',
+      'text-lo-quiet': '#70758f',
+      accent: '#2461b6',
+      ok: '#506a34',
+      pending: '#7a5e36',
+      danger: '#bd204e',
+      marker: '#7b44c3',
+      'on-accent': '#ffffff',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
+      'glass-shadow': '0 6px 22px rgb(40 34 22 / 8%)',
+      'elev-1': '0 1px 2px rgb(40 34 22 / 8%)',
+      'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
+      scrim: 'rgb(215 216 221 / 62%)'
+    },
+    terminal: LIGHT.terminal
+  },
+  'kanagawa-lotus': {
+    id: 'kanagawa-lotus',
+    label: 'Kanagawa Lotus',
+    appearance: 'light',
+    chrome: {
+      'ink-void': '#e7e1b4',
+      'ink-card': '#f2ecbc',
+      'ink-raised': '#faf7e4',
+      'ink-line': '#e3deb1',
+      'ink-edge': '#d0cba2',
+      'text-hi': '#32323c',
+      text: '#545464',
+      'text-lo-normal': '#696861',
+      'text-lo-quiet': '#7e7c6f',
+      accent: '#4c6899',
+      ok: '#5a6f3f',
+      pending: '#6f693b',
+      danger: '#b83b4c',
+      marker: '#624c83',
+      'on-accent': '#ffffff',
+      'glass-rim': 'inset 0 1px 0 rgb(255 255 255 / 80%)',
+      'glass-shadow': '0 6px 22px rgb(40 34 22 / 8%)',
+      'elev-1': '0 1px 2px rgb(40 34 22 / 8%)',
+      'elev-2': '0 3px 10px rgb(40 34 22 / 10%)',
+      scrim: 'rgb(231 225 180 / 62%)'
     },
     terminal: LIGHT.terminal
   }
@@ -698,21 +848,26 @@ export const THEMES: Record<ThemeId, Theme> = {
 /** Registration order; drives the palette's cycle order. Dark first, then light. */
 export const THEME_IDS: readonly ThemeId[] = [
   'dark',
-  'one-dark',
   'dracula',
   'nord',
   'gruvbox-dark',
   'solarized-dark',
   'monokai',
-  'tokyo-night',
+  'catppuccin-mocha',
+  'rose-pine-moon',
+  'kanagawa',
+  'everforest-dark',
+  'night-owl',
+  'cobalt2',
+  'shades-of-purple',
   'light',
   'solarized-light',
-  'github-light',
-  'one-light',
   'gruvbox-light',
   'catppuccin-latte',
   'rose-pine-dawn',
-  'ayu-light'
+  'everforest-light',
+  'kanagawa-lotus',
+  'tokyo-night-day'
 ];
 
 /** Everything selectable in the options file, `system` included. */

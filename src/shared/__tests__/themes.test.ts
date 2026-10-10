@@ -306,14 +306,14 @@ describe('the console keeping its own ground', () => {
   });
 
   it('hands a light chrome the dark palette that was asked for', () => {
-    const answer = consoleThemeFor(THEMES['github-light'], true, 'nord');
+    const answer = consoleThemeFor(THEMES['catppuccin-latte'], true, 'nord');
     expect(answer.id).toBe('nord');
     expect(answer.appearance).toBe('dark');
   });
 
   it('refuses a light palette for a console asked to stay dark', () => {
     // Not a preference but a contradiction, so it is answered rather than obeyed.
-    expect(consoleThemeFor(THEMES.light, true, 'ayu-light' as never).id).toBe(DEFAULT_THEME);
+    expect(consoleThemeFor(THEMES.light, true, 'rose-pine-dawn' as never).id).toBe(DEFAULT_THEME);
     expect(consoleThemeFor(THEMES.light, true, 'nope' as never).id).toBe(DEFAULT_THEME);
   });
 
@@ -329,7 +329,7 @@ describe('isDarkTheme', () => {
     expect(isDarkTheme('dark')).toBe(true);
     expect(isDarkTheme('nord')).toBe(true);
     expect(isDarkTheme('light')).toBe(false);
-    expect(isDarkTheme('ayu-light')).toBe(false);
+    expect(isDarkTheme('rose-pine-dawn')).toBe(false);
     expect(isDarkTheme('system')).toBe(false);
     expect(isDarkTheme(null)).toBe(false);
   });
@@ -526,5 +526,31 @@ describe('isTerminalThemeId / isConsolePalette', () => {
 
   it('agrees with everything the form and the palette offer', () => {
     for (const entry of CONSOLE_PALETTES) expect(isConsolePalette(entry)).toBe(true);
+  });
+});
+
+/*
+ * Two themes of one appearance whose ground and card sit under ΔE 4 look the
+ * same to a player (todo 40, 2026-10-10). The ground and the card are most of what the chrome
+ * shows, so their mean ΔE is the measure: the three grey-ground light themes
+ * cut sat at 1.3–2.2 from the house Light, everything kept at 4.6 or more.
+ */
+describe('theme distinctness', () => {
+  const SURFACE_FLOOR = 4;
+  const surfaces = (a: Theme, b: Theme): number =>
+    (deltaE(a.chrome['ink-void'], b.chrome['ink-void']) +
+      deltaE(a.chrome['ink-card'], b.chrome['ink-card'])) /
+    2;
+
+  it('keeps every theme’s surfaces a step from every other of its appearance', () => {
+    for (const [i, a] of ALL.entries()) {
+      for (const b of ALL.slice(i + 1)) {
+        if (a.appearance !== b.appearance) continue;
+        const d = surfaces(a, b);
+        expect(d, `${a.id}/${b.id} surfaces dE=${d.toFixed(1)}`).toBeGreaterThanOrEqual(
+          SURFACE_FLOOR
+        );
+      }
+    }
   });
 });

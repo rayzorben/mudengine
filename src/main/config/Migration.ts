@@ -61,6 +61,7 @@ import { realmKey } from '../world/RealmLore';
 import type { ShippedWorld } from '../../shared/worlds';
 import { CONDITION_WAIT_KEYS } from '../../shared/walk';
 import { DEFAULT_LOW_LIVES } from '../../shared/lives';
+import { THEMES, type ThemeId } from '../../shared/themes';
 
 export interface MigrationOptions {
   home: Home;
@@ -269,6 +270,45 @@ function migrateAll(options: MigrationOptions): void {
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
+  theThemesWereCut(home, note);
+}
+
+/**
+ * Five themes left the registry (2026-10-10, todo 40): their ground and card
+ * sat under the distance `themes.test.ts` holds between two themes. Each is
+ * rewritten to the kept theme whose surfaces were nearest, measured the same
+ * way, wherever a file names it: `ui.theme` and `ui.console.darkTheme`, in the
+ * options file and every character's. Idempotent: a cut id is never written.
+ */
+const CUT_THEMES: ReadonlyMap<string, { label: string; to: ThemeId }> = new Map([
+  ['one-dark', { label: 'One Dark', to: 'dracula' }],
+  ['tokyo-night', { label: 'Tokyo Night', to: 'catppuccin-mocha' }],
+  ['github-light', { label: 'GitHub Light', to: 'light' }],
+  ['one-light', { label: 'One Light', to: 'light' }],
+  ['ayu-light', { label: 'Ayu Light', to: 'light' }]
+]);
+
+function theThemesWereCut(home: Home, note: (message: string) => void): void {
+  for (const file of everySettingsFile(home)) {
+    const moved: { from: string; to: ThemeId }[] = [];
+    edit(file, (document) => {
+      for (const at of [
+        ['ui', 'theme'],
+        ['ui', 'console', 'darkTheme']
+      ]) {
+        const node = document.getIn(at, true);
+        if (!isScalar(node) || typeof node.value !== 'string') continue;
+        const cut = CUT_THEMES.get(node.value);
+        if (cut === undefined) continue;
+        node.value = cut.to;
+        moved.push({ from: cut.label, to: cut.to });
+      }
+      return moved.length > 0;
+    });
+    for (const { from, to } of moved) {
+      note(t('notices.migration.themeCut', { file, from, to: THEMES[to].label }));
+    }
+  }
 }
 
 /**
