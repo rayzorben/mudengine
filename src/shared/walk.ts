@@ -76,9 +76,11 @@ export interface WalkProgress {
    * it enters, because a line has two ends: without it the leg out of the
    * current room could not be drawn at all, which is the one leg being walked.
    *
-   * Empty unless the walk is `walking`, for `step` and `hold`'s reason — a
-   * stopped route drawn on the map is a plan the client is no longer following
-   * and a picture that says otherwise is worse than none.
+   * Empty unless the walk is `walking`, for `step` and `hold`'s reason: a
+   * stopped route drawn on the map is a plan the client is no longer following.
+   * One exception: a leg something else walks (a lap, a supply trip) that a
+   * fight stopped keeps its rooms until the fight ends, because its owner
+   * plans the next leg then and the character is still going there.
    */
   path: RoomId[];
   /**

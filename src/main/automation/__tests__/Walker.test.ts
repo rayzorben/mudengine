@@ -694,6 +694,37 @@ describe('stopping', () => {
     expect(ended).toEqual([t('automation.walk.reasonCombat')]);
   });
 
+  /* The map keeps a leg's line while the fight that stopped it runs, since its owner walks on after. */
+  it("keeps a leg's rooms on the map until the fight that stopped it ends", () => {
+    walker.start(ROUTE, at(1, 1), { asked: false, resumeAfterFight: false });
+    const owed = walker.progress.path;
+    walker.onCharacter(at(1, 1, { inCombat: true }));
+
+    expect(walker.progress.status).toBe('stopped');
+    expect(owed.length).toBeGreaterThan(0);
+    expect(walker.progress.path).toEqual(owed);
+
+    walker.onCharacter(at(1, 1));
+    expect(walker.progress.path).toEqual([]);
+  });
+
+  it('drops the kept rooms when the leg is stopped during the fight', () => {
+    walker.start(ROUTE, at(1, 1), { asked: false, resumeAfterFight: false });
+    walker.onCharacter(at(1, 1, { inCombat: true }));
+    expect(walker.progress.path.length).toBeGreaterThan(0);
+
+    walker.stop('the loop ended');
+    expect(walker.progress.path).toEqual([]);
+  });
+
+  it("drops a player's own route from the map when a fight ends it", () => {
+    walker.start(ROUTE, at(1, 1), { resumeAfterFight: false });
+    walker.onCharacter(at(1, 1, { inCombat: true }));
+
+    expect(walker.progress.status).toBe('stopped');
+    expect(walker.progress.path).toEqual([]);
+  });
+
   /*
    * A death is a teleport with no destination in it, so the route is over —
    * and it is over for a *reason*. Without the sentence the walk still stopped,
