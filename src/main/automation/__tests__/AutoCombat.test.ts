@@ -2076,9 +2076,10 @@ describe('casting in a fight', () => {
     });
 
     /* `Your spell has no effect on` ends the character's attack with no
-       `*Combat Off*` (`BreakCombat(false)`), so the attack verb goes at once:
-       Rayzor stood a round at 6 hit points waiting for the next tick. */
-    it('sends the attack verb on the no-effect line itself, not a round later', () => {
+       `*Combat Off*` (`BreakCombat(false)`), and the tracker ends the fight on
+       it. The rat is still swinging, so it is hit back on the state that line
+       makes: Rayzor stood a round at 6 hit points waiting for the next tick. */
+    it('hits the monster back on the fight the no-effect line ended, not a round later', () => {
       const auto = make(rounds(), true, spells());
       auto.onCharacter(crowded(1));
       auto.onBlock(block('user-hits'));
@@ -2087,7 +2088,24 @@ describe('casting in a fight', () => {
       expect(sent).toEqual(['ma giant rat']);
       auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
       drain();
+      expect(sent).toEqual(['ma giant rat']);
+      auto.onCharacter({ ...crowded(1), inCombat: false, combat: EMPTY_CHARACTER.combat });
+      drain();
       expect(sent).toEqual(['ma giant rat', 'a giant rat']);
+    });
+
+    /* A spell the realm could not keep is ruled out by this fight's book
+       alone, so the break must not empty it, or the rat is hit back with it. */
+    it('keeps the book the no-effect line wrote when it hits back', () => {
+      const auto = make(rounds(), true, spells({ attackFallback: 'mmis' }));
+      auto.onCharacter(crowded(1));
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      auto.onBlock(block('spell-ineffective', { target: 'giant rat' }));
+      auto.onCharacter({ ...crowded(1), inCombat: false, combat: EMPTY_CHARACTER.combat });
+      drain();
+      expect(sent).toEqual(['ma giant rat', 'mmis giant rat']);
     });
 
     /* MegaMUD's MaxCastCnt, counted on the server's own repeats: a fizzle is
