@@ -899,7 +899,6 @@ palette:
     widthsResetLabel: Reset pane widths
   navigate:
     gotoLabel: 'Goto: {roomName}'
-    gotoVisitedHint: '{roomReference} · {agoText}'
     loopLabel: 'Loop: {loopName}'
     lookupLabel: 'Look up: {name}'
     lookupNumberHint: '{kindWord} #{number}'
@@ -6180,6 +6179,17 @@ reset:
     slots, the spellbook, measured spell durations and quest counters. What it learned about the
     realm stays: the map, the shops and the other players did not change.'
 
+# A room a room search offers, and when a walk to it last started.
+rooms:
+  groups:
+    others: Rooms
+    recent: Recent
+  visited:
+    days: '{days}d {hours}h ago'
+    hint: '{roomReference} · {agoText}'
+    hours: '{hours}h {minutes}m ago'
+    justNow: just now
+    minutes: '{minutes}m ago'
 # How a sighting of another player is phrased, shared by the people cards.
 players:
   sighting:

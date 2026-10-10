@@ -1600,17 +1600,8 @@ tuning:
     # How long a walk's destination waits before it is written.
     destinationsSaveDelayMs: 5000
 
-    # Destinations kept per realm. Generous: a row is one place somebody
-    # deliberately walked to, so the list grows at the speed a person plays
-    # rather than at the speed the server talks, and the whole point of it is
-    # that somewhere visited months ago is still the answer to a search.
-    maxDestinations: 500
-
-    # Recent destinations offered above the realm's own answer.
-    #
-    # Five, because the list is a *shortcut* and not the search: past a handful
-    # it stops being scannable at a glance and starts being a second set of
-    # results to read, which is the thing it exists to save somebody from.
+    # Recent destinations offered before anything is typed. A query offers
+    # every destination it matches, above the realm's own answer.
     destinationsShown: 5
 
     # How long a change to the player book waits before it is written.

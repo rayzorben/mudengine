@@ -15,13 +15,14 @@ import type { HuntingRoom } from '@shared/hunting';
 import { NO_SESSION, type IpcApi, type ProfileSummary, type SessionId } from '@shared/ipc';
 import type { Loop } from '@shared/loops';
 import type { LocalMap } from '@shared/map';
-import type { LoopDraft, RoomId, WorldRoom } from '@shared/world';
+import type { LoopDraft, RoomId } from '@shared/world';
+import type { FoundRoom } from '@shared/destinations';
 
 /** What the loop builder needs of the client, built once per character and kept. */
 export interface BuilderApi {
   characterName: string;
   realmName: string;
-  search(query: string): Promise<WorldRoom[]>;
+  search(query: string): Promise<FoundRoom[]>;
   loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
   draft(rooms: RoomId[]): Promise<LoopDraft>;
   save(loop: Loop, destination: BuilderDestination): Promise<string | null>;

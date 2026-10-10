@@ -67,18 +67,20 @@ function deps(
 }
 
 describe('the palette query, as found blocks', () => {
-  it('answers rooms first, then the realm, each under its own heading', async () => {
+  it('answers rooms walked to, then rooms, then the realm, each under its own heading', async () => {
     const { handed } = deps({
-      rooms: [room(1, 297, 'Bank of God')],
+      rooms: [room(1, 12, 'Bank of Godfrey', Date.now() - 60_000), room(1, 297, 'Bank of God')],
       lookup: { ...NOTHING, spells: [{ id: 52, name: 'magic armour' }] }
     });
     const found = await paletteFind('bank', handed);
     expect(found.map((block) => [block.key, block.label])).toEqual([
+      ['recent', t('rooms.groups.recent')],
       ['rooms', t('palette.groups.found')],
       ['realm', t('palette.groups.realm')]
     ]);
-    expect(found[0]?.items.map((row) => row.id)).toEqual(['goto:1/297']);
-    expect(found[1]?.items.map((row) => row.id)).toEqual(['lookup:spell:0']);
+    expect(found[0]?.items.map((row) => row.id)).toEqual(['goto:1/12']);
+    expect(found[1]?.items.map((row) => row.id)).toEqual(['goto:1/297']);
+    expect(found[2]?.items.map((row) => row.id)).toEqual(['lookup:spell:0']);
     // Every row lasts only as long as the query: none can be pinned to the shelf.
     expect(found.flatMap((block) => block.items).every((row) => row.transient === true)).toBe(true);
   });
@@ -89,7 +91,8 @@ describe('a room the query names', () => {
     const { handed } = deps({
       rooms: [room(1, 297, 'Bank of God'), room(1, 1, 'Town Gates', Date.now() - 60_000)]
     });
-    const [fresh, visited] = await roomRows('b', handed);
+    const { recent, others } = await roomRows('b', handed);
+    const [fresh, visited] = [others[0], recent[0]];
     expect(fresh?.label).toBe(t('palette.navigate.gotoLabel', { roomName: 'Bank of God' }));
     expect(fresh?.hint).toBe('1/297');
     expect(visited?.hint).not.toBe('1/1');
@@ -98,7 +101,7 @@ describe('a room the query names', () => {
 
   it('walks there without opening the panel when the plan starts', async () => {
     const { handed, openRouteOn, walkRoute } = deps({ rooms: [room(1, 297, 'Bank of God')] });
-    const [row] = await roomRows('bank', handed);
+    const [row] = (await roomRows('bank', handed)).others;
     row?.run();
     // The walk was asked for, so the panel's absence is the answer, not a race.
     await vi.waitFor(() => expect(walkRoute).toHaveBeenCalledTimes(1));
@@ -114,7 +117,7 @@ describe('a room the query names', () => {
   ])('opens the panel on the room for %s', async (_, answer) => {
     const bank = room(1, 297, 'Bank of God');
     const { handed, openRouteOn } = deps({ rooms: [bank], ...answer });
-    const [row] = await roomRows('bank', handed);
+    const [row] = (await roomRows('bank', handed)).others;
     row?.run();
     await vi.waitFor(() => expect(openRouteOn).toHaveBeenCalledWith(bank, null));
   });

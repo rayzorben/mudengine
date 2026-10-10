@@ -8,8 +8,9 @@
  * before — `Forest Cavern`, not the two hundred `Darkwood Forest`s ahead of it
  * — and the client already knows which those are, because it planned the route.
  *
- * So a destination is written down when a walk is *started* toward it, and the
- * palette's room search puts the recent matches above the realm's own answer.
+ * So a destination is written down when a walk is *started* toward it, and
+ * every room search (the palette, the route panel, the Map card's fields, the
+ * loop builder) puts its matches above the realm's own answer, under *Recent*.
  *
  * **A realm-wide fact, keyed like the lore and the player book.** Where a
  * character goes is a fact about the *map*, not about the character: four
@@ -24,9 +25,10 @@
  * it failed. Recording only arrivals would drop exactly the destinations
  * somebody is about to retype.
  *
- * Dependency-free: main keeps and persists it, the renderer only reads the
- * handful of rows that reach it.
+ * Dependency-free: main keeps and persists it, the renderer reads the rows a
+ * search answers with.
  */
+import type { WorldRoom } from './world';
 
 /** One place a character was sent, and the last time it was. */
 export interface VisitedDestination {
@@ -70,6 +72,12 @@ export interface Visited {
   visitedAt: number | null;
 }
 
+/** A room a search offers, with when it was last walked to. */
+export type FoundRoom = WorldRoom & Visited;
+
+/** Whether a found room was walked to before, which puts it under *Recent*. */
+export const wasVisited = (room: Visited): boolean => room.visitedAt !== null;
+
 /**
  * Fold one visit into a list, returning a new list in recency order.
  *
@@ -77,14 +85,14 @@ export interface Visited {
  * disagree about what "most recent" means. Newest first: the caller takes the
  * first N matches and is done.
  *
- * A repeat visit **moves** its row rather than adding one — a list that grew a
- * row per walk would be a list of the same five places, which is the failure the
- * cap would then hide by evicting everything else.
+ * A repeat visit **moves** its row rather than adding one, so the list holds
+ * one row per room and the realm's size bounds it. Nothing is evicted: a room
+ * walked to once, months ago, still ranks above the rooms of the same name
+ * nobody has been to (user, 2026-10-10).
  */
 export function rememberVisit(
   list: readonly VisitedDestination[],
-  visit: { id: string; name: string; at: number },
-  limit: number
+  visit: { id: string; name: string; at: number }
 ): VisitedDestination[] {
   const id = visit.id.trim();
   const name = visit.name.trim();
@@ -105,11 +113,12 @@ export function rememberVisit(
   // Sorted rather than merely unshifted: a visit stamped earlier than one
   // already held — a clock that moved, two windows on one realm — must not sit
   // at the top claiming to be the latest.
-  return [entry, ...rest].sort((a, b) => b.at - a.at).slice(0, Math.max(0, limit));
+  return [entry, ...rest].sort((a, b) => b.at - a.at);
 }
 
 /**
- * The recent destinations matching what somebody has typed, newest first.
+ * The destinations matching what somebody has typed, newest first; with
+ * nothing typed, the latest ones.
  *
  * The same two-word rule the card tables use (`lib/table.ts`): every term, from
  * anywhere in the name, so `bank god` finds `Bank of Godfrey`. Anything else
@@ -125,7 +134,7 @@ export function matchVisits(
     .toLowerCase()
     .split(/\s+/)
     .filter((term) => term.length > 0);
-  if (terms.length === 0) return [];
+  if (terms.length === 0) return list.slice(0, Math.max(0, limit));
   return list
     .filter((entry) => {
       const name = entry.name.toLowerCase();

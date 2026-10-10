@@ -52,6 +52,7 @@ import ClearField from './ClearField';
 import Icon from './Icon';
 import { type BuilderMarks } from './MapPlan';
 import MapView from './MapView';
+import RoomMatches from './RoomMatches';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { useRoomSearch } from '../hooks/useRoomSearch';
 import { loopFor, notableSteps, pickRoom, shapeOf, stopParts, suggestedName } from '../lib/builder';
@@ -70,6 +71,7 @@ import {
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
 import type { CharacterState } from '@shared/character';
+import type { FoundRoom } from '@shared/destinations';
 import { LOOP_LIMITS } from '@shared/drafts';
 import { roomsWithFinds, type Find } from '@shared/finds';
 import type { Loop, LoopScope } from '@shared/loops';
@@ -114,7 +116,7 @@ export interface LoopBuilderCardProps extends CardChrome {
   characterName: string;
   /** The realm it plays on, for the other chip; empty when unknown, and the chip is then not drawn. */
   realmName: string;
-  search(query: string): Promise<WorldRoom[]>;
+  search(query: string): Promise<FoundRoom[]>;
   loadMap(map: number, room: number, radius: number): Promise<LocalMap>;
   /**
    * The rooms this realm's find log names, marked with a dot — the Map card's
@@ -241,7 +243,7 @@ function LoopBuilderCard({
     [chrome]
   );
 
-  const list = useListNavigation<WorldRoom>({
+  const list = useListNavigation<FoundRoom>({
     items: matches,
     onChoose: centreOn,
     onCancel: () => {
@@ -502,26 +504,12 @@ function LoopBuilderCard({
       </div>
 
       {matches.length > 0 && (
-        <ul className="route-matches builder-matches" ref={list.listRef}>
-          {matches.map((room, index) => (
-            <li
-              data-active={list.isActive(index) ? 'true' : 'false'}
-              key={`${room.map}/${room.room}`}
-              {...list.hover(index)}
-            >
-              <button
-                onClick={() => centreOn(room)}
-                onMouseDown={(event) => event.preventDefault()}
-                type="button"
-              >
-                <span>{room.name}</span>
-                <span className="hint">
-                  {room.map}/{room.room}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <RoomMatches
+          className="route-matches builder-matches"
+          list={list}
+          matches={matches}
+          onChoose={centreOn}
+        />
       )}
 
       {/* The picture: the shared window, with the builder's own marks and

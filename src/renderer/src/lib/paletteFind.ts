@@ -1,6 +1,7 @@
 /**
  * What a typed palette query reaches past the client's own commands: the
- * rooms it names (*Go to*), then what the realm knows by it (*In the realm*),
+ * rooms it names (*Recent* for those walked to before, then *Go to*), then
+ * what the realm knows by it (*In the realm*),
  * as headed `Found` blocks of `transient` rows, addressed at the shown
  * character. Functions of the bridge they are handed, so a test drives them
  * without rendering; a row reads the clock for its hint, and the window only when
@@ -12,10 +13,11 @@
 import type { Command, Found } from '../components/CommandPalette';
 import type { IconName } from '../components/Icon';
 import { t } from './i18n';
-import { ago } from './players';
 import type { PopoverAnchor } from './popover';
 import { entryNumber, entryWord, flattenLookup } from './reference';
 import { tuning } from './tuning';
+import { foundRoomHint } from './visited';
+import { wasVisited, type FoundRoom } from '@shared/destinations';
 import { entityNumber } from '@shared/entities';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import { roomId, type WorldRoom } from '@shared/world';
@@ -50,11 +52,20 @@ export interface PaletteFindDeps {
  * The rows are `transient`: they exist for as long as the query, and a shelf
  * entry naming one would be a row nobody could reach from the shelf.
  */
-export async function roomRows(query: string, deps: PaletteFindDeps): Promise<Command[]> {
-  const { api, session, openRouteOn } = deps;
-  const rooms = await api.searchRooms(session, query);
+export async function roomRows(
+  query: string,
+  deps: PaletteFindDeps
+): Promise<{ recent: Command[]; others: Command[] }> {
+  const rooms = await deps.api.searchRooms(deps.session, query);
   const now = Date.now();
-  return rooms.map((room) => ({
+  const rows = (visited: boolean): Command[] =>
+    rooms.filter((room) => wasVisited(room) === visited).map((room) => roomRow(room, deps, now));
+  return { recent: rows(true), others: rows(false) };
+}
+
+function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
+  const { api, session, openRouteOn } = deps;
+  return {
     id: `goto:${roomId(room.map, room.room)}`,
     icon: 'route' as const,
     transient: true,
@@ -68,13 +79,7 @@ export async function roomRows(query: string, deps: PaletteFindDeps): Promise<Co
      * it is how two rooms of the same name are told apart, and dropping it
      * for the very rows most likely to be duplicates would be backwards.
      */
-    hint:
-      room.visitedAt === null
-        ? roomId(room.map, room.room)
-        : t('palette.navigate.gotoVisitedHint', {
-            roomReference: roomId(room.map, room.room),
-            agoText: ago(room.visitedAt, now)
-          }),
+    hint: foundRoomHint(room, now),
     run: () => {
       void api
         .routeTo(session, room.map, room.room)
@@ -107,7 +112,7 @@ export async function roomRows(query: string, deps: PaletteFindDeps): Promise<Co
           openRouteOn(room, null);
         });
     }
-  }));
+  };
 }
 
 /**
@@ -169,7 +174,8 @@ export async function realmRows(query: string, deps: PaletteFindDeps): Promise<C
 export async function paletteFind(query: string, deps: PaletteFindDeps): Promise<Found[]> {
   const [rooms, realm] = await Promise.all([roomRows(query, deps), realmRows(query, deps)]);
   return [
-    { key: 'rooms', label: t('palette.groups.found'), items: rooms },
+    { key: 'recent', label: t('rooms.groups.recent'), items: rooms.recent },
+    { key: 'rooms', label: t('palette.groups.found'), items: rooms.others },
     { key: 'realm', label: t('palette.groups.realm'), items: realm }
   ];
 }
