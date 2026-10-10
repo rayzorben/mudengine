@@ -1554,6 +1554,17 @@ export default function GlobalSettings({
                 }
               />
               <CheckField
+                checked={draft.automation.movement.reequipOnRecover}
+                hint={t('settings.movement.reequipOnRecoverHint')}
+                label={t('settings.movement.reequipOnRecover')}
+                name="global-reequip-on-recover"
+                onChange={(value) =>
+                  automation({
+                    movement: { ...draft.automation.movement, reequipOnRecover: value }
+                  })
+                }
+              />
+              <CheckField
                 checked={draft.automation.movement.collectKeys}
                 hint={t('settings.movement.collectKeysHint')}
                 label={t('settings.movement.collectKeys')}

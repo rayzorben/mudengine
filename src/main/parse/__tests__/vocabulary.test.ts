@@ -176,6 +176,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/UnlistedSearcher.ts',
       // A token's uses left, and a use with none (the cash run).
       'src/main/automation/CashRun.ts',
+      // The gear back on after recover corpse (todo 39).
+      'src/main/automation/RecoveredCorpse.ts',
       'src/main/parse/expectations.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))

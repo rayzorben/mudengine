@@ -1733,6 +1733,12 @@ export interface MovementConfig {
    */
   recoverGearFloor: number;
   /**
+   * Put the remembered gear back on when `recover` empties the character's own
+   * corpse into the pack (todo 39): the Re-equip Gear button, pressed for the
+   * player. On by default.
+   */
+  reequipOnRecover: boolean;
+  /**
    * Put a burning light out again in a room that does not need it, so a torch
    * lasts the sewer rather than the walk to it. MegaMUD does the same at every
    * step flagged as naturally lit. Only while nothing is walking the
@@ -2825,6 +2831,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       recoverGear: false,
       recoverGearTries: 2,
       recoverGearFloor: 2,
+      reequipOnRecover: true,
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       walkWhileConfused: false,
@@ -4064,6 +4071,7 @@ function normalizeMovement(value: unknown): MovementConfig {
     // on the sixth, and the figures are lives on the other end of it.
     recoverGearTries: int(raw['recoverGearTries'], d.recoverGearTries, 0, 20),
     recoverGearFloor: int(raw['recoverGearFloor'], d.recoverGearFloor, 0, 99),
+    reequipOnRecover: bool(raw['reequipOnRecover'], d.reequipOnRecover),
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
     walkWhileConfused: bool(raw['walkWhileConfused'], d.walkWhileConfused),

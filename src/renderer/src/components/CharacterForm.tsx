@@ -33,6 +33,7 @@ import FleeGotoFields from './FleeGotoFields';
 import ConditionWaitFields from './ConditionWaitFields';
 import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
+import RecoverFields from './RecoverFields';
 import DialFields from './DialFields';
 import InvokeFields from './InvokeFields';
 import AttackFields from './AttackFields';
@@ -1394,36 +1395,7 @@ export default function CharacterForm({
 
           <fieldset className="settings-menus" data-fieldset="movement-carry">
             <legend>{t('settings.movement.carryLegend')}</legend>
-            <CheckField
-              checked={form.recoverGear}
-              hint={t('settings.movement.recoverGearHint')}
-              label={t('settings.movement.recoverGear')}
-              name="recover-gear"
-              onChange={(value) => patch({ recoverGear: value })}
-            />
-            {/*
-              The bounds, drawn only where the switch is on: two
-              numbers limiting a feature nobody has turned on are
-              two controls that do nothing (todo 21).
-            */}
-            {form.recoverGear && (
-              <div className="settings-inline">
-                <NumberField
-                  hint={t('settings.movement.recoverGearFloorHint')}
-                  label={t('settings.movement.recoverGearFloorLabel')}
-                  name="recover-gear-floor"
-                  onChange={(value) => patch({ recoverGearFloor: value })}
-                  value={form.recoverGearFloor}
-                />
-                <NumberField
-                  hint={t('settings.movement.recoverGearTriesHint')}
-                  label={t('settings.movement.recoverGearTriesLabel')}
-                  name="recover-gear-tries"
-                  onChange={(value) => patch({ recoverGearTries: value })}
-                  value={form.recoverGearTries}
-                />
-              </div>
-            )}
+            <RecoverFields onChange={patch} value={form} />
             <CheckField
               checked={form.collectKeys}
               hint={t('settings.movement.collectKeysHint')}

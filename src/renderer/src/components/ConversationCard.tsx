@@ -7,7 +7,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import NamedText from './NamedText';
 import type { NameIndex } from '../lib/names';
-import { isKnownPlayer, isOwnName, PlayerName } from '../lib/players';
+import { isKnownPlayer, PlayerName } from '../lib/players';
 import type { PopoverAnchor } from '../lib/popover';
 import { matches } from '../lib/table';
 import { tuning } from '../lib/tuning';
@@ -27,7 +27,7 @@ import {
 } from '@shared/talk';
 import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
-import type { PlayerRegistry } from '@shared/players';
+import { isOwnName, type PlayerRegistry } from '@shared/players';
 import type { Block } from '@shared/blocks';
 import { parseMacro } from '@shared/macro';
 

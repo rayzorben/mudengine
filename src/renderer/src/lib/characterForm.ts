@@ -256,6 +256,8 @@ export interface CharacterFields {
   recoverGear: boolean;
   recoverGearTries: string;
   recoverGearFloor: string;
+  /** The gear back on after `recover corpse`. */
+  reequipOnRecover: boolean;
   lightDimRooms: boolean;
   extinguishInLight: boolean;
   buyLight: boolean;
@@ -527,6 +529,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     recoverGear: entry.movement.recoverGear,
     recoverGearTries: String(entry.movement.recoverGearTries),
     recoverGearFloor: String(entry.movement.recoverGearFloor),
+    reequipOnRecover: entry.movement.reequipOnRecover,
     lightDimRooms: entry.movement.lightDimRooms,
     extinguishInLight: entry.movement.extinguishInLight,
     buyLight: entry.movement.buyLight,
@@ -722,6 +725,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       recoverGear: form.recoverGear,
       recoverGearTries: Number.parseInt(form.recoverGearTries, 10) || 0,
       recoverGearFloor: Number.parseInt(form.recoverGearFloor, 10) || 0,
+      reequipOnRecover: form.reequipOnRecover,
       lightDimRooms: form.lightDimRooms,
       extinguishInLight: form.extinguishInLight,
       buyLight: form.buyLight,
@@ -1018,6 +1022,7 @@ export function emptyForm(
     recoverGear: movement.recoverGear,
     recoverGearTries: String(movement.recoverGearTries),
     recoverGearFloor: String(movement.recoverGearFloor),
+    reequipOnRecover: movement.reequipOnRecover,
     lightDimRooms: movement.lightDimRooms,
     extinguishInLight: movement.extinguishInLight,
     buyLight: movement.buyLight,

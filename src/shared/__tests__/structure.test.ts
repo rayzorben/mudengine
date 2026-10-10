@@ -44,7 +44,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by one `notice` and one `realmSpeed` for every module the constructor wires.
   // Lowered by the line editor's model of a keystroke chunk, out whole (`editorInput.ts`).
   // Lowered by the Quests card's questions, out to `questDesk` beside the Gear card's (`gearDesk`).
-  'src/main/session/SessionManager.ts': 3456,
+  // Lowered by the level trip's construction, out beside its planner (`trainTrip`, todo 39).
+  'src/main/session/SessionManager.ts': 3455,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2420,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
@@ -72,7 +73,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the light switches, shared with the Global page (`LightFields`, todo 11).
   // Lowered by the items that bless, out whole (`InvokeFields`, todo 03).
   // Lowered by the dial switches, out whole with the lives that hold them (`DialFields`, todo 07).
-  'src/renderer/src/components/CharacterForm.tsx': 1507
+  // Lowered by the gear recovery's switches, out whole (`RecoverFields`, todo 39).
+  'src/renderer/src/components/CharacterForm.tsx': 1479
 };
 
 /**

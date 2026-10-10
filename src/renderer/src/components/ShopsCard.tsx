@@ -4,7 +4,8 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import CardTable, { type Column } from './CardTable';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import { ago, isOwnName } from '../lib/players';
+import { ago } from '../lib/players';
+import { isOwnName } from '@shared/players';
 import { shelfLines, type Shelf, type ShelfLine } from '@shared/shops';
 import type { SessionId } from '@shared/ipc';
 

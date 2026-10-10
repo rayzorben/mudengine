@@ -1894,6 +1894,14 @@ export const RULES: Rule[] = [
   { type: 'player-gets', pattern: /^(?<player>\w+) picks up (?<item>.+)\./ },
   { type: 'player-gets', pattern: /^You took (?:(?<count>\d+) )?(?<item>.+)\./ },
   /*
+   * The end of a `recover`, from the server's source (`RecoverCommand.cs`; no
+   * capture yet): every item already came as `You took`, and the pack is
+   * current when this arrives. Recovered when the corpse is empty, remains
+   * when the load left coins or items in it.
+   */
+  { type: 'user-recovers-corpse', pattern: /^You have recovered the corpse of (?<player>\w+)\.$/ },
+  { type: 'user-recovers-corpse', pattern: /^The corpse of (?<player>\w+) remains\.$/ },
+  /*
    * A give between two players in the room (`GiveCommand.cs`; orohost wire,
    * `Killa gives you red iron axe.`, 2026-10-09). The stack's name carries
    * its count and no article (`ItemStack.GetItemStackName`); coins end without

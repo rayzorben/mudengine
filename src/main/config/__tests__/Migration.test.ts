@@ -6906,6 +6906,64 @@ describe('running between rounds is stated', () => {
   });
 });
 
+// Re-equip after recover corpse (todo 39): on after the recovery's floor, once.
+describe('re-equipping after recover corpse is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-reequip-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch on after recoverGearFloor, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    recoverGear: false\n    recoverGearTries: 2\n    recoverGearFloor: 2\n    provideLight: true\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(
+      soul,
+      'name: Soul\nautomation:\n  movement:\n    reequipOnRecover: false\n',
+      'utf8'
+    );
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const movement = (parse(text).automation as Record<string, Record<string, unknown>>)[
+      'movement'
+    ]!;
+    const keys = Object.keys(movement);
+    expect(keys[keys.indexOf('recoverGearFloor') + 1]).toBe('reequipOnRecover');
+    expect(movement['reequipOnRecover']).toBe(true);
+    expect(text).toContain('# Put your gear back on after `recover corpse`');
+    expect(fs.readFileSync(soul, 'utf8')).toContain('reequipOnRecover: false');
+    expect(
+      notesOf(
+        said,
+        'notices.migration.reequipOnRecover.one',
+        'notices.migration.reequipOnRecover.many'
+      )
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
 describe('how long logs are kept is stated', () => {
   let home: Home;
   let dir: string;

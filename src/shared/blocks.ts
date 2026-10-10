@@ -609,6 +609,12 @@ export type BlockType =
   /** `Your <item> has been returned to its proper place` — the cleanup took it out of the pack. */
   | 'user-item-returned'
   | 'player-gets'
+  /**
+   * `You have recovered the corpse of Probe.` — `recover` emptied a corpse
+   * into the pack; `The corpse of Probe remains.` when the load left some
+   * behind. Each item came before it as `You took`.
+   */
+  | 'user-recovers-corpse'
   | 'player-drops'
   | 'user-equipped'
   | 'user-equipped-failed'
@@ -1046,6 +1052,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-item-returned': 'items',
   'realm-cleanup': 'session',
   'player-gets': 'items',
+  'user-recovers-corpse': 'items',
   'player-drops': 'items',
   'user-equipped': 'items',
   'user-equipped-failed': 'items',
