@@ -12,12 +12,12 @@ import {
   damageDealt,
   critShare,
   experienceRate,
+  historySeries,
   hitsDealt,
   mean,
   perRound,
   onlineFor,
   ratePerHour,
-  rateSeries,
   share,
   statsScope,
   swings,
@@ -25,8 +25,6 @@ import {
   type BlowKind,
   type BlowTally,
   type CombatTally,
-  type AwaySpell,
-  type ExperienceSample,
   type StatsGraph
 } from '@shared/tally';
 import type { SessionId } from '@shared/ipc';
@@ -171,31 +169,24 @@ const MORE_ROWS: ReadonlySet<string> = new Set([
 
 /**
  * The rate over the window, one bar or point per bin, the scope's own rate
- * ruled across it. Drawn from `CombatTally.samples`; a bin before the first
- * sample is left blank rather than drawn as a rate of nothing.
+ * ruled across it. Drawn from the whole tally (`historySeries`), so a reset
+ * leaves the graph standing; a bin before the first sample is left blank
+ * rather than drawn as a rate of nothing.
  */
 function RateGraph({
-  samples,
-  away,
-  leftAt,
+  tally,
   hours,
   graph,
   now,
   current
 }: {
-  samples: readonly ExperienceSample[];
-  away: readonly AwaySpell[];
-  leftAt: number | null;
+  tally: CombatTally;
   hours: number;
   graph: StatsGraph;
   now: number;
   current: number | null;
 }) {
-  const bins = tuning().statsGraphBins;
-  // A stretch away still running reaches to now: a character off the realm
-  // is drawn as off it, not as earning nothing.
-  const spells = leftAt === null ? away : [...away, { from: leftAt, to: now }];
-  const series = rateSeries(samples, now - hours * 3_600_000, now, bins, spells);
+  const series = historySeries(tally, now, hours, tuning().statsGraphBins);
   const known = series.filter((value): value is number => value !== null);
   const head = (
     <div className="stats-graph-head">
@@ -544,15 +535,7 @@ function StatsCard({ baseline, character, onReset, session, ...chrome }: StatsCa
               {/* Small, the face is the level meter and the graph; the
                   figures wait for a bigger box (`lib/cardSize.ts`). */}
               <dl className="readout paired from-medium">{pairs(mainRows)}</dl>
-              <RateGraph
-                away={shown.away}
-                current={expRate}
-                graph={graph}
-                hours={hours}
-                leftAt={shown.leftAt}
-                now={now}
-                samples={shown.samples}
-              />
+              <RateGraph current={expRate} graph={graph} hours={hours} now={now} tally={tally} />
               <div className="from-medium">
                 <CardTable
                   caption={t('cards.stats.tableCaption')}

@@ -524,7 +524,7 @@ export class SessionManager {
       }
     );
     const tally = () => this.tracker.current.tally;
-    this.statsBaseline = new StatsBaseline(tally, (base) => this.sink.statsBase?.(base));
+    this.statsBaseline = new StatsBaseline(tally, (base) => this.sink.statsBase?.(base), notice);
     this.useRealm(players);
     /*
      * One interval for the life of the session, armed here rather than in
@@ -1495,7 +1495,7 @@ export class SessionManager {
           this.sink.loop?.(progress);
         },
         locate: () => this.claims.askWhereIAm(),
-        lapBegun: () => this.statsBaseline.rebase(),
+        lapBegun: (stopName) => this.statsBaseline.lapBegun(stopName),
         wantsCombat: () => this.travel.combatOnForLap()
       }
     );

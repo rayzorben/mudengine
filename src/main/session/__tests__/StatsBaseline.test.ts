@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { t } from '../../app/i18n';
 import { StatsBaseline } from '../StatsBaseline';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 
@@ -7,9 +8,11 @@ function harness(stored: CombatTally | null = null) {
   let tally: CombatTally = { ...NO_TALLY, since: 1_000, kills: 2 };
   const record = { stored };
   const published: Array<number | null> = [];
+  const said: string[] = [];
   const baseline = new StatsBaseline(
     () => tally,
-    (base) => published.push(base === null ? null : base.kills)
+    (base) => published.push(base === null ? null : base.kills),
+    (message) => said.push(message)
   );
   const store = {
     recallStatsBase: () => record.stored,
@@ -22,6 +25,7 @@ function harness(stored: CombatTally | null = null) {
     store,
     record,
     published,
+    said,
     kill: () => {
       tally = { ...tally, kills: (tally.kills ?? 0) + 1 };
     }
@@ -47,6 +51,15 @@ describe('the Combat Stats baseline', () => {
     expect(baseline.base?.kills).toBe(3);
     expect(record.stored?.kills).toBe(3);
     expect(published).toEqual([null, 3]);
+  });
+
+  it('resets on the lap reaching its first stop, and says so with the stop', () => {
+    const { baseline, store, published, said, kill } = harness();
+    baseline.useStore(store);
+    kill();
+    baseline.lapBegun('Stonework Tunnel');
+    expect(published).toEqual([null, 3]);
+    expect(said).toEqual([t('automation.loops.statsReset', { stopName: 'Stonework Tunnel' })]);
   });
 
   it('holds a reset for the session when the record keeps nothing', () => {

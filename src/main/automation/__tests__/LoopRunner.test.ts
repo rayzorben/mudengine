@@ -323,9 +323,9 @@ describe('when the lap wants auto-combat on', () => {
  */
 describe('when the lap actually begins', () => {
   function counted(p: LoopPlanner) {
-    let begun = 0;
-    const runner = new LoopRunner(p, { lapBegun: () => (begun += 1) });
-    return { runner, begun: () => begun };
+    const at: string[] = [];
+    const runner = new LoopRunner(p, { lapBegun: (stopName) => at.push(stopName) });
+    return { runner, begun: () => at.length, at };
   }
 
   it('is not the button: a run walking out to the loop has not begun one', () => {
@@ -338,11 +338,13 @@ describe('when the lap actually begins', () => {
   });
 
   it('is the first stop reached', () => {
-    const { runner, begun } = counted(planner().planner);
+    const { runner, begun, at } = counted(planner().planner);
     runner.start(loop, state());
     runner.onWalkEnded(true, null, state());
     expect(runner.progress.reached).toBe(true);
     expect(begun()).toBe(1);
+    // Named, so the notice can say where the statistics started again.
+    expect(at).toEqual(['Arena']);
   });
 
   it('is at once when the character was already standing on the loop', () => {

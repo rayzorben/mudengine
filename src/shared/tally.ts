@@ -502,6 +502,23 @@ export function rateSeries(
   return out;
 }
 
+/**
+ * The Combat Stats graph's series over the last `hours`: from the whole tally,
+ * never a reset's scope, since a reset starts the figures again and leaves the
+ * history standing (todo 20). A stretch away still running reaches to `now`,
+ * so a character off the realm is drawn as off it, not as earning nothing.
+ */
+export function historySeries(
+  tally: CombatTally,
+  now: number,
+  hours: number,
+  bins: number
+): Array<number | null> {
+  const away =
+    tally.leftAt === null ? tally.away : [...tally.away, { from: tally.leftAt, to: now }];
+  return rateSeries(tally.samples, now - hours * 3_600_000, now, bins, away);
+}
+
 /** How much of `[start, end)` the spells cover. */
 function awayWithin(away: readonly AwaySpell[], start: number, end: number): number {
   let covered = 0;
