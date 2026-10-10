@@ -23,7 +23,7 @@ describe('where each card is wanted on the rail', () => {
     expect(preferredOn('combat', on(49))).toEqual({ x: 29, y: 14, w: 20, h: 13 });
     expect(preferredOn('stats', on(49))).toEqual({ x: 0, y: 27, w: 29, h: 22 });
     expect(preferredOn('navigation', on(49))).toEqual({ x: 29, y: 27, w: 20, h: 22 });
-    expect(preferredOn('conversation', on(49))).toEqual({ x: 0, y: 49, w: 49, h: 22 });
+    expect(preferredOn('conversation', on(49))).toEqual({ x: 0, y: 49, w: 49, h: 21 });
   });
 
   it('shares a cell with no other card’s, with every card open', () => {

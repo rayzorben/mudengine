@@ -213,8 +213,8 @@ describe('the density slider', () => {
     expect(budget(1)).toBe(DENSE);
   });
 
-  it('sits halfway in the middle, which is what a fresh card is drawn at', () => {
-    expect(budget(DEFAULT_MAP_DENSITY)).toBe(25);
+  it('sits halfway in the middle', () => {
+    expect(budget(0.5)).toBe(25);
   });
 
   /*
@@ -233,7 +233,7 @@ describe('the density slider', () => {
    * that drew nothing because a stored fraction was 1.2 would be a card broken
    * by its own history.
    */
-  it('clamps a fraction outside the slider, and answers the middle for a non-number', () => {
+  it('clamps a fraction outside the slider, and answers the shipped density for a non-number', () => {
     expect(budget(-3)).toBe(SPARSE);
     expect(budget(9)).toBe(DENSE);
     expect(budget(Number.NaN)).toBe(budget(DEFAULT_MAP_DENSITY));

@@ -56,7 +56,7 @@ const PREFERRED: Record<CardId, GridBox> = {
   stats: { x: 0, y: 27, w: 29, h: 22 },
   // A loop's name, its bar, four figures and the stops.
   navigation: { x: 29, y: 27, w: 20, h: 22 },
-  conversation: { x: 0, y: 49, w: 49, h: 22 },
+  conversation: { x: 0, y: 49, w: 49, h: 21 },
   room: { x: 0, y: 71, w: 29, h: 14 },
   // Two ranks with a member each, the commonest party there is.
   party: { x: 29, y: 71, w: 20, h: 14 },
@@ -94,6 +94,11 @@ const PREFERRED: Record<CardId, GridBox> = {
   // ships docked above the console (`DEFAULT_ABOVE`).
   toolbar: { x: 0, y: 270, w: 49, h: 4 }
 };
+
+/** Cards in the order the rail with every card open reads, top row first. */
+export function inPreferredOrder(cards: readonly CardId[]): CardId[] {
+  return inWantedOrder(cards, (id) => PREFERRED[id]);
+}
 
 /** How wide the rail a fresh arrangement is kept on is: `PREFERRED`'s. */
 export const KEPT_COLUMNS = PREFERRED_COLUMNS;

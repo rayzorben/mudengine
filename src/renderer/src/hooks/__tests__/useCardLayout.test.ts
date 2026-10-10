@@ -38,34 +38,45 @@ function accountsForEveryCard(layout: ReturnType<typeof normalizeLayout>): void 
 }
 
 describe('a rail that has never been arranged', () => {
-  it('shows everything except the opt-in cards', () => {
+  it("ships festus's rail, with the party floating over the console", () => {
     const layout = normalizeLayout({});
     accountsForEveryCard(layout);
-    expect(layout.away).toEqual([
-      'builder',
-      'gang',
-      'inventory',
-      'banks',
-      'shops',
-      'quests',
-      'hunting',
-      'gear',
-      'conversation',
-      'stats',
-      'extension'
+    expect(layout.above).toEqual(['toolbar']);
+    expect(layout.floats).toEqual([
+      { id: 'party', x: 0.372, y: 0.284, w: 0.206, h: 0.184, solidity: 1 }
     ]);
-    expect(layout.floats).toEqual([]);
+    expect(layout.below).toEqual([]);
+    expect(layout.away).not.toContain('stats');
+    expect(layout.away).not.toContain('conversation');
   });
 
-  /* The two readouts a decision gets made off under pressure, adjacent. */
-  it('holds them in the order they ship in', () => {
-    expect(normalizeLayout({}).rail.slice(0, 5)).toEqual([
-      'self',
+  /* The diagnostics cards stand on the rail, drawn only while their group is open. */
+  it('holds them in the order the shipped arrangement reads', () => {
+    expect(normalizeLayout({}).rail).toEqual([
+      'map',
       'vitals',
       'combat',
-      'room',
-      'map'
+      'stats',
+      'navigation',
+      'conversation',
+      'session',
+      'link',
+      'automation',
+      'stream'
     ]);
+  });
+
+  it("stands each where festus has it, and Talk festus's height", () => {
+    const layout = normalizeLayout({});
+    const { cards } = onRail(layout.rail, layout, layout.columns);
+    const at = (id: CardId) => cards.find((card) => card.id === id)!;
+    expect(at('map').wanted).toEqual({ x: 0, y: 0 });
+    expect(at('vitals').wanted).toEqual({ x: 29, y: 0 });
+    expect(at('combat').wanted).toEqual({ x: 29, y: 14 });
+    expect(at('stats').wanted).toEqual({ x: 0, y: 27 });
+    expect(at('navigation').wanted).toEqual({ x: 29, y: 27 });
+    expect(at('conversation').wanted).toEqual({ x: 0, y: 49 });
+    expect(at('conversation').size).toEqual({ w: 49, h: 21 });
   });
 });
 
@@ -142,7 +153,8 @@ describe('a float read back off disk', () => {
       floats: [
         { id: 'nope' } as never,
         { id: 'map', x: 0.5, y: 0.5, w: 0.3, h: 0.3, solidity: 0.8 }
-      ]
+      ],
+      away: ['party']
     });
     accountsForEveryCard(layout);
     expect(layout.floats.map((float) => float.id)).toEqual(['map']);
@@ -284,7 +296,8 @@ describe('raising a floating card', () => {
     floats: [
       { id: 'map', x: 0.1, y: 0.1, w: 0.3, h: 0.3, solidity: 1 },
       { id: 'vitals', x: 0.2, y: 0.2, w: 0.3, h: 0.3, solidity: 1 }
-    ]
+    ],
+    away: ['party']
   }).floats;
 
   it('moves the card to the end of the paint order', () => {

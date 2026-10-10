@@ -362,8 +362,8 @@ export const TALK_LAYOUTS = ['original', 'condensed', 'condensed-aligned'] as co
 
 export type TalkLayout = (typeof TALK_LAYOUTS)[number];
 
-/** What a line looks like until somebody says otherwise. */
-export const DEFAULT_TALK_LAYOUT: TalkLayout = 'original';
+/** What a line looks like until somebody says otherwise: festus's (user, 2026-10-06). */
+export const DEFAULT_TALK_LAYOUT: TalkLayout = 'condensed-aligned';
 
 /** Whether a value out of a store is a layout this build can draw. */
 export function isTalkLayout(value: unknown): value is TalkLayout {

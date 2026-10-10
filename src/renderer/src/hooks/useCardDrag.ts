@@ -78,11 +78,14 @@ interface Origin {
 
 /**
  * A drag held at the rail's top or bottom edge scrolls it a cell a move, so
- * a card can be carried to rows the rail is not showing.
+ * a card can be carried to rows the rail is not showing. The top edge is the
+ * rail head's foot, since the head stays over the cards.
  */
-function scrollAtEdge(scroller: HTMLElement | null, cell: number, y: number): void {
-  if (!scroller) return;
-  const { top, bottom } = scroller.getBoundingClientRect();
+function scrollAtEdge(rail: RailGridView, cell: number, y: number): void {
+  const scroller = rail.scroller();
+  const seen = rail.seen();
+  if (!scroller || !seen) return;
+  const { top, bottom } = seen;
   if (cell <= 0 || y < top || y > bottom) return;
   if (y > bottom - cell) scroller.scrollTop += cell;
   else if (y < top + cell) scroller.scrollTop -= cell;
@@ -152,11 +155,11 @@ export function useCardDrag(
    */
   const gridTarget = useCallback(
     (at: Origin, x: number, y: number): Extract<DropTarget, { where: 'grid' }> | null => {
-      const scroller = rail.scroller();
+      const box = rail.seen();
       const frame = rail.frame();
       const width = rail.width();
-      if (!scroller || !frame || !width) return null;
-      const box = scroller.getBoundingClientRect();
+      if (!box || !frame || !width) return null;
+      // Over the rail head is not over a row of the grid.
       if (x < box.left || x > box.right || y < box.top || y > box.bottom) return null;
       const { w, h } = drawnOn(at.id, layout, width);
       const size = { w, h };
@@ -327,7 +330,7 @@ export function useCardDrag(
         Math.abs(event.clientX - at.x) > tuning().dragSlop ||
         Math.abs(event.clientY - at.y) > tuning().dragSlop;
       const live = far || (latest.current?.live ?? false);
-      if (live) scrollAtEdge(rail.scroller(), rail.frame()?.cell ?? 0, event.clientY);
+      if (live) scrollAtEdge(rail, rail.frame()?.cell ?? 0, event.clientY);
       const target = targetFor(event.clientX, event.clientY);
 
       /*

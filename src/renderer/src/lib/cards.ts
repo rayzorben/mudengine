@@ -561,6 +561,11 @@ export interface RailGridView {
   drawn(): ReadonlyMap<CardId, GridBox>;
   /** The element that scrolls the grid, for a drag held at its edge. */
   scroller(): HTMLElement | null;
+  /**
+   * Where the cards are seen on screen: the scroller's box below the rail
+   * head, which stays over them while they scroll. Null while there is no rail.
+   */
+  seen(): { left: number; top: number; right: number; bottom: number } | null;
   /** A rail card's own element, for measuring what it draws. */
   card(id: CardId): HTMLElement | null;
   /** The rail the cards were last drawn on; null while there is no rail. */

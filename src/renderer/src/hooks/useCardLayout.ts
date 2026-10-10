@@ -20,7 +20,13 @@ import {
   type Strip
 } from '../lib/cards';
 import { withGridSizes, withRailColumns, type RailMeasure } from '../lib/layoutMigration';
-import { inReadingOrder, KEPT_COLUMNS, preferredSize, standsOn } from '../lib/railCards';
+import {
+  inPreferredOrder,
+  inReadingOrder,
+  KEPT_COLUMNS,
+  preferredSize,
+  standsOn
+} from '../lib/railCards';
 import {
   scaled,
   type GridBox,
@@ -34,25 +40,28 @@ import { gridCell, gridGap } from './useRailGrid';
 const IDS: readonly CardId[] = CARDS.map((card) => card.id);
 
 /**
- * Put away unless a player has said otherwise: Inventory, Talk, Gang, Banks and
- * Combat Stats are opt-in because not every character wants them — and most
- * characters are in no gang at all, so a Gang card on every rail by default
- * would be a slot spent on "this character is in no gang" for nearly everybody.
- * Banks is the same shape: a character that has never banked has nothing for it
- * to say. Combat Stats is the other shape — a card somebody opens to ask a
- * question rather than one they watch while playing.
+ * Put away unless a player has said otherwise (user, 2026-10-06): the rail
+ * ships as festus keeps it, Map, Vitals, Combat, Combat Stats, Navigation and
+ * Talk, with the party floating over the console (`DEFAULT_FLOATS`). Every
+ * other card is put away, reached from the put-away chip or the palette. The
+ * diagnostics cards stay on the rail, drawn only while their group is open
+ * (`isDiagnosticCard`).
  */
 const DEFAULT_AWAY: readonly CardId[] = [
-  'inventory',
-  'conversation',
+  'self',
+  'room',
+  'builder',
+  'notifications',
+  'realm',
+  'players',
   'gang',
+  'inventory',
   'banks',
   'shops',
-  'stats',
-  'builder',
   'quests',
   'hunting',
   'gear',
+  'reference',
   'extension'
 ];
 
@@ -131,6 +140,14 @@ export const DEFAULT_FLOAT = {
   h: 0.3,
   solidity: solidityForFill(DEFAULT_FLOAT_FILL)
 } as const;
+
+/**
+ * Cards whose shipped home is over the console: the party where festus keeps
+ * it, solid, in the console's upper middle (user, 2026-10-06).
+ */
+const DEFAULT_FLOATS: readonly FloatState[] = [
+  { id: 'party', x: 0.372, y: 0.284, w: 0.206, h: 0.184, solidity: 1 }
+];
 
 const clamp = (value: number, low: number, high: number): number =>
   Math.min(high, Math.max(low, value));
@@ -574,20 +591,22 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
   // Anything this build knows about that the stored layout did not.
   for (const id of IDS) {
     if (placed.has(id)) continue;
-    if (DEFAULT_AWAY.includes(id)) away.push(id);
+    const float = DEFAULT_FLOATS.find((entry) => entry.id === id);
+    if (float) floats.push({ ...float });
+    else if (DEFAULT_AWAY.includes(id)) away.push(id);
     else if (DEFAULT_ABOVE.includes(id)) above.push(id);
     else rail.push(id);
   }
 
-  // Back into the shipped order, so a brand-new card lands where it belongs
-  // rather than at the bottom. Cards the player has actually arranged keep the
-  // order they were arranged in, because they were already in `partial.rail`.
+  // A card the player has not arranged goes in the order the shipped
+  // arrangement reads, top row first, after the cards they have. Cards the
+  // player has actually arranged keep the order they were arranged in,
+  // because they were already in `partial.rail`.
   const arranged = new Set(partial.rail ?? []);
-  rail.sort((a, b) => {
-    if (arranged.has(a) && arranged.has(b)) return 0;
-    if (arranged.has(a) !== arranged.has(b)) return arranged.has(a) ? -1 : 1;
-    return IDS.indexOf(a) - IDS.indexOf(b);
-  });
+  const ordered = [
+    ...rail.filter((id) => arranged.has(id)),
+    ...inPreferredOrder(rail.filter((id) => !arranged.has(id)))
+  ];
 
   /*
    * Settings are keyed by card rather than positioned, so nothing has to be
@@ -597,14 +616,14 @@ export function normalizeLayout(partial: Partial<CardLayout>): CardLayout {
    * Idempotent, so `reset` handing back already-parsed settings costs nothing.
    */
   return {
-    rail,
+    rail: ordered,
     above,
     below,
     floats,
     away,
     settings: readSettings(partial.settings),
     sizes: readSizes(partial.sizes, columns),
-    spots: readSpots(partial.spots, rail, columns),
+    spots: readSpots(partial.spots, ordered, columns),
     rolled: readRolled(partial.rolled),
     columns
   };
