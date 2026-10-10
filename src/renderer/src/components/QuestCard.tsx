@@ -3,25 +3,38 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useState } from 'react
 import type { Gate } from '@shared/gates';
 import { gateWords as gateWordsIn } from '@shared/gateWords';
 import BentoCard, { type CardChrome } from './BentoCard';
-import CardTable, { type Column } from './CardTable';
 import Icon from './Icon';
+import { ListTools, useListFilter, type Facet } from './ListTools';
+import { Name, Reward } from './QuestName';
+import QuestTile from './QuestTile';
+import { useCardSize } from '../hooks/useCardSize';
 import { useRemembered, useRememberedRanks } from '../hooks/useRemembered';
+import { useRunPress } from '../hooks/useRunPress';
 import { t } from '../lib/i18n';
 import { keepFocus } from '../lib/focus';
+import { askWords, rewardWords, sideWords } from '../lib/questWords';
+import { shelve } from '../lib/table';
 import {
   earlierHandover,
+  ownWay,
   packHolds,
   planSpan,
+  questAhead,
   questBars,
-  questExperience,
   questGroup,
-  questLevel,
+  questItemsTaken,
+  questNext,
+  questPays,
   questReading,
   questSide,
+  routesOf,
   itemsBrought,
+  shelfOrder,
   stepDone,
   stepsDone,
   QUEST_GROUPS,
+  type QuestAhead,
+  type QuestPays,
   type PlanSnag,
   type PlanSource,
   type PlanStep,
@@ -246,23 +259,16 @@ export interface QuestCardProps extends CardChrome {
   moving?: boolean;
 }
 
-/**
- * The experience column's rendering. Built once — a formatter is not cheap.
- *
- * The locale is the browser's, like every other figure in the chrome; nothing
- * here picks one, because the client does not choose the player's.
- */
-const COMPACT = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 1,
-  notation: 'compact'
-});
-
 /** A quest as the table reads it, with the summaries computed once. */
 interface Row {
   quest: Quest;
   side: ReturnType<typeof questSide>;
-  level: number | null;
-  exp: number;
+  /** What it pays this character, on their own routes. */
+  pays: QuestPays;
+  /** The step they would take next, or null where none is known. */
+  next: QuestStep | null;
+  /** A rank past the next one that wants more levels, for the Later shelf. */
+  ahead: QuestAhead | null;
   /** The classes and races the realm restricts it to, by name. Empty is anybody. */
   limits: string[];
   hidden: boolean;
@@ -318,21 +324,29 @@ interface Progress {
   at: number | null;
 }
 
-export function questCopyText(quests: readonly Quest[]): string {
+export function questCopyText(
+  shelves: ReadonlyArray<{ label: string; rows: ReadonlyArray<{ quest: Quest; pays: QuestPays }> }>
+): string {
   return [
     t('cards.quests.title'),
-    ...quests.map((quest) => {
-      const fields = {
-        name: quest.name,
-        // Drawn on the row, so it goes on the clipboard with it.
-        id: quest.id,
-        stepCount: quest.steps.length,
-        exp: questExperience(quest).toLocaleString()
-      };
-      return quest.steps.length === 1
-        ? t('cards.quests.copyRow.one', fields)
-        : t('cards.quests.copyRow.many', fields);
-    })
+    ...shelves.flatMap((shelf) => [
+      shelf.label,
+      ...shelf.rows.map(({ quest, pays }) => {
+        const fields = {
+          name: quest.name,
+          // Drawn on the tile, so it goes on the clipboard with it.
+          id: quest.id,
+          stepCount: quest.steps.length,
+          // Unknown is never drawn as a figure: a class's own routes are unread.
+          exp: pays.unread
+            ? t('cards.quests.atLeast', { amount: pays.exp.toLocaleString() })
+            : pays.exp.toLocaleString()
+        };
+        return quest.steps.length === 1
+          ? t('cards.quests.copyRow.one', fields)
+          : t('cards.quests.copyRow.many', fields);
+      })
+    ])
   ].join('\n');
 }
 
@@ -364,154 +378,6 @@ export function questStepsText(quest: Quest): string {
       return `  ${said.join(' · ')}${routes.join('')}`;
     })
   ].join('\n');
-}
-
-/**
- * One thing that shuts this character out, in the realm's own gate words.
- *
- * The same register `gateWords` writes — a lower-case fragment, the realm's
- * own names — because that is what these *are*: the gates of the routes the
- * character cannot take, read from the other side. A class or a race is
- * *never*, a level is *not yet*, and the two are worded apart.
- */
-export function barWords(bar: QuestBar): string {
-  switch (bar.kind) {
-    case 'class':
-      return t('cards.quests.bar.klass', { names: bar.names.join(', ') });
-    case 'race':
-      return t('cards.quests.bar.race', { names: bar.names.join(', ') });
-    case 'counter':
-      return t('cards.quests.bar.counter', { names: bar.names.join(', ') });
-    case 'level':
-      return t('cards.quests.bar.level', { level: bar.level });
-  }
-}
-
-/**
- * Why a quest is drawn sunk and quiet, as the row's own hover text.
- *
- * Two sentences, because *not yet* and *not ever* are different statements
- * about a character and one word for both would be wrong half the time: a
- * level is a rung they climb, and a class, a race or a counter already spent
- * is not. Two literal `t()` calls, as a plural pair is.
- */
-export function barsTitle(bars: readonly QuestBar[]): string | undefined {
-  if (bars.length === 0) return undefined;
-  const reasons = bars.map(barWords).join(' · ');
-  return bars.every((bar) => bar.kind === 'level')
-    ? t('cards.quests.bar.titleYet', { reasons })
-    : t('cards.quests.bar.title', { reasons });
-}
-
-/** `#642` — this card's own stand-in for a row the realm does not name. */
-const UNNAMED = /^#\d+$/;
-
-/**
- * A realm name, drawn as the control it is everywhere else in the client.
- *
- * *A name is a control everywhere it is printed* — and this card was printing
- * five of them and making controls of two. **`yellowed note` is an item**: it
- * has a weight, a price, a row number and a panel that states them, and the
- * one card in the client that could not open it was the one telling the
- * player to go and get it. Reported 2026-09-15.
- *
- * Two refusals, both the same rule about a control bound to nowhere. **A null
- * `onName`** is a pinned float, where the panel belongs to the shown character
- * and this card's realm may not be theirs — as it already did for the asker.
- * And **`#642`** is not a name: it is this card admitting the realm gave the
- * row none, so there is nothing to look up and it stays the text it is.
- */
-function Name({
-  children,
-  onName
-}: {
-  children: string;
-  onName?: ((name: string, anchor: HTMLElement) => void) | null;
-}): React.JSX.Element {
-  if (!onName || UNNAMED.test(children)) return <span>{children}</span>;
-  return (
-    <button
-      className="lookup"
-      onClick={(event) => onName(children, event.currentTarget)}
-      onMouseDown={keepFocus}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-/**
- * One reward, with the realm's own name in it as a control.
- *
- * Only the **name** is the control and never the sentence around it: a spell
- * reward reads *teaches {name}*, and a button carrying the verb would claim
- * the word *teaches* is something to look up. The other five kinds — exp,
- * coins, an ability rank, lives, an alignment shift — name nothing the realm
- * has a row for, so they stay the words `rewardWords` writes.
- */
-function Reward({
-  reward,
-  onName
-}: {
-  reward: QuestReward;
-  onName?: ((name: string, anchor: HTMLElement) => void) | null;
-}): React.JSX.Element {
-  if (reward.kind === 'item') {
-    return <Name onName={onName}>{reward.name ?? `#${reward.id}`}</Name>;
-  }
-  if (reward.kind === 'spell') {
-    return (
-      <>
-        <span>{t('cards.quests.reward.spellVerb')} </span>
-        <Name onName={onName}>{reward.name ?? `#${reward.id}`}</Name>
-      </>
-    );
-  }
-  return <>{rewardWords(reward)}</>;
-}
-
-/** One reward, in words. */
-export function rewardWords(reward: QuestReward): string {
-  switch (reward.kind) {
-    case 'exp':
-      return t('cards.quests.reward.exp', { amount: reward.amount.toLocaleString() });
-    case 'item':
-      return reward.name ?? `#${reward.id}`;
-    case 'coins':
-      return t('cards.quests.reward.coins', {
-        amount: reward.amount.toLocaleString(),
-        coin: reward.coin
-      });
-    case 'ability':
-      /*
-       * `giveability` **sets** a rank and `addability` **adds** to what is
-       * there, and the difference is the whole meaning of the number. Every
-       * reward read `{name} to rank {value}`, so `addability 2 1` — *+1 AC* —
-       * printed **AC to rank 1**, which is a worse suit of armour than the one
-       * the realm hands over. 367 of the shipped realm's 618 ability rewards
-       * are adds; `mode` had been carried by the parser and read by nothing.
-       */
-      if (reward.mode === 'add') {
-        return t('cards.quests.reward.abilityAdd', {
-          name: reward.name ?? String(reward.id),
-          // The sign is part of the figure: `addability` may take one away.
-          amount: reward.value >= 0 ? `+${reward.value}` : String(reward.value)
-        });
-      }
-      return t('cards.quests.reward.ability', {
-        name: reward.name ?? String(reward.id),
-        rank: reward.value
-      });
-    case 'spell':
-      return t('cards.quests.reward.spell', { name: reward.name ?? `#${reward.id}` });
-    case 'lives':
-      return reward.amount === 1
-        ? t('cards.quests.reward.lives.one', { count: reward.amount })
-        : t('cards.quests.reward.lives.many', { count: reward.amount });
-    case 'alignment':
-      return t('cards.quests.reward.alignment', { amount: reward.amount });
-  }
 }
 
 /**
@@ -565,23 +431,6 @@ export function wayWords(way: QuestWay, quest: number): string {
   return pays.length === 0 ? asks : `${asks} → ${pays}`;
 }
 
-/**
- * Whether a route is this character's, by the class it names.
- *
- * By name and case-insensitively, because the class on the sheet is a word the
- * server printed and the one on the gate is a word the realm database holds —
- * the same class spelled by two sources. A character whose class is not known
- * yet matches nothing, which is the honest answer: a route marked *yours* on a
- * guess is the reassuring kind of wrong.
- */
-function ownWay(way: QuestWay, klass: string | null | undefined): boolean {
-  if (klass === null || klass === undefined || klass.trim().length === 0) return false;
-  const mine = klass.trim().toLowerCase();
-  return way.needs.some(
-    (gate) => gate.kind === 'class' && (gate.name ?? '').trim().toLowerCase() === mine
-  );
-}
-
 /** One item a step wants: carried, or carried and handed over. */
 interface Bring {
   id: number;
@@ -609,30 +458,6 @@ function bringOf(step: QuestStep): Bring[] {
     name: item.name ?? `#${item.id}`,
     hand: item.hand
   }));
-}
-
-/** The command a step is reached by, or null where the realm traced nobody. */
-function askWords(step: QuestStep): string | null {
-  /*
-   * A step whose block a monster's **death** runs is not reached by a command
-   * at all: it is reached by killing the thing. First, because such a step has
-   * no `say` and would otherwise fall out of the bottom as *nothing to do*,
-   * which is what the book said about the Phoenix chain's two boss steps.
-   */
-  if (step.kill !== undefined) return t('cards.quests.step.kill', { who: step.kill });
-  if (step.say.length === 0) return null;
-  /*
-   * A room's own script has no asker — the altar answers `touch gem` to
-   * whoever is standing on it — and the phrase is typed *there* rather than at
-   * somebody (todo 12). Two sentences for two different acts, and the place
-   * beside it is the row's own `where` control.
-   */
-  if (step.who === undefined || step.who.trim().length === 0) {
-    return step.room === undefined
-      ? null
-      : t('cards.quests.step.doHere', { word: step.say[0] ?? '' });
-  }
-  return t('cards.quests.step.ask', { who: step.who, word: step.say[0] ?? '' });
 }
 
 /** The counter move a step makes, as the realm states it. */
@@ -840,7 +665,7 @@ function limitWords(quest: Quest): string[] {
     // have them, so reading `needs` alone found no class on any of the ten
     // restricted quests — and with the `For` column gone that left typing
     // `Paladin` matching nothing at all.
-    for (const way of [step, ...(step.ways ?? [])]) {
+    for (const way of routesOf(step)) {
       for (const gate of way.needs) {
         if (gate.kind === 'class' || gate.kind === 'race') names.add(gate.name ?? `#${gate.id}`);
       }
@@ -853,10 +678,9 @@ function limitWords(quest: Quest): string[] {
 const NO_QUESTS: readonly Quest[] = [];
 
 /**
- * The book's three shelves, in the order it is read: what this character can
- * get on with, what is behind them, what the realm shuts them out of. The
- * head is one word and the sentence behind it is its hover text; three
- * literal `t()` calls, as the dictionary is read.
+ * The book's four shelves, in the order it is read (`QUEST_GROUPS`). The head
+ * is one word and the sentence behind it is its hover text; literal `t()`
+ * calls, as the dictionary is read.
  */
 const GROUPS: ReadonlyArray<{ id: QuestGroup; label: string; title: string }> = QUEST_GROUPS.map(
   (id) => {
@@ -866,6 +690,12 @@ const GROUPS: ReadonlyArray<{ id: QuestGroup; label: string; title: string }> = 
           id,
           label: t('cards.quests.group.open'),
           title: t('cards.quests.group.openTitle')
+        };
+      case 'later':
+        return {
+          id,
+          label: t('cards.quests.group.later'),
+          title: t('cards.quests.group.laterTitle')
         };
       case 'done':
         return {
@@ -882,6 +712,12 @@ const GROUPS: ReadonlyArray<{ id: QuestGroup; label: string; title: string }> = 
     }
   }
 );
+
+/** The side chips: which band of the alignment line a quest is for (`questSide`). */
+const SIDES: readonly Facet[] = (['good', 'neutral', 'evil', 'any'] as const).map((id) => ({
+  id,
+  label: sideWords(id)
+}));
 
 function QuestCard({
   session,
@@ -937,6 +773,8 @@ function QuestCard({
   const [showHidden, setShowHidden] = useState(false);
   /** Which quest is opened out into its track. One at a time. */
   const [open, setOpen] = useState<number | null>(null);
+  /** The step whose plan is open, while its quest's track is. */
+  const [planBlock, setPlanBlock] = useState<number | null>(null);
   /*
    * A filter that hides the opened quest closes its track: the panel is a
    * detail *of a row*, and a detail under a table that no longer lists the row
@@ -944,9 +782,12 @@ function QuestCard({
    * the only thing that knows what survived its own chips and find field, so it
    * is the thing that reports it — stable, because it is an effect dependency.
    */
-  const closeTrack = useCallback(() => setOpen(null), []);
+  const closeTrack = useCallback(() => {
+    setOpen(null);
+    setPlanBlock(null);
+  }, []);
   /** Back from a plan to the steps it was asked about. */
-  const closePlan = useCallback(() => setPlanFor(null), []);
+  const closePlan = useCallback(() => setPlanBlock(null), []);
 
   /*
    * How far through each quest this character is.
@@ -966,6 +807,9 @@ function QuestCard({
       total: quest.steps.length
     };
   };
+
+  /** Every item some step takes back: a quest item, never a reward. */
+  const taken = useMemo(() => questItemsTaken(quests), [quests]);
 
   const rows = useMemo<Row[]>(() => {
     const who: QuestDoer = {
@@ -987,216 +831,87 @@ function QuestCard({
        */
       const progress = progressOf(quest);
       const bars = questBars(quest, who, progress);
+      const ahead = questAhead(quest, who, progress);
       return {
         quest,
         side: questSide(quest),
-        level: questLevel(quest),
-        exp: questExperience(quest),
+        pays: questPays(quest, characterClass, taken),
+        next: questNext(quest, progress),
+        ahead,
         limits: limitWords(quest),
         hidden: hidden.has(String(quest.id)),
         progress,
         bars,
-        group: questGroup(progress.done, progress.total, bars)
+        group: questGroup(progress.done, progress.total, bars, ahead)
       };
     });
     /*
-     * In the realm's own order. **The card's own order** — the one a third
-     * click on a heading comes back to, and the one place a table is allowed
-     * an opinion about what matters — is the three shelves the table draws
-     * from `group`: what this character can get on with, then what is behind
-     * them, then what they cannot do. A book of thirty-nine quests is mostly
-     * other people's, and a Paladin has no business reading past `Smash` to
-     * find the good chain; a quest sunk to the last shelf is never hidden,
-     * because *not for you* and *not interested* are different statements and
-     * only the second is the player's.
+     * The card's own order: the four shelves, and within them Open nearest to
+     * done and best paid first, Later by the level it waits on (`shelfOrder`).
+     * A quest on the last shelf is never hidden, because *not for you* and
+     * *not interested* are different statements and only the second is the
+     * player's.
      */
-    return book;
-  }, [quests, hidden, counters, said, ranks, characterClass, characterRace, characterLevel]);
+    return book.sort((a, b) =>
+      shelfOrder(
+        { ...a.progress, group: a.group, exp: a.pays.exp, ahead: a.ahead },
+        { ...b.progress, group: b.group, exp: b.pays.exp, ahead: b.ahead }
+      )
+    );
+  }, [quests, taken, hidden, counters, said, ranks, characterClass, characterRace, characterLevel]);
 
   /*
    * A hidden quest is *gone*, not greyed — that is what hiding is for. The way
-   * back is the switch in the action column, which says how many are hidden so
-   * it can never be a control nobody knows they pressed.
+   * back is the card's own action, which says how many are hidden so it can
+   * never be a control nobody knows they pressed.
    */
   const shown = showHidden ? rows : rows.filter((row) => !row.hidden);
   const hiddenCount = rows.filter((row) => row.hidden).length;
 
-  const columns: Array<Column<Row>> = [
-    {
-      id: 'name',
-      label: t('cards.quests.columns.quest'),
-      wide: true,
-      value: (row) =>
-        /*
-         * The one searchable column, so everything findable about a quest is in
-         * it: its name, the people its steps are asked of, the words to say,
-         * and the classes and races the realm restricts it to. Typing a person
-         * finds the quest they are part of and typing `Paladin` finds a quest a
-         * paladin can do, without a column for either.
-         */
-        [
-          row.quest.name,
-          // Its counter's own number, which is now drawn on the row: `abil`
-          // prints `PhoenixQuest(133)` and a player reading that listing wants
-          // to type 133 here and land on the chain.
-          String(row.quest.id),
-          // The killer too: *dread mystic* is as good a way to find the
-          // Phoenix chain as its asker's name, and on the two steps it owns
-          // it is the only name the step has.
-          ...row.quest.steps.map(
-            (step) => `${step.who ?? ''} ${step.kill ?? ''} ${step.say.join(' ')}`
-          ),
-          ...row.limits
-        ].join(' '),
-      cell: (row) => (
-        <span className="quest-name-cell">
-          <button
-            aria-expanded={open === row.quest.id}
-            className="lookup"
-            onClick={() => setOpen(open === row.quest.id ? null : row.quest.id)}
-            onMouseDown={keepFocus}
-            /*
-              The reason again, on the row's one focusable element. The row
-              itself carries it, but a `title` on an ancestor is shadowed by
-              any descendant that has its own — and the counter number beside
-              this name now does — so a hand resting on the most likely half of
-              a dimmed row would have been told the number's story instead of
-              why the row is dimmed.
-
-              And the name itself where nothing bars it, which is the promise
-              the cell's own rule has always made — *a shortened name is still
-              the same quest and its full text is a tooltip and a click away* —
-              and never kept. It reads `Go…` on a 280px rail, and the counter
-              number beside it costs a few more characters.
-            */
-            title={barsTitle(row.bars) ?? row.quest.name}
-            type="button"
-          >
-            {row.quest.name}
-          </button>
-          {/*
-            The counter's own ability number, in the quiet monospace figure
-            every other realm number in the client is drawn in (`.entity-id`).
-            Spelled the way the **wire** spells an ability — `(133)`, as
-            `abil` prints it — rather than the `#642` of an item or a monster
-            row: this is the one number a player reads off the server's own
-            listing, and matching what they are looking at is the whole use of
-            printing it. `EntityNumber` is not reached for, because its job is
-            refusing to guess *which row* and a quest counter has exactly one.
-          */}
-          <span className="entity-id" title={t('cards.quests.counterTooltip')}>
-            {t('cards.quests.counter', { id: row.quest.id })}
-          </span>
-          {/*
-            How far through it this character is, on the row, so *which chains
-            am I part-way through* is answered without opening thirty-nine
-            tracks. Drawn **only where there is progress** — the shipped realm
-            has 39 quests and a character is under way on a handful — which is
-            why it can sit in the one column already being ellipsised on a
-            280px rail: for every other row it takes no width at all. The
-            figure is the track's own `done of total`, written compactly here
-            and in words in the title, so the row and the track cannot
-            disagree about the same quest.
-          */}
-          {row.progress.done > 0 && (
-            <span
-              className="chip quest-progress"
-              /*
-                Finished is the one state a count cannot say on its own —
-                `9/9` and `2/2` are the same shape as `9/52` — so the chip
-                says it with the progression's own tick and tone, and the
-                row it is on goes quiet with it.
-              */
-              data-done={row.group === 'done' ? 'true' : undefined}
-              title={
-                row.progress.observed
-                  ? t('cards.quests.progress.fromRealm')
-                  : row.progress.watched
-                    ? t('cards.quests.progress.fromWatching')
-                    : t('cards.quests.progress.fromYou')
-              }
-            >
-              {row.progress.done}/{row.progress.total}
-            </span>
-          )}
-        </span>
-      )
-    },
+  const filter = useListFilter({
+    rows: shown,
+    session,
+    name: 'quests',
+    facets: SIDES,
+    facetOf: (row) => row.side,
     /*
-     * There is no step-count column and no *who it is for* column, and both
-     * omissions are measured. The rail is about 280px and this card had five
-     * columns in it: the **quest's own name** was the one being ellipsised —
-     * `GoodQu…`, `Witchu…`, `MageBa…` — which is the worst of them to lose.
-     *
-     * How long a quest is is answered by opening it, and it is in the copy
-     * text where somebody pasting the book wants it. *Who it is for* said
-     * `Anybody` on 36 of the 39 rows, which is a column repeating one word
-     * down its whole length, and the three that were not said `15 kinds` —
-     * a count standing in for the answer. The **step** states it exactly now,
-     * one route per class with that class's own price and reward, so the
-     * column was a worse copy of something better placed. Both are still
-     * searchable through the name column, which is where a find field looks.
+     * Everything findable about a quest: its name, its counter number as
+     * `abil` prints it, the people its steps are asked of or killed, the words
+     * to say, and the classes and races the realm restricts it to.
      */
-    {
-      id: 'level',
-      // Small, the book is each quest's name and progress (`lib/cardSize.ts`).
-      label: t('cards.quests.columns.level'),
-      from: 'medium',
-      numeric: true,
-      // Null is not zero: a quest the realm sets no level on is open to
-      // everybody, and drawing that as level 0 would be a claim it does not make.
-      value: (row) => row.level
-    },
-    {
-      id: 'exp',
-      label: t('cards.quests.columns.exp'),
-      from: 'medium',
-      numeric: true,
-      /*
-       * Zero is a figure here and not an absence: a quest whose steps pay no
-       * experience is a quest that pays none, which is something the realm
-       * says. Drawn as null it sorted last whichever way the column pointed,
-       * read as *not known*, and disagreed with the copy text, which has
-       * always written `0 exp` for the same quest.
-       */
-      value: (row) => row.exp,
-      /*
-       * Drawn short and sorted and searched in full, the split `value` and
-       * `cell` exist for. The long chains pay 702,660,000 and that is nine
-       * monospace figures in a column on a 280px rail — it was taking the width
-       * off the *quest's own name*, which is the one thing in the row nobody
-       * can do without. Compact notation is a rendering, not a rounding of the
-       * fact: the full figure is what sorts, what the find field matches and
-       * what the copy text carries.
-       */
-      cell: (row) => COMPACT.format(row.exp)
-    },
-    {
-      id: 'hide',
-      label: t('cards.quests.columns.hide'),
-      from: 'medium',
-      control: true,
-      unsearchable: true,
-      unsortable: true,
-      value: () => null,
-      cell: (row) => (
-        <button
-          aria-label={
-            row.hidden
-              ? t('cards.quests.showOne', { name: row.quest.name })
-              : t('cards.quests.hideOne', { name: row.quest.name })
-          }
-          className="row-action"
-          onClick={() => hidden.toggle(String(row.quest.id))}
-          onMouseDown={keepFocus}
-          title={row.hidden ? t('cards.quests.showOne', { name: row.quest.name }) : undefined}
-          type="button"
-        >
-          <Icon name={row.hidden ? 'eye' : 'eyeOff'} />
-        </button>
-      )
-    }
-  ];
+    fields: (row) => [
+      [
+        row.quest.name,
+        String(row.quest.id),
+        ...row.quest.steps.map(
+          (step) => `${step.who ?? ''} ${step.kill ?? ''} ${step.say.join(' ')}`
+        ),
+        ...row.limits
+      ].join(' ')
+    ],
+    detailKey: open === null ? null : String(open),
+    keyOf: (row) => String(row.quest.id),
+    onDetailHidden: closeTrack
+  });
+  const shelves = shelve(filter.kept, GROUPS, (row) => row.group);
+  const size = useCardSize();
+  const roomy = size !== 'small';
+
+  // A plan belongs to the quest it was asked about, so another opening drops it.
+  const toggleOpen = useCallback((id: number) => {
+    setOpen((now) => (now === id ? null : id));
+    setPlanBlock(null);
+  }, []);
+  const toggleHidden = useCallback((id: number) => hidden.toggle(String(id)), [hidden]);
+  const planStep = useCallback((id: number, block: number) => {
+    setOpen(id);
+    setPlanBlock(block);
+  }, []);
+  const runStep = useMemo(
+    () =>
+      runPlan ? (id: number, block: number) => runPlan(block, ranks.get(String(id)) ?? null) : null,
+    [runPlan, ranks]
+  );
 
   const opened = open === null ? null : (quests.find((quest) => quest.id === open) ?? null);
 
@@ -1205,10 +920,8 @@ function QuestCard({
    * goes on the clipboard, and the copy text is this card's. A plan belongs
    * to the quest it was asked about, so another quest opening drops it.
    */
-  const [planFor, setPlanFor] = useState<number | null>(null);
-  useEffect(() => {
-    setPlanFor(null);
-  }, [open]);
+  const planFor =
+    opened !== null && opened.steps.some((step) => step.block === planBlock) ? planBlock : null;
   const openedProgress = opened === null ? null : progressOf(opened);
   /*
    * The ground the plan is asked from: the room, held still while a walk or
@@ -1263,7 +976,9 @@ function QuestCard({
       }
       className="quest-card"
       copyText={() => {
-        const book = questCopyText(shown.map((row) => row.quest));
+        const book = questCopyText(
+          shelves.map((shelf) => ({ label: shelf.group?.label ?? '', rows: shelf.rows }))
+        );
         // What is on screen: the book, and the track under it when one is
         // open — or the plan standing in the track's place.
         if (opened === null) return book;
@@ -1273,44 +988,68 @@ function QuestCard({
       paned
       title={t('cards.quests.title')}
     >
-      <CardTable
-        caption={t('cards.quests.caption')}
-        className="quest-table"
-        columns={columns}
-        detailKey={open === null ? null : String(open)}
-        empty={t('cards.quests.none')}
-        facetOf={(row) => row.side}
-        facets={[
-          { id: 'good', label: t('cards.quests.side.good') },
-          { id: 'neutral', label: t('cards.quests.side.neutral') },
-          { id: 'evil', label: t('cards.quests.side.evil') },
-          { id: 'any', label: t('cards.quests.side.any') }
-        ]}
+      <ListTools
+        chips={roomy && filter.present.length > 1}
+        filter={filter}
         find={t('cards.quests.find')}
-        groupOf={(row) => row.group}
-        groups={GROUPS}
-        keyOf={(row) => String(row.quest.id)}
-        name="quests"
-        onDetailHidden={closeTrack}
-        rowAttrs={(row) => ({
-          'data-hidden': row.hidden ? 'true' : 'false',
-          // The opened row is marked tonally, like the roster's selected row:
-          // the track below has to say which of forty quests it belongs to.
-          'data-open': open === row.quest.id ? 'true' : 'false',
-          /*
-            Which shelf it is on, so the row says so once the shelves are
-            sorted away: a finished chain goes quiet, and one this character
-            cannot do is sunk and dimmed with the realm's own reason as the
-            row's hover text. On the row rather than on the name, because the
-            whole row is what is dimmed and the reason has to be reachable
-            from whichever part of it the hand is over.
-          */
-          'data-standing': row.group,
-          ...(barsTitle(row.bars) === undefined ? {} : { title: barsTitle(row.bars) })
-        })}
-        rows={shown}
-        session={session}
+        finding={roomy}
       />
+      <div aria-label={t('cards.quests.caption')} className="scroller quest-book">
+        {rows.length === 0 ? (
+          <div className="empty">{t('cards.quests.none')}</div>
+        ) : filter.kept.length === 0 ? (
+          <div className="empty">{t('table.noMatches')}</div>
+        ) : (
+          shelves.map((shelf) => (
+            <section
+              aria-label={shelf.group?.label}
+              className="quest-shelf"
+              data-group={shelf.group?.id}
+              key={shelf.group?.id ?? ''}
+            >
+              {shelf.group !== null && (
+                <h3 className="quest-shelf-head" title={shelf.group.title}>
+                  {shelf.group.label}
+                  <span className="table-group-count">{shelf.rows.length}</span>
+                </h3>
+              )}
+              <ul className="tile-grid">
+                {shelf.rows.map((row) => (
+                  <QuestTile
+                    ahead={row.ahead}
+                    bars={row.bars}
+                    done={row.progress.done}
+                    group={row.group}
+                    hidden={row.hidden}
+                    id={row.quest.id}
+                    key={row.quest.id}
+                    level={characterLevel ?? null}
+                    name={row.quest.name}
+                    next={row.next}
+                    observed={row.progress.observed}
+                    onHide={toggleHidden}
+                    onName={onName}
+                    onOpen={toggleOpen}
+                    onPlan={loadPlan ? planStep : null}
+                    onRun={runStep}
+                    open={open === row.quest.id}
+                    pays={row.pays}
+                    // Only the tile whose step is running redraws as it moves.
+                    run={
+                      run !== null && run !== undefined && run.block === row.next?.block
+                        ? run
+                        : null
+                    }
+                    side={row.side}
+                    total={row.progress.total}
+                    watched={row.progress.watched}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
+        )}
+      </div>
       {opened === null ? null : (
         <Track
           carrying={carrying ?? null}
@@ -1318,7 +1057,7 @@ function QuestCard({
           loadErrand={loadErrand}
           onGoTo={onGoTo}
           onName={onName}
-          onPlan={loadPlan ? setPlanFor : null}
+          onPlan={loadPlan ? setPlanBlock : null}
           onPlanBack={closePlan}
           onRank={(rank) => ranks.set(String(opened.id), rank)}
           onRun={runPlan ? (block) => runPlan(block, ranks.get(String(opened.id)) ?? null) : null}
@@ -1621,28 +1360,7 @@ function Plan({
   onGoTo?: ((room: string) => void) | null;
 }): React.JSX.Element {
   const to = quest.steps.find((step) => step.block === target)?.to;
-  /*
-   * The press's own answer: main refuses out loud with a sentence — the
-   * switch is off, a route is walking — and it is drawn here beside the
-   * button rather than left to the console, because the person is looking
-   * at the button. Cleared by the next press and by the run starting.
-   */
-  const [refused, setRefused] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
-  const mine = run !== null && run.block === target && run.status !== 'idle';
-  const running = mine && run.status === 'running';
-  useEffect(() => {
-    if (running) setRefused(null);
-  }, [running]);
-  const press = (): void => {
-    if (onRun === null || starting) return;
-    setStarting(true);
-    setRefused(null);
-    void onRun(target)
-      .then((answer) => setRefused(answer))
-      .catch((error: unknown) => setRefused(errorMessage(error)))
-      .finally(() => setStarting(false));
-  };
+  const { refused, starting, mine, running, press } = useRunPress(onRun, target, run);
   return (
     <div className="quest-plan-box">
       <p className="quest-plan-head">
@@ -1720,7 +1438,7 @@ function Plan({
       {refused !== null && (
         <p className="quiet-note">{t('cards.quests.plan.runRefused', { reason: refused })}</p>
       )}
-      {mine && <RunProgress run={run} />}
+      {mine && run !== null && <RunProgress run={run} />}
       {/* And where the rows stop short of the target because the target
           itself is untraced, the head says so rather than leaving a gap. */}
       {!loading && plan !== null && plan.steps.length > 0 && !planTarget(quest, target) && (

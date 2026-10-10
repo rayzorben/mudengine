@@ -54,7 +54,7 @@ function GearSlotTile({
           : 'buy';
   const others = slot.items.length - (best === undefined ? 0 : 1);
   return (
-    <li className="gear-slot" data-state={state} data-slot={slot.slot}>
+    <li className="gear-slot tile" data-state={state} data-slot={slot.slot}>
       <header className="gear-slot-head">
         <span className="gear-slot-glyph" aria-hidden="true">
           <Icon name={slot.ranking === 'weapon' ? 'sword' : 'shield'} />

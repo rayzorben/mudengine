@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import Icon from './Icon';
-import { FindField } from './CardTable';
+import { FindField } from './ListTools';
 import type { SettingsFind } from '../hooks/useSettingsFind';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';

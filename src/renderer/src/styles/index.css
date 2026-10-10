@@ -3229,41 +3229,6 @@ kbd {
 }
 
 /*
- * How far through a quest a character is, on the row itself.
- *
- * Inside the name column, which is the one already being ellipsised on a 280px
- * rail — affordable only because it is drawn for the handful of quests that
- * are actually under way and takes no width at all on the rest.
- *
- * **A flex row, and that is the load-bearing half.** `td.wide` is
- * `max-width: 0` with an ellipsis, and an ellipsis cuts the *end* of the line
- * — so with the two children left as inline boxes the chip is the first thing
- * to disappear, on exactly the rows that have one. The name is what must
- * shorten: `4/8` cut to `4/` is a different figure, while a shortened name is
- * still the same quest and its full text is a tooltip and a click away. So the
- * cell lays out as a row, the name gets the `min-width: 0` that lets a flex
- * item shrink below its content, and the chip is `flex: 0 0 auto`.
- */
-.quest-name-cell {
-  align-items: baseline;
-  display: flex;
-  gap: 6px;
-  min-width: 0;
-}
-
-.quest-name-cell > button.lookup {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chip.quest-progress {
-  flex: 0 0 auto;
-  text-transform: none;
-}
-
-/*
  * Which quest the track belongs to, and how far through it the player says
  * they are.
  *
@@ -3945,134 +3910,198 @@ button.quest-plan-back {
 }
 
 /*
- * A hidden quest, while the hidden ones are being shown.
- *
- * Quiet rather than struck through: it is not *wrong*, it is one the player
- * said they were not interested in, and the only reason it is on screen at all
- * is that they asked to see what they had put away.
+ * The quest book (todo 38): a shelf head over a grid of tiles in the gear
+ * card's look (`.gear-slots`, `.gear-slot`), each tinted by its shelf through
+ * one `--slot-tone`: Open in the condition tone for what can be done, Later
+ * in the pending amber, Done quiet with its tick, Shut dimmed.
  */
-.quest-table tr[data-hidden='true'] {
-  opacity: 0.55;
+.quest-book {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-/*
- * A row of the book takes a little more height than a row of the pack.
- *
- * The pack is read for one item and scrolled; the book is read down, three
- * shelves at a time, and a row that carries a name, a number and a chip at
- * one pixel of padding reads as a listing rather than as a list of things to
- * go and do. Two pixels either side, and the shelves' heads do the rest.
- */
-.quest-table td {
-  border-bottom: var(--rule) solid color-mix(in srgb, var(--ink-line) 70%, transparent);
-  color: var(--text);
-  padding-block: 3px;
+.quest-shelf-head {
+  color: var(--slot-tone, var(--text-lo-quiet));
+  font-size: var(--font-micro);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
+  text-transform: uppercase;
 }
 
-/*
- * A quest this character can get on with is written in the brightest ink,
- * because those rows are what the book is opened for; the level and the pay
- * beside it stay a step down. Reported as *I can barely read it* (2026-09-21):
- * the whole table was `--text-lo`, which is the pack's register for a listing
- * scrolled past, and this listing is read.
- */
-.quest-table tr[data-standing='open'] .quest-name-cell > button.lookup {
-  color: var(--text-hi);
+.quest-shelf[data-group='open'] {
+  --slot-tone: var(--ok);
 }
 
-/*
- * The shelves say which they are in colour as well as in a word: the accent
- * for what is open (the progression's *now*), the condition tone for what is
- * done, the ordinary ink for what the realm shuts this character out of. A
- * wash of the same tone behind the head, so the shelf is found from across
- * the card, and the seam under it takes the tone too.
- */
-.quest-table tbody[data-group='open'] .table-group th {
-  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
-  border-bottom-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
-  color: var(--accent);
+.quest-shelf[data-group='later'] {
+  --slot-tone: var(--pending);
 }
 
-.quest-table tbody[data-group='done'] .table-group th {
-  background: color-mix(in srgb, var(--ok) var(--tone-wash), transparent);
-  border-bottom-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
-  color: var(--ok);
+.quest-shelf[data-group='done'],
+.quest-shelf[data-group='barred'] {
+  --slot-tone: var(--text-lo);
 }
 
-.quest-table tbody[data-group='barred'] .table-group th {
-  color: var(--text-lo);
+.quest-tile {
+  gap: 6px;
 }
 
-/*
- * A quest this character has finished: the quietest thing on the card.
- *
- * The progression's own word for *done* (§ *What is left is the loudest
- * thing*): the row goes to the quiet ink and the chip carries the tick. Never
- * dropped, and never dimmed the way a barred row is — a finished chain is
- * something the reader did, and the two states are told apart by the tick
- * and the shelf rather than by two depths of grey.
- */
-.quest-table tr[data-standing='done'] td {
-  color: var(--text-lo);
+/* The tile whose track is open, marked by its rim, as a selection is. */
+.quest-tile[data-open='true'] {
+  border-color: var(--slot-tone);
 }
 
-/*
- * And the one under way is the loudest: the accent, the progression's word
- * for *now*, on the chip — which is the only thing on the row that says how
- * far, so it is the thing that says it is the row the reader is looking for.
- * Several rows may carry it; a character is under way on a handful of chains
- * and *which ones* is exactly the question.
- */
-.chip.quest-progress {
-  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
-  border-color: color-mix(in srgb, var(--accent) var(--tone-strong), transparent);
-  color: var(--accent);
-}
-
-/* Finished: the tick, in the condition tone the client uses for a thing that
-   is right, rather than a third grey. */
-.chip.quest-progress[data-done='true'] {
-  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
-  border-color: color-mix(in srgb, var(--ok) var(--tone-strong), transparent);
-  color: var(--ok);
-}
-
-.chip.quest-progress[data-done='true']::before {
-  content: '✓ ';
-}
-
-/*
- * A quest this character cannot do, sunk to the bottom of the book.
- *
- * Quieter than the ordinary row and louder than a hidden one, which is the
- * order of the two statements: *not interested* is the player's and takes the
- * quest off the card; *not for you* is the realm's and leaves it legible,
- * because the level a Thief chain wants is a thing a reader goes looking for.
- * The realm's own reason is the row's hover text, since dimming on its own
- * says only that something is different.
- *
- * Nothing is struck through and nothing is hidden: the quest is not *wrong*,
- * it belongs to somebody else — and a character that changes class or gains
- * ten levels reads the same book with the rows back in it.
- */
-.quest-table tr[data-standing='barred'] {
+/* Not for this character: legible, because the level a chain wants is looked for. */
+.quest-tile[data-state='barred'] {
   opacity: 0.7;
 }
 
-/* Both at once is one dimming, not two multiplied into illegibility. */
-.quest-table tr[data-standing='barred'][data-hidden='true'] {
+/* Hidden, shown because the player asked to see what they put away. One dimming. */
+.quest-tile[data-hidden='true'] {
   opacity: 0.55;
 }
 
-/*
- * The row whose track is open, marked tonally on the row and never on the name.
- *
- * The same rule the roster's selection follows: the name is already carrying a
- * fact, and recolouring it for a selection would take that statement away from
- * exactly the rows most likely to be clicked.
- */
-.quest-table tr[data-open='true'] {
-  background: color-mix(in srgb, var(--accent) var(--tone-wash), transparent);
+.quest-tile-head {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quest-tile-glyph {
+  background: color-mix(in srgb, var(--slot-tone) var(--tone), transparent);
+  border-radius: 50%;
+  color: var(--slot-tone);
+  display: grid;
+  flex: 0 0 auto;
+  height: 26px;
+  place-items: center;
+  width: 26px;
+}
+
+.quest-tile-glyph .icon {
+  height: 13px;
+  width: 13px;
+}
+
+button.quest-tile-name {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-hi);
+  flex: 0 1 auto;
+  font-size: var(--font-micro);
+  font-weight: 600;
+  height: auto;
+  letter-spacing: 0.06em;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+button.quest-tile-name:hover:not(:disabled) {
+  background: none;
+  border: 0;
+  color: var(--slot-tone);
+}
+
+.quest-tile[data-state='done'] button.quest-tile-name {
+  color: var(--text-lo);
+}
+
+.quest-tile-head .entity-id,
+.quest-tile-head .chip {
+  flex: 0 0 auto;
+}
+
+/* Hide is quiet until the hand is on the tile, as it is on a table row. */
+.quest-tile-hide {
+  margin-left: auto;
+}
+
+.quest-tile:hover .quest-tile-hide,
+.quest-tile:focus-within .quest-tile-hide {
+  color: var(--text-lo);
+  opacity: 1;
+}
+
+/* How far along: the bar is the figure drawn, the count beside it is the figure. */
+.quest-tile-progress {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.quest-tile-track {
+  background:
+    linear-gradient(var(--slot-tone), var(--slot-tone)) left / calc(var(--share) * 100%) 100%
+      no-repeat,
+    color-mix(in srgb, var(--slot-tone) var(--tone), transparent);
+  border-radius: var(--r-pill);
+  flex: 1 1 auto;
+  height: 4px;
+}
+
+.quest-tile-count {
+  color: var(--slot-tone);
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  font-weight: 600;
+}
+
+.quest-tile-ahead,
+.quest-tile-why {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+  margin: 0;
+}
+
+.quest-tile-ahead {
+  color: var(--pending);
+}
+
+.quest-tile-next {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quest-tile-act {
+  color: var(--text);
+  flex: 1 1 10em;
+  font-family: var(--font-mono);
+  font-size: var(--font-micro);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* What it pays along the foot: big exp is the headline, the rest are chips. */
+.quest-tile-pays {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quest-tile-exp {
+  color: var(--text-hi);
+  font-family: var(--font-mono);
+  font-size: var(--font-ui-base);
+  font-weight: 600;
+}
+
+.quest-tile[data-state='done'] .quest-tile-exp {
+  color: var(--text-lo);
+}
+
+.quest-tile-none {
+  color: var(--text-lo-quiet);
 }
 
 /* ======================================================== hunting grounds card */
@@ -4285,13 +4314,40 @@ button.quest-plan-back {
   margin: 0;
 }
 
-.gear-slots {
+/*
+ * A grid of tinted tiles, the gear card's slots and the quest book's quests:
+ * as many as fit at 250px, one column at the narrowest. A tile takes its tint
+ * from `--slot-tone`, set by the card on the tile or on what holds it.
+ */
+.tile-grid {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.tile {
+  background: color-mix(
+    in srgb,
+    var(--slot-tone, var(--text-lo)) var(--tone-wash),
+    var(--ink-raised)
+  );
+  border: var(--rule) solid
+    color-mix(in srgb, var(--slot-tone, var(--text-lo)) var(--tone), transparent);
+  border-radius: var(--r-control);
+  box-shadow: var(--elev-1), var(--glass-rim);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 10px 12px;
+  transition:
+    background var(--dur-surface) var(--ease-out),
+    border-color var(--dur-surface) var(--ease-out);
+}
+
+.gear-slots {
   transition: opacity var(--dur-surface) var(--ease-out);
 }
 
@@ -4301,19 +4357,8 @@ button.quest-plan-back {
 
 .gear-slot {
   --slot-tone: var(--text-lo);
-  background: color-mix(in srgb, var(--slot-tone) var(--tone-wash), var(--ink-raised));
-  border: var(--rule) solid color-mix(in srgb, var(--slot-tone) var(--tone), transparent);
-  border-radius: var(--r-control);
-  box-shadow: var(--elev-1), var(--glass-rim);
   container-type: inline-size;
-  display: flex;
-  flex-direction: column;
   gap: 8px;
-  min-width: 0;
-  padding: 10px 12px;
-  transition:
-    background var(--dur-surface) var(--ease-out),
-    border-color var(--dur-surface) var(--ease-out);
 }
 
 .gear-slot[data-state='buy'] {
@@ -9300,7 +9345,7 @@ button.lookup:focus-visible {
   .progression .step-name,
   .line-log .text,
   .route-steps .step-name,
-  .quest-name-cell > button.lookup,
+  button.quest-tile-name,
   .walk-name,
   .walk-name > button.lookup,
   .walk-meter .meter-text,

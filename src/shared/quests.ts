@@ -53,6 +53,7 @@
  * evidence about a counter the server only moves upward. `questReading` is
  * that rule, in one place, for the card and for main alike.
  */
+import { SKILL_ABILITIES } from './abilities';
 import { abilityHeld, type Gate, type TbStat } from './gates';
 // Type-only, so no value cycle: see `module-cycle.test.ts`.
 import type { AbilitySums, Denomination } from './character';
@@ -542,6 +543,11 @@ export interface Quest {
   steps: QuestStep[];
 }
 
+/** A step and each of its routes: what every route states, then what each adds. */
+export function routesOf(step: QuestStep): Array<QuestStep | QuestWay> {
+  return [step, ...(step.ways ?? [])];
+}
+
 /**
  * Which side of the alignment line a quest sits on, from its own gates.
  *
@@ -583,7 +589,7 @@ export function questSide(quest: Quest): QuestSide {
   for (const step of quest.steps) {
     // Routes too: a realm is free to put the alignment gate on the per-class
     // line rather than on the line every class shares.
-    for (const way of [step, ...(step.ways ?? [])]) {
+    for (const way of routesOf(step)) {
       for (const gate of way.needs) {
         const band = gateSide(gate);
         if (band !== null) bands.add(band);
@@ -614,7 +620,7 @@ export function questLevel(quest: Quest): number | null {
     // every one of their routes — as quests with no level at all. Unknown
     // rendered as the reassuring answer, which is the one this project
     // refuses: a level-1 character would have walked to a master assassin.
-    for (const way of [step, ...(step.ways ?? [])]) {
+    for (const way of routesOf(step)) {
       for (const gate of way.needs) {
         if (gate.kind !== 'level' || gate.min === undefined) continue;
         if (lowest === null || gate.min < lowest) lowest = gate.min;
@@ -622,15 +628,6 @@ export function questLevel(quest: Quest): number | null {
     }
   }
   return lowest;
-}
-
-/** What the whole quest pays in experience, added across its steps. */
-export function questExperience(quest: Quest): number {
-  let total = 0;
-  for (const step of quest.steps) {
-    for (const reward of step.gives) if (reward.kind === 'exp') total += reward.amount;
-  }
-  return total;
 }
 
 /**
@@ -1001,29 +998,179 @@ function actable(step: QuestStep): boolean {
  * alternative is a book that dims on connect and fills in as the sheet lands.
  */
 export function questBars(quest: Quest, who: QuestDoer, standing: QuestStanding): QuestBar[] {
+  const next = ranksAhead(quest, standing)[0];
+  // A rank written only in steps the client cannot place is one it can say
+  // nothing at all about, which is a refusal and never a bar.
+  if (next === undefined || next.acts.length === 0) return [];
+  return rankBars(next.acts, who, quest.id);
+}
+
+/** One rank still ahead of a character, as the steps the client can name an act for. */
+interface RankAhead {
+  rank: number;
+  acts: QuestStep[];
+}
+
+/**
+ * The ranks a standing has not reached, in order, each with its actable steps.
+ *
+ * Every step of both shipped worlds states its rank (`indexQuests` builds one
+ * only from a line that grants), and one that did not would be nobody's
+ * alternative and could never be behind anybody, so it decides nothing.
+ */
+function ranksAhead(quest: Quest, standing: QuestStanding): RankAhead[] {
   const ranks = new Map<number, QuestStep[]>();
   for (const step of quest.steps) {
-    // Every step of both shipped worlds states its rank — `indexQuests` builds
-    // one only from a line that grants — and one that did not would be nobody's
-    // alternative and could never be behind anybody, so it decides nothing.
     if (step.to === undefined) continue;
+    // `stepDone`'s arithmetic, asked about a rank rather than about a step.
+    if (standing.held && standing.rank !== null && step.to <= standing.rank) continue;
     const group = ranks.get(step.to);
     if (group === undefined) ranks.set(step.to, [step]);
     else group.push(step);
   }
+  return [...ranks.keys()]
+    .sort((a, b) => a - b)
+    .map((rank) => ({ rank, acts: (ranks.get(rank) ?? []).filter(actable) }));
+}
 
-  for (const rank of [...ranks.keys()].sort((a, b) => a - b)) {
-    // `stepDone`'s arithmetic, asked about a rank rather than about a step.
-    if (standing.held && standing.rank !== null && rank <= standing.rank) continue;
-    const acts = (ranks.get(rank) ?? []).filter(actable);
-    // A rank written only in steps the client cannot place is one it can say
-    // nothing at all about, which is a refusal and never a bar.
-    if (acts.length === 0) return [];
-    const bars = acts.map((step) => stepBars(step, who, quest.id));
-    if (bars.some((found) => found.length === 0)) return [];
-    return softest(bars.flat());
+/** What shuts a character out of one rank, its steps being alternatives. */
+function rankBars(acts: readonly QuestStep[], who: QuestDoer, counter: number): QuestBar[] {
+  const bars = acts.map((step) => stepBars(step, who, counter));
+  if (bars.some((found) => found.length === 0)) return [];
+  return softest(bars.flat());
+}
+
+/** The first step the character would take next, or null where none is known. */
+export function questNext(quest: Quest, standing: QuestStanding): QuestStep | null {
+  return ranksAhead(quest, standing)[0]?.acts[0] ?? null;
+}
+
+/** A rank past the next one that wants more levels than the character has. */
+export interface QuestAhead {
+  rank: number;
+  level: number;
+}
+
+/**
+ * The first rank after the next one whose level gate this character is under.
+ *
+ * `questBars` asks about the next step, so a quest whose first rank asks
+ * nothing went under Open beside `75` in the level column: Rune and Volums
+ * Quest for a level 30 character (todo 38). This is the same question asked
+ * of every rank after it, taking the softest route through each, and only the
+ * level: a class or race gate further on is the track's to state.
+ */
+export function questAhead(
+  quest: Quest,
+  who: QuestDoer,
+  standing: QuestStanding
+): QuestAhead | null {
+  for (const { rank, acts } of ranksAhead(quest, standing).slice(1)) {
+    if (acts.length === 0) continue;
+    for (const bar of rankBars(acts, who, quest.id)) {
+      if (bar.kind === 'level') return { rank, level: bar.level };
+    }
   }
-  return [];
+  return null;
+}
+
+/** Whether the sheet has named this character's class: a blank is nobody's. */
+export function classKnown(klass: string | null | undefined): klass is string {
+  return klass !== null && klass !== undefined && klass.trim().length > 0;
+}
+
+/**
+ * Whether a route is this character's, by the class it names.
+ *
+ * By name and case-insensitively, because the class on the sheet is a word the
+ * server printed and the one on the gate is a word the realm database holds.
+ * A character whose class is not known yet matches nothing: a route marked
+ * *yours* on a guess is the reassuring kind of wrong.
+ */
+export function ownWay(way: QuestWay, klass: string | null | undefined): boolean {
+  if (!classKnown(klass)) return false;
+  const mine = klass.trim().toLowerCase();
+  return way.needs.some(
+    (gate) => gate.kind === 'class' && (gate.name ?? '').trim().toLowerCase() === mine
+  );
+}
+
+/**
+ * Which quests take each item back (`takeitem`), by item id.
+ *
+ * Such an item is a quest item and never what a quest pays: the severed head
+ * GoodCheck hands over is GoodQuest rank 8's to take, and the sea map
+ * MerchantCaptain's second step gives is its third step's.
+ */
+export function questItemTakers(quests: readonly Quest[]): Map<number, Set<number>> {
+  const takers = new Map<number, Set<number>>();
+  for (const quest of quests) {
+    for (const way of quest.steps.flatMap(routesOf)) {
+      for (const item of way.takes) {
+        const held = takers.get(item.id);
+        if (held === undefined) takers.set(item.id, new Set([quest.id]));
+        else held.add(quest.id);
+      }
+    }
+  }
+  return takers;
+}
+
+/** Every item some step of the book takes back. See `questItemTakers`. */
+export function questItemsTaken(quests: readonly Quest[]): Set<number> {
+  return new Set(questItemTakers(quests).keys());
+}
+
+/** What a quest pays this character: the experience, and everything else. */
+export interface QuestPays {
+  exp: number;
+  /** Items kept, spells, ranks, lives, coins and alignment, without exp. */
+  rewards: QuestReward[];
+  /**
+   * True where a step pays by class and the class is not known yet: the
+   * figures above are then what every route pays, and the rest is unknown.
+   */
+  unread: boolean;
+}
+
+/**
+ * What a quest pays, on the routes this character would take.
+ *
+ * What every route pays, plus the reader's own route where a step has several
+ * (`ownWay`); an unknown class adds no route's rewards and says so
+ * (`unread`). The quest's own
+ * counter is bookkeeping unless the server acts on it (`SKILL_ABILITIES`:
+ * Smash, Meditate), and an item some step takes back is not kept.
+ */
+export function questPays(
+  quest: Quest,
+  klass: string | null | undefined,
+  taken: ReadonlySet<number>
+): QuestPays {
+  let exp = 0;
+  let unread = false;
+  const rewards: QuestReward[] = [];
+  const seen = new Set<string>();
+  const known = classKnown(klass);
+  for (const step of quest.steps) {
+    if (!known && (step.ways ?? []).some((way) => way.gives.length > 0)) unread = true;
+    const ways = (step.ways ?? []).filter((way) => ownWay(way, klass));
+    for (const reward of [step, ...ways].flatMap((way) => way.gives)) {
+      if (reward.kind === 'exp') {
+        exp += reward.amount;
+        continue;
+      }
+      if (reward.kind === 'item' && taken.has(reward.id)) continue;
+      if (reward.kind === 'ability' && reward.id === quest.id && !SKILL_ABILITIES.has(quest.id)) {
+        continue;
+      }
+      const key = reward.kind === 'ability' ? `ability/${reward.id}` : JSON.stringify(reward);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rewards.push(reward);
+    }
+  }
+  return { exp, rewards, unread };
 }
 
 /**
@@ -1369,22 +1516,52 @@ export function planSpan(quest: Quest, block: number, fromRank: number | null): 
 /**
  * Which shelf of the book a quest sits on for this character.
  *
- * Three, in the order a reader wants them: what they can get on with, what is
+ * Four, in the order a reader wants them: what they can finish now, what they
+ * can start or carry on but not finish at their level (`questAhead`), what is
  * behind them, and what the realm's gates shut them out of. A finished chain
- * is never barred — `questBars` asks about the rank *after* the character's
- * and a finished chain has none — so the two cannot both be true of one quest,
- * and `done` is decided first only because it is the stronger statement.
+ * is never barred, since `questBars` asks about the rank *after* the
+ * character's and a finished chain has none.
  *
  * `total` is guarded: a quest of no steps is nothing to have finished.
  */
-export type QuestGroup = 'open' | 'done' | 'barred';
+export type QuestGroup = 'open' | 'later' | 'done' | 'barred';
 
 /** The shelves in the order the book draws them. */
-export const QUEST_GROUPS: readonly QuestGroup[] = ['open', 'done', 'barred'];
+export const QUEST_GROUPS: readonly QuestGroup[] = ['open', 'later', 'done', 'barred'];
 
-export function questGroup(done: number, total: number, bars: readonly QuestBar[]): QuestGroup {
+export function questGroup(
+  done: number,
+  total: number,
+  bars: readonly QuestBar[],
+  ahead: QuestAhead | null
+): QuestGroup {
   if (total > 0 && done >= total) return 'done';
-  return bars.length > 0 ? 'barred' : 'open';
+  if (bars.length > 0) return 'barred';
+  return ahead === null ? 'open' : 'later';
+}
+
+/** What a shelf is sorted by: how far along, what it pays, the level it waits on. */
+export interface QuestShelved {
+  group: QuestGroup;
+  done: number;
+  total: number;
+  exp: number;
+  ahead: QuestAhead | null;
+}
+
+/**
+ * The book's own order (todo 38): the shelves in turn; Open nearest to done first,
+ * then by what it pays; Later by the level it waits on, nearest first. The
+ * other shelves keep the realm's order, which a stable sort leaves alone.
+ */
+export function shelfOrder(a: QuestShelved, b: QuestShelved): number {
+  if (a.group !== b.group) return QUEST_GROUPS.indexOf(a.group) - QUEST_GROUPS.indexOf(b.group);
+  if (a.group === 'open') {
+    const share = (row: QuestShelved): number => (row.total === 0 ? 0 : row.done / row.total);
+    return share(b) - share(a) || b.exp - a.exp;
+  }
+  if (a.ahead !== null && b.ahead !== null) return a.ahead.level - b.ahead.level;
+  return 0;
 }
 
 /**

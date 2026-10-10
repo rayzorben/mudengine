@@ -61,7 +61,14 @@
  *   confidently-wrong answer this project refuses everywhere else.
  */
 import { ABILITY, HAZARD_ABILITY } from '../../shared/abilities';
-import type { Quest, QuestStep, QuestWay } from '../../shared/quests';
+import {
+  questItemTakers,
+  routesOf,
+  type Quest,
+  type QuestReward,
+  type QuestStep,
+  type QuestWay
+} from '../../shared/quests';
 import { abilityPairs } from './values';
 import { readQuestScript } from './questScript';
 import type { RealmSource } from './RealmSource';
@@ -539,7 +546,29 @@ export function indexQuests(
     quests.push({ id, name: ABILITY[id]?.name ?? `Ability ${id}`, steps: list });
   }
   quests.sort((a, b) => a.id - b.id);
-  return quests;
+  return withoutBookkeeping(quests);
+}
+
+/**
+ * The quests less the counters that are only another quest's bookkeeping.
+ *
+ * GoodCheck (216) is one step: at GoodQuest rank 7, kill Goru-Nezar for his
+ * severed head and set GoodCheck, so the head drops once. GoodQuest rank 8
+ * takes the head, and the head's `from` already names the kill, so the plan
+ * and the run reach it from there. A counter whose every give is itself or an
+ * item another quest's step takes back pays nothing and is not a quest
+ * (todo 38). Smash gives only itself and stays: the server acts on it.
+ */
+function withoutBookkeeping(quests: readonly Quest[]): Quest[] {
+  const takers = questItemTakers(quests);
+  const forAnother = (quest: number, item: number): boolean =>
+    [...(takers.get(item) ?? [])].some((taker) => taker !== quest);
+  return quests.filter((quest) => {
+    const gives = quest.steps.flatMap(routesOf).flatMap((way) => way.gives);
+    const handed = gives.filter((give) => give.kind === 'item' && forAnother(quest.id, give.id));
+    const own = (give: QuestReward): boolean => give.kind === 'ability' && give.id === quest.id;
+    return handed.length === 0 || !gives.every((give) => own(give) || handed.includes(give));
+  });
 }
 
 /**

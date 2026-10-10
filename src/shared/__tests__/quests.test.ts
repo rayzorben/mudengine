@@ -7,9 +7,11 @@ import {
   packHolds,
   planAct,
   planSpan,
+  questAhead,
   questBars,
-  questExperience,
   questGroup,
+  questItemsTaken,
+  questPays,
   questLevel,
   questSide,
   stepDone,
@@ -147,7 +149,58 @@ describe('what a quest asks and pays', () => {
   it('adds the experience across every step', () => {
     const paid: QuestReward[] = [{ kind: 'exp', amount: 250_000 }];
     const chain = quest([step({ gives: paid }), step({ gives: paid }), step()]);
-    expect(questExperience(chain)).toBe(500_000);
+    expect(questPays(chain, null, new Set()).exp).toBe(500_000);
+  });
+
+  it('counts the reader’s own route and no other', () => {
+    const chain = quest([
+      step({
+        ways: [
+          {
+            needs: [{ kind: 'class', id: 1, is: true, name: 'Warrior' }],
+            takes: [],
+            gives: [{ kind: 'exp', amount: 10 }]
+          },
+          {
+            needs: [{ kind: 'class', id: 2, is: true, name: 'Mage' }],
+            takes: [],
+            gives: [{ kind: 'spell', id: 7, name: 'fireball' }]
+          }
+        ]
+      })
+    ]);
+    expect(questPays(chain, 'warrior', new Set())).toEqual({
+      exp: 10,
+      rewards: [],
+      unread: false
+    });
+    // Unknown is never nothing: the class's own rewards are said to be unread.
+    expect(questPays(chain, null, new Set())).toEqual({ exp: 0, rewards: [], unread: true });
+  });
+
+  it('leaves out its own counter and an item a step takes back', () => {
+    const chain = quest([
+      step({
+        gives: [
+          { kind: 'ability', id: 126, value: 1, mode: 'set' },
+          { kind: 'item', id: 3731, name: 'detailed sea map' },
+          { kind: 'item', id: 1449, name: 'Darkbane' }
+        ]
+      }),
+      step({ takes: [{ id: 3731 }] })
+    ]);
+    const pays = questPays(chain, null, questItemsTaken([chain]));
+    expect(pays.rewards).toEqual([{ kind: 'item', id: 1449, name: 'Darkbane' }]);
+  });
+
+  // The server acts on Smash (`AttackCommand.cs`), so reaching it is the reward.
+  it('keeps its own counter where the server acts on it', () => {
+    const smash: Quest = {
+      id: 32,
+      name: 'Smash',
+      steps: [step({ gives: [{ kind: 'ability', id: 32, value: 1, mode: 'set' }] })]
+    };
+    expect(questPays(smash, null, new Set()).rewards).toHaveLength(1);
   });
 });
 
@@ -294,30 +347,93 @@ describe('an earlier step that hands the item over', () => {
  */
 describe('which shelf a quest is on', () => {
   const shut = [{ kind: 'level' as const, level: 20 }];
+  const later = { rank: 2, level: 75 };
 
   it('shelves a quest with nothing done and nothing in the way as open', () => {
-    expect(questGroup(0, 12, [])).toBe('open');
+    expect(questGroup(0, 12, [], null)).toBe('open');
   });
 
   it('keeps a quest under way on the open shelf', () => {
-    expect(questGroup(3, 12, [])).toBe('open');
+    expect(questGroup(3, 12, [], null)).toBe('open');
+  });
+
+  it('shelves a quest with a step ahead the character is under as later', () => {
+    expect(questGroup(3, 12, [], later)).toBe('later');
   });
 
   it('shelves a finished quest as done', () => {
-    expect(questGroup(12, 12, [])).toBe('done');
+    expect(questGroup(12, 12, [], null)).toBe('done');
   });
 
   it('shelves a barred quest as shut, however far along it is', () => {
-    expect(questGroup(0, 52, shut)).toBe('barred');
-    expect(questGroup(9, 52, shut)).toBe('barred');
+    expect(questGroup(0, 52, shut, null)).toBe('barred');
+    expect(questGroup(9, 52, shut, later)).toBe('barred');
   });
 
   it('never calls a quest of no steps finished', () => {
-    expect(questGroup(0, 0, [])).toBe('open');
+    expect(questGroup(0, 0, [], null)).toBe('open');
   });
 
   it('reads the shelves in the order the book draws them', () => {
-    expect(QUEST_GROUPS).toEqual(['open', 'done', 'barred']);
+    expect(QUEST_GROUPS).toEqual(['open', 'later', 'done', 'barred']);
+  });
+});
+
+/**
+ * Whether a character can finish a quest at their level (todo 38).
+ *
+ * The next step decides Shut; every rank after it decides Later. A level 30
+ * character was shown Rune under Open beside its level 75 step.
+ */
+describe('a step ahead that wants more levels', () => {
+  const START = { rank: null, held: false };
+  const at = (level: number): QuestDoer => ({
+    className: 'Paladin',
+    race: 'Human',
+    level,
+    counters: null
+  });
+  const asked = (part: Partial<QuestStep>): QuestStep => step({ who: 'Annora', ...part });
+
+  // GoodQuest: rank 1 asks nothing, rank 4 wants level 10.
+  const good = quest([
+    asked({ block: 1, to: 1 }),
+    asked({ block: 2, from: 1, to: 2 }),
+    asked({ block: 3, from: 2, to: 3 }),
+    asked({ block: 4, from: 3, to: 4, needs: [{ kind: 'level', min: 10 }] })
+  ]);
+
+  it('puts GoodQuest at level 1 under later, and the character can start it', () => {
+    expect(questBars(good, at(1), START)).toEqual([]);
+    expect(questAhead(good, at(1), START)).toEqual({ rank: 4, level: 10 });
+  });
+
+  it('puts Rune under later at level 30', () => {
+    const rune: Quest = {
+      id: 152,
+      name: 'Rune',
+      steps: [
+        step({ block: 4286, room: '1/1', to: 1 }),
+        asked({ block: 4318, from: 1, to: 2, needs: [{ kind: 'level', min: 75 }] })
+      ]
+    };
+    const ahead = questAhead(rune, at(30), START);
+    expect(ahead).toEqual({ rank: 2, level: 75 });
+    expect(questGroup(0, 2, questBars(rune, at(30), START), ahead)).toBe('later');
+  });
+
+  it('leaves a quest open when every step is at or below the character', () => {
+    const ahead = questAhead(good, at(30), START);
+    expect(ahead).toBeNull();
+    expect(questGroup(0, 4, questBars(good, at(30), START), ahead)).toBe('open');
+  });
+
+  it('asks only about the ranks the character has not reached', () => {
+    expect(questAhead(good, at(1), { rank: 4, held: true })).toBeNull();
+  });
+
+  it('says nothing for a character whose level is not known', () => {
+    expect(questAhead(good, { ...at(1), level: null }, START)).toBeNull();
   });
 });
 

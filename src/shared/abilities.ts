@@ -559,6 +559,27 @@ export function poisonRefusesRest(
   return holdsAbility(capabilities, IMMUNE_TO_POISON_ABILITY) !== true;
 }
 
+/** `PerfectStealth`: `ActionFigure.cs` reads it for a sneak nothing notices. */
+export const PERFECT_STEALTH_ABILITY = 186;
+
+/** `Meditate`: `MeditateCommand.cs` refuses `meditate` without it. */
+export const MEDITATE_ABILITY = 187;
+
+/**
+ * The quest counters the server itself acts on, so reaching one is a reward.
+ *
+ * Read in GreaterMUD's source: `AttackCommand.cs` refuses `smash` without 32,
+ * `MeditateCommand.cs` refuses `meditate` without 187, `ActionFigure.cs`
+ * reads 57 for hidden players and monsters and 186 for sneaking. Every other
+ * counter (GoodQuest, Rune) is read only by the realm's own scripts.
+ */
+export const SKILL_ABILITIES: ReadonlySet<number> = new Set([
+  ATTACK_ABILITY.smash,
+  SEE_HIDDEN_ABILITY,
+  PERFECT_STEALTH_ABILITY,
+  MEDITATE_ABILITY
+]);
+
 /**
  * `LearnSp`: reading this item teaches the spell whose `Spells` row id sits in
  * the value beside it. 223 items carry it on the shipped realm.
