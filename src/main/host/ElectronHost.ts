@@ -415,6 +415,9 @@ export function createElectronHost(layout: Layout): Host {
         : result.filePath;
     },
 
+    // The window and the file share a disk: the saved path is the answer.
+    deliver: () => null,
+
     clipboard: {
       read: () => clipboard.readText(),
       write: (text) => clipboard.writeText(text)

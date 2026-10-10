@@ -6,7 +6,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
 import type { DebugKind, DebugRecord } from '@shared/debug';
-import type { SessionId } from '@shared/ipc';
+import type { DebugSave, SessionId } from '@shared/ipc';
 import { timeOfDay } from '@shared/values';
 
 /**
@@ -62,7 +62,7 @@ export interface DebugViewProps {
   /** Subscribes to the live feed; returns the unsubscribe. */
   subscribe(handler: (session: SessionId, record: DebugRecord) => void): () => void;
   /** Writes the bug report and answers with where it went, or why not. */
-  save(session: SessionId): Promise<{ path: string } | { error: string }>;
+  save(session: SessionId): Promise<DebugSave>;
   /** Open the folder the report was written into. */
   reveal(): void;
   onClose(): void;
@@ -100,7 +100,7 @@ function DebugView({ session, load, subscribe, save, reveal, onClose }: DebugVie
   const [dropped, setDropped] = useState(0);
   const [muted, setMuted] = useState<ReadonlySet<DebugKind>>(new Set());
   const [query, setQuery] = useState('');
-  const [saved, setSaved] = useState<{ path: string } | { error: string } | null>(null);
+  const [saved, setSaved] = useState<DebugSave | null>(null);
   /** Pinned to the tail until somebody scrolls back, like the console. */
   const [following, setFollowing] = useState(true);
   const scroller = useRef<HTMLDivElement>(null);

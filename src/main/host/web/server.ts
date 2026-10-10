@@ -54,10 +54,15 @@ export interface WebServerOptions {
   log(line: string): void;
   /** A file of an installed extension's card page, served at `/ext/<name>/` (todo 84). */
   extensionFile?(name: string, relative: string): string | null;
+  /** The file a tab was handed to download, given once (`downloads.ts`). */
+  download?(token: string): string | null;
 }
 
 /** An extension's card page: `/ext/<name>/<path>`. */
 const EXTENSION_PATH = /^\/ext\/([^/]+)\/(.*)$/;
+
+/** A file handed to a tab: `/download/<token>/<name>`. */
+const DOWNLOAD_PATH = /^\/download\/([0-9a-f]+)\/[^/]+$/;
 
 export interface WebServer {
   listen(port: number, host: string): Promise<{ port: number; host: string }>;
@@ -108,6 +113,14 @@ const FRAMED_BY_US: Record<string, string> = {
   'X-Frame-Options': 'SAMEORIGIN',
   'Content-Security-Policy': "frame-ancestors 'self'"
 };
+
+/** A file name as RFC 5987 writes one, which also escapes what `encodeURIComponent` leaves. */
+function headerValue(name: string): string {
+  return encodeURIComponent(name).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -366,7 +379,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
     file: string,
     type: string,
     cache: string,
-    framing: Record<string, string> = {}
+    headers: Record<string, string> = {}
   ): void => {
     fs.stat(file, (error, stat) => {
       if (error || !stat.isFile()) {
@@ -375,7 +388,7 @@ export function createWebServer(options: WebServerOptions): WebServer {
       }
       response.writeHead(200, {
         ...HARDENING,
-        ...framing,
+        ...headers,
         'Content-Type': type,
         'Content-Length': String(stat.size),
         'Cache-Control': cache
@@ -430,6 +443,11 @@ export function createWebServer(options: WebServerOptions): WebServer {
       serveExtension(request, response, extension[1]!, extension[2]!);
       return;
     }
+    const download = DOWNLOAD_PATH.exec(pathname);
+    if (download !== null) {
+      serveDownload(request, response, download[1]!);
+      return;
+    }
     serveStatic(request, response, pathname);
   };
 
@@ -454,6 +472,25 @@ export function createWebServer(options: WebServerOptions): WebServer {
     }
     // Framed by the client's own card, and by nothing else.
     sendFile(request, response, file, type, 'no-cache', FRAMED_BY_US);
+  };
+
+  /**
+   * A file handed to a tab, saved into the browser's downloads. Only a GET
+   * takes it, since the link is good for one fetch and a HEAD would spend it.
+   */
+  const serveDownload = (
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+    token: string
+  ): void => {
+    const file = request.method === 'GET' ? (options.download?.(token) ?? null) : null;
+    if (file === null) {
+      reply(response, 404, { 'Content-Type': CONTENT_TYPES['.txt']! }, 'not found');
+      return;
+    }
+    sendFile(request, response, file, 'application/octet-stream', 'no-store', {
+      'Content-Disposition': `attachment; filename*=UTF-8''${headerValue(path.basename(file))}`
+    });
   };
 
   /** A refused upgrade: one status line, and the socket goes. */

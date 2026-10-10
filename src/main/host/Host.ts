@@ -199,6 +199,12 @@ export interface Host {
    * `exports/` in the home. Null when dismissed.
    */
   chooseSaveFile(caller: Caller, choice: SaveChoice): Promise<string | null>;
+  /**
+   * Hand a file main has written to whoever asked for it. The link their
+   * browser downloads it from, or null where the file is already on the
+   * asker's own disk.
+   */
+  deliver(caller: Caller, file: string): string | null;
   /** The system clipboard, or null where the window has to keep its own. */
   readonly clipboard: { read(): string; write(text: string): void } | null;
   /** Put the quit confirmation up and wait for the answer. */
