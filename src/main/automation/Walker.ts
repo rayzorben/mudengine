@@ -80,6 +80,7 @@ import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { StepTimes } from './walk/StepTimes';
 import { OffRounds } from './walk/OffRounds';
+import { FoughtPath } from './walk/FoughtPath';
 
 /**
  * The nudge's coalesce key — by intent, so a walk cannot queue two of them.
@@ -89,6 +90,10 @@ import { OffRounds } from './walk/OffRounds';
  * exempt every direction from its damper.
  */
 const NUDGE_KEY = 'walk:nudge';
+
+/** The rooms a run of steps passes through, starting where the first leaves. */
+const pathOf = (steps: RouteStep[]): RoomId[] =>
+  steps.length === 0 ? [] : [steps[0]!.from, ...steps.map((leg) => leg.to)];
 
 export class Walker implements SessionModule {
   private route: Route | null = null;
@@ -166,6 +171,7 @@ export class Walker implements SessionModule {
    * connection.
    */
   private readonly stepTimes = new StepTimes();
+  private readonly fought = new FoughtPath();
   /** A run's steps out of an empty room, timed to the rounds. */
   private readonly offRounds: OffRounds;
   /** The `sn` before each step, and when not to ask (`walk/Sneak.ts`). */
@@ -187,16 +193,8 @@ export class Walker implements SessionModule {
    */
   private kind: WalkKind = 'walk';
   /*
-   * There was a `recent` here — the last few steps *this walker* confirmed —
-   * and it is gone with its only reader, `retreatFrom`.
-   *
-   * It could not answer *where did we come from*, and the reason is worth
-   * keeping: the step that matters is the one taken as a fight starts, and a
-   * fight starting is exactly what calls `stop()` before the room arrives, so
-   * the newest entry pointed at the room the character had left. The escape
-   * reported *no confirmed step to retrace* while standing where it had walked
-   * itself. `CharacterTracker.trail` records every move whoever caused it, and
-   * `TrailStep` carries the capture.
+   * This walker keeps no list of confirmed steps: a fight stops the walk before
+   * the room arrives, so the newest entry named the room just left. See `CharacterTracker.trail`.
    */
   /**
    * True while the walk in progress is one something else is narrating.
@@ -391,7 +389,7 @@ export class Walker implements SessionModule {
               to: asRoomReference(step.to)
             }
           : null,
-      path: ahead.length === 0 ? [] : [ahead[0]!.from, ...ahead.map((leg) => leg.to)],
+      path: ahead.length === 0 ? this.fought.path : pathOf(ahead),
       reason: this.reason,
       // A hold only means anything while the walk is still running: a stopped
       // walk that reported one would be drawn as recovering rather than ended.
@@ -614,6 +612,7 @@ export class Walker implements SessionModule {
     this.walked = 0;
     this.reason = null;
     this.status = 'walking';
+    this.fought.clear();
     // A fresh walk gets the whole patience. `quarryHolds` is otherwise only
     // cleared by a confirmed step, so a route that ended mid-hold — which is
     // what combat does to a loop's leg — would leave the next one starting
@@ -744,8 +743,9 @@ export class Walker implements SessionModule {
     return null;
   }
 
-  /** Ends the walk. Safe to call when not walking. */
+  /** Ends the walk. Safe to call when not walking, and drops a leg's line kept for a fight. */
   stop(reason: string, quiet = false): void {
+    if (this.fought.clear()) this.publish();
     if (this.status !== 'walking') return;
     this.clock.clear();
     // The outstanding step is not going to be answered as this step any more.
@@ -777,6 +777,7 @@ export class Walker implements SessionModule {
     this.walked = 0;
     this.status = 'idle';
     this.reason = null;
+    this.fought.clear();
     this.asked = true;
     this.stepSent = false;
     this.leftMobsBehind = false;
@@ -925,6 +926,14 @@ export class Walker implements SessionModule {
     }
   }
 
+  /** `Holds.answerFight`, keeping the rooms of a leg it stopped for the map (`FoughtPath`). */
+  private answerFight(): boolean {
+    const answered = this.holds.answerFight();
+    const owed = this.walking || this.asked ? [] : (this.route?.steps.slice(this.index) ?? []);
+    if (this.fought.keep(pathOf(owed))) this.publish();
+    return answered;
+  }
+
   /** Moves sent and not yet answered, or null when nobody is counting. */
   private movesInFlight(): number | null {
     return this.events.pendingMoves?.() ?? null;
@@ -940,6 +949,7 @@ export class Walker implements SessionModule {
     // Kept whether or not a walk is running: see `Barriers.noteSkills`.
     this.barriers.noteSkills(state);
 
+    if (!fightIsRunning(state) && this.fought.clear()) this.publish();
     if (this.status !== 'walking' || this.route === null) return;
 
     if (fightIsRunning(state)) {
@@ -949,12 +959,8 @@ export class Walker implements SessionModule {
        * here. See `start`'s `resumeAfterFight` for why those two differ, and
        * `Holds.holdForFight` for what waiting costs.
        *
-       * When it *does* end, it is said out loud, and the per-stop `quiet` that
-       * used to be here is gone (2026-09-02). The argument for silence was
-       * that a fight starting is ordinary — on a loop it is the *point* — and
-       * that is entirely true of a loop, whose leg is already silent through
-       * `this.quiet`. So the flag was doing nothing except silencing the one
-       * case where a fight ending a walk is news.
+       * When it *does* end, it is said, except on a leg (`this.quiet`), and
+       * the map keeps a leg's line while the fight runs (`FoughtPath`).
        *
        * The wording is `a fight started` rather than `you are in combat`
        * because a stop's reason outlives the fight by minutes and the second
@@ -987,7 +993,7 @@ export class Walker implements SessionModule {
        */
       this.askWhereAfterDraw(state);
       // Under a timed spell a fight is walked out of: the spell is the deadline.
-      if (!this.holds.leaving && this.events.moveOnly?.(state) !== true && this.holds.answerFight())
+      if (!this.holds.leaving && this.events.moveOnly?.(state) !== true && this.answerFight())
         return;
     } else {
       this.holds.nothingFighting();
@@ -1128,7 +1134,7 @@ export class Walker implements SessionModule {
      * monster that follows every room, is marching the whole route through
      * them: exactly what the exemption was scoped not to do.
      */
-    if (wasLeaving && fightIsRunning(state) && this.holds.answerFight()) return;
+    if (wasLeaving && fightIsRunning(state) && this.answerFight()) return;
     if (this.holdBeforeSending(state)) return;
     // And not under a timed spell, where `holdBeforeSending` has already
     // returned early for every other hold: the spell is the deadline, nothing
@@ -1316,19 +1322,12 @@ export class Walker implements SessionModule {
     // Then the trap the step ahead fires, and the party rejoining, on the same terms again.
     if (this.holds.holdForTrap(state) || this.holds.holdForParty(state)) return true;
     /*
-     * A fight running here is not "no quarry", and it is outside the budget
-     * too. `holdAt` asks whether engagement *would open* on something in this
-     * room, and engagement answers "already fighting" while a target is live
-     * — the right answer for a swing, and the opposite of the right answer
-     * for a step out of the room. Read as "nothing to wait for", it released
-     * the first step of a loop's leg into the fight the hold had waited for
-     * (`logs/2026-09-04_00-05-40_festus.mudcap.jsonl`, t=454167: `e` sent
-     * 1,503ms after the hold began, with `*Combat Engaged*` on screen). The
-     * fight is answered as a fight — held for a route, ended for a loop's leg
-     * — and never as a spent beat, which `maxHolds` would otherwise turn it
-     * into 4.5 seconds later.
+     * A fight here is not "no quarry": engagement answers "already fighting"
+     * while a target is live, and read as nothing to wait for it sent a leg's
+     * first step into the fight (`logs/2026-09-04_00-05-40_festus.mudcap.jsonl`,
+     * t=454167). Held for a route, ended for a leg, never a spent beat.
      */
-    if (fightIsRunning(state) && !this.holds.leaving) return this.holds.answerFight();
+    if (fightIsRunning(state) && !this.holds.leaving) return this.answerFight();
     /*
      * A hidden exit the room has not printed yet — todo 04's first point,
      * *"do not try the direction first unless it is available"*. Sending the
