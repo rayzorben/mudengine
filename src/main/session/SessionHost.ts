@@ -30,7 +30,7 @@ import { LowLivesHold } from './LowLivesHold';
 import type { ExtensionDeps } from './extensionWiring';
 import type { LoadedExtension } from '../extensions/ExtensionLoader';
 import type { LayerWrite } from '../../shared/extensions';
-import { BUSY_PHASES, SessionManager } from './SessionManager';
+import { SessionManager } from './SessionManager';
 import type { InternalConfig } from '../../shared/internal';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { RealmLoreView } from '../../shared/lore';
@@ -603,27 +603,28 @@ export class SessionHost {
   /**
    * Dials a session, opening its log and capture first.
    *
-   * The in-flight phases are refused, and so is the realm the character is
-   * already playing in. Connecting elsewhere while *connected* is a
-   * legitimate way to switch servers, and the palette offers it; refusing a
-   * second attempt while one is still in flight is what stops a call arriving
-   * mid-handshake from killing a connection that was seconds from succeeding.
+   * The realm the character is already in is refused, and that covers a
+   * socket that has opened with the login under way: it reads `connected`.
+   * Connecting elsewhere while connected is how servers are switched. A dial
+   * still waiting on the socket is given up and made again (`dial`).
    */
   async connect(id: SessionId, target: ConnectionTarget): Promise<ConnectionState> {
     const slot = this.ensure(id);
     /*
-     * A dial somebody asked for supersedes one that was scheduled. Without
-     * this, pressing Connect during a retry's wait leaves the timer armed, and
-     * it fires into a connection that is already up — tearing down the socket
-     * the player just made.
+     * A Connect at the realm a reconnect is dialling back is that reconnect
+     * dialling now, and a failure goes back on the ladder (todo 22). Any other
+     * dial supersedes the scheduled one: left armed, the timer would fire into
+     * the connection the player just made and tear it down.
      */
-    slot.reconnect.cancel();
+    const ladder = slot.reconnect.redials(target);
+    if (!ladder) slot.reconnect.cancel();
     if (this.alreadyThere(slot, target)) return slot.manager.state;
-    // A character low on lives is asked about first, and the answer dials. A
-    // press while a dial is under way is not asked: `dial` refuses it and says so.
-    const dialling = BUSY_PHASES.has(slot.manager.state.phase);
-    if (!dialling && slot.lowLives.holds(target)) return slot.manager.state;
-    return this.dial(slot, target);
+    // A character low on lives is asked about first, and the answer dials.
+    if (slot.lowLives.holds(target)) {
+      slot.reconnect.cancel();
+      return slot.manager.state;
+    }
+    return ladder ? slot.reconnect.now() : this.dial(slot, target);
   }
 
   /**
@@ -648,7 +649,7 @@ export class SessionHost {
    * log in, log in, or stay offline. False for staying, for a question no
    * longer open, for a character already in that realm and for a switch that
    * could not be written, which logs nobody in; all but the stale question
-   * are said. A dial refused as already under way says so itself.
+   * are said.
    */
   async answerLowLives(id: SessionId, answer: LowLivesAnswer): Promise<boolean> {
     const slot = this.slots.get(id);
@@ -682,12 +683,14 @@ export class SessionHost {
   private async dial(slot: SessionSlot, target: ConnectionTarget): Promise<ConnectionState> {
     const id = slot.id;
 
-    if (BUSY_PHASES.has(slot.manager.state.phase)) {
-      this.options.notice({
-        session: id,
-        message: 'Already connecting; ignoring the second attempt.'
-      });
-      return slot.manager.state;
+    /*
+     * A dial with no answer yet is given up and made again (todo 22): nothing
+     * has gone out on it, and refusing it locked a player out for 15 s of
+     * every 30 while Paradigm restarted. `TelnetClient.connect` drops the old
+     * socket, and the manager's own `connect` returns quietly on `DialCancelled`.
+     */
+    if (slot.manager.state.phase === 'connecting') {
+      this.options.notice({ session: id, message: t('notices.session.dialAgain') });
     }
 
     const config = this.options.configFor(id);

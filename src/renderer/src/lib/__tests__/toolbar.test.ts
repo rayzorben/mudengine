@@ -14,7 +14,7 @@ const subject = (over: Partial<ToolbarSubject> = {}): ToolbarSubject => ({
   // Standing in the realm is the ordinary case every test below but the last
   // group is about; out of it is stated where it is the question.
   inRealm: true,
-  dialling: false,
+  dialWaits: false,
   movement: NOT_MOVING,
   canRestoreGear: false,
   setSwitch: vi.fn(),
@@ -85,10 +85,9 @@ describe('the toolbar vocabulary', () => {
     expect(off.label).not.toBe(on.label);
     expect(off.on).toBe(false);
     expect(on.on).toBe(true);
-    // Refused while a dial is in flight: a button that stays pressable through
-    // a fifteen-second connect reads as one that did nothing.
+    // Refused while a close is under way; a dial with no answer is made again.
     expect(
-      toolbarButtons(subject({ dialling: true })).find((button) => button.id === 'connect')!
+      toolbarButtons(subject({ dialWaits: true })).find((button) => button.id === 'connect')!
         .disabled
     ).toBe(true);
   });
@@ -170,8 +169,8 @@ describe('a toolbar drawn out of the realm', () => {
   /* The dial is the point: it is what puts the character back. */
   it('leaves the dial pressable', () => {
     expect(key('connect').disabled).toBe(false);
-    // And still refuses it while one is already in flight.
-    expect(key('connect', { dialling: true }).disabled).toBe(true);
+    // And refuses it while a close is under way.
+    expect(key('connect', { dialWaits: true }).disabled).toBe(true);
   });
 
   /* A switch writes that character's own file, which wants no connection at

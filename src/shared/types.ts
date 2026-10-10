@@ -61,15 +61,16 @@ export function asConnectionTarget(value: unknown): ConnectionTarget | null {
   };
 }
 
-export type ConnectionPhase =
-  | 'idle'
-  | 'resolving'
-  | 'connecting'
-  | 'negotiating'
-  | 'connected'
-  | 'closing'
-  | 'closed'
-  | 'error';
+export type ConnectionPhase = 'idle' | 'connecting' | 'connected' | 'closing' | 'closed' | 'error';
+
+/**
+ * Whether a Connect waits for this phase to end. Only a close does: a dial
+ * still waiting on the socket is given up and made again (todo 22), and an
+ * open socket is `connected`, where Connect hangs up.
+ */
+export function dialWaits(phase: ConnectionPhase): boolean {
+  return phase === 'closing';
+}
 
 export interface ConnectionState {
   phase: ConnectionPhase;

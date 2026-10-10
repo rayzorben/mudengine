@@ -40,7 +40,12 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { StandDown } from '../automation/LoginAutomator';
-import type { ConnectionPhase, ConnectionState, ConnectionTarget } from '../../shared/types';
+import {
+  sameTarget,
+  type ConnectionPhase,
+  type ConnectionState,
+  type ConnectionTarget
+} from '../../shared/types';
 import { errorMessage } from '../../shared/values';
 
 export interface ReconnectEvents {
@@ -241,6 +246,25 @@ export class Reconnect {
     this.publish();
   }
 
+  /** Whether a running ladder is dialling `target` back, so a Connect there is `now`. */
+  redials(target: ConnectionTarget): boolean {
+    return this.pending && this.target !== null && sameTarget(this.target, target);
+  }
+
+  /**
+   * The player pressed Connect while this ran (todo 22): the wait is skipped
+   * and a rung still dialling is given up for a fresh dial. A dial that fails
+   * goes back on the ladder, so one press during a realm restart is not one
+   * 15 s attempt and then nothing. Only `cancel` (Stop reconnecting) ends it.
+   */
+  now(): Promise<ConnectionState> {
+    const target = this.target;
+    if (target === null) return Promise.reject(new Error('Reconnect.now with nothing to dial'));
+    this.clearTimer();
+    this.epoch += 1;
+    return this.attempt(target);
+  }
+
   /** Deterministic cleanup: the timer is owned, so it is released here. */
   dispose(): void {
     this.cancel();
@@ -320,16 +344,20 @@ export class Reconnect {
       return;
     }
 
+    void this.attempt(target);
+  }
+
+  /** One dial on the ladder: a failure schedules the next rung, unless something superseded it. */
+  private attempt(target: ConnectionTarget): Promise<ConnectionState> {
     const mine = this.epoch;
     this.dialling = true;
     this.publish();
-    void this.events.dial(target).then(
+    const dialled = this.events.dial(target);
+    void dialled.then(
       (state) => {
+        // Another attempt superseding this one has its own `dialling` to keep.
+        if (mine !== this.epoch) return;
         this.dialling = false;
-        if (mine !== this.epoch) {
-          this.publish();
-          return;
-        }
         /*
          * A socket opened. Whether it *holds* is not decided here — the next
          * `lost` says, and `settledMs` is what makes the difference between an
@@ -342,11 +370,8 @@ export class Reconnect {
         this.schedule();
       },
       (error: unknown) => {
+        if (mine !== this.epoch) return;
         this.dialling = false;
-        if (mine !== this.epoch) {
-          this.publish();
-          return;
-        }
         // Never swallowed: a dial that threw rather than reporting a refusal is
         // a fault in the client, and the retry that follows would otherwise
         // hide it for as long as the outage lasts.
@@ -354,6 +379,7 @@ export class Reconnect {
         this.schedule();
       }
     );
+    return dialled;
   }
 
   private clearTimer(): void {

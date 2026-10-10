@@ -18,7 +18,7 @@ import { loopIsResting, type LoopProgress } from '@shared/loops';
 import { keepFocus } from '../lib/focus';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { t } from '../lib/i18n';
-import type { ConnectionState } from '@shared/types';
+import { dialWaits, type ConnectionState } from '@shared/types';
 
 /**
  * Which edge the rail takes.
@@ -112,6 +112,8 @@ export interface TabRailProps {
    * (docs/greatermud/combat.md).
    */
   onToggleConnection(session: SessionId): void;
+  /** Stop reconnecting this character: the tab's second control while a reconnect runs. */
+  onStopRetrying(session: SessionId): void;
 }
 
 function alertLabel(count: number): string {
@@ -410,7 +412,8 @@ function TabRail({
   returnFocus,
   onEditGlobal,
   onEdit,
-  onToggleConnection
+  onToggleConnection,
+  onStopRetrying
 }: TabRailProps) {
   /*
    * Stacked down an edge, rather than which edge.
@@ -541,27 +544,25 @@ function TabRail({
           const room = view?.character.room.name ?? null;
           const isActive = session.id === active;
           const phase = view?.state.phase ?? 'idle';
-          // A dial takes up to fifteen seconds and a close is not instant
-          // either. A button that stays pressable through either reads as one
-          // that did nothing, and main refuses the second attempt anyway.
-          const busy = phase === 'connecting' || phase === 'closing';
+          // Only a close is waited for. A dial with no answer yet, or a
+          // reconnect's wait, takes a press as *dial now* (todo 22).
+          const busy = dialWaits(phase);
           /*
-           * A retry pending reads as *dialling*, because it is.
+           * A reconnect running gets its own Stop beside the dial.
            *
-           * The phase during a ladder's wait is `closed`, so a dial that
-           * branched on the phase alone offered **Connect** while a reconnect
-           * ran — and there was then no control anywhere in the client that
-           * meant *stop trying*. See `SessionSummary.retrying`.
+           * The phase during a ladder's wait is `closed`, so without it there
+           * was no control anywhere in the client that meant *stop trying*.
+           * It used to take the dial's place, which left a player watching a
+           * restarted realm with no way to dial now (todo 22). See
+           * `SessionSummary.retrying`.
            */
-          const retrying = session.retrying;
+          const retrying = session.retrying && phase !== 'connected';
           // One string for the dial's aria-label and its title, so the two
           // cannot drift; the busy tooltips layer on top of it below.
           const dialLabel =
             phase === 'connected'
               ? t('tabs.tab.dialDisconnectAria', { characterName: session.name })
-              : retrying
-                ? t('tabs.tab.dialStopRetryingAria', { characterName: session.name })
-                : t('tabs.tab.dialConnectAria', { characterName: session.name });
+              : t('tabs.tab.dialConnectAria', { characterName: session.name });
 
           return (
             <Fragment key={session.id}>
@@ -704,15 +705,36 @@ function TabRail({
                     onMouseDown={keepFocus}
                     title={
                       busy
-                        ? phase === 'connecting'
-                          ? t('tabs.tab.dialConnectingTooltip')
-                          : t('tabs.tab.dialClosingTooltip')
-                        : dialLabel
+                        ? t('tabs.tab.dialClosingTooltip')
+                        : phase === 'connecting'
+                          ? t('tabs.tab.dialAgainTooltip', { characterName: session.name })
+                          : retrying
+                            ? t('tabs.tab.dialNowTooltip', { characterName: session.name })
+                            : dialLabel
                     }
                     type="button"
                   >
-                    <Icon name={phase === 'connected' || retrying ? 'stop' : 'play'} />
+                    <Icon name={phase === 'connected' ? 'stop' : 'play'} />
                   </button>
+
+                  {retrying && (
+                    <button
+                      aria-label={t('tabs.tab.dialStopRetryingAria', {
+                        characterName: session.name
+                      })}
+                      className="stop-retrying"
+                      onClick={(event) => {
+                        // Not a switch to this character, as for the dial.
+                        event.stopPropagation();
+                        onStopRetrying(session.id);
+                      }}
+                      onMouseDown={keepFocus}
+                      title={t('tabs.tab.dialStopRetryingAria', { characterName: session.name })}
+                      type="button"
+                    >
+                      <Icon name="stop" />
+                    </button>
+                  )}
 
                   {/*
                 A null fraction renders as an empty track rather than a full or

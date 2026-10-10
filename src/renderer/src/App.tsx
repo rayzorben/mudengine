@@ -705,14 +705,12 @@ export default function App() {
   const railVisible = hudOpen || railOpen;
 
   const connected = state.phase === 'connected';
-  const busy = state.phase === 'connecting' || state.phase === 'closing';
 
   /** Dialling and hanging up, the shown character's and any tab's own. */
   const { dial, hangUp, handleConnect, toggleSessionConnection, toggleConnection } = useConnection({
     api,
     session,
     shown: activeRef,
-    sessions,
     views,
     patchView,
     connected,
@@ -1235,6 +1233,7 @@ export default function App() {
           onOpen={api.loadProfile}
           onReorder={reorderSessions}
           onSelect={showSession}
+          onStopRetrying={hangUp}
           onToggleConnection={toggleSessionConnection}
           profiles={profiles}
           restToFor={restToFor}
@@ -1495,7 +1494,6 @@ export default function App() {
 
       <StatusRail
         action={action}
-        busy={busy}
         meter={meter}
         density={density}
         densityPreference={preference}

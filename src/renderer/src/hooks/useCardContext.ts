@@ -33,7 +33,7 @@ import type { Discovery } from '@shared/memory';
 import { movementOf } from '@shared/movement';
 import { playerKey } from '@shared/players';
 import type { RemoteName } from '@shared/remotes';
-import type { TerminalSize } from '@shared/types';
+import { dialWaits, type TerminalSize } from '@shared/types';
 import type { RoomId } from '@shared/world';
 
 /**
@@ -625,7 +625,7 @@ export function useCardContext({
           // The same reading the cards' `inGame` makes: every card stays
           // through a hang-up, and only what would send a command greys.
           inRealm: v.character.phase === 'in-game',
-          dialling: v.state.phase === 'connecting' || v.state.phase === 'closing',
+          dialWaits: dialWaits(v.state.phase),
           // One reading of the two progresses, shared with the Navigation
           // card, so the button and the card cannot disagree about whether
           // this character is going anywhere.

@@ -5401,7 +5401,8 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /* On a button that is nothing but the glyph, it may have the whole box. */
-.tab .edit .icon {
+.tab .edit .icon,
+.tab .stop-retrying .icon {
   width: 13px;
   height: 13px;
 }
@@ -6231,6 +6232,7 @@ button.quest-tile-name:hover:not(:disabled) {
  * accident while reaching for the pencil.
  */
 .tab .dial,
+.tab .stop-retrying,
 .tab .edit,
 .tab .close {
   display: grid;
@@ -6286,8 +6288,12 @@ button.quest-tile-name:hover:not(:disabled) {
   color: var(--ok);
 }
 
-/* In the realm: the half that costs something. */
-.tab .dial[data-phase='connected'] {
+/*
+ * In the realm: the half that costs something. Stop reconnecting, beside the
+ * dial only while a reconnect runs (todo 22), is the same kind of stop.
+ */
+.tab .dial[data-phase='connected'],
+.tab .stop-retrying {
   color: var(--danger);
 }
 
@@ -6295,11 +6301,12 @@ button.quest-tile-name:hover:not(:disabled) {
   background: color-mix(in srgb, var(--ok) var(--tone), transparent);
 }
 
-.tab .dial[data-phase='connected']:hover {
+.tab .dial[data-phase='connected']:hover,
+.tab .stop-retrying:hover {
   background: color-mix(in srgb, var(--danger) var(--tone), transparent);
 }
 
-/* Mid-dial: pressable again only once it has settled. */
+/* Mid-close: pressable again once it has settled. */
 .tab .dial:disabled {
   opacity: 0.3;
   cursor: default;
@@ -6322,6 +6329,7 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 .tab .edit:focus-visible,
+.tab .stop-retrying:focus-visible,
 .tab .close:focus-visible {
   outline: 2px solid var(--tab-accent);
   outline-offset: 1px;

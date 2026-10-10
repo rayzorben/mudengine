@@ -13,8 +13,8 @@ import { useCallback } from 'react';
 import { useConnectionKeys } from './useConnectionKeys';
 import type { SessionView, SessionViews } from './useSessionViews';
 import { EMPTY_CHARACTER } from '@shared/character';
-import type { IpcApi, SessionId, SessionSummary } from '@shared/ipc';
-import type { ConnectionTarget } from '@shared/types';
+import type { IpcApi, SessionId } from '@shared/ipc';
+import { dialWaits, type ConnectionTarget } from '@shared/types';
 
 export interface ConnectionInputs {
   api: Pick<IpcApi, 'connect' | 'disconnect'>;
@@ -22,8 +22,6 @@ export interface ConnectionInputs {
   session: SessionId;
   /** The character on screen as a callback reads it, which must not go stale. */
   shown: { readonly current: SessionId };
-  /** The roster, which says whether a retry is pending. */
-  sessions: readonly Pick<SessionSummary, 'id' | 'retrying'>[];
   views: Readonly<Record<SessionId, SessionView>>;
   patchView: SessionViews['patchView'];
   /** Whether the shown character is connected. */
@@ -36,7 +34,6 @@ export function useConnection({
   api,
   session,
   shown,
-  sessions,
   views,
   patchView,
   connected,
@@ -81,28 +78,19 @@ export function useConnection({
    * character would disconnect the wrong one, which on this realm costs
    * something (docs/greatermud/combat.md).
    *
-   * Refused while a dial or a close is already in flight. `connect()` in main
-   * refuses a second attempt itself, so this is about the button rather than
-   * the socket: one that stays pressable through a fifteen-second dial reads as
-   * one that did nothing.
+   * A character not in the realm can always be dialled now (todo 22): during
+   * a dial still waiting on the socket main gives it up and dials again, and
+   * during a reconnect's wait it dials at once. Stopping the reconnect is the
+   * tab's other control (`hangUp`). Only a close under way is waited for.
    */
   const toggleSessionConnection = useCallback(
     (id: SessionId) => {
       const phase = views[id]?.state.phase ?? 'idle';
-      if (phase === 'connecting' || phase === 'closing') return;
-      /*
-       * **A retry pending counts as connected for this button**, because the
-       * question it answers is *is something dialling this character* and
-       * during a ladder's wait the phase is `closed`. Without it the dial
-       * offered Connect while a reconnect ran to its 999,999th attempt, and
-       * nothing anywhere in the client meant *stop trying* — with a bad
-       * password going out every fifteen seconds if the realm hangs up on one.
-       */
-      if (phase === 'connected' || (sessions.find((s) => s.id === id)?.retrying ?? false)) {
-        hangUp(id);
-      } else dial(id);
+      if (dialWaits(phase)) return;
+      if (phase === 'connected') hangUp(id);
+      else dial(id);
     },
-    [dial, hangUp, sessions, views]
+    [dial, hangUp, views]
   );
 
   const toggleConnection = useCallback(() => {

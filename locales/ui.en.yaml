@@ -724,6 +724,8 @@ notices:
     # Connect pressed on a character already playing there, from a tab that
     # had not caught up: dialling again would hang up on the game.
     alreadyConnected: Already connected to {host}:{port}.
+    # Connect pressed while a dial was still waiting for the far end to answer.
+    dialAgain: The last dial had no answer yet. Giving it up and dialing again.
   world:
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the world database {file}…
@@ -1067,7 +1069,8 @@ tabs:
     closeAria: Close {characterName}
     dialClosingTooltip: Closing…
     dialConnectAria: Connect {characterName}
-    dialConnectingTooltip: Connecting…
+    dialAgainTooltip: Still dialing with no answer. Press to dial {characterName} again.
+    dialNowTooltip: Reconnecting. Press to dial {characterName} now.
     dialDisconnectAria: Disconnect {characterName}
     dialStopRetryingAria: Stop reconnecting {characterName}
     dragHint: Drag to reorder the characters
@@ -1121,8 +1124,6 @@ statusRail:
     disconnectTooltip: Disconnect this character ({shortcut})
     error: Error
     idle: Idle
-    negotiating: Negotiating
-    resolving: Resolving
   pressure:
     burst: burst {rate} c/s
     tooltip: Animation paused while the realm is sending fast
@@ -4634,6 +4635,7 @@ session:
     disconnected: Disconnected.
     hungUp: Hung up on a connection that had stopped answering.
     loginStalled: The login got no further for {seconds}s. Treating the connection as lost.
+    resolved: '{host} resolved to {address}.'
     failed: 'Connection failed: {detail}'
     socketError: 'Connection error: {message}'
   hunt:
