@@ -310,6 +310,9 @@ notices:
     runBetweenRounds:
       many: 'Run Between Rounds was added, on, to {count} files: {fileList}'
       one: 'Run Between Rounds was added, on, to {fileList}'
+    reequipOnRecover:
+      many: 'Re-equip After Recover Corpse was added, on, to {count} files: {fileList}'
+      one: 'Re-equip After Recover Corpse was added, on, to {fileList}'
     markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -4018,6 +4021,9 @@ settings:
     recoverGearHint: Walks back to the room where the character died, picks up the gear and coins
       still there, and puts the gear back on. Waits when hurt, fights nothing on the way, and
       reports every refusal.
+    reequipOnRecover: Re-equip After Recover Corpse
+    reequipOnRecoverHint: When recover corpse puts your gear back in your inventory, it presses
+      Re-equip Gear for you and says what did not come back.
     collectKeys: Pick Up a Key the Way Out Needs
     collectKeysHint: Only when the world data says an exit of the room needs it, your inventory does
       not show one, and it is on the floor here. A locked door with no key is a wall the router
@@ -5435,6 +5441,9 @@ automation:
     reasonTaking: picking up {item} after the death
     reasonCoins: picking up the {coin} dropped at the death
     reasonDressing: putting the recovered gear back on
+  recoveredCorpse:
+    reason: putting the gear from the corpse back on
+    dressing: Putting your gear back on.
   stashFetch:
     reasonSearch: searching for what was hidden here
     going: 'Walking to {room} for {items} ({steps} steps).'

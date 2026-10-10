@@ -491,6 +491,8 @@ export interface ProfileDraft {
     recoverGearTries: number;
     /** Stop once this many lives are left. 0 never stops. */
     recoverGearFloor: number;
+    /** The gear back on after `recover corpse`. See `MovementConfig`. */
+    reequipOnRecover: boolean;
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
@@ -1048,6 +1050,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         99,
         Math.max(0, Math.trunc(Number(movement['recoverGearFloor']) || 0))
       ),
+      // On unless it was turned off, as shipped, on `collectKeys`' rule below.
+      reequipOnRecover: movement['reequipOnRecover'] !== false,
       // The shipped default when the payload omits it, on the health block's
       // rule above: this one is on by default, and a form that failed to send
       // the field would silently switch it off.

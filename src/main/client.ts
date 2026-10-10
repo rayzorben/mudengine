@@ -52,7 +52,6 @@ import {
   equip,
   equipAllPlan,
   GEAR_ACTIONS,
-  restorePlan,
   equipBlock,
   isWearable,
   unequip,
@@ -61,7 +60,8 @@ import {
   type Wearer,
   UNKNOWN_WEARER
 } from '../shared/gear';
-import { planNotices, restoreNotices } from './automation/gearNotices';
+import { planNotices } from './automation/gearNotices';
+import { restoreKit } from './automation/restoreKit';
 import { Belongings, peekLives, peekRoom, peekSpellbook } from './session/Belongings';
 import type { CharacterRecord, KeptLives, KeptRoom } from '../shared/belongings';
 import { asLowLivesAnswer } from '../shared/lives';
@@ -2778,11 +2778,15 @@ function registerIpc(): void {
     if (!manager) return 0;
     const state = manager.character;
     const items = state.inventory.items;
+    const asked = action as GearAction;
+    if (asked === 'restore') {
+      const restored = restoreKit(state, (command) => manager.ask(command));
+      for (const message of restored.notices) announce('gear', message, 'warn', session);
+      return restored.sent;
+    }
 
     const plan = ((): GearPlan => {
-      switch (action as GearAction) {
-        case 'restore':
-          return restorePlan(state.loadout, items, tuning().spending.maxGear);
+      switch (asked) {
         case 'equip-all':
           return equipAllPlan(
             items,
@@ -2811,7 +2815,7 @@ function registerIpc(): void {
         case 'equip':
         case 'remove': {
           if (typeof item !== 'string') return { commands: [], missing: [], overflow: 0 };
-          const wanted = action === 'equip';
+          const wanted = asked === 'equip';
           const matching = items.filter((carried) => nameAnswersTo(carried.name, item));
           if (matching.length === 0) return { commands: [], missing: [item], overflow: 0 };
           const held = matching.find((carried) => carried.equipped !== wanted);
@@ -2826,8 +2830,7 @@ function registerIpc(): void {
     })();
 
     for (const command of plan.commands) manager.ask(command);
-    const said = action === 'restore' ? restoreNotices(plan, state.loadout) : planNotices(plan);
-    for (const message of said) announce('gear', message, 'warn', session);
+    for (const message of planNotices(plan)) announce('gear', message, 'warn', session);
     return plan.commands.length;
   });
 

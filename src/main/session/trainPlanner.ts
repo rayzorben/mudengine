@@ -8,9 +8,11 @@
  */
 import type { ItemErrand } from '../automation/ItemErrand';
 import type { LightAhead } from '../automation/LightAhead';
-import type { TrainPlanner } from '../automation/TrainErrand';
+import type { CommandQueue } from '../automation/CommandQueue';
+import { TrainErrand, type TrainEvents, type TrainPlanner } from '../automation/TrainErrand';
 import type { WorldGraph } from '../world/WorldGraph';
 import { wearerOf } from '../world/wearer';
+import type { AutomationConfig } from '../../shared/config';
 import { carriedCount } from '../../shared/supplies';
 import { trainerPrize, type PlacedItem } from '../../shared/training';
 import type { Errands } from './Errands';
@@ -58,4 +60,14 @@ export function trainPlanner(parts: TrainPlannerParts): TrainPlanner {
     busy: () => m().travel.escaping,
     release: parts.release
   };
+}
+
+/** The errand with its planner, composed in one call as `gearRecoveryTrip` is. */
+export function trainTrip(
+  automation: AutomationConfig,
+  queue: CommandQueue,
+  events: TrainEvents,
+  parts: TrainPlannerParts
+): TrainErrand {
+  return new TrainErrand(automation.train, automation.enabled, queue, trainPlanner(parts), events);
 }

@@ -1,7 +1,7 @@
 import { keepFocus } from './focus';
 import { t } from './i18n';
 import type { PopoverAnchor } from './popover';
-import { playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
+import { isOwnName, playerKey, type PlayerRecord, type PlayerRegistry } from '@shared/players';
 import type { CharacterState } from '@shared/character';
 
 /**
@@ -147,18 +147,6 @@ export function isKnownPlayer(
   if (key.length === 0) return false;
   if (key in players) return true;
   return character.online.some((entry) => playerKey(entry.name) === key);
-}
-
-/**
- * Whether a name is this character's own, given only the character's name.
- *
- * For a memoised row that must not take the whole character: every status
- * line the server prints replaces the character object, and a row keyed on it
- * would redraw ten times a second in a fight for a name that has not changed.
- * `isSelf` is this test read off the character, so the two cannot disagree.
- */
-export function isOwnName(self: string | null, name: string): boolean {
-  return self !== null && playerKey(self) === playerKey(name);
 }
 
 /** Whether a name is this character's own, filed the one way every name is. */

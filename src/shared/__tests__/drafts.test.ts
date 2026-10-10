@@ -314,6 +314,7 @@ describe('a character', () => {
         // The bounds on trying again; absent in the payload, so zero.
         recoverGearTries: 0,
         recoverGearFloor: 0,
+        reequipOnRecover: true,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,
@@ -428,6 +429,7 @@ describe('a character', () => {
         // The bounds on trying again; absent in the payload, so zero.
         recoverGearTries: 0,
         recoverGearFloor: 0,
+        reequipOnRecover: true,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,

@@ -265,6 +265,7 @@ function migrateAll(options: MigrationOptions): void {
   theManaPairRests(home, note, options.template);
   theExitsGainedADesign(home, note);
   statedRunBetweenRounds(home, note, options.template);
+  statedReequipOnRecover(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
@@ -3961,6 +3962,34 @@ function statedRunBetweenRounds(
     stated.length === 1
       ? t('notices.migration.runBetweenRounds.one', params)
       : t('notices.migration.runBetweenRounds.many', params)
+  );
+}
+
+/**
+ * `automation.movement.reequipOnRecover` (2026-10-09, todo 39) into every file
+ * that states `movement:` without it, on as the template ships it, after
+ * `recoverGearFloor` and with the template's paragraph. Idempotent: a key
+ * stays added whatever its value.
+ */
+function statedReequipOnRecover(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    ['automation', 'movement'],
+    'reequipOnRecover',
+    DEFAULT_CONFIG.automation.movement.reequipOnRecover,
+    'recoverGearFloor',
+    templateComments(template, 'automation').get('automation.movement.reequipOnRecover')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.reequipOnRecover.one', params)
+      : t('notices.migration.reequipOnRecover.many', params)
   );
 }
 

@@ -1790,6 +1790,16 @@ describe('the cheap eight', () => {
     );
   });
 
+  /* `RecoverCommand.cs`; no capture yet (todo 39). */
+  it('reads the end of a recover, emptied or not', () => {
+    expect(expectType('You have recovered the corpse of Probe.', 'user-recovers-corpse')).toEqual({
+      player: 'Probe'
+    });
+    expect(expectType('The corpse of Probe remains.', 'user-recovers-corpse')['player']).toBe(
+      'Probe'
+    );
+  });
+
   it('reads the guild training a level, captured live', () => {
     expect(expectType('Welcome to level 2!', 'user-levels')['level']).toBe('2');
     expect(

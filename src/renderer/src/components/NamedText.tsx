@@ -3,7 +3,8 @@ import { useMemo } from 'react';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { runsOf, type NameIndex } from '../lib/names';
-import { isOwnName, PlayerName } from '../lib/players';
+import { PlayerName } from '../lib/players';
+import { isOwnName } from '@shared/players';
 import type { PopoverAnchor } from '../lib/popover';
 
 export interface NamedTextProps {

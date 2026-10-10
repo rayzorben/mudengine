@@ -865,6 +865,12 @@ automation:
     recoverGearTries: 2
     recoverGearFloor: 2
 
+    # Put your gear back on after `recover corpse`. The command puts what was in
+    # the corpse back in the pack and leaves it off; with this on the client
+    # presses Re-equip Gear for you as soon as the corpse is recovered, and
+    # says what the pack no longer holds.
+    reequipOnRecover: true
+
     # Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
     # defaults (0) wait the condition out before the script goes on. Off, a
     # route or a loop stands still while the server says the character is

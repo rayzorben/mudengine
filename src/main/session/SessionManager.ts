@@ -29,12 +29,13 @@ import { AutoLight } from '../automation/AutoLight';
 import { LightAhead } from '../automation/LightAhead';
 import { AutoStealth } from '../automation/AutoStealth';
 import type { GearRecovery } from '../automation/GearRecovery';
-import { TrainErrand } from '../automation/TrainErrand';
+import type { TrainErrand } from '../automation/TrainErrand';
 import { StatScreen } from '../automation/StatScreen';
 import { RestAway } from '../automation/RestAway';
 import { AutoKeys } from '../automation/AutoKeys';
 import { Supplies } from '../automation/Supplies';
 import { Remotes } from '../automation/Remotes';
+import { RecoveredCorpse } from '../automation/RecoveredCorpse';
 import { Afk } from '../automation/Afk';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
@@ -104,7 +105,7 @@ import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
 import { RemoteMoves } from './RemoteMoves';
-import { trainPlanner } from './trainPlanner';
+import { trainTrip } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
@@ -384,6 +385,7 @@ export class SessionManager {
   private readonly stealth: AutoStealth;
   /** Going back for the kit after a death. See `GearRecovery`. */
   private readonly recoverGear: GearRecovery;
+  private readonly corpse: RecoveredCorpse;
   /** Going to collect the level when the experience is there — todo 18. */
   private readonly trainLevel: TrainErrand;
   /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
@@ -1076,17 +1078,12 @@ export class SessionManager {
       ...trip,
       busy: escaping
     });
+    this.corpse = new RecoveredCorpse(automation, this.queue, () => this.tracker.current, reports);
     const held = () => this.errandHeld();
     const tripReports = { ...reports, gearTrip: sink.gearTrip?.bind(sink) };
     this.hostTrips = hostTrips(automation, this.queue, tripReports, { ...trip, busy: held });
     this.areaSearch = areaSearchTrip(automation, this.queue, reports, { ...trip, busy: held });
-    this.trainLevel = new TrainErrand(
-      automation.train,
-      automation.enabled,
-      this.queue,
-      trainPlanner(trip),
-      reports
-    );
+    this.trainLevel = trainTrip(automation, this.queue, reports, trip);
     this.outgrown = outgrownTrip(automation, this.queue, reports, {
       ...trip,
       config: () => this.automationConfig,
@@ -1675,6 +1672,7 @@ export class SessionManager {
         module: this.recoverGear,
         configure: (a) => this.recoverGear.configure(a.movement, a.enabled)
       },
+      { module: this.corpse, configure: (a) => this.corpse.configure(a) },
       { module: this.trainLevel, configure: (a) => this.trainLevel.configure(a.train, a.enabled) },
       { module: this.outgrown, configure: (a) => this.outgrown.configure(a.outgrown, a.enabled) },
       { module: this.hostTrips, configure: (a) => this.hostTrips.configure(a.enabled) },
@@ -2730,6 +2728,7 @@ export class SessionManager {
     for (const each of [this.hostTrips, this.areaSearch, this.errands]) each.onBlock(block);
     // The experience figure said again, which is what the next banked level waits for (todo 107).
     this.trainLevel.onBlock(block);
+    this.corpse.onBlock(block);
     /*
      * Before `tracker.apply`, deliberately: a wear-off is about to take the
      * buff off the list, and the entry — with the caster's name on it — is

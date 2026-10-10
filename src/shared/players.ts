@@ -294,6 +294,18 @@ export function playerKey(name: string): string {
   return name.trim().toLowerCase();
 }
 
+/**
+ * Whether a name is this character's own, given only the character's name.
+ *
+ * For a memoised row that must not take the whole character: every status
+ * line the server prints replaces the character object, and a row keyed on it
+ * would redraw ten times a second in a fight for a name that has not changed.
+ * An unread name is nobody's.
+ */
+export function isOwnName(self: string | null, name: string): boolean {
+  return self !== null && playerKey(self) === playerKey(name);
+}
+
 /** What the registry holds about `name`, filed the one way every name is, or null. */
 export function recordOf(registry: PlayerRegistry, name: string): PlayerRecord | null {
   return registry[playerKey(name)] ?? null;
