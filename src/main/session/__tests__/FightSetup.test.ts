@@ -21,13 +21,17 @@ describe('FightSetup.foes', () => {
       {
         world: undefined,
         errands: { castingInput: () => ({}) } as unknown as FightSetupParts['errands'],
-        blessings: () => ({ recastFloor: () => null })
+        blessings: () => ({ recastFloor: () => null }),
+        joiners: undefined
       },
       { config: () => DEFAULT_CONFIG.automation }
     );
-    const { casting } = setup.foes(EMPTY_CHARACTER, {} as FightCharacter, [
-      { name: 'orc rogue', subject: { hp: 30 } as never }
-    ]);
+    const { casting } = setup.foes(
+      EMPTY_CHARACTER,
+      {} as FightCharacter,
+      [{ name: 'orc rogue', subject: { hp: 30 } as never }],
+      'seen'
+    );
     expect(casting).toEqual([{ perRound: 12.5, manaPerRound: 2 }]);
   });
 
@@ -36,14 +40,20 @@ describe('FightSetup.foes', () => {
       {
         world: undefined,
         errands: { castingInput: () => null } as unknown as FightSetupParts['errands'],
-        blessings: () => ({ recastFloor: () => null })
+        blessings: () => ({ recastFloor: () => null }),
+        joiners: undefined
       },
       { config: () => DEFAULT_CONFIG.automation }
     );
-    const { foes } = setup.foes(EMPTY_CHARACTER, {} as FightCharacter, [
-      { name: 'gambler', subject: { hp: 70 } as never, waits: true },
-      { name: 'ogre', subject: { hp: 30 } as never, waits: false }
-    ]);
+    const { foes } = setup.foes(
+      EMPTY_CHARACTER,
+      {} as FightCharacter,
+      [
+        { name: 'gambler', subject: { hp: 70 } as never, waits: true },
+        { name: 'ogre', subject: { hp: 30 } as never, waits: false }
+      ],
+      'seen'
+    );
     expect(foes.map((foe) => foe.waits)).toEqual([true, undefined]);
   });
 });
@@ -112,7 +122,8 @@ describe('FightSetup.character', () => {
           noEffectsKey: () => '',
           realmSpeed: 1
         } as unknown as FightSetupParts['errands'],
-        blessings: () => ({ recastFloor: recasts })
+        blessings: () => ({ recastFloor: recasts }),
+        joiners: undefined
       },
       {
         config: () => ({

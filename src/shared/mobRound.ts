@@ -23,6 +23,7 @@ import {
   type MenaceSubject
 } from './menace';
 import { HAZARD_ABILITY } from './abilities';
+import { copiesOf, drawSummons, summonsOf, type Summons } from './summons';
 import type { MobAttack, MobProfile, WorldSpell } from './world';
 
 /** `Mob.DoCombat`: the energy carried into a round is held under 2,000. */
@@ -47,6 +48,8 @@ export interface SpellEffect {
   held: number;
   /** What it mends the monster by, where it lands on the caster. */
   mends: [number, number] | null;
+  /** The monsters it brings into the room as it lands (`summons.ts`); none for most. */
+  summons: Summons;
 }
 
 export type MobSlot =
@@ -91,6 +94,8 @@ export interface MobRoundOutcome {
   held: number;
   /** Health the monster mended on itself. */
   mended: number;
+  /** The realm rows its casts brought into the room this round (a call for aid). */
+  summoned: number[];
 }
 
 export function freshMobState(): MobState {
@@ -107,25 +112,31 @@ export function spellEffect(
   player: MenacePlayer
 ): SpellEffect | null {
   if (spell === undefined) return null;
+  const summons = summonsOf(spell);
   if (landsOnCaster(spell)) {
     const heals = (spell.abilities ?? []).find(
       ([id, value]) => id === HAZARD_ABILITY.heal && value >= 0
     );
-    if (heals === undefined) return null;
-    const mends: [number, number] =
-      heals[1] !== 0 ? [heals[1], heals[1]] : scaledPower(spell, level, 'mob');
-    return { low: 0, high: 0, resist: 0, ticks: 0, held: 0, mends };
+    if (heals === undefined && summons.length === 0) return null;
+    const mends: [number, number] | null =
+      heals === undefined
+        ? null
+        : heals[1] !== 0
+          ? [heals[1], heals[1]]
+          : scaledPower(spell, level, 'mob');
+    return { low: 0, high: 0, resist: 0, ticks: 0, held: 0, mends, summons };
   }
   const wound = woundOf(spell, level, player);
   const held = heldRoundsOf(spell, level);
-  if (wound === null && held === 0) return null;
+  if (wound === null && held === 0 && summons.length === 0) return null;
   return {
     low: Math.round(wound?.low ?? 0),
     high: Math.round(wound?.high ?? 0),
     resist: magicResistance(spell, player.magicRes).resist,
     ticks: wound === null ? 0 : scaledDuration(spell, level, 'mob'),
     held,
-    mends: null
+    mends: null,
+    summons
   };
 }
 
@@ -175,7 +186,7 @@ export function mobModel(
  * running at the same roll is not an attempt and costs nothing.
  */
 export function rollMobRound(random: Random, model: MobModel, state: MobState): MobRoundOutcome {
-  const out: MobRoundOutcome = { harm: 0, held: 0, mended: 0 };
+  const out: MobRoundOutcome = { harm: 0, held: 0, mended: 0, summoned: [] };
   for (const each of state.lasting) {
     if (each.ticks !== EXTRA_TICK_EVERY) continue;
     out.harm += each.value;
@@ -228,26 +239,77 @@ export function rollMobRound(random: Random, model: MobModel, state: MobState): 
 }
 
 /**
+ * Every way a round can land something, with how often a round it does, as
+ * this draw rolls it: a melee blow (its damage less resistance, and its hit
+ * spell) at `mobSwingsPerRound`'s swings × chance × the hit roll, a spell slot
+ * at swings × chance × the cast roll, a between-round cast at its marginal
+ * chance. The one weighting `expectedHarm` and `expectedSummons` read.
+ */
+function roundEffects(
+  model: MobModel
+): Array<{ weight: number; blow: number; effect: SpellEffect | null }> {
+  const swings = mobSwingsPerRound(model.slots);
+  return [
+    ...model.slots.map((slot) =>
+      slot.kind === 'melee'
+        ? {
+            weight: swings * slot.chance * slot.lands,
+            blow: Math.max(0, (slot.min + slot.max) / 2 - model.resist),
+            effect: slot.onHit
+          }
+        : { weight: swings * slot.chance * slot.castChance, blow: 0, effect: slot.effect }
+    ),
+    ...model.casts.map((cast) => ({ weight: cast.chance, blow: 0, effect: cast.effect }))
+  ];
+}
+
+/**
  * A round's harm in expectation: what choosing a name's worst row is decided
- * on, as this draw deals it: `mobSwingsPerRound`'s swings, a lasting wound
- * counted once per tick it runs.
+ * on, as this draw deals it, a lasting wound counted once per tick it runs.
  */
 export function expectedHarm(model: MobModel): number {
   const mean = (effect: SpellEffect | null): number =>
     effect === null
       ? 0
       : ((effect.low + effect.high) / 2) * (1 - effect.resist) * Math.max(1, effect.ticks);
-  let perSwing = 0;
-  for (const slot of model.slots) {
-    if (slot.kind === 'melee') {
-      const blow = Math.max(0, (slot.min + slot.max) / 2 - model.resist);
-      perSwing += slot.chance * slot.lands * (blow + mean(slot.onHit));
-    } else {
-      perSwing += slot.chance * slot.castChance * mean(slot.effect);
+  return roundEffects(model).reduce(
+    (sum, { weight, blow, effect }) => sum + weight * (blow + mean(effect)),
+    0
+  );
+}
+
+/**
+ * The row that harms the most, in expectation as the draw deals it
+ * (`expectedHarm`): a name holding several rows is met as its worst.
+ */
+export function worstModel(subject: MenaceSubject, player: MenacePlayer): MobModel {
+  let worst: MobModel = { slots: [], casts: [], resist: 0 };
+  let most = -1;
+  for (const profile of subject.profiles ?? []) {
+    const model = mobModel(subject, profile, player);
+    const harm = expectedHarm(model);
+    if (harm > most) {
+      most = harm;
+      worst = model;
     }
   }
-  const casts = model.casts.reduce((sum, cast) => sum + cast.chance * mean(cast.effect), 0);
-  return mobSwingsPerRound(model.slots) * perSwing + casts;
+  return worst;
+}
+
+/**
+ * The copies of each row a round's casts bring in, in expectation as the draw
+ * rolls them (`expectedHarm`'s weights, the resistance taken off): what the
+ * survey prices a call for aid at.
+ */
+export function expectedSummons(model: MobModel): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const { weight, effect } of roundEffects(model)) {
+    if (effect === null) continue;
+    for (const [row, copies] of copiesOf(effect.summons)) {
+      out.set(row, (out.get(row) ?? 0) + weight * (1 - effect.resist) * copies);
+    }
+  }
+  return out;
 }
 
 /**
@@ -263,6 +325,7 @@ function apply(
 ): 'landed' | 'resisted' | 'running' {
   if (effect.mends !== null) {
     out.mended += between(random, effect.mends[0], effect.mends[1]);
+    out.summoned.push(...drawSummons(random, effect.summons));
     return 'landed';
   }
   const value = effect.high > 0 ? between(random, effect.low, effect.high) : 0;
@@ -278,6 +341,12 @@ function apply(
     out.harm += value;
   }
   out.held = Math.max(out.held, effect.held);
+  /*
+   * Only a cast that landed summons: `ApplySpellAbilities` rolls the target's
+   * resistance and skips every ability on a resist (Spell.cs:1052-1108)
+   * before the Summon case (1506), a blow's spell and a between-round cast alike.
+   */
+  out.summoned.push(...drawSummons(random, effect.summons));
   return 'landed';
 }
 

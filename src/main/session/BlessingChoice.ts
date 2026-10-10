@@ -324,7 +324,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       .lairEntities(fight.room)
       .map((entity) => ({ name: entity.name, subject: entity }));
     if (met.length === 0) return null;
-    return { ...character, ...this.setup.foes(bare, character, met), draw: fight.draw };
+    return { ...character, ...this.setup.foes(bare, character, met, 'arriving'), draw: fight.draw };
   }
 
   /** Remembered, the oldest forgotten past `blessChoiceRuns`. */

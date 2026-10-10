@@ -73,7 +73,8 @@ import { DENOMINATIONS, type AttributeSpans, type Denomination } from '../../sha
 import type { SpellOption } from '../../shared/ipc';
 import type { RealmFamily } from '../../shared/realm';
 import type { RealmHeader } from './realmHeader';
-import { castBy, NO_SUPPLY, readSupply, type WorldSupply } from './supply';
+import { castBy, picksRead, NO_SUPPLY, readSupply, type WorldSupply } from './supply';
+import { fightSpellsOf } from '../../shared/summons';
 
 export class Catalogue {
   /**
@@ -850,16 +851,22 @@ export class Catalogue {
     // route search asks for every lair it expands (todo 23).
     const kept = this.lairsKept.get(room.lair);
     if (kept !== undefined) return kept;
-    const entities: MobEntity[] = [];
-    for (const id of parseLair(room.lair).ids) {
-      const mob = this.mobsById.get(id);
-      if (mob === undefined) continue;
-      const entity = this.mobEntity(mob.name, this.mobAsPrinted(mob.name));
-      overlayRow(entity, this.rowsById.get(id));
-      entities.push(entity);
-    }
+    const entities = parseLair(room.lair).ids.flatMap((id) => this.rowEntity(id) ?? []);
     this.lairsKept.set(room.lair, entities);
     return entities;
+  }
+
+  /**
+   * One row weighed as itself: the name's entity with the row's own figures
+   * over it, as a lair or a resident names it, or as a spell summons it.
+   * Undefined for a row this table lacks.
+   */
+  rowEntity(id: number): MobEntity | undefined {
+    const mob = this.mobsById.get(id);
+    if (mob === undefined) return undefined;
+    const entity = this.mobEntity(mob.name, this.mobAsPrinted(mob.name));
+    overlayRow(entity, this.rowsById.get(id));
+    return entity;
   }
 
   /**
@@ -869,12 +876,8 @@ export class Catalogue {
    * `delay`. Empty for a room with no resident, or one this table lacks.
    */
   residentEntities(room: WorldRoom): MobEntity[] {
-    if (room.npcId === undefined) return [];
-    const mob = this.mobsById.get(room.npcId);
-    if (mob === undefined) return [];
-    const entity = this.mobEntity(mob.name, this.mobAsPrinted(mob.name));
-    overlayRow(entity, this.rowsById.get(room.npcId));
-    return [entity];
+    const entity = room.npcId === undefined ? undefined : this.rowEntity(room.npcId);
+    return entity === undefined ? [] : [entity];
   }
 
   supply(): WorldSupply {
@@ -1118,15 +1121,7 @@ export class Catalogue {
      * and must not ask one per status line.
      */
     if (known.profiles !== undefined) entity.profiles = known.profiles;
-    const named = new Set<number>();
-    for (const profile of known.profiles ?? []) {
-      for (const attack of profile.attacks) {
-        if (attack.kind === 'spell') named.add(attack.spell);
-        else if (attack.onHit !== undefined) named.add(attack.onHit);
-      }
-      for (const cast of profile.casts) named.add(cast.spell);
-    }
-    if (known.deathSpell !== undefined) named.add(known.deathSpell);
+    const named = fightSpellsOf(known);
     const spells: Record<number, WorldSpell> = {};
     let resolved = 0;
     for (const id of named) {
@@ -1399,6 +1394,9 @@ export class Catalogue {
       if (hazard !== null) spell.hazard = hazard;
       const script = asScriptLines(record['st']);
       if (script !== null) spell.script = script;
+      // Who one cast brings into the caster's room (format 60).
+      const summons = picksRead(record['sm']);
+      if (summons.length > 0) spell.summons = summons;
       spells.push(spell);
     }
     this.spells = spells;

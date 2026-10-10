@@ -1095,3 +1095,65 @@ describe('what hunting measured', () => {
     ]);
   });
 });
+
+/*
+ * Todo 24, 2026-10-10: the survey priced the Foul Den at 13 damage a room and
+ * left out the warrior the sentry calls in. A spawn's joiners are fought
+ * after it, at the chance the fight odds roll the call.
+ */
+describe('a spot whose spawns draw monsters in', () => {
+  const warrior = mutant({ name: 'orc warrior', experience: 300, rounds: 4, perRound: 20 });
+
+  it('charges the call for aid in damage, rounds and pays its experience', () => {
+    const e = estimateSpot(
+      singles({
+        mobs: [mutant({ joiners: [{ mob: warrior, perRound: 0.1, onDeath: 0, onArrival: 0 }] })]
+      }),
+      C
+    );
+    // Six rounds standing call 0.6 warriors; each swings 18/6 = 3 rounds of the
+    // pack on average after it comes (1.8 for 0.6), then its own four.
+    expect(e.damagePerRoom).toBeCloseTo(60 + 20 * 1.8 + 0.6 * 4 * 20, 5);
+    expect(e.combatSeconds).toBeCloseTo((6 + 0.6 * 4) * 5 + 1.6 * 1.5, 5);
+    expect(e.expPerCycle).toBeCloseTo(225 + 0.6 * 300, 5);
+  });
+
+  it('brings a death spell’s joiner in with the kill, to swing its own rounds', () => {
+    const e = estimateSpot(
+      singles({
+        mobs: [mutant({ joiners: [{ mob: warrior, perRound: 0, onDeath: 1, onArrival: 0 }] })]
+      }),
+      C
+    );
+    expect(e.damagePerRoom).toBeCloseTo(60 + 4 * 20, 5);
+  });
+
+  it('cannot price the room while a joiner’s blows are unknown', () => {
+    const e = estimateSpot(
+      singles({
+        mobs: [
+          mutant({
+            joiners: [
+              { mob: { ...warrior, perRound: null }, perRound: 0.1, onDeath: 0, onArrival: 0 }
+            ]
+          })
+        ]
+      }),
+      C
+    );
+    expect(e.damagePerRoom).toBeNull();
+  });
+});
+
+describe('a joiner whose worth is unknown', () => {
+  it('leaves the spot’s experience unknown rather than counting it nothing', () => {
+    const unknown = mutant({ name: 'orc warrior', experience: null, rounds: 4, perRound: 20 });
+    const e = estimateSpot(
+      singles({
+        mobs: [mutant({ joiners: [{ mob: unknown, perRound: 0.1, onDeath: 0, onArrival: 0 }] })]
+      }),
+      C
+    );
+    expect(e.expPerCycle).toBeNull();
+  });
+});

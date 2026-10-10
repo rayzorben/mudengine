@@ -15,6 +15,7 @@ import type { Loop, LoopStop } from './loops';
 import type { MobAffliction } from './menace';
 import type { CharacterState } from './character';
 import type { RealmFamily } from './realm';
+import { MOBS_PER_ROOM } from './summons';
 import type { RoomId } from './world';
 
 /**
@@ -150,6 +151,24 @@ export interface SpotMob {
    * case, and means *on the room's clock*.
    */
   regenSeconds: number | null;
+  /**
+   * The monsters it draws into its room (todo 24, `Joiners`): a call for aid
+   * while it stands, a death spell's, and what its arrival brings. Absent
+   * draws nobody in.
+   */
+  joiners?: SpotJoiner[];
+}
+
+/**
+ * One monster a spawn draws in, at the chances the fight odds roll
+ * (`expectedSummons`): copies a round while the caller stands, copies as it
+ * dies, and copies as it comes into the room.
+ */
+export interface SpotJoiner {
+  mob: SpotMob;
+  perRound: number;
+  onDeath: number;
+  onArrival: number;
 }
 
 /** The configured heal, priced from its realm row: what one cast mends and spends. */
@@ -430,6 +449,78 @@ interface RoomCycle {
   seconds: number | null;
   poisons: boolean;
   poisonSeconds: number | null;
+  /** The monsters it is expected to draw in, and how many of each (`joinedRoom`). */
+  joined: JoinedCopies[];
+}
+
+interface JoinedCopies {
+  mob: SpotMob;
+  copies: number;
+}
+
+/**
+ * What a room's spawns draw in, fought after the pack (`Room.TrySummon`
+ * adds them; auto-combat finishes its target first). A spawn slot's caller
+ * stands `alive` rounds, each round calling at `perRound`; a death call comes
+ * with its kill, an arrival before the first round. Each copy swings from its
+ * arrival to its own death: the rounds left of the pack when it comes, then
+ * its own kill while the joiners still up swing: `n(n + 1) / 2` kills' worth
+ * for `n` of them, which is `n` while at most one comes. Capped at
+ * `MOBS_PER_ROOM` standing with the spawns. Null rounds or damage where a
+ * joiner's are unknown.
+ */
+function joinedRoom(
+  callers: readonly SpotMob[],
+  spawns: number,
+  perKill: readonly number[]
+): { joined: JoinedCopies[]; rounds: number | null; damage: number | null } {
+  const total = perKill.reduce((sum, value) => sum + value, 0);
+  // Per slot k: the rounds its spawn stands (`alive`), and what a joiner swings of the pack after it comes.
+  let alive = 0;
+  let standing = 0;
+  let calledLinger = 0;
+  let diedLinger = 0;
+  for (const value of perKill) {
+    alive += value;
+    standing += alive;
+    calledLinger += total * alive - (alive * alive) / 2;
+    diedLinger += total - alive;
+  }
+  const byName = new Map<string, { mob: SpotMob; copies: number; linger: number }>();
+  // Each slot is any of the callers alike, as the lair draws them.
+  const share = 1 / Math.max(1, callers.length);
+  for (const caller of callers) {
+    for (const joiner of caller.joiners ?? []) {
+      const held = byName.get(joiner.mob.name) ?? { mob: joiner.mob, copies: 0, linger: 0 };
+      held.copies +=
+        share * (joiner.perRound * standing + spawns * (joiner.onDeath + joiner.onArrival));
+      held.linger +=
+        share *
+        (joiner.perRound * calledLinger +
+          joiner.onDeath * diedLinger +
+          joiner.onArrival * spawns * total);
+      byName.set(joiner.mob.name, held);
+    }
+  }
+  const room = MOBS_PER_ROOM - spawns;
+  const count = [...byName.values()].reduce((sum, each) => sum + each.copies, 0);
+  const scale = count > room ? Math.max(0, room) / count : 1;
+  const joined = [...byName.values()].map(({ mob, copies }) => ({ mob, copies: copies * scale }));
+  let rounds: number | null = 0;
+  let damage: number | null = 0;
+  let swingKills = 0;
+  let n = 0;
+  for (const { mob, copies, linger } of byName.values()) {
+    const own = mob.rounds === null ? null : Math.max(LEAST_ROUNDS, mob.rounds);
+    rounds = own === null || rounds === null ? null : rounds + copies * scale * own;
+    damage =
+      mob.perRound === null || damage === null ? null : damage + mob.perRound * linger * scale;
+    if (own !== null && mob.perRound !== null) swingKills += copies * scale * own * mob.perRound;
+    n += copies * scale;
+  }
+  // The joiners' own ramp: while one dies the rest still swing.
+  if (damage !== null && n > 0) damage += (swingKills / n) * (n <= 1 ? n : (n * (n + 1)) / 2);
+  return { joined, rounds, damage };
 }
 
 /**
@@ -454,7 +545,7 @@ function roomCycle(
    * The room's rounds and the ramp its pack dies down, for a kill of `rounds`
    * rounds: while the k-th dies the ones after it are still swinging.
    */
-  const fight = (kill: number): { rounds: number; ramp: number } => {
+  const fight = (kill: number): { rounds: number; ramp: number; perKill: number[] } => {
     const plain = Math.max(LEAST_ROUNDS, kill);
     const opened = Math.max(LEAST_ROUNDS, 1 + Math.max(0, kill - c.backstabMultiplier));
     const perKill: number[] = [];
@@ -464,17 +555,23 @@ function roomCycle(
     }
     return {
       rounds: perKill.reduce((sum, value) => sum + value, 0),
-      ramp: perKill.reduce((sum, value, index) => sum + value * (spawns - index), 0)
+      ramp: perKill.reduce((sum, value, index) => sum + value * (spawns - index), 0),
+      perKill
     };
   };
   let roundsPerKill: number | null = null;
   let roomRounds: number | null = null;
   let damage: number | null = null;
+  // What the spawns draw in (todo 24), at the rounds known, else the shortest kill.
+  const drawn = joinedRoom(mobs, spawns, fight(rounds ?? LEAST_ROUNDS).perKill);
+  const joinedCount = drawn.joined.reduce((sum, each) => sum + each.copies, 0);
   if (rounds !== null) {
     const expected = fight(rounds);
-    roomRounds = expected.rounds;
-    roundsPerKill = roomRounds / spawns;
-    if (perRound !== null) damage = perRound * expected.ramp;
+    roundsPerKill = expected.rounds / spawns;
+    roomRounds = drawn.rounds === null ? null : expected.rounds + drawn.rounds;
+    if (perRound !== null && drawn.damage !== null) {
+      damage = perRound * expected.ramp + drawn.damage;
+    }
   }
   /*
    * And the worst the room can spawn, each monster fought for its own rounds:
@@ -500,10 +597,14 @@ function roomCycle(
   let nakedComplete = true;
   for (const mob of mobs) {
     if (mob.rounds === null) roundsComplete = false;
-    const { ramp } = fight(mob.rounds ?? LEAST_ROUNDS);
+    const { ramp, perKill } = fight(mob.rounds ?? LEAST_ROUNDS);
+    // The worst spawn filling every slot draws in what it calls; unknown joiners leave the exact figure open.
+    const its = joinedRoom([mob], spawns, perKill).damage;
+    if (its === null) roundsComplete = false;
     if (mob.perRound !== null) {
-      worstDamageAtLeast = Math.max(worstDamageAtLeast ?? 0, mob.perRound * ramp);
-      if (mob.rounds !== null) worstDamage = Math.max(worstDamage ?? 0, mob.perRound * ramp);
+      const cost = mob.perRound * ramp + (its ?? 0);
+      worstDamageAtLeast = Math.max(worstDamageAtLeast ?? 0, cost);
+      if (mob.rounds !== null) worstDamage = Math.max(worstDamage ?? 0, cost);
     }
     if (mob.nakedPerRound === null || (mob.rounds === null && mob.nakedPerRound > 0)) {
       nakedComplete = false;
@@ -514,7 +615,9 @@ function roomCycle(
   if (!roundsComplete) worstDamage = null;
   if (!nakedComplete) nakedDamage = null;
   const seconds =
-    roomRounds === null ? null : roomRounds * c.roundSeconds + (spawns * c.killOverheadMs) / 1000;
+    roomRounds === null
+      ? null
+      : roomRounds * c.roundSeconds + ((spawns + joinedCount) * c.killOverheadMs) / 1000;
 
   let poisons = false;
   let poisonSeconds: number | null = 0;
@@ -538,7 +641,8 @@ function roomCycle(
     nakedDamage,
     seconds,
     poisons,
-    poisonSeconds
+    poisonSeconds,
+    joined: drawn.joined
   };
 }
 
@@ -682,21 +786,27 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
     mobs: readonly SpotMob[],
     spawns: number,
     window: number | null,
-    worth: Worth
+    worth: Worth,
+    joined: readonly JoinedCopies[]
   ): number | null => {
     const seen = window ?? unworked;
-    const each = mean(
-      mobs.map((mob) => {
-        const paid = worth(mob);
-        if (paid === null) return null;
-        if (mob.regenSeconds === null || mob.regenSeconds <= 0 || seen === null) {
-          return paid;
-        }
-        return paid * Math.min(1, seen / mob.regenSeconds);
-      })
-    );
-    // However many the lair spawns at once.
-    return each === null ? null : each * spawns;
+    const one = (mob: SpotMob): number | null => {
+      const paid = worth(mob);
+      if (paid === null) return null;
+      if (mob.regenSeconds === null || mob.regenSeconds <= 0 || seen === null) {
+        return paid;
+      }
+      return paid * Math.min(1, seen / mob.regenSeconds);
+    };
+    // The joiners pay at their expected copies (todo 24); one whose figure is unknown leaves the room's unknown.
+    let drawnIn: number | null = 0;
+    for (const { mob, copies } of joined) {
+      const paid = copies > 0 ? one(mob) : 0;
+      drawnIn = paid === null || drawnIn === null ? null : drawnIn + copies * paid;
+    }
+    const each = mean(mobs.map(one));
+    // However many the lair spawns at once, and those they draw in.
+    return each === null || drawnIn === null ? null : each * spawns + drawnIn;
   };
 
   /**
@@ -712,7 +822,7 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   };
 
   const primaryFor = (cycle: number | null, worth: Worth = EXPERIENCE): number | null => {
-    const each = weighed(input.mobs, primary.spawns, cycle, worth);
+    const each = weighed(input.mobs, primary.spawns, cycle, worth, primary.joined);
     // Over every room of the ring — `roomCycle`'s own arithmetic, re-run with
     // the weights — and only for the fights won.
     return each === null ? null : each * rooms * (given.wins ?? 1);
@@ -721,7 +831,13 @@ export function estimateSpot(given: SpotInput, c: HuntingConstants): SpotEstimat
   /** What the fillers add to one cycle, each paid at the share it is found up. */
   const fillerFor = (window: number | null, worth: Worth = EXPERIENCE): number =>
     fillers.reduce((sum, filler) => {
-      const paid = weighed(filler.mobs, filler.spawns, visitWindow(filler, window), worth);
+      const paid = weighed(
+        filler.mobs,
+        filler.spawns,
+        visitWindow(filler, window),
+        worth,
+        filler.joined
+      );
       return paid === null ? sum : sum + paid * shareOf(filler, window);
     }, 0);
 

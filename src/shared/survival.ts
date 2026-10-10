@@ -17,9 +17,9 @@ import { weighRoom, type MenacePlayer, type MenaceSubject, type MenaceWeights } 
 import {
   expectedHarm,
   freshMobState,
-  mobModel,
   rollMobRound,
   spellEffect,
+  worstModel,
   type MobModel,
   type MobState
 } from './mobRound';
@@ -33,6 +33,7 @@ import {
 } from './prowess';
 import type { RealmFamily } from './realm';
 import { mendsTheRound } from './spellchoice';
+import { drawSummons, MOBS_PER_ROOM, NO_SUMMONS, type Summons } from './summons';
 import { prowessTargetOf, rankByVerdict, targetOf, verdictFor, type TargetEntity } from './verdict';
 
 /** One thing in the room that will fight, as the realm knows it. */
@@ -46,6 +47,17 @@ export interface SurvivalFoe {
    * Absent swings from the first round.
    */
   waits?: boolean;
+  /**
+   * What its `CreateSpell` brings with it as it comes into the room
+   * (`Joiners.arrivalsOf`): set where the fight's foes arrive with it, a
+   * lair's draw, and on every joiner; absent brings nobody.
+   */
+  arrives?: Summons;
+}
+
+/** A monster the foes may draw in (`Joiners.drawnIn`), by the realm row a summons names. */
+export interface SurvivalJoiner extends SurvivalFoe {
+  row: number;
 }
 
 /** The heal the automation would cast, as it is configured. */
@@ -128,10 +140,16 @@ export interface SurvivalInput {
    */
   draw?: number;
   /**
-   * A caster's blow, by foe: expected damage a round and the mana a round of
-   * it costs. Cast while the mana pays for it, as `AttackSpells` casts the
-   * chosen spell before the melee round; the swing once it runs dry. Null
-   * where the character casts nothing at it.
+   * The monsters a foe's spells or arrival may bring into the fight, met as
+   * they come and fought after the foes, up to `MOBS_PER_ROOM` standing
+   * (`Room.TrySummon`). Absent draws nobody in.
+   */
+  joiners?: SurvivalJoiner[];
+  /**
+   * A caster's blow, by foe and then by joiner: expected damage a round and
+   * the mana a round of it costs. Cast while the mana pays for it, as
+   * `AttackSpells` casts the chosen spell before the melee round; the swing
+   * once it runs dry. Null where the character casts nothing at it.
    */
   casting: Array<{ perRound: number; manaPerRound: number } | null>;
   heal: SurvivalHeal | null;
@@ -251,8 +269,13 @@ export interface FightTrials {
 export function startFight(input: SurvivalInput): FightTrials | null {
   const { foes, hpMax } = input;
   if (foes.length === 0 || input.hp <= 0 || hpMax <= 0) return null;
+  // Every monster the fight can hold: the foes, then those they may draw in.
+  const all: readonly SurvivalFoe[] = [...foes, ...(input.joiners ?? [])];
   // Unread is not priced; a row stating no attack at all (the drunken gambler) deals nothing.
-  if (foes.some((foe) => foe.subject.profiles === undefined)) return null;
+  if (all.some((foe) => foe.subject.profiles === undefined)) return null;
+  const joinerAt = new Map(
+    (input.joiners ?? []).map((joiner, at) => [joiner.row, foes.length + at])
+  );
 
   /*
    * The order the character takes them in is the engine's: `rankByVerdict`
@@ -278,9 +301,9 @@ export function startFight(input: SurvivalInput): FightTrials | null {
   );
   const position = new Map(order.map((index, at) => [index, at]));
 
-  /** Every foe compiled against the character as `player` and `sheet` say it fights. */
+  /** Every foe and joiner compiled against the character as `player` and `sheet` say it fights. */
   const compile = (player: MenacePlayer, sheet: ProwessSheet): FoeSide[] =>
-    subjects.map((subject, index) => {
+    all.map(({ subject }, index) => {
       const target = targetOf(subject);
       const blow = swing(sheet, input.weapon, prowessTargetOf(subject), input.family, input.attack);
       return {
@@ -297,7 +320,9 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     });
   const sides = compile(input.player, input.sheet);
   // A fight the character cannot win is not one this can price.
-  if (sides.every((side) => side.attack === null && side.cast === null)) return null;
+  if (sides.slice(0, foes.length).every((side) => side.attack === null && side.cast === null)) {
+    return null;
+  }
 
   /*
    * The foes again once blessings have lapsed unrecast, by which ones (their
@@ -343,13 +368,14 @@ export function startFight(input: SurvivalInput): FightTrials | null {
   const trial = (): void => {
     const met =
       count === null
-        ? order
-        : Array.from({ length: count }, () => Math.floor(random() * sides.length)).sort(
+        ? [...order]
+        : Array.from({ length: count }, () => Math.floor(random() * foes.length)).sort(
             (a, b) => position.get(a)! - position.get(b)!
           );
     const alive = met.map((index) => sides[index]!.hp);
     const states: MobState[] = met.map(() => freshMobState());
     const swinging = met.map((index) => foes[index]!.waits !== true);
+    for (const index of [...met]) summon(drawSummons(random, all[index]!.arrives ?? NO_SUMMONS));
     // The foes as the character now meets them, and the top of its bar: a lapse moves both.
     let facing = sides;
     let top = hpMax;
@@ -394,6 +420,10 @@ export function startFight(input: SurvivalInput): FightTrials | null {
           const harm = side.death.high > 0 ? between(random, side.death.low, side.death.high) : 0;
           hp -= harm;
           lost += harm;
+          // Cast by the dying monster at the character, so resisted like any mob cast (Spell.cs:1052).
+          if (side.death.summons.length > 0 && random() >= side.death.resist) {
+            summon(drawSummons(random, side.death.summons));
+          }
         }
       }
 
@@ -460,6 +490,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     /** Every foe still standing and in the fight takes its round, against the character. */
     function foesRound(): void {
       let harm = 0;
+      const called: number[] = [];
       for (const [slot, index] of met.entries()) {
         if (alive[slot]! <= 0 || !swinging[slot]) continue;
         const outcome = rollMobRound(random, facing[index]!.model, states[slot]!);
@@ -468,10 +499,32 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         if (outcome.mended > 0) {
           alive[slot] = Math.min(sides[index]!.hp, alive[slot]! + outcome.mended);
         }
+        called.push(...outcome.summoned);
       }
       hp -= harm;
       lost += harm;
       worstRound = Math.max(worstRound, harm);
+      // Those called come in after the round, and swing from the next.
+      summon(called);
+    }
+
+    /**
+     * The rows a summons names come into the room, each with its own
+     * arrival, while fewer than `MOBS_PER_ROOM` stand (`Room.TrySummon`). A
+     * row with no joiner is one the realm lacks, which the server brings in
+     * as nobody.
+     */
+    function summon(rows: readonly number[]): void {
+      for (const row of rows) {
+        const index = joinerAt.get(row);
+        if (index === undefined) continue;
+        if (alive.filter((health) => health > 0).length >= MOBS_PER_ROOM) return;
+        met.push(index);
+        alive.push(sides[index]!.hp);
+        states.push(freshMobState());
+        swinging.push(all[index]!.waits !== true);
+        summon(drawSummons(random, all[index]!.arrives ?? NO_SUMMONS));
+      }
     }
 
     /** The character's turn spent on the heal `AutoHeal` would cast, if it would. */
@@ -627,22 +680,4 @@ function lapsed(
       effects: sumEffects([...(sheet.effects ? [sheet.effects] : []), off])
     }
   };
-}
-
-/**
- * The row that harms the most, in expectation as the draw deals it
- * (`expectedHarm`): a name holding several rows is met as its worst.
- */
-function worstModel(subject: MenaceSubject, player: MenacePlayer): MobModel {
-  let worst: MobModel = { slots: [], casts: [], resist: 0 };
-  let most = -1;
-  for (const profile of subject.profiles ?? []) {
-    const model = mobModel(subject, profile, player);
-    const harm = expectedHarm(model);
-    if (harm > most) {
-      most = harm;
-      worst = model;
-    }
-  }
-  return worst;
 }

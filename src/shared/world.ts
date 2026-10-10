@@ -1437,6 +1437,12 @@ export interface WorldSpell {
    */
   mageryType?: number;
   mageryLevel?: number;
+  /**
+   * Who one cast brings into the caster's room (format 60): one pick per
+   * summons, each `[row, chance]` with at most one row brought. A call for
+   * aid is one. See `src/shared/summons.ts`.
+   */
+  summons?: Array<Array<[number, number]>>;
 }
 
 /**
@@ -2035,11 +2041,13 @@ export interface WorldMob {
    */
   drops?: string[];
   /**
-   * `Monsters.Type`, undecoded — every distinct value the rows state.
+   * `Monsters.Type`, every distinct value the rows state.
    *
-   * Read by nothing on purpose. No reading of this column survives the data
-   * (measured 2026-09-02); it is carried so a later capture can decode it
-   * without reconverting every realm, exactly as `abilities` carries numbers.
+   * The server reads it as `TypeOfMob` (`MobType.GetTypeOfMob`): 0 solo, 1 a
+   * leader that takes the followers in its room when it moves, 2 a follower,
+   * 3 stationary, which never follows and attacks on sight by its own
+   * alignment rules (`ShouldMobAttackTarget`). Nothing reads it yet; it is
+   * not a shopkeeper or trainer kind (measured 2026-09-02).
    */
   realmTypes?: number[];
   /** `Monsters.AvgDmg` — the worst of the rows sharing the name. */

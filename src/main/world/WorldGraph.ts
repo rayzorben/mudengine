@@ -100,6 +100,7 @@ import {
 import { Router, type RouteOptions, type Traveller } from './Router';
 import type { Passage, PortalExit, RoomIndex } from './RoomIndex';
 import { Catalogue, mobAsRow } from './Catalogue';
+import { Joiners } from './joiners';
 import { headerOf, NO_HEADER, type RealmHeader } from './realmHeader';
 import { QuestPlanner } from './QuestPlanner';
 import type { PlannerRooms } from './PlannerRooms';
@@ -301,7 +302,7 @@ export class WorldGraph {
     sellingRooms: (item) => this.stockRooms(item, false),
     handovers: (item) => this.catalogue.item(item)?.from ?? [],
     droppers: (item) => this.sourcesOf({ id: item }).mobs.flatMap((name) => this.mob(name) ?? []),
-    summonersOf: (mob) => this.summonersOf(mob),
+    summonersOf: (mob) => this.catalogue.summonersOf(mob),
     spawnRoomsOf: (mob) => this.spawnRoomsOf(mob)
   });
   /** The items that are a way through, as edges from everywhere to one room, built once and shared. */
@@ -323,9 +324,12 @@ export class WorldGraph {
    * the planning methods below are its façade.
    */
   private readonly planner: QuestPlanner;
+  /** Who a fight draws in, over the catalogue (`joiners.ts`, todo 24). */
+  readonly joiners: Joiners;
 
   constructor(catalogue: Catalogue, quests?: unknown) {
     this.catalogue = catalogue;
+    this.joiners = new Joiners(catalogue);
     // Here rather than beside the field, so every table the router holds
     // exists whatever order the fields above are declared in.
     this.router = new Router(this.roomIndex());
@@ -457,10 +461,6 @@ export class WorldGraph {
 
   residentEntities(room: WorldRoom): MobEntity[] {
     return this.catalogue.residentEntities(room);
-  }
-
-  summonersOf(mob: WorldMob): WorldMob[] {
-    return this.catalogue.summonersOf(mob);
   }
 
   supply(): ReturnType<Catalogue['supply']> {

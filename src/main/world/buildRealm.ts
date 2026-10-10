@@ -17,7 +17,14 @@ import { gateNames, nameGate } from './navigation/stepGates';
 import type { ScriptLine } from '../../shared/world';
 import { scriptLines } from './navigation/scriptWays';
 import { readTextblocks } from './navigation/textblock';
-import { indexSupply, itemsInSupply, slotRestocks, type BuiltSupply } from './supplyIndex';
+import {
+  indexSupply,
+  itemsInSupply,
+  slotRestocks,
+  spellSummons,
+  type BuiltPicks,
+  type BuiltSupply
+} from './supplyIndex';
 import { groupedRooms } from './monsterGroups';
 import {
   roomId,
@@ -122,8 +129,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 57 | **What each row is, for a spell.** `BuiltMobRow` dropped `Abil-n`, so a name's effects were the union of its rows and a spell could not be told it has no effect: a `zombie` is three rows, all `NonLiving`, and a Priest at level 1 cast `harm` (`AffectsLivingOnly`) at one, was told *Your spell has no effect on big zombie.* and lost the round. `BuiltMobRow.ab` carries each row's own pairs; `Catalogue` overlays them on a resolved row and reads what every row agrees the name is (`natureOf`) for `spellReaches` (2026-10-06)
  * | 58 | **A room no monster can follow into.** The server moves a monster only into a room of its own group (`Mob.CanMoveThroughExit`), and the export lists each monster's group rooms in `Summoned By`. A room nobody lists is `WorldRoom.noFollow`: Fortress of the Crimson Flame, Main Gate (15/1054) among the fortress's hallways, 5,096 of gmud.zip's 55,806 rooms. The run takes an exit into one first (`monsterGroups.ts`) |
  * | 59 | **What a token's trip costs.** A recall token's block runs `price 200000` ahead of its `teleport`, and the server takes that copper from cash on hand or refuses the use and spends nothing. `ItemLanding.fare` adds up the chain's `price` steps ahead of the teleport, and `BuiltItem.fare` carries it, so a cash run knows before it uses a token whether the cash it carries pays for the trip: 20 platinum for Silvermere and Rhudaur, 30 for Khazarad, in both gmud.zip and pmud.zip |
+ * | 60 | **Who a monster's spell brings into the fight.** A call for aid is a spell whose Summon ability (12) names a monster row (`Spell.ApplySpellAbilities`, `Room.TrySummon`), and the runs (format 56) kept what a monster's casts make but not which cast made it, so the fight odds could not tie a summons to the round's one roll. `BuiltSpell.sm` is who one cast brings in, a pick of `[row, chance]` per Summon modifier, as the server summons once per modifier (`Makings.summonPicks`): the half-orc sentry's *summon orc warrior* (593) brings row 480, a fat orc warrior |
  */
-export const REALM_FORMAT = 59;
+export const REALM_FORMAT = 60;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -505,6 +513,11 @@ export interface BuiltSpell {
    */
   mt?: number;
   ml?: number;
+  /**
+   * Who one cast brings into the caster's room (format 60, `spellSummons`):
+   * a pick per Summon modifier, a script's `summon`, the spell a chain ends in.
+   */
+  sm?: BuiltPicks;
 }
 
 /**
@@ -1509,6 +1522,12 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   // What the realm makes and how often (format 56); every item it names is one somebody holds.
   const supply = indexSupply(source, blocks, spells, rowProfile);
   for (const id of itemsInSupply(supply)) neededItems.add(id);
+  // Who each spell brings into the caster's room (format 60): the call for aid among them.
+  const summoning = spellSummons(blocks, spells);
+  for (const spell of spells) {
+    const brings = summoning.get(spell.id);
+    if (brings !== undefined) spell.sm = brings;
+  }
 
   const items = indexItems(source, neededItems, fromScripts.from, itemLandings);
   const named = new Map(items.map((item) => [item.id, item.n]));
