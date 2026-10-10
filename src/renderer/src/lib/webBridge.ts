@@ -8,7 +8,7 @@
  * one list. The envelope is `src/shared/rpc.ts`; the server side is
  * `src/main/host/WebHost.ts`.
  *
- * Three things the desktop asks main for are answered in the window here,
+ * Four things the desktop asks main for are answered in the window here,
  * because main in web mode is on another machine:
  *
  * - **the clipboard** — `navigator.clipboard`, which a browser tab may use
@@ -17,6 +17,9 @@
  * - **the realm picker** — the window's own, over `Invoke.browseHome`
  *   (`lib/pickers.ts`), because the disk is the client's and not the
  *   viewer's;
+ * - **a saved file** — the debug report and a character export are written
+ *   on the client's disk as on the desktop, then fetched into the browser's
+ *   downloads over the link main hands back (`Host.deliver`);
  * - **a lost socket** — said out loud over the whole window, and the page
  *   reloads itself once the client answers again, which re-attaches every
  *   character and replays the backscroll main kept for exactly this.
@@ -24,7 +27,15 @@
  * Calls made before the socket opens are queued, not dropped: `App` sends
  * `clientReady` on its first effect and the handshake is still in flight.
  */
-import { Invoke, Push, Send, type IpcApi, type Notice } from '@shared/ipc';
+import {
+  Invoke,
+  Push,
+  Send,
+  type CharacterExport,
+  type DebugSave,
+  type IpcApi,
+  type Notice
+} from '@shared/ipc';
 import { asRpcOutbound, RPC_PATH, trimArgs, type RpcRequest } from '@shared/rpc';
 import { t } from './i18n';
 import { hasHomePicker, pickFromHome } from './pickers';
@@ -62,6 +73,15 @@ export function createWebBridge(): IpcApi {
       return Promise.resolve(null);
     }
     return pickFromHome();
+  };
+
+  /** A file main wrote and offered, saved into the browser's downloads. */
+  const download = (link: string | null): void => {
+    if (link === null) return;
+    const anchor = document.createElement('a');
+    anchor.href = link;
+    anchor.download = '';
+    anchor.click();
   };
 
   const url = (): string => {
@@ -185,7 +205,11 @@ export function createWebBridge(): IpcApi {
     getTelnetLog: (session) => invoke(Invoke.getTelnetLog, session),
     getLines: (session) => invoke(Invoke.getLines, session),
     getDebug: (session) => invoke(Invoke.getDebug, session),
-    saveDebug: (session) => invoke(Invoke.saveDebug, session),
+    saveDebug: async (session) => {
+      const saved = await invoke<DebugSave>(Invoke.saveDebug, session);
+      if ('path' in saved) download(saved.download);
+      return saved;
+    },
     getCharacter: (session) => invoke(Invoke.getCharacter, session),
     routeTo: (session, map, room) => invoke(Invoke.routeTo, session, map, room),
     routeBetween: (session, from, to) => invoke(Invoke.routeBetween, session, from, to),
@@ -272,7 +296,11 @@ export function createWebBridge(): IpcApi {
     deleteServer: (name) => invoke(Invoke.deleteServer, name),
     settingsSnapshot: () => invoke(Invoke.settingsSnapshot),
     chooseRealm: () => pickOnTheClient(),
-    exportCharacter: (id, password) => invoke(Invoke.exportCharacter, id, password),
+    exportCharacter: async (id, password) => {
+      const result = await invoke<CharacterExport>(Invoke.exportCharacter, id, password);
+      if (result.kind === 'written') download(result.download);
+      return result;
+    },
     chooseCharacterFile: () => pickOnTheClient(),
     importCharacter: (file) => invoke(Invoke.importCharacter, file),
     searchRooms: (session, query) => invoke(Invoke.searchRooms, session, query),

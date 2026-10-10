@@ -7,6 +7,7 @@ import path from 'node:path';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 import { AccessTokens, COOKIE } from '../web/access';
+import { Downloads } from '../web/downloads';
 import { createWebServer, loginPage, withConnectSrc, type WebServer } from '../web/server';
 import type { WebSocketConnection } from '../web/sockets';
 
@@ -27,6 +28,7 @@ let dir = '';
 let server: WebServer;
 let port = 0;
 const tokens = new AccessTokens();
+const downloads = new Downloads();
 const sockets: WebSocketConnection[] = [];
 const log: string[] = [];
 
@@ -52,7 +54,8 @@ beforeAll(async () => {
     log: (line) => log.push(line),
     // One extension, `planner`, whose page is the renderer's own index for the test.
     extensionFile: (name, relative) =>
-      name === 'planner' && relative === 'index.html' ? path.join(dir, 'index.html') : null
+      name === 'planner' && relative === 'index.html' ? path.join(dir, 'index.html') : null,
+    download: (token) => downloads.take(token)
   });
   ({ port } = await server.listen(0, '127.0.0.1'));
 });
@@ -275,6 +278,27 @@ describe('with a session', () => {
     expect((await get('/ext/planner/missing.js', { Cookie: cookie })).status).toBe(404);
     expect((await get('/ext/other/index.html', { Cookie: cookie })).status).toBe(404);
     expect((await get('/ext/%E0%A4%A/index.html', { Cookie: cookie })).status).toBe(404);
+  });
+
+  it('hands an offered file over once, as a download, behind the password', async () => {
+    const report = path.join(dir, 'debug-Vaelor.txt');
+    fs.writeFileSync(report, 'the trace');
+    const link = downloads.offer(7, report);
+    expect(link).toMatch(/^\/download\/[0-9a-f]{32}\/debug-Vaelor\.txt$/);
+    expect((await get(link)).status).toBe(401);
+    const cookie = await signIn();
+    // A HEAD does not spend it; the GET does.
+    expect(
+      (await fetch(`${base()}${link}`, { method: 'HEAD', headers: { Cookie: cookie } })).status
+    ).toBe(404);
+    const first = await get(link, { Cookie: cookie });
+    expect(first.status).toBe(200);
+    expect(first.headers.get('content-disposition')).toBe(
+      "attachment; filename*=UTF-8''debug-Vaelor.txt"
+    );
+    expect(await first.text()).toBe('the trace');
+    expect((await get(link, { Cookie: cookie })).status).toBe(404);
+    expect((await get('/download/abc123/index.html', { Cookie: cookie })).status).toBe(404);
   });
 
   it('refuses a socket opened from another origin', async () => {

@@ -3,9 +3,10 @@
  * goes, where it comes from, and the channels. What is in the file is
  * `config/CharacterTransfer.ts`.
  *
- * The host says where: the player's choice in a dialog on the desktop,
- * `exports/` under the home and the tab's own home picker in a browser
- * (`WebHost.chooseSaveFile`, `lib/pickers.ts`).
+ * The host says where: the player's choice in a dialog on the desktop; in a
+ * browser, `exports/` under the home, then downloaded into the tab
+ * (`WebHost.chooseSaveFile`, `Host.deliver`), and the tab's own home picker
+ * for an import (`lib/pickers.ts`).
  */
 import fs from 'node:fs';
 
@@ -21,7 +22,7 @@ import { tuning } from './tuning';
 
 export interface TransferDeps {
   home: Home;
-  host: Pick<Host, 'transport' | 'chooseFile' | 'chooseSaveFile'>;
+  host: Pick<Host, 'transport' | 'chooseFile' | 'chooseSaveFile' | 'deliver'>;
   /** Whether a loaded character already uses this id, file or no file. */
   loaded(id: string): boolean;
 }
@@ -45,7 +46,7 @@ export function handleCharacterTransfer({ home, host, loaded }: TransferDeps): v
         });
         if (file === null) return { kind: 'dismissed' };
         await fs.promises.writeFile(file, built.bytes);
-        return { kind: 'written', file };
+        return { kind: 'written', file, download: host.deliver(caller, file) };
       } catch (error) {
         return {
           kind: 'refused',

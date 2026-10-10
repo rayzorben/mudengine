@@ -39,6 +39,7 @@ import { tuning } from '../app/tuning';
 import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Host';
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
+import { Downloads } from './web/downloads';
 import type { WebSocketConnection } from './web/sockets';
 import { serialise } from './serialise';
 import { TabOutbox } from './web/outbox';
@@ -189,6 +190,7 @@ export function createWebHost(layout: Layout): Host {
   let closing = false;
   /** Where a file the tab asks to save is written, known once the client opens. */
   let exportsDir: string | null = null;
+  const downloads = new Downloads();
 
   const transport: Transport = {
     handle: (channel, handler) => handlers.set(channel, handler),
@@ -280,6 +282,7 @@ export function createWebHost(layout: Layout): Host {
     connection.onMessage = (text) => dispatch(tab, caller, text);
     connection.onClose = (code, reason) => {
       tabs.delete(id);
+      downloads.dropTab(id);
       hooks.windows.remove(id);
       if (!closing) {
         say(`web: tab ${id} from ${remote} closed (${code}${reason ? ` ${reason}` : ''}).`);
@@ -359,7 +362,8 @@ export function createWebHost(layout: Layout): Host {
         trustProxy,
         onSocket: (connection, remote) => attach(hooks, connection, remote),
         log: say,
-        extensionFile: (name, relative) => hooks.extensionFile(name, relative)
+        extensionFile: (name, relative) => hooks.extensionFile(name, relative),
+        download: (token) => downloads.take(token)
       });
       server.listen(port, bind).then(
         (bound) => {
@@ -394,6 +398,12 @@ export function createWebHost(layout: Layout): Host {
       await fs.promises.mkdir(exportsDir, { recursive: true });
       return claimFileIn(exportsDir, choice.defaultName);
     },
+    /*
+     * The tab is on another machine, so the file is offered to its browser
+     * as well: the one tab that asked, once.
+     */
+    deliver: (caller, file) =>
+      tabs.has(caller.windowId) ? downloads.offer(caller.windowId, file) : null,
     clipboard: null,
 
     /*

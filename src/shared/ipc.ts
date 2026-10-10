@@ -166,10 +166,17 @@ export type Revealed = { how: 'opened' } | { how: 'listed'; path: string };
 /**
  * What exporting a character did. `file` is where it was written: the path the
  * player chose on the desktop, or `exports/` under the home in a browser tab,
- * which has no save dialog on the machine the files are on.
+ * which has no save dialog on the machine the files are on. `download` is the
+ * link a browser tab fetches the written file from, null where the window
+ * shares the client's disk (`Host.deliver`).
  */
 export type CharacterExport =
-  { kind: 'written'; file: string } | { kind: 'dismissed' } | { kind: 'refused'; error: string };
+  | { kind: 'written'; file: string; download: string | null }
+  | { kind: 'dismissed' }
+  | { kind: 'refused'; error: string };
+
+/** The bug report written, with its download link as `CharacterExport`'s, or the failure. */
+export type DebugSave = { path: string; download: string | null } | { error: string };
 
 /** What importing one did, and what the player should know about it. */
 export type CharacterImport =
@@ -1230,7 +1237,7 @@ export interface IpcApi {
   /** Everything the debug ring holds, and how much it has already dropped. */
   getDebug(session: SessionId): Promise<{ records: DebugRecord[]; dropped: number }>;
   /** Writes the bug report and answers with where it went, or the failure. */
-  saveDebug(session: SessionId): Promise<{ path: string } | { error: string }>;
+  saveDebug(session: SessionId): Promise<DebugSave>;
   getCharacter(session: SessionId): Promise<CharacterState>;
   routeTo(session: SessionId, map: number, room: number): Promise<Route>;
   /**

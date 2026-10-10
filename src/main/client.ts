@@ -117,6 +117,7 @@ import {
   Send,
   type AttachSnapshot,
   type BackscrollPage,
+  type DebugSave,
   type HomeListing,
   type Notice,
   type ProfileSummary,
@@ -1669,7 +1670,7 @@ function registerIpc(): void {
    * Named after the character and the moment, because a player reporting two
    * problems in an evening has to be able to say which file is which.
    */
-  handle(Invoke.saveDebug, async (_caller, session: SessionId) => {
+  handle(Invoke.saveDebug, async (caller, session: SessionId): Promise<DebugSave> => {
     const slot = host?.get(session);
     if (!slot) return { error: t('app.debug.noSession') };
     const who = labelOf(session);
@@ -1694,7 +1695,7 @@ function registerIpc(): void {
         ),
         'utf8'
       );
-      return { path: file };
+      return { path: file, download: platform.deliver(caller, file) };
     } catch (error) {
       // Said out loud rather than swallowed: a save button that quietly did
       // nothing is worse than one that reports why it could not.
