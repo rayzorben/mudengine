@@ -567,6 +567,16 @@ describe('progress and combat', () => {
     expect(play(['*Combat Engaged*', '*Combat Off*']).current.inCombat).toBe(false);
   });
 
+  it('keeps the fight on the two no-effect spellings that print their own Off', () => {
+    const lines = [
+      'Your spell has no effect in this room!',
+      'Your spell has no effect against this monster!'
+    ];
+    for (const line of lines) {
+      expect(play(['*Combat Engaged*', line]).current.inCombat).toBe(true);
+    }
+  });
+
   it('does not put realm-wide arrivals in the room', () => {
     // "just entered the Realm" is a global announcement, not room occupancy.
     const tracker = play(['Obvious exits: north', 'Masta just entered the Realm.']);
@@ -2006,6 +2016,15 @@ describe('the fight this character is in', () => {
       combatWorld()
     );
     expect(tracker.current.combat.target).toBe('small giant rat');
+  });
+
+  it('ends the fight on a spell with no effect on the monster', () => {
+    // `InitiateSpell` answers it with `BreakCombat(false)`: the attack ends and no Off is printed.
+    const engaged = ['[HP=98]:', { send: 'pu orc rogue' }, '*Combat Engaged*'] as const;
+    expect(play([...engaged], combatWorld()).current.combat.target).toBe('orc rogue');
+    const tracker = play([...engaged, 'Your spell has no effect on orc rogue.'], combatWorld());
+    expect(tracker.current.inCombat).toBe(false);
+    expect(tracker.current.combat.target).toBeNull();
   });
 
   it('binds through the Off half of a disengage/engage pair', () => {

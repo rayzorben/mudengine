@@ -2256,9 +2256,7 @@ export class CharacterTracker {
          */
         const target =
           s.combat.target !== null && answers(s.combat.target) ? null : s.combat.target;
-        // Something the server says is not there cannot be attacking this
-        // character either — the same cleanup a death does, for the same
-        // reason: a stale attacker is a corpse retaliation would swing at.
+        // What the server says is not here is not attacking: a stale attacker is a corpse to swing at.
         const attackers = s.combat.attackers.filter((name) => !answers(name));
         if (
           gone.length === 0 &&
@@ -2281,10 +2279,12 @@ export class CharacterTracker {
       }
 
       /* -------------------------------------------------------- combat */
+      // A fight's `Your spell has no effect on <name>.` is an Off never printed (`BreakCombat(false)`).
+      case 'spell-ineffective':
       case 'combat-status': {
+        if (block.type === 'spell-ineffective' && (!g['target'] || !s.inCombat)) return null;
         const engaged = g['status'] === 'Engaged';
-        // The looks queued during the fight go with it, as they always have;
-        // the queue is the command path's, so it is cleared here, not there.
+        // The fight's queued looks go with it, cleared here since the queue is the command path's.
         if (!engaged) this.expect.clearLooks();
         return this.fight.status(s, engaged, block.at);
       }

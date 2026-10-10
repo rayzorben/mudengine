@@ -972,17 +972,21 @@ export class AutoCombat implements SessionModule {
         return;
 
       /*
-       * `Your spell has no effect on` ends this character's attack with no
-       * `*Combat Off*` (`InitiateSpell`, `BreakCombat(false)`): Rayzor stood a
-       * round at 6 hit points before the next tick sent the attack verb. The
-       * round's change goes now, and a fight the cast was opening is opened
-       * again now (`answeredNo`).
+       * `Your spell has no effect on <name>.` ends this character's attack
+       * with no `*Combat Off*` (`InitiateSpell`, `BreakCombat(false)`), and
+       * the tracker ends the fight on it: Rayzor stood a round at 6 hit points
+       * before the next tick sent the attack verb. Mid-fight the monsters are
+       * owed their attack back (`noEffectBroke`), and a fight the cast was
+       * opening is opened again now (`answeredNo`). The other two spellings
+       * print their own Off.
        */
       case 'spell-ineffective': {
         this.spell.heard(block, this.state);
         const fighting = this.inAFight();
-        if (fighting !== null) this.roundChange(fighting);
-        else this.answeredNo(block.groups['target'] ?? null);
+        const named = block.groups['target'] ?? null;
+        if (fighting === null) this.answeredNo(named);
+        else if (named === null) this.roundChange(fighting);
+        else this.noEffectBroke();
         return;
       }
       case 'spell-cast':
@@ -2066,9 +2070,14 @@ export class AutoCombat implements SessionModule {
    */
   private fightBrokenBy(command: string | null): void {
     if (command === null) return;
-    for (const fought of this.broken.broke()) this.opened.delete(mobKey(fought));
+    this.owedBack();
     // A typed `break` ended it on purpose: nothing is owed back once the stand-down lapses.
     if (commandOf(command) === 'Break') this.broken.forget();
+  }
+
+  /** The broken fight's monsters are owed their attack, so no engage cooldown holds one back. */
+  private owedBack(): void {
+    for (const fought of this.broken.broke()) this.opened.delete(mobKey(fought));
     if (this.focus !== null) this.opened.delete(this.focus);
   }
 
@@ -2116,6 +2125,18 @@ export class AutoCombat implements SessionModule {
     if (!engaged && !isCastResult(block) && !movedOn) return;
     this.offBy = null;
     if (!engaged) this.fightBroken(by);
+  }
+
+  /**
+   * A spell with no effect broke the fight. The monster is owed its attack as
+   * after any break, whatever command the line answers, but the spell's book
+   * stays: the monster hit back is the one the spell just failed on, and a
+   * spell `keep` could not file under a realm name is ruled out only by this
+   * fight's book.
+   */
+  private noEffectBroke(): void {
+    this.broken.off(this.state);
+    this.owedBack();
   }
 
   /** The fight broke for `command`: the spell's book goes, and the monster is owed its attack. */
