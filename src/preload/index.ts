@@ -63,6 +63,8 @@ const api: WireApi = {
     ipcRenderer.invoke(Invoke.previewAreaSearch, session, radius),
   searchArea: (session, radius, searches) =>
     ipcRenderer.invoke(Invoke.searchArea, session, radius, searches),
+  cashRunTokens: (session) => ipcRenderer.invoke(Invoke.cashRunTokens, session),
+  startCashRun: (session, ask) => ipcRenderer.invoke(Invoke.startCashRun, session, ask),
   stopMoving: (session) => ipcRenderer.invoke(Invoke.stopMoving, session),
   stepBack: (session, confirmed) => ipcRenderer.invoke(Invoke.stepBack, session, confirmed),
   listLoops: (session) => ipcRenderer.invoke(Invoke.listLoops, session),

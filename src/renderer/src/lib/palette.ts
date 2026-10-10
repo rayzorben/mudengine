@@ -119,8 +119,8 @@ export interface PaletteDeps {
   toggleRail(): void;
   toggleDebug(): void;
   toggleLoops(): void;
-  /** The Search the area dialog, for the shown character. */
-  openAreaSearch(): void;
+  /** The Search the area and Cash run dialogs, for the shown character. */
+  trips: { areaSearch(): void; cashRun(): void };
   reveal(ask: () => Promise<Revealed>): void;
   /** The console on screen, read when a command runs. */
   terminal(): PaletteTerminal | null;
@@ -500,7 +500,16 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       group: 'navigate' as const,
       keywords: ['area', 'rooms', 'hidden', 'secret', 'explore', 'nearby', 'sweep'],
       movesFocus: true,
-      run: deps.openAreaSearch
+      run: deps.trips.areaSearch
+    },
+    {
+      id: 'cash:run',
+      icon: 'loop' as const,
+      label: t('palette.navigate.cashRunLabel'),
+      group: 'navigate' as const,
+      keywords: ['cash', 'coins', 'money', 'bank', 'deposit', 'token', 'loop', 'gold', 'plat'],
+      movesFocus: true,
+      run: deps.trips.cashRun
     },
     {
       id: 'search',

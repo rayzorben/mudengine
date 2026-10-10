@@ -14,6 +14,7 @@ import type { CommandQueue } from './CommandQueue';
 import { Handover, type HandoverEnd } from './Handover';
 import type { SessionModule } from './Module';
 import { tripRefusal, type TripPlanner } from './askedTrip';
+import { walkLeg } from './errandLeg';
 import { stoppedByPerson } from './personStop';
 import { Withdrawal, type WithdrawalEnd } from './Withdrawal';
 import { t } from '../app/i18n';
@@ -223,27 +224,24 @@ export class GearTrip implements SessionModule {
   /** Plan and walk the leg to the current stop from where the character stands. */
   private leg(trip: Trip): void {
     const stop = trip.plan.stops[trip.stop]!;
-    if (this.planner.escaping()) {
-      this.end(t('automation.gearTrip.refusalEscaping'));
-      return;
-    }
     trip.legs += 1;
-    if (trip.legs > tuning().gear.maxLegs) {
-      this.end(t('automation.gearTrip.tooManyLegs', { place: stop.place }));
+    const walker = { ...this.planner, walk: (route: Route) => this.planner.walk(route, trip.run) };
+    const refused = walkLeg(
+      walker,
+      stop.room as RoomId,
+      stop.place,
+      trip.legs,
+      tuning().gear.maxLegs
+    );
+    if (refused === null) {
+      this.publish(trip);
       return;
     }
-    const route = this.planner.routeTo(stop.room as RoomId);
-    const refused =
-      typeof route === 'string'
-        ? route
-        : route.blocked
-          ? (route.reason ?? t('automation.walk.refusalNoRoute'))
-          : this.planner.walk(route, trip.run);
-    if (refused !== null) {
-      this.end(t('automation.gearTrip.notReached', { place: stop.place, why: refused }));
-      return;
-    }
-    this.publish(trip);
+    this.end(
+      'ends' in refused
+        ? refused.ends
+        : t('automation.gearTrip.notReached', { place: stop.place, why: refused.notReached })
+    );
   }
 
   private arrive(trip: Trip, stop: GearStop, state: CharacterState): void {

@@ -172,7 +172,7 @@ export interface TravelParts {
   readonly trainLevel: Pick<TrainErrand, 'busy' | 'abandon'>;
   readonly outgrown: Pick<OutgrownGear, 'busy' | 'abandon'>;
   readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
-  readonly hostTrips: Pick<HostTrips, 'busy' | 'abandon'>;
+  readonly hostTrips: Pick<HostTrips, 'busy' | 'abandon' | 'stop'>;
   readonly areaSearch: Pick<AreaSearch, 'busy' | 'abandon' | 'stop'>;
   readonly hunt: Pick<AutoHunt, 'noteStopped' | 'noteLapStopped'>;
   readonly itemErrand: Pick<ItemErrand, 'running' | 'collect' | 'abandon'>;
@@ -2210,6 +2210,7 @@ export class Travel implements SessionModule {
     if (this.loops.progress.status === 'running') this.loops.stop(reason);
     // Before the walk, so the leg's end is not read as a room to pass over.
     this.areaSearch.stop(reason);
+    this.hostTrips.stop();
     this.walker.stop(reason);
     // The one door a person's stop comes through, so it is the one place that
     // can tell a hunt it was stopped *by somebody* rather than by the realm.

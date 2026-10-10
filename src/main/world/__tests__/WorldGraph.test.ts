@@ -7576,6 +7576,14 @@ describe('an item that teleports is an edge the router may walk', () => {
     // on the moment, not on the place, so it stays usable anywhere.
     expect(graph.item(graph.itemIdNamed('token of Kingsport')!)?.usableIn).toBeUndefined();
   });
+
+  it("reads a token's fare off its price step, and none where the chain charges nothing", () => {
+    const graph = WorldGraph.load('resources/world/paradigm.jsonl.gz');
+    // `price 200000 4146` and `price 300000 4147`, ahead of each teleport.
+    expect(graph.item(graph.itemIdNamed('token of Silvermere')!)?.fare).toBe(200_000);
+    expect(graph.item(graph.itemIdNamed('token of Khazarad')!)?.fare).toBe(300_000);
+    expect(graph.item(graph.itemIdNamed('potion of levitation')!)?.fare).toBeUndefined();
+  });
 });
 
 /*

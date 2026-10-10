@@ -82,8 +82,8 @@ import ResetGate from './components/ResetGate';
 import LowLivesPrompt from './components/LowLivesPrompt';
 import { useLowLivesAsk } from './hooks/useLowLivesAsk';
 import { useConsoleNotices } from './hooks/useConsoleNotices';
-import AreaSearchDialog from './components/AreaSearchDialog';
-import { useAreaSearch } from './hooks/useAreaSearch';
+import TripDialogs from './components/TripDialogs';
+import { useTripDialogs } from './hooks/useTripDialogs';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import { type ProfileSummary, type SessionId, type SessionSummary } from '@shared/ipc';
 import type { ConnectionState, TerminalActionName, TerminalSize } from '@shared/types';
@@ -533,7 +533,7 @@ export default function App() {
     returnFocus,
     say: noticeTo
   });
-  const area = useAreaSearch(session, returnFocus);
+  const trips = useTripDialogs(session, returnFocus);
 
   /** What the shown character asks its realm. */
   const {
@@ -1009,7 +1009,7 @@ export default function App() {
     toggleRail,
     toggleDebug,
     toggleLoops,
-    openAreaSearch: area.open,
+    trips: trips.opens,
     reveal,
     terminal: activeTerminal,
     say: noticeTo
@@ -1176,7 +1176,7 @@ export default function App() {
     reverseLoop,
     send: sayOnChannel,
     openLoops: toggleLoops,
-    openAreaSearch: area.open,
+    openAreaSearch: trips.opens.areaSearch,
     dial,
     hangUp,
     sayRefusal,
@@ -1595,7 +1595,7 @@ export default function App() {
         characterName={livesAsked === null ? '' : profileNameFor(livesAsked.session)}
         onAnswer={answerLowLives}
       />
-      <AreaSearchDialog api={api} area={area} profiles={profiles} />
+      <TripDialogs api={api} trips={trips} profiles={profiles} />
       <SettingsScreen
         {...settingsApi}
         maximaFor={maximaFor}

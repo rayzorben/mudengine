@@ -94,6 +94,8 @@ interface PendingDeposit {
    * this happening, that is the shape to reach for.
    */
   refreshed: boolean;
+  /** Banks at whichever counter it stands at: a cash run's nearest bank, the player's choice for it. */
+  anyCounter: boolean;
 }
 
 export class AutoDeposit implements SessionModule {
@@ -165,7 +167,7 @@ export class AutoDeposit implements SessionModule {
    * character not in the realm — where a `deposit` is a menu answer and the
    * button is not on screen to be pressed in the first place.
    */
-  request(keep: number, priority: Priority, state: CharacterState): boolean {
+  request(keep: number, priority: Priority, state: CharacterState, anyCounter = false): boolean {
     if (state.phase !== 'in-game') return false;
     const at = this.now();
     // One at a time: the second press before the first listing lands is the
@@ -176,13 +178,13 @@ export class AutoDeposit implements SessionModule {
       this.events.notice?.(t('automation.banking.notAtCounter'));
       return false;
     }
-    if (this.wrongBank(counter)) {
+    if (!anyCounter && this.wrongBank(counter)) {
       this.events.notice?.(t('automation.banking.notYourBank'));
       return false;
     }
 
     const expiresAt = at + tuning().banking.expiresMs;
-    this.pending = { keep, priority, expiresAt, refreshed: false };
+    this.pending = { keep, priority, expiresAt, refreshed: false, anyCounter };
     /*
      * The refresh, and the whole of what goes out now. `enqueue` answering
      * `false` here means a stale `i` from an expired request is still queued —
@@ -228,7 +230,7 @@ export class AutoDeposit implements SessionModule {
       this.events.notice?.(t('automation.banking.notAtCounter'));
       return;
     }
-    if (this.wrongBank(counter)) {
+    if (!pending.anyCounter && this.wrongBank(counter)) {
       this.events.notice?.(t('automation.banking.notYourBank'));
       return;
     }

@@ -176,6 +176,9 @@ export class Catalogue {
           .map((at) => at as RoomId);
         if (where.length > 0) item.usableIn = where;
       }
+      // What a use takes from cash on hand — format 59.
+      const fare = Number(record['fare']);
+      if (Number.isFinite(fare) && fare > 0) item.fare = fare;
       const price = Number(record['price']);
       if (Number.isFinite(price) && price > 0) item.price = price;
       // Format 47: absent is copper, and before it the coin is unknown.

@@ -942,6 +942,22 @@ tuning:
     vaultMs: 8000
     maxLegs: 4
 
+  # Collecting cash on a loop and banking it by token -- `CashRun`. A look or
+  # use still queued after `sendMs` is dropped; a look not answered by its uses
+  # left in `lookMs` is unread; a use that has not moved the character in
+  # `useMs` did not take (the script waits ten seconds); `bankMs` waits for the
+  # deposit sentence; banks are weighed within `bankSteps` moves of the
+  # landing; full in a room whose monsters stay `clearMs` without a fight, the
+  # run walks on to try the next room; `maxLegs` bounds the walk to the bank.
+  cashRun:
+    sendMs: 6000
+    lookMs: 8000
+    useMs: 30000
+    bankMs: 12000
+    bankSteps: 40
+    clearMs: 20000
+    maxLegs: 4
+
   # Fetching named items from a stash — `StashFetch`. Up to `searches` bare
   # searches before settling for the open floor (each search rolls every hidden
   # item against Perception); `collectMs` waits for a search's answer and for

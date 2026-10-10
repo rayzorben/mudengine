@@ -1074,6 +1074,24 @@ export interface RemotesConfig {
  */
 export type EncumbranceGate = 'never' | 'medium' | 'heavy';
 
+/**
+ * How the server's own grading words rank: only what has been seen or MegaMUD
+ * names (`None` in four captures, `Medium` in one, MegaMUD's cash page offers
+ * *medium* and *heavy*).
+ */
+const GRADE_RANK: Readonly<Record<string, number>> = { none: 0, light: 1, medium: 2, heavy: 3 };
+
+/**
+ * Whether the server's grading word has reached the gate. The word, never a
+ * percentage: the thresholds behind it are unsampled. A word the ranking does
+ * not know leaves the gate closed (see above).
+ */
+export function encumbranceAtLeast(gate: EncumbranceGate, word: string | null): boolean {
+  if (gate === 'never') return false;
+  const rank = GRADE_RANK[word?.trim().toLowerCase() ?? ''];
+  return rank !== undefined && rank >= GRADE_RANK[gate]!;
+}
+
 export interface LootConfig {
   /** Pick up coins the moment they land, and any a look lists. */
   coins: boolean;

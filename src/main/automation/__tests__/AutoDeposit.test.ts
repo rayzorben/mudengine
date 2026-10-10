@@ -302,6 +302,15 @@ describe('the console’s Deposit All', () => {
     expect(sent).toEqual(['i', 'deposit 187600', 'bank']);
   });
 
+  it("banks a cash run's gain at whichever counter it walked to, keeping what it asks", () => {
+    const auto = make({ bank: 7, depositThresholdCopper: 100_000 });
+    expect(auto.request(50_000, 'probe', carrying(150_000), true)).toBe(true);
+    drain();
+    auto.onListing(carrying(150_000));
+    drain();
+    expect(sent).toEqual(['i', 'deposit 100000', 'bank']);
+  });
+
   it('refuses at a counter that is not the chosen one, and says which fact stopped it', () => {
     const auto = make({ bank: 7, depositThresholdCopper: 100_000 });
     expect(pressed(auto, carrying(190_400))).toBe(false);
