@@ -1932,7 +1932,8 @@ describe('the fight this character is in', () => {
       mobs: [
         { n: 'orc rogue', hp: 30, d: 'h' },
         { n: 'cave rat', hp: 10, d: 'h' },
-        { n: 'giant rat', hp: 12, d: 'h' }
+        { n: 'giant rat', hp: 12, d: 'h' },
+        { n: 'orc shaman', hp: 40, d: 'h' }
       ]
     });
     fs.writeFileSync(file, zlib.gzipSync(header + '\n'));
@@ -2874,6 +2875,16 @@ describe('the fight this character is in', () => {
       'The orc rogue slashes you for 4 damage!'
     );
     expect(tracker.current.combat.attackers).toEqual(['orc rogue', 'cave rat']);
+  });
+
+  /* A caster's spell is damage taken, and the caster is fighting this character (todo 23). */
+  it('counts a monster’s spell as an attacker and as damage taken', () => {
+    const tracker = fighting(
+      'The orc rogue slashes you for 5 damage!',
+      'orc shaman casts harm on you for 17 damage!'
+    );
+    expect(tracker.current.combat.attackers).toEqual(['orc shaman', 'orc rogue']);
+    expect(tracker.current.tally.taken).toMatchObject({ hits: 2, damage: 22 });
   });
 
   it('recognises a blow from a player, who has no article', () => {

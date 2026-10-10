@@ -653,6 +653,7 @@ export class Classifier {
        * only record of a monster nothing could name.
        */
       this.resolveNames(rule, groups);
+      if (rule.named && groups['attacker'] === undefined) continue;
       this.bindReceipt(rule.type, groups);
 
       return this.build(line, this.fellHere(rule.type, groups, text), groups, text, confidence);
