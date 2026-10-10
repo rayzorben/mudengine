@@ -25,7 +25,7 @@ import {
   type BuiltPicks,
   type BuiltSupply
 } from './supplyIndex';
-import { groupedRooms } from './monsterGroups';
+import { groupedRooms, groupWanderers } from './monsterGroups';
 import {
   roomId,
   type MobAttack,
@@ -130,8 +130,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 58 | **A room no monster can follow into.** The server moves a monster only into a room of its own group (`Mob.CanMoveThroughExit`), and the export lists each monster's group rooms in `Summoned By`. A room nobody lists is `WorldRoom.noFollow`: Fortress of the Crimson Flame, Main Gate (15/1054) among the fortress's hallways, 5,096 of gmud.zip's 55,806 rooms. The run takes an exit into one first (`monsterGroups.ts`) |
  * | 59 | **What a token's trip costs.** A recall token's block runs `price 200000` ahead of its `teleport`, and the server takes that copper from cash on hand or refuses the use and spends nothing. `ItemLanding.fare` adds up the chain's `price` steps ahead of the teleport, and `BuiltItem.fare` carries it, so a cash run knows before it uses a token whether the cash it carries pays for the trip: 20 platinum for Silvermere and Rhudaur, 30 for Khazarad, in both gmud.zip and pmud.zip |
  * | 60 | **Who a monster's spell brings into the fight.** A call for aid is a spell whose Summon ability (12) names a monster row (`Spell.ApplySpellAbilities`, `Room.TrySummon`), and the runs (format 56) kept what a monster's casts make but not which cast made it, so the fight odds could not tie a summons to the round's one roll. `BuiltSpell.sm` is who one cast brings in, a pick of `[row, chance]` per Summon modifier, as the server summons once per modifier (`Makings.summonPicks`): the half-orc sentry's *summon orc warrior* (593) brings row 480, a fat orc warrior |
+ * | 61 | **Who a room's group may put in it as a player walks in.** `Room.Regen` (Room.cs:520-535) gives a room with no lair a 10% chance a player, each regen pass, of one monster of its group's rows, and a player walking in runs a pass (Player.cs:782). The export lists those rows per monster as a plain `Group:` entry; `BuiltRoom.wd` is them per room (`groupWanderers`), so a run and a walk past Slum Street price its thugs and orc rogues. 39,097 of pmud.zip's 57,511 rooms, none of them a lair |
  */
-export const REALM_FORMAT = 60;
+export const REALM_FORMAT = 61;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1278,6 +1279,8 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   const levers: Lever[] = [];
   // Rooms some monster group may follow a player into (format 58).
   const grouped = groupedRooms(source);
+  // And who each room's group may put in it as a player walks in (format 61).
+  const wanderers = groupWanderers(source);
 
   // Sorted the way the build script's query sorted, so a realm converted at
   // runtime and one built at build time produce byte-identical output.
@@ -1362,6 +1365,9 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     if (delay !== null && delay !== 0 && delay !== BLANK_AS_NUMBER) room['dl'] = delay;
     // In no monster's group, so no monster follows a player in (format 58).
     if (grouped !== null && !grouped.has(roomId(map, roomNumber))) room['nf'] = 1;
+    // A room with regen slots never draws from its group (`Room.Regen`), so only a lair-less one.
+    const wander = wanderers.get(roomId(map, roomNumber));
+    if (wander !== undefined && text(row['Lair']).trim() === '') room['wd'] = wander;
     /*
      * What the realm puts on this room's floor and puts back at the nightly
      * cleanup, within each item's game limit — format 42

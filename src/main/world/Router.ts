@@ -226,8 +226,9 @@ export interface Traveller {
    * The chance of dying running past a room's lair with combat off, stepping
    * in from `from` (todo 23, the session's `lairRunner`): the rounds its monsters
    * get in at the walk's pace, followers counted, against the odds book's
-   * fight of the lair. Null where the room has no lair or its fight has not
-   * run; `danger` prices those. `runPenalty` turns it into route cost.
+   * fight of the lair; for a room with no lair, its wanderers' at their chances
+   * (todo 25). Null where the room has neither or a fight has not run;
+   * `danger` prices those. `runPenalty` turns it into route cost.
    */
   runDeath?: (room: WorldRoom, from: RoomId) => number | null;
   /**
@@ -739,19 +740,37 @@ export function dangerPenalty(
 }
 
 /**
- * Whether a step is one the character is expected to die on: a run past its
- * lair at `deadlyRun`, or where the lair's fight has not run its pass's share
- * at `deadlyShare`; or a room spell taking the whole bar. The two facts are
- * different and what they mean for the reader is the same one.
+ * Whether a room's run figure stands beside its pass share rather than for it
+ * (todo 25). A lair's run is the lair's whole fight, so it replaces the share
+ * once run; a room with no lair is run on its group's wanderers, while the
+ * share is the monsters the wire timed walking in (`roadPass`), two facts.
+ */
+function runBesidePass(room: WorldRoom): boolean {
+  return room.lair === undefined;
+}
+
+/**
+ * Whether a step is one the character is expected to die on: a run past it at
+ * `deadlyRun`, or its pass's share at `deadlyShare` where the run does not
+ * stand for it (`runBesidePass`); or a room spell taking the whole bar. The
+ * facts are different and what they mean for the reader is the same one.
  */
 function stepIsDeadly(
   runDeath: number | null,
   danger: number | null,
-  hazard: number | null
+  hazard: number | null,
+  beside: boolean
 ): boolean {
   const { deadlyRun, deadlyShare } = tuning().world;
-  const lair = runDeath !== null ? runDeath >= deadlyRun : (danger ?? 0) >= deadlyShare;
-  return lair || (hazard ?? 0) >= deadlyShare;
+  const run = runDeath !== null && runDeath >= deadlyRun;
+  const pass = (beside || runDeath === null) && (danger ?? 0) >= deadlyShare;
+  return run || pass || (hazard ?? 0) >= deadlyShare;
+}
+
+/** What a room's run and pass cost a step (`runPenalty`), taken together as `runBesidePass` says. */
+function roomRisk(room: WorldRoom, death: number | null, share: () => number | null): number {
+  if (!runBesidePass(room)) return runPenalty(death, death === null ? share() : null);
+  return (death === null ? 0 : runPenalty(death, null)) + runPenalty(null, share());
 }
 
 /**
@@ -2572,11 +2591,8 @@ export class Router {
     // And what is waiting in the room being stepped into: a lair priced
     // against this character, or nothing where nothing can be weighed.
     const death = into === null ? null : (traveller.runDeath?.(into, from) ?? null);
-    // The pass's share only where no run was read: it is the dearer call.
-    const risk =
-      into === null
-        ? 0
-        : runPenalty(death, death === null ? (traveller.danger?.(into) ?? null) : null);
+    // A lair's pass share only where no run was read: it is the dearer call.
+    const risk = into === null ? 0 : roomRisk(into, death, () => traveller.danger?.(into) ?? null);
     /*
      * And what the room itself does to whoever stands in it. Priced on the
      * same slope as a lair and for the same reason — the step from
@@ -3078,7 +3094,14 @@ export class Router {
          * two facts are different and what they mean for the reader is the
          * same one: you are expected to die there.
          */
-        ...(stepIsDeadly(runDeath, danger, hazard) ? { deadly: true } : {}),
+        ...(stepIsDeadly(
+          runDeath,
+          danger,
+          hazard,
+          arriving !== undefined && runBesidePass(arriving)
+        )
+          ? { deadly: true }
+          : {}),
         /*
          * And a lair the router could not weigh (an unread bar, a monster the
          * arithmetic cannot price), which is not a lair that costs nothing:
@@ -3089,6 +3112,12 @@ export class Router {
         danger === null &&
         runDeath === null
           ? { lairUnweighed: true }
+          : {}),
+        // And a room of wanderers whose fights have not run, likewise (todo 25).
+        ...(arriving?.wanderers !== undefined &&
+        traveller.runDeath !== undefined &&
+        runDeath === null
+          ? { wanderersUnweighed: true }
           : {}),
         // And the kept-out word it crosses, allowed or not, for the chip and
         // for what a walk the player chose may cross again (`crossing`).

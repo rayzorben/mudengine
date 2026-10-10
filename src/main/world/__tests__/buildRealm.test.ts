@@ -189,6 +189,32 @@ describe('converting a realm', () => {
   });
 
   /*
+   * Format 61. `Room.Regen` draws a monster of a lair-less room's group as a
+   * player walks in; Slum Street's group is its thugs and orc rogues, and a
+   * room with a lair fills from its own slots instead.
+   */
+  it('lists who a lair-less room’s group may put in it, each row once', () => {
+    const rooms = [
+      room({ 'Map Number': 1, 'Room Number': 1073, Name: 'Slum Street', Lair: 'Max 1: 6,10' }),
+      room({ 'Map Number': 1, 'Room Number': 1074, Name: 'Slum Street', Lair: ' ' }),
+      room({ 'Map Number': 1, 'Room Number': 1075, Name: 'Slum Street' })
+    ];
+    const listing = '[6-5-7-1]Group(lair): 1/1073,Group: 1/1073,Group: 1/1074,Group: 1/1074';
+    const monsters = [
+      { Number: 10, Name: 'thug', 'Summoned By': listing },
+      { Number: 6, Name: 'orc rogue', 'Summoned By': listing }
+    ];
+    const lines = buildRealm(fake({ Rooms: rooms, Monsters: monsters }), today).lines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>
+    );
+    expect(lines.filter((line) => 'r' in line).map((r) => r['wd'])).toEqual([
+      undefined,
+      [6, 10],
+      undefined
+    ]);
+  });
+
+  /*
    * `Rooms.Placed` — format 42. What the realm puts on the floor and puts
    * back every night, as ids, each one named: the room refers to the item the
    * way a shop refers to its stock.

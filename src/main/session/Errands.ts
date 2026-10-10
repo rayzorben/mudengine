@@ -242,6 +242,7 @@ export type ErrandsWorld = Pick<
   | 'itemsNamed'
   | 'lair'
   | 'lairEntities'
+  | 'wandererEntities'
   | 'mob'
   | 'planStep'
   | 'priceAt'
@@ -929,8 +930,8 @@ export class Errands implements SessionModule {
   /**
    * What running with combat off is reckoned against (todo 23): the character
    * as it stands, the walk's sneak, the round and the step at the realm's
-   * speed, and every lair by its own fight in the odds book. Null with no
-   * world database.
+   * speed, and every lair and wanderer by its own fight in the odds book.
+   * Null with no world database.
    */
   private runParts(
     state: CharacterState,
@@ -946,6 +947,8 @@ export class Errands implements SessionModule {
       family: this.realmClass().family,
       world,
       lairOdds: (room) => this.session.odds()[read](room),
+      mobOdds: (name) =>
+        read === 'lair' ? this.session.odds().mob(name) : this.session.odds().mobKnown(name),
       roundSeconds,
       stepMs
     };

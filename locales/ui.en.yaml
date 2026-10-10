@@ -2970,6 +2970,9 @@ cards:
       unweighed:
         one: 1 lair not weighed
         many: '{count} lairs not weighed'
+      wanderersUnweighed:
+        one: 1 room of wanderers not weighed
+        many: '{count} rooms of wanderers not weighed'
       spells:
         one: 1 room spell
         many: '{count} room spells'

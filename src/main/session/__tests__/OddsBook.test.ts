@@ -129,6 +129,17 @@ describe('the odds book', () => {
     odds.dispose();
   });
 
+  it('peeks at a monster’s fight without asking for it, which the book still owes', async () => {
+    const { odds, tracker, ran } = book();
+    expect(odds.mobKnown('ogre')).toEqual({ kind: 'unread' });
+    odds.refresh(tracker.current);
+    expect(odds.mobKnown('ogre')).toEqual({ kind: 'pending' });
+    await vi.waitFor(() => expect(odds.mobKnown('ogre').kind).toBe('run'));
+    // Run in its turn, so nobody is told.
+    expect(ran).not.toHaveBeenCalled();
+    odds.dispose();
+  });
+
   it('tells the reader a monster it asked for has been run', async () => {
     const { odds, tracker, ran } = book();
     odds.refresh(tracker.current);

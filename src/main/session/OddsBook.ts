@@ -50,12 +50,20 @@ export interface OddsBookSession {
 export type OddsReader = Pick<OddsBook, 'mob' | 'lair'>;
 
 /** The readers, and the lair's fight as it stands without queueing it (the router's). */
-export type OddsPeeker = OddsReader & Pick<OddsBook, 'lairKnown' | 'lairsLeft'>;
+export type OddsPeeker = OddsReader & Pick<OddsBook, 'mobKnown' | 'lairKnown' | 'lairsLeft'>;
 
 /** What the session holds of the book: the readers, the what-if, and its life. */
 export type SessionOdds = Pick<
   OddsBook,
-  'refresh' | 'mob' | 'mobAs' | 'lair' | 'lairKnown' | 'lairsLeft' | 'reset' | 'dispose'
+  | 'refresh'
+  | 'mob'
+  | 'mobKnown'
+  | 'mobAs'
+  | 'lair'
+  | 'lairKnown'
+  | 'lairsLeft'
+  | 'reset'
+  | 'dispose'
 >;
 
 /**
@@ -139,6 +147,16 @@ export class OddsBook implements SessionModule {
     if (known !== undefined) return known;
     this.promote(`mob:${name}`, { kind: 'mob', name }, true);
     return PENDING;
+  }
+
+  /**
+   * One monster fought alone as the book holds it, queueing nothing: a route
+   * search weighs the wanderers of every room it expands (todo 25). Every
+   * monster is owed from the book's start, so pending until its turn.
+   */
+  mobKnown(name: string): Odds {
+    if (this.book === null) return UNREAD;
+    return this.book.mobs.get(name) ?? PENDING;
   }
 
   /**

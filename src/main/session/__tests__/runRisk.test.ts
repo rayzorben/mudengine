@@ -19,7 +19,7 @@ const room = (id: string, lair?: string): WorldRoom =>
 const ROOMS = new Map<string, WorldRoom>([
   ['17/3', room('17/3')],
   ['17/4', room('17/4', 'Max 3: 1,2')],
-  ['17/5', room('17/5')]
+  ['17/5', { ...room('17/5'), wanderers: [6, 10] }]
 ]);
 
 const step = (from: string, to: string, extra: Partial<RouteStep> = {}): RouteStep =>
@@ -59,6 +59,13 @@ const hostile = (follows?: number): MobEntity =>
 /** An empty pack, weighed: GreaterMUD's 1100 ms step. */
 const WEIGHED = { ...EMPTY_CHARACTER.inventory, encumbrance: 0, encumbranceMax: 1000 };
 
+/** A world whose one lair holds these, and whose 17/5 group may put these in it. */
+const world = (lair: MobEntity[], wanderers: MobEntity[] = []): RunRiskParts['world'] => ({
+  byId: (id) => ROOMS.get(id),
+  lairEntities: () => lair,
+  wandererEntities: (at) => (at.room === 5 ? wanderers : [])
+});
+
 const parts = (
   over: Partial<RunRiskParts> = {},
   state: Partial<CharacterState> = {}
@@ -66,17 +73,23 @@ const parts = (
   state: { ...EMPTY_CHARACTER, inventory: WEIGHED, ...state },
   movement: { sneak: false },
   family: 'greatermud',
-  world: { byId: (id) => ROOMS.get(id), lairEntities: () => [hostile(0)] },
+  world: world([hostile(0)]),
   lairOdds: () => run(0.9),
+  mobOdds: () => run(0.9),
   roundSeconds: 5,
   stepMs: 1250,
   ...over
 });
 
 /** A world whose one lair holds this monster. */
-const holding = (mob: MobEntity): Partial<RunRiskParts> => ({
-  world: { byId: (id) => ROOMS.get(id), lairEntities: () => [mob] }
+const holding = (mob: MobEntity): Partial<RunRiskParts> => ({ world: world([mob]) });
+
+/** A world whose 17/5 group may put these in it as the character walks in. */
+const wandering = (...mobs: MobEntity[]): Partial<RunRiskParts> => ({
+  world: world([hostile(0)], mobs)
 });
+
+const named = (name: string, mob: MobEntity = hostile(0)): MobEntity => ({ ...mob, name });
 
 describe('the risk of running a route', () => {
   it('prices a lair by the banked round a step in five seconds is caught for', () => {
@@ -123,6 +136,44 @@ describe('the risk of running a route', () => {
   });
 });
 
+describe('the risk of running past a room’s wanderers', () => {
+  // One pass is 0.44 rounds (see above); a wanderer's fight kills a tenth in one round.
+  const lair = 0.044;
+
+  it('prices each of the group’s rows at its share of the one draw a pass', () => {
+    const risk = runRiskOf(ROUTE, parts(wandering(named('thug'), named('orc rogue'))));
+    expect(risk.lairs[1]).toEqual({
+      room: '17/5',
+      name: '17/5',
+      rounds: expect.closeTo(0.044),
+      death: expect.closeTo(0.1 * lair)
+    });
+    expect(risk.death).toBeCloseTo(1 - (1 - lair) * (1 - 0.1 * lair));
+  });
+
+  it('counts the rooms a wanderer follows on', () => {
+    const follower = runRiskOf(ROUTE, parts(wandering(named('thug', hostile(100)))));
+    expect(follower.lairs[1]!.rounds).toBeCloseTo(0.176);
+  });
+
+  it('prices a wanderer that waits to be struck at nothing', () => {
+    const polite = { name: 'trader', disposition: 'passive' } as unknown as MobEntity;
+    expect(runRiskOf(ROUTE, parts(wandering(polite))).lairs[1]).toMatchObject({
+      rounds: 0,
+      death: 0
+    });
+  });
+
+  it('is unknown while a wanderer’s fight has not run', () => {
+    const pending = parts({ ...wandering(named('thug')), mobOdds: () => ({ kind: 'pending' }) });
+    expect(runRiskOf(ROUTE, pending).death).toBeNull();
+  });
+
+  it('leaves a room whose rows the realm file lacks unpriced, never safe', () => {
+    expect(runRiskOf(ROUTE, parts()).lairs).toHaveLength(1);
+  });
+});
+
 describe('a route’s chances, run and walked', () => {
   it('runs past and fights through every lair that attacks on sight', () => {
     expect(chancesOf(ROUTE, parts())).toEqual({
@@ -134,6 +185,11 @@ describe('a route’s chances, run and walked', () => {
   it('walks past a lair whose monsters do not attack on sight', () => {
     const polite = { name: 'trader', disposition: 'passive' } as unknown as MobEntity;
     expect(chancesOf(ROUTE, parts(holding(polite))).walk).toBe(1);
+  });
+
+  it('fights a wanderer at its chance', () => {
+    const walk = chancesOf(ROUTE, parts({ ...wandering(named('thug')), mobOdds: () => run(0.9) }));
+    expect(walk.walk).toBeCloseTo(0.5 * (1 - 0.1 * 0.5));
   });
 
   it('is unread while a fight has not run', () => {

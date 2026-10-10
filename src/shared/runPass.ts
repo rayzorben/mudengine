@@ -10,7 +10,15 @@ import type { RealmFamily } from './realm';
 import type { SurvivalHorizon } from './survival';
 import type { RoomId } from './world';
 
-/** One lair a run passes. */
+/**
+ * The chance a player walking into a room with no lair brings one of its
+ * group's wanderers in: `Room.Regen` rolls 1..100 over 90 once a player a
+ * pass (Room.cs:535), and a player walking in runs a pass (Player.cs:782).
+ * The area's cap on monsters is not in the export, so it is taken as not met.
+ */
+export const WANDERER_CHANCE = 0.1;
+
+/** One lair a run passes, or a room whose wanderers it may meet. */
 export interface RunLair {
   room: RoomId;
   name: string;
