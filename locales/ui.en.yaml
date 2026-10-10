@@ -5652,6 +5652,8 @@ automation:
     refusalNotInRealm: Not in the realm.
     skippingStop: 'Skipping {stopName}: {why}'
     started: 'Looping {loopName}: {stopCount} stops.'
+    statsReset: 'Reached {stopName}, the first stop of the loop; the combat statistics start again
+      from now.'
     stopped: 'Loop stopped: {reason}'
     tooHurt: Health below the loop threshold; resting to recover.
     tooHurtBeside: Health below the loop threshold, with monsters in the room; the loop waits here.

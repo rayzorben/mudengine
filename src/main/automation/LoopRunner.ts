@@ -93,8 +93,9 @@ export interface LoopEvents {
    * The player started this lap and the character is now standing on it: the
    * first stop reached after Start or play. Once per press, and not again for
    * a carried lap that had already reached its first stop. See `beginLap`.
+   * `stopName` is the stop it is standing on.
    */
-  lapBegun?(): void;
+  lapBegun?(stopName: string): void;
   /**
    * The lap fights, so auto-combat goes on: when the lap begins (`lapBegun`'s
    * moment) and at the first stop reached each time it comes round. Turned off on the
@@ -370,14 +371,13 @@ export class LoopRunner implements SessionModule {
   }
 
   get progress(): LoopProgress {
-    const stop = this.loop?.stops[this.index];
     const running = this.status === 'running';
     return {
       status: this.status,
       name: this.loop?.name ?? null,
       stop: this.loop ? this.index + 1 : 0,
       stops: this.loop?.stops.length ?? 0,
-      stopName: stop ? splitStop(stop).name : null,
+      stopName: this.stopName(),
       remainingStops: this.remainingStops(),
       // Every stop, named, in order — including the ones no room could be found
       // for, because the lap the player wrote is the lap they want to read.
@@ -1350,9 +1350,15 @@ export class LoopRunner implements SessionModule {
   private beginLap(): boolean {
     if (this.lapBegunAt !== null) return false;
     this.lapBegunAt = this.now();
-    this.events.lapBegun?.();
+    this.events.lapBegun?.(this.stopName() ?? t('automation.loops.fallbackStop'));
     this.events.wantsCombat?.();
     return true;
+  }
+
+  /** The name of the stop the lap is on, or null with no loop. */
+  private stopName(): string | null {
+    const stop = this.loop?.stops[this.index];
+    return stop ? splitStop(stop).name : null;
   }
 
   /** Arrived at a stop: dwell — the configured linger, or long enough to fight. */

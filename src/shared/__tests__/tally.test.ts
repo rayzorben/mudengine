@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BLOW_KINDS,
   experienceAt,
+  historySeries,
   rateSeries,
   withSample,
   blowKind,
@@ -485,6 +486,26 @@ describe('experience sampled for the rate graph', () => {
     // present half, so it reads as 8,000 an hour rather than 4,000.
     const half = [{ from: 3 * hour, to: 3.5 * hour }];
     expect(rateSeries(samples, 3 * hour, 4 * hour, 1, half)).toEqual([8_000]);
+  });
+
+  /* todo 20, 2026-10-10: a reset starts the figures again, never the graph. */
+  it('draws the history from the whole tally, so a reset in the middle leaves it standing', () => {
+    const hour = 3_600_000;
+    const samples = [at(0, 0), at(4_000, hour), at(10_000, 2 * hour)];
+    const tally: CombatTally = { ...NO_TALLY, since: 0, at: 2 * hour, experience: 10_000, samples };
+    const before = historySeries(tally, 2 * hour, 2, 2);
+    expect(before).toEqual([4_000, 6_000]);
+    // Reset at the hour: the scope keeps only what came after it, the graph all of it.
+    const reset = sinceBaseline(tally, { ...tally, at: hour, experience: 4_000 });
+    // Drawn from the scope instead, the hour before the reset would be blank.
+    expect(historySeries(reset, 2 * hour, 2, 2)).toEqual([null, 6_000]);
+  });
+
+  it('draws a stretch away still running as blank up to now', () => {
+    const hour = 3_600_000;
+    const samples = [at(0, 0), at(4_000, hour)];
+    const tally: CombatTally = { ...NO_TALLY, since: 0, samples, leftAt: hour };
+    expect(historySeries(tally, 2 * hour, 2, 2)).toEqual([4_000, null]);
   });
 
   it('keeps one point per slot, the newest current, and drops the oldest past the cap', () => {
