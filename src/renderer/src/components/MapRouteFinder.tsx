@@ -18,11 +18,11 @@ import RoomField from './RoomField';
 import type { RoutePreview } from '../hooks/useRoutePreview';
 import type { WalkPager } from '../hooks/useWalkPages';
 import { t } from '../lib/i18n';
-import type { WorldRoom } from '@shared/world';
+import type { FoundRoom } from '@shared/destinations';
 
 export interface MapRouteFinderProps {
   preview: RoutePreview;
-  search(query: string): Promise<WorldRoom[]>;
+  search(query: string): Promise<FoundRoom[]>;
   /** Whether the character's room is known, so the start may be left empty. */
   placed: boolean;
   /** Whether the two fields are out, from the search glyph in the action column. */

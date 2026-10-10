@@ -12,10 +12,11 @@ import { densityFor } from '../lib/mapView';
 import { tuning } from '../lib/tuning';
 import { DEFAULT_MAP_DENSITY, EMPTY_MAP, roomPixelsFor, type LocalMap } from '@shared/map';
 import type { CharacterState } from '@shared/character';
+import type { FoundRoom } from '@shared/destinations';
 import type { LoopProgress } from '@shared/loops';
 import type { WalkProgress } from '@shared/walk';
 import type { RoutePages, WalkPages } from '@shared/routeLegs';
-import { roomId, type RoomId, type WorldRoom } from '@shared/world';
+import { roomId, type RoomId } from '@shared/world';
 import { roomsWithFinds, type Find } from '@shared/finds';
 
 export interface MapCardProps extends CardChrome {
@@ -30,7 +31,7 @@ export interface MapCardProps extends CardChrome {
    */
   load(map: number, room: number, radius: number): Promise<LocalMap>;
   /** Rooms by name or `map/room`, for the finder. */
-  search(query: string): Promise<WorldRoom[]>;
+  search(query: string): Promise<FoundRoom[]>;
   /** The preview route between two rooms. See `useRoutePreview`. */
   routeBetween(from: RoomId, to: RoomId): Promise<RoutePages>;
   /** The route this character is walking, paged. See `useWalkPages`. */

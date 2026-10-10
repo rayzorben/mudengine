@@ -50,7 +50,7 @@ interface DestinationFile {
 export interface RealmDestinations {
   /** Note that a walk has been started toward this room. */
   remember(room: { id: string; name: string }): void;
-  /** The recent destinations matching a query, newest first. */
+  /** The destinations matching a query, newest first; the latest with none. */
   matching(query: string, limit: number): VisitedDestination[];
 }
 
@@ -80,11 +80,7 @@ export class DestinationBook {
   private remember(realm: string, room: { id: string; name: string }): void {
     this.load();
     const before = this.visited.get(realm) ?? [];
-    const after = rememberVisit(
-      before,
-      { id: room.id, name: room.name, at: Date.now() },
-      tuning().records.maxDestinations
-    );
+    const after = rememberVisit(before, { id: room.id, name: room.name, at: Date.now() });
     this.visited.set(realm, after);
     this.schedule();
   }
@@ -145,8 +141,7 @@ export class DestinationBook {
         // Sorted on the way in rather than trusted: every reader below takes
         // the head of this list as "most recent", and a hand-edited file must
         // not be able to make that claim false.
-        .sort((a, b) => b.at - a.at)
-        .slice(0, tuning().records.maxDestinations);
+        .sort((a, b) => b.at - a.at);
       if (rows.length > 0) this.visited.set(realmKey(realm), rows);
     }
   }

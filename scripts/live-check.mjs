@@ -527,10 +527,12 @@ check(
 // ---------------------------------------------------------- assert: the walk
 
 const here = character?.room;
-const candidates =
-  (await evaluate(
-    `window.mudengine.searchRooms(${JSON.stringify(SESSION)}, ${JSON.stringify(here?.name?.split(',')[0] ?? '')})`
-  )) ?? [];
+// A blank query answers the latest destinations, not rooms named like this one.
+const candidates = !here?.name
+  ? []
+  : ((await evaluate(
+      `window.mudengine.searchRooms(${JSON.stringify(SESSION)}, ${JSON.stringify(here?.name?.split(',')[0] ?? '')})`
+    )) ?? []);
 let plan = null;
 for (const room of candidates.slice(0, 60)) {
   const route = await evaluate(`window.mudengine.routeTo('${SESSION}', ${room.map}, ${room.room})`);

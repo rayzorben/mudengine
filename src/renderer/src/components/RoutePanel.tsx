@@ -9,6 +9,7 @@ import { percent } from '../lib/outlook';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { useRoomSearch } from '../hooks/useRoomSearch';
+import RoomMatches from './RoomMatches';
 import { t } from '../lib/i18n';
 import { type LocalMap } from '@shared/map';
 import { errorMessage } from '@shared/values';
@@ -32,6 +33,7 @@ import {
 import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
 import type { Replanned, WalkStart } from '@shared/movement';
+import type { FoundRoom } from '@shared/destinations';
 
 /** Which of the plan's routes is on screen — see `chosen`. */
 type Way = 'plan' | 'round' | 'carrying' | 'viaItem' | 'another' | 'keyed' | 'keptOut';
@@ -124,7 +126,7 @@ function avoidsWalls(other: Route, walls: readonly RouteBlock[]): boolean {
 export interface RoutePanelProps {
   open: boolean;
   onClose(): void;
-  onSearch(query: string): Promise<WorldRoom[]>;
+  onSearch(query: string): Promise<FoundRoom[]>;
   onRoute(room: WorldRoom): Promise<Route>;
   /**
    * Walks the route that is on screen.
@@ -599,8 +601,9 @@ export default function RoutePanel({
    * Debounced: the realm has 55,806 rooms and a two-letter query matches a lot
    * of them. The same search as the palette's, so the two answer typing at
    * one speed. A search that died says why, and leaves no stale matches.
+   * Before anything is typed it lists the latest rooms walked to.
    */
-  const { matches, failed } = useRoomSearch(onSearch, query);
+  const { matches, failed } = useRoomSearch(onSearch, query, true);
   useEffect(() => {
     if (failed !== null) setRefused(failed);
   }, [failed]);
@@ -623,7 +626,7 @@ export default function RoutePanel({
    * states of completeness, because each surface hand-rolled its own keys.
    * Sharing the behaviour is what stops that recurring.
    */
-  const list = useListNavigation({
+  const list = useListNavigation<FoundRoom>({
     // Only while the list is what is on screen: once a route is planned the
     // panel is showing steps, and the arrows have nothing to point at.
     items: route ? [] : matches,
@@ -1818,8 +1821,9 @@ export default function RoutePanel({
               )}
             </div>
           ) : (
-            <ul className="route-matches" ref={list.listRef}>
-              {matches.length === 0 ? (
+            <RoomMatches
+              className="route-matches"
+              empty={
                 <li className="empty">
                   {reference !== null
                     ? t('cards.route.noRoomByReference', {
@@ -1829,29 +1833,11 @@ export default function RoutePanel({
                       ? t('cards.route.typeMoreChars')
                       : t('cards.route.noRoomByName')}
                 </li>
-              ) : (
-                matches.map((room, index) => (
-                  <li
-                    data-active={list.isActive(index) ? 'true' : 'false'}
-                    key={`${room.map}/${room.room}`}
-                    {...list.hover(index)}
-                  >
-                    <button
-                      onClick={() => choose(room)}
-                      // The list is driven from the field, which keeps the caret:
-                      // clicking a room must not move focus out of it.
-                      onMouseDown={(event) => event.preventDefault()}
-                      type="button"
-                    >
-                      <span>{room.name}</span>
-                      <span className="hint">
-                        {room.map}/{room.room}
-                      </span>
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
+              }
+              list={list}
+              matches={matches}
+              onChoose={choose}
+            />
           )}
         </div>
       </form>

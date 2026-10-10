@@ -2381,12 +2381,18 @@ function registerIpc(): void {
      * a room already recorded is dropped from the realm rows below rather than
      * listed twice, and the realm's own count is unchanged, so putting the
      * shortcut on top never costs a result somebody could have had.
+     *
+     * Every visited match, so of 35 `Darkwood Forest`s the ones walked to come
+     * first; with nothing typed, the latest few and no realm rows (user,
+     * 2026-10-10).
      */
-    const shown = tuning().records.destinationsShown;
-    const recent = destinationsFor(session).matching(query, shown);
+    const blank = query.trim().length === 0;
+    const recent = destinationsFor(session).matching(
+      query,
+      blank ? tuning().records.destinationsShown : Number.POSITIVE_INFINITY
+    );
     const seen = new Set(recent.map((entry) => entry.id));
-    const found = world
-      .searchByName(query)
+    const found = (blank ? [] : world.searchByName(query))
       .map((room) => ({ ...room, visitedAt: null }))
       .filter((room) => !seen.has(roomId(room.map, room.room)));
 

@@ -11,15 +11,11 @@ const row = (id: string, name: string, at: number, visits = 1): VisitedDestinati
 
 describe('rememberVisit', () => {
   it('puts the newest visit first', () => {
-    const list = rememberVisit(
-      [row('1/2', 'Bank of Godfrey', 100)],
-      {
-        id: '1/9',
-        name: 'Forest Cavern',
-        at: 200
-      },
-      10
-    );
+    const list = rememberVisit([row('1/2', 'Bank of Godfrey', 100)], {
+      id: '1/9',
+      name: 'Forest Cavern',
+      at: 200
+    });
     expect(list.map((entry) => entry.name)).toEqual(['Forest Cavern', 'Bank of Godfrey']);
   });
 
@@ -30,7 +26,7 @@ describe('rememberVisit', () => {
    */
   it('moves a repeat visit rather than adding a second row', () => {
     const before = [row('1/2', 'Bank of Godfrey', 100), row('1/9', 'Forest Cavern', 200)];
-    const after = rememberVisit(before, { id: '1/2', name: 'Bank of Godfrey', at: 300 }, 10);
+    const after = rememberVisit(before, { id: '1/2', name: 'Bank of Godfrey', at: 300 });
     expect(after).toHaveLength(2);
     expect(after[0]!.id).toBe('1/2');
     expect(after[0]!.visits).toBe(2);
@@ -42,24 +38,22 @@ describe('rememberVisit', () => {
    * older walk was the most recent.
    */
   it('orders by the stamp, not by the order of arrival', () => {
-    const after = rememberVisit(
-      [row('1/9', 'Forest Cavern', 500)],
-      {
-        id: '1/2',
-        name: 'Bank of Godfrey',
-        at: 100
-      },
-      10
-    );
+    const after = rememberVisit([row('1/9', 'Forest Cavern', 500)], {
+      id: '1/2',
+      name: 'Bank of Godfrey',
+      at: 100
+    });
     expect(after.map((entry) => entry.name)).toEqual(['Forest Cavern', 'Bank of Godfrey']);
   });
 
-  it('drops the oldest past the cap', () => {
+  /* A room walked to once, long ago, still outranks its namesakes nobody visited. */
+  it('keeps every room it was given', () => {
     let list: VisitedDestination[] = [];
-    for (let n = 0; n < 5; n += 1) {
-      list = rememberVisit(list, { id: `1/${n}`, name: `Room ${n}`, at: n }, 3);
+    for (let n = 0; n < 600; n += 1) {
+      list = rememberVisit(list, { id: `1/${n}`, name: `Room ${n}`, at: n });
     }
-    expect(list.map((entry) => entry.id)).toEqual(['1/4', '1/3', '1/2']);
+    expect(list).toHaveLength(600);
+    expect(list.at(-1)!.id).toBe('1/0');
   });
 
   /*
@@ -69,8 +63,8 @@ describe('rememberVisit', () => {
    */
   it('refuses a visit missing either half', () => {
     const before = [row('1/2', 'Bank of Godfrey', 100)];
-    expect(rememberVisit(before, { id: '', name: 'Nowhere', at: 200 }, 10)).toEqual(before);
-    expect(rememberVisit(before, { id: '1/3', name: '   ', at: 200 }, 10)).toEqual(before);
+    expect(rememberVisit(before, { id: '', name: 'Nowhere', at: 200 })).toEqual(before);
+    expect(rememberVisit(before, { id: '1/3', name: '   ', at: 200 })).toEqual(before);
   });
 });
 
@@ -100,10 +94,11 @@ describe('matchVisits', () => {
     expect(matchVisits(list, 'forest', 1).map((entry) => entry.name)).toEqual(['Forest Cavern']);
   });
 
-  /* An empty query is not a match-everything: the palette has not been typed
-     into yet, and answering with five rooms would be the shortcut jumping in
-     ahead of the person using it. */
-  it('answers nothing for an empty query', () => {
-    expect(matchVisits(list, '   ', 5)).toEqual([]);
+  /* Before anything is typed the route panel offers the latest few (user, 2026-10-10). */
+  it('answers the latest for an empty query', () => {
+    expect(matchVisits(list, '   ', 2).map((entry) => entry.name)).toEqual([
+      'Forest Cavern',
+      'Bank of Godfrey'
+    ]);
   });
 });

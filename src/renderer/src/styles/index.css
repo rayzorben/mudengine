@@ -5522,17 +5522,22 @@ button.quest-tile-name:hover:not(:disabled) {
   opacity: 1;
 }
 
-.palette-group-label {
+/* A list's group heading: the palette's, and a room search's (`RoomMatches`). */
+.palette-group-label,
+.room-matches-group {
   padding: 8px 10px 4px;
-  border: var(--rule) solid var(--ink-line);
-  border-bottom-width: 0;
-  border-radius: var(--r-control) var(--r-control) 0 0;
   color: var(--text-lo-quiet);
   cursor: default;
   font-size: var(--font-micro);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.palette-group-label {
+  border: var(--rule) solid var(--ink-line);
+  border-bottom-width: 0;
+  border-radius: var(--r-control) var(--r-control) 0 0;
 }
 
 .palette-group-label:not(:first-child) {

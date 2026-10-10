@@ -94,10 +94,9 @@ import type {
   TrainerChoice,
   WardRule,
   WorldLookup,
-  WorldNames,
-  WorldRoom
+  WorldNames
 } from './world';
-import type { Visited } from './destinations';
+import type { FoundRoom } from './destinations';
 import type { ExtensionInfo } from './extensions';
 import type {
   ConnectionState,
@@ -1449,7 +1448,7 @@ export interface IpcApi {
    * shop and its lair off this same answer -- plus when this machine last
    * walked there, which is what puts the recent ones on top.
    */
-  searchRooms(session: SessionId, query: string): Promise<Array<WorldRoom & Visited>>;
+  searchRooms(session: SessionId, query: string): Promise<FoundRoom[]>;
   /**
    * The monsters this realm names, for the priority list.
    *
