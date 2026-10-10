@@ -580,6 +580,8 @@ notices:
     actionsFamilied: Actions on a carried item are now a set of separate controls. {file} had a
       rewrite using "{action}", which no longer draws anything, so it now uses
       "{action.toggleEquip}". "{action.drop}" adds a drop control next to it.
+    themeCut: 'The theme "{from}" was removed, as it looked almost the same as another. {file}
+      now uses {to}, the nearest one left.'
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
       exits in it, as "south (hidden)". A design for it, off, was added to the designs in {file};
       turn it on under Rewrites.'
