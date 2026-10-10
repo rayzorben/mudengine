@@ -14,9 +14,7 @@ export interface SessionCardProps extends CardChrome {
 
 const PHASE_CHIP: Record<ConnectionState['phase'], string> = {
   idle: 'off',
-  resolving: 'warn',
   connecting: 'warn',
-  negotiating: 'warn',
   connected: 'on',
   closing: 'warn',
   closed: 'off',

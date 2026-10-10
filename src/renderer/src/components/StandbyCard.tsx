@@ -13,11 +13,8 @@ export interface StandbyCardProps {
 /** What the client is waiting for, said in the words a player would use. */
 function standing(state: ConnectionState, character: CharacterState): string {
   switch (state.phase) {
-    // Resolving and negotiating are still the dial in progress: a character
-    // actively connecting must not read the same as one never asked to.
-    case 'resolving':
+    // A character actively connecting must not read the same as one never asked to.
     case 'connecting':
-    case 'negotiating':
       return t('cards.standby.dialling');
     case 'closing':
       return t('cards.standby.hangingUp');

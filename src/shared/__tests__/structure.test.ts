@@ -45,7 +45,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the line editor's model of a keystroke chunk, out whole (`editorInput.ts`).
   // Lowered by the Quests card's questions, out to `questDesk` beside the Gear card's (`gearDesk`).
   // Lowered by the level trip's construction, out beside its planner (`trainTrip`, todo 39).
-  'src/main/session/SessionManager.ts': 3455,
+  // Lowered by `BUSY_PHASES`, gone as a Connect mid-dial dials again (todo 22).
+  'src/main/session/SessionManager.ts': 3443,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   'src/main/world/WorldGraph.ts': 2420,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
@@ -57,7 +58,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the palette taking the pane widths whole (todo 01).
   // Lowered by the reset prompt's question, out with its state (`ResetGate`, area search).
   // Lowered by the notices' routing, out whole (`useConsoleNotices`, notice per character).
-  'src/renderer/src/App.tsx': 1611,
+  // Lowered by the status rail reading its own dial state (todo 22).
+  'src/renderer/src/App.tsx': 1609,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   'src/main/automation/Walker.ts': 1933,

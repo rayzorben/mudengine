@@ -3,7 +3,7 @@ import { memo, useEffect, useState } from 'react';
 import { chord } from '../lib/platform';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
-import type { ConnectionState, TerminalSize } from '@shared/types';
+import { dialWaits, type ConnectionState, type TerminalSize } from '@shared/types';
 import type { Density, DensityPreference } from '@shared/config';
 import { useMeter, type Pressure, type StreamMeter } from '../hooks/useStreamPressure';
 import { tuning } from '../lib/tuning';
@@ -25,16 +25,12 @@ export interface StatusRailProps {
   action: string | null;
   /** Dial or hang up the character being shown. */
   onToggleConnection(): void;
-  /** True while a connection is being made or unmade; the action is refused. */
-  busy: boolean;
   onOpenPalette(): void;
 }
 
 const PHASE_LABEL: Record<ConnectionState['phase'], string> = {
   idle: t('statusRail.phase.idle'),
-  resolving: t('statusRail.phase.resolving'),
   connecting: t('statusRail.phase.connecting'),
-  negotiating: t('statusRail.phase.negotiating'),
   connected: t('statusRail.phase.connected'),
   closing: t('statusRail.phase.closing'),
   closed: t('statusRail.phase.disconnected'),
@@ -55,7 +51,6 @@ function StatusRail({
   state,
   size,
   onToggleConnection,
-  busy,
   onOpenPalette,
   meter,
   pressure,
@@ -66,6 +61,8 @@ function StatusRail({
 }: StatusRailProps) {
   const target = state.target;
   const connected = state.phase === 'connected';
+  // Refused only while a close is under way; a dial with no answer is made again (todo 22).
+  const busy = dialWaits(state.phase);
   const { charsPerSecond, total: chars } = useMeter(meter);
 
   /*

@@ -34,6 +34,8 @@ export class DialCancelled extends Error {}
 export interface TelnetClientEvents {
   /** Socket is open; Telnet negotiation may still be in flight. */
   connect: [];
+  /** `host` resolved to `address`, before the dial goes out. Not raised for a literal address. */
+  resolved: [host: string, address: string];
   /** Decoded, quirk-adjusted text ready for the terminal. */
   data: [text: string];
   /** Raw payload bytes, framing removed — the parser's input, pre-decode. */
@@ -63,6 +65,13 @@ export declare interface TelnetClient {
 
 export class TelnetClient extends EventEmitter {
   private socket: net.Socket | null = null;
+  /**
+   * Where the current socket is: dialling until its `connect` fires, open until
+   * it closes or this side lets go of it. `socket` alone cannot say this: a
+   * socket still dialling exists and is not destroyed, and a key pressed
+   * mid-dial read as sent and armed `LinkWatch` (todo 22).
+   */
+  private link: 'none' | 'dialling' | 'open' = 'none';
   private parser: TelnetParser;
   private encoding: StreamEncoding = 'cp437';
   private quirks: QuirkOptions;
@@ -104,8 +113,14 @@ export class TelnetClient extends EventEmitter {
     this.parser = this.createParser();
   }
 
+  /** The socket has opened and not closed since. A dial still under way is not connected. */
   get connected(): boolean {
-    return this.socket !== null && !this.socket.destroyed;
+    return this.link === 'open';
+  }
+
+  /** A dial is under way: there is a socket and it has not opened yet. */
+  get dialling(): boolean {
+    return this.link === 'dialling';
   }
 
   get negotiated(): NegotiatedOptions {
@@ -141,6 +156,15 @@ export class TelnetClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const socket = net.createConnection({ host: target.host, port: target.port });
       this.socket = socket;
+      this.link = 'dialling';
+
+      // Which address the name went to, so a dial deadline can be told apart
+      // from a stale dynamic-DNS answer (todo 22). A failed lookup is reported
+      // by the `error` that follows it.
+      socket.once('lookup', (error: Error | null, address: string) => {
+        if (generation !== this.connectionGeneration || error !== null) return;
+        this.emit('resolved', target.host, address);
+      });
 
       // Nagle batches our single-keystroke writes into 40ms clumps, which is
       // fatal for a game where round timing matters.
@@ -153,8 +177,8 @@ export class TelnetClient extends EventEmitter {
        * silently drops the SYN — a firewall, a dead address on a live subnet —
        * gives us nothing at all until the OS gives up, which on Linux is around
        * two minutes. Nothing here settled in the meantime: the promise stayed
-       * pending, the session stayed in `connecting`, and `BUSY_PHASES` refused
-       * every further attempt. The client was wedged with no way back except
+       * pending, the session stayed in `connecting`, and every further
+       * Connect was refused. The client was wedged with no way back except
        * restarting it.
        *
        * `socket.setTimeout` is the wrong tool: that is an *idle* timeout, and
@@ -203,6 +227,7 @@ export class TelnetClient extends EventEmitter {
         clearDial();
         this.cancelDial = null;
         socket.removeListener('error', onConnectError);
+        this.link = 'open';
         /*
          * Guarded, because `EventEmitter` *throws* on an `error` event with no
          * listener -- and in the main process that is not a rejected promise,
@@ -250,10 +275,18 @@ export class TelnetClient extends EventEmitter {
     this.cancelDial?.(new DialCancelled());
     this.connectionGeneration++;
     this.closingIntentionally = true;
+    const socket = this.socket;
+    // A dial has no FIN to wait for: a socket ended mid-dial would still open
+    // when the far end answered, and then hang up on it.
+    const dialling = this.link === 'dialling';
+    this.link = 'none';
+    if (dialling) {
+      socket.destroy();
+      return;
+    }
     this.socket.end();
     // `end()` waits for the FIN handshake; destroy on the next tick guarantees
     // the socket is gone even if the peer never replies.
-    const socket = this.socket;
     setTimeout(() => socket.destroy(), tuning().net.destroyDelayMs).unref();
   }
 
@@ -272,6 +305,7 @@ export class TelnetClient extends EventEmitter {
    */
   abandon(): void {
     if (!this.socket) return;
+    this.link = 'none';
     this.socket.destroy();
   }
 
@@ -281,12 +315,17 @@ export class TelnetClient extends EventEmitter {
    * Two NVT normalisations happen here rather than in the UI, because they are
    * protocol concerns: a lone CR becomes the RFC 854 CR LF end-of-line, and DEL
    * (what browsers emit for Backspace) becomes BS (what these servers expect).
+   *
+   * False, and nothing written, unless the socket has opened: Node buffers a
+   * write to a socket still dialling and sends it on open, so a key pressed
+   * mid-dial would reach a login screen nobody had seen yet.
    */
-  send(text: string): void {
-    if (!this.socket || this.socket.destroyed) return;
+  send(text: string): boolean {
+    if (!this.connected || this.socket === null) return false;
     const normalised = text.replace(/\r(?!\n)/g, '\r\n').replace(/\x7f/g, '\b');
     const encoded = iconv.encode(normalised, this.encoding);
     this.socket.write(this.parser.encode(encoded.toString('latin1')));
+    return true;
   }
 
   /**
@@ -299,7 +338,7 @@ export class TelnetClient extends EventEmitter {
    */
   resize(size: TerminalSize): void {
     this.size = size;
-    if (!this.socket || this.socket.destroyed) return;
+    if (!this.connected) return;
 
     if (this.nawsTimer) clearTimeout(this.nawsTimer);
     this.nawsTimer = setTimeout(() => this.flushWindowSize(), tuning().net.nawsCoalesceMs);
@@ -311,7 +350,7 @@ export class TelnetClient extends EventEmitter {
   /** Puts the settled geometry on the wire, if it differs from the last report. */
   private flushWindowSize(): void {
     this.nawsTimer = null;
-    if (!this.socket || this.socket.destroyed) return;
+    if (!this.connected || this.socket === null) return;
 
     const size = this.size;
     if (this.reported?.cols === size.cols && this.reported.rows === size.rows) return;
@@ -375,6 +414,7 @@ export class TelnetClient extends EventEmitter {
       clearTimeout(this.nawsTimer);
       this.nawsTimer = null;
     }
+    this.link = 'none';
     if (!this.socket) return;
     this.socket.removeAllListeners();
     this.socket.destroy();

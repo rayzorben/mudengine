@@ -226,8 +226,8 @@ export interface ToolbarSubject {
    * under the pointer (`ToolbarButton.disabled`).
    */
   inRealm: boolean;
-  /** Whether a dial or a hang-up is already in flight. */
-  dialling: boolean;
+  /** Whether a Connect waits for the phase to end: a close under way (`dialWaits`). */
+  dialWaits: boolean;
   /** Routing, looping or stopped, and whether it is going. See `movementOf`. */
   movement: Movement;
   /**
@@ -280,7 +280,7 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
   const {
     switches,
     connected,
-    dialling,
+    dialWaits,
     inRealm,
     movement,
     setSwitch,
@@ -302,10 +302,8 @@ export function toolbarButtons(subject: ToolbarSubject): ToolbarButton[] {
     // The action, not the state — the tab rail's own rule for its dial button.
     icon: connected ? 'logout' : 'login',
     on: connected,
-    // Main refuses the second attempt anyway, and a button that stays
-    // pressable through a fifteen-second connect reads as one that did
-    // nothing.
-    disabled: dialling,
+    // Pressable through a dial with no answer, which a press makes again (todo 22).
+    disabled: dialWaits,
     run: () => (connected ? disconnect() : connect())
   };
 

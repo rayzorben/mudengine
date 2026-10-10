@@ -4,13 +4,15 @@ import { NO_TALK } from '../TalkLog';
 import { NO_REALM_PLAYERS } from '../../../shared/players';
 import { NO_RECORD, type KeptLives } from '../../../shared/belongings';
 import { NO_LORE } from '../../../shared/lore';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
 import { SessionHost } from '../SessionHost';
+import { DeadSocket } from '../../net/__tests__/deadSocket';
+import { setTuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
 import { Push, type Addressed, type Notice, type SessionId } from '../../../shared/ipc';
 import { DEFAULT_CONFIG, type AppConfig } from '../../../shared/config';
@@ -424,6 +426,111 @@ describe('SessionHost', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(accepted).toHaveLength(1);
   });
+});
+
+/*
+ * Todo 22: Paradigm restarted, and for 15 s of every 30 the tab's Connect did
+ * nothing while a dial waited on a host that was not answering.
+ */
+describe('a Connect while a dial waits on the socket', () => {
+  /** The next dial goes to a host that never answers; the ones after it are real. */
+  function silentOnce(): DeadSocket {
+    const silent = new DeadSocket();
+    const real = net.createConnection.bind(net);
+    vi.spyOn(net, 'createConnection')
+      .mockImplementationOnce(() => silent as unknown as net.Socket)
+      .mockImplementation(real as typeof net.createConnection);
+    return silent;
+  }
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setTuning(DEFAULT_INTERNAL.tuning);
+  });
+
+  it('gives the silent dial up and dials once more', async () => {
+    const silent = silentOnce();
+    void host!.connect('thorn', target());
+    expect(host!.get('thorn')!.manager.state.phase).toBe('connecting');
+
+    await host!.connect('thorn', target());
+    await until(() => host!.get('thorn')!.manager.state.phase === 'connected');
+    expect(silent.destroyed).toBe(true);
+    expect(accepted).toHaveLength(1);
+    expect(notices.some((n) => n.message === t('notices.session.dialAgain'))).toBe(true);
+  });
+
+  it('takes no key while the dial waits, and owes nothing for one', async () => {
+    const silentForMs = 100;
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      reconnect: { ...DEFAULT_INTERNAL.tuning.reconnect, silentForMs }
+    });
+    const deadLink = t('session.connection.deadLink', { seconds: Math.round(silentForMs / 1000) });
+    const silent = silentOnce();
+    void host!.connect('thorn', target());
+    void host!.connect('mara', target());
+    await until(() => host!.get('mara')!.manager.state.phase === 'connected');
+    expect(host!.get('thorn')!.manager.state.phase).toBe('connecting');
+
+    // Thorn's key first: had it armed the watch, it would have fired first.
+    host!.get('thorn')!.manager.send('\r');
+    host!.get('mara')!.manager.send('look\r');
+    // The positive control: a key on an open socket the far end never answers.
+    await until(() => notices.some((n) => n.session === 'mara' && n.message === deadLink));
+    expect(notices.some((n) => n.session === 'thorn' && n.message === deadLink)).toBe(false);
+    expect(silent.written).toEqual([]);
+  });
+
+  it('keeps reconnecting when the dial a Connect made fails', async () => {
+    setTuning({
+      ...DEFAULT_INTERNAL.tuning,
+      reconnect: { ...DEFAULT_INTERNAL.tuning.reconnect, stepMs: 50, maxDelayMs: 100 }
+    });
+    autoReconnect = true;
+    await host!.connect('thorn', target());
+    await until(() => accepted.length === 1);
+
+    // The realm goes: every dial is refused until it is back.
+    vi.spyOn(net, 'createConnection').mockImplementation(() => {
+      const refused = new DeadSocket();
+      queueMicrotask(() => refused.emit('error', new Error('connect ECONNREFUSED')));
+      return refused as unknown as net.Socket;
+    });
+    accepted[0]!.destroy();
+    await until(() => host!.get('thorn')!.manager.state.phase === 'error');
+
+    const state = await host!.connect('thorn', target());
+    expect(state.phase).toBe('error');
+    // Still on the ladder: Stop reconnecting is what ends it.
+    expect(host!.get('thorn')!.reconnect.pending).toBe(true);
+
+    vi.restoreAllMocks();
+    await until(() => host!.get('thorn')!.manager.state.phase === 'connected');
+    expect(accepted).toHaveLength(2);
+    expect(host!.get('thorn')!.reconnect.pending).toBe(false);
+  });
+
+  it('dials now during a reconnect, and the reconnect stops', async () => {
+    autoReconnect = true;
+    await host!.connect('thorn', target());
+    await until(() => accepted.length === 1);
+
+    const silent = silentOnce();
+    accepted[0]!.destroy();
+    // The first rung is immediate, and it goes to the host that does not answer.
+    await until(() => vi.mocked(net.createConnection).mock.calls.length === 1);
+    expect(host!.get('thorn')!.reconnect.pending).toBe(true);
+
+    await host!.connect('thorn', target());
+    await until(() => host!.get('thorn')!.manager.state.phase === 'connected');
+    expect(silent.destroyed).toBe(true);
+    expect(accepted).toHaveLength(2);
+    expect(host!.get('thorn')!.reconnect.pending).toBe(false);
+  });
+
+  // Once the socket has opened the phase is `connected`, and the refusal of
+  // the same realm above ('refuses to dial a character already connected')
+  // is what keeps a press mid-login from hanging up on it.
 });
 
 /*

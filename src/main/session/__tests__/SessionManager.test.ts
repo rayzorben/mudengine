@@ -7,7 +7,7 @@ import zlib from 'node:zlib';
 import iconv from 'iconv-lite';
 
 import { editorInput } from '../editorInput';
-import { BUSY_PHASES, IDLE_FLUSH_MS, SessionManager, type SessionDeps } from '../SessionManager';
+import { IDLE_FLUSH_MS, SessionManager, type SessionDeps } from '../SessionManager';
 import type { SessionSink } from '../SessionSink';
 import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
 import { WorldGraph } from '../../world/WorldGraph';
@@ -1457,23 +1457,6 @@ describe('losing the connection', () => {
     socket.destroy();
     await until(() => manager!.walker.progress.status === 'stopped');
     expect(manager.walker.progress.reason).toBe(t('session.walk.stoppedConnectionClosed'));
-  });
-});
-
-describe('connecting twice', () => {
-  it('refuses a second attempt while the first is still in flight', async () => {
-    // `connect` tears down whatever is open before it dials, so a second call
-    // arriving mid-handshake kills a connection that was about to succeed.
-    // React's StrictMode made that the *normal* case in development: it mounts
-    // the renderer twice, and both mounts said "ready".
-    expect(BUSY_PHASES.has('connecting')).toBe(true);
-    expect(BUSY_PHASES.has('resolving')).toBe(true);
-  });
-
-  it('does not treat being connected as a reason to refuse', async () => {
-    // Dialling while connected is how you switch servers, and the palette
-    // offers it.
-    expect(BUSY_PHASES.has('connected')).toBe(false);
   });
 });
 
