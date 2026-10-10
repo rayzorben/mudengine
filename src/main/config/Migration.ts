@@ -6870,6 +6870,8 @@ function theTuningBlockGainedKeys(
       addKey('queue', key, DEFAULT_INTERNAL.tuning.queue[key]);
     // How often an invitation nobody has answered is followed up (todo 01, 2026-10-09).
     addKey('remotes', 'inviteAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteAgainMs);
+    // How long a console nobody is looking at waits for its WebGL renderer (todo 19, 2026-10-10).
+    addKey('view', 'hiddenWebglMs', DEFAULT_INTERNAL.tuning.view.hiddenWebglMs);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
@@ -6883,8 +6885,6 @@ function theTuningBlockGainedKeys(
     };
 
     dropKey('combat', 'movePendingMs');
-    // The hidden console's WebGL wait, taken back the day after (2026-10-07).
-    dropKey('view', 'hiddenWebglMs');
     /*
      * The Hunting card's reach, retired with the reach chips (todo 00,
      * 2026-09-13): the survey sweeps everything the exits reach, and distance

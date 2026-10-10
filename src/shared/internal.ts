@@ -2849,6 +2849,12 @@ const TUNING_DEFAULTS = {
      */
     restoreSliceChars: 65536,
     /**
+     * The longest a console nobody is looking at waits, once mounted, for an
+     * idle moment to take its WebGL renderer; the shown one takes it at once,
+     * and a hidden one when it is shown.
+     */
+    hiddenWebglMs: 3000,
+    /**
      * How many lines of backscroll a console holds, and how many more each
      * *Load more* at its top brings back from main. Main keeps
      * `terminal.scrollback`; a tab attaching after a day of play was sent all

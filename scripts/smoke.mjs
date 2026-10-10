@@ -6023,6 +6023,28 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `),
     'a press on the channel picker is not swallowed, so the dropdown can drop down'
   );
+  /*
+   * The box scrolled out of the rail's view first, so a focus that scrolls has
+   * somewhere to scroll to: at 1920x1080 the box is already in view, and the
+   * check below passed with the scrolling focus put back (todo 19,
+   * 2026-10-10).
+   */
+  const railFound = await evaluate(`document.querySelector('.rail')?.scrollTop ?? 0`);
+  const boxHidden = await evaluate(`
+    (() => {
+      const rail = document.querySelector('.rail');
+      const box = document.querySelector('.conversation-say input');
+      if (!rail || !box) return false;
+      const seen = rail.getBoundingClientRect();
+      const at = box.getBoundingClientRect();
+      const below = rail.scrollTop + (at.bottom - seen.top) + 40;
+      const above = rail.scrollTop - (seen.bottom + 40 - at.top);
+      rail.scrollTop = below <= rail.scrollHeight - rail.clientHeight ? below : Math.max(0, above);
+      const now = box.getBoundingClientRect();
+      return now.bottom <= seen.top || now.top >= seen.bottom;
+    })()
+  `);
+  await painted();
   // Back to gossip, so the rest of this run sees the card as it was found.
   const railBefore = await evaluate(`document.querySelector('.rail')?.scrollTop ?? null`);
   await evaluate(`
@@ -6049,10 +6071,14 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     `(() => { const rail = document.querySelector('.rail'); return !!rail && rail.scrollHeight > rail.clientHeight; })()`
   );
   check(
-    railScrolls && railBefore !== null && railAfter === railBefore,
+    boxHidden && railScrolls && railBefore !== null && railAfter === railBefore,
     'and picking a channel hands the caret over without scrolling the rail',
-    `${railBefore} -> ${railAfter}, rail ${railScrolls ? 'scrolls' : 'cannot scroll'}`
+    `${railBefore} -> ${railAfter}, rail ${railScrolls ? 'scrolls' : 'cannot scroll'}, box ${boxHidden ? 'out of view' : 'in view'}`
   );
+  await evaluate(
+    `(() => { const rail = document.querySelector('.rail'); if (rail) rail.scrollTop = ${railFound}; })()`
+  );
+  await painted();
 
   /*
    * And the option goes back off, which is also the assertion that it is an
