@@ -104,6 +104,32 @@ describe('asking a carried item for its blessing', () => {
   });
 
   /*
+   * A cash run's token casts negate magic, which takes the blessing off
+   * again, so nothing is used until it has landed; then the use goes.
+   */
+  it('uses nothing while a token that negates is next, and uses it once that is over', () => {
+    const due = { negateDue: true };
+    const invoke = new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources(),
+      undefined,
+      undefined,
+      undefined,
+      {},
+      due
+    );
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    due.negateDue = false;
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  /*
    * The buff is up — under the spell's own name here, and under a candidate in
    * the test below. `You feel lucky!` is five spells, so a bless that landed as
    * one of the others is still up.

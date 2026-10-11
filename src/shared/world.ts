@@ -1387,6 +1387,12 @@ export interface WorldSpell {
    */
   script?: readonly ScriptLine[];
   /**
+   * Whether it takes every spell off whoever it is cast on, itself
+   * (`DispellMagic` 0) or by a spell its script casts on them (format 63):
+   * a recall token's `cast 310`, negate magic, ahead of its teleport.
+   */
+  negates?: true;
+  /**
    * What casting it actually does, from `Spells.Abil-n` — format 14.
    *
    * 1,985 of the realm's 1,990 spells carry these, and until 2026-08-31 the

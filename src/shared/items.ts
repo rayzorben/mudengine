@@ -493,6 +493,19 @@ export function itemInvocation(item: {
   return { spell, spells };
 }
 
+/**
+ * Whether using an item takes every spell off the user: the spell it casts
+ * negates (`WorldSpell.negates`), as every recall token's negate magic does.
+ * A spell the realm cannot name is not one.
+ */
+export function useNegates(
+  item: Parameters<typeof itemInvocation>[0],
+  spell: (id: number) => { negates?: true } | null | undefined
+): boolean {
+  const invoked = itemInvocation(item);
+  return invoked !== null && spell(invoked.spell)?.negates === true;
+}
+
 /** A chance-on-hit the realm hangs off an item. */
 export interface HitProc {
   /** The `Spells` row it casts when it fires. */

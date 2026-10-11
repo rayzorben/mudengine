@@ -28,13 +28,15 @@ const SILVERMERE: CashRunToken = {
   item: 3381,
   name: 'token of Silvermere',
   lands: 'Pier',
-  fare: 200_000
+  fare: 200_000,
+  negates: true
 };
 const RHUDAUR: CashRunToken = {
   item: 3385,
   name: 'token of Rhudaur',
   lands: 'Rhudaur, Massive Doors',
-  fare: 200_000
+  fare: 200_000,
+  negates: true
 };
 const ASK: CashRunAsk = {
   loop: 'Lava Fields: Crimson Fort Loop',
@@ -195,6 +197,39 @@ describe('a cash run', () => {
     run.onBlock(block('user-deposits', { amount: '100000' }));
     expect(log.at(-1)).toBe('release');
     expect(run.running).toBe(true);
+  });
+
+  it('holds blessings from full until the token lands, and says so', () => {
+    const run = make();
+    started(run);
+    expect(run.negateDue).toBe(false);
+    current = character(350_000, { platinum: 35 }, 'Heavy');
+    run.onCharacter(current);
+    expect(run.negateDue).toBe(true);
+    expect(notices).toContain(t('automation.cashRun.blessingsHeld', { token: SILVERMERE.name }));
+    drain();
+    answer(run, 2);
+    expect(sent.at(-1)).toBe('use token of Silvermere');
+    expect(run.negateDue).toBe(true);
+
+    here = LANDING;
+    current = character(150_000, { platinum: 15 }, 'Light');
+    run.onCharacter(current);
+    expect(run.negateDue).toBe(false);
+  });
+
+  it('holds nothing for a token whose use casts no negate magic', () => {
+    const plain = [SILVERMERE, RHUDAUR].map((token) => ({ ...token, negates: false }));
+    const run = make({ tokens: () => plain });
+    started(run);
+    current = character(350_000, { platinum: 35 }, 'Heavy');
+    run.onCharacter(current);
+    // The positive control: the run is loaded and holding the lap.
+    expect(log).toContain('hold');
+    expect(run.negateDue).toBe(false);
+    expect(notices).not.toContain(
+      t('automation.cashRun.blessingsHeld', { token: SILVERMERE.name })
+    );
   });
 
   it('passes over a token with no uses left for the next one', () => {

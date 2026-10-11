@@ -6,11 +6,11 @@
  * Blessings picked (`ChosenItems`), else those in `invokeWith`; only when the
  * spell's mana is there (an item cast costs it, `MA=21` to `MA=13` on the
  * wire); never over a blessing up that `RemovesSpell` ties it to; never in a
- * fight; and one cast a round through `CastGate`. The server's answer to a
- * `use` is read (`invokeAnswer.ts`): a failed roll or a spent round is tried
- * again next round, a refusal holds the item and is said. A bless weapon in
- * the pack is wielded for the `use` and the fighting weapon put back
- * (`offRoundPlan`, todo 42), watched by `SwapBack`. See
+ * fight or while a token that negates is next (`NegateDue`); one cast a round
+ * (`CastGate`). The server's answer to a `use` is read (`invokeAnswer.ts`): a
+ * failed roll or spent round is tried again, a refusal holds the item and is
+ * said. A bless weapon in the pack is wielded for the `use` and the fighting
+ * weapon put back (`offRoundPlan`, todo 42), watched by `SwapBack`. See
  * `mudengine-automation` › parts/recovery.md, *A weapon that blesses is
  * chosen, and pays the spell's mana*.
  */
@@ -18,6 +18,7 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
+import { NO_NEGATE_DUE, type NegateDue } from '../../shared/cashRun';
 import { exclusive } from '../../shared/blessingeffects';
 import { isEquipCommand, offRoundSteps, type HandsOf } from '../../shared/gear';
 import { bareName, sameItem } from '../../shared/items';
@@ -100,7 +101,8 @@ export class AutoInvoke implements SessionModule {
     private readonly gate: CastGate = OPEN_CAST_GATE,
     private readonly now: () => number = () => Date.now(),
     private readonly picked: ChosenItems = NO_CHOSEN_ITEMS,
-    private readonly events: AutoInvokeEvents = {}
+    private readonly events: AutoInvokeEvents = {},
+    private readonly due: NegateDue = NO_NEGATE_DUE
   ) {
     this.swapBack = new SwapBack(events, now);
     this.configure(spells, enabled);
@@ -178,6 +180,8 @@ export class AutoInvoke implements SessionModule {
     // A `use` spends the round like a cast. Blessing is what you do before a
     // fight, not during one.
     if (state.inCombat) return;
+    // A cash run's token is next, and its negate magic would take the blessing off.
+    if (this.due.negateDue) return;
     // An unlisted pack is not an empty one — the router and `AutoKeys` refuse
     // on the same silence, and this refuses on it too rather than asking for
     // items nobody has read.

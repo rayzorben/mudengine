@@ -77,6 +77,8 @@ interface Run {
   stage: Stage;
   /** Whether the run holds the lap. */
   held: boolean;
+  /** Whether the blessings' hold for a negating token has been said this run. */
+  toldNegate: boolean;
   /** The token being looked at or used. */
   token: Token | null;
   /** Where the token was used, so a move off it is the landing; its name, for a landing nobody can place. */
@@ -133,6 +135,31 @@ export class CashRun implements SessionModule {
     return this.run !== null;
   }
 
+  /**
+   * Loaded, and the next use is a token that casts negate magic: a blessing
+   * cast now is taken off by it (`useNegates`), so `Blessings` holds until
+   * the landing, or the lap goes on unloaded.
+   */
+  get negateDue(): boolean {
+    const run = this.run;
+    if (run === null || !run.held) return false;
+    switch (run.stage) {
+      case 'clearing':
+      case 'looking':
+      case 'using':
+        return (run.token ?? this.nextToken(run))?.negates === true;
+      case 'collecting':
+      case 'walking':
+      case 'banking':
+      case 'dropping':
+        return false;
+      default: {
+        const never: never = run.stage;
+        return never;
+      }
+    }
+  }
+
   abandon(): void {
     if (this.run !== null) this.end(t('automation.hostTrip.endedDied'));
   }
@@ -166,6 +193,7 @@ export class CashRun implements SessionModule {
       coins: { ...state.inventory.coins },
       stage: 'looking',
       held: false,
+      toldNegate: false,
       token: null,
       usedFrom: null,
       usedFromName: null,
@@ -305,6 +333,11 @@ export class CashRun implements SessionModule {
     if (!run.held) {
       if (this.planner.looping()) this.planner.hold();
       run.held = true;
+      const next = this.nextToken(run);
+      if (next?.negates === true && !run.toldNegate) {
+        run.toldNegate = true;
+        this.events.notice?.(t('automation.cashRun.blessingsHeld', { token: next.name }));
+      }
     }
     run.stage = 'clearing';
     const fighting = fightIsRunning(state);
@@ -330,7 +363,7 @@ export class CashRun implements SessionModule {
 
   /** The next token with uses left, looked at again before it is used; or the run's end. */
   private trip(run: Run, state: CharacterState): void {
-    const token = run.tokens.find((each) => each.uses === null || each.uses > 0);
+    const token = this.nextToken(run);
     if (token === undefined) {
       this.end(t('automation.cashRun.tokensSpent'), true);
       return;
@@ -341,6 +374,11 @@ export class CashRun implements SessionModule {
       return;
     }
     this.lookAt(run, token);
+  }
+
+  /** The first token with uses left, or an unread count. */
+  private nextToken(run: Run): Token | undefined {
+    return run.tokens.find((each) => each.uses === null || each.uses > 0);
   }
 
   private lookAt(run: Run, token: Token): void {

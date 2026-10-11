@@ -6,7 +6,7 @@ import zlib from 'node:zlib';
 import { wireItem } from '../../../shared/entities';
 import { chargeCapacity } from '../../../shared/charges';
 import { invokeChoices } from '../../../shared/invoke';
-import { itemHitProcs, itemInvocation } from '../../../shared/items';
+import { itemHitProcs, itemInvocation, useNegates } from '../../../shared/items';
 import { WorldGraph } from '../WorldGraph';
 
 /**
@@ -162,5 +162,18 @@ describe.skipIf(!available)('a weapon that fires on a hit, on the shipped realm'
       (row) => itemHitProcs({ abilities: row.ab }).length > 0
     );
     expect(found.length).toBeGreaterThanOrEqual(20);
+  });
+});
+
+/*
+ * Format 63. Every recall token's use casts negate magic on the user, which a
+ * cash run's blessings wait out; a weapon's bless takes nothing off.
+ */
+describe.skipIf(!available)('a use that takes every spell off, on the shipped realm', () => {
+  it('is the token of Silvermere’s, and not the shimmering longsword’s', () => {
+    const named = graph!.itemsNamed(['token of silvermere', 'shimmering longsword']);
+    const spell = (id: number) => graph!.spellById(id);
+    expect(useNegates(named['token of silvermere']!, spell)).toBe(true);
+    expect(useNegates(named['shimmering longsword']!, spell)).toBe(false);
   });
 });

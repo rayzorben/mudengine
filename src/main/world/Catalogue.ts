@@ -1412,6 +1412,8 @@ export class Catalogue {
       if (hazard !== null) spell.hazard = hazard;
       const script = asScriptLines(record['st']);
       if (script !== null) spell.script = script;
+      // Takes every spell off whoever it is cast on (format 63): a token's negate magic.
+      if (record['ng'] === 1) spell.negates = true;
       // Who one cast brings into the caster's room (format 60).
       const summons = picksRead(record['sm']);
       if (summons.length > 0) spell.summons = summons;

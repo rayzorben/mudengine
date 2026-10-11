@@ -16,6 +16,7 @@ import { indexSpellHazards } from './spellHazard';
 import { gateNames, nameGate } from './navigation/stepGates';
 import type { ScriptLine } from '../../shared/world';
 import { scriptLines } from './navigation/scriptWays';
+import { spellNegates, type NegateRow } from './navigation/scriptNegates';
 import { readTextblocks } from './navigation/textblock';
 import {
   indexSupply,
@@ -132,8 +133,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 60 | **Who a monster's spell brings into the fight.** A call for aid is a spell whose Summon ability (12) names a monster row (`Spell.ApplySpellAbilities`, `Room.TrySummon`), and the runs (format 56) kept what a monster's casts make but not which cast made it, so the fight odds could not tie a summons to the round's one roll. `BuiltSpell.sm` is who one cast brings in, a pick of `[row, chance]` per Summon modifier, as the server summons once per modifier (`Makings.summonPicks`): the half-orc sentry's *summon orc warrior* (593) brings row 480, a fat orc warrior |
  * | 61 | **Who a room's group may put in it as a player walks in.** `Room.Regen` (Room.cs:520-535) gives a room with no lair a 10% chance a player, each regen pass, of one monster of its group's rows, and a player walking in runs a pass (Player.cs:782). The export lists those rows per monster as a plain `Group:` entry; `BuiltRoom.wd` is them per room (`groupWanderers`), so a run and a walk past Slum Street price its thugs and orc rogues. 39,097 of pmud.zip's 57,511 rooms, none of them a lair |
  * | 62 | **Whether a charged item survives its last use.** `Items.Retain After Uses` (`BuiltItem.ret`): the server destroys a copy at zero uses unless it is set, and then answers a `use` with `There are no more uses in X.` until the cleanup's `Recharge` refills it (`UseCommand.cs`). Without it a cloak of faith and a green potion read alike, and spending a use on a bless could not be told from spending the item (todo 44) |
+ * | 63 | **A spell that takes every spell off whoever it is cast on** (`BuiltSpell.ng`, `navigation/scriptNegates.ts`). `DispellMagic` 0 removes every timed effect (`Spell.cs:1601`), and every recall token's block runs `cast 310`, negate magic, ahead of its teleport, so blessings cast just before a token is used are wiped by it. Set on the spell itself or on one whose script casts such a spell on the player: 7 tokens in both gmud.zip and pmud.zip |
  */
-export const REALM_FORMAT = 62;
+export const REALM_FORMAT = 63;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -522,6 +524,8 @@ export interface BuiltSpell {
    * a pick per Summon modifier, a script's `summon`, the spell a chain ends in.
    */
   sm?: BuiltPicks;
+  /** Takes every spell off whoever it is cast on (format 63, `spellNegates`). */
+  ng?: 1;
 }
 
 /**
@@ -1545,14 +1549,20 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
   const races = indexRaces(source);
   const classes = indexClasses(source);
   const names = gateNames(source, { classes, races, spells });
-  // What each spell's script does to whoever it is cast on (format 54).
+  // What each spell's script does to whoever it is cast on (format 54), and
+  // whether it takes every spell off them (format 63).
   const abilitiesOf = new Map(
-    spells.map((spell) => [
+    spells.map((spell): [number, NegateRow] => [
       spell.id,
-      { abilities: spell.ab ?? [], ...(spell.pw === undefined ? {} : { power: spell.pw }) }
+      {
+        abilities: spell.ab ?? [],
+        ...(spell.pw === undefined ? {} : { power: spell.pw }),
+        ...(spell.tg === undefined ? {} : { targets: spell.tg })
+      }
     ])
   );
   for (const spell of spells) {
+    if (spellNegates(spell.id, (id) => abilitiesOf.get(id), blocks)) spell.ng = 1;
     const lines = scriptLines(spell.id, (id) => abilitiesOf.get(id), blocks);
     if (lines === null) continue;
     spell.st = lines.map((line) => ({

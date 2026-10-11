@@ -53,7 +53,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the blessings' wiring, folded onto one line as the swap's fight ask came, and
   // the kit comment, condensed as the reach weapon's hand-over came (todo 42).
   // Lowered by the clock tick's comment, condensed as the charge ledger came (todo 44).
-  'src/main/session/SessionManager.ts': 3421,
+  // Lowered by the learned durations, handed to `blessingsFor` with the deps (todo 59).
+  'src/main/session/SessionManager.ts': 3419,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   'src/main/world/WorldGraph.ts': 2385,

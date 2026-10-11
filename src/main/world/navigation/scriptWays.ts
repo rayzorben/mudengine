@@ -24,7 +24,7 @@ import {
 /** How far a chain of casts and blocks is followed before it is called unread. */
 export const SCRIPT_DEPTH = 8;
 
-type Blocks = ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>;
+export type Blocks = ReadonlyMap<number, Pick<Textblock, 'lines' | 'linkTo'>>;
 export type SpellAbilities = ReadonlyArray<readonly [number, number]>;
 /** A spell as its scripts are read: its ability pairs, and `MinBase..MaxBase`. */
 export interface SpellScriptRow {
@@ -107,20 +107,27 @@ export function scriptLines(
   return lines.some((line) => line.moves !== false) ? lines : null;
 }
 
+/**
+ * What a walk over a spell's script looks for: what a spell's own columns or a
+ * step do outright, and which casts land on whoever runs the script and so are
+ * followed. One walk, so the server's order of running a block is read once.
+ */
+export interface ScriptProbe<R extends SpellScriptRow> {
+  own(row: R): boolean;
+  step(step: TbStep): boolean;
+  follows(row: R | undefined): boolean;
+}
+
+/** A move: a teleport step, or a spell whose columns teleport, cast at anyone. */
+const MOVES: ScriptProbe<SpellScriptRow> = {
+  own: (row) => castMoves(row.abilities),
+  step: (step) => step.verb === 'teleport',
+  follows: () => true
+};
+
 /** Whether one step moves whoever runs it; `'unread'` where the chain cannot be followed. */
 function stepMoves(step: TbStep, abilities: Abilities, blocks: Blocks, depth: number): ScriptMoves {
-  if (depth > SCRIPT_DEPTH) return 'unread';
-  if (step.verb === 'teleport') return true;
-  if (step.verb === 'cast') return spellMoves(step.spell, abilities, blocks, depth + 1);
-  const run = blockRun(step);
-  if (run === null) return false;
-  const [id, use] = run;
-  if (use !== 'shown') return blockMoves(id, use, abilities, blocks, depth + 1);
-  // Showing a block runs what it links to (`TextBlock.Display`).
-  const linked = blocks.get(id)?.linkTo ?? null;
-  return linked === null || linked <= 0
-    ? false
-    : blockMoves(linked, 'steps', abilities, blocks, depth + 1);
+  return stepDoes(step, MOVES, abilities, blocks, depth);
 }
 
 /** Whether a block can move whoever runs it: a line that may is a block that does. */
@@ -131,33 +138,74 @@ function blockMoves(
   blocks: Blocks,
   depth: number
 ): ScriptMoves {
+  return blockDoes(id, use, MOVES, abilities, blocks, depth);
+}
+
+/**
+ * Whether a spell, by its own columns or a step its scripts reach, does what
+ * the probe looks for; `'unread'` where the chain cannot be followed.
+ */
+export function spellDoes<R extends SpellScriptRow>(
+  spell: number,
+  probe: ScriptProbe<R>,
+  rows: (spell: number) => R | undefined,
+  blocks: Blocks,
+  depth = 0
+): ScriptMoves {
+  const row = rows(spell);
+  if (row === undefined) return 'unread';
+  if (probe.own(row)) return true;
+  let unread = false;
+  for (const script of scriptsOf(row).flat()) {
+    const does = blockDoes(script, 'steps', probe, rows, blocks, depth);
+    if (does === true) return true;
+    if (does === 'unread') unread = true;
+  }
+  return unread ? 'unread' : false;
+}
+
+function stepDoes<R extends SpellScriptRow>(
+  step: TbStep,
+  probe: ScriptProbe<R>,
+  rows: (spell: number) => R | undefined,
+  blocks: Blocks,
+  depth: number
+): ScriptMoves {
+  if (depth > SCRIPT_DEPTH) return 'unread';
+  if (probe.step(step)) return true;
+  if (step.verb === 'cast') {
+    return probe.follows(rows(step.spell))
+      ? spellDoes(step.spell, probe, rows, blocks, depth + 1)
+      : false;
+  }
+  const run = blockRun(step);
+  if (run === null) return false;
+  const [id, use] = run;
+  if (use !== 'shown') return blockDoes(id, use, probe, rows, blocks, depth + 1);
+  // Showing a block runs what it links to (`TextBlock.Display`).
+  const linked = blocks.get(id)?.linkTo ?? null;
+  return linked === null || linked <= 0
+    ? false
+    : blockDoes(linked, 'steps', probe, rows, blocks, depth + 1);
+}
+
+function blockDoes<R extends SpellScriptRow>(
+  id: number,
+  use: Exclude<TbUse, 'shown'>,
+  probe: ScriptProbe<R>,
+  rows: (spell: number) => R | undefined,
+  blocks: Blocks,
+  depth: number
+): ScriptMoves {
   const block = blocks.get(id);
   if (block === undefined) return 'unread';
   let unread = false;
   for (const line of linesRun(block, use)) {
     for (const step of untilUnrun(stepsRun(line, use))) {
-      const moves = stepMoves(step, abilities, blocks, depth);
-      if (moves === true) return true;
-      if (moves === 'unread') unread = true;
+      const does = stepDoes(step, probe, rows, blocks, depth);
+      if (does === true) return true;
+      if (does === 'unread') unread = true;
     }
-  }
-  return unread ? 'unread' : false;
-}
-
-function spellMoves(
-  spell: number,
-  abilities: Abilities,
-  blocks: Blocks,
-  depth: number
-): ScriptMoves {
-  const row = abilities(spell);
-  if (row === undefined) return 'unread';
-  if (castMoves(row.abilities)) return true;
-  let unread = false;
-  for (const script of scriptsOf(row).flat()) {
-    const moves = blockMoves(script, 'steps', abilities, blocks, depth);
-    if (moves === true) return true;
-    if (moves === 'unread') unread = true;
   }
   return unread ? 'unread' : false;
 }
