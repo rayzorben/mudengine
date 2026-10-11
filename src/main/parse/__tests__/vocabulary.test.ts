@@ -238,7 +238,12 @@ describe('every fact the parser produces reaches something', () => {
     'realm-message': "the server's own words for a line no frame reads; nothing decides on it yet",
     // `ReadCommand` on a scroll whose `LearnSp` names no spell: nothing is
     // learned and the scroll is kept, so no state moves (todo 20, 2026-10-03).
-    'user-reads-blank': 'a scroll that teaches nothing; no state moves'
+    'user-reads-blank': 'a scroll that teaches nothing; no state moves',
+    // The equip reply's second line (`EquipCommand.cs:147-161`). The realm's
+    // `StrReq` already says heavy (`weaponHeavy`) and `prowess.ts` charges it;
+    // typed so the line never reaches the effect learning as an unread
+    // sentence (todo 33, 2026-10-10).
+    'user-weapon-feel': "the equip reply's second line; the realm's StrReq already says heavy"
     /*
      * `user-trains` was here — *"the price of a level; wealth is re-read from
      * the next listing"* — and the exemption dissolved on 2026-09-03. An

@@ -2320,6 +2320,7 @@ cards:
     emptyUnseen: Inventory unread. Send 'i' to update.
     equipAll: Equip all
     equipTooltip: Equip {item}
+    equipHeavyTooltip: 'Equip {item}. Feels heavy: needs {needed} strength, this character has {have}'
     findPlaceholder: Find in inventory
     blocked:
       byAlignment: 'Not for a {alignment} character'
@@ -2330,7 +2331,6 @@ cards:
       byLevel: 'Needs level {needed}; this character is {have}'
       byRace: 'Only {raceList} may use this'
       byRaceUnnamed: This character's race may not use this
-      byStrength: 'Needs {needed} strength; this character has {have}'
     inUseStatus: Equipped / Worn
     inUseTooltip: Equipped or held; no list has shown the slot yet
     realmSlotTooltip: From the world data's Worn code; no list has shown this slot yet

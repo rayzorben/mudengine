@@ -300,7 +300,7 @@ export interface EquipRestrictions {
   /** What it is: only armour is ruled by armour kind, only a weapon by weapon kind. */
   kind?: ItemKind;
   /**
-   * A weapon's `StrReq`, the one requirement stated as a plain column, and its
+   * A weapon's `StrReq`, which only makes it heavy (`weaponHeavy`), and its
    * `WeaponType` code.
    */
   weapon?: { strength?: number; kind?: number };
@@ -315,9 +315,9 @@ export interface EquipRestrictions {
  *
  * A closed union, because the reason is shown to somebody who then has to do
  * something about it: `level` is *wait*, `class` and `race` are *give it to
- * somebody else*, and `strength` is a number that can still go up. A single
- * boolean would have collapsed all four into "no", which is the answer the
- * server already gives for free.
+ * somebody else*. A single boolean would have collapsed them into "no", which
+ * is the answer the server already gives for free. Strength is not here: the
+ * server equips a weapon whatever its `StrReq` (`weaponHeavy`).
  */
 export type EquipBlock =
   | { kind: 'alignment'; has: Alignment }
@@ -325,8 +325,7 @@ export type EquipBlock =
   | { kind: 'race'; allowed: readonly number[] }
   | { kind: 'level'; needs: number; has: number }
   | { kind: 'armour'; heaviest: number; is: number }
-  | { kind: 'weapon'; is: number }
-  | { kind: 'strength'; needs: number; has: number };
+  | { kind: 'weapon'; is: number };
 
 /**
  * What the character is, as the checks below need it.
@@ -562,17 +561,25 @@ export function equipBlock(item: EquipRestrictions, wearer: Wearer): EquipBlock 
     return { kind: 'weapon', is: weaponKind };
   }
 
-  /*
-   * A weapon's `StrReq`, which is the one requirement the realm states as a
-   * plain column rather than a gate. Only a weapon has one, and `strength`
-   * comes off the same stat sheet as the rest.
-   */
-  const needs = item.weapon?.strength;
-  if (needs !== undefined && needs > 0 && wearer.strength !== null && wearer.strength < needs) {
-    return { kind: 'strength', needs, has: wearer.strength };
-  }
-
   return null;
+}
+
+/**
+ * A weapon that asks for more strength than the character has: it goes on,
+ * and the server says `This weapon feels heavy in your hands.` In GreaterMUD's
+ * `EquipCommand.cs:147` `RequiredStrength` decides only that line;
+ * `CanPlayerUseItem` never reads strength. The cost is in the fight (slower
+ * swings, less accuracy), which `prowess.ts` already reckons, so this is a
+ * note beside a usable weapon and never an `EquipBlock`. Null when either
+ * half is unknown.
+ */
+export function weaponHeavy(
+  item: EquipRestrictions,
+  wearer: Pick<Wearer, 'strength'>
+): { needs: number; has: number } | null {
+  const needs = item.weapon?.strength;
+  if (needs === undefined || needs <= 0 || wearer.strength === null) return null;
+  return wearer.strength < needs ? { needs, has: wearer.strength } : null;
 }
 
 /**
@@ -631,8 +638,6 @@ export function blockReason(
       return t('cards.inventory.blocked.byWeapon', {
         weaponType: WEAPON_TYPE[blocked.is] ?? String(blocked.is)
       });
-    case 'strength':
-      return t('cards.inventory.blocked.byStrength', { needed: blocked.needs, have: blocked.has });
   }
 }
 
@@ -690,9 +695,17 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
       command: null
     };
   }
+  const heavy = weaponHeavy(realm, wearer);
   return {
     state: 'wearable',
-    label: t('cards.inventory.equipTooltip', { item: item.name }),
+    label:
+      heavy === null
+        ? t('cards.inventory.equipTooltip', { item: item.name })
+        : t('cards.inventory.equipHeavyTooltip', {
+            item: item.name,
+            needed: heavy.needs,
+            have: heavy.has
+          }),
     command: equip(item.name)
   };
 }

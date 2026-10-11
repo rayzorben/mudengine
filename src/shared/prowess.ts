@@ -1,4 +1,5 @@
 import { PLAIN_SPEED, type BlessingEffect } from './blessingeffects';
+import { weaponHeavy } from './gear';
 import { hitSpellPerBlow, type HitSpell, type HitSpellTarget } from './hitSpells';
 import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
 import type { RealmFamily } from './realm';
@@ -220,14 +221,12 @@ export function accuracy(
   acc += (levelValue * (combat - 1) + (combat * 2 + Math.trunc(level / 2) - 2)) * 2;
   acc += plainStatsTerm(agility, intellect, charm);
   /*
-   * `IsWeaponHeavy` — the weapon asks for more strength than the character
-   * has. Only chargeable when both halves are known: a weapon whose `StrReq`
-   * the realm does not carry, or a character whose strength no sheet has
-   * stated, must not be penalised on an absence.
+   * `IsWeaponHeavy`, the same test as the equip reply's heavy line
+   * (`weaponHeavy`). Only chargeable when both halves are known: a weapon
+   * whose `StrReq` the realm does not carry, or a character whose strength no
+   * sheet has stated, must not be penalised on an absence.
    */
-  const heavy =
-    weapon?.strength !== undefined && sheet.strength !== null && weapon.strength > sheet.strength;
-  if (heavy) acc -= 15;
+  if (weapon !== null && weaponHeavy({ weapon }, sheet) !== null) acc -= 15;
 
   /*
    * `source` only when every term is in hand. A weapon may grant accuracy the
@@ -362,10 +361,8 @@ function energyPerSwing(
   const divisor = Math.trunc(((level * combat + 45) * (agility + 150) * 1500) / 9000);
   if (divisor <= 0) return null;
   let energy = Math.trunc((speed * 1000) / divisor);
-  const strReq = weapon?.strength;
-  if (strReq !== undefined && sheet.strength !== null && sheet.strength < strReq) {
-    energy = Math.trunc((((strReq - sheet.strength) * 3 + 200) * energy) / 200);
-  }
+  const heavy = weapon === null ? null : weaponHeavy({ weapon }, sheet);
+  if (heavy !== null) energy = Math.trunc((((heavy.needs - heavy.has) * 3 + 200) * energy) / 200);
   const enc = sheet.encumbrancePercent;
   const encum = Math.trunc(enc ?? 100);
   energy = Math.trunc((energy * (Math.trunc(encum / 2) + 75)) / 100);

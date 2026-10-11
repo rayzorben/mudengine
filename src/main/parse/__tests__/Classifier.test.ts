@@ -1418,6 +1418,13 @@ describe('buying and selling', () => {
     expect(expectType("You are now wearing thief's kit.", 'user-equipped')).toMatchObject({
       item: "thief's kit"
     });
+    // Todo 33: the equip reply's second line, never an unread sentence.
+    expect(expectType('This weapon feels heavy in your hands.', 'user-weapon-feel')['feel']).toBe(
+      'heavy'
+    );
+    expect(
+      expectType('You are extremely quick and deadly with this weapon.', 'user-weapon-feel')['feel']
+    ).toBe('quick');
     expect(
       expectType('You have removed severed head of Goru-Nezar.', 'user-removed')
     ).toMatchObject({

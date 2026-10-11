@@ -2021,6 +2021,18 @@ export const RULES: Rule[] = [
    */
   { type: 'user-equipped', pattern: new RegExp(`^You are now holding (?<item>${ITEM_NAME}+)\\.$`) },
   { type: 'user-equipped', pattern: new RegExp(`^You lit the (?<item>${ITEM_NAME}+)\\.$`) },
+  /*
+   * The second line of a weapon's equip reply, live on orohost (2026-10-10,
+   * todo 33) and in the corpus (`quick and deadly`, captures 017, 066, 119):
+   *
+   *     You are now holding platinum mace.
+   *     This weapon feels heavy in your hands.
+   */
+  { type: 'user-weapon-feel', pattern: /^This weapon feels (?<feel>heavy) in your hands\.$/ },
+  {
+    type: 'user-weapon-feel',
+    pattern: /^You are extremely (?<feel>quick) and deadly with this weapon\.$/
+  },
   { type: 'user-equipped-failed', pattern: /^You may not wear that item!/ },
   // `wear` for something already on, captured live while recovering a kit.
   { type: 'user-equipped-failed', pattern: /^You are already wearing (?<item>.+?)!$/ },
