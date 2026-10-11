@@ -508,7 +508,36 @@ export interface CastGate {
   mayCast(spell: string): boolean;
   /** A heal, blessing or cure went out. */
   noteCast(): void;
+  /**
+   * The server threw that cast away before reading it (a fumble: confusion,
+   * a stun among them), so the round it spent is the character's again.
+   */
+  noteFumbled(): void;
 }
 
 /** A gate that never closes, for a caster built with none. */
-export const OPEN_CAST_GATE: CastGate = { mayCast: () => true, noteCast: () => {} };
+export const OPEN_CAST_GATE: CastGate = {
+  mayCast: () => true,
+  noteCast: () => {},
+  noteFumbled: () => {}
+};
+
+/**
+ * The three hooks a gated cast's intent carries, one spelling for every
+ * caster: asked at the send, spent when it leaves (`spend` is the caster's
+ * own clocks), given back when the server threw it away unread (todo 58).
+ */
+export function gatedCast(
+  gate: CastGate,
+  spell: string,
+  spend: () => void
+): { stillWanted: () => boolean; onSent: () => void; onFumbled: () => void } {
+  return {
+    stillWanted: () => gate.mayCast(spell),
+    onSent: () => {
+      spend();
+      gate.noteCast();
+    },
+    onFumbled: () => gate.noteFumbled()
+  };
+}

@@ -12,7 +12,7 @@ import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import { bareName } from '../../shared/items';
 import { carriedBlessing, chosenToInvoke, type BlessingRealm } from '../../shared/invoke';
-import { OPEN_CAST_GATE, sameSpell, type CastGate } from '../../shared/spellcraft';
+import { gatedCast, OPEN_CAST_GATE, sameSpell, type CastGate } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -103,14 +103,12 @@ export class AutoInvoke implements SessionModule {
         priority: 'probe',
         coalesceKey: `invoke:${name}`,
         expiresAt: now + tuning().spells.buffExpiresMs,
-        stillWanted: () => this.gate.mayCast(found.name),
         reason: t('automation.invoke.reason', { item: name, spell: found.name }),
         // Spent when the `use` leaves, so one held for the round is proposed
         // again rather than waiting out `blessRetryMs`.
-        onSent: () => {
+        ...gatedCast(this.gate, found.name, () => {
           this.sentAt.set(name, this.now());
-          this.gate.noteCast();
-        }
+        })
       });
       return;
     }

@@ -31,6 +31,7 @@ import { CURES, type Cure, type SpellsConfig } from '../../shared/config';
 import {
   CURE_CONDITION,
   cureGates,
+  gatedCast,
   OPEN_CAST_GATE,
   resolveSpell,
   spellCost,
@@ -139,12 +140,10 @@ export class Cures implements SessionModule {
         priority: 'combat',
         coalesceKey: `cure:${cure}`,
         expiresAt: at + tuning().spells.cureExpiresMs,
-        stillWanted: () => this.gate.mayCast(found.configured),
         reason: t('automation.cure.reason', { cure }),
-        onSent: () => {
+        ...gatedCast(this.gate, found.configured, () => {
           this.lastCastAt.set(cure, this.now());
-          this.gate.noteCast();
-        }
+        })
       });
     }
   }

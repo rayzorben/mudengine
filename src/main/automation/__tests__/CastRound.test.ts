@@ -145,6 +145,34 @@ describe('one heal, blessing or cure a round', () => {
     expect(sent).toEqual(['minor healing', 'cure poison']);
   });
 
+  /*
+   * Todo 58: a stun is a confusion (`Confusion` 71, `ConfuseMsg` 56, `You are
+   * stunned!`), and `ActionFigure.CheckConfusion` throws the command away at
+   * the top of `Player.HandleCommand`, before `InitiateSpell` spends the
+   * magic energy. The round is still the character's, so the put-back cast
+   * goes out rather than waiting on a round nobody spent.
+   */
+  it('gives the round back when the server threw the cast away unread', () => {
+    const healer = heal();
+    gate.onBlock(block('mob-hits'));
+    healer.onCharacter(state({ inCombat: true }));
+    expect(sent).toEqual(['minor healing']);
+
+    expect(queue.resendLast('minor healing')).toBe(true);
+    vi.advanceTimersByTime(tuning().queue.fumbleRetryMs + 100);
+    expect(sent).toEqual(['minor healing', 'minor healing']);
+    // And that send spent the round again.
+    expect(gate.mayCast('protection')).toBe(false);
+  });
+
+  it('gives nothing back for a cast the server read and refused', () => {
+    gate.onBlock(block('mob-hits'));
+    gate.noteCast();
+    gate.onBlock(block('spell-refused'));
+    gate.noteFumbled();
+    expect(gate.mayCast('protection')).toBe(false);
+  });
+
   it('opens again on reset', () => {
     gate.noteCast();
     expect(gate.mayCast('protection')).toBe(false);

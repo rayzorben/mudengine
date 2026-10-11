@@ -24,6 +24,8 @@ export interface CastRoundEvents {
 export class CastRound implements CastGate, SessionModule {
   /** When this round's cast was spent, by us or as the server's refusal says; null for none yet. */
   private spentAt: number | null = null;
+  /** What `spentAt` was before the last cast went; undefined once given back or reset. */
+  private before: number | null | undefined = undefined;
   private roundAt = 0;
   private readonly beat: RoundBeat;
   private saidHeld = false;
@@ -39,7 +41,11 @@ export class CastRound implements CastGate, SessionModule {
 
   onBlock(block: Block): void {
     if (this.beat.onBlock(block)) this.roundAt = block.at;
-    if (block.type === 'spell-refused') this.spend();
+    if (block.type === 'spell-refused') {
+      // The server read that cast and refused it: nothing to give back.
+      this.before = undefined;
+      this.spend();
+    }
   }
 
   mayCast(spell: string): boolean {
@@ -58,11 +64,24 @@ export class CastRound implements CastGate, SessionModule {
   }
 
   noteCast(): void {
+    this.before = this.spentAt;
     this.spend();
+  }
+
+  /**
+   * A fumble is `ActionFigure.CheckConfusion` returning at the top of
+   * `Player.HandleCommand`, before `InitiateSpell` takes the magic energy, so
+   * the round is as it was before that cast went (todo 58).
+   */
+  noteFumbled(): void {
+    if (this.before === undefined) return;
+    this.spentAt = this.before;
+    this.before = undefined;
   }
 
   reset(): void {
     this.spentAt = null;
+    this.before = undefined;
     this.roundAt = 0;
     this.beat.reset();
     this.saidHeld = false;
