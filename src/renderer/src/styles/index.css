@@ -2994,6 +2994,13 @@ kbd {
   stroke: none;
 }
 
+/* A room the realm data marks protected (todo 87): the find's dot, in the realm's safe hue. */
+.map-safe {
+  fill: var(--ok);
+  pointer-events: none;
+  stroke: none;
+}
+
 /*
  * The hover target for a blocked corridor: the whole passage, invisible.
  *

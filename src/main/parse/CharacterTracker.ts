@@ -64,6 +64,7 @@ import {
   doorChanged,
   doorSwings,
   playerArrives,
+  playerFoundHiding,
   playerLeaves,
   RoomTracker,
   searchFoundNothing,
@@ -1640,15 +1641,14 @@ export class CharacterTracker {
         return withResting(s, g['player'], g['verb']);
 
       /*
-       * Somebody walking into, or out of, *this room*.
-       *
-       * Kept in `room.occupants` so the list stays true between looks — the
-       * same reasoning as the realm roster, and free for the same reason: the
-       * server volunteers it. `Also here:` remains authoritative and replaces
-       * the list outright whenever a room completes.
+       * Somebody walking into *this room*, or found hiding in it, kept in
+       * `room.occupants` so the list stays true between looks; `Also here:`
+       * still replaces the list outright whenever a room completes.
        */
       case 'player-arrives-room':
         return playerArrives(s, g['player']);
+      case 'player-found-hiding':
+        return playerFoundHiding(s, g['player']);
 
       /*
        * A monster walking in, which the room's list has to hear about.

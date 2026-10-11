@@ -883,6 +883,11 @@ export type BlockType =
   | 'player-looks'
   /** `<Name> is searching the area.`: somebody in this room searched, and is no longer hidden. */
   | 'player-searches'
+  /**
+   * `You see <Name> hiding in the shadows.`: this character's search found a
+   * hidden player standing here (todo 87).
+   */
+  | 'player-found-hiding'
   /** `The room is barely visible` / `dimly lit` — whether the occupants can be seen at all. */
   | 'room-light'
   /**
@@ -1146,6 +1151,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'room-unseen': 'room',
   'player-looks': 'presence',
   'player-searches': 'presence',
+  'player-found-hiding': 'presence',
   'player-dies': 'presence',
   'player-rests': 'presence',
   'user-rests': 'status',

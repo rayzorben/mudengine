@@ -94,6 +94,8 @@ export class Safety implements SessionModule {
    * room, by key, so the refusal is said once while it stays (818).
    */
   private stalkerSaid: string | null = null;
+  /** The `hangup` row's occupant left standing in a protected room, by key, said once (todo 87). */
+  private protectedSaid: string | null = null;
   /**
    * Why low health with no monster here did not hang up, as last said, so it
    * is said once a stretch and again when the room is first seen (todo 01).
@@ -133,6 +135,7 @@ export class Safety implements SessionModule {
     this.pvpSaid.clear();
     this.lastHangUpRefusal = null;
     this.stalkerSaid = null;
+    this.protectedSaid = null;
     this.runWaited = null;
     this.gotOut = null;
     this.nothingHereSaid = null;
@@ -243,6 +246,35 @@ export class Safety implements SessionModule {
       );
   }
 
+  /**
+   * A `hangup` row's occupant in a room the realm data marks protected is no
+   * reason: nobody can attack there (todo 87). Said once while it stands.
+   * Only where the wire names a server built on GreaterMUD's source, which is
+   * the only evidence that the mark refuses an attack; on MajorMUD or a realm
+   * that has not said, the row still hangs up.
+   */
+  private unlessProtected(state: CharacterState, stalker: string | null): string | null {
+    const honoured = state.realm === 'greatermud' || state.realm === 'paradigm';
+    if (stalker === null || state.room.safe !== true || !honoured) {
+      this.protectedSaid = null;
+      return stalker;
+    }
+    const key = stalker.toLowerCase();
+    if (key !== this.protectedSaid) {
+      this.protectedSaid = key;
+      const why = whyStalker(state, stalker);
+      this.session.notice(t('session.safety.hangUpSafeRoom', { why }));
+      this.publisher.noteSafety({
+        at: Date.now(),
+        action: 'hang up',
+        because: why,
+        acted: false,
+        refused: t('session.safety.safeRoomReason')
+      });
+    }
+    return null;
+  }
+
   /** A command answering the realm menu: what it said the realm chosen charges, said once. */
   noteRealmChoice(command: string): void {
     const chosen = this.realmMenu.noteCommand(command);
@@ -294,10 +326,9 @@ export class Safety implements SessionModule {
      * penalty as the others. The switch off is said, once while it stands
      * here: the fork disconnected whatever the switch said.
      */
-    const stalker = stanceHere(
-      state.room.occupants,
-      this.automationConfig.combat.mobRules,
-      'hangup'
+    const stalker = this.unlessProtected(
+      state,
+      stanceHere(state.room.occupants, this.automationConfig.combat.mobRules, 'hangup')
     );
     /*
      * Naked after a death with nobody at the keyboard, somewhere a hang-up
@@ -315,7 +346,7 @@ export class Safety implements SessionModule {
       return;
     }
     if (!safety.enabled) {
-      this.sayStalkerRefused(stalker);
+      this.sayStalkerRefused(state, stalker);
       return;
     }
 
@@ -333,7 +364,7 @@ export class Safety implements SessionModule {
       ? t('session.safety.whyHealth', { percent: percentText(fraction) })
       : company || stalker === null
         ? t('session.safety.whyCompany')
-        : t('session.safety.whyStalker', { mob: stalker });
+        : whyStalker(state, stalker);
     // Health alone is a reason only beside a monster or in a fight (todo 01).
     if (hurt && !company && stalker === null && this.nothingHere(state, why)) return;
     this.nothingHereSaid = null;
@@ -583,12 +614,12 @@ export class Safety implements SessionModule {
    * A `hangup` row's monster standing here with the switch off: said and
    * recorded once while it stays, and forgotten when it goes.
    */
-  private sayStalkerRefused(stalker: string | null): void {
+  private sayStalkerRefused(state: CharacterState, stalker: string | null): void {
     const key = stalker === null ? null : stalker.toLowerCase();
     if (key === this.stalkerSaid) return;
     this.stalkerSaid = key;
     if (stalker === null) return;
-    const why = t('session.safety.whyStalker', { mob: stalker });
+    const why = whyStalker(state, stalker);
     const reason = t('session.safety.hangUpOffReason');
     this.session.notice(t('session.safety.hangUpSwitchedOff', { why, reason }));
     this.publisher.noteSafety({
@@ -599,6 +630,14 @@ export class Safety implements SessionModule {
       refused: reason
     });
   }
+}
+
+/** Why a `hangup` row is a reason: a player's row is worded apart from a monster's (todo 87). */
+function whyStalker(state: CharacterState, name: string): string {
+  const player = state.room.occupants.some((who) => who.name === name && who.kind === 'player');
+  return player
+    ? t('session.safety.whyMarkedPlayer', { player: name })
+    : t('session.safety.whyStalker', { mob: name });
 }
 
 /** Attacked where the run landed, or hurt since: the run did not get away. */

@@ -7454,3 +7454,35 @@ describe('the attack is chosen', () => {
     expect(notesOf(said, 'notices.migration.attackChosen')).toEqual([]);
   });
 });
+
+/* Todo 87: a search finding a player was filed as a passing spell sentence. */
+describe('aFoundPlayerIsNoEffect', () => {
+  const lore = (): Record<string, Record<string, Record<string, unknown>>> =>
+    JSON.parse(fs.readFileSync(home.state('mob-lore.json'), 'utf8')).effects;
+
+  it('drops the found-player sentences, keeps the rest, backs the file up, and runs once', () => {
+    fs.mkdirSync(path.dirname(home.state('mob-lore.json')), { recursive: true });
+    fs.writeFileSync(
+      home.state('mob-lore.json'),
+      JSON.stringify({
+        v: 1,
+        effects: {
+          paradigm: {
+            'you see nusse hiding in the shadows.': {
+              text: 'You see Nusse hiding in the shadows.',
+              at: 1,
+              lasting: 'no'
+            },
+            'you feel stronger!': { text: 'You feel stronger!', at: 2, lasting: 'yes' }
+          }
+        }
+      })
+    );
+    migrate();
+    expect(Object.keys(lore()['paradigm']!)).toEqual(['you feel stronger!']);
+    expect(fs.existsSync(`${home.state('mob-lore.json')}.bak`)).toBe(true);
+    expect(notesOf(said, 'notices.migration.foundPlayerNoEffect')).toHaveLength(1);
+    migrate();
+    expect(notesOf(said, 'notices.migration.foundPlayerNoEffect')).toEqual([]);
+  });
+});

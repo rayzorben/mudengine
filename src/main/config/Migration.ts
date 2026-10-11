@@ -62,6 +62,7 @@ import type { ShippedWorld } from '../../shared/worlds';
 import { CONDITION_WAIT_KEYS } from '../../shared/walk';
 import { DEFAULT_LOW_LIVES } from '../../shared/lives';
 import { THEMES, type ThemeId } from '../../shared/themes';
+import { FOUND_HIDING } from '../../shared/players';
 
 export interface MigrationOptions {
   home: Home;
@@ -278,6 +279,41 @@ function migrateAll(options: MigrationOptions): void {
   pathFollowsStatus(home, note);
   theAttackIsChosen(home, note, options.template);
   theSheetAnswersPickAndMeditate(home, note, options.template);
+  aFoundPlayerIsNoEffect(home, note);
+}
+
+/**
+ * A search finding a hidden player was read as a spell landing until it had a
+ * pattern (todo 87), and each name was filed in `mob-lore.json` as a passing
+ * effect. Those sentences are dropped, the file backed up first. Idempotent:
+ * the parser never files the sentence again.
+ */
+function aFoundPlayerIsNoEffect(home: Home, note: (message: string) => void): void {
+  const file = home.state('mob-lore.json');
+  if (!fs.existsSync(file)) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    // Left alone, as `rekeyLoreFile` leaves it: the store reports a file that will not parse.
+    return;
+  }
+  const effects = isRecord(parsed) ? parsed['effects'] : undefined;
+  if (!isRecord(effects)) return;
+  let dropped = 0;
+  for (const table of Object.values(effects)) {
+    if (!isRecord(table)) continue;
+    for (const [key, entry] of Object.entries(table)) {
+      const text = isRecord(entry) && typeof entry['text'] === 'string' ? entry['text'] : key;
+      if (!FOUND_HIDING.test(text.trim())) continue;
+      delete table[key];
+      dropped += 1;
+    }
+  }
+  if (dropped === 0) return;
+  fs.copyFileSync(file, `${file}.bak`);
+  writeJsonAtomically(file, parsed);
+  note(t('notices.migration.foundPlayerNoEffect', { count: dropped, file }));
 }
 
 /**

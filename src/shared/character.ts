@@ -578,6 +578,8 @@ export interface Room {
    * that is the phrase the server printed, this is what the data records.
    */
   lightLevel?: number;
+  /** Protected in the realm data (`WorldRoom.safe`): nobody can attack here. Absent is unknown. */
+  safe?: true;
   /** The creature the realm ties to this room — `Rooms.NPC`. */
   npc?: NpcEntity | null;
 }

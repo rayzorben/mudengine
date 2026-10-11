@@ -2245,6 +2245,12 @@ export interface WorldRoom {
    */
   noFollow?: true;
   /**
+   * Protected (format 66): `RM_PROTECTED` in the official realm's own data for
+   * this room, matched by number and name. Nobody, player or monster, can
+   * attack here. Absent is unknown, never "not safe".
+   */
+  safe?: true;
+  /**
    * The monster rows this room's group may put in it as a player walks in
    * (format 61): `Room.Regen` draws one of them at `WANDERER_CHANCE` a
    * player a pass, in a room with no lair. Absent where the realm lists none.

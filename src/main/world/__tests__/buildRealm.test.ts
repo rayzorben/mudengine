@@ -19,6 +19,7 @@ import {
 import { DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from '../../../shared/abilities';
 import { realmKind } from '../RealmSource';
 import { slotRestocks } from '../supplyIndex';
+import { parseProtectedRooms } from '../protectedRooms';
 import type { RealmSource, RealmTable } from '../RealmSource';
 
 /** A realm database made of literals, so the converter can be tested alone. */
@@ -187,6 +188,30 @@ describe('converting a realm', () => {
       undefined
     ]);
     expect(lines({ Rooms: rooms }).some((r) => 'nf' in r)).toBe(false);
+  });
+
+  /*
+   * Format 66 (todo 87). `RM_PROTECTED` is not in any export, so the shipped
+   * table from the official realm's `Rooms.sql` is joined on number and name:
+   * a room of that number under another name is not marked.
+   */
+  it('marks a protected room where the table names it by number and name', () => {
+    const rooms = [
+      room({ 'Map Number': 1, 'Room Number': 297, Name: 'Bank of Godfrey' }),
+      room({ 'Map Number': 1, 'Room Number': 298, Name: 'Godfrey Street' }),
+      room({ 'Map Number': 14, 'Room Number': 1, Name: 'Bank of Albion' })
+    ];
+    const table = parseProtectedRooms(
+      'map,room,name\n1,297,"Bank of Godfrey"\n1,298,"Silver Street"\n'
+    );
+    const marked = buildRealm(fake({ Rooms: rooms }), today, undefined, table).lines.map(
+      (line) => (JSON.parse(line) as Record<string, unknown>)['pt']
+    );
+    expect(marked).toEqual([1, undefined, undefined]);
+    // No table: nothing is marked, which reads as unknown.
+    expect(buildRealm(fake({ Rooms: rooms }), today).lines.some((l) => l.includes('"pt"'))).toBe(
+      false
+    );
   });
 
   /*

@@ -577,6 +577,15 @@ function RoomBody({
             </div>
           )}
 
+          {/* From the realm data, the one source of it so far (todo 87). */}
+          {room.safe === true && (
+            <div className="chip-row" data-safe="realm">
+              <span className="chip info" title={t('cards.room.safeTitle')}>
+                {t('cards.room.safe')}
+              </span>
+            </div>
+          )}
+
           {/* Clamped rather than scrolled: the description is context, and the
               exits below it are what the card is actually consulted for. The
               full text is in the terminal, a few lines up. */}

@@ -1024,6 +1024,8 @@ export class Classifier {
      */
     if (
       block.type === 'user-search-failed' ||
+      // MajorMUD prints a found player alone when nothing else turned up (captures 008, 022).
+      block.type === 'player-found-hiding' ||
       block.type === 'room-light' ||
       block.type === 'room-unseen' ||
       /*

@@ -251,6 +251,8 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
   'attack-warned': { severity: 'warning', channel: 'combat' },
   /* Somebody sizing up the room, or you. On a PvP realm, the moment before. */
   'player-looks': { severity: 'info', channel: 'room' },
+  /* A search found a hidden player here (todo 87); info, as it may be the party's own sneak. */
+  'player-found-hiding': { severity: 'info', channel: 'room' },
   'user-sneak-failed': { severity: 'warning', channel: 'stealth' },
   // Blind mid-fight: every swing misses and nothing on screen says so again.
   // The decision it changes — keep fighting or run — is being made right now.
@@ -450,6 +452,7 @@ export const ALERT_EVENTS = {
   'player-leaves': { channel: 'room', types: ['player-leaves-room'] },
   'player-dies': { channel: 'room', types: ['player-dies'] },
   'player-looks': { channel: 'room', types: ['player-looks'] },
+  'player-found-hiding': { channel: 'room', types: ['player-found-hiding'] },
   searched: { channel: 'room', types: ['user-search-succeeded', 'user-search-failed'] },
   tracked: { channel: 'room', types: ['user-tracks', 'user-tracks-failed'] },
 

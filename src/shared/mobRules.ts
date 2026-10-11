@@ -111,7 +111,8 @@ export type MobPriorityBand = (typeof MOB_PRIORITIES)[number];
  *   penalty), and it is hit back if it swings.
  *
  * While an `escape` or `hangup` monster stands in the room no fight is opened
- * beside it (`stanceHere`): MegaMUD's *any other monsters are ignored*.
+ * beside it (`stanceHere`): MegaMUD's *any other monsters are ignored*. Those
+ * two reach a player the row names as well (todo 87).
  */
 export const MOB_STANCES = ['never', 'friend', 'escape', 'hangup'] as const;
 export type MobStance = (typeof MOB_STANCES)[number];
@@ -254,8 +255,11 @@ export function stopsToKill(rules: readonly MobRule[], name: string): boolean {
 }
 
 /**
- * The first monster in the room whose row takes this stance, in the room's
- * spelling, or null.
+ * The first occupant whose row takes this stance, in the room's spelling, or
+ * null. A leaving stance (`escape`, `hangup`) reaches a player named in a row
+ * too, as MegaMUD keeps one list for players and monsters (todo 87), and an
+ * occupant of unknown kind, since unknown is the unsafe case; the others
+ * reach monsters only.
  */
 export function stanceHere(
   occupants: readonly Pick<RoomOccupant, 'name' | 'kind'>[],
@@ -263,8 +267,9 @@ export function stanceHere(
   stance: MobStance
 ): string | null {
   if (rules.length === 0) return null;
+  const anyone = (LEAVING_STANCES as readonly MobStance[]).includes(stance);
   const found = occupants.find(
-    (who) => who.kind === 'mob' && mobRuleFor(rules, who.name)?.treat === stance
+    (who) => (anyone || who.kind === 'mob') && mobRuleFor(rules, who.name)?.treat === stance
   );
   return found?.name ?? null;
 }

@@ -45,6 +45,7 @@ import {
 } from '../../shared/mobs';
 import { DENOMINATIONS, type Denomination } from '../../shared/character';
 import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coins';
+import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
 
 /**
  * Turning a realm database into the one normalised form the client loads.
@@ -136,8 +137,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 63 | **A spell that takes every spell off whoever it is cast on** (`BuiltSpell.ng`, `navigation/scriptNegates.ts`). `DispellMagic` 0 removes every timed effect (`Spell.cs:1601`), and every recall token's block runs `cast 310`, negate magic, ahead of its teleport, so blessings cast just before a token is used are wiped by it. Set on the spell itself or on one whose script casts such a spell on the player: 7 tokens in both gmud.zip and pmud.zip |
  * | 64 | **An item the realm values at nothing.** `Items.Price` 0 was dropped with the unpriced, so `price` absent read as both *worth nothing* and *not stated*, and `drop.worthless` (which drops a `price` of 0) never dropped anything. `BuiltItem.price` is written when zero or more: 397 of the 1,563 items the shipped stock world carries state 0, and 395 of Paradigm's 2,342. Absent is now unknown only, and `Catalogue.priceAt` answers null for it rather than free |
  * | 65 | **What a kill pays is `EXP × ExpMulti`.** GreaterMUD's import stores the product as a monster's `Exp` (`[Exp Multiplier] * [Experience]`), and `Mob.Killed` pays that times the realm's `XPMultiplier`, split among everyone targeting it. `BuiltMob.xp` and `BuiltMobRow.xp` are the product: the cave bear is 100 × 3, and orohost paid 300 for one (todo 70). 147 of gmud.zip's rows with experience have an `ExpMulti` other than 1 (todo 48) |
+ * | 66 | **A room nobody can attack in.** `RM_PROTECTED` (1) of `Rooms.Attributes`, which no `.mdb` export carries, is read from GreaterMUD's own `Rooms.sql` into `resources/world/protected-rooms.csv` (`scripts/build-protected-rooms.mjs`, control-room inheritance applied) and joined by map, room and name: `WorldRoom.safe`. Bank of Godfrey (1/297) is one; 105 of gmud.zip's rooms, 85 of Paradigm's, 83 of stock's. A room the table does not name is unknown (todo 87) |
  */
-export const REALM_FORMAT = 65;
+export const REALM_FORMAT = 66;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -1251,7 +1253,12 @@ export class RealmBuildError extends Error {}
  * pointed at by mistake — and a client that accepts it stops knowing where it
  * is with nothing on screen saying why.
  */
-export function buildRealm(source: RealmSource, today: string, shipped?: ShippedBuild): BuiltRealm {
+export function buildRealm(
+  source: RealmSource,
+  today: string,
+  shipped?: ShippedBuild,
+  protectedRooms: ProtectedRooms = NO_PROTECTED_ROOMS
+): BuiltRealm {
   const rooms = source.table('Rooms');
   if (rooms === null) {
     throw new RealmBuildError(
@@ -1389,6 +1396,8 @@ export function buildRealm(source: RealmSource, today: string, shipped?: Shipped
     if (delay !== null && delay !== 0 && delay !== BLANK_AS_NUMBER) room['dl'] = delay;
     // In no monster's group, so no monster follows a player in (format 58).
     if (grouped !== null && !grouped.has(roomId(map, roomNumber))) room['nf'] = 1;
+    // Protected (`RM_PROTECTED`), where the official realm's room of this number has this name (format 66).
+    if (protectedRooms.get(roomId(map, roomNumber)) === text(row['Name']).trim()) room['pt'] = 1;
     // A room with regen slots never draws from its group (`Room.Regen`), so only a lair-less one.
     const wander = wanderers.get(roomId(map, roomNumber));
     if (wander !== undefined && text(row['Lair']).trim() === '') room['wd'] = wander;

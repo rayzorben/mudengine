@@ -44,6 +44,13 @@ describe('laying out a map', () => {
     expect(drawing.nodes[0]?.kind).toBe('here');
   });
 
+  it('carries a protected room to its node, and nothing to an unknown one (todo 87)', () => {
+    const map = cells(['1/1', 0, 0, ['e']], ['1/2', 1, 0, ['w']]);
+    map.cells[1] = { ...map.cells[1]!, safe: true };
+    expect(node(map, '1/2')?.safe).toBe(true);
+    expect(node(map, '1/1')).not.toHaveProperty('safe');
+  });
+
   it('marks exactly one room as where you are', () => {
     const map = cells(['1/1', 0, 0, ['e']], ['1/2', 1, 0, ['w']]);
     expect(layoutMap(map).nodes.filter((entry) => entry.here)).toHaveLength(1);

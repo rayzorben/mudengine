@@ -22,6 +22,7 @@ import { DIRECTION_NAME } from '../../shared/world';
 import { escapeRegExp } from '../../shared/regex';
 import { STATED_ATTACK_ROWS } from '../../shared/stated';
 import { TITLES_WITH_OF } from '../../shared/titles';
+import { FOUND_HIDING } from '../../shared/players';
 
 export interface Rule {
   type: BlockType;
@@ -1343,6 +1344,14 @@ export const RULES: Rule[] = [
    * names them.
    */
   { type: 'player-searches', pattern: /^(?<player>[A-Z][\w'-]*) is searching the area\.$/ },
+  /*
+   * A search finding a hidden player (todo 87): one line per player found,
+   * before the prompt; each is taken out of hiding and not told
+   * (`Player.cs:1404-1415`, source). The wire (orohost, Rayzor Blade,
+   * 2026-10-10) and captures 008, 015, 022, 037, 062, 088. Unread, it was
+   * taken for a spell landing and filed as a passing effect.
+   */
+  { type: 'player-found-hiding', pattern: FOUND_HIDING },
   /*
    * A *monster* walking in, which is a different sentence and a different fact.
    *

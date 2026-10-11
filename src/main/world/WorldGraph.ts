@@ -2173,12 +2173,7 @@ export class WorldGraph {
       exits.push({ direction, map: exit.m, room: exit.r, requirement });
     }
 
-    const result: WorldRoom = {
-      map,
-      room,
-      name: String(raw['n'] ?? ''),
-      exits
-    };
+    const result: WorldRoom = { map, room, name: String(raw['n'] ?? ''), exits };
     if (typeof raw['s'] === 'number') result.shop = raw['s'];
     // Written since the file began and read by nothing until format 18.
     if (typeof raw['npc'] === 'number' && raw['npc'] > 0) result.npcId = raw['npc'];
@@ -2199,9 +2194,10 @@ export class WorldGraph {
       result.lair = raw['lair'];
     }
     if (typeof raw['li'] === 'number') result.light = raw['li'];
-    // The lair's respawn clock (format 33); no monster follows in (format 58).
+    // The lair's respawn clock (format 33); no monster follows in (58); nobody can attack (66).
     if (typeof raw['dl'] === 'number' && raw['dl'] !== 0) result.delay = raw['dl'];
     if (raw['nf'] === 1) result.noFollow = true;
+    if (raw['pt'] === 1) result.safe = true;
     const wanderers = readRows(raw['wd'], this.rowLists);
     if (wanderers !== null) result.wanderers = wanderers;
     if (typeof raw['sp'] === 'number' && raw['sp'] > 0) result.spell = raw['sp'];
