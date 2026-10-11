@@ -10,8 +10,8 @@
 import { tuning } from '../app/tuning';
 import { stripAnsi, type FramedLine, type LineTokenizer } from '../net/LineTokenizer';
 import { STATUS_LINE } from '../parse/patterns';
-import { promptOpened, type Emitted, type TerminalFeed } from './TerminalFeed';
-import type { StreamChunk } from '../../shared/types';
+import { promptOpened, type Painted, type TerminalFeed } from './TerminalFeed';
+import type { TimedChunk } from '../../shared/stamps';
 
 /**
  * Whether the tail ends where a prompt ends, and so is a line the server has
@@ -47,7 +47,7 @@ export interface PaintSession {
   /** A line the tail framed: classified, fed and acted on (`SessionManager.publishLine`). */
   publish(framed: FramedLine, at: number): void;
   /** What the terminal is shown (`SessionSink.data`). */
-  data(chunk: StreamChunk): void;
+  data(chunk: TimedChunk): void;
 }
 
 export class Paint {
@@ -92,8 +92,8 @@ export class Paint {
   }
 
   /** A held tail the feed's own timer released, outside any chunk: painted as a chunk of its own. */
-  released(emitted: Emitted): void {
-    this.push(emitted, Date.now());
+  released(painted: Painted): void {
+    this.push(painted, Date.now());
   }
 
   /** Whatever is pending, framed and painted now: the quiet period ran out, or the socket closed. */
@@ -188,18 +188,20 @@ export class Paint {
 
   /** Pushes whatever the feed decided the terminal sees, if anything. */
   private paint(at: number): void {
-    const emitted = this.feed.take();
-    if (emitted.text.length === 0) return;
-    this.push(emitted, at);
+    const painted = this.feed.take();
+    // A time alone is still pushed: a status line painted before it read as one.
+    if (painted.text.length === 0 && painted.times.length === 0) return;
+    this.push(painted, at);
   }
 
-  private push(emitted: Emitted, at: number): void {
+  private push(painted: Painted, at: number): void {
     this.seq += 1;
     this.session.data({
       seq: this.seq,
       at,
-      text: emitted.text,
-      ...(emitted.marks.length > 0 ? { marks: emitted.marks } : {})
+      text: painted.text,
+      ...(painted.marks.length > 0 ? { marks: painted.marks } : {}),
+      ...(painted.times.length > 0 ? { times: painted.times } : {})
     });
   }
 }

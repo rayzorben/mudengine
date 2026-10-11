@@ -132,13 +132,14 @@ describe('Backscroll', () => {
     expect(fs.readFileSync(path.join(dir, '0001.log'), 'utf8')).toBe(expected);
   });
 
-  /* Todo 25: every chunk opens with its time, and the repaint is still a repaint. */
-  it('drops the erased row when each chunk carries its time', async () => {
+  /* Todo 27: the prompt row keeps the time it was first drawn through every repaint. */
+  it("drops the erased row and keeps the status line's time with it", async () => {
     const scroll = await opened(100);
-    scroll.write(stampOf(1) + 'Newhaven Village Entrance\r\n');
-    for (let i = 2; i < 40; i += 1) scroll.write(stampOf(i) + '\x1b[79D\x1b[K[HP=30]:');
+    scroll.write('Newhaven Village Entrance\r\n');
+    scroll.write(stampOf(1) + '[HP=30]:');
+    for (let i = 0; i < 40; i += 1) scroll.write('\x1b[79D\x1b[K[HP=30]:');
     expect(await all(scroll)).toBe(
-      stampOf(1) + 'Newhaven Village Entrance\r\n' + stampOf(39) + '\x1b[79D\x1b[K[HP=30]:'
+      'Newhaven Village Entrance\r\n' + stampOf(1) + '\x1b[79D\x1b[K[HP=30]:'
     );
   });
 

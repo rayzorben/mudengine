@@ -52,6 +52,8 @@ import type { Block, BlockType } from '../../shared/blocks';
 import { tailAfterPrompt, type BatchBlock } from '../parse/Classifier';
 import type { LineTerminator, TerminalMark } from '../../shared/types';
 import { SGR_RESET } from '../../shared/template';
+import type { RowTime } from '../../shared/stamps';
+import { RowTimes, type RowText } from './RowTimes';
 
 /**
  * How long an unterminated tail is held inside a quiet window before it is
@@ -308,6 +310,15 @@ export interface Emitted {
   marks: Array<{ offset: number; mark: TerminalMark }>;
 }
 
+/** What the feed paints: the text, its marks, and where a row's time goes (`RowTimes`). */
+export interface Painted extends Emitted {
+  times: Array<{ offset: number; put: RowTime }>;
+}
+
+function blank(): Painted {
+  return { text: '', marks: [], times: [] };
+}
+
 export class TerminalFeed {
   private queue: Sent[] = [];
   /** Popped by a prompt before the realm echoed them, for an echo that comes late: see `moveUpTo`. */
@@ -321,7 +332,9 @@ export class TerminalFeed {
   private hold: NodeJS.Timeout | null = null;
   /** How long the armed hold was given, so a longer wait can replace a shorter one. */
   private holdFor = 0;
-  private out: Emitted = { text: '', marks: [] };
+  private out: Painted = blank();
+  /** Which rows carry a time, decided as the text is appended (todo 27). */
+  private readonly rows = new RowTimes();
   /** The tail already closed the window, so the framed status line must not close it twice. */
   private acknowledged = false;
   /** Something was withheld since the last emit, so the next shown line needs its own row. */
@@ -345,7 +358,7 @@ export class TerminalFeed {
   constructor(
     private readonly source: FeedSource,
     /** Called with whatever a delayed hold releases, outside any chunk. */
-    private readonly release: (emitted: Emitted) => void
+    private readonly release: (painted: Painted) => void
   ) {}
 
   /**
@@ -496,7 +509,7 @@ export class TerminalFeed {
      * command the server did not acknowledge sat at the head until it was
      * written off, and the quiet command behind it was shown in full.
      */
-    if (type === 'command-echo') this.moveUpTo(plain);
+    const typedEcho = type === 'command-echo' && this.moveUpTo(plain);
 
     // The acknowledgement: pops the command it answers, and is always shown —
     // as the client's own line where one is designed and none of it has been
@@ -518,7 +531,12 @@ export class TerminalFeed {
       const end = echoed && this.answeringQuiet ? plain.length - echo.length : null;
       const shown = end === null ? text : text.slice(0, afterStyling(text, rawIndexOf(text, end)));
       const drawn = already === 0 ? this.designed(shown, plain.slice(0, end ?? undefined)) : null;
-      this.emit(drawn ?? shown.slice(already), terminator, mark);
+      const rest = drawn ?? shown.slice(already);
+      // The echo shown moves the row to the send; a prompt already painted
+      // untimed (its head did not read as one yet) is timed now.
+      const kind: RowText = echoed && end === null && rest.length > 0 ? 'status-echo' : 'status';
+      if (rest.length === 0) this.time(kind);
+      this.emit(rest, terminator, mark, kind);
       if (drawn !== null) this.owesReset = true;
       if (end !== null) this.swallowed = true;
       return;
@@ -553,7 +571,14 @@ export class TerminalFeed {
       }
     }
     if (!withhold) {
-      this.paintAsSent(text.slice(already), terminator, already === 0 && plain.length > 0, mark);
+      const kind: RowText = typedEcho ? 'echo' : 'other';
+      this.paintAsSent(
+        text.slice(already),
+        terminator,
+        already === 0 && plain.length > 0,
+        mark,
+        kind
+      );
       return;
     }
 
@@ -562,7 +587,7 @@ export class TerminalFeed {
     // the terminal must still see that or the next status line paints over
     // the old one.
     if (terminator === 'repaint' && text.endsWith(PROMPT_REPAINT)) {
-      this.out.text += PROMPT_REPAINT;
+      this.append(PROMPT_REPAINT, 'other');
       this.atLineStart = true;
     }
   }
@@ -576,13 +601,14 @@ export class TerminalFeed {
     text: string,
     terminator: LineTerminator,
     fresh: boolean,
-    mark?: TerminalMark
+    mark?: TerminalMark,
+    kind: RowText = 'other'
   ): void {
     if (this.swallowed && !this.atLineStart && fresh && terminator !== 'repaint') {
-      this.out.text += '\r\n';
+      this.append('\r\n', 'other');
       this.atLineStart = true;
     }
-    this.emit(text, terminator, mark);
+    this.emit(text, terminator, mark, kind);
   }
 
   /**
@@ -605,7 +631,7 @@ export class TerminalFeed {
     this.emitDrawn(drawn);
     // The repaint marker still erases the prompt row it ended.
     if (unread.terminator === 'repaint' && unread.text.endsWith(PROMPT_REPAINT)) {
-      this.out.text += PROMPT_REPAINT;
+      this.append(PROMPT_REPAINT, 'other');
     }
   }
 
@@ -628,6 +654,8 @@ export class TerminalFeed {
      */
     const plain = stripAnsi(pending);
     const status = this.source.isStatus(plain.trimStart());
+    // A status line whose head went out before it read as one (split across reads).
+    if (status && this.forwarded > 0) this.time('status');
     if (this.answeringQuiet && status && this.answersHead(this.tailSince ?? this.received)) {
       this.acknowledge();
       this.acknowledged = true;
@@ -683,7 +711,7 @@ export class TerminalFeed {
           return;
         }
       }
-      this.forwardTail();
+      this.forwardTail(status ? 'status' : 'other');
       return;
     }
     // Inside a window the hold runs from the tail's first sight and is not
@@ -708,14 +736,15 @@ export class TerminalFeed {
       // Still unterminated after the hold: paint it, because a prompt is a
       // line that ends by the server going quiet.
       const before = this.out;
-      this.out = { text: '', marks: [] };
+      this.out = blank();
       const plain = stripAnsi(this.tail);
+      const status = this.source.isStatus(plain.trimStart());
       const drawn =
         this.forwarded === 0 &&
         this.source.designing?.() === true &&
-        this.source.isStatus(plain.trimStart()) &&
+        status &&
         this.drawDesigned(this.tail, plain);
-      if (!drawn) this.forwardTail();
+      if (!drawn) this.forwardTail(status ? 'status' : 'other');
       const released = this.out;
       this.out = before;
       if (released.text.length > 0) this.release(released);
@@ -728,7 +757,7 @@ export class TerminalFeed {
     const drawn = this.designed(pending, plain);
     if (drawn === null) return false;
     this.settle();
-    this.out.text += drawn;
+    this.append(drawn, 'status');
     this.forwarded = pending.length;
     this.atLineStart = false;
     this.owesReset = true;
@@ -745,10 +774,10 @@ export class TerminalFeed {
   }
 
   /** Everything emitted since the last take, for one push to the terminal. */
-  take(): Emitted {
+  take(): Painted {
     this.drawUnread();
     const taken = this.out;
-    this.out = { text: '', marks: [] };
+    this.out = blank();
     return taken;
   }
 
@@ -762,10 +791,11 @@ export class TerminalFeed {
     this.atLineStart = true;
     this.tail = '';
     this.tailSince = null;
-    this.out = { text: '', marks: [] };
+    this.out = blank();
     this.acknowledged = false;
     this.swallowed = false;
     this.unread = null;
+    this.rows.reset();
   }
 
   dispose(): void {
@@ -802,7 +832,7 @@ export class TerminalFeed {
     for (const { offset, mark } of drawn.marks) {
       this.out.marks.push({ offset: this.out.text.length + offset, mark });
     }
-    this.out.text += drawn.text;
+    this.append(drawn.text, 'other');
     this.atLineStart = drawn.text.endsWith('\n');
   }
 
@@ -816,9 +846,9 @@ export class TerminalFeed {
       if (this.held === null) return;
       this.held.timer = null;
       const before = this.out;
-      this.out = { text: '', marks: [] };
+      this.out = blank();
       this.releaseHeld(null);
-      this.forwardTail();
+      this.forwardTail('other');
       const released = this.out;
       this.out = before;
       if (released.text.length > 0) this.release(released);
@@ -831,21 +861,27 @@ export class TerminalFeed {
     this.held = null;
   }
 
-  private forwardTail(): void {
+  /** The tail not yet painted; `status` where the tail is a status line, so a fresh row gets its time. */
+  private forwardTail(kind: RowText): void {
     const fresh = this.tail.slice(this.forwarded);
     if (fresh.length === 0) return;
     this.settle();
-    this.out.text += fresh;
+    this.append(fresh, this.forwarded === 0 ? kind : 'other');
     this.forwarded = this.tail.length;
     this.atLineStart = false;
   }
 
-  private emit(text: string, terminator: LineTerminator, mark?: TerminalMark): void {
+  private emit(
+    text: string,
+    terminator: LineTerminator,
+    mark?: TerminalMark,
+    kind: RowText = 'other'
+  ): void {
     if (text.length === 0) return;
     this.swallowed = false;
     this.settle();
     if (mark) this.out.marks.push({ offset: this.out.text.length, mark });
-    this.out.text += text;
+    this.append(text, kind);
     this.atLineStart = terminator !== 'flush' || text.endsWith('\n');
   }
 
@@ -856,8 +892,20 @@ export class TerminalFeed {
    */
   private settle(): void {
     if (!this.owesReset || !this.atLineStart) return;
-    this.out.text += SGR_RESET;
+    this.append(SGR_RESET, 'other');
     this.owesReset = false;
+  }
+
+  /** Appends painted text, with the row time `RowTimes` puts in front of it. */
+  private append(text: string, kind: RowText): void {
+    const put = this.rows.before(text, kind);
+    if (put !== null) this.out.times.push({ offset: this.out.text.length, put });
+    this.out.text += text;
+  }
+
+  /** A row time with no text behind it: the row the cursor is on, now. */
+  private time(kind: RowText): void {
+    this.append('', kind);
   }
 
   private expire(): void {

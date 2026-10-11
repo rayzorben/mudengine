@@ -17,14 +17,16 @@ import type { Discovery } from '../../shared/memory';
 import type { PlayerRegistry } from '../../shared/players';
 import type { QuestRunProgress, QuestWatched, RoomAsk } from '../../shared/quests';
 import type { CharacterIdentity, ResetSignal } from '../../shared/reset';
+import type { TimedChunk } from '../../shared/stamps';
 import type { CombatTally } from '../../shared/tally';
-import type { ConnectionState, StreamChunk, StreamLine, TelnetEvent } from '../../shared/types';
+import type { ConnectionState, StreamLine, TelnetEvent } from '../../shared/types';
 import type { RoomVerdict } from '../../shared/verdict';
 import type { WalkProgress } from '../../shared/walk';
 import type { RoomId } from '../../shared/world';
 
 export interface SessionSink {
-  data(chunk: StreamChunk): void;
+  /** What the console is shown, with where its rows' times go (`stampChunk` writes them in). */
+  data(chunk: TimedChunk): void;
   /**
    * Raw payload bytes, Telnet framing removed and *not yet decoded*.
    *

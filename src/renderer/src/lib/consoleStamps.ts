@@ -1,9 +1,9 @@
 /**
- * Each line's time at the console's right edge (todo 25). Main puts
- * `STAMP_OSC` (`@shared/stamps`) in every painted chunk, on the row its text
- * begins, so a live block and a replayed page carry the same time. A block's
- * time hangs off that row; a later block beginning on the same row (a
- * command's echo at the prompt, a status repaint) moves the row to its own.
+ * Each status line's time at the console's right edge (todos 25, 27). Main
+ * puts `STAMP_OSC` (`@shared/stamps`) in the painted text where a status line
+ * row gets its time, so a live row and a replayed page carry the same time.
+ * A later time on the same row (a command's echo at the prompt) moves it; a
+ * clear on it (text written over the erased prompt row) takes it off.
  * A row whose text reaches the time's cells hides it, so the game's text stays
  * readable. Nothing is registered while the times are off: a marker costs
  * xterm a listener per trimmed line and a decoration a visit per frame.
@@ -38,7 +38,12 @@ export function drawStamps(term: Terminal): ConsoleStamps {
     if (at === null) return true;
     const buffer = term.buffer.active;
     const row = buffer.baseY + buffer.cursorY;
-    if (last !== null && !last.marker.isDisposed && last.marker.line === row) {
+    const onRow = last !== null && !last.marker.isDisposed && last.marker.line === row;
+    if (at === 'clear') {
+      if (onRow) last?.marker.dispose();
+      return true;
+    }
+    if (onRow && last !== null) {
       last.at = at;
       return true;
     }

@@ -17,7 +17,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { stripAnsi } from '../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../net/stream-quirks';
-import { afterStamp, unstamped } from '../../shared/stamps';
+import { afterStamp, lastStamp, unstamped } from '../../shared/stamps';
 import { segmentPath, segmentsIn, segmentsInAsync } from './segmentFiles';
 
 /** A segment's suffix, and the old one-file backscroll's. */
@@ -133,8 +133,9 @@ export class Backscroll {
 
   write(text: string): void {
     if (text.length === 0 || this.phase === 'closed') return;
-    if (text.startsWith(PROMPT_REPAINT, afterStamp(text))) this.coalesceRepaint();
-    const chunk = measure(text);
+    // A status line's time in what the repaint drops stays with its row (todo 27).
+    const kept = text.startsWith(PROMPT_REPAINT, afterStamp(text)) ? this.coalesceRepaint() : '';
+    const chunk = measure(kept + text);
     this.chunks.push(chunk);
     this.openLines += chunk.lines;
     if (this.limit === 0) {
@@ -432,26 +433,34 @@ export class Backscroll {
    * whatever the last newline chunk left on it) is within the repaint's
    * reach and holds no carriage return, so a replay draws the same screen:
    * the cursor lands at column zero and the erase takes the whole row. What
-   * was already written of them is cut off the file.
+   * was already written of them is cut off the file. The last row time in
+   * them is returned, for the repaint to carry, so a replay keeps the row's time.
    */
-  private coalesceRepaint(): void {
+  private coalesceRepaint(): string {
     let start = this.chunks.length;
     while (start > 0 && this.chunks[start - 1]?.lines === 0) start -= 1;
     // Before the record is read, the row may have begun in the open segment.
-    if (start === this.chunks.length || (start === 0 && this.phase === 'opening')) return;
+    if (start === this.chunks.length || (start === 0 && this.phase === 'opening')) return '';
     const last = this.chunks[start - 1];
     const left = last === undefined ? '' : last.text.slice(last.text.lastIndexOf('\n') + 1);
     let width = stripAnsi(unstamped(left)).length;
-    if (left.includes('\r')) return;
+    if (left.includes('\r')) return '';
     for (const chunk of this.chunks.slice(start)) {
-      if (chunk.text.includes('\r')) return;
+      if (chunk.text.includes('\r')) return '';
       width += stripAnsi(unstamped(chunk.text)).length;
     }
-    if (width > REPAINT_REACH) return;
+    if (width > REPAINT_REACH) return '';
+    const kept = lastStamp(
+      this.chunks
+        .slice(start)
+        .map((chunk) => chunk.text)
+        .join('')
+    );
     if (this.phase === 'open' && this.written > start) {
       this.truncate(this.bytesBefore(start));
       this.written = start;
     }
     this.chunks.splice(start);
+    return kept;
   }
 }
