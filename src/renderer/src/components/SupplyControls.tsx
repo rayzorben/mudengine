@@ -19,7 +19,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import Icon from './Icon';
 import type { SupplyItem } from '@shared/config';
-import { supplyFor } from '@shared/supplies';
+import { supplyFor, type SupplyCounters } from '@shared/supplies';
 import type { ShopPlace } from '@shared/world';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -33,6 +33,8 @@ export interface SupplyList {
    * unchanged writes nothing.
    */
   edit(name: string, change: (current: SupplyItem | null) => SupplyItem | null): void;
+  /** Where each row would be bought from where the character stands (todo 49). */
+  counters(): Promise<SupplyCounters>;
 }
 
 /** One place a shop of this name is, as the select offers it. */

@@ -2581,6 +2581,10 @@ function registerIpc(): void {
   });
   /* Every bank counter this realm places, for the settings picker (todo 00). */
   handle(Invoke.banks, (_caller, session: SessionId) => worldFor(session)?.banks() ?? []);
+  handle(
+    Invoke.supplyCounters,
+    (_caller, session: SessionId) => host?.get(session)?.manager?.supplies.counters() ?? {}
+  );
   /*
    * The items the realm says would serve each condition a potion rule can
    * name. A property of the realm rather than the character, so one call

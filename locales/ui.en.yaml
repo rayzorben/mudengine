@@ -3159,7 +3159,7 @@ cards:
       min: min
       max: max
       buyFromLabel: Buy from
-      noShop: no shop chosen
+      noShop: nearest shop
       soldNowhere: The world data lists no shop for this.
       shopAt: '{shop}, {room}'
       removeTooltip: Stop keeping {item}
@@ -3167,17 +3167,25 @@ cards:
       columnHave: Have
       packUnread: Your inventory has not been read yet; send 'i'.
       columnShop: Shop
-      # A row with no shop: found on the floor rather than bought at a counter.
+      # A row with no shop: the nearest counter that sells it, else found (todo 49).
+      nearestShop: nearest
+      nearestTooltip: Bought at the nearest shop that sells it, counted from where you stood when
+        this list was opened.
+      nearestAt:
+        one: '{shop}, 1 step'
+        many: '{shop}, {steps} steps'
       foundOnly: found
-      foundTooltip: Picked up from the floor when one is here and you have fewer than the maximum.
-        Nothing is bought.
+      foundTooltip: No shop sells it. Picked up from the floor when one is here and you have fewer
+        than the maximum.
       # And the sentence under the table, about both ends of the list.
       collects: Anything on this list is picked up when found, up to its maximum, and extras over
         the maximum are dropped.
       tableCaption: Items kept in stock
       empty: Nothing kept in stock yet.
       howToAdd: 'To keep an item stocked, click its name in your inventory and set a minimum on its
-        panel. An item no shop sells needs no shop: set a maximum and it is picked up when found.'
+        panel. With no shop chosen it is bought at the nearest shop that sells it; an item no shop
+        sells is picked up when found, up to its maximum. To only pick an item up, set its minimum
+        to 0 and a maximum.'
       switchedOff: Auto-Buy is off on the toolbar; the list is kept but nothing is bought.
       copyRow: '{item}: {have} carried, keep {min}–{max}, from {shop}'
   stats:
@@ -4702,9 +4710,15 @@ session:
     beforeRoute: 'Short of {item}: going to {shop} first, then on to {destination}.'
     beforeRouteNowhere: where you asked
     noShopAt: room {map}/{room} has no shop in the world data
-    noShopNamed: no shop is named for it
     shopUnplaced: the world data has no room for a shop called {shop}
     shopAmbiguous: '{count} rooms hold a shop called {shop}; choose one on the item panel'
+    # A row naming no shop (todo 49): the nearest counter that sells it.
+    noSingleRow: the world data has no one item called {item}, so no shop is chosen
+    soldNowhere: no shop sells {item} and no monster drops it
+    notSold: no shop sells {item}
+    notPlaced: you are lost
+    noCounterReached: no shop selling {item} can be reached from here
+    noOtherCounter: the shops selling {item} that you tried did not have it
   connection:
     closedByRemote: Connection closed by remote host.
     connected: Connected to {host}:{port}.

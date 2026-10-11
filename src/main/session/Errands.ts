@@ -33,6 +33,7 @@ import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
 import type { MobEntity } from '../../shared/entities';
 import { spotJoiners } from './spotJoiners';
+import { nearestCounter } from './supplyCounter';
 import { LairCosts } from '../world/LairCosts';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
 import { OpenedWays } from './OpenedWays';
@@ -128,7 +129,12 @@ import {
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
 import { gearEffect } from '../../shared/blessingeffects';
-import { carriedCount, stockCeiling } from '../../shared/supplies';
+import {
+  carriedCount,
+  namesNoShop,
+  stockCeiling,
+  type SupplyCounter
+} from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import {
   lairPass,
@@ -245,6 +251,7 @@ export type ErrandsWorld = Pick<
   | 'hazardOf'
   | 'item'
   | 'itemAsks'
+  | 'itemIdNamed'
   | 'lairOf'
   | 'itemsNamed'
   | 'lair'
@@ -264,6 +271,7 @@ export type ErrandsWorld = Pick<
   | 'sweepTo'
   | 'shopPlace'
   | 'size'
+  | 'sourcesOf'
   | 'sparedItems'
   | 'spellById'
   | 'spellNamed'
@@ -2709,25 +2717,38 @@ export class Errands implements SessionModule {
    * through `shopPlace` where it states none, refused where the name is in
    * several rooms or none. A resolved room whose realm row holds no shop is
    * refused too: the list may have been written against a different realm.
+   * A row naming no shop is bought at the nearest counter that sells it
+   * (`nearestCounter`, todo 49), less the ones `passOver` found without it.
    */
-  shopRoom(item: SupplyItem): { room: RoomId; name: string } | string {
+  shopRoom(item: SupplyItem, passOver: ReadonlySet<RoomId>): SupplyCounter {
     const world = this.world;
-    if (world === undefined) return t('session.loop.noRealmData');
+    if (world === undefined) return { kind: 'refused', why: t('session.loop.noRealmData') };
     if (item.at !== null) {
       const placed = world.get(item.at.map, item.at.room);
       if (placed === undefined || placed.shop === undefined) {
-        return t('session.supplies.noShopAt', { map: item.at.map, room: item.at.room });
+        const why = t('session.supplies.noShopAt', { map: item.at.map, room: item.at.room });
+        return { kind: 'refused', why };
       }
       const shop = world.shop(placed.shop);
-      return { room: roomId(item.at.map, item.at.room), name: shop?.name ?? placed.name };
+      const room = roomId(item.at.map, item.at.room);
+      return { kind: 'counter', room, name: shop?.name ?? placed.name, moves: null };
     }
-    if (item.shop.trim().length === 0) return t('session.supplies.noShopNamed');
+    if (namesNoShop(item)) {
+      const state = this.tracker.current;
+      const here = roomAddress(state.room);
+      const traveller = (): Traveller => this.travellerNow(state);
+      return nearestCounter(world, item.name, here, traveller, passOver);
+    }
     const place = world.shopPlace(item.shop);
-    if (place === undefined) return t('session.supplies.shopUnplaced', { shop: item.shop });
-    if (place.at === 'several') {
-      return t('session.supplies.shopAmbiguous', { shop: item.shop, count: place.count });
+    if (place === undefined) {
+      return { kind: 'refused', why: t('session.supplies.shopUnplaced', { shop: item.shop }) };
     }
-    return { room: roomId(place.map, place.room), name: item.shop };
+    if (place.at === 'several') {
+      const why = t('session.supplies.shopAmbiguous', { shop: item.shop, count: place.count });
+      return { kind: 'refused', why };
+    }
+    const room = roomId(place.map, place.room);
+    return { kind: 'counter', room, name: item.shop, moves: null };
   }
 
   /**

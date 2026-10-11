@@ -867,6 +867,9 @@ tuning:
     expiresMs: 6000
     retryMs: 300000
     maxLegs: 4
+    # Shops a row naming no shop tries, nearest first, when each turns out not
+    # to list the item, before the item waits `retryMs`.
+    countersPerTrip: 2
     # How long an errand's leg may go unwalked before it gives the lap back: a
     # leg superseded by another walk raises no ending of its own. A leg still
     # walking to the shop is never cut short.

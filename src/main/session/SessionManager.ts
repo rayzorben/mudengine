@@ -421,7 +421,7 @@ export class SessionManager {
   /** Bending down for the key to the door in front of you. See `AutoKeys`. */
   private readonly keys: AutoKeys;
   /** Keeping the pack stocked. See `Supplies`. */
-  private readonly supplies: Supplies;
+  readonly supplies: Supplies;
   private readonly remotes: Remotes;
   readonly statsBaseline: StatsBaseline;
   private readonly afk: Afk;
@@ -1020,7 +1020,7 @@ export class SessionManager {
       this.queue,
       {
         here: () => roomAddress(this.tracker.current.room),
-        shopRoom: (item) => this.errands.shopRoom(item),
+        shopRoom: (item, passOver) => this.errands.shopRoom(item, passOver),
         routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
         priceAt: (item, shop) => this.errands.priceAt(item.name, shop),
         cashFrom: (need, then) => {

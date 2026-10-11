@@ -41,6 +41,7 @@ import type {
 } from './quests';
 import type { AreaSearchPreview } from './areaSearch';
 import type { CashRunAsk, CashRunToken } from './cashRun';
+import type { SupplyCounters } from './supplies';
 import type { HuntingAdvice } from './hunting';
 import type {
   AlertsUiConfig,
@@ -962,6 +963,8 @@ export const Invoke = {
   huntingGrounds: 'world:hunt',
   trainers: 'world:trainers',
   banks: 'world:banks',
+  /** Where each supply row would be bought from where the character stands (todo 49). */
+  supplyCounters: 'world:supply-counters',
   itemsServing: 'world:serving',
   /** The realm's own *use this item there* rules, for the same list. */
   wards: 'world:wards',
@@ -1584,6 +1587,8 @@ export interface IpcApi {
    * means nothing across two of them.
    */
   banks(session: SessionId): Promise<BankChoice[]>;
+  /** Each supply row's counter by the row's name: the shop and how far, found, or why none (todo 49). */
+  supplyCounters(session: SessionId): Promise<SupplyCounters>;
   /**
    * The items the realm says would serve each condition a potion rule can
    * name — the picker's suggestions (todo 19).

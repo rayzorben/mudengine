@@ -5,7 +5,7 @@
 import type { CharacterState } from './character';
 import type { SupplyItem } from './config';
 import { bareName } from './items';
-import { nameAnswersTo } from './world';
+import { nameAnswersTo, type RoomId } from './world';
 
 /**
  * How many of `name` the pack holds, counted the way the server matches a
@@ -57,3 +57,27 @@ export function withSupply(
   if (row.min <= 0 && row.max <= 0 && row.shop.length === 0) return rest;
   return [...rest, { ...row, max: stockCeiling(row) }];
 }
+
+/** Whether a row leaves the counter to the realm (todo 49): no shop and no room named. */
+export function namesNoShop(item: Pick<SupplyItem, 'shop' | 'at'>): boolean {
+  return item.at === null && item.shop.trim().length === 0;
+}
+
+/**
+ * Where a supply row is bought, as the errand asks it (todo 49).
+ *
+ * `counter` is a shop to walk to: the row's own, or with none named the
+ * nearest that sells the item, with how many moves away it is (null for a
+ * named shop). `found` is a row no counter sells and a
+ * monster drops, filled off the floor by `AutoLoot.stockingUp`. `nowhere` is
+ * a row nothing sells or drops, said once. `refused` is a counter that cannot
+ * be settled or reached now, tried again after `tuning.supplies.retryMs`.
+ */
+export type SupplyCounter =
+  | { kind: 'counter'; room: RoomId; name: string; moves: number | null }
+  | { kind: 'found' }
+  | { kind: 'nowhere'; why: string }
+  | { kind: 'refused'; why: string };
+
+/** Each supply row's counter, by the row's name, as the Supplies face shows it. */
+export type SupplyCounters = Readonly<Record<string, SupplyCounter>>;

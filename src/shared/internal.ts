@@ -1107,6 +1107,11 @@ const TUNING_DEFAULTS = {
     /** Legs replanned after a fight or a stopped walk, before the errand gives up. */
     maxLegs: 4,
     /**
+     * Counters a row naming no shop tries, nearest first, when each turns out
+     * not to list the item, before the item waits `retryMs` (todo 49).
+     */
+    countersPerTrip: 2,
+    /**
      * How long an errand's leg may go unwalked before it gives the lap back.
      *
      * `Walker.start` raises no `ended` when it replaces a running walk, so a

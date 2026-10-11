@@ -142,6 +142,7 @@ const api: WireApi = {
   huntingGrounds: (session, measure) => ipcRenderer.invoke(Invoke.huntingGrounds, session, measure),
   trainers: (session) => ipcRenderer.invoke(Invoke.trainers, session),
   banks: (session) => ipcRenderer.invoke(Invoke.banks, session),
+  supplyCounters: (session) => ipcRenderer.invoke(Invoke.supplyCounters, session),
   itemsServing: (session) => ipcRenderer.invoke(Invoke.itemsServing, session),
   wards: (session) => ipcRenderer.invoke(Invoke.wards, session),
   invokeChoices: (session) => ipcRenderer.invoke(Invoke.invokeChoices, session),
