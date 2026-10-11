@@ -16,6 +16,7 @@ import { canPayFor } from './mana';
 import { countMobs, countThreats } from './RuleEngine';
 import { DrainWhenHurt } from './DrainWhenHurt';
 import { killCasting } from './killCasting';
+import { RoomSpells } from './RoomSpells';
 import { SpellHold } from './SpellHold';
 import { t } from '../app/i18n';
 import { castAimedAt } from '../../shared/aim';
@@ -151,6 +152,8 @@ export class AttackSpells {
   private readonly drain: DrainWhenHurt;
   /** Whether the swing or the next monster serves better than the spell this round (todo 54). */
   private readonly hold: SpellHold;
+  /** Which room spell, and the debuff ahead of it: asked, never decided here. */
+  private readonly room: RoomSpells;
 
   constructor(
     private spells: SpellsConfig,
@@ -173,12 +176,19 @@ export class AttackSpells {
       realmClass,
       (spell, monster) => realmLore.hasNoEffect(spell, monster)
     );
+    this.room = new RoomSpells(
+      spells,
+      (message) => events.notice?.(message),
+      realmSpell,
+      realmClass
+    );
   }
 
   configure(spells: SpellsConfig | undefined, rules: readonly MobRule[]): void {
     if (spells) {
       this.spells = spells;
       this.drain.configure(spells);
+      this.room.configure(spells);
     }
     this.rules = rules;
   }
@@ -189,6 +199,7 @@ export class AttackSpells {
     this.instant.clear();
     this.saidNoEffect.clear();
     this.drain.reset();
+    this.room.reset();
     this.saidChoice = null;
     this.saidChoiceRefusal = null;
   }
@@ -201,6 +212,7 @@ export class AttackSpells {
     this.hold.fightEnded();
     this.ineffective.clear();
     this.casts.clear();
+    this.room.fightEnded();
   }
 
   /** The fight's target, as each state has it. A new monster opens the book again. */
@@ -230,6 +242,7 @@ export class AttackSpells {
 
   /** What an attack or a cast this module proposed does once it has gone. */
   sent(action: Action): void {
+    this.room.sent(action.kind === 'spell' ? action.spell : '');
     this.awaiting =
       action.kind === 'spell'
         ? { spell: action.spell, afterOff: this.repeating?.kind === 'spell' }
@@ -500,7 +513,7 @@ export class AttackSpells {
      */
     const drain = this.drain.standIn(state);
     if (drain !== null) {
-      const room = this.roomSpell(state, drain.area, opening, above);
+      const room = this.roomSpell(state, target, drain.area, opening, above, false);
       if (room !== null) return room;
       if (above(this.spells.minMana)) {
         const single = drain.choose
@@ -548,7 +561,7 @@ export class AttackSpells {
      * crowd is threats (what is in this fight or would join it), never
      * `countMobs`, which counts a shopkeeper and a guard dog alike.
      */
-    const room = this.roomSpell(state, this.spells.areaAttack.trim(), opening, above);
+    const room = this.roomSpell(state, target, this.spells.areaAttack.trim(), opening, above, true);
     if (room !== null) return room;
 
     if (!above(this.spells.minMana)) return null;
@@ -580,21 +593,53 @@ export class AttackSpells {
     return this.payable(state, spell, false, opening);
   }
 
-  /** `area` cast bare at the room, where the fight is crowded enough to earn it (see `wanted`), or null. */
+  /**
+   * `area` cast bare at the room, where the fight is crowded enough to earn it
+   * (see `wanted`), or null. `ranked`: the book's room spells follow it by
+   * damage per mana, the first the caps, refusals and pool allow taking over
+   * (`RoomSpells.candidates`), with a debuff cast ahead of it once a fight
+   * where it pays (`RoomSpells.debuffFirst`).
+   */
   private roomSpell(
     state: CharacterState,
+    target: SpellTarget,
     area: string,
     opening: boolean,
-    above: (floor: number) => boolean
+    above: (floor: number) => boolean,
+    ranked: boolean
   ): Wanted | null {
-    if (opening || area.length === 0 || !this.usable(area, this.spells.areaCasts)) return null;
+    // With `areaAttack` blank, Auto Choose Best Spell still picks the book's best room spell.
+    if (opening || (area.length === 0 && !(ranked && this.spells.autoChoose))) return null;
     const costly = state.room.occupants.some(
       (who) => who.kind === 'mob' && who.costly === 'always'
     );
     const crowd = Math.max(countThreats(state, this.rules), state.combat.attackers.length);
     const floor = Math.max(this.spells.areaMinMana, this.spells.minMana);
     if (costly || crowd < this.spells.areaMinMobs || !above(floor)) return null;
-    return this.payable(state, area, true, opening);
+    const candidates = ranked
+      ? this.room.candidates(state, area, this.rules, target)
+      : area.length > 0
+        ? [area]
+        : [];
+    for (const spell of candidates) {
+      if (!this.usable(spell, this.spells.areaCasts)) continue;
+      const cast = this.payable(state, spell, true, opening);
+      if (cast === null) continue;
+      if (!ranked) return cast;
+      this.room.tookOver(state, candidates[0]!, spell);
+      const debuff = this.room.debuffFirst(
+        state,
+        spell,
+        this.rules,
+        target,
+        // `usable` holds this fight's refusals; the realm's are `chooseDebuff`'s (`spellReaches`).
+        (name) => this.usable(name, 0) && this.payable(state, name, false, opening) !== null
+      );
+      const first =
+        debuff === null ? null : this.payable(state, debuff.spell.name, debuff.area, opening);
+      return first ?? cast;
+    }
+    return null;
   }
 
   /**

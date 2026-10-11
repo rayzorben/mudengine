@@ -470,3 +470,186 @@ describe('a spell held back for a monster worth more of the mana', () => {
     expect(unit().spells.opening(blind, target, 'in the room', 'a')?.command).toBe('harm rat');
   });
 });
+
+/*
+ * Todo 55: with Auto Choose Best Spell on, the book's room spells follow
+ * `areaAttack` by damage per mana, and the next takes over when the first
+ * cannot be paid for.
+ */
+describe('the next room spell in the book', () => {
+  const fireball: WorldSpell = {
+    id: 1,
+    name: 'fireball',
+    level: 15,
+    mana: 34,
+    energy: 1000,
+    targets: 12,
+    abilities: [[17, 0]],
+    power: [26, 40]
+  };
+  const swarm: WorldSpell = {
+    id: 2,
+    name: 'swarm',
+    level: 12,
+    mana: 28,
+    energy: 1000,
+    targets: 12,
+    abilities: [[17, 0]],
+    power: [17, 28]
+  };
+  const realm: Record<string, WorldSpell> = { fireball, swarm };
+
+  function crowded(mana: number): CharacterState {
+    return {
+      ...EMPTY_CHARACTER,
+      vitals: { ...EMPTY_CHARACTER.vitals, mana, manaMax: 100 },
+      progress: { ...EMPTY_CHARACTER.progress, level: 30 },
+      spellbook: [
+        { name: 'fireball', short: 'fbal', level: 15, cost: 34 },
+        { name: 'swarm', short: 'swar', level: 12, cost: 28 }
+      ],
+      combat: { ...EMPTY_CHARACTER.combat, attackers: ['orc', 'orc', 'orc'] }
+    };
+  }
+
+  function unit(autoChoose: boolean): { spells: AttackSpells; notices: string[] } {
+    const notices: string[] = [];
+    const spells = new AttackSpells(
+      {
+        ...DEFAULT_CONFIG.automation.spells,
+        autoChoose,
+        areaAttack: 'fireball',
+        areaMinMobs: 2,
+        areaMinMana: 0,
+        minMana: 0
+      },
+      { notice: (message) => notices.push(message) },
+      (name) => realm[name] ?? null,
+      () => ({ combat: null, magery: null, crits: 0, family: null })
+    );
+    return { spells, notices };
+  }
+
+  const target = { name: 'orc', entity: null, remaining: null };
+
+  it('casts the typed room spell while the pool pays for it (the control)', () => {
+    const { spells } = unit(true);
+    expect(spells.change(crowded(60), target, 'a', 'a')?.command).toBe('fbal');
+  });
+
+  it('casts swarm when fireball cannot be paid for, and says so', () => {
+    const { spells, notices } = unit(true);
+    expect(spells.change(crowded(30), target, 'a', 'a')?.command).toBe('swar');
+    expect(notices).toContain(
+      t('automation.spells.roomTakeover', { first: 'fireball', spell: 'swarm' })
+    );
+  });
+
+  it('keeps to the typed spell with Auto Choose Best Spell off', () => {
+    const { spells } = unit(false);
+    expect(spells.change(crowded(30), target, 'a', 'a')).toBe(null);
+  });
+
+  /*
+   * Corrosion lowers the room's M.R. by 10 for 58 rounds at level 30; three
+   * M.R. 80 monsters of 1,000 hit points hold out long enough for it to pay
+   * (`roomspells.test.ts` has the arithmetic).
+   */
+  describe('with a debuff in the book', () => {
+    const corrosion: WorldSpell = {
+      id: 5,
+      name: 'corrosion',
+      level: 24,
+      mana: 15,
+      targets: 12,
+      duration: 1,
+      durationGrowth: [1, 4],
+      cap: 40,
+      abilities: [
+        [2, 0],
+        [36, -10],
+        [7, -50]
+      ],
+      power: [-8, -8]
+    };
+    const withCorrosion: Record<string, WorldSpell> = { ...realm, corrosion };
+    const resists = (name: string): RoomOccupant => ({
+      name,
+      kind: 'mob',
+      disposition: 'hostile',
+      uncertain: false,
+      costly: 'never',
+      charmed: false,
+      hidden: false,
+      free: false,
+      mob: {
+        name,
+        rawName: name,
+        source: 'hybrid',
+        charmed: false,
+        disposition: 'hostile',
+        uncertain: false,
+        costly: 'never',
+        magicResist: 80,
+        hp: 1000
+      }
+    });
+    const tough = (magicResist: number | null): CharacterState => {
+      const base = crowded(100);
+      return {
+        ...base,
+        spellbook: [
+          ...(base.spellbook ?? []),
+          { name: 'corrosion', short: 'corr', level: 24, cost: 15 }
+        ],
+        room: {
+          ...base.room,
+          occupants: [resists('orc'), resists('goblin'), resists('kobold')].map((who) =>
+            magicResist === null ? { ...who, mob: { ...who.mob!, magicResist: undefined } } : who
+          )
+        },
+        combat: { ...base.combat, attackers: ['orc', 'goblin', 'kobold'] }
+      };
+    };
+    const orc = (magicResist: number | null) => ({
+      name: 'orc',
+      entity: tough(magicResist).room.occupants[0]!.mob ?? null,
+      remaining: 1000
+    });
+    const debuffing = (): { spells: AttackSpells; notices: string[] } => {
+      const notices: string[] = [];
+      const spells = new AttackSpells(
+        {
+          ...DEFAULT_CONFIG.automation.spells,
+          autoChoose: true,
+          areaAttack: 'fireball',
+          areaMinMobs: 2,
+          areaMinMana: 0,
+          minMana: 0
+        },
+        { notice: (message) => notices.push(message) },
+        (name) => withCorrosion[name] ?? null,
+        () => ({ combat: null, magery: null, crits: 0, family: null })
+      );
+      return { spells, notices };
+    };
+
+    it('casts corrosion once, then the room spell on the next round', () => {
+      const { spells, notices } = debuffing();
+      const first = spells.change(tough(80), orc(80), 'a', 'a');
+      expect(first?.command).toBe('corr');
+      expect(notesOf(notices, 'automation.spells.debuffFirst')).toHaveLength(1);
+      spells.sent(first!.action);
+      expect(spells.change(tough(80), orc(80), 'a', 'a')?.command).toBe('fbal');
+      // A new fight may cast it again.
+      spells.fightEnded();
+      expect(spells.change(tough(80), orc(80), 'a', 'a')?.command).toBe('corr');
+    });
+
+    it('casts the room spell straight away where no resistance was read (the control)', () => {
+      const { spells, notices } = debuffing();
+      expect(spells.change(tough(null), orc(null), 'a', 'a')?.command).toBe('fbal');
+      expect(notesOf(notices, 'automation.spells.debuffFirst')).toEqual([]);
+    });
+  });
+});

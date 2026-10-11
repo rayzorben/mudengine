@@ -1661,7 +1661,12 @@ automation:
     # spell cast (`You cast poison cloud on the room!`). Never while a
     # monster the realm calls good stands in the room: a room spell hits
     # everything, and the ten evil points are a cost no setting spends
-    # unasked. Blank casts nothing.
+    # unasked. Blank casts nothing unless `autoChoose` is on. With it on,
+    # the other room spells in your spellbook follow this one by damage per
+    # mana: when it can't be cast (out of mana, `areaCasts` reached, no
+    # effect), the next is. And a spell that lowers the room's magic
+    # resistance is cast once a fight before it, when the room holds out
+    # long enough to make it pay.
     areaAttack: ''
     areaMinMobs: 3
     areaMinMana: 0.35

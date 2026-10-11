@@ -111,7 +111,7 @@ export function spellTargetOf(
 }
 
 export interface SpellChoiceInput {
-  book: ReadonlyArray<CastableSpell & { level?: number | null }>;
+  book: ReadonlyArray<BookSpell>;
   realm: (name: string) => WorldSpell | null;
   level: number | null;
   mana: number | null;
@@ -183,6 +183,80 @@ function elementFactor(element: SpellElement | undefined, target: SpellTarget | 
   return Math.max(0, 1 - sum(RESIST_ABILITY[element]) / 100);
 }
 
+/** A spell in the book, with the level it needs where the listing states it. */
+export type BookSpell = CastableSpell & { level?: number | null };
+
+/** The level a spell needs: the book's figure, else the realm row's; null unknown. */
+export function levelNeeded(spell: BookSpell, realm: WorldSpell): number | null {
+  return spell.level ?? realm.level ?? null;
+}
+
+/** Whether `level` reaches the spell; an unknown either side does not refuse. */
+export function levelReaches(
+  level: number | null,
+  spell: BookSpell,
+  realm: WorldSpell
+): boolean {
+  const required = levelNeeded(spell, realm);
+  return level === null || required === null || required <= level;
+}
+
+/** One cast's mana: the book's figure, else the realm row's; null unknown. */
+export function bookCost(spell: CastableSpell, realm: WorldSpell): number | null {
+  return spell.cost ?? realm.mana ?? null;
+}
+
+/** The chance a cast goes off; an unpriced cast is taken as certain. */
+export function castChance(
+  realm: WorldSpell,
+  caster: Pick<SpellChoiceInput, 'sheet' | 'family'>
+): number {
+  return castOdds(realm, caster.sheet, caster.family)?.chance.value ?? 1;
+}
+
+/** What one cast of an attack spell does to one target, as `chooseAttackSpell` weighs it. */
+export interface CastWeight {
+  /** Damage after the target's element and magic resistance, at this level. */
+  min: number;
+  max: number;
+  /** The share of casts that land: the cast's own odds, less what the resistance turns away. */
+  lands: number;
+  /** Mean damage a cast is expected to do, `lands` folded in. */
+  expected: number;
+  /** Attempts the server makes in one round (`castsARound`). */
+  casts: number;
+}
+
+/**
+ * One cast of `realm` against `target` at `level`, or null where nothing
+ * gets through. The single-target choice and the room spell's
+ * (`roomspells.ts`) both price a cast here, so the two never drift apart.
+ */
+export function weighCast(
+  realm: WorldSpell,
+  caster: Pick<SpellChoiceInput, 'sheet' | 'family'>,
+  target: SpellTarget | null,
+  level: number
+): CastWeight | null {
+  const [rawMin, rawMax] = scaledPower(realm, level);
+  const element = elementFactor(realm.element, target);
+  /*
+   * The pivot, not zero, for a resistance nobody has read: `magicResistance`
+   * reads null as none and prices the cast at 150%, which is the safe
+   * direction for a hazard *against* the character and the wrong one here —
+   * the choice between two spells does not move with a common factor, but
+   * a kill's certainty does, and a kill the client is 150% sure of is a
+   * monster still standing.
+   */
+  const { factor, resist } = magicResistance(realm, target?.magicRes ?? MAGIC_RES_PIVOT);
+  const min = Math.max(0, Math.trunc(Math.max(0, rawMin) * element * factor));
+  const max = Math.max(min, Math.trunc(Math.max(0, rawMax) * element * factor));
+  if (max <= 0) return null;
+  const odds = castChance(realm, caster);
+  const lands = odds * (1 - resist);
+  return { min, max, lands, expected: ((min + max) / 2) * lands, casts: castsARound(realm) };
+}
+
 /**
  * The choice. Null `book` is *never read*, which is a different refusal from
  * an empty one — the first asks for the listing, the second says the
@@ -206,9 +280,9 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
     const power = realm.power;
     if (power === undefined) continue;
     attackSpells += 1;
-    const required = spell.level ?? realm.level ?? null;
-    if (input.level !== null && required !== null && required > input.level) continue;
-    const cost = spell.cost ?? realm.mana ?? null;
+    const required = levelNeeded(spell, realm);
+    if (!levelReaches(input.level, spell, realm)) continue;
+    const cost = bookCost(spell, realm);
     if (input.mana !== null && cost !== null && cost > input.mana) continue;
     affordable += 1;
     // The server answers `Your spell has no effect on` and breaks the fight.
@@ -220,24 +294,9 @@ export function chooseAttackSpell(input: SpellChoiceInput | { book: null }): Spe
       continue;
     }
 
-    const [rawMin, rawMax] = scaledPower(realm, input.level ?? required ?? 1);
-    const element = elementFactor(realm.element, input.target);
-    /*
-     * The pivot, not zero, for a resistance nobody has read: `magicResistance`
-     * reads null as none and prices the cast at 150%, which is the safe
-     * direction for a hazard *against* the character and the wrong one here —
-     * the choice between two spells does not move with a common factor, but
-     * a kill's certainty does, and a kill the client is 150% sure of is a
-     * monster still standing.
-     */
-    const { factor, resist } = magicResistance(realm, input.target?.magicRes ?? MAGIC_RES_PIVOT);
-    const min = Math.max(0, Math.trunc(Math.max(0, rawMin) * element * factor));
-    const max = Math.max(min, Math.trunc(Math.max(0, rawMax) * element * factor));
-    if (max <= 0) continue;
-    const odds = castOdds(realm, input.sheet, input.family)?.chance.value ?? 1;
-    const lands = odds * (1 - resist);
-    const expected = ((min + max) / 2) * lands;
-    const casts = castsARound(realm);
+    const weight = weighCast(realm, input, input.target, input.level ?? required ?? 1);
+    if (weight === null) continue;
+    const { min, max, lands, expected, casts } = weight;
     const remaining = input.target?.remaining ?? null;
     let killChance: number | null = null;
     if (remaining !== null && remaining > 0) {
@@ -309,7 +368,7 @@ export function healPower(spell: WorldSpell, level: number): [number, number] | 
 export type HealAim = 'self' | 'party';
 
 export interface HealChoiceInput {
-  book: ReadonlyArray<CastableSpell & { level?: number | null }>;
+  book: ReadonlyArray<BookSpell>;
   realm: (name: string) => WorldSpell | null;
   level: number | null;
   /** What the pool holds now: a spell it cannot pay for is not a candidate. */
@@ -367,15 +426,14 @@ export function healCasts(
     const realm = input.realm(spell.name);
     if (realm === null) continue;
     if (!accepts(spellTargeting(realm.targets))) continue;
-    const required = spell.level ?? realm.level ?? null;
-    const power = healPower(realm, input.level ?? required ?? 1);
+    const power = healPower(realm, input.level ?? levelNeeded(spell, realm) ?? 1);
     if (power === null) continue;
     heals += 1;
-    if (input.level !== null && required !== null && required > input.level) continue;
-    const cost = spell.cost ?? realm.mana ?? null;
+    if (!levelReaches(input.level, spell, realm)) continue;
+    const cost = bookCost(spell, realm);
     if (input.mana !== null && cost !== null && cost > input.mana) continue;
     const [min, max] = power;
-    const odds = castOdds(realm, input.sheet, input.family)?.chance.value ?? 1;
+    const odds = castChance(realm, input);
     casts.push({ spell, realm, min, max, expected: ((min + max) / 2) * odds, cost });
   }
   return { heals, casts };
