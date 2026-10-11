@@ -58,6 +58,7 @@ import type {
 import type { RoomCandidate, RoomLight } from './character';
 import type { CoinMaxima } from './coins';
 import type { MonsterNature } from './spellReach';
+import type { ProwessWeapon } from './prowess';
 
 /**
  * Where an entity's facts came from.
@@ -178,7 +179,8 @@ export interface ItemEntity {
    * card must never print it under a heading that looks like the server's.
    */
   realmSlot?: string;
-  weapon?: WorldItem['weapon'];
+  /** The realm's weapon row, its hit spells joined in (`hitSpellsOf`). */
+  weapon?: ProwessWeapon;
   armour?: WorldItem['armour'];
   /** Maximum uses the realm records, against `charges` observed. */
   uses?: number;

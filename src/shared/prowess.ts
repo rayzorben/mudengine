@@ -1,4 +1,5 @@
 import { PLAIN_SPEED, type BlessingEffect } from './blessingeffects';
+import { hitSpellPerBlow, type HitSpell, type HitSpellTarget } from './hitSpells';
 import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
 import type { RealmFamily } from './realm';
 import type { StatedProwess } from './stated';
@@ -140,8 +141,12 @@ export type FightingClass = ProwessClass & {
   attack?: ProwessAttack;
 };
 
-/** What of a weapon the arithmetic reads — `Items.Min/Max/Accy/Speed/StrReq`. */
-export type ProwessWeapon = NonNullable<WorldItem['weapon']>;
+/**
+ * What of a weapon the arithmetic reads (`Items.Min/Max/Accy/Speed/StrReq`)
+ * and the hit spells its ability rows name, joined in by the catalogue
+ * (`hitSpellsOf`). Absent `hits` is a weapon that casts none.
+ */
+export type ProwessWeapon = NonNullable<WorldItem['weapon']> & { hits?: readonly HitSpell[] };
 
 /** Percentage of `MaxEnc` below which the server grants its two carry bonuses. */
 const LIGHT_LOAD = 33;
@@ -697,18 +702,24 @@ export interface Swing {
   /** A blow's range before the target's resistance, the multiplier applied; null where unknown. */
   range: { low: number; high: number } | null;
   /**
+   * What the weapon's hit spells add to a landed blow, the share of blows
+   * that do damage counted (`hitSpellPerBlow`). Zero for a weapon that casts
+   * none and for a martial attack, which casts none.
+   */
+  hitSpell: number;
+  /**
    * Rounds to take the target's health down, or `null` when the target's
    * health is not known or nothing gets through its resistance.
    *
-   * A **bound**, always, and in the honest direction: accuracy here is a floor
-   * (gear grants the client cannot see), dodge is a floor, and neither critical
-   * hits nor a hit spell is counted. So the true figure is *at most* this.
+   * A **bound**, always, and it errs high: accuracy here is a floor
+   * (gear grants the client cannot see), dodge is a floor, and a hit spell is
+   * counted at its floor. So the true figure is *at most* this.
    */
   rounds: Reckoning<number> | null;
 }
 
 /** What of a target the swing reads. `menace.ts` reads the mirror of it. */
-export interface ProwessTarget {
+export interface ProwessTarget extends HitSpellTarget {
   /** `Monsters.ArmourClass`, as the realm states it: the sheet's scale (`targetOf`). */
   armourClass: number | null;
   /** `Monsters.DamageResist`, likewise. */
@@ -778,11 +789,14 @@ export function swing(
    */
   const resist = Math.max(0, Math.trunc(target.damageResist ?? 0));
   let mean: number | null = null;
+  // The share of plain blows the resistance leaves something of; a hit spell rides on it too.
+  let damaging = 0;
   if (low !== null && high !== null && high >= low) {
     const first = Math.max(low, resist + 1);
     if (first <= high) {
       const count = high - first + 1;
       const width = high - low + 1;
+      damaging = count / width;
       mean = (count * (first - resist + (high - resist))) / 2 / width;
     } else {
       mean = 0;
@@ -797,11 +811,22 @@ export function swing(
   if (mean !== null && high !== null && crit !== null && crit.value > 0) {
     const critical = Math.max(0, 3 * high - resist);
     mean = (1 - crit.value) * mean + crit.value * critical;
+    damaging = (1 - crit.value) * damaging + crit.value * critsThrough(high, resist);
   }
 
+  /*
+   * A hit spell is cast only from a blow that did damage (`damage > 0` in
+   * `PlayerAttackType`), so it rides on the share of landed blows the
+   * target's resistance leaves something of.
+   */
+  const hitSpell =
+    mean === null || isMartial(attack.kind)
+      ? 0
+      : damaging * hitSpellPerBlow(weapon?.hits, target, sheet.spellcasting);
+
   let rounds: Reckoning<number> | null = null;
-  if (mean !== null && mean > 0 && target.health !== null && target.health > 0) {
-    const perRound = landedPerRound(lands, mean, swings);
+  if (mean !== null && mean + hitSpell > 0 && target.health !== null && target.health > 0) {
+    const perRound = landedPerRound(lands, mean + hitSpell, swings);
     if (perRound > 0) rounds = { value: target.health / perRound, from: 'bound' };
   }
 
@@ -814,8 +839,15 @@ export function swing(
     swings,
     crit,
     range: low !== null && high !== null && high >= low ? { low, high } : null,
+    hitSpell,
     rounds
   };
+}
+
+/** The share of critical blows, `rand(2 × max, 4 × max)`, that get past the target's resistance. */
+function critsThrough(high: number, resist: number): number {
+  const width = 2 * high + 1;
+  return Math.max(0, Math.min(width, 4 * high - Math.max(2 * high, resist + 1) + 1)) / width;
 }
 
 /**
@@ -841,11 +873,11 @@ function landedPerRound(lands: number, mean: number, swings: Reckoning<number> |
   return lands * mean * Math.min(MAX_SWINGS, swings?.value ?? 1);
 }
 
-/** What a round of a `swing` lands on its target; null where the blow's range or blows are unknown. */
+/** What a round of a `swing` lands on its target, hit spells included; null where the blow's range or blows are unknown. */
 export function swingRound(blow: Swing): number | null {
   return blow.range === null || blow.swings === null
     ? null
-    : landedPerRound(blow.lands.value, blow.damage.value, blow.swings);
+    : landedPerRound(blow.lands.value, blow.damage.value + blow.hitSpell, blow.swings);
 }
 
 /** What a cast is expected to cost and how often it works. */

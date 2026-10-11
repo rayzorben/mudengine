@@ -27,6 +27,7 @@ import { loadPercent } from './load';
 import { gearEffect } from './blessingeffects';
 import type { CharacterState, RoomOccupant } from './character';
 import type { MobEntity } from './entities';
+import type { MonsterNature } from './spellReach';
 import {
   DEFAULT_MOB_PRIORITY,
   isBanded,
@@ -77,9 +78,9 @@ export interface Verdict {
   /** What it costs to leave standing. Null when the realm can say nothing about it. */
   menace: Menace | null;
   /**
-   * Rounds to bring it down, from `prowess.swing`. Always a `bound` — the
-   * accuracy behind it is a floor and neither crits nor hit spells are counted
-   * — so the true figure is at most this. Null when it is not knowable at all,
+   * Rounds to bring it down, from `prowess.swing`. Always a `bound`: the
+   * accuracy behind it and the weapon's hit spells are counted at their floor,
+   * so the true figure is at most this. Null when it is not knowable at all,
    * never `0` and never `∞`.
    */
   rounds: Reckoning<number> | null;
@@ -103,7 +104,7 @@ export interface Verdict {
  */
 export function verdictFor(
   menace: Menace | null,
-  subject: { armourClass?: number; damageResist?: number; dodge?: number; hp?: number },
+  subject: TargetFigures,
   sheet: ProwessSheet,
   weapon: ProwessWeapon | null,
   family: RealmFamily | null,
@@ -118,7 +119,10 @@ export function verdictFor(
       dodge: subject.dodge ?? null,
       // The menace's own figure first: it is the realm's high end, and where
       // the realm cannot name the monster it is what the lore has learned.
-      health: menace?.hp ?? subject.hp ?? null
+      health: menace?.hp ?? subject.hp ?? null,
+      magicRes: subject.magicRes ?? null,
+      abilities: subject.abilities,
+      nature: subject.nature
     },
     family,
     how
@@ -131,8 +135,22 @@ export function verdictFor(
   return { menace, rounds, cost };
 }
 
-/** What `targetOf` reads off a monster: the realm's columns and its ability slots. */
-export type TargetEntity = Pick<MobEntity, 'armour' | 'damageResist' | 'abilities' | 'hp'>;
+/** What `targetOf` reads off a monster: the realm's columns, its ability slots and what it is. */
+export type TargetEntity = Pick<
+  MobEntity,
+  'armour' | 'damageResist' | 'abilities' | 'hp' | 'magicResist' | 'nature'
+>;
+
+/** The monster's figures as a blow and a hit spell meet them; absent is unknown. */
+export interface TargetFigures {
+  armourClass?: number;
+  damageResist?: number;
+  dodge?: number;
+  hp?: number;
+  magicRes?: number;
+  abilities?: ReadonlyArray<readonly [number, number]>;
+  nature?: MonsterNature;
+}
 
 /**
  * The monster's side of the roll, in the sheet's units.
@@ -155,19 +173,17 @@ export type TargetEntity = Pick<MobEntity, 'armour' | 'damageResist' | 'abilitie
  * `explain()` fix (2026-09-05), not by a fight; `AutoCombat.test.ts` holds the
  * case.
  */
-export function targetOf(entity: TargetEntity | undefined): {
-  armourClass?: number;
-  damageResist?: number;
-  dodge?: number;
-  hp?: number;
-} {
+export function targetOf(entity: TargetEntity | undefined): TargetFigures {
   if (entity === undefined) return {};
   const dodge = entity.abilities?.find(([id]) => id === DODGE_ABILITY)?.[1];
   return {
     ...(entity.armour !== undefined ? { armourClass: entity.armour } : {}),
     ...(entity.damageResist !== undefined ? { damageResist: entity.damageResist } : {}),
     ...(dodge !== undefined ? { dodge } : {}),
-    ...(entity.hp !== undefined ? { hp: entity.hp } : {})
+    ...(entity.hp !== undefined ? { hp: entity.hp } : {}),
+    ...(entity.magicResist !== undefined ? { magicRes: entity.magicResist } : {}),
+    ...(entity.abilities !== undefined ? { abilities: entity.abilities } : {}),
+    ...(entity.nature !== undefined ? { nature: entity.nature } : {})
   };
 }
 
@@ -178,7 +194,10 @@ export function prowessTargetOf(entity: TargetEntity | undefined): ProwessTarget
     armourClass: target.armourClass ?? null,
     damageResist: target.damageResist ?? null,
     dodge: target.dodge ?? null,
-    health: target.hp ?? null
+    health: target.hp ?? null,
+    magicRes: target.magicRes ?? null,
+    abilities: target.abilities,
+    nature: target.nature
   };
 }
 

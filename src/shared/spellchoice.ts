@@ -15,6 +15,7 @@ import { magicResistance, scaledPower } from './menace';
 import { castOdds, castsARound, MAGERY, manaARound, type ProwessSheet } from './prowess';
 import type { NoEffectLore } from './lore';
 import type { RealmFamily } from './realm';
+import { elementFactor } from './spellDamage';
 import {
   castsOnOthers,
   castsOnSelf,
@@ -39,49 +40,6 @@ export function poolOf(
 
 /** `Spell.GetMagicResModifierByValue`'s pivot: the resistance at which a cast lands as stated. */
 const MAGIC_RES_PIVOT = 50;
-
-/**
- * `Spells.AttType`, as `Spell.GetSpellAttackType` reads the column: 0 cold,
- * 1 hot, 2 stone, 3 lightning, 4 normal, 5 water, 6 poison; anything else is
- * normal. The realm's own words for the elements, not this client's.
- */
-export type SpellElement = 'cold' | 'fire' | 'stone' | 'lightning' | 'normal' | 'water' | 'poison';
-
-export function spellElementOf(code: number | null | undefined): SpellElement | undefined {
-  switch (code) {
-    case 0:
-      return 'cold';
-    case 1:
-      return 'fire';
-    case 2:
-      return 'stone';
-    case 3:
-      return 'lightning';
-    case 4:
-      return 'normal';
-    case 5:
-      return 'water';
-    case 6:
-      return 'poison';
-    default:
-      return undefined;
-  }
-}
-
-/**
- * The ability a monster resists each element with, as `Spell.CheckResistance`
- * reads it off the target: a percentage taken off the damage. Poison is the
- * odd one — `ImmuPoison` at 100 or more turns the whole cast to nothing and
- * anything less lets all of it through.
- */
-export const RESIST_ABILITY: Record<Exclude<SpellElement, 'normal' | 'poison'>, number> = {
-  cold: 3,
-  fire: 5,
-  stone: 65,
-  lightning: 66,
-  water: 147
-};
-const IMMUNE_TO_POISON = 21;
 
 /** What the target is, as far as the choice needs. */
 export interface SpellTarget {
@@ -171,18 +129,6 @@ export interface SpellChoice {
   refusal: SpellChoiceRefusal | null;
 }
 
-/** The share of an element the target turns away, `CheckResistance` transcribed. */
-function elementFactor(element: SpellElement | undefined, target: SpellTarget | null): number {
-  if (element === undefined || element === 'normal' || target === null) return 1;
-  const sum = (id: number): number =>
-    (target.abilities ?? []).reduce(
-      (total, [ability, value]) => (ability === id ? total + value : total),
-      0
-    );
-  if (element === 'poison') return sum(IMMUNE_TO_POISON) >= 100 ? 0 : 1;
-  return Math.max(0, 1 - sum(RESIST_ABILITY[element]) / 100);
-}
-
 /** A spell in the book, with the level it needs where the listing states it. */
 export type BookSpell = CastableSpell & { level?: number | null };
 
@@ -192,11 +138,7 @@ export function levelNeeded(spell: BookSpell, realm: WorldSpell): number | null 
 }
 
 /** Whether `level` reaches the spell; an unknown either side does not refuse. */
-export function levelReaches(
-  level: number | null,
-  spell: BookSpell,
-  realm: WorldSpell
-): boolean {
+export function levelReaches(level: number | null, spell: BookSpell, realm: WorldSpell): boolean {
   const required = levelNeeded(spell, realm);
   return level === null || required === null || required <= level;
 }
@@ -239,7 +181,7 @@ export function weighCast(
   level: number
 ): CastWeight | null {
   const [rawMin, rawMax] = scaledPower(realm, level);
-  const element = elementFactor(realm.element, target);
+  const element = elementFactor(realm.element, target?.abilities);
   /*
    * The pivot, not zero, for a resistance nobody has read: `magicResistance`
    * reads null as none and prices the cast at 150%, which is the safe

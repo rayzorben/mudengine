@@ -171,7 +171,7 @@ const MAGIC_RES_CEILING = 150;
 const MAGIC_RES_PIVOT = 50;
 const RESISTED_BY_ANYONE = 2;
 /** MME's `IsSpellResisted` clamps the resistance it halves at 196. */
-const RESIST_ROLL_CEILING = 196;
+export const RESIST_ROLL_CEILING = 196;
 /**
  * An item's and a spell effect's armour class and damage resistance rows are
  * ten times the sheet's figure: an item's `ac: 10` is one point on `st`. A
