@@ -1081,6 +1081,7 @@ export function partyFormOf(party: PartyConfig): PartyForm {
     waitBelow: percent(party.waitBelow),
     waitMinutes: String(party.waitMinutes),
     parSeconds: String(party.parSeconds),
+    parEveryRounds: String(party.parEveryRounds),
     regroupMinutes: String(party.regroupMinutes)
   };
 }
@@ -1093,6 +1094,7 @@ export function partyOf(form: PartyForm): PartyConfig {
     // A field left empty keeps the shipped figure: 0 here means *wait for ever*.
     waitMinutes: whole(form.waitMinutes, DEFAULT_CONFIG.automation.party.waitMinutes),
     parSeconds: whole(form.parSeconds, DEFAULT_CONFIG.automation.party.parSeconds),
+    parEveryRounds: whole(form.parEveryRounds, DEFAULT_CONFIG.automation.party.parEveryRounds),
     regroupMinutes: whole(form.regroupMinutes, DEFAULT_CONFIG.automation.party.regroupMinutes)
   };
 }

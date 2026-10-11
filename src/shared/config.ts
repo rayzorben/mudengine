@@ -31,7 +31,14 @@ import { DEFAULT_LOGGING, normalizeLogging, type LoggingConfig } from './logging
  * edge is one-way and the module-cycle rule is untouched. See
  * `src/shared/__tests__/module-cycle.test.ts`.
  */
-import { DENOMINATIONS, type Denomination, type VitalThresholds } from './character';
+import {
+  DENOMINATIONS,
+  joinedMembers,
+  standingHere,
+  type CharacterState,
+  type Denomination,
+  type VitalThresholds
+} from './character';
 import {
   DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
@@ -2282,6 +2289,14 @@ export interface PartyConfig {
   waitMinutes: number;
   /** Leading, pay no heed to a follower's `@wait`; a member under `waitBelow` still stops the lap (`IgnoreWait`). */
   ignoreWait: boolean;
+  /**
+   * Leading, hold every member to this character's own `health` settings: stop
+   * and rest while a member here is under `restBelow` / `restBelowMana`, until
+   * it is back to `restTo` / `restToMana`, and walk on through a `@wait` that is
+   * only about health or mana. A `@wait` for a condition (held, blind,
+   * confused, poisoned) still stops the lap until the member's `@ok`.
+   */
+  manageParty: boolean;
   /** Following, refuse the leader's `@party <command>` (`IgnoreParty`). */
   ignoreParty: boolean;
   /** Ask a member for `@health` when they join (`AskHealth`). */
@@ -2293,6 +2308,12 @@ export interface PartyConfig {
   parSeconds: number;
   /** In a party, send `par` after every combat round (`ParAfterRound`). */
   parAfterRound: boolean;
+  /**
+   * In a party and a fight, send `par` at most this many rounds apart, and
+   * sooner the more health the party has lost since the last one (`PartyListing`).
+   * 0 never sends it by the round.
+   */
+  parEveryRounds: number;
   /**
    * Leading, say `@party <command>` before a room's own command that moves only
    * the one who types it (`go vortex`), so a follower runs it too (todo 839).
@@ -2743,10 +2764,12 @@ export const DEFAULT_CONFIG: AppConfig = {
       waitBelow: 0,
       waitMinutes: 2,
       ignoreWait: false,
+      manageParty: true,
       ignoreParty: false,
       askHealth: true,
       parSeconds: 0,
       parAfterRound: false,
+      parEveryRounds: 5,
       relayPortals: true,
       regroupMinutes: 5,
       helpWithDoors: false
@@ -4243,6 +4266,7 @@ function normalizeCures(value: unknown): SpellsConfig['cures'] {
 export const PARTY_RANGES = {
   waitMinutes: [0, 120],
   parSeconds: [0, 3600],
+  parEveryRounds: [0, 20],
   regroupMinutes: [0, 60]
 } as const satisfies Partial<Record<keyof PartyConfig, readonly [number, number]>>;
 
@@ -4257,10 +4281,12 @@ function normalizeParty(value: unknown): PartyConfig {
     waitBelow: fraction(raw['waitBelow'], d.waitBelow),
     waitMinutes: int(raw['waitMinutes'], d.waitMinutes, ...PARTY_RANGES.waitMinutes),
     ignoreWait: bool(raw['ignoreWait'], d.ignoreWait),
+    manageParty: bool(raw['manageParty'], d.manageParty),
     ignoreParty: bool(raw['ignoreParty'], d.ignoreParty),
     askHealth: bool(raw['askHealth'], d.askHealth),
     parSeconds: int(raw['parSeconds'], d.parSeconds, ...PARTY_RANGES.parSeconds),
     parAfterRound: bool(raw['parAfterRound'], d.parAfterRound),
+    parEveryRounds: int(raw['parEveryRounds'], d.parEveryRounds, ...PARTY_RANGES.parEveryRounds),
     relayPortals: bool(raw['relayPortals'], d.relayPortals),
     regroupMinutes: int(raw['regroupMinutes'], d.regroupMinutes, ...PARTY_RANGES.regroupMinutes),
     helpWithDoors: bool(raw['helpWithDoors'], d.helpWithDoors)
@@ -4420,6 +4446,39 @@ export function stillFor(
         resumeAtMana(health, marginWhenUncapped),
         held
       );
+}
+
+/**
+ * Leading under `party.manageParty`: the members standing here that this
+ * character's own floors hold the party for, keyed `health:<name>` and
+ * `mana:<name>` (lower case) to the name as the listing spells it. Under the
+ * floor to start, and once in `held`, under the resume line to stay:
+ * `stillFor`'s test on the party listing's shares. An unstated share holds
+ * nothing.
+ */
+export function membersStill(
+  state: CharacterState,
+  health: HealthConfig,
+  held: ReadonlyMap<string, string>,
+  marginWhenUncapped: number
+): Map<string, string> {
+  const here = standingHere(state);
+  const still = new Map<string, string>();
+  for (const member of joinedMembers(state)) {
+    const name = member.name.toLowerCase();
+    if (!here.has(name)) continue;
+    const hp = `health:${name}`;
+    const resumeHp = resumeAtHealth(health, marginWhenUncapped);
+    if (holdsForVital(member.health, 1, health.restBelow, resumeHp, held.has(hp))) {
+      still.set(hp, member.name);
+    }
+    const mana = `mana:${name}`;
+    const resumeMana = resumeAtMana(health, marginWhenUncapped);
+    if (holdsForVital(member.mana, 1, health.restBelowMana, resumeMana, held.has(mana))) {
+      still.set(mana, member.name);
+    }
+  }
+  return still;
 }
 
 function resumeAt(below: number, to: number, marginWhenUncapped: number): number {

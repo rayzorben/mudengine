@@ -50,8 +50,8 @@
 import type { LoopProgress } from '../../shared/loops';
 import type { WalkProgress } from '../../shared/walk';
 import type { Block } from '../../shared/blocks';
-import { inAParty, leaderOf, partyMembers, type CharacterState } from '../../shared/character';
-import { stillFor, type AutomationConfig, type RemotesConfig } from '../../shared/config';
+import { inAParty, joinedMembers, partyMembers, type CharacterState } from '../../shared/character';
+import type { AutomationConfig, RemotesConfig } from '../../shared/config';
 import {
   EXTENDED_REMOTES,
   REMOTES,
@@ -81,6 +81,8 @@ import {
   parseRoomAddress,
   plainRemote,
   reachableBy,
+  readWaitReason,
+  walksOnThroughWait,
   type MoveAnswer,
   type PathReport,
   type RemoteCall,
@@ -109,6 +111,7 @@ import { restoreKit } from './restoreKit';
 import { InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
 import { LeaderDoors } from './LeaderDoors';
+import { FollowerPacing } from './FollowerPacing';
 import type { Direction, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
@@ -342,18 +345,7 @@ interface Outstanding {
   at: number;
 }
 
-/** Whether the leader this character follows is resting or meditating, by the party listing. */
-function leaderResting(state: CharacterState): boolean {
-  const doing = leaderOf(state)?.activity?.state;
-  return doing === 'resting' || doing === 'meditating';
-}
-
 export class Remotes implements SessionModule {
-  /** Whether this character was resting at the last state change. See `onCharacter`. */
-  private resting = false;
-  /** Whether this character's own walk stood still for each vital at the last state (`stillFor`). */
-  private readonly still = { health: false, mana: false };
-
   /** Questions sent and not yet answered, by player. See {@link Outstanding}. */
   private readonly asked = new Map<string, Outstanding>();
   /** The player's own `@path`, `@loop` and `@goto`, whose answers are said here. */
@@ -373,6 +365,7 @@ export class Remotes implements SessionModule {
   private readonly invites: InviteFollowUp;
   /** Picking or bashing a door the leader is failing to bash. See `LeaderDoors`. */
   private readonly leaderDoors: LeaderDoors;
+  private readonly pacing: FollowerPacing;
 
   constructor(
     private config: AutomationConfig,
@@ -399,6 +392,9 @@ export class Remotes implements SessionModule {
     this.leaderDoors = new LeaderDoors(config, queue, {
       notice: (message) => events.notice?.(message)
     });
+    this.pacing = new FollowerPacing(config, {
+      tell: (leader, name, state, argument) => void this.ask(leader, name, state, argument)
+    });
   }
 
   configure(config: AutomationConfig): void {
@@ -407,6 +403,7 @@ export class Remotes implements SessionModule {
     this.regroup.configure(config);
     this.invites.configure(config);
     this.leaderDoors.configure(config);
+    this.pacing.configure(config);
   }
 
   /** A walk's step is about to be queued: a portal's `@party` goes ahead of it. */
@@ -656,51 +653,13 @@ export class Remotes implements SessionModule {
     if (!settled && !this.asked.has(playerKey(who))) this.ask(who, 'version', state);
   }
 
-  /**
-   * Tells the party leader this character has stopped, and when it is ready.
-   *
-   * `@wait` and `@ok` are the pacing pair: a follower that has to sit down asks
-   * the leader to stop, and says so again when it can move. Sent on the
-   * **crossing** rather than on every status line, for the same reason a vitals
-   * alert is: a character resting for a minute is one message, not one every
-   * few hundred milliseconds.
-   *
-   * Only as a *follower*. A party leader that told itself to wait would be
-   * talking to nobody, and `party.following` is the field that says which this
-   * character is.
-   */
+  /** A follower's `@wait` and `@ok` are `FollowerPacing`'s; the rest is asked here. */
   onCharacter(state: CharacterState): void {
     this.regroup.onCharacter(state);
     this.invites.onCharacter(state);
     if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
     this.askForHeal(state);
-    const margin = tuning().loop.resumeMarginWhenUncapped;
-    for (const vital of ['health', 'mana'] as const) {
-      this.still[vital] = stillFor(
-        vital,
-        state.vitals,
-        this.config.health,
-        this.still[vital],
-        margin
-      );
-    }
-    /*
-     * Sitting down, or under the floors a walk of its own stands still at
-     * (`stillFor`, todo 831), in a fight or out of one: the leader waits for a
-     * follower that is hurt, whatever a particular walk would do. Not while the
-     * leader is resting itself: that rest is its own, and `restWithLeader`
-     * keeps the party with it.
-     */
-    const resting =
-      !leaderResting(state) &&
-      (state.vitals.resting || state.vitals.meditating || this.still.health || this.still.mana);
-    const was = this.resting;
-    this.resting = resting;
-    if (was === resting) return;
-    if (!this.config.enabled || !this.config.remotes.enabled) return;
-    const leader = state.party.following;
-    if (leader === null) return;
-    this.ask(leader, resting ? 'wait' : 'ok', state);
+    this.pacing.onCharacter(state);
   }
 
   /**
@@ -855,9 +814,7 @@ export class Remotes implements SessionModule {
 
   /** Forgotten with the connection: a fresh session has said nothing to anybody. */
   reset(): void {
-    this.resting = false;
-    this.still.health = false;
-    this.still.mana = false;
+    this.pacing.reset();
     this.asked.clear();
     this.answers.reset();
     this.askedForHealAt = null;
@@ -1482,6 +1439,11 @@ export class Remotes implements SessionModule {
           this.events.notice?.(t('automation.remotes.ignoredWait', { from }));
           return;
         }
+        // Leading under `manageParty`, health and mana are held to this character's own settings.
+        if (command.name === 'wait' && this.managesWait(from, command, state)) {
+          this.events.notice?.(t('automation.remotes.managedWait', { from }));
+          return;
+        }
         this.events.pace?.(from, command.name === 'ok');
         this.events.notice?.(
           command.name === 'ok'
@@ -1494,6 +1456,15 @@ export class Remotes implements SessionModule {
       default:
         return;
     }
+  }
+
+  /** Whether this leader walks on through `from`'s `@wait` (`walksOnThroughWait`). */
+  private managesWait(from: string, command: RemoteCall, state: CharacterState): boolean {
+    if (!this.config.party.manageParty || state.party.following !== null) return false;
+    const member = joinedMembers(state).find(
+      (entry) => entry.name.toLowerCase() === from.toLowerCase()
+    );
+    return walksOnThroughWait(member, readWaitReason(command.argument));
   }
 
   /**

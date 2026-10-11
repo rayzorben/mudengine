@@ -894,7 +894,7 @@ export const RULES: Rule[] = [
      * tracker keys its peer protocol on.
      */
     pattern:
-      /^(?<caster>You|[A-Z][\w'-]*) casts? (?<spell>[\w' -]+?) on (?<target>yourself|you|[A-Z][\w'-]*)(?:,? (?:for|healing|regenerating) (?<amount>\d+) (?:healing|damage))?[!.]$/
+      /^(?<caster>You|[A-Z][\w'-]*) casts? (?<spell>[\w' -]+?) on (?<target>yourself|you|[A-Z][\w'-]*)(?:,? (?<kind>for|healing|regenerating) (?<amount>\d+) (?:healing|damage))?[!.]$/
   },
   {
     /*
@@ -1051,6 +1051,15 @@ export const RULES: Rule[] = [
     type: 'mob-hits',
     pattern: /^(?<line>[a-z][^"]*?\b(?:you|your body)\b[^"]*?) for (?<damage>\d+) damage!/,
     named: true
+  },
+  {
+    /*
+     * Damage nobody swings, on somebody named first: `Brakkle is chilled for 1
+     * damage!` (Rayzor's log, 2026-10-10), `Kur is scorched for 14 damage!`
+     * (captures). The catch-all below read the victim as the attacker.
+     */
+    type: 'user-hits',
+    pattern: /^(?<target>[A-Z][\w'-]*) is (?<effect>[a-z]+) for (?<damage>\d+) damage!$/
   },
   {
     type: 'user-hits',

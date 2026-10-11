@@ -782,8 +782,13 @@ export class Travel implements SessionModule {
 
   /** Leading, whom the party waits for on their health. See `PartyWait.onCharacter`. */
   watchParty(state: CharacterState): void {
-    const { enabled, party } = this.automationConfig;
-    this.partyWait.onCharacter(state, enabled ? party.waitBelow : 0);
+    const { enabled, party, health } = this.automationConfig;
+    const managed = enabled && party.manageParty;
+    this.partyWait.onCharacter(
+      state,
+      enabled ? party.waitBelow : 0,
+      managed ? { health, marginWhenUncapped: tuning().loop.resumeMarginWhenUncapped } : null
+    );
   }
 
   /** The session is closing: nothing may walk on for a wait it held. */

@@ -47,7 +47,7 @@
  */
 
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
-import type { Stealth } from './character';
+import type { PartyMember, Stealth } from './character';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 export const REMOTE_NAMES = [
@@ -510,6 +510,61 @@ export function parseRemoteCall(message: string): RemoteCall | null {
     argument: argument === null || argument.length === 0 ? null : argument,
     raw: word
   };
+}
+
+/**
+ * Why a follower asks its leader to wait, said after `@wait` in brackets the
+ * way MegaMUD says it: `(HP's too low)`, `(Mana/Kai too low)`, `(blinded)` and
+ * `(can't move)` are in the captures and in `megamud.exe`'s strings, confusion
+ * included under `can't move` (captures/038). MegaMUD has no wording for
+ * poison, so `(poisoned)` is this client's. A leader reads the bracket with
+ * `readWaitReason`.
+ */
+export const WAIT_REASONS = ['health', 'mana', 'blind', 'held', 'confused', 'poisoned'] as const;
+export type WaitReason = (typeof WAIT_REASONS)[number];
+
+const WAIT_WORDS: Readonly<Record<WaitReason, string>> = {
+  health: "HP's too low",
+  mana: 'Mana/Kai too low',
+  blind: 'blinded',
+  held: "can't move",
+  confused: "can't move",
+  poisoned: 'poisoned'
+};
+
+/** The bracket a `@wait` carries for this reason. */
+export function waitArgument(reason: WaitReason): string {
+  return `(${WAIT_WORDS[reason]})`;
+}
+
+/**
+ * What a `@wait` said about why: a reason, `unstated` for a bare `@wait`
+ * (mudengine before 0.8.6), or `other` for a bracket nobody here wrote.
+ */
+export function readWaitReason(argument: string | null): WaitReason | 'unstated' | 'other' {
+  if (argument === null) return 'unstated';
+  const said = argument
+    .replace(/^\(|\)$/g, '')
+    .trim()
+    .toLowerCase();
+  return WAIT_REASONS.find((reason) => WAIT_WORDS[reason].toLowerCase() === said) ?? 'other';
+}
+
+/**
+ * Whether a leader under `party.manageParty` walks on through this `@wait`:
+ * one about health or mana, or a bare one (mudengine before 0.8.6 said no
+ * reason, and waited only on vitals and the rest flag), from a member whose
+ * health the party listing states and whose row carries no flag this client
+ * cannot read. Everything else (a condition, a bracket nobody here wrote, a
+ * member the leader has no reading of) still stops the lap for its `@ok`.
+ */
+export function walksOnThroughWait(
+  member: PartyMember | undefined,
+  reason: ReturnType<typeof readWaitReason>
+): boolean {
+  if (reason !== 'health' && reason !== 'mana' && reason !== 'unstated') return false;
+  if (member === undefined || member.health === null) return false;
+  return member.activity?.state !== 'unknown';
 }
 
 /**

@@ -1,21 +1,33 @@
 /**
- * A leader waiting for its party (todo 831): the members who said `@wait` and
- * the ones under `party.waitBelow`, one stop of the lap for all of them, and
- * one clock that gives the wait up after `party.waitMinutes` (MegaMUD's
- * *If Leading Wait No Longer Than*). `Travel` owns the stop and the walk on;
- * this owns why the lap waits and for how long. See `mudengine-automation` ›
- * parts/remotes.md.
+ * A leader waiting for its party (todo 831): the members who said `@wait`, the
+ * ones under `party.waitBelow`, and under `party.manageParty` the ones under
+ * this character's own rest floors until they are back over its resume line,
+ * one stop of the lap for all of them, and one clock that gives the wait up
+ * after `party.waitMinutes` (MegaMUD's *If Leading Wait No Longer Than*).
+ * `Travel` owns the stop and the walk on; this owns why the lap waits and for
+ * how long. See `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
 import { membersBelow, type CharacterState } from '../../shared/character';
+import { membersStill, type HealthConfig } from '../../shared/config';
 import type { LoopProgress } from '../../shared/loops';
 
 /**
- * Why the party waits for a member: it said `@wait`, or its health is under
- * `party.waitBelow`. Kept apart so a member's `@ok` does not end a wait its
- * health still asks for.
+ * Why the party waits for a member: it said `@wait`, its health is under
+ * `party.waitBelow` (`hurt`), or it is under this character's own rest floors
+ * (`low`, `manageParty`). Kept apart so a member's `@ok` does not end a wait
+ * its health still asks for.
  */
-export type PaceReason = 'asked' | 'hurt';
+export type PaceReason = 'asked' | 'hurt' | 'low';
+
+/** A wait that comes and goes with a member's bar, not with what it said. */
+const BAR_REASONS = ['hurt', 'low'] as const satisfies readonly PaceReason[];
+
+/** The leader's own floors, when it holds the party to them (`party.manageParty`). */
+export interface ManagedFloors {
+  health: HealthConfig;
+  marginWhenUncapped: number;
+}
 
 export interface PartyWaitMoves {
   /** Stop the running lap, saying `why`; false where no lap was running. */
@@ -36,6 +48,8 @@ export class PartyWait {
   private paused = false;
   /** Hurt members a wait gave up on, until they are over the line or gone (`giveUp`). */
   private readonly givenUp = new Set<string>();
+  /** The members' vitals held under `manageParty`, as `membersStill` keys them. */
+  private still: ReadonlyMap<string, string> = new Map();
   private timer: NodeJS.Timeout | null = null;
 
   constructor(private readonly moves: PartyWaitMoves) {}
@@ -46,19 +60,33 @@ export class PartyWait {
   }
 
   /**
-   * Leading, the members here under `waitBelow`, re-read from every state
-   * (MegaMUD's *Wait For Party Members*): a hurt member is a reason to wait,
-   * as its `@wait` is, and a lap started while one is still hurt stops for it.
+   * Leading, the members here under `waitBelow`, and under `managed` the ones
+   * this character's own floors hold for, re-read from every state (MegaMUD's
+   * *Wait For Party Members*): a member under the line is a reason to wait, as
+   * its `@wait` is, and a lap started while one is still under it stops for it.
    */
-  onCharacter(state: CharacterState, waitBelow: number): void {
-    const hurt = state.party.following === null ? membersBelow(state, waitBelow) : [];
-    const now = new Set(hurt.map((name) => `hurt:${name.toLowerCase()}`));
+  onCharacter(state: CharacterState, waitBelow: number, managed: ManagedFloors | null): void {
+    const leading = state.party.following === null;
+    this.still =
+      leading && managed !== null
+        ? membersStill(state, managed.health, this.still, managed.marginWhenUncapped)
+        : new Map();
+    const low = [...new Set(this.still.values())];
+    this.track('hurt', leading ? membersBelow(state, waitBelow) : []);
+    this.track('low', low);
+  }
+
+  /** The members under one bar reason now: a wait for each, an end for each no longer under it. */
+  private track(why: (typeof BAR_REASONS)[number], names: string[]): void {
+    const now = new Set(names.map((name) => `${why}:${name.toLowerCase()}`));
     for (const [key, name] of [...this.waiting]) {
-      if (key.startsWith('hurt:') && !now.has(key)) this.pace(name, true, 'hurt');
+      if (key.startsWith(`${why}:`) && !now.has(key)) this.pace(name, true, why);
     }
-    for (const key of [...this.givenUp]) if (!now.has(key)) this.givenUp.delete(key);
-    for (const name of hurt) {
-      if (!this.givenUp.has(`hurt:${name.toLowerCase()}`)) this.pace(name, false, 'hurt');
+    for (const key of [...this.givenUp]) {
+      if (key.startsWith(`${why}:`) && !now.has(key)) this.givenUp.delete(key);
+    }
+    for (const name of names) {
+      if (!this.givenUp.has(`${why}:${name.toLowerCase()}`)) this.pace(name, false, why);
     }
   }
 
@@ -67,10 +95,7 @@ export class PartyWait {
     const key = `${why}:${who.toLowerCase()}`;
     if (!ready) {
       this.waiting.set(key, who);
-      const said =
-        why === 'hurt'
-          ? t('session.loop.pausedForHealth', { who })
-          : t('session.loop.pausedForRemote', { who });
+      const said = pausedSentence(why, who);
       if (this.paused || !this.moves.pauseLap(said)) return;
       this.paused = true;
       this.arm();
@@ -104,13 +129,14 @@ export class PartyWait {
   forget(): void {
     this.waiting.clear();
     this.givenUp.clear();
+    this.still = new Map();
     this.end();
   }
 
   /** The hurt members waited for now are not waited for again until they recover. */
   private giveUpOnHurt(): void {
     for (const key of [...this.waiting.keys()]) {
-      if (!key.startsWith('hurt:')) continue;
+      if (!BAR_REASONS.some((why) => key.startsWith(`${why}:`))) continue;
       this.givenUp.add(key);
       this.waiting.delete(key);
     }
@@ -133,5 +159,21 @@ export class PartyWait {
     this.paused = false;
     this.moves.notice(t('session.loop.partyWaitGaveUp', { minutes, who: who.join(', ') }));
     if (this.moves.lapStopped()) this.moves.resumeLap(who[0] ?? '');
+  }
+}
+
+/** What the lap says on stopping for a member, by why. */
+function pausedSentence(why: PaceReason, who: string): string {
+  switch (why) {
+    case 'asked':
+      return t('session.loop.pausedForRemote', { who });
+    case 'hurt':
+      return t('session.loop.pausedForHealth', { who });
+    case 'low':
+      return t('session.loop.pausedForRest', { who });
+    default: {
+      const unreachable: never = why;
+      return unreachable;
+    }
   }
 }

@@ -2,12 +2,14 @@
  * The party's volunteered facts kept current across one block, read off the
  * transition from the tracker's commit point rather than from each case: a
  * member's fight ends with its monster (`fightsStillHere`), and a member seen
- * acting is no longer resting (`upFromRest`). `mudengine-wire` ›
+ * acting is no longer resting (`upFromRest`), and a blow or heal on a member
+ * moves its bar (`withMemberBars`). `mudengine-wire` ›
  * `parts/character.md` › *The party roster*.
  */
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import { fightsStillHere } from './engagements';
+import { withMemberBars } from './memberBars';
 import { upFromRest } from './presence';
 
 export function keepPartyCurrent(
@@ -21,7 +23,8 @@ export function keepPartyCurrent(
       ? after
       : fightsStillHere(before, after, moved);
   const acting = actors(before, after, block);
-  return acting.length === 0 ? fights : upFromRest(fights, acting);
+  const bars = withMemberBars(fights, block);
+  return acting.length === 0 ? bars : upFromRest(bars, acting);
 }
 
 /** Who this block showed doing something that stands a player up. */

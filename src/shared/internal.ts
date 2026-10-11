@@ -1854,6 +1854,13 @@ const TUNING_DEFAULTS = {
      */
     inviteAgainMs: 5_000,
     /**
+     * The share of a member's bar lost since the last party listing that asks
+     * for the next one on this round (`party.parEveryRounds`). Half of it asks
+     * half as many rounds sooner. The user's ask (2026-10-10): the more damage,
+     * the sooner `par`, so a heal is cast on the bar as it is.
+     */
+    parAtLoss: 0.25,
+    /**
      * The longest line the server keeps: its `TGSModule` appends a typed
      * character only while the line is under 255 and drops the rest
      * (GreaterMUD source, `TGSModule.cs:299`). A `@loop` or `@goto` answer
