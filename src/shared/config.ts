@@ -2299,6 +2299,8 @@ export interface PartyConfig {
   manageParty: boolean;
   /** Following, refuse the leader's `@party <command>` (`IgnoreParty`). */
   ignoreParty: boolean;
+  /** Leading, say `@panic!` before the low-health teleport (`SendPanic`; `panicCall`). */
+  sayPanic: boolean;
   /** Ask a member for `@health` when they join (`AskHealth`). */
   askHealth: boolean;
   /**
@@ -2766,6 +2768,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       ignoreWait: false,
       manageParty: true,
       ignoreParty: false,
+      sayPanic: true,
       askHealth: true,
       parSeconds: 0,
       parAfterRound: false,
@@ -4285,6 +4288,7 @@ function normalizeParty(value: unknown): PartyConfig {
     ignoreWait: bool(raw['ignoreWait'], d.ignoreWait),
     manageParty: bool(raw['manageParty'], d.manageParty),
     ignoreParty: bool(raw['ignoreParty'], d.ignoreParty),
+    sayPanic: bool(raw['sayPanic'], d.sayPanic),
     askHealth: bool(raw['askHealth'], d.askHealth),
     parSeconds: int(raw['parSeconds'], d.parSeconds, ...PARTY_RANGES.parSeconds),
     parAfterRound: bool(raw['parAfterRound'], d.parAfterRound),

@@ -932,6 +932,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // On unless said off, as it ships.
       manageParty: party['manageParty'] !== false,
       ignoreParty: party['ignoreParty'] === true,
+      // On unless said off, as it ships.
+      sayPanic: party['sayPanic'] !== false,
       // On unless said off: it is what the client has always done.
       askHealth: party['askHealth'] !== false,
       parSeconds: clamp(

@@ -741,6 +741,7 @@ describe('following somebody', () => {
       ignoreWait: false,
       manageParty: true,
       ignoreParty: false,
+      sayPanic: true,
       askHealth: true,
       parSeconds: 0,
       parAfterRound: false,

@@ -140,7 +140,7 @@ describe('healing by a number', () => {
     const auto = make(
       spells({ heal: 'way of the swan', healParty: true, healPartyWith: 'minor healing' })
     );
-    auto.onCharacter(state({ hp: 40 }, [member('Yang', 0.3)]));
+    auto.onCharacter(state({ hp: 30 }, [member('Yang', 0.4)]));
     drain();
     expect(sent).toEqual(['way of the swan']);
 
@@ -149,6 +149,34 @@ describe('healing by a number', () => {
     auto.onCharacter(state({ hp: 100 }, [member('Yang', 0.3)]));
     drain();
     expect(sent).toEqual(['minor healing Yang']);
+  });
+
+  /* Todo 61: the lowest bar first, this character's own included. */
+  describe('the lowest bar first', () => {
+    const healer = () =>
+      make(spells({ heal: 'way of the swan', healParty: true, healPartyWith: 'minor healing' }));
+
+    it('heals a member lower than this character before this character', () => {
+      healer().onCharacter(state({ hp: 40 }, [member('Yang', 0.3)]));
+      drain();
+      expect(sent).toEqual(['minor healing Yang']);
+    });
+
+    it('heals this character first at the same share or lower', () => {
+      healer().onCharacter(state({ hp: 30 }, [member('Yang', 0.3)]));
+      drain();
+      expect(sent).toEqual(['way of the swan']);
+    });
+
+    it('heals the lowest member first, whatever order the listing prints', () => {
+      const auto = healer();
+      auto.onCharacter(state({}, [member('Brok', 0.45), member('Yang', 0.2), member('Soul', null)]));
+      drain();
+      // Yang mended past any ceiling, so Brok is the one left under the floor.
+      auto.onCharacter(state({}, [member('Brok', 0.45), member('Yang', 1), member('Soul', null)]));
+      drain();
+      expect(sent).toEqual(['minor healing Yang', 'minor healing Brok']);
+    });
   });
 
   it('heals nobody in the party until a party spell is named', () => {

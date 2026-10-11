@@ -15,8 +15,9 @@
 import { canPayFor } from './mana';
 import { countMobs, countThreats } from './RuleEngine';
 import { DrainWhenHurt } from './DrainWhenHurt';
+import { killCasting } from './killCasting';
+import { SpellHold } from './SpellHold';
 import { t } from '../app/i18n';
-import { tuning } from '../app/tuning';
 import { castAimedAt } from '../../shared/aim';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
@@ -24,17 +25,18 @@ import type { SpellsConfig } from '../../shared/config';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import { isBanded, mobRuleFor, type MobCast, type MobRule } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
-import type { RealmFamily } from '../../shared/realm';
 import { resolveSpell, sameSpell, spellCost, spellingsOf } from '../../shared/spellcraft';
 import { spellKey } from '../../shared/spell-messages';
 import { spellReaches } from '../../shared/spellReach';
 import {
   chooseAttackSpell,
   keptNoEffect,
+  spellTargetOf,
+  type NoEffectOn,
   type SpellChoice,
   type SpellChoiceRefusal
 } from '../../shared/spellchoice';
-import type { ProwessClass } from '../../shared/prowess';
+import type { FightingClass } from '../../shared/prowess';
 import { prowessSheetOf } from '../../shared/verdict';
 import { mobKey, type WorldSpell } from '../../shared/world';
 
@@ -56,7 +58,10 @@ export interface Proposal {
 export interface SpellTarget {
   name: string;
   entity: MobEntity | null;
-  /** What the fight has left of it, where a blow or a look has said. */
+  /**
+   * Hit points believed left: what the fight has left of it (`healthLeft`),
+   * else the realm's figure for one not yet hit; null unknown.
+   */
   remaining: number | null;
 }
 
@@ -144,12 +149,14 @@ export class AttackSpells {
   private rules: readonly MobRule[] = [];
   /** Whether the drain spells stand in while hurt, and which: asked, never decided here. */
   private readonly drain: DrainWhenHurt;
+  /** Whether the swing or the next monster serves better than the spell this round (todo 54). */
+  private readonly hold: SpellHold;
 
   constructor(
     private spells: SpellsConfig,
     private readonly events: AttackSpellEvents,
     private readonly realmSpell: (name: string) => WorldSpell | null,
-    private readonly realmClass: () => ProwessClass & { family: RealmFamily | null },
+    private readonly realmClass: () => FightingClass,
     /** What this realm's wire taught before, kept past the connection: instant spells, and what each has no effect on. */
     private readonly realmLore: AttackSpellLore = NO_ATTACK_SPELL_LORE,
     realmSpellById: (id: number) => WorldSpell | null = () => null
@@ -159,6 +166,12 @@ export class AttackSpells {
       (message) => events.notice?.(message),
       realmSpell,
       realmSpellById
+    );
+    this.hold = new SpellHold(
+      (message) => events.notice?.(message),
+      realmSpell,
+      realmClass,
+      (spell, monster) => realmLore.hasNoEffect(spell, monster)
     );
   }
 
@@ -185,6 +198,7 @@ export class AttackSpells {
     this.repeating = null;
     this.awaiting = null;
     this.bookFor = null;
+    this.hold.fightEnded();
     this.ineffective.clear();
     this.casts.clear();
   }
@@ -240,10 +254,11 @@ export class AttackSpells {
   /**
    * The spell to open a fight on `target` with, in place of the attack verb,
    * or null. Never the area spell: a bare cast names nobody for the
-   * engagement to bind, and the crowd is the round's to answer.
+   * engagement to bind, and the crowd is the round's to answer. `swing` is
+   * the verb the round would swing, empty where no swing lands (`SpellHold`).
    */
-  opening(state: CharacterState, target: SpellTarget, why: string): Proposal | null {
-    const wanted = this.wanted(state, target, true);
+  opening(state: CharacterState, target: SpellTarget, why: string, swing: string): Proposal | null {
+    const wanted = this.wanted(state, target, true, swing);
     if (wanted === null) return null;
     return {
       command: `${wanted.word} ${target.name}`,
@@ -258,13 +273,19 @@ export class AttackSpells {
    * refused, capped or past what the pool pays for (`DoMagicRound` then
    * casts nothing and the character stands in the fight doing nothing). An
    * instant spell repeats nothing, so it is cast each round it is wanted; and
-   * a spell the player cast is theirs, left alone either way.
+   * a spell the player cast is theirs, left alone either way. `swing` is
+   * `melee` where it lands and empty where it does not (`SpellHold`).
    */
-  change(state: CharacterState, target: SpellTarget, melee: string): Proposal | null {
+  change(
+    state: CharacterState,
+    target: SpellTarget,
+    melee: string,
+    swing: string
+  ): Proposal | null {
     if (this.playerCasting) return null;
     const repeating = this.repeating;
     const book = state.spellbook;
-    const wanted = this.wanted(state, target, false);
+    const wanted = this.wanted(state, target, false, swing);
     if (wanted !== null) {
       const instant = this.isInstant(wanted.spell, book);
       if (
@@ -454,9 +475,16 @@ export class AttackSpells {
    * then the room spell when the fight is crowded enough, then the derived or
    * typed spell. Each is passed over once refused on this monster, capped, or
    * beyond the pool, and a row's spell spent is not cast again by the path
-   * behind it.
+   * behind it. A single-target spell is held back for a round of `swing`
+   * where `SpellHold` says so (todo 54); a drain and the room spell are not,
+   * since one mends the character and the other is for the rest.
    */
-  private wanted(state: CharacterState, target: SpellTarget, opening: boolean): Wanted | null {
+  private wanted(
+    state: CharacterState,
+    target: SpellTarget,
+    opening: boolean,
+    swing: string
+  ): Wanted | null {
     this.book = state.spellbook;
     // The refusals are about the monster cast at, the one about to be opened on included.
     this.onTarget(target.name);
@@ -495,12 +523,14 @@ export class AttackSpells {
       }
     }
 
+    const held = this.hold.of(state, target, swing, this.rules, this.spells.minMana);
     const row = mobRuleFor(this.rules, target.name);
     const own: MobCast | undefined = row !== undefined && isBanded(row) ? row.cast : undefined;
     const spent = own !== undefined && !this.usable(own.spell, own.times);
     if (
       own !== undefined &&
       !spent &&
+      held === null &&
       above(this.spells.minMana) &&
       !this.ruledOut(own.spell, target)
     ) {
@@ -522,6 +552,15 @@ export class AttackSpells {
     if (room !== null) return room;
 
     if (!above(this.spells.minMana)) return null;
+    if (held !== null) {
+      // Said only where a spell would have gone: the row's, the chosen or the typed one.
+      const wouldCast =
+        (own !== undefined && !spent) ||
+        this.spells.autoChoose ||
+        this.spells.attack.trim().length > 0;
+      if (wouldCast) this.hold.say(held, target.name, swing);
+      return null;
+    }
     // *Auto Choose Best Spell*: the round spell is derived, not typed (todo 09).
     if (this.spells.autoChoose) {
       const chosen = this.chosenSpell(state, target, passedOver);
@@ -644,9 +683,8 @@ export class AttackSpells {
         excluded.add(spell.name);
       }
     }
-    const kept = keptNoEffect(state.spellbook ?? [], target.name, (s, m) =>
-      this.realmLore.hasNoEffect(s, m)
-    );
+    const noEffectOn: NoEffectOn = (spell, monster) => this.realmLore.hasNoEffect(spell, monster);
+    const kept = keptNoEffect(state.spellbook ?? [], target.name, noEffectOn);
     for (const name of kept) noEffect.add(name);
     const book =
       only === undefined ? state.spellbook : (state.spellbook?.filter((s) => only(s.name)) ?? null);
@@ -654,22 +692,17 @@ export class AttackSpells {
       book === null
         ? { book: null }
         : {
-            book,
-            realm: this.realmSpell,
-            level: state.progress.level,
-            mana: state.vitals.mana,
-            sheet: prowessSheetOf(state, { combat, magery, crits }),
-            family,
-            pool: state.vitals.manaType,
-            target: {
-              remaining: target.remaining,
-              magicRes: target.entity?.magicResist ?? null,
-              abilities: target.entity?.abilities,
-              nature: target.entity?.nature
-            },
+            ...killCasting(
+              state,
+              book,
+              this.realmSpell,
+              prowessSheetOf(state, { combat, magery, crits }),
+              family,
+              noEffectOn
+            ),
+            target: spellTargetOf(target.entity, target.remaining),
             excluded,
-            noEffect,
-            killConfidence: tuning().spells.killConfidence
+            noEffect
           }
     );
     if (choice.chosen === null) {

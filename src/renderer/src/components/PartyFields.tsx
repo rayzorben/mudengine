@@ -45,6 +45,7 @@ export default function PartyFields({
       | 'defendParty'
       | 'restWithLeader'
       | 'ignoreParty'
+      | 'sayPanic'
       | 'ignoreWait'
       | 'manageParty'
       | 'parAfterRound'
@@ -91,6 +92,12 @@ export default function PartyFields({
           t('settings.party.ignorePartyLabel'),
           t('settings.party.ignorePartyHint'),
           'ignore-party'
+        )}
+        {check(
+          'sayPanic',
+          t('settings.party.sayPanicLabel'),
+          t('settings.party.sayPanicHint'),
+          'say-panic'
         )}
         <div className="settings-inline">
           <NumberField

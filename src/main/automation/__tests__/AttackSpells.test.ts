@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { NO_EFFECTS_KEPT, type InstantSpellLore } from '../../../shared/lore';
 import type { RealmFamily } from '../../../shared/realm';
+import { statedBasis } from '../../../shared/stated';
 import type { WorldSpell } from '../../../shared/world';
 
 function block(type: string, groups: Record<string, string> = {}): Block {
@@ -144,9 +145,9 @@ describe('the name an instant spell is kept under for the realm', () => {
     const state = { ...EMPTY_CHARACTER, spellbook: book };
     // The round's cast of a spell held instant, read back and said.
     spells.heard(block('status-line'), state);
-    expect(spells.change(state, { name: 'kobold', entity: null, remaining: null }, 'a')).not.toBe(
-      null
-    );
+    expect(
+      spells.change(state, { name: 'kobold', entity: null, remaining: null }, 'a', 'a')
+    ).not.toBe(null);
     expect(notices).toContain(t('automation.combat.spellInstantRemembered', { spell: 'word' }));
     spells.sent(cast('word'));
     spells.heard(block('combat-status', { status: 'Off' }), state);
@@ -278,25 +279,25 @@ describe('a spell the world database says has no effect', () => {
 
   it('opens with the attack verb rather than the configured spell, and says why', () => {
     const { spells, notices } = unit('');
-    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     expect(notices).toEqual([
       t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'big zombie' })
     ]);
     // Said once for the fight, however often it is asked.
-    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     expect(notices).toHaveLength(1);
   });
 
   it('says it once per monster for the connection', () => {
     const { spells, notices } = unit('');
-    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     spells.fightEnded();
     // Still ruled out on the next fight with one, without saying it again.
-    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     expect(notices).toHaveLength(1);
     // Another monster is said once in its turn.
     expect(
-      spells.opening(fighting, { ...zombie(true), name: 'small zombie' }, 'in the room')
+      spells.opening(fighting, { ...zombie(true), name: 'small zombie' }, 'in the room', 'a')
     ).toBeNull();
     expect(notices).toEqual([
       t('automation.combat.spellNoEffectKnown', { spell: 'harm', target: 'big zombie' }),
@@ -304,21 +305,168 @@ describe('a spell the world database says has no effect', () => {
     ]);
     // A new connection says it again.
     spells.reset();
-    expect(spells.opening(fighting, zombie(true), 'in the room')).toBeNull();
+    expect(spells.opening(fighting, zombie(true), 'in the room', 'a')).toBeNull();
     expect(notices).toHaveLength(3);
   });
 
   it('casts the fallback instead where one is set', () => {
     const { spells } = unit('hamm');
-    expect(spells.opening(fighting, zombie(true), 'in the room')?.command).toBe('hamm big zombie');
+    expect(spells.opening(fighting, zombie(true), 'in the room', 'a')?.command).toBe(
+      'hamm big zombie'
+    );
   });
 
   it('casts it where the rows disagree, and on the living (the control)', () => {
-    expect(unit('').spells.opening(fighting, zombie(null), 'in the room')?.command).toBe(
+    expect(unit('').spells.opening(fighting, zombie(null), 'in the room', 'a')?.command).toBe(
       'harm big zombie'
     );
-    expect(unit('').spells.opening(fighting, zombie(false), 'in the room')?.command).toBe(
+    expect(unit('').spells.opening(fighting, zombie(false), 'in the room', 'a')?.command).toBe(
       'harm big zombie'
     );
+  });
+});
+
+/*
+ * Todo 54: the server runs one attack type a round, so a spell cast at a
+ * monster the round's melee is expected to finish is mana spent on a kill the
+ * swing makes anyway.
+ */
+describe('a spell held back while the melee round is expected to finish the monster', () => {
+  const harm: WorldSpell = { id: 12, name: 'harm', level: 1, targets: 8, power: [5, 10] };
+  const base: CharacterState = {
+    ...EMPTY_CHARACTER,
+    spellbook: [{ name: 'harm', short: 'harm', level: 1, cost: 1 }],
+    vitals: { ...EMPTY_CHARACTER.vitals, mana: 20, manaMax: 22, manaType: 'MA' }
+  };
+  // `st a`'s row for the plain attack: two blows of 10 that every armour lets through.
+  const armed: CharacterState = {
+    ...base,
+    stated: {
+      against: null,
+      healthRegen: null,
+      restingRegen: null,
+      baseManaRegen: null,
+      manaRegen: null,
+      rounds: { attack: { swings: 2, accuracy: 200, min: 10, max: 10, crits: null } },
+      basis: statedBasis(base)
+    }
+  };
+  const kobold = (remaining: number | null) => ({ name: 'kobold', entity: null, remaining });
+  const unit = (family: RealmFamily | null = 'greatermud') => {
+    const notices: string[] = [];
+    const spells = new AttackSpells(
+      { ...DEFAULT_CONFIG.automation.spells, attack: 'harm', autoChoose: false, minMana: 0 },
+      { notice: (message) => notices.push(message) },
+      (name) => (name === 'harm' ? harm : null),
+      () => ({ combat: null, magery: null, crits: 0, family })
+    );
+    return { spells, notices };
+  };
+
+  it('opens with the attack verb on a monster one round finishes, and says why once', () => {
+    const { spells, notices } = unit();
+    expect(spells.opening(armed, kobold(5), 'in the room', 'a')).toBeNull();
+    expect(spells.opening(armed, kobold(5), 'in the room', 'a')).toBeNull();
+    expect(notesOf(notices, 'automation.spells.heldForMelee')).toHaveLength(1);
+  });
+
+  it('swaps the repeated spell for the attack verb once the monster is that low', () => {
+    const { spells } = unit();
+    spells.sent(cast('harm'));
+    expect(spells.change(armed, kobold(5), 'a', 'a')?.command).toBe('a kobold');
+  });
+
+  it('casts at a monster the round leaves standing (the control)', () => {
+    const { spells, notices } = unit();
+    expect(spells.opening(armed, kobold(500), 'in the room', 'a')?.command).toBe('harm kobold');
+    expect(notesOf(notices, 'automation.spells.heldForMelee')).toEqual([]);
+  });
+
+  it('casts where the health, the swing or the verb is unknown', () => {
+    expect(unit().spells.opening(armed, kobold(null), 'in the room', 'a')?.command).toBe(
+      'harm kobold'
+    );
+    expect(unit().spells.opening(base, kobold(5), 'in the room', 'a')?.command).toBe('harm kobold');
+    expect(unit('majormud').spells.opening(base, kobold(5), 'in the room', 'a')?.command).toBe(
+      'harm kobold'
+    );
+    expect(unit().spells.opening(armed, kobold(5), 'in the room', '')?.command).toBe('harm kobold');
+  });
+});
+
+/*
+ * Todo 54, the second half: a monster worth less a point of mana than the
+ * next one the room lists, where the pool cannot pay for both kills, is fought
+ * with the attack verb so the mana goes on the better one.
+ */
+describe('a spell held back for a monster worth more of the mana', () => {
+  const harm: WorldSpell = { id: 12, name: 'harm', level: 1, targets: 8, power: [5, 10] };
+  const mob = (name: string, experience: number, hp: number): RoomOccupant => ({
+    name,
+    kind: 'mob',
+    disposition: 'hostile',
+    uncertain: false,
+    costly: 'never',
+    charmed: false,
+    hidden: false,
+    free: false,
+    mob: {
+      name,
+      rawName: name,
+      source: 'hybrid',
+      charmed: false,
+      disposition: 'hostile',
+      uncertain: false,
+      costly: 'never',
+      experience,
+      hp
+    }
+  });
+  const rat = mob('rat', 5, 40);
+  const at = (mana: number, ...others: RoomOccupant[]): CharacterState => ({
+    ...EMPTY_CHARACTER,
+    progress: { ...EMPTY_CHARACTER.progress, level: 5 },
+    spellbook: [{ name: 'harm', short: 'harm', level: 1, cost: 2 }],
+    vitals: { ...EMPTY_CHARACTER.vitals, mana, manaMax: 100, manaType: 'MA' },
+    room: { ...EMPTY_CHARACTER.room, occupants: [rat, ...others] }
+  });
+  const target = { name: 'rat', entity: rat.mob ?? null, remaining: 40 };
+  const unit = () => {
+    const notices: string[] = [];
+    const spells = new AttackSpells(
+      { ...DEFAULT_CONFIG.automation.spells, attack: 'harm', autoChoose: false, minMana: 0 },
+      { notice: (message) => notices.push(message) },
+      (name) => (name === 'harm' ? harm : null),
+      () => ({ combat: null, magery: null, crits: 0, family: 'greatermud' })
+    );
+    return { spells, notices };
+  };
+
+  it('fights with the attack verb when the pool pays for one kill and the orc is worth more', () => {
+    const { spells, notices } = unit();
+    expect(spells.opening(at(20, mob('orc', 500, 40)), target, 'in the room', 'a')).toBeNull();
+    expect(spells.opening(at(20, mob('orc', 500, 40)), target, 'in the room', 'a')).toBeNull();
+    expect(notesOf(notices, 'automation.spells.heldForWorth')).toHaveLength(1);
+  });
+
+  it('casts where the pool pays for both, or nothing better stands here (the controls)', () => {
+    const rich = unit();
+    expect(
+      rich.spells.opening(at(100, mob('orc', 500, 40)), target, 'in the room', 'a')?.command
+    ).toBe('harm rat');
+    const alone = unit();
+    expect(
+      alone.spells.opening(at(20, mob('mouse', 1, 40)), target, 'in the room', 'a')?.command
+    ).toBe('harm rat');
+    expect(notesOf(alone.notices, 'automation.spells.heldForWorth')).toEqual([]);
+  });
+
+  it('casts where no swing lands, or the mana is unknown', () => {
+    expect(
+      unit().spells.opening(at(20, mob('orc', 500, 40)), target, 'in the room', '')?.command
+    ).toBe('harm rat');
+    const known = at(20, mob('orc', 500, 40));
+    const blind = { ...known, vitals: { ...known.vitals, mana: null } };
+    expect(unit().spells.opening(blind, target, 'in the room', 'a')?.command).toBe('harm rat');
   });
 });
