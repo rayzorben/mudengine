@@ -10369,7 +10369,7 @@ describe('what was in each worn slot', () => {
     const { tracker, feed } = feeder();
     listing(feed, 'padded helm (Head), rope');
     expect(tracker.current.loadout).toEqual([
-      { slot: 'Head', item: 'padded helm', at: expect.any(Number) }
+      { slot: 'Head', item: 'padded helm', at: expect.any(Number), locked: null }
     ]);
   });
 
@@ -10387,7 +10387,7 @@ describe('what was in each worn slot', () => {
     listing(feed, 'padded helm (Head)');
     listing(feed, 'iron helm (Head), padded helm');
     expect(tracker.current.loadout).toEqual([
-      { slot: 'Head', item: 'iron helm', at: expect.any(Number) }
+      { slot: 'Head', item: 'iron helm', at: expect.any(Number), locked: null }
     ]);
   });
 
@@ -10402,7 +10402,7 @@ describe('what was in each worn slot', () => {
    * be seeded like the first one.
    */
   it('is restored from the record on a new connection', () => {
-    const kept = [{ slot: 'Head', item: 'padded helm', at: 1_600_000_000_000 }];
+    const kept = [{ slot: 'Head', item: 'padded helm', at: 1_600_000_000_000, locked: null }];
     const { tracker } = feeder();
 
     tracker.useBelongings({ ...NO_BELONGINGS, recallLoadout: () => kept });
@@ -10447,7 +10447,7 @@ describe('what was in each worn slot', () => {
       feed('You have removed large silvery cross.');
       feed('You are now wearing golden chalice.');
       expect(tracker.current.loadout).toEqual([
-        { slot: 'Off-Hand', item: 'golden chalice', at: expect.any(Number) }
+        { slot: 'Off-Hand', item: 'golden chalice', at: expect.any(Number), locked: null }
       ]);
       feed('You have removed golden chalice.');
       feed('You are now wearing large silvery cross.');
@@ -10455,7 +10455,7 @@ describe('what was in each worn slot', () => {
 
       const saved = JSON.parse(fs.readFileSync(file, 'utf8')) as { loadout: unknown };
       expect(saved.loadout).toEqual([
-        { slot: 'Off-Hand', item: 'large silvery cross', at: expect.any(Number) }
+        { slot: 'Off-Hand', item: 'large silvery cross', at: expect.any(Number), locked: null }
       ]);
 
       const next = feeder().tracker;

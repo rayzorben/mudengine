@@ -53,7 +53,8 @@ import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
 import { NO_BELONGINGS, type BelongingsSink, type KeptRoom } from '../../shared/belongings';
 import { bareName, WORN_SLOT } from '../../shared/items';
-import { learnLoadout } from '../../shared/gear';
+import { learnLoadout, type Loadout } from '../../shared/gear';
+import { freeLoadout, releaseSlots } from '../../shared/gearLocks';
 import { placeOf, withHidden, withTaken } from '../../shared/stash';
 import { isWoundBand } from '../../shared/wounds';
 import { FightTracker, playerDies } from './combat';
@@ -879,16 +880,11 @@ export class CharacterTracker {
     if (!idle) this.state = { ...base, tally, updatedAt: block.at };
     this.company.remember(known, block.type === 'room-exits');
     if (!next) return !idle;
-    /*
-     * What is worn, written down, from the one place a new state is committed
-     * (`company.remember`'s placement and reason: seventy-four cases can move
-     * an item, seventy-four chances to forget one). Only when the pack
-     * changed, as a status line carries none; an entry gained since the last
-     * `i` gets its realm row here too.
-     */
+    // What is worn, written down from the one commit point (`company.remember`'s
+    // reason), when the pack changed; a new entry gets its realm row here too.
     if (this.state.inventory.items !== before.inventory.items) {
       this.state = withJoinedItems(this.state, this.world);
-      this.rememberGear(block.at);
+      this.rememberGear(before.loadout, block.at);
     }
     if (this.state.inventory.items !== before.inventory.items || this.state.race !== before.race) {
       this.state = withSight(this.state, this.world);
@@ -938,19 +934,23 @@ export class CharacterTracker {
   }
 
   /**
-   * What was in each slot, kept for after a death takes it all off.
-   *
-   * `learnLoadout` returns what it was handed when nothing moved, so the
-   * common case — an item picked up, a coin dropped, anything that touches the
-   * pack without touching a slot — reaches the store as an identity and is
-   * written nowhere.
+   * What was in each slot, for after a death: the one writer, so a death's locks (`died`)
+   * and each item back (`freeLoadout`, todo 82) gate every listing; written when a slot moved.
    */
-  private rememberGear(at: number): void {
-    const before = this.state.loadout;
-    const after = learnLoadout(before, this.state.inventory.items, at);
-    if (after === before) return;
-    this.state = { ...this.state, loadout: after };
-    this.belongings.rememberLoadout(after);
+  private rememberGear(prior: Loadout, at: number): boolean {
+    const items = this.state.inventory.items;
+    const after = learnLoadout(freeLoadout(this.state.loadout, items), items, at);
+    if (after !== this.state.loadout) this.state = { ...this.state, loadout: after };
+    if (after !== prior) this.belongings.rememberLoadout(after);
+    return after !== prior;
+  }
+
+  /** The play allowance ran out on these slots (`GearLockWatch`): they learn again. */
+  releaseGearLocks(slots: readonly string[], at: number): boolean {
+    const prior = this.state.loadout;
+    const freed = releaseSlots(prior, slots);
+    if (freed !== prior) this.state = { ...this.state, loadout: freed };
+    return this.rememberGear(prior, at);
   }
 
   /**

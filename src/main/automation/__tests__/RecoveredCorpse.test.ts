@@ -22,9 +22,9 @@ function recovered(): CharacterState {
     phase: 'in-game',
     name: 'Probe',
     loadout: [
-      { slot: 'Weapon Hand', item: 'short sword', at: 1 },
-      { slot: 'Torso', item: 'leather armour', at: 1 },
-      { slot: 'Head', item: 'leather cap', at: 1 }
+      { slot: 'Weapon Hand', item: 'short sword', at: 1, locked: null },
+      { slot: 'Torso', item: 'leather armour', at: 1, locked: null },
+      { slot: 'Head', item: 'leather cap', at: 1, locked: null }
     ],
     inventory: {
       ...base.inventory,

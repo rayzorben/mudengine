@@ -316,6 +316,9 @@ notices:
     reequipOnRecover:
       many: 'Re-equip After Recover Corpse was added, on, to {count} files: {fileList}'
       one: 'Re-equip After Recover Corpse was added, on, to {fileList}'
+    gearLockHours:
+      many: 'Hold Gear After Death was added, at {hours} hours, to {count} files: {fileList}'
+      one: 'Hold Gear After Death was added, at {hours} hours, to {fileList}'
     markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -4038,6 +4041,10 @@ settings:
     reequipOnRecover: Re-equip After Recover Corpse
     reequipOnRecoverHint: When recover corpse puts your gear back in your inventory, it presses
       Re-equip Gear for you and says what did not come back.
+    gearLockHoursLabel: Hold Gear After Death (hours)
+    gearLockHoursHint: After a death, gear you wear before recovering the corpse is not saved, so
+      Re-equip Gear puts back what you died in. Each slot frees when its item is back in your
+      inventory. Only fighting and walking a route or loop count. 0 never keeps it.
     collectKeys: Pick Up a Key the Way Out Needs
     collectKeysHint: Only when the world data says an exit of the room needs it, your inventory does
       not show one, and it is on the floor here. A locked door with no key is a wall the router
@@ -5468,6 +5475,12 @@ automation:
   recoveredCorpse:
     reason: putting the gear from the corpse back on
     dressing: Putting your gear back on.
+  gearLocks:
+    held: 'Keeping the gear you died in for {slots}: anything else worn there before the corpse is
+      recovered is not saved. Each slot frees when its item is back in your inventory, or after
+      {minutes} more minutes of fighting and walking.'
+    released: 'The hours of play ran out before the corpse was recovered: what you wear in {slots}
+      is saved again.'
   stashFetch:
     reasonSearch: searching for what was hidden here
     going: 'Walking to {room} for {items} ({steps} steps).'

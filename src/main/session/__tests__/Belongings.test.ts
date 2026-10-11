@@ -213,7 +213,7 @@ describe('what the banks told this character', () => {
 });
 
 describe('what this character had on', () => {
-  const helm = { slot: 'Head', item: 'padded helm', at: 1_700_000_000_000 };
+  const helm = { slot: 'Head', item: 'padded helm', at: 1_700_000_000_000, locked: null };
 
   it('keeps a loadout and hands it back to the next session', () => {
     const first = new Belongings({ file, realm: REALM });
@@ -393,7 +393,7 @@ describe('what abil last summed', () => {
   it('is not written while it has never been read, so the absence round-trips', () => {
     const store = new Belongings({ file, realm: REALM });
     // Something else has to move, or nothing is written at all.
-    store.rememberLoadout([{ slot: 'Head', item: 'a leather cap', at: 1 }]);
+    store.rememberLoadout([{ slot: 'Head', item: 'a leather cap', at: 1, locked: null }]);
     store.close();
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).abilities).toBeUndefined();
     expect(new Belongings({ file, realm: REALM }).recallAbilities()).toBeNull();
@@ -577,7 +577,7 @@ describe('who the record is about', () => {
   it('throws the whole record away at the word, and only what is about a character', () => {
     const store = new Belongings({ file, realm: REALM });
     store.rememberIdentity(identity);
-    store.rememberLoadout([{ slot: 'Head', item: 'a leather cap', at: 1 }]);
+    store.rememberLoadout([{ slot: 'Head', item: 'a leather cap', at: 1, locked: null }]);
     store.rememberAbilities({ sums: { 126: 6 }, complete: true, at: 1 });
     expect(store.forget()).toBe(true);
     store.close();

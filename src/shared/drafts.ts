@@ -493,6 +493,8 @@ export interface ProfileDraft {
     recoverGearFloor: number;
     /** The gear back on after `recover corpse`. See `MovementConfig`. */
     reequipOnRecover: boolean;
+    /** Hours of play the saved gear is held after a death. See `MovementConfig`. */
+    gearLockHours: number;
     /** Conditions as waits, inverted: off waits the condition out. See `MovementConfig`. */
     walkWhileBlind: boolean;
     walkWhilePoisoned: boolean;
@@ -1059,6 +1061,13 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       ),
       // On unless it was turned off, as shipped, on `collectKeys`' rule below.
       reequipOnRecover: movement['reequipOnRecover'] !== false,
+      // The shipped hours when absent: a form that dropped it must not end the hold.
+      gearLockHours: clamp(
+        movement['gearLockHours'],
+        0,
+        48,
+        DEFAULT_CONFIG.automation.movement.gearLockHours
+      ),
       // The shipped default when the payload omits it, on the health block's
       // rule above: this one is on by default, and a form that failed to send
       // the field would silently switch it off.

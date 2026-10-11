@@ -39,7 +39,7 @@ const worn = (name: string, slot: string): CarriedItem => carried({ name, slot, 
 describe('learning what is in each slot', () => {
   it('records a listing worn items against their slots', () => {
     const after = learnLoadout([], [worn('padded helm', 'Head'), carried({ name: 'rope' })], NOW);
-    expect(after).toEqual([{ slot: 'Head', item: 'padded helm', at: NOW }]);
+    expect(after).toEqual([{ slot: 'Head', item: 'padded helm', at: NOW, locked: null }]);
   });
 
   /*
@@ -66,7 +66,7 @@ describe('learning what is in each slot', () => {
   it('replaces a slot when something else goes into it', () => {
     const held = learnLoadout([], [worn('padded helm', 'Head')], NOW);
     const after = learnLoadout(held, [worn('iron helm', 'Head')], NOW + 1000);
-    expect(after).toEqual([{ slot: 'Head', item: 'iron helm', at: NOW + 1000 }]);
+    expect(after).toEqual([{ slot: 'Head', item: 'iron helm', at: NOW + 1000, locked: null }]);
   });
 
   /* A listing restates every slot on every `i`; writing the file for one that
@@ -95,8 +95,8 @@ describe('learning what is in each slot', () => {
 
 describe('putting back what was on', () => {
   const loadout: Loadout = [
-    { slot: 'Head', item: 'padded helm', at: NOW },
-    { slot: 'Torso', item: 'padded vest', at: NOW }
+    { slot: 'Head', item: 'padded helm', at: NOW, locked: null },
+    { slot: 'Torso', item: 'padded vest', at: NOW, locked: null }
   ];
 
   it('wears what the pack holds and the character is not using', () => {
@@ -145,7 +145,8 @@ describe('putting back what was on', () => {
     const many: Loadout = Array.from({ length: 5 }, (_, at) => ({
       slot: `Slot${at}`,
       item: `item${at}`,
-      at: NOW
+      at: NOW,
+      locked: null
     }));
     const plan = restorePlan(
       many,
@@ -166,7 +167,7 @@ describe('putting back what was on', () => {
   /* The light is `AutoLight`'s (user, 2026-10-03): re-equipping a torch would
      light it in daylight. */
   describe('the readied light', () => {
-    const torch: Loadout = [{ slot: 'Readied', item: 'torch', at: NOW }];
+    const torch: Loadout = [{ slot: 'Readied', item: 'torch', at: NOW, locked: null }];
 
     it('is never worn by a re-equip', () => {
       const plan = restorePlan([...loadout, ...torch], [carried({ name: 'torch' })], 10);

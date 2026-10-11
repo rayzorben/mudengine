@@ -36,6 +36,7 @@ import { AutoKeys } from '../automation/AutoKeys';
 import { Supplies } from '../automation/Supplies';
 import { Remotes } from '../automation/Remotes';
 import { RecoveredCorpse } from '../automation/RecoveredCorpse';
+import { GearLockWatch } from '../automation/GearLockWatch';
 import { Afk } from '../automation/Afk';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
@@ -385,6 +386,8 @@ export class SessionManager {
   /** Going back for the kit after a death. See `GearRecovery`. */
   private readonly recoverGear: GearRecovery;
   private readonly corpse: RecoveredCorpse;
+  /** The saved gear held from a death until the corpse is recovered (todo 82). */
+  private readonly gearLocks: GearLockWatch;
   /** Going to collect the level when the experience is there — todo 18. */
   private readonly trainLevel: TrainErrand;
   /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
@@ -1078,6 +1081,12 @@ export class SessionManager {
       busy: escaping
     });
     this.corpse = new RecoveredCorpse(automation, this.queue, () => this.tracker.current, reports);
+    const releaseLocks = (slots: readonly string[], at: number): boolean => {
+      const freed = this.tracker.releaseGearLocks(slots, at);
+      if (freed) this.publishCharacter();
+      return freed;
+    };
+    this.gearLocks = new GearLockWatch(automation.movement, releaseLocks, reports);
     const held = () => this.errandHeld();
     const tripReports = { ...reports, gearTrip: sink.gearTrip?.bind(sink) };
     this.hostTrips = hostTrips(automation, this.queue, tripReports, { ...trip, busy: held });
@@ -1673,6 +1682,7 @@ export class SessionManager {
         configure: (a) => this.recoverGear.configure(a.movement, a.enabled)
       },
       { module: this.corpse, configure: (a) => this.corpse.configure(a) },
+      { module: this.gearLocks, configure: (a) => this.gearLocks.configure(a.movement) },
       { module: this.trainLevel, configure: (a) => this.trainLevel.configure(a.train, a.enabled) },
       { module: this.outgrown, configure: (a) => this.outgrown.configure(a.outgrown, a.enabled) },
       { module: this.hostTrips, configure: (a) => this.hostTrips.configure(a.enabled) },
@@ -2895,28 +2905,17 @@ export class SessionManager {
     if (changed) {
       const state = this.tracker.current;
       this.publishCharacter();
-      /*
-       * Walking out to the menu is a character *leaving*, and everything
-       * automated is about the one that was here. Before the modules below
-       * read the new state, because half of them would otherwise act once on
-       * a character that has gone.
-       */
+      // Walking out to the menu is a character leaving: said before the modules
+      // below read the state, or half of them act once on a character gone.
       this.noteRealmPhase(state);
-      /*
-       * Before anything automated reads the new state: a walk or a loop the
-       * player has just steered out from under stands down *now*, so the
-       * walker reports "you moved the character yourself" rather than the
-       * wrong-room stop it would reach a line later, which describes the
-       * symptom instead of what happened.
-       */
+      // A walk or loop the player steered out from under stands down now, so the
+      // walker says "you moved the character yourself", not a wrong-room stop.
       this.notePlayerSteering(state);
       this.restAway.noteRoom();
-      /*
-       * And what a lost connection left owed, before anything automated reads
-       * the state: the route is handed back to the walker and the loop's hold
-       * is let go here, so `walker.onCharacter` and `loops.onCharacter` below
-       * decide on the leg from the same line that placed the character.
-       */
+      // The saved gear's hold after a death: bookkeeping, under no switch (todo 82).
+      this.gearLocks.onCharacter(state);
+      // What a lost connection left owed, first: the route back to the walker and
+      // the loop's hold let go, so both decide on the line that placed the character.
       this.travel.pickUpAfterLoss(state);
       this.extensions.onCharacter(state);
       /*

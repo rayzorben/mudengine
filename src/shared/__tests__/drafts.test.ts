@@ -315,6 +315,8 @@ describe('a character', () => {
         recoverGearTries: 0,
         recoverGearFloor: 0,
         reequipOnRecover: true,
+        // Absent above, and the shipped hours (todo 82).
+        gearLockHours: 3,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,
@@ -430,6 +432,8 @@ describe('a character', () => {
         recoverGearTries: 0,
         recoverGearFloor: 0,
         reequipOnRecover: true,
+        // Absent above, and the shipped hours (todo 82).
+        gearLockHours: 3,
         walkWhileBlind: false,
         walkWhilePoisoned: false,
         walkWhileConfused: false,

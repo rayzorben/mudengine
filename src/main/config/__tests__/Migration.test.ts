@@ -7002,6 +7002,55 @@ describe('re-equipping after recover corpse is stated', () => {
   });
 });
 
+// The hours a death holds the saved gear (todo 82): after the re-equip switch, once.
+describe('the hours a death keeps the saved gear are stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-gear-lock-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the template hours after reequipOnRecover, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    recoverGear: false\n    recoverGearTries: 2\n    recoverGearFloor: 2\n    reequipOnRecover: true\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  movement:\n    gearLockHours: 1\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const movement = (parse(text).automation as Record<string, Record<string, unknown>>)[
+      'movement'
+    ]!;
+    const keys = Object.keys(movement);
+    expect(keys[keys.indexOf('reequipOnRecover') + 1]).toBe('gearLockHours');
+    expect(movement['gearLockHours']).toBe(3);
+    expect(fs.readFileSync(soul, 'utf8')).toContain('gearLockHours: 1');
+    expect(
+      notesOf(said, 'notices.migration.gearLockHours.one', 'notices.migration.gearLockHours.many')
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
 describe('how long logs are kept is stated', () => {
   let home: Home;
   let dir: string;

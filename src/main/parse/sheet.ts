@@ -30,6 +30,8 @@ import { readingOf, statlineMatcher, type StatlineReading } from '../../shared/s
 import type { BelongingsSink } from '../../shared/belongings';
 import { listsSpell, taughtBy, withSpell } from '../../shared/learning';
 import { bareName } from '../../shared/items';
+import { lockLoadout } from '../../shared/gearLocks';
+import { playedFor } from '../../shared/tally';
 import { readStatAll, statedBasis } from '../../shared/stated';
 import type { Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
@@ -218,6 +220,8 @@ export function died(s: CharacterState, at: number): CharacterState {
      * (2026-10-06, Vaelor's gear left in Slum Street without a word).
      */
     progress: { ...s.progress, armourClass: null, damageResist: null, magicRes: null },
+    // The saved gear held to what it died in until each item comes back (todo 82).
+    loadout: lockLoadout(s.loadout, at, playedFor(s.tally, at)),
     // Where it died, kept for the kit lying there (`GearRecovery`): the
     // room the character was standing in when the sentence arrived.
     lastDeath: {

@@ -553,6 +553,16 @@ export function spentOn(tally: CombatTally, what: Pastime, now: number): number 
 }
 
 /**
+ * Play time: the fights (`Attacking`) and the routes and laps walked
+ * (`Moving`), never resting, standing in a room or time away. The one rule for
+ * a minute of play; the saved gear's allowance after a death runs on it
+ * (`gearLocks.ts`, todo 82).
+ */
+export function playedFor(tally: CombatTally, now: number): number {
+  return engagedFor(tally, now) + spentOn(tally, 'moving', now);
+}
+
+/**
  * MegaMUD's `Other`: time in the realm that was neither a fight nor a
  * pastime. Waiting for a regen, a trip to the shop, standing at the keyboard.
  */

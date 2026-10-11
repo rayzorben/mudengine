@@ -872,6 +872,14 @@ automation:
     # says what the pack no longer holds.
     reequipOnRecover: true
 
+    # Hours of play a death holds the saved gear for while the corpse is not
+    # recovered. Spare gear worn meanwhile is not saved, so Re-equip Gear
+    # after recover corpse puts back what the character died in. Each slot comes
+    # free when its item is back in your inventory, from the corpse, a shop or
+    # the floor. Play is fighting and walking a route or loop; resting and
+    # standing in a room do not count. 0 never holds the gear.
+    gearLockHours: 3
+
     # Conditions as waits -- MegaMUD's IgnoreBlind / IgnorePoison, whose
     # defaults (0) wait the condition out before the script goes on. Off, a
     # route or a loop stands still while the server says the character is
