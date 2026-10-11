@@ -72,6 +72,7 @@ let released: number;
 let house: ReturnType<OutgrownPlanner['ganghouse']>;
 let counter: SalePlace | null;
 let busy: boolean;
+let questFor: string | null;
 
 const planner = (): OutgrownPlanner => ({
   here: () => here,
@@ -88,7 +89,8 @@ const planner = (): OutgrownPlanner => ({
   busy: () => busy,
   looping: () => true,
   hold: () => void (held += 1),
-  release: () => void (released += 1)
+  release: () => void (released += 1),
+  wantedBy: () => questFor
 });
 
 const trip = (): OutgrownGear =>
@@ -98,6 +100,7 @@ const trip = (): OutgrownGear =>
   });
 
 beforeEach(() => {
+  questFor = null;
   vi.useFakeTimers();
   sent = [];
   notices = [];
@@ -180,6 +183,20 @@ describe('getting rid of outgrown gear', () => {
     expect(notices).toEqual([
       t('automation.outgrown.keptRare', { item: 'sandals' }),
       t('automation.outgrown.keptRarityUnknown', { item: 'slippers' })
+    ]);
+  });
+
+  it('keeps an item an unfinished quest still needs, saying so once (todo 52)', () => {
+    const errand = trip();
+    questFor = 'GoodQuest';
+    found = [outgrown('gleaming dagger', 2_500)];
+    const state = packed(entity('gleaming dagger'));
+    errand.onCharacter(state);
+    errand.onCharacter({ ...state, inventory: { ...state.inventory } });
+    expect(sent).toEqual([]);
+    expect(walked).toEqual([]);
+    expect(notices).toEqual([
+      t('automation.outgrown.keptQuest', { item: 'gleaming dagger', quest: 'GoodQuest' })
     ]);
   });
 

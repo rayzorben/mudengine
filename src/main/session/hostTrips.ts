@@ -24,6 +24,7 @@ import { stashFetchTrip, type CollectModules, type CollectParts } from './collec
 import { legPlanner } from './legPlanner';
 import { wearPlan } from '../../shared/gear';
 import { useNegates } from '../../shared/items';
+import type { QuestKeep } from '../../shared/questKeep';
 import { counterIn, landsFromAnywhere, roomAddress, roomId, type RoomId } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -100,6 +101,8 @@ export interface HostTripParts extends CollectParts {
       Pick<AutoLoot, 'collectCoins' | 'collectCoinsAsConfigured' | 'dropCoins'>;
     deposit: Pick<AutoDeposit, 'request'>;
   };
+  /** What an unfinished quest still needs, which a sale keeps (todo 52). */
+  kept: QuestKeep;
 }
 
 /** The trips, holding the lap while any runs. */
@@ -154,7 +157,8 @@ export function hostTrips(
           : (counterIn(place, (id) => world?.shop(id))?.shop ?? null);
       },
       busy: parts.busy,
-      release: parts.release
+      release: parts.release,
+      wantedBy: (item) => parts.kept.wantedBy(item)
     },
     events
   );

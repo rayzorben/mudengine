@@ -4121,7 +4121,7 @@ settings:
       small change. 100 copper is 1 gold crown.
     bankThresholdLabel: Deposit When Cash Exceeds
     dropEnabledHint: Only what you list below is ever dropped, and never anything worn, wielded or
-      lit. The world data does not mark quest items, so this list alone decides what is junk.
+      lit, or anything a quest you can still do needs.
     dropEnabledLabel: Auto-Drop Junk Items
     dropItemsHint: Matched by the start of the name, the same way the game reads drop.
     dropItemsLabel: Junk Item Names
@@ -5098,6 +5098,7 @@ automation:
   # names the step it is about, and every refusal says what stopped it.
   quests:
     because: 'running {quest} to rank {to}'
+    stillNeeds: '{quest} still needs {item}'
     becausePressed: the Quest card's Run it was pressed
     started: 'Running {quest} to rank {to}: {count} steps.'
     finished: '{quest} reached rank {to}. The run is done.'
@@ -5796,6 +5797,7 @@ automation:
   drop:
     reasonJunk: 'drop: {item} is on the junk list'
     reasonWorthless: 'drop: the world data values {item} at nothing'
+    kept: 'Not dropping: {why}.'
   # Getting rid of outgrown gear -- `OutgrownGear` (todo 12). {verb} is the
   # command sent: hide, sell or drop.
   outgrown:
@@ -5807,6 +5809,7 @@ automation:
     whyUnanswered: it is still in your inventory after the {verb}
     abandonedDied: 'Died: the walk to get rid of outgrown gear is canceled.'
     keptRare: 'Keeping {item}: the world data rates it rare.'
+    keptQuest: 'Keeping {item}: {quest} still needs it.'
     keptRarityUnknown: 'Keeping {item}: the world data does not say how rare it is.'
     keptUnpriced: 'Keeping {item}, though {worn} is worn instead: the world data has no single price
       for it.'

@@ -79,7 +79,8 @@ const GANG_KIT = [GANG_HOUSE_DEED_ABILITY, GANG_HOUSE_ITEM_ABILITY, GANG_SHOP_IT
  * Whether an item stays whatever the ranking says: worn, a key, on the supply
  * list, in a gear set, chosen to bless with, loyal, or ganghouse gear (deed,
  * emblem, keys). A quest run's or an item trip's wants are kept by the trip
- * never starting while either runs.
+ * never starting while either runs, and what an unfinished quest still needs
+ * by `QuestKeep` (todo 52).
  */
 export function keptRegardless(item: KitPiece, kept: KeptNames): boolean {
   if (item.equipped || item.kind === 'key') return true;

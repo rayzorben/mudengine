@@ -22,6 +22,7 @@ import type { AutomationConfig } from '../../shared/config';
 import { carriedBlessings, type BlessingRealm } from '../../shared/invoke';
 import { splitStop } from '../../shared/loops';
 import { ganghouseHeld, keptRegardless, type KitPiece } from '../../shared/outgrown';
+import type { QuestKeep } from '../../shared/questKeep';
 import { roomAddress, roomId } from '../../shared/world';
 import type { Errands } from './Errands';
 import { legPlanner, type LegModules } from './legPlanner';
@@ -53,6 +54,8 @@ export interface OutgrownPlannerParts {
   busy(): boolean;
   /** The lap given back once the trip is over. */
   release(): void;
+  /** What an unfinished quest still needs, which the trip keeps (todo 52). */
+  kept: QuestKeep;
 }
 
 /** The key ring's names as realm rows, for the ganghouse key: the pack lists keys apart. */
@@ -148,7 +151,8 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
       return salePlaces(id, charm, world, here, errands.travellerNow(tracker.current))[0] ?? null;
     },
     busy: parts.busy,
-    release: parts.release
+    release: parts.release,
+    wantedBy: (item) => parts.kept.wantedBy(item)
   };
 }
 

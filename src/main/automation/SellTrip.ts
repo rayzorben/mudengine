@@ -13,12 +13,14 @@ import { Handover, type HandoverEnd, type HandoverPlanner } from './Handover';
 import { t } from '../app/i18n';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
+import { sameItem } from '../../shared/items';
+import type { QuestKeep } from '../../shared/questKeep';
 import type { SaleTrip } from '../../shared/selling';
 import type { RoomId } from '../../shared/world';
 import { asRoomAndItems, tripRefusal, type RoomAndItems, type TripPlanner } from './askedTrip';
 import type { SessionModule } from './Module';
 
-export interface SellTripPlanner extends HandoverPlanner, TripPlanner {
+export interface SellTripPlanner extends HandoverPlanner, TripPlanner, QuestKeep {
   /** The counter's name in the room, or null where the room holds none. */
   counterIn(room: RoomId): string | null;
 }
@@ -83,18 +85,20 @@ export class SellTrip implements SessionModule {
   }
 
   /** One trip; its refusal, said and traced, or null once under way. */
-  sell(ask: SellAsk, state: CharacterState): string | null {
-    const shop = this.planner.counterIn(ask.room);
+  sell(asked: SellAsk, state: CharacterState): string | null {
+    const shop = this.planner.counterIn(asked.room);
     const trip = { enabled: this.enabled, running: this.trip !== null };
-    const why = tripRefusal(ask.items, trip, state, this.planner);
-    if (why !== null) return this.refuse(ask.items, shop ?? ask.room, why);
+    const why = tripRefusal(asked.items, trip, state, this.planner);
+    if (why !== null) return this.refuse(asked.items, shop ?? asked.room, why);
     if (shop === null) {
       return this.refuse(
-        ask.items,
-        ask.room,
-        t('automation.sellTrip.refusalNoCounter', { room: ask.room })
+        asked.items,
+        asked.room,
+        t('automation.sellTrip.refusalNoCounter', { room: asked.room })
       );
     }
+    const ask = this.lessQuestItems(asked, shop, state);
+    if (typeof ask === 'string') return ask;
     const held = this.planner.looping();
     this.trip = { ask, shop, held };
     if (held) this.planner.hold();
@@ -172,6 +176,25 @@ export class SellTrip implements SessionModule {
       });
     }
     if (refused !== null) this.refuse(trip.ask.items, trip.shop, refused);
+  }
+
+  /**
+   * The ask without what an unfinished quest still needs (todo 52), each said
+   * and traced as refused; the reasons where nothing is left to sell.
+   */
+  private lessQuestItems(ask: SellAsk, shop: string, state: CharacterState): SellAsk | string {
+    const kept: string[] = [];
+    const items = ask.items.filter((name) => {
+      const carried = state.inventory.items.find((item) => sameItem(item.name, name));
+      const quest = carried === undefined ? null : this.planner.wantedBy(carried);
+      if (quest === null) return true;
+      kept.push(
+        this.refuse([name], shop, t('automation.quests.stillNeeds', { quest, item: name }))
+      );
+      return false;
+    });
+    if (kept.length === 0) return ask;
+    return items.length === 0 ? kept.join('; ') : { ...ask, items };
   }
 
   private release(): void {

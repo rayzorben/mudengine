@@ -9,10 +9,11 @@
  *
  * ## What it will not drop
  *
+ * - **Anything a quest the character can still do needs** (todo 52,
+ *   `QuestKeep`), named or not; said once, and traced as a refusal.
  * - **Anything the player did not name**, unless the realm itself prices it at
- *   zero and `worthless` is on. The realm data does not mark quest items, so
- *   the `items` list stays the authority on what is junk; the one exception is
- *   bounded to a column the realm *does* state, and to its explicit zero
+ *   zero and `worthless` is on. The `items` list is the authority on what is
+ *   junk; the one exception is bounded to a column the realm *does* state, and to its explicit zero
  *   rather than its silence — a price nobody has stated is not a price of
  *   nothing, and dropping on absence would empty a kit into the road on the
  *   first derivative realm. Names are matched by the server's own rule for a
@@ -51,21 +52,34 @@
  */
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
+import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { DropConfig } from '../../shared/config';
 import { bareName } from '../../shared/items';
+import type { QuestKeep } from '../../shared/questKeep';
 import { nameAnswersTo } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
+export interface AutoDropEvents {
+  notice?(message: string): void;
+  /** The trace: an item kept for a quest is a drop refused, and why. */
+  decided?(decision: SafetyDecision): void;
+}
+
 export class AutoDrop implements SessionModule {
   /** Names already asked to drop, lower case, until the pack stops listing them. */
   private asked = new Set<string>();
+  /** Names kept for a quest and said so, released the same way. */
+  private kept = new Set<string>();
 
   constructor(
     private config: DropConfig,
     private enabled: boolean,
-    private readonly queue: CommandQueue
+    private readonly queue: CommandQueue,
+    private readonly quests: QuestKeep,
+    private readonly events: AutoDropEvents = {},
+    private readonly now: () => number = () => Date.now()
   ) {}
 
   configure(config: DropConfig, enabled: boolean): void {
@@ -75,6 +89,7 @@ export class AutoDrop implements SessionModule {
 
   reset(): void {
     this.asked.clear();
+    this.kept.clear();
   }
 
   onCharacter(state: CharacterState): void {
@@ -82,9 +97,9 @@ export class AutoDrop implements SessionModule {
     // any gate: a name no longer listed is free to be asked about again the
     // next time it is picked up, whether or not this is currently allowed to
     // act at all.
-    for (const key of this.asked) {
-      if (!state.inventory.items.some((item) => bareName(item.name) === key)) {
-        this.asked.delete(key);
+    for (const names of [this.asked, this.kept]) {
+      for (const key of names) {
+        if (!state.inventory.items.some((item) => bareName(item.name) === key)) names.delete(key);
       }
     }
 
@@ -125,6 +140,15 @@ export class AutoDrop implements SessionModule {
       const worthless = this.config.worthless && item.price === 0 && item.notDroppable !== true;
       if (!named && !worthless) continue;
       if (this.asked.has(carried)) continue;
+      const reason = named
+        ? t('automation.drop.reasonJunk', { item: item.name })
+        : t('automation.drop.reasonWorthless', { item: item.name });
+      // Asked on every listing, so a quest finished while it is carried lets it go.
+      const quest = this.quests.wantedBy(item);
+      if (quest !== null) {
+        this.keep(carried, reason, t('automation.quests.stillNeeds', { quest, item: item.name }));
+        continue;
+      }
       this.asked.add(carried);
       this.queue.enqueue({
         command: `drop ${item.name}`,
@@ -132,10 +156,23 @@ export class AutoDrop implements SessionModule {
         // One key per item name: a listing repeating is one decision, not two.
         coalesceKey: `drop:${carried}`,
         expiresAt: Date.now() + tuning().drop.expiresMs,
-        reason: named
-          ? t('automation.drop.reasonJunk', { item: item.name })
-          : t('automation.drop.reasonWorthless', { item: item.name })
+        reason
       });
     }
+  }
+
+  /** Said and traced once while the pack holds it. */
+  private keep(carried: string, because: string, why: string): void {
+    if (this.kept.has(carried)) return;
+    this.kept.add(carried);
+    const sentence = t('automation.drop.kept', { why });
+    this.events.notice?.(sentence);
+    this.events.decided?.({
+      at: this.now(),
+      action: 'drop',
+      because,
+      acted: false,
+      refused: sentence
+    });
   }
 }

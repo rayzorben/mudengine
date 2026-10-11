@@ -1030,9 +1030,10 @@ automation:
   # what keeps auto-loot from hoarding a pack over the encumbrance the walker
   # then stalls under.
   #
-  # `items` is the only authority on what is junk: the realm data does not mark
-  # quest items, so nothing you did not name is ever dropped, and an equipped
-  # item is never dropped whatever the list says. Matched by prefix, as the
+  # `items` is the only authority on what is junk: nothing you did not name is
+  # ever dropped, and neither an equipped item nor one a quest you can still
+  # do needs (by the quest book, your class and your `abil` counters; said once
+  # in the log) is dropped whatever the list says. Matched by prefix, as the
   # server reads `drop`. `whenEncumbered` holds the junk until the server
   # itself grades the load as anything but None (`Encumbrance: ... - Medium`)
   # -- the server's own word, because the thresholds behind the grades are
@@ -1049,7 +1050,8 @@ automation:
     # own explicit zero rather than its silence: a price nobody has stated is
     # not a price of nothing, and dropping on absence would empty a kit into
     # the road the first time you played a realm this client has no data for.
-    # Nothing marked Not Droppable is ever dropped by it, and nothing equipped.
+    # Nothing marked Not Droppable is ever dropped by it, nothing equipped, and
+    # nothing a quest you can still do needs.
     worthless: false
 
   # Getting rid of gear the character has outgrown, MegaMUD's "Auto-sell (or
@@ -1058,8 +1060,9 @@ automation:
   # enough (tuning.outgrown in internal.yaml), it is hidden in the ganghouse
   # with `hide`; else sold at the nearest counter that buys it; else dropped.
   # Never anything worn, a key, an item on the supply list or in a gear set, a
-  # loyal item or the ganghouse deed, emblem and keys, and nothing while a
-  # quest run or a trip to fetch an item is under way.
+  # loyal item, the ganghouse deed, emblem and keys, or an item a quest you can
+  # still do needs, and nothing while a quest run or a trip to fetch an item is
+  # under way.
   #
   # Stashing needs the gang known (`bg` or `who`), the house's emblem worn and
   # a key to it carried, and `ganghouseRoom` set: the world database does not
@@ -1123,7 +1126,8 @@ automation:
   #
   # Answered or acted on: @health, @version, @exp, @level, @status, @lives,
   # @where, @who, @what, @wealth, @enc, @have, @settings, @do, @join, @invite,
-  # @forget, @get-all, @drop-all, @party, @wait, @ok.
+  # @forget, @get-all, @drop-all, @party, @wait, @ok. @drop-all drops the
+  # whole pack, quest items included.
   # Refused, always: @kill (this client never attacks a player), @hangup and
   # @relog and @panic! (an unclean disconnect is fatal at low health). Every
   # other `@` command is understood, reported and *not* answered -- no capture

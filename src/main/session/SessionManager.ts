@@ -115,6 +115,7 @@ import { trainTrip } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
+import { questKeep } from './questKeep';
 import { areaSearchTrip, gearRecoveryTrip } from './collectPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
@@ -1066,10 +1067,10 @@ export class SessionManager {
       ...{ tracker: this.tracker, errands: this.errands, walker: this.walker, loops: this.loops },
       ...{ travel: this.travel, itemErrand: this.itemErrand, world: this.world, light },
       ...{ vocabulary: this.vocabulary, combat: this.combat, loot: this.loot },
-      ...{ deposit: this.deposit }
+      ...{ deposit: this.deposit, questWatch: this.questWatch }
     });
     const charges = (this.charges = new ItemCharges(this.queue, () => this.world));
-    const trip = { modules: legs, release: releaseErrand, charges };
+    const trip = { modules: legs, release: releaseErrand, charges, kept: questKeep(legs) };
     // The gear after a death, a fetch from a stash and the area: walks and searches (`Collect`).
     const escaping = () => this.travel.escaping;
     this.recoverGear = gearRecoveryTrip(automation, this.queue, reports, {
@@ -1089,9 +1090,8 @@ export class SessionManager {
     this.areaSearch = areaSearchTrip(automation, this.queue, reports, { ...trip, busy: held });
     this.trainLevel = trainTrip(automation, this.queue, reports, trip);
     this.outgrown = outgrownTrip(automation, this.queue, reports, {
-      ...trip,
-      config: () => this.automationConfig,
-      busy: () => this.errandHeld()
+      ...{ ...trip, busy: held },
+      config: () => this.automationConfig
     });
     /*
      * And where the character should be at all (todo 05): the survey's best
@@ -1232,7 +1232,7 @@ export class SessionManager {
       reports
     );
     // And its opposite number: what the loot hoarded, the drop list sheds.
-    this.drop = new AutoDrop(automation.drop, automation.enabled, this.queue);
+    this.drop = new AutoDrop(automation.drop, automation.enabled, this.queue, trip.kept, reports);
     this.search = new AutoSearch(
       automation.search,
       automation.enabled,

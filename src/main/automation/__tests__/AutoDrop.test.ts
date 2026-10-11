@@ -5,6 +5,9 @@ import { CommandQueue } from '../CommandQueue';
 import { DEFAULT_CONFIG, type AutomationConfig, type DropConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../../shared/character';
 import { wireItem } from '../../../shared/entities';
+import type { SafetyDecision } from '../../../shared/automation';
+import type { QuestKeep } from '../../../shared/questKeep';
+import { t } from '../../app/i18n';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -39,6 +42,9 @@ let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  wantedBy = () => null;
+  notices = [];
+  decisions = [];
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
 });
 
@@ -47,8 +53,20 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+let wantedBy: QuestKeep['wantedBy'];
+let notices: string[];
+let decisions: SafetyDecision[];
 const make = (over: Partial<DropConfig> = {}, enabled = true): AutoDrop =>
-  new AutoDrop(config(over), enabled, queue);
+  new AutoDrop(
+    config(over),
+    enabled,
+    queue,
+    { wantedBy: (it) => wantedBy(it) },
+    {
+      notice: (message) => notices.push(message),
+      decided: (decision) => decisions.push(decision)
+    }
+  );
 const drain = (): void => void vi.advanceTimersByTime(500);
 
 describe('shedding named junk', () => {
@@ -193,5 +211,43 @@ describe('dropping what the realm prices at nothing', () => {
     auto.onCharacter(carrying([priced('rusty nail', { price: 0 })]));
     drain();
     expect(sent).toEqual([]);
+  });
+});
+
+describe('keeping what an unfinished quest still needs (todo 52)', () => {
+  it('keeps a named item a quest needs, says so once, and drops the rest', () => {
+    const auto = make({ items: ['rusty sword', 'quest token'] });
+    wantedBy = (it) => (it.id === 1247 ? 'Smash' : null);
+    const pack = carrying([item('quest token', { id: 1247 }), item('rusty sword')]);
+    auto.onCharacter(pack);
+    auto.onCharacter(pack);
+    drain();
+    expect(sent).toEqual(['drop rusty sword']);
+    const why = t('automation.quests.stillNeeds', { quest: 'Smash', item: 'quest token' });
+    expect(notices).toEqual([t('automation.drop.kept', { why })]);
+    expect(decisions).toMatchObject([{ action: 'drop', acted: false }]);
+  });
+
+  it('drops it once the quest no longer needs it', () => {
+    const auto = make({ items: ['quest token'] });
+    wantedBy = () => 'Smash';
+    auto.onCharacter(carrying([item('quest token')]));
+    drain();
+    // The positive control: it was kept, and said so.
+    expect(notices).toHaveLength(1);
+    expect(sent).toEqual([]);
+    wantedBy = () => null;
+    auto.onCharacter(carrying([item('quest token')]));
+    drain();
+    expect(sent).toEqual(['drop quest token']);
+  });
+
+  it('keeps a worthless item a quest needs', () => {
+    const auto = make({ items: [], worthless: true });
+    wantedBy = () => 'EvilQuest';
+    auto.onCharacter(carrying([item('severed head', { source: 'hybrid', price: 0 })]));
+    drain();
+    expect(sent).toEqual([]);
+    expect(decisions).toHaveLength(1);
   });
 });
