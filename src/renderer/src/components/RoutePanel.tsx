@@ -33,6 +33,7 @@ import {
 import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
 import type { Replanned, WalkStart } from '@shared/movement';
+import type { LoopJoining } from '../lib/loops';
 import type { FoundRoom } from '@shared/destinations';
 
 /** Which of the plan's routes is on screen — see `chosen`. */
@@ -198,6 +199,11 @@ export interface RoutePanelProps {
   onPeek:
     ((room: RoomId, at: Element, settled: boolean, walkHere: (() => void) | null) => void) | null;
   onPeekEnd: (() => void) | null;
+  /**
+   * A loop picked in the Loops modal, opened on the stop it joins. While its
+   * leg is on screen the press starts the loop, and the lap walks the leg.
+   */
+  joining?: LoopJoining | null;
 }
 
 /**
@@ -334,7 +340,8 @@ export default function RoutePanel({
   onLoadMap,
   finds,
   onPeek,
-  onPeekEnd
+  onPeekEnd,
+  joining = null
 }: RoutePanelProps) {
   const [query, setQuery] = useState('');
   const [route, setRoute] = useState<Route | null>(null);
@@ -438,6 +445,8 @@ export default function RoutePanel({
                 : chosen === 'keptOut'
                   ? (roundWay(route) ?? route)
                   : route;
+  /** The loop whose leg is on screen, if one is: its press starts the loop. */
+  const forLoop = joining !== null && shown === joining.route ? joining : null;
   /**
    * How large a room is drawn in the picture of where the route ends.
    *
@@ -488,7 +497,10 @@ export default function RoutePanel({
       setTarget(room);
       setRefused(null);
       setPlanningTo(room);
-      void onRoute(room)
+      // The loop's stop is planned already, as the lap's own leg.
+      const joins =
+        joining !== null && joining.at.map === room.map && joining.at.room === room.room;
+      void (joins ? Promise.resolve(joining.route) : onRoute(room))
         .then((answer) => {
           if (planning.current !== mine) return;
           setRoute(answer);
@@ -500,7 +512,7 @@ export default function RoutePanel({
           setPlanningTo(null);
         });
     },
-    [onRoute]
+    [joining, onRoute]
   );
 
   /*
@@ -636,6 +648,13 @@ export default function RoutePanel({
 
   const walk = useCallback(
     (plan: Route, run = false): void => {
+      // The lap walks its own leg, so the whole way starts the loop; a step
+      // pressed short of the stop is still a walk.
+      if (forLoop !== null && plan === shown) {
+        forLoop.start();
+        onClose();
+        return;
+      }
       // A way through what the player keeps out of is walked only once they
       // have chosen between it and the way round (todo 806).
       if (route?.keptOut !== undefined && crossing === null) {
@@ -718,7 +737,7 @@ export default function RoutePanel({
         })
         .catch((error) => setRefused(errorMessage(error)));
     },
-    [collectFirst, crossing, stopShort, onCollectThenWalk, onWalk, onClose, route, shown]
+    [collectFirst, crossing, forLoop, stopShort, onCollectThenWalk, onWalk, onClose, route, shown]
   );
 
   /**
@@ -763,7 +782,7 @@ export default function RoutePanel({
   useHotkeys(
     open && walkable && shown !== null
       ? [
-          { key: 'r', alt: true, run: () => walk(shown, true) },
+          ...(forLoop === null ? [{ key: 'r', alt: true, run: () => walk(shown, true) }] : []),
           { key: 'g', alt: true, run: () => walk(shown) }
         ]
       : []
@@ -1348,9 +1367,11 @@ export default function RoutePanel({
                     row of chips already, and a box plus its label is two
                     elements' worth of width for one bit of state on a row
                     that has to keep the two presses beside it. */}
+                    {/* A loop's leg is the lap's to walk: neither tick
+                    below, nor *Run it*, reaches it. */}
                     {(() => {
                       const wanted = itemsWanted(shown);
-                      if (wanted.length === 0) return null;
+                      if (wanted.length === 0 || forLoop !== null) return null;
                       // A way planned as though the pack held it is collected
                       // whatever the tick says, so the tick says so and holds.
                       const required = (shown.needs?.length ?? 0) > 0;
@@ -1385,7 +1406,7 @@ export default function RoutePanel({
                     which is a fact worth having and not nothing. */}
                     {(() => {
                       const into = shown.steps.at(-1);
-                      if (into === undefined) return null;
+                      if (into === undefined || forLoop !== null) return null;
                       const before = shown.steps.at(-2);
                       return (
                         <button
@@ -1416,37 +1437,46 @@ export default function RoutePanel({
                       `type="button"` because Enter is *Walk it*, and not
                       `.primary` because the panel spends its one filled
                       control on that. */}
-                      <button
-                        className="route-run"
-                        disabled={choosing}
-                        onClick={() => walk(shown, true)}
-                        title={t('cards.route.runTooltip')}
-                        type="button"
-                      >
-                        {shown.chances === undefined
-                          ? t('cards.route.runButton')
-                          : shown.chances.run === null
-                            ? t('cards.route.runButtonUnread')
-                            : t('cards.route.runButtonChance', {
-                                percent: percent(shown.chances.run)
-                              })}
-                      </button>
+                      {forLoop === null && (
+                        <button
+                          className="route-run"
+                          disabled={choosing}
+                          onClick={() => walk(shown, true)}
+                          title={t('cards.route.runTooltip')}
+                          type="button"
+                        >
+                          {shown.chances === undefined
+                            ? t('cards.route.runButton')
+                            : shown.chances.run === null
+                              ? t('cards.route.runButtonUnread')
+                              : t('cards.route.runButtonChance', {
+                                  percent: percent(shown.chances.run)
+                                })}
+                        </button>
+                      )}
                       {/* The one filled control in this panel, per §3.3: walking
                       is the action, everything else here is reading. */}
                       {/* Also the form's default action, so Enter walks it. */}
                       <button
                         className="primary"
+                        data-joins={forLoop?.loopName}
                         disabled={choosing}
-                        title={t('cards.route.walkTooltip')}
+                        title={
+                          forLoop === null
+                            ? t('cards.route.walkTooltip')
+                            : t('cards.route.startLoopTooltip', { roomName: forLoop.at.name })
+                        }
                         type="submit"
                       >
-                        {shown.chances === undefined
-                          ? t('cards.route.walkButton')
-                          : shown.chances.walk === null
-                            ? t('cards.route.walkButtonUnread')
-                            : t('cards.route.walkButtonChance', {
-                                percent: percent(shown.chances.walk)
-                              })}
+                        {forLoop !== null
+                          ? t('cards.route.startLoopButton', { loopName: forLoop.loopName })
+                          : shown.chances === undefined
+                            ? t('cards.route.walkButton')
+                            : shown.chances.walk === null
+                              ? t('cards.route.walkButtonUnread')
+                              : t('cards.route.walkButtonChance', {
+                                  percent: percent(shown.chances.walk)
+                                })}
                       </button>
                     </div>
                   </div>

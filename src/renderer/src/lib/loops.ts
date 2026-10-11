@@ -10,6 +10,7 @@
 import { loopCategory, splitStop, UNCATEGORISED, type Loop, type LoopScope } from '@shared/loops';
 import { record, type History } from './history';
 import type { ProfileSummary, SessionId } from '@shared/ipc';
+import type { Route, WorldRoom } from '@shared/world';
 
 /**
  * Where a chosen loop is kept, once it has been started.
@@ -67,6 +68,19 @@ export function loopOwner(
  */
 export type LoopChoice =
   { kind: 'loop'; loop: Loop } | { kind: 'by-name'; name: string; stops: number };
+
+/**
+ * A loop picked in the Loops modal, shown in the route panel as the way to
+ * the stop it joins before it starts (`loop:join`). The route is the lap's
+ * own leg, so the panel's press starts the loop and the lap walks it.
+ */
+export interface LoopJoining {
+  loopName: string;
+  /** The stop the lap walks to first: the panel's destination. */
+  at: WorldRoom;
+  route: Route;
+  start(): void;
+}
 
 /** One loop as the modal draws it. */
 export interface LoopRow {

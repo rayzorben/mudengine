@@ -3294,9 +3294,9 @@ export class SessionManager {
     return this.errands.travellerNow(state);
   }
 
-  /** The walk between two rooms with what this character holds now. See `Errands.routeBetween`. */
-  leg(from: RoomId, to: RoomId, options: RouteOptions = {}): Route | string {
-    return this.errands.routeBetween(from, to, 'walk', options);
+  /** A walk (or with `lap`, a lap's leg) between two rooms. See `Errands.routeBetween`. */
+  leg(from: RoomId, to: RoomId, options: RouteOptions & { lap?: true } = {}): Route | string {
+    return this.errands.routeBetween(from, to, options.lap ? 'lap' : 'walk', options);
   }
 
   /** What a lap's leg costs to move. See `Errands.lapTraveller`. */

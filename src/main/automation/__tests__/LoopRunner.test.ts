@@ -105,6 +105,17 @@ describe('starting a loop', () => {
     expect(walked).toEqual(['Arena']);
   });
 
+  it('joins at the stop stood in, else the first, without walking', () => {
+    const { planner: p, walked } = planner({ here: (stop) => stop.name === 'Road' });
+    const runner = new LoopRunner(p, {});
+    expect(runner.joining(loop)).toEqual({ stop: 1, standing: true });
+    const off = new LoopRunner(planner({ here: () => false }).planner, {});
+    expect(off.joining(loop)).toEqual({ stop: 0, standing: false });
+    // Asked, not started: the route panel shows the way before anything moves.
+    expect(walked).toEqual([]);
+    expect(runner.progress.status).toBe('idle');
+  });
+
   it('refuses outside the realm', () => {
     const { planner: p } = planner();
     expect(new LoopRunner(p, {}).start(loop, state({ phase: 'unknown' }))).toBe(

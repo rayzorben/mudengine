@@ -44,7 +44,7 @@ import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
-import { NO_LOOKUP, nameAnswersTo, unrouted } from '../shared/world';
+import { NO_LOOKUP, nameAnswersTo, roomAddress, unrouted } from '../shared/world';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import type { ItemRarity } from '../shared/rarity';
 import {
@@ -89,7 +89,7 @@ import { SimulatorPool } from './app/simulatorPool';
 import { SlicedSimulator } from './session/slicedSimulator';
 import { LogSweep } from './session/LogSweep';
 import type { MobLoreEntry } from '../shared/lore';
-import type { MovementStart, WalkStart } from '../shared/movement';
+import type { LoopJoin, MovementStart, WalkStart } from '../shared/movement';
 import type { AreaSearchPreview } from '../shared/areaSearch';
 import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
@@ -2082,6 +2082,35 @@ function registerIpc(): void {
     if (!slot) return t('app.session.notConnected');
     const answer = slot.manager.startLoop(parsed);
     return 'refused' in answer ? answer.refused : null;
+  });
+  /*
+   * The way to a loop before it starts, for the route panel. The stop is the
+   * one `LoopRunner.start` would head for and the leg is priced as the lap's
+   * own, so what is drawn is what the lap walks once the panel starts it.
+   */
+  handle(Invoke.loopJoin, async (_caller, session: SessionId, loop: unknown): Promise<LoopJoin> => {
+    const slot = await placedFirst(session);
+    if (!slot) return { refused: t('app.session.notConnected') };
+    const { manager } = slot;
+    const parsed = typeof loop === 'string' ? (manager.loopNamed(loop) ?? null) : asLoop(loop);
+    if (parsed === null) {
+      return {
+        refused:
+          typeof loop === 'string'
+            ? t('app.loop.notFound', { name: loop })
+            : t('app.loop.invalidLoop')
+      };
+    }
+    const { stop, standing } = manager.loops.joining(parsed);
+    if (standing) return { standing: true };
+    const here = roomAddress(manager.character.room);
+    if (here === null) return { unshown: t('app.route.unknownRoom') };
+    const at = manager.loops.stopRoom(parsed, stop);
+    if (at === null) return { unshown: null };
+    const joins = worldFor(session)?.byId(at);
+    if (joins === undefined) return { unshown: t('app.route.noRealmData') };
+    const route = manager.leg(here, at, { lap: true });
+    return typeof route === 'string' ? { unshown: route } : { joins, route };
   });
   handle(Invoke.reverseLoop, (_caller, session: SessionId) => {
     const slot = host?.get(session);

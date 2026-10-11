@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { LoopJoining } from '../lib/loops';
 import type { WorldRoom } from '@shared/world';
 
 export interface RoutePanelState {
@@ -16,6 +17,8 @@ export interface RoutePanelState {
   destination: WorldRoom | null;
   /** A room name clicked in the console that named more than one room. */
   search: string | null;
+  /** A loop picked in the Loops modal, whose way in is shown before it starts. */
+  joining: LoopJoining | null;
   close(): void;
   /**
    * Open on a room, or searching for a name, or on neither. The two are
@@ -23,6 +26,8 @@ export interface RoutePanelState {
    * survive into a panel opened for something else.
    */
   openOn(destination: WorldRoom | null, search: string | null): void;
+  /** Open on the stop a loop joins, with the press starting the loop. */
+  openToJoin(joining: LoopJoining): void;
   /** Opened cold, from the palette: neither a room nor a name is meant. */
   openCold(): void;
   /** `Ctrl/Cmd G`: open with no destination, or close; a search seed is kept. */
@@ -34,6 +39,7 @@ export function useRoutePanel(returnFocus: () => void): RoutePanelState {
   const [open, setOpen] = useState(false);
   const [destination, setDestination] = useState<WorldRoom | null>(null);
   const [search, setSearch] = useState<string | null>(null);
+  const [joining, setJoining] = useState<LoopJoining | null>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -52,9 +58,18 @@ export function useRoutePanel(returnFocus: () => void): RoutePanelState {
     wasOpen.current = open;
   }, [open, returnFocus]);
 
+  // Every other opening is a walk somewhere, so it drops a loop's join.
   const openOn = useCallback((room: WorldRoom | null, name: string | null) => {
     setDestination(room);
     setSearch(name);
+    setJoining(null);
+    setOpen(true);
+  }, []);
+
+  const openToJoin = useCallback((loop: LoopJoining) => {
+    setDestination(loop.at);
+    setSearch(null);
+    setJoining(loop);
     setOpen(true);
   }, []);
 
@@ -62,8 +77,9 @@ export function useRoutePanel(returnFocus: () => void): RoutePanelState {
 
   const toggleCold = useCallback(() => {
     setDestination(null);
+    setJoining(null);
     setOpen((was) => !was);
   }, []);
 
-  return { open, destination, search, close, openOn, openCold, toggleCold };
+  return { open, destination, search, joining, close, openOn, openToJoin, openCold, toggleCold };
 }

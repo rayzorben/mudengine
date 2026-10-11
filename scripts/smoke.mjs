@@ -4908,6 +4908,26 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
      */
     await press('Enter', 'Enter', 13);
     /*
+     * Off the loop, the pick opens the route panel on the stop the lap joins,
+     * and its press starts the loop; standing on a stop, the lap starts at
+     * once. Either is waited for, then the panel's own press is used.
+     */
+    const joinPress = `document.querySelector('.route-panel button.primary[data-joins]')`;
+    await waitFor(async () =>
+      evaluate(
+        `!!${joinPress} || ${lapGoing}.test(document.querySelector('.navigation-card')?.innerText ?? '')`
+      )
+    );
+    if (await evaluate(`!!${joinPress}`)) {
+      check(
+        (await evaluate(`${joinPress}.dataset.joins`)) === 'Smoke loop',
+        'a loop picked off its stops shows the way to it first, with a press that starts it'
+      );
+      // The panel takes the caret a frame after it opens; Enter before then is the game's.
+      await waitFor(async () => evaluate(`!!document.activeElement?.closest('.route-panel')`));
+      await press('Enter', 'Enter', 13);
+    }
+    /*
      * The card naming the loop *running*, which is the reading every check
      * below is of. The name alone was already there: the lap stopped earlier
      * in this run left `Smoke loop … Ended — you asked it to` on the card, so
