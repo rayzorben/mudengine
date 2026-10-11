@@ -8,6 +8,7 @@
  */
 import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
+import type { BarrierJob } from '../../../shared/barrierHands';
 import type { Intent } from '../CommandQueue';
 import type {
   Direction,
@@ -17,6 +18,13 @@ import type {
   Route,
   RouteStep
 } from '../../../shared/world';
+
+/**
+ * A way as the walk remembers it, `from|direction`: the room it is left from
+ * and the exit, since each side of a door or a trapped way is its own exit.
+ */
+export const wayOf = (step: Pick<RouteStep, 'from' | 'direction'>): string =>
+  `${step.from}|${step.direction}`;
 
 /** What the walk opened: a door shuts both sides at once, a hidden exit only its own. */
 export type OpenedKind = 'door' | 'hidden';
@@ -135,6 +143,13 @@ export interface WalkerEvents {
    * what goes on the wire is the realm's own spelling of the item.
    */
   keyToUse?(keyId: number): string | null;
+  /**
+   * Leading, sends a party member at the way ahead (`PartyHands`, todo 86):
+   * `@disarm`, `@pick` or `@bash` to a mudengine member, `@do` with the
+   * command to another client. False when nothing went. The answer comes back
+   * through `Walker.handAnswered`.
+   */
+  askHand?(name: string, job: BarrierJob, direction: Direction): boolean;
   /**
    * Whether to hold the next step a moment: the room just confirmed holds
    * something worth stopping for (a loop's auto-combat answers this). The

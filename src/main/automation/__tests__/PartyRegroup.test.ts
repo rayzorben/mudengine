@@ -48,7 +48,8 @@ function state(
         rank: null,
         activity: null,
         invited: false,
-        vitals: null
+        vitals: null,
+        sheet: null
       }))
     }
   };

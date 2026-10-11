@@ -516,6 +516,7 @@ describe('somebody in the party in trouble', () => {
     health,
     invited: false,
     vitals: null,
+    sheet: null,
     mana: null,
     rank: 'front'
   });

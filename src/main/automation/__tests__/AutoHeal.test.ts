@@ -27,6 +27,7 @@ const member = (name: string, health: number | null): PartyMember => ({
   health,
   invited: false,
   vitals: null,
+  sheet: null,
   mana: null,
   rank: null
 });

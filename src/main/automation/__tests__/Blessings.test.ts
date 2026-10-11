@@ -49,6 +49,7 @@ const member = (name: string, invited = false) => ({
   health: 1,
   invited,
   vitals: null,
+  sheet: null,
   mana: null,
   rank: null
 });

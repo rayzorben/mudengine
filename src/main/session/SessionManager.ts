@@ -773,10 +773,9 @@ export class SessionManager {
         this.travel.walkStarted();
         this.sink.destination?.(room, name);
       },
-      // The tracker's queue: it counts the typed moves and leftover legs a route cannot see.
+      // The tracker's queue: the typed moves and leftover legs a route cannot see.
       pendingMoves: () => this.tracker.pendingMoves,
-      // A rest, or a floor read after a kill, asked a moment ago and unanswered: a move
-      // in flight's kind of fact (`Recovery.restInFlight`, todo 14; `AutoLoot`, 814).
+      // A rest or a floor read asked and unanswered is a move in flight (todo 14; 814).
       restInFlight: () => this.recovery.restInFlight,
       floorInFlight: () => this.loot.floorInFlight,
       onTheGround,
@@ -838,6 +837,7 @@ export class SessionManager {
       lightComing: (state) => this.light.couldReady(state),
       regrouping: (state) => this.remotes.regrouping(state),
       keyToUse: (keyId) => this.errands.keyToUse(keyId),
+      askHand: (name, job, direction) => this.remotes.askHand(name, job, direction),
       notice,
       progress: (progress) => {
         // The Combat Stats' `Moving` clock: only the walker knows a route is in progress.
@@ -1307,14 +1307,12 @@ export class SessionManager {
         if (!this.grounded.standsDown(state) && !this.travel.isRetreating())
           this.heal.onCharacter(state);
       },
-      /*
-       * Which client another player runs — the fact the extended vocabulary
-       * turns on — on their registry entry, and pushed for `commanded`'s reason.
-       */
+      // Which client a player runs, on their registry entry, pushed for `commanded`'s reason.
       clientNamed: (from, client, extended) => {
         const facts = { ...(client === undefined ? {} : { client }), extendedRemotes: extended };
         if (this.tracker.noteRemoteClient(from, Date.now(), facts)) this.publisher.players();
       },
+      handAnswered: (from, answer) => this.walker.handAnswered(from, answer),
       // `@where-room`'s answer, kept as a sighting: the registry holds the room number, no map.
       placed: (from, map, room, name) => {
         this.sink.notice(

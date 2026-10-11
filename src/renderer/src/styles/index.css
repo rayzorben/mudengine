@@ -12449,6 +12449,12 @@ tr:hover .row-action.worn,
   font-family: var(--font-mono);
 }
 
+/* A member's Traps, Picklocks and Strength (todo 86): a fact, quiet under the meters. */
+.party-sheet {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}
+
 /*
  * Two meters share a row while they fit and stack when they do not. A meter's
  * value grew longer once a member's maximum is known (`40% of 4,434 low`),

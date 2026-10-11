@@ -105,7 +105,8 @@ const partyRow = (name: string): PartyMember => ({
   rank: 'front',
   activity: null,
   invited: false,
-  vitals: null
+  vitals: null,
+  sheet: null
 });
 
 /*

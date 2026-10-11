@@ -47,7 +47,7 @@
  */
 
 /** Every `@` command MegaMUD's manual names, in the manual's own order. */
-import type { PartyMember, Stealth } from './character';
+import type { MemberSheet, PartyMember, Stealth } from './character';
 import { TRAINED_ATTRIBUTES, type TrainedAttribute } from './training';
 
 export const REMOTE_NAMES = [
@@ -126,6 +126,15 @@ export const REMOTE_NAMES = [
    * `@stats` answers `{command invalid or not allowed}`. See `formatStats`.
    */
   'stats',
+  /*
+   * Also mudengine's own (todo 86): a leader sends the member with the best
+   * odds at a trapped way or a locked door, and that member's client sends
+   * `disarm trap <dir>`, `pi <dir>` or `bas <dir>` until it holds or the odds
+   * say to give up. A MegaMUD member is sent `@do` instead.
+   */
+  'disarm',
+  'pick',
+  'bash',
   /*
    * The extended pair, and the reason there is such a thing as an extended
    * remote at all.
@@ -440,6 +449,14 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   // Answered in a frame this client chose, since there is no capture to copy.
   stats: { name: 'stats', support: 'answered' },
   /*
+   * Answered `{ok}` when the trap or lock gave, `{failed}` when the odds said
+   * to stop or this character cannot do it, said here either way
+   * (`BarrierRemotes`). Granted by nothing shipped.
+   */
+  disarm: { name: 'disarm', support: 'acted' },
+  pick: { name: 'pick', support: 'acted' },
+  bash: { name: 'bash', support: 'acted' },
+  /*
    * `@where` with the ambiguity taken out, and `@comeback` made possible by
    * the same fact. See the note beside them in `REMOTE_NAMES`.
    *
@@ -624,7 +641,9 @@ export type RemoteReply =
   /** `{unknown - "<name>"}`, with the candidates a several-way match sent. */
   | { kind: 'unknown'; request: string; candidates: string[]; more: number }
   /** `{failed}`: matched, and could not start. */
-  | { kind: 'failed' };
+  | { kind: 'failed' }
+  /** `{STR=60,…,CHA=40,LVL=12,TRA=40,PIC=35}`: a member's `@stats` (`formatStats`). */
+  | { kind: 'stats'; sheet: MemberSheet };
 
 const VITALS =
   /^\{\s*(?:HP|H)\s*=\s*(?<hp>\d+)\s*\/\s*(?<hpMax>\d+)(?:\s*,\s*(?:MA|KAI|M|K)\s*=\s*(?<mana>\d+)\s*\/\s*(?<manaMax>\d+))?\s*\}$/i;
@@ -667,6 +686,8 @@ export function parseRemoteReply(message: string): RemoteReply | null {
       more: Number(unknown.groups['more'] ?? 0)
     };
   }
+  const sheet = readStats(text);
+  if (sheet !== null) return { kind: 'stats', sheet };
   const report = readPath(text);
   if (report !== null) return { kind: 'path', report };
   const room = ROOM_ADDRESS.exec(text);
@@ -1054,19 +1075,25 @@ const STAT_KEYS: Readonly<Record<TrainedAttribute, string>> = {
   charm: 'CHA'
 };
 
+/** The three `@stats` carries past the six, each left out when the sheet has not said it. */
+const SHEET_KEYS = { level: 'LVL', traps: 'TRA', picklocks: 'PIC' } as const;
+
 /**
- * `{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}` — the answer to `@stats`.
+ * `{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40,LVL=12,TRA=40,PIC=35}` — the
+ * answer to `@stats`.
  *
  * **Ours, not captured**: no MegaMUD remote states attributes, so the frame is
  * `@health`'s (`{HP=600/600,MA=516/516}`) — braces, `KEY=value`, comma-joined
  * — which keeps it apart from chat and from every other reply `parseRemoteReply`
- * reads. The stat screen's field order.
+ * reads. The stat screen's field order, then the level, Traps and Picklocks a
+ * leader chooses who goes at a trap or a door by (todo 86).
  *
  * **All six or nothing**: one sheet states them together, so a gap is a sheet
- * not yet read, and a partial answer would read as the whole of one.
+ * not yet read, and a partial answer would read as the whole of one. The last
+ * three are left out when unknown, and read back as unknown (`readStats`).
  */
 export function formatStats(
-  stats: Readonly<Record<TrainedAttribute, number | null>>
+  stats: Readonly<Record<TrainedAttribute | keyof typeof SHEET_KEYS, number | null>>
 ): string | null {
   const fields: string[] = [];
   for (const attribute of TRAINED_ATTRIBUTES) {
@@ -1074,7 +1101,33 @@ export function formatStats(
     if (value === null) return null;
     fields.push(`${STAT_KEYS[attribute]}=${value}`);
   }
+  for (const [field, key] of Object.entries(SHEET_KEYS)) {
+    const value = stats[field as keyof typeof SHEET_KEYS];
+    if (value !== null) fields.push(`${key}=${value}`);
+  }
   return `{${fields.join(',')}}`;
+}
+
+/** `formatStats` read back: the figures a leader chooses by, or null for any other shape. */
+function readStats(text: string): MemberSheet | null {
+  if (!/^\{[A-Z]{3}=-?\d+(?:,[A-Z]{3}=-?\d+)*\}$/.test(text)) return null;
+  const fields = new Map(
+    text
+      .slice(1, -1)
+      .split(',')
+      .map((pair) => pair.split('=') as [string, string])
+  );
+  const figure = (key: string): number | null => {
+    const value = fields.get(key);
+    return value === undefined ? null : Number(value);
+  };
+  if (TRAINED_ATTRIBUTES.some((attribute) => !fields.has(STAT_KEYS[attribute]))) return null;
+  return {
+    strength: figure(STAT_KEYS.strength)!,
+    level: figure(SHEET_KEYS.level),
+    traps: figure(SHEET_KEYS.traps),
+    picklocks: figure(SHEET_KEYS.picklocks)
+  };
 }
 
 /** `{mudengine 0.5.0}`, in the shape of `{MegaMMUD 2.1}`. */

@@ -419,14 +419,14 @@ export function disarmWorth(odds: number | null, walkers: number): boolean {
 }
 
 /**
- * What one character expects a trap to take on the way through: its damage
- * walked into, or the failed disarms before one holds where that costs less
- * (`disarmWorth` for one walker). Null damage stays null.
+ * What a trap is expected to take from each of the `walkers` going through:
+ * its damage walked into, or where a disarm costs less (`disarmWorth`), the
+ * failed disarms before one holds, shared among them. Null damage stays null.
  */
-export function trapHurt(damage: number | null, odds: number | null): number | null {
+export function trapHurt(damage: number | null, odds: number | null, walkers = 1): number | null {
   if (damage === null) return null;
-  if (!disarmWorth(odds, 1) || odds === null) return damage;
-  return Math.round((damage * (1 - odds)) / odds);
+  if (!disarmWorth(odds, walkers) || odds === null) return damage;
+  return Math.round((damage * (1 - odds)) / odds / Math.max(1, walkers));
 }
 
 /**

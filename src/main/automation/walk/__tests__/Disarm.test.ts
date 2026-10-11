@@ -5,6 +5,7 @@ import { DEFAULT_INTERNAL } from '../../../../shared/internal';
 import { disarmOdds, disarmTries, disarmWorth, trapHurt } from '../../../../shared/walk';
 import type { CharacterState, PartyMember } from '../../../../shared/character';
 import { DisarmBeforeStep } from '../Disarm';
+import { PartyHands } from '../PartyHands';
 import { at, moves, routeOf, settle, stepOf, useRigs, wire } from './walking';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
@@ -129,13 +130,30 @@ describe('disarming before a trapped step', () => {
   });
 });
 
-/** `DisarmBeforeStep` alone, over fakes of its four ports and a hand-set clock. */
+/** `DisarmBeforeStep` alone, over fakes of its ports and a hand-set clock; `asked` is each `askHand`. */
 function unit(step = TRAPPED.steps[0]!) {
   const offers: string[] = [];
   const notices: string[] = [];
+  const asked: string[] = [];
   const stepped = vi.fn();
   const timers: (() => void)[] = [];
   const clock = { now: 0, queued: false };
+  const events = {
+    notice: (message: string) => void notices.push(message),
+    askHand: (name: string, job: string, direction: string) =>
+      asked.push(`${name} ${job} ${direction}`) > 0
+  };
+  const walkClock = {
+    afterStep: (_ms: number, then: () => void) => void timers.push(then),
+    clear: () => void timers.splice(0)
+  };
+  const inFlight = {
+    walking: () => true,
+    quiet: () => false,
+    step: () => step,
+    stepWhenFree: stepped
+  };
+  const hands = new PartyHands(events, inFlight, walkClock, () => clock.now);
   const disarm = new DisarmBeforeStep(
     {
       offer: (intent) => {
@@ -144,13 +162,79 @@ function unit(step = TRAPPED.steps[0]!) {
       },
       queued: () => clock.queued
     },
-    { notice: (message) => void notices.push(message) },
-    { walking: () => true, quiet: () => false, step: () => step, stepWhenFree: stepped },
-    { afterStep: (_ms, then) => void timers.push(then), clear: () => void timers.splice(0) },
+    events,
+    inFlight,
+    walkClock,
+    hands,
     () => clock.now
   );
-  return { disarm, offers, notices, stepped, timers, clock, step };
+  return { disarm, hands, offers, notices, asked, stepped, timers, clock, step };
 }
+
+/** Leading Rand, standing here with `traps` on the sheet his client answered. */
+const leadingRand = (own: number | null, traps: number | null): CharacterState =>
+  thief(own, {
+    name: 'Rayzor',
+    room: { ...at(1, 1).room, occupants: [{ name: 'Rand' } as never] },
+    party: {
+      following: null,
+      members: [
+        member('Rayzor'),
+        {
+          ...member('Rand'),
+          vitals: { hp: 300, hpMax: 300, mana: null, manaMax: null },
+          sheet: { strength: 50, level: 10, traps, picklocks: null }
+        }
+      ],
+      engaged: {},
+      threatened: {}
+    }
+  });
+
+/* Todo 86: leading, the best hand at the trap goes, and a failure asks the next. */
+describe('sending a party member at a trap', () => {
+  it('sends @disarm to the member with the better odds, and holds the way on their {ok}', () => {
+    const { disarm, hands, asked, offers, stepped, step } = unit();
+    expect(disarm.ask(leadingRand(40, 90))).toBe(true);
+    expect(asked).toEqual(['Rand disarm e']);
+    expect(offers).toEqual([]);
+    hands.answered('Rand', 'held');
+    expect(stepped).toHaveBeenCalledTimes(1);
+    expect(disarm.disarmed(step)).toBe(true);
+  });
+
+  it('disarms itself once the member answers {failed}', () => {
+    const { disarm, hands, asked, offers } = unit();
+    expect(disarm.ask(leadingRand(40, 90))).toBe(true);
+    hands.answered('Rand', 'failed');
+    expect(disarm.ask(leadingRand(40, 90))).toBe(true);
+    expect(asked).toEqual(['Rand disarm e']);
+    expect(offers).toEqual(['disarm trap e']);
+  });
+
+  it('counts silence past the deadline as a failure, and says so', () => {
+    const { disarm, notices, timers, stepped } = unit();
+    disarm.ask(leadingRand(40, 90));
+    timers.shift()!();
+    expect(stepped).toHaveBeenCalledTimes(1);
+    expect(notices.some((line) => line.includes('Rand'))).toBe(true);
+  });
+
+  /* The positive control is the first test: the same member with a sheet is asked. */
+  it('never sends a member with no sheet at a trap', () => {
+    const { disarm, asked, offers } = unit();
+    expect(disarm.ask(leadingRand(40, null))).toBe(true);
+    expect(asked).toEqual([]);
+    expect(offers).toEqual(['disarm trap e']);
+  });
+
+  it('reads a member’s answer only from the one asked', () => {
+    const { disarm, hands, stepped } = unit();
+    disarm.ask(leadingRand(40, 90));
+    hands.answered('Soul', 'held');
+    expect(stepped).not.toHaveBeenCalled();
+  });
+});
 
 describe('a disarm the walk did not send, and one held by a fight', () => {
   it('records a disarm the player typed and leaves the step to the walk', () => {

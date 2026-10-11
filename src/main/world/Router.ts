@@ -135,8 +135,10 @@ export interface Traveller {
   pickSkill?: number | null;
   /** Strength, for the same doors — the realm accepts either. */
   strength?: number | null;
-  /** Traps, for a trapped way this character may disarm first (`trapHurt`). Absent is nobody has said. */
+  /** Traps, for a trapped way this character or a member may disarm first (`trapHurt`). Absent is nobody has said. */
   trapSkill?: number | null;
+  /** How many walk a trapped way: the party leading, else one (`walkersThrough`). Absent is one. */
+  trapWalkers?: number;
   /**
    * Which of those two the walker may spend: *Auto-Pick Locks* and *Auto-Bash
    * Doors* (`movement.pickLocks`, `movement.bashDoors`). A skill the walker
@@ -603,7 +605,8 @@ export function edgeBlock(
  * less than walking in (`trapHurt`, todo 53).
  */
 function trapPrice(requirement: Requirement, traveller: Traveller): number {
-  return 20 + (trapHurt(requirement.damage ?? null, disarmOdds(traveller.trapSkill ?? null)) ?? 0);
+  const odds = disarmOdds(traveller.trapSkill ?? null);
+  return 20 + (trapHurt(requirement.damage ?? null, odds, traveller.trapWalkers ?? 1) ?? 0);
 }
 
 /**

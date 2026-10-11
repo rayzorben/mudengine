@@ -5,6 +5,7 @@ import {
   ratio,
   vitalLevel,
   type CharacterState,
+  type MemberSheet,
   type PartyActivity,
   type PartyMember
 } from '@shared/character';
@@ -316,6 +317,7 @@ function PartyCard({
                         )}
                       </div>
                     )}
+                    {!member.invited && <SheetLine sheet={member.sheet} />}
                   </li>
                 ))}
               </ul>
@@ -337,6 +339,7 @@ function PartyCard({
 function ownRow(character: CharacterState, member: PartyMember): PartyMember {
   if (!isSelf(character, member.name)) return member;
   const { hp, hpMax, mana, manaMax, resting, meditating } = character.vitals;
+  const { strength, level, traps, picklocks } = character.progress;
   const health = ratio(hp, hpMax);
   const magic = ratio(mana, manaMax);
   const activity: PartyActivity | null = resting
@@ -349,8 +352,28 @@ function ownRow(character: CharacterState, member: PartyMember): PartyMember {
     health: health ?? member.health,
     mana: magic ?? member.mana,
     activity: character.lastStatusAt === null ? member.activity : activity,
-    vitals: hp === null || hpMax === null ? member.vitals : { hp, hpMax, mana, manaMax }
+    vitals: hp === null || hpMax === null ? member.vitals : { hp, hpMax, mana, manaMax },
+    sheet: strength === null ? member.sheet : { strength, level, traps, picklocks }
   };
+}
+
+/**
+ * A member's Traps, Picklocks and Strength, which decide who the leader sends
+ * at a trap or a lock (todo 86): off their `@stats` answer, each unknown one
+ * shown as unknown, as for a MegaMUD member, who never answers it.
+ */
+function SheetLine({ sheet }: { sheet: MemberSheet | null }) {
+  const shown = (figure: number | null | undefined): string =>
+    figure === null || figure === undefined ? t('cards.party.sheetUnknown') : String(figure);
+  return (
+    <span className="party-sheet from-medium">
+      {t('cards.party.sheet', {
+        traps: shown(sheet?.traps),
+        picklocks: shown(sheet?.picklocks),
+        strength: shown(sheet?.strength)
+      })}
+    </span>
+  );
 }
 
 /** What a member was last seen fighting, as the chip says it, or null once the sighting is stale. */

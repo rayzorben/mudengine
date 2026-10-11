@@ -2400,6 +2400,8 @@ cards:
     leaveAction: Leave Party
     notYetListed: not yet listed
     ofMax: '{percent}% of {max}'
+    sheet: Traps {traps} · Picklocks {picklocks} · Str {strength}
+    sheetUnknown: '?'
     title: Party
   picker:
     away: '{cardCount} put away'
@@ -5990,6 +5992,28 @@ automation:
     autoCombatSwitched: '{from} sent @auto-combat {word}; auto-combat is {word}.'
     autoCombatNotWritten: "{from} sent @auto-combat {word}, but the character's file could not be
       changed, so auto-combat was left as it was."
+    skillTraps: Traps
+    skillPicklocks: Picklocks
+    skillStrength: Strength
+    reasonBarrier: '{from} sent @{job} {direction}'
+    reasonSheetChanged: The stat sheet changed since {who} asked @stats
+    barrierNoWay: '{from} sent @{job} with no direction, so nothing was tried.'
+    barrierFighting: '{from} sent @{job} {direction} during a fight; answered failed.'
+    barrierKeyOnly: '{from} sent @{job} {direction}, but only a key opens that door; answered
+      failed.'
+    barrierNoOdds: "{from} sent @{job} {direction}, but this character's {skill} is unknown or too
+      low for it; answered failed."
+    barrierHurt: '{from} sent @{job} {direction}, but this character is below Rest If Below HP %;
+      answered failed.'
+    barrierTrapKills: '{from} sent @{job} {direction}, but the trap there does {damage} and this
+      character has {hp} HP; answered failed.'
+    barrierTrying: '{from} sent @{job} {direction}: trying at {percent}% a try, up to {tries}
+      times.'
+    barrierHeld: '@{job} {direction} for {from} worked on try {count}; answered ok.'
+    barrierGaveUp: '@{job} {direction} for {from} failed {count} times, so this character stopped;
+      answered failed.'
+    barrierLeft: '@{job} {direction} for {from} stopped: a fight began, the character moved or
+      automation was switched off; answered failed.'
     peerIsOurs: "{who} answered @version with {client}, so questions to them will use this client's
       own format: a room's map number instead of its name."
     peerIsOther: "{who} answered @version with {client}; questions to them stay in MegaMUD's
@@ -6120,6 +6144,18 @@ automation:
     disarmGaveUp: 'Not disarming the trap into {stepName}: {count} tries in a row failed, more
       than your Traps should miss. Walking through it instead.'
     disarmUnsent: The disarm for the trap into {stepName} was never sent; walking on.
+    handJobDisarm: disarm the trap
+    handJobPick: pick the lock
+    handJobBash: bash the door
+    handAsked: Asked {who} to {job} to the {direction}, at {percent}% a try.
+    handAskedUnknown: Asked {who} to {job} to the {direction}; their Picklocks are unknown.
+    handUnsent: Could not ask {who} to {job} to the {direction}; asking the next in the party.
+    handHeld: '{who} answered ok: {job} to the {direction} worked.'
+    handFailed: '{who} answered failed: {job} to the {direction} did not work.'
+    handTried: '{who} took the @do to {job} to the {direction}; opening the door to see whether it
+      gave.'
+    handLapsed: '{who} did not say whether {job} to the {direction} worked. A MegaMUD member must
+      allow @do, and a mudengine member must allow that remote.'
     offRoundsTimed: 'Timing the run to the rounds: a round every {round} s, a step takes {step} s.'
     offRoundsNoRounds: 'Not timing the run to the rounds: no round seen yet.'
     offRoundsNoSteps: 'Not timing the run to the rounds: not enough steps timed yet.'

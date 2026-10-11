@@ -90,6 +90,7 @@ export class RemoteAnswers {
               });
       }
       case 'vitals':
+      case 'stats':
       case 'version':
       case 'room':
       case 'refused':

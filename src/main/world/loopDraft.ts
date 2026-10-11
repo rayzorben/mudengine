@@ -275,8 +275,9 @@ function fingerprint(traveller: Traveller): string {
     traveller.level ?? '',
     traveller.strength ?? '',
     traveller.pickSkill ?? '',
-    // And Traps, which prices a trapped way at the failed disarms (todo 53).
+    // And Traps and the party walking it, which price a trapped way (todos 53, 86).
     traveller.trapSkill ?? '',
+    traveller.trapWalkers ?? '',
     // Which of those two the walker may spend: a switch flipped in settings
     // changes which doors a draft can walk through.
     traveller.forcing === undefined

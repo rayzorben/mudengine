@@ -79,7 +79,8 @@ describe('joinedTheParty', () => {
     rank: null,
     activity: null,
     invited,
-    vitals: null
+    vitals: null,
+    sheet: null
   });
 
   const withParty = (...members: PartyMember[]): CharacterState => ({
@@ -122,7 +123,8 @@ describe('membersBelow', () => {
     rank: null,
     activity: null,
     invited,
-    vitals: null
+    vitals: null,
+    sheet: null
   });
   const party = (members: ReturnType<typeof member>[], here: string[]): CharacterState => {
     const state = structuredClone(EMPTY_CHARACTER);

@@ -1118,6 +1118,26 @@ export interface PartyMember {
    * fills the same bar the listing would have.
    */
   vitals: { hp: number; hpMax: number; mana: number | null; manaMax: number | null } | null;
+  /**
+   * The figures off this member's own stat sheet, when their client answered
+   * `@stats` (a mudengine member, todo 86). Null until one has: a MegaMUD
+   * member never answers it, and the party listing carries none of them.
+   * Kept across listings, as `vitals` is.
+   */
+  sheet: MemberSheet | null;
+}
+
+/**
+ * What decides who goes at a trap or a locked door: Strength for a bash,
+ * Traps for a disarm, Picklocks for a pick, and the level they were read at.
+ * Strength is always on the sheet; the other three are null when the answer
+ * left them out (a sheet that did not print them).
+ */
+export interface MemberSheet {
+  strength: number;
+  level: number | null;
+  traps: number | null;
+  picklocks: number | null;
 }
 
 /**

@@ -111,6 +111,9 @@ import { restoreKit } from './restoreKit';
 import { InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
 import { LeaderDoors } from './LeaderDoors';
+import { BarrierRemotes } from './BarrierRemotes';
+import { jobCommand, type BarrierJob, type HandAnswer } from '../../shared/barrierHands';
+import { SheetReports } from './SheetReports';
 import { FollowerPacing } from './FollowerPacing';
 import type { Direction, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
@@ -285,6 +288,8 @@ export interface RemoteEvents {
    * room it is standing in.
    */
   placed?(from: string, map: number, room: number, name: string | null): void;
+  /** A member sent at a trap or a lock (`askHand`) answered `{ok}` or `{failed}` (todo 86). */
+  handAnswered?(from: string, answer: HandAnswer): void;
   /**
    * Somebody asked this character to come to a room, by address. Returns
    * whether a walk actually started, which is what decides whether `{ok}` goes
@@ -365,6 +370,12 @@ export class Remotes implements SessionModule {
   private readonly invites: InviteFollowUp;
   /** Picking or bashing a door the leader is failing to bash. See `LeaderDoors`. */
   private readonly leaderDoors: LeaderDoors;
+  /** `@disarm`, `@pick` and `@bash` from a leader. See `BarrierRemotes`. */
+  private readonly hands: BarrierRemotes;
+  /** `@stats` sent on to a member when the sheet changes. See `SheetReports`. */
+  private readonly sheets: SheetReports;
+  /** Members sent at a trap or a lock by `askHand`, by key, until their answer: whether through `@do`. */
+  private readonly handsAsked = new Map<string, { viaDo: boolean }>();
   private readonly pacing: FollowerPacing;
 
   constructor(
@@ -390,8 +401,14 @@ export class Remotes implements SessionModule {
       askJoin: (member, state) => this.ask(member, 'join', state)
     });
     this.leaderDoors = new LeaderDoors(config, queue, {
+      notice: (message) => events.notice?.(message),
+      // A leader on this client sends `@pick` and `@bash` itself (todo 86).
+      leaderSendsHands: (leader) => this.runsThisClient(leader)
+    });
+    this.hands = new BarrierRemotes(config, queue, {
       notice: (message) => events.notice?.(message)
     });
+    this.sheets = new SheetReports(queue);
     this.pacing = new FollowerPacing(config, {
       tell: (leader, name, state, argument) => void this.ask(leader, name, state, argument)
     });
@@ -403,6 +420,7 @@ export class Remotes implements SessionModule {
     this.regroup.configure(config);
     this.invites.configure(config);
     this.leaderDoors.configure(config);
+    this.hands.configure(config);
     this.pacing.configure(config);
   }
 
@@ -434,6 +452,7 @@ export class Remotes implements SessionModule {
     this.regroup.onBlock(block);
     this.invites.onBlock(block, state);
     this.leaderDoors.onBlock(block, state);
+    this.hands.onBlock(block, state);
     if (!this.config.enabled || !this.config.remotes.enabled) return;
     this.autoJoin.onBlock(block, state);
     if (block.type === 'party-joined') {
@@ -469,7 +488,7 @@ export class Remotes implements SessionModule {
      * from being answered.
      */
     const reply = parseRemoteReply(message);
-    if (reply !== null && this.readReply(from, reply)) return;
+    if (reply !== null && this.readReply(from, reply, state)) return;
 
     const command = parseRemoteCall(message);
     if (command === null) return;
@@ -576,7 +595,7 @@ export class Remotes implements SessionModule {
      * question: an upgrade is offered only on evidence.
      */
     const better = EXTENDED_REMOTES[name];
-    const upgraded = better !== undefined && this.events.peer?.(who)?.extendedRemotes === 'yes';
+    const upgraded = better !== undefined && this.runsThisClient(who);
     const wanted = upgraded ? better! : name;
 
     let carried = argument;
@@ -597,6 +616,29 @@ export class Remotes implements SessionModule {
     }
 
     return this.send(who, wanted, carried);
+  }
+
+  /**
+   * Leading, a member sent at a trap or a lock (todo 86): `@disarm`, `@pick`
+   * or `@bash` to one whose `@version` named this client, and only a pick as
+   * `@do pi` to anyone else, which needs them to have granted `do`. An `@do`
+   * says nothing of the roll, so a disarm or a bash never goes that way: a
+   * disarm taken as held walks the party into a live trap. The answer is
+   * handed back (`handAnswered`).
+   */
+  askHand(who: string, job: BarrierJob, direction: Direction): boolean {
+    const ours = this.runsThisClient(who);
+    if (!ours && job !== 'pick') return false;
+    const taken = ours
+      ? this.send(who, job, direction)
+      : this.send(who, 'do', jobCommand(job, direction));
+    if (taken) this.handsAsked.set(playerKey(who), { viaDo: !ours });
+    return taken;
+  }
+
+  /** Whether `who` said with `@version` that they run this client. */
+  private runsThisClient(who: string): boolean {
+    return this.events.peer?.(who)?.extendedRemotes === 'yes';
   }
 
   /**
@@ -623,6 +665,8 @@ export class Remotes implements SessionModule {
       this.asked.set(playerKey(who), { name, who, at: Date.now() });
     }
     if (taken) this.answers.noteAsked(who, name, Date.now());
+    // Another question to them: an `{ok}` now answers that one.
+    if (taken) this.handsAsked.delete(playerKey(who));
     return taken;
   }
 
@@ -651,6 +695,8 @@ export class Remotes implements SessionModule {
     const peer = this.events.peer?.(who);
     const settled = peer != null && (peer.client !== null || peer.extendedRemotes !== 'unknown');
     if (!settled && !this.asked.has(playerKey(who))) this.ask(who, 'version', state);
+    // Their sheet, which only this client answers (todo 86); a newcomer is asked once `@version` says.
+    if (this.runsThisClient(who)) this.ask(who, 'stats', state);
   }
 
   /** A follower's `@wait` and `@ok` are `FollowerPacing`'s; the rest is asked here. */
@@ -660,6 +706,8 @@ export class Remotes implements SessionModule {
     if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
     this.askForHeal(state);
     this.pacing.onCharacter(state);
+    this.hands.onCharacter(state);
+    this.sheets.onCharacter(state);
   }
 
   /**
@@ -762,7 +810,14 @@ export class Remotes implements SessionModule {
    * of its shape, because every one of these is a brace-wrapped phrase and
    * shapes collide.
    */
-  private readReply(from: string, reply: RemoteReply): boolean {
+  private readReply(from: string, reply: RemoteReply, state: CharacterState): boolean {
+    const hand = this.handsAsked.get(playerKey(from));
+    if (hand !== undefined && (reply.kind === 'ok' || reply.kind === 'failed')) {
+      this.handsAsked.delete(playerKey(from));
+      const answer = reply.kind === 'failed' ? 'failed' : hand.viaDo ? 'tried' : 'held';
+      this.events.handAnswered?.(from, answer);
+      return true;
+    }
     const heard = this.answers.heard(from, reply, Date.now());
     if (heard !== null) {
       this.events.notice?.(heard);
@@ -782,6 +837,10 @@ export class Remotes implements SessionModule {
           ? t('automation.remotes.peerIsOurs', { who: from, client: named })
           : t('automation.remotes.peerIsOther', { who: from, client: named })
       );
+      // A member's sheet decides who goes at a trap or a door (todo 86).
+      if (mine && partyMembers(state).some((name) => playerKey(name) === key)) {
+        this.ask(from, 'stats', state);
+      }
       return true;
     }
 
@@ -824,12 +883,16 @@ export class Remotes implements SessionModule {
     this.regroup.reset();
     this.invites.reset();
     this.leaderDoors.reset();
+    this.hands.reset();
+    this.sheets.reset();
+    this.handsAsked.clear();
   }
 
   /** The regroup's and the invitation's clocks are what here outlive a call. */
   dispose(): void {
     this.regroup.dispose();
     this.invites.dispose();
+    this.hands.dispose();
   }
 
   /**
@@ -970,9 +1033,12 @@ export class Remotes implements SessionModule {
       case 'lives':
         this.say(from, command, formatLives(state.progress.lives), prefix);
         return;
-      case 'stats':
-        this.say(from, command, formatStats(state.progress), prefix);
+      case 'stats': {
+        const body = formatStats(state.progress);
+        this.say(from, command, body, prefix);
+        if (body !== null) this.sheets.answered(from, body);
         return;
+      }
       case 'wealth':
         this.say(from, command, formatWealth(state.inventory.wealth), prefix);
         return;
@@ -1453,8 +1519,47 @@ export class Remotes implements SessionModule {
         return;
       }
 
-      default:
+      case 'disarm':
+      case 'pick':
+      case 'bash':
+        this.hands.start(command.name, from, command.argument, state, (body) =>
+          this.reply(from, body, prefix)
+        );
         return;
+
+      // `unread` and `refused`, each answered above before the switch.
+      case 'seen':
+      case 'home':
+      case 'deposit-all':
+      case 'looponce':
+      case 'roam':
+      case 'attack-last':
+      case 'auto-all':
+      case 'auto-nuke':
+      case 'auto-heal':
+      case 'auto-bless':
+      case 'auto-light':
+      case 'auto-cash':
+      case 'auto-get':
+      case 'auto-sneak':
+      case 'auto-hide':
+      case 'auto-search':
+      case 'divert':
+      case 'comeback':
+      case 'blind':
+      case 'diseased':
+      case 'held':
+      case 'share':
+      case 'kill':
+      case 'hangup':
+      case 'relog':
+      case 'panic!':
+        return;
+
+      default: {
+        const never: never = command.name;
+        return never;
+      }
     }
   }
 
