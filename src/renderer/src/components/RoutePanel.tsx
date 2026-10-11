@@ -13,6 +13,7 @@ import RoomMatches from './RoomMatches';
 import { t } from '../lib/i18n';
 import { type LocalMap } from '@shared/map';
 import { errorMessage } from '@shared/values';
+import { CLIENT_KEYS } from '@shared/keys';
 import {
   asRoomReference,
   chosenWay,
@@ -782,8 +783,8 @@ export default function RoutePanel({
   useHotkeys(
     open && walkable && shown !== null
       ? [
-          ...(forLoop === null ? [{ key: 'r', alt: true, run: () => walk(shown, true) }] : []),
-          { key: 'g', alt: true, run: () => walk(shown) }
+          ...(forLoop === null ? [{ ...CLIENT_KEYS.runRoute, run: () => walk(shown, true) }] : []),
+          { ...CLIENT_KEYS.walkRoute, run: () => walk(shown) }
         ]
       : []
   );

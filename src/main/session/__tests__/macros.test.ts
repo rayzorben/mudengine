@@ -23,7 +23,8 @@ describe('a macro step worked out at its turn', () => {
     published: () => undefined,
     batch: () => 1,
     state: () => state,
-    mob: () => mob
+    mob: () => mob,
+    aliases: () => ({})
   });
 
   /** Each prompt credits one command and lets the next go. */

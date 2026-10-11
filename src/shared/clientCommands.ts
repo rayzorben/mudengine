@@ -2,11 +2,12 @@
  * Lines the client runs itself instead of sending (todo 83), matched on the
  * whole line in any case. GreaterMUD has no `all` for either verb: `get` and
  * `equip` read it as an item's name (`GetCommand.cs`, `EquipCommand.cs`), so
- * nothing the server does is shadowed. Pure, so the Talk box can choose the
- * path and main can read the same line again. Closed: a new one is a member
- * here and a case in `session/clientCommands.ts`.
+ * nothing the server does is shadowed. Pure, so the Talk box's line and the
+ * terminal's are read by the same rules. Closed: a new one is a member here
+ * and a case in `session/clientCommands.ts`.
  */
 
+import { expandAlias, type Aliases } from './aliases';
 import { parseMacro, placeholdersIn, type MacroStep } from './macro';
 import { channelPrefix } from './talk';
 
@@ -63,17 +64,14 @@ export function stepsOf(line: string): MacroStep[] | null {
   return runsItself(line) ? [{ command: line.trim(), times: 1 }] : null;
 }
 
-/** Whether a Talk-box line goes to main to be read (`queueMacro`) rather than out as typed. */
-export function mainReads(line: string): boolean {
-  return asTyped(line) !== null || stepsOf(line) !== null;
-}
-
 /**
  * Whether a line the server already holds, typed in the terminal, is taken
- * back at Enter and read by main: one command main runs itself, or one marked
- * `AS_TYPED` whose mark has to come off. A `;` line typed there goes out as
- * typed, as it always has.
+ * back at Enter and read by main: one command main runs itself, a line that
+ * opens on one of the player's aliases (todo 74), or one marked `AS_TYPED`
+ * whose mark has to come off. A `;` line typed there goes out as typed, as it
+ * always has.
  */
-export function caughtInTerminal(line: string): boolean {
-  return runsItself(asTyped(line) ?? line);
+export function caughtInTerminal(line: string, aliases: Aliases): boolean {
+  const bare = asTyped(line) ?? line;
+  return runsItself(bare) || expandAlias(bare, aliases) !== null;
 }

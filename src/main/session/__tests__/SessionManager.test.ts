@@ -8587,7 +8587,7 @@ describe('a talk-box line of several commands', () => {
     pacing: { window: 2, minGapMs: 10, ackTimeoutMs: 30_000 }
   };
 
-  async function inTheRealm(): Promise<{
+  async function inTheRealm(automation: AutomationConfig = paced): Promise<{
     socket: net.Socket;
     sent: Array<{ command: string; source: string }>;
     notices: string[];
@@ -8596,7 +8596,7 @@ describe('a talk-box line of several commands', () => {
     const { sink, notices } = collect();
     manager = build(
       { ...sink, command: (command, source) => sent.push({ command, source }) },
-      { automation: paced }
+      { automation }
     );
     await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
     const socket = await client();
@@ -8619,6 +8619,30 @@ describe('a talk-box line of several commands', () => {
       { command: 'smile', source: 'user' },
       { command: 'wave', source: 'user' },
       { command: 'wave', source: 'user' }
+    ]);
+  });
+
+  it('expands an alias first, so a named macro goes out a prompt at a time (todo 74)', async () => {
+    const { socket, sent } = await inTheRealm({
+      ...paced,
+      aliases: { ret: 'smile;2wave', kk: 'grin' }
+    });
+    // Positive control: a line that is no alias goes as typed.
+    manager!.sendMacro('nod');
+    await until(() => sent.length === 1);
+    manager!.sendMacro('kk at all');
+    await until(() => sent.length === 2);
+    socket.write('[HP=100]:' + PROMPT_REPAINT);
+    manager!.sendMacro('ret');
+    await until(() => sent.length === 4);
+    socket.write('[HP=100]:' + PROMPT_REPAINT);
+    await until(() => sent.length === 5);
+    expect(sent.map((entry) => entry.command)).toEqual([
+      'nod',
+      'grin at all',
+      'smile',
+      'wave',
+      'wave'
     ]);
   });
 

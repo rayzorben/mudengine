@@ -84,6 +84,7 @@ const SECTION_FIELDSETS: Record<CharacterSection, readonly NavFieldset[]> = {
   remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
   talk: [
     { id: 'talk', label: t('settings.talk.legend') },
+    { id: 'talk-aliases', label: t('settings.aliases.legend') },
     { id: 'talk-pvp', label: t('settings.health.pvpLegend') }
   ],
   alerts: [

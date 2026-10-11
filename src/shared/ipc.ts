@@ -81,6 +81,7 @@ import type { CureGates, SpellServes, SpellTargeting } from './spellcraft';
 import type { InvokeChoice } from './invoke';
 import type { BlessingChoiceView } from './blessingchoice';
 import type { ThemePreference } from './themes';
+import type { StatedPair } from './pairs';
 import type { ProfileAccent } from './profiles';
 import type { LocateWord } from './locate';
 import type { LowLivesAnswer } from './lives';
@@ -522,6 +523,8 @@ export interface ProfileEditable {
   talk: TalkConfig;
   /** Whether the client sets the prompt's shape on the way in. Resolved, like the rest. */
   statline: StatlineConfig;
+  /** Its own `automation.aliases`, as written; Global's are added to them, not shown here. */
+  aliases: StatedPair[];
   /** The status line and listings this player designed for this character. Resolved, like the rest. */
   rewrites: RewritesUiConfig;
   /**

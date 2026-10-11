@@ -27,6 +27,8 @@ import { CheckField, NumberField, SelectField, TextField } from './FormField';
 import FightWordFields from './FightWordFields';
 import RemoteList from './RemoteList';
 import RemoteSwitches from './RemoteSwitches';
+import AliasFields from './AliasFields';
+import KeyFields from './KeyFields';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
 import LoopSection from './LoopSection';
 import RewritesDesigner from './RewriteDesigner';
@@ -131,7 +133,7 @@ export type GlobalScope = 'client' | 'defaults';
  * are ours: MegaMUD ran behind a terminal somebody else had already dialled.
  */
 const SECTIONS: Record<GlobalScope, readonly Section[]> = {
-  client: ['appearance', 'records'],
+  client: ['appearance', 'keys', 'records'],
   defaults: [
     'realm',
     'combat',
@@ -143,6 +145,7 @@ const SECTIONS: Record<GlobalScope, readonly Section[]> = {
     'train',
     'quests',
     'remotes',
+    'talk',
     'alerts',
     'rewrites'
   ]
@@ -150,6 +153,7 @@ const SECTIONS: Record<GlobalScope, readonly Section[]> = {
 
 type Section =
   | 'appearance'
+  | 'keys'
   | 'records'
   | 'realm'
   | 'combat'
@@ -161,6 +165,7 @@ type Section =
   | 'train'
   | 'quests'
   | 'remotes'
+  | 'talk'
   | 'alerts'
   | 'rewrites';
 
@@ -175,6 +180,7 @@ type Section =
  */
 const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   appearance: [{ id: 'appearance-vitals', label: t('settings.client.appearance.vitalsLegend') }],
+  keys: [],
   records: [],
   realm: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }],
   combat: [
@@ -215,6 +221,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   ],
   quests: [{ id: 'quests', label: t('settings.quests.legend') }],
   remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
+  talk: [],
   alerts: [
     { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
     { id: 'alerts-afk', label: t('settings.afk.legend') }
@@ -224,6 +231,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
 
 const SECTION_LABEL: Record<Section, string> = {
   appearance: t('settings.client.tabs.appearance'),
+  keys: t('settings.client.tabs.keys'),
   records: t('settings.client.tabs.records'),
   realm: t('settings.global.tabs.realm'),
   combat: t('settings.tabs.combat'),
@@ -235,6 +243,7 @@ const SECTION_LABEL: Record<Section, string> = {
   train: t('settings.tabs.train'),
   quests: t('settings.tabs.quests'),
   remotes: t('settings.tabs.remotes'),
+  talk: t('settings.tabs.talk'),
   alerts: t('settings.tabs.alerts'),
   rewrites: t('settings.tabs.rewrites')
 };
@@ -1947,6 +1956,15 @@ export default function GlobalSettings({
           </SettingsSection>
         )}
 
+        {shows('talk') && (
+          <SettingsSection {...sectionOf('talk')}>
+            <AliasFields
+              aliases={draft.automation.aliases}
+              onChange={(aliases) => automation({ aliases })}
+            />
+          </SettingsSection>
+        )}
+
         {shows('alerts') && (
           <SettingsSection {...sectionOf('alerts')}>
             {/*
@@ -2007,6 +2025,12 @@ export default function GlobalSettings({
                 />
               </div>
             </fieldset>
+          </SettingsSection>
+        )}
+
+        {shows('keys') && (
+          <SettingsSection {...sectionOf('keys')}>
+            <KeyFields keys={draft.keys} onChange={(keys) => onChange({ ...draft, keys })} />
           </SettingsSection>
         )}
 

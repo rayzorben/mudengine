@@ -17,7 +17,8 @@
 # pages:
 #
 #   MudEngine   the client itself -- the console, the theme, the tabs, the
-#               records it keeps. `terminal:`, `ui:`, `logging:`.
+#               records it keeps, your keys. `terminal:`, `ui:`, `logging:`,
+#               `keys:`.
 #   Global      what a NEW realm or character starts with. `connection:`,
 #               `automation:`, `ui.alerts`.
 #
@@ -753,6 +754,19 @@ automation:
     enabled: false
     afterMinutes: 5
     reply: '{AFK}'
+
+  # Your own shorthand: a word typed in the Talk box or the terminal, alone or
+  # in front of more words, sends the line it stands for, with the rest after
+  # it. The line can be several commands the way the box takes them, so
+  # `ret: 2d,6s;rest` is a named macro, sent a prompt at a time. A word the
+  # realm already knows (`l`, `k`, `gos`) is not taken over. A character's file
+  # adds to these; `word: ''` there drops one. Speech on a channel is never
+  # expanded, and a line starting with \ goes as typed.
+  #
+  #   aliases:
+  #     kk: pu kobold
+  #     ret: 2d,6s;rest
+  aliases: {}
 
   # What a planned route is allowed to do on the way -- MegaMUD's Movement.
   #
@@ -2540,3 +2554,29 @@ logging:
   # Stop appending past this size rather than filling a disk unattended. The
   # client says so in the terminal when it stops. 64 MiB.
   maxBytes: 67108864
+
+# Keys that send a line, MegaMUD's macros. A key is named by where it sits on
+# the keyboard (`Numpad8`, `F5`, `KeyK`), with `Ctrl+`, `Alt+` or `Shift+` in
+# front; the settings page records one when you press it. The line goes out
+# the way a Talk-box line does, so it can be an alias or several commands
+# (`F2: 2d,6s;rest`). These are MegaMUD's own: the keypad walks, 5 maps, 0 is
+# up, . is down and + rests. The keypad works with NumLock on or off, and the
+# digits above the letters still type digits.
+#
+# A key the client already uses (`Ctrl+KeyK`), a key that types into the line
+# (`KeyK`, `Enter`) and two entries on one key are not loaded, and the client
+# says so when the file is read. For everyone at this keyboard, so a
+# character's file has no say.
+keys:
+  Numpad1: sw
+  Numpad2: s
+  Numpad3: se
+  Numpad4: w
+  Numpad5: map
+  Numpad6: e
+  Numpad7: nw
+  Numpad8: n
+  Numpad9: ne
+  Numpad0: u
+  NumpadDecimal: d
+  NumpadAdd: rest

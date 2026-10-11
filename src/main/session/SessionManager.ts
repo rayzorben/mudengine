@@ -2078,7 +2078,7 @@ export class SessionManager {
   send(data: string): void {
     // A line the client reads itself is erased at Enter, not committed (`takeBack.ts`).
     const reads = this.queue.holding === null && this.tracker.current.phase === 'in-game';
-    const back = reads ? takeBackAtEnter(this.outbound, data) : null;
+    const back = reads ? takeBackAtEnter(this.outbound, data, this.automationConfig.aliases) : null;
     if (back !== null) {
       this.send(back.erase);
       this.sendMacro(back.line);
@@ -2213,14 +2213,14 @@ export class SessionManager {
       published: () => this.publisher.publishAutomation(),
       batch: () => (this.macros += 1),
       state: () => this.tracker.current,
-      mob: (state) => this.combat.pick(state)
+      mob: (state) => this.combat.pick(state),
+      aliases: () => this.automationConfig.aliases
     });
   }
 
   /**
-   * What is still waiting of the talk box's lines, gone and said. The box's
-   * own Drop, and a death: the rest of a path walked from a temple is a walk
-   * nobody asked for.
+   * What is still waiting of the talk box's lines, gone and said. The box's own Drop, and a
+   * death: the rest of a path walked from a temple is a walk nobody asked for.
    */
   dropTyped(died = false): void {
     const count = this.queue.cancel((intent) => intent.typed === true);

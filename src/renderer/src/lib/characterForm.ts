@@ -48,6 +48,7 @@ import type { BlessingFieldsProps, BlessingSwitch } from '../components/Blessing
 import type { DrainField, DrainFieldsProps } from '../components/DrainFields';
 import type { HealField, HealFieldsProps, HealSwitch } from '../components/HealFields';
 import { sameJson } from './history';
+import type { StatedPair } from '@shared/pairs';
 
 /**
  * Whether a realm's `database` walks something other than the world the
@@ -337,6 +338,8 @@ export interface CharacterFields {
   /** Whether this character answers another player's `@` commands. */
   answerRemotes: boolean;
   lookAtPlayers: boolean;
+  /** Its own `automation.aliases`, as written; Global's are added to them. */
+  aliases: StatedPair[];
   /** Whether the client sets the prompt's shape on the way in — `automation.statline`. */
   statlineControl: boolean;
   /** The status line and listings this player designed — `ui.rewrites`. */
@@ -582,6 +585,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     remoteParty: [...entry.remotes.party],
     remotePlayers: entry.remotes.players,
     lookAtPlayers: entry.talk.lookAtPlayers,
+    aliases: entry.aliases.map((pair) => ({ ...pair })),
     statlineControl: entry.statline.control,
     rewrites: entry.rewrites
   };
@@ -808,6 +812,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
     },
     talk: { lookAtPlayers: form.lookAtPlayers },
     statline: { control: form.statlineControl },
+    aliases: form.aliases,
     rewrites: form.rewrites
   };
 }
@@ -1080,6 +1085,8 @@ export function emptyForm(
     remoteParty: [...remotes.party],
     remotePlayers: remotes.players,
     lookAtPlayers: talk.lookAtPlayers,
+    // None of its own: Global's reach it through the overlay.
+    aliases: [],
     statlineControl: statline.control,
     rewrites
   };

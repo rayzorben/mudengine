@@ -5,7 +5,6 @@ import {
   asTyped,
   caughtInTerminal,
   clientCommandOf,
-  mainReads,
   stepsOf
 } from '../clientCommands';
 import { fillMob, placeholdersIn, unknownPlaceholder } from '../macro';
@@ -62,23 +61,31 @@ describe('a line marked to go as typed', () => {
     expect(asTyped('get all')).toBeNull();
     expect(stepsOf('\\get all')).toBeNull();
     expect(stepsOf('\\a {mob}')).toBeNull();
-    expect(mainReads('\\get all')).toBe(true);
-    expect(mainReads('look')).toBe(false);
   });
 });
 
 describe('a line typed in the terminal', () => {
   it('is taken back when main runs it, or when its mark has to come off', () => {
-    expect(caughtInTerminal('get all')).toBe(true);
-    expect(caughtInTerminal('a {mob}')).toBe(true);
-    expect(caughtInTerminal('\\get all')).toBe(true);
+    expect(caughtInTerminal('get all', {})).toBe(true);
+    expect(caughtInTerminal('a {mob}', {})).toBe(true);
+    expect(caughtInTerminal('\\get all', {})).toBe(true);
+  });
+
+  it('is taken back when it opens on an alias, marked or not (todo 74)', () => {
+    const aliases = { kk: 'pu kobold' };
+    expect(caughtInTerminal('kk', aliases)).toBe(true);
+    expect(caughtInTerminal('kk thief', aliases)).toBe(true);
+    expect(caughtInTerminal('\\kk', aliases)).toBe(true);
+    // Positive control above: without the alias the same word goes as typed.
+    expect(caughtInTerminal('kk', {})).toBe(false);
+    expect(caughtInTerminal('gos kk', aliases)).toBe(false);
   });
 
   it('goes as typed otherwise, a ; line included', () => {
     // Positive control above: the same words alone are caught.
-    expect(caughtInTerminal('gos get all')).toBe(false);
-    expect(caughtInTerminal('sw;get all')).toBe(false);
-    expect(caughtInTerminal('look')).toBe(false);
-    expect(caughtInTerminal('')).toBe(false);
+    expect(caughtInTerminal('gos get all', {})).toBe(false);
+    expect(caughtInTerminal('sw;get all', {})).toBe(false);
+    expect(caughtInTerminal('look', {})).toBe(false);
+    expect(caughtInTerminal('', {})).toBe(false);
   });
 });

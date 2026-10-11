@@ -62,6 +62,8 @@ import {
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
 import type { ConnectionTarget, StreamEncoding } from './types';
 import { normalizeMobRules, type MobRule } from './mobRules';
+import { normalizeAliases, type Aliases } from './aliases';
+import { MEGAMUD_KEYS, normalizeKeys, type KeyBindings } from './keys';
 // A value import, and safe: `commands.ts` imports nothing from `shared/`, so
 // there is no cycle for a bundler to resolve the wrong way round.
 import { REREAD_ROOM } from './commands';
@@ -2401,6 +2403,8 @@ export interface AutomationConfig {
   remotes: RemotesConfig;
   /** What this character does about other people, short of talking to them. */
   talk: TalkConfig;
+  /** The player's own shorthand in the Talk box, word to line. See `shared/aliases.ts`. */
+  aliases: Aliases;
   /** Whether the client sets the prompt's shape on the way in. See `StatlineConfig`. */
   statline: StatlineConfig;
   /**
@@ -2486,6 +2490,8 @@ export interface AppConfig {
   ui: UiConfig;
   logging: LoggingConfig;
   automation: AutomationConfig;
+  /** Keys bound to a line, global only. See `shared/keys.ts`. */
+  keys: KeyBindings;
 }
 
 /**
@@ -2617,9 +2623,8 @@ export const DEFAULT_CONFIG: AppConfig = {
     showHud: true,
     showLogo: true,
     console: { palette: DEFAULT_CONSOLE_PALETTE, keepDark: true, darkTheme: DEFAULT_THEME },
-    // Half and a quarter: the same numbers `megamind-client` shipped for
-    // `restIfBelow` / `runIfBelow`, and the ones a MajorMUD player already has
-    // in their head. Fractions, so they hold at every level.
+    // Half and a quarter, as `megamind-client` shipped `restIfBelow` / `runIfBelow`
+    // and a MajorMUD player already has in mind. Fractions, so they hold at every level.
     vitals: {
       hp: { caution: 0.5, critical: 0.25 },
       mana: { caution: 0.5, critical: 0.25 }
@@ -2684,11 +2689,10 @@ export const DEFAULT_CONFIG: AppConfig = {
     // `l` everywhere else. Nothing here needs one -- the block already arrived.
     onEnterRealm: ['rm', 'st', 'i', 'exp', 'sc', 'gb', 'bank'],
     onPartyChange: 'party',
-    // Off: a look is a spent command and the server tells the person they were
-    // looked at. See `TalkConfig.lookAtPlayers`.
+    // Off: a look costs a command and tells the person. See `TalkConfig.lookAtPlayers`.
     talk: { lookAtPlayers: false },
-    // Off: the status line is a setting kept on the character server-side,
-    // and the client does not change one unasked. See `StatlineConfig`.
+    aliases: {},
+    // Off: the statline is kept server-side, not changed unasked. See `StatlineConfig`.
     statline: { control: false },
     // Empty is a bare Enter: the room, re-read without telling the room. See
     // `IdleConfig.command` and `REREAD_ROOM`.
@@ -2898,7 +2902,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       autoBless: true,
       autoChooseBlessings: false
     }
-  }
+  },
+  keys: MEGAMUD_KEYS
 };
 
 /**
@@ -3156,14 +3161,7 @@ export function normalizeConfig(input: unknown): AppConfig {
       ),
       login: normalizeLogin(connection['login'])
     },
-    // Both keys, oldest last: `profiles:` was this block's name before a
-    // profile came to mean a character.
-    /*
-     * Assembled from the directories under `realms/` by `ConfigStore`, which
-     * injects the list before this runs. The options file itself no longer
-     * states realms at all: a realm is a file with its own menus and its own
-     * loops, and a list of them inside the global file could hold neither.
-     */
+    // Injected by `ConfigStore` from the realm directories; the options file states none.
     servers: normalizeServers(raw['servers']),
     terminal: {
       font: normalizeFont(terminal['font'], DEFAULT_CONFIG.terminal.font),
@@ -3195,7 +3193,8 @@ export function normalizeConfig(input: unknown): AppConfig {
       rewrites: normalizeRewrites(ui['rewrites'])
     },
     logging: normalizeLogging(raw['logging']),
-    automation: normalizeAutomation(raw['automation'])
+    automation: normalizeAutomation(raw['automation']),
+    keys: normalizeKeys(raw['keys'])
   };
 }
 
@@ -3784,6 +3783,7 @@ function normalizeAutomation(value: unknown): AutomationConfig {
         d.talk.lookAtPlayers
       )
     },
+    aliases: normalizeAliases(raw['aliases']),
     statline: {
       control: bool(
         isRecord(raw['statline']) ? raw['statline']['control'] : undefined,

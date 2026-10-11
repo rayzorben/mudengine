@@ -7878,6 +7878,27 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
+ * A name-to-line list (`PairRows`, todo 74): the reason a row does not load
+ * takes a line of its own under the row, in the warning's hue.
+ */
+.settings-pairs li {
+  flex-wrap: wrap;
+}
+
+.settings-pairs .pair-refusal {
+  flex: 1 0 100%;
+  color: color-mix(in srgb, var(--danger) 85%, var(--text-hi));
+  font-size: 0.88em;
+}
+
+/* The recorded key, as wide as an alias's word and in the data face. */
+.settings-steps li > button.key-chord {
+  flex: 0 0 140px;
+  font-family: var(--font-mono);
+  text-align: start;
+}
+
+/*
  * The realm's own *use this item there* rules, under the player's own list
  * and under the switch that obeys them (todo 02).
  *
