@@ -1394,6 +1394,12 @@ tuning:
     # listing still prints them [Invited].
     inviteAgainMs: 5000
 
+    # The longest line the server keeps: GreaterMUD appends a typed character
+    # only while the line is under 255 (TGSModule.cs:299). A @loop or @goto
+    # answer listing several matches is cut to fit, on the whole /<name> {...}
+    # line. Read from the source, not yet measured on the wire.
+    telepathMax: 255
+
   # How many commands one press or one `@` may spend.
   #
   # One budget, because it is one budget: each `wear`, `get` or `drop` comes

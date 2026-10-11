@@ -547,6 +547,27 @@ export class Errands implements SessionModule {
     return this.planFromHereAs(to, traveller, options);
   }
 
+  /**
+   * The steps from here through `rooms` in order, as a lap's legs are planned
+   * (`lapTraveller`), or null where any leg cannot be planned. Asked once per
+   * `@path` (todo 32); nothing is asked of a counter or said.
+   */
+  stepsThrough(rooms: readonly RoomId[]): number | null {
+    const state = this.tracker.current;
+    let from = roomAddress(state.room);
+    if (from === null) return null;
+    const traveller = this.lapTraveller(state);
+    let steps = 0;
+    for (const to of rooms) {
+      if (to === from) continue;
+      const leg = this.navigation.leg(from, to, traveller);
+      if (leg === null || leg.blocked) return null;
+      steps += leg.steps.length;
+      from = to;
+    }
+    return steps;
+  }
+
   /** `planFromHere` for a traveller already made, with the counters asked and a room run from said. */
   private planFromHereAs(
     to: RoomId,

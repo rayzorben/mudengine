@@ -20,6 +20,7 @@
 # Copy one into `automation.loops` in your options file, or name it there.
 loops:
   - name: 'Ancient Fortress: Alabaster Palace NW Loop'
+    pathFile: 'APNELOOP.mp'
     stops:
       - 'Alabaster Palace 17/9670'
       - 'Palace Veranda 17/9689'
@@ -27,6 +28,7 @@ loops:
       - 'Palace Veranda 17/9687'
       - 'Alabaster Palace, Garden 17/9711'
   - name: 'Ancient Fortress: Alabaster Palace Singles SW Loop'
+    pathFile: 'ALPALOOP.mp'
     stops:
       - 'Alabaster Palace 17/9644'
       - 'Palace Veranda 17/9655'
@@ -34,12 +36,14 @@ loops:
       - 'Palace Veranda 17/9687'
       - 'Alabaster Palace, Garden 17/9710'
   - name: 'Ancient Fortress: Burning Plains (NW)'
+    pathFile: 'AFBPLOOP.mp'
     stops:
       - 'Burning Plains 17/9507'
       - 'Burning Plains 17/9604'
       - 'Burning Plains 17/9630'
       - 'Burning Plains 17/9587'
   - name: 'Ancient Fortress: Hedge Maze Loop (Traps!)'
+    pathFile: 'HTHMLOOP.mp'
     stops:
       - 'Hedge Maze 17/2868'
       - 'Hedge Maze 17/2874'
@@ -54,12 +58,14 @@ loops:
       - 'Hedge Maze 17/2888'
       - 'Hedge Maze 17/2883'
   - name: 'Ancient Ruin: Dragon fang collecting loop'
+    pathFile: 'PRSDLOOP.mp'
     stops:
       - 'Ancient Coliseum, Arena 3/595'
       - 'Wide Passage 3/593'
       - 'Ancient Coliseum, Viewing Stands 3/592'
       - 'Wide Passage 3/593'
   - name: 'Ancient Ruin: Pillaged Museum Loop'
+    pathFile: 'VXPMLOOP.mp'
     stops:
       - 'Pillaged Museum 3/613'
       - 'Ruined Shop 3/611'
@@ -72,16 +78,19 @@ loops:
       - 'Ancient Ruin, Dead End 3/643'
       - 'Icy Building 3/619'
   - name: 'Arlysia: Animated Defenders (NW Loop)'
+    pathFile: 'ALGHLOOP.mp'
     stops:
       - 'Great Hall, Stair 17/7039'
       - 'Library, Great Hall 17/7061'
       - 'Library, Great Hall 17/7065'
   - name: 'Arlysia: Animated Defenders (W/Juggernaut NE)'
+    pathFile: 'ALAJLOOP.mp'
     stops:
       - 'Great Hall, Dais 17/7055'
       - 'Library, Great Hall 17/7061'
       - 'Library, Great Hall 17/7080'
   - name: 'Arlysia: Arlysia Park'
+    pathFile: 'ARPELOOP.mp'
     stops:
       - 'Stargazer''s Lane, Park Entrance 17/2280'
       - 'City Park 17/2460'
@@ -105,6 +114,7 @@ loops:
       - 'City Park 17/2445'
       - 'City Park 17/2444'
   - name: 'Arlysia: Dirt Streets'
+    pathFile: 'ARDSLOOP.mp'
     stops:
       - 'Dirt Street 17/2472'
       - 'Dirt Street Home 17/2490'
@@ -122,6 +132,7 @@ loops:
       - 'Dirt Street Home 17/2499'
       - 'Dirt Street Home 17/2489'
   - name: 'Arlysia: Pirate Galleon Loop'
+    pathFile: 'ARAGLOOP.mp'
     stops:
       - 'Ancient Galleon 17/981'
       - 'Ancient Galleon, Ship Bow 17/980'
@@ -137,6 +148,7 @@ loops:
       - 'Ancient Galleon 17/998'
       - 'Ancient Galleon 17/982'
   - name: 'Arlysia: White Forest (Ivory Golems)'
+    pathFile: 'WFDPLOOP.mp'
     stops:
       - 'White Forest 17/1733'
       - 'White Forest 17/1727'
@@ -154,6 +166,7 @@ loops:
       - 'White Forest 17/1670'
       - 'White Forest 17/1750'
   - name: 'Baenglen: Baenglen, Town Streets Loop'
+    pathFile: 'BGAHLOOP.mp'
     stops:
       - 'Abandoned House 14/6025'
       - 'Baenglen, Town Streets 14/6024'
@@ -161,6 +174,7 @@ loops:
       - 'Burning House 14/6020'
       - 'Burning House 14/6022'
   - name: 'Baenglen: Infected Fields Loop'
+    pathFile: 'IFNPLOOP.mp'
     stops:
       - 'Infested Fields, North Path 14/5922'
       - 'Infested Fields 14/5940'
@@ -174,6 +188,7 @@ loops:
       - 'Infested Fields 14/5908'
       - 'Infested Fields 14/5914'
   - name: 'Baenglen: Lanford Stead, Rotting Fields (singles)'
+    pathFile: 'LSCPLOOP.mp'
     stops:
       - 'Lanford Stead, Cart Path 14/5759'
       - 'Lanford Stead, Rotting Fields 14/5787'
@@ -183,6 +198,7 @@ loops:
       - 'Lanford Stead, Rotting Fields 14/5797'
       - 'Lanford Stead, Rotting Fields 14/5773'
   - name: 'Baenglen: Manor Courtyard'
+    pathFile: 'BGMSLOOP.mp'
     stops:
       - 'Manor Stables 14/6189'
       - 'Manor Stables 14/6191'
@@ -190,6 +206,7 @@ loops:
       - 'Manor Courtyard 14/6176'
       - 'Manor Courtyard 14/6167'
   - name: 'Baenglen: Ravaged Farm Singles Loop'
+    pathFile: 'RVCPLOOP.mp'
     stops:
       - 'Ravaged Farm, Cart Path 14/5948'
       - 'Ravaged Farm, Fields 14/5958'
@@ -201,6 +218,7 @@ loops:
       - 'Ravaged Farm Fields, Crater Edge 14/5985'
       - 'Ravaged Farm Fields, Crater Edge 14/5983'
   - name: 'Baenglen: Ruined Manor Loop'
+    pathFile: 'RMSDLOOP.mp'
     stops:
       - 'Ruined Manor, Side Door 14/6201'
       - 'Ruined Manor, Guardroom 14/6200'
@@ -208,14 +226,17 @@ loops:
       - 'Blood-spattered Room 14/6213'
       - 'Ruined Manor, Hallway 14/6214'
   - name: 'Baenglen: Stone Barracks South Loop'
+    pathFile: 'SBBDLOOP.mp'
     stops:
       - 'Stone Barracks, Back Door 14/6229'
       - 'Stone Barracks 14/6219'
   - name: 'Baenglen: Stone Barracks South Loop (2)'
+    pathFile: 'SBFDLOOP.mp'
     stops:
       - 'Stone Barracks, Front Door 14/6217'
       - 'Stone Barracks 14/6231'
   - name: 'Baenglen: Withered Farm, Fields Loop'
+    pathFile: 'WFWPLOOP.mp'
     stops:
       - 'Withered Farm, Wagon Path 14/5862'
       - 'Withered Farm, Fields 14/5855'
@@ -227,6 +248,7 @@ loops:
       - 'Withered Farm, Fields 14/5873'
       - 'Withered Farm, Fields 14/5869'
   - name: 'Bannock Deeps: Central Mine Tunnel (inner loop)'
+    pathFile: 'CMINLOOP.mp'
     stops:
       - 'Central Mine Tunnel, Glittering Wall 14/7081'
       - 'Central Mine Tunnel, Cart Track 14/7050'
@@ -234,6 +256,7 @@ loops:
       - 'Central Mine Tunnel, Depleted Vein 14/7077'
       - 'Central Mine Tunnel, Depleted Vein 14/7074'
   - name: 'Bannock Deeps: Lower Mine (Level 3) Full Loop'
+    pathFile: 'LML3LOOP.mp'
     stops:
       - 'Lower Mine Tunnel, Ramp 14/7102'
       - 'Lower Mine Tunnel, Adamant Vein 14/7177'
@@ -243,16 +266,19 @@ loops:
       - 'Lower Mine Tunnel, Adamant Vein 14/7143'
       - 'Lower Mine Tunnel, Adamant Vein 14/7127'
   - name: 'Barren Hills: Animal Pen (wardogs)'
+    pathFile: 'NGAPLOOP.mp'
     stops:
       - 'Giant Fortress, Animal Pen 16/795'
       - 'Giant Fortress, Animal Pen 16/665'
       - 'Giant Fortress, Animal Pen 16/664'
       - 'Giant Fortress, Animal Pen 16/666'
   - name: 'Barren Hills: Hill Giant Chief loop (instant regen)'
+    pathFile: 'BHHCLOOP.mp'
     stops:
       - 'Pavilion of Hides 16/801'
       - 'Giant Fortress, Pavilion Entrance 16/800'
   - name: 'Barren Hills: Hill Giant Fortress'
+    pathFile: 'BHFGLOOP.mp'
     stops:
       - 'Barren Hills, Fortress Gate 16/786'
       - 'Giant Fortress, Dirt Intersection 16/793'
@@ -261,6 +287,7 @@ loops:
       - 'Giant Fortress, Path of Bones 16/661'
       - 'Barren Hills 16/782'
   - name: 'Barren Hills: Stone Giant Encampment Loop'
+    pathFile: 'BHSELOOP.mp'
     stops:
       - 'Stone Encampment, Entrance 16/1083'
       - 'Stone Encampment 16/1119'
@@ -282,6 +309,7 @@ loops:
       - 'Mountain Plateau, Rocky Pathway 16/1074'
       - 'Mountain Plateau, Rocky Pathway 16/1122'
   - name: 'Barren Hills: Storm Fortress'
+    pathFile: 'SGFSLOOP.mp'
     stops:
       - 'Storm Fortress 16/1160'
       - 'Storm Fortress 16/1168'
@@ -293,26 +321,31 @@ loops:
       - 'Storm Fortress, Barracks 16/1192'
       - 'Storm Fortress, Hallway 16/1173'
   - name: 'Barren Hills: Storm Giant Commander and King (small)'
+    pathFile: 'BHSHLOOP.mp'
     stops:
       - 'Storm Fortress, Hallway 16/1182'
       - 'Storm Fortress, Planning Room 16/1185'
       - 'Throne Room of Lightning 16/1184'
   - name: 'Barren Hills: Storm Mountain Area Outside Lallim'
+    pathFile: 'SMOLLOOP.mp'
     stops:
       - 'Storm Mountain, Rocky Path 16/1001'
       - 'Storm Mountain, Rocky Path 16/1012'
       - 'Storm Mountain, Rocky Path 16/997'
   - name: 'Barren Hills: Storm Mountain Path (Middle Third)'
+    pathFile: 'RP18LOOP.mp'
     stops:
       - 'Storm Mountain, Rocky Path 16/947'
       - 'Storm Mountain, Rocky Path 16/999'
       - 'Storm Mountain, Rocky Path 16/948'
       - 'Storm Mountain, Rocky Path 16/907'
   - name: 'Barren Hills: Storm Mountain Path (Top Third)'
+    pathFile: 'BHMPLOOP.mp'
     stops:
       - 'Mountain Plateau 16/1068'
       - 'Storm Mountain, Rocky Path 16/1000'
   - name: 'Black Caves: Hilltop Fortress (Slavers)'
+    pathFile: 'HTOPLOOP.mp'
     stops:
       - 'Central Keep, Foyer 8/872'
       - 'Guard Tower, Upper Floor 8/865'
@@ -323,11 +356,13 @@ loops:
       - 'Guard Tower, Upper Floor 8/871'
       - 'Lavish Bedroom 8/880'
   - name: 'Black Foothills: Bone-strewn Hillside (Vultures)'
+    pathFile: 'BFBSLOOP.mp'
     stops:
       - 'Bone-Strewn Hillside 2/9993'
       - 'Bone-Strewn Hillside 2/10013'
       - 'Bone-Strewn Hillside 2/9992'
   - name: 'Black Foothills: Hilltop Encampment'
+    pathFile: 'BHHELOOP.mp'
     stops:
       - 'Hilltop Encampment, Trail 2/10107'
       - 'Filthy Tent 2/10112'
@@ -343,6 +378,7 @@ loops:
       - 'Filthy Tent 2/10132'
       - 'Hilltop Encampment 2/10125'
   - name: 'Black Foothills: Hilltop Encampment Loop (w/ Darksong)'
+    pathFile: 'BFFPLOOP.mp'
     stops:
       - 'Fine Pavillion 2/10134'
       - 'Filthy Tent 2/10132'
@@ -358,26 +394,31 @@ loops:
       - 'Filthy Tent 2/10114'
       - 'Hilltop Encampment, Trail 2/10107'
   - name: 'Black Foothills: Slate Elementals (RoomersLloop)'
+    pathFile: 'SMRFLOOP.mp'
     stops:
       - 'Slate Mounds 2/10057'
       - 'Slate Mounds 2/10067'
       - 'Slate Mounds 2/10084'
   - name: 'Black Foothills: Slate Elementals (singles)'
+    pathFile: 'BFSMLOOP.mp'
     stops:
       - 'Slate Mounds 2/10035'
       - 'Black Foothills 2/10054'
       - 'Slate Mounds 2/10037'
   - name: 'Black Foothills: Stonegoyle Singles'
+    pathFile: 'BFSGLOOP.mp'
     stops:
       - 'Black Foothills 2/9817'
       - 'Black Foothills 2/9828'
       - 'Black Foothills 2/9836'
       - 'Black Foothills 2/9847'
   - name: 'Black Foothills: Western Road Pass'
+    pathFile: 'BFWRLOOP.mp'
     stops:
       - 'Black Foothills, Western Road 2/9489'
       - 'Dragon''s Teeth Pass 2/9458'
   - name: 'Black Fort: Black Fortress (Complete - No Bosses)'
+    pathFile: 'FRT1LOOP.mp'
     stops:
       - 'Black Fortress 7/1182'
       - 'Black Fortress, Guardroom 7/1257'
@@ -404,6 +445,7 @@ loops:
       - 'Black Fortress, Servant''s Quarters 7/1214'
       - 'Black Fortress, Linen Room 7/1215'
   - name: 'Black House: Black Fungus Trees'
+    pathFile: 'HBFTLOOP.mp'
     stops:
       - 'Hazy Swamp 7/696'
       - 'Hazy Swamp 7/686'
@@ -421,6 +463,7 @@ loops:
       - 'Hazy Swamp 7/718'
       - 'Hazy Swamp 7/717'
   - name: 'Black House: Black House Caverns (easy)'
+    pathFile: 'BHCLLOOP.mp'
     stops:
       - 'Dark Cavern, Ledge 1/1459'
       - 'Dark Cavern 1/1474'
@@ -432,12 +475,14 @@ loops:
       - 'Dark Cavern 1/1482'
       - 'Dark Cavern 1/1499'
   - name: 'Black House: Black Star Key Loop 2'
+    pathFile: 'BHFRLOOP.mp'
     stops:
       - 'Black House, Foyer 1/1313'
       - 'Dark Cavern 1/1503'
       - 'Dark Cavern 1/1470'
       - 'Dark Cavern 1/1478'
   - name: 'Black House: Caverns Under Black House'
+    pathFile: 'BHB1LOOP.mp'
     stops:
       - 'Black House, Basement 1/1450'
       - 'Dark Cavern 1/1493'
@@ -455,6 +500,7 @@ loops:
       - 'Dark Cavern 1/1470'
       - 'Dark Cavern 1/1474'
   - name: 'Black House: Caverns Under Black House (longer - need rope)'
+    pathFile: 'BHB2LOOP.mp'
     stops:
       - 'Black House, Basement 1/1450'
       - 'Dark Tunnel, Dead End 1/1456'
@@ -484,6 +530,7 @@ loops:
       - 'Dark Cavern 1/1504'
       - 'Dark Tunnel, Dead End 1/1456'
   - name: 'Black House: Caveworm Area (Need Rope)'
+    pathFile: 'CAVWLOOP.mp'
     stops:
       - 'Stone Tunnel, Waterfall 1/1541'
       - 'Stone Tunnel, Cave-In 1/1542'
@@ -493,6 +540,7 @@ loops:
       - 'Stone Tunnel, Cave-In 1/1559'
       - 'Stone Tunnel, Cave-In 1/1558'
   - name: 'Black House: Cliffside Camp'
+    pathFile: 'FFCCLOOP.mp'
     stops:
       - 'Cliffside Camp 7/1795'
       - 'Small Tent 7/1796'
@@ -502,12 +550,14 @@ loops:
       - 'Small Tent 7/1802'
       - 'Small Tent 7/1803'
   - name: 'Black House: Dhelvanen, Trade Loop'
+    pathFile: 'DHELLOOP.mp'
     stops:
       - 'Fungus Forest, Stone Bridge 7/199'
       - 'Fungus Forest, Waterfall 7/380'
       - 'Luxurious Room 7/1008'
       - 'Fungus Forest, River''s Edge 7/195'
   - name: 'Black House: Fungus Forest (Entrance)'
+    pathFile: 'FUNGLOOP.mp'
     stops:
       - 'Fungus Forest, Tunnel Opening 7/156'
       - 'Fungus Forest 7/254'
@@ -523,6 +573,7 @@ loops:
       - 'Fungus Forest, Black Chasm 7/224'
       - 'Fungus Forest 7/292'
   - name: 'Black House: Fungus Forest, Eastern Section'
+    pathFile: 'FNG4LOOP.mp'
     stops:
       - 'Fungus Forest, Swamp''s Edge 7/519'
       - 'Fungus Forest 7/498'
@@ -538,6 +589,7 @@ loops:
       - 'Fungus Forest 7/507'
       - 'Fungus Forest, Swamp''s Edge 7/526'
   - name: 'Black House: Fungus Forest, Northeast Section'
+    pathFile: 'FNG2LOOP.mp'
     stops:
       - 'Fungus Forest, Stone Bridge 7/199'
       - 'Fungus Forest 7/338'
@@ -565,6 +617,7 @@ loops:
       - 'Fungus Forest 7/362'
       - 'Fungus Forest 1/2421'
   - name: 'Black House: Fungus Forest, Northwest Section'
+    pathFile: 'FNG1LOOP.mp'
     stops:
       - 'Fungus Forest, Stone Bridge 7/199'
       - 'Fungus Forest, River''s Edge 7/192'
@@ -582,6 +635,7 @@ loops:
       - 'Fungus Forest, Cavern Wall 7/172'
       - 'Fungus Forest 7/276'
   - name: 'Black House: Fungus Forest, Western Section'
+    pathFile: 'FNG3LOOP.mp'
     stops:
       - 'Fungus Forest, Swamp''s Edge 7/519'
       - 'Fungus Forest 7/485'
@@ -602,6 +656,7 @@ loops:
       - 'Fungus Forest 7/501'
       - 'Fungus Forest 7/504'
   - name: 'Black House: Hazy Swamp, Southeast Section'
+    pathFile: 'FNG5LOOP.mp'
     stops:
       - 'Fungus Forest, Swamp''s Edge 7/519'
       - 'Fungus Forest 7/404'
@@ -622,6 +677,7 @@ loops:
       - 'Hazy Swamp 7/661'
       - 'Fungus Forest, Swamp''s Edge 7/528'
   - name: 'Black House: Hazy Swamp, Southwest Section'
+    pathFile: 'FNG6LOOP.mp'
     stops:
       - 'Fungus Forest, Swamp''s Edge 7/519'
       - 'Hazy Swamp 7/571'
@@ -644,6 +700,7 @@ loops:
       - 'Hazy Swamp 7/587'
       - 'Hazy Swamp 7/578'
   - name: 'Black House: Hellhound Area'
+    pathFile: 'HELLLOOP.mp'
     stops:
       - 'Stone Tunnel, Waterfall 1/1595'
       - 'Stone Tunnel, Cave-In 1/1614'
@@ -652,6 +709,7 @@ loops:
       - 'Stone Tunnel, Cave-In 1/1632'
       - 'Stone Tunnel, Dead End 1/1611'
   - name: 'Black House: Pool Loop'
+    pathFile: 'DCPELOOP.mp'
     stops:
       - 'Dark Cavern, Pool''s Edge 1/1531'
       - 'Dark Cavern, Pool''s Edge 1/1534'
@@ -660,14 +718,17 @@ loops:
       - 'Dark Cavern 1/1508'
       - 'Dark Cavern 1/1510'
   - name: 'Black House: Serpentkin Village'
+    pathFile: 'SERPLOOP.mp'
     stops:
       - 'Village Centre 7/1027'
       - 'Dark Valley 7/1107'
   - name: 'Black House: White  Corridor Instant Regen Loop'
+    pathFile: 'WCIRLOOP.mp'
     stops:
       - 'White Corridor 15/319'
       - 'White Corridor 15/320'
   - name: 'Black House: White Corridor, Black Diamond Loop'
+    pathFile: 'WCCRLOOP.mp'
     stops:
       - 'White Corridor 7/1530'
       - 'White Corridor 15/319'
@@ -698,6 +759,7 @@ loops:
       - 'White Corridor 15/303'
       - 'White Corridor 15/304'
   - name: 'Blackwood Forest: Blackwood Forest (Southern End)'
+    pathFile: 'FCCOLOOP.mp'
     stops:
       - 'Frozen Cavern, Cave Opening 10/297'
       - 'Forest Trail 17/33'
@@ -709,29 +771,35 @@ loops:
       - 'Forest Trail 17/91'
       - 'Forest Trail 17/47'
   - name: 'Blackwood Forest: Blackwood Forest (around southern dock)'
+    pathFile: 'RTSDLOOP.mp'
     stops:
       - 'Road to the Southern Dock 17/162'
       - 'Graveyard Entrance, Northern Gate 17/103'
       - 'Northern Road 17/137'
       - 'Northern Road 17/161'
   - name: 'Blackwood Forest: Blackwood Forest Instant Regen'
+    pathFile: 'BFI1LOOP.mp'
     stops:
       - 'Dirt Path 17/25'
       - 'Dirt Path 17/26'
   - name: 'Blackwood Forest: Blackwood Forest Instant Regen (2)'
+    pathFile: 'BFI2LOOP.mp'
     stops:
       - 'Forest Trail 17/33'
       - 'Forest Trail 17/32'
   - name: 'Blackwood Forest: Blackwood Forest Instant Regen (3)'
+    pathFile: 'BFI3LOOP.mp'
     stops:
       - 'Blackwood Forest 17/2644'
       - 'Blackwood Forest 17/2604'
   - name: 'Blackwood Forest: Blackwood Forest Mountain Trail Loop'
+    pathFile: 'BFMTLOOP.mp'
     stops:
       - 'Mountain Trail 17/855'
       - 'Blackwood Forest 17/859'
       - 'Blackwood Forest 17/851'
   - name: 'Blackwood Forest: Blackwood Garden (easy)'
+    pathFile: 'BWFGLOOP.mp'
     stops:
       - 'Blackwood Forest, Garden 17/703'
       - 'Blackwood Forest, Garden 17/2826'
@@ -740,6 +808,7 @@ loops:
       - 'Blackwood Forest, Garden 17/713'
       - 'Blackwood Forest, Garden 17/714'
   - name: 'Blackwood Forest: Bllackwood Forest trail'
+    pathFile: 'BFFTLOOP.mp'
     stops:
       - 'Forest Trail 17/220'
       - 'Forest Trail 17/788'
@@ -751,16 +820,19 @@ loops:
       - 'Forest Trail 17/199'
       - 'Forest Trail 17/201'
   - name: 'Blackwood Forest: Bone Warriors'
+    pathFile: 'BFDFLOOP.mp'
     stops:
       - 'Blackwood Forest 17/2647'
       - 'Blackwood Forest 17/2648'
       - 'Dying Fields 17/2798'
   - name: 'Blackwood Forest: Canimeras'
+    pathFile: 'BFNPLOOP.mp'
     stops:
       - 'Blackwood Forest 17/9506'
       - 'Blackwood Forest 17/930'
       - 'Blackwood Forest 17/937'
   - name: 'Blackwood Forest: Darken Beast Dens'
+    pathFile: 'BFDDLOOP.mp'
     stops:
       - 'Dark Den 17/7109'
       - 'Dark Den 17/7126'
@@ -771,6 +843,7 @@ loops:
       - 'Dark Den 17/7127'
       - 'Dark Den 17/7125'
   - name: 'Blackwood Forest: Graveyard Loop'
+    pathFile: 'GEMRLOOP.mp'
     stops:
       - 'Graveyard Entrance, Main Road 17/81'
       - 'Graveyard 17/276'
@@ -786,6 +859,7 @@ loops:
       - 'Graveyard 17/298'
       - 'Graveyard 17/279'
   - name: 'Blackwood Forest: Mausoleum First Floor North Loop'
+    pathFile: 'M1NELOOP.mp'
     stops:
       - 'Mausoleum, Private Tomb 17/2076'
       - 'Mausoleum, Private Tomb 17/2077'
@@ -799,6 +873,7 @@ loops:
       - 'Mausoleum, Stone Hallway 17/2073'
       - 'Mausoleum, Stone Hallway 17/2070'
   - name: 'Blackwood Forest: Mausoleum First Floor South Loop'
+    pathFile: 'M1SELOOP.mp'
     stops:
       - 'Mausoleum, Family Tomb 17/2094'
       - 'Mausoleum, Private Tomb 17/2091'
@@ -810,11 +885,13 @@ loops:
       - 'Mausoleum, Private Tomb 17/2096'
       - 'Mausoleum, Private Tomb 17/2095'
   - name: 'Blackwood Forest: Midnight unicorn'
+    pathFile: 'BFUFLOOP.mp'
     stops:
       - 'Blackwood Forest 17/954'
       - 'Blackwood Forest 17/953'
       - 'Blackwood Forest 17/961'
   - name: 'Blackwood Forest: Overgrown Forest Trail'
+    pathFile: 'BFOTLOOP.mp'
     stops:
       - 'Overgrown Forest Trail 17/16'
       - 'Overgrown Forest Trail 17/7005'
@@ -823,6 +900,7 @@ loops:
       - 'Overgrown Forest Trail 17/54'
       - 'Overgrown Forest Trail 17/18'
   - name: 'Blackwood Forest: ScareCrows'
+    pathFile: 'PRFALOOP.mp'
     stops:
       - 'Private Road 17/424'
       - 'Farmstead, Fields 17/446'
@@ -837,6 +915,7 @@ loops:
       - 'Farmstead, Fields 17/412'
       - 'Farmstead, Fields 17/408'
   - name: 'Blackwood Forest: Webbed Lair (complete)'
+    pathFile: 'BFWLLOOP.mp'
     stops:
       - 'Blackwood Forest, Webbed Lair 17/2674'
       - 'Blackwood Forest, Webbed Lair 17/2675'
@@ -866,43 +945,51 @@ loops:
       - 'Blackwood Forest, Webbed Lair 17/2684'
       - 'Blackwood Forest, Webbed Lair 17/2681'
   - name: 'Blackwood Forest: Webbed Lair Loop 2 (4 rooms)'
+    pathFile: 'WLL2LOOP.mp'
     stops:
       - 'Blackwood Forest, Webbed Lair 17/2680'
       - 'Blackwood Forest, Webbed Lair 17/2696'
       - 'Blackwood Forest, Webbed Lair 17/2679'
       - 'Blackwood Forest, Webbed Lair 17/2681'
   - name: 'Blackwood Forest: Webbed Lair Loop 3 (4 rooms)'
+    pathFile: 'WLL3LOOP.mp'
     stops:
       - 'Blackwood Forest, Webbed Lair 17/2694'
       - 'Blackwood Forest, Webbed Lair 17/2697'
       - 'Blackwood Forest, Webbed Lair 17/2698'
       - 'Blackwood Forest, Webbed Lair 17/2695'
   - name: 'Blackwood Forest: Webbed Lair Loop 4 (3 rooms)'
+    pathFile: 'WLL4LOOP.mp'
     stops:
       - 'Blackwood Forest, Webbed Lair 17/2677'
       - 'Blackwood Forest, Webbed Lair 17/2692'
       - 'Blackwood Forest, Webbed Lair 17/2678'
   - name: 'Blackwood Forest: Webbed Lair Loop 5 (3 rooms)'
+    pathFile: 'WLL5LOOP.mp'
     stops:
       - 'Blackwood Forest, Webbed Lair 17/2690'
       - 'Blackwood Forest, Webbed Lair 17/2691'
       - 'Blackwood Forest, Webbed Lair 17/2692'
   - name: 'Blackwood Forest: Webbed Lair Loop 7 (4 rooms)'
+    pathFile: 'WLL7LOOP.mp'
     stops:
       - 'Blackwood Forest, Webbed Lair 17/2686'
       - 'Blackwood Forest, Webbed Lair 17/2703'
       - 'Blackwood Forest, Webbed Lair 17/2687'
       - 'Blackwood Forest, Webbed Lair 17/2688'
   - name: 'Blackwood Forest: Webbed Lair Loop 8 (4 rooms)'
+    pathFile: 'WLL8LOOP.mp'
     stops:
       - 'Blackwood Forest, Webbed Lair 17/2699'
       - 'Blackwood Forest, Webbed Lair 17/2701'
   - name: 'Blackwood Forest: Zonbie Pen'
+    pathFile: 'BFZPLOOP.mp'
     stops:
       - 'Zombie Pen 17/2601'
       - 'Blackwood Forest 17/2644'
       - 'Blackwood Forest 17/2599'
   - name: 'Bristlewood Forest: Bristledeep loop'
+    pathFile: 'BFBDLOOP.mp'
     stops:
       - 'The Bristledeep 14/3561'
       - 'The Bristledeep 14/3579'
@@ -913,6 +1000,7 @@ loops:
       - 'The Bristledeep 14/3607'
       - 'The Bristledeep 14/3586'
   - name: 'Bristlewood Forest: Lower Bristlewood'
+    pathFile: 'BWLOLOOP.mp'
     stops:
       - 'Lower Bristlewood 14/2914'
       - 'Lower Bristlewood 14/2929'
@@ -923,12 +1011,14 @@ loops:
       - 'Lower Bristlewood 14/2933'
       - 'Lower Bristlewood 14/2917'
   - name: 'Bristlewood Forest: Webbed Thicket Center Loop'
+    pathFile: 'WBTHLOOP.mp'
     stops:
       - 'Bristlewood Forest, Webbed Thicket 14/3188'
       - 'Bristlewood Forest, Webbed Thicket 14/3191'
       - 'Bristlewood Forest, Webbed Thicket 14/3193'
       - 'Bristlewood Forest, Webbed Thicket 14/3189'
   - name: 'Bristlewood Forest: Webbed Thicket East Loop 1'
+    pathFile: 'WTE1LOOP.mp'
     stops:
       - 'Bristlewood Forest, Webbed Thicket 14/3208'
       - 'Bristlewood Forest, Webbed Thicket 14/3199'
@@ -936,12 +1026,14 @@ loops:
       - 'Bristlewood Forest, Webbed Thicket 14/3211'
       - 'Bristlewood Forest, Webbed Thicket 14/3195'
   - name: 'Bristlewood Forest: Webbed Thicket East Loop 2'
+    pathFile: 'WTE2LOOP.mp'
     stops:
       - 'Bristlewood Forest, Webbed Thicket 14/3202'
       - 'Bristlewood Forest, Webbed Thicket 14/3207'
       - 'Bristlewood Forest, Webbed Thicket 14/3205'
       - 'Bristlewood Forest, Webbed Thicket 14/3204'
   - name: 'Bristlewood Forest: Webbed Thicket West Loop 1'
+    pathFile: 'WTW1LOOP.mp'
     stops:
       - 'Bristlewood Forest, Webbed Thicket 14/3220'
       - 'Bristlewood Forest, Webbed Thicket 14/3238'
@@ -949,21 +1041,25 @@ loops:
       - 'Bristlewood Forest, Webbed Thicket 14/3223'
       - 'Bristlewood Forest, Webbed Thicket 14/3238'
   - name: 'Bristlewood Forest: Webbed Thicket West Loop 3'
+    pathFile: 'WTW2LOOP.mp'
     stops:
       - 'Bristlewood Forest, Webbed Thicket 14/3233'
       - 'Bristlewood Forest, Webbed Thicket 14/3230'
       - 'Bristlewood Forest, Webbed Thicket 14/3241'
       - 'Bristlewood Forest, Webbed Thicket 14/3235'
   - name: 'Bristlewood Forest: Webbed Thicket West Loop 4'
+    pathFile: 'WTW3LOOP.mp'
     stops:
       - 'Bristlewood Forest, Webbed Thicket 14/3225'
       - 'Bristlewood Forest, Webbed Thicket 14/3226'
       - 'Bristlewood Forest, Webbed Thicket 14/3224'
   - name: 'Brynhall: Brynhall Battlements'
+    pathFile: 'AKUCLOOP.mp'
     stops:
       - 'Upper Corner Tower 14/5003'
       - 'Upper Corner Tower 14/4991'
   - name: 'Brynhall: Brynhall Depths Loop'
+    pathFile: 'BDSCLOOP.mp'
     stops:
       - 'Brynhall Depths, Staircase 14/5059'
       - 'Crypt Chamber 14/5065'
@@ -975,6 +1071,7 @@ loops:
       - 'Crypt Chamber 14/5078'
       - 'Crypt Chamber 14/5076'
   - name: 'Brynhall: Brynhall Keep 2nd Floor'
+    pathFile: 'UHSWLOOP.mp'
     stops:
       - 'Upper Hallway, Stairwell 14/5084'
       - 'Wrecked Bedroom 14/5085'
@@ -985,6 +1082,7 @@ loops:
       - 'Upper Hallway 14/5107'
       - 'Wrecked Bedroom 14/5106'
   - name: 'Brynhall: Brynhall Keep Basement'
+    pathFile: 'DBSCLOOP.mp'
     stops:
       - 'Dark Basement, Staircase 14/5034'
       - 'Gaol Cell 14/5051'
@@ -998,6 +1096,7 @@ loops:
       - 'Dark Basement, Hallway 14/5047'
       - 'Musty Armoury 14/5037'
   - name: 'Brynhall: Brynhall Keep, 1st Floor'
+    pathFile: 'BHKELOOP.mp'
     stops:
       - 'Abandoned Keep, Entrance 14/5009'
       - 'Brynhall, Keep Wall Path 14/4974'
@@ -1012,6 +1111,7 @@ loops:
       - 'Dark Hallway, Staircase 14/5033'
       - 'Dark Hallway, Stairwell 14/5022'
   - name: 'Brynhall: Llyn Glas Singles'
+    pathFile: 'LGWFLOOP.mp'
     stops:
       - 'Llyn Glas, Waterfall 14/4802'
       - 'Llyn Glas, Near Shore 14/4845'
@@ -1039,6 +1139,7 @@ loops:
       - 'Llyn Glas, Near Island 14/4912'
       - 'Llyn Glas 14/4861'
   - name: 'Cracked Plains: Cracked Plain, North Section'
+    pathFile: 'CPLNLOOP.mp'
     stops:
       - 'Cracked Plain, Black Chasm 7/732'
       - 'Cracked Plain 7/795'
@@ -1052,6 +1153,7 @@ loops:
       - 'Cracked Plain 7/810'
       - 'Cracked Plain 7/811'
   - name: 'Cracked Plains: Cracked Plain, South Section'
+    pathFile: 'CPLSLOOP.mp'
     stops:
       - 'Cracked Plain, Black Chasm 7/732'
       - 'Cracked Plain 7/821'
@@ -1069,6 +1171,7 @@ loops:
       - 'Cracked Plain 7/844'
       - 'Cracked Plain, Cavern Wall 7/769'
   - name: 'Cracked Plains: New White and Black Worms 3'
+    pathFile: 'NWC2LOOP.mp'
     stops:
       - 'Cracked Tunnel 7/1677'
       - 'Cracked Tunnel 7/1699'
@@ -1079,6 +1182,7 @@ loops:
       - 'Cracked Tunnel 7/1681'
       - 'Cracked Tunnel 7/1673'
   - name: 'Cracked Plains: New White and Black Worms 4'
+    pathFile: 'NWC3LOOP.mp'
     stops:
       - 'Cracked Tunnel 7/1713'
       - 'Cracked Tunnel 7/1737'
@@ -1089,6 +1193,7 @@ loops:
       - 'Cracked Tunnel 7/1792'
       - 'Cracked Tunnel 7/1765'
   - name: 'Cracked Plains: Worms (purple and red only)'
+    pathFile: 'CTL2LOOP.mp'
     stops:
       - 'Cracked Tunnel 7/1406'
       - 'Cracked Tunnel, Dead End 7/1412'
@@ -1105,6 +1210,7 @@ loops:
       - 'Cracked Tunnel, Dead End 7/1480'
       - 'Cracked Tunnel, Dead End 7/1483'
   - name: 'Cracked Plains: Worms loop complete'
+    pathFile: 'CTL1LOOP.mp'
     stops:
       - 'Cracked Tunnel 7/1406'
       - 'Cracked Tunnel, Dead End 7/1412'
@@ -1126,6 +1232,7 @@ loops:
       - 'Cracked Tunnel, Hole Up 7/1511'
       - 'Cracked Tunnel, Dead End 7/1503'
   - name: 'Cracked Plains: Worms lower cavern'
+    pathFile: 'CTLCLOOP.mp'
     stops:
       - 'Cracked Tunnel 7/1677'
       - 'Cracked Tunnel 7/1681'
@@ -1135,6 +1242,7 @@ loops:
       - 'Cracked Tunnel 7/1704'
       - 'Cracked Tunnel 7/1699'
   - name: 'Crimson Keep: Crimson Keep 1st Floor Training Area'
+    pathFile: 'CFKELOOP.mp'
     stops:
       - 'Keep of the Crimson Flame, Entrance 13/2709'
       - 'Crimson Keep, Training Room 13/2715'
@@ -1145,32 +1253,39 @@ loops:
       - 'Crimson Keep, Training Room 13/2721'
       - 'Crimson Keep, Training Room 13/2731'
   - name: 'Crimson Keep: Keep Barracks 1st Floor N'
+    pathFile: 'CBN1LOOP.mp'
     stops:
       - 'Crimson Keep, Barracks 13/2758'
       - 'Crimson Keep, Barracks 13/2763'
   - name: 'Crimson Keep: Keep Barracks 1st Floor S'
+    pathFile: 'CBS1LOOP.mp'
     stops:
       - 'Crimson Keep, Barracks 13/2764'
       - 'Crimson Keep, Barracks 13/2769'
   - name: 'Crimson Keep: Keep Barracks 2nd Floor N'
+    pathFile: 'KB2NLOOP.mp'
     stops:
       - 'Crimson Keep, Barracks 13/4098'
       - 'Crimson Keep, Barracks 13/4094'
       - 'Crimson Keep, Barracks 13/4096'
   - name: 'Crimson Keep: Keep Barracks 2nd Floor S'
+    pathFile: 'KB2SLOOP.mp'
     stops:
       - 'Crimson Keep, Barracks 13/4104'
       - 'Crimson Keep, Barracks 13/4101'
       - 'Crimson Keep, Barracks 13/4099'
   - name: 'Crimson Keep: Keep Barracks 3rd FLoor N'
+    pathFile: 'KB3NLOOP.mp'
     stops:
       - 'Crimson Keep, Barracks 13/4136'
       - 'Crimson Keep, Barracks 13/4133'
   - name: 'Crimson Keep: Keep Barracks 3rd Floor S'
+    pathFile: 'KB3SLOOP.mp'
     stops:
       - 'Crimson Keep, Barracks 13/4142'
       - 'Crimson Keep, Barracks 13/4139'
   - name: 'Crimson Keep: Keep Training Area 2nd Floor'
+    pathFile: 'CKSFLOOP.mp'
     stops:
       - 'Crimson Keep, Second Floor Entrance 13/4066'
       - 'Crimson Keep, Training Room 13/4071'
@@ -1181,6 +1296,7 @@ loops:
       - 'Crimson Keep, Training Room 13/4077'
       - 'Crimson Keep, Training Room 13/4087'
   - name: 'Crimson Keep: Keep Training Area 3rd FLoor'
+    pathFile: 'CKTFLOOP.mp'
     stops:
       - 'Crimson Keep, Third Floor Entrance 13/4105'
       - 'Crimson Keep, Training Room 13/4119'
@@ -1191,6 +1307,7 @@ loops:
       - 'Crimson Keep, Training Room 13/4124'
       - 'Crimson Keep, Training Room 13/4126'
   - name: 'Dark-Elf City: Dark-elf Basement'
+    pathFile: 'CAS1LOOP.mp'
     stops:
       - 'Basement Stairwell 8/604'
       - 'Guard Barracks 8/628'
@@ -1205,6 +1322,7 @@ loops:
       - 'Guard Barracks 8/622'
       - 'Guard Barracks 8/623'
   - name: 'Dark-Elf City: Dark-elf Castle 2nd and 3rd floor'
+    pathFile: 'CAS2LOOP.mp'
     stops:
       - 'Castle, Dark Hallway 8/584'
       - 'Castle, Dark Hallway 8/580'
@@ -1216,6 +1334,7 @@ loops:
       - 'Large Closet 8/691'
       - 'Large Closet 8/693'
   - name: 'Dark-Elf City: Dark-elf Mage Tower'
+    pathFile: 'DCTALOOP.mp'
     stops:
       - 'Tower Antechamber 8/532'
       - 'Living Quarters 8/538'
@@ -1226,22 +1345,26 @@ loops:
       - 'Living Quarters 8/552'
       - 'Living Quarters 8/556'
   - name: 'Dark-Elf City: Dark-elf Prison (easy)'
+    pathFile: 'DEPRLOOP.mp'
     stops:
       - 'Dark Corridor 8/493'
       - 'Dark Corridor 8/497'
       - 'Dark Corridor 8/500'
   - name: 'Dark-Elf City: Dark-elf Prison (with Master Tort.)'
+    pathFile: 'TORTLOOP.mp'
     stops:
       - 'Torture Chamber 8/512'
       - 'Dark Corridor 8/498'
       - 'Dark Corridor 8/493'
   - name: 'Dark-Elf City: Dark-elf Royal Guards'
+    pathFile: 'CAS4LOOP.mp'
     stops:
       - 'Winding Stair 8/697'
       - 'Royal Guardroom 8/702'
       - 'Royal Entry Hall 8/700'
       - 'Winding Stair 8/696'
   - name: 'Dark-Elf City: Dark-elf Soldiers loop'
+    pathFile: 'DCSQLOOP.mp'
     stops:
       - 'Soldier''s Quarters 8/1699'
       - 'Soldier''s Quarters 8/1715'
@@ -1249,6 +1372,7 @@ loops:
       - 'Soldier''s Quarters 8/1707'
       - 'Soldier''s Quarters 8/1702'
   - name: 'Dark-Elf City: Dark-elf Temple (small loop)'
+    pathFile: 'DCTELOOP.mp'
     stops:
       - 'Temple, Entrance 8/1749'
       - 'Temple, Inner Sanctum 8/1796'
@@ -1256,6 +1380,7 @@ loops:
       - 'Temple, Inner Sanctum 8/1793'
       - 'Temple, Inner Sanctum 8/1794'
   - name: 'Dark-Elf City: Dark-elf Training Area (assassins)'
+    pathFile: 'DCTGLOOP.mp'
     stops:
       - 'Training Grounds 8/1724'
       - 'Training Grounds 8/1727'
@@ -1266,6 +1391,7 @@ loops:
       - 'Training Grounds 8/1743'
       - 'Training Grounds 8/1738'
   - name: 'Dark-Elf City: Ebon Blade Guild Loop (TRAPS!)'
+    pathFile: 'DCEGLOOP.mp'
     stops:
       - 'Guild of the Ebon Blade, Dark Passage 8/1797'
       - 'Guild of the Ebon Blade, Dark Passage 8/1803'
@@ -1276,6 +1402,7 @@ loops:
       - 'Guild of the Ebon Blade, Dark Passage 8/1843'
       - 'Guild of the Ebon Blade, Dark Passage 8/1851'
   - name: 'Darkwood Forest: Bandit Keep'
+    pathFile: 'HKEPLOOP.mp'
     stops:
       - 'Inner Keep Entrance 9/803'
       - 'Courtyard, Entrance Door 9/798'
@@ -1290,11 +1417,13 @@ loops:
       - 'Keep Wall Path 9/794'
       - 'Stone-Strewn Courtyard 9/801'
   - name: 'Darkwood Forest: Bugbear Captains'
+    pathFile: 'DFCELOOP.mp'
     stops:
       - 'Darkwood Forest, Cave Entrance 1/285'
       - 'Dark Cave, Tunnel 1/268'
       - 'Dark Cave, Tunnel 1/280'
   - name: 'Darkwood Forest: Cleared Fields'
+    pathFile: 'DFCFLOOP.mp'
     stops:
       - 'Cleared Fields 1/2511'
       - 'Cleared Fields 1/2506'
@@ -1305,6 +1434,7 @@ loops:
       - 'Cleared Fields, Silvermere Wall 1/2458'
       - 'Cleared Fields 1/2463'
   - name: 'Darkwood Forest: Dark Goblin Archers'
+    pathFile: 'DFFPLOOP.mp'
     stops:
       - 'Darkwood Forest 1/1679'
       - 'Darkwood Forest 1/1645'
@@ -1313,6 +1443,7 @@ loops:
       - 'Darkwood Forest 1/1660'
       - 'Darkwood Forest 1/2726'
   - name: 'Darkwood Forest: Elder Grove Loop'
+    pathFile: 'ELGRLOOP.mp'
     stops:
       - 'Elder Darkwood Grove, Fork 7/21'
       - 'Elder Darkwood Grove, Dead End 7/25'
@@ -1337,6 +1468,7 @@ loops:
       - 'Elder Darkwood Grove, Dead End 7/91'
       - 'Elder Darkwood Grove, Fork 7/32'
   - name: 'Darkwood Forest: Green Dragon Babies'
+    pathFile: 'GDDFLOOP.mp'
     stops:
       - 'Darkwood Forest 1/1358'
       - 'Darkwood Forest 1/2810'
@@ -1345,22 +1477,26 @@ loops:
       - 'Darkwood Forest 1/2820'
       - 'Darkwood Forest 1/2840'
   - name: 'Darkwood Forest: Green Dragons (South)'
+    pathFile: 'GDSFLOOP.mp'
     stops:
       - 'Darkwood Forest 1/3016'
       - 'Darkwood Forest 1/3232'
       - 'Darkwood Forest 1/3270'
   - name: 'Darkwood Forest: Green Dragons (north loop)'
+    pathFile: 'DFHFLOOP.mp'
     stops:
       - 'Darkwood Forest 1/2931'
       - 'Darkwood Forest 1/2813'
       - 'Darkwood Forest 1/2872'
       - 'Darkwood Forest 1/2889'
   - name: 'Darkwood Forest: Wyverns Loop'
+    pathFile: 'DWFLLOOP.mp'
     stops:
       - 'Darkwood Forest, Lair 1/411'
       - 'Darkwood Forest, Lair 1/432'
       - 'Darkwood Forest, Lair 1/470'
   - name: 'Darkwood Forest: Wyverns and Bugbears (large loop)'
+    pathFile: 'SHM3LOOP.mp'
     stops:
       - 'Small Hill 1/153'
       - 'Darkwood Forest 1/358'
@@ -1376,6 +1512,7 @@ loops:
       - 'Darkwood Forest 1/365'
       - 'Grassy Clearing 1/150'
   - name: 'Darkwood Forest: Wyverns and bugbears (small loop)'
+    pathFile: 'DFGCLOOP.mp'
     stops:
       - 'Grassy Clearing 1/149'
       - 'Darkwood Forest 1/358'
@@ -1386,6 +1523,7 @@ loops:
       - 'Darkwood Forest 1/425'
       - 'Grassy Clearing 1/150'
   - name: 'Dragon''s Teeth Hills: Black Mountains Loop'
+    pathFile: 'BLMOLOOP.mp'
     stops:
       - 'Black Mountains 2/2368'
       - 'Black Mountains, Dead End 2/2382'
@@ -1416,6 +1554,7 @@ loops:
       - 'Black Mountains, Dead End 2/2511'
       - 'Black Mountains 2/2513'
   - name: 'Dragon''s Teeth Hills: Brigand Camp'
+    pathFile: 'DHBCLOOP.mp'
     stops:
       - 'Dragon''s Teeth Hills, Camp Entry 2/909'
       - 'Brigand Camp, Perimeter 2/884'
@@ -1425,6 +1564,7 @@ loops:
       - 'Brigand Camp, small tent 2/9454'
       - 'Brigand Camp, small tent 2/9453'
   - name: 'Dragon''s Teeth Hills: Crumbling Tunnels (upper level)'
+    pathFile: 'JAGHLOOP.mp'
     stops:
       - 'Jagged Hill Path 9/244'
       - 'Crumbling Tunnel 9/298'
@@ -1433,6 +1573,7 @@ loops:
       - 'Crumbling Tunnel 9/282'
       - 'Crumbling Tunnel 9/264'
   - name: 'Dragon''s Teeth Hills: Gnoll Encampment'
+    pathFile: 'GNCHLOOP.mp'
     stops:
       - 'Massive Gnoll Tent 2/1122'
       - 'Gnoll Tent 2/1117'
@@ -1444,6 +1585,7 @@ loops:
       - 'Gnoll Tent 2/1119'
       - 'Gnoll Tent 2/1118'
   - name: 'Dragon''s Teeth Hills: Gnoll Encampment (easy)'
+    pathFile: 'GETCLOOP.mp'
     stops:
       - 'Gnoll Encampment, Trail Crossroads 2/1110'
       - 'Gnoll Tent 2/1121'
@@ -1454,6 +1596,7 @@ loops:
       - 'Gnoll Tent 2/1115'
       - 'Gnoll Encampment 2/1107'
   - name: 'Dragon''s Teeth Hills: Gnoll Scouts'
+    pathFile: 'DRP2LOOP.mp'
     stops:
       - 'Dragon''s Teeth Hills, Rocky Passage 2/404'
       - 'Dragon''s Teeth Hills 2/437'
@@ -1468,6 +1611,7 @@ loops:
       - 'Dragon''s Teeth Hills 2/383'
       - 'Dragon''s Teeth Hills 2/392'
   - name: 'Dragon''s Teeth Hills: Mermex (with small cocoons)'
+    pathFile: 'DTOPLOOP.mp'
     stops:
       - 'Violet Organic Passage 2/2243'
       - 'Violet Organic Passage 2/2268'
@@ -1480,6 +1624,7 @@ loops:
       - 'Violet Organic Chamber 2/2335'
       - 'Violet Organic Chamber 2/2316'
   - name: 'Dragon''s Teeth Hills: Smoking Crater (Shard Creatures)'
+    pathFile: 'SMOKLOOP.mp'
     stops:
       - 'Smoking Crater 6/1'
       - 'Gouged Tunnel, Dead End 6/6'
@@ -1496,10 +1641,12 @@ loops:
       - 'Gouged Tunnel, Dead End 6/71'
       - 'Gouged Tunnel, Dead End 6/74'
   - name: 'Dwarven Mines: Blue Demonling (singles)'
+    pathFile: 'DMBFLOOP.mp'
     stops:
       - 'Diamond Mine Tunnel 15/1720'
       - 'Diamond Mine Tunnel, Diamond Vein 15/1733'
   - name: 'Dwarven Mines: Diamond Mine Loop (small)'
+    pathFile: 'DMDILOOP.mp'
     stops:
       - 'Diamond Mine Tunnel, Cart Ramp 15/1683'
       - 'Diamond Mine Tunnel 15/1697'
@@ -1509,6 +1656,7 @@ loops:
       - 'Old Mine Tunnel 15/1605'
       - 'Diamond Mine Tunnel 15/1682'
   - name: 'Dwarven Mines: Diamond Mines Mammoths Singles'
+    pathFile: 'DMTMLOOP.mp'
     stops:
       - 'Diamond Mine Tunnel 15/1812'
       - 'Diamond Mine Tunnel 15/1839'
@@ -1520,6 +1668,7 @@ loops:
       - 'Diamond Mine Tunnel 15/1814'
       - 'Diamond Mine Tunnel 15/1809'
   - name: 'Dwarven Mines: Duergars (No Lord)'
+    pathFile: 'DMLPLOOP.mp'
     stops:
       - 'Low-Ceilinged Passage 6/2620'
       - 'Guardpost 6/2621'
@@ -1532,6 +1681,7 @@ loops:
       - 'Small Barracks 6/2639'
       - 'Small Barracks 6/2640'
   - name: 'Dwarven Mines: Gold Mines'
+    pathFile: 'GOLDLOOP.mp'
     stops:
       - 'Gold Mine, Cart Ramp 6/2690'
       - 'Gold Mine, Ore Vein 6/2789'
@@ -1550,10 +1700,12 @@ loops:
       - 'Gold Mine Tunnel 6/2870'
       - 'Gold Mine, Cart Ramp 6/2760'
   - name: 'Dwarven Mines: Green Demonliings (singles)'
+    pathFile: 'DMGDLOOP.mp'
     stops:
       - 'Diamond Mine Tunnel, Diamond Vein 15/1769'
       - 'Diamond Mine Tunnel 15/1760'
   - name: 'Dwarven Mines: Mithril Mines'
+    pathFile: 'DMMILOOP.mp'
     stops:
       - 'Mithril Mine, Cart Ramp 6/2890'
       - 'Mithril Mine, Gem Cluster 6/3015'
@@ -1568,6 +1720,7 @@ loops:
       - 'Mithril Mine, Ore Vein 6/3097'
       - 'Mithril Mine Tunnel 6/3028'
   - name: 'Dwarven Mines: Mithril Mines (in reverse)'
+    pathFile: 'DMM2LOOP.mp'
     stops:
       - 'Mithril Mine, Cart Ramp 6/2890'
       - 'Mithril Mine Tunnel 6/3028'
@@ -1584,6 +1737,7 @@ loops:
       - 'Mithril Mine, Ore Vein 6/3018'
       - 'Mithril Mine, Gem Cluster 6/3015'
   - name: 'Dwarven Mines: Quaggoths'
+    pathFile: 'QUAGLOOP.mp'
     stops:
       - 'Bottom of Ancient Stair 6/1811'
       - 'Crumbling City Street, Dead End 6/1858'
@@ -1599,10 +1753,12 @@ loops:
       - 'Crumbling City Street, Dead End 6/1879'
       - 'Crumbling City Street 6/1887'
   - name: 'Dwarven Mines: Red Demonlings'
+    pathFile: 'DMRFLOOP.mp'
     stops:
       - 'Diamond Mine Tunnel 15/1737'
       - 'Diamond Mine Tunnel, Diamond Vein 15/1753'
   - name: 'Dwarven Mines: Stone Elementals Lower Loop'
+    pathFile: 'STONLOOP.mp'
     stops:
       - 'Redstone Tunnel 6/2257'
       - 'Redstone Tunnel, Dead End 6/2272'
@@ -1610,6 +1766,7 @@ loops:
       - 'Redstone Tunnel 6/2309'
       - 'Redstone Tunnel 6/2337'
   - name: 'Dwarven Mines: Stone Elementas Upper  Loop'
+    pathFile: 'RST2LOOP.mp'
     stops:
       - 'Redstone Tunnel 6/2161'
       - 'Redstone Tunnel, Dead End 6/2169'
@@ -1619,6 +1776,7 @@ loops:
       - 'Redstone Tunnel, Dead End 6/2222'
       - 'Redstone Tunnel, Dead End 6/2191'
   - name: 'Gnome Village: Earthen Tunnels (Ants)'
+    pathFile: 'GVETLOOP.mp'
     stops:
       - 'Earthen Tunnel 9/502'
       - 'Earthen Tunnel 9/527'
@@ -1628,6 +1786,7 @@ loops:
       - 'Earthen Tunnel 9/696'
       - 'Earthen Tunnel 9/556'
   - name: 'Goblin caves: Goblin Caves'
+    pathFile: 'GOBCLOOP.mp'
     stops:
       - 'Huge Cave, Entrance 1/1750'
       - 'Huge Cave, Refuse Pit 1/1765'
@@ -1641,6 +1800,7 @@ loops:
       - 'Barracks 1/1771'
       - 'Kitchen 7/12'
   - name: 'Goblin caves: Orc Training area (easy)'
+    pathFile: 'HCTALOOP.mp'
     stops:
       - 'Huge Cavern, Training Area 15/5'
       - 'Huge Cavern, Training Area 15/32'
@@ -1653,6 +1813,7 @@ loops:
       - 'Huge Cavern, Training Area 15/65'
       - 'Huge Cavern, Training Area 15/63'
   - name: 'Goblin caves: Orc Warlord Area (With Warlord)'
+    pathFile: 'OBCQLOOP.mp'
     stops:
       - 'Orc Barracks, Commanders Quarters 15/183'
       - 'Orc Barracks, Commanders Quarters 15/184'
@@ -1662,6 +1823,7 @@ loops:
       - 'Orc Barracks 15/130'
       - 'Orc Barracks 15/131'
   - name: 'Goblin caves: Slime Beast Loop'
+    pathFile: 'SLIMLOOP.mp'
     stops:
       - 'Huge Cave, Refuse Pit 1/1765'
       - 'Huge Cave 1/1764'
@@ -1674,6 +1836,7 @@ loops:
       - 'Huge Cave, Refuse Pit 1/1765'
       - 'Huge Cave 1/1764'
   - name: 'Graveyard: Crypt Level 1 Loop'
+    pathFile: 'CRY1LOOP.mp'
     stops:
       - 'Crypt, Lower Level 1/1028'
       - 'Crypt, Stone Hallway 1/1044'
@@ -1683,6 +1846,7 @@ loops:
       - 'Crypt, Stone Hallway 1/1061'
       - 'Crypt, Stone Hallway 1/1052'
   - name: 'Graveyard: Crypt Level 2 Loop'
+    pathFile: 'CRY2LOOP.mp'
     stops:
       - 'Crypt, Stone Hallway 1/1237'
       - 'Crypt, Stone Hallway 1/1238'
@@ -1695,6 +1859,7 @@ loops:
       - 'Tomb 1/1258'
       - 'Crypt, Stone Hallway 1/1240'
   - name: 'Graveyard: Crypt Level 3 Loop'
+    pathFile: 'CRY3LOOP.mp'
     stops:
       - 'Crypt, Stone Hallway 1/1276'
       - 'Tomb 1/1305'
@@ -1702,6 +1867,7 @@ loops:
       - 'Tomb 1/1306'
       - 'Tomb 1/1304'
   - name: 'Graveyard: Graveyard (full loop)'
+    pathFile: 'GRVBLOOP.mp'
     stops:
       - 'Bridge 1/180'
       - 'Graveyard, Western Edge 1/2606'
@@ -1715,10 +1881,12 @@ loops:
       - 'Graveyard, Eastern Edge 1/2647'
       - 'Graveyard 1/2628'
   - name: 'Graveyard: Mummy (Instant Regen)'
+    pathFile: 'CRSTLOOP.mp'
     stops:
       - 'Crypt, Sealed Tomb 1/1309'
       - 'Crypt, Stone Hallway 1/1297'
   - name: 'Graveyard: Musty Grotto'
+    pathFile: 'GYMGLOOP.mp'
     stops:
       - 'Musty Grottos, Portal 1/9462'
       - 'Musty Grottos 1/9485'
@@ -1730,15 +1898,18 @@ loops:
       - 'Musty Grottos 1/9494'
       - 'Musty Grottos 1/9499'
   - name: 'Graveyard: White Marble Corridor'
+    pathFile: 'WMCSLOOP.mp'
     stops:
       - 'Marble Stairwell 6/924'
       - 'Marble Stairwell 6/988'
   - name: 'Island: Ancient Crypt'
+    pathFile: 'ACRYLOOP.mp'
     stops:
       - 'Ancient Crypt 1/1943'
       - 'Ancient Crypt 1/1949'
       - 'Ancient Crypt, Tomb 1/1966'
   - name: 'Island: Ancient Crypt and Wooden Psg'
+    pathFile: 'LAB2LOOP.mp'
     stops:
       - 'Labyrinth, Entrance 1/1832'
       - 'Labyrinth Passage 1/1940'
@@ -1760,10 +1931,12 @@ loops:
       - 'Wooden Passage 1/1875'
       - 'Labyrinth Passage 1/1877'
   - name: 'Island: Giant Snakes'
+    pathFile: 'ILWTLOOP.mp'
     stops:
       - 'Watery Tunnel 1/2126'
       - 'Watery Tunnel 1/2136'
   - name: 'Island: Labyrinth'
+    pathFile: 'LABELOOP.mp'
     stops:
       - 'Labyrinth, Entrance 1/1832'
       - 'Labyrinth Passage 1/1940'
@@ -1784,6 +1957,7 @@ loops:
       - 'Labyrinth Passage 1/1877'
       - 'Limestone Tunnel, Cave Mouth 1/1828'
   - name: 'Island: Wooden Passages'
+    pathFile: 'MWODLOOP.mp'
     stops:
       - 'Wooden Passage 1/1875'
       - 'Wooden Passage 1/1840'
@@ -1794,6 +1968,7 @@ loops:
       - 'Wooden Passage 1/1864'
       - 'Wooden Passage 1/1881'
   - name: 'Jungle: Deep Jungle'
+    pathFile: 'JABTLOOP.mp'
     stops:
       - 'Deep Jungle, Abandoned Temple 16/1412'
       - 'Deep Jungle, Trail 16/1479'
@@ -1821,6 +1996,7 @@ loops:
       - 'Deep Jungle, Trail 16/1415'
       - 'Deep Jungle, Trail 16/1414'
   - name: 'Jungle: Mamba Locator loop'
+    pathFile: 'JBLTLOOP.mp'
     stops:
       - 'Life Tree, Stair End 16/1235'
       - 'Shallow Jungle, Trail 16/1244'
@@ -1829,6 +2005,7 @@ loops:
       - 'Shallow Jungle, Trail 16/1362'
       - 'Shallow Jungle, Trail 16/1386'
   - name: 'Jungle: Massive Web'
+    pathFile: 'JTMWLOOP.mp'
     stops:
       - 'Tasloi Village, Massive Web 16/50'
       - 'Webbed Tree Hollow 16/2142'
@@ -1847,6 +2024,7 @@ loops:
       - 'Tasloi Village, Massive Web 16/92'
       - 'Tasloi Village, Massive Web 16/67'
   - name: 'Jungle: Massive Web (less hold/slow)'
+    pathFile: 'JMWCLOOP.mp'
     stops:
       - 'Tasloi Village, Massive Web 16/55'
       - 'Webbed Tree Hollow 16/110'
@@ -1861,6 +2039,7 @@ loops:
       - 'Tasloi Village, Massive Web 16/74'
       - 'Tasloi Village, Massive Web 16/102'
   - name: 'Jungle: Rocky Cliffs and Sandy Beach'
+    pathFile: 'JVBGLOOP.mp'
     stops:
       - 'Vine Bridge, Wooden Gateway 16/1201'
       - 'Rocky Cliffs 16/2548'
@@ -1880,6 +2059,7 @@ loops:
       - 'Sandy Beach 16/2500'
       - 'Rocky Cliffs 16/2548'
   - name: 'Jungle: Shaded Canopy'
+    pathFile: 'SJSCLOOP.mp'
     stops:
       - 'Shaded Canopy, Large Tree 16/3000'
       - 'Shaded Canopy 16/3022'
@@ -1887,6 +2067,7 @@ loops:
       - 'Shaded Canopy 16/3003'
       - 'Shaded Canopy 16/3004'
   - name: 'Jungle: Shallow Jungle'
+    pathFile: 'LLGMLOOP.mp'
     stops:
       - 'Shallow Jungle, Large Mound 16/1405'
       - 'Shallow Jungle, Large Mound 16/1402'
@@ -1938,6 +2119,7 @@ loops:
       - 'Shallow Jungle, Trail 16/1369'
       - 'Shallow Jungle, Trail 16/1374'
   - name: 'Jungle: Taslois (complete - no bosses reverse)'
+    pathFile: 'JTLTLOOP.mp'
     stops:
       - 'Tasloi Village, Large Tree 16/20'
       - 'Tasloi Village, Treetops 16/45'
@@ -1950,6 +2132,7 @@ loops:
       - 'Tasloi Village 16/11'
       - 'Tasloi Village, Dead End 16/7'
   - name: 'Jungle: Taslois (complete - no bosses)'
+    pathFile: 'JTVELOOP.mp'
     stops:
       - 'Tasloi Village, Entrance 16/1'
       - 'Tasloi Village, Dead End 16/7'
@@ -1963,6 +2146,7 @@ loops:
       - 'Tasloi Village, Treetops 16/48'
       - 'Tasloi Village, Treetops 16/33'
   - name: 'Jungle: Taslois (complete - with bosses)'
+    pathFile: 'JTVLLOOP.mp'
     stops:
       - 'Tasloi Village 16/8'
       - 'Tasloi Village, Dead End 16/12'
@@ -1975,10 +2159,12 @@ loops:
       - 'Tasloi Village, Treetops 16/34'
       - 'Tasloi Village, Treetops 16/38'
   - name: 'Jungle: Whipvines'
+    pathFile: 'SJNGLOOP.mp'
     stops:
       - 'Narrow Gully 16/3030'
       - 'Narrow Gully, Pit 16/3035'
   - name: 'Khazarad: Upper Redstones (above Khaz)'
+    pathFile: 'SSCILOOP.mp'
     stops:
       - 'Spiral Stairwell, Cave-In 6/1406'
       - 'Redstone Tunnel, Dead-End 6/1429'
@@ -1992,16 +2178,19 @@ loops:
       - 'Sandy Tunnel 6/1523'
       - 'Redstone Tunnel, Steeply Sloping Tunnel 6/1495'
   - name: 'Lava Fields: Crimson Fort Loop'
+    pathFile: 'CFMGLOOP.mp'
     stops:
       - 'Fortress of the Crimson Flame, Main Gate 15/1054'
       - 'Crimson Fortress, Hallway 15/1064'
       - 'Crimson Fortress, Hallway 15/1055'
   - name: 'Lava Fields: Crimson Fort Second Floor'
+    pathFile: 'CFSFLOOP.mp'
     stops:
       - 'Crimson Fortress, Hallway 15/1097'
       - 'Crimson Fortress, Hallway 15/1098'
       - 'Crimson Fortress, Hallway 15/1096'
   - name: 'Lava Fields: Dragons Loop'
+    pathFile: 'LAVTLOOP.mp'
     stops:
       - 'Lava Tube 7/1288'
       - 'Obsidian Chamber 7/1334'
@@ -2019,6 +2208,7 @@ loops:
       - 'Obsidian Chamber 7/1300'
       - 'Obsidian Chamber 7/1293'
   - name: 'Lava Fields: Lava Fields'
+    pathFile: 'LAVMLOOP.mp'
     stops:
       - 'Lava Fields, Tunnel Mouth 7/884'
       - 'Lava Fields, Cavern Wall 7/923'
@@ -2035,6 +2225,7 @@ loops:
       - 'Lava Fields, Cavern Wall 7/902'
       - 'Lava Fields, Cavern Wall 7/886'
   - name: 'Lava Fields: Magma Men Loop'
+    pathFile: 'LVF4LOOP.mp'
     stops:
       - 'Lava Cavern, Obsidian Cliffs 15/1017'
       - 'Lava Cavern, Obsidian Cliffs 15/1026'
@@ -2042,6 +2233,7 @@ loops:
       - 'Lava Cavern, Obsidian Cliffs 15/1036'
       - 'Lava Cavern, Obsidian Cliffs 15/1019'
   - name: 'Lava Fields: Red Dragon Hatchlings'
+    pathFile: 'DNESLOOP.mp'
     stops:
       - 'Magma River, Dragon Nest 7/1367'
       - 'Magma River, Dragon Nest 7/1375'
@@ -2051,6 +2243,7 @@ loops:
       - 'Magma River, Dragon Nest 7/1372'
       - 'Obsidian Passage, Narrow Opening 7/1403'
   - name: 'Lava Fields: Salamander Tubes Loop'
+    pathFile: 'TUBELOOP.mp'
     stops:
       - 'Lava Tube 6/1210'
       - 'Lava Tube 6/1215'
@@ -2062,16 +2255,19 @@ loops:
       - 'Lava Tube 15/1153'
       - 'Lava Tube 15/1163'
   - name: 'Lava Fields: Temple of Fire (crimson priests area)'
+    pathFile: 'TEMFLOOP.mp'
     stops:
       - 'Temple of Fire, Massive Door 15/1126'
       - 'Temple of Fire, Altar 15/1167'
       - 'Temple of Fire, Foyer 15/1113'
       - 'Temple of Fire, Altar 15/1168'
   - name: 'Lava Fields: fulgore'
+    pathFile: 'CFIFLOOP.mp'
     stops:
       - 'Crimson Fortress, Hallway 15/1101'
       - 'Crimson Fortress, Hallway 15/1096'
   - name: 'Lorthan Lowlands: Brackenfen (fiend, adherent, warden) Northwest Loop'
+    pathFile: 'BRN2LOOP.mp'
     stops:
       - 'Brackenfen, Narrow Trail 14/9813'
       - 'Brackenfen, Narrow Trail 14/9821'
@@ -2081,6 +2277,7 @@ loops:
       - 'Brackenfen, Hillside 14/9914'
       - 'Brackenfen 14/9909'
   - name: 'Lorthan Lowlands: Brackenfen (fiend, adherent, warden) Southwest Loop'
+    pathFile: 'BRN1LOOP.mp'
     stops:
       - 'Brackenfen, Narrow Trail 14/9813'
       - 'Brackenfen 14/9878'
@@ -2092,6 +2289,7 @@ loops:
       - 'Brackenfen 14/9864'
       - 'Brackenfen 14/9870'
   - name: 'Lorthan Lowlands: Brackenfen (full ) Loop'
+    pathFile: 'BRNTLOOP.mp'
     stops:
       - 'Brackenfen, Narrow Trail 14/9813'
       - 'Brackenfen 14/9878'
@@ -2109,6 +2307,7 @@ loops:
       - 'Brackenfen 14/9912'
       - 'Brackenfen, Hillside 14/9914'
   - name: 'Lorthan Lowlands: Dark Adherents Loop'
+    pathFile: 'LLHCLOOP.mp'
     stops:
       - 'Hidden Camp 14/9079'
       - 'Moldy Tent 14/9082'
@@ -2121,11 +2320,13 @@ loops:
       - 'Moldy Tent 14/9085'
       - 'Moldy Tent 14/9084'
   - name: 'Lorthan Lowlands: Rotting Morass (3 regens)'
+    pathFile: 'ASSTLOOP.mp'
     stops:
       - 'Arched Stone Structure 14/9789'
       - 'Rotting Morass 14/9716'
       - 'Rotting Morass 14/9727'
   - name: 'Lorthan Lowlands: Rotting Morass (singles)'
+    pathFile: 'RMNTLOOP.mp'
     stops:
       - 'Rotting Morass, Narrow Trail 14/9666'
       - 'Rotting Morass 14/9763'
@@ -2138,6 +2339,7 @@ loops:
       - 'Rotting Morass 14/9749'
       - 'Rotting Morass 14/9733'
   - name: 'Lorthan Lowlands: The Quagmire (ray/lycan Loop)'
+    pathFile: 'LLQOLOOP.mp'
     stops:
       - 'The Quagmire, Opening 14/8981'
       - 'The Quagmire 14/9046'
@@ -2145,6 +2347,7 @@ loops:
       - 'The Quagmire 14/9042'
       - 'The Quagmire 14/8987'
   - name: 'Lorthan Lowlands: The Quagmire, Old Trail (full) Loop'
+    pathFile: 'QOT2LOOP.mp'
     stops:
       - 'The Quagmire, Old Trail 14/9296'
       - 'The Quagmire 14/9398'
@@ -2158,21 +2361,25 @@ loops:
       - 'The Quagmire 14/9332'
       - 'The Quagmire 14/9406'
   - name: 'Lorthan Lowlands: The Quagmire, Stinking Pools (bog ray doubles)'
+    pathFile: 'TQSKLOOP.mp'
     stops:
       - 'The Quagmire, Stinking Pools 14/9393'
       - 'The Quagmire, Stinking Pools 14/9342'
       - 'The Quagmire, Stinking Pools 14/9353'
   - name: 'Lost City: Amazon Shamans'
+    pathFile: 'LCSELOOP.mp'
     stops:
       - 'Temple Stairs 16/311'
       - 'Temple Altar 16/470'
       - 'Temple Stairs 16/445'
   - name: 'Lost City: Amazons (Two  Regen Rooms)'
+    pathFile: 'LCACLOOP.mp'
     stops:
       - 'Elders'' Council Chambers, Craftswoman''s Room 16/382'
       - 'Elders'' Council Chambers, Meeting Hall 16/383'
       - 'Elders'' Council Chambers 16/379'
   - name: 'Lost City: Earthen Catacombs (need  idol)'
+    pathFile: 'LCSSLOOP.mp'
     stops:
       - 'Earthen Catacombs, Spiral Staircase 16/1521'
       - 'Earthen Catacombs 16/2366'
@@ -2236,6 +2443,7 @@ loops:
       - 'Earthen Catacombs 16/2351'
       - 'Earthen Catacombs 16/2349'
   - name: 'Lost City: Lost City Loop (large)'
+    pathFile: 'LCBALOOP.mp'
     stops:
       - 'Bank 16/320'
       - 'Weapons Shop, Back Room 16/331'
@@ -2294,11 +2502,13 @@ loops:
       - 'Barracks 16/333'
       - 'Market Street 16/321'
   - name: 'Misty Valley: Black Dragon Hatchlings (easy)'
+    pathFile: 'MBDHLOOP.mp'
     stops:
       - 'Misty Bog 6/472'
       - 'Misty Bog 6/477'
       - 'Misty Bog 6/471'
   - name: 'Misty Valley: Black Dragons'
+    pathFile: 'MVBDLOOP.mp'
     stops:
       - 'Misty Bog 6/387'
       - 'Misty Bog 6/407'
@@ -2307,6 +2517,7 @@ loops:
       - 'Misty Swamp Path 6/504'
       - 'Huge Dank Passageway 6/425'
   - name: 'Misty Valley: Cramped Tunnels (Kobolds)'
+    pathFile: 'KOBTLOOP.mp'
     stops:
       - 'Cramped Tunnel, Intersection 6/754'
       - 'Smelly Cave 6/765'
@@ -2318,6 +2529,7 @@ loops:
       - 'Smelly Cave 6/813'
       - 'Cramped Tunnel 6/758'
   - name: 'Misty Valley: Kobold King Loop'
+    pathFile: 'KOBKLOOP.mp'
     stops:
       - 'Fancy Chamber 6/834'
       - 'Smelly Cave 6/774'
@@ -2334,6 +2546,7 @@ loops:
       - 'Smelly Cave 6/800'
       - 'Cramped Tunnel 6/772'
   - name: 'Misty Valley: Misty Swamp'
+    pathFile: 'VALCLOOP.mp'
     stops:
       - 'Valley Path, Crossroads 6/133'
       - 'Misty Swamp Path 6/246'
@@ -2373,12 +2586,14 @@ loops:
       - 'Misty Swamp Path 6/318'
       - 'Misty Swamp Path 6/243'
   - name: 'Misty Valley: Rocky Path (kobolds)'
+    pathFile: 'SWPFLOOP.mp'
     stops:
       - 'Swamp Ridge Path, Fork 6/191'
       - 'Rocky Path 6/750'
       - 'Swamp Ridge Path 6/190'
       - 'Swamp Ridge Path 6/192'
   - name: 'Mossy Tunnels: Crumbling Ruins'
+    pathFile: 'CRUMLOOP.mp'
     stops:
       - 'Crumbling Ruin, Entrance 9/1012'
       - 'Crumbling Ruin 9/1017'
@@ -2386,6 +2601,7 @@ loops:
       - 'Crumbling Ruin 9/1024'
       - 'Crumbling Ruin 9/1028'
   - name: 'Mossy Tunnels: Mossy Tunnel Loop'
+    pathFile: 'MOSTLOOP.mp'
     stops:
       - 'Mossy Cave, Waterfall 3/1'
       - 'Mossy Cave 3/6'
@@ -2395,12 +2611,14 @@ loops:
       - 'Mossy Cave, Rocky Outcropping 3/36'
       - 'Mossy Tunnel, Lichenous Mass 3/20'
   - name: 'Mossy Tunnels: Vampire Bat Cave'
+    pathFile: 'MTFCLOOP.mp'
     stops:
       - 'Foul Cave 3/35'
       - 'Foul Cave 3/805'
       - 'Foul Cave 3/797'
       - 'Foul Cave 3/811'
   - name: 'Negative Power Plane: Necromancers'
+    pathFile: 'NPPVLOOP.mp'
     stops:
       - 'Negative Power Plane 8/978'
       - 'Negative Power Plane 8/1065'
@@ -2418,10 +2636,12 @@ loops:
       - 'Negative Power Plane 8/982'
       - 'Negative Power Plane 8/1053'
   - name: 'Newhaven: Cave Bear loop'
+    pathFile: 'NMCBLOOP.mp'
     stops:
       - 'Small Cavern 1/2156'
       - 'Dungeon, Entrance 1/2152'
   - name: 'Newhaven: Dungeon, Murky Depths'
+    pathFile: 'NHMDLOOP.mp'
     stops:
       - 'Dungeon, Murky Depths 1/2170'
       - 'Dungeon, Dead End 1/2194'
@@ -2431,10 +2651,12 @@ loops:
       - 'Dungeon, Dead End 1/2206'
       - 'Dungeon, Dead End 1/2205'
   - name: 'Newhaven: NewHaven Arena Loop'
+    pathFile: 'NARNLOOP.mp'
     stops:
       - 'Newhaven, Arena 1/2150'
       - 'Newhaven, Narrow Road 1/2146'
   - name: 'Northern Forests: Bronzewood Forest'
+    pathFile: 'FRUTLOOP.mp'
     stops:
       - 'Small Earthen Chamber 3/148'
       - 'Ironwood Forest, Dense Wall 3/153'
@@ -2463,6 +2685,7 @@ loops:
       - 'Dark Cave, Lair 3/317'
       - 'Bronzewood Forest 3/280'
   - name: 'Northern Forests: Dying Grove'
+    pathFile: 'SRMPLOOP.mp'
     stops:
       - 'The Silver River, Murky Pool 1/2415'
       - 'Dying Grove 3/180'
@@ -2473,6 +2696,7 @@ loops:
       - 'Dying Grove 3/212'
       - 'Dying Grove 3/205'
   - name: 'Northern Forests: Filthy Encampment'
+    pathFile: 'FLTHLOOP.mp'
     stops:
       - 'Filthy Encampment 3/544'
       - 'Ancient Ruin, Demolished Doors 3/557'
@@ -2485,6 +2709,7 @@ loops:
       - 'Ironwood Forest, Weed-Choked Dead-End 3/137'
       - 'Ironwood Forest 3/135'
   - name: 'Northern Forests: Quicklings'
+    pathFile: 'NFTHLOOP.mp'
     stops:
       - 'Torchlit Hole 3/248'
       - 'Torchlit Hole, Fork 3/253'
@@ -2492,6 +2717,7 @@ loops:
       - 'Bronzewood Forest, Small Path 3/242'
       - 'Bronzewood Forest, Small Path 3/247'
   - name: 'Ocean: Coral Lobsters'
+    pathFile: 'LRCLLOOP.mp'
     stops:
       - 'Lagoon, Reef 16/585'
       - 'Lagoon, Reef 16/588'
@@ -2499,12 +2725,14 @@ loops:
       - 'Lagoon, Reef 16/590'
       - 'Lagoon, Reef 16/605'
   - name: 'Ocean: Lagoon Instant Warriors'
+    pathFile: 'LRIWLOOP.mp'
     stops:
       - 'Lagoon, Reef 16/2653'
       - 'Lagoon, Reef 16/2654'
       - 'Lagoon, Reef 16/2653'
       - 'Lagoon, Reef 16/2654'
   - name: 'Ocean: Lagoon Reef (North-East Section )'
+    pathFile: 'LARELOOP.mp'
     stops:
       - 'Lagoon, Reef 16/2658'
       - 'Lagoon, Reef 16/2559'
@@ -2513,12 +2741,14 @@ loops:
       - 'Lagoon, Reef 16/2609'
       - 'Lagoon, Reef 16/2638'
   - name: 'Ocean: Lagoon Reef (South-West Section)'
+    pathFile: 'LRSFLOOP.mp'
     stops:
       - 'Lagoon, Reef 16/2676'
       - 'Lagoon, Reef 16/1883'
       - 'Lagoon, Reef 16/1889'
       - 'Lagoon, Reef 16/581'
   - name: 'Ocean: Ocean Shallows Singles'
+    pathFile: 'OFINLOOP.mp'
     stops:
       - 'Ocean Floor, Inlet 16/3044'
       - 'Ocean Floor, Shallows 16/3403'
@@ -2538,6 +2768,7 @@ loops:
       - 'Ocean Floor, Shallows 16/3387'
       - 'Ocean Floor, Shallows 16/3407'
   - name: 'Ocean: Ocean Surface Singles'
+    pathFile: 'SBOELOOP.mp'
     stops:
       - 'Sandy Beach 16/2517'
       - 'Ocean Surface 16/4502'
@@ -2547,6 +2778,7 @@ loops:
       - 'Ocean Surface 16/4512'
       - 'Ocean Surface 16/4507'
   - name: 'Ocean: Oyster bed'
+    pathFile: 'OFRFLOOP.mp'
     stops:
       - 'Ocean Floor, Rock Face 16/3225'
       - 'Ocean Floor, Rock Face 16/3229'
@@ -2554,17 +2786,20 @@ loops:
       - 'Ocean Floor, Large Oyster Bed 16/3288'
       - 'Ocean Floor, Beachside 16/3223'
   - name: 'Ocean: Sandbar (Giant Crabs)'
+    pathFile: 'SANDLOOP.mp'
     stops:
       - 'Sandbar 16/272'
       - 'Sandbar 16/296'
       - 'Sandbar 16/299'
       - 'Sandbar 16/289'
   - name: 'Ocean: Sandy Beach Roomers Loop'
+    pathFile: 'SBNELOOP.mp'
     stops:
       - 'Sandy Beach 16/2523'
       - 'Sandy Beach 16/2524'
       - 'Sandy Beach 16/2519'
   - name: 'Ocean: Slimeworms'
+    pathFile: 'ULSWLOOP.mp'
     stops:
       - 'Underground Lake 16/227'
       - 'Underground Lake 16/233'
@@ -2575,6 +2810,7 @@ loops:
       - 'Underground Lake 16/228'
       - 'Underground Lake 16/226'
   - name: 'Ocean: Underground Cavern Entrance 1'
+    pathFile: 'UCE1LOOP.mp'
     stops:
       - 'Underground Cavern Entrance 16/3092'
       - 'Underground Cavern 16/3112'
@@ -2584,6 +2820,7 @@ loops:
       - 'Underground Cavern 16/3151'
       - 'Underground Cavern 16/3094'
   - name: 'Ocean: Underground Cavern Loop 2'
+    pathFile: 'UCE2LOOP.mp'
     stops:
       - 'Underground Cavern Entrance 16/3185'
       - 'Underground Cavern 16/3175'
@@ -2594,6 +2831,7 @@ loops:
       - 'Underground Cavern 16/3179'
       - 'Underground Cavern 16/3178'
   - name: 'Ocean: Underground Lake'
+    pathFile: 'UGL2LOOP.mp'
     stops:
       - 'Underground River 16/190'
       - 'Underground Lake 16/204'
@@ -2620,10 +2858,12 @@ loops:
       - 'Underground Lake 16/219'
       - 'Underground Lake 16/209'
   - name: 'Ocean: Underground Passage'
+    pathFile: 'LLGPLOOP.mp'
     stops:
       - 'Lagoon, Large Pool 16/2138'
       - 'Underground Passage 16/3083'
   - name: 'Ocean: Underground River'
+    pathFile: 'UGLKLOOP.mp'
     stops:
       - 'Underground River 16/190'
       - 'Underground River 16/188'
@@ -2645,6 +2885,7 @@ loops:
       - 'Underground River 16/138'
       - 'Underground River 16/145'
   - name: 'Old Mines: Gnaj (mixed)'
+    pathFile: 'ONPPLOOP.mp'
     stops:
       - 'Old Mine Tunnel, Nightblack Portal 15/1320'
       - 'Old Mine Tunnel 15/1333'
@@ -2654,42 +2895,50 @@ loops:
       - 'Old Mine Tunnel 15/1351'
       - 'Old Mine Tunnel 15/1304'
   - name: 'Old Mines: Gnaj Golem Singles Loop 1'
+    pathFile: 'OMD1LOOP.mp'
     stops:
       - 'Old Mine Tunnel, Hole Down 15/1283'
       - 'Old Mine Tunnel 15/1281'
       - 'Old Mine Tunnel 15/1251'
   - name: 'Old Mines: Gnaj Golem Singles Loop 2'
+    pathFile: 'OMGULOOP.mp'
     stops:
       - 'Old Mine Tunnel, Hole Up 15/1405'
       - 'Old Mine Tunnel 15/10202'
       - 'Old Mine Tunnel 15/1431'
       - 'Old Mine Tunnel 15/10200'
   - name: 'Old Mines: Gnaj Golems (2 and 3 spawns-1)'
+    pathFile: 'OMJ2LOOP.mp'
     stops:
       - 'Old Mine Tunnel, Junction 15/1440'
       - 'Old Mine Tunnel 15/1448'
       - 'Old Mine Tunnel 15/1454'
   - name: 'Old Mines: Gnaj Golems (2 and 3 spawns-2'
+    pathFile: 'OMGGLOOP.mp'
     stops:
       - 'Old Mine Tunnel, Hole Up 15/1458'
       - 'Old Mine Tunnel 15/1469'
       - 'Old Mine Tunnel 15/10159'
   - name: 'Old Mines: Gnaj Golems (2 and 3 spawns-3)'
+    pathFile: 'OMTFLOOP.mp'
     stops:
       - 'Old Mine Tunnel, Fork 15/1476'
       - 'Old Mine Tunnel 15/1486'
       - 'Old Mine Tunnel 15/10156'
   - name: 'Old Mines: Gnaj Zombies Singles Loop 2'
+    pathFile: 'OMSTLOOP.mp'
     stops:
       - 'Old Mine Tunnel, Stair 15/1523'
       - 'Old Mine Tunnel 15/1521'
       - 'Old Mine Tunnel 15/1505'
   - name: 'Old Mines: Wraith Spiders Loop 1'
+    pathFile: 'OMACLOOP.mp'
     stops:
       - 'Web above the Chasm 15/10023'
       - 'Webbed Cavern 15/10005'
       - 'Webbed Cavern, Chasm''s Edge 15/10020'
   - name: 'Old Mines: Wraith Spiders Loop 2'
+    pathFile: 'OMTSLOOP.mp'
     stops:
       - 'Webbed Mine Tunnel, Stair 15/1524'
       - 'Webbed Mine Tunnel 15/1534'
@@ -2698,6 +2947,7 @@ loops:
       - 'Webbed Mine Tunnel 15/1597'
       - 'Old Mine Tunnel 15/1605'
   - name: 'Port Blackwater: Blackwater sewers (North)'
+    pathFile: 'PBSLLOOP.mp'
     stops:
       - 'Blackwater Sewers, Ladder 14/382'
       - 'Blackwater Sewers 14/379'
@@ -2706,6 +2956,7 @@ loops:
       - 'Blackwater Sewers 14/378'
       - 'Blackwater Sewers, Discharge Pipe 14/391'
   - name: 'Rhudaur: Rhudaur Loop (Full)'
+    pathFile: 'RHUCLOOP.mp'
     stops:
       - 'Rhudaur Town Centre 2/2523'
       - 'Temple Street, Southern End 2/2529'
@@ -2716,6 +2967,7 @@ loops:
       - 'Dark Alley 2/2598'
       - 'Dark Alley, Dead End 2/2591'
   - name: 'Rhudaur: Rhudaur Sewers'
+    pathFile: 'RHRSLOOP.mp'
     stops:
       - 'Rancid Sewer, Manhole Up 2/2602'
       - 'Rancid Sewer 2/2612'
@@ -2725,6 +2977,7 @@ loops:
       - 'Rancid Sewer 2/2643'
       - 'Rancid Sewer 9/898'
   - name: 'Rhudaur: Shadowfist Temple'
+    pathFile: 'SHADLOOP.mp'
     stops:
       - 'Shadow Fist Temple, Ladder Down 9/913'
       - 'Shadow Fist Barracks 9/920'
@@ -2736,30 +2989,36 @@ loops:
       - 'Shadow Fist Temple, Training Room 9/929'
       - 'Paved Walkway 9/938'
   - name: 'Rocky Trail: Freezing Tunnel (Ice Wraiths, Golems)'
+    pathFile: 'BITTLOOP.mp'
     stops:
       - 'Black Ice Cavern, Twisting Tunnel 15/813'
       - 'Black Ice Cavern, Freezing Tunnel 15/820'
       - 'Black Ice Cavern, Freezing Tunnel 15/825'
       - 'Black Ice Cavern, Twisting Tunnel 15/812'
   - name: 'Rocky Trail: Frozen Tower - Frozen Shard Collector'
+    pathFile: 'ICESLOOP.mp'
     stops:
       - 'Tower, Open Chamber 10/245'
       - 'Tower, Secret Passage 10/238'
   - name: 'Rocky Trail: Glowing Tunnel (Ice Wraiths, Golems)'
+    pathFile: 'BIGTLOOP.mp'
     stops:
       - 'Black Ice Cavern, Glowing Tunnel 15/806'
       - 'Black Ice Cavern, Glowing Tunnel 15/800'
   - name: 'Rocky Trail: Ice Golems (no sorceress)'
+    pathFile: 'ICEGLOOP.mp'
     stops:
       - 'Tower, Stairwell 10/241'
       - 'Tower, Observatory 10/244'
       - 'Tower, Secret Passage 10/238'
   - name: 'Rocky Trail: Roc Hatchlings'
+    pathFile: 'RTNPLOOP.mp'
     stops:
       - 'Narrow Plateau 10/120'
       - 'Narrow Plateau 10/134'
       - 'Narrow Plateau 10/131'
   - name: 'Rocky Trail: White Dragons  (full)'
+    pathFile: 'BICTLOOP.mp'
     stops:
       - 'Black Ice Cavern, Twisting Tunnel 15/784'
       - 'Black Ice Cavern, Freezing Tunnel 15/2085'
@@ -2767,12 +3026,14 @@ loops:
       - 'Black Ice Cavern, Freezing Tunnel 15/2103'
       - 'Black Ice Cavern, Freezing Tunnel 15/2098'
   - name: 'Rocky Trail: White Dragons (instant regen room)'
+    pathFile: 'BIIRLOOP.mp'
     stops:
       - 'Black Ice Cavern, Freezing Tunnel 15/793'
       - 'Black Ice Cavern, Freezing Tunnel 15/792'
       - 'Black Ice Cavern, Freezing Tunnel 15/793'
       - 'Black Ice Cavern, Freezing Tunnel 15/792'
   - name: 'Rugged Plateau: Animated Servants'
+    pathFile: 'RPSTLOOP.mp'
     stops:
       - 'Stonespire Tower, Entrance 2/11961'
       - 'Stonespire Tower 2/11963'
@@ -2782,6 +3043,7 @@ loops:
       - 'Arcane Study 2/11976'
       - 'Arcane Study 2/11977'
   - name: 'Rugged Plateau: Centaur Outcasts'
+    pathFile: 'RPBCLOOP.mp'
     stops:
       - 'Boulder-strewn Clearing 2/11527'
       - 'Boulder-strewn Clearing 2/11551'
@@ -2789,12 +3051,14 @@ loops:
       - 'Boulder-strewn Clearing 2/11540'
       - 'Boulder-strewn Clearing 2/11543'
   - name: 'Rugged Plateau: Dire Grizzlys'
+    pathFile: 'RPGFLOOP.mp'
     stops:
       - 'Rugged Plateau 2/10767'
       - 'Cave Den 2/10939'
       - 'Cave Den 2/10941'
       - 'Cave Den 2/10931'
   - name: 'Rugged Plateau: Feral Ogres (doubles)'
+    pathFile: 'RPGPLOOP.mp'
     stops:
       - 'Gravel Path 2/11086'
       - 'Stone Mound 2/11128'
@@ -2812,6 +3076,7 @@ loops:
       - 'Stone Mound 2/11118'
       - 'Stone Mound 2/11114'
   - name: 'Rugged Plateau: Feral Ogres singles'
+    pathFile: 'RPTPLOOP.mp'
     stops:
       - 'Trampled Path 2/11057'
       - 'Stone Mound 2/11062'
@@ -2823,6 +3088,7 @@ loops:
       - 'Stone Mound 2/11069'
       - 'Stone Mound 2/11066'
   - name: 'Rugged Plateau: Greater Wyverns Loop 1'
+    pathFile: 'RPRGLOOP.mp'
     stops:
       - 'Red Granite Mesa 2/11831'
       - 'Red Granite Mesa 2/11837'
@@ -2834,6 +3100,7 @@ loops:
       - 'Red Granite Mesa 2/11928'
       - 'Red Granite Mesa 2/11903'
   - name: 'Rugged Plateau: Grey Worgs (Easier)'
+    pathFile: 'RPDTLOOP.mp'
     stops:
       - 'Rugged Plateau, Dirt Track 2/10640'
       - 'Rugged Plateau 2/10643'
@@ -2842,15 +3109,18 @@ loops:
       - 'Rugged Plateau 2/10667'
       - 'Rugged Plateau, Dirt Track 2/10639'
   - name: 'Rugged Plateau: Hill trolls (doubles)'
+    pathFile: 'RPHTLOOP.mp'
     stops:
       - 'Rugged Plateau 2/11340'
       - 'Rugged Plateau 2/11360'
       - 'Rugged Plateau 2/11343'
   - name: 'Rugged Plateau: Hippogriffs (easier)'
+    pathFile: 'RPACLOOP.mp'
     stops:
       - 'Atop the Crag 2/10871'
       - 'Atop the Crag 2/10818'
   - name: 'Rugged Plateau: Rugged Beach (walruses)'
+    pathFile: 'RPRBLOOP.mp'
     stops:
       - 'Rugged Beach, Ledge 2/11138'
       - 'Rugged Beach 2/11168'
@@ -2862,11 +3132,13 @@ loops:
       - 'Beach End 2/11158'
       - 'Rugged Beach 2/11150'
   - name: 'Rugged Plateau: Rugged Southern Trail Junction (mixed troll manti outcast)'
+    pathFile: 'RPRJLOOP.mp'
     stops:
       - 'Rugged Plateau, Trail Junction 2/11420'
       - 'Rugged Plateau 2/11443'
       - 'Rugged Plateau 2/11446'
   - name: 'Scorching Desert: Blue Dragon Upper Cavern Singles'
+    pathFile: 'SDUSLOOP.mp'
     stops:
       - 'Upper Sandstone Cavern 12/2546'
       - 'Sandstone Cavern, Ledge 12/2586'
@@ -2877,6 +3149,7 @@ loops:
       - 'Upper Sandstone Cavern 12/2577'
       - 'Sandstone Cavern, Ledge 12/2588'
   - name: 'Scorching Desert: Blue Dragons Loop'
+    pathFile: 'DBDELOOP.mp'
     stops:
       - 'Sandstone Cavern 12/2303'
       - 'Sandstone Cavern 12/2321'
@@ -2894,6 +3167,7 @@ loops:
       - 'Sandstone Cavern 12/2300'
       - 'Sandstone Cavern 12/2334'
   - name: 'Scorching Desert: Crumbling Temple Colonnade (East)'
+    pathFile: 'CTNSLOOP.mp'
     stops:
       - 'Crumbling Temple, Stair 12/2245'
       - 'Temple Colonnade 12/2394'
@@ -2901,6 +3175,7 @@ loops:
       - 'Temple Colonnade 12/2420'
       - 'Temple Colonnade 12/2402'
   - name: 'Scorching Desert: Crumbling Templs Colonnade (West)'
+    pathFile: 'CTSSLOOP.mp'
     stops:
       - 'Crumbling Temple, Stair 12/2389'
       - 'Temple Colonnade 12/2435'
@@ -2910,6 +3185,7 @@ loops:
       - 'Temple Colonnade 12/2415'
       - 'Temple Colonnade 12/2433'
   - name: 'Scorching Desert: Embalmed Horrors, East Loop'
+    pathFile: 'TDESLOOP.mp'
     stops:
       - 'Temple Depths 12/2525'
       - 'Burial Alcove 12/2539'
@@ -2920,6 +3196,7 @@ loops:
       - 'Burial Alcove 12/2540'
       - 'Collapsed Passage 12/2528'
   - name: 'Scorching Desert: Embalmed Horrors, South Loop'
+    pathFile: 'TDSSLOOP.mp'
     stops:
       - 'Temple Depths 12/2509'
       - 'Burial Alcove 12/2521'
@@ -2929,6 +3206,7 @@ loops:
       - 'Burial Alcove 12/2518'
       - 'Burial Alcove 12/2520'
   - name: 'Scorching Desert: Embalmed Horrors, West Loop'
+    pathFile: 'TDWSLOOP.mp'
     stops:
       - 'Temple Depths 12/2490'
       - 'Burial Alcove 12/2504'
@@ -2938,6 +3216,7 @@ loops:
       - 'Burial Alcove 12/2503'
       - 'Burial Alcove 12/2505'
   - name: 'Scorching Desert: Firepits loop'
+    pathFile: 'SFUPLOOP.mp'
     stops:
       - 'Scorched Cavern, Firepit 12/1239'
       - 'Scorched Cavern 12/1248'
@@ -2947,15 +3226,18 @@ loops:
       - 'Scorched Cavern 12/1269'
       - 'Scorched Cavern, Firepit 12/1278'
   - name: 'Scorching Desert: Great Pyramid 5th Floor (Animal  Warrriors)'
+    pathFile: 'GP5FLOOP.mp'
     stops:
       - 'Great Pyramid 12/2085'
       - 'Great Pyramid 12/2078'
       - 'Great Pyramid 12/2082'
   - name: 'Scorching Desert: Hooded Cobras'
+    pathFile: 'CSDELOOP.mp'
     stops:
       - 'Carved Shaft, Dead End 12/2439'
       - 'Carved Shaft, Opening 12/2454'
   - name: 'Scorching Desert: Limestone Caverns (no manscorpions)-12 2684'
+    pathFile: 'LCPRLOOP.mp'
     stops:
       - 'Limestone Caverns 1/2684'
       - 'Limestone Caverns 12/1279'
@@ -2969,6 +3251,7 @@ loops:
       - 'Limestone Caverns 12/1424'
       - 'Limestone Caverns 12/1422'
   - name: 'Scorching Desert: Manscorpion Singles Loop 1'
+    pathFile: 'LCMFLOOP.mp'
     stops:
       - 'Limestone Caverns 12/1573'
       - 'Limestone Caverns 12/1585'
@@ -2980,6 +3263,7 @@ loops:
       - 'Limestone Caverns 12/1794'
       - 'Limestone Caverns 12/1787'
   - name: 'Scorching Desert: Manscorpions (south easier)'
+    pathFile: 'LCFSLOOP.mp'
     stops:
       - 'Limestone Caverns 12/1523'
       - 'Limestone Caverns 12/1525'
@@ -2992,6 +3276,7 @@ loops:
       - 'Limestone Caverns 12/1567'
       - 'Limestone Caverns 12/1570'
   - name: 'Scorching Desert: Manscorpions NE Loop'
+    pathFile: 'LCFELOOP.mp'
     stops:
       - 'Carved Limestone Caverns 12/1686'
       - 'Carved Limestone Caverns 12/1696'
@@ -3000,6 +3285,7 @@ loops:
       - 'Carved Limestone Caverns 12/1710'
       - 'Carved Limestone Caverns 12/1702'
   - name: 'Scorching Desert: Narrow Canyon (Giant Scorpions)'
+    pathFile: 'SDNCLOOP.mp'
     stops:
       - 'Narrow Canyon Mouth 17/9796'
       - 'Redstone Hollow 17/9833'
@@ -3008,6 +3294,7 @@ loops:
       - 'Redstone Hollow 17/9842'
       - 'Narrow Canyon 17/9809'
   - name: 'Scorching Desert: Oasis Loop'
+    pathFile: 'BOSPLOOP.mp'
     stops:
       - 'Bountiful Oasis, Shimmering Pool 12/73'
       - 'Bountiful Oasis 12/69'
@@ -3020,11 +3307,13 @@ loops:
       - 'Bountiful Oasis 12/61'
       - 'Bountiful Oasis 12/71'
   - name: 'Scorching Desert: Rakshasha Rukhs (outer ring)'
+    pathFile: 'WSPRLOOP.mp'
     stops:
       - 'White Stone Palace 12/89'
       - 'White Stone Palace 12/100'
       - 'White Stone Palace 12/87'
   - name: 'Scorching Desert: Rakshashas (2 and 3 regens )'
+    pathFile: 'SPCWLOOP.mp'
     stops:
       - 'Fortress Courtyard, Well 12/118'
       - 'Fortress Courtyard 12/119'
@@ -3032,6 +3321,7 @@ loops:
       - 'Golden Spire, Library 12/2247'
       - 'Golden Spire, Hallway 12/2366'
   - name: 'Scorching Desert: Sandstone Mine (Spiny Tentacles- North)'
+    pathFile: 'SMEBLOOP.mp'
     stops:
       - 'Sandstone Mine Tunnel 12/1090'
       - 'Sandstone Mine Tunnel 12/1114'
@@ -3039,6 +3329,7 @@ loops:
       - 'Sandstone Mine Tunnel 12/1120'
       - 'Sandstone Mine Tunnel 12/1098'
   - name: 'Scorching Desert: Sandstone Mine (Spiny tentacles -South)'
+    pathFile: 'SMWBLOOP.mp'
     stops:
       - 'Sandstone Mine Tunnel 12/1124'
       - 'Sandstone Mine Tunnel 12/1089'
@@ -3050,6 +3341,7 @@ loops:
       - 'Sandstone Mine Tunnel 12/1166'
       - 'Sandstone Mine Tunnel, Iron Door 12/1170'
   - name: 'Scorching Desert: Sandstone Quarry Complete'
+    pathFile: 'SCSQLOOP.mp'
     stops:
       - 'Sandstone Quarry 12/1086'
       - 'Sandstone Mine Tunnel 12/1105'
@@ -3061,6 +3353,7 @@ loops:
       - 'Sandstone Mine Tunnel 12/1098'
       - 'Sandstone Mine Tunnel 12/1094'
   - name: 'Scorching Desert: Sandworms (roomers)'
+    pathFile: 'SDSFLOOP.mp'
     stops:
       - 'Limestone Caverns 12/1352'
       - 'Limestone Caverns 12/1382'
@@ -3072,6 +3365,7 @@ loops:
       - 'Limestone Caverns 12/1404'
       - 'Limestone Caverns 12/1392'
   - name: 'Scorching Desert: Saracen Leaders Loop'
+    pathFile: 'SHNPLOOP.mp'
     stops:
       - 'Narrow Precipice 12/2123'
       - 'Living Quarters 12/2131'
@@ -3081,6 +3375,7 @@ loops:
       - 'Plaster Hallway 12/2133'
       - 'Living Quarters 12/2136'
   - name: 'Scorching Desert: Saracen Zealots loop'
+    pathFile: 'SHPHLOOP.mp'
     stops:
       - 'Plaster Hallway, Iron Door 12/2145'
       - 'Plaster Hallway 12/2154'
@@ -3088,6 +3383,7 @@ loops:
       - 'Plaster Hallway 12/2163'
       - 'Plaster Hallway 12/2162'
   - name: 'Scorching Desert: Saracens (outer easier)'
+    pathFile: 'SHNELOOP.mp'
     stops:
       - 'Plaster Hallway 12/2089'
       - 'Living Quarters 12/2090'
@@ -3100,6 +3396,7 @@ loops:
       - 'Plaster Hallway 12/2103'
       - 'Plaster Hallway 12/2095'
   - name: 'Scorching Desert: Small Pyramid Loop'
+    pathFile: 'SPWMLOOP.mp'
     stops:
       - 'Small Pyramid, Storeroom 12/1182'
       - 'Small Pyramid, Entrance 12/1173'
@@ -3109,6 +3406,7 @@ loops:
       - 'Small Pyramid, Entrance 12/1173'
       - 'Small Pyramid, Barracks 12/1183'
   - name: 'Scorching Desert: Stony Meadow'
+    pathFile: 'SCSMLOOP.mp'
     stops:
       - 'Stony Meadow 17/9899'
       - 'Stony Meadow 17/9917'
@@ -3121,6 +3419,7 @@ loops:
       - 'Stony Meadow 17/9957'
       - 'Stony Meadow 17/9960'
   - name: 'Scorching Desert: Temple Depths Complete (No Spectral'
+    pathFile: 'TDSWLOOP.mp'
     stops:
       - 'Temple Depths, Stairwell 12/2475'
       - 'Collapsed Passage 12/2480'
@@ -3146,10 +3445,12 @@ loops:
       - 'Collapsed Passage 12/2528'
       - 'Temple Depths 12/2542'
   - name: 'Sewers: CaveWorm'
+    pathFile: 'DCCWLOOP.mp'
     stops:
       - 'Dark Cave 1/866'
       - 'Dark Cave 1/865'
   - name: 'Sewers: Silvermere Sewers (complete)'
+    pathFile: 'GAV1LOOP.mp'
     stops:
       - 'Sewer Tunnel, Junction 1/766'
       - 'Sewer Tunnel 1/1348'
@@ -3192,24 +3493,28 @@ loops:
       - 'Dank Room 1/811'
       - 'Dank Room 1/813'
   - name: 'Sewers: Slimy Sewers Loop (easy loop)'
+    pathFile: 'SLSTLOOP.mp'
     stops:
       - 'Slimy Sewer Tunnel 1/2438'
       - 'Slimy Sewer Tunnel 9/50'
       - 'Slimy Sewer Tunnel 9/32'
       - 'Slimy Sewer Tunnel 9/2'
   - name: 'Sewers: Smugglers Level 1'
+    pathFile: 'SMGFLOOP.mp'
     stops:
       - 'Straw-Floored Passage, Doorway 9/151'
       - 'Wooden Passage 9/178'
       - 'Straw-Floored Passage 9/152'
       - 'Straw-Floored Passage 9/150'
   - name: 'Sewers: Smugglers Level 2'
+    pathFile: 'WPRULOOP.mp'
     stops:
       - 'Wooden Passage, Ramp Up 9/181'
       - 'Dirty Cage 9/186'
       - 'Small Tool Room 9/194'
       - 'Stone Storage Chamber 9/199'
   - name: 'Sewers: Smugglers Level 3'
+    pathFile: 'WPRDLOOP.mp'
     stops:
       - 'Wooden Passage, Ramp Down 9/205'
       - 'Small Warehouse 9/210'
@@ -3218,6 +3523,7 @@ loops:
       - 'Sleeping Quarters 9/219'
       - 'Sleeping Quarters 9/222'
   - name: 'Shad - Fungal Forest: Giant Dragonflies Loop'
+    pathFile: 'FFSELOOP.mp'
     stops:
       - 'Fungal Forest, Swamp''s Edge 5/4016'
       - 'Murky Swamp 5/4214'
@@ -3225,17 +3531,20 @@ loops:
       - 'Murky Swamp 5/4217'
       - 'Fungal Forest, Swamp''s Edge 5/4018'
   - name: 'Shad - Fungal Forest: Siren Trees'
+    pathFile: 'FFGRLOOP.mp'
     stops:
       - 'Fungal Forest, Grove 5/4045'
       - 'Fungal Forest, Grove 5/4028'
       - 'Fungal Forest, Grove 5/4057'
       - 'Fungal Forest, Grove 5/4059'
   - name: 'Shad - Fungal Forest: Sunwyrms North Loop'
+    pathFile: 'SPBCLOOP.mp'
     stops:
       - 'Shattered Plain, Black Chasm 5/3807'
       - 'Shattered Plain, Cavern Wall 5/4254'
       - 'Shattered Plain 5/4297'
   - name: 'Shad - Fungal Forest: Swamp Trolls'
+    pathFile: 'MSSTLOOP.mp'
     stops:
       - 'Murky Swamp 5/4063'
       - 'Murky Swamp 5/4153'
@@ -3246,6 +3555,7 @@ loops:
       - 'Murky Swamp 5/4071'
       - 'Murky Swamp 5/4093'
   - name: 'Shad - Fungal Forest: Widowmaker Spiders Loop'
+    pathFile: 'FFTOLOOP.mp'
     stops:
       - 'Fungal Forest, Tunnel Opening 5/3764'
       - 'Fungal Forest 5/3843'
@@ -3253,6 +3563,7 @@ loops:
       - 'Fungal Forest, Cavern Wall 5/3780'
       - 'Fungal Forest 5/3775'
   - name: 'Shad-Darkened Cavern: Bore Worms (Loop 1)'
+    pathFile: 'SSTWLOOP.mp'
     stops:
       - 'Smooth Stone Tunnel, Waterfall 5/3603'
       - 'Smooth Stone Tunnel 5/3687'
@@ -3260,16 +3571,19 @@ loops:
       - 'Smooth Stone Tunnel 5/3673'
       - 'Smooth Stone Tunnel, Cave-In 5/3666'
   - name: 'Shad-Darkened Cavern: Bore Worms (Loop 2)'
+    pathFile: 'SSTTLOOP.mp'
     stops:
       - 'Smooth Stone Tunnel 5/3689'
       - 'Smooth Stone Tunnel 5/3696'
       - 'Smooth Stone Tunnel 5/3704'
   - name: 'Shad-Darkened Cavern: Darkened Cavern Loop'
+    pathFile: 'DKCJLOOP.mp'
     stops:
       - 'Darkened Cavern 5/3611'
       - 'Darkened Cavern 5/3619'
       - 'Darkened Cavern 5/3594'
   - name: 'Shad-Darkened Cavern: Giant hellhounds Loop'
+    pathFile: 'DKSTLOOP.mp'
     stops:
       - 'Darkened Stone Tunnel 5/3665'
       - 'Darkened Stone Tunnel 5/3724'
@@ -3277,6 +3591,7 @@ loops:
       - 'Darkened Stone Tunnel 5/3741'
       - 'Darkened Stone Tunnel 5/3747'
   - name: 'Shad-Dragonfang''s: Brass Wyrmlings Loop 1'
+    pathFile: 'DTE3LOOP.mp'
     stops:
       - 'Dragon''s Fang Hills, Tunnel Entrance 5/2840'
       - 'Dragon''s Fang Hills, Earthen Den 5/4807'
@@ -3292,6 +3607,7 @@ loops:
       - 'Dragon''s Fang Hills, Earthen Den 5/4799'
       - 'Dragon''s Fang Hills, Earthen Den 5/4808'
   - name: 'Shad-Dragonfang''s: Brass Wyrnlings Loop 2'
+    pathFile: 'DTE4LOOP.mp'
     stops:
       - 'Dragon''s Fang Hills, Tunnel Entrance 5/2885'
       - 'Dragon''s Fang Hills, Earthen Den 5/4767'
@@ -3305,12 +3621,14 @@ loops:
       - 'Dragon''s Fang Hills, Earthen Den 5/4765'
       - 'Dragon''s Fang Hills, Earthen Den 5/4766'
   - name: 'Shad-Dragonfang''s: Copper Dragons Loop 3'
+    pathFile: 'DTE5LOOP.mp'
     stops:
       - 'Dragon''s Fang Hills, Tunnel Entrance 5/2783'
       - 'Dragon''s Fang Hills 5/2755'
       - 'Dragon''s Fang Hills 5/2716'
       - 'Dragon''s Fang Hills 5/2789'
   - name: 'Shad-Dragonfang''s: Copper Wyrmlings Loop 2'
+    pathFile: 'DTE2LOOP.mp'
     stops:
       - 'Dragon''s Fang Hills, Tunnel Entrance 5/2674'
       - 'Dragon''s Fang Hills, Earthen Den 5/4699'
@@ -3324,6 +3642,7 @@ loops:
       - 'Dragon''s Fang Hills, Earthen Den 5/4702'
       - 'Dragon''s Fang Hills, Earthen Den 5/4712'
   - name: 'Shad-Dragonfang''s: Gnoll Camp'
+    pathFile: 'SHGPLOOP.mp'
     stops:
       - 'Hillside Path, Guard Post 5/3461'
       - 'Gnoll Tent 5/3464'
@@ -3334,17 +3653,20 @@ loops:
       - 'Gnoll Tent 5/3475'
       - 'Gnoll Tent 5/3473'
   - name: 'Shad-Dragonfang''s: Jagged Hill Path'
+    pathFile: 'SHTCLOOP.mp'
     stops:
       - 'Torchlit Cave, Iron Door 5/3395'
       - 'Jagged Hill Path 5/3379'
       - 'Jagged Hill Path 5/3391'
       - 'Jagged Hill Path 5/3357'
   - name: 'Shad-Thieves Town: Luginio''s Warehouse'
+    pathFile: 'TTLYLOOP.mp'
     stops:
       - 'Luginio''s Warehouse Yard 5/1907'
       - 'Warehouse District 5/1877'
       - 'Warehouse, Loading Dock 5/1910'
   - name: 'Shad-Thieves Town: Thieves Guild'
+    pathFile: 'TTTGLOOP.mp'
     stops:
       - 'Thieves Guild, Lobby 5/572'
       - 'Thieves Guild, Sleeping Quarters 5/570'
@@ -3354,12 +3676,14 @@ loops:
       - 'Thieves Guild, Sleeping Quarters 5/589'
       - 'Theives Guild, Training Room 5/590'
   - name: 'Shad-Thieves Town: Thieves Town Temple'
+    pathFile: 'TTTDLOOP.mp'
     stops:
       - 'Temple Doors 5/382'
       - 'Temple Storeroom 5/387'
       - 'Temple Corridor 5/403'
       - 'Temple Storeroom 5/391'
   - name: 'Shad-Thieves Town: Twin Docks West Warehouse'
+    pathFile: 'WDTDLOOP.mp'
     stops:
       - 'Warehouse District 5/1604'
       - 'Warehouse, Receiving Office 5/1607'
@@ -3373,12 +3697,14 @@ loops:
       - 'Warehouse 5/1609'
       - 'Warehouse 5/1608'
   - name: 'Shadowmere: Eladrin Level 1'
+    pathFile: 'OGTRLOOP.mp'
     stops:
       - 'Outlands, Gigas Tree 5/876'
       - 'Gigas Forest, Wooden Platform 5/904'
       - 'Gigas Forest, Wooden Platform 5/917'
       - 'Gigas Forest, Rope Bridge 5/968'
   - name: 'Shadowmere: Prison Loop'
+    pathFile: 'PYGTLOOP.mp'
     stops:
       - 'Prison Yard, Gate 5/1313'
       - 'Prison Yard 5/1328'
@@ -3387,6 +3713,7 @@ loops:
       - 'Prison Yard 5/1346'
       - 'Prison, Inner Gates 5/1352'
   - name: 'Shattered Expanse: Broken Isle'
+    pathFile: 'BILGLOOP.mp'
     stops:
       - 'Broken Isle, Ledge 16/11064'
       - 'Broken Isle 16/11085'
@@ -3398,6 +3725,7 @@ loops:
       - 'Broken Isle 16/11131'
       - 'Broken Isle 16/11122'
   - name: 'Shattered Expanse: Broken Wastes Singles'
+    pathFile: 'BWLGLOOP.mp'
     stops:
       - 'Broken Wastes, Ledge 16/10441'
       - 'Broken Wastes, Collapsed Statue 16/10458'
@@ -3409,6 +3737,7 @@ loops:
       - 'Broken Wastes 16/10464'
       - 'Broken Wastes 16/10465'
   - name: 'Shattered Expanse: Broken Wastes Upper Singles'
+    pathFile: 'BWCELOOP.mp'
     stops:
       - 'Broken Wastes, Cliff Edge 16/10506'
       - 'Void Chasm, Boulder 16/10548'
@@ -3416,6 +3745,7 @@ loops:
       - 'Broken Wastes 16/10522'
       - 'Broken Wastes 16/10507'
   - name: 'Shattered Expanse: Dark Wyrms Loop 2'
+    pathFile: 'VCBPLOOP.mp'
     stops:
       - 'Void Chasm, Broken Pillar 16/10907'
       - 'Abyssal Shelf 16/10870'
@@ -3425,11 +3755,13 @@ loops:
       - 'Abyssal Shelf 16/10884'
       - 'Abyssal Shelf 16/10842'
   - name: 'Shattered Expanse: Dark Wyrms Loop1'
+    pathFile: 'ASLGLOOP.mp'
     stops:
       - 'Abyssal Shelf, Ledge 16/10818'
       - 'Abyssal Shelf 16/10890'
       - 'Abyssal Shelf 16/10824'
   - name: 'Shattered Expanse: Floating Plain Singles'
+    pathFile: 'FPLGLOOP.mp'
     stops:
       - 'Floating Plain, Ledge 16/10665'
       - 'Floating Plain 16/10670'
@@ -3441,6 +3773,7 @@ loops:
       - 'Floating Plain 16/10725'
       - 'Floating Plain 16/10740'
   - name: 'Shattered Expanse: Fractured Moor'
+    pathFile: 'FMCELOOP.mp'
     stops:
       - 'Fractured Moor, Cliff Edge 16/10661'
       - 'Fractured Moor 16/10574'
@@ -3448,6 +3781,7 @@ loops:
       - 'Fractured Moor 16/10622'
       - 'Fractured Moor 16/10599'
   - name: 'Shattered Expanse: Shattered Island singles'
+    pathFile: 'SILGLOOP.mp'
     stops:
       - 'Shattered Island, Ledge 16/10325'
       - 'Shattered Island 16/10422'
@@ -3458,11 +3792,13 @@ loops:
       - 'Shattered Island 16/10398'
       - 'Shattered Island 16/10384'
   - name: 'Shattered Expanse: Shrouded Mesa Loop 1'
+    pathFile: 'SMLGLOOP.mp'
     stops:
       - 'Shrouded Mesa, Ledge 16/10763'
       - 'Shrouded Mesa 16/10775'
       - 'Shrouded Mesa 16/10783'
   - name: 'Shattered Expanse: Wrackspawn Loop 2'
+    pathFile: 'SECILOOP.mp'
     stops:
       - 'Chaotic Isle, Ledge 16/11028'
       - 'Chaotic Isle 16/11035'
@@ -3475,12 +3811,14 @@ loops:
       - 'Chaotic Isle, Anomaly 16/11063'
       - 'Chaotic Isle 16/11057'
   - name: 'Silvermere: Silvermere park'
+    pathFile: 'SFOULOOP.mp'
     stops:
       - 'Fountain 1/140'
       - 'Park Plaza 1/86'
       - 'Park 1/119'
       - 'Park Street 1/118'
   - name: 'Slums: Black Star Key Gather Loop'
+    pathFile: 'SLMBLOOP.mp'
     stops:
       - 'Slum Street 1/1224'
       - 'Slum Street 1/1137'
@@ -3488,6 +3826,7 @@ loops:
       - 'Dark Alley 1/1125'
       - 'Dark Alley 1/1226'
   - name: 'Slums: Mercenary Warehouse'
+    pathFile: 'SLAWLOOP.mp'
     stops:
       - 'Abandoned Warehouse, Entrance 1/1327'
       - 'Abandoned Warehouse 2/12'
@@ -3499,6 +3838,7 @@ loops:
       - 'Abandoned Warehouse 2/19'
       - 'Abandoned Warehouse 2/18'
   - name: 'Slums: Orc Mansion'
+    pathFile: 'ORCMLOOP.mp'
     stops:
       - 'Overgrown Garden, Iron Grate 2/29'
       - 'Mansion Study 2/32'
@@ -3506,6 +3846,7 @@ loops:
       - 'Mansion Guardroom 2/39'
       - 'Secret Passage, Dead End 1/1010'
   - name: 'Slums: Slums Loop'
+    pathFile: 'SLMCLOOP.mp'
     stops:
       - 'Slum Street, Crossroads 1/1076'
       - 'Slum Street 1/1176'
@@ -3517,6 +3858,7 @@ loops:
       - 'Slum Street 1/1210'
       - 'Spell Shop 1/2307'
   - name: 'Slums: Slums loop (Harder)'
+    pathFile: 'SLM2LOOP.mp'
     stops:
       - 'Slum Street, Crossroads 1/1076'
       - 'Slum Street 1/1216'
@@ -3526,6 +3868,7 @@ loops:
       - 'Slum Street 1/1182'
       - 'Slum Street 1/1083'
   - name: 'Slums: Stonework Tunnels (Rhudaur Side)'
+    pathFile: 'STMDLOOP.mp'
     stops:
       - 'Stonework Tunnel, Intersection 1/9438'
       - 'Stonework Tunnel 2/9271'
@@ -3535,6 +3878,7 @@ loops:
       - 'Stonework Tunnel 2/9318'
       - 'Stonework Tunnel 2/9298'
   - name: 'Slums: Strange Mansion Loop'
+    pathFile: 'SSMELOOP.mp'
     stops:
       - 'Strange Mansion, Entrance 1/65'
       - 'Strange Mansion, Kitchen 1/129'
@@ -3547,17 +3891,20 @@ loops:
       - 'Strange Mansion, Guest Chamber 1/196'
       - 'Strange Mansion, Guest Chamber 1/195'
   - name: 'Swamp of Tharollok: Bog Loop (1)'
+    pathFile: 'STBGLOOP.mp'
     stops:
       - 'Swamp of Tharollok, Bog 13/3144'
       - 'Swamp of Tharollok, Bog 13/3196'
       - 'Swamp of Tharollok, Bog 13/3219'
       - 'Swamp of Tharollok, Bog 13/3854'
   - name: 'Swamp of Tharollok: Bog Loop (2)'
+    pathFile: 'SRB2LOOP.mp'
     stops:
       - 'Swamp of Tharollok, Bog 13/3017'
       - 'Swamp of Tharollok, Bog 13/3022'
       - 'Swamp of Tharollok, Bog 13/3031'
   - name: 'Swamp of Tharollok: Bog Loop (3)'
+    pathFile: 'STB3LOOP.mp'
     stops:
       - 'Swamp of Tharollok, Bog 13/3033'
       - 'Swamp of Tharollok, Bog 13/3046'
@@ -3565,6 +3912,7 @@ loops:
       - 'Swamp of Tharollok, Bog 13/3038'
       - 'Swamp of Tharollok, Bog 13/3058'
   - name: 'Swamp of Tharollok: Hidden Copse'
+    pathFile: 'STHCLOOP.mp'
     stops:
       - 'Swamp of Tharollok, Hidden Copse 13/2995'
       - 'Swamp of Tharollok, Hidden Copse 13/3001'
@@ -3572,17 +3920,20 @@ loops:
       - 'Swamp of Tharollok, Hidden Copse 13/3015'
       - 'Swamp of Tharollok, Hidden Copse 13/3003'
   - name: 'Swamp of Tharollok: Marshland Loop'
+    pathFile: 'STMLLOOP.mp'
     stops:
       - 'Swamp of Tharollok, Marshland 13/3059'
       - 'Swamp of Tharollok, Marshland 13/3092'
       - 'Swamp of Tharollok, Marshland 13/3062'
   - name: 'Swamp of Tharollok: Wetlands Loop'
+    pathFile: 'STWLLOOP.mp'
     stops:
       - 'Swamp of Tharollok, Wetlands 13/3691'
       - 'Swamp of Tharollok, Wetlands 13/3750'
       - 'Swamp of Tharollok, Dark Bog 13/3774'
       - 'Swamp of Tharollok, Dark Bog 13/3763'
   - name: 'Tagesh Highlands: Alba Hollow (Crag Grizzlies)'
+    pathFile: 'AHCMLOOP.mp'
     stops:
       - 'Alba Hollow, Cave Mouth 14/4460'
       - 'Alba Hollow, Den 14/4479'
@@ -3592,6 +3943,7 @@ loops:
       - 'Alba Hollow, Den 14/4470'
       - 'Alba Hollow, Den 14/4465'
   - name: 'Tagesh Highlands: Alba Rock North Loop'
+    pathFile: 'ARCPLOOP.mp'
     stops:
       - 'Alba Rock, Cliffside Path 14/5634'
       - 'Alba Rock, Incline 14/5590'
@@ -3601,6 +3953,7 @@ loops:
       - 'Alba Rock 14/5620'
       - 'Alba Rock 14/5619'
   - name: 'Tagesh Highlands: Arden Hills East Loop'
+    pathFile: 'AHBCLOOP.mp'
     stops:
       - 'Arden Hills, Below Cliff 14/5469'
       - 'Arden Hills, Gap 14/5513'
@@ -3609,6 +3962,7 @@ loops:
       - 'Arden Hills 14/5486'
       - 'Arden Hills 14/5478'
   - name: 'Tagesh Highlands: Arden Hills Old Trail (west-party loop)'
+    pathFile: 'AHSPLOOP.mp'
     stops:
       - 'Arden Hills, Stone Pillar 14/5531'
       - 'Arden Hills 14/5542'
@@ -3618,11 +3972,13 @@ loops:
       - 'Arden Hills 14/5537'
       - 'Arden Hills 14/5541'
   - name: 'Tagesh Highlands: Arden Rock (Skyterrors)'
+    pathFile: 'ARC2LOOP.mp'
     stops:
       - 'Arden Rock, Cliff 14/5454'
       - 'Arden Rock 14/5467'
       - 'Arden Rock 14/5453'
   - name: 'Tagesh Highlands: Blighted Hillside Loop'
+    pathFile: 'THLHLOOP.mp'
     stops:
       - 'Lookout Hill, Bottom 14/5413'
       - 'Withered Hillside 14/5430'
@@ -3635,6 +3991,7 @@ loops:
       - 'Withered Hillside 14/5366'
       - 'Withered Hillside 14/5368'
   - name: 'Tagesh Highlands: Blighted Wilds Loop'
+    pathFile: 'THBWLOOP.mp'
     stops:
       - 'Tagesh Highlands, Southern Road 14/5130'
       - 'Blighted Wilds 14/5301'
@@ -3644,11 +4001,13 @@ loops:
       - 'Blighted Wilds 14/5316'
       - 'Blighted Wilds 14/5312'
   - name: 'Tagesh Highlands: Bone-strewn Aerie Loop 1'
+    pathFile: 'BACELOOP.mp'
     stops:
       - 'Bone-strewn Aerie, Cliff Edge 14/4598'
       - 'Bone-strewn Aerie 14/4606'
       - 'Bone-strewn Aerie 14/4609'
   - name: 'Tagesh Highlands: Bone-strewn Aerie Loop 2'
+    pathFile: 'BSA2LOOP.mp'
     stops:
       - 'Bone-strewn Aerie 14/4616'
       - 'Bone-strewn Aerie 14/4623'
@@ -3658,6 +4017,7 @@ loops:
       - 'Bone-strewn Aerie 14/4611'
       - 'Bone-strewn Aerie 14/4613'
   - name: 'Tagesh Highlands: Bone-strewn Aerie Loop 3'
+    pathFile: 'BSA3LOOP.mp'
     stops:
       - 'Bone-strewn Aerie 14/4640'
       - 'Bone-strewn Aerie 14/4630'
@@ -3666,6 +4026,7 @@ loops:
       - 'Bone-strewn Aerie 14/4637'
       - 'Bone-strewn Aerie 14/4635'
   - name: 'Tagesh Highlands: Fachans Loop 2'
+    pathFile: 'SSCJLOOP.mp'
     stops:
       - 'Slipshod Colony, Junction 14/4395'
       - 'Refuse-littered Path 14/4394'
@@ -3676,6 +4037,7 @@ loops:
       - 'Shabby Hovel 14/4420'
       - 'Shabby Hovel 14/4427'
   - name: 'Tagesh Highlands: Grey Stone Cliffs (Fachans)'
+    pathFile: 'GSCLLOOP.mp'
     stops:
       - 'Grey Stone Cliffs 14/4431'
       - 'Shabby Hovel 14/4384'
@@ -3696,6 +4058,7 @@ loops:
       - 'Refuse-littered Path 14/4415'
       - 'Shabby Hovel 14/4414'
   - name: 'Tagesh Highlands: Gryphons Loop 1'
+    pathFile: 'JCLRLOOP.mp'
     stops:
       - 'Jagged Cliff, Ramp 14/4511'
       - 'Jagged Cliff, Griffon Roost 14/4555'
@@ -3703,6 +4066,7 @@ loops:
       - 'Jagged Cliff 14/4556'
       - 'Grey Stone Cliffs, Narrow Passage 14/4450'
   - name: 'Tagesh Highlands: Highland Wilds (North Half)'
+    pathFile: 'HWSCLOOP.mp'
     stops:
       - 'Highland Wilds, Stone Circle 14/4171'
       - 'Highland Wilds 14/4234'
@@ -3713,6 +4077,7 @@ loops:
       - 'Highland Wilds 14/4156'
       - 'Highland Wilds 14/4167'
   - name: 'Tagesh Highlands: Jagged Cliffs Loop 2 (Gryphons)'
+    pathFile: 'JCR2LOOP.mp'
     stops:
       - 'Jagged Cliff, Ramp 14/4518'
       - 'Jagged Cliff 14/4522'
@@ -3723,6 +4088,7 @@ loops:
       - 'Jagged Cliff, Griffon Roost 14/4525'
       - 'Jagged Cliff 14/4520'
   - name: 'Tagesh Highlands: Jagged Cliffs Loop 3 (Gryphons)'
+    pathFile: 'JCR3LOOP.mp'
     stops:
       - 'Jagged Cliff, Ramp 14/4549'
       - 'Jagged Cliff, Griffon Roost 14/4546'
@@ -3730,6 +4096,7 @@ loops:
       - 'Jagged Cliff 14/4544'
       - 'Jagged Cliff, Griffon Roost 14/4550'
   - name: 'Tagesh Highlands: Lake Alba Loop'
+    pathFile: 'LAOPLOOP.mp'
     stops:
       - 'Lake Alba, Opening 14/3830'
       - 'Lake Alba, Near Shore 14/3860'
@@ -3759,11 +4126,13 @@ loops:
       - 'Lake Alba, Near Shore 14/3833'
       - 'Lake Alba, Near Shore 14/3831'
   - name: 'Tagesh Highlands: Living Gneiss ( lvl 1 North )'
+    pathFile: 'SSS1LOOP.mp'
     stops:
       - 'Stone-strewn Slope 14/4112'
       - 'Stone-strewn Slope 14/4093'
       - 'Stone-strewn Slope, River''s Edge 14/4111'
   - name: 'Tagesh Highlands: Lofty Cliff, Roost Loop  (Elder Gryphons)'
+    pathFile: 'LCLRLOOP.mp'
     stops:
       - 'Lofty Cliff, Ramp 14/4557'
       - 'Lofty Cliff, Roost 14/4562'
@@ -3773,6 +4142,7 @@ loops:
       - 'Lofty Cliff 14/4575'
       - 'Lofty Cliff, Roost 14/4577'
   - name: 'Tagesh Highlands: Mossy Glade'
+    pathFile: 'BWMGLOOP.mp'
     stops:
       - 'Bristlewood Forest, Mossy Glade 14/3368'
       - 'Bristlewood Forest, Mossy Glade 14/3399'
@@ -3785,11 +4155,13 @@ loops:
       - 'Bristlewood Forest, Mossy Glade 14/3376'
       - 'Bristlewood Forest, Mossy Glade 14/3372'
   - name: 'Tagesh Highlands: Tagesh Plateau Wiilderness Loop 1'
+    pathFile: 'TPWILOOP.mp'
     stops:
       - 'Tagesh Plateau, Wilderness 14/5155'
       - 'Tagesh Plateau, Wilderness 14/5189'
       - 'Tagesh Plateau, Wilderness 14/5179'
   - name: 'Tagesh Highlands: Tagesh Plateau Wilderness Loop'
+    pathFile: 'TPWFLOOP.mp'
     stops:
       - 'Tagesh Plateau, Wilderness 14/5212'
       - 'Tagesh Plateau, Chasm Edge 14/5204'
@@ -3797,6 +4169,7 @@ loops:
       - 'Tagesh Plateau, Wilderness 14/5253'
       - 'Tagesh Plateau, Wilderness 14/5243'
   - name: 'Tagesh Highlands: Upland Hills (West)'
+    pathFile: 'UPHDLOOP.mp'
     stops:
       - 'Upland Hills, Descent 14/4647'
       - 'Jagged Hilltop 14/4751'
@@ -3809,17 +4182,20 @@ loops:
       - 'Upland Hills 14/4739'
       - 'Jagged Hilltop 14/4754'
   - name: 'Tal''kiran Ruins: Aqueduct Tunnel Singles'
+    pathFile: 'AQTSLOOP.mp'
     stops:
       - 'Aqueduct Tunnel, Slope 13/12735'
       - 'Aqueduct Tunnel, Opening 13/12723'
       - 'Aqueduct Tunnel, Slope 13/12736'
   - name: 'Tal''kiran Ruins: Aurean Hills Northeast Loop-13 25554'
+    pathFile: 'TRPTLOOP.mp'
     stops:
       - 'Aurean Hills, Petrified Tree 13/12554'
       - 'Aurean Hills 13/12527'
       - 'Grass-covered Hilltop 13/12746'
       - 'Aurean Hills, Cliff Edge 13/12516'
   - name: 'Tal''kiran Ruins: Aurean Hills Singles-14 12453'
+    pathFile: 'TOASLOOP.mp'
     stops:
       - 'Top of the Ancient Stair 13/12453'
       - 'Aurean Hills 13/12496'
@@ -3828,10 +4204,12 @@ loops:
       - 'Aurean Hills 13/12608'
       - 'Aurean Hills, Cliff Edge 13/12583'
   - name: 'Tal''kiran Ruins: Aurean Hills Southeast Loop'
+    pathFile: 'TRAFLOOP.mp'
     stops:
       - 'Aurean Hills 13/12634'
       - 'Aurean Hills 13/12663'
   - name: 'Tal''kiran Ruins: Opulent Villa Loop'
+    pathFile: 'TRVELOOP.mp'
     stops:
       - 'Opulent Villa, Entrance 13/12784'
       - 'Opulent Villa, Colonnade 13/12788'
@@ -3845,6 +4223,7 @@ loops:
       - 'Opulent Villa, Courtyard 13/12811'
       - 'Opulent Villa, Colonnade 13/12800'
   - name: 'Tal''kiran Ruins: Spring-fed Lake Loop'
+    pathFile: 'SLAOLOOP.mp'
     stops:
       - 'Spring-fed Lake, Aqueduct Opening 13/12692'
       - 'Spring-fed Lake 13/12693'
@@ -3881,6 +4260,7 @@ loops:
       - 'Spring-fed Lake 13/12699'
       - 'Spring-fed Lake, Source 13/12716'
   - name: 'Tal''kiran Ruins: Stone Ruins Loop'
+    pathFile: 'SRPLLOOP.mp'
     stops:
       - 'Stone Ruins, Plaza 13/12760'
       - 'Stone Ruins, Crumbled Structure 13/12766'
@@ -3897,6 +4277,7 @@ loops:
       - 'Stone Ruins, Crumbled Structure 13/12757'
       - 'Stone Ruins, Collapsed Structure 13/12761'
   - name: 'Tal''kiran: Tal''kiran Beach'
+    pathFile: 'TSSPLOOP.mp'
     stops:
       - 'Tal''kiran Shore, Stone Pier 14/15000'
       - 'Tal''kiran Shore, Dead End 13/12442'
@@ -3909,21 +4290,25 @@ loops:
       - 'Tal''kiran Shore, Sand Bar 13/12411'
       - 'Tal''kiran Shore, Beach 13/12398'
   - name: 'Terra Fuego: Jungle SE Section'
+    pathFile: 'TFLSLOOP.mp'
     stops:
       - 'Jungle Trail, Lagoon 13/222'
       - 'Jungle Trail 13/777'
       - 'Jungle Trail 13/300'
   - name: 'Terra Fuego: Jungle SW Section'
+    pathFile: 'TFLWLOOP.mp'
     stops:
       - 'Jungle Trail, Lagoon 13/217'
       - 'Jungle Trail 13/753'
       - 'Jungle Trail, Lagoon 13/218'
   - name: 'Terra Fuego: Jungle, NW Section'
+    pathFile: 'TFLNLOOP.mp'
     stops:
       - 'Jungle Trail, Lagoon 13/211'
       - 'Jungle Trail 13/720'
       - 'Jungle Trail, Lagoon 13/212'
   - name: 'Terra Fuego: Pirate Galleon'
+    pathFile: 'PGSBLOOP.mp'
     stops:
       - 'Pirate Galleon, Ship Bow 13/820'
       - 'Pirate Galleon 13/835'
@@ -3933,6 +4318,7 @@ loops:
       - 'Pirate Galleon 13/845'
       - 'Pirate Galleon 13/843'
   - name: 'Terra Fuego: Pirate Ship (no captain)'
+    pathFile: 'TFPGLOOP.mp'
     stops:
       - 'Pirate Galleon 13/825'
       - 'Pirate Galleon 13/845'
@@ -3944,6 +4330,7 @@ loops:
       - 'Pirate Galleon 13/830'
       - 'Pirate Galleon, Mast 13/831'
   - name: 'Terra Fuego: Sandy Beach and Jungle (north)'
+    pathFile: 'SSSBLOOP.mp'
     stops:
       - 'Shoreline, Sandy Beach 14/1812'
       - 'Shoreline, Sandy Beach 13/151'
@@ -3955,6 +4342,7 @@ loops:
       - 'Shoreline, Sandy Beach 13/272'
       - 'Shoreline, Sandy Beach 13/244'
   - name: 'Terra Fuego: Tidepool Loop'
+    pathFile: 'TFTPLOOP.mp'
     stops:
       - 'Rugged Shoreline, Tidepool 13/503'
       - 'Rugged Shoreline 13/495'
@@ -3962,6 +4350,7 @@ loops:
       - 'Rugged Shoreline 13/502'
       - 'Rugged Shoreline, Tidepool 13/508'
   - name: 'Terra Ista: Frost Giants (No Chieftan)'
+    pathFile: 'IMSULOOP.mp'
     stops:
       - 'Icy Mountain Summit 13/873'
       - 'Icy Mountain Summit 13/867'
@@ -3969,6 +4358,7 @@ loops:
       - 'Frozen Pavillion 13/2549'
       - 'Frozen Pavillion 13/881'
   - name: 'Terra Ista: Ice Troll Caves (north half)'
+    pathFile: 'IMCELOOP.mp'
     stops:
       - 'Icy Mountain, Cave Entrance 13/1211'
       - 'Icy Mountain, pool 13/1241'
@@ -3982,6 +4372,7 @@ loops:
       - 'Icy Mountain, Cave Tunnel 13/2458'
       - 'Icy Mountain, Cave Tunnel 13/1281'
   - name: 'Terra Ista: Ice Worms'
+    pathFile: 'TIITLOOP.mp'
     stops:
       - 'Icy Tunnel 13/2307'
       - 'Icy Tunnel 13/2541'
@@ -3994,26 +4385,31 @@ loops:
       - 'Icy Tunnel 13/2395'
       - 'Icy Tunnel 13/2538'
   - name: 'Terra Ista: Icy Mountain Level 2 Loop'
+    pathFile: 'IMP2LOOP.mp'
     stops:
       - 'Icy Mountain Path 13/1095'
       - 'Icy Mountain Path 13/1061'
       - 'Icy Mountain Path 13/1097'
   - name: 'Terra Ista: Icy Mountain Level 4 Loop'
+    pathFile: 'IMP4LOOP.mp'
     stops:
       - 'Icy Mountain Path 13/975'
       - 'Icy Mountain Path 13/997'
       - 'Icy Mountain Path 13/973'
   - name: 'Terra Ista: Icy Mountain Level 5 Loop'
+    pathFile: 'IMP5LOOP.mp'
     stops:
       - 'Icy Mountain Path 13/934'
       - 'Icy Mountain Path 13/919'
       - 'Icy Mountain Path 13/936'
   - name: 'Terra Ista: Icy Mountain Level 6 Loop'
+    pathFile: 'IMP6LOOP.mp'
     stops:
       - 'Icy Mountain Path 13/901'
       - 'Icy Mountain Path 13/914'
       - 'Icy Mountain Path 13/899'
   - name: 'Vale of Durand: Corpse-riden Field (full, hard) Loop'
+    pathFile: 'VDCRLOOP.mp'
     stops:
       - 'Corpse-ridden Field 14/8441'
       - 'Corpse-ridden Field 14/8457'
@@ -4034,6 +4430,7 @@ loops:
       - 'Corpse-ridden Field 14/8452'
       - 'Corpse-ridden Field 14/8445'
   - name: 'Vale of Durand: Grim Acreage (full hard) Loop'
+    pathFile: 'CLMRLOOP.mp'
     stops:
       - 'Farnholme, The Marsh Road 14/8539'
       - 'Grim Acreage, Cart Path 14/8546'
@@ -4054,6 +4451,7 @@ loops:
       - 'Grim Acreage 14/8581'
       - 'Grim Acreage 14/8555'
   - name: 'Vale of Durand: Lledwyn Stead Fields Loop'
+    pathFile: 'LSWTLOOP.mp'
     stops:
       - 'Lledwyn Stead, Wagon Track 14/7648'
       - 'Lledwyn Stead, Overgrown Field 14/7700'
@@ -4075,6 +4473,7 @@ loops:
       - 'Lledwyn Stead, Overgrown Field 14/7741'
       - 'Lledwyn Stead, Overgrown Field 14/7698'
   - name: 'Vale of Durand: Llywydlas Field (feral courser) Loop'
+    pathFile: 'LLFCLOOP.mp'
     stops:
       - 'Llwydlas Field, Clearing 14/7854'
       - 'Llwydlas Field 14/7865'
@@ -4084,6 +4483,7 @@ loops:
       - 'Llwydlas Field 14/7891'
       - 'Llwydlas Field 14/7884'
   - name: 'Vale of Durand: Smoldering Fields (3-8 regens)'
+    pathFile: 'FHMRLOOP.mp'
     stops:
       - 'Farnholme, Mill Road 14/8672'
       - 'Smoldering Fields 14/8640'
@@ -4096,6 +4496,7 @@ loops:
       - 'Smoldering Fields 14/8618'
       - 'Smoldering Fields 14/8622'
   - name: 'Vale of Durand: Verdant Meadow Clearing (axebeak) Loop'
+    pathFile: 'VMCLLOOP.mp'
     stops:
       - 'Verdant Meadow, Clearing 14/7787'
       - 'Verdant Meadow 14/7805'
@@ -4105,6 +4506,7 @@ loops:
       - 'Verdant Meadow 14/7796'
       - 'Verdant Meadow 14/7755'
   - name: 'Volcano: Aged Earth Dragon Area'
+    pathFile: 'VAEDLOOP.mp'
     stops:
       - 'Undermountain Caverns 16/1765'
       - 'Undermountain Caverns 16/1522'
@@ -4112,11 +4514,13 @@ loops:
       - 'Undermountain Caverns 16/1872'
       - 'Undermountain Caverns 16/1874'
   - name: 'Volcano: Fire Knights'
+    pathFile: 'VDTDLOOP.mp'
     stops:
       - 'Volcano, Darkened Tunnels 16/2011'
       - 'Volcano, Darkened Tunnels 16/2017'
       - 'Volcano, Darkened Tunnels 16/1995'
   - name: 'Volcano: Foul Grotto( Cockatrices)'
+    pathFile: 'VUFGLOOP.mp'
     stops:
       - 'Foul Grotto 16/9587'
       - 'Foul Roost 16/9625'
@@ -4127,16 +4531,19 @@ loops:
       - 'Foul Roost 16/9595'
       - 'Foul Grotto 16/9620'
   - name: 'Volcano: Giant Efreetis'
+    pathFile: 'VLEFLOOP.mp'
     stops:
       - 'Volcano, Near the Heart 16/2145'
       - 'Volcano, Near the Heart 16/2152'
       - 'Volcano, Near the Heart 16/2159'
   - name: 'Volcano: Lava Imps'
+    pathFile: 'VOLILOOP.mp'
     stops:
       - 'Volcano 16/2119'
       - 'Volcano 16/2124'
       - 'Volcano 16/2121'
   - name: 'Volcano: Luminous Cavern Loop (Dao)'
+    pathFile: 'UDLCLOOP.mp'
     stops:
       - 'Luminous Cavern 16/12547'
       - 'Luminous Cavern 16/12549'
@@ -4145,6 +4552,7 @@ loops:
       - 'Luminous Cavern 16/12552'
       - 'Subterranean Cavern 16/12545'
   - name: 'Volcano: Molten River  (Lower Level) Giant Efreetis'
+    pathFile: 'VMRLLOOP.mp'
     stops:
       - 'Molten River 16/9549'
       - 'Molten Pool 16/9583'
@@ -4154,6 +4562,7 @@ loops:
       - 'Molten River 16/9574'
       - 'Molten River 16/9554'
   - name: 'Volcano: Molten River (Giant Efreetis) Upper Level'
+    pathFile: 'VMRHLOOP.mp'
     stops:
       - 'Molten River, Hole 16/9511'
       - 'Molten Pool 16/9541'
@@ -4161,6 +4570,7 @@ loops:
       - 'Molten River 16/9547'
       - 'Molten River 16/9537'
   - name: 'Volcano: Subterranean Cavern, N Dao loop'
+    pathFile: 'UDSCLOOP.mp'
     stops:
       - 'Subterranean Cavern 16/12601'
       - 'Subterranean Cavern 16/12565'
@@ -4168,12 +4578,14 @@ loops:
       - 'Subterranean Cavern 16/12607'
       - 'Subterranean Cavern 16/12605'
   - name: 'Volcano: Subterranean Cavern, SW  Dao loop'
+    pathFile: 'SCVSLOOP.mp'
     stops:
       - 'Subterranean Cavern, Vertical Shaft 16/12514'
       - 'Subterranean Cavern 16/12579'
       - 'Subterranean Cavern 16/12580'
       - 'Subterranean Cavern 16/12577'
   - name: 'Volcano: Umber Giants Loop'
+    pathFile: 'VRHDLOOP.mp'
     stops:
       - 'Rough Hewn Den 16/12191'
       - 'Rough Hewn Den 16/12194'
@@ -4193,6 +4605,7 @@ loops:
       - 'Rough Hewn Den 16/12209'
       - 'Rough Hewn Den 16/12210'
   - name: 'Volcano: Undermountain Level 11'
+    pathFile: 'VU11LOOP.mp'
     stops:
       - 'Undermountain Caverns 16/1569'
       - 'Undermountain Caverns 16/1574'
@@ -4202,6 +4615,7 @@ loops:
       - 'Undermountain Caverns 16/1622'
       - 'Undermountain Caverns 16/1600'
   - name: 'Volcano: Undermountain Level 13'
+    pathFile: 'VU13LOOP.mp'
     stops:
       - 'Undermountain Caverns 16/1624'
       - 'Undermountain Caverns 16/1639'
@@ -4215,6 +4629,7 @@ loops:
       - 'Undermountain Caverns 16/1667'
       - 'Undermountain Caverns 16/1668'
   - name: 'Volcano: Undermountain Level 14'
+    pathFile: 'VU14LOOP.mp'
     stops:
       - 'Undermountain Caverns 16/1678'
       - 'Undermountain Caverns 16/1677'
@@ -4225,6 +4640,7 @@ loops:
       - 'Undermountain Caverns 16/1724'
       - 'Undermountain Caverns 16/1689'
   - name: 'Volcano: Undermountain Level 20'
+    pathFile: 'VU20LOOP.mp'
     stops:
       - 'Undermountain Caverns 16/1743'
       - 'Undermountain Caverns 16/1802'
@@ -4242,6 +4658,7 @@ loops:
       - 'Undermountain Caverns 16/1770'
       - 'Undermountain Caverns 16/1773'
   - name: 'Volcano: Upper Deeps Circular Tunnel Loop'
+    pathFile: 'UDC1LOOP.mp'
     stops:
       - 'Upper Deeps, Cavern Junction 16/12004'
       - 'Upper Deeps, Circular Tunnel 16/12002'
@@ -4250,6 +4667,7 @@ loops:
       - 'Circular Tunnel, Dead End 16/12080'
       - 'Circular Tunnel, Dead End 16/12073'
   - name: 'Volcano: Upper Deeps Smooth Tunnel (full/long Loop)'
+    pathFile: 'UDS1LOOP.mp'
     stops:
       - 'Upper Deeps, Smooth Tunnel 16/12341'
       - 'Upper Deeps, Smooth Tunnel 16/12345'
@@ -4264,6 +4682,7 @@ loops:
       - 'Upper Deeps, Smooth Tunnel 16/12312'
       - 'Upper Deeps, Smooth Tunnel 16/12337'
   - name: 'Volcano: Volcano'
+    pathFile: 'VDTSLOOP.mp'
     stops:
       - 'Volcano, Darkened Tunnels 16/1992'
       - 'Volcano, Darkened Tunnels 16/1991'
@@ -4293,6 +4712,7 @@ loops:
       - 'Volcano, Chiseled Tunnels 16/1972'
       - 'Volcano, Chiseled Tunnels 16/1971'
   - name: 'Volcano: Volcano east side loop ( 110 str/picks)'
+    pathFile: 'VSELLOOP.mp'
     stops:
       - 'Volcano, Darkened Tunnels 16/1995'
       - 'Volcano, Darkened Tunnels 16/2026'
@@ -4304,6 +4724,7 @@ loops:
       - 'Volcano, Darkened Tunnels 16/2044'
       - 'Volcano, Darkened Tunnels 16/2006'
   - name: 'Volcano: infernal cavern small'
+    pathFile: 'VICTLOOP.mp'
     stops:
       - 'Infernal Cavern, Tunnel Mouth 16/9853'
       - 'Infernal Cavern, Wall 16/9909'

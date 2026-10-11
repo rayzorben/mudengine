@@ -544,6 +544,8 @@ notices:
       many: '"automation.loot.discardKinds" was added to {count} files ({fileList}), empty. It lists
         coins to drop whenever you carry any, the opposite of "coinKinds". Nothing is dropped until
         you add one.'
+    pathFollowsStatus: '@path was added next to @status in {count} permission lists. Both say
+      where the character is going.'
     roomRemoteFollowsWhere: "@where-room was added next to @where in {count} permission lists in
       {file}. It answers the same question with the room's map number instead of its name, and the
       person asking chooses which to send. @comeback-room was not added anywhere, because it lets
@@ -4874,17 +4876,17 @@ session:
     loopReplaced: '{who} sent @loop; stopping {was} and starting {name}.'
     loopRefused: '{who} sent @loop, and {name} could not start: {reason}'
     loopNone: '{who} sent @loop {request}, and no loop is called that or starts in that room.
-      Nothing was started or sent back.'
-    loopSeveral: '{who} sent @loop {request}, and {count} loops match: {names}. Nothing was started
-      or sent back.'
+      Nothing was started; told them it is unknown.'
+    loopSeveral: '{who} sent @loop {request}, and {count} loops match: {names}. Nothing was started;
+      sent them the names that fit in one telepath.'
     gotoWalking: '{who} sent @goto; walking {stepCount} steps to {room} ({address}).'
     gotoReplaced: '{who} sent @goto; stopping {was} and walking {stepCount} steps to {room}
       ({address}).'
     gotoRefused: '{who} sent @goto {request}, and the route was refused: {reason}'
     gotoNone: '{who} sent @goto {request}, and the world database has no room called that. Nothing
-      was walked or sent back.'
+      was walked; told them it is unknown.'
     gotoSeveral: '{who} sent @goto {request}, and {count} rooms are called that: {addresses}.
-      Nothing was walked or sent back.'
+      Nothing was walked; sent them the map/room numbers that fit in one telepath.'
     theRoute: the route
   statline:
     exact: The game reports the status line as {statline}; every prompt is read by it exactly.
@@ -5725,6 +5727,10 @@ automation:
     reasonLook: looking at the room by the light of {item}
     becauseDark: '{room} is too dark to read'
     reasonRemoveSpent: removing the burned-out {item} before lighting another
+    reasonRemoveDim: removing {item}, which is not bright enough here, before lighting another
+    refusedSomethingLit: the game says something is already lit; checking the inventory
+    refusedAlreadyLit: 'the game says something is already lit, so {item} was not lit; checking the
+      inventory'
     reasonLight: 'lighting {item} for {room}'
     guessedReach: the world data does not say how far {item} lights; tried anyway
     reasonExtinguish: putting {item} out; this room is lit
@@ -5886,6 +5892,13 @@ automation:
       was walked.'
     loopUnnamed: '{from} sent @loop without a loop name or map/room, so nothing was started.'
     gotoUnnamed: '{from} sent @goto without a room name or map/room, so nothing was walked.'
+    heardNoPath: '{who} is not on a loop or a route.'
+    heardPath: '{who} answered @path: {path}'
+    heardOk: '{who} answered @{raw}: ok.'
+    heardFailed: '{who} answered @{raw}: it matched, and could not start.'
+    heardUnknown: '{who} answered @{raw}: nothing is called "{request}".'
+    heardSeveral: '{who} answered @{raw}: several match "{request}": {names}.'
+    heardSeveralMore: '{who} answered @{raw}: several match "{request}": {names}, and {more} more.'
     reasonAnswering: answering {name}
     reasonAsking: asking {who} {body}
     reasonAskingHeal: 'asking the party for a heal (@heal): health is at {percent}%'
@@ -5963,6 +5976,7 @@ automation:
     reasonSpellbook: reading the spellbook
     reasonTrained: trained, so your stats, the exp table and your cash have all changed
     reasonStatsTrained: stats were trained, so the stat display changed
+    reasonLightRefused: the game says something is already lit; reading which
     reasonLevelled: a new level, so your stats and the exp table have changed
     reasonDied: you died, which dropped what you carried; reading what is left
     reasonBuffEnding: an unrecognized message may have ended a buff; the stats will show which

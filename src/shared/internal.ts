@@ -1852,7 +1852,15 @@ const TUNING_DEFAULTS = {
      * listing is asked again, and so how often the `@join` is repeated while
      * the listing still prints them `[Invited]` (todo 01, the user's figure).
      */
-    inviteAgainMs: 5_000
+    inviteAgainMs: 5_000,
+    /**
+     * The longest line the server keeps: its `TGSModule` appends a typed
+     * character only while the line is under 255 and drops the rest
+     * (GreaterMUD source, `TGSModule.cs:299`). A `@loop` or `@goto` answer
+     * listing candidates is cut to fit, counted on the whole `/<name> {…}`
+     * line, never splitting one (todo 32). Not yet measured on the wire.
+     */
+    telepathMax: 255
   },
   /**
    * How many commands one press or one `@` may spend.

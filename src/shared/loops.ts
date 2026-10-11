@@ -107,6 +107,12 @@ export interface Loop {
    * A file may state it outright to override the name's own prefix.
    */
   category?: string;
+  /**
+   * MegaMUD's path file this loop was built from (`DCCWLOOP.mp`), which its
+   * `@path` names first and its `@loop` reads back. Absent on a loop the
+   * player wrote, whose name stands in (todo 32).
+   */
+  pathFile?: string;
 }
 
 /**
@@ -263,12 +269,14 @@ export function asLoops(value: unknown, limits?: LoopLimits): Loop[] {
      * outright wins, for the loop whose area is not in its name.
      */
     const stated = typeof record['category'] === 'string' ? record['category'].trim() : '';
+    const pathFile = typeof record['pathFile'] === 'string' ? record['pathFile'].trim() : '';
     loops.push({
       name,
       stops,
       ...(record['bounce'] === true ? { bounce: true } : {}),
       ...(record['prefer'] === true ? { prefer: true } : {}),
-      category: stated.length > 0 ? stated : loopCategory(name)
+      category: stated.length > 0 ? stated : loopCategory(name),
+      ...(pathFile.length > 0 ? { pathFile } : {})
     });
   }
   return loops;
@@ -340,6 +348,7 @@ export function sameLoops(a: readonly Loop[], b: readonly Loop[]): boolean {
      * would then have to keep in step with a name they are free to edit.
      */
     if (loop.category !== other.category) return false;
+    if (loop.pathFile !== other.pathFile) return false;
     if (loop.stops.length !== other.stops.length) return false;
     return loop.stops.every((stop, at) => {
       const twin = other.stops[at];
@@ -441,7 +450,9 @@ export type LoopMatch =
 /**
  * The loop somebody means by `request`, as `@loop` names one (todo 16).
  *
- * A `map/room` picks the loop whose first stop is that room. Otherwise the
+ * MegaMUD's path file first (todo 32): `DCCWLOOP.mp` or `dccwloop`, case
+ * ignored, the first field of a `@path` answer sent back unchanged. Then a
+ * `map/room` picks the loop whose first stop is that room. Otherwise the
  * first of three readings that finds anything decides: the exact name; the
  * name with case ignored and its area optional (`Overgrown Forest Trail` for
  * `Blackwood Forest: Overgrown Forest Trail`); then every word of the request
@@ -450,6 +461,9 @@ export type LoopMatch =
  * somebody else's word, and `rat` must not pick a `Pirate` loop.
  */
 export function matchLoop(loops: readonly Loop[], request: string): LoopMatch {
+  const file = pathFileWord(request);
+  const byFile = matched(loops.filter((loop) => pathFileWord(loop.pathFile ?? '') === file));
+  if (file.length > 0 && byFile.kind !== 'none') return byFile;
   const at = asRoomReference(request);
   if (at !== null) {
     return matched(
@@ -480,6 +494,25 @@ export function matchLoop(loops: readonly Loop[], request: string): LoopMatch {
       return wanted.every((word) => words.has(word));
     })
   );
+}
+
+/**
+ * `matchLoop` over several lists in order, the first that matches anything
+ * deciding (todo 32): a character's own loops, then the lap it is on, then the
+ * shelf. A name the first list answers is never shadowed by a later one.
+ */
+export function matchLoopIn(pools: readonly (readonly Loop[])[], request: string): LoopMatch {
+  for (const loops of pools) {
+    const match = matchLoop(loops, request);
+    if (match.kind !== 'none') return match;
+  }
+  return { kind: 'none' };
+}
+
+/** A path file as compared: lower case, without `.mp`; empty for a request with a space. */
+function pathFileWord(name: string): string {
+  const word = name.trim().toLowerCase();
+  return /\s/.test(word) ? '' : word.replace(/\.mp$/, '');
 }
 
 /** A name's words in lower case, punctuation dropped, one space between. */

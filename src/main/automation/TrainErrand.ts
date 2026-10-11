@@ -26,7 +26,6 @@ import {
   type PlannedFetch,
   type PlanStep
 } from '../../shared/navigation';
-import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { TrainConfig } from '../../shared/config';
 import { REFRESH } from '../../shared/staleness';
@@ -191,15 +190,6 @@ export class TrainErrand implements SessionModule {
   /** The last *none reachable* sentence said, so the same outcome is said once. */
   private saidUnreachable: string | null = null;
   /**
-   * A level was just collected and the experience figure has not been said
-   * again since (todo 107). `user-levels` leaves `expNeeded` as it was — a
-   * stale 0 — and the staleness table asks `exp`; until that answer lands,
-   * a second `train` would be sent on a figure a level old, and refused with
-   * a sentence the client does not read. Bounded by `tuning.train.confirmMs`
-   * so a realm that never answers cannot hold the errand for ever.
-   */
-  private expStaleSince: number | null = null;
-  /**
    * The level and fee a poverty refusal was made at (todo 112). The purse is
    * the fact the refusal stands on, so the purse reaching the fee asks again;
    * it used to spend the level's one attempt, and a player who withdrew the
@@ -313,10 +303,6 @@ export class TrainErrand implements SessionModule {
       return;
     }
     if (level === null || owed === null || owed > 0) return;
-    if (this.expStaleSince !== null) {
-      if (this.now() - this.expStaleSince < tuning().train.confirmMs) return;
-      this.expStaleSince = null;
-    }
     if (level === this.attempted) {
       if (this.retry === null || this.retry.level !== level || this.now() < this.retry.at) return;
       this.attempted = null;
@@ -673,11 +659,6 @@ export class TrainErrand implements SessionModule {
     if (taken) this.askedOwed = level;
   }
 
-  /** The experience figure said again: the next banked level may be asked about. */
-  onBlock(block: Block): void {
-    if (block.type === 'user-experience') this.expStaleSince = null;
-  }
-
   /** The walker's report: the errand's own leg ended, or somebody else's walk did. */
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     if (this.phase.kind !== 'walking') return;
@@ -775,7 +756,6 @@ export class TrainErrand implements SessionModule {
        * levels collected one and stood under the other for ever.
        */
       this.attempted = null;
-      this.expStaleSince = this.now();
       this.planner.release();
       this.events.notice?.(t('automation.train.levelled', { level }));
       this.events.decided?.({

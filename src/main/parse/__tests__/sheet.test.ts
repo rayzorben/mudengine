@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import { CharacterTracker } from '../CharacterTracker';
-import { died, StatusLine } from '../sheet';
+import { died, levelled, statSheet, StatusLine } from '../sheet';
 import { blockOf } from '../../../shared/__tests__/blocks';
 
 /*
@@ -132,5 +132,53 @@ describe('a death', () => {
     expect(after.progress.armourClass).toBeNull();
     expect(after.progress.damageResist).toBeNull();
     expect(after.progress.magicRes).toBeNull();
+  });
+});
+
+/*
+ * 2026-10-10: Rayzor trained 10 to 11 by hand with `Exp needed for next
+ * level: 0` read at level 10, the 0 was kept at 11, and the errand walked off
+ * to the High Level Trainer for a level 12 not yet earned.
+ */
+describe('a new level', () => {
+  const at10: CharacterState = {
+    ...EMPTY_CHARACTER,
+    progress: {
+      ...EMPTY_CHARACTER.progress,
+      level: 10,
+      exp: 902_963,
+      expNeeded: 0,
+      expTable: {
+        rows: [
+          { level: 11, experience: 757_354, source: 'realm' },
+          { level: 12, experience: 1_136_031, source: 'realm' }
+        ]
+      }
+    }
+  };
+
+  it('says what the realm’s table prices for the next one', () => {
+    expect(levelled(at10, '11')?.progress.expNeeded).toBe(233_068);
+  });
+
+  it('leaves what is needed unknown where only a derived row prices it', () => {
+    const derived: CharacterState = {
+      ...at10,
+      progress: {
+        ...at10.progress,
+        expTable: { rows: [{ level: 12, experience: 1_136_031, source: 'database' }] }
+      }
+    };
+    expect(levelled(derived, '11')?.progress.expNeeded).toBeNull();
+  });
+
+  it('leaves what is needed unknown where no row prices the next level', () => {
+    const bare: CharacterState = { ...at10, progress: { ...at10.progress, expTable: null } };
+    expect(levelled(bare, '11')?.progress.expNeeded).toBeNull();
+  });
+
+  it('reads the sheet’s level the same way', () => {
+    expect(statSheet(at10, { level: '11' }).progress.expNeeded).toBe(233_068);
+    expect(statSheet(at10, { level: '10' }).progress.expNeeded).toBe(0);
   });
 });

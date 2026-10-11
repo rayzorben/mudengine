@@ -20,6 +20,7 @@ import {
 import {
   derivedExperienceTable,
   experienceSeed,
+  neededAt,
   withDerivedExperience,
   withRealmExperience,
   type ExperienceLevel,
@@ -255,7 +256,11 @@ export function levelled(s: CharacterState, said: string | undefined): Character
    */
   return {
     ...s,
-    progress: { ...s.progress, level },
+    progress: {
+      ...s.progress,
+      level,
+      expNeeded: neededAt(level, s.progress.exp, s.progress.expTable)
+    },
     vitals: { ...s.vitals, hpMax: null, manaMax: null }
   };
 }
@@ -332,6 +337,8 @@ export function experienceGained(
  * maxima come from; the status line has none.
  */
 export function statSheet(s: CharacterState, g: Groups): CharacterState {
+  const level = figure(g['level']) ?? s.progress.level;
+  const exp = figure(g['exp']) ?? s.progress.exp;
   return {
     ...s,
     name: g['first'] ?? s.name,
@@ -358,7 +365,12 @@ export function statSheet(s: CharacterState, g: Groups): CharacterState {
     },
     progress: {
       ...s.progress,
-      level: figure(g['level']) ?? s.progress.level,
+      level,
+      // The figure `exp` stated is for the level it stated it at.
+      expNeeded:
+        level === null || s.progress.level === null || level === s.progress.level
+          ? s.progress.expNeeded
+          : neededAt(level, exp, s.progress.expTable),
       lives: figure(g['lives']) ?? s.progress.lives,
       /*
        * The sheet states the running total, and on this realm it is the
@@ -368,7 +380,7 @@ export function statSheet(s: CharacterState, g: Groups): CharacterState {
        * stayed null — the number was on screen and the client threw it
        * away (measured live, 2026-08-27).
        */
-      exp: figure(g['exp']) ?? s.progress.exp,
+      exp,
       strength: figure(g['strength']) ?? s.progress.strength,
       picklocks: figure(g['picklocks']) ?? s.progress.picklocks,
       // What a blow's size turns on, which `FightLog` records without.

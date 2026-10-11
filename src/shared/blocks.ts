@@ -628,6 +628,12 @@ export type BlockType =
    * spare.
    */
   | 'light-out'
+  /**
+   * `You already have something lit!`, the server refusing `light` while the
+   * readied slot holds a light, lit or spent (live, 2026-10-09, rayzor). It
+   * names nothing, so it says the client's pack is wrong about the slot.
+   */
+  | 'light-refused'
   | 'user-buys'
   | 'user-sells'
   /**
@@ -1058,6 +1064,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-equipped-failed': 'items',
   'user-removed': 'items',
   'light-out': 'items',
+  'light-refused': 'items',
   'user-buys': 'items',
   'user-sells': 'items',
   'bank-balance': 'items',

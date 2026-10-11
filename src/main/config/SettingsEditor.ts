@@ -1507,6 +1507,7 @@ function loopNode(loop: Loop): Record<string, unknown> {
     name: loop.name,
     ...(loop.bounce === true ? { bounce: true } : {}),
     ...(loop.prefer === true ? { prefer: true } : {}),
+    ...(loop.pathFile === undefined ? {} : { pathFile: loop.pathFile }),
     stops: loop.stops.map((stop) =>
       stop.linger === undefined && stop.every === undefined
         ? quoted(stop.room)

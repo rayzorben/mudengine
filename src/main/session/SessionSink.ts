@@ -12,7 +12,7 @@ import type { CharacterState, RealmFamily as RealmWord } from '../../shared/char
 import type { AutomationSwitch } from '../../shared/config';
 import type { Find } from '../../shared/finds';
 import type { Shelf } from '../../shared/shops';
-import type { LoopProgress } from '../../shared/loops';
+import type { Loop, LoopProgress } from '../../shared/loops';
 import type { Discovery } from '../../shared/memory';
 import type { PlayerRegistry } from '../../shared/players';
 import type { QuestRunProgress, QuestWatched, RoomAsk } from '../../shared/quests';
@@ -163,4 +163,6 @@ export interface SessionSink {
    * it's write lands before the first room. Whether it was written.
    */
   switchAutomationNow?(name: AutomationSwitch, on: boolean): boolean;
+  /** The shipped loops, which `@loop` reaches after the character's own (todo 32). */
+  loopShelf?(): readonly Loop[];
 }

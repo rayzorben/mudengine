@@ -95,12 +95,15 @@ export const REFRESH: Record<StaleFact, { command: string; coalesceKey: string }
  *   recalculates the maximum hit points (`AssignStatsState`, `SetStats` then
  *   `BaseMaxHP = CalcMaxHP()`); it spends character points and no coin, and
  *   the experience curve is untouched.
+ * - **`light-refused`** — the pack: the server says the readied slot holds a
+ *   light the listing did not show there, and only a listing says which.
  */
 export const STALE_AFTER = {
   'user-levels': ['sheet', 'experience', 'chart'],
   'user-trains': ['sheet', 'experience', 'chart', 'pack'],
   'user-dies': ['pack', 'sheet'],
-  'user-stats-assigned': ['sheet']
+  'user-stats-assigned': ['sheet'],
+  'light-refused': ['pack']
 } as const satisfies Partial<Record<BlockType, readonly StaleFact[]>>;
 
 /** A sentence that makes a fact stale: a closed union, so whatever words the ask gets is a switch over it. */

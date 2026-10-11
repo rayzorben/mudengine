@@ -390,3 +390,61 @@ describe('whether a light is coming', () => {
     expect(auto.couldReady(character([torch()]))).toBe(false);
   });
 });
+
+/*
+ * rayzor, 2026-10-09 (todo 30): a lit torch in a sewer under `lightDimRooms`,
+ * a brass lamp in the pack, and `light brass lamp` refused 118 times.
+ */
+describe('a lit light that does not reach', () => {
+  const lamp = (over: Partial<ItemEntity> = {}): ItemEntity => ({
+    ...wireItem('brass lamp'),
+    kind: 'light',
+    abilities: [[54, 175]],
+    ...over
+  });
+  const litTorch = (): ItemEntity => torch({ equipped: true, slot: 'Readied', charges: 5 });
+  const dim = movement({ lightDimRooms: true });
+
+  it('is removed before the light that reaches is lit', () => {
+    make(dim).beforeStep({ name: 'Sewer Tunnel', light: -175 }, character([litTorch(), lamp()]));
+    drain();
+    expect(sent).toEqual(['remove torch', 'light brass lamp']);
+  });
+
+  it('is not swapped back while the lamp is lit and reaches', () => {
+    const auto = make(dim);
+    const state = character([torch(), lamp({ equipped: true, slot: 'Readied', charges: 300 })]);
+    auto.beforeStep({ name: 'Sewer Tunnel', light: -175 }, state);
+    auto.beforeStep({ name: 'Dim Hall', light: -50 }, state);
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('stops asking once the game says something is lit, and says why', () => {
+    const auto = make(dim);
+    const state = character([torch(), lamp()]);
+    auto.beforeStep({ name: 'Sewer Tunnel', light: -175 }, state);
+    drain();
+    expect(sent).toEqual(['light brass lamp']);
+    auto.onBlock(block('light-refused'), state);
+    auto.beforeStep({ name: 'Sewer Junction', light: -175 }, state);
+    auto.onCharacter({ ...state, room: { ...state.room, number: 3000, light: 'dimly lit' } }, true);
+    drain();
+    expect(sent).toEqual(['light brass lamp']);
+    expect(decisions.at(-1)).toMatchObject({ action: 'light', acted: false });
+    expect(decisions.at(-1)?.refused).toContain('brass lamp');
+  });
+
+  it('asks again once a listing has read the slot', () => {
+    const auto = make(dim);
+    const state = character([torch(), lamp()]);
+    auto.beforeStep({ name: 'Sewer Tunnel', light: -175 }, state);
+    drain();
+    auto.onBlock(block('light-refused'), state);
+    auto.onListing();
+    const listed = character([litTorch(), lamp()]);
+    auto.beforeStep({ name: 'Sewer Junction', light: -175 }, listed);
+    drain();
+    expect(sent).toEqual(['light brass lamp', 'remove torch', 'light brass lamp']);
+  });
+});

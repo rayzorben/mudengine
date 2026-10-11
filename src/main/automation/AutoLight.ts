@@ -32,11 +32,15 @@
  *   `very dark` burns for nothing. `chooseLight` refuses, and the refusal is
  *   recorded (`SafetyDecision`) so somebody who packed a torch and stood in the
  *   dark can read why it was not lit.
- * - **Light over a spent light.** The server answers `You already have
- *   something lit!` while anything sits in the readied slot, so a listing that
- *   shows one at no charge has it removed first, two commands in order. A
- *   light that burns out is destroyed by the server and leaves the slot empty
- *   (`withoutReadied`), so the usual case is the one `light`.
+ * - **Light over a readied light.** The server answers `You already have
+ *   something lit!` while anything sits in the readied slot, so a light that
+ *   is spent, or lit and not reaching the room, is removed first, two commands
+ *   in order. A light that burns out is destroyed by the server and leaves the
+ *   slot empty (`withoutReadied`), so the usual case is the one `light`. The
+ *   brighter light then stays lit while it reaches, so a pack with a torch
+ *   and a lamp swaps once and keeps the lamp lit.
+ * - **Ask again after the server refused.** `light-refused` means the pack is
+ *   wrong about the slot; nothing is lit until a listing reads it again.
  * - **Say the same thing twice.** One decision per room per answer; a
  *   corridor of six dark rooms with nothing to light is one line, not six.
  * - **Put a light out mid-route.** `extinguishInLight` fires only while nothing
@@ -99,6 +103,10 @@ export class AutoLight implements SessionModule {
    * `i` listing. The pack changing is a new question about the same room.
    */
   private arrivalLitIn: string | null = null;
+  /** The lights (`packKey`) a `light` was refused over; nothing is lit until a listing or the pack moves. */
+  private refusedOver: string | null = null;
+  /** The light last asked for, so the refusal can name it. */
+  private asked: string | null = null;
 
   constructor(
     private config: MovementConfig,
@@ -119,6 +127,8 @@ export class AutoLight implements SessionModule {
     this.arrivalLitIn = null;
     this.decidedIn = null;
     this.litAt = 0;
+    this.refusedOver = null;
+    this.asked = null;
   }
 
   /**
@@ -186,7 +196,12 @@ export class AutoLight implements SessionModule {
    * to be asked for again, because nothing reprints it on its own.
    */
   onBlock(block: Block, state: CharacterState): void {
-    if (!this.on(state) || block.type !== 'user-equipped') return;
+    if (!this.on(state)) return;
+    if (block.type === 'light-refused') {
+      this.refused(state);
+      return;
+    }
+    if (block.type !== 'user-equipped') return;
     if (!isBlinding(state.room.light)) return;
     const item = block.groups['item'];
     if (item === undefined) return;
@@ -220,7 +235,35 @@ export class AutoLight implements SessionModule {
    */
   couldReady(state: CharacterState): boolean {
     if (!this.on(state)) return false;
-    return carriedLights(state.inventory.items).some((light) => !light.lit && lightIsUsable(light));
+    const lights = carriedLights(state.inventory.items);
+    // After a refusal `provide` lights nothing until the pack is read again.
+    if (this.refusedOver === packKey(lights)) return false;
+    return lights.some((light) => !light.lit && lightIsUsable(light));
+  }
+
+  /**
+   * `You already have something lit!`: the slot holds a light the pack does
+   * not show there. Never read as the asked light being lit; `Routines` owes
+   * the `i` (`STALE_AFTER`) and this waits for it.
+   */
+  private refused(state: CharacterState): void {
+    this.refusedOver = packKey(carriedLights(state.inventory.items));
+    this.events.decided?.({
+      at: this.now(),
+      action: 'light',
+      because: t('automation.light.becauseDark', { room: state.room.name ?? '?' }),
+      acted: false,
+      // The light named only while this client's own `light` can be what was answered.
+      refused:
+        this.asked !== null && this.now() - this.litAt < tuning().light.expiresMs
+          ? t('automation.light.refusedAlreadyLit', { item: this.asked })
+          : t('automation.light.refusedSomethingLit')
+    });
+  }
+
+  /** An `i` listing read the slot again, so a refused `light` may be asked anew. */
+  onListing(): void {
+    this.refusedOver = null;
   }
 
   private on(state: CharacterState): boolean {
@@ -255,6 +298,7 @@ export class AutoLight implements SessionModule {
     const vision = sight?.vision ?? 0;
     const dim = this.config.lightDimRooms;
     const lights = carriedLights(state.inventory.items);
+    if (this.refusedOver === packKey(lights)) return;
     let choice: LightChoice;
     if (level === undefined) {
       const usable = lights
@@ -300,15 +344,18 @@ export class AutoLight implements SessionModule {
      */
     if (this.lastKey === key && this.now() - this.litAt < tuning().light.expiresMs) return;
     this.lastKey = key;
-    const spent = lights.find((light) => light.lit && !lightIsUsable(light));
+    // `chooseLight` readies another only over a light that is spent or does not reach.
+    const readied = lights.find((light) => light.lit);
     const expiresAt = this.now() + tuning().light.expiresMs;
-    if (spent !== undefined) {
+    if (readied !== undefined) {
       this.queue.enqueue({
-        command: `remove ${spent.name}`,
+        command: `remove ${readied.name}`,
         priority,
         coalesceKey: 'light:remove',
         expiresAt,
-        reason: t('automation.light.reasonRemoveSpent', { item: spent.name })
+        reason: lightIsUsable(readied)
+          ? t('automation.light.reasonRemoveDim', { item: readied.name })
+          : t('automation.light.reasonRemoveSpent', { item: readied.name })
       });
     }
     this.queue.enqueue({
@@ -319,6 +366,7 @@ export class AutoLight implements SessionModule {
       reason: t('automation.light.reasonLight', { item: choice.light.name, room: where })
     });
     this.litAt = this.now();
+    this.asked = choice.light.name;
     this.events.decided?.({
       at: this.now(),
       action: 'light',
@@ -368,8 +416,13 @@ export class AutoLight implements SessionModule {
  * room asks the question again and nothing else does.
  */
 function arrivalKey(room: string, lights: readonly CarriedLight[]): string {
+  return `${room}|${packKey(lights)}`;
+}
+
+/** Each carried light's name, lit flag and charge, in a fixed order. */
+function packKey(lights: readonly CarriedLight[]): string {
   const pack = lights.map((light) => `${light.name}:${light.lit ? 1 : 0}:${light.charges ?? '?'}`);
-  return `${room}|${pack.sort().join(',')}`;
+  return pack.sort().join(',');
 }
 
 function roomKey(state: CharacterState): string | null {

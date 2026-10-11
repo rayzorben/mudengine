@@ -7,6 +7,8 @@ import {
   formatHave,
   formatLevel,
   formatLives,
+  formatMoveAnswer,
+  formatPath,
   formatSettings,
   formatStats,
   formatStatus,
@@ -390,5 +392,75 @@ describe('the extended wording', () => {
     ]) {
       expect(parseRemoteReply(other)?.kind).not.toBe('version');
     }
+  });
+});
+
+/* Todo 32: `@path` in MegaMUD's frame, read back from the right. */
+describe('@path and the answers to @loop and @goto', () => {
+  const loop = {
+    path: 'DCCWLOOP.mp',
+    title: 'Sewers: CaveWorm',
+    to: null,
+    why: null,
+    steps: 4,
+    end: 'lap end'
+  } as const;
+
+  it('writes the frames the disassembly builds', () => {
+    expect(formatPath(null)).toBe('{none}');
+    expect(formatPath(loop)).toBe('{DCCWLOOP.mp (Sewers: CaveWorm) - 4 steps to lap end}');
+    expect(formatPath({ ...loop, path: 'Sewer circuit', title: null, steps: null })).toBe(
+      '{Sewer circuit - ? steps to lap end}'
+    );
+    expect(
+      formatPath({ path: 'Dark Cave 1/866', title: null, to: null, why: null, steps: 1, end: 'go' })
+    ).toBe('{Dark Cave 1/866 - 1 step to go}');
+    expect(
+      formatPath({ ...loop, to: 'General Store 1/23', why: 'detour', steps: 7, end: 'go' })
+    ).toBe('{DCCWLOOP.mp (Sewers: CaveWorm) -> General Store 1/23 (detour) - 7 steps to go}');
+  });
+
+  it('reads every frame back to what was written', () => {
+    const frames = [
+      loop,
+      { ...loop, path: 'Black House: Caveworm Area (Need Rope)', title: null, steps: null },
+      { path: 'Dark Cave 1/866', title: null, to: null, why: null, steps: 12, end: 'go' as const },
+      { ...loop, to: 'General Store 1/23', why: 'detour', steps: 7, end: 'go' as const }
+    ];
+    for (const report of frames) {
+      expect(parseRemoteReply(formatPath(report))).toEqual({ kind: 'path', report });
+    }
+    expect(parseRemoteReply('{none}')).toEqual({ kind: 'none' });
+  });
+
+  it("answers in MegaMUD's words, cutting a list to the room it has", () => {
+    expect(formatMoveAnswer({ kind: 'ok' }, 255)).toBe('{ok}');
+    expect(formatMoveAnswer({ kind: 'failed' }, 255)).toBe('{failed}');
+    expect(formatMoveAnswer({ kind: 'unknown', request: '', candidates: [] }, 255)).toBe(
+      '{unknown - ""}'
+    );
+    const several = {
+      kind: 'unknown',
+      request: 'cave',
+      candidates: ['Sewers: CaveWorm', 'Black House: Caveworm Area (Need Rope)', 'Caves (2)']
+    } as const;
+    expect(formatMoveAnswer(several, 255)).toBe(
+      '{unknown - "cave": Sewers: CaveWorm; Black House: Caveworm Area (Need Rope); Caves (2)}'
+    );
+    expect(formatMoveAnswer(several, 44)).toBe('{unknown - "cave": Sewers: CaveWorm +2 more}');
+    expect(formatMoveAnswer(several, 26)).toBe('{unknown - "cave" +3 more}');
+    const long = formatMoveAnswer(
+      { kind: 'unknown', request: 'x'.repeat(300), candidates: [] },
+      40
+    );
+    expect(long.length).toBeLessThanOrEqual(40);
+    expect(parseRemoteReply(long)).toMatchObject({ kind: 'unknown' });
+    expect(parseRemoteReply(formatMoveAnswer(several, 44))).toEqual({
+      kind: 'unknown',
+      request: 'cave',
+      candidates: ['Sewers: CaveWorm'],
+      more: 2
+    });
+    expect(parseRemoteReply('{failed}')).toEqual({ kind: 'failed' });
   });
 });

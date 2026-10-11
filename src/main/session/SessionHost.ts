@@ -22,6 +22,7 @@
  * per query rather than held per graph.
  */
 import { t } from '../app/i18n';
+import type { Loop } from '../../shared/loops';
 import { Backscroll } from './Backscroll';
 import { SessionCapture } from './SessionCapture';
 import { SessionLog } from './SessionLog';
@@ -122,6 +123,8 @@ export interface SessionHostOptions {
   flipSwitch?(id: SessionId, name: AutomationSwitch, on: boolean): boolean;
   /** Read every character's file again now, rather than on the next poll. */
   reread?(): void;
+  /** The shipped loops, read once (`LoopCatalogue`). */
+  loopShelf?(): readonly Loop[];
   /**
    * What is known about the monsters and attack spells on *this character's* realm.
    *
@@ -502,6 +505,7 @@ export class SessionHost {
         asks: (offers) => this.options.toAll(Push.asks, { session: id, payload: [...offers] }),
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
         switchAutomationNow: (name, on) => this.switchNow(id, name, on),
+        loopShelf: () => this.options.loopShelf?.() ?? [],
         realmTold: (realm) => {
           // The address this connection actually went to, which the manager
           // holds from `connect`; a word with no address is a word about nowhere.

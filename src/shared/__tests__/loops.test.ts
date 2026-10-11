@@ -5,6 +5,7 @@ import {
   dueStop,
   loopCategory,
   matchLoop,
+  matchLoopIn,
   matchStop,
   nextStop,
   readStop,
@@ -465,5 +466,54 @@ describe('a lap given another loop’s stops', () => {
     expect(retimed(lap, { name: 'x', stops: [{ room: 'A 9/2' }, { room: 'C 9/9' }] })).toBeNull();
     expect(retimed(lap, { name: 'x', stops: [...lap.stops, { room: 'C 9/9' }] })).toBeNull();
     expect(retimed(lap, { ...lap, bounce: true })).toBeNull();
+  });
+});
+
+/* Todo 32: `@loop` reads back what `@path` sent, MegaMUD's path file first. */
+describe('picking a loop by its path file, and from several lists', () => {
+  const caveworm = asLoops([
+    {
+      name: 'Sewers: CaveWorm',
+      pathFile: 'DCCWLOOP.mp',
+      stops: ['Dark Cave 1/866', 'Dark Cave 1/865']
+    }
+  ])[0]!;
+  const rope = asLoops([
+    {
+      name: 'Black House: Caveworm Area (Need Rope)',
+      pathFile: 'BHCWLOOP.mp',
+      stops: ['A 2/1', 'B 2/2']
+    }
+  ])[0]!;
+  const mine = asLoops([{ name: 'Sewer circuit', stops: ['Dark Cave 1/866', 'Sewer 1/1'] }])[0]!;
+
+  it('keeps the path file through the options file and compares it', () => {
+    expect(caveworm.pathFile).toBe('DCCWLOOP.mp');
+    expect(mine.pathFile).toBeUndefined();
+    expect(sameLoops([caveworm], [{ ...caveworm, pathFile: 'OTHER.mp' }])).toBe(false);
+  });
+
+  it('takes the file with or without .mp, in any case', () => {
+    for (const said of ['DCCWLOOP.mp', 'dccwloop', 'DccwLoop.MP']) {
+      expect(matchLoop([caveworm, rope], said)).toEqual({ kind: 'one', loop: caveworm });
+    }
+  });
+
+  it('still reads a name with a colon and brackets, and a start room', () => {
+    expect(matchLoop([caveworm, rope], 'Black House: Caveworm Area (Need Rope)')).toEqual({
+      kind: 'one',
+      loop: rope
+    });
+    expect(matchLoop([caveworm, rope], '1/866')).toEqual({ kind: 'one', loop: caveworm });
+  });
+
+  it("stops at the first list that matches, so a character's own loop is never shadowed", () => {
+    expect(matchLoopIn([[mine], [], [caveworm]], '1/866')).toEqual({ kind: 'one', loop: mine });
+    expect(matchLoopIn([[mine], [], [caveworm, rope]], 'DCCWLOOP.mp')).toEqual({
+      kind: 'one',
+      loop: caveworm
+    });
+    expect(matchLoopIn([[], [mine], []], 'Sewer circuit')).toEqual({ kind: 'one', loop: mine });
+    expect(matchLoopIn([[mine], [], [caveworm]], 'nothing')).toEqual({ kind: 'none' });
   });
 });
