@@ -3038,16 +3038,27 @@ cards:
     placedHint: The game puts these here and puts each one back at the nightly cleanup if it is
       gone, unless the maximum number already exist.
     placedLabel: Placed here
-    roomSpellDamage: about {damage} damage a tick
-    roomSpellLabel: Casts on you
-    roomSpellMoves: it moves you somewhere else
-    roomSpellSummons: it may summon something
-    roomSpellStoppedBy: Stopped by
     unknownRoom: This realm's world data has no room with that number.
     walkHereButton: Walk here
     walkHereTooltip: Walk the planned route only as far as this room
     walkToButton: Plan route
     walkToTooltip: Plan the way here. Nothing is walked until you check the steps and confirm.
+  # The spell a room casts on whoever stands in it, on the Room card and the
+  # room peek (todo 72).
+  roomSpell:
+    damage: about {damage} damage a tick
+    label: Casts on you
+    # GreaterMUD's source casts it every 6 s at the server's own speed (1.2 s on
+    # orohost), and on the way in for an instant spell; no capture states it yet.
+    labelTitle: The game casts this on everyone standing here, again and again while they stay.
+    lookupTooltip: What the game data says about this spell
+    moves: it moves you somewhere else
+    notAtYourLevel: not at your level
+    passage: Passage
+    passageValue: '{spellName} for {roomCount} rooms'
+    stoppedBy: Stopped by
+    stoppedBySpell: Or the spell
+    summons: it may summon something
   slotPeek:
     acPerWeightTooltip: AC and DR together for every 100 of weight. Higher is more armour for the load.
     ariaLabel: What this character can wear in {slot}

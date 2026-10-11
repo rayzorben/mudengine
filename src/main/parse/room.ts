@@ -39,6 +39,7 @@ import type { Direction, RoomId, WorldRoom } from '../../shared/world';
 import { mobKey, roomAddress, roomId } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import { resolveByDeadReckoning, resolveRoom, type ResolveGraph } from '../world/resolve';
+import { namedStoppers } from '../world/stoppers';
 import type { WorldGraph } from '../world/WorldGraph';
 import { RoomDraft } from './draft';
 import { isPortalClaim, MOVE_COMMANDS, type Expectations } from './expectations';
@@ -56,6 +57,8 @@ export type RoomWorld = ResolveGraph &
     | 'shop'
     | 'lair'
     | 'spellById'
+    | 'item'
+    | 'spellOver'
     | 'buildNpcEntity'
     | 'buildExitEntities'
     | 'itemPlacedHere'
@@ -1256,6 +1259,13 @@ export class RoomTracker {
     room.lair = world.lair(placed, this.sources.family());
     if (placed.commands !== undefined) room.commands = placed.commands;
     room.spell = placed.spell === undefined ? null : world.spellById(placed.spell);
+    // What stops it, named here where the tables are; the card narrows the
+    // hazard to the character's level itself (`hazardFor`), since a level-up
+    // in this room must not wait for the next move to show (todo 72).
+    const stoppers =
+      room.spell?.hazard === undefined ? null : namedStoppers(world, room.spell.hazard);
+    if (stoppers !== null) room.spellStoppedBy = stoppers;
+    room.passage = world.spellOver(roomId(room.map, room.number));
     if (placed.light !== undefined) room.lightLevel = placed.light;
     if (placed.safe === true) room.safe = true;
     room.npc = world.buildNpcEntity(placed);

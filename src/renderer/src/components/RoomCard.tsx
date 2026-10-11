@@ -12,11 +12,13 @@ import { avoidNote } from '../lib/avoid';
 import ShopFace, { balanceHere, bankCopyText, shopCopyText, shopFaceLabel } from './ShopFace';
 import FindsFace, { findsCopyText } from './FindsFace';
 import LairList, { lairCopyText } from './LairList';
+import RoomSpellRows, { hazardAtLevel, roomSpellCopyLines } from './RoomSpellRows';
 import {
   DIRECTION_NAME,
   roomId,
   type Direction,
   type RoomCommand,
+  type SpellHazard,
   type WorldShop
 } from '@shared/world';
 import { type Discovery } from '@shared/memory';
@@ -176,6 +178,8 @@ function RoomCard({
   const shop = room.shop ?? null;
   const lair = room.lair ?? null;
   const answers = room.commands ?? [];
+  // The room's spell as it applies at this character's level (todo 01, 72).
+  const spellHazard = hazardAtLevel(room.spell, character.progress.level);
 
   const face = (
     <RoomBody
@@ -185,6 +189,7 @@ function RoomCard({
       character={character}
       inspect={inspect}
       shop={shop}
+      spellHazard={spellHazard}
       verdict={verdict}
     />
   );
@@ -217,6 +222,14 @@ function RoomCard({
             : t('cards.room.copy.lightLine', { light: light.phrase })
       );
     }
+    lines.push(
+      ...roomSpellCopyLines({
+        spell: room.spell ?? null,
+        hazard: spellHazard,
+        stoppedBy: room.spellStoppedBy,
+        passage: room.passage
+      })
+    );
     /*
      * The balance, where the room is a bank, because the face on screen shows
      * it — and a card copies the face on screen. Absent everywhere else, and
@@ -509,9 +522,12 @@ function RoomBody({
   character,
   inspect,
   shop,
+  spellHazard,
   verdict
 }: Pick<RoomCardProps, 'ask' | 'asks' | 'character' | 'inspect' | 'verdict'> & {
   shop: WorldShop | null;
+  /** The room spell's hazard at this character's level (`hazardAtLevel`). */
+  spellHazard: SpellHazard | undefined;
   /** What the realm says this room answers to. See the row below the exits. */
   answers: RoomCommand[];
 }) {
@@ -728,6 +744,8 @@ function RoomBody({
             one card. Splitting them again re-opens it silently.
           */}
           {(inBank ||
+            room.spell ||
+            room.passage ||
             room.occupants.length > 0 ||
             room.items.length > 0 ||
             room.hidden.length > 0 ||
@@ -760,6 +778,22 @@ function RoomBody({
                     )}
                   </dd>
                 </>
+              )}
+
+              {/*
+               * What the room casts on whoever stands in it (todo 72), before
+               * the verdict: it is what standing here costs before anything
+               * in it is fought.
+               */}
+              {(room.spell || room.passage) && (
+                <RoomSpellRows
+                  hazard={spellHazard}
+                  hpMax={character.vitals.hpMax}
+                  inspect={inspect}
+                  passage={room.passage}
+                  spell={room.spell ?? null}
+                  stoppedBy={room.spellStoppedBy}
+                />
               )}
 
               {/*

@@ -23,7 +23,15 @@ import type {
   PlayerEntity
 } from './entities';
 import type { ExperienceTable } from './experience';
-import type { Direction, RoomCommand, WorldLair, WorldShop, WorldSpell } from './world';
+import type {
+  Corridor,
+  Direction,
+  RoomCommand,
+  SpellStoppers,
+  WorldLair,
+  WorldShop,
+  WorldSpell
+} from './world';
 import type { WoundBand } from './wounds';
 import type { StatedSheet } from './stated';
 import { NO_TALLY, type CombatTally } from './tally';
@@ -573,6 +581,13 @@ export interface Room {
   commands?: RoomCommand[];
   /** The spell the realm casts on whoever stands here. */
   spell?: WorldSpell | null;
+  /** What stops that spell, named (todo 72). Absent where nothing does. */
+  spellStoppedBy?: SpellStoppers;
+  /**
+   * The timed passage this room is inside (`WorldGraph.spellOver`, todo 104):
+   * the way in put a spell on the character that runs out in here.
+   */
+  passage?: Corridor | null;
   /**
    * The realm's own light level, which is a **different claim** from `light`:
    * that is the phrase the server printed, this is what the data records.

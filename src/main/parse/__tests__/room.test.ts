@@ -42,7 +42,10 @@ const IN_GAME: CommandContext = {
 };
 
 /** A room tracker whose every reach into what it was handed is written down, in order. */
-function rig(receipt: Stealth = 'sneaking'): {
+function rig(
+  receipt: Stealth = 'sneaking',
+  graph: WorldGraph = world()
+): {
   log: string[];
   queue: Expectations;
   room: RoomTracker;
@@ -84,7 +87,7 @@ function rig(receipt: Stealth = 'sneaking'): {
     }
   };
   const room = new RoomTracker({
-    world: world(),
+    world: graph,
     claims,
     family: () => null,
     registry: () => NO_PLAYERS,
@@ -247,6 +250,34 @@ describe('what the realm says about the room it placed (todo 87)', () => {
     const shore = room.exits(beach, 'east', 6);
     expect(shore.room.number).toBe(1);
     expect(shore.room.safe).toBeUndefined();
+  });
+});
+
+describe('the spell the realm says the placed room casts (todo 72)', () => {
+  it('names what stops it on the room, and leaves the next room without one', () => {
+    const graph = worldOf([{ ...SHORE }, { ...BEACH, sp: 683 }], {
+      items: [{ id: 1180, n: 'waterskin' }],
+      spells: [
+        { id: 683, n: 'desert spell', hz: { d: 13, av: [1180], sp: [711] } },
+        { id: 711, n: 'quench' }
+      ]
+    });
+    const { queue, room } = rig('sneaking', graph);
+    queue.pushMove('e', 'e');
+    room.begin('East Beach');
+    const beach = room.exits(at(1, 1, 'Shore'), 'west', 5);
+    expect(beach.room.spell?.name).toBe('desert spell');
+    expect(beach.room.spellStoppedBy).toEqual({
+      items: [{ id: 1180, name: 'waterskin' }],
+      spells: [{ id: 711, name: 'quench' }]
+    });
+    expect(beach.room.passage).toBeNull();
+    queue.pushMove('w', 'w');
+    room.begin('Shore');
+    const shore = room.exits(beach, 'east', 6);
+    expect(shore.room.number).toBe(1);
+    expect(shore.room.spell).toBeNull();
+    expect(shore.room.spellStoppedBy).toBeUndefined();
   });
 });
 

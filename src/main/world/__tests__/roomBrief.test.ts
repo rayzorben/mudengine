@@ -114,6 +114,28 @@ describe('the realm’s answer about one room', () => {
   });
 
   /*
+   * What stops the room's spell, items and spells both, named through the one
+   * join the Room card reads too (`namedStoppers`, todo 72). Paradigm's desert
+   * spell is stopped by the waterskin (item 1180) or by spell 711; a row the
+   * tables lack is left out.
+   */
+  it('names the items and spells that stop the room spell', () => {
+    const graph = makeWorld([{ m: 1, r: 1, n: 'Desert', x: {}, sp: 683 }], {
+      items: [{ id: 1180, n: 'waterskin' }],
+      spells: [
+        { id: 683, n: 'desert spell', hz: { d: 13, av: [1180, 9999], sp: [711] } },
+        { id: 711, n: 'quench' }
+      ]
+    });
+    const brief = roomBrief(graph, '1/1', null);
+    expect(brief?.hazard?.damage).toBe(13);
+    expect(brief?.stoppedBy).toEqual({
+      items: [{ id: 1180, name: 'waterskin' }],
+      spells: [{ id: 711, name: 'quench' }]
+    });
+  });
+
+  /*
    * `Rooms.Placed` — format 42. Named against the item table, marked where
    * the realm will not let it be picked up, and a number the table lacks is
    * left out, as the server skips it.
@@ -137,6 +159,8 @@ describe('the realm’s answer about one room', () => {
     expect(brief).not.toHaveProperty('place');
     expect(brief).not.toHaveProperty('lair');
     expect(brief).not.toHaveProperty('spell');
+    expect(brief).not.toHaveProperty('stoppedBy');
+    expect(brief).not.toHaveProperty('passage');
     expect(brief).not.toHaveProperty('light');
     expect(brief).not.toHaveProperty('commands');
     expect(brief).not.toHaveProperty('placed');
