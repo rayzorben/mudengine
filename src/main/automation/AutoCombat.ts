@@ -117,8 +117,9 @@ import { sameItem } from '../../shared/items';
 import { heldWeapon } from '../../shared/gear';
 import { REACH_UNKNOWN, type WeaponReach } from '../../shared/reach';
 import { guardsFirst, inTheFight, protects } from '../../shared/guards';
-import { protectionOf, weighRoom, type HazardKind, type Menace } from '../../shared/menace';
+import { weighRoom, type HazardKind, type Menace } from '../../shared/menace';
 import {
+  menacePlayerOf,
   prowessSheetOf,
   rankByPriority,
   rankByVerdict,
@@ -127,7 +128,7 @@ import {
   wieldedWeapon,
   type Verdict
 } from '../../shared/verdict';
-import { dodge, type FightingClass } from '../../shared/prowess';
+import type { FightingClass } from '../../shared/prowess';
 import type { MobAvoid } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
@@ -1368,17 +1369,9 @@ export class AutoCombat implements SessionModule {
       unitFloor,
       deathOverRounds
     } = tuning().menace;
-    const { combat, magery, crits, family } = this.realmClass();
     return weighRoom(
       entities.map((entity) => entity ?? {}),
-      // `Errands.menacePlayer`'s reading, so the card and the engine agree.
-      {
-        armourClass: state.progress.armourClass,
-        damageResist: state.progress.damageResist,
-        magicRes: state.progress.magicRes,
-        ...protectionOf(state, (name) => this.realmSpell(name)),
-        dodge: dodge(prowessSheetOf(state, { combat, magery, crits }), family)?.value ?? null
-      },
+      menacePlayerOf(state, this.realmClass(), (name) => this.realmSpell(name)),
       {
         held,
         confused,

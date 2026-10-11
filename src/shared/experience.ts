@@ -52,34 +52,29 @@
  * corpus corroborates the base: `captures/115` has a character on a realm where
  * the pair contributes nothing, and its level 2 costs exactly `1000`.
  *
- * Every level after the second is the one below it times a ratio that steps
- * every second level — `10/5`, then `11/6` twice, `12/7` twice, `13/8` twice —
- * **floored at each step**, which is what makes the chain reproduce the wire's
- * numbers rather than merely approximate them. Ten values of one table and
- * twelve of the other, all twenty-two exact.
+ * Every level after the second is the one below it times a ratio, **floored
+ * at each step**: GreaterMUD's `calcExpNeededOld` (`Player.cs:2270`), whose
+ * table of pairs starts `40/20`, `44/24` twice, `48/28` twice, then turns to
+ * `65/45` at level 14, `75/55` at 18, `50/40` from 19, `23/20` at 27 and
+ * `115/100` from 28.
+ * Ten values of one Paradigm table and twelve of the other, all exact.
  *
  * And it is not one server's arithmetic. Four more readings from **GreaterMUD**
  * (`orohost`, 2026-08-26 to 08-28) land on the same chain: a Kang Mystic seeded
  * at 2850 is charged 32,842 for level 6 and a Half-Ogre Mystic seeded at 2800
- * is charged 55,309 for level 7, both exact. Two more characters in the corpus
- * (`captures/004` at level 11, `captures/020` at 12) have their printed
- * requirement reproduced by a whole-percent table of 215.
+ * is charged 55,309 for level 7 and 40,195,899 for level 29, all exact.
+ * `captures/004` (11), `captures/020` (12) and `captures/012` (19) are
+ * reproduced by whole percentages of 215, 215 and 225.
  *
- * ## How far up it holds — and it does not hold far
+ * ## How far up it holds
  *
- * **The chain is confirmed to level 13 and falsified above it.** The same
- * Half-Ogre Mystic whose level 7 it gets exactly is charged **40,195,899** for
- * level 29, where the chain says 99,835,591; `captures/012` prints a level-19
- * requirement no percentage reproduces at all, and `captures/087` a level-49
- * one an order of magnitude below. Three independent falsifications, one of
- * them on a realm whose seed the same session states.
- *
- * So `EXPERIENCE_CONFIRMED_TO` is where the derivation stops, and above it this
- * client derives **nothing** and says so on the card. A ten-level window of
- * numbers that are right is worth more than a full chart that is wrong from
- * level 14 up, and a player at level 28 is one `exp` away from the realm's own
- * answer. This is an exemption with a date on it: a recorded table above level
- * 13 either extends the constant or replaces the ladder.
+ * To level 29, the highest price the wire has stated (`todo/81`, 2026-10-10).
+ * Until then the chain took `10/5, 11/6, 11/6, 12/7…` as a rule, which parts
+ * from the server's table at level 14, and stopped at 13. The server tests
+ * each step for overflow and, where it would overflow, rounds to hundreds:
+ * GreaterMUD in 64 bits, a stock server in 32 (`captures/087`, level 49, is
+ * the 32-bit chain at 170% exactly). So a row is derived only while the
+ * 32-bit product fits, where both answer the same.
  *
  * The seed has its own limit, and it is the realm database rather than the
  * arithmetic. `orohost` runs a realm whose class table matches no `.mdb` on
@@ -150,21 +145,57 @@ export const EXPERIENCE_WINDOW = 10;
 
 /**
  * The highest level `experienceChart` may be trusted to, and it is a claim with
- * a date on it (2026-09-03).
- *
- * Every recorded table stops at 13 and every reading above it disagrees with
- * the ladder — see the header. Deriving past this would put a confidently wrong
- * number on the card for exactly the characters least able to check it by eye,
- * and the check costs one `exp`.
+ * a date on it (2026-10-10): the highest price the wire has stated, a
+ * Half-Ogre Mystic's level 29 on orohost. MudPlay reads Paradigm's curve as
+ * tapering from level 34 (its 3.83.6), which no capture here reaches.
  */
-export const EXPERIENCE_CONFIRMED_TO = 13;
+export const EXPERIENCE_CONFIRMED_TO = 29;
+
+/**
+ * `calcExpNeededOld`'s `expModTable`, as the multiplier and divisor of each
+ * step from level 2 to 27 (`Player.cs:2261`; the first row, level 2, is the
+ * seed and never read); `LATE_STEP` from 28 to 55.
+ */
+const STEPS: ReadonlyArray<readonly [number, number]> = [
+  [1, 1],
+  [40, 20],
+  [44, 24],
+  [44, 24],
+  [48, 28],
+  [48, 28],
+  [52, 32],
+  [52, 32],
+  [56, 36],
+  [56, 36],
+  [60, 40],
+  [60, 40],
+  [65, 45],
+  [65, 45],
+  [70, 50],
+  [70, 50],
+  [75, 55],
+  [50, 40],
+  [50, 40],
+  [50, 40],
+  [50, 40],
+  [50, 40],
+  [50, 40],
+  [50, 40],
+  [50, 40],
+  [23, 20]
+];
+const LATE_STEP: readonly [number, number] = [115, 100];
+/** Where a stock server's 32-bit overflow test fires and its chain parts from GreaterMUD's. */
+const STOCK_WORD = 0xffffffff;
 
 /**
  * Experience required to reach `level` for a character on `percent`.
  *
  * Chained from level 2 with a floor at every step, because that is what the
  * wire's numbers are: `floor(previous × ratio)`, not `floor(base × ratio^n)`.
- * The two differ by single digits from level 5 up, and the wire is exact.
+ * The two differ by single digits from level 5 up, and the wire is exact. It
+ * stops short of `upto` at the first step a stock server would round
+ * (`STOCK_WORD`), since past it the two lineages charge different prices.
  */
 export function experienceChart(percent: number, upto: number): ExperienceLevel[] {
   const rows: ExperienceLevel[] = [];
@@ -172,12 +203,9 @@ export function experienceChart(percent: number, upto: number): ExperienceLevel[
   let value = Math.floor(percent * 10);
   if (upto >= 2) rows.push({ level: 2, experience: value, source: 'database' });
   for (let level = 3; level <= upto; level += 1) {
-    /*
-     * The ratio steps every second level — 10/5, 11/6, 11/6, 12/7, 12/7 — so
-     * the numerator is 10 at level 3 and gains one every two levels after.
-     */
-    const step = 10 + Math.ceil((level - 3) / 2);
-    value = Math.floor((value * step) / (step - 5));
+    const [times, over] = STEPS[level - 2] ?? LATE_STEP;
+    if (value * times > STOCK_WORD) break;
+    value = Math.floor((value * times) / over);
     rows.push({ level, experience: value, source: 'database' });
   }
   return rows;

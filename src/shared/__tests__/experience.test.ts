@@ -95,20 +95,24 @@ describe('the chart the realm data implies', () => {
     expect(high?.rows[0]?.experience).toBe(23466);
   });
 
-  it('derives nothing at all above the level the ladder is confirmed to', () => {
+  it('follows the server’s table past level 13, to the highest price the wire stated', () => {
     /*
-     * The falsification, with a seed the same session states: the Half-Ogre
-     * Mystic above is charged 40,195,899 for level 29 and the chain says
-     * 99,835,591. So the chain stops at `EXPERIENCE_CONFIRMED_TO`, and a
-     * character past it gets nothing rather than a window trailing off — half a
-     * window reads as the realm's table with rows missing.
+     * The Half-Ogre Mystic above is charged 40,195,899 for level 29 on
+     * orohost; `captures/012` prints 4,454,237 for level 19 (225%).
+     * GreaterMUD's `expModTable` turns at level 14, where the old
+     * `10/5, 11/6…` rule parted from it (todo 81).
      */
-    expect(experienceChart(280, 29).at(-1)?.experience).not.toBe(40_195_899);
-    expect(derivedExperienceTable(280, 28)).toBeNull();
-    expect(derivedExperienceTable(280, 15)).toBeNull();
-    // The last level that still derives something, and it stops at 13.
-    const edge = derivedExperienceTable(KANG_PALADIN.percent, 14);
-    expect(edge?.rows.map((row) => row.level)).toEqual([13]);
+    expect(experienceChart(280, 29).at(-1)?.experience).toBe(40_195_899);
+    expect(experienceChart(225, 19).at(-1)?.experience).toBe(4_454_237);
+    expect(derivedExperienceTable(280, 30)?.rows.map((row) => row.level)).toEqual([29]);
+    expect(derivedExperienceTable(280, 31)).toBeNull();
+  });
+
+  it('stops where a stock server would round, since the lineages part there', () => {
+    // 600% is past 2^32 by level 29: the stock chain rounds to hundreds there.
+    const chart = experienceChart(600, 29);
+    expect(chart.at(-1)?.level).toBeLessThan(29);
+    expect(chart.every((row) => row.experience <= 0xffffffff)).toBe(true);
   });
 
   it('marks every derived row as derived', () => {

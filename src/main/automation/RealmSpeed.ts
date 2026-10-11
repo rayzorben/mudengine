@@ -115,17 +115,22 @@ export class RealmSpeed {
    * rest tick, a standing gap is always an even number of ticks, and at an even
    * speed half the speed would fit them all. A heal, a potion or gear with
    * health put on raises health off the tick; a rise in a fight, where a heal
-   * is likeliest, is not counted and does not move the last rise.
+   * is likeliest, is not counted and does not move the last rise. Paradigm
+   * splits each tick (a third of `HP Regen` every 10 s standing at speed 1),
+   * so a gap is counted in `speedTickParts` of the tick: whole ticks are whole
+   * numbers of parts, and paramud reads speed 1. A GreaterMUD realm at speed
+   * 3 reads 1 off rises alone (its 10 s tick is paramud's); its blows correct it.
    */
   healthRose(hp: number | null, resting: boolean, fighting: boolean, at: number): void {
     const before = this.lastHp;
     this.lastHp = hp;
     if (hp === null || before === null || hp <= before || fighting) return;
     const { roundSeconds, restTickSeconds, passiveTickSeconds, speedGapMostMs } = tuning().hunting;
+    const { speedTickParts } = tuning().hunting;
     const last = this.lastRise;
     this.lastRise = { at, resting };
     if (last === null) return;
-    const tick = resting || last.resting ? restTickSeconds : passiveTickSeconds;
+    const tick = (resting || last.resting ? restTickSeconds : passiveTickSeconds) / speedTickParts;
     const gap = ((at - last.at) * roundSeconds) / tick;
     if (gap <= speedGapMostMs) this.count(gap);
   }

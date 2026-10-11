@@ -224,6 +224,13 @@ describe('what a room answers to', () => {
       { kind: 'level', min: 20 }
     ]);
   });
+
+  /* Todo 81: Meditate's Mystic line (TBInfo 9046) asks `minlevel 27` and then `minlevel 23`. */
+  it('keeps the tightest of two level gates on one line', () => {
+    const script =
+      'go portal:minlevel 27 2614:maxlevel 40 1:minlevel 23 2614:maxlevel 50 1:cast 620';
+    expect(parseRoomScript(script, named)[0]?.gates).toEqual([{ kind: 'level', min: 27, max: 40 }]);
+  });
 });
 
 /*

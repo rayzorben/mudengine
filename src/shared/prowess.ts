@@ -755,7 +755,7 @@ export function swing(
   const aim = said?.accuracy ?? aimOf(sheet, weapon, attack, family);
   if (aim === null) return null;
 
-  const hit = hitChance(aim, target.armourClass);
+  const hit = hitChance(aim, target.armourClass, family);
   const dodged = dodgedFraction(target.dodge, aim);
   const lands = Math.max(0, hit * (1 - dodged));
 

@@ -377,10 +377,12 @@ describe('what the server stated', () => {
     // Plain stats term: (60−50)/3 + 0 + (55−50)/10 = 3. Bash's: (55−50)/3 + (60−50)/6 = 2.
     const target = { armourClass: 40, damageResist: 0, dodge: null, health: 100 };
     const bash = swing(STATED, SWORD, target, 'greatermud', { kind: 'bash', bonus: 0 })!;
-    expect(bash.lands.value).toBe(hitChance(105 - 3 + 2 - 15, 40));
+    expect(bash.lands.value).toBe(hitChance(105 - 3 + 2 - 15, 40, 'greatermud'));
     expect(bash.swings).toEqual({ value: 1.792, from: 'stated' });
     const smash = swing(STATED, SWORD, target, 'greatermud', { kind: 'smash', bonus: 0 })!;
-    expect(smash.lands.value).toBe(hitChance(Math.trunc(((105 - 3 + 2) * 3) / 2) - 25, 40));
+    expect(smash.lands.value).toBe(
+      hitChance(Math.trunc(((105 - 3 + 2) * 3) / 2) - 25, 40, 'greatermud')
+    );
     expect(smash.swings?.value).toBe(1);
   });
 
@@ -398,11 +400,11 @@ describe('what the server stated', () => {
       }
     };
     const bash = swing(sheet, SWORD, target, 'greatermud', { kind: 'bash', bonus: 0 })!;
-    expect(bash.lands.value).toBe(hitChance(138, 40));
+    expect(bash.lands.value).toBe(hitChance(138, 40, 'greatermud'));
     expect(bash.range).toEqual({ low: 22, high: 82 });
     expect(bash.damage.from).toBe('stated');
     const kick = swing(sheet, SWORD, target, 'greatermud', { kind: 'kick', bonus: 0 })!;
-    expect(kick.lands.value).toBe(hitChance(120, 40));
+    expect(kick.lands.value).toBe(hitChance(120, 40, 'greatermud'));
     expect(kick.swings).toEqual({ value: 2.5, from: 'stated' });
     expect(kick.crit).toEqual({ value: 0.2, from: 'stated' });
   });

@@ -870,6 +870,15 @@ const TUNING_DEFAULTS = {
     speedKept: 60,
     speedSlack: 0.15,
     speedShare: 0.8,
+    /**
+     * How many parts a regeneration tick is timed in when the realm's speed is
+     * read off health rising out of a fight. Paradigm splits each tick:
+     * paramud rose a third of `HP Regen` every 10 s standing at speed 1
+     * (festus, 2026-10-05; MudPlay 3.143.38 has resting every 5 s), which
+     * whole ticks read as speed 3. GreaterMUD's whole ticks are still whole
+     * numbers of the parts, so orohost reads 5 either way (todo 81).
+     */
+    speedTickParts: 3,
     /** Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`, 1.5s). */
     killOverheadMs: 1500,
     /** One step of a walk — the movement round measured at 1,239ms. */

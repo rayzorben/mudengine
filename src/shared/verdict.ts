@@ -1,4 +1,5 @@
 import {
+  protectionOf,
   rankByMenace,
   type Menace,
   type MenacePlayer,
@@ -9,6 +10,7 @@ import {
 import { shieldPerBlow, shieldsOf } from './damageShield';
 import {
   blowsLanded,
+  dodge,
   MAX_SWINGS,
   PLAIN_ATTACK,
   swing,
@@ -39,7 +41,7 @@ import {
   type MobRule,
   type RowPeace
 } from './mobRules';
-import { mobKey } from './world';
+import { mobKey, type WorldSpell } from './world';
 
 /**
  * *Can I fight this?* — one answer, read by the card and by the engine.
@@ -241,6 +243,27 @@ export function prowessSheetOf(
     stated: statedNow(state),
     effects: gearEffect(state.inventory.items),
     classCrits: cls.crits
+  };
+}
+
+/**
+ * What a monster's blow or cast is measured against: the sheet's three
+ * figures, the protection the server adds that the sheet does not print, the
+ * character's dodge, and the realm whose hit roll the blow meets. One reading
+ * for the engine's ranking and the survey, so the card and the fight agree.
+ */
+export function menacePlayerOf(
+  state: CharacterState,
+  cls: ProwessClass & { family: RealmFamily | null },
+  spellOf: (name: string) => WorldSpell | null
+): MenacePlayer {
+  return {
+    armourClass: state.progress.armourClass,
+    damageResist: state.progress.damageResist,
+    magicRes: state.progress.magicRes,
+    ...protectionOf(state, spellOf),
+    dodge: dodge(prowessSheetOf(state, cls), cls.family)?.value ?? null,
+    family: cls.family
   };
 }
 
