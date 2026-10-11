@@ -1002,6 +1002,11 @@ tuning:
     cooldownMs: 10000
     expiresMs: 10000
 
+  # The `i` after an `open <chest>` (`ChestOpening`). A listing later than
+  # this is not read as what the chest gave.
+  chest:
+    expiresMs: 10000
+
   # Sitting down — `Recovery`.
   rest:
     # Generous, unlike an attack's: what this reacts to is a number that moves

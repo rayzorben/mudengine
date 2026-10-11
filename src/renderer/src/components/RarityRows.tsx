@@ -41,6 +41,8 @@ function sentence(from: RarityFrom): string {
       }
     case 'use':
       return t('cards.reference.item.rarity.use', { item: from.item });
+    case 'open':
+      return t('cards.reference.item.rarity.open', { item: from.item });
     case 'ask':
       return t('cards.reference.item.rarity.ask', { who: from.who, say: from.say });
     case 'say': {

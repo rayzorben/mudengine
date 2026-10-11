@@ -26,7 +26,7 @@ import type { Shelf, SupplyGate, SupplyRun, SupplyTrigger, WorldSupply } from '.
 export interface RarityWorld {
   supply(): WorldSupply;
   everyRoom(): Iterable<WorldRoom>;
-  item(id: number): Pick<WorldItem, 'name' | 'limit'> | undefined;
+  item(id: number): Pick<WorldItem, 'name' | 'limit' | 'kind'> | undefined;
   mobById(id: number): Pick<WorldMob, 'name'> | undefined;
   shop(id: number): Pick<WorldShop, 'name'> | undefined;
   readonly info: { family: RealmFamily | null };
@@ -262,7 +262,12 @@ export class RarityBook {
           copies: copies * by.chance
         };
       case 'use':
-        return { kind: 'use', item: this.itemName(by.item), copies };
+        // A container's spell runs on `open` (`OpenCommand.CheckOpenChest`), never on `use`.
+        return {
+          kind: this.world.item(by.item)?.kind === 'container' ? 'open' : 'use',
+          item: this.itemName(by.item),
+          copies
+        };
       case 'ask':
         return {
           kind: 'ask',

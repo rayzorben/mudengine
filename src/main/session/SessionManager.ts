@@ -22,6 +22,7 @@ import { HangUpWatch } from '../automation/HangUp';
 import { AutoCombat } from '../automation/AutoCombat';
 import { Recovery } from '../automation/Recovery';
 import { AutoDeposit } from '../automation/AutoDeposit';
+import { ChestOpening } from '../automation/ChestOpening';
 import { AutoDrop } from '../automation/AutoDrop';
 import { AutoSearch } from '../automation/AutoSearch';
 import { AutoLoot } from '../automation/AutoLoot';
@@ -387,6 +388,7 @@ export class SessionManager {
   /** Looking for what a room did not print. See `AutoSearch`. */
   private readonly search: AutoSearch;
   private readonly deposit: AutoDeposit;
+  private readonly chest: ChestOpening;
   /** Readying a light before the dark. See `AutoLight`. */
   private readonly light: AutoLight;
   /** Getting back into the shadows between fights. See `AutoStealth`. */
@@ -1242,20 +1244,13 @@ export class SessionManager {
       quarry: (state) => this.combat.quarry(state),
       moveInFlight
     });
-    /*
-     * And what neither should be carrying: the purse over the threshold, banked
-     * at a counter. The counter is the *resolved* room's own shop — never the
-     * room's name, because thirteen rooms can share one and a `deposit` typed
-     * outside a bank is said out loud.
-     */
+    // And the purse over the threshold, banked at the resolved room's own counter, never by
+    // its name: thirteen rooms can share one, and a `deposit` outside a bank is said out loud.
     this.deposit = new AutoDeposit(
       automation.banking,
       automation.enabled,
       this.queue,
-      /*
-       * The counter in front of the character as the realm's shop row, null where the room is
-       * not a bank: the row rather than a yes, so *not your bank* can be said (todo 00).
-       */
+      // The counter here as the realm's shop row, null off a bank, so *not your bank* can be said.
       (state) => {
         const at = roomAddress(state.room);
         const here = at === null ? undefined : this.world?.byId(at);
@@ -1266,6 +1261,7 @@ export class SessionManager {
       // from a button that does not work — which is what it was.
       { notice }
     );
+    this.chest = new ChestOpening(this.queue, { notice });
     /*
      * The other half of running several characters at once: `@health` answered
      * over a telepath costs no command, where the party roster costs one and
@@ -1671,6 +1667,7 @@ export class SessionManager {
       { module: this.drop, configure: (a) => this.drop.configure(a.drop, a.enabled) },
       { module: this.search, configure: (a) => this.search.configure(a.search, a.enabled) },
       { module: this.deposit, configure: (a) => this.deposit.configure(a.banking, a.enabled) },
+      { module: this.chest },
       { module: this.light, configure: (a) => this.light.configure(a.movement, a.enabled) },
       { module: this.wards, configure: (a) => this.wards.configure(a.health, a.enabled) },
       { module: this.gear, configure: (a) => this.gear.configure(a.gear, a.enabled) },
@@ -2398,6 +2395,7 @@ export class SessionManager {
   private noteSent(command: string, from: 'user' | 'automation'): void {
     if (this.tracker.current.phase !== 'in-game') return;
     this.feed.sent(command, from);
+    this.chest.sent(command, this.tracker.current);
   }
 
   /**
@@ -2836,6 +2834,7 @@ export class SessionManager {
      */
     if (batch?.type === 'user-inventory') {
       this.deposit.onListing(this.tracker.current);
+      this.chest.onListing(this.tracker.current);
       this.light.onListing();
       // And the quest run and the item errand, which read only the listing
       // their own ask answered.
