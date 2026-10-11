@@ -135,8 +135,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 62 | **Whether a charged item survives its last use.** `Items.Retain After Uses` (`BuiltItem.ret`): the server destroys a copy at zero uses unless it is set, and then answers a `use` with `There are no more uses in X.` until the cleanup's `Recharge` refills it (`UseCommand.cs`). Without it a cloak of faith and a green potion read alike, and spending a use on a bless could not be told from spending the item (todo 44) |
  * | 63 | **A spell that takes every spell off whoever it is cast on** (`BuiltSpell.ng`, `navigation/scriptNegates.ts`). `DispellMagic` 0 removes every timed effect (`Spell.cs:1601`), and every recall token's block runs `cast 310`, negate magic, ahead of its teleport, so blessings cast just before a token is used are wiped by it. Set on the spell itself or on one whose script casts such a spell on the player: 7 tokens in both gmud.zip and pmud.zip |
  * | 64 | **An item the realm values at nothing.** `Items.Price` 0 was dropped with the unpriced, so `price` absent read as both *worth nothing* and *not stated*, and `drop.worthless` (which drops a `price` of 0) never dropped anything. `BuiltItem.price` is written when zero or more: 397 of the 1,563 items the shipped stock world carries state 0, and 395 of Paradigm's 2,342. Absent is now unknown only, and `Catalogue.priceAt` answers null for it rather than free |
+ * | 65 | **What a kill pays is `EXP × ExpMulti`.** GreaterMUD's import stores the product as a monster's `Exp` (`[Exp Multiplier] * [Experience]`), and `Mob.Killed` pays that times the realm's `XPMultiplier`, split among everyone targeting it. `BuiltMob.xp` and `BuiltMobRow.xp` are the product: the cave bear is 100 × 3, and orohost paid 300 for one (todo 70). 147 of gmud.zip's rows with experience have an `ExpMulti` other than 1 (todo 48) |
  */
-export const REALM_FORMAT = 64;
+export const REALM_FORMAT = 65;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -713,7 +714,8 @@ export interface BuiltMob {
    *
    * - `ac`, `dr`, `mr` take the **highest** of the rows: the hardest to hit,
    *   the most absorbed, the most resistant.
-   * - `xp` takes the **lowest**: the least it might be worth.
+   * - `xp` takes the **lowest**: the least it might be worth. It is `EXP ×
+   *   ExpMulti` (format 65, `killPay`), what the database says a kill pays.
    * - `rgn` takes the **highest**: never claim a monster is closer to death
    *   than it is. It is per regeneration tick, and the tick is realm-wide —
    *   see `MOB_REGEN_ROUNDS` in `src/shared/mobs.ts`.
@@ -977,6 +979,19 @@ function ownClock(row: Record<string, unknown>): number | null {
   if (limit === null || limit === 0 || limit === BLANK_AS_NUMBER) return null;
   const hours = number(row['RegenTime']);
   return hours === null || hours <= 0 || hours === BLANK_AS_NUMBER ? null : hours;
+}
+
+/**
+ * What the database says a kill of this row pays, before the realm's
+ * `XPMultiplier` and the party's split (format 65). GreaterMUD's import stores
+ * `[Exp Multiplier] * [Experience]` as the monster's `Exp`, so a row with
+ * `ExpMulti` 0 pays nothing. A derivative with no `ExpMulti` column pays `EXP`.
+ */
+function killPay(row: Record<string, unknown>): number | null {
+  const exp = number(row['EXP']);
+  if (exp === null || exp === BLANK_AS_NUMBER) return null;
+  const multi = number(row['ExpMulti']);
+  return multi === null || multi === BLANK_AS_NUMBER ? exp : exp * multi;
 }
 
 /** The `Monsters` column holding each coin's maximum. */
@@ -2241,7 +2256,7 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
     entry.ac = worse(entry.ac, number(row['ArmourClass']));
     entry.dr = worse(entry.dr, number(row['DamageResist']));
     entry.mr = worse(entry.mr, number(row['MagicRes']));
-    entry.xp = least(entry.xp, number(row['EXP']));
+    entry.xp = least(entry.xp, killPay(row));
     // Format 49. A row carrying no coin is worth the least, so it wins the fold.
     const coins = coinMaxima(row);
     if (
@@ -2307,7 +2322,8 @@ export function indexMobs(source: RealmSource, itemNames?: Map<number, string>):
       own.ac = stated('ArmourClass');
       own.dr = stated('DamageResist');
       own.mr = stated('MagicRes');
-      own.xp = stated('EXP');
+      const pays = killPay(row);
+      own.xp = pays === null || pays <= 0 ? undefined : pays;
       own.rgn = stated('HPRegen');
       // Only where `GameLimit` makes it one — see `ownClock`.
       own.rt = ownClock(row) ?? undefined;

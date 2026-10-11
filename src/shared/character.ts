@@ -1871,7 +1871,7 @@ export function standingHere(state: Pick<CharacterState, 'room'>): Set<string> {
 }
 
 /** Everybody besides this character who has joined its party: an invitation is not membership. */
-export function joinedMembers(state: CharacterState): PartyMember[] {
+export function joinedMembers(state: Pick<CharacterState, 'name' | 'party'>): PartyMember[] {
   const self = state.name?.toLowerCase() ?? null;
   return state.party.members.filter(
     (member) => !member.invited && member.name.toLowerCase() !== self

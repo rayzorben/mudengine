@@ -18,6 +18,7 @@ import { exitGates, itemsAsked } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
 import { partyTraps, walkersThrough } from '../../shared/barrierHands';
+import { killShare } from '../../shared/company';
 import type { WalkKind } from '../../shared/walk';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -82,6 +83,7 @@ import {
   type HealingCast,
   type HuntVia,
   type HuntingAdvice,
+  type KillPay,
   type HuntingAssumptions,
   type HuntingConstants,
   type HuntingRoom,
@@ -1925,6 +1927,7 @@ export class Errands implements SessionModule {
       assumptions,
       floor: NO_FLOOR,
       pace: null,
+      pay: null,
       refusal
     });
     if (!world || world.size === 0) return refused(t('session.hunt.noRealmData'));
@@ -2024,11 +2027,12 @@ export class Errands implements SessionModule {
             openerRounds: backstab ? backstabMultiplier : 1
           }) ?? null);
     const learnedExp = this.kills.allKillExp();
-    const scale = killExpScale(learnedExp, world);
+    const pay: KillPay = { ...killExpScale(learnedExp, world), share: killShare(state) };
     const priceKey = [
       this.fitness(state),
       [...learnedExp.values()].reduce((sum, exp) => sum + exp, 0),
-      scale,
+      pay.scale,
+      pay.share,
       this.automationConfig.spells.attack,
       this.automationConfig.spells.autoChoose,
       this.words.opener(),
@@ -2080,13 +2084,16 @@ export class Errands implements SessionModule {
         name: entity.name,
         /*
          * The realm's own figure where a solo kill has recorded one, else the
-         * database figure times the realm's scale (todo 70).
+         * database figure times the realm's scale (todo 70), split among the
+         * party (todo 48).
          */
-        experience:
+        experience: perKill(
           this.kills.killExpFor(entity.name) ??
-          (entity.experience === undefined || entity.experience === null
-            ? null
-            : entity.experience * scale),
+            (entity.experience === undefined || entity.experience === null
+              ? null
+              : entity.experience * pay.scale),
+          pay.share
+        ),
         copper: entity.coins === undefined ? null : expectedCopper(entity.coins),
         // The spell first, as `AttackSpells` casts it before the melee round.
         rounds:
@@ -2231,6 +2238,7 @@ export class Errands implements SessionModule {
     // What was measured where it was hunted, and the pace it puts on the rest (todo 70).
     const use: MeasuredUse = {
       level: state.progress.level,
+      share: killShare(state),
       now: Date.now(),
       forgetMs: measuredForgetMs,
       minutesLeast: measuredMinutesLeast,
@@ -2297,6 +2305,7 @@ export class Errands implements SessionModule {
       assumptions: { ...assumptions, measured },
       floor,
       pace,
+      pay,
       refusal: null
     };
   }
@@ -3111,18 +3120,25 @@ function statFigure(state: CharacterState, stat: TbStat): number | null {
 /**
  * How much the realm pays against what its database says, from every monster
  * a solo kill has priced (todo 70): the median of learned over stated, so one
- * odd monster does not move every estimate. 1 before any kill.
+ * odd monster does not move every estimate. With `ExpMulti` in the stated
+ * figure (format 65) this is the realm's `XPMultiplier` (todo 48). 1, from no
+ * monsters, before any kill the database can price.
  */
 export function killExpScale(
   learned: ReadonlyMap<string, number>,
   world: Pick<WorldGraph, 'mob'>
-): number {
+): Omit<KillPay, 'share'> {
   const ratios: number[] = [];
   for (const [name, exp] of learned) {
     const stated = world.mob(name)?.experience;
     if (typeof stated === 'number' && stated > 0) ratios.push(exp / stated);
   }
-  return median(ratios) ?? 1;
+  return { scale: median(ratios) ?? 1, monsters: ratios.length };
+}
+
+/** A whole kill's experience as one of `share` party members is paid it (`Mob.Killed` rounds down). */
+function perKill(whole: number | null, share: number): number | null {
+  return whole === null ? null : Math.floor(whole / share);
 }
 
 /** The keys of a keep-out-until map whose time has not come, the lapsed dropped from it. */

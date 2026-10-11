@@ -2560,6 +2560,7 @@ function registerIpc(): void {
         },
         floor: NO_FLOOR,
         pace: null,
+        pay: null,
         refusal: t('session.hunt.noSession')
       } satisfies HuntingAdvice;
     }
