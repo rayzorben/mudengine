@@ -2430,6 +2430,33 @@ describe("the Talk card's hold", () => {
   });
 });
 
+describe("the debug window's trace", () => {
+  const held = (): unknown =>
+    (
+      parse(fs.readFileSync(home.internal, 'utf8')) as {
+        tuning: { session: Record<string, number> };
+      }
+    ).tuning.session['debugLogLimit'];
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(home.internal), { recursive: true });
+  });
+
+  it('carries the old default forward to the new one', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  session:\n    debugLogLimit: 4000\n', 'utf8');
+    migrate();
+    expect(held()).toBe(DEFAULT_INTERNAL.tuning.session.debugLogLimit);
+    expect(notesOf(said, 'notices.migration.debugTrace')).toHaveLength(1);
+  });
+
+  it('leaves a figure the player chose alone', () => {
+    fs.writeFileSync(home.internal, 'tuning:\n  session:\n    debugLogLimit: 2000\n', 'utf8');
+    migrate();
+    expect(held()).toBe(2000);
+    expect(notesOf(said, 'notices.migration.debugTrace')).toHaveLength(0);
+  });
+});
+
 describe('the back button on an existing toolbar', () => {
   const ROW = `toolbar:
   pinned:

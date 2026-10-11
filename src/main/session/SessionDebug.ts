@@ -5,6 +5,8 @@ import {
   clip,
   describePlayersChange,
   describeStateChange,
+  engageText,
+  safetyText,
   summariseBlock,
   visible,
   type DebugKind,
@@ -195,16 +197,8 @@ export class SessionDebug {
         ? `${firing.rule} → ${firing.commands.join('; ')}`
         : `${firing.rule} blocked by ${firing.blockedBy}`
     );
-    this.since('safety', snapshot.safety, (decision) =>
-      decision.acted
-        ? `${decision.action} — ${decision.because}`
-        : `${decision.action} refused: ${decision.refused ?? decision.because}`
-    );
-    this.since('engage', snapshot.engagements, (decision) =>
-      decision.acted
-        ? `attacked ${decision.target}${decision.because === undefined ? '' : ` — ${decision.because}`}`
-        : `left ${decision.target}: ${decision.refused ?? 'no reason given'}`
-    );
+    this.since('safety', snapshot.safety, safetyText);
+    this.since('engage', snapshot.engagements, engageText);
   }
 
   /** The entry each list ended at when it was last read. */
