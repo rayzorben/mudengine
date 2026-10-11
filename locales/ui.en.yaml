@@ -609,6 +609,10 @@ notices:
     attackChosen:
       'The attack command was the old default "a", so it is now blank and the client uses
       the attack that hits hardest for this class. Type "attack" to keep the plain one. {file}'
+    foundPlayerNoEffect:
+      'Removed {count} "You see ... hiding in the shadows." lines from the learned
+      spell messages in {file}: they are a search finding a player, not a spell. A copy is in
+      {file}.bak.'
     themeCut: 'The theme "{from}" was removed, as it looked almost the same as another. {file}
       now uses {to}, the nearest one left.'
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
@@ -802,6 +806,8 @@ notices:
     messages:
       readError: 'could not read the message table {file}: {message}'
       empty: the message table {file} is empty; only the built-in patterns are read
+    protectedRooms:
+      readError: 'could not read the protected room table {file}: {message}; no room is marked safe'
     players:
       parseSuspended: '{fileName} could not be read ({message}). Nothing more about other players is
         saved until it is fixed or removed. Characters still share what they see while the client
@@ -2291,6 +2297,7 @@ cards:
     legendPick: clicked
     legendRoute: route
     legendFind: found by searching
+    legendSafe: safe room
     legendShop: shop
     legendShut: shut
     legendStart: start
@@ -2796,6 +2803,9 @@ cards:
       deadReckoning: guessed room
       remembered: as last seen, before it went dark
       unplaced: nothing says which room this is
+    # Todo 87: RM_PROTECTED in the official realm's room data.
+    safe: safe room
+    safeTitle: The realm data marks this room protected; nobody can attack here
     occupant:
       alignCostChip: −10 align
       alignCostUncertainChip: −10 align?
@@ -3569,6 +3579,7 @@ settings:
       playerLeaves: a player walks out
       playerDies: somebody dies here
       playerLooks: somebody looks at you
+      playerFoundHiding: your search finds a player hiding
       searched: you search the room
       tracked: you track somebody
       movementHeard: movement nearby
@@ -4989,6 +5000,10 @@ session:
     # Todo 818: a monster's row says to escape it, or to hang up on it.
     whyDreaded: '{mob} is here, and its monster rule says to run'
     whyStalker: '{mob} is here, and its monster rule says to hang up'
+    # Todo 87: the same row naming a player, and a room nobody can attack in.
+    whyMarkedPlayer: '{player} is here, and the monster list says to hang up on them'
+    hangUpSafeRoom: 'Not hanging up: {why}, but this is a safe room.'
+    safeRoomReason: the realm data marks this room protected
     # Todo 79: MegaMUD's Hangup If Naked, with nobody at the keyboard.
     whyNaked: naked after a death with nobody at the keyboard, and something here is attacking or would attack
     # {why} is one of the two above and {reason} the switch's own word below,

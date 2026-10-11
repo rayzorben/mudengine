@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { t } from '../app/i18n';
 import { WorldGraph } from './WorldGraph';
 import { buildRealm, identityOfArchive, REALM_FORMAT } from './buildRealm';
+import { loadProtectedRooms } from './protectedRooms';
 import { openRealm } from './RealmSource';
 import { tuning } from '../app/tuning';
 import { REALM_FAMILY_LABEL } from '../../shared/realm';
@@ -355,7 +356,12 @@ export class RealmLibrary {
     const started = Date.now();
     try {
       const source = openRealm(file);
-      const built = buildRealm(source, new Date().toISOString().slice(0, 10));
+      const built = buildRealm(
+        source,
+        new Date().toISOString().slice(0, 10),
+        undefined,
+        loadProtectedRooms(this.options.shippedDir, (message) => this.options.notify?.(message))
+      );
       source.close();
 
       fs.mkdirSync(path.dirname(cacheFile), { recursive: true });

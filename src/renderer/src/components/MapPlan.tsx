@@ -731,6 +731,15 @@ export const Picture = memo(function Picture({
                 r={FIND_DOT}
               />
             )}
+            {/* Protected in the realm data (todo 87): the corner opposite a find. */}
+            {node.safe === true && (
+              <circle
+                className="map-safe"
+                cx={node.x - tuning().mapRoomRadius}
+                cy={node.y + tuning().mapRoomRadius}
+                r={FIND_DOT}
+              />
+            )}
             {trail.stops.has(node.id) && !node.here && (
               <circle
                 className="map-stop"
@@ -1013,6 +1022,13 @@ export function MapLegend({ builder = false }: { builder?: boolean } = {}) {
           <circle className="map-find" cx="3" cy="-3" r="1.6" />
         </svg>
         {t('cards.map.legendFind')}
+      </span>
+      <span data-kind="safe">
+        <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">
+          <rect className="map-shape" height="6" rx="1.1" width="6" x="-3" y="-3" />
+          <circle className="map-safe" cx="-3" cy="3" r="1.6" />
+        </svg>
+        {t('cards.map.legendSafe')}
       </span>
       <span data-kind="shop">
         <svg aria-hidden="true" className="key" viewBox="-6 -6 12 12">

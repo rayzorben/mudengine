@@ -116,15 +116,32 @@ describe('a row may say what a monster is', () => {
     expect(attacksFirst(hostile('thug'), unranked, [])).toBe(true);
   });
 
-  it('finds the monster a stance names in the room, and only a monster', () => {
+  it('finds the monster a stance names in the room', () => {
     const rules: MobRule[] = [{ mob: 'black ooze', treat: 'escape' }];
     const here = [
-      { name: 'Black Ooze', kind: 'player' as const },
       { name: 'rat', kind: 'mob' as const },
       { name: 'black ooze', kind: 'mob' as const }
     ];
     expect(stanceHere(here, rules, 'escape')).toBe('black ooze');
     expect(stanceHere(here, rules, 'hangup')).toBeNull();
-    expect(stanceHere(here.slice(0, 2), rules, 'escape')).toBeNull();
+    expect(stanceHere(here.slice(0, 1), rules, 'escape')).toBeNull();
+  });
+
+  it('reaches a player the row names for a leaving stance, and only for one (todo 87)', () => {
+    const rules: MobRule[] = [
+      { mob: 'Nusse', treat: 'hangup' },
+      { mob: 'Vaelor', treat: 'never' }
+    ];
+    const here = [
+      { name: 'Vaelor', kind: 'player' as const },
+      { name: 'Nusse', kind: 'player' as const }
+    ];
+    expect(stanceHere(here, rules, 'hangup')).toBe('Nusse');
+    expect(stanceHere(here, rules, 'escape')).toBeNull();
+    // `never` and `friend` stay the monsters' own.
+    expect(stanceHere(here, rules, 'never')).toBeNull();
+    expect(stanceHere([{ name: 'Nusse', kind: 'unknown' as const }], rules, 'hangup')).toBe(
+      'Nusse'
+    );
   });
 });

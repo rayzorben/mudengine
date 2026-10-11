@@ -27,7 +27,7 @@ import type { SessionModule } from './Module';
  * | You attacked a player in the last 5 minutes | yes, same |
  * | You are in combat | yes |
  * | A mob in the room is targeting you | approximately: it has hit or swung at you recently, or the realm data says it attacks on sight |
- * | The room is protected, or a Colliseum | **no** |
+ * | The room is protected, or a Colliseum | protected where the realm data says so (`Room.safe`, todo 87); a Colliseum, no |
  *
  * The three server flags that gate the penalty at all — `AllowPvP`,
  * `PenalizeHangInPlayerCombat`, `PenalizeHangInMobCombat` — are also invisible.

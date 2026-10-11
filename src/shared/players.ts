@@ -882,3 +882,10 @@ export function playerEntity(
     lastRoomName: record?.lastRoomName ?? null
   };
 }
+
+/**
+ * `You see <Name> hiding in the shadows.`: a search finding a hidden player
+ * (todo 87, `Player.cs:1404-1415`). Here because the parser reads it and the
+ * migration that drops it from the learned spell sentences matches it too.
+ */
+export const FOUND_HIDING = /^You see (?<player>[A-Z][\w'-]*) hiding in the shadows\.$/;

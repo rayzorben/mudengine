@@ -81,6 +81,7 @@ export function localMap(
     if (place !== undefined) cell.place = place;
     const odds = room.lair === undefined ? null : lairLevel(room);
     if (odds !== null) cell.lairOdds = odds;
+    if (room.safe === true) cell.safe = true;
 
     // A door is a property of the passage, so it travels with the exit.
     const blocked: Partial<Record<Direction, MapObstacle>> = {};

@@ -177,6 +177,61 @@ describe('hanging up on a monster its row names', () => {
     expect(hungUp).toEqual([]);
     expect(notices).toEqual([]);
   });
+  /** A player the row names, found hiding by a search (todo 87). */
+  const nusse: RoomOccupant = {
+    ...classifyOccupant('Nusse', { players: new Set(['nusse']), mob: () => undefined }),
+    hidden: true
+  };
+  const marked: MobRule[] = [{ mob: 'Nusse', treat: 'hangup' }];
+
+  it('hangs up on a player the row names, in the player’s own words', () => {
+    const state = standing([nusse]);
+    const { safety, decisions, hungUp } = build(
+      automation({ enabled: true, penalties: false }, marked),
+      state
+    );
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual(['client']);
+    expect(decisions.at(-1)).toMatchObject({
+      acted: true,
+      because: t('session.safety.whyMarkedPlayer', { player: 'Nusse' })
+    });
+  });
+
+  it('says a protected room holds it, once, and does not hang up', () => {
+    const base = standing([nusse]);
+    const state = {
+      ...base,
+      realm: 'paradigm' as const,
+      room: { ...base.room, safe: true as const }
+    };
+    const { safety, notices, decisions, hungUp } = build(
+      automation({ enabled: true, penalties: false }, marked),
+      state
+    );
+    safety.considerHangingUp(state);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    const why = t('session.safety.whyMarkedPlayer', { player: 'Nusse' });
+    expect(notices).toEqual([t('session.safety.hangUpSafeRoom', { why })]);
+    expect(decisions).toEqual([
+      expect.objectContaining({ acted: false, refused: t('session.safety.safeRoomReason') })
+    ]);
+  });
+
+  /* The mark is read from GreaterMUD's source; MajorMUD, or a realm not yet heard from, is unknown. */
+  it('still hangs up in a marked room where the realm is MajorMUD or unsaid', () => {
+    for (const realm of ['majormud', null] as const) {
+      const base = standing([nusse]);
+      const state = { ...base, realm, room: { ...base.room, safe: true as const } };
+      const { safety, hungUp } = build(
+        automation({ enabled: true, penalties: false }, marked),
+        state
+      );
+      safety.considerHangingUp(state);
+      expect(hungUp, String(realm)).toEqual(['client']);
+    }
+  });
 });
 
 /*

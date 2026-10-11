@@ -37,6 +37,7 @@ import zlib from 'node:zlib';
 
 import { openRealm } from '../src/main/world/RealmSource.ts';
 import { buildRealm, identityOfArchive } from '../src/main/world/buildRealm.ts';
+import { loadProtectedRooms } from '../src/main/world/protectedRooms.ts';
 import { asShippedWorld, SHIPPED_WORLDS, shippedWorldFile } from '../src/shared/worlds.ts';
 
 /*
@@ -70,10 +71,14 @@ for (const { world, source } of jobs) {
 
   console.log(`${world}: reading ${path.relative(process.cwd(), source)}`);
   const realm = openRealm(source);
-  const built = buildRealm(realm, new Date().toISOString().slice(0, 10), {
-    world,
-    archive: identityOfArchive(source)
-  });
+  const built = buildRealm(
+    realm,
+    new Date().toISOString().slice(0, 10),
+    { world, archive: identityOfArchive(source) },
+    loadProtectedRooms(outDir, (message) => {
+      throw new Error(message);
+    })
+  );
   realm.close();
 
   // What a room is furnished with (format 42) is a source like a shop's stock,
@@ -86,6 +91,9 @@ for (const { world, source } of jobs) {
     for (const id of placed) furnished.add(id);
   }
   console.log(`  ${built.stats.rooms.toLocaleString()} rooms`);
+  console.log(
+    `  ${built.lines.filter((line) => JSON.parse(line).pt === 1).length} protected rooms`
+  );
   console.log(
     `  ${built.stats.items} items named — what an exit demands, what a shop stocks, what a ` +
       `script hands over and what a room holds, ` +

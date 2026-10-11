@@ -12,7 +12,7 @@ import {
 import { wireItem } from '../../../shared/entities';
 import { NO_PLAYERS } from '../../../shared/players';
 import { Expectations, type CommandContext } from '../expectations';
-import { RoomTracker, type RoomClaims } from '../room';
+import { playerArrives, playerFoundHiding, RoomTracker, type RoomClaims } from '../room';
 
 /*
  * The order a room block spends what it is handed is a decision (todo 700:
@@ -26,7 +26,7 @@ import { RoomTracker, type RoomClaims } from '../room';
  */
 
 const SHORE = { m: 1, r: 1, n: 'Shore', x: { e: { m: 1, r: 2 } } };
-const BEACH = { m: 1, r: 2, n: 'East Beach', x: { w: { m: 1, r: 1 } } };
+const BEACH = { m: 1, r: 2, n: 'East Beach', pt: 1, x: { w: { m: 1, r: 1 } } };
 const CAVERN = { m: 2, r: 1, n: 'Far Cavern', x: { w: { m: 2, r: 3 } } };
 const HOLLOW = { m: 2, r: 3, n: 'Hollow', x: {} };
 const PIT = { m: 2, r: 2, n: 'Black Pit', li: -200, x: {} };
@@ -231,6 +231,41 @@ describe('the order a room block spends what it is handed', () => {
       'unmodelled(false)',
       'wayBack',
       'stealth'
+    ]);
+  });
+});
+
+describe('what the realm says about the room it placed (todo 87)', () => {
+  it('marks a room the realm data protects safe, and leaves the next room unknown', () => {
+    const { queue, room } = rig();
+    queue.pushMove('e', 'e');
+    room.begin('East Beach');
+    const beach = room.exits(at(1, 1, 'Shore'), 'west', 5);
+    expect(beach.room.safe).toBe(true);
+    queue.pushMove('w', 'w');
+    room.begin('Shore');
+    const shore = room.exits(beach, 'east', 6);
+    expect(shore.room.number).toBe(1);
+    expect(shore.room.safe).toBeUndefined();
+  });
+});
+
+describe('a search finding a hidden player (todo 87)', () => {
+  it('adds the player to the room, hidden, where no listing named them', () => {
+    const out = playerFoundHiding(at(1, 1, 'Shore'), 'Nusse');
+    expect(out?.room.occupants).toEqual([
+      expect.objectContaining({ name: 'Nusse', kind: 'player', hidden: true })
+    ]);
+    // Found again with nothing new: no change.
+    expect(playerFoundHiding(out!, 'Nusse')).toBeNull();
+  });
+
+  it('marks a listed occupant a hidden player, where an arrival changes nothing', () => {
+    const listed = playerArrives(at(1, 1, 'Shore'), 'Nusse')!;
+    expect(playerArrives(listed, 'Nusse')).toBeNull();
+    const out = playerFoundHiding(listed, 'Nusse');
+    expect(out?.room.occupants).toEqual([
+      expect.objectContaining({ name: 'Nusse', kind: 'player', hidden: true })
     ]);
   });
 });

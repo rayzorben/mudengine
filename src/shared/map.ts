@@ -90,6 +90,8 @@ export interface MapCell {
    * has not been run, or cannot be.
    */
   lairOdds?: SurvivalLevel;
+  /** Protected in the realm data (`WorldRoom.safe`, todo 87). Absent is unknown. */
+  safe?: true;
 }
 
 export interface LocalMap {
@@ -195,6 +197,8 @@ export interface MapNode {
   away?: MapAway[];
   /** A lair's level, carried from `MapCell.lairOdds`. */
   odds?: SurvivalLevel;
+  /** Carried from `MapCell.safe`. */
+  safe?: true;
 }
 
 /** A corridor between two rooms the map is showing. */
@@ -299,7 +303,8 @@ export function layoutMap(map: LocalMap): MapDrawing {
       kind: kindOf(cell, here),
       here,
       ...(cell.away && cell.away.length > 0 ? { away: cell.away } : {}),
-      ...(cell.lairOdds === undefined ? {} : { odds: cell.lairOdds })
+      ...(cell.lairOdds === undefined ? {} : { odds: cell.lairOdds }),
+      ...(cell.safe === true ? { safe: true as const } : {})
     };
   });
 

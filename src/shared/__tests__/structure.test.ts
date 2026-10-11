@@ -61,7 +61,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).
-  'src/main/world/WorldGraph.ts': 2380,
+  // Lowered by the room's own fields on one line, as the protected room came (todo 87).
+  'src/main/world/WorldGraph.ts': 2376,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).

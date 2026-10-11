@@ -3191,6 +3191,16 @@ describe('a floor listing that answers a search', () => {
     }
   });
 
+  /* MajorMUD prints a found player alone when nothing else turned up (captures 008, 022). */
+  it('is consumed by a search that found only a hidden player (todo 87)', () => {
+    const classifier = new Classifier(NAMES);
+    classifier.observeCommand('sea');
+    const found = feed(classifier, 'You see Nusse hiding in the shadows.');
+    expect(found.type).toBe('player-found-hiding');
+    expect(found.groups['player']).toBe('Nusse');
+    expect(feed(classifier, 'You notice a rusty key here.').type).toBe('room-items');
+  });
+
   it('is consumed by a search that found nothing', () => {
     const classifier = new Classifier(NAMES);
     classifier.observeCommand('search');

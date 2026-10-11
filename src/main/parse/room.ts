@@ -243,13 +243,41 @@ export function playerArrives(
   s: CharacterState,
   player: string | undefined
 ): CharacterState | null {
-  if (!player || s.room.occupants.some((who) => who.name === player)) return null;
+  return playerHere(s, player, false);
+}
+
+/**
+ * `player-found-hiding`: a search found a hidden player standing here, whom
+ * `Also here:` never listed (todo 87). The next room block replaces the list,
+ * which is right: one who stays is listed, or hides again.
+ */
+export function playerFoundHiding(
+  s: CharacterState,
+  player: string | undefined
+): CharacterState | null {
+  return playerHere(s, player, true);
+}
+
+function playerHere(
+  s: CharacterState,
+  player: string | undefined,
+  hidden: boolean
+): CharacterState | null {
+  if (!player) return null;
   /*
-   * A *player*, said outright rather than classified: the rule reads only a
+   * A *player*, said outright rather than classified: both rules read only a
    * capitalised name (a monster's default arrival uses the same words,
-   * `Mob.cs:177`), and somebody who has not appeared in a listing yet has
-   * that name and nothing else, which classifying could only weaken.
+   * `Mob.cs:177`; the server finds only players hiding), and somebody who has
+   * not appeared in a listing yet has that name and nothing else, which
+   * classifying could only weaken.
    */
+  const held = s.room.occupants.find((who) => who.name === player);
+  if (held !== undefined) {
+    if (!hidden || (held.hidden && held.kind === 'player')) return null;
+    const found: RoomOccupant = { ...held, kind: 'player', hidden: true };
+    const occupants = s.room.occupants.map((who) => (who === held ? found : who));
+    return { ...s, room: { ...s.room, occupants } };
+  }
   const arrival: RoomOccupant = {
     name: player,
     kind: 'player',
@@ -257,7 +285,7 @@ export function playerArrives(
     uncertain: false,
     costly: 'never',
     charmed: false,
-    hidden: false,
+    hidden,
     free: false
   };
   return { ...s, room: { ...s.room, occupants: [...s.room.occupants, arrival] } };
@@ -1229,6 +1257,7 @@ export class RoomTracker {
     if (placed.commands !== undefined) room.commands = placed.commands;
     room.spell = placed.spell === undefined ? null : world.spellById(placed.spell);
     if (placed.light !== undefined) room.lightLevel = placed.light;
+    if (placed.safe === true) room.safe = true;
     room.npc = world.buildNpcEntity(placed);
     // Now that the room is placed, its exits can say where they go.
     room.exits = world.buildExitEntities(room.exits, placed);

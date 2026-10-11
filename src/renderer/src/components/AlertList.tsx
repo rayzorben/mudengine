@@ -432,6 +432,7 @@ const EVENT_WORD: Record<AlertEvent, () => string> = {
   'player-leaves': () => t('settings.alerts.event.playerLeaves'),
   'player-dies': () => t('settings.alerts.event.playerDies'),
   'player-looks': () => t('settings.alerts.event.playerLooks'),
+  'player-found-hiding': () => t('settings.alerts.event.playerFoundHiding'),
   searched: () => t('settings.alerts.event.searched'),
   tracked: () => t('settings.alerts.event.tracked'),
   'movement-heard': () => t('settings.alerts.event.movementHeard'),
