@@ -62,9 +62,24 @@ export interface InvokeChoice {
   mustBeEquipped: boolean;
 }
 
-/** Every item in a listed inventory that can bless, each name once. */
-export function invokeChoices(items: readonly CarriedItem[], realm: BlessingRealm): InvokeChoice[] {
-  const byName = new Map<string, InvokeChoice>();
+/** A carried item that can bless, as the pack lists it. */
+export interface CarriedBlessing {
+  /** The item, as the inventory spells it without its slot. */
+  item: string;
+  blessing: ItemBlessing;
+  /** Worn or wielded now. */
+  equipped: boolean;
+}
+
+/**
+ * Every item in a listed inventory that can bless, each name once: the
+ * reading the Spells page lists and Auto Choose Blessings weighs.
+ */
+export function carriedBlessings(
+  items: readonly CarriedItem[],
+  realm: BlessingRealm
+): CarriedBlessing[] {
+  const byName = new Map<string, CarriedBlessing>();
   for (const carried of items) {
     const item = bareName(carried.name);
     const blessing = carriedBlessing(item, realm);
@@ -72,16 +87,33 @@ export function invokeChoices(items: readonly CarriedItem[], realm: BlessingReal
     const known = byName.get(item);
     // Two of one weapon, one wielded: the row says what can be used now.
     if (known !== undefined && (known.equipped || !carried.equipped)) continue;
-    byName.set(item, {
-      item,
-      spell: blessing.spell.name,
-      mana: blessing.spell.mana ?? null,
-      equipped: carried.equipped,
-      mustBeEquipped: blessing.mustBeEquipped
-    });
+    byName.set(item, { item, blessing, equipped: carried.equipped });
   }
   return [...byName.values()];
 }
+
+/** Every item in a listed inventory that can bless, each name once. */
+export function invokeChoices(items: readonly CarriedItem[], realm: BlessingRealm): InvokeChoice[] {
+  return carriedBlessings(items, realm).map(({ item, blessing, equipped }) => ({
+    item,
+    spell: blessing.spell.name,
+    mana: blessing.spell.mana ?? null,
+    equipped,
+    mustBeEquipped: blessing.mustBeEquipped
+  }));
+}
+
+/**
+ * The carried items Auto Choose Blessings picked (`BlessingChoice`), which
+ * `AutoInvoke` uses in place of `invokeWith`.
+ */
+export interface ChosenItems {
+  /** The items, by the pack's spelling; null where nothing was chosen or the switch is off. */
+  chosenItems(): readonly string[] | null;
+}
+
+/** No choice: `invokeWith` always stands. */
+export const NO_CHOSEN_ITEMS: ChosenItems = { chosenItems: () => null };
 
 /** Whether `invokeWith` names this item. */
 export function chosenToInvoke(chosen: readonly string[], item: string): boolean {

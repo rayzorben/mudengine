@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import type { ChosenWords } from '@shared/attackChoice';
+import type { BlessingChoiceView } from '@shared/blessingchoice';
 import type { PotionWhen } from '@shared/config';
 import type { InvokeChoice } from '@shared/invoke';
 import type { SessionId } from '@shared/ipc';
@@ -21,6 +22,8 @@ export interface CharacterRealm {
   banks: BankChoice[] | null;
   /** What the inventory holds that can bless; null while nobody has listed it. */
   invokeChoices: InvokeChoice[] | null;
+  /** What Auto Choose Blessings last decided; null while it is off or has decided nothing. */
+  blessingChoice: BlessingChoiceView | null;
   /** What blank attack and opener fields choose; null while the character is not in the realm. */
   chosen: ChosenWords | null;
 }
@@ -68,6 +71,8 @@ export interface CharacterRealmLoaders {
    * the Spells page's list. About the character, so asked on that page.
    */
   loadInvokeChoices(session: SessionId): Promise<InvokeChoice[] | null>;
+  /** What Auto Choose Blessings last decided for the character, asked on the Spells page. */
+  loadBlessingChoice(session: SessionId): Promise<BlessingChoiceView | null>;
   /** What blank attack and opener fields choose for the character, asked on the Combat page. */
   loadChosenWords(session: SessionId): Promise<ChosenWords | null>;
 }
@@ -90,6 +95,7 @@ export function useCharacterRealm(
     loadWards,
     loadMobNames,
     loadInvokeChoices,
+    loadBlessingChoice,
     loadChosenWords
   }: CharacterRealmLoaders
 ): CharacterRealm {
@@ -139,6 +145,7 @@ export function useCharacterRealm(
    * as such rather than as carrying nothing.
    */
   const [invokeChoices, setInvokeChoices] = useState<InvokeChoice[] | null>(null);
+  const [blessingChoice, setBlessingChoice] = useState<BlessingChoiceView | null>(null);
   // What blank attack fields choose. Null is out of the realm, drawn as what blank does.
   const [chosen, setChosen] = useState<ChosenWords | null>(null);
   useEffect(() => {
@@ -227,6 +234,7 @@ export function useCharacterRealm(
   useEffect(() => {
     if (!active || section !== 'spells') return;
     setInvokeChoices(null);
+    setBlessingChoice(null);
     if (session === null) return;
     let stale = false;
     void loadInvokeChoices(session).then(
@@ -234,9 +242,14 @@ export function useCharacterRealm(
       // Not a reason to refuse the save: the names already chosen still show.
       () => void (stale || setInvokeChoices(null))
     );
+    void loadBlessingChoice(session).then(
+      (found) => void (stale || setBlessingChoice(found)),
+      // Not a reason to refuse the save: the page simply shows no choice.
+      () => void (stale || setBlessingChoice(null))
+    );
     return () => {
       stale = true;
     };
-  }, [active, section, session, loadInvokeChoices]);
-  return { trainers, serving, wards, mobs, banks, invokeChoices, chosen };
+  }, [active, section, session, loadInvokeChoices, loadBlessingChoice]);
+  return { trainers, serving, wards, mobs, banks, invokeChoices, blessingChoice, chosen };
 }

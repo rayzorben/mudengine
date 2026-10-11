@@ -137,6 +137,7 @@ const api: WireApi = {
   roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
   slotGear: (session, slot) => ipcRenderer.invoke(Invoke.slotGear, session, slot),
   chosenWords: (session) => ipcRenderer.invoke(Invoke.chosenWords, session),
+  blessingChoice: (session) => ipcRenderer.invoke(Invoke.blessingChoice, session),
   huntingGrounds: (session, measure) => ipcRenderer.invoke(Invoke.huntingGrounds, session, measure),
   trainers: (session) => ipcRenderer.invoke(Invoke.trainers, session),
   banks: (session) => ipcRenderer.invoke(Invoke.banks, session),

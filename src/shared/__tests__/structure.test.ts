@@ -49,7 +49,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by `@loop`'s lists, handed to `RemoteMoves` whole (todo 32).
   // Lowered by the canHide and restsHidden comments, condensed as the chosen attack's wiring came (todo 47).
   // Lowered by the decided and canHide comments, condensed as the weapon reach came in (todo 46).
-  'src/main/session/SessionManager.ts': 3432,
+  // Lowered by `AutoInvoke`'s construction, out with the blessings' (`blessingsFor`, todo 41).
+  'src/main/session/SessionManager.ts': 3431,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   'src/main/world/WorldGraph.ts': 2385,

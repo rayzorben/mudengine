@@ -4404,7 +4404,7 @@ settings:
     invokeItemsLabel: Bless From an Item
     invokeItemsHint: Use the items ticked under Items That Bless on a character's page to cast the
       bless each grants, when it is not up and the mana is there. It spends no charge, but takes the
-      spell's mana.
+      spell's mana. Auto Choose Blessings uses the item it picks whether this is on or not.
     invokeLegend: Items That Bless
     invokeNote: Items in your inventory that cast a bless for ever when used. Tick the ones to use;
       a weapon or armour blesses only while it is worn or wielded.
@@ -5320,18 +5320,20 @@ automation:
     # Auto Choose Blessings (todo 10): what is kept up for the fight being
     # hunted, and why; a refusal names what is cast instead.
     chose: 'Auto Choose Blessings, for the fight at {room}: {picks}.'
-    choseNone: 'Auto Choose Blessings, for the fight at {room}: no bless spell pays for its mana
-      there, so none is kept up.'
+    choseNone: 'Auto Choose Blessings, for the fight at {room}: no bless spell or item pays for its
+      mana there, so none is kept up.'
     pickExp: '{spell}, about {gain} more exp an hour for {upkeep} mana an hour ({lasts})'
     pickSurvival: '{spell}, {gain} more fights in 100 survived for {upkeep} mana an hour ({lasts})'
     pickHealth: '{spell}, a fight costs {gain}% of maximum health less for {upkeep} mana an hour
       ({lasts})'
+    fromItem: '{spell} from your {item}'
     lastsMeasured: 'up {seconds}s, as measured'
     lastsRealm: "up {seconds}s by the world data's duration"
     passed: 'Not cast: {passed}.'
     passedOne: '{spell} ({why})'
-    refused: 'Auto Choose Blessings, for the fight at {room}: {why}. Keeping {kept}.'
-    refusedNoFight: 'Auto Choose Blessings: {why}. Keeping {kept}.'
+    refusal: '{why}. Keeping {kept}'
+    refused: 'Auto Choose Blessings, for the fight at {room}: {refused}.'
+    refusedNoFight: 'Auto Choose Blessings: {refused}.'
     keptLast: the last choice
     keptList: the bless spells listed in settings
     because: Auto Choose Blessings is on
@@ -5340,10 +5342,12 @@ automation:
     whyPending: the fight is still being worked out
     whyUnknownMana: how fast mana comes back is not known yet; it is measured while you stand out of
       combat short of full
-    whyNoCandidates: nothing in the spellbook is a bless spell the fight is weighed on
+    whyNoCandidates: nothing in the spellbook or the pack blesses anything the fight is weighed on
     whyUnknownCost: its chance to cast cannot be worked out
     whyUnknownDuration: how long it lasts is not known
     whyExclusive: it cancels a spell already chosen
+    whySameSpell: the same spell is already chosen
+    whyNotWorn: it blesses only while worn, and it is in your pack
     whyNoGain: not worth its mana here
     whyOverBudget: the heals would run short of mana
   castRound:

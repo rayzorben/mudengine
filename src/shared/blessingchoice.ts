@@ -13,12 +13,15 @@
  * by gain per mana an hour, each step weighed against the set so far. Mana
  * an hour is income (regeneration, and meditation in the cycle's wait) less
  * the heals the fight still costs; an unknown income is a refusal, never a
- * figure. See mudengine-automation › *Recovery*.
+ * figure. A carried item that blesses (`use <item>`) is a candidate beside
+ * the spellbook: the same spell from both is kept up once. See
+ * mudengine-automation › *Recovery*.
  *
  * Dependency-free, like everything in `shared/`.
  */
 import type { BlessingConfig } from './blessings';
 import { exclusive, type BlessingEffect } from './blessingeffects';
+import type { UiLookup } from './i18n';
 import type { WorldSpell } from './world';
 
 /** Why a blessing, or the whole choice, came to nothing. */
@@ -31,7 +34,7 @@ export const BLESSING_REFUSALS = [
   'pending',
   /** Mana regeneration is not known: no budget can be kept. */
   'unknown-mana',
-  /** No spell in the book weighs anything the fight reads. */
+  /** No spell in the book and no carried item weighs anything the fight reads. */
   'no-candidates',
   /** The cast's odds cannot be worked out, so neither can its upkeep. */
   'unknown-cost',
@@ -39,6 +42,10 @@ export const BLESSING_REFUSALS = [
   'unknown-duration',
   /** It takes off a blessing already chosen, or that one takes it off. */
   'exclusive',
+  /** The same spell is already chosen, from the spellbook or another item. */
+  'same-spell',
+  /** A weapon or armour that blesses only while worn, and it is in the pack. */
+  'not-worn',
   /** Up, the fight goes no better by enough to pay for it. */
   'no-gain',
   /** Its upkeep would leave the heals short of mana. */
@@ -47,9 +54,20 @@ export const BLESSING_REFUSALS = [
 
 export type BlessingRefusal = (typeof BLESSING_REFUSALS)[number];
 
+/**
+ * Where a blessing comes from: a spell in the book, cast by the player's own
+ * row where the list has one, or a carried item, used. `inHand` is false for
+ * a weapon or armour in the pack, which `use` refuses until it is worn.
+ */
+export type BlessingVia =
+  { kind: 'book'; row: BlessingConfig | null } | { kind: 'item'; item: string; inHand: boolean };
+
+/** How a chosen blessing is kept up: a row `Blessings` casts, or an item `AutoInvoke` uses. */
+export type BlessingCast = { kind: 'book'; row: BlessingConfig } | { kind: 'item'; item: string };
+
 /** A self blessing the character could keep up. */
 export interface BlessingCandidate {
-  /** The whole spell name, as a row casts it. */
+  /** Its identity: the whole spell name for a book spell, the item's name for an item. */
   name: string;
   spell: WorldSpell;
   effect: BlessingEffect;
@@ -57,8 +75,7 @@ export interface BlessingCandidate {
   cost: number | null;
   /** How long it stays up: measured on the wire, else the realm's `Dur` in ticks. */
   duration: { seconds: number; from: 'measured' | 'realm' } | null;
-  /** The player's own row for it, where the hand list has one. */
-  row: BlessingConfig | null;
+  via: BlessingVia;
 }
 
 /** One run of the fight: what the simulator measured over its trials. */
@@ -123,8 +140,7 @@ export interface BlessingPick {
   gain: number;
   /** Mana an hour it costs to keep up. */
   upkeepPerHour: number;
-  /** The row `Blessings` casts it by. */
-  row: BlessingConfig;
+  cast: BlessingCast;
 }
 
 export type BlessingChoice =
@@ -146,6 +162,49 @@ export type BlessingChoice =
  */
 export type BlessingMeasure = 'survival' | 'exp' | 'health';
 
+/**
+ * What Auto Choose Blessings last decided, as the Spells page draws it: a row
+ * per blessing kept up (what it adds, its upkeep, where it is cast from) and
+ * per one passed over (and why), or the refusal and what is kept instead.
+ * In words, since main composes them for the notice too.
+ */
+export interface BlessingChoiceView {
+  /** The room whose fight it was chosen for; null where nothing was hunted. */
+  room: string | null;
+  picks: string[];
+  passed: string[];
+  /** Why nothing was chosen, and what is cast instead; null where a choice was made. */
+  refused: string | null;
+}
+
+/** The last choice, for the Spells page; null while Auto Choose Blessings is off or has said nothing. */
+export interface BlessingChoiceReport {
+  view(): BlessingChoiceView | null;
+}
+
+/**
+ * The view as sentences: the choice and what was passed over, or the refusal.
+ * Main joins them into the notice; the Spells page draws one paragraph each.
+ */
+export function choiceSentences(
+  { room, picks, passed, refused }: BlessingChoiceView,
+  t: UiLookup
+): string[] {
+  if (refused !== null)
+    return [
+      room === null
+        ? t('automation.blessing.refusedNoFight', { refused })
+        : t('automation.blessing.refused', { room, refused })
+    ];
+  const chose =
+    picks.length === 0
+      ? t('automation.blessing.choseNone', { room: room ?? '' })
+      : t('automation.blessing.chose', { room: room ?? '', picks: picks.join('; ') });
+  return passed.length === 0
+    ? [chose]
+    : [chose, t('automation.blessing.passed', { passed: passed.join('; ') })];
+}
+
 interface Weighed {
   candidate: BlessingCandidate;
   upkeep: number;
@@ -162,7 +221,9 @@ export function chooseBlessings(input: BlessingChoiceInput): BlessingChoice {
   const passed = new Map<string, BlessingRefusal>();
   const eligible: Weighed[] = [];
   for (const candidate of input.candidates) {
-    if (candidate.cost === null) passed.set(candidate.name, 'unknown-cost');
+    if (candidate.via.kind === 'item' && !candidate.via.inHand)
+      passed.set(candidate.name, 'not-worn');
+    else if (candidate.cost === null) passed.set(candidate.name, 'unknown-cost');
     else if (candidate.duration === null || candidate.duration.seconds <= 0)
       passed.set(candidate.name, 'unknown-duration');
     else
@@ -206,8 +267,12 @@ export function chooseBlessings(input: BlessingChoiceInput): BlessingChoice {
     for (const weighed of eligible) {
       const { candidate } = weighed;
       if (picks.some((pick) => pick.candidate === candidate)) continue;
-      if (picks.some((pick) => exclusive(pick.candidate.spell, candidate.spell))) {
-        passed.set(candidate.name, 'exclusive');
+      const clash = clashOf(
+        candidate,
+        picks.map((pick) => pick.candidate)
+      );
+      if (clash !== null) {
+        passed.set(candidate.name, clash);
         continue;
       }
       const run = input.run([...picks.map((pick) => pick.candidate), candidate]);
@@ -242,7 +307,7 @@ export function chooseBlessings(input: BlessingChoiceInput): BlessingChoice {
       candidate,
       gain: best.gain,
       upkeepPerHour: best.weighed.upkeep,
-      row: rowFor(candidate, input)
+      cast: castFor(candidate, input)
     });
     upkeep += best.weighed.upkeep;
     current += best.gain;
@@ -313,21 +378,50 @@ function healsPerHour(input: BlessingChoiceInput, run: FightRun): number {
 }
 
 /**
- * The row a chosen blessing is cast by: the player's own where the hand list
- * has one, its mana floor raised to keep `healReserve` heals affordable after
- * the cast; otherwise a self row recast mid-fight, as a self row is by default.
+ * Why a candidate cannot join the set chosen so far, or null: the same spell
+ * is up once whatever casts it, and `RemovesSpell` takes one off the other
+ * whether a book or an item cast it.
  */
-function rowFor(candidate: BlessingCandidate, input: BlessingChoiceInput): BlessingConfig {
-  const max = input.manaMax;
-  const reserve = (candidate.cost ?? 0) + input.healReserve * (input.healCost ?? 0);
-  const floor = max === null || max <= 0 ? 0 : Math.min(1, reserve / max);
-  const own = candidate.row;
-  if (own !== null) return { ...own, minMana: Math.max(own.minMana, floor) };
-  return {
-    spell: candidate.name,
-    target: 'self',
-    minMana: floor,
-    prioritizeOverHeal: false,
-    inCombat: true
-  };
+function clashOf(
+  candidate: BlessingCandidate,
+  chosen: readonly BlessingCandidate[]
+): 'same-spell' | 'exclusive' | null {
+  if (chosen.some((each) => each.spell.id === candidate.spell.id)) return 'same-spell';
+  if (chosen.some((each) => exclusive(each.spell, candidate.spell))) return 'exclusive';
+  return null;
+}
+
+/**
+ * How a chosen blessing is kept up. An item is used by name. A book spell is
+ * cast by the player's own row where the hand list has one, its mana floor
+ * raised to keep `healReserve` heals affordable after the cast; otherwise by a
+ * self row recast mid-fight, as a self row is by default.
+ */
+function castFor(candidate: BlessingCandidate, input: BlessingChoiceInput): BlessingCast {
+  const { via } = candidate;
+  switch (via.kind) {
+    case 'item':
+      return { kind: 'item', item: via.item };
+    case 'book': {
+      const max = input.manaMax;
+      const reserve = (candidate.cost ?? 0) + input.healReserve * (input.healCost ?? 0);
+      const floor = max === null || max <= 0 ? 0 : Math.min(1, reserve / max);
+      const own = via.row;
+      const row: BlessingConfig =
+        own !== null
+          ? { ...own, minMana: Math.max(own.minMana, floor) }
+          : {
+              spell: candidate.name,
+              target: 'self',
+              minMana: floor,
+              prioritizeOverHeal: false,
+              inCombat: true
+            };
+      return { kind: 'book', row };
+    }
+    default: {
+      const never: never = via;
+      return never;
+    }
+  }
 }

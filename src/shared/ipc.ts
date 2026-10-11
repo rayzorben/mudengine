@@ -76,6 +76,7 @@ import type { GlobalDraft, LoginStepDraft, ProfileDraft, ServerDraft } from './d
 import type { RemoteGrant, RemoteName } from './remotes';
 import type { CureGates, SpellServes, SpellTargeting } from './spellcraft';
 import type { InvokeChoice } from './invoke';
+import type { BlessingChoiceView } from './blessingchoice';
 import type { ThemePreference } from './themes';
 import type { ProfileAccent } from './profiles';
 import type { LocateWord } from './locate';
@@ -965,6 +966,8 @@ export const Invoke = {
   wards: 'world:wards',
   /** What the inventory holds that can bless, for the Spells page's list. */
   invokeChoices: 'world:invoke-choices',
+  /** What Auto Choose Blessings last decided, for the Spells page (todo 41). */
+  blessingChoice: 'automation:blessing-choice',
   /** Realm rooms matching a name fragment, for the destination picker. */
   searchRooms: 'world:search',
   /** Every monster this realm names, for the priority list's picker. */
@@ -1602,6 +1605,12 @@ export interface IpcApi {
    * which is not an empty pack.
    */
   invokeChoices(session: SessionId): Promise<InvokeChoice[] | null>;
+  /**
+   * What Auto Choose Blessings last chose for this character and passed over,
+   * book and items alike, or why it chose nothing (todo 41). Null while the
+   * switch is off or nothing has been decided yet.
+   */
+  blessingChoice(session: SessionId): Promise<BlessingChoiceView | null>;
   /**
    * Who this character is, in the realm's own row ids, for deciding what may
    * go on.

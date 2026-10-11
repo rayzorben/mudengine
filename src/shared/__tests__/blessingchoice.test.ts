@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BLESSING_REFUSALS,
+  choiceSentences,
   chooseBlessings,
   type BlessingCandidate,
   type BlessingChoiceInput,
@@ -23,8 +24,13 @@ function candidate(
     effect: { ...NO_EFFECT, ...effect },
     cost,
     duration: seconds === null ? null : { seconds, from: 'realm' },
-    row: null
+    via: { kind: 'book', row: null }
   };
+}
+
+/** The same spell, used from a carried item. */
+function fromItem(of: BlessingCandidate, item: string, inHand = true): BlessingCandidate {
+  return { ...of, name: item, via: { kind: 'item', item, inHand } };
 }
 
 /**
@@ -181,11 +187,37 @@ describe('choosing the blessings that pay', () => {
       input({ candidates: [candidate('tortoise', { armourClass: 2 }, 4)], healCost: 6 })
     );
     if (choice.kind !== 'chosen') throw new Error(choice.why);
-    expect(choice.picks[0]!.row).toMatchObject({
-      spell: 'tortoise',
-      target: 'self',
-      minMana: (4 + 2 * 6) / 40
+    expect(choice.picks[0]!.cast).toMatchObject({
+      kind: 'book',
+      row: { spell: 'tortoise', target: 'self', minMana: (4 + 2 * 6) / 40 }
     });
+  });
+
+  it('keeps one spell up once, whether the book or an item casts it', () => {
+    const book = candidate('tortoise', { armourClass: 2 }, 3);
+    const choice = chooseBlessings(
+      input({ candidates: [book, fromItem({ ...book, cost: 2 }, 'shimmering longsword')] })
+    );
+    if (choice.kind !== 'chosen') throw new Error(choice.why);
+    // The item's cast is cheaper here, so it is taken and the book's is passed.
+    expect(choice.picks.map((pick) => pick.cast)).toEqual([
+      { kind: 'item', item: 'shimmering longsword' }
+    ]);
+    expect(choice.passed).toEqual([{ name: 'tortoise', why: 'same-spell' }]);
+  });
+
+  it('passes over a weapon that blesses while it is in the pack', () => {
+    const worn = fromItem(candidate('tiger', { maxDamage: 3 }, 3), 'black flail');
+    const packed = fromItem(
+      candidate('tortoise', { armourClass: 2 }, 3),
+      'large silvery cross',
+      false
+    );
+    const choice = chooseBlessings(input({ candidates: [worn, packed] }));
+    if (choice.kind !== 'chosen') throw new Error(choice.why);
+    // Positive control: the worn one is weighed and taken.
+    expect(choice.picks.map((pick) => pick.candidate.name)).toEqual(['black flail']);
+    expect(choice.passed).toEqual([{ name: 'large silvery cross', why: 'not-worn' }]);
   });
 
   it('waits while a fight it needs is still being run', () => {
@@ -229,5 +261,32 @@ describe('choosing the blessings that pay', () => {
 
   it('keeps its refusals in one closed list', () => {
     expect(new Set(BLESSING_REFUSALS).size).toBe(BLESSING_REFUSALS.length);
+  });
+});
+
+/* Todo 41: the notice and the Spells page are made from the same rows. */
+describe('the choice in sentences', () => {
+  // Keys and params only, never the wording.
+  const t = (key: string, params?: Readonly<Record<string, string | number>>): string =>
+    `${key}${JSON.stringify(params ?? {})}`;
+
+  it('is the choice, then what was passed over', () => {
+    const view = { room: 'Den', picks: ['a', 'b'], passed: ['c'], refused: null };
+    expect(choiceSentences(view, t)).toEqual([
+      t('automation.blessing.chose', { room: 'Den', picks: 'a; b' }),
+      t('automation.blessing.passed', { passed: 'c' })
+    ]);
+    // Nothing passed over is one sentence.
+    expect(choiceSentences({ ...view, passed: [] }, t)).toHaveLength(1);
+  });
+
+  it('is the refusal alone, with the room where there is a fight', () => {
+    const refusal = { room: null, picks: [], passed: [], refused: 'why' };
+    expect(choiceSentences(refusal, t)).toEqual([
+      t('automation.blessing.refusedNoFight', { refused: 'why' })
+    ]);
+    expect(choiceSentences({ ...refusal, room: 'Den' }, t)).toEqual([
+      t('automation.blessing.refused', { room: 'Den', refused: 'why' })
+    ]);
   });
 });

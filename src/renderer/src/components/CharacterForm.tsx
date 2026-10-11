@@ -893,10 +893,10 @@ export default function CharacterForm({
             <legend>{t('settings.spells.invokeLegend')}</legend>
             <InvokeFields
               chosen={form.spellInvokeWith}
-              choices={realm.invokeChoices}
               enabled={form.spellInvokeItems}
               onChosen={(spellInvokeWith) => patch({ spellInvokeWith })}
               onEnabled={(spellInvokeItems) => patch({ spellInvokeItems })}
+              realm={realm}
             />
           </fieldset>
         </SettingsSection>

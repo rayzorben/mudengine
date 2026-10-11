@@ -827,8 +827,7 @@ export default function App() {
       // The shelf of shipped loops, for the Movement tab, asked when that picker opens:
       // four hundred loops, and most visits to that screen are about a password.
       loadLoops: () => api.loopCatalogue(),
-      // And the trainers that will take a character, for the Train tab's
-      // picker. Addressed: the bands are per level and per class.
+      // And the trainers that will take a character, for the Train tab, by level and class.
       loadTrainers: (session: SessionId) => api.trainers(session),
       loadBanks: (session: SessionId) => api.banks(session),
       // And what the realm says would serve each condition, for the potion
@@ -840,6 +839,7 @@ export default function App() {
       loadMobNames: (session: SessionId) => api.mobNames(session),
       // And what the inventory holds that can bless, for the Spells page.
       loadInvokeChoices: (session: SessionId) => api.invokeChoices(session),
+      loadBlessingChoice: (session: SessionId) => api.blessingChoice(session),
       loadChosenWords: (session: SessionId) => api.chosenWords(session)
     }),
     [api, reveal]

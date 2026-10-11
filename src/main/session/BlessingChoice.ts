@@ -1,44 +1,47 @@
 /**
  * Which self blessings are kept up under `automation.spells.autoChooseBlessings`
  * (todo 10): the fight being hunted (AutoHunt's spot, else the lair in the
- * room, else the last choice stands), the spellbook's self blessings as
- * candidates, and `chooseBlessings` over runs of that fight, each set up in
- * `survivalSliceMs` slices and run by the simulator, as `OddsBook` runs them.
- * Every run is on the bare character (`bareStateOf`), so a buff going up or
- * down asks for none again.
- * `blessingsFor` builds `Blessings` with this as its `chosen` port. See
- * mudengine-automation › *Recovery*.
+ * room, else the last choice stands), the spellbook's self blessings and the
+ * carried items that bless as candidates (`blessingCandidates.ts`), and
+ * `chooseBlessings` over runs of that fight, each set up in `survivalSliceMs`
+ * slices and run by the simulator, as `OddsBook` runs them. Every run is on
+ * the bare character (`bareStateOf`), so a buff going up or down asks for
+ * none again. `blessingsFor` builds `Blessings` and `AutoInvoke` with this as
+ * their source. See mudengine-automation › *Recovery*.
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import { AutoInvoke, type InvokeSources } from '../automation/AutoInvoke';
 import { Blessings, type BlessingsDeps } from '../automation/Blessings';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
-import { choiceWords, refusalWords } from './blessingWords';
+import { bookCandidates, itemCandidates, type CandidatePricing } from './blessingCandidates';
+import { choiceView, refusalView } from './blessingWords';
 import type { Errands } from './Errands';
 import type { FightSetup } from './FightSetup';
 import type { SafetyDecision } from '../../shared/automation';
 import type { BlessingConfig, BlessingSource } from '../../shared/blessings';
 import {
+  choiceSentences,
   chooseBlessings,
   type BlessingCandidate,
   type BlessingChoice as Choice,
+  type BlessingChoiceReport,
+  type BlessingChoiceView,
   type BlessingRefusal,
   type FightRun,
   type ManaIncome,
   type SpotCycle
 } from '../../shared/blessingchoice';
-import { bareStateOf, effectOf, sumEffects } from '../../shared/blessingeffects';
+import { bareStateOf, sumEffects } from '../../shared/blessingeffects';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { atSpeed, sittingPerSecond, type HuntingSpot } from '../../shared/hunting';
+import type { ChosenItems } from '../../shared/invoke';
 import { measuredManaRate, NO_MANA_WATCH, watchMana, type ManaWatch } from '../../shared/manaregen';
-import { effectSeconds, scaledDuration } from '../../shared/menace';
-import { castOdds } from '../../shared/prowess';
-import { castsOnSelf, sameSpell, spellTargeting } from '../../shared/spellcraft';
 import { statedNow } from '../../shared/stated';
 import type { FightSimulator } from '../../shared/simulator';
 import type { Survival, SurvivalInput } from '../../shared/survival';
@@ -47,7 +50,9 @@ import { lairKey, parseLair, roomId, type WorldRoom, type WorldSpell } from '../
 
 export interface BlessingChoiceParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
-  readonly world: Pick<WorldGraph, 'spellNamed' | 'byId' | 'lairEntities'> | undefined;
+  readonly world:
+    | Pick<WorldGraph, 'spellNamed' | 'byId' | 'lairEntities' | 'itemsNamed' | 'spellById'>
+    | undefined;
   readonly errands: Pick<Errands, 'fitness' | 'realmClass' | 'realmSpeed'>;
   readonly setup: Pick<FightSetup, 'blessed' | 'foes' | 'settingsKey'>;
   readonly hunt: Pick<AutoHunt, 'quarry'>;
@@ -79,7 +84,9 @@ interface Job {
 
 const ACTION = 'bless';
 
-export class BlessingChoice implements SessionModule, BlessingSource {
+export class BlessingChoice
+  implements SessionModule, BlessingSource, ChosenItems, BlessingChoiceReport
+{
   private readonly tracker: BlessingChoiceParts['tracker'];
   private readonly world: BlessingChoiceParts['world'];
   private readonly errands: BlessingChoiceParts['errands'];
@@ -88,6 +95,8 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   private readonly simulator: FightSimulator;
   /** The rows chosen, or null where the list stands. */
   private rows: readonly BlessingConfig[] | null = null;
+  /** The carried items chosen, or null where `invokeWith` stands. */
+  private items: readonly string[] | null = null;
   /** The last fight chosen for, kept while nothing is hunted. */
   private fight: Fight | null = null;
   /** What the last choice was made from; the same again asks nothing. */
@@ -101,6 +110,8 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   private mana: ManaWatch = NO_MANA_WATCH;
   /** The last thing said, so a refusal or a choice is said once. */
   private said: string | null = null;
+  /** The last choice or refusal, for the Spells page. */
+  private shown: BlessingChoiceView | null = null;
 
   constructor(
     parts: BlessingChoiceParts,
@@ -117,6 +128,22 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   /** The rows `Blessings` keeps up while the switch is on; null keeps the list. */
   chosen(): readonly BlessingConfig[] | null {
     return this.rows;
+  }
+
+  /**
+   * The items `AutoInvoke` uses while the switch is on; null keeps
+   * `invokeWith`. Asked here rather than in `AutoInvoke`, which reads only its
+   * own two settings.
+   */
+  chosenItems(): readonly string[] | null {
+    const config = this.session.config();
+    return config.enabled && config.spells.autoChooseBlessings ? this.items : null;
+  }
+
+  /** The last choice or refusal while the switch is on; null while it is off. */
+  view(): BlessingChoiceView | null {
+    const config = this.session.config();
+    return config.enabled && config.spells.autoChooseBlessings ? this.shown : null;
   }
 
   /** Every character change, beside the odds book: nothing runs while the switch is off. */
@@ -137,7 +164,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
 
     const spellOf = (name: string): WorldSpell | null => world.spellNamed(name) ?? null;
     const bare = bareStateOf(state, spellOf);
-    const candidates = this.candidatesOf(bare, config, spellOf);
+    const candidates = this.candidatesOf(bare, config, spellOf, world);
     const income = incomeOf(state, this.mana, this.errands.realmSpeed);
     const base = [
       this.errands.fitness(bare),
@@ -150,7 +177,7 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       this.errands.realmSpeed,
       JSON.stringify(fight.cycle),
       JSON.stringify(income),
-      JSON.stringify(candidates.map(({ name, cost, duration, row }) => [name, cost, duration, row]))
+      JSON.stringify(candidates.map(({ name, cost, duration, via }) => [name, cost, duration, via]))
     ].join('#');
     if (context === this.context && this.jobs.size === 0 && this.running.size === 0) return;
     this.context = context;
@@ -175,12 +202,14 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   reset(): void {
     this.cancel();
     this.rows = null;
+    this.items = null;
     this.fight = null;
     this.context = null;
     this.runs.clear();
     this.jobs.clear();
     this.mana = NO_MANA_WATCH;
     this.said = null;
+    this.shown = null;
   }
 
   dispose(): void {
@@ -206,45 +235,30 @@ export class BlessingChoice implements SessionModule, BlessingSource {
   }
 
   /**
-   * The spellbook's blessings this character can cast on itself at its
-   * level and that weigh something, each with its cost and how long it lasts.
+   * The spellbook's blessings this character can cast on itself at its level,
+   * and the carried items that bless, each with its cost and how long it lasts.
    */
   private candidatesOf(
     bare: CharacterState,
     config: AutomationConfig,
-    spellOf: (name: string) => WorldSpell | null
+    spellOf: (name: string) => WorldSpell | null,
+    world: NonNullable<BlessingChoiceParts['world']>
   ): BlessingCandidate[] {
     const level = bare.progress.level;
-    if (bare.spellbook === null || level === null) return [];
+    if (level === null) return [];
     const { combat, magery, crits, family } = this.errands.realmClass();
-    const sheet = prowessSheetOf(bare, { combat, magery, crits });
+    const pricing: CandidatePricing = {
+      level,
+      sheet: prowessSheetOf(bare, { combat, magery, crits }),
+      family,
+      speed: this.errands.realmSpeed,
+      learnedDuration: (spell) => this.session.learnedDuration(spell)
+    };
     const own = config.spells.blessings.filter((row) => row.target === 'self');
-    return bare.spellbook.flatMap((known): BlessingCandidate[] => {
-      const spell = spellOf(known.name);
-      if (spell === null || (known.level ?? spell.level ?? 0) > level) return [];
-      const aim = spellTargeting(spell.targets);
-      if (aim === 'unknown' || !castsOnSelf(aim)) return [];
-      const effect = effectOf(spell, level);
-      if (effect === null) return [];
-      const measured = this.session.learnedDuration(known.name);
-      const ticks = scaledDuration(spell, level);
-      const row = own.find((each) => sameSpell(each.spell, known.name, bare.spellbook, spellOf));
-      return [
-        {
-          name: known.name,
-          spell,
-          effect,
-          cost: castOdds(spell, sheet, family)?.expectedMana?.value ?? null,
-          duration:
-            measured !== null && measured > 0
-              ? { seconds: measured, from: 'measured' }
-              : ticks > 0
-                ? { seconds: effectSeconds(ticks, this.errands.realmSpeed), from: 'realm' }
-                : null,
-          row: row ?? null
-        }
-      ];
-    });
+    return [
+      ...bookCandidates(bare, pricing, own, spellOf),
+      ...itemCandidates(bare, pricing, world)
+    ];
   }
 
   /** A run kept, or `pending` with the run queued for the next slice. */
@@ -342,17 +356,19 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       if (choice.why !== 'pending') this.refuse(choice.why, fight);
       return;
     }
-    this.rows = choice.picks.map((pick) => pick.row);
-    this.say(choiceWords(choice, fight.room.name), true, undefined);
+    this.rows = choice.picks.flatMap(({ cast }) => (cast.kind === 'book' ? [cast.row] : []));
+    this.items = choice.picks.flatMap(({ cast }) => (cast.kind === 'item' ? [cast.item] : []));
+    this.say(choiceView(choice, fight.room.name), true);
   }
 
   /** Refused: the last choice stands where there is one, the list otherwise. */
   private refuse(why: BlessingRefusal, fight: Fight | null): void {
-    const { message, why: words } = refusalWords(why, fight?.room.name ?? null, this.rows !== null);
-    this.say(message, false, words);
+    this.say(refusalView(why, fight?.room.name ?? null, this.rows !== null), false);
   }
 
-  private say(message: string, acted: boolean, refused: string | undefined): void {
+  private say(view: BlessingChoiceView, acted: boolean): void {
+    const message = choiceSentences(view, t).join(' ');
+    this.shown = view;
     if (this.said === message) return;
     this.said = message;
     this.session.notice(message);
@@ -361,14 +377,15 @@ export class BlessingChoice implements SessionModule, BlessingSource {
       action: ACTION,
       because: t('automation.blessing.because'),
       acted,
-      ...(refused === undefined ? {} : { refused })
+      ...(view.refused === null ? {} : { refused: view.refused })
     });
   }
 }
 
 /**
- * `Blessings` with the choice as its source, built together as `fightBook`
- * builds the odds book with its setup.
+ * `Blessings` and `AutoInvoke` with the choice as their source, built together
+ * as `fightBook` builds the odds book with its setup, and the choice as the
+ * Spells page reads it.
  */
 export function blessingsFor(
   parts: BlessingChoiceParts,
@@ -378,7 +395,7 @@ export function blessingsFor(
     durations(): Readonly<Record<string, number>>;
   },
   automation: AutomationConfig
-): Blessings {
+): { blessings: Blessings; invoke: AutoInvoke; choice: BlessingChoiceReport } {
   /*
    * The measured duration of this character's own cast, null before any
    * measurement (the shipped watchdog covers that). The one fact here that
@@ -388,11 +405,32 @@ export function blessingsFor(
     session.durations()[spell.trim().toLowerCase()] ?? null;
   const source = new BlessingChoice(parts, { ...session, learnedDuration });
   const { queue, ...rest } = deps;
-  return new Blessings(automation.spells, automation.enabled, queue, {
+  // The realm `AutoInvoke` reads: the choice's own, at the point of use.
+  const { world } = parts;
+  const invoke: InvokeSources = {
+    itemsNamed: (names) => world?.itemsNamed(names) ?? {},
+    spellById: (id) => world?.spellById(id) ?? null,
+    spellNamed: (name) => world?.spellNamed(name) ?? null
+  };
+  const blessings = new Blessings(automation.spells, automation.enabled, queue, {
     ...rest,
     learnedDuration,
     source
   });
+  return {
+    blessings,
+    choice: source,
+    // `undefined` keeps AutoInvoke's own clock, as Blessings' `now` is left to its default.
+    invoke: new AutoInvoke(
+      automation.spells,
+      automation.enabled,
+      queue,
+      invoke,
+      rest.castGate,
+      undefined,
+      source
+    )
+  };
 }
 
 function fightAt(room: WorldRoom, cycle: SpotCycle | null): Fight {

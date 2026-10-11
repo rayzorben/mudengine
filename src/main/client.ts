@@ -2608,6 +2608,9 @@ function registerIpc(): void {
     if (!world || inventory === undefined || inventory.listedAt === null) return null;
     return invokeChoices(inventory.items, world);
   });
+  handle(Invoke.blessingChoice, (_caller, session: SessionId) => {
+    return host?.get(session)?.manager.blessingChoice.view() ?? null;
+  });
   handle(Invoke.roomBrief, (_caller, session: SessionId, map: number, room: number) => {
     const world = worldFor(session);
     // A realm with no world loaded knows nothing about any room, which is the
