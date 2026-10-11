@@ -1566,14 +1566,12 @@ export class SessionManager {
         realmSpell,
         onTheGround,
         castGate: this.castRound,
+        due: this.hostTrips,
         combat: this.combat,
-        charges
-      },
-      {
-        ...reports,
-        config: () => this.automationConfig,
+        charges,
         durations: () => this.belongings.recallSpellDurations()
       },
+      { ...reports, config: () => this.automationConfig },
       automation
     ));
     this.appraisal = new Appraisal(

@@ -5610,6 +5610,7 @@ automation:
       many: '{token} has {uses} uses left.'
     usesUnread: '{token}: no uses left were read; it will be tried.'
     roomNotClear: Full, but the monsters here stay; trying the next room.
+    blessingsHeld: 'Full. No blessings on you until {token} is used: it casts negate magic, which takes them off.'
     reasonUse: 'using {token} to go to the bank'
     didNotTake: '{token} did not take the character anywhere'
     toBank: 'Walking to {bank}.'

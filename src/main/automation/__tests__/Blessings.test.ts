@@ -115,6 +115,33 @@ describe('keeping a blessing up on this character', () => {
   });
 
   /*
+   * A cash run's token casts negate magic, which takes every spell off: out
+   * of a fight nothing goes out while one is next, and the recast goes once
+   * it has landed. Mid-fight the round's blessing still goes.
+   */
+  it('casts nothing out of a fight while a token that negates is next', () => {
+    const due = { negateDue: true };
+    const blessings = new Blessings(spells([armour]), true, queue, { ...standing, due });
+    blessings.onCharacter(state());
+    vi.advanceTimersByTime(120_000);
+    expect(sent).toEqual([]);
+    blessings.onCharacter(state({ inCombat: true }));
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+
+  it('recasts once the token has landed', () => {
+    const due = { negateDue: true };
+    const blessings = new Blessings(spells([armour]), true, queue, { ...standing, due });
+    blessings.onCharacter(state());
+    expect(sent).toEqual([]);
+    due.negateDue = false;
+    blessings.onCharacter(state());
+    expect(sent).toEqual(['protection']);
+    blessings.dispose();
+  });
+
+  /*
    * `You feel lucky!` is five spells, and a buff established from that
    * sentence alone is named for one and carries the rest: a configured
    * blessing among the rest is up, and is not recast on the retry floor.
@@ -347,6 +374,15 @@ describe('blessing the party', () => {
     vi.advanceTimersByTime(24_000);
     expect(sent).toHaveLength(3);
     expect(sent[2]).toBe('bless Soul');
+    blessings.dispose();
+  });
+
+  it('blesses a member while a token that negates is next: it lands on this character only', () => {
+    const due = { negateDue: true };
+    const self = { ...armour, inCombat: false };
+    const blessings = new Blessings(spells([self, bless]), true, queue, { ...standing, due });
+    blessings.onCharacter(state({ party: party('Soul') }));
+    expect(sent).toEqual(['bless Soul']);
     blessings.dispose();
   });
 

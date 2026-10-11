@@ -401,6 +401,14 @@ export const DESC_MESSAGE_ABILITY = 115;
 export const RECHARGE_ABILITY = 121;
 
 /**
+ * `DispellMagic`: at 0, every spell on whoever it lands on comes off
+ * (`Spell.cs:1601`); any other value takes off the spells granting that
+ * ability, as cure blindness's 107. `negate magic` (310) is the 0 a recall
+ * token's script casts.
+ */
+export const DISPELL_MAGIC_ABILITY = 73;
+
+/**
  * What a character can *do*, from the realm's own class and race rows
  * (todo 22, 2026-09-12).
  *

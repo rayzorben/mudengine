@@ -59,6 +59,7 @@ import { t } from '../app/i18n';
 import type { ActiveBuff, CharacterState } from '../../shared/character';
 import type { BlessingConfig, BlessingSource } from '../../shared/blessings';
 import type { SpellsConfig } from '../../shared/config';
+import { NO_NEGATE_DUE, type NegateDue } from '../../shared/cashRun';
 import type { Block } from '../../shared/blocks';
 import {
   gatedCast,
@@ -120,6 +121,13 @@ export interface BlessingsDeps {
    * it would read a character down as standing.
    */
   readonly onTheGround: () => boolean;
+  /**
+   * Whether a use that takes every spell off the character is next (a cash
+   * run's token, `CashRun.negateDue`): out of a fight no self blessing is
+   * cast until it has landed, since negate magic would take it off. A party
+   * member's is cast as ever. Omitted, never.
+   */
+  readonly due?: NegateDue;
   /** The one heal, blessing or cure a round, asked at the send (`CastRound`); omitted, none. */
   readonly castGate?: CastGate;
   /**
@@ -151,6 +159,7 @@ export class Blessings implements SessionModule {
   private readonly learnedDuration: (spell: string) => number | null;
   private readonly realmSpell: (name: string) => WorldSpell | null;
   private readonly onTheGround: () => boolean;
+  private readonly due: NegateDue;
   private readonly gate: CastGate;
   private readonly source: BlessingSource | null;
 
@@ -164,6 +173,7 @@ export class Blessings implements SessionModule {
     this.learnedDuration = deps.learnedDuration ?? (() => null);
     this.realmSpell = deps.realmSpell ?? (() => null);
     this.onTheGround = deps.onTheGround;
+    this.due = deps.due ?? NO_NEGATE_DUE;
     this.gate = deps.castGate ?? OPEN_CAST_GATE;
     this.source = deps.source ?? null;
     // The toolbar's Auto-Bless switch, under the master one — as `configure`
@@ -375,6 +385,8 @@ export class Blessings implements SessionModule {
   /** Proposes one self recast if this entry is due; true when it did. */
   private castSelf(entry: BlessingConfig, state: CharacterState, now: number): boolean {
     if (state.inCombat && !entry.inCombat) return false;
+    // Negate magic lands on this character only; mid-fight the round's blessing goes as ever.
+    if (!state.inCombat && this.due.negateDue) return false;
     if (!manaAtLeast(state, entry.minMana)) return false;
 
     // Under its name or any other the establishing sentence could have

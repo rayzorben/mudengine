@@ -16,6 +16,7 @@ import {
   placedItems,
   rowProfile
 } from '../buildRealm';
+import { DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from '../../../shared/abilities';
 import { realmKind } from '../RealmSource';
 import { slotRestocks } from '../supplyIndex';
 import type { RealmSource, RealmTable } from '../RealmSource';
@@ -186,6 +187,51 @@ describe('converting a realm', () => {
       undefined
     ]);
     expect(lines({ Rooms: rooms }).some((r) => 'nf' in r)).toBe(false);
+  });
+
+  /*
+   * Format 63. Token of Silvermere's spell runs block 3281, which casts 310,
+   * negate magic (DispellMagic 0, friendly), ahead of its teleport.
+   */
+  it('marks a spell whose script casts negate magic on the user', () => {
+    const built = buildRealm(
+      fake({
+        Rooms: [room()],
+        Spells: [
+          {
+            Number: 5054,
+            Name: 'token of silvermere spell',
+            'Abil-0': HAZARD_ABILITY.textBlock,
+            'AbilVal-0': 3281,
+            Targets: 6
+          },
+          {
+            Number: 310,
+            Name: 'negate magic',
+            'Abil-0': DISPELL_MAGIC_ABILITY,
+            'AbilVal-0': 0,
+            Targets: 2
+          },
+          {
+            Number: 311,
+            Name: 'cure blindness',
+            'Abil-0': DISPELL_MAGIC_ABILITY,
+            'AbilVal-0': 107,
+            Targets: 2
+          }
+        ],
+        TBInfo: [
+          {
+            Number: 3281,
+            Action: 'minlevel 25 3507:price 200000 4146:adddelay 10:cast 310:teleport 1813 1',
+            LinkTo: 0
+          }
+        ]
+      }),
+      today
+    );
+    const negates = Object.fromEntries(built.header.spells.map((spell) => [spell.id, spell.ng]));
+    expect(negates).toEqual({ 310: 1, 311: undefined, 5054: 1 });
   });
 
   /*

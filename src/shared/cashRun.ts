@@ -29,7 +29,20 @@ export interface CashRunToken {
   lands: string;
   /** The copper one use takes from cash on hand, or null where the realm states none. */
   fare: number | null;
+  /** Whether its use takes every spell off the character: negate magic, ahead of the trip. */
+  negates: boolean;
 }
+
+/**
+ * Whether a use that takes every spell off the character is next (a cash
+ * run's token, `CashRun.negateDue`): a self blessing cast now is wasted.
+ */
+export interface NegateDue {
+  readonly negateDue: boolean;
+}
+
+/** Nothing that negates is ever due: a module built without a cash run. */
+export const NO_NEGATE_DUE: NegateDue = { negateDue: false };
 
 /** The dialog's ask, or null where any part is not one. */
 export function asCashRunAsk(value: unknown): CashRunAsk | null {

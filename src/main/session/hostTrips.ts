@@ -23,6 +23,7 @@ import type { WorldGraph } from '../world/WorldGraph';
 import { stashFetchTrip, type CollectModules, type CollectParts } from './collectPlanner';
 import { legPlanner } from './legPlanner';
 import { wearPlan } from '../../shared/gear';
+import { useNegates } from '../../shared/items';
 import { counterIn, landsFromAnywhere, roomAddress, roomId, type RoomId } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -39,6 +40,11 @@ export class HostTrips implements SessionModule {
 
   get busy(): boolean {
     return this.stash.busy || this.sell.busy || this.gear.busy || this.cash.busy;
+  }
+
+  /** A token that casts negate magic is next (`CashRun.negateDue`). */
+  get negateDue(): boolean {
+    return this.cash.negateDue;
   }
 
   /** The player's Stop: a cash run ends with the lap it walks. */
@@ -83,7 +89,9 @@ export interface HostTripParts extends CollectParts {
   /** The looks at a token and their answers (`ItemCharges`). */
   charges: Pick<ChargeLedger, 'look'>;
   modules(): CollectModules & {
-    world: Pick<WorldGraph, 'byId' | 'shop' | 'item' | 'banks' | 'itemIdsCarried'> | undefined;
+    world:
+      | Pick<WorldGraph, 'byId' | 'shop' | 'item' | 'banks' | 'itemIdsCarried' | 'spellById'>
+      | undefined;
     travel: Pick<
       Travel,
       'escaping' | 'combatOffForRun' | 'combatOnAfterRun' | 'switchedOnFor' | 'startMoving'
@@ -180,7 +188,8 @@ function cashRunPlanner(parts: HostTripParts): CashRunPlanner {
         const lands =
           item !== undefined && landsFromAnywhere(item) ? graph.byId(item.lands) : undefined;
         if (item === undefined || lands === undefined) return [];
-        return [{ item: id, name: item.name, lands: lands.name, fare: item.fare ?? null }];
+        const negates = useNegates(item, (spell) => graph.spellById(spell));
+        return [{ item: id, name: item.name, lands: lands.name, fare: item.fare ?? null, negates }];
       });
     },
     nearestBank: () => {

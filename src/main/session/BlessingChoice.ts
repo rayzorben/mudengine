@@ -397,22 +397,21 @@ export function blessingsFor(
     readonly combat: Pick<AutoCombat, 'quarry'>;
     /** The uses left on each charged item (todo 44). */
     readonly charges: InvokeSources['charges'];
-  },
-  session: Omit<BlessingChoiceSession, 'learnedDuration'> & {
     /** `Belongings.recallSpellDurations`, read at the point of use: the store arrives with `useRealm`. */
     durations(): Readonly<Record<string, number>>;
   },
+  session: Omit<BlessingChoiceSession, 'learnedDuration'>,
   automation: AutomationConfig
 ): { blessings: Blessings; invoke: AutoInvoke; choice: BlessingChoiceReport } {
+  const { queue, combat, charges, durations, ...rest } = deps;
   /*
    * The measured duration of this character's own cast, null before any
    * measurement (the shipped watchdog covers that). The one fact here that
    * is not the realm's, which is why it is still its own.
    */
   const learnedDuration = (spell: string): number | null =>
-    session.durations()[spell.trim().toLowerCase()] ?? null;
+    durations()[spell.trim().toLowerCase()] ?? null;
   const source = new BlessingChoice(parts, { ...session, learnedDuration });
-  const { queue, combat, charges, ...rest } = deps;
   // The realm `AutoInvoke` reads: the choice's own, at the point of use.
   const { world, errands, tracker } = parts;
   const invoke: InvokeSources = {
@@ -440,7 +439,8 @@ export function blessingsFor(
       rest.castGate,
       undefined,
       source,
-      { decided: session.decided, notice: session.notice }
+      { decided: session.decided, notice: session.notice },
+      rest.due
     )
   };
 }

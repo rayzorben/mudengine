@@ -28,7 +28,7 @@
  * it imports nothing from here, which `module-cycle.test.ts` holds.
  */
 
-import { HAZARD_ABILITY } from './abilities';
+import { DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from './abilities';
 import { CURES, type Cure, type SpellsConfig } from './config';
 import type { WorldSpell } from './world';
 
@@ -205,7 +205,6 @@ export function castWord(
 
 /** `Abil-n` ids, as `abilities.ts` names them. */
 const CURE_POISON = 20;
-const DISPELL_MAGIC = 73;
 const POISON = 19;
 const BLIND_USER = 107;
 const REMOVES_SPELL = 122;
@@ -286,8 +285,8 @@ export function spellServes(
     if (id === HAZARD_ABILITY.endCast) endsIn = value;
     if (id === HEALS) serves.hp = true;
     if (id === CURE_POISON) serves.poisoned = true;
-    if (id === DISPELL_MAGIC && value === POISON) serves.poisoned = true;
-    if (id === DISPELL_MAGIC && value === BLIND_USER) serves.blind = true;
+    if (id === DISPELL_MAGIC_ABILITY && value === POISON) serves.poisoned = true;
+    if (id === DISPELL_MAGIC_ABILITY && value === BLIND_USER) serves.blind = true;
     if (id === REMOVES_SPELL) serves.diseased = true;
     if (id === FREEDOM) serves.held = true;
   }
