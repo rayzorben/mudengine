@@ -428,7 +428,8 @@ export function blessingsFor(
       invoke,
       rest.castGate,
       undefined,
-      source
+      source,
+      { decided: session.decided }
     )
   };
 }

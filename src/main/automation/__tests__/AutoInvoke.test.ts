@@ -6,6 +6,9 @@ import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../..
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { wireItem } from '../../../shared/entities';
 import type { WorldItem, WorldSpell } from '../../../shared/world';
+import type { SafetyDecision } from '../../../shared/automation';
+import type { BlockType } from '../../../shared/blocks';
+import { blockOf } from '../../../shared/__tests__/blocks';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -323,5 +326,120 @@ describe('asking a carried item for its blessing', () => {
     run(over).consider(state({ buffs: [{ spell: 'zeal', by: null, appliedAt: 0 }] }));
     vi.advanceTimersByTime(200);
     expect(sent).toEqual([]);
+  });
+});
+
+/*
+ * The server's answer to a `use` (todo 43). The sentences are `UseCommand.cs`
+ * and `Player.InitiateSpell` / `TryInvokeSpell`; none is captured yet.
+ */
+describe('reading the answer to a use', () => {
+  const answer = (type: BlockType, groups: Record<string, string> = {}) =>
+    blockOf(type, '', groups, Date.now());
+
+  /** Sends one `use`, answers it, and asks again a round later. */
+  function answered(
+    type: BlockType,
+    groups: Record<string, string> = {},
+    over: Partial<InvokeSources> = {}
+  ) {
+    const decided: SafetyDecision[] = [];
+    const invoke = new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources(over),
+      undefined,
+      undefined,
+      undefined,
+      { decided: (decision) => decided.push(decision) }
+    );
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+    invoke.onBlock(answer(type, groups), state());
+    vi.advanceTimersByTime(5_000);
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    return { invoke, decided };
+  }
+
+  // The positive control for every hold below: unanswered, the floor holds it.
+  it('waits out the retry floor when nothing answers', () => {
+    answered('room-name');
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  it('uses it again next round after a failed roll', () => {
+    const { decided } = answered('spell-failed', { spell: 'weapon major bless' });
+    expect(sent).toEqual(['use shimmering longsword', 'use shimmering longsword']);
+    expect(decided).toEqual([]);
+  });
+
+  it('reads nothing after the use has landed', () => {
+    const { invoke } = answered('spell-onset');
+    invoke.onBlock(answer('spell-short-of-mana'), state());
+    vi.advanceTimersByTime(30_000);
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword', 'use shimmering longsword']);
+  });
+
+  it('does not take another spell failing for its own', () => {
+    answered('spell-failed', { spell: 'bless' });
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  it('uses it again next round when the round was already spent', () => {
+    answered('spell-refused');
+    expect(sent).toEqual(['use shimmering longsword', 'use shimmering longsword']);
+  });
+
+  /*
+   * The shimmering greatsword casts weapon major bless and then silvery mace;
+   * the second is refused every time, so the refusal says nothing of the bless.
+   */
+  it('reads no spent round off an item that casts several spells', () => {
+    const greatsword: WorldItem = {
+      ...LONGSWORD,
+      abilities: [
+        [43, 114],
+        [114, 40],
+        [135, 20],
+        [43, 170]
+      ]
+    };
+    answered('spell-refused', {}, { itemsNamed: named(() => greatsword) });
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  it('holds the item and says so when the mana is short, until it rises', () => {
+    const { invoke, decided } = answered('spell-short-of-mana');
+    expect(sent).toEqual(['use shimmering longsword']);
+    expect(decided).toHaveLength(1);
+    expect(decided[0]).toMatchObject({ action: 'use', acted: false });
+    const base = state();
+    invoke.consider({ ...base, vitals: { ...base.vitals, mana: (base.vitals.mana ?? 0) + 10 } });
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword', 'use shimmering longsword']);
+  });
+
+  it('holds a weapon refused as not equipped until the pack is listed again', () => {
+    const { invoke, decided } = answered('item-not-equipped', { item: 'shimmering longsword' });
+    expect(sent).toEqual(['use shimmering longsword']);
+    expect(decided).toHaveLength(1);
+    const base = state();
+    invoke.consider({ ...base, inventory: { ...base.inventory, listedAt: 2_000 } });
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword', 'use shimmering longsword']);
+  });
+
+  it('holds an item the server says is used up for the session', () => {
+    const { invoke, decided } = answered('item-used-up', { item: 'shimmering longsword' });
+    expect(decided).toHaveLength(1);
+    const base = state();
+    invoke.consider({ ...base, inventory: { ...base.inventory, listedAt: 2_000 } });
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
   });
 });

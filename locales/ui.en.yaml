@@ -4413,6 +4413,9 @@ settings:
     invokeNoneChosen: No item is ticked, so the switch uses none. Tick one below.
     invokeCasts: Casts {spell} for {mana} mana.
     invokeCastsUnpriced: Casts {spell}; the world database states no mana for it.
+    invokeCastsParty: Casts {spell} for {mana} mana on everyone in your party in the room.
+    invokeCastsPartyUnpriced: Casts {spell} on everyone in your party in the room; the world
+      database states no mana for it.
     invokeNotCarried: Not in your inventory when it was last listed.
     invokeUnequipped: '{item} (not equipped)'
     invokeAway: '{item} (not carried)'
@@ -5314,6 +5317,10 @@ automation:
       wide: room-wide
   invoke:
     reason: using {item} to cast {spell}
+    # A refusal to a `use` (todo 43), in the server's own words where it has them.
+    shortOfMana: '{item}: not enough mana to cast {spell}; using it again when the mana rises'
+    notEquipped: '{item} is not equipped; using it again once your inventory is checked'
+    usedUp: '{item} has no more uses left; not using it again this session'
   blessing:
     reason: 'bless: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
@@ -5374,7 +5381,8 @@ automation:
       your regular attacks carry the fight.'
     heldForMelee: 'No spell at {target}: about {left} hit points are left, and a round of {verb} is
       expected to do {round}.'
-    heldForWorth: 'No spell at {target}: {exp} exp for about {mana} mana. The {next} is {nextExp} exp
+    heldForWorth:
+      'No spell at {target}: {exp} exp for about {mana} mana. The {next} is {nextExp} exp
       for about {nextMana} mana, and {pool} mana pays for one of them. Fighting it with {verb}.'
     drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
     drainEnds: Health is back up; casting the attack spells again.

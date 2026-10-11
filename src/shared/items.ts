@@ -418,19 +418,27 @@ export function countedList(names: readonly string[]): string[] {
 const CASTS_SPELL = 43;
 
 /**
- * And the one that turns the *next* `CastsSp` into a hit-proc instead.
+ * And the one that turns the `CastsSp` slots after it into hit-procs instead.
  *
  * `GMUDAbilities.PercentSpell = 114`. The server's own comment on this is
  * *"this is retarded logic, but it's the way MajorMUD works so we're stuck
- * with it"* — a `CastsSp` preceded by a `PercentSpell` is the chance-on-hit
- * pair, and a bare one is something the player invokes.
+ * with it"*. A `PercentSpell` marks every `CastsSp` after it as a proc until
+ * the first slot that is neither (`ItemType.cs`, *don't reset until we hit
+ * the first non castspell*, 2011); a bare one is something the player invokes.
  */
 const PERCENT_SPELL = 114;
 
 /** What an item casts when it is used, and whether using it costs a charge. */
 export interface ItemInvocation {
-  /** The `Spells` row it casts. */
+  /**
+   * The `Spells` row a `use` lands: the first of `spells`. `UseCommand` casts
+   * every one in slot order, but the first spends the round's magic energy
+   * (`Player.InitiateSpell` sets it to 0 for an `ItemCast`), so each one after
+   * it is answered `You have already cast a spell this round!`.
+   */
   spell: number;
+  /** Every `Spells` row the server reads as `UseSpell`, in slot order. */
+  spells: readonly number[];
   /**
    * True where the realm states `UseCount: -1`.
    *
@@ -441,21 +449,43 @@ export interface ItemInvocation {
   unlimited: boolean;
 }
 
+/** An item's ability slots, the runtime spelling `WorldItem.abilities` uses. */
+type AbilitySlots = ReadonlyArray<readonly [number, number]> | undefined;
+
+/**
+ * The server's own walk over an item's slots (`ItemType.cs`): a `CastsSp`
+ * after a `PercentSpell`, with only other `CastsSp` between, is a proc at that
+ * percentage; any other `CastsSp` is rewritten into `UseSpell`. One walk, so
+ * `use` and the proc can never both claim a slot or both miss one. A spell of
+ * zero is the realm's empty cell.
+ */
+function spellSlots(slots: AbilitySlots): { use: number[]; procs: HitProc[] } {
+  const use: number[] = [];
+  const procs: HitProc[] = [];
+  let percent: number | null = null;
+  for (const [ability, value] of slots ?? []) {
+    // An empty slot is skipped without ending a run of procs, as the server does.
+    if (ability === 0) continue;
+    if (ability === PERCENT_SPELL) percent = value;
+    else if (ability !== CASTS_SPELL) percent = null;
+    else if (value <= 0) continue;
+    else if (percent !== null) procs.push({ spell: value, chance: percent });
+    else use.push(value);
+  }
+  return { use, procs };
+}
+
 /**
  * What an item casts when somebody types `use <it>`, or null for one that
  * casts nothing that way.
  *
- * **Read out of the server rather than inferred from the ability's name.**
- * `ItemType.cs` walks an item's ability slots in order and rewrites a bare
- * `CastSpell` into `UseSpell` as it loads — so an item carrying `CastsSp` with
- * no `PercentSpell` immediately before it is a `use`-able item, and one with
- * it is a chance-on-hit proc that no command can trigger. A `shimmering
- * longsword` carries **both**: `[43, 114]` at slot 2 is the bless it can be
- * asked for, and `[114, 40], [43, 170]` at slots 3 and 4 are a forty-per-cent
- * proc it cannot.
- *
- * The first bare one wins. No item in either database on this machine carries
- * two, and picking between them would be a guess about which the player meant.
+ * **Read out of the server rather than inferred from the ability's name**
+ * (`spellSlots`). A `shimmering longsword` carries `[43, 114]`, the bless it
+ * can be asked for, then `[114, 40], [43, 170]`, a forty-per-cent proc. A
+ * `blood lance` carries `[114, 25], [43, 402], [43, 894]`: both are procs.
+ * A `shimmering greatsword` carries `[43, 114], [114, 40], [135, 20],
+ * [43, 170]`: the slot between resets the percentage, so `use` casts both
+ * spells and only the first lands (todo 43, `43-multi-spell-items-census`).
  */
 export function itemInvocation(item: {
   /**
@@ -463,20 +493,13 @@ export function itemInvocation(item: {
    * same column `ab`; this reads the one the client holds at runtime, which is
    * the one every caller has.
    */
-  abilities?: ReadonlyArray<readonly [number, number]>;
+  abilities?: AbilitySlots;
   uses?: number;
 }): ItemInvocation | null {
-  const pairs = item.abilities ?? [];
-  for (let index = 0; index < pairs.length; index += 1) {
-    const pair = pairs[index];
-    if (pair === undefined || pair[0] !== CASTS_SPELL) continue;
-    if (index > 0 && pairs[index - 1]?.[0] === PERCENT_SPELL) continue;
-    const spell = pair[1];
-    // Slot zero is the realm's empty cell, not a spell.
-    if (spell <= 0) continue;
-    return { spell, unlimited: item.uses === -1 };
-  }
-  return null;
+  const spells = spellSlots(item.abilities).use;
+  const spell = spells[0];
+  if (spell === undefined) return null;
+  return { spell, spells, unlimited: item.uses === -1 };
 }
 
 /** A chance-on-hit the realm hangs off an item. */
@@ -504,22 +527,10 @@ export interface HitProc {
  * blow was this character's own — the realm stating that what it wields fires
  * one.
  *
- * Every pair, not the first: an item may carry several, and the question the
- * caller asks is whether this thing procs at all.
+ * Every proc, not the first: an item may carry several behind one
+ * `PercentSpell` (`blood lance`, two at 25%), and the question the caller asks
+ * is whether this thing procs at all.
  */
-export function itemHitProcs(item: {
-  abilities?: ReadonlyArray<readonly [number, number]>;
-}): HitProc[] {
-  const pairs = item.abilities ?? [];
-  const found: HitProc[] = [];
-  for (let index = 1; index < pairs.length; index += 1) {
-    const pair = pairs[index];
-    const before = pairs[index - 1];
-    if (pair === undefined || pair[0] !== CASTS_SPELL) continue;
-    if (before === undefined || before[0] !== PERCENT_SPELL) continue;
-    // Slot zero is the realm's empty cell, not a spell.
-    if (pair[1] <= 0) continue;
-    found.push({ spell: pair[1], chance: before[1] });
-  }
-  return found;
+export function itemHitProcs(item: { abilities?: AbilitySlots }): HitProc[] {
+  return spellSlots(item.abilities).procs;
 }

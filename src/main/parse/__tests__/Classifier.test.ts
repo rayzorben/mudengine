@@ -604,6 +604,15 @@ describe('conversation, movement, items', () => {
     );
   });
 
+  // Server source only (todo 43): `UseCommand.cs` and `Player.InitiateSpell`.
+  it('reads a use refused for the hand and a cast refused for mana', () => {
+    expect(
+      expectType('You do not have shimmering longsword equipped.', 'item-not-equipped')['item']
+    ).toBe('shimmering longsword');
+    expectType('You do not have enough mana to cast that spell.', 'spell-short-of-mana');
+    expectType('You do not have shimmering longsword left unequipped.', 'user-equipped-failed');
+  });
+
   it('reads movement failures', () => {
     expectType('There is no exit in that direction!', 'direction-failed');
     expect(expectType('The door is closed!', 'direction-failed')['barrier']).toBe('door');

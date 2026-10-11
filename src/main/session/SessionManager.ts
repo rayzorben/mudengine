@@ -2741,7 +2741,7 @@ export class SessionManager {
      * buff off the list, and the entry — with the caster's name on it — is
      * the only record of whom to notify.
      */
-    this.blessings.onBlock(block, this.tracker.current);
+    for (const each of [this.blessings, this.invoke]) each.onBlock(block, this.tracker.current);
     this.castRound.onBlock(block);
     /*
      * A party forming or breaking up is the moment its roster becomes worth

@@ -113,7 +113,7 @@ describe('what an item casts when it is used', () => {
   };
 
   it('finds the bless a weapon can be asked for', () => {
-    expect(itemInvocation(LONGSWORD)).toEqual({ spell: 114, unlimited: true });
+    expect(itemInvocation(LONGSWORD)).toEqual({ spell: 114, spells: [114], unlimited: true });
   });
 
   /*
@@ -145,7 +145,7 @@ describe('what an item casts when it is used', () => {
       ] as ReadonlyArray<readonly [number, number]>,
       uses: 3
     };
-    expect(itemInvocation(mask)).toEqual({ spell: 917, unlimited: false });
+    expect(itemInvocation(mask)).toEqual({ spell: 917, spells: [917], unlimited: false });
   });
 
   /*
@@ -154,7 +154,11 @@ describe('what an item casts when it is used', () => {
    * exists to end.
    */
   it('does not read silence as unlimited', () => {
-    expect(itemInvocation({ abilities: [[43, 114]] })).toEqual({ spell: 114, unlimited: false });
+    expect(itemInvocation({ abilities: [[43, 114]] })).toEqual({
+      spell: 114,
+      spells: [114],
+      unlimited: false
+    });
   });
 
   it('says nothing about an item that casts nothing', () => {
@@ -165,6 +169,24 @@ describe('what an item casts when it is used', () => {
   /* Slot zero is the realm's empty cell, not a spell. */
   it('refuses a spell of zero', () => {
     expect(itemInvocation({ abilities: [[43, 0]], uses: -1 })).toBeNull();
+  });
+
+  /*
+   * The `shimmering greatsword`: a slot between the PercentSpell and the
+   * second CastsSp ends the run of procs, so `use` casts both (todo 43).
+   */
+  it('lists every spell use casts, the one that lands first', () => {
+    const greatsword = {
+      abilities: [
+        [43, 114],
+        [114, 40],
+        [135, 20],
+        [43, 170]
+      ] as ReadonlyArray<readonly [number, number]>,
+      uses: -1
+    };
+    expect(itemInvocation(greatsword)).toEqual({ spell: 114, spells: [114, 170], unlimited: true });
+    expect(itemHitProcs(greatsword)).toEqual([]);
   });
 });
 
@@ -191,6 +213,26 @@ describe('the chance-on-hit an item carries', () => {
 
   it('reads the pair the realm states, with its percentage', () => {
     expect(itemHitProcs(LONGSWORD)).toEqual([{ spell: 170, chance: 40 }]);
+  });
+
+  /*
+   * `ItemType.cs` keeps the percentage for every `CastsSp` after it until a
+   * slot that is neither. The `blood lance` in the shipped realm (todo 43).
+   */
+  it('reads every CastsSp after a PercentSpell as a proc, up to another ability', () => {
+    const lance = {
+      abilities: [
+        [114, 25],
+        [43, 402],
+        [43, 894],
+        [58, 2]
+      ] as ReadonlyArray<readonly [number, number]>
+    };
+    expect(itemHitProcs(lance)).toEqual([
+      { spell: 402, chance: 25 },
+      { spell: 894, chance: 25 }
+    ]);
+    expect(itemInvocation({ ...lance, uses: -1 })).toBeNull();
   });
 
   /*
