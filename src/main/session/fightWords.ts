@@ -15,7 +15,9 @@ import {
   type ChosenWords
 } from '../../shared/attackChoice';
 import { attackOptions, type AttackOption } from '../../shared/attackOptions';
-import type { CharacterState } from '../../shared/character';
+import { backstabBlow } from '../../shared/backstab';
+import type { CarriedItem, CharacterState } from '../../shared/character';
+import { heldWeapon } from '../../shared/gear';
 import type { CombatConfig } from '../../shared/config';
 import type { ProwessClass, ProwessTarget } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
@@ -29,6 +31,8 @@ export interface FightWordParts {
   capabilities(): Capabilities;
   /** A monster's armour by name; null where the realm cannot place it. */
   targetOf(name: string): ProwessTarget | null;
+  /** The carried weapon the gear sets wear for a backstab (`derivedBackstabWeapon`), or null. */
+  backstabWeapon(): CarriedItem | null;
 }
 
 export interface FightWords {
@@ -36,7 +40,10 @@ export interface FightWords {
   options(as: CharacterState, against?: readonly string[]): AttackOption[];
   /** The attack typed, or the best round against `against`, or before armour where none is placed. */
   attack(against?: readonly string[]): AttackChoice;
-  /** The opener typed, or `bs` where the class hides and the hand backstabs, or none. */
+  /**
+   * The opener typed, or `bs` where the class hides, the hand or the weapon
+   * worn for the backstab can backstab, and its blow outdoes a plain round; or none.
+   */
   opener(): string;
   /** What blank fields would choose, whatever is typed: the Combat page's placeholders. */
   untyped(): ChosenWords;
@@ -53,10 +60,6 @@ export function fightWords(parts: FightWordParts): FightWords {
       against.map((name) => parts.targetOf(name))
     );
   };
-  const can = (): { hides: boolean | null; backstabs: boolean | null } => ({
-    hides: holdsAbility(parts.capabilities(), CLASS_STEALTH_ABILITY),
-    backstabs: backstabsWith(parts.current().inventory.items)
-  });
   /*
    * `realmClass` asks for the attack before armour at every site that prices a
    * fight, many times a line. A state is replaced, never changed, so one
@@ -64,6 +67,29 @@ export function fightWords(parts: FightWordParts): FightWords {
    * without a new state waits for the next status line, a second at most.
    */
   let unarmoured: { state: CharacterState; choice: AttackChoice } | null = null;
+  const beforeArmour = (state: CharacterState): AttackChoice => {
+    if (unarmoured?.state !== state) {
+      unarmoured = { state, choice: chooseAttack('', options(state)) };
+    }
+    return unarmoured.choice;
+  };
+  const can = (): { hides: boolean | null; backstabs: boolean | null; outdone: boolean } => {
+    const state = parts.current();
+    const items = state.inventory.items;
+    const worn = parts.backstabWeapon();
+    const weapon = worn ?? heldWeapon(items) ?? null;
+    const blow = backstabBlow(
+      { level: state.progress.level, stealth: state.progress.stealthSkill },
+      weapon,
+      items
+    );
+    const round = beforeArmour(state).perRound;
+    return {
+      hides: holdsAbility(parts.capabilities(), CLASS_STEALTH_ABILITY),
+      backstabs: worn === null ? backstabsWith(items) : true,
+      outdone: blow !== null && round !== null && blow < round
+    };
+  };
   return {
     options,
     attack: (against = []) => {
@@ -75,14 +101,11 @@ export function fightWords(parts: FightWordParts): FightWords {
         const armoured = chooseAttack(typed, options(state, against));
         if (armoured.why === 'best') return armoured;
       }
-      if (unarmoured?.state !== state) {
-        unarmoured = { state, choice: chooseAttack(typed, options(state)) };
-      }
-      return unarmoured.choice;
+      return beforeArmour(state);
     },
     opener: () => chooseOpener(parts.combat().opener, can()),
     untyped: () => ({
-      attack: chooseAttack('', options(parts.current())),
+      attack: beforeArmour(parts.current()),
       opener: chooseOpener('', can())
     })
   };

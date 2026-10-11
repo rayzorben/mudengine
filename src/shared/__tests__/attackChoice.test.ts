@@ -55,5 +55,8 @@ describe('chooseOpener', () => {
     expect(chooseOpener('', { hides: null, backstabs: true })).toBe('');
     expect(chooseOpener('', { hides: false, backstabs: true })).toBe('');
     expect(chooseOpener('', { hides: true, backstabs: false })).toBe('');
+    // A blow worth less than a plain round opens with the round; a typed word still wins.
+    expect(chooseOpener('', { hides: true, backstabs: true, outdone: true })).toBe('');
+    expect(chooseOpener('bs', { hides: true, backstabs: true, outdone: true })).toBe('bs');
   });
 });

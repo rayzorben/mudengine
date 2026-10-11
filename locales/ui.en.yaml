@@ -4387,7 +4387,8 @@ settings:
     enabledHint: 'When on, the sets below are put on and taken off as the situation changes:
       walking, fighting, or fighting one named monster. The off-hand item comes off before a
       two-handed weapon goes on, and the weapon hand goes first, so switching back frees the hand
-      before the shield is equipped.'
+      before the shield is equipped. With no backstab set written, the carried weapon that
+      backstabs hardest is worn for a bs opener and your own weapon goes back for the fight.'
     resists: Wear Resist Gear
     resistsHint: Wears carried armour that resists the cold, fire, lightning, stone or water this
       room and its monsters cast, and puts back what it replaced once you leave the room.
@@ -5731,6 +5732,9 @@ automation:
     wearing: 'Changing into {set}.'
     forPlace: 'Wearing {items} against what this room casts.'
     placeBack: 'Putting {items} back on.'
+    backstabWeapon: 'your backstab weapon, {item}'
+    betterBackstabWeapon: '{item} would backstab harder than {hand}. Turn on Swap Gear to Suit to
+      wear it for the backstab.'
     missingFromSet: '{item} is in an equipment set but not in your inventory.'
     offRound: 'Using {item} on {target} between rounds.'
     offRoundMissing: '{item} is set to be used between rounds but is not in your inventory.'

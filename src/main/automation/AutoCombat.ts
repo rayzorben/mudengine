@@ -2430,10 +2430,14 @@ export class AutoCombat implements SessionModule {
   opensWithBackstab(weapons: readonly string[]): boolean {
     const opener = this.openerWord();
     if (!this.acting || !answersTo('backstab', opener) || this.classCannotHide()) return false;
-    for (const refused of this.cannotBackstabWith) {
-      if (weapons.some((weapon) => sameItem(weapon, refused))) return false;
-    }
+    if (weapons.some((weapon) => this.refusesBackstabWith(weapon))) return false;
     return !this.isRefused(opener, 'character');
+  }
+
+  /** Whether the server refused a backstab with `weapon` this session (*You may not backstab with this weapon!*). */
+  refusesBackstabWith(weapon: string): boolean {
+    for (const refused of this.cannotBackstabWith) if (sameItem(weapon, refused)) return true;
+    return false;
   }
 
   /**

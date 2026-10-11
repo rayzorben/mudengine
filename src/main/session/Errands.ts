@@ -35,6 +35,8 @@ import type { MobEntity } from '../../shared/entities';
 import { spotJoiners } from './spotJoiners';
 import { nearestCounter } from './supplyCounter';
 import { LairCosts } from '../world/LairCosts';
+import { wearerOf } from '../world/wearer';
+import type { Wearer } from '../../shared/gear';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
 import { OpenedWays } from './OpenedWays';
 import { lairRunner, runRiskOf, type RunRiskParts } from './runRisk';
@@ -49,6 +51,7 @@ import {
   ownAlignment,
   standingOf,
   packRows,
+  type CarriedItem,
   type CharacterState
 } from '../../shared/character';
 import { chargedInCopper, expectedCopper } from '../../shared/coins';
@@ -129,12 +132,7 @@ import {
 } from '../../shared/spellchoice';
 import { statedNow } from '../../shared/stated';
 import { gearEffect } from '../../shared/blessingeffects';
-import {
-  carriedCount,
-  namesNoShop,
-  stockCeiling,
-  type SupplyCounter
-} from '../../shared/supplies';
+import { carriedCount, namesNoShop, stockCeiling, type SupplyCounter } from '../../shared/supplies';
 import { trainingCost, type StatLimits, type TrainedAttribute } from '../../shared/training';
 import {
   lairPass,
@@ -258,6 +256,8 @@ export type ErrandsWorld = Pick<
   | 'lairEntities'
   | 'wandererEntities'
   | 'mob'
+  | 'namedClasses'
+  | 'namedRaces'
   | 'planStep'
   | 'priceAt'
   | 'quests'
@@ -310,6 +310,8 @@ export interface ErrandsSession {
   rates(): ReadonlyMap<string, MeasuredRate>;
   /** The one `abil` of the session (`Routines.askAbilities`). */
   askAbilities(state: CharacterState): void;
+  /** The carried weapon the gear sets wear for a backstab, or null (`EquipmentManager.backstabWeapon`). */
+  backstabWeapon(): CarriedItem | null;
   notice(message: string): void;
 }
 
@@ -407,7 +409,8 @@ export class Errands implements SessionModule {
         const mob = this.world?.buildMobEntity(name, { at: null });
         // A name the world database cannot place is no armour anybody knows: its round is unknown.
         return mob === undefined || mob.source === 'wire' ? null : prowessTargetOf(mob);
-      }
+      },
+      backstabWeapon: () => session.backstabWeapon()
     });
     this.navigation = new Navigation({
       world: () => this.world,
@@ -415,6 +418,11 @@ export class Errands implements SessionModule {
       errands: this,
       odds: () => this.session.odds()
     });
+  }
+
+  /** Who this character is, for what it may wield and wear. See `wearerOf`. */
+  wearer(): Wearer {
+    return wearerOf(this.tracker.current, this.world ?? null);
   }
 
   /** The plan from where the character stands to a room, keys and fights included, or null while unplaced. */
@@ -1853,11 +1861,11 @@ export class Errands implements SessionModule {
      * refused every time, and crediting the opener anyway priced every
      * single-monster lair as a one-round kill whatever the stats (2026-10-03,
      * a level-11 Mystic). An empty hand lands; a weapon of unknown kind is
-     * credited, as before.
+     * credited, as before; so is the weapon the gear sets wear for it (todo 76).
      */
     const backstab =
       commandOf(this.words.opener()) === 'BackStab' &&
-      backstabsWith(state.inventory.items) !== false;
+      (this.session.backstabWeapon() !== null || backstabsWith(state.inventory.items) !== false);
     /*
      * One step is the server's own movement delay from the pack's weight
      * (`MoveCommand.cs:40`), where the family states one; the measured round

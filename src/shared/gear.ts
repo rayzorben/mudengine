@@ -655,15 +655,9 @@ export interface EquipVerdict {
   command: string | null;
 }
 
-export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): EquipVerdict {
-  if (item.equipped) {
-    return {
-      state: 'worn',
-      label: t('cards.inventory.removeTooltip', { item: item.name }),
-      command: unequip(item.name)
-    };
-  }
-  const realm: EquipRestrictions = {
+/** What the realm says of a carried item that `equipBlock` reads. */
+export function restrictionsOf(item: ItemEntity): EquipRestrictions {
+  return {
     ...(item.realmSlot === undefined ? {} : { slot: item.realmSlot }),
     ...(item.classes === undefined ? {} : { classes: item.classes }),
     ...(item.races === undefined ? {} : { races: item.races }),
@@ -673,6 +667,17 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
     ...(item.armour === undefined ? {} : { armour: item.armour }),
     ...(item.abilities === undefined ? {} : { abilities: item.abilities })
   };
+}
+
+export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): EquipVerdict {
+  if (item.equipped) {
+    return {
+      state: 'worn',
+      label: t('cards.inventory.removeTooltip', { item: item.name }),
+      command: unequip(item.name)
+    };
+  }
+  const realm = restrictionsOf(item);
   // A realm row with no slot is not kit; a row the realm lacks keeps its
   // control, which is the refuse-rather-than-guess rule pointing the other way.
   if (item.id !== undefined && !isWearable(realm))
@@ -839,20 +844,29 @@ export const NO_PLACE: PlaceLayer = { wear: new Map(), putBack: new Map() };
  * through under its own name as its own key: it is still something the player
  * asked to have on, and refusing to wear it because the client could not file
  * it would be the client overruling them about their own pack.
+ *
+ * An overlay that puts a two-handed weapon in hand and names no off-hand
+ * frees the off-hand the base names (todo 76): the server will not hold both,
+ * and `swapPlan` takes the off-hand off only when the kit does not ask for it.
  */
 export function kitFor(
   sets: readonly GearSet[],
   now: GearSituation,
   slotOf: (name: string) => string | null,
-  place: PlaceLayer = NO_PLACE
+  place: PlaceLayer = NO_PLACE,
+  handsOf: HandsOf = () => null
 ): Map<string, string> {
   const kit = new Map<string, string>();
-  const lay = (set: GearSet | null): void => {
+  const lay = (set: GearSet | null): Set<string> => {
+    const laid = new Set<string>();
     for (const name of set?.wear ?? []) {
       const item = name.trim();
       if (item.length === 0) continue;
-      kit.set((slotOf(item) ?? `item:${item}`).toLowerCase(), item);
+      const slot = (slotOf(item) ?? `item:${item}`).toLowerCase();
+      kit.set(slot, item);
+      laid.add(slot);
     }
+    return laid;
   };
   // What the place's armour replaced goes back under the base, so a set the
   // player wrote for that slot wins; the place's own armour goes over it.
@@ -863,7 +877,11 @@ export function kitFor(
   // A backstab set holds the weapon for the opening blow, so it is laid over
   // the moving set and the walking boots stay on.
   if (overlay?.when === 'backstab') lay(overlayFor(sets, { ...now, backstab: false }));
-  lay(overlay);
+  const laid = lay(overlay);
+  const held = laid.has(WEAPON_KEY) ? kit.get(WEAPON_KEY) : undefined;
+  if (held !== undefined && handsOf(held) === 2 && !laid.has(OFF_HAND.toLowerCase())) {
+    kit.delete(OFF_HAND.toLowerCase());
+  }
   return kit;
 }
 
@@ -932,16 +950,21 @@ export function swapPlan(
   return capped(commands, missing, max);
 }
 
-/** What is in the weapon hand, or undefined while nothing listed says. */
-export function heldWeapon(items: readonly CarriedItem[]): CarriedItem | undefined {
-  return items.find((each) => each.equipped && (each.slot ?? '').toLowerCase() === WEAPON_KEY);
+/** What is worn in a slot, by the listing's word. */
+function wornIn(items: readonly CarriedItem[], slot: string): CarriedItem | undefined {
+  return items.find(
+    (item) => item.equipped && (item.slot ?? '').toLowerCase() === slot.toLowerCase()
+  );
 }
 
 /** What is worn in the off-hand, which a two-handed weapon needs taken off first. */
 export function inOffHand(items: readonly CarriedItem[]): CarriedItem | undefined {
-  return items.find(
-    (item) => item.equipped && (item.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
-  );
+  return wornIn(items, OFF_HAND);
+}
+
+/** What is in the weapon hand, or undefined while nothing listed says. */
+export function heldWeapon(items: readonly CarriedItem[]): CarriedItem | undefined {
+  return wornIn(items, WEAPON_HAND);
 }
 
 /** A bought item to put on: what it must replace where its kind is full, and its hands. */

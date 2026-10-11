@@ -54,12 +54,16 @@ export function chooseAttack(typed: string, options: readonly AttackOption[]): A
  * none. Hiding unknown chooses none: a backstab the class can never land is a
  * round thrown away, and `AutoCombat.opener` drops it out loud anyway. A hand
  * of unknown kind is let through, as the survey credits it.
+ *
+ * `outdone` is a backstab blow worth less than a plain round before armour
+ * (todo 76): the backstab round is that one blow, so the plain round opens
+ * instead. Unknown on either side keeps the backstab.
  */
 export function chooseOpener(
   typed: string,
-  can: { hides: boolean | null; backstabs: boolean | null }
+  can: { hides: boolean | null; backstabs: boolean | null; outdone?: boolean }
 ): string {
   const word = typed.trim();
   if (word.length > 0) return word;
-  return can.hides === true && can.backstabs !== false ? BACKSTAB_VERB : '';
+  return can.hides === true && can.backstabs !== false && can.outdone !== true ? BACKSTAB_VERB : '';
 }

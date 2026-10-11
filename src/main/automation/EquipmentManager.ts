@@ -17,9 +17,10 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Priority } from '../../shared/automation';
-import { fightIsRunning, type CharacterState } from '../../shared/character';
+import { fightIsRunning, type CarriedItem, type CharacterState } from '../../shared/character';
 import type { GearConfig } from '../../shared/config';
 import { mobKey } from '../../shared/world';
+import { backstabWorth, derivedBackstabWeapon, withBackstabWeapon } from '../../shared/backstab';
 import {
   heldWeapon,
   kitFor,
@@ -31,10 +32,12 @@ import {
   type GearSituation,
   type GearPlan,
   type PlaceLayer,
+  type Wearer,
   NO_PLACE,
   placeKey
 } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
+import { BackstabHands } from './BackstabHands';
 import type { SessionModule } from './Module';
 import { PlaceGear, type PlaceGearSources } from './PlaceGear';
 
@@ -53,6 +56,10 @@ export interface EquipmentSources extends PlaceGearSources {
   yieldSwap(): string | null;
   /** Whether a rest is wanted and the client may sit the character down (`Recovery.wouldRest`, `mayRest`). */
   wantsRest(state: CharacterState): boolean;
+  /** Who the character is, for which carried weapons it may wield (`wearerOf`). */
+  wearer(): Wearer;
+  /** Whether the server refused a backstab with this weapon this session (`AutoCombat`). */
+  refusesBackstabWith(weapon: string): boolean;
 }
 
 export interface EquipmentEvents {
@@ -86,6 +93,10 @@ export class EquipmentManager implements SessionModule {
   private readonly place: PlaceGear;
   /** What the place layer last asked for, so its notice is said once a change. */
   private placeSaid = '';
+  /** What the hands held before a derived backstab weapon, to put back after it (todo 76). */
+  private readonly hands = new BackstabHands();
+  /** Backstab weapons said to be carried while the sets are off, once each a session. */
+  private readonly saidBackstab = new Set<string>();
 
   constructor(
     private config: GearConfig,
@@ -118,6 +129,8 @@ export class EquipmentManager implements SessionModule {
     this.reached = null;
     this.place.reset();
     this.placeSaid = '';
+    this.hands.reset();
+    this.saidBackstab.clear();
   }
 
   /** The player's own sets. */
@@ -153,6 +166,7 @@ export class EquipmentManager implements SessionModule {
     const down = state.vitals.resting || state.vitals.meditating;
     const holding = down && !stepping && !fightIsRunning(state);
     if (!holding) this.reachedBack(state);
+    if (!this.acting) this.sayBackstabWeapon(state);
     if (!this.acting && !this.placing) return;
     /*
      * An unlisted pack is not an empty one. Nothing is worn off a listing
@@ -161,14 +175,14 @@ export class EquipmentManager implements SessionModule {
      */
     if (state.inventory.listedAt === null) return;
 
+    const sets = this.acting ? this.setsFor(state) : [];
     const now: GearSituation = {
       moving,
       resting: !stepping && (down || this.sources.wantsRest(state)),
       fighting: state.inCombat || state.combat.attackers.length > 0,
-      backstab: this.opensWithBackstab(),
+      backstab: this.opensWithBackstab(sets),
       target: state.combat.target
     };
-    const sets = this.acting ? this.config.sets : [];
     const set = overlayFor(sets, now);
     const layer = this.placing ? this.place.layer(state, now.fighting) : NO_PLACE;
     // The place is part of the situation: walking out of the desert and back
@@ -189,7 +203,13 @@ export class EquipmentManager implements SessionModule {
 
     if (holding) return;
 
-    const kit = kitFor(sets, now, (item) => this.sources.slotOf(item), layer);
+    const kit = kitFor(
+      sets,
+      now,
+      (item) => this.sources.slotOf(item),
+      layer,
+      (item) => this.sources.handsOf(item)
+    );
     // A weapon wielded for a monster the hand cannot hurt outranks a set's until it goes back.
     if (this.reached !== null && kit.has(WEAPON_KEY)) kit.set(WEAPON_KEY, this.reached.weapon);
     if (kit.size === 0) return;
@@ -271,10 +291,70 @@ export class EquipmentManager implements SessionModule {
     }
   }
 
-  /** Whether a backstab set is written and the next fight opens with its weapon. */
-  private opensWithBackstab(): boolean {
-    const set = this.config.sets.find((each) => each.when === 'backstab');
+  /** Whether a backstab set is written or derived and the next fight opens with its weapon. */
+  private opensWithBackstab(sets: readonly GearSet[]): boolean {
+    const set = sets.find((each) => each.when === 'backstab');
     return set !== undefined && this.sources.opensWithBackstab(set.wear);
+  }
+
+  /**
+   * The written sets, with the pack's best backstab weapon laid in where the
+   * player wrote no backstab set (todo 76). A weapon the next fight would not
+   * open with (refused this session, or no backstab opener at all) is never
+   * chosen, so nothing changes for a character that does not backstab.
+   */
+  private setsFor(state: CharacterState): readonly GearSet[] {
+    const written = this.config.sets;
+    const items = state.inventory.items;
+    const derived = this.derive(state);
+    // Chosen only for a fight that opens with it, so a weapon wielded by hand otherwise is the player's own.
+    const weapon =
+      derived !== null && this.sources.opensWithBackstab([derived.name]) ? derived : null;
+    const hands = this.hands.note(items, weapon?.name ?? null);
+    const chosen =
+      weapon === null
+        ? null
+        : { set: t('automation.gear.backstabWeapon', { item: weapon.name }), item: weapon.name };
+    return withBackstabWeapon(written, chosen, hands, (item) => this.sources.slotOf(item));
+  }
+
+  /**
+   * The carried weapon the sets wear for a backstab, or null: none with the
+   * sets off, a backstab set written, or the pack unlisted. The one answer
+   * the opener choice reads too (`FightWordParts.backstabWeapon`).
+   */
+  backstabWeapon(state: CharacterState): CarriedItem | null {
+    return this.acting ? this.derive(state) : null;
+  }
+
+  /** `derivedBackstabWeapon` over the pack, a weapon the server refused this session left out. */
+  private derive(state: CharacterState): CarriedItem | null {
+    if (state.inventory.listedAt === null) return null;
+    return derivedBackstabWeapon(
+      this.config.sets,
+      state.inventory.items,
+      this.sources.wearer(),
+      (name) => this.sources.refusesBackstabWith(name)
+    );
+  }
+
+  /**
+   * With the sets off, a carried weapon that would backstab harder than the
+   * one in hand is said once (todo 76): wearing it unasked would break stealth
+   * on a character the player has not given the hand to.
+   */
+  private sayBackstabWeapon(state: CharacterState): void {
+    if (!this.enabled || state.inventory.listedAt === null) return;
+    const items = state.inventory.items;
+    const hand = heldWeapon(items);
+    if (hand === undefined || !this.sources.opensWithBackstab([hand.name])) return;
+    const better = this.derive(state);
+    if (better === null || this.saidBackstab.has(better.name)) return;
+    if ((backstabWorth(better) ?? 0) <= (backstabWorth(hand) ?? 0)) return;
+    this.saidBackstab.add(better.name);
+    this.events.notice?.(
+      t('automation.gear.betterBackstabWeapon', { item: better.name, hand: hand.name })
+    );
   }
 
   /**
