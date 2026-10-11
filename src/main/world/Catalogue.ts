@@ -12,6 +12,7 @@
 import { tuning } from '../app/tuning';
 import { spellElementOf } from '../../shared/spellDamage';
 import { natureOf } from '../../shared/spellReach';
+import { taughtBy } from '../../shared/learning';
 import {
   mobKey,
   NO_LOOKUP,
@@ -27,6 +28,7 @@ import {
   type RoomId,
   type ShopKind,
   type SpellHazard,
+  type SpellScrollRow,
   type WorldClass,
   type WorldItem,
   type WorldLair,
@@ -1446,11 +1448,40 @@ export class Catalogue {
       // Who one cast brings into the caster's room (format 60).
       const summons = picksRead(record['sm']);
       if (summons.length > 0) spell.summons = summons;
+      // Where a script teaches it (format 68), read as an item's is.
+      const from = readHandovers(record['from']);
+      if (from.length > 0) spell.from = from;
       spells.push(spell);
     }
     this.spells = spells;
     this.spellsById = new Map(spells.map((spell) => [spell.id, spell]));
     this.messageRows.clear();
+  }
+
+  /** `scrollsOf`'s index, built on the first ask: the items reading teaches each spell. */
+  private scrollRows: Map<number, SpellScrollRow[]> | null = null;
+
+  /**
+   * The items whose reading teaches a spell (`LearnSp`), by name, each with
+   * its price and the shops that sell it: the scroll half of where a spell
+   * is learned (todo 71). The trainer half is the spell's own `from`.
+   */
+  scrollsOf(spell: number): SpellScrollRow[] {
+    if (this.scrollRows === null) {
+      const rows = new Map<number, SpellScrollRow[]>();
+      for (const item of this.items.values()) {
+        for (const id of taughtBy(item)) {
+          const row: SpellScrollRow = { id: item.id, name: item.name };
+          if (item.price !== undefined) row.price = item.price;
+          if (item.shops !== undefined) row.shops = item.shops;
+          const held = rows.get(id);
+          if (held === undefined) rows.set(id, [row]);
+          else held.push(row);
+        }
+      }
+      this.scrollRows = rows;
+    }
+    return this.scrollRows.get(spell) ?? [];
   }
 
   /**
@@ -1924,7 +1955,10 @@ export class Catalogue {
     const items = best(
       [...this.itemsByName.values()].map((item) => [item.name.toLowerCase(), item] as const)
     );
-    const spells = this.searchSpells(query, limit);
+    const spells = this.searchSpells(query, limit).map((spell) => {
+      const scrolls = this.scrollsOf(spell.id);
+      return scrolls.length === 0 ? spell : { ...spell, scrolls };
+    });
     /*
      * Two closed vocabularies of thirteen and fifteen, so the same ranking
      * over the whole list costs nothing and needs no separate search method.
@@ -2382,11 +2416,13 @@ function readHandovers(raw: unknown): ItemHandover[] {
     const say = (Array.isArray(record['say']) ? record['say'] : [])
       .map((word) => String(word).trim())
       .filter((word) => word.length > 0);
+    const price = Number(record['p']);
     found.push({
       kind,
       ...(who.length > 0 ? { who } : {}),
       ...(/^\d+\/\d+$/.test(room) ? { room } : {}),
-      ...(say.length > 0 ? { say } : {})
+      ...(say.length > 0 ? { say } : {}),
+      ...(Number.isInteger(price) && price > 0 ? { price } : {})
     });
   }
   return found;

@@ -143,10 +143,16 @@ describe('a block, as the server runs it', () => {
     expect(rollOf(roll!)).toBe(77);
     expect(stepsRun(roll!, 'roll').map((step) => step.verb)).toEqual(['addexp']);
 
-    const table = keywordTable({ lines: readLines('return:353\nMarkus:353\nbox:354\ngood1:9') });
+    const table = keywordTable({
+      lines: readLines(
+        'return:353\nMarkus:353\nbox:354\ngood1:9\nlearn 3:5272\ncheckitem 1276:2552'
+      )
+    });
+    // `learn 3` is Naram Fireblade's topic (todo 71); `checkitem 1276` is a step.
     expect([...table]).toEqual([
       [353, ['return', 'Markus']],
-      [354, ['box']]
+      [354, ['box']],
+      [5272, ['learn 3']]
     ]);
   });
 

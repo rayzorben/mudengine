@@ -958,6 +958,8 @@ export type ItemHandover = {
   place?: string;
   /** The words that reach it. A death has none: nothing is said. */
   say?: string[];
+  /** The copper the script takes before it hands over (format 68). */
+  price?: number;
 };
 
 /**
@@ -1466,6 +1468,30 @@ export interface WorldSpell {
    * aid is one. See `src/shared/summons.ts`.
    */
   summons?: Array<Array<[number, number]>>;
+  /**
+   * Where one of the realm's scripts teaches it (`learnspell`, format 68): the
+   * trainer asked, the room's words. The same shape as an item's `from`.
+   */
+  from?: ItemHandover[];
+  /**
+   * The items whose reading teaches it (`LearnSp`), joined at the lookup with
+   * each one's price and the shops that sell it. Absent where none does.
+   */
+  scrolls?: SpellScrollRow[];
+}
+
+/** A scroll that teaches a spell, as a spell's detail lists it (`WorldSpell.scrolls`). */
+export type SpellScrollRow = Pick<WorldItem, 'id' | 'name' | 'price' | 'shops'>;
+
+/**
+ * Every shop a lookup's answer names as selling something: each item's, and
+ * each spell's scrolls'. What `shopPlaces` is resolved for.
+ */
+export function shopsNamedIn(found: Pick<WorldLookup, 'items' | 'spells'>): string[] {
+  return [
+    ...found.items.flatMap((item) => item.shops ?? []),
+    ...found.spells.flatMap((spell) => (spell.scrolls ?? []).flatMap((s) => s.shops ?? []))
+  ];
 }
 
 /**
@@ -1601,8 +1627,8 @@ export interface WorldLookup {
    */
   rowPeace?: Record<string, RowPeace>;
   /**
-   * Where each shop named in a returned item's `Sold by` row is, by the shop's
-   * name lower-cased.
+   * Where each shop in `shopsNamedIn` (an item's or a scroll's `Sold by`) is,
+   * by the shop's name lower-cased.
    *
    * Resolved here rather than at click time, so reading the row and acting on
    * it are one round trip — and so the card never has to hold a channel of its
