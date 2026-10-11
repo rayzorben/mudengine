@@ -5625,6 +5625,11 @@ automation:
     reasonUse: 'using {token} to go to the bank'
     didNotTake: '{token} did not take the character anywhere'
     toBank: 'Walking to {bank}.'
+    toCounter: 'Selling {items} at {shop} on the way, for {copper} copper.'
+    notSold: 'Not selling at {shop}: {why}'
+    counterNotReached: 'Did not reach the shop ({why}); walking on to the bank.'
+    sold: 'Sold {items}.'
+    unsold: 'Not sold: {items}.'
     noBank: no bank in reach of where the token landed
     bankNotReached: 'did not reach {bank}: {why}'
     banked: 'Deposited {amount} copper at {bank}; walking back to the loop.'
@@ -6325,10 +6330,15 @@ cashRun:
   fullHeavy: Heavy
   whatHappens: 'Walks the loop picking up the coins chosen. When full, it waits for the room to be
     empty of monsters, looks at the token for its uses left, uses it, and deposits what was collected
-    at the nearest bank, keeping what you had on hand when it started. Then it walks back to the
-    loop. A token with no uses left is passed over for the next. If what was collected is less than
-    the token costs, it is dropped and the run ends. When every token is used up the run ends and
-    the loop goes on. Stop ends it.'
+    at the nearest bank, keeping what you had on hand when it started. With Sell loot on, it first
+    sells at a shop on the way. Then it walks back to the loop. A token with no uses left is passed
+    over for the next. If what was collected is less than the token costs, it is dropped and the run
+    ends. When every token is used up the run ends and the loop goes on. Stop ends it.'
+  sell: Sell loot on the way to the bank
+  sellHint: 'Stops at one shop within a few moves of the way to the bank that buys what you are
+    carrying: outgrown gear and other common or uncommon items worth selling. It never sells what is
+    worn, a key, a token, a supply, an item in a gear set or used to bless, or one a quest still
+    needs.'
   cancel: Cancel
   start: Start
 

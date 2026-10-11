@@ -6,6 +6,7 @@
  * › *Errands*.
  */
 import { DENOMINATIONS, type Denomination } from './character';
+import type { RoomId } from './world';
 
 /** The grade the server prints that counts as full. */
 export type CashRunFull = 'medium' | 'heavy';
@@ -19,6 +20,34 @@ export interface CashRunAsk {
   /** The tokens to use, as `Items` rows, first first. Never empty. */
   tokens: number[];
   full: CashRunFull;
+  /** Sell the loot a counter on the way takes before banking (`CashRunSale`). */
+  sell: boolean;
+}
+
+/**
+ * The one counter a trip to the bank stops at to sell, and what it takes: the
+ * counter whose detour off the walk to the bank is within
+ * `tuning.cashRun.sellDetour` and whose sale pays the most (todo 64).
+ */
+export interface CashRunSale {
+  room: RoomId;
+  shop: string;
+  /** As the pack names them, one `sell` each. */
+  items: string[];
+  /** What the sale pays, in copper, the charm counted. */
+  copper: number;
+}
+
+/** A carried item kept off the sale because an unfinished quest needs it (todo 52). */
+export interface QuestKept {
+  item: string;
+  quest: string;
+}
+
+/** The counter to sell at, if any, and what was kept off the sale for a quest. */
+export interface CashRunSaleChoice {
+  sale: CashRunSale | null;
+  questKept: readonly QuestKept[];
 }
 
 /** A carried item that takes the character to a fixed room from anywhere. */
@@ -47,17 +76,19 @@ export const NO_NEGATE_DUE: NegateDue = { negateDue: false };
 /** The dialog's ask, or null where any part is not one. */
 export function asCashRunAsk(value: unknown): CashRunAsk | null {
   if (typeof value !== 'object' || value === null) return null;
-  const { loop, coins, tokens, full } = value as Record<string, unknown>;
+  const { loop, coins, tokens, full, sell } = value as Record<string, unknown>;
   if (typeof loop !== 'string' || loop.trim().length === 0) return null;
   if (!Array.isArray(coins) || coins.length === 0) return null;
   if (!coins.every((coin) => DENOMINATIONS.includes(coin as Denomination))) return null;
   if (!Array.isArray(tokens) || tokens.length === 0) return null;
   if (!tokens.every((item) => Number.isInteger(item) && (item as number) > 0)) return null;
   if (!CASH_RUN_FULL.includes(full as CashRunFull)) return null;
+  if (typeof sell !== 'boolean') return null;
   return {
     loop,
     coins: [...new Set(coins as Denomination[])],
     tokens: [...new Set(tokens as number[])],
-    full: full as CashRunFull
+    full: full as CashRunFull,
+    sell
   };
 }

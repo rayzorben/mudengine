@@ -1070,7 +1070,8 @@ export class SessionManager {
       ...{ deposit: this.deposit, questWatch: this.questWatch }
     });
     const charges = (this.charges = new ItemCharges(this.queue, () => this.world));
-    const trip = { modules: legs, release: releaseErrand, charges, kept: questKeep(legs) };
+    const config = () => this.automationConfig;
+    const trip = { modules: legs, release: releaseErrand, charges, kept: questKeep(legs), config };
     // The gear after a death, a fetch from a stash and the area: walks and searches (`Collect`).
     const escaping = () => this.travel.escaping;
     this.recoverGear = gearRecoveryTrip(automation, this.queue, reports, {
@@ -1090,8 +1091,7 @@ export class SessionManager {
     this.areaSearch = areaSearchTrip(automation, this.queue, reports, { ...trip, busy: held });
     this.trainLevel = trainTrip(automation, this.queue, reports, trip);
     this.outgrown = outgrownTrip(automation, this.queue, reports, {
-      ...{ ...trip, busy: held },
-      config: () => this.automationConfig
+      ...{ ...trip, busy: held }
     });
     /*
      * And where the character should be at all (todo 05): the survey's best

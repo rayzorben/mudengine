@@ -12,6 +12,7 @@ import {
   GANG_SHOP_ITEM_ABILITY,
   LOYAL_ITEM_ABILITY
 } from './abilities';
+import type { AutomationConfig } from './config';
 import type { ItemEntity } from './entities';
 import { bareName, type ItemKind } from './items';
 import type { Rarity } from './rarity';
@@ -71,6 +72,23 @@ export interface KeptNames {
    * (todo 42). Filled by `outgrownPlanner`'s `blessKept`.
    */
   blessWith: readonly string[];
+}
+
+/**
+ * What the player's settings keep, with the key ring the pack listing printed
+ * and the items that bless `AutoInvoke` may use.
+ */
+export function keptNamesOf(
+  automation: Pick<AutomationConfig, 'supplies' | 'gear'>,
+  keys: readonly string[],
+  blessWith: readonly string[]
+): KeptNames {
+  return {
+    supplies: automation.supplies.items.map((row) => row.name),
+    sets: automation.gear.sets.flatMap((set) => set.wear),
+    keys,
+    blessWith
+  };
 }
 
 const GANG_KIT = [GANG_HOUSE_DEED_ABILITY, GANG_HOUSE_ITEM_ABILITY, GANG_SHOP_ITEM_ABILITY];

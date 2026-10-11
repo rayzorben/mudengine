@@ -19,6 +19,8 @@ import type { StashFetch, StashFetchEvents } from '../automation/StashFetch';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import type { OutgrownPlannerModules } from './outgrownPlanner';
+import { NO_SALE, saleOnTheWay, saleReadsOf, type SaleModules } from './saleOnTheWay';
 import type { WorldGraph } from '../world/WorldGraph';
 import { stashFetchTrip, type CollectModules, type CollectParts } from './collectPlanner';
 import { legPlanner } from './legPlanner';
@@ -89,9 +91,13 @@ export class HostTrips implements SessionModule {
 export interface HostTripParts extends CollectParts {
   /** The looks at a token and their answers (`ItemCharges`). */
   charges: Pick<ChargeLedger, 'look'>;
+  /** The settings that keep an item off the cash run's sale. */
+  config(): AutomationConfig;
   modules(): CollectModules & {
+    errands: SaleModules['errands'];
     world:
-      | Pick<WorldGraph, 'byId' | 'shop' | 'item' | 'banks' | 'itemIdsCarried' | 'spellById'>
+      | (Pick<WorldGraph, 'byId' | 'shop' | 'item' | 'banks' | 'itemIdsCarried' | 'spellById'> &
+          NonNullable<OutgrownPlannerModules['world']>)
       | undefined;
     travel: Pick<
       Travel,
@@ -211,6 +217,10 @@ function cashRunPlanner(parts: HostTripParts): CashRunPlanner {
         best = { room, name: bank.name, moves: steps };
       }
       return best === null ? null : { room: best.room, name: best.name };
+    },
+    saleOnTheWay: (bank, tokens) => {
+      const reads = saleReadsOf(parts.modules(), parts.config(), parts.kept);
+      return reads === null ? NO_SALE : saleOnTheWay(reads, bank, tokens);
     },
     collectCoins: (kinds, until) => parts.modules().loot.collectCoins(kinds, until),
     collectAsConfigured: () => parts.modules().loot.collectCoinsAsConfigured(),
