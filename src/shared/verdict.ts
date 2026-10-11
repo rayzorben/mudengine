@@ -20,7 +20,8 @@ import type { RealmFamily } from './realm';
 // Type only: `survival.ts` imports this module's values, and a value the other
 // way would be the cycle `module-cycle.test.ts` exists to refuse.
 import type { Odds, Survival } from './survival';
-import { BACKSTAB_ABILITY, DODGE_ABILITY, carriesAbility } from './abilities';
+import { DODGE_ABILITY } from './abilities';
+import { weaponBackstabs } from './backstab';
 import { statedNow } from './stated';
 import { loadPercent } from './load';
 import { gearEffect } from './blessingeffects';
@@ -519,10 +520,7 @@ export function backstabsWith(
   }>
 ): boolean | null {
   const found = items.find((item) => item.equipped && item.kind === 'weapon' && item.weapon);
-  if (found?.weapon === undefined) return true;
-  const abilities = found.abilities;
-  if (Object.values(BACKSTAB_ABILITY).some((id) => carriesAbility(abilities, id))) return true;
-  return found.weapon.kind === undefined ? null : found.weapon.kind === 2;
+  return found?.weapon === undefined ? true : weaponBackstabs(found);
 }
 
 /**

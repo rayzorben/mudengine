@@ -101,8 +101,6 @@ import {
 } from '../../shared/character';
 import { wireItem } from '../../shared/entities';
 import type { RouteOptions, Traveller, WorldGraph } from '../world/WorldGraph';
-import type { Wearer } from '../../shared/gear';
-import { wearerOf } from '../world/wearer';
 import { Errands, type RealmClass } from './Errands';
 import { Claims } from './Claims';
 import { Locating } from './Locating';
@@ -530,6 +528,7 @@ export class SessionManager {
         watched: () => this.questWatch.watched,
         odds: () => this.odds,
         askAbilities: (state) => this.routines.askAbilities(state),
+        backstabWeapon: () => this.gear.backstabWeapon(this.tracker.current),
         notice
       }
     );
@@ -621,7 +620,7 @@ export class SessionManager {
           this.rewriter.render(block, {
             state: this.tracker.current,
             world: this.world,
-            wearer: this.wearerNow()
+            wearer: this.errands.wearer()
           })
       },
       // A held tail released by its timer, outside any chunk.
@@ -1368,7 +1367,9 @@ export class SessionManager {
         handsOf: (name) => this.errands.gearHandsOf(name),
         opensWithBackstab: (weapons) => this.combat.opensWithBackstab(weapons),
         yieldSwap: () => this.invoke.yieldHand(),
-        wantsRest: (state) => this.recovery.wouldRest(state) && this.mayRest()
+        wantsRest: (state) => this.recovery.wouldRest(state) && this.mayRest(),
+        wearer: () => this.errands.wearer(),
+        refusesBackstabWith: (weapon) => this.combat.refusesBackstabWith(weapon)
       },
       { notice }
     );
@@ -3224,11 +3225,6 @@ export class SessionManager {
   private readonly statlineReport: StatlineReport;
   /** The glyph and the buttons beside a room's name. See `Marks`. */
   private readonly marks: Marks;
-
-  /** Who this character is, for the console's rewritten listing. See `wearerOf`. */
-  private wearerNow(): Wearer {
-    return wearerOf(this.tracker.current, this.world ?? null);
-  }
 
   /**
    * The realm said where the character is, and the world database has no such

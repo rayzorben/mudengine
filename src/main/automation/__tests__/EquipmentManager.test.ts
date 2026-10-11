@@ -6,7 +6,7 @@ import { EMPTY_CHARACTER, type CarriedItem, type CharacterState } from '../../..
 import { DEFAULT_CONFIG, type AutomationConfig, type GearConfig } from '../../../shared/config';
 import { wireItem } from '../../../shared/entities';
 import { OFF_HAND, WEAPON_HAND } from '../../../shared/items';
-import type { GearSet } from '../../../shared/gear';
+import { UNKNOWN_WEARER, type GearSet } from '../../../shared/gear';
 import { classifyOccupant } from '../../../shared/mobs';
 
 const automation: AutomationConfig = {
@@ -78,6 +78,8 @@ const sources = (over: Partial<EquipmentSources> = {}): EquipmentSources => ({
   placeItem: () => null,
   minSaved: () => 2,
   wantsRest: () => false,
+  wearer: () => UNKNOWN_WEARER,
+  refusesBackstabWith: () => false,
   ...over
 });
 
@@ -300,6 +302,119 @@ describe('the resting set', () => {
     expect(sent).toEqual([]);
     manager.beforeStep(down(resting));
     expect(sent).toEqual(['wear copper ring']);
+  });
+});
+
+/*
+ * The backstab weapon derived from the pack where no backstab set is written
+ * (todo 76): the best backstab the realm rows give, worn for the opener, and
+ * the hands put back by the fight after it.
+ */
+describe('the derived backstab weapon', () => {
+  const weapon = (
+    name: string,
+    min: number,
+    max: number,
+    kind: number,
+    slot: { equipped?: boolean; hand?: string } = {}
+  ): CarriedItem => ({
+    ...wireItem(name),
+    kind: 'weapon',
+    weapon: { min, max, kind, hands: kind === 1 || kind === 3 ? 2 : 1 },
+    ...(slot.equipped ? { equipped: true, slot: slot.hand ?? WEAPON_HAND } : {})
+  });
+  const plain = gear({ sets: [] });
+  const slotOf = (name: string): string | null =>
+    name.endsWith('shield') ? OFF_HAND : WEAPON_HAND;
+  const shield: CarriedItem = { ...worn('wooden shield', OFF_HAND), kind: 'armour' };
+
+  it('wears the best backstab weapon between fights and the old one back in the fight', () => {
+    const manager = make(plain, { opensWithBackstab: () => true, slotOf });
+    const before = [
+      weapon('broadsword', 4, 14, 0, { equipped: true }),
+      weapon('stiletto', 6, 16, 2)
+    ];
+    manager.beforeStep(standing(before));
+    expect(sent).toEqual(['wear stiletto']);
+    const stabbing = [
+      weapon('broadsword', 4, 14, 0),
+      weapon('stiletto', 6, 16, 2, { equipped: true })
+    ];
+    manager.onCharacter(fighting('big sandworm', stabbing), false);
+    expect(sent).toEqual(['wear stiletto', 'wear broadsword']);
+  });
+
+  it('takes the shield off for a two-handed one and puts both back after', () => {
+    const manager = make(plain, {
+      opensWithBackstab: () => true,
+      slotOf,
+      handsOf: (name) => (name === 'assassin pike' ? 2 : 1)
+    });
+    const pike: CarriedItem = { ...weapon('assassin pike', 9, 30, 3), abilities: [[117, 5]] };
+    manager.beforeStep(standing([weapon('shortsword', 3, 9, 2, { equipped: true }), shield, pike]));
+    expect(sent).toEqual(['remove wooden shield', 'wear assassin pike']);
+    const after = [
+      weapon('shortsword', 3, 9, 2),
+      { ...shield, equipped: false, slot: null },
+      { ...pike, equipped: true, slot: WEAPON_HAND }
+    ];
+    manager.onCharacter(fighting('big sandworm', after), false);
+    expect(sent.slice(2)).toEqual(['wear shortsword', 'wear wooden shield']);
+  });
+
+  it('leaves the hands alone when the next fight does not open with a backstab', () => {
+    // Positive control: the same pack with a backstab opener sends the swap.
+    const pack = [weapon('broadsword', 4, 14, 0, { equipped: true }), weapon('stiletto', 6, 16, 2)];
+    make(plain, { opensWithBackstab: () => true, slotOf }).beforeStep(standing(pack));
+    expect(sent).toEqual(['wear stiletto']);
+    sent.length = 0;
+    make(plain, { opensWithBackstab: () => false, slotOf }).beforeStep(standing(pack));
+    expect(sent).toEqual([]);
+  });
+
+  it('gives way to a written backstab set', () => {
+    const written = gear({ sets: [{ name: 'Stab', when: 'backstab', mob: '', wear: ['dagger'] }] });
+    const pack = [
+      weapon('broadsword', 4, 14, 0, { equipped: true }),
+      weapon('stiletto', 6, 16, 2),
+      weapon('dagger', 1, 4, 2)
+    ];
+    make(written, { opensWithBackstab: () => true, slotOf }).beforeStep(standing(pack));
+    expect(sent).toEqual(['wear dagger']);
+  });
+
+  it('passes over a weapon the server refused to backstab with, and answers the opener the same', () => {
+    const pack = [
+      weapon('broadsword', 4, 14, 0, { equipped: true }),
+      weapon('stiletto', 6, 16, 2),
+      weapon('dagger', 1, 4, 2)
+    ];
+    // Positive control: unrefused, the stiletto is the pick.
+    expect(make(plain, { slotOf }).backstabWeapon(standing(pack))?.name).toBe('stiletto');
+    const refused = make(plain, {
+      opensWithBackstab: () => true,
+      refusesBackstabWith: (name) => name === 'stiletto',
+      slotOf
+    });
+    expect(refused.backstabWeapon(standing(pack))?.name).toBe('dagger');
+    refused.beforeStep(standing(pack));
+    expect(sent).toEqual(['wear dagger']);
+    expect(make(gear({ sets: [], enabled: false })).backstabWeapon(standing(pack))).toBeNull();
+  });
+
+  it('says once, with the sets off, that a carried weapon would backstab harder', () => {
+    const off = gear({ sets: [], enabled: false });
+    const pack = [weapon('shortsword', 3, 9, 2, { equipped: true }), weapon('stiletto', 6, 16, 2)];
+    // Positive control: a hand that is already the best says nothing.
+    const best = make(off, { opensWithBackstab: () => true, slotOf });
+    best.onCharacter(standing([weapon('stiletto', 6, 16, 2, { equipped: true })]), false);
+    expect(notices).toEqual([]);
+    const manager = make(off, { opensWithBackstab: () => true, slotOf });
+    manager.onCharacter(standing(pack), false);
+    manager.onCharacter(standing(pack), false);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain('stiletto');
+    expect(sent).toEqual([]);
   });
 });
 
