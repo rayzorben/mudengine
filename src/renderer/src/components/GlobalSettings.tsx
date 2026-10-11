@@ -1564,6 +1564,20 @@ export default function GlobalSettings({
                   })
                 }
               />
+              <NumberField
+                hint={t('settings.movement.gearLockHoursHint')}
+                label={t('settings.movement.gearLockHoursLabel')}
+                name="global-gear-lock-hours"
+                onChange={(value) =>
+                  automation({
+                    movement: {
+                      ...draft.automation.movement,
+                      gearLockHours: Number.parseInt(value, 10) || 0
+                    }
+                  })
+                }
+                value={String(draft.automation.movement.gearLockHours)}
+              />
               <CheckField
                 checked={draft.automation.movement.collectKeys}
                 hint={t('settings.movement.collectKeysHint')}

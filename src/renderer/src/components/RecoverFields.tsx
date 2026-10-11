@@ -7,6 +7,7 @@ export interface RecoverSwitches {
   recoverGearFloor: string;
   recoverGearTries: string;
   reequipOnRecover: boolean;
+  gearLockHours: string;
 }
 
 export interface RecoverFieldsProps {
@@ -16,8 +17,8 @@ export interface RecoverFieldsProps {
 
 /**
  * The gear after a death: the walk back for it, its two bounds, and putting it
- * on after `recover corpse`. A fragment, so each field stays a cell of the
- * fieldset's grid.
+ * on after `recover corpse`, with how long a death holds the saved gear. A
+ * fragment, so each field stays a cell of the fieldset's grid.
  */
 export default function RecoverFields({ value, onChange }: RecoverFieldsProps): React.JSX.Element {
   return (
@@ -57,6 +58,13 @@ export default function RecoverFields({ value, onChange }: RecoverFieldsProps): 
         label={t('settings.movement.reequipOnRecover')}
         name="reequip-on-recover"
         onChange={(checked) => onChange({ reequipOnRecover: checked })}
+      />
+      <NumberField
+        hint={t('settings.movement.gearLockHoursHint')}
+        label={t('settings.movement.gearLockHoursLabel')}
+        name="gear-lock-hours"
+        onChange={(hours) => onChange({ gearLockHours: hours })}
+        value={value.gearLockHours}
       />
     </>
   );

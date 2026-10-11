@@ -375,8 +375,8 @@ describe('answering the imperative ones', () => {
     const kit = (cross: boolean): CharacterState =>
       who({
         loadout: [
-          { slot: 'Off-Hand', item: 'large silvery cross', at: 1 },
-          { slot: 'Readied', item: 'torch', at: 1 }
+          { slot: 'Off-Hand', item: 'large silvery cross', at: 1, locked: null },
+          { slot: 'Readied', item: 'torch', at: 1, locked: null }
         ],
         inventory: {
           ...EMPTY_CHARACTER.inventory,
@@ -1120,7 +1120,7 @@ describe('the gate: who may ask, and for what', () => {
   it('does not run @equip-all for somebody who was not granted it', () => {
     peers.configure(grant({}));
     const state = live({
-      loadout: [{ slot: 'Head', item: 'padded helm', at: 1 }],
+      loadout: [{ slot: 'Head', item: 'padded helm', at: 1, locked: null }],
       inventory: { ...EMPTY_CHARACTER.inventory, items: [wireItem('padded helm')] }
     });
     peers.onBlock(said('conversation-telepath', 'Rend', '@equip-all'), state);

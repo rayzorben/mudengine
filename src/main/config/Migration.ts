@@ -267,6 +267,7 @@ function migrateAll(options: MigrationOptions): void {
   theExitsGainedADesign(home, note);
   statedRunBetweenRounds(home, note, options.template);
   statedReequipOnRecover(home, note, options.template);
+  statedGearLockHours(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
@@ -4057,6 +4058,35 @@ function statedReequipOnRecover(
     stated.length === 1
       ? t('notices.migration.reequipOnRecover.one', params)
       : t('notices.migration.reequipOnRecover.many', params)
+  );
+}
+
+/**
+ * `automation.movement.gearLockHours` (2026-10-10, todo 82) into every file
+ * that states `movement:` without it, at the template's hours, after
+ * `reequipOnRecover` and with the template's paragraph. Idempotent: a key
+ * stays added whatever its value.
+ */
+function statedGearLockHours(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const hours = DEFAULT_CONFIG.automation.movement.gearLockHours;
+  const stated = stateIn(
+    home,
+    ['automation', 'movement'],
+    'gearLockHours',
+    hours,
+    'reequipOnRecover',
+    templateComments(template, 'automation').get('automation.movement.gearLockHours')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', '), hours };
+  note(
+    stated.length === 1
+      ? t('notices.migration.gearLockHours.one', params)
+      : t('notices.migration.gearLockHours.many', params)
   );
 }
 

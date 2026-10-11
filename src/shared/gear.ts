@@ -54,6 +54,18 @@ export interface WornSlot {
   item: string;
   /** When it was last seen there. */
   at: number;
+  /**
+   * Held since a death, until the item comes back or the play allowance runs
+   * out (todo 82, `gearLocks.ts`). Null is free: the slot learns what is worn.
+   */
+  locked: GearLock | null;
+}
+
+/** When a slot was held, by the clock and by play time (`playedFor`). */
+export interface GearLock {
+  at: number;
+  /** `playedFor(tally)` at the death: the allowance counts from here. */
+  played: number;
 }
 
 /**
@@ -87,8 +99,9 @@ export function learnLoadout(held: Loadout, items: readonly CarriedItem[], at: n
     if (!item.equipped || item.slot === null) continue;
     const key = item.slot.toLowerCase();
     const before = next.get(key);
-    if (before && sameItem(before.item, item.name)) continue;
-    next.set(key, { slot: item.slot, item: item.name, at });
+    // A slot held since a death keeps the gear it died in (todo 82).
+    if (before && (before.locked !== null || sameItem(before.item, item.name))) continue;
+    next.set(key, { slot: item.slot, item: item.name, at, locked: null });
     changed = true;
   }
 

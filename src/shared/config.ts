@@ -1745,6 +1745,8 @@ export interface MovementConfig {
    * player. On by default.
    */
   reequipOnRecover: boolean;
+  /** Hours of play (`playedFor`) a death holds the saved gear for, todo 82. 0 never holds. */
+  gearLockHours: number;
   /**
    * Put a burning light out again in a room that does not need it, so a torch
    * lasts the sewer rather than the walk to it. MegaMUD does the same at every
@@ -2855,6 +2857,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       recoverGearTries: 2,
       recoverGearFloor: 2,
       reequipOnRecover: true,
+      gearLockHours: 3,
       walkWhileBlind: false,
       walkWhilePoisoned: false,
       walkWhileConfused: false,
@@ -4095,6 +4098,7 @@ function normalizeMovement(value: unknown): MovementConfig {
     recoverGearTries: int(raw['recoverGearTries'], d.recoverGearTries, 0, 20),
     recoverGearFloor: int(raw['recoverGearFloor'], d.recoverGearFloor, 0, 99),
     reequipOnRecover: bool(raw['reequipOnRecover'], d.reequipOnRecover),
+    gearLockHours: int(raw['gearLockHours'], d.gearLockHours, 0, 48),
     walkWhileBlind: bool(raw['walkWhileBlind'], d.walkWhileBlind),
     walkWhilePoisoned: bool(raw['walkWhilePoisoned'], d.walkWhilePoisoned),
     walkWhileConfused: bool(raw['walkWhileConfused'], d.walkWhileConfused),

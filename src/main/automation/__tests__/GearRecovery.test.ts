@@ -23,9 +23,9 @@ const movement = (over: Partial<MovementConfig> = {}): MovementConfig => ({
 
 const DIED_AT = 1_000_000;
 const LOADOUT = [
-  { slot: 'Weapon Hand', item: 'ice crystal falchion', at: 1 },
-  { slot: 'Back', item: 'crimson cloak', at: 1 },
-  { slot: 'Finger', item: 'white gold ring', at: 1 }
+  { slot: 'Weapon Hand', item: 'ice crystal falchion', at: 1, locked: null },
+  { slot: 'Back', item: 'crimson cloak', at: 1, locked: null },
+  { slot: 'Finger', item: 'white gold ring', at: 1, locked: null }
 ];
 
 /** In the temple after the death, the pack read since, wearing nothing but a ring. */

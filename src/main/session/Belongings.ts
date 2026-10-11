@@ -47,7 +47,7 @@ import {
   type UnderwaySink
 } from '../../shared/underway';
 import { combatTallyFault, settleClocks, type CombatTally } from '../../shared/tally';
-import type { Loadout, WornSlot } from '../../shared/gear';
+import type { GearLock, Loadout, WornSlot } from '../../shared/gear';
 import { isStashEntry, type Stash, type StashEntry } from '../../shared/stash';
 import { isFledList, type FledEntry } from '../../shared/fled';
 import { sameItem } from '../../shared/items';
@@ -67,9 +67,10 @@ interface BelongingsFile {
    * are still the only copy of what the banks said, and throwing them away over
    * a key that did not exist yet is the pre-v1 legacy rule read backwards. The
    * client is unreleased, so this is the one shape allowance made — and it is
-   * about a *record the client writes*, not about the user's own YAML.
+   * about a *record the client writes*, not about the user's own YAML. A slot
+   * written before todo 82 has no `locked`, read as free on the same rule.
    */
-  loadout?: WornSlot[];
+  loadout?: KeptSlot[];
   /** What the character hid and where. Absent is nothing hidden. */
   stash?: StashEntry[];
   /**
@@ -432,7 +433,7 @@ export class Belongings implements BelongingsSink, UnderwaySink {
         return;
       }
       this.banks = file.banks;
-      this.loadout = file.loadout ?? [];
+      this.loadout = (file.loadout ?? []).map((worn) => ({ ...worn, locked: worn.locked ?? null }));
       this.stash = file.stash ?? [];
       // Absent is *never read*, and stays null — not normalised to [].
       this.spellbook = file.spellbook ?? null;
@@ -561,7 +562,8 @@ function sameLoadout(a: Loadout, b: Loadout): boolean {
     return (
       other !== undefined &&
       worn.slot.toLowerCase() === other.slot.toLowerCase() &&
-      sameItem(worn.item, other.item)
+      sameItem(worn.item, other.item) &&
+      worn.locked?.at === other.locked?.at
     );
   });
 }
@@ -642,7 +644,7 @@ function belongingsFault(value: unknown): string | null {
   if (file.version !== 1) return 'version';
   if (typeof file.realm !== 'string') return 'realm';
   if (!listOf(isBankBalance)(file.banks)) return 'banks';
-  if (!optional(file.loadout, listOf(isWornSlot))) return 'loadout';
+  if (!optional(file.loadout, listOf(isKeptSlot))) return 'loadout';
   if (!optional(file.stash, listOf(isStashEntry))) return 'stash';
   if (!optional(file.spellbook, listOf(isKnownSpell))) return 'spellbook';
   if (!optional(file.spellDurations, isDurationRecord)) return 'spellDurations';
@@ -748,17 +750,27 @@ function isDurationRecord(value: unknown): value is Record<string, number> {
   return Object.values(value).every((seconds) => typeof seconds === 'number' && seconds > 0);
 }
 
-function isWornSlot(value: unknown): value is WornSlot {
+/** A loadout entry as the record holds it: `locked` absent before todo 82. */
+type KeptSlot = Omit<WornSlot, 'locked'> & { locked?: GearLock | null };
+
+function isKeptSlot(value: unknown): value is KeptSlot {
   if (typeof value !== 'object' || value === null) return false;
-  const worn = value as Partial<WornSlot>;
+  const worn = value as Partial<KeptSlot>;
   return (
     typeof worn.slot === 'string' &&
     worn.slot.length > 0 &&
     typeof worn.item === 'string' &&
     worn.item.length > 0 &&
     typeof worn.at === 'number' &&
-    Number.isFinite(worn.at)
+    Number.isFinite(worn.at) &&
+    (worn.locked === undefined || worn.locked === null || isGearLock(worn.locked))
   );
+}
+
+function isGearLock(value: unknown): value is GearLock {
+  if (typeof value !== 'object' || value === null) return false;
+  const lock = value as Partial<GearLock>;
+  return Number.isFinite(lock.at) && Number.isFinite(lock.played);
 }
 
 function isBankBalance(value: unknown): value is BankBalance {
