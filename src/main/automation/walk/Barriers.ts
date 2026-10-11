@@ -165,8 +165,7 @@ export class Barriers {
    * The forcing attempt on the wire, if one is.
    *
    * `Your attempts to bash through fail!` and `Your skill fails you this time.`
-   * are answers to a specific command, and the second is not even specific to
-   * picking — the server spends the same sentence on a failed trap disarm. So
+   * are answers to a specific command, which the player may have typed. So
    * neither is acted on unless this says the walker asked the question.
    */
   private forcing: Forcing | null = null;
@@ -240,9 +239,9 @@ export class Barriers {
    *
    * - **`bash`**: a hand-typed `bas` at a door the player is dealing with
    *   themselves is not the walk's news.
-   * - **`pick`**: `Your skill fails you this time.` also answers a failed trap
-   *   disarm, so it means "the pick missed" only while the walker has one in
-   *   flight.
+   * - **`pick`**: `Your skill fails you this time.` is a hand-typed pick's
+   *   answer too, so it means "the pick missed" only while the walker has one
+   *   in flight.
    * - **`key`**: `Your command had no effect.` is what `Door.TryUnlock`
    *   answers a key that does not match the door's row with — the same
    *   sentence the server gives every command it could not carry out. It is

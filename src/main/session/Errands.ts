@@ -799,6 +799,7 @@ export class Errands implements SessionModule {
             )
           }
         : {}),
+      trapSkill: state.progress.traps,
       // And which of the two the walker will spend: a door planned on a skill
       // whose switch is off is a door the walk stops at.
       forcing: {

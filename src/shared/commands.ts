@@ -650,6 +650,8 @@ export const ATTACK_COMMANDS: ReadonlySet<CommandName> = new Set([
  *   `Equip` (`EquipCommand.cs:138,165`), `Buy` (`BuyCommand.cs:189`),
  *   `Give` (`GiveCommand.cs:88,237`).
  * - `Search` — bare only; see `breaksStealth`.
+ * - `Disarm` — a failure only (`TrapExit.cs:112`), and silently; no failure
+ *   line is fixed, so a success costs one `sn`.
  *
  * **Not here, deliberately.** The barrier work (`Open`, `Close`, `Lock`,
  * `Pick`) breaks stealth too and is read from `door-changed` instead, because
@@ -667,6 +669,7 @@ export const STEALTH_BREAKING: ReadonlySet<CommandName> = new Set<CommandName>([
   'Buy',
   'Break',
   'Cast',
+  'Disarm',
   'Equip',
   'Give',
   'Meditate',

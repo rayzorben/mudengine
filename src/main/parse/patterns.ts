@@ -226,6 +226,9 @@ const COMPASS = Object.values(DIRECTION_NAME)
   .filter((name) => name !== 'up' && name !== 'down')
   .join('|');
 
+/** Every direction word, up and down as themselves (`Exit.GetExitName` without `inSpecial`). */
+const ANY_WAY = Object.values(DIRECTION_NAME).join('|');
+
 /** The attack titles `stat all` prints a row under, off the one table that reads them. */
 const STATED_ATTACK_TITLES = Object.keys(STATED_ATTACK_ROWS).join('|');
 
@@ -1773,16 +1776,22 @@ export const RULES: Rule[] = [
   },
   /*
    * `Your skill fails you this time.` — three attempts of it in `captures/002`
-   * before `pi w` answered `You successfully unlocked the door.`
-   *
-   * The server spends this sentence on more than picking: it is also what a
-   * failed `disarm` says (docs/greatermud/movement.md, *Searching, traps and
-   * discovery*), and the words name neither skill. So the block type says only
-   * what the wire says — a skill was tried and did not work — and the reader
-   * supplies the context. `Walker` reads it only while it has a lock-pick in
-   * flight for the step it is on.
+   * before `pi w` answered `You successfully unlocked the door.` Only a pick
+   * sends it (`Door.cs:167`); `Walker` reads it while a pick is in flight.
    */
   { type: 'skill-failed', pattern: /^Your skill fails you this time\.$/ },
+  /*
+   * The answers to `disarm trap <dir>` that end it (`TrapExit.TryDisarm`,
+   * `SpellTrapExit.TryDisarm`; source, no capture yet). A failure has no fixed
+   * line: it prints the exit's own message from `Messages`, then the trap.
+   */
+  {
+    type: 'trap-disarmed',
+    pattern: new RegExp(
+      `^You successfully disarmed the trap to the (?<direction>${ANY_WAY})\\.$`
+    )
+  },
+  { type: 'trap-disarmed', pattern: /^The trap is already disarmed\.$/ },
   /*
    * `trac <name>`: `Rend went west from here.` or the skill failing. The only
    * answer the game gives to *which way did somebody go*, and against the
@@ -1791,7 +1800,7 @@ export const RULES: Rule[] = [
   {
     type: 'user-tracks',
     pattern: new RegExp(
-      `^(?<player>[A-Z][\\w'-]*) went (?<direction>${COMPASS}|up|down) from here\\.$`
+      `^(?<player>[A-Z][\\w'-]*) went (?<direction>${ANY_WAY}) from here\\.$`
     )
   },
   { type: 'user-tracks-failed', pattern: /^Your tracking skills fail you this time\.$/ },

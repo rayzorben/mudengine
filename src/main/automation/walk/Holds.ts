@@ -41,6 +41,8 @@ export interface HoldsWalk extends Pick<
   onward(state: CharacterState, here: RoomId): void;
   /** Every movement command not yet on the wire, taken back, but what `sparing` keeps. */
   cancelQueued(sparing?: IntentFilter): void;
+  /** Whether the step's trap is disarmed for now (`DisarmBeforeStep.disarmed`): nothing to rest for. */
+  trapDisarmed(step: RouteStep): boolean;
 }
 
 export type HoldsEvents = Pick<
@@ -1166,13 +1168,14 @@ export class Holds {
   /**
    * The health a step's trap wants first, in hit points, or null: no trap, a
    * trap whose damage the realm does not state (a hold on a figure nobody
-   * gave would stand for ever), the setting off, or a maximum nobody has read.
+   * gave would stand for ever), the setting off, a maximum nobody has read,
+   * or a trap this character has just disarmed.
    */
   private trapFloorFor(step: RouteStep, state: CharacterState): number | null {
     const share = this.config.health.restBeforeTraps;
     if (share <= 0) return null;
     const trap = trapOn(step);
-    if (trap === null || trap.damage === null) return null;
+    if (trap === null || trap.damage === null || this.walk.trapDisarmed(step)) return null;
     const { hpMax } = state.vitals;
     if (hpMax === null || hpMax <= 0) return null;
     // In points, both halves: the lair's figure is the pass in hit points

@@ -582,14 +582,18 @@ export type BlockType =
    */
   | 'player-bashes-door'
   /**
-   * `Your skill fails you this time.` — a skill was tried and did not work.
-   *
-   * Deliberately not named for picking. The server spends this one sentence on
-   * a failed lock-pick *and* a failed trap disarm, and the words name neither;
-   * whoever reads it supplies the context, which for `Walker` is "there is a
-   * lock-pick in flight for the step I am standing at".
+   * `Your skill fails you this time.` — a lock-pick that did not take
+   * (`Door.cs:167`, the sentence's one sender in the GreaterMUD source). A
+   * failed disarm prints the trap's own message instead (`TrapExit.TryDisarm`).
    */
   | 'skill-failed'
+  /**
+   * `You successfully disarmed the trap to the north.` or `The trap is already
+   * disarmed.` — the way is safe until the server re-arms it, 300 s after the
+   * disarm (`TrapExit.TryDisarm`, source; no capture yet). `direction` is set
+   * on the first only. `walk/Disarm.ts` reads it.
+   */
+  | 'trap-disarmed'
   /**
    * `Rend went west from here.` — the answer to `trac <name>`, and the only
    * mechanism in the game that says which way somebody went. A direction plus a
@@ -1069,6 +1073,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'door-swings': 'movement',
   'player-bashes-door': 'movement',
   'skill-failed': 'movement',
+  'trap-disarmed': 'movement',
   'user-tracks': 'movement',
   'user-tracks-failed': 'movement',
   'party-follows': 'movement',

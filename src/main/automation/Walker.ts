@@ -76,6 +76,7 @@ import { WalkClock } from './walk/clock';
 import type { IntentFilter, WalkerEvents, WalkInFlight } from './walk/ports';
 import { Holds } from './walk/Holds';
 import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
+import { DisarmBeforeStep } from './walk/Disarm';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { RoomCommands, scriptGated } from './walk/RoomCommands';
@@ -177,6 +178,7 @@ export class Walker implements SessionModule {
   private readonly offRounds: OffRounds;
   /** The `sn` before each step, and when not to ask (`walk/Sneak.ts`). */
   private readonly sneak: SneakBeforeStep;
+  private readonly disarm: DisarmBeforeStep;
   /**
    * Whether this walk is owed back after the connection is lost and regained.
    *
@@ -255,6 +257,7 @@ export class Walker implements SessionModule {
       stepWhenFree: () => this.retry(this.events.stateNow?.(), false)
     };
     this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere, inFlight, this.clock);
+    this.disarm = new DisarmBeforeStep(queue, events, inFlight, this.clock);
     this.offRounds = new OffRounds(this.stepTimes, events);
     this.holds = new Holds(
       config,
@@ -265,7 +268,8 @@ export class Walker implements SessionModule {
         recheck: (state) => this.onCharacter(state),
         carryOn: (state) => this.carryOn(state),
         onward: (state, here) => this.onward(state, here),
-        cancelQueued: (sparing) => this.cancelQueued(sparing)
+        cancelQueued: (sparing) => this.cancelQueued(sparing),
+        trapDisarmed: (step) => this.disarm.disarmed(step)
       },
       this.clock
     );
@@ -798,6 +802,7 @@ export class Walker implements SessionModule {
     this.barriers.reset();
     this.levers.reset();
     this.sneak.reset();
+    this.disarm.reset();
     this.publish();
   }
 
@@ -854,6 +859,7 @@ export class Walker implements SessionModule {
     this.offRounds.onBlock(block);
     if (this.status !== 'walking') return;
     if (isSneakAnswer(block.type)) return this.sneak.answered(block.type);
+    if (block.type === 'trap-disarmed') return this.disarm.answered(block.groups['direction']);
 
     /*
      * The character died, so the route is over and it is over for a *reason*.
@@ -1555,12 +1561,9 @@ export class Walker implements SessionModule {
     // rather than starting again — otherwise `openTries` would never be reached.
     if (fresh) this.barriers.forget();
     /*
-     * Whatever must go ahead of the step, before the step is queued: the two
-     * share a band and the arbiter keeps a band in order, so a torch asked
-     * for here is lit before the character moves. Only a fresh send — a
-     * retry behind a door is the same step into the same room.
-     *
-     * The sneak is asked on **every** send, after the light: `SneakBeforeStep`.
+     * Whatever must go ahead of the step, in its band, so a torch asked for
+     * here is lit before the character moves; only a fresh send. The disarm,
+     * then the sneak, on **every** send: `DisarmBeforeStep`, `SneakBeforeStep`.
      */
     const now = this.events.stateNow?.() ?? from;
     if (now !== undefined) this.noteRoomBehind(now);
@@ -1569,21 +1572,14 @@ export class Walker implements SessionModule {
       // And the ward the room ahead wants, in the same band and after the
       // light for the same reason: both must reach the wire before the step.
       this.events.wardFor?.(step.to, now);
-      /*
-       * And the door the room has already said is shut, in place of the step
-       * — see `Barriers.openShutWayFirst`. After the light, which the step behind the
-       * door still needs and which only a fresh send asks for; before the
-       * sneak, which the retry asks again for itself.
-       */
+      // And the shut door, in place of the step (`Barriers.openShutWayFirst`):
+      // after the light, which only a fresh send asks for; before the sneak.
       if (this.barriers.openShutWayFirst(step, now)) return;
-      /*
-       * And a hidden exit whose action has not yet opened it — see
-       * `Levers.pullLeversFirst`. If the room's exits show the way is not there,
-       * pulling the lever or using the item takes the step's place instead
-       * of walking into the wall to be refused.
-       */
+      // And a hidden exit its action has not opened yet: the lever or the item
+      // takes the step's place (`Levers.pullLeversFirst`).
       if (this.levers.pullLeversFirst(step, now)) return;
     }
+    if (now !== undefined && this.disarm.ask(now)) return;
     if (now !== undefined && this.sneak.ask(now, this.config.movement.sneak)) return;
     /*
      * And where the realm's own spell will put the character, for an exit

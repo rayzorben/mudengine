@@ -188,6 +188,11 @@ describe('what costs a character its stealth', () => {
     expect(breaksStealth('search chest')).toBe(false);
   });
 
+  /* A failed disarm breaks it with no line of its own (`TrapExit.cs:112`, todo 53). */
+  it('is a disarm, which may have failed', () => {
+    expect(breaksStealth('disarm trap e')).toBe(true);
+  });
+
   it('is not a step, a look, or anything else that only reads', () => {
     for (const command of ['n', 'ne', 'l', 'i', 'st', 'exp', 'rm', 'who', 'sn']) {
       expect(breaksStealth(command), command).toBe(false);

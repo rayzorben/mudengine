@@ -21,6 +21,7 @@ import type { Alignment } from '../../shared/alignment';
 import type { RealmFamily } from '../../shared/realm';
 import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
 import { judge, type Gate, type GateKind, type Verdict } from '../../shared/gates';
+import { disarmOdds, trapHurt } from '../../shared/walk';
 import {
   describeBlock,
   unrouted,
@@ -134,6 +135,8 @@ export interface Traveller {
   pickSkill?: number | null;
   /** Strength, for the same doors — the realm accepts either. */
   strength?: number | null;
+  /** Traps, for a trapped way this character may disarm first (`trapHurt`). Absent is nobody has said. */
+  trapSkill?: number | null;
   /**
    * Which of those two the walker may spend: *Auto-Pick Locks* and *Auto-Bash
    * Doors* (`movement.pickLocks`, `movement.bashDoors`). A skill the walker
@@ -595,6 +598,15 @@ export function edgeBlock(
 }
 
 /**
+ * A trapped way's price: proportional to the hurt, floored so any trap is
+ * worth avoiding, the hurt being the failed disarms' where a disarm costs
+ * less than walking in (`trapHurt`, todo 53).
+ */
+function trapPrice(requirement: Requirement, traveller: Traveller): number {
+  return 20 + (trapHurt(requirement.damage ?? null, disarmOdds(traveller.trapSkill ?? null)) ?? 0);
+}
+
+/**
  * What a condition nobody can evaluate costs.
  *
  * Passable in principle and heavily discouraged in practice: a route through
@@ -929,8 +941,7 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
     }
 
     case 'trap':
-      // Proportional to the hurt, floored so any trap is worth avoiding.
-      return 20 + (requirement.damage ?? 0);
+      return trapPrice(requirement, traveller);
 
     case 'class':
     case 'race':
@@ -1007,7 +1018,7 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * shipped realm holds one, which is exactly why it must not be a
        * special case nobody exercises.
        */
-      return 20 + (requirement.damage ?? 0);
+      return trapPrice(requirement, traveller);
 
     case 'item':
       // An item its holder may not use is a wall whatever the pack holds.
