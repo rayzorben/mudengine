@@ -44,6 +44,15 @@ export interface FightGear {
   slot: string | null;
 }
 
+/** Worn and wielded only: what is merely in the pack changes nothing about a fight but its weight. */
+export function wornGear(
+  items: ReadonlyArray<{ name: string; slot: string | null; equipped: boolean }>
+): FightGear[] {
+  return items
+    .filter((item) => item.equipped)
+    .map((item) => ({ name: item.name, slot: item.slot }));
+}
+
 /** One fight, as it ended. */
 export interface FightRecord {
   /** Epoch ms of the last blow. */

@@ -140,6 +140,7 @@ import {
 import { NO_RECORD, type CharacterRecord, type KeptRoom } from '../../shared/belongings';
 import type { FledEntry } from '../../shared/fled';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
+import { NO_HARM, type HarmSink } from '../../shared/harm';
 import type { Discovery, RealmMemory } from '../../shared/memory';
 import { NO_FINDS, type Find, type RealmFinds } from '../../shared/finds';
 import { NO_SHOPS, type RealmShops } from '../../shared/shops';
@@ -222,19 +223,15 @@ export interface SessionDeps {
    */
   readonly lore?: RealmLoreView;
   /**
-   * Where what this character learns about the realm is kept.
-   *
-   * An interface, not the store: this is the session layer, and the file
-   * handling belongs to whoever decided where the file goes. Absent in every
-   * test and for a realm with no realm data, where there is nothing to learn
-   * against and learning something and forgetting it beats refusing to play.
+   * Where what this character learns about the realm is kept; an interface, since
+   * the file belongs to whoever wired it. Absent in every test and with no realm
+   * data, where learning something and forgetting it beats refusing to play.
    */
   readonly memory?: RealmMemory;
-  /**
-   * Where fights are written down; absent in every test and with `logging.fights`
-   * off, which writes no file. `shared/fights.ts` says why the record exists.
-   */
+  /** Where fights are written down; absent in tests and with `logging.fights` off (`shared/fights.ts`). */
   readonly fights?: FightSink;
+  /** What each monster did to the character, kept beside the fights and absent likewise (todo 26). */
+  readonly harm?: HarmSink;
   /**
    * What the realm knows about the other players on it, shared by every
    * character dialling the same address. Defaults to a realm that knows
@@ -504,6 +501,7 @@ export class SessionManager {
       lore = NO_LORE,
       memory,
       fights = NO_FIGHTS,
+      harm = NO_HARM,
       players = NO_REALM_PLAYERS,
       spellLore = NO_SPELL_LORE,
       finds = NO_FINDS,
@@ -519,7 +517,8 @@ export class SessionManager {
       fights,
       players,
       spellLore,
-      deps.lastRoom
+      deps.lastRoom,
+      harm
     );
     this.records = new Records({ tracker: this.tracker, world, memory, finds, shops }, sink);
     this.questWatch = new QuestWatch({ tracker: this.tracker, world }, sink);
@@ -1615,7 +1614,7 @@ export class SessionManager {
       ...{ supplies: this.supplies, trainLevel: this.trainLevel, queue: this.queue, fled },
       ...{ hostTrips: this.hostTrips, areaSearch: this.areaSearch, gear: this.gearDesk.reads },
       world: () => this.world,
-      odds: this.odds,
+      ...{ odds: this.odds, harm },
       config: () => this.automationConfig,
       busy: () => this.errandHeld() || moveInFlight() || this.walker.walking,
       safety: () => this.publisher.automation.safety,

@@ -12,6 +12,11 @@ import type { Block } from '../../shared/blocks';
 import { atSpeed } from '../../shared/hunting';
 import { isBlow } from './RealmSpeed';
 
+/** A round at the realm's speed `speed`, in ms: the server's round over the figure (`atSpeed`). */
+export function roundMsAt(speed: number): number {
+  return atSpeed(tuning().hunting, speed).roundSeconds * 1000;
+}
+
 export class RoundBeat {
   private lastBlowAt = Number.NEGATIVE_INFINITY;
 
@@ -30,9 +35,9 @@ export class RoundBeat {
     return opens;
   }
 
-  /** A round at the realm's speed, in ms: the server's round over the figure (`atSpeed`). */
+  /** A round at the realm's speed, in ms (`roundMsAt`). */
   get roundMs(): number {
-    return atSpeed(tuning().hunting, this.speed()).roundSeconds * 1000;
+    return roundMsAt(this.speed());
   }
 
   reset(): void {

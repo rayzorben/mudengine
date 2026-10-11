@@ -51,6 +51,7 @@ import { PLAYER_STATUS_HEADER } from './patterns';
 import * as lastRoom from './lastRoom';
 import type { Discovery } from '../../shared/memory';
 import { NO_FIGHTS, type FightSink } from '../../shared/fights';
+import { NO_HARM, type HarmSink } from '../../shared/harm';
 import { NO_BELONGINGS, type BelongingsSink, type KeptRoom } from '../../shared/belongings';
 import { bareName, WORN_SLOT } from '../../shared/items';
 import { learnLoadout, type Loadout } from '../../shared/gear';
@@ -283,15 +284,15 @@ export class CharacterTracker {
      */
     book: RealmPlayers = NO_REALM_PLAYERS,
     /**
-     * The realm's sentences for an effect landing and ending — the shipped
-     * table and what this realm's wire has taught — and where a new one is
-     * taught. Defaults to knowing none, which leaves the frames in
-     * `patterns.ts` and the watchdog clock as the only readers of a buff's
-     * life, exactly as before the table existed.
+     * The realm's sentences for an effect landing and ending (shipped, and taught
+     * on this wire), and where a new one is taught. With none known, the frames in
+     * `patterns.ts` and the watchdog clock are the only readers of a buff's life.
      */
     spellLore: SpellLore = NO_SPELL_LORE,
     /** Where the character's record last placed it, drawn before any dial (`lastRoom.ts`). */
-    kept: KeptRoom | null = null
+    kept: KeptRoom | null = null,
+    /** What each monster did to the character, with the prediction at its opening (todo 26). */
+    harm: HarmSink = NO_HARM
   ) {
     this.state = { ...this.state, room: lastRoom.recalledRoom(kept, world) };
     // The book's guard reads the phase, and a kit teaches the pack's slots.
@@ -313,8 +314,7 @@ export class CharacterTracker {
     // Classification asks the realm's monster table and the roster, so a blow
     // that puts its attacker in the room asks the room (`room.ts`) to do it.
     this.fight = new FightTracker({
-      lore,
-      fights,
+      ...{ lore, fights, harm },
       withOccupant: (state, name) => this.room.withOccupant(state, name)
     });
     // A hold refuses the move at the head of the queue, and a measured
@@ -790,7 +790,7 @@ export class CharacterTracker {
      * binding and then arms a new one in `FightTracker.hit`.
      */
     if (!proc && !keepsProcBinding(block, before, this.fight)) this.fight.interrupt();
-    this.fight.heard(block);
+    this.fight.heard(block, before);
     this.expect.heard(block); // The echo, and a `sys go` answered by no room (todos 768, 769).
     /*
      * **The sheet is open from its header until its batch closes.** Its lines
@@ -1348,7 +1348,7 @@ export class CharacterTracker {
 
       case 'user-dies': {
         this.expect.died();
-        this.fight.forget();
+        this.fight.diedHere(block.at);
         /*
          * And the trail, for the same reason and one more. The realm moves a
          * dead character to its area's temple along no edge, so nothing behind
@@ -2322,7 +2322,7 @@ export class CharacterTracker {
          * evidence there is — and without it a character jumped mid-route
          * walked the rest of the way believing it was still unseen.
          */
-        const blow = this.fight.blowOnMe(s, block.at, vouchedFor(s, g));
+        const blow = this.fight.blowOnMe(s, block.at, vouchedFor(s, g), block);
         return this.stealth.broke(blow) ?? blow;
       }
 
@@ -2333,7 +2333,7 @@ export class CharacterTracker {
        */
       case 'mob-misses': {
         const attacker = swingingAtMe(s, vouchedFor(s, g));
-        const blow = this.fight.blowOnMe(s, block.at, attacker);
+        const blow = this.fight.blowOnMe(s, block.at, attacker, block);
         // Only a swing the realm will vouch for costs the stealth: this
         // pattern is loose enough to catch a sentence that is about nothing
         // more than something standing here, and that has seen nobody.

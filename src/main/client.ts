@@ -82,6 +82,8 @@ import type { ShippedSentences } from '../shared/sentences';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
+import { HarmLog } from './session/HarmLog';
+import { NO_HARM, type HarmSink } from '../shared/harm';
 import { segmentBackscrolls } from './session/backscrollMigration';
 import { segmentFightLogs } from './session/fightLogMigration';
 import { fightsPerSegment } from './session/fightSegments';
@@ -692,6 +694,22 @@ function fightsFor(id: SessionId): FightSink {
   // automatic hunting's first survey would otherwise price nothing and keep
   // that answer until the level moved. `ready` never rejects.
   void log.ready();
+  return log;
+}
+
+/** What each monster did to the character, beside its fight log (todo 26). */
+const harmLogs = new Map<SessionId, HarmLog>();
+
+function harmFor(id: SessionId): HarmSink {
+  if (!(config?.config.logging.fights ?? DEFAULT_CONFIG.logging.fights)) return NO_HARM;
+  const existing = harmLogs.get(id);
+  if (existing) return existing;
+  const log = new HarmLog(home.record('fights', id), {
+    notice: (message) => announce('fights', message, 'warn', id),
+    // Asked at a fight's opening, against the character as that line found it.
+    predict: (mob, state) => host?.get(id)?.manager?.odds.predict(mob, state) ?? null
+  });
+  harmLogs.set(id, log);
   return log;
 }
 
@@ -1459,6 +1477,7 @@ function createHost(): SessionHost {
     simulator: simulators ?? undefined,
     memoryFor: splitMemoryFor,
     fightsFor,
+    harmFor,
     talkFor,
     // Beside the conversation and for the same reason: what the console
     // showed outlives the launch. `check:secrets` walks the whole home.
@@ -3664,6 +3683,8 @@ function teardown(): void {
   // timer, and quitting is when that timer has not fired.
   for (const [id, log] of fightLogs) settle(`fights ${id}`, () => log.dispose());
   fightLogs.clear();
+  for (const [id, log] of harmLogs) settle(`harm ${id}`, () => log.dispose());
+  harmLogs.clear();
   // And the conversation: a line said in the last two seconds is on the same
   // kind of deferred timer.
   for (const [id, log] of talkLogs) settle(`talk ${id}`, () => log.dispose());

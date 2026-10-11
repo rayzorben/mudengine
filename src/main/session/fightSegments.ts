@@ -24,7 +24,7 @@ import {
 } from '../../shared/fights';
 import { isRecord } from '../../shared/values';
 import { tuning } from '../app/tuning';
-import { segmentPath, segmentsIn as segmentsInDir } from './segmentFiles';
+import { appendJsonLines, segmentPath, segmentsIn as segmentsInDir } from './segmentFiles';
 
 /** Fights folded both ways, per monster and per level, and how many there were. */
 export interface FoldedRecord {
@@ -285,9 +285,7 @@ export function fightsPerSegment(): number {
 
 /** Appends one gzip member holding `fights` to a segment, creating it and its directory. */
 export function appendFights(dir: string, segment: number, fights: readonly FightRecord[]): void {
-  const lines = fights.map((fight) => `${JSON.stringify(fight)}\n`).join('');
-  fs.mkdirSync(dir, { recursive: true });
-  fs.appendFileSync(segmentFile(dir, segment), zlib.gzipSync(Buffer.from(lines, 'utf8')));
+  appendJsonLines(segmentFile(dir, segment), fights);
 }
 
 /**

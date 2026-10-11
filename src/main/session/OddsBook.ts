@@ -11,6 +11,7 @@
  * mudengine-automation › *The verdict is also run as a fight*.
  */
 import { tuning } from '../app/tuning';
+import { roundMsAt } from '../automation/RoundBeat';
 import type { SessionModule } from '../automation/Module';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -25,18 +26,20 @@ import { standingOf, type CharacterState } from '../../shared/character';
 import { waitsToBeStruck } from '../../shared/mobs';
 import { SlicedSimulator } from './slicedSimulator';
 import type { FightSimulator } from '../../shared/simulator';
+import type { HarmOdds, HarmPrediction } from '../../shared/harm';
+import { mobTerms, worstModel } from '../../shared/mobRound';
 import { simulateFight, type Odds, type SurvivalInput } from '../../shared/survival';
-import { lairKey, parseLair, type WorldRoom } from '../../shared/world';
+import { lairKey, parseLair, roomAddress, type WorldRoom } from '../../shared/world';
 
 export type OddsWorld = Pick<
   WorldGraph,
-  'mobNames' | 'buildMobEntity' | 'everyRoom' | 'lairEntities'
+  'mobNames' | 'buildMobEntity' | 'everyRoom' | 'lairEntities' | 'mobAsPrinted'
 >;
 
 export interface OddsBookParts {
   readonly tracker: Pick<CharacterTracker, 'current'>;
   readonly world: OddsWorld | undefined;
-  readonly errands: Pick<Errands, 'fitness'>;
+  readonly errands: Pick<Errands, 'fitness' | 'realmSpeed'>;
   readonly setup: Pick<FightSetup, 'character' | 'foes' | 'settingsKey'>;
   readonly simulator: FightSimulator;
 }
@@ -63,6 +66,7 @@ export type SessionOdds = Pick<
   | 'mob'
   | 'mobKnown'
   | 'mobAs'
+  | 'predict'
   | 'lair'
   | 'lairKnown'
   | 'pass'
@@ -183,6 +187,25 @@ export class OddsBook implements SessionModule {
     if ('kind' in input) return input;
     const survival = simulateFight(input);
     return survival === null ? UNRUN : { kind: 'run', survival };
+  }
+
+  /**
+   * What the book predicts for the monster as printed against the character
+   * as the line found it, stamped on a fight's record at its opening (todo 26): the
+   * model's terms against its worst row (as the fight is run), and the
+   * monster's fight alone as the book holds it. A fight not yet run is asked
+   * for and runs off the thread, so the record says pending. Null with no
+   * realm or no sheet.
+   */
+  predict(printed: string, state: CharacterState): HarmPrediction | null {
+    const world = this.world;
+    const character = this.setup.character(state, 'now');
+    if (world === undefined || character === null) return null;
+    const row = world.mobAsPrinted(printed)?.name ?? null;
+    const entity = world.buildMobEntity(printed, { at: roomAddress(state.room) });
+    const terms = entity.source === 'wire' ? null : mobTerms(worstModel(entity, character.player));
+    const odds: HarmOdds = row === null ? { kind: 'unrun' } : harmOdds(this.mob(row));
+    return { row, terms, odds, roundMs: roundMsAt(this.errands.realmSpeed) };
   }
 
   /**
@@ -431,4 +454,11 @@ export class OddsBook implements SessionModule {
       ...(job.kind === 'lair' && job.way === 'pass' ? { passing: true } : {})
     };
   }
+}
+
+/** The book's odds as a record keeps them: the figures a report reads, not the whole run. */
+function harmOdds(odds: Odds): HarmOdds {
+  if (odds.kind !== 'run') return { kind: odds.kind };
+  const { survives, rounds, lostMean, worstRound } = odds.survival;
+  return { kind: 'run', survives, rounds: rounds.value, lostMean, worstRound };
 }

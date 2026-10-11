@@ -29,7 +29,6 @@ import {
   type MobResolver
 } from '../../shared/fights';
 import { t } from '../app/i18n';
-import { tuning } from '../app/tuning';
 import {
   appendFights,
   closedFold,
@@ -41,6 +40,7 @@ import {
   segmentsIn,
   type FoldedRecord
 } from './fightSegments';
+import { HeldRows } from './heldRows';
 
 export interface FightLogEvents {
   /** Said into the terminal: a record that cannot be written or read, a fold made again. */
@@ -62,7 +62,7 @@ interface Open {
 }
 
 export class FightLog implements FightSink {
-  private held: FightRecord[] = [];
+  private readonly rows: HeldRows<FightRecord>;
   /** Every fight this instance has recorded, folded as it happened. */
   private readonly recorded: FightFolds = new Map();
   /** And what this character dealt in them, per level. */
@@ -76,9 +76,6 @@ export class FightLog implements FightSink {
   /** The same, once it has arrived: `measured` is asked synchronously. */
   private past: FoldedRecord | null = null;
   private readonly settled: Promise<void>;
-  private timer: NodeJS.Timeout | null = null;
-  /** Reported once. A directory that will not open will not open again either. */
-  private complained = false;
 
   /**
    * @param dir The character's record, created on first write.
@@ -91,6 +88,11 @@ export class FightLog implements FightSink {
     private readonly events: FightLogEvents = {},
     after?: Promise<void>
   ) {
+    this.rows = new HeldRows({
+      dir,
+      write: (rows, final) => this.write(rows, final),
+      notice: events.notice
+    });
     if (after === undefined) {
       this.take();
       this.settled = Promise.resolve();
@@ -100,69 +102,43 @@ export class FightLog implements FightSink {
   }
 
   record(fight: FightRecord): void {
-    this.held.push(fight);
     foldFight(this.recorded, fight);
     foldOutput(this.recordedOutput, fight);
-    if (this.held.length > tuning().records.fightsHeld) this.held.shift();
-    this.schedule();
-  }
-
-  private schedule(): void {
-    if (this.timer !== null) return;
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      this.write(false);
-    }, tuning().records.fightFlushMs);
-    // Never a reason to keep the process alive: `teardown()` writes what is held.
-    this.timer.unref?.();
+    this.rows.hold(fight);
   }
 
   /** Writes what is held. Called on a timer, and once on the way out. */
   flush(): void {
-    this.write(true);
+    this.rows.flush();
   }
 
-  private write(final: boolean): void {
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
-    if (this.held.length === 0) return;
+  /** Appends the rows to the open segment and on; false while the migration runs. */
+  private write(rows: readonly FightRecord[], final: boolean): boolean {
     if (this.open === null) {
       // The migration has not finished. Quitting writes anyway, and the next
       // launch's migration places what it wrote after the older record.
-      if (!final) return this.schedule();
+      if (!final) return false;
       this.take();
     }
-    // Cleared before the write: a write that throws has been reported, and a
-    // retry would retry on every later flush against a path that stays broken.
-    let rest = this.held;
-    this.held = [];
+    let rest = rows;
     const perSegment = fightsPerSegment();
     // A count not known yet is learned from folding the record, which a log
     // nobody asks (a probe's) would otherwise never do.
     if (this.open?.fights === null) void this.pastRecord();
-    try {
-      while (rest.length > 0) {
-        const open = this.open as Open;
-        if (open.fights !== null && open.fights >= perSegment) {
-          this.close(open.segment);
-          continue;
-        }
-        const room = open.fights === null ? rest.length : perSegment - open.fights;
-        appendFights(this.dir, open.segment, rest.slice(0, room));
-        const wrote = Math.min(room, rest.length);
-        if (open.fights === null) this.uncounted += wrote;
-        else open.fights += wrote;
-        rest = rest.slice(room);
+    while (rest.length > 0) {
+      const open = this.open as Open;
+      if (open.fights !== null && open.fights >= perSegment) {
+        this.close(open.segment);
+        continue;
       }
-    } catch (error) {
-      if (this.complained) return;
-      this.complained = true;
-      this.events.notice?.(
-        t('notices.fights.unwritable', { dir: this.dir, error: errorMessage(error) })
-      );
+      const room = open.fights === null ? rest.length : perSegment - open.fights;
+      appendFights(this.dir, open.segment, rest.slice(0, room));
+      const wrote = Math.min(room, rest.length);
+      if (open.fights === null) this.uncounted += wrote;
+      else open.fights += wrote;
+      rest = rest.slice(room);
     }
+    return true;
   }
 
   /** Starts the next segment and saves the fold of the one just closed, off the thread. */
