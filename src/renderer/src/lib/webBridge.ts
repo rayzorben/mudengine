@@ -307,6 +307,7 @@ export function createWebBridge(): IpcApi {
     searchRooms: (session, query) => invoke(Invoke.searchRooms, session, query),
     mobNames: (session) => invoke(Invoke.mobNames, session),
     worldInfo: (session) => invoke(Invoke.worldInfo, session),
+    realmWorld: (host, port) => invoke(Invoke.realmWorld, host, port),
     questBook: (session) => invoke(Invoke.questBook, session),
     questErrand: (session, block) => invoke(Invoke.questErrand, session, block),
     questPlan: (session, block, marked) => invoke(Invoke.questPlan, session, block, marked),

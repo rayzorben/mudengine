@@ -459,6 +459,8 @@ export const ALERT_EVENTS = {
   /* Somebody near, or gone. */
   'movement-heard': { channel: 'presence', types: ['heard-movement'] },
   'player-disconnects': { channel: 'presence', types: ['player-disconnects'] },
+  // Composed from `conversation-telepath`, never an `@` command (`telepathNotice`).
+  telepath: { channel: 'presence', types: [] },
   /* The realm's own clock: the nightly cleanup, fifteen minutes out to done. */
   cleanup: { channel: 'realm', types: ['realm-cleanup'] },
 
@@ -507,6 +509,7 @@ export const ALERT_EVENTS = {
   'vitals-crossing': { channel: 'vitals', types: [] },
 
   /* The character itself, and the connection under it. */
+  'level-ready': { channel: 'session', types: [] },
   levelled: { channel: 'session', types: ['user-levels'] },
   learned: { channel: 'session', types: ['user-learns', 'user-reads-spell'] },
   'learn-refused': { channel: 'session', types: ['user-reads-refused'] },
@@ -691,6 +694,11 @@ export interface AlertRule {
    * 79). Meaningless while `notify` is off, and stored off there.
    */
   onlyAway: boolean;
+  /**
+   * Play a sound as its alert shows (MegaMUD's `[Alerts]`, todo 80).
+   * Meaningless while `alert` is off, and stored off there.
+   */
+  sound: boolean;
   /** `below` or `above`, for the two watches that are numbers. */
   side: AlertSide;
   /**
@@ -764,6 +772,8 @@ export function watchOf(on: AlertEvent): AlertWatch | undefined {
  * - arriving where you asked to go, which is `info` in the ranking and is the
  *   reason somebody walked away from the keyboard.
  *
+ * Low health also sounds (todo 80, MegaMUD's `[Alerts]`); any row can.
+ *
  * Kept deliberately short. Todo 29 declined a shipped list because *four rows
  * somebody has to understand before they can turn one off* is a cost, and that
  * is still true — it is now the smaller of two costs rather than the larger.
@@ -781,6 +791,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     notify: true,
     whileFocused: false,
     onlyAway: false,
+    sound: true,
     side: 'below',
     value: 35,
     percent: true,
@@ -795,6 +806,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     notify: false,
     whileFocused: false,
     onlyAway: false,
+    sound: false,
     side: 'below',
     value: 20,
     percent: true,
@@ -809,6 +821,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     notify: true,
     whileFocused: true,
     onlyAway: false,
+    sound: false,
     side: 'below',
     value: 0,
     percent: false,
@@ -823,6 +836,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     notify: true,
     whileFocused: false,
     onlyAway: false,
+    sound: false,
     side: 'below',
     value: 0,
     percent: false,
@@ -830,6 +844,11 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
   }
 ];
+
+/** Whether the row claiming this notice plays a sound as it shows (todo 80). */
+export function sounds(notice: Notice, rules: readonly AlertRule[]): boolean {
+  return ruleFor(rules, notice)?.sound === true;
+}
 
 /**
  * The rule that claims a notice, or null where none does.

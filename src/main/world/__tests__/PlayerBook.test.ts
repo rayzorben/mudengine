@@ -199,6 +199,40 @@ describe('what a realm knows about its players', () => {
     realm.remember(facts({ level: 6, lastSeen: 6 }));
     expect(realm.recall()).toHaveLength(1);
   });
+
+  // Todo 80: MegaMUD's DelPlayers.
+  it('forgets a player not seen in the set number of days, and writes the file without them', () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = 100 * day;
+    const old = facts({ name: 'Yang', lastSeen: now - 91 * day });
+    const recent = facts({ name: 'Soul', lastSeen: now - 89 * day });
+    fs.writeFileSync(file, JSON.stringify({ v: 1, realms: { test: { yang: old, soul: recent } } }));
+    const said: string[] = [];
+    const forgetting = (days: number): PlayerBook =>
+      new PlayerBook({
+        file,
+        saveDelayMs: 0,
+        forgetAfterDays: () => days,
+        now: () => now,
+        notify: (message) => said.push(message)
+      });
+    // 0 keeps everyone: the positive control for the drop below.
+    expect(forgetting(0).forRealm('test').recall()).toHaveLength(2);
+    const book = forgetting(90);
+    expect(
+      book
+        .forRealm('test')
+        .recall()
+        .map((player) => player.name)
+    ).toEqual(['Soul']);
+    book.flush();
+    expect(
+      store()
+        .forRealm('test')
+        .recall()
+        .map((player) => player.name)
+    ).toEqual(['Soul']);
+  });
 });
 
 describe('telling the other sessions on a realm', () => {

@@ -3750,7 +3750,9 @@ describe('the conversation log stated in logging:', () => {
       fights: true,
       conversations: true,
       conversationDays: 365,
-      keepDays: 7
+      keepDays: 7,
+      // Todo 80: MegaMUD's DelPlayers, after conversationDays.
+      playerDays: 90
     });
     const once = fs.readFileSync(home.options, 'utf8');
     expect(once).toContain('# My note.');
@@ -3762,7 +3764,12 @@ describe('the conversation log stated in logging:', () => {
   it('never overwrites a key the user already stated', () => {
     fs.writeFileSync(home.options, 'logging:\n  conversations: false\n', 'utf8');
     migrate();
-    expect(readLogging()).toEqual({ conversations: false, conversationDays: 365, keepDays: 7 });
+    expect(readLogging()).toEqual({
+      conversations: false,
+      conversationDays: 365,
+      keepDays: 7,
+      playerDays: 90
+    });
   });
 });
 

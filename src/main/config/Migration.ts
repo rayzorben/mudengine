@@ -274,6 +274,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
+  statedPlayerForgetting(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
   theThemesWereCut(home, note);
   pathFollowsStatus(home, note);
@@ -3464,7 +3465,9 @@ function alertSettingsBecameRows(home: Home, note: (message: string) => void): v
        * `AlertRule` no longer accepts. `alertRowsBecameEvents` converts them
        * in the same run -- see `HAPPENING_CHANNEL`.
        */
-      type WrittenRow = Omit<AlertRule, 'on' | 'quietSeconds' | 'onlyAway'> & { on: string };
+      type WrittenRow = Omit<AlertRule, 'on' | 'quietSeconds' | 'onlyAway' | 'sound'> & {
+        on: string;
+      };
       const rows: WrittenRow[] = [];
       const row = (over: Partial<WrittenRow> & Pick<WrittenRow, 'on'>): WrittenRow => ({
         enabled: true,
@@ -4324,6 +4327,24 @@ function statedLogKeeping(
   const comment = templateComments(template, 'logging').get('logging.keepDays');
   if (!stateInFile(home.options, ['logging'], 'keepDays', () => days, 'capture', comment)) return;
   note(t('notices.migration.logKeeping', { days, file: home.options }));
+}
+
+/**
+ * `logging.playerDays` (2026-10-11, todo 80, MegaMUD's `DelPlayers`) into the
+ * options file's `logging:` block at the shipped 90, after `conversationDays`,
+ * with the template's paragraph. Idempotent: a key stays added whatever its
+ * value, so a 0 typed later is never put back.
+ */
+function statedPlayerForgetting(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const days = DEFAULT_CONFIG.logging.playerDays;
+  const comment = templateComments(template, 'logging').get('logging.playerDays');
+  const after = 'conversationDays';
+  if (!stateInFile(home.options, ['logging'], 'playerDays', () => days, after, comment)) return;
+  note(t('notices.migration.playerForgetting', { days, file: home.options }));
 }
 
 /**
@@ -7198,6 +7219,12 @@ function theTuningBlockGainedKeys(
     addKey('remotes', 'parAtLoss', DEFAULT_INTERNAL.tuning.remotes.parAtLoss);
     // How many shops a row naming no shop tries before it waits (todo 49, 2026-10-11).
     addKey('supplies', 'countersPerTrip', DEFAULT_INTERNAL.tuning.supplies.countersPerTrip);
+    // A party member's cure's backoff (todo 80, 2026-10-11).
+    for (const key of ['partyCureRetryMs', 'partyCureRetryMaxMs'] as const)
+      addKey('spells', key, DEFAULT_INTERNAL.tuning.spells[key]);
+    // The tone an alert row with `sound` plays (todo 80, 2026-10-11).
+    for (const key of ['alertToneHz', 'alertToneMs'] as const)
+      addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

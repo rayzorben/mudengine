@@ -66,6 +66,12 @@ export interface LoggingConfig {
    */
   conversationDays: number;
   /**
+   * How many days a player not seen in that long stays in `players.json`
+   * (MegaMUD's `DelPlayers`, todo 80). Dropped when the book is read, at
+   * launch; `0` keeps every player. 90 by default, MegaMUD's own figure.
+   */
+  playerDays: number;
+  /**
    * Where logs go. Empty means the per-user data directory, which is the only
    * reliably writable location on all three platforms.
    */
@@ -84,6 +90,7 @@ export const DEFAULT_LOGGING: Readonly<LoggingConfig> = {
   keepDays: 7,
   conversations: true,
   conversationDays: 365,
+  playerDays: 90,
   directory: '',
   maxBytes: 64 * 1024 * 1024
 };
@@ -100,6 +107,7 @@ export function normalizeLogging(value: unknown): LoggingConfig {
     // Floor of one day: zero would be a log that erases itself on every
     // launch, which is `conversations: false` wearing a number.
     conversationDays: int(raw['conversationDays'], d.conversationDays, 1, LOG_DAYS_MAX),
+    playerDays: int(raw['playerDays'], d.playerDays, 0, LOG_DAYS_MAX),
     directory: str(raw['directory'], d.directory),
     // Floor of 64 KiB: a cap smaller than one screenful of combat is a
     // misconfiguration rather than a preference.

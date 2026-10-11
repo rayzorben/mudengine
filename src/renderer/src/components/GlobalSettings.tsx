@@ -2056,6 +2056,15 @@ export default function GlobalSettings({
               }
               value={draft.logging.conversationDays}
             />
+            <NumberField
+              hint={t('settings.client.records.playerDaysHint')}
+              label={t('settings.client.records.playerDaysLabel')}
+              name="global-player-days"
+              onChange={(value) =>
+                patch('logging', { playerDays: Number.parseInt(value, 10) || 0 })
+              }
+              value={draft.logging.playerDays}
+            />
             <TextField
               label={t('settings.client.records.folderLabel')}
               name="global-log-folder"

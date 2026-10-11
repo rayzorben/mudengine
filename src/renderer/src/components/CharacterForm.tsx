@@ -961,12 +961,7 @@ export default function CharacterForm({
           <fieldset className="settings-menus" data-fieldset="train">
             <legend>{t('settings.train.legend')}</legend>
             <p className="settings-warn">{t('settings.train.warning')}</p>
-            {/*
-              Going to collect the level, and where (todo 18).
-              Above the stat screen's own switch because it comes
-              first in time: the points this spends are awarded by
-              the level this collects.
-            */}
+            {/* Collecting the level (todo 18), first: its points are what the stat screen spends. */}
             <CheckField
               checked={form.trainLevels}
               hint={t('settings.train.levelsHint')}
@@ -976,14 +971,7 @@ export default function CharacterForm({
             />
             {form.trainLevels && (
               <>
-                {/*
-                  Only the rooms the realm says will take this
-                  character at this level — a trainer that refuses
-                  is a walk across two maps to be told so. The class
-                  room stops at level 10 and every band has a
-                  ceiling, so the list shrinks as the character
-                  grows and a stated room can stop being offered.
-                */}
+                {/* Only the rooms the realm says take this character at this level. */}
                 <SelectField
                   hint={t('settings.train.trainerHint')}
                   label={t('settings.train.trainerLabel')}
@@ -1001,6 +989,13 @@ export default function CharacterForm({
                     }))
                   ]}
                   value={form.trainTrainer}
+                />
+                <NumberField
+                  hint={t('settings.train.upToHint')}
+                  label={t('settings.train.upToLabel')}
+                  name="train-up-to"
+                  onChange={(value) => patch({ trainUpTo: value })}
+                  value={form.trainUpTo}
                 />
                 {/*
                   Said out loud, because an empty picker and a

@@ -13,6 +13,7 @@ import Advanced from './Advanced';
 import CoinNameFields from './CoinNameFields';
 import LoopSection, { type LoopShelf } from './LoopSection';
 import MobRuleList from './MobRuleList';
+import RealmWorldNote from './RealmWorldNote';
 
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -136,6 +137,7 @@ export default function ServerForm({
           </div>
         )}
       </FormField>
+      <RealmWorldNote host={draft.host} port={draft.port} />
 
       {/*
         Behind a press, because it has a right answer already and

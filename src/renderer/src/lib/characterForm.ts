@@ -285,6 +285,8 @@ export interface CharacterFields {
   trainLevels: boolean;
   /** The chosen trainer's shop row, as text, or '' for the cheapest. */
   trainTrainer: string;
+  /** `automation.train.upTo`, as text, or '' for no ceiling. */
+  trainUpTo: string;
   trainWanted: Record<TrainedAttribute, string>;
   /** Running a quest's plan — `automation.quests`. */
   questsEnabled: boolean;
@@ -552,6 +554,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     trainPick: entry.train.pick,
     trainLevels: entry.train.levels,
     trainTrainer: entry.train.trainer > 0 ? String(entry.train.trainer) : '',
+    trainUpTo: entry.train.upTo > 0 ? String(entry.train.upTo) : '',
     trainWanted: wantedStrings(entry.train.wanted),
     questsEnabled: entry.quests.enabled,
     gearEnabled: entry.gear.enabled,
@@ -759,7 +762,8 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       levels: form.trainLevels,
       // 0 is *the cheapest that will take me*, which is what the picker's
       // first entry means and what an unset field says.
-      trainer: Number.parseInt(form.trainTrainer, 10) || 0
+      trainer: Number.parseInt(form.trainTrainer, 10) || 0,
+      upTo: Math.max(0, Number.parseInt(form.trainUpTo, 10) || 0)
     },
     quests: { enabled: form.questsEnabled },
     gear: {
@@ -1051,6 +1055,7 @@ export function emptyForm(
     trainPick: train.pick,
     trainLevels: train.levels,
     trainTrainer: train.trainer > 0 ? String(train.trainer) : '',
+    trainUpTo: train.upTo > 0 ? String(train.upTo) : '',
     trainWanted: wantedStrings(train.wanted),
     questsEnabled: quests.enabled,
     gearEnabled: gear.enabled,

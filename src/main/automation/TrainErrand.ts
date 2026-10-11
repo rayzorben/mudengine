@@ -167,6 +167,8 @@ export class TrainErrand implements SessionModule {
   private said: { why: string; at: number } | null = null;
   /** Whether the *nowhere to go* refusal has been said for this level. */
   private saidNowhere: number | null = null;
+  /** The level the `upTo` ceiling refusal was said at (todo 80). */
+  private saidCeiling: number | null = null;
   /**
    * The level and room from which no trainer could be reached, and when, so
    * the routes are not planned again on every status line: asked again once
@@ -220,6 +222,7 @@ export class TrainErrand implements SessionModule {
     this.askedOwed = null;
     this.said = null;
     this.saidNowhere = null;
+    this.saidCeiling = null;
     this.ahead = null;
   }
 
@@ -303,6 +306,14 @@ export class TrainErrand implements SessionModule {
       return;
     }
     if (level === null || owed === null || owed > 0) return;
+    // The player's ceiling: a level at or past it is never collected, said once a level.
+    if (this.config.upTo > 0 && level >= this.config.upTo) {
+      if (this.saidCeiling !== level) {
+        this.saidCeiling = level;
+        this.refuse(t('automation.train.refusalCeiling', { level, upTo: this.config.upTo }));
+      }
+      return;
+    }
     if (level === this.attempted) {
       if (this.retry === null || this.retry.level !== level || this.now() < this.retry.at) return;
       this.attempted = null;

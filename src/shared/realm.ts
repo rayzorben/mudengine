@@ -316,3 +316,16 @@ export interface RealmFamilies {
 export function familiesDisagree(families: RealmFamilies): boolean {
   return families.data !== null && families.server !== null && families.data !== families.server;
 }
+
+/**
+ * The world database a realm's characters walk, as the realm page shows it
+ * (todo 80): where it came from, its own build and family, and the family the
+ * server's own lines told an open session, null until one has. Answered over
+ * IPC (`realmWorld`).
+ */
+export interface RealmWorld {
+  source: string;
+  build: RealmBuild | null;
+  family: RealmFamily | null;
+  server: RealmFamily | null;
+}

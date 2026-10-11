@@ -30,7 +30,7 @@
 
 import { carriesAbility, DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from './abilities';
 import { CURES, type Cure, type SpellsConfig } from './config';
-import type { ActiveBuff } from './character';
+import type { ActiveBuff, KnownSpell } from './character';
 import type { WorldSpell } from './world';
 
 /**
@@ -345,6 +345,29 @@ export function cureGates(spells: ReadonlyArray<AbilityPairs | undefined>): Cure
     for (const cure of CURES) if (serves[CURE_CONDITION[cure]]) gates[cure] = true;
   }
   return gates;
+}
+
+/**
+ * The cheapest spell in the book the realm says cures `cure` (`cureGates`'
+ * reading of its ability rows), among the targetings `aims` accepts: the
+ * character's own cure (`Cures`) or a party member's (`PartyCures`, todo 80).
+ * Null where nothing in the book serves.
+ */
+export function cheapestCure(
+  book: readonly KnownSpell[],
+  realmSpell: (name: string) => WorldSpell | null,
+  cure: Cure,
+  aims: (aim: SpellTargeting) => boolean
+): string | null {
+  let best: { name: string; cost: number } | null = null;
+  for (const known of book) {
+    const realm = realmSpell(known.name);
+    if (realm === null || !aims(spellTargeting(realm.targets))) continue;
+    if (!cureGates([realm.abilities ?? []])[cure]) continue;
+    const cost = known.cost ?? realm.mana ?? Number.MAX_SAFE_INTEGER;
+    if (best === null || cost < best.cost) best = { name: known.name, cost };
+  }
+  return best?.name ?? null;
 }
 
 /**

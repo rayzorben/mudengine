@@ -122,6 +122,7 @@ const api: WireApi = {
   searchRooms: (session, query) => ipcRenderer.invoke(Invoke.searchRooms, session, query),
   mobNames: (session) => ipcRenderer.invoke(Invoke.mobNames, session),
   worldInfo: (session) => ipcRenderer.invoke(Invoke.worldInfo, session),
+  realmWorld: (host, port) => ipcRenderer.invoke(Invoke.realmWorld, host, port),
   questBook: (session) => ipcRenderer.invoke(Invoke.questBook, session),
   questErrand: (session, block) => ipcRenderer.invoke(Invoke.questErrand, session, block),
   questPlan: (session, block, marked) =>

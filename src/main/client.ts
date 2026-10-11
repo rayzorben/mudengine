@@ -136,6 +136,7 @@ import { DEFAULT_INTERNAL } from '../shared/internal';
 import { isRemoteName, REMOTE_NAMES, type RemoteGrant, type RemoteName } from '../shared/remotes';
 import { UNSTATED_REALM_WORDS, type Profile } from '../shared/profiles';
 import type { SessionSummary } from '../shared/ipc';
+import type { RealmWorld } from '../shared/realm';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
 import { isLoopScope, mergeLoops } from '../shared/loops';
@@ -325,7 +326,8 @@ function createDestinations(): DestinationBook {
 function createPlayerBook(): PlayerBook {
   return new PlayerBook({
     file: home.state('players.json'),
-    notify: (message) => announce('players', message)
+    notify: (message) => announce('players', message),
+    forgetAfterDays: () => config?.config.logging.playerDays ?? DEFAULT_CONFIG.logging.playerDays
   });
 }
 
@@ -2415,6 +2417,23 @@ function registerIpc(): void {
   handle(Invoke.worldInfo, (_caller, session: SessionId) => {
     const world = worldFor(session);
     return { rooms: world?.size ?? 0, source: world?.info.source ?? 'none' };
+  });
+  /*
+   * The realm page's world (todo 80), read off an open session on the address
+   * and never loaded for the asking: converting a database takes seconds, and
+   * only a session being built may pay that (`RealmLibrary.load`).
+   */
+  handle(Invoke.realmWorld, (_caller, hostName: unknown, port: unknown): RealmWorld | null => {
+    if (typeof hostName !== 'string' || typeof port !== 'number' || host === null) return null;
+    const address = realmAddress({ host: hostName, port });
+    const id = host.ids.find((each) => {
+      const profile = profileFor(each);
+      return profile !== undefined && realmAddress(profile.target) === address;
+    });
+    const world = id === undefined ? undefined : worldFor(id);
+    if (id === undefined || world === undefined) return null;
+    const { source, build, family } = world.info;
+    return { source, build, family, server: host.get(id)?.manager.family ?? null };
   });
   handle(Invoke.questBook, (_caller, session: SessionId) => {
     // A realm with no world loaded, and one converted before quests were

@@ -2718,12 +2718,23 @@ export class Errands implements SessionModule {
    * shelf no such row, or the realm file no coin.
    */
   priceAt(name: string, shop: RoomId): number | null {
+    const found = this.counterLine(name, shop);
+    return found === null ? null : found.world.priceAt(found.line.id, found.counter);
+  }
+
+  /** What one of `name` weighs at the counter in `shop`, from its realm row (todo 80). */
+  weightAt(name: string, shop: RoomId): number | null {
+    return this.counterLine(name, shop)?.line.encumbrance ?? null;
+  }
+
+  /** The counter in `shop` and its row answering to `name`, or null. */
+  private counterLine(name: string, shop: RoomId) {
     const world = this.world;
     const row = world?.byId(shop)?.shop;
     const counter = row === undefined ? undefined : world?.shop(row);
     const line = counter?.items.find((each) => nameAnswersTo(bareName(each.name), bareName(name)));
-    if (world === undefined) return null;
-    return counter === undefined || line === undefined ? null : world.priceAt(line.id, counter.id);
+    if (world === undefined || counter === undefined || line === undefined) return null;
+    return { world, counter: counter.id, line };
   }
 
   /**

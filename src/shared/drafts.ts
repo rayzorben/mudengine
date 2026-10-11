@@ -236,6 +236,7 @@ export interface GlobalDraft {
     fights: boolean;
     conversations: boolean;
     conversationDays: number;
+    playerDays: number;
     maxBytes: number;
   };
   automation: {
@@ -1214,6 +1215,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
                 // Meaningless with `notify` off, so it goes with it.
                 whileFocused: notify && entry['whileFocused'] === true,
                 onlyAway: notify && entry['onlyAway'] === true,
+                sound: entry['alert'] !== false && entry['sound'] === true,
                 side: text(entry['side']).trim() === 'above' ? 'above' : 'below',
                 value: Math.max(0, Number(entry['value']) || 0),
                 percent: entry['percent'] !== false,
@@ -1333,6 +1335,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         LOG_DAYS_MAX,
         DEFAULT_LOGGING.conversationDays
       ),
+      playerDays: clamp(logging['playerDays'], 0, LOG_DAYS_MAX, DEFAULT_LOGGING.playerDays),
       maxBytes: clamp(logging['maxBytes'], 0, 1_000_000_000, 50_000_000)
     },
     automation: {

@@ -1871,17 +1871,13 @@ export interface TrainConfig {
   pick: TrainPick;
   wanted: Record<TrainedAttribute, number>;
   /**
-   * Go and collect a level when the experience is there (todo 18).
-   *
-   * Off, because a player banking levels for a reroll exists and a client
-   * that levelled them anyway would have spent their money and their choice.
-   *
-   * Experience past the threshold does nothing at all until a trainer is
-   * paid: no hit points, no skills, no character points. So a client left to
-   * play overnight without this comes back with a night's experience and the
-   * same character it started with — which is the one thing it is for.
+   * Go and collect a level when the experience is there (todo 18). Off: a
+   * player banking levels for a reroll exists, and a client that levelled
+   * them anyway would have spent their money and their choice.
    */
   levels: boolean;
+  /** Train no level past this one (todo 80, MegaMUD's train-above ceiling); 0 is none. */
+  upTo: number;
   /**
    * Where to go and level: the trainer's own shop row, or 0 for *the cheapest
    * that will take me*.
@@ -2867,7 +2863,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       pick: 'exp',
       wanted: { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 },
       levels: false,
-      trainer: 0
+      trainer: 0,
+      upTo: 0
     },
     quests: { enabled: false },
     gear: { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 }, resists: true },
@@ -3262,6 +3259,7 @@ function normalizeAlertRules(value: unknown): AlertRule[] {
     // across; anything left here is a misspelling, and dropped.
     if (!isAlertEvent(on)) continue;
     const notify = bool(entry['notify'], false);
+    const alert = bool(entry['alert'], true);
     rules.push({
       on: on as AlertRule['on'],
       enabled: bool(entry['enabled'], true),
@@ -3270,12 +3268,13 @@ function normalizeAlertRules(value: unknown): AlertRule[] {
       level: SEVERITIES.includes(str(entry['level'], '') as Severity)
         ? (str(entry['level'], '') as Severity)
         : null,
-      alert: bool(entry['alert'], true),
+      alert,
       notify,
       // Meaningless with `notify` off, and stored false there rather than
       // kept: a flag nothing reads is one that surprises somebody later.
       whileFocused: notify && bool(entry['whileFocused'], false),
       onlyAway: notify && bool(entry['onlyAway'], false),
+      sound: alert && bool(entry['sound'], false),
       side: oneOf(entry['side'], ALERT_SIDES, 'below'),
       // A share when `percent`, a figure otherwise; both are the player's own
       // number and neither is clamped to the other's range.
@@ -4133,7 +4132,8 @@ export function normalizeTrain(value: unknown): TrainConfig {
     levels: bool(raw['levels'], d.levels),
     // A shop row number. 0 is *the cheapest that will take me*, which is also
     // what a negative or unreadable figure means: never a guess at a room.
-    trainer: int(raw['trainer'], d.trainer, 0, 999_999)
+    trainer: int(raw['trainer'], d.trainer, 0, 999_999),
+    upTo: int(raw['upTo'], d.upTo, 0, 999)
   };
 }
 

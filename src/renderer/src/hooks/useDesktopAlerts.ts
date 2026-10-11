@@ -26,6 +26,7 @@
 import { useEffect, useRef } from 'react';
 
 import { t } from '../lib/i18n';
+import { freshNotices } from '../lib/freshNotices';
 import { tuning } from '../lib/tuning';
 import type { AutomationSnapshot } from '@shared/automation';
 import {
@@ -149,20 +150,9 @@ export function useDesktopAlerts({
   useEffect(() => {
     const marks = seen.current;
     for (const [id, subject] of Object.entries(subjects) as Array<[SessionId, AlertSubject]>) {
-      const newest = subject.notices.at(-1);
-      if (newest === undefined) {
-        marks.delete(id);
-        continue;
-      }
-      const mark = marks.get(id);
-      marks.set(id, newest.id);
-      /*
-       * A character this window has not watched before starts from where it
-       * is. Attaching replays a backscroll and a character switched to after
-       * an hour has an hour of alerts behind it; raising them all now would be
-       * a stack of notifications about things that are already over.
-       */
-      if (mark === undefined || mark === newest.id) continue;
+      // A character first seen starts from where it is (`freshNotices`).
+      const fresh = freshNotices(marks, id, subject.notices);
+      if (fresh === null) continue;
       if (standing.current !== 'ready') continue;
       /*
        * *Not while I am looking*, unless a row the player wrote says otherwise
@@ -185,8 +175,6 @@ export function useDesktopAlerts({
        * floor on the whole character would let a burst of blows swallow the
        * notice that the character then died.
        */
-      const at = subject.notices.findIndex((notice) => notice.id === mark);
-      const fresh = at === -1 ? subject.notices : subject.notices.slice(at + 1);
       const now = Date.now();
       const gap = tuning().desktopAlertGapMs;
       let raise: Notice | undefined;
