@@ -1,4 +1,14 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  Fragment,
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode
+} from 'react';
 
 import OnCardSize from './OnCardSize';
 import BentoCard, { type CardChrome, type CardFilter } from './BentoCard';
@@ -29,6 +39,7 @@ import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
 import { isOwnName, type PlayerRegistry } from '@shared/players';
 import type { Block } from '@shared/blocks';
+import { mentions, mentionSpans } from '@shared/mentions';
 
 export interface ConversationCardProps extends CardChrome {
   /** What this character's card carries (`isTalkBlock`), oldest first. */
@@ -263,6 +274,36 @@ interface TalkLineProps {
 }
 
 /**
+ * `text` with each `@name` marked, and every run between drawn by `draw`
+ * (todo 29). Only on a line `mentions` accepts, so this character's own
+ * `@self` and a remote call stay plain. Cut before `linkify`, which then
+ * works on runs that hold no mention.
+ */
+function withMentions(
+  text: string,
+  self: string | null,
+  mentioned: boolean,
+  draw: (run: string) => ReactNode
+): ReactNode {
+  const spans = mentioned ? mentionSpans(text, self) : [];
+  if (spans.length === 0) return draw(text);
+  const runs: ReactNode[] = [];
+  let from = 0;
+  spans.forEach(([start, end], at) => {
+    if (start > from)
+      runs.push(<Fragment key={`t${at}`}>{draw(text.slice(from, start))}</Fragment>);
+    runs.push(
+      <mark className="mention" key={`m${at}`}>
+        {text.slice(start, end)}
+      </mark>
+    );
+    from = end;
+  });
+  if (from < text.length) runs.push(<Fragment key="rest">{draw(text.slice(from))}</Fragment>);
+  return runs;
+}
+
+/**
  * One line of the backlog, drawn once and left alone.
  *
  * Every prop is a value or a reference that holds for as long as the fact it
@@ -276,8 +317,10 @@ interface TalkLineProps {
 const TalkLine = memo(function TalkLine(props: TalkLineProps) {
   const { message, layout, stamped, stampFormat, people, names, onSelect, inspect } = props;
   const outbound = RECEIPTS.has(message.type) && message.groups['message'] === undefined;
+  const self = people?.self ?? null;
+  const mentioned = mentions(message, self);
   return (
-    <div className="line" data-channel={message.type}>
+    <div className="line" data-channel={message.type} data-mention={mentioned || undefined}>
       {/*
         The time the classifier stamped the block, never the moment
         this rendered: a backlog restored from the conversation log
@@ -305,29 +348,31 @@ const TalkLine = memo(function TalkLine(props: TalkLineProps) {
           URL in half around a word that happened to be a monster.
         */
         <span className="said">
-          {linkify(originalOf(message)).map((part, at) =>
-            part.href !== undefined ? (
-              <a
-                href={part.href}
-                key={`${at}-${part.href}`}
-                // `_blank` goes through main's window-open handler,
-                // which refuses the app frame and any scheme but http.
-                rel="noreferrer noopener"
-                target="_blank"
-              >
-                {part.text}
-              </a>
-            ) : names && people && inspect && onSelect ? (
-              <NamedText
-                index={names}
-                inspect={inspect}
-                key={at}
-                onSelect={onSelect}
-                self={people.self}
-                text={part.text}
-              />
-            ) : (
-              part.text
+          {withMentions(originalOf(message), self, mentioned, (run) =>
+            linkify(run).map((part, at) =>
+              part.href !== undefined ? (
+                <a
+                  href={part.href}
+                  key={`${at}-${part.href}`}
+                  // `_blank` goes through main's window-open handler,
+                  // which refuses the app frame and any scheme but http.
+                  rel="noreferrer noopener"
+                  target="_blank"
+                >
+                  {part.text}
+                </a>
+              ) : names && people && inspect && onSelect ? (
+                <NamedText
+                  index={names}
+                  inspect={inspect}
+                  key={at}
+                  onSelect={onSelect}
+                  self={people.self}
+                  text={part.text}
+                />
+              ) : (
+                part.text
+              )
             )
           )}
         </span>
@@ -365,21 +410,26 @@ const TalkLine = memo(function TalkLine(props: TalkLineProps) {
             is written by other players on a MUD.
           */}
           <span className="said">
-            {linkify(message.groups['sent'] ?? message.groups['message'] ?? message.text).map(
-              (part, at) =>
-                part.href === undefined ? (
-                  part.text
-                ) : (
-                  <a
-                    href={part.href}
-                    key={`${at}-${part.href}`}
-                    // `_blank` goes through main's window-open handler, which
-                    // refuses the app frame and refuses any scheme but http.
-                    rel="noreferrer noopener"
-                    target="_blank"
-                  >
-                    {part.text}
-                  </a>
+            {withMentions(
+              message.groups['sent'] ?? message.groups['message'] ?? message.text,
+              self,
+              mentioned,
+              (run) =>
+                linkify(run).map((part, at) =>
+                  part.href === undefined ? (
+                    part.text
+                  ) : (
+                    <a
+                      href={part.href}
+                      key={`${at}-${part.href}`}
+                      // `_blank` goes through main's window-open handler, which
+                      // refuses the app frame and refuses any scheme but http.
+                      rel="noreferrer noopener"
+                      target="_blank"
+                    >
+                      {part.text}
+                    </a>
+                  )
                 )
             )}
           </span>
@@ -733,6 +783,19 @@ function ConversationCard({
   const all = allWord === 'on';
   const muted = useRemembered(session, 'talk-muted', CHANNEL_IDS);
   /*
+   * Only the lines with `@name` in them, from every channel (todo 29).
+   * Remembered like `All`, and off as shipped. While on, it decides alone and
+   * the channel toggles are drawn in their own state, the way `All` draws them.
+   */
+  const [mentionWord, chooseMentions] = useRememberedChoice(
+    session,
+    'talk-mentions',
+    ALL_WORDS,
+    'off'
+  );
+  const onlyMentions = mentionWord === 'on';
+  const self = character?.name ?? null;
+  /*
    * How this card draws a line, from the gear in its own action column. Read
    * off `chrome.settings` rather than taken as a prop of its own: that object
    * is already this card's settings for *this* character, addressed the way a
@@ -856,6 +919,10 @@ function ConversationCard({
    * The faces with anything behind them, in their fixed order. The whole
    * stream is always offered; a channel earns its pill by having spoken.
    */
+  const anyMention = useMemo(
+    () => messages.some((message) => mentions(message, self)),
+    [messages, self]
+  );
   const faces = useMemo(
     () =>
       FACES.filter(
@@ -888,14 +955,16 @@ function ConversationCard({
     () =>
       messages.filter(
         (message) =>
-          (showing === null || showing.has(message.type)) &&
+          (onlyMentions
+            ? mentions(message, self)
+            : showing === null || showing.has(message.type)) &&
           matches(query, [
             CHANNELS[message.type] ?? message.type,
             message.groups['player'] ?? t('cards.map.legendYou'),
             message.groups['sent'] ?? message.groups['message'] ?? message.text
           ])
       ),
-    [messages, showing, query]
+    [messages, showing, query, onlyMentions, self]
   );
 
   /*
@@ -1185,16 +1254,26 @@ function ConversationCard({
           id: entry.id,
           label: entry.label,
           on: all,
+          disabled: onlyMentions,
           toggle: () => chooseAll(all ? 'off' : 'on')
         }
       : {
           id: entry.id,
           label: entry.label,
           on: !muted.has(entry.id),
-          disabled: all,
+          disabled: all || onlyMentions,
           toggle: () => muted.toggle(entry.id)
         }
   );
+  // Earns its pill by a mention in the backlog, and keeps it while on so it can be turned off.
+  if (onlyMentions || anyMention) {
+    filters.push({
+      id: 'mentions',
+      label: t('cards.talk.tabs.mentions'),
+      on: onlyMentions,
+      toggle: () => chooseMentions(onlyMentions ? 'off' : 'on')
+    });
+  }
 
   return (
     <BentoCard

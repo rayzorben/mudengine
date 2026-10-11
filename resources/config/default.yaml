@@ -342,8 +342,9 @@ ui:
     # 0 means every occurrence. It is per ROW, so two rows on one event at two
     # figures keep separate clocks.
     #
-    # These four are what a fresh client ships with. Every one is removable, and
+    # These five are what a fresh client ships with. Every one is removable, and
     # a list with nothing in it is not silence -- it is the client's own ranking.
+    # `mentioned` is somebody else writing @ and your name on any channel.
     rules:
       - 'on': health
         side: below
@@ -371,6 +372,11 @@ ui:
         whileFocused: true
         quietSeconds: 30
       - 'on': arrived
+        alert: true
+        notify: true
+        whileFocused: false
+        quietSeconds: 30
+      - 'on': mentioned
         alert: true
         notify: true
         whileFocused: false

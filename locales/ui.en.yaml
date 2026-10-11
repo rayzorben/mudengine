@@ -1151,6 +1151,9 @@ tabs:
     activityWalking: walking {done}/{total}
     alertPlural: '{count} alerts'
     alertSingular: 1 alert
+    # Lines with @name in them said while the tab was not in front (todo 29).
+    mentionPlural: '@ {count}'
+    mentionSingular: '@'
     closeAria: Close {characterName}
     dialClosingTooltip: Closing…
     dialConnectAria: Connect {characterName}
@@ -3508,6 +3511,8 @@ cards:
       telepath: Tele
       local: Local
       realm: Realm
+      # Only the lines with @name in them, from every channel.
+      mentions: Mentions
     messageInputAria: Say something
     # With a channel showing; the openers that go somewhere else are listed.
     messagePlaceholder: message, or start with . " > / gos auc br - gb bg
@@ -3713,6 +3718,7 @@ settings:
       room: room
       session: session
       stealth: stealth
+      talk: talk
       vitals: vitals
     # The player's own rows, and the only thing that decides (todo 02). The
     # severity floor and the per-channel mute list stood beside them until then.
@@ -3803,6 +3809,7 @@ settings:
       hostileInRealm: a hostile player is in the realm
       partyHurt: a party member is hurt
       vitalsCrossing: your health or mana falls a band
+      mentioned: somebody writes @ and your name
       # Todo 80: the two composed for a row's sound.
       levelReady: you can train a level
       levelled: you gain a level

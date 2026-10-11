@@ -7,7 +7,7 @@ import type { Block } from './blocks';
 import type { CharacterState } from './character';
 import { experienceOf } from './experience';
 import type { UiLookup } from './i18n';
-import type { AlertRule, Notice } from './notifications';
+import { rowAsks, type AlertRule, type Notice } from './notifications';
 
 /**
  * The highest level the experience pays for past the one held, or null when
@@ -56,7 +56,7 @@ export function levelReadyNotices(
  */
 export function telepathNotice(block: Block, rules: readonly AlertRule[]): Notice | null {
   if (block.type !== 'conversation-telepath') return null;
-  if (!rules.some((rule) => rule.enabled && rule.on === 'telepath')) return null;
+  if (!rowAsks(rules, 'telepath')) return null;
   const message = block.groups['message'];
   if (message === undefined || message.trimStart().startsWith('@')) return null;
   return {

@@ -475,6 +475,7 @@ const EVENT_WORD: Record<AlertEvent, () => string> = {
   'party-hurt': () => t('settings.alerts.event.partyHurt'),
   'vitals-crossing': () => t('settings.alerts.event.vitalsCrossing'),
   'level-ready': () => t('settings.alerts.event.levelReady'),
+  mentioned: () => t('settings.alerts.event.mentioned'),
   levelled: () => t('settings.alerts.event.levelled'),
   learned: () => t('settings.alerts.event.learned'),
   'learn-refused': () => t('settings.alerts.event.learnRefused'),
@@ -484,7 +485,7 @@ const EVENT_WORD: Record<AlertEvent, () => string> = {
 };
 
 /**
- * The eleven channels in the dictionary's own words.
+ * The twelve channels in the dictionary's own words.
  *
  * They are group headings now rather than choices (todo 03): a channel is how
  * the client sorts a notice, and what a player picks is the happening under it.
@@ -500,5 +501,6 @@ const CHANNEL_WORD: Record<NoticeChannel, string> = {
   items: t('settings.alerts.channel.items'),
   stealth: t('settings.alerts.channel.stealth'),
   presence: t('settings.alerts.channel.presence'),
+  talk: t('settings.alerts.channel.talk'),
   session: t('settings.alerts.channel.session')
 };
