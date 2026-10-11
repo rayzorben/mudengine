@@ -115,7 +115,7 @@ export function keptRegardless(item: KitPiece, kept: KeptNames): boolean {
 const EMBLEM_WORN = 16;
 
 /** The house numbers a row names (`GHouseItem` or `GShopItem`, valued with the house). */
-function housesOf(piece: KitPiece): number[] {
+export function housesOf(piece: Pick<KitPiece, 'abilities'>): number[] {
   return (piece.abilities ?? [])
     .filter(([id]) => id === GANG_HOUSE_ITEM_ABILITY || id === GANG_SHOP_ITEM_ABILITY)
     .map(([, house]) => house);

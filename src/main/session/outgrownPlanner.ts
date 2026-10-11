@@ -12,6 +12,7 @@ import {
   type OutgrownEvents,
   type OutgrownPlanner
 } from '../automation/OutgrownGear';
+import { ganghouseVaults, type VaultWorld } from '../world/ganghouseVaults';
 import { rarityBook, type RarityWorld } from '../world/itemRarity';
 import { outgrownItems } from '../world/outgrownItems';
 import { salePlaces } from '../world/salePlaces';
@@ -30,13 +31,16 @@ import {
   type OutgrownItem
 } from '../../shared/outgrown';
 import type { QuestKeep } from '../../shared/questKeep';
-import { roomAddress, roomId } from '../../shared/world';
+import { roomAddress, roomId, type RoomId } from '../../shared/world';
 import type { Errands } from './Errands';
 import { legPlanner, type LegModules } from './legPlanner';
 
 /** The modules, read when the trip asks: several are built after it. */
 export interface OutgrownPlannerModules extends LegModules {
-  errands: Pick<Errands, 'planFromHere' | 'findStop' | 'travellerNow' | 'realmClass'>;
+  errands: Pick<
+    Errands,
+    'planFromHere' | 'findStop' | 'travellerNow' | 'realmClass' | 'stepsThrough'
+  >;
   world:
     | Pick<
         WorldGraph,
@@ -50,6 +54,7 @@ export interface OutgrownPlannerModules extends LegModules {
         | 'namedRaces'
         | keyof BlessingRealm
         | keyof RarityWorld
+        | keyof VaultWorld
       >
     | undefined;
 }
@@ -128,6 +133,31 @@ export function outgrownNow(
 
 export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
   const m = parts.modules;
+  /**
+   * The house's vault the realm data shows (todo 51), the nearest one walked
+   * into with what the character carries: seven houses have two, and a vault
+   * door takes a key a member may not hold. Asked with nothing sent or said
+   * (`stepsThrough`); the trip's own leg is planned when it starts.
+   */
+  const nearestVault = (house: number): { room: RoomId; name: string } | { refused: string } => {
+    const { world, errands, tracker } = m();
+    const vaults = world === undefined ? [] : ganghouseVaults(world, house);
+    const first = vaults[0];
+    if (first === undefined) return { refused: t('automation.outgrown.noStashRoom', { house }) };
+    // Where the character stands is unknown: no reach can be read, so the first
+    // vault is taken as a typed room is, and the trip's own leg says why it waits.
+    if (roomAddress(tracker.current.room) === null) return first;
+    const open = vaults
+      .map((vault) => ({ vault, steps: errands.stepsThrough([vault.room]) }))
+      .filter((way): way is { vault: (typeof vaults)[number]; steps: number } => way.steps !== null)
+      .sort((a, b) => a.steps - b.steps)[0];
+    // A house room behind the plain key is not taken instead: every member sees
+    // what lies there. A typed `ganghouseRoom` chooses that way (todo 51).
+    if (open === undefined) {
+      return { refused: t('automation.outgrown.noStashVaultShut', { house, room: first.name }) };
+    }
+    return { room: open.vault.room, name: open.vault.name };
+  };
   return {
     ...legPlanner(m),
     outgrown: (state) => outgrownNow(m(), parts.config(), state),
@@ -146,9 +176,7 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
         };
       }
       const named = parts.config().outgrown.ganghouseRoom;
-      if (named.length === 0) {
-        return { refused: t('automation.outgrown.noStashRoom', { house: held.house }) };
-      }
+      if (named.length === 0) return nearestVault(held.house);
       const found = m().errands.findStop(splitStop({ room: named }));
       if (typeof found === 'string') {
         return {

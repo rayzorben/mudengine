@@ -1075,10 +1075,12 @@ automation:
   # under way.
   #
   # Stashing needs the gang known (`bg` or `who`), the house's emblem worn and
-  # a key to it carried, and `ganghouseRoom` set: the world database does not
-  # say which rooms belong to which house, so name the room as a loop stop
-  # does (`Silver House Vault 15/921`). Missing any of that, the item is sold
-  # or dropped instead, and the client says why once. Off by default.
+  # a key to it carried. The world database has no column for which rooms are
+  # a house's, but each key names its house, so the house's vault is the room
+  # behind a door its key opens (`Silver House Vault 15/921`); with two, the
+  # nearest the keys you carry open. `ganghouseRoom` names another room
+  # instead, as a loop stop does. Missing any of that, the item is sold or
+  # dropped instead, and the client says why once. Off by default.
   outgrown:
     enabled: false
     ganghouseRoom: ''
