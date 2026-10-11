@@ -67,6 +67,23 @@ describe('switching what is being edited before the delay has run', () => {
     probe.render(element);
   };
 
+  /**
+   * Writes the file at once and answers each write when released, in order, as
+   * `saveProfile` renames the file into place and `refresh()` answers later.
+   */
+  const slowWriter = (
+    refusal: string | null = null
+  ): { write: Write; writes: string[]; release: () => void } => {
+    const writes: string[] = [];
+    const releases: Array<() => void> = [];
+    const write: Write = (identity, value) => {
+      writes.push(`${identity}:${value.note}`);
+      if (refusal === null) writeFileSync(fileOf(identity), JSON.stringify(value));
+      return new Promise((resolve) => releases.push(() => resolve(refusal)));
+    };
+    return { write, writes, release: () => releases.shift()?.() };
+  };
+
   beforeEach(() => {
     vi.useFakeTimers();
     dir = mkdtempSync(join(tmpdir(), 'mudengine-autosave-'));
@@ -182,13 +199,7 @@ describe('switching what is being edited before the delay has run', () => {
    * of them is written. What must never happen is that they are lost.
    */
   it('writes the latest edit once a slow queued save has settled', async () => {
-    const releases: Array<() => void> = [];
-    const writes: string[] = [];
-    const writeSlowly: Write = (identity, value) => {
-      writes.push(`${identity}:${value.note}`);
-      writeFileSync(fileOf(identity), JSON.stringify(value));
-      return new Promise((resolve) => releases.push(() => resolve(null)));
-    };
+    const { write: writeSlowly, writes, release } = slowWriter();
 
     render('aria', { name: 'Aria', note: '' }, writeSlowly);
     render('aria', { name: 'Aria', note: 'first' }, writeSlowly);
@@ -201,7 +212,7 @@ describe('switching what is being edited before the delay has run', () => {
       render('bram', { name: 'Bram', note: '' }, writeSlowly);
     });
     await act(async () => {
-      releases[0]?.();
+      release();
     });
     expect(writes).toEqual(['aria:first', 'aria:second']);
 
@@ -213,14 +224,140 @@ describe('switching what is being edited before the delay has run', () => {
     expect(out.current?.state).toBe('pending');
 
     await act(async () => {
-      releases[1]?.();
+      release();
     });
     expect(writes).toEqual(['aria:first', 'aria:second', 'bram:two']);
     await act(async () => {
-      releases[2]?.();
+      release();
     });
     expect(out.current?.state).toBe('saved');
     expect(readBack('bram')).toEqual({ name: 'Bram', note: 'two' });
+  });
+
+  /*
+   * Todo 35: the smoke's Remotes switch, unticked and ticked again after the
+   * file was renamed into place and before the save's `refresh()` answered.
+   * The second tick matched the baseline from before the first write, so
+   * nothing was saved, and the box showed on while the file said off.
+   */
+  it('writes a setting changed back while its save is on its way', async () => {
+    const { write, writes, release } = slowWriter();
+    render('aria', { name: 'Aria', note: 'on' }, write);
+    render('aria', { name: 'Aria', note: 'off' }, write);
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY);
+    });
+    // Positive control: the first write is on disk and has not answered.
+    expect(writes).toEqual(['aria:off']);
+    expect(out.current?.state).toBe('saving');
+
+    render('aria', { name: 'Aria', note: 'on' }, write);
+    expect(out.current?.state).toBe('pending');
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY * 3);
+    });
+    expect(writes).toEqual(['aria:off']);
+
+    await act(async () => {
+      release();
+    });
+    expect(writes).toEqual(['aria:off', 'aria:on']);
+    await act(async () => {
+      release();
+    });
+    expect(readBack('aria')).toEqual({ name: 'Aria', note: 'on' });
+    expect(out.current?.state).toBe('saved');
+  });
+
+  /*
+   * The same gap with a character chosen in it: `choose()` flushes, and the
+   * flush has to see the change back as an edit, since the write answers
+   * after the switch and is no longer the form's baseline by then.
+   */
+  it('writes a setting changed back on the way out to another character', async () => {
+    const { write, writes, release } = slowWriter();
+    render('aria', { name: 'Aria', note: 'on' }, write);
+    render('aria', { name: 'Aria', note: 'off' }, write);
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY);
+    });
+    expect(writes).toEqual(['aria:off']);
+
+    render('aria', { name: 'Aria', note: 'on' }, write);
+    await act(async () => {
+      out.current?.flush();
+      render('bram', { name: 'Bram', note: '' }, write);
+    });
+    expect(writes).toEqual(['aria:off']);
+
+    await act(async () => {
+      release();
+    });
+    expect(writes).toEqual(['aria:off', 'aria:on']);
+    await act(async () => {
+      release();
+      vi.advanceTimersByTime(DELAY * 3);
+    });
+    expect(readBack('aria')).toEqual({ name: 'Aria', note: 'on' });
+    expect(existsSync(fileOf('bram'))).toBe(false);
+  });
+
+  /*
+   * Changed back, the delay run out behind the write on its way, then changed
+   * again to what that write sends: the change back queued while the write was
+   * out must not be written over it.
+   */
+  it('drops a queued change once the form matches the write on its way', async () => {
+    const { write, writes, release } = slowWriter();
+    render('aria', { name: 'Aria', note: 'on' }, write);
+    render('aria', { name: 'Aria', note: 'off' }, write);
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY);
+    });
+    expect(writes).toEqual(['aria:off']);
+
+    render('aria', { name: 'Aria', note: 'on' }, write);
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY);
+    });
+    // Positive control: the change back was seen and its timer has run.
+    expect(out.current?.state).toBe('pending');
+    expect(writes).toEqual(['aria:off']);
+
+    render('aria', { name: 'Aria', note: 'off' }, write);
+    await act(async () => {
+      release();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY * 3);
+    });
+    expect(writes).toEqual(['aria:off']);
+    expect(readBack('aria')).toEqual({ name: 'Aria', note: 'off' });
+    expect(out.current?.state).toBe('saved');
+  });
+
+  /*
+   * A refused write is not sent again by itself: the refusal stays on screen
+   * and the next edit tries again, so a file that stays locked is not
+   * hammered.
+   */
+  it('sends a refused write once', async () => {
+    const { write, writes, release } = slowWriter('the file is locked');
+    render('aria', { name: 'Aria', note: 'on' }, write);
+    render('aria', { name: 'Aria', note: 'off' }, write);
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY);
+    });
+    expect(writes).toEqual(['aria:off']);
+    await act(async () => {
+      release();
+    });
+    expect(out.current?.state).toBe('refused');
+    await act(async () => {
+      vi.advanceTimersByTime(DELAY * 3);
+    });
+    expect(writes).toEqual(['aria:off']);
+    expect(out.current?.state).toBe('refused');
   });
 });
 
