@@ -77,7 +77,7 @@ import { DESC_MESSAGE_ABILITY } from '../shared/abilities';
 import { loadSpellMessages } from './world/SpellMessages';
 import { loadShippedSentences } from './world/ShippedSentences';
 import type { ShippedSentences } from '../shared/sentences';
-import { NO_PLAYERS, NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
+import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
 import { FightLog } from './session/FightLog';
 import { segmentBackscrolls } from './session/backscrollMigration';
@@ -100,6 +100,7 @@ import { asGearPicks } from '../shared/gearTrip';
 import { atSpeed, NO_EXCLUSIONS, NO_FLOOR, NOT_KEPT, type HuntingAdvice } from '../shared/hunting';
 import { playPlaced } from './session/Play';
 import { SessionHost, type SessionSlot } from './session/SessionHost';
+import { attachSnapshot } from './session/attach';
 import { WindowRegistry } from './windows/WindowRegistry';
 import { Workspace } from './windows/Workspace';
 import { quitGuard, type QuitAnswer } from './app/quit';
@@ -137,12 +138,11 @@ import { UNSTATED_REALM_WORDS, type Profile } from '../shared/profiles';
 import type { SessionSummary } from '../shared/ipc';
 import { EMPTY_CHARACTER } from '../shared/character';
 import { IDLE_WALK } from '../shared/walk';
-import { isLoopScope, mergeLoops, NO_LOOP } from '../shared/loops';
+import { isLoopScope, mergeLoops } from '../shared/loops';
 import { EMPTY_AUTOMATION } from '../shared/automation';
 import type { ExtensionInfo } from '../shared/extensions';
 import { loadExtensions, pageFile, type LoadedExtension } from './extensions/ExtensionLoader';
-import { IDLE_QUEST_RUN } from '../shared/quests';
-import { EMPTY_ROOM_VERDICT, prowessSheetOf } from '../shared/verdict';
+import { prowessSheetOf } from '../shared/verdict';
 import { EMPTY_MAP, type LocalMap } from '../shared/map';
 import {
   asRoomIds,
@@ -218,22 +218,6 @@ let home: Home;
  * instance lock is not enough.
  */
 let homeLock: HomeLock | null = null;
-
-/** What a session that has never been dialled reports. Keeps `attach` total. */
-const IDLE_STATE = {
-  phase: 'idle' as const,
-  target: null,
-  connectedAt: null,
-  detail: null,
-  endedBy: null,
-  negotiated: {
-    localEnabled: [],
-    remoteEnabled: [],
-    binary: false,
-    suppressGoAhead: false,
-    remoteEcho: false
-  }
-};
 
 let config: ConfigStore | null = null;
 /** The client's own settings, beside the options file. See `shared/internal.ts`. */
@@ -2263,43 +2247,23 @@ function registerIpc(): void {
    * older segments are read after it (`Backscroll.page`). The renderer holds
    * live chunks until this resolves and writes them after the replay —
    * otherwise the catch-up would land on top of output newer than it.
+   * Everything else is read after the page; see `session/attach.ts`.
    */
-  handle(Invoke.attach, async (caller, session: SessionId): Promise<AttachSnapshot> => {
-    /*
-     * Looks the session up; never creates it. Sessions come from profiles now,
-     * so a window attaching to an id nobody defines must get an empty view
-     * rather than conjure a character out of a stale tab.
-     */
-    const slot = host?.get(session);
-    if (slot) windows.attach(caller.windowId, session);
-    const manager = slot?.manager;
-    const backscroll = slot?.backscroll.page(tuning().view.consolePageLines);
-    const snapshot: AttachSnapshot = {
-      backscroll: NO_BACKSCROLL,
-      lines: manager?.lines ?? [],
-      state: manager?.state ?? IDLE_STATE,
-      character: manager?.character ?? EMPTY_CHARACTER,
-      players: manager?.players ?? NO_PLAYERS,
-      walk: manager?.walker.progress ?? IDLE_WALK,
-      loop: manager?.loops.progress ?? NO_LOOP,
-      automation: manager?.automation ?? EMPTY_AUTOMATION,
-      verdict: manager?.appraisal.verdict ?? EMPTY_ROOM_VERDICT,
-      asks: [...(manager?.appraisal.asks ?? [])],
-      statsBase: manager?.statsBaseline.base ?? null,
-      telnet: manager?.log ?? [],
-      learned: manager?.learned ?? [],
-      finds: manager?.foundHere ?? [],
-      shops: slot ? [...(shopsFor(session)?.all ?? [])] : [],
-      questSaid: { ...(manager?.questProgress ?? {}) },
-      questRun: manager?.questDesk.progress ?? IDLE_QUEST_RUN,
-      gearTrip: manager?.gearDesk.progress ?? null,
-      // The Talk card's history. Only for a session that exists: attach never
-      // creates one, so it must not conjure a log for a stale id either.
-      talk: slot ? talkFor(session).backlog() : []
-    };
-    // Everything above is read before this first await, at the moment of attaching.
-    return { ...snapshot, backscroll: (await backscroll) ?? NO_BACKSCROLL };
-  });
+  handle(Invoke.attach, (caller, session: SessionId): Promise<AttachSnapshot> =>
+    attachSnapshot(
+      {
+        // Never creates a session: a window attaching to an id nobody defines
+        // gets an empty view rather than a character conjured from a stale tab.
+        find: (id) => host?.get(id),
+        register: (id) => windows.attach(caller.windowId, id),
+        shops: (id) => [...(shopsFor(id)?.all ?? [])],
+        // The Talk card's history; asked only for a session that exists.
+        talk: (id) => talkFor(id).backlog()
+      },
+      session,
+      tuning().view.consolePageLines
+    )
+  );
 
   // A number off the wire: anything but a count of lines is answered with nothing.
   handle(
