@@ -81,6 +81,7 @@ const api: WireApi = {
   setSupplies: (session, items) => ipcRenderer.invoke(Invoke.setSupplies, session, items),
   addLoop: (scope, owner, loop) => ipcRenderer.invoke(Invoke.addLoop, scope, owner, loop),
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),
+  loopJoin: (session, loop) => ipcRenderer.invoke(Invoke.loopJoin, session, loop),
   getWalk: (session) => ipcRenderer.invoke(Invoke.getWalk, session),
   getAutomation: (session) => ipcRenderer.invoke(Invoke.getAutomation, session),
   listExtensions: () => ipcRenderer.invoke(Invoke.listExtensions),

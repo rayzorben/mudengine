@@ -39,6 +39,7 @@ import { usePaneWidths } from './hooks/usePaneWidths';
 import { useConsoleWidth } from './hooks/useConsoleWidth';
 import { useLoopBuilder } from './hooks/useLoopBuilder';
 import { useLoopsModal } from './hooks/useLoopsModal';
+import { useLoopJoin } from './hooks/useLoopJoin';
 import { useMovement } from './hooks/useMovement';
 import { usePanes } from './hooks/usePanes';
 import { useProfileReaders } from './hooks/useProfileReaders';
@@ -503,8 +504,10 @@ export default function App() {
     open: routeOpen,
     destination: routeTarget,
     search: routeSearch,
+    joining: routeJoining,
     close: closeRoute,
     openOn: openRouteOn,
+    openToJoin,
     openCold: openRoute,
     toggleCold: toggleRoute
   } = useRoutePanel(returnFocus);
@@ -879,6 +882,7 @@ export default function App() {
     stay,
     walkOn
   } = useMovement({ api, session, profiles, returnFocus, say: noticeTo });
+  const chooseLoop = useLoopJoin({ api, session, runChosenLoop, openToJoin, say: noticeTo });
 
   /** The loop builder, addressed at the shown character. */
   const { openBuilder, createHunt, builderApi } = useLoopBuilder({
@@ -1037,10 +1041,9 @@ export default function App() {
   useHotkeys([
     { key: 'k', mod: true, run: togglePalette },
     /*
-     * The Loops modal. `Ctrl/Cmd L` was free in this table — jump-to-latest is
-     * `Ctrl/Cmd Shift L` — and the realm's own command list (docs/greatermud)
-     * claims no control character here, so nothing is being taken from the
-     * game. It is a chord, so a text field in the chrome keeps its own keys.
+     * The Loops modal. `Ctrl/Cmd L` was free (jump-to-latest is `Ctrl/Cmd Shift L`)
+     * and the realm's command list (docs/greatermud) claims no control character
+     * here. It is a chord, so a text field in the chrome keeps its own keys.
      */
     { key: 'l', mod: true, run: toggleLoops },
     // Ctrl/Cmd Enter, Alt H and Ctrl/Cmd Q are `useConnectionKeys`, bound by `useConnection`.
@@ -1537,22 +1540,19 @@ export default function App() {
         onRoute={routeTo}
         onSearch={searchRooms}
         onCollectThenWalk={collectThenWalk}
+        joining={routeJoining}
         onWalk={walkRoute}
         open={routeOpen}
         search={routeSearch}
       />
 
-      {/*
-        Every loop the client knows, from anywhere in the game. The Navigation
-        card's Loop face drives the loop that is running; this is where one is
-        found.
-      */}
+      {/* Every loop the client knows; a pick shows the way to it first (`useLoopJoin`). */}
       <LoopsModal
         characterName={character.name ?? session}
         here={loopHere}
         loading={loopsLoading}
         loops={loopChoices}
-        onChoose={runChosenLoop}
+        onChoose={chooseLoop}
         onClose={closeLoops}
         open={loopsOpen}
         realmName={profiles.find((profile) => profile.id === session)?.serverName ?? ''}

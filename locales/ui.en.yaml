@@ -845,6 +845,7 @@ loops:
     none: Don't Add
   startedKept: Started {loopName} and saved it.
   startedOnly: 'Started {loopName}.'
+  joinUnshown: 'No route to show for this loop ({reason}). Starting it anyway.'
   paletteLabel: 'Loops: find one to walk'
 # Command palette: entries, groups, hints and chrome.
 palette:
@@ -3017,6 +3018,9 @@ cards:
     runButtonUnread: Run it (?%)
     walkButtonUnread: Walk it (?%)
     runTooltip: Walk this route with auto-combat off, and turn it back on when you arrive (Alt R)
+    # A loop picked in the Loops modal: the press starts it, and the lap walks this way in.
+    startLoopButton: Start {loopName}
+    startLoopTooltip: Walk to {roomName} and loop from there (Enter or Alt G)
   session:
     encoding: Encoding
     grid: Grid

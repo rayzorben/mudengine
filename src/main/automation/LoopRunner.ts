@@ -480,9 +480,9 @@ export class LoopRunner implements SessionModule {
     // numbers the client had, never a difference from zero.
     this.expAtStart = state.progress.exp;
     this.anchorRate(state);
-    // From the stop nearest to hand: starting at the top of the list would
-    // walk the character back past everything it is standing next to.
-    this.index = this.nearestStop();
+    // From the stop stood in: starting at the top of the list would walk the
+    // character back past everything it is standing next to.
+    this.index = this.joining(loop).stop;
     this.events.notice?.(
       t('automation.loops.started', { loopName: loop.name, stopCount: loop.stops.length })
     );
@@ -1638,11 +1638,19 @@ export class LoopRunner implements SessionModule {
     return this.status === 'stopped' ? this.stoppedIn : null;
   }
 
-  /** The stop the character is standing in, else the first. */
-  private nearestStop(): number {
-    const loop = this.loop;
-    if (!loop) return 0;
+  /**
+   * The stop a lap of `loop` started now begins from: the one the character
+   * is standing in, else the first. `start` and the route panel's preview of
+   * the way to a loop (`loop:join`) both read it, so the two cannot disagree.
+   */
+  joining(loop: Loop): { stop: number; standing: boolean } {
     const at = loop.stops.findIndex((stop) => this.planner.here(splitStop(stop)));
-    return at === -1 ? 0 : at;
+    return at === -1 ? { stop: 0, standing: false } : { stop: at, standing: true };
+  }
+
+  /** The room a stop of `loop` names, or null where the realm cannot settle it. */
+  stopRoom(loop: Loop, stop: number): RoomId | null {
+    const named = loop.stops[stop];
+    return named === undefined ? null : this.planner.roomOf(splitStop(named));
   }
 }

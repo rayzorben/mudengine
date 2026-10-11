@@ -23,7 +23,7 @@
  */
 import type { LoopProgress } from './loops';
 import type { WalkProgress } from './walk';
-import type { Route } from './world';
+import type { Route, WorldRoom } from './world';
 
 /** What the character is going about, when it is going about anything. */
 export type MovementKind = 'route' | 'loop';
@@ -188,3 +188,19 @@ export interface MovementConfirm {
    */
   steps: number;
 }
+
+/**
+ * Where a loop picked from the Loops modal joins, asked before it starts so
+ * the route panel can show the way there (`loop:join`). `standing` is a stop
+ * the character is in, where the lap begins at once; `joins` is the stop the
+ * lap walks to first and the leg it would plan, priced as a lap's leg.
+ * `unshown` is a way that cannot be drawn but that the lap still tries: the
+ * room is not known yet (the lap locates it), or, with no reason, a stop the
+ * realm cannot place, which the lap reports in `findStop`'s words. `refused`
+ * is the loop itself refused, and nothing starts.
+ */
+export type LoopJoin =
+  | { standing: true }
+  | { joins: WorldRoom; route: Route }
+  | { unshown: string | null }
+  | { refused: string };

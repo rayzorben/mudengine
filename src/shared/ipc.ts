@@ -82,7 +82,7 @@ import type { LowLivesAnswer } from './lives';
 import type { InternalConfig } from './internal';
 import type { Loop, LoopProgress, LoopScope, ScopedLoop } from './loops';
 import type { WalkProgress } from './walk';
-import type { MovementStart, WalkStart } from './movement';
+import type { LoopJoin, MovementStart, WalkStart } from './movement';
 import type { RoomVerdict } from './verdict';
 import type { CombatTally } from './tally';
 import type {
@@ -744,6 +744,11 @@ export const Invoke = {
    * handler in main.
    */
   runLoop: 'loop:run',
+  /**
+   * Where a loop would join and the leg there, without starting it: the Loops
+   * modal shows the way in the route panel first (`LoopJoin`).
+   */
+  loopJoin: 'loop:join',
   /** Turn a bounce loop round. Refused for a plain loop. */
   reverseLoop: 'loop:reverse',
   /** The loops the client ships, for the settings screen to offer. */
@@ -1318,6 +1323,12 @@ export interface IpcApi {
   runLoop(session: SessionId, loop: Loop): Promise<string | null>;
   /** Start a named loop from `automation.loops`. Resolves to a refusal, or null. */
   startLoop(session: SessionId, name: string): Promise<string | null>;
+  /**
+   * Where a lap of this loop, by name from `automation.loops` or handed over
+   * whole, would join it from where the character stands. Asks nothing of the
+   * game. See `LoopJoin`.
+   */
+  loopJoin(session: SessionId, loop: Loop | string): Promise<LoopJoin>;
   /** Resolves to a refusal — nothing looping, or not a bounce loop — or null. */
   reverseLoop(session: SessionId): Promise<string | null>;
   /**
