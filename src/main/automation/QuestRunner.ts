@@ -23,7 +23,7 @@ import {
   packCheck,
   type PackCheck
 } from './PackAfter';
-import { fightIsRunning, packRows, type CharacterState } from '../../shared/character';
+import { listedSum, fightIsRunning, packRows, type CharacterState } from '../../shared/character';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
@@ -575,9 +575,7 @@ export class QuestRunner implements SessionModule {
    */
   private rankNow(run: Run, state: CharacterState): number {
     const watched = this.planner.watched()[run.quest.id]?.to;
-    const listing = state.abilities;
-    const listed =
-      listing === null ? null : (listing.sums[run.quest.id] ?? (listing.complete ? 0 : null));
+    const listed = listedSum(state.abilities, run.quest.id);
     return Math.max(watched ?? -Infinity, listed ?? -Infinity);
   }
 
@@ -1062,7 +1060,7 @@ export class QuestRunner implements SessionModule {
         phase.askedTimes += 1;
         return;
       }
-      const rank = listing.sums[run.quest.id] ?? (listing.complete ? 0 : null);
+      const rank = listedSum(listing, run.quest.id);
       if (rank !== null && rank >= realm.to) {
         this.stepDone(run, state, rank);
         return;

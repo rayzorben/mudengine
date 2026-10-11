@@ -277,6 +277,7 @@ function migrateAll(options: MigrationOptions): void {
   theThemesWereCut(home, note);
   pathFollowsStatus(home, note);
   theAttackIsChosen(home, note, options.template);
+  theSheetAnswersPickAndMeditate(home, note, options.template);
 }
 
 /**
@@ -2936,6 +2937,73 @@ function statedTheRestCeiling(home: Home, note: (message: string) => void): void
  * block is left alone. Returns the files written, for the step's own notice.
  */
 const HEALTH_BLOCK = ['automation', 'health'] as const;
+
+/**
+ * `pickLocks` and `useMeditate` turned **on** (todo 50): on now means *when
+ * the sheet or an `abil` list says the character can*, and off means
+ * *never*. A file still carrying the shipped paragraph that told the player
+ * to turn one on themselves (`STALE_SKILL_WORDS`) holds the shipped `false`
+ * and nobody's choice, so the value goes to `true` and the paragraph to the
+ * template's new one. The new paragraph is the marker: a later `false` sits
+ * under it and is never moved again. A `false` with no paragraph above it is
+ * left alone, and the step says which files it moved.
+ */
+const STALE_SKILL_WORDS: ReadonlyArray<{
+  block: readonly string[];
+  key: string;
+  words: readonly string[];
+}> = [
+  {
+    block: ['automation', 'movement'],
+    key: 'pickLocks',
+    words: ['cannot check the character has', 'Both off by default.']
+  },
+  { block: HEALTH_BLOCK, key: 'useMeditate', words: ['turn it on once the character has'] }
+];
+
+function theSheetAnswersPickAndMeditate(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'automation');
+  const moved: string[] = [];
+  for (const file of everySettingsFile(home)) {
+    let flipped = false;
+    edit(file, (document) => {
+      let changed = false;
+      for (const { block, key, words } of STALE_SKILL_WORDS) {
+        const map = document.getIn(block, true);
+        if (!isMap(map)) continue;
+        const pair = map.items.find((item) => keyText(item) === key);
+        if (pair === undefined || !isScalar(pair.key)) continue;
+        // A map's first key does not own the comment above it (`templateComments`).
+        const onMap = pair.key.commentBefore === undefined && map.items[0] === pair;
+        const said = (onMap ? map.commentBefore : pair.key.commentBefore) ?? '';
+        if (!words.some((stale) => said.includes(stale))) continue;
+        const fresh = comments.get(`${block.join('.')}.${key}`);
+        // No template paragraph to put in its place: leave it, or the marker is lost.
+        if (fresh === undefined) continue;
+        if (onMap) map.commentBefore = fresh;
+        else pair.key.commentBefore = fresh;
+        if (map.get(key) === false) {
+          map.set(key, true);
+          flipped = true;
+        }
+        changed = true;
+      }
+      return changed;
+    });
+    if (flipped) moved.push(file);
+  }
+  if (moved.length === 0) return;
+  const params = { count: moved.length, fileList: moved.join(', ') };
+  note(
+    moved.length === 1
+      ? t('notices.migration.sheetAnswersSkills.one', params)
+      : t('notices.migration.sheetAnswersSkills.many', params)
+  );
+}
 const PARTY_BLOCK = ['automation', 'party'] as const;
 const SPELLS_BLOCK = ['automation', 'spells'] as const;
 const REMOTES_BLOCK = ['automation', 'remotes'] as const;
@@ -3159,9 +3227,8 @@ function statedTheAutoJoin(home: Home, note: (message: string) => void): void {
  * The mana pair is resting for mana, not meditating (the user, 2026-10-03):
  * `meditateBelow`/`meditateTo` become `restBelowMana`/`restToMana` in every
  * file, in place and with the template's new comment, a stated figure kept;
- * then the pair, `useMeditate` and `meditateFirst` are stated where absent.
- * `useMeditate` is on where the file rested for mana at all, since until now
- * that rest was always `med`. Replaces `statedTheMeditateCeiling`, which
+ * then the pair, `useMeditate` and `meditateFirst` are stated where absent,
+ * `useMeditate` at its default (on since todo 50). Replaces `statedTheMeditateCeiling`, which
  * stated the old `meditateTo` and would have put it back on every launch.
  */
 function theManaPairRests(
@@ -3206,17 +3273,8 @@ function theManaPairRests(
       of('restBelowMana')
     ),
     ...stateIn(home, HEALTH_BLOCK, 'restToMana', d.restToMana, 'restBelowMana', of('restToMana')),
-    ...stateInFrom(
-      home,
-      HEALTH_BLOCK,
-      'useMeditate',
-      (map) => {
-        const below = map.get('restBelowMana');
-        return typeof below === 'number' && below > 0;
-      },
-      'restToMana',
-      of('useMeditate')
-    ),
+    // At the default since todo 50: on is *when the character has Meditate*.
+    ...stateIn(home, HEALTH_BLOCK, 'useMeditate', d.useMeditate, 'restToMana', of('useMeditate')),
     ...stateIn(
       home,
       HEALTH_BLOCK,
@@ -5638,7 +5696,7 @@ const SUPPLIES_COMMENT = ` Keeping the pack stocked -- MegaMUD's Must Have Minim
      - { name: torch, min: 3, max: 7, shop: General Store, at: { map: 1, room: 2147 } }`;
 
 const DOOR_FORCING_DEFAULTS: ReadonlyArray<readonly [string, boolean | number]> = [
-  ['pickLocks', false],
+  ['pickLocks', true],
   ['pickTries', 3],
   ['bashDoors', false],
   ['bashTries', 3]
@@ -5658,8 +5716,11 @@ const DOOR_FORCING_COMMENT = ` Forcing a barrier \`open\` cannot get past.
  game prints the damage in the room. A picked door is unlocked and still
  shut, so the client opens it afterwards; a bashed one is open already.
 
- Both off by default. A door somebody locked is a door somebody locked,
- and a route that forces its way through one is a decision, not a detail.`;
+ Both are on by default, and each is gated on the character's own figure,
+ so neither is tried against a barrier it cannot beat: bashing on the
+ realm's strength number, picking on the Picklocks the stat sheet prints.
+ A character whose sheet says Picklocks 0 never picks. bashTries and
+ pickTries cap each at three. Turn one off to never force a door that way.`;
 
 /** The keys under `connection:` that only the anonymous session ever read. */
 const ANONYMOUS_CONNECTION_KEYS = ['autoConnect'] as const;

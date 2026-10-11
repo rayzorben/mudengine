@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { MobRule } from '../../../shared/mobRules';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { MEDITATE_ABILITY } from '../../../shared/abilities';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -622,6 +623,45 @@ describe('meditating', () => {
     expect(sent).toEqual(['med']);
   });
 
+  /* Todo 50: on by default, and an `abil` list is what says the character has it. */
+  it('meditates by default while nothing has said whether the character has Meditate', () => {
+    make(health({ restBelowMana: 0.5 })).onCharacter(state({ mana: 10, manaMax: 100 }));
+    drain();
+    expect(sent).toEqual(['med']);
+  });
+
+  it('rests for mana when a complete abil list has no Meditate', () => {
+    make(health({ useMeditate: true, restBelowMana: 0.5 })).onCharacter(
+      state({ mana: 10, manaMax: 100, abilities: { sums: { 31: 0 }, complete: true, at: 1 } })
+    );
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
+  it('meditates when the abil list shows Meditate', () => {
+    make(health({ useMeditate: true, restBelowMana: 0.5 })).onCharacter(
+      state({
+        mana: 10,
+        manaMax: 100,
+        abilities: { sums: { [MEDITATE_ABILITY]: 1 }, complete: true, at: 1 }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['med']);
+  });
+
+  it('never meditates with the switch off, whatever the listing says', () => {
+    make(health({ useMeditate: false, restBelowMana: 0.5 })).onCharacter(
+      state({
+        mana: 10,
+        manaMax: 100,
+        abilities: { sums: { [MEDITATE_ABILITY]: 1 }, complete: true, at: 1 }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+
   /*
    * A warrior's status line carries no `MA=` at all, and `med` for one is
    * answered `Your command had no effect.` — in the room, once per status line,
@@ -776,7 +816,7 @@ describe('resting with the leader', () => {
   });
   const withLeader = (): Recovery =>
     new Recovery(
-      settings({ ...DEFAULT_CONFIG.automation.health }, true, {
+      settings({ ...DEFAULT_CONFIG.automation.health, useMeditate: false }, true, {
         ...DEFAULT_CONFIG.automation.party,
         assistLeader: false,
         defendParty: false,
@@ -1072,13 +1112,15 @@ describe('meditating to a line, and resting to one from the floor', () => {
  */
 describe('resting for mana without meditate', () => {
   it('rests for mana below its line', () => {
-    make(health({ restBelowMana: 0.5 })).onCharacter(state({ mana: 10, manaMax: 100 }));
+    make(health({ useMeditate: false, restBelowMana: 0.5 })).onCharacter(
+      state({ mana: 10, manaMax: 100 })
+    );
     drain();
     expect(sent).toEqual(['rest']);
   });
 
   it('keeps resting until mana reaches its line, with health already full', () => {
-    const recovery = make(health({ restBelowMana: 0.5, restToMana: 0.9 }));
+    const recovery = make(health({ useMeditate: false, restBelowMana: 0.5, restToMana: 0.9 }));
     recovery.onCharacter(state({ hp: 100, hpMax: 100, mana: 10, manaMax: 100 }));
     recovery.onCharacter(state({ hp: 100, hpMax: 100, mana: 60, manaMax: 100, resting: true }));
     drain();
@@ -1103,7 +1145,7 @@ describe('resting for mana without meditate', () => {
   });
 
   it('is what wouldRest answers, so a lair is stepped out of for mana as for health', () => {
-    const recovery = make(health({ restBelowMana: 0.5 }));
+    const recovery = make(health({ useMeditate: false, restBelowMana: 0.5 }));
     expect(recovery.wouldRest(state({ mana: 10, manaMax: 100 }))).toBe(true);
     const meditating = make(health({ restBelowMana: 0.5, useMeditate: true }));
     expect(meditating.wouldRest(state({ mana: 10, manaMax: 100 }))).toBe(false);

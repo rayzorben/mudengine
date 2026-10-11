@@ -5,12 +5,14 @@
  * lair, resting for mana with `med`, and meditating before resting; then the
  * spell cast before a rest (todo 60). Each value is as the page holds it; the
  * page turns a change back into its own draft. Where a maximum is known the
- * figure it means is drawn beside the field.
+ * figure it means is drawn beside the field, and on the character page a
+ * sentence says which way Use Meditate goes for this character.
  */
 import { CheckField, NumberField } from './FormField';
 import SpellField from './SpellPicker';
 import { barOf, figureOf } from '../lib/form';
 import { t } from '../lib/i18n';
+import { meditateSays } from '../lib/liveSheet';
 import type { VitalThresholds } from '@shared/character';
 import type { SpellOption } from '@shared/ipc';
 
@@ -28,6 +30,11 @@ export interface RestFieldsProps {
   bands: { hp: VitalThresholds; mana: VitalThresholds };
   /** The character's maxima, for the figure beside a field; absent on the options page. */
   maxima?: { hpMax: number | null; manaMax: number | null };
+  /**
+   * Whether an `abil` list shows Meditate, for the sentence under Use
+   * Meditate (todo 50); absent on the options page, which has no character.
+   */
+  meditate?: boolean | null;
   /** Prefixed to each field's name, so the two pages' fields stay apart. */
   namePrefix: string;
   /** The spells offered for the one cast before a rest. */
@@ -112,6 +119,7 @@ export default function RestFields({
   onCheck,
   bands,
   maxima,
+  meditate,
   namePrefix,
   spells
 }: RestFieldsProps): React.JSX.Element {
@@ -145,6 +153,9 @@ export default function RestFields({
           onChange={(value) => onCheck(row.field, value)}
         />
       ))}
+      {meditate !== undefined && checked.useMeditate && (
+        <p className="settings-note">{meditateSays(meditate)}</p>
+      )}
       <div className="settings-inline">
         <SpellField
           hint={t('settings.health.restSpellHint')}

@@ -28,6 +28,8 @@ import CarrySections from './CarrySections';
 import BlessingFields from './BlessingFields';
 import CureFields from './CureFields';
 import RestFields from './RestFields';
+import PickLockFields from './PickLockFields';
+import type { LiveSheet } from '../lib/liveSheet';
 import HuntingFields from './HuntingFields';
 import PartyFields from './PartyFields';
 import FleeGotoFields from './FleeGotoFields';
@@ -109,8 +111,8 @@ export interface CharacterFormProps {
   servers: readonly Pick<Server, 'name' | 'login' | 'database'>[];
   onManageRealms(): void;
   firstFieldRef: React.RefObject<HTMLInputElement>;
-  /** What the percentage thresholds are percentages of; null is unknown. */
-  maxima: { hpMax: number | null; manaMax: number | null };
+  /** The live sheet: what the thresholds are percentages of, picklocks, Meditate. */
+  sheet: LiveSheet;
   /** The vitals bands this character inherits, which each threshold's bar wears. */
   bands: VitalsUiConfig;
   /** The status line's preview figures, null for a sample. */
@@ -175,7 +177,7 @@ export default function CharacterForm({
   servers,
   onManageRealms,
   firstFieldRef,
-  maxima,
+  sheet,
   bands,
   figures,
   palette,
@@ -212,9 +214,9 @@ export default function CharacterForm({
    * saved value meant.
    */
   const ofHealth = (typed: string): string | null =>
-    figureOf(Number.parseInt(typed, 10) || 0, maxima.hpMax);
+    figureOf(Number.parseInt(typed, 10) || 0, sheet.hpMax);
   const ofMana = (typed: string): string | null =>
-    figureOf(Number.parseInt(typed, 10) || 0, maxima.manaMax);
+    figureOf(Number.parseInt(typed, 10) || 0, sheet.manaMax);
   const barOfHealth = (typed: string): ReturnType<typeof barOf> =>
     barOf(Number.parseInt(typed, 10) || 0, bands.hp);
   const barOfMana = (typed: string): ReturnType<typeof barOf> =>
@@ -653,7 +655,8 @@ export default function CharacterForm({
             <RestFields
               bands={bands}
               checks={form}
-              maxima={maxima}
+              maxima={sheet}
+              meditate={sheet.meditate}
               namePrefix=""
               onChange={(field, value) => patch({ [field]: value })}
               onCheck={(field, value) => patch({ [field]: value })}
@@ -831,7 +834,7 @@ export default function CharacterForm({
             <legend>{t('settings.spells.legend')}</legend>
             <AttackFields
               bands={bands.mana}
-              manaMax={maxima.manaMax}
+              manaMax={sheet.manaMax}
               namePrefix=""
               onChange={(field, value) => patch({ [ATTACK_KEYS[field]]: value })}
               onToggle={(field, value) => patch({ [ATTACK_KEYS[field]]: value })}
@@ -845,7 +848,7 @@ export default function CharacterForm({
             <legend>{t('settings.spells.drainLegend')}</legend>
             <DrainFields
               bands={bands.hp}
-              hpMax={maxima.hpMax}
+              hpMax={sheet.hpMax}
               namePrefix=""
               onChange={(field, value) => patch({ [DRAIN_KEYS[field]]: value })}
               spells={shownBook.spells}
@@ -857,7 +860,7 @@ export default function CharacterForm({
             <legend>{t('settings.spells.healLegend')}</legend>
             <HealFields
               bands={bands}
-              maxima={maxima}
+              maxima={sheet}
               namePrefix=""
               onChange={(field, value) => patch({ [HEAL_KEYS[field]]: value })}
               onToggle={(field, value) => patch({ [HEAL_KEYS[field]]: value })}
@@ -907,7 +910,7 @@ export default function CharacterForm({
         <SettingsSection {...sectionOf('party')}>
           <PartyFields
             bands={bands.hp}
-            hpMax={maxima.hpMax}
+            hpMax={sheet.hpMax}
             namePrefix=""
             onChange={(party) => patch({ party })}
             party={form.party}
@@ -1318,23 +1321,12 @@ export default function CharacterForm({
               command and the other costs a command and some
               health.
             */}
-            <div className="settings-inline">
-              <CheckField
-                checked={form.pickLocks}
-                hint={t('settings.movement.pickLocksHint')}
-                label={t('settings.movement.pickLocks')}
-                name="pick-locks"
-                onChange={(value) => patch({ pickLocks: value })}
-              />
-              {form.pickLocks && (
-                <NumberField
-                  label={t('settings.movement.pickTries')}
-                  name="pick-tries"
-                  onChange={(value) => patch({ pickTries: value })}
-                  value={form.pickTries}
-                />
-              )}
-            </div>
+            <PickLockFields
+              onChange={patch}
+              pickLocks={form.pickLocks}
+              pickTries={form.pickTries}
+              picklocks={sheet.picklocks}
+            />
             <div className="settings-inline">
               <CheckField
                 checked={form.bashDoors}

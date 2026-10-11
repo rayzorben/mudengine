@@ -290,8 +290,8 @@ describe('a character', () => {
         restNextDoor: true,
         restBelowMana: 0.25,
         restToMana: 0.6,
-        // Absent above, and off: mana is rested for with `rest`, and resting comes first.
-        useMeditate: false,
+        // Absent above, and on: `med` when the character has Meditate (todo 50).
+        useMeditate: true,
         meditateFirst: false,
         // Trimmed, as the options file reads it.
         restSpell: 'rhel',
@@ -304,7 +304,8 @@ describe('a character', () => {
       expect(draft?.movement).toEqual({
         openDoors: true,
         openTries: 2,
-        pickLocks: false,
+        // Absent above, and on: picking follows the sheet (todo 50).
+        pickLocks: true,
         pickTries: 0,
         bashDoors: false,
         bashTries: 0,
@@ -414,7 +415,7 @@ describe('a character', () => {
         restNextDoor: true,
         restBelowMana: 0,
         restToMana: 0,
-        useMeditate: false,
+        useMeditate: true,
         meditateFirst: false,
         restSpell: '',
         // The rules list, empty where the payload states none.
@@ -424,7 +425,7 @@ describe('a character', () => {
       expect(draft?.movement).toEqual({
         openDoors: false,
         openTries: 0,
-        pickLocks: false,
+        pickLocks: true,
         pickTries: 0,
         bashDoors: false,
         bashTries: 0,

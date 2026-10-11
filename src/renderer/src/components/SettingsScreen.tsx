@@ -45,6 +45,7 @@ import type { Loop, ScopedLoop } from '@shared/loops';
 import type { SessionId, SettingsSnapshot } from '@shared/ipc';
 import { DEFAULT_CONFIG } from '@shared/config';
 import { errorMessage } from '@shared/values';
+import { NO_SHEET, type LiveSheet } from '../lib/liveSheet';
 
 export interface SettingsScreenProps extends CharacterRealmLoaders {
   open: boolean;
@@ -59,15 +60,16 @@ export interface SettingsScreenProps extends CharacterRealmLoaders {
    */
   openAt?: string | null;
   /**
-   * What a character's percentage thresholds are percentages *of*.
+   * What a character's percentage thresholds are percentages *of*, and the
+   * figures that say which way pick locks and meditate go (todo 50).
    *
    * A function rather than a value: the screen edits one character at a time
    * but is opened from anywhere, and the figures belong to the character being
-   * edited rather than to whichever one is on screen. Both halves are null for
+   * edited rather than to whichever one is on screen. Every figure is null for
    * a character not in the realm, and `figureOf` draws that as nothing — an
    * unknown maximum has never been a number in this client.
    */
-  maximaFor(session: SessionId): { hpMax: number | null; manaMax: number | null };
+  sheetFor(session: SessionId): LiveSheet;
   /**
    * The figures the designed status line is previewed with — the character's
    * own while it is in the realm, else null and the designer draws a sample.
@@ -194,7 +196,7 @@ function showsGlobal(tab: string): tab is GlobalTab {
 export default function SettingsScreen({
   open,
   openAt = null,
-  maximaFor,
+  sheetFor,
   figuresFor,
   palette,
   required = false,
@@ -734,10 +736,7 @@ export default function SettingsScreen({
    * rather than merely tolerated: a character that has never been in the realm
    * has no hit points to state, and `figureOf` draws that as nothing.
    */
-  const maxima =
-    selected !== null && selected !== NEW_CHARACTER
-      ? maximaFor(selected)
-      : { hpMax: null, manaMax: null };
+  const sheet = selected !== null && selected !== NEW_CHARACTER ? sheetFor(selected) : NO_SHEET;
   // And the whole of them, for the status line's preview; the designer draws a
   // sample for a character that is not in the realm.
   const figures = selected !== null && selected !== NEW_CHARACTER ? figuresFor(selected) : null;
@@ -1098,7 +1097,7 @@ export default function SettingsScreen({
                   firstFieldRef={firstFieldRef}
                   form={form}
                   inheritedLoops={inheritedLoops}
-                  maxima={maxima}
+                  sheet={sheet}
                   onManageRealms={goToServers}
                   onSubmit={(event) => void submitCharacter(event)}
                   onToggleLoop={toggleLoop}

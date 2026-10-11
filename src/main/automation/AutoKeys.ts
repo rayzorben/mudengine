@@ -29,10 +29,10 @@
  * **It also fires for a keyed door the realm says can be picked**, which the
  * pruning argument above does not cover: `edgePenalty` prices that one rather
  * than pruning it, so a route does exist and `Walker`'s pick rung would be
- * asked. Deliberate, and the reason is `pickLocks` — off by default, so on an
- * ordinary configuration the route is planned through a door nothing will
- * open, and the character walks to it and stops. A key on the floor is one
- * command against a rung that is switched off and a skill roll that can fail.
+ * asked. Deliberate: most characters' sheets say Picklocks 0, and a player
+ * may switch `pickLocks` off, so the route can be planned through a door
+ * nothing will open. A key on the floor is one command against a rung that
+ * may not be there and a skill roll that can fail.
  *
  * **No weight gate**, where `AutoLoot` has one that overrides even a name on
  * the player's own list. The bound here is the realm's rather than a

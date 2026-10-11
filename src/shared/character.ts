@@ -249,6 +249,16 @@ export interface AbilitySums {
 }
 
 /**
+ * What a listing says one id sums to: its stated figure, zero where a complete
+ * listing leaves it out, and null before any listing or where an incomplete
+ * one does (see `complete`).
+ */
+export function listedSum(listing: AbilitySums | null, id: number): number | null {
+  if (listing === null) return null;
+  return listing.sums[id] ?? (listing.complete ? 0 : null);
+}
+
+/**
  * Which member of the family the server on the other end belongs to.
  *
  * Read off the wire rather than configured: the menu prompt says

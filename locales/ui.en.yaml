@@ -461,6 +461,15 @@ notices:
         {count} file where they were off only because the client had written that default, not
         because you chose it. Picking locks is unchanged and still off. Turn either one off again in
         the Movement section of settings. The backup next to the file has the old value. {fileList}
+    sheetAnswersSkills:
+      many: Picking locks and meditating are now on by default, and each happens only when the stat
+        sheet or the abil list says the character can. They were turned on in {count} files
+        that still held the old default under the old note. Turn either off again in settings. The
+        backup next to each file has the old value. {fileList}
+      one: Picking locks and meditating are now on by default, and each happens only when the stat
+        sheet or the abil list says the character can. They were turned on in {count} file that
+        still held the old default under the old note. Turn either off again in settings. The
+        backup next to it has the old value. {fileList}
     gearButtonPinned: A gear button was added to your toolbar, next to the connect button. It
       re-equips what the client last saw in each worn slot. Press it first after a death.
     runBetweenRoundsPinned: A Run Between Rounds switch was added to the end of your toolbar. When
@@ -3952,7 +3961,12 @@ settings:
     restBeforeTrapsLabel: Keep After a Trap HP %
     restNextDoor: Rest Next Door to a Lair
     useMeditate: Use Meditate
-    useMeditateHint: Rests for mana with med, which is faster but needs the Meditate ability.
+    useMeditateHint: Rests for mana with med when the character has the Meditate ability, which is
+      faster. Off never meditates.
+    meditateSays:
+      held: The abil list shows Meditate, so it rests for mana with med.
+      lacking: The abil list has no Meditate, so it rests for mana with rest.
+      unknown: Not known yet. It tries med, and goes back to rest if the game refuses it.
     meditateFirst: Meditate Before Resting
     meditateFirstHint: With Use Meditate and health and mana both low, meditates first and then
       rests; when off, it rests first and meditates after.
@@ -4225,8 +4239,13 @@ settings:
       per try.
     openTries: Tries Per Door
     pickLocks: Auto-Pick Locks
-    pickLocksHint: Tried before bashing, because it costs no health. Needs picklocks close to what
-      the world data lists for the lock; the door is opened for you afterwards.
+    pickLocksHint: Tried before bashing, because it costs no health. Needs Picklocks above 0 on the
+      stat sheet and close to what the world data lists for the lock; the door is opened for you
+      afterwards. Off never picks.
+    picklocksSays:
+      held: Picklocks {figure} on the stat sheet, so it picks a lock it can open.
+      lacking: Picklocks 0 on the stat sheet, so it never picks.
+      unknown: The stat sheet has not been read yet.
     pickTries: Picks Per Door
     sneak: Auto-Sneak on Move
     sneakHint: Decides whether the next room notices you arrive. Sneaking can fail.

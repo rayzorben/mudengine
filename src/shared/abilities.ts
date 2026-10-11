@@ -29,6 +29,7 @@
  */
 
 import type { UiLookup } from './i18n';
+import { listedSum, type AbilitySums } from './character';
 
 /** What one `Abil-n` value means. */
 export interface AbilityMeaning {
@@ -598,6 +599,18 @@ export const PERFECT_STEALTH_ABILITY = 186;
 
 /** `Meditate`: `MeditateCommand.cs` refuses `meditate` without it. */
 export const MEDITATE_ABILITY = 187;
+
+/**
+ * Whether the character holds Meditate, as far as the client can tell (todo
+ * 50). No class or race row on a shipped realm grants it: the `Meditate`
+ * quest does (`50-ability-census.mjs`), so only an `abil` list states it,
+ * and that is GreaterMUD's alone. Null everywhere else, where the realm's
+ * own answer to `med` is what settles it (`Recovery.noteNoEffect`).
+ */
+export function holdsMeditate(listing: AbilitySums | null): boolean | null {
+  const sum = listedSum(listing, MEDITATE_ABILITY);
+  return sum === null ? null : sum > 0;
+}
 
 /**
  * The quest counters the server itself acts on, so reaching one is a reward.

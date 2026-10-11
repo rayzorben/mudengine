@@ -10,6 +10,8 @@ import {
   abilityName,
   abilityShape,
   capabilitiesOf,
+  holdsMeditate,
+  MEDITATE_ABILITY,
   holdsAbility,
   IMMUNE_TO_POISON_ABILITY,
   LEARN_SPELL_ABILITY,
@@ -569,5 +571,18 @@ describe('an effect whose value is another row', () => {
       expect(ABILITY_SHAPE[Number(id)], `ability ${id}`).toBe('reference');
       expect(['spell', 'mob', 'item']).toContain(table);
     }
+  });
+});
+
+describe('holdsMeditate (todo 50)', () => {
+  it('is unknown before a listing and from an incomplete one that leaves it out', () => {
+    expect(holdsMeditate(null)).toBeNull();
+    expect(holdsMeditate({ sums: { 31: 0 }, complete: false, at: 1 })).toBeNull();
+  });
+
+  it('reads a complete listing without it as no, and a listed sum above 0 as yes', () => {
+    expect(holdsMeditate({ sums: { 31: 0 }, complete: true, at: 1 })).toBe(false);
+    expect(holdsMeditate({ sums: { [MEDITATE_ABILITY]: 1 }, complete: false, at: 1 })).toBe(true);
+    expect(holdsMeditate({ sums: { [MEDITATE_ABILITY]: 0 }, complete: true, at: 1 })).toBe(false);
   });
 });

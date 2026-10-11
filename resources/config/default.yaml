@@ -782,13 +782,12 @@ automation:
     # game prints the damage in the room. A picked door is unlocked and still
     # shut, so the client opens it afterwards; a bashed one is open already.
     #
-    # Bashing is ON by default and picking is off, which is not an accident.
-    # Bashing is gated on the realm's own strength number, so it is never even
-    # attempted against a barrier this character cannot beat, and bashTries caps
-    # it at three; the alternative is a route that stops dead at a lock the
-    # character was strong enough to walk through. Picking is the same decision
-    # made with a skill the client cannot check the character has.
-    pickLocks: false
+    # Both are on by default, and each is gated on the character's own figure,
+    # so neither is tried against a barrier it cannot beat: bashing on the
+    # realm's strength number, picking on the Picklocks the stat sheet prints.
+    # A character whose sheet says Picklocks 0 never picks. bashTries and
+    # pickTries cap each at three. Turn one off to never force a door that way.
+    pickLocks: true
     pickTries: 3
     bashDoors: true
     bashTries: 3
@@ -1387,11 +1386,11 @@ automation:
     # until mana is back here. 0 rests once. Never below restBelowMana.
     restToMana: 0
 
-    # Rest for mana with `med` rather than `rest`. Meditating ticks mana faster
-    # but needs the class's Meditate ability: turn it on once the character has
-    # it. A `med` the game answers "Your command had no effect." goes back to
-    # `rest` for the session.
-    useMeditate: false
+    # Rest for mana with `med` rather than `rest` when the character has the
+    # Meditate ability, which ticks mana faster. On GreaterMUD `abil` lists it;
+    # elsewhere `med` is tried, and one the game answers "Your command had no
+    # effect." goes back to `rest` for the session. Off never meditates.
+    useMeditate: true
 
     # With useMeditate, and health and mana both below their lines, meditate
     # first and rest after. Off rests first. Either way the other follows once
