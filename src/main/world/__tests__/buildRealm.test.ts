@@ -190,6 +190,27 @@ describe('converting a realm', () => {
   });
 
   /*
+   * Format 64. `Items.Price` 0 is the realm valuing an item at nothing, which
+   * `drop.worthless` drops; a missing price stays unknown.
+   */
+  it('keeps a price of 0 and leaves a missing one out', () => {
+    const built = buildRealm(
+      fake({
+        Rooms: [room({ Shop: 4 })],
+        Shops: [{ Number: 4, Name: 'General Store', 'Item-0': 12, 'Item-1': 13, 'Item-2': 14 }],
+        Items: [
+          { Number: 12, Name: 'rusty nail', Price: 0 },
+          { Number: 13, Name: 'lantern', Price: 2 },
+          { Number: 14, Name: 'odd stone' }
+        ]
+      }),
+      today
+    );
+    const prices = Object.fromEntries(built.header.items.map((item) => [item.id, item.price]));
+    expect(prices).toEqual({ 12: 0, 13: 2, 14: undefined });
+  });
+
+  /*
    * Format 63. Token of Silvermere's spell runs block 3281, which casts 310,
    * negate magic (DispellMagic 0, friendly), ahead of its teleport.
    */

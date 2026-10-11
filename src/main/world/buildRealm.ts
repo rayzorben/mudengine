@@ -134,8 +134,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 61 | **Who a room's group may put in it as a player walks in.** `Room.Regen` (Room.cs:520-535) gives a room with no lair a 10% chance a player, each regen pass, of one monster of its group's rows, and a player walking in runs a pass (Player.cs:782). The export lists those rows per monster as a plain `Group:` entry; `BuiltRoom.wd` is them per room (`groupWanderers`), so a run and a walk past Slum Street price its thugs and orc rogues. 39,097 of pmud.zip's 57,511 rooms, none of them a lair |
  * | 62 | **Whether a charged item survives its last use.** `Items.Retain After Uses` (`BuiltItem.ret`): the server destroys a copy at zero uses unless it is set, and then answers a `use` with `There are no more uses in X.` until the cleanup's `Recharge` refills it (`UseCommand.cs`). Without it a cloak of faith and a green potion read alike, and spending a use on a bless could not be told from spending the item (todo 44) |
  * | 63 | **A spell that takes every spell off whoever it is cast on** (`BuiltSpell.ng`, `navigation/scriptNegates.ts`). `DispellMagic` 0 removes every timed effect (`Spell.cs:1601`), and every recall token's block runs `cast 310`, negate magic, ahead of its teleport, so blessings cast just before a token is used are wiped by it. Set on the spell itself or on one whose script casts such a spell on the player: 7 tokens in both gmud.zip and pmud.zip |
+ * | 64 | **An item the realm values at nothing.** `Items.Price` 0 was dropped with the unpriced, so `price` absent read as both *worth nothing* and *not stated*, and `drop.worthless` (which drops a `price` of 0) never dropped anything. `BuiltItem.price` is written when zero or more: 397 of the 1,563 items the shipped stock world carries state 0, and 395 of Paradigm's 2,342. Absent is now unknown only, and `Catalogue.priceAt` answers null for it rather than free |
  */
-export const REALM_FORMAT = 63;
+export const REALM_FORMAT = 64;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -303,7 +304,8 @@ export interface BuiltItem {
    * Carried because the client can then answer "what is this worth" without
    * spending a command on `appraise` — the standing rule of the world layer:
    * asking the server for something the shipped data already knows is a command
-   * spent for nothing (docs/greatermud/rooms-and-items.md).
+   * spent for nothing (docs/greatermud/rooms-and-items.md). Zero is the realm
+   * valuing it at nothing (format 64); absent is unknown.
    */
   price?: number;
   /**
@@ -2500,7 +2502,7 @@ export function indexItems(
     if (id === null || !needed.has(id)) continue;
     names.set(id, text(item['Name']));
     const price = number(item['Price']);
-    if (price !== null && price > 0) prices.set(id, price);
+    if (price !== null && price >= 0) prices.set(id, price);
     const currency = number(item['Currency']);
     if (price !== null && price > 0 && currency !== null && currency > 0) {
       currencies.set(id, currency);

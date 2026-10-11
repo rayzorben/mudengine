@@ -182,8 +182,9 @@ export class Catalogue {
       // What a use takes from cash on hand — format 59.
       const fare = Number(record['fare']);
       if (Number.isFinite(fare) && fare > 0) item.fare = fare;
-      const price = Number(record['price']);
-      if (Number.isFinite(price) && price > 0) item.price = price;
+      // Zero is worth nothing (format 64), and an older file never wrote one.
+      const price = Number(record['price'] ?? NaN);
+      if (Number.isFinite(price) && price >= 0) item.price = price;
       // Format 47: absent is copper, and before it the coin is unknown.
       if (version >= CURRENCY_SINCE) {
         const currency = currencyOfCode(Number(record['cur'] ?? 0));
@@ -1292,13 +1293,15 @@ export class Catalogue {
    * What this counter charges for one of this item, in copper, before the
    * buyer's charm (`counterPriceInCopper`). Zero for a thing the realm gives
    * away (`Free` on the listing); null where the file predates the coin
-   * (format 47) or the realm holds no such row.
+   * (format 47), the realm states no price, or it holds no such row.
    */
   priceAt(item: number, shop: number): number | null {
     const known = this.items.get(item);
     const place = this.shops.get(shop);
-    if (known?.currency === undefined || place === undefined) return null;
-    return counterPriceInCopper(known.price ?? 0, known.currency, place.markup ?? 0);
+    if (known?.price === undefined || known.currency === undefined || place === undefined) {
+      return null;
+    }
+    return counterPriceInCopper(known.price, known.currency, place.markup ?? 0);
   }
 
   /**
