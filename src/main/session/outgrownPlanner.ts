@@ -21,7 +21,14 @@ import { ownGang, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { carriedBlessings, type BlessingRealm } from '../../shared/invoke';
 import { splitStop } from '../../shared/loops';
-import { ganghouseHeld, keptRegardless, type KitPiece } from '../../shared/outgrown';
+import {
+  ganghouseHeld,
+  keptNamesOf,
+  keptRegardless,
+  type KeptNames,
+  type KitPiece,
+  type OutgrownItem
+} from '../../shared/outgrown';
 import type { QuestKeep } from '../../shared/questKeep';
 import { roomAddress, roomId } from '../../shared/world';
 import type { Errands } from './Errands';
@@ -91,31 +98,39 @@ function blessKept(
   return [...ticked, ...carriedBlessings(state.inventory.items, realm).map(({ item }) => item)];
 }
 
+/** What the player's settings keep from being sold, dropped or stashed. */
+export function keptNow(
+  state: CharacterState,
+  config: AutomationConfig,
+  realm: BlessingRealm
+): KeptNames {
+  return keptNamesOf(config, state.inventory.keys, blessKept(state, config, realm));
+}
+
+/** The pack's outgrown gear less what the player's settings keep; the cash run's sale reads it too. */
+export function outgrownNow(
+  m: { world: OutgrownPlannerModules['world']; errands: Pick<Errands, 'realmClass'> },
+  config: AutomationConfig,
+  state: CharacterState
+): OutgrownItem[] {
+  const { world, errands } = m;
+  if (world === undefined) return [];
+  const kept = keptNow(state, config, world);
+  const fought = errands.realmClass();
+  const asker = slotAskerOf(state, world, fought, fought.verb);
+  const realm = {
+    itemsWornIn: (worn: number) => world.itemsWornIn(worn),
+    item: (id: number) => world.item(id),
+    rarity: (id: number) => rarityBook(world).of(id).rarity
+  };
+  return outgrownItems(state, realm, asker).filter((found) => !keptRegardless(found.item, kept));
+}
+
 export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
   const m = parts.modules;
   return {
     ...legPlanner(m),
-    outgrown: (state) => {
-      const { world, errands } = m();
-      if (world === undefined) return [];
-      const config = parts.config();
-      const kept = {
-        supplies: config.supplies.items.map((row) => row.name),
-        sets: config.gear.sets.flatMap((set) => set.wear),
-        keys: state.inventory.keys,
-        blessWith: blessKept(state, config, world)
-      };
-      const fought = errands.realmClass();
-      const asker = slotAskerOf(state, world, fought, fought.verb);
-      const realm = {
-        itemsWornIn: (worn: number) => world.itemsWornIn(worn),
-        item: (id: number) => world.item(id),
-        rarity: (id: number) => rarityBook(world).of(id).rarity
-      };
-      return outgrownItems(state, realm, asker).filter(
-        (found) => !keptRegardless(found.item, kept)
-      );
-    },
+    outgrown: (state) => outgrownNow(m(), parts.config(), state),
     ganghouse: (state) => {
       // Unknown is not in a gang: `bg` or a `who` row says which.
       const gang = ownGang(state);

@@ -30,14 +30,14 @@ function idsOf(item: ItemEntity): readonly number[] {
 }
 
 /** One rarity for the name: `unknown` where it names no row or its rows differ. */
-function rarityOf(item: ItemEntity, realm: OutgrownRealm): Rarity {
+export function rarityOf(item: ItemEntity, realm: Pick<OutgrownRealm, 'rarity'>): Rarity {
   const rarities = idsOf(item).map((id) => realm.rarity(id));
   const first = rarities[0];
   return first === undefined || rarities.some((rarity) => rarity !== first) ? 'unknown' : first;
 }
 
 /** One price for the name, in copper, or null: a shared name whose rows differ has no one worth. */
-function copperOf(item: ItemEntity, realm: OutgrownRealm): number | null {
+export function copperOf(item: ItemEntity, realm: Pick<OutgrownRealm, 'item'>): number | null {
   const prices = idsOf(item).map((id) => {
     const row = realm.item(id);
     return row?.price === undefined || row.currency === undefined

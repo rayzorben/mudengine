@@ -1262,6 +1262,12 @@ const TUNING_DEFAULTS = {
     bankMs: 12000,
     /** Banks weighed within this many moves of where the token lands. */
     bankSteps: 40,
+    /**
+     * A counter on the way to the bank is stopped at only where it adds this
+     * much or less to the walk, as the router prices it (todo 64: from the
+     * Paradigm landings, 11 to 120 of 633 sellable dropped items sell within 10).
+     */
+    sellDetour: 10,
     /** Full in a room whose monsters stay this long without a fight, the run walks on and tries the next room. */
     clearMs: 20000,
     /** Legs one walk to the bank may take (a fight ends a leg) before the run gives up. */

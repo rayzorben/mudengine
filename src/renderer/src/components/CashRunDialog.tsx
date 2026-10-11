@@ -32,6 +32,7 @@ export default function CashRunDialog({
   const [coins, setCoins] = useState<Denomination[]>([...DENOMINATIONS]);
   const [tokens, setTokens] = useState<number[]>([]);
   const [full, setFull] = useState<CashRunFull>('heavy');
+  const [sell, setSell] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
   const first = useRef<HTMLSelectElement>(null);
 
@@ -59,7 +60,7 @@ export default function CashRunDialog({
   const name = profiles.find((profile) => profile.id === session)?.name ?? session;
   const ready = loop.length > 0 && coins.length > 0 && tokens.length > 0;
   const start = (): void => {
-    void api.startCashRun(session, { loop, coins, tokens, full }).then((why) => {
+    void api.startCashRun(session, { loop, coins, tokens, full, sell }).then((why) => {
       if (why === null) close();
       else setRefused(why);
     });
@@ -176,6 +177,20 @@ export default function CashRunDialog({
               </button>
             ))}
           </div>
+        </div>
+        <div className="card-settings-field">
+          <div className="chip-row">
+            <button
+              aria-pressed={sell}
+              className="chip pick"
+              onClick={() => setSell((on) => !on)}
+              onMouseDown={keepFocus}
+              type="button"
+            >
+              {t('cashRun.sell')}
+            </button>
+          </div>
+          <p className="settings-note">{t('cashRun.sellHint')}</p>
         </div>
         <p className="settings-note">{t('cashRun.whatHappens')}</p>
         {refused !== null && <p className="settings-warn">{refused}</p>}

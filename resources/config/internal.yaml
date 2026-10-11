@@ -950,14 +950,17 @@ tuning:
   # left in `lookMs` is unread; a use that has not moved the character in
   # `useMs` did not take (the script waits ten seconds); `bankMs` waits for the
   # deposit sentence; banks are weighed within `bankSteps` moves of the
-  # landing; full in a room whose monsters stay `clearMs` without a fight, the
-  # run walks on to try the next room; `maxLegs` bounds the walk to the bank.
+  # landing; a counter on the way is sold at only where it adds `sellDetour`
+  # or less to the walk to the bank; full in a room whose monsters stay
+  # `clearMs` without a fight, the run walks on to try the next room; `maxLegs`
+  # bounds the walk to the bank.
   cashRun:
     sendMs: 6000
     lookMs: 8000
     useMs: 30000
     bankMs: 12000
     bankSteps: 40
+    sellDetour: 10
     clearMs: 20000
     maxLegs: 4
 

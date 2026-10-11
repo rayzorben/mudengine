@@ -6,19 +6,26 @@
  * Each token is looked at before it is used (`Uses remaining: N`) and passed
  * over at none left; with none left anywhere the run ends and the loop goes
  * on. Cash gained short of the token's fare is dropped and the run ends, so
- * the loop goes on unloaded (the user, 2026-10-09). Started by the player
- * only. See `mudengine-automation` › *Errands* › *A cash run*.
+ * the loop goes on unloaded (the user, 2026-10-09). Asked to, it sells at
+ * one counter on the way to the bank first (`CashRunSale`, todo 64). Started
+ * by the player only. See `mudengine-automation` › *Errands* › *A cash run*.
  */
 import type { CommandQueue } from './CommandQueue';
 import type { ChargeLedger } from './ItemCharges';
 import type { SessionModule } from './Module';
 import { walkLeg } from './errandLeg';
+import { Handover, type HandoverEnd } from './Handover';
 import { stoppedByPerson } from './personStop';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
-import type { CashRunAsk, CashRunToken } from '../../shared/cashRun';
+import type {
+  CashRunAsk,
+  CashRunSale,
+  CashRunSaleChoice,
+  CashRunToken
+} from '../../shared/cashRun';
 import {
   DENOMINATIONS,
   fightIsRunning,
@@ -52,6 +59,8 @@ export interface CashRunPlanner {
   collectAsConfigured(): void;
   /** Coins back on the floor; the kinds not dropped. */
   dropCoins(counts: ReadonlyMap<Denomination, number>, state: CharacterState): Denomination[];
+  /** The counter to sell at on the way to `bank`, null where none is worth the detour. */
+  saleOnTheWay(bank: RoomId, tokens: readonly number[]): CashRunSaleChoice;
   /** A deposit of what the purse holds over `keep`, at whichever bank it stands in. */
   deposit(keep: number, state: CharacterState): boolean;
 }
@@ -61,7 +70,8 @@ export interface CashRunEvents {
   decided?(decision: SafetyDecision): void;
 }
 
-type Stage = 'looking' | 'collecting' | 'clearing' | 'using' | 'walking' | 'banking' | 'dropping';
+type Stage =
+  'looking' | 'collecting' | 'clearing' | 'using' | 'selling' | 'walking' | 'banking' | 'dropping';
 
 interface Token extends CashRunToken {
   /** What the last look said, or null where none has answered. */
@@ -100,10 +110,13 @@ interface Run {
 const ACTION = 'cash run';
 const LOOK_KEY = 'cash:look';
 const USE_KEY = 'cash:use';
+const SELL_KEY = 'cash:sell';
 
 export class CashRun implements SessionModule {
   private run: Run | null = null;
   private timer: NodeJS.Timeout | null = null;
+  /** The sale at a counter on the way to the bank. */
+  private readonly sale: Handover;
 
   constructor(
     private enabled: boolean,
@@ -113,7 +126,9 @@ export class CashRun implements SessionModule {
     private readonly charges: Pick<ChargeLedger, 'look'>,
     private readonly events: CashRunEvents = {},
     private readonly now: () => number = () => Date.now()
-  ) {}
+  ) {
+    this.sale = new Handover(queue, planner, { ended: (end) => this.sold(end) }, now);
+  }
 
   configure(enabled: boolean): void {
     this.enabled = enabled;
@@ -122,6 +137,7 @@ export class CashRun implements SessionModule {
 
   reset(): void {
     this.clear();
+    this.sale.cancel();
     this.run = null;
   }
 
@@ -149,6 +165,7 @@ export class CashRun implements SessionModule {
       case 'using':
         return (run.token ?? this.nextToken(run))?.negates === true;
       case 'collecting':
+      case 'selling':
       case 'walking':
       case 'banking':
       case 'dropping':
@@ -284,6 +301,9 @@ export class CashRun implements SessionModule {
           this.end(t('automation.cashRun.endedShort'), true);
         }
         return;
+      case 'selling':
+        this.sale.onCharacter(state);
+        return;
       case 'walking':
         if (!run.waiting || fightIsRunning(state) || this.planner.moveInFlight()) return;
         run.waiting = false;
@@ -301,6 +321,10 @@ export class CashRun implements SessionModule {
 
   onWalkEnded(arrived: boolean, reason: string | null, state: CharacterState): void {
     const run = this.run;
+    if (run?.stage === 'selling') {
+      this.sale.onWalkEnded(arrived, reason, state);
+      return;
+    }
     if (run === null || run.stage !== 'walking' || run.waiting || run.bank === null) return;
     if (arrived && this.planner.here() === run.bank.room) {
       this.atBank(run, state);
@@ -487,12 +511,90 @@ export class CashRun implements SessionModule {
       return;
     }
     run.bank = bank;
+    const sale = run.ask.sell ? this.chooseSale(bank.room, run.ask.tokens) : null;
+    if (sale === null) {
+      this.toBank(run, bank);
+      return;
+    }
+    run.stage = 'selling';
+    const started = this.sale.start(
+      {
+        at: sale.room,
+        verb: 'sell',
+        items: sale.items,
+        key: SELL_KEY,
+        reason: (item) => t('automation.sellTrip.reasonSelling', { item, shop: sale.shop })
+      },
+      this.planner.current()
+    );
+    if (started.kind === 'refused') {
+      this.events.notice?.(t('automation.cashRun.notSold', { shop: sale.shop, why: started.why }));
+      this.toBank(run, bank);
+      return;
+    }
+    // A sale every `sell` of which the queue refused is over already, its end said.
+    if (this.run?.stage !== 'selling') return;
+    this.events.notice?.(
+      t('automation.cashRun.toCounter', {
+        shop: sale.shop,
+        items: sale.items.join(', '),
+        copper: sale.copper.toLocaleString()
+      })
+    );
+  }
+
+  /** The counter on the way; each item kept off the sale for a quest is said. */
+  private chooseSale(bank: RoomId, tokens: readonly number[]): CashRunSale | null {
+    const { sale, questKept } = this.planner.saleOnTheWay(bank, tokens);
+    for (const { item, quest } of questKept) {
+      this.events.notice?.(t('automation.quests.stillNeeds', { quest, item }));
+    }
+    return sale;
+  }
+
+  /** The sale over, however it went; the bank is next either way. */
+  private sold(end: HandoverEnd): void {
+    const run = this.run;
+    if (run === null || run.stage !== 'selling' || run.bank === null) return;
+    switch (end.kind) {
+      case 'not-reached':
+        this.events.notice?.(
+          t('automation.cashRun.counterNotReached', {
+            why: end.why ?? t('automation.hostTrip.whyStopped')
+          })
+        );
+        break;
+      case 'handed': {
+        if (end.gone.length > 0) {
+          this.events.notice?.(t('automation.cashRun.sold', { items: end.gone.join(', ') }));
+        }
+        const unsold = [...end.unanswered, ...end.unsent];
+        if (unsold.length > 0) {
+          this.events.notice?.(t('automation.cashRun.unsold', { items: unsold.join(', ') }));
+        }
+        break;
+      }
+      default: {
+        const never: never = end;
+        return never;
+      }
+    }
+    this.toBank(run, run.bank);
+  }
+
+  private toBank(run: Run, bank: NonNullable<Run['bank']>): void {
     run.stage = 'walking';
     run.legs = 0;
     run.waiting = false;
     this.events.notice?.(t('automation.cashRun.toBank', { bank: bank.name }));
+    const state = this.planner.current();
     if (this.planner.here() === bank.room) {
-      this.atBank(run, this.planner.current());
+      this.atBank(run, state);
+      return;
+    }
+    // A fight that stopped the walk to the counter: the leg is planned once it is over.
+    if (fightIsRunning(state) || this.planner.moveInFlight()) {
+      run.waiting = true;
       return;
     }
     this.leg(run);
@@ -588,6 +690,7 @@ export class CashRun implements SessionModule {
     const run = this.run;
     if (run === null) return;
     this.clear();
+    this.sale.cancel();
     this.run = null;
     const ours = new Set([LOOK_KEY, USE_KEY]);
     this.queue.cancel((intent) => ours.has(intent.coalesceKey ?? ''));

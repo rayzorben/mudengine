@@ -42,7 +42,15 @@ const ASK: CashRunAsk = {
   loop: 'Lava Fields: Crimson Fort Loop',
   coins: ['platinum', 'gold'],
   tokens: [SILVERMERE.item, RHUDAUR.item],
-  full: 'heavy'
+  full: 'heavy',
+  sell: false
+};
+const COUNTER = '1/300';
+const JUNKYARD = {
+  room: COUNTER as never,
+  shop: 'Junkyard',
+  items: ['rusty dagger'],
+  copper: 450
 };
 
 function character(wealth: number, coins: Partial<Coins> = {}, word = 'Light'): CharacterState {
@@ -113,6 +121,7 @@ const planner = (over: Partial<CashRunPlanner> = {}): CashRunPlanner => ({
   escaping: () => false,
   tokens: () => [SILVERMERE, RHUDAUR],
   nearestBank: () => ({ room: BANK as never, name: 'Bank of Godfrey' }),
+  saleOnTheWay: () => ({ sale: null, questKept: [] }),
   collectCoins: (kinds, until) => void log.push(`collect:${kinds.join(',')}:${until}`),
   collectAsConfigured: () => void log.push('collect as configured'),
   dropCoins: (counts) => {
@@ -230,6 +239,101 @@ describe('a cash run', () => {
     expect(notices).not.toContain(
       t('automation.cashRun.blessingsHeld', { token: SILVERMERE.name })
     );
+  });
+
+  it('sells at the counter on the way, then banks, when asked to', () => {
+    const asked: string[] = [];
+    const run = make({
+      saleOnTheWay: (bank) => {
+        asked.push(bank);
+        return { sale: JUNKYARD, questKept: [] };
+      }
+    });
+    expect(run.start({ ...ASK, sell: true }, current)).toBeNull();
+    answer(run, 2);
+    answer(run, 5);
+    current = character(350_000, { platinum: 35 }, 'Heavy');
+    run.onCharacter(current);
+    drain();
+    answer(run, 2);
+    here = LANDING;
+    current = {
+      ...character(150_000, { platinum: 15 }, 'Light'),
+      inventory: {
+        ...character(150_000, { platinum: 15 }, 'Light').inventory,
+        items: [{ name: 'rusty dagger', equipped: false } as never]
+      }
+    };
+    run.onCharacter(current);
+    expect(asked).toEqual([BANK]);
+    expect(log.slice(-2)).toEqual([`route:${COUNTER}`, 'walk']);
+
+    here = COUNTER;
+    run.onWalkEnded(true, null, current);
+    drain();
+    expect(sent.at(-1)).toBe('sell rusty dagger');
+    // The pack losing it is the sale; the bank is next.
+    current = character(150_450, { platinum: 15 }, 'Light');
+    run.onCharacter(current);
+    expect(log.slice(-2)).toEqual([`route:${BANK}`, 'walk']);
+    expect(notices).toContain(t('automation.cashRun.sold', { items: 'rusty dagger' }));
+  });
+
+  /** Started asking to sell, loaded, the token used, landed carrying `items`. */
+  const landedToSell = (run: CashRun, items: string[]): void => {
+    expect(run.start({ ...ASK, sell: true }, current)).toBeNull();
+    answer(run, 2);
+    answer(run, 5);
+    current = character(350_000, { platinum: 35 }, 'Heavy');
+    run.onCharacter(current);
+    drain();
+    answer(run, 2);
+    here = LANDING;
+    const landed = character(150_000, { platinum: 15 }, 'Light');
+    const pack = items.map((name) => ({ name, equipped: false }) as never);
+    current = { ...landed, inventory: { ...landed.inventory, items: pack } };
+    run.onCharacter(current);
+  };
+
+  it('says each item a quest keeps off the sale', () => {
+    const questKept = [{ item: 'silver key', quest: 'The Lost Crown' }];
+    const run = make({ saleOnTheWay: () => ({ sale: JUNKYARD, questKept }) });
+    landedToSell(run, ['rusty dagger', 'silver key']);
+    expect(log.slice(-2)).toEqual([`route:${COUNTER}`, 'walk']);
+    expect(notices).toContain(
+      t('automation.quests.stillNeeds', { quest: 'The Lost Crown', item: 'silver key' })
+    );
+  });
+
+  it('waits out a fight that stopped the walk to the counter, then walks to the bank', () => {
+    const run = make({ saleOnTheWay: () => ({ sale: JUNKYARD, questKept: [] }) });
+    landedToSell(run, ['rusty dagger']);
+    expect(log.slice(-2)).toEqual([`route:${COUNTER}`, 'walk']);
+    const legs = log.length;
+    current = { ...current, inCombat: true };
+    run.onWalkEnded(false, 'a fight', current);
+    expect(notices).toContain(t('automation.cashRun.counterNotReached', { why: 'a fight' }));
+    // Positive control: the sale is over, and no leg goes while the fight runs.
+    run.onCharacter(current);
+    expect(log.length).toBe(legs);
+    current = { ...current, inCombat: false };
+    run.onCharacter(current);
+    expect(log.slice(-2)).toEqual([`route:${BANK}`, 'walk']);
+  });
+
+  it('walks straight to the bank when not asked to sell', () => {
+    const asked: string[] = [];
+    const run = make({ saleOnTheWay: (bank) => (asked.push(bank), { sale: null, questKept: [] }) });
+    started(run);
+    current = character(350_000, { platinum: 35 }, 'Heavy');
+    run.onCharacter(current);
+    drain();
+    answer(run, 2);
+    here = LANDING;
+    run.onCharacter(character(150_000, { platinum: 15 }, 'Light'));
+    // Positive control: the run reached the walk to the bank before the absence is asserted.
+    expect(log.slice(-2)).toEqual([`route:${BANK}`, 'walk']);
+    expect(asked).toEqual([]);
   });
 
   it('passes over a token with no uses left for the next one', () => {
