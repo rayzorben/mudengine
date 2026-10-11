@@ -991,6 +991,7 @@ export class SettingsEditor {
         fights: config.logging.fights,
         conversations: config.logging.conversations,
         conversationDays: config.logging.conversationDays,
+        playerDays: config.logging.playerDays,
         maxBytes: config.logging.maxBytes
       },
       automation: {
@@ -1110,6 +1111,7 @@ export class SettingsEditor {
         set(['logging', 'fights'], draft.logging.fights);
         set(['logging', 'conversations'], draft.logging.conversations);
         set(['logging', 'conversationDays'], draft.logging.conversationDays);
+        set(['logging', 'playerDays'], draft.logging.playerDays);
         set(['logging', 'maxBytes'], draft.logging.maxBytes);
 
         set(['automation', 'enabled'], draft.automation.enabled);

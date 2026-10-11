@@ -387,6 +387,57 @@ describe('blessing the party', () => {
     blessings.dispose();
   });
 
+  /*
+   * `angelic halo`'s confirmation names nobody (MudPlay 3.157.4), so nothing
+   * restarts a member's clock but the send. Timed only from a confirmation,
+   * Soul was due again on every retry floor and Yang waited.
+   */
+  it('times a member from the cast when the confirmation names nobody', () => {
+    const halo: BlessingConfig = { ...bless, spell: 'angelic halo' };
+    const blessings = new Blessings(spells([halo]), true, queue, standing);
+    blessings.onCharacter(state({ party: party('Soul', 'Yang') }));
+    expect(sent).toEqual(['angelic halo Soul']);
+    vi.advanceTimersByTime(7_000);
+    expect(sent).toEqual(['angelic halo Soul', 'angelic halo Yang']);
+    // Past the 30 s retry floor and short of the 60 s clock: nobody is due.
+    vi.advanceTimersByTime(45_000);
+    expect(sent).toHaveLength(2);
+    vi.advanceTimersByTime(10_000);
+    expect(sent[2]).toBe('angelic halo Soul');
+    blessings.dispose();
+  });
+
+  it('takes the clock back when the party cast fails or is refused', () => {
+    for (const outcome of [block('spell-failed', { spell: 'bless' }), block('spell-refused', {})]) {
+      sent.length = 0;
+      const blessings = new Blessings(spells([bless]), true, queue, standing);
+      const roster = state({ party: party('Soul') });
+      blessings.onCharacter(roster);
+      expect(sent).toEqual(['bless Soul']);
+      blessings.onBlock(outcome, roster);
+      // Due again on the 30 s retry floor, not the 60 s clock.
+      vi.advanceTimersByTime(31_000);
+      expect(sent).toEqual(['bless Soul', 'bless Soul']);
+      blessings.dispose();
+    }
+  });
+
+  // The reviewer's case: a later cast's refusal is not the landed blessing's.
+  it('keeps the clock of a party cast that landed when a later cast is refused', () => {
+    const blessings = new Blessings(spells([bless]), true, queue, standing);
+    const roster = state({ party: party('Soul') });
+    blessings.onCharacter(roster);
+    expect(sent).toEqual(['bless Soul']);
+    blessings.onBlock(
+      block('spell-cast', { caster: 'You', spell: 'bless', target: 'Soul' }),
+      roster
+    );
+    blessings.onBlock(block('spell-refused', {}), roster);
+    vi.advanceTimersByTime(31_000);
+    expect(sent).toEqual(['bless Soul']);
+    blessings.dispose();
+  });
+
   it('holds a party blessing during a fight unless the entry allows it', () => {
     const blessings = new Blessings(spells([bless]), true, queue, standing);
     blessings.onCharacter(state({ inCombat: true, party: party('Soul') }));

@@ -32,6 +32,7 @@ import {
   type Notice
 } from '@shared/notifications';
 import { gearTripNotices, questRunNotices } from '@shared/planNotices';
+import { levelReadyNotices, telepathNotice } from '@shared/characterNotices';
 import type { QuestRunProgress } from '@shared/quests';
 import type { ConnectionState } from '@shared/types';
 import type { WalkProgress } from '@shared/walk';
@@ -146,7 +147,9 @@ export function useAlerts(vitals: VitalsUiConfig, alerts: AlertsUiConfig): Alert
            * roster matters: three of four characters are unattended, and the
            * one being watched is not usually the one that is dying.
            */
-          ...partyNotices(was, now, vitalsRef.current.hp, t)
+          ...partyNotices(was, now, vitalsRef.current.hp, t),
+          // A level waiting at a trainer, said as it comes due (todo 80).
+          ...levelReadyNotices(was, now, Date.now(), t)
         ]),
       // The route reaching where it was going: the one piece of good news
       // kept, because it is the moment somebody who walked away wants. Only a
@@ -154,7 +157,8 @@ export function useAlerts(vitals: VitalsUiConfig, alerts: AlertsUiConfig): Alert
       walk: (id, was, now) => worth(id, walkNotices(was, now, Date.now(), t)),
       questRun: (id, was, now) => worth(id, questRunNotices(was, now, Date.now())),
       gearTrip: (id, was, now) => worth(id, gearTripNotices(was, now, Date.now())),
-      block: (id, block, character) => worth(id, [noticeFor(block, t, character)])
+      block: (id, block, character) =>
+        worth(id, [noticeFor(block, t, character), telepathNotice(block)])
     };
   });
   return raiser;

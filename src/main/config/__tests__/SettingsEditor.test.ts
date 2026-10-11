@@ -1357,6 +1357,7 @@ connection:
         notify: true,
         whileFocused: true,
         onlyAway: true,
+        sound: true,
         side: 'below',
         value: 60,
         percent: true,

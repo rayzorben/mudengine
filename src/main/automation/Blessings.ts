@@ -148,6 +148,12 @@ export class Blessings implements SessionModule {
   /** Party clocks a peer notification has marked due right now. */
   private readonly dueNow = new Set<string>();
   /**
+   * The party cast last sent, which a targetless failure or a refusal is
+   * about: `You attempt to cast bless, but fail.` names nobody, so it is
+   * matched to the cast that went out (todo 80).
+   */
+  private lastPartyCast: { key: string; spell: string } | null = null;
+  /**
    * When this module last sent a cast, module-wide: one blessing
    * at a time, so a caster with three down works through them in priority
    * order at the pace the server confirms them rather than as one burst two
@@ -226,6 +232,7 @@ export class Blessings implements SessionModule {
     this.proposedAt.clear();
     this.castAt.clear();
     this.dueNow.clear();
+    this.lastPartyCast = null;
     this.lastProposalAt = 0;
     this.source?.reset();
     this.stop();
@@ -251,12 +258,18 @@ export class Blessings implements SessionModule {
      * retry floor. Clearing this spell's `proposedAt` lets the next pass
      * propose it again — paced to one cast per `blessCooldownMs` by
      * `lastProposalAt`, so a spell that keeps failing is retried each round,
-     * not each status line. Only a self entry: a party cast that failed lands
-     * on the party clock, which its own confirmation restarts.
+     * not each status line. A party cast's clock started when it was sent,
+     * so a failure takes that start back and the member is due again on the
+     * retry floor.
      */
+    if (block.type === 'spell-refused') {
+      this.undoPartyCast(null);
+      return;
+    }
     if (block.type === 'spell-failed') {
       const spell = block.groups['spell']?.trim();
       if (spell === undefined || block.groups['target'] !== undefined) return;
+      this.undoPartyCast(spell);
       for (const entry of this.entries()) {
         if (entry.target === 'self' && this.same(spell, entry.spell)) {
           this.proposedAt.delete(clockKey(entry, '@self'));
@@ -266,11 +279,15 @@ export class Blessings implements SessionModule {
     }
     /*
      * This character's own cast landing on a party member restarts that
-     * member's clock from the confirmation rather than from the proposal —
-     * the proposal may have queued behind a fight, and a clock started then
-     * would come due early by however long the wait was.
+     * member's clock from the confirmation. The clock already started when
+     * the cast was sent (`enqueue`), because some spells' confirmation names
+     * nobody (`angelic halo`'s is realm message data): timed only from a
+     * confirmation, such a member was due again on every retry floor while
+     * the rest of the party went without. MudPlay 3.157.4 fixed the same.
      */
     if (block.type === 'spell-cast' && block.groups['caster'] === 'You') {
+      // A cast of this character's landed: whatever was outstanding is answered.
+      this.lastPartyCast = null;
       const spell = block.groups['spell']?.trim();
       const target = block.groups['target'];
       if (!spell || target === undefined) return;
@@ -284,6 +301,19 @@ export class Blessings implements SessionModule {
         this.dueNow.delete(key);
       }
     }
+  }
+
+  /**
+   * Takes back the clock the last party cast started when it was sent, for a
+   * failure of that spell (`spell` given) or a refusal of the round's cast
+   * (null). Once: the next failure is about a later cast.
+   */
+  private undoPartyCast(spell: string | null): void {
+    const last = this.lastPartyCast;
+    this.lastPartyCast = null;
+    // Another spell's failure is a later cast's: the party cast was answered before it.
+    if (last === null || (spell !== null && !this.same(spell, last.spell))) return;
+    this.castAt.delete(last.key);
   }
 
   /**
@@ -507,6 +537,13 @@ export class Blessings implements SessionModule {
         const sentAt = this.now();
         this.proposedAt.set(key, sentAt);
         this.lastProposalAt = sentAt;
+        // A party clock runs from the send until a confirmation restarts it
+        // or a failure takes it back (`onBlock`).
+        if (target !== null) {
+          this.castAt.set(key, sentAt);
+          this.dueNow.delete(key);
+        }
+        this.lastPartyCast = target === null ? null : { key, spell: entry.spell };
       })
     });
     return true;

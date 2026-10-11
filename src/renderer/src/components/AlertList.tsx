@@ -303,10 +303,26 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                   <input
                     checked={rule.alert}
                     name={`${namePrefix}-${index}-alert`}
-                    onChange={(event) => update(index, { alert: event.target.checked })}
+                    onChange={(event) =>
+                      update(index, {
+                        alert: event.target.checked,
+                        // A sound plays as the alert shows, so it goes with it.
+                        ...(event.target.checked ? {} : { sound: false })
+                      })
+                    }
                     type="checkbox"
                   />
                   <span>{t('settings.alerts.ruleAlert')}</span>
+                </label>
+                <label className="blessing-check">
+                  <input
+                    checked={rule.sound}
+                    disabled={!rule.alert}
+                    name={`${namePrefix}-${index}-sound`}
+                    onChange={(event) => update(index, { sound: event.target.checked })}
+                    type="checkbox"
+                  />
+                  <span>{t('settings.alerts.ruleSound')}</span>
                 </label>
                 <label className="blessing-check">
                   <input
@@ -366,6 +382,7 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
               notify: false,
               whileFocused: false,
               onlyAway: false,
+              sound: false,
               side: 'below',
               value: 50,
               percent: true,
@@ -437,6 +454,7 @@ const EVENT_WORD: Record<AlertEvent, () => string> = {
   tracked: () => t('settings.alerts.event.tracked'),
   'movement-heard': () => t('settings.alerts.event.movementHeard'),
   'player-disconnects': () => t('settings.alerts.event.playerDisconnects'),
+  telepath: () => t('settings.alerts.event.telepath'),
   cleanup: () => t('settings.alerts.event.cleanup'),
   'way-blocked': () => t('settings.alerts.event.wayBlocked'),
   'bash-failed': () => t('settings.alerts.event.bashFailed'),
@@ -456,6 +474,7 @@ const EVENT_WORD: Record<AlertEvent, () => string> = {
   'hostile-in-realm': () => t('settings.alerts.event.hostileInRealm'),
   'party-hurt': () => t('settings.alerts.event.partyHurt'),
   'vitals-crossing': () => t('settings.alerts.event.vitalsCrossing'),
+  'level-ready': () => t('settings.alerts.event.levelReady'),
   levelled: () => t('settings.alerts.event.levelled'),
   learned: () => t('settings.alerts.event.learned'),
   'learn-refused': () => t('settings.alerts.event.learnRefused'),

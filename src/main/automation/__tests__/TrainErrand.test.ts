@@ -398,6 +398,18 @@ describe('going to collect the level', () => {
     expect(notices).toContain(going(AMAZON));
   });
 
+  // Todo 80: MegaMUD's train-above ceiling.
+  it('collects no level at or past the ceiling, said once a level', () => {
+    const errand = make(train({ upTo: 30 }));
+    errand.onCharacter(owed());
+    errand.onCharacter(owed());
+    expect(walked).toEqual([]);
+    expect(notices).toEqual([t('automation.train.refusalCeiling', { level: 30, upTo: 30 })]);
+    // Under the ceiling the same level is walked for: the positive control.
+    make(train({ upTo: 31 })).onCharacter(owed());
+    expect(walked).toHaveLength(1);
+  });
+
   it('says so once per level when the realm offers nowhere', () => {
     const errand = make(train(), { trainers: () => [] });
     errand.onCharacter(owed());

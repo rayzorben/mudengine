@@ -324,6 +324,9 @@ ui:
     # `notify`, so it is stored off there. `onlyAway: true` raises it only while
     # you are AFK (nothing typed for `automation.afk.afterMinutes`), MegaMUD's
     # Play Alert Only When AFK; it too means nothing without `notify`.
+    # `sound: true` plays a short tone as the alert shows, MegaMUD's [Alerts]
+    # sounds; it means nothing without `alert`. Add a row for `level-ready`,
+    # `connection-lost` or `telepath` to hear those.
     #
     # Two switches under `desktop:` decided both of those for everything until
     # 2026-09-13. Every question they answered is one of the two keys above, and
@@ -349,6 +352,7 @@ ui:
         alert: true
         notify: true
         whileFocused: false
+        sound: true
         quietSeconds: 30
       - 'on': mana
         side: below
@@ -1460,7 +1464,9 @@ automation:
   # realm says will take it at its level -- the class training rooms stop at
   # level 10 and every trainer has a band, so a room stated here can stop
   # taking this character as it grows. It is not silently replaced when that
-  # happens: the errand refuses and says so.
+  # happens: the errand refuses and says so. `upTo` is the last level it
+  # collects: at that level a waiting level stays waiting, and it says so.
+  # 0 trains every level.
   #
   # Spending character points -- the `train stats` screen.
   #
@@ -1488,6 +1494,7 @@ automation:
   train:
     levels: false
     trainer: 0
+    upTo: 0
     stats: false
     pick: exp
     wanted:
@@ -1737,6 +1744,10 @@ automation:
     healPartyWith: ''
     healBelow: 0
     healTo: 0
+    # healParty also cures a member's poison on GreaterMUD, where the party
+    # list marks a poisoned member P: the poison cure when it can be
+    # cast on another character, else the cheapest in the book that can.
+    # One that changes nothing waits 15 seconds, doubling to 2 minutes.
     healParty: false
 
     # Auto Choose Best Heal. On, the heal is picked each cast from your
@@ -2516,6 +2527,11 @@ logging:
   # when the log is opened, and a year is the default.
   conversations: true
   conversationDays: 365
+
+  # Forget a player not seen in this many days: the Players card, the gang and
+  # what they wear. Dropped when the client starts. 0 keeps every player.
+  # MegaMUD's Delete Players After, and its 90.
+  playerDays: 90
 
   # Empty means <userData>/logs. "Reveal session logs" in the command palette
   # opens whichever is in force.

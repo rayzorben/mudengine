@@ -302,6 +302,8 @@ notices:
     teleportStated: '"automation.safety.fleeGoto" was added to {file}, turned off. It is a
       last-resort teleport used after Auto-Run. The command is set per realm, on the realm''s
       settings page.'
+    playerForgetting: '"logging.playerDays: {days}" was added to {file}. A player not seen in that
+      many days is dropped from the Players card when the client starts. 0 keeps every player.'
     logKeeping: '"logging.keepDays: {days}" was added to {file}. Session logs and raw transcripts
       older than that many days are deleted now, and once a day while the client runs. 0 keeps them
       all.'
@@ -809,6 +811,9 @@ notices:
     protectedRooms:
       readError: 'could not read the protected room table {file}: {message}; no room is marked safe'
     players:
+      # Todo 80: logging.playerDays, MegaMUD's DelPlayers.
+      forgotten: 'Players nobody has seen in {days} days were forgotten (Forget Players After):
+        {count}.'
       parseSuspended: '{fileName} could not be read ({message}). Nothing more about other players is
         saved until it is fixed or removed. Characters still share what they see while the client
         runs.'
@@ -1501,6 +1506,9 @@ cards:
     session:
       dropped: The connection dropped. You are out of the realm.
       hungUp: Hung up for you. You are out of the realm.
+    # Todo 80: {level} is the highest the experience pays for.
+    level:
+      ready: You can train to level {level}.
     severity:
       info: info
       warning: warning
@@ -3529,6 +3537,8 @@ settings:
     ruleWhileFocused: Even when MudEngine is in front
     # Todo 79: MegaMUD's Play Alert Only When AFK.
     ruleOnlyAway: Only when AFK
+    # Todo 80: MegaMUD's [Alerts] sounds.
+    ruleSound: Sound
     levelKeep: as decided
     rulePercent: '%'
     ruleNamePlaceholder: name to watch for
@@ -3584,6 +3594,7 @@ settings:
       tracked: you track somebody
       movementHeard: movement nearby
       playerDisconnects: a player disconnects
+      telepath: a player telepaths you
       cleanup: the nightly cleanup is coming, or done
       wayBlocked: the way is blocked
       bashFailed: a door will not break
@@ -3603,6 +3614,8 @@ settings:
       hostileInRealm: a hostile player is in the realm
       partyHurt: a party member is hurt
       vitalsCrossing: your health or mana falls a band
+      # Todo 80: the two composed for a row's sound.
+      levelReady: you can train a level
       levelled: you gain a level
       learned: you learn something
       learnRefused: a scroll cannot teach you its spell
@@ -3687,6 +3700,11 @@ settings:
       keepDaysHint: Session logs and raw transcripts older than this are deleted when the client
         starts and once a day after. 0 keeps them all.
       keepDaysLabel: Keep Logs, Days
+      # Todo 80: MegaMUD's DelPlayers.
+      playerDaysLabel: Forget Players After, Days
+      playerDaysHint:
+        A player nobody has seen in this many days is dropped from the Players card when
+        the client starts. 0 keeps every player.
       maxBytesLabel: New Log After, Bytes
       note: What the client saves. Each of these is a file next to the options file. The recordings
         hold everything the game sent and every command sent back, including a password on a
@@ -4074,6 +4092,9 @@ settings:
     levelsHint: When you have enough exp, walk to a trainer and level. Off by default, because a
       character saving up levels for a reroll should not be leveled without asking.
     trainerLabel: Trainer
+    # Todo 80: MegaMUD's train-above ceiling.
+    upToLabel: Train Up To Level
+    upToHint: The last level collected. A level past it stays waiting. Empty trains every level.
     trainerHint: Only trainers the world data says will train this character at this level. Class
       training rooms stop at level 10 and every trainer has a level range, so this list shrinks as
       the character grows.
@@ -4403,6 +4424,12 @@ settings:
     usernameLabel: Username
   realms:
     confirmRemove: Remove this realm?
+    # Todo 80: the world database under the realm's picker, read off an open session.
+    worldUnread: The world data's family and version show here once a character on this realm is
+      open.
+    worldRead: 'World data: {source}, {family}, version {version}.'
+    worldNoFamily: family not stated
+    worldNoVersion: not stated
     databaseBrowse: Browse…
     databaseClear: Clear
     empty: Choose a realm, or add one.
@@ -4609,7 +4636,8 @@ settings:
     healNoPartyCast: This spell cannot be cast on another character.
     healParty: Auto-Heal Party Members
     healPartyHint: A member the party list has not shown has no health to read, and is never healed
-      on a guess.
+      on a guess. On GreaterMUD a member the list marks P is cured of poison too, with your poison
+      cure when it can reach another character.
     healPartyWithHint: Cast on the member who is hurt. Only spells that can be cast on another
       character are shown.
     healPartyWithLabel: Party Healing Spell
@@ -5510,6 +5538,10 @@ automation:
   cure:
     reason: 'cure: {cure}'
     derived: Casting {spell} as the {cure} cure, the cheapest spell in your book that cures it.
+    # Todo 80: a member the party list marks P (poisoned, on GreaterMUD).
+    partyReason: 'cure: poison on {member}'
+    partyNone: A party member is poisoned, and no spell in your book that cures poison can be cast
+      on another character.
   spells:
     choseKills: 'Casting {spell} ({min}–{max}, {cost} mana): even its lowest roll kills what is left
       of the target.'
@@ -5563,6 +5595,10 @@ automation:
     whyStopped: the walk stopped before it arrived
     whyFetch: the key for the door on the way was not fetched
     refusalClearing: '{clear}, and the trip to the trainer does not stop to kill them'
+    # Todo 80: automation.train.upTo, MegaMUD's train-above ceiling.
+    refusalCeiling:
+      A level is waiting, and training stops at level {upTo} in settings. Level {level}
+      stays as it is.
     refusalNowhere: A level is waiting, and the world data names no trainer that will train this
       character at level {level}. Nothing walked.
     refusalTrainerStale: A level is waiting, and the trainer chosen in settings no longer trains
@@ -6007,6 +6043,9 @@ automation:
     abandonedSwitchedOff: Auto-Buy was turned off
     refusalNotSold: '{shop} does not list {item}'
     refusalCarried: '{have} carried, keeping at most {max}'
+    # Todo 80: the pack's weight, as the server's buy and AutoLoot's grade count it.
+    refusalHeavy: one more {item} is more than the pack takes
+    cutByWeight: 'Buying {count} of the {short} {item} wanted: more would be more than the pack takes.'
     refusalCannotAfford: '{item} costs {price} copper and you have {wealth}'
     refusalUnreachable: 'could not reach {shop}: {why}'
     refusalNoShop: 'nowhere to buy {item}: {why}'

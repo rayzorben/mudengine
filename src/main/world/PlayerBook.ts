@@ -64,9 +64,17 @@ export interface PlayerBookOptions {
   file: string;
   /** How long to wait before writing after a change. */
   saveDelayMs?: number;
-  /** Reported when the file cannot be read or written. Never silent. */
+  /** Reported when the file cannot be read or written, and the players forgotten. */
   notify?(message: string): void;
+  /**
+   * `logging.playerDays` (MegaMUD's `DelPlayers`, todo 80): a record last
+   * seen longer ago than this is dropped as the file is read. 0 keeps all.
+   */
+  forgetAfterDays?(): number;
+  now?(): number;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface PlayerFile {
   v: number;
@@ -266,6 +274,9 @@ export class PlayerBook {
     const learnedMeanwhile = [...this.realms.values()].some((table) => table.size > 0);
 
     const file = parsed as Partial<PlayerFile>;
+    const days = this.options.forgetAfterDays?.() ?? 0;
+    const cutoff = days > 0 ? (this.options.now?.() ?? Date.now()) - days * DAY_MS : -Infinity;
+    let forgotten = 0;
     for (const [realm, entries] of Object.entries(file.realms ?? {})) {
       if (typeof entries !== 'object' || entries === null) continue;
       const key = realmKey(realm);
@@ -279,12 +290,20 @@ export class PlayerBook {
         // is derived from the name and a hand-edited file may disagree.
         const facts = readFacts(value);
         if (!facts) continue;
+        if (facts.lastSeen < cutoff) {
+          forgotten += 1;
+          continue;
+        }
         const name = playerKey(facts.name);
         const held = table.get(name);
         table.set(name, held === undefined ? facts : mergeFacts(facts, held));
       }
     }
-    if (learnedMeanwhile) this.schedule();
+    // A forgotten record leaves the file with the next save, not only memory.
+    if (forgotten > 0) {
+      this.options.notify?.(t('notices.world.players.forgotten', { count: forgotten, days }));
+    }
+    if (learnedMeanwhile || forgotten > 0) this.schedule();
   }
 
   /**

@@ -51,6 +51,7 @@ import type { BlessingChoiceReport } from '../../shared/blessingchoice';
 import { CastRound } from '../automation/CastRound';
 import { RestSpell } from '../automation/RestSpell';
 import { Cures } from '../automation/Cures';
+import { PartyCures } from '../automation/PartyCures';
 import { Potions } from '../automation/Potions';
 import { LoopRunner } from '../automation/LoopRunner';
 import {
@@ -1016,10 +1017,8 @@ export class SessionManager {
       this.walker.stop(reason);
     };
     /*
-     * The errand. Its planner is the loop's own — the same route planner, the
-     * same walker, the same "is a move outstanding" fact — with two more
-     * questions the loop never asks: whether something else has the
-     * character, and how to hold the loop while the errand runs.
+     * The errand. Its planner is the loop's own (route planner, walker, moves
+     * outstanding), plus whether something else has the character and a hold.
      */
     this.supplies = new Supplies(
       automation.supplies,
@@ -1030,6 +1029,8 @@ export class SessionManager {
         shopRoom: (item, passOver) => this.errands.shopRoom(item, passOver),
         routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
         priceAt: (item, shop) => this.errands.priceAt(item.name, shop),
+        weightAt: (item, shop) => this.errands.weightAt(item.name, shop),
+        carryGate: () => this.automationConfig.loot.stopAtGrade,
         cashFrom: (need, then) => {
           const state = this.tracker.current;
           const here = roomAddress(state.room);
@@ -1344,7 +1345,14 @@ export class SessionManager {
       undefined,
       realmSpell,
       { notice },
-      this.castRound
+      this.castRound,
+      new PartyCures(automation.spells, automation.enabled, {
+        queue: this.queue,
+        realmSpell,
+        gate: this.castRound,
+        notice,
+        family: () => this.vocabulary.family
+      })
     );
     this.restSpell = new RestSpell(automation, this.queue, {
       realmSpell,
@@ -3022,29 +3030,21 @@ export class SessionManager {
        * needs no guard of its own — but it does need to come after, because a
        * character that has just been told to run is not one to rest.
        */
-      // A blessing marked prioritizeOverHeal goes ahead of the heal: the
-      // shield a caster dies without outranks the number that is already bad.
+      // A blessing marked prioritizeOverHeal goes ahead of the heal: a caster's shield first.
       if (!this.travel.isRetreating()) this.blessings.urgent(state);
       // Healing before resting: a number a spell can fix now is not one to sit down over.
       if (!this.travel.isRetreating()) this.heal.onCharacter(state);
-      // And a potion beside the spell, under the same guard: nothing is drunk
-      // on the way out of a room, because a move in flight is the escape.
+      // A potion beside the spell; nothing drunk on the way out (the move is the escape).
       if (!this.travel.isRetreating()) this.potions.onCharacter(state);
-      // A cure is a heal chosen by a sentence rather than a number; a buff is
-      // the least urgent thing here and refuses combat by itself. Neither on
-      // the way out of a room, for the reason above.
+      // A cure is a heal chosen by a sentence; a buff refuses combat itself. Not on the way out.
       if (!this.travel.isRetreating()) {
         this.cures.onCharacter(state);
         this.blessings.onCharacter(state);
-        // And the same question asked of the pack rather than the spellbook.
-        // After the casts, because a bless this character can cast is the one
-        // it configured; this is the one the realm happens to be carrying.
+        // The pack's blesses, after the casts: the book's bless is the one configured.
         this.invoke.consider(state);
-        // Shedding named junk reads the same maintained pack listing the loot
-        // fills, and refuses combat and rest for itself.
+        // Shedding named junk off the pack listing; it refuses combat and rest itself.
         this.drop.onCharacter(state);
-        // And the purse's own half of the same list: the coins the player
-        // asked to be rid of, read off the listing that states how many.
+        // And the coins the player asked to be rid of, off the listing that counts them.
         this.loot.onCharacter(state);
         /*
          * And looking for what the room did not print. After the shedding and

@@ -101,6 +101,7 @@ import type {
   WorldNames
 } from './world';
 import type { FoundRoom } from './destinations';
+import type { RealmWorld } from './realm';
 import type { ExtensionInfo } from './extensions';
 import type {
   ConnectionState,
@@ -978,6 +979,7 @@ export const Invoke = {
   mobNames: 'world:mobs',
   /** How much realm data is loaded. */
   worldInfo: 'world:info',
+  realmWorld: 'world:realm',
   questBook: 'world:quests',
   /** The order one quest step's several items are best fetched in. */
   questErrand: 'world:quest-errand',
@@ -1483,6 +1485,8 @@ export interface IpcApi {
    */
   mobNames(session: SessionId): Promise<string[]>;
   worldInfo(session: SessionId): Promise<{ rooms: number; source: string }>;
+  /** The world database an open session on this address walks, or null with none open (todo 80). */
+  realmWorld(host: string, port: number): Promise<RealmWorld | null>;
   /**
    * Every quest this realm scripts, assembled from its own text blocks.
    *

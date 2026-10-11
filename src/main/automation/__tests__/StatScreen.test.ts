@@ -35,9 +35,10 @@ const train = (wanted: Partial<TrainConfig['wanted']> = {}, stats = true): Train
   stats,
   pick: 'wanted',
   wanted: { ...NOTHING, ...wanted },
-  // The levelling errand's own two, which this driver does not read.
+  // The levelling errand's own three, which this driver does not read.
   levels: false,
-  trainer: 0
+  trainer: 0,
+  upTo: 0
 });
 
 /*

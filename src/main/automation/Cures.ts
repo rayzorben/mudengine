@@ -22,6 +22,9 @@
  * exactly as a self heal, and for the same reasons: a targetless cast lands
  * on the caster, and the realm's short name is itself the command, never
  * behind `c` (`castWord`).
+ *
+ * A party member's poison is `PartyCures`', composed in here so the session
+ * runs one cure module (todo 80).
  */
 import type { CommandQueue } from './CommandQueue';
 import { canPayFor, manaAtLeast } from './mana';
@@ -29,18 +32,19 @@ import { t } from '../app/i18n';
 import type { Affliction, CharacterState } from '../../shared/character';
 import { CURES, type Cure, type SpellsConfig } from '../../shared/config';
 import {
+  cheapestCure,
   CURE_CONDITION,
-  cureGates,
   gatedCast,
   OPEN_CAST_GATE,
   resolveSpell,
   spellCost,
-  spellTargeting,
-  type CastGate
+  type CastGate,
+  type SpellTargeting
 } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import type { PartyCures } from './PartyCures';
 
 /** How long a cure that changed nothing is trusted before it is tried again. */
 export const RETRY_MS = 30_000;
@@ -68,18 +72,22 @@ export class Cures implements SessionModule {
     /** Where a derived cure is said, once (todo 09). */
     private readonly events: { notice?(message: string): void } = {},
     /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
-    private readonly gate: CastGate = OPEN_CAST_GATE
+    private readonly gate: CastGate = OPEN_CAST_GATE,
+    /** The party's poison, after this character's own cures. */
+    private readonly party: PartyCures | null = null
   ) {}
 
   configure(config: SpellsConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
+    this.party?.configure(config, enabled);
   }
 
   reset(): void {
     this.lastCastAt.clear();
     this.previous.clear();
     this.saidDerived.clear();
+    this.party?.reset();
   }
 
   /**
@@ -90,26 +98,23 @@ export class Cures implements SessionModule {
    */
   private derived(state: CharacterState, cure: Cure): string {
     if (!this.config.autoChoose || state.spellbook === null) return '';
-    let best: { name: string; cost: number } | null = null;
-    for (const known of state.spellbook) {
-      const realm = this.realmSpell(known.name);
-      if (realm === null) continue;
-      const aim = spellTargeting(realm.targets);
-      if (aim === 'enemy' || aim === 'enemies') continue;
-      if (!cureGates([realm.abilities ?? []])[cure]) continue;
-      const cost = known.cost ?? realm.mana ?? Number.MAX_SAFE_INTEGER;
-      if (best === null || cost < best.cost) best = { name: known.name, cost };
-    }
+    const notAtAnEnemy = (aim: SpellTargeting): boolean => aim !== 'enemy' && aim !== 'enemies';
+    const best = cheapestCure(state.spellbook, this.realmSpell, cure, notAtAnEnemy);
     if (best === null) return '';
-    if (this.saidDerived.get(cure) !== best.name) {
-      this.saidDerived.set(cure, best.name);
-      this.events.notice?.(t('automation.cure.derived', { cure, spell: best.name }));
+    if (this.saidDerived.get(cure) !== best) {
+      this.saidDerived.set(cure, best);
+      this.events.notice?.(t('automation.cure.derived', { cure, spell: best }));
     }
-    return best.name;
+    return best;
   }
 
   onCharacter(state: CharacterState): void {
     if (!this.enabled || state.phase !== 'in-game') return;
+    this.cureSelf(state);
+    this.party?.onCharacter(state);
+  }
+
+  private cureSelf(state: CharacterState): void {
     for (const cure of CURES) {
       const current = state.afflictions[CURE_CONDITION[cure]];
       const before = this.previous.get(cure);

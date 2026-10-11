@@ -698,6 +698,12 @@ const TUNING_DEFAULTS = {
     healNearEnough: 0.05,
     /** How long a cure proposal stays worth sending. */
     cureExpiresMs: 3000,
+    /**
+     * A party member's cure that left the poison standing waits this long,
+     * doubling to the most below (MudPlay 3.142.36's 15 s to 2 min, todo 80).
+     */
+    partyCureRetryMs: 15_000,
+    partyCureRetryMaxMs: 120_000,
     /** How often the blessing maintainer looks at what has lapsed. */
     buffTickMs: 1000,
     /** How long a blessing proposal stays worth sending. Never urgent. */
@@ -2715,6 +2721,9 @@ const TUNING_DEFAULTS = {
      * not look the first time is asked again.
      */
     desktopAlertGapMs: 60_000,
+    /** The tone an alert row with `sound` plays (todo 80): its pitch and length. */
+    alertToneHz: 880,
+    alertToneMs: 180,
     /** The most panes worth having; see docs/profiles.md §7.3. */
     maxPanes: 4,
     /**

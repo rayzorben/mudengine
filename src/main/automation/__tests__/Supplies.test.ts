@@ -111,6 +111,8 @@ function planner(over: Partial<SupplyPlanner> = {}) {
       return ROUTE;
     },
     priceAt: () => null,
+    weightAt: () => null,
+    carryGate: () => 'never',
     cashFrom: () => [],
     walk: () => {
       log.push('walk');
@@ -309,6 +311,48 @@ describe('at the counter', () => {
     expect(sent).toEqual(['list', 'buy torch']);
     // Max 5 with 4 carried: one, where the start's count was three.
     expect(auto.current?.wanted).toBe(1);
+  });
+
+  /*
+   * Todo 80: `BuyCommand` refuses a buy that brings the pack to its maximum,
+   * and the grade AutoLoot stops at holds the count under it.
+   */
+  it('buys no more than the pack takes, and says when it cuts the count', () => {
+    const loaded = (torches: number, encumbrance: number): CharacterState => {
+      const base = character(torches);
+      return { ...base, inventory: { ...base.inventory, encumbrance, encumbranceMax: 1000 } };
+    };
+    const { planner: p, arrive } = planner({ weightAt: () => 100, carryGate: () => 'medium' });
+    const auto = make(p);
+    auto.onCharacter(loaded(2, 100));
+    arrive();
+    auto.onWalkEnded(true, null, loaded(2, 100));
+    auto.onCharacter(listed(loaded(2, 100)));
+    drain();
+    // Medium starts past 333 of 1000: two torches of 100 fit on 100, not three.
+    expect(auto.current?.wanted).toBe(2);
+    expect(notices).toContain(
+      t('automation.supplies.cutByWeight', { item: 'torch', count: 2, short: 3 })
+    );
+  });
+
+  it('buys nothing when not one more fits, and says so', () => {
+    const { planner: p, arrive } = planner({ weightAt: () => 100 });
+    const base = character(2);
+    const full = {
+      ...base,
+      inventory: { ...base.inventory, encumbrance: 950, encumbranceMax: 1000 }
+    };
+    const auto = make(p);
+    auto.onCharacter(full);
+    arrive();
+    auto.onWalkEnded(true, null, full);
+    auto.onCharacter(listed(full));
+    drain();
+    expect(sent).toEqual(['list']);
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalHeavy', { item: 'torch' })
+    );
   });
 
   it('buys nothing at the counter when the pack holds enough by then', () => {

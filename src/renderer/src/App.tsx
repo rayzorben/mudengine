@@ -60,6 +60,7 @@ import { useAutoLayout } from './hooks/useAutoLayout';
 import { useRailGrid } from './hooks/useRailGrid';
 import { useDensity } from './hooks/useDensity';
 import { useAlerts } from './hooks/useAlerts';
+import { useAlertSounds } from './hooks/useAlertSounds';
 import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
 import { useOverridablePreference, useOverridableSwitch } from './hooks/usePreference';
@@ -716,11 +717,8 @@ export default function App() {
   });
 
   /*
-   * The alerts worth saying outside the window, for a player who has gone and
-   * done something else. Read from what actually landed in each character's
-   * log (`views`) rather than raised where the notices are folded in: that
-   * happens inside a state updater, and a notification has to happen exactly
-   * once.
+   * The alerts worth saying outside the window, and a row's sound (todo 80),
+   * read from what landed in each log (`views`): a state updater may run twice.
    */
   const openAlerted = useCallback(
     (id: SessionId) => {
@@ -739,6 +737,7 @@ export default function App() {
     onOpen: openAlerted,
     onRefused: sayOnScreen
   });
+  useAlertSounds({ subjects: views, rules: config.ui.alerts.rules });
 
   /**
    * The rail, dragged into a new order.
