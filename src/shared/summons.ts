@@ -3,7 +3,8 @@
  * (*The half-orc sentry shouts for aid!*) is a between-round spell whose
  * Summon ability names a row, and a death spell or a blow's spell can do the
  * same (`Spell.ApplySpellAbilities`, Spell.cs:1506; `Room.TrySummon`,
- * Room.cs:268). Read by the fight odds (`survival.ts`) and by `Joiners`.
+ * Room.cs:268). Read by the fight odds (`survival.ts`), by `Joiners` and by
+ * `DeathSummons`, which reads the room again after such a kill.
  * See mudengine-automation › *A fight counts the monsters it draws in*.
  */
 import type { Random } from './dice';
@@ -51,6 +52,16 @@ export function fightSpellsOf(subject: {
 /** What one cast of `spell` brings in; none for an unknown spell. */
 export function summonsOf(spell: Pick<WorldSpell, 'summons'> | undefined): Summons {
   return spell?.summons ?? NO_SUMMONS;
+}
+
+/** What a monster's death spell brings into the room it dies in; none without one. */
+export function deathSummons(subject: {
+  deathSpell?: number;
+  spells?: Readonly<Record<number, Pick<WorldSpell, 'summons'>>>;
+}): Summons {
+  return subject.deathSpell === undefined
+    ? NO_SUMMONS
+    : summonsOf(subject.spells?.[subject.deathSpell]);
 }
 
 /**

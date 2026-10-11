@@ -1176,6 +1176,14 @@ const PROMPTS: ReadonlySet<BlockType> = new Set<BlockType>([
   'prompt-menu'
 ]);
 
+/** The monster a `mob-dies` sentence names, learned (`mob`) or the server's fallback (`line`), or null. */
+export function deathNamed(block: Block): string | null {
+  if (block.type !== 'mob-dies') return null;
+  const g = block.groups;
+  const named = g['mob'] ?? g['attacker'] ?? g['line'] ?? '';
+  return named.length > 0 ? named : null;
+}
+
 /** Whether this block is the server asking for the next command. See `PROMPTS`. */
 export function isPrompt(type: BlockType): boolean {
   return PROMPTS.has(type);

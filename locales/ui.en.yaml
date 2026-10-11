@@ -6138,6 +6138,8 @@ automation:
     reasonBashing: bashing the {barrier} to {stepName}
     reasonCombat: a fight started
     reasonDarkUnresolved: Room is {lightLevel}; cannot tell where you are without a light source.
+    # The room read again after a kill whose death spell brings another monster (todo 57).
+    reasonDeathSummons: looking at the room, since {mob} summons when it dies
     reasonDied: you were killed, and the game has moved you
     reasonFightUnending: nothing here is ending the fight, so the route is not waiting any longer
     reasonLostAfterFight: the fight ended somewhere the client could not place

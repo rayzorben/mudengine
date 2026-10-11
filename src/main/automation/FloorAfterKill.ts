@@ -9,6 +9,8 @@
  * `AutoLoot` takes from — in flight until the tracker says its own claim is
  * answered, which the walk waits on, or the `get` would follow a step already
  * sent into the next room. See `mudengine-automation` › *Loot is picked up unasked*.
+ * A death spell's summons arrive as silently, so `DeathSummons` asks the same
+ * read (todo 57).
  */
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -49,8 +51,8 @@ export class FloorAfterKill {
     return this.queued || this.sent?.owed() === true || this.taking();
   }
 
-  /** Something this character was paid for died here: read the room again. */
-  ask(): void {
+  /** Something died here that may have left more than the room shows: read it again, for `reason`. */
+  ask(reason: string = t('automation.loot.reasonFloorAfterKill')): void {
     // A lapsed window leaves nothing owed: a read the queue dropped never went
     // out, and a claim still unanswered past it is the write-off's.
     if (!this.inFlight) this.reset();
@@ -62,10 +64,10 @@ export class FloorAfterKill {
     const taken = this.queue.enqueue({
       command: REREAD_ROOM,
       priority: 'probe',
-      // Two kills in one round are one read while the first still waits.
+      // Two kills in one round are one read while the first still waits, for either reason.
       coalesceKey: KEY,
       expiresAt,
-      reason: t('automation.loot.reasonFloorAfterKill'),
+      reason,
       // Straight after the send that filed it: null outside the realm, where nothing is owed.
       onSent: () => {
         this.queued = false;

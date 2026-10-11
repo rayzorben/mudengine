@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { mulberry32 } from '../dice';
-import { copiesOf, drawSummons, picksOf, summonedBy } from '../summons';
+import { copiesOf, deathSummons, drawSummons, picksOf, summonedBy } from '../summons';
 import type { MobProfile } from '../world';
 
 /* Who a monster's own spells bring into its room (todo 24). */
@@ -58,5 +58,12 @@ describe('a summons', () => {
       101, 102, 103, 104
     ]);
     expect(summonedBy({ profiles: [profile] }).size).toBe(0);
+  });
+
+  it('reads what a death spell brings, and nothing without one or for an unknown spell', () => {
+    const divides = { summons: [[[306, 1]], [[306, 1]]] as Array<Array<[number, number]>> };
+    expect(deathSummons({ deathSpell: 383, spells: { 383: divides } })).toHaveLength(2);
+    expect(deathSummons({ deathSpell: 383 })).toEqual([]);
+    expect(deathSummons({ spells: { 383: divides } })).toEqual([]);
   });
 });

@@ -81,9 +81,8 @@ import { coinNamed, type Denomination } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
 import { wireItem, type ItemEntity } from '../../shared/entities';
-import type { RereadClaims } from '../../shared/commands';
 import { tuning } from '../app/tuning';
-import { FloorAfterKill } from './FloorAfterKill';
+import type { FloorAfterKill } from './FloorAfterKill';
 import type { SessionModule } from './Module';
 
 /**
@@ -181,8 +180,8 @@ export interface AutoLootDeps {
    * and this block path is ahead of the session's own stand-down (todo 765).
    */
   readonly moveOnly: (state: CharacterState) => boolean;
-  /** The claim a bare Enter filed, which the floor read closes on (`FloorAfterKill`, todo 767). */
-  readonly rereads: RereadClaims;
+  /** The room read after a kill, shared with `DeathSummons` (todo 57); its `taking` is this module's. */
+  readonly floor: FloorAfterKill;
   /** The word that picks a coin up on this realm (`Vocabulary.coins`, todo 830); omitted, the denomination. */
   readonly coinWord?: (coin: Denomination) => string;
 }
@@ -252,7 +251,7 @@ export class AutoLoot implements SessionModule {
     this.moveOnly = deps.moveOnly;
     this.coinWord = deps.coinWord ?? ((coin) => coin);
     this.taking = () => queue.queued((intent) => intent.coalesceKey?.startsWith(TAKE_KEY) === true);
-    this.floor = new FloorAfterKill(queue, deps.rereads, this.taking);
+    this.floor = deps.floor;
   }
 
   /** Whether the floor read asked after a kill is unanswered — the walk waits on it. */

@@ -2,6 +2,7 @@ import { coinReader } from '../../../shared/coins';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AutoLoot } from '../AutoLoot';
+import { FloorAfterKill } from '../FloorAfterKill';
 import { CommandQueue } from '../CommandQueue';
 import {
   DEFAULT_CONFIG,
@@ -90,16 +91,26 @@ let down = false;
 /** Under a timed spell the way in cast, as the session answers it (todo 765). */
 let passage = false;
 
+/** The read after a kill, built as the session builds it: its `taking` is the module's own. */
+const floored = (build: (floor: FloorAfterKill) => AutoLoot): AutoLoot => {
+  let auto: AutoLoot | null = null;
+  auto = build(new FloorAfterKill(queue, tracker, () => auto?.taking() ?? false));
+  return auto;
+};
+
 const make = (config: LootConfig, enabled = true, supplies = NO_SUPPLIES): AutoLoot => {
   notices = [];
   down = false;
   passage = false;
-  return new AutoLoot(config, supplies, enabled, queue, {
-    notice: (m) => notices.push(m),
-    onTheGround: () => down,
-    moveOnly: () => passage,
-    rereads: tracker
-  });
+  return floored(
+    (floor) =>
+      new AutoLoot(config, supplies, enabled, queue, {
+        notice: (m) => notices.push(m),
+        onTheGround: () => down,
+        moveOnly: () => passage,
+        floor
+      })
+  );
 };
 
 /**
@@ -113,16 +124,19 @@ const REALM: Record<string, { price?: number; encumbrance?: number }> = {
   'rusty nail': { price: 0, encumbrance: 1 }
 };
 const withRealm = (config: LootConfig): AutoLoot =>
-  new AutoLoot(config, NO_SUPPLIES, true, queue, {
-    realmItem: (name) => ({
-      ...wireItem(name),
-      ...(REALM[name.toLowerCase()] ?? {}),
-      source: REALM[name.toLowerCase()] === undefined ? 'wire' : 'hybrid'
-    }),
-    onTheGround: () => false,
-    moveOnly: () => false,
-    rereads: tracker
-  });
+  floored(
+    (floor) =>
+      new AutoLoot(config, NO_SUPPLIES, true, queue, {
+        realmItem: (name) => ({
+          ...wireItem(name),
+          ...(REALM[name.toLowerCase()] ?? {}),
+          source: REALM[name.toLowerCase()] === undefined ? 'wire' : 'hybrid'
+        }),
+        onTheGround: () => false,
+        moveOnly: () => false,
+        floor
+      })
+  );
 const drain = (): void => void vi.advanceTimersByTime(500);
 
 describe('coins on the floor', () => {
@@ -135,12 +149,15 @@ describe('coins on the floor', () => {
 
   // Todo 830: on a realm that calls runic coins dime bags, `get dime`.
   it("picks a renamed coin up by the realm's word", () => {
-    const auto = new AutoLoot(loot({ coins: true }), NO_SUPPLIES, true, queue, {
-      onTheGround: () => false,
-      moveOnly: () => false,
-      rereads: tracker,
-      coinWord: (coin) => coinReader({ runic: 'dime bag' }).word(coin)
-    });
+    const auto = floored(
+      (floor) =>
+        new AutoLoot(loot({ coins: true }), NO_SUPPLIES, true, queue, {
+          onTheGround: () => false,
+          moveOnly: () => false,
+          floor,
+          coinWord: (coin) => coinReader({ runic: 'dime bag' }).word(coin)
+        })
+    );
     auto.onBlock(block('room-coins', { count: '4', coin: 'runic' }), state());
     auto.onBlock(block('room-coins', { count: '18', coin: 'gold' }), state());
     drain();
