@@ -1,21 +1,25 @@
 /**
- * Leading a party through a room's own command, and getting it back together
- * on the far side (todo 839). A `'portal'` step (`go vortex`) is a `teleport`
- * in the room's script, which moves only whoever typed it; GreaterMUD also
- * takes that character out of its party (`TextBlockPart.cs`, `teleport`). A
- * text exit in a compass slot is not one: the server moves followers with the
- * leader (`Exits.SuccessMoveThroughExit`). So before a portal step the leader
- * says `@party <command>`, which MegaMUD acts on only when said in the room;
- * on landing it sends `par`, invites back a member standing here who is out of
- * the party, and holds the walk (`Holds.holdForParty`) until everyone is here
- * and in it, or `party.regroupMinutes` runs out. See `mudengine-automation` ›
- * parts/remotes.md.
+ * Leading a party through a way that takes it apart, and getting it back
+ * together on the far side (todos 839, 67). A `'portal'` step (`go vortex`)
+ * moves only whoever typed it, so the leader says `@party <command>` first;
+ * a compass exit whose cast lands in one room moves the followers too, then
+ * the spell takes each out of the party (`partyCrossing`). A text exit in a
+ * compass slot is neither (`Exits.SuccessMoveThroughExit`). On landing it sends
+ * `par`, invites back a member standing here who is out of the party, and
+ * holds the walk (`Holds.holdForParty`) until everyone is here and in it, or
+ * `party.regroupMinutes` runs out. See `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
 import { partyMembers, standingHere, type CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
 import type { AutomationConfig } from '../../shared/config';
-import { roomAddress, type Direction, type RoomId } from '../../shared/world';
+import {
+  roomAddress,
+  scatters,
+  type Direction,
+  type Landing,
+  type RoomId
+} from '../../shared/world';
 import type { CommandQueue, Intent } from './CommandQueue';
 import { partyListingIntent } from './PartyListing';
 
@@ -33,12 +37,41 @@ export function inviteIntent(who: string, reason: string): Intent {
   };
 }
 
-/** A relayed step: where it leaves from and lands, who was in the party, and whether the say went. */
+/**
+ * How a step takes the party over, on GreaterMUD. `alone`: a room script's
+ * `teleport` or an item's landing moves only whoever typed it and drops them
+ * from the party (`TextBlockPart.cs`, `teleport`), so the members must be told.
+ * `together`: the followers come through the exit with the leader, then the
+ * exit's spell lands each in the same room and out of the party (`Spell.cs`,
+ * `TeleportRoom`; `CastExit` casts after the move). `apart`: a draw, which
+ * lands each member in a room of their own, so there is no room to wait in and
+ * the leader only says the party is apart.
+ */
+export type PartyCrossing = 'alone' | 'together' | 'apart';
+
+export function partyCrossing(
+  direction: Direction | 'portal',
+  landing: Landing | undefined
+): PartyCrossing | null {
+  if (direction === 'portal') return 'alone';
+  if (landing === undefined) return null;
+  return scatters(landing) ? 'apart' : 'together';
+}
+
+/** A step regrouped behind: from, to, who was in the party, and whether its say went (`together` owes none). */
 interface Crossing {
   from: RoomId | null;
   to: RoomId;
   members: string[];
   said: boolean;
+  /**
+   * `together` only: the exit's first answer is the room its table names, which
+   * the cast moves the character out of at once (`Expectations.hintCast`), so
+   * the regroup passes through one room on the way to `to`.
+   */
+  passing: boolean;
+  /** That room, once seen: every state read in it is still on the way. */
+  through: RoomId | null;
 }
 
 /** Waiting on the far side for `members`, each by name as the party listing printed it. */
@@ -57,6 +90,8 @@ export class PartyRegroup {
   private gathering: Gathering | null = null;
   /** The wait's bound, armed at the portal step; null while the walk is not held for the party. */
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** The draw last said to split the party, so a step sent again after a fight says it once; cleared on leaving `from`. */
+  private apartAt: { from: RoomId | null; to: RoomId } | null = null;
 
   constructor(
     private config: AutomationConfig,
@@ -80,37 +115,49 @@ export class PartyRegroup {
   }
 
   /**
-   * A step's command is about to be queued. The say goes first in the same
-   * band, so it reaches the wire ahead of the step and the followers hear it in
-   * the room they are about to be left in. Only a member standing here hears it.
+   * A step's command is about to be queued. For `alone` the say goes first in
+   * the same band, so it reaches the wire ahead of the step and the followers
+   * hear it in the room they are about to be left in. Only a member standing
+   * here hears it, or follows through an exit.
    */
   stepping(
     command: string,
     direction: Direction | 'portal',
     to: RoomId,
-    state: CharacterState
+    state: CharacterState,
+    landing?: Landing
   ): void {
-    if (direction !== 'portal') return;
+    const crossing = partyCrossing(direction, landing);
+    if (crossing === null) return;
     const { enabled, party } = this.config;
-    if (!enabled || !party.relayPortals || state.party.following !== null) return;
+    if (!enabled || state.party.following !== null) return;
+    // The say is `relayPortals`'; a `together` crossing owes none and is regrouped behind regardless.
+    if (crossing === 'alone' && !party.relayPortals) return;
     const from = roomAddress(state.room);
-    // The same step sent again after a fight recalled it: the party already heard it.
-    const again = this.crossing;
-    if (again !== null && again.said && again.from === from && again.to === to) return;
     const here = standingHere(state);
     const members = partyMembers(state).filter((member) => here.has(member.toLowerCase()));
     if (members.length === 0) return;
+    if (crossing === 'apart') {
+      this.apart(from, to, members);
+      return;
+    }
+    // The same step sent again after a fight recalled it: the party already heard it.
+    const again = this.crossing;
+    if (again !== null && again.said && again.from === from && again.to === to) return;
     this.end();
-    const crossing: Crossing = { from, to, members, said: false };
-    this.crossing = crossing;
-    this.queue.enqueue({
-      command: `.@party ${command}`,
-      priority: 'movement',
-      reason: t('automation.party.reasonRelay', { command }),
-      onSent: () => {
-        crossing.said = true;
-      }
-    });
+    const together = crossing === 'together';
+    const held: Crossing = { from, to, members, said: together, passing: together, through: null };
+    this.crossing = held;
+    if (crossing === 'alone') {
+      this.queue.enqueue({
+        command: `.@party ${command}`,
+        priority: 'movement',
+        reason: t('automation.party.reasonRelay', { command }),
+        onSent: () => {
+          held.said = true;
+        }
+      });
+    }
     const minutes = party.regroupMinutes;
     if (minutes <= 0) return;
     this.events.notice?.(
@@ -133,9 +180,14 @@ export class PartyRegroup {
   onCharacter(state: CharacterState): void {
     const here = roomAddress(state.room);
     if (here === null) return;
+    if (this.apartAt !== null && here !== this.apartAt.from) this.apartAt = null;
     if (this.crossing !== null) {
       if (here === this.crossing.to) this.land(here, this.crossing.members);
-      else if (here !== this.crossing.from) this.leave();
+      else if (here === this.crossing.from || here === this.crossing.through) return;
+      else if (this.crossing.passing) {
+        this.crossing.passing = false;
+        this.crossing.through = here;
+      } else this.leave();
       return;
     }
     if (this.gathering === null) return;
@@ -149,6 +201,14 @@ export class PartyRegroup {
 
   dispose(): void {
     this.end();
+  }
+
+  /** A draw: each member lands somewhere of their own, so nothing waits; the player is told. */
+  private apart(from: RoomId | null, to: RoomId, members: string[]): void {
+    if (this.apartAt !== null && this.apartAt.from === from && this.apartAt.to === to) return;
+    this.end();
+    this.apartAt = { from, to };
+    this.events.notice?.(t('automation.party.apart', { members: members.join(', ') }));
   }
 
   private land(at: RoomId, members: string[]): void {
@@ -189,6 +249,7 @@ export class PartyRegroup {
   }
 
   private end(): void {
+    this.apartAt = null;
     this.crossing = null;
     this.gathering = null;
     if (this.timer !== null) clearTimeout(this.timer);

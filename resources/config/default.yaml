@@ -2119,9 +2119,10 @@ automation:
     # the server moves followers through needs none.
     relayPortals: true
 
-    # Leading, after going through one: send par, invite again a member standing
-    # in the room who is out of the party, and hold the walk up to this many
-    # minutes for everyone to be here and in it. 0 invites and walks on.
+    # Leading, after going through one, or through an exit whose spell lands
+    # the party in one room and out of it: send par, invite again a member
+    # standing in the room who is out of the party, and hold the walk up to
+    # this many minutes for everyone to be here and in it. 0 invites and walks on.
     regroupMinutes: 5
 
     # Following, when the leader fails to bash a door: pick it if your
