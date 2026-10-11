@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { isMap, isScalar, parse, parseDocument } from 'yaml';
 
 import { DEFAULT_LOW_LIVES } from '../../../shared/lives';
-import { migrateHome } from '../Migration';
+import { migrateHome, type MigrationOptions } from '../Migration';
 import { LoopStore } from '../LoopStore';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { ServerStore } from '../ServerStore';
@@ -46,9 +48,10 @@ automation:
         - 'Sewer Tunnel 1/604'
 `;
 
-function migrate(withTemplate = false): void {
+function migrate(withTemplate = false, worlds?: MigrationOptions['worlds']): void {
   said = [];
   migrateHome({
+    worlds,
     home,
     legacyOptions: [path.join(old, 'user.yaml')],
     // Off by default so the sparse-overlay cases below are read as themselves;
@@ -7594,6 +7597,55 @@ describe('theRealmIsTheMenusChoice', () => {
     );
     profile('vaelor', 'server: Local\n');
     migrate();
+    expect(read(home.state('mob-lore.json')).spawns).toEqual({});
+    expect(notesOf(said, 'notices.migration.realmRecordsSetAside')).toHaveLength(1);
+  });
+
+  /** A shipped Paradigm world built from `pmud`'s bytes, and a local realm loading `database`. */
+  const shippedParadigm = (pmud: Buffer, database: string): MigrationOptions['worlds'] => {
+    const shippedDir = path.join(dir, 'world');
+    const sha1 = crypto.createHash('sha1').update(pmud).digest('hex');
+    const header = {
+      v: 1,
+      source: 'paradigm',
+      archive: { name: 'pmud.zip', size: pmud.length, sha1 }
+    };
+    fs.mkdirSync(shippedDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(shippedDir, 'paradigm.jsonl.gz'),
+      zlib.gzipSync(`${JSON.stringify(header)}\n`)
+    );
+    const server = home.server('orohost');
+    fs.mkdirSync(server.dir, { recursive: true });
+    fs.writeFileSync(
+      server.file,
+      `name: Local\nhost: orohost\nport: 2427\ndatabase: ${database}\n`
+    );
+    profile('vaelor', 'server: Local\n');
+    return { shippedDir, resourcesDir: path.join(dir, 'resources') };
+  };
+
+  it("files a world under the one realm loading it when another realm's file is a different archive", () => {
+    const gmud = path.join(dir, 'gmud.zip');
+    // The same size as the shipped archive, so the hash decides.
+    fs.writeFileSync(gmud, 'gmud-bytes');
+    migrate(false, shippedParadigm(Buffer.from('pmud-bytes'), gmud));
+    expect(Object.keys(read(home.state('mob-lore.json')).spawns)).toEqual([
+      playedKey('paradigm', PVE)
+    ]);
+    expect(notesOf(said, 'notices.migration.realmRecordsSetAside')).toEqual([]);
+  });
+
+  it("sets aside a world when another realm's file is that world's very archive", () => {
+    const pmud = path.join(dir, 'pmud-copy.zip');
+    fs.writeFileSync(pmud, 'pmud-bytes');
+    migrate(false, shippedParadigm(Buffer.from('pmud-bytes'), pmud));
+    expect(read(home.state('mob-lore.json')).spawns).toEqual({});
+    expect(notesOf(said, 'notices.migration.realmRecordsSetAside')).toHaveLength(1);
+  });
+
+  it('claims the world a failed load falls back to for a file that cannot be read', () => {
+    migrate(false, shippedParadigm(Buffer.from('pmud-bytes'), path.join(dir, 'missing.zip')));
     expect(read(home.state('mob-lore.json')).spawns).toEqual({});
     expect(notesOf(said, 'notices.migration.realmRecordsSetAside')).toHaveLength(1);
   });

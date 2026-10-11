@@ -61,10 +61,11 @@ import { playedKey, playedStamp, realmKey } from '../world/RealmLore';
 import { realmAddress } from '../../shared/types';
 import {
   DEFAULT_SHIPPED_WORLD,
-  SHIPPED_WORLDS,
   asShippedWorld,
+  type ArchiveIdentity,
   type ShippedWorld
 } from '../../shared/worlds';
+import { archiveWorldOf, databasePath, shippedArchives } from '../world/bundledArchive';
 import { CONDITION_WAIT_KEYS } from '../../shared/walk';
 import { DEFAULT_LOW_LIVES } from '../../shared/lives';
 import { THEMES, type ThemeId } from '../../shared/themes';
@@ -112,6 +113,12 @@ export interface MigrationOptions {
    * with no copied loop on disk never reads four hundred of them at startup.
    */
   loopShelf?: () => readonly Loop[];
+  /**
+   * Where the bundled worlds and the client's resources are, so a realm's
+   * database file is matched to the world it loads as `RealmLibrary` matches
+   * it (`archiveWorldOf`). Without them every file is taken as unread.
+   */
+  worlds?: { shippedDir: string; resourcesDir: string };
   /** Said out loud: into the console and the terminal. */
   note: (message: string) => void;
 }
@@ -287,7 +294,7 @@ function migrateAll(options: MigrationOptions): void {
   theAttackIsChosen(home, note, options.template);
   theSheetAnswersPickAndMeditate(home, note, options.template);
   aFoundPlayerIsNoEffect(home, note);
-  theRealmIsTheMenusChoice(home, note);
+  theRealmIsTheMenusChoice(home, note, options.worlds);
 }
 
 /**
@@ -322,11 +329,11 @@ interface PlayedBy {
   chosen: string | null;
   /**
    * The keys its world's lore may have been kept under (`realmKey` of the
-   * source the database loads). A file may load as itself, as the shipped
-   * world it is the archive of, or as the shipped world a failed conversion
-   * falls back to (`RealmLibrary.load`), so a file claims all three rather
-   * than this migration deciding which: a world two realms may load is then
-   * set aside, never filed under the wrong one.
+   * source the database loads). A file claims its own name and the shipped
+   * world it is the archive of (`archiveWorldOf`, as `RealmLibrary.load`
+   * decides it); one that cannot be read or matched also claims the world a
+   * failed load falls back to. A world two realms may load is set aside,
+   * never filed under the wrong one.
    */
   worlds: readonly string[];
 }
@@ -343,7 +350,11 @@ interface PlayedBy {
  * backup, since there is no telling whose it was. Every file is backed up
  * first and written atomically; idempotent, since each move takes its source.
  */
-function theRealmIsTheMenusChoice(home: Home, note: (message: string) => void): void {
+function theRealmIsTheMenusChoice(
+  home: Home,
+  note: (message: string) => void,
+  where: MigrationOptions['worlds']
+): void {
   const written = new Set<string>();
   const setAside: string[] = [];
   const json = (file: string): Record<string, unknown> | null => {
@@ -370,7 +381,7 @@ function theRealmIsTheMenusChoice(home: Home, note: (message: string) => void): 
 
   const worldsFile = home.state('worlds.json');
   const worlds = json(worldsFile);
-  const playing = playedBy(home, worlds?.['realms']);
+  const playing = playedBy(home, worlds?.['realms'], where);
 
   for (const { id, address, chosen } of playing) {
     const file = home.record('belongings', id);
@@ -472,7 +483,7 @@ function theRealmIsTheMenusChoice(home: Home, note: (message: string) => void): 
  * file's) and the world its server's `database` loads, which is the world the
  * address said (`worlds.json`, else the default) when it states none.
  */
-function playedBy(home: Home, said: unknown): PlayedBy[] {
+function playedBy(home: Home, said: unknown, where: MigrationOptions['worlds']): PlayedBy[] {
   const servers = directories(home.serversDir).flatMap((id) => {
     const document = documentOf(home.server(id).file);
     const name = document?.get('name');
@@ -492,6 +503,21 @@ function playedBy(home: Home, said: unknown): PlayedBy[] {
   const worldSaid = (address: string): string => {
     const entry = isRecord(said) ? said[address] : undefined;
     return (isRecord(entry) ? asShippedWorld(entry['world']) : null) ?? DEFAULT_SHIPPED_WORLD;
+  };
+  let archives: ReadonlyMap<ShippedWorld, ArchiveIdentity> | null = null;
+  // By path, so characters sharing a realm's file hash it once.
+  const matched = new Map<string, ShippedWorld | null | 'unread'>();
+  const fileLoads = (database: string, address: string): string[] => {
+    const own = realmKey(path.basename(database));
+    archives ??= where === undefined ? new Map() : shippedArchives(where.shippedDir);
+    const file = databasePath(database, where?.resourcesDir);
+    let same = matched.get(file);
+    if (same === undefined) {
+      same = archives.size === 0 ? 'unread' : archiveWorldOrUnread(file, archives);
+      matched.set(file, same);
+    }
+    if (same === 'unread') return [own, worldSaid(address)];
+    return same === null ? [own] : [own, same];
   };
   const shared = documentOf(home.options)?.getIn(['connection', 'login', 'steps'], true);
   return directories(home.profilesDir).flatMap((id) => {
@@ -514,7 +540,7 @@ function playedBy(home: Home, said: unknown): PlayedBy[] {
         ? [worldSaid(server.address)]
         : shipped !== null
           ? [shipped]
-          : [realmKey(path.basename(server.database)), ...SHIPPED_WORLDS];
+          : fileLoads(server.database, server.address);
     return [
       {
         id,
@@ -524,6 +550,23 @@ function playedBy(home: Home, said: unknown): PlayedBy[] {
       }
     ];
   });
+}
+
+/**
+ * `archiveWorldOf`, with a file the system cannot read as `unread`: the load
+ * falls back to the world the address said, so the migration claims that
+ * too. Anything else is a broken invariant and is thrown.
+ */
+function archiveWorldOrUnread(
+  file: string,
+  archives: ReadonlyMap<ShippedWorld, ArchiveIdentity>
+): ShippedWorld | null | 'unread' {
+  try {
+    return archiveWorldOf(file, archives);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error) return 'unread';
+    throw error;
+  }
 }
 
 /**
