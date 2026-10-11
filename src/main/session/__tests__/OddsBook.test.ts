@@ -292,11 +292,63 @@ describe('the odds book', () => {
     );
     odds.refresh(tracker.current);
     await vi.waitFor(() => expect(odds.lair(lairRoom).kind).toBe('run'));
-    expect(met).toEqual([
+    // The hunt's foes; the pass queued behind it sets up the same three.
+    expect(met.slice(0, 3)).toEqual([
       { name: 'gambler', waits: true },
       { name: 'ogre', waits: false },
       { name: 'guard', waits: false }
     ]);
+    odds.dispose();
+  });
+
+  /*
+   * Todo 31: a lair run past is its own fight where some of it waits to be
+   * struck, set up as a pass; where none waits it is the hunt's, run once.
+   */
+  it('runs a lair past as a pass where some of it waits, and as the hunt where none does', async () => {
+    const passing: Array<boolean | undefined> = [];
+    const passive = { ...ogre, name: 'gambler', disposition: 'passive' } as MobEntity;
+    const hostile = { ...ogre, name: 'ogre', disposition: 'hostile' } as MobEntity;
+    const plainRoom = { ...lairRoom, room: 3, lair: '(Max 1): 8,' } as unknown as WorldRoom;
+    const tracker = { current: inGame(10) };
+    const world = {
+      mobNames: () => [],
+      buildMobEntity: () => undefined,
+      everyRoom: function* () {
+        yield lairRoom;
+        yield plainRoom;
+      },
+      lairEntities: (room: WorldRoom) => (room === lairRoom ? [passive, hostile] : [hostile])
+    } as unknown as OddsWorld;
+    const sliced = new SlicedSimulator();
+    const odds = new OddsBook(
+      {
+        tracker,
+        world,
+        errands: { fitness: () => 'fit' },
+        setup: {
+          character: () => CHARACTER,
+          foes: (_state, _character, met) => ({
+            foes: met.map(({ name, subject }) => ({ name, subject })),
+            casting: met.map(() => null)
+          }),
+          settingsKey: () => 'settings'
+        },
+        simulator: {
+          run: (input, done) => {
+            passing.push(input.passing);
+            return sliced.run(input, done);
+          }
+        }
+      },
+      { ran: vi.fn() }
+    );
+    odds.refresh(tracker.current);
+    await vi.waitFor(() => expect(odds.passKnown(lairRoom).kind).toBe('run'));
+    expect(odds.passKnown(plainRoom)).toBe(odds.lairKnown(plainRoom));
+    expect(odds.passKnown(lairRoom)).not.toBe(odds.lairKnown(lairRoom));
+    // Two hunts and one pass: the plain lair's pass was never run.
+    expect(passing).toEqual([undefined, undefined, true]);
     odds.dispose();
   });
 

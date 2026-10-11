@@ -261,6 +261,7 @@ export type ErrandsWorld = Pick<
   | 'sweepTo'
   | 'shopPlace'
   | 'size'
+  | 'sparedItems'
   | 'spellById'
   | 'spellNamed'
   | 'stockingPlaces'
@@ -1002,6 +1003,8 @@ export class Errands implements SessionModule {
       family: this.realmClass().family,
       world,
       lairOdds: (room) => this.session.odds()[read](room),
+      passOdds: (room) =>
+        read === 'lair' ? this.session.odds().pass(room) : this.session.odds().passKnown(room),
       mobOdds: (name) =>
         read === 'lair' ? this.session.odds().mob(name) : this.session.odds().mobKnown(name),
       roundSeconds,
@@ -1079,8 +1082,9 @@ export class Errands implements SessionModule {
    * The figures a lair's cost depends on, as one string, so a change to any
    * of them drops every remembered room. The sheet, the weapon in hand, the
    * class row, the standing (which decides who attacks on sight), the
-   * server's family, what `stat all` still states and the attack typed
-   * (`combat.attack`); not the pack, the purse
+   * server's family, what `stat all` still states, the attack typed
+   * (`combat.attack`) and the items held that a monster spares their holder
+   * for (`sparedItems`, todo 31); not the rest of the pack, the purse
    * nor the health itself, which move every room and change no blow.
    */
   fitness(state: CharacterState): string {
@@ -1105,10 +1109,18 @@ export class Errands implements SessionModule {
       JSON.stringify(gearEffect(state.inventory.items)),
       this.serverFamily,
       JSON.stringify(statedNow(state)),
-      this.words.attack().verb
+      this.words.attack().verb,
+      JSON.stringify(this.sparedHeld(state))
     ].join('|');
     this.fitted = { state, key };
     return key;
+  }
+
+  /** The items held that some monster spares their holder for, in row order: who waits moves with them. */
+  private sparedHeld(state: CharacterState): number[] {
+    const spared = this.world?.sparedItems();
+    if (spared === undefined || spared.size === 0) return [];
+    return (packRows(state.inventory) ?? []).filter((id) => spared.has(id)).sort((a, b) => a - b);
   }
 
   /**

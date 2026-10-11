@@ -132,6 +132,12 @@ export interface SurvivalInput {
    */
   draw?: number;
   /**
+   * A pass (todo 31): the character strikes only what swings at
+   * it, so a foe that `waits` is never struck and never joins. Absent, the
+   * character strikes every foe in turn, as auto-combat hunting a lair does.
+   */
+  passing?: boolean;
+  /**
    * The monsters a foe's spells or arrival may bring into the fight, met as
    * they come and fought after the foes, up to `MOBS_PER_ROOM` standing
    * (`Room.TrySummon`). Absent draws nobody in.
@@ -397,7 +403,9 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     };
 
     while (round < roundCap) {
-      const target = alive.findIndex((health) => health > 0);
+      const target = alive.findIndex(
+        (health, slot) => health > 0 && (input.passing !== true || swinging[slot])
+      );
       if (target === -1) break;
       round += 1;
 

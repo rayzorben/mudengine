@@ -225,6 +225,28 @@ describe('the room’s fight, run', () => {
     expect(one.horizons[0]!.lost.mean).toBeLessThan(all.horizons[0]!.lost.mean / 2);
   });
 
+  /*
+   * Todo 31: a run past a lair strikes nobody, so what waits to be struck
+   * never joins. The same lair hunted brings it in (the positive control).
+   */
+  it('keeps a monster that waits out of a pass', () => {
+    const mixed: SurvivalInput['foes'] = [
+      { name: 'guard 1', subject: { hp: 60, profiles: [biter(80, 12, 22)] }, waits: true },
+      { name: 'guard 2', subject: { hp: 60, profiles: [biter(80, 12, 22)] }, waits: true },
+      { name: 'orc', subject: { hp: 60, profiles: [biter(80, 12, 22)] } }
+    ];
+    const at = { foes: mixed, casting: [null, null, null], horizons: [1, 6] };
+    const hunted = simulateFight(fight(at))!;
+    const passed = simulateFight(fight({ ...at, passing: true }))!;
+    expect(passed.horizons[1]!.lost.mean).toBeLessThan(hunted.horizons[1]!.lost.mean);
+    const waiting = mixed.slice(0, 2);
+    const nobody = simulateFight(
+      fight({ foes: waiting, casting: [null, null], horizons: [1, 6], passing: true })
+    )!;
+    expect(nobody.survives).toBe(1);
+    expect(nobody.horizons.map((each) => each.lost.mean)).toEqual([0, 0]);
+  });
+
   // The drunken gambler's row names no attack: a fight against it is run, and costs nothing.
   it('runs a monster that states no attack as one that deals nothing', () => {
     const run = simulateFight(
