@@ -180,7 +180,7 @@ type Section =
  */
 const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   appearance: [{ id: 'appearance-vitals', label: t('settings.client.appearance.vitalsLegend') }],
-  keys: [],
+  keys: [{ id: 'keys', label: t('settings.keys.legend') }],
   records: [],
   realm: [{ id: 'realm-login', label: t('settings.realms.loginLegend') }],
   combat: [
@@ -221,7 +221,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   ],
   quests: [{ id: 'quests', label: t('settings.quests.legend') }],
   remotes: [{ id: 'remotes', label: t('settings.remotes.legend') }],
-  talk: [],
+  talk: [{ id: 'talk-aliases', label: t('settings.aliases.legend') }],
   alerts: [
     { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
     { id: 'alerts-afk', label: t('settings.afk.legend') }
