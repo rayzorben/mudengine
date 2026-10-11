@@ -33,7 +33,6 @@ import {
   type Verdict
 } from '../../shared/verdict';
 import { roomId } from '../../shared/world';
-import { weighRoom } from '../../shared/menace';
 
 /** What the appraisal reads: the character, the realm, and the realm's answers about both. */
 export interface AppraisalParts {
@@ -207,28 +206,6 @@ export class Appraisal {
     if (this.ran?.key === key) return this.ran.survival;
     this.ran = { key, survival: simulateFight(input) };
     return this.ran.survival;
-  }
-
-  /**
-   * What the monsters in the fight are expected to deal this character a
-   * round, `Menace.perRound` summed, for the heal in a fight (`FightHeal`).
-   * Null where nothing fights or the world database cannot weigh one of them:
-   * a total that leaves a monster out is smaller than the truth.
-   */
-  fightPerRound(state: CharacterState): number | null {
-    const foes = this.foesOf(state);
-    if (foes.length === 0) return null;
-    const player = this.errands.menacePlayer(state);
-    let total = 0;
-    for (const menace of weighRoom(
-      foes.map((who) => who.mob ?? {}),
-      player,
-      tuning().menace
-    )) {
-      if (menace === null) return null;
-      total += menace.perRound;
-    }
-    return total;
   }
 
   /**

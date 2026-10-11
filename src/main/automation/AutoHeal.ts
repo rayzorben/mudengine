@@ -81,12 +81,8 @@
  * been lost has lost it, unlike a rest.
  */
 import type { CommandQueue } from './CommandQueue';
-import { FightHeal, type FightHealBasis, type FightHealFloor } from './FightHeal';
 import { t } from '../app/i18n';
-import type { Block } from '../../shared/blocks';
-import type { UiParams } from '../../shared/i18n';
 import {
-  fightIsRunning,
   inAParty,
   joinedMembers,
   type CharacterState,
@@ -107,10 +103,8 @@ import {
   chooseHealSpell,
   healCeiling,
   healDeficit,
-  mendsTheRound,
   pickHeal,
   type HealAim,
-  type HealCandidate,
   type HealChoice
 } from '../../shared/spellchoice';
 import { healTargets, planHeal } from '../../shared/healplan';
@@ -125,24 +119,6 @@ import type { SessionModule } from './Module';
 const SELF = '@self';
 /** The key a party-wide heal's cooldown is filed under: it has no one target. */
 const AREA = '@party';
-
-/** What a heal held back in a fight says, by the figure it fell short of. */
-function notInFight(basis: FightHealBasis, params: UiParams): string {
-  switch (basis) {
-    case 'measured':
-      return t('automation.heal.notInFightMeasured', params);
-    case 'realm':
-      return t('automation.heal.notInFightRealm', params);
-    case 'round':
-      return t('automation.heal.notInFightRound', params);
-    case 'share':
-      return t('automation.heal.notInFight', params);
-    default: {
-      const never: never = basis;
-      return never;
-    }
-  }
-}
 
 export class AutoHeal implements SessionModule {
   private lastCastAt = new Map<string, number>();
@@ -165,8 +141,6 @@ export class AutoHeal implements SessionModule {
   private asked = new Map<string, { from: string; at: number }>();
   /** Why the last request from each member was refused, so a repeat says nothing new. */
   private saidRefusal = new Map<string, string>();
-  /** What a heal in a fight has to beat. */
-  private readonly fight: FightHeal;
 
   constructor(
     private config: SpellsConfig,
@@ -197,26 +171,15 @@ export class AutoHeal implements SessionModule {
       family: null
     }),
     /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
-    private readonly gate: CastGate = OPEN_CAST_GATE,
-    /** What the monsters in the fight are expected to deal a round (`FightHeal`). */
-    realmPerRound: (state: CharacterState) => number | null = () => null,
-    /** The session's figure for the realm's speed (`RealmSpeed`), which sets where a round begins. */
-    speed: () => number = () => 1
-  ) {
-    this.fight = new FightHeal(realmPerRound, speed);
-  }
+    private readonly gate: CastGate = OPEN_CAST_GATE
+  ) {}
 
   configure(config: SpellsConfig, enabled: boolean): void {
     this.config = config;
     this.enabled = enabled;
   }
 
-  onBlock(block: Block): void {
-    this.fight.onBlock(block);
-  }
-
   reset(): void {
-    this.fight.reset();
     this.lastCastAt.clear();
     this.healing.clear();
     this.saidChoice.clear();
@@ -286,7 +249,6 @@ export class AutoHeal implements SessionModule {
   }
 
   onCharacter(state: CharacterState): void {
-    this.fight.onCharacter(state);
     if (!this.enabled || this.config.healBelow <= 0) return;
     this.forgetStaleRequests();
     if (state.phase !== 'in-game' || !this.hasMana(state)) return;
@@ -432,8 +394,6 @@ export class AutoHeal implements SessionModule {
 
     const { target, choice } = plan;
     const deficit = this.deficit(target.hp, target.hpMax) ?? 0;
-    if (this.tooLittleForTheFight(target.name === null ? 'self' : 'party', choice, deficit, state))
-      return false;
     if (target.name === null) {
       this.sayChoice('self', choice, deficit);
       this.cast(choice.chosen.spell.name, null, state, t('automation.heal.reasonSelf'));
@@ -473,8 +433,7 @@ export class AutoHeal implements SessionModule {
   /**
    * The spell to cast, by `pickHeal`: the book's own answer to this deficit
    * under *Auto Choose Best Heal*, else what the player configured. A refusal
-   * or an unread deficit falls back to the configured spell (see the header);
-   * in a fight, a chosen heal that does not mend the round casts nothing.
+   * or an unread deficit falls back to the configured spell (see the header).
    */
   private spellFor(
     state: CharacterState,
@@ -482,25 +441,20 @@ export class AutoHeal implements SessionModule {
     deficit: number | null,
     configured: string
   ): string {
-    const pick = pickHeal(
-      this.config.autoChooseHeal,
-      deficit,
-      (wanted) => {
-        if (state.spellbook === null) return chooseHealSpell({ book: null });
-        const { combat, magery, crits, family } = this.realmClass();
-        return chooseHealSpell({
-          book: state.spellbook,
-          realm: this.realmSpell,
-          level: state.progress.level,
-          mana: state.vitals.mana,
-          deficit: wanted,
-          aim,
-          sheet: prowessSheetOf(state, { combat, magery, crits }),
-          family
-        });
-      },
-      fightIsRunning(state) ? (wanted) => this.fight.floor(aim, wanted, state) : null
-    );
+    const pick = pickHeal(this.config.autoChooseHeal, deficit, (wanted) => {
+      if (state.spellbook === null) return chooseHealSpell({ book: null });
+      const { combat, magery, crits, family } = this.realmClass();
+      return chooseHealSpell({
+        book: state.spellbook,
+        realm: this.realmSpell,
+        level: state.progress.level,
+        mana: state.vitals.mana,
+        deficit: wanted,
+        aim,
+        sheet: prowessSheetOf(state, { combat, magery, crits }),
+        family
+      });
+    });
     switch (pick.kind) {
       case 'configured':
         if (pick.why === 'no-figures') {
@@ -518,9 +472,6 @@ export class AutoHeal implements SessionModule {
             : t('automation.heal.noChoiceNoSpell')
         );
         return configured;
-      case 'too-little':
-        this.sayTooLittle(aim, pick.chosen, pick.deficit, pick.floor);
-        return '';
       case 'chosen':
         this.sayChoice(aim, pick.choice, pick.deficit);
         return pick.chosen.spell.name;
@@ -529,41 +480,6 @@ export class AutoHeal implements SessionModule {
         return unreachable;
       }
     }
-  }
-
-  /**
-   * In a fight a cast ends the attack, so a planned heal expected to mend less
-   * than `FightHeal` says the round is worth is not cast (`mendsTheRound`).
-   */
-  private tooLittleForTheFight(
-    aim: HealAim,
-    choice: HealChoice,
-    deficit: number,
-    state: CharacterState
-  ): boolean {
-    const chosen = choice.chosen;
-    if (chosen === null || !fightIsRunning(state)) return false;
-    const floor = this.fight.floor(aim, deficit, state);
-    if (mendsTheRound(chosen.expected, floor.floor)) return false;
-    this.sayTooLittle(aim, chosen, deficit, floor);
-    return true;
-  }
-
-  /** A heal not cast for mending too little in a fight, said once. */
-  private sayTooLittle(
-    aim: HealAim,
-    chosen: HealCandidate,
-    deficit: number,
-    { basis, floor }: FightHealFloor
-  ): void {
-    this.sayOnce(aim, `in-fight:${chosen.spell.name}|${basis}`, () =>
-      notInFight(basis, {
-        spell: chosen.spell.name,
-        expected: Math.round(chosen.expected),
-        deficit,
-        perRound: Math.round(floor)
-      })
-    );
   }
 
   /** The derivation, said when it changes — the round spell's own rule. */

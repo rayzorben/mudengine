@@ -6,7 +6,6 @@ import {
   chooseHealSpell,
   healDeficit,
   healPower,
-  mendsTheRound,
   pickHeal,
   spellElementOf,
   thresholdHeal,
@@ -534,8 +533,6 @@ describe('the heal cast at the threshold', () => {
     expect(heal?.realm.name).toBe('minor healing');
     expect(heal?.restores).toEqual([10, 20]);
     expect(heal?.cost).toBe(2);
-    // Cast whatever the round is worth: only a chosen heal is weighed against it.
-    expect(heal?.chosenMends).toBeNull();
   });
 
   it('is the one chosen against the deficit under the threshold with the switch on', () => {
@@ -544,7 +541,6 @@ describe('the heal cast at the threshold', () => {
       at({ spells: { heal: 'minor healing', healTo: 0.9, autoChooseHeal: true } })
     );
     expect(wide?.realm.name).toBe('major healing');
-    expect(wide?.chosenMends).toBeGreaterThan(0);
     // 74 up to 90 is 16: the minor heal's 15 falls short, the swan's 20 covers it.
     const narrow = thresholdHeal(
       at({ spells: { heal: 'minor healing', healTo: 0.6, autoChooseHeal: true } })
@@ -581,21 +577,15 @@ describe('the hit points a heal wants back', () => {
 
 describe('which heal AutoHeal casts', () => {
   const choose = (deficit: number) => chooseHealSpell(healInput({ deficit }));
-  const round = (floor: number) => () => ({ floor });
 
   it('casts the configured spell with the switch off, the deficit unread or the choice refused', () => {
-    expect(pickHeal(false, 30, choose, null)).toEqual({ kind: 'configured', why: 'switched-off' });
-    expect(pickHeal(true, null, choose, null)).toEqual({ kind: 'configured', why: 'no-figures' });
-    const refused = pickHeal(true, 30, () => chooseHealSpell({ book: null }), null);
+    expect(pickHeal(false, 30, choose)).toEqual({ kind: 'configured', why: 'switched-off' });
+    expect(pickHeal(true, null, choose)).toEqual({ kind: 'configured', why: 'no-figures' });
+    const refused = pickHeal(true, 30, () => chooseHealSpell({ book: null }));
     expect(refused).toEqual({ kind: 'refused', refusal: 'no-book' });
   });
 
-  it('casts the chosen heal, and in a fight only where it mends the round, never falling back', () => {
-    expect(pickHeal(true, 5, choose, null).kind).toBe('chosen');
-    expect(pickHeal(true, 5, choose, round(1)).kind).toBe('chosen');
-    const short = pickHeal(true, 5, choose, round(100));
-    expect(short.kind).toBe('too-little');
-    expect(mendsTheRound(15, 15)).toBe(true);
-    expect(mendsTheRound(14, 15)).toBe(false);
+  it('casts the chosen heal', () => {
+    expect(pickHeal(true, 5, choose).kind).toBe('chosen');
   });
 });

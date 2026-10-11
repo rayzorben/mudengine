@@ -15,7 +15,6 @@ import { between, mulberry32, sampledCount } from './dice';
 import { guardsFirst, type GuardSubject } from './guards';
 import { weighRoom, type MenacePlayer, type MenaceSubject, type MenaceWeights } from './menace';
 import {
-  expectedHarm,
   freshMobState,
   rollMobRound,
   spellEffect,
@@ -32,7 +31,6 @@ import {
   type Reckoning
 } from './prowess';
 import type { RealmFamily } from './realm';
-import { mendsTheRound } from './spellchoice';
 import { drawSummons, MOBS_PER_ROOM, NO_SUMMONS, type Summons } from './summons';
 import { prowessTargetOf, rankByVerdict, targetOf, verdictFor, type TargetEntity } from './verdict';
 
@@ -71,12 +69,6 @@ export interface SurvivalHeal {
   cost: number;
   /** Never cast below this fraction of maximum mana; 0 always casts. */
   minMana: number;
-  /**
-   * What a cast is expected to mend where Auto Choose Best Heal named it: it
-   * is cast only in a round it mends (`mendsTheRound`). Null for the
-   * configured spell, cast whatever the round is worth.
-   */
-  chosenMends: number | null;
 }
 
 /** A blessing up that lapses during the fight. */
@@ -536,7 +528,6 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       healing = wants;
       if (!wants) return false;
       if (!clearsFloor(mana, heal.minMana) || mana < heal.cost) return false;
-      if (heal.chosenMends !== null && !mendsTheRound(heal.chosenMends, roundWorth())) return false;
       hp = Math.min(top, hp + between(random, heal.restores[0], heal.restores[1]));
       mana -= heal.cost;
       heals += 1;
@@ -551,19 +542,6 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       if (recasting === 0) return false;
       recasting -= 1;
       return true;
-    }
-
-    /**
-     * What the round is worth to a heal, as `FightHeal` reads it: the mean
-     * taken a round so far, else what the foes standing are expected to deal.
-     */
-    function roundWorth(): number {
-      if (round > 1) return lost / (round - 1);
-      let expected = 0;
-      for (const [slot, index] of met.entries()) {
-        if (alive[slot]! > 0 && swinging[slot]) expected += expectedHarm(facing[index]!.model);
-      }
-      return expected;
     }
 
     /**

@@ -171,33 +171,12 @@ describe('the room’s fight, run', () => {
         casting: [null, null, null],
         mana: 200,
         manaMax: 200,
-        heal: { below: 0.5, to: 0.8, restores: [20, 30], cost: 6, minMana: 0, chosenMends: null }
+        heal: { below: 0.5, to: 0.8, restores: [20, 30], cost: 6, minMana: 0 }
       })
     )!;
     expect(bare.heals).toBe(0);
     expect(healed.heals).toBeGreaterThan(0);
     expect(healed.survives).toBeGreaterThanOrEqual(bare.survives);
-  });
-
-  /* Todo 10, 2026-10-05: AutoHeal does not cast a chosen heal that mends less than the round; the run cast it. */
-  it('casts a chosen heal only in a round it mends, as AutoHeal does', () => {
-    const foes = [1, 2, 3].map((n) => ({
-      name: `orc ${n}`,
-      subject: { hp: 60, profiles: [biter(60, 6, 12)] }
-    }));
-    const run = (chosenMends: number | null): Survival =>
-      simulateFight(
-        fight({
-          foes,
-          casting: [null, null, null],
-          mana: 200,
-          manaMax: 200,
-          heal: { below: 0.5, to: 0.8, restores: [1, 1], cost: 6, minMana: 0, chosenMends }
-        })
-      )!;
-    expect(run(null).heals).toBeGreaterThan(0);
-    expect(run(1000).heals).toBe(run(null).heals);
-    expect(run(1).heals).toBe(0);
   });
 
   it('casts no heal past the mana floor, or with the mana unknown', () => {
@@ -207,8 +186,7 @@ describe('the room’s fight, run', () => {
       to: 0,
       restores: [20, 30] as [number, number],
       cost: 10,
-      minMana: 0.9,
-      chosenMends: null
+      minMana: 0.9
     };
     const floored = simulateFight(fight({ foes, heal, mana: 20, manaMax: 40 }))!;
     expect(floored.heals).toBe(0);
@@ -329,8 +307,7 @@ describe('the room’s fight, run', () => {
       to: 0.9,
       restores: [15, 20] as [number, number],
       cost: 10,
-      minMana: 0,
-      chosenMends: null
+      minMana: 0
     };
     const kept = simulateFight(fight({ foes, heal, mana: 30, manaMax: 100 }))!;
     const spent = simulateFight(
@@ -492,7 +469,7 @@ describe('a monster whose blow is a spell', () => {
       weapon: { min: 10, max: 40, speed: 1400, strength: 60 },
       foes: Array.from({ length: count }, (_, n) => ({ name: `acolyte ${n}`, subject: acolyte })),
       casting: Array.from({ length: count }, () => null),
-      heal: { below: 0.5, to: 0.8, restores: [14, 38], cost: 6, minMana: 0, chosenMends: null },
+      heal: { below: 0.5, to: 0.8, restores: [14, 38], cost: 6, minMana: 0 },
       levels: { safeAbove: 0.6, riskyAbove: 0.25 },
       horizons: [1, 3, 6, 12, 24]
     });

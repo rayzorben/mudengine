@@ -298,8 +298,7 @@ export class FightSetup {
       to: spells.healTo,
       restores: heal.restores,
       cost: heal.cost,
-      minMana: spells.healMinMana,
-      chosenMends: heal.chosenMends
+      minMana: spells.healMinMana
     };
   }
 
