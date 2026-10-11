@@ -49,6 +49,7 @@ import { DestinationBook, type RealmDestinations } from './world/DestinationBook
 import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, roomAddress, shopsNamedIn, unrouted } from '../shared/world';
+import { asPlaceKind } from '../shared/places';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import type { ItemRarity } from '../shared/rarity';
 import {
@@ -2665,7 +2666,15 @@ function registerIpc(): void {
    * the realm says will take you*.
    */
   handle(Invoke.trainers, (_caller, session: SessionId) => {
-    return host?.get(session)?.manager?.trainers() ?? [];
+    return host?.get(session)?.manager?.places.trainers() ?? [];
+  });
+  /*
+   * The palette's *Nearest* rows (todo 70): every place of a kind this
+   * character can use, nearest first. A kind main does not know is no places.
+   */
+  handle(Invoke.nearestPlaces, (_caller, session: SessionId, kind: unknown) => {
+    const known = asPlaceKind(kind);
+    return known === null ? [] : (host?.get(session)?.manager?.places.ofKind(known) ?? []);
   });
   /* Every bank counter this realm places, for the settings picker (todo 00). */
   handle(Invoke.banks, (_caller, session: SessionId) => worldFor(session)?.banks() ?? []);

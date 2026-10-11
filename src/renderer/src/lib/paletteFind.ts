@@ -1,5 +1,6 @@
 /**
  * What a typed palette query reaches past the client's own commands: the
+ * nearest places of a kind it names (*Nearest*, `nearestRows`), the
  * rooms it names (*Recent* for those walked to before, then *Go to*), then
  * what the realm knows by it (*In the realm*),
  * as headed `Found` blocks of `transient` rows, addressed at the shown
@@ -16,14 +17,16 @@ import { t } from './i18n';
 import type { PopoverAnchor } from './popover';
 import { entryNumber, entryWord, flattenLookup } from './reference';
 import { tuning } from './tuning';
+import { nearestRows } from './nearestRows';
 import { foundRoomHint } from './visited';
+import { walkTo } from './walkTo';
 import { wasVisited, type FoundRoom } from '@shared/destinations';
 import { entityNumber } from '@shared/entities';
 import type { IpcApi, SessionId } from '@shared/ipc';
 import { roomId, type WorldRoom } from '@shared/world';
 
 export interface PaletteFindDeps {
-  api: Pick<IpcApi, 'searchRooms' | 'routeTo' | 'walkRoute' | 'lookup'>;
+  api: Pick<IpcApi, 'searchRooms' | 'routeTo' | 'walkRoute' | 'lookup' | 'nearestPlaces'>;
   /** The character on screen, whose realm is asked. */
   session: SessionId;
   /** The route panel, on a room. */
@@ -64,7 +67,6 @@ export async function roomRows(
 }
 
 function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
-  const { api, session, openRouteOn } = deps;
   return {
     id: `goto:${roomId(room.map, room.room)}`,
     icon: 'route' as const,
@@ -80,38 +82,7 @@ function roomRow(room: FoundRoom, deps: PaletteFindDeps, now: number): Command {
      * for the very rows most likely to be duplicates would be backwards.
      */
     hint: foundRoomHint(room, now),
-    run: () => {
-      void api
-        .routeTo(session, room.map, room.room)
-        .then(async (route) => {
-          // Nothing to walk, or nothing that *can* be walked: the panel is
-          // where a blocked route states its conditions and where a room
-          // already stood in says so. Opening it is the honest answer, and
-          // it is the same surface every other room click reaches.
-          if (route.blocked || route.steps.length === 0) return route;
-          // And a way through what the player keeps out of: the panel is
-          // where the way through and the way round are chosen between.
-          if (route.keptOut !== undefined) return route;
-          /*
-           * The plan was drawn from here a moment ago, so main has nothing
-           * to redraw — but if the character moved in that moment it comes
-           * back redrawn, and the panel is where a plan is read. Opening it
-           * plans afresh from here, which is the same answer arrived at by
-           * the surface that exists to show one.
-           */
-          const answer = await api.walkRoute(session, route);
-          return 'started' in answer ? null : route;
-        })
-        .then((unwalked) => {
-          if (unwalked === null) return;
-          openRouteOn(room, null);
-        })
-        .catch(() => {
-          // A route that could not be planned at all: the panel says why,
-          // rather than a click that does nothing.
-          openRouteOn(room, null);
-        });
-    }
+    run: () => walkTo(room, deps)
   };
 }
 
@@ -170,10 +141,19 @@ export async function realmRows(query: string, deps: PaletteFindDeps): Promise<C
   });
 }
 
-/** Both answers to a typed query, rooms first: Enter on a room query means what it did. */
+/**
+ * Every answer to a typed query. *Nearest* goes first: `bank` typed is a
+ * place wanted, and a query naming no kind leaves it empty, so Enter on a
+ * room query means what it did.
+ */
 export async function paletteFind(query: string, deps: PaletteFindDeps): Promise<Found[]> {
-  const [rooms, realm] = await Promise.all([roomRows(query, deps), realmRows(query, deps)]);
+  const [nearest, rooms, realm] = await Promise.all([
+    nearestRows(query, deps),
+    roomRows(query, deps),
+    realmRows(query, deps)
+  ]);
   return [
+    { key: 'nearest', label: t('palette.groups.nearest'), items: nearest },
     { key: 'recent', label: t('rooms.groups.recent'), items: rooms.recent },
     { key: 'rooms', label: t('palette.groups.found'), items: rooms.others },
     { key: 'realm', label: t('palette.groups.realm'), items: realm }

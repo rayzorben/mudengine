@@ -7,6 +7,7 @@ import { tuning } from '../tuning';
 import type { Visited } from '@shared/destinations';
 import type { SessionId } from '@shared/ipc';
 import type { WalkStart } from '@shared/movement';
+import type { NearPlace } from '@shared/places';
 import { NO_LOOKUP, roomId, type Route, type WorldLookup, type WorldRoom } from '@shared/world';
 
 const HERO = 'hero' as SessionId;
@@ -43,6 +44,7 @@ function deps(
     lookup?: WorldLookup;
     plan?: Route | Error;
     walk?: WalkStart;
+    nearest?: NearPlace[];
   } = {}
 ) {
   const openRouteOn = vi.fn<PaletteFindDeps['openRouteOn']>();
@@ -57,7 +59,8 @@ function deps(
         if (plan instanceof Error) throw plan;
         return plan;
       },
-      walkRoute
+      walkRoute,
+      nearestPlaces: async () => answers.nearest ?? []
     },
     session: HERO,
     openRouteOn,
@@ -67,20 +70,25 @@ function deps(
 }
 
 describe('the palette query, as found blocks', () => {
-  it('answers rooms walked to, then rooms, then the realm, each under its own heading', async () => {
+  it('answers the nearest, rooms walked to, rooms, then the realm, each under its own heading', async () => {
     const { handed } = deps({
       rooms: [room(1, 12, 'Bank of Godfrey', Date.now() - 60_000), room(1, 297, 'Bank of God')],
-      lookup: { ...NOTHING, spells: [{ id: 52, name: 'magic armour' }] }
+      lookup: { ...NOTHING, spells: [{ id: 52, name: 'magic armour' }] },
+      nearest: [
+        { kind: 'bank', shop: 8, name: 'Bank of Godfrey', moves: 4, room: room(1, 12, 'Bank') }
+      ]
     });
     const found = await paletteFind('bank', handed);
     expect(found.map((block) => [block.key, block.label])).toEqual([
+      ['nearest', t('palette.groups.nearest')],
       ['recent', t('rooms.groups.recent')],
       ['rooms', t('palette.groups.found')],
       ['realm', t('palette.groups.realm')]
     ]);
-    expect(found[0]?.items.map((row) => row.id)).toEqual(['goto:1/12']);
-    expect(found[1]?.items.map((row) => row.id)).toEqual(['goto:1/297']);
-    expect(found[2]?.items.map((row) => row.id)).toEqual(['lookup:spell:0']);
+    expect(found[0]?.items.map((row) => row.id)).toEqual(['nearest:bank:8:1/12']);
+    expect(found[1]?.items.map((row) => row.id)).toEqual(['goto:1/12']);
+    expect(found[2]?.items.map((row) => row.id)).toEqual(['goto:1/297']);
+    expect(found[3]?.items.map((row) => row.id)).toEqual(['lookup:spell:0']);
     // Every row lasts only as long as the query: none can be pinned to the shelf.
     expect(found.flatMap((block) => block.items).every((row) => row.transient === true)).toBe(true);
   });

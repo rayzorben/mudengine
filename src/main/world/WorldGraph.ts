@@ -36,6 +36,7 @@ import {
   type WardRule,
   type WorldLookup,
   type BankChoice,
+  type CounterPlace,
   type CashPlace,
   type ShopPlace,
   type BuyingPlace,
@@ -1148,32 +1149,25 @@ export class WorldGraph {
   }
 
   /**
-   * Every bank counter the realm places, for the settings picker (todo 00).
-   *
-   * The join `trainersTaking` makes, without the filtering: a bank takes every
-   * character and charges nothing, so there is no eligibility to work out —
-   * the question is only *which vault*, and every counter is an answer.
-   *
-   * A row placed in several rooms is several entries, all valid, and the
-   * player picks: the balance is the row's, so two rooms holding the same row
-   * are two doors onto one vault. Sorted by name then room so the same realm
-   * answers the same way twice.
+   * Every room holding a shop row `want` accepts (todo 70). A row placed in
+   * several rooms is several entries, all valid; sorted by name then room so
+   * the same realm answers the same way twice.
    */
-  banks(): BankChoice[] {
-    const found: BankChoice[] = [];
+  counters(want: (shop: WorldShop) => boolean): CounterPlace[] {
+    const found: CounterPlace[] = [];
     for (const room of this.rooms.values()) {
       if (room.shop === undefined) continue;
       const shop = this.catalogue.shop(room.shop);
-      if (shop === undefined || shop.kind !== 'bank') continue;
-      found.push({
-        shop: room.shop,
-        name: shop.name,
-        map: room.map,
-        room: room.room,
-        roomName: room.name
-      });
+      if (shop === undefined || !want(shop)) continue;
+      const { map, room: number, name: roomName } = room;
+      found.push({ shop: room.shop, name: shop.name, map, room: number, roomName });
     }
     return found.sort((a, b) => a.name.localeCompare(b.name) || a.map - b.map || a.room - b.room);
+  }
+
+  /** Every bank counter, for the settings picker (todo 00): two rooms of one row are one vault. */
+  banks(): BankChoice[] {
+    return this.counters((shop) => shop.kind === 'bank');
   }
 
   /**

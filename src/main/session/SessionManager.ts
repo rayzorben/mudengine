@@ -14,7 +14,6 @@ import {
   poisonRefusesRest,
   restsInTheShadows
 } from '../../shared/abilities';
-import type { TrainerChoice } from '../../shared/world';
 import type { AutomationSnapshot, SafetyDecision } from '../../shared/automation';
 import { LoginAutomator } from '../automation/LoginAutomator';
 import { RuleEngine } from '../automation/RuleEngine';
@@ -66,6 +65,7 @@ import type { OutgrownGear } from '../automation/OutgrownGear';
 import { hostTrips, type HostTrips } from './hostTrips';
 import { gearDesk, type GearDesk } from './gearDesk';
 import { handReach } from './weaponReach';
+import { placeDesk, type PlaceDesk } from './placeDesk';
 import { questDesk, type QuestDesk } from './questDesk';
 import type { AreaSearch } from '../automation/AreaSearch';
 import { QuestRunner } from '../automation/QuestRunner';
@@ -403,9 +403,10 @@ export class SessionManager {
   /** Stashing, selling or dropping gear the character has outgrown — todo 12. */
   private readonly outgrown: OutgrownGear;
   readonly hostTrips: HostTrips;
-  /** The Gear and Quests cards' questions. */
+  /** The Gear and Quests cards' questions, and the places that take this character (todo 70). */
   readonly gearDesk: GearDesk;
   readonly questDesk: QuestDesk;
+  readonly places: PlaceDesk;
   readonly areaSearch: AreaSearch;
   /** Where this character should be at all, and the lap that puts it there — todo 05. */
   private readonly hunt: AutoHunt;
@@ -1604,6 +1605,9 @@ export class SessionManager {
       ...{ tracker: this.tracker, errands: this.errands, world: () => this.world },
       travel: () => this.travel,
       trip: () => this.hostTrips.gear
+    });
+    this.places = placeDesk({
+      ...{ tracker: this.tracker, errands: this.errands, world: () => this.world }
     });
     this.questDesk = questDesk({
       ...{ world: () => this.world, errands: this.errands, runner: this.questRunner },
@@ -3255,11 +3259,6 @@ export class SessionManager {
   /** What a lap's leg costs to move. See `Errands.lapTraveller`. */
   lapTraveller(state: CharacterState): Traveller {
     return this.errands.lapTraveller(state);
-  }
-
-  /** The trainers that will take this character. See `Errands.trainers`. */
-  trainers(): TrainerChoice[] {
-    return this.errands.trainers();
   }
 
   /** Where this character should hunt. See `Errands.huntingGrounds`. */

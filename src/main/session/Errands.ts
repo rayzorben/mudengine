@@ -654,6 +654,11 @@ export class Errands implements SessionModule {
     return plan;
   }
 
+  /** Every room the character can walk to from `from` as it stands, kept (`Navigation.withinNow`). */
+  reachNow(from: RoomId): ReadonlyMap<RoomId, number> {
+    return this.navigation.withinNow(from, Number.POSITIVE_INFINITY);
+  }
+
   /**
    * One trip's traveller, kept out of the `walled` rooms, for many asks: the
    * rooms it reaches from a room within so many moves, with the fewest moves
