@@ -1,9 +1,9 @@
 /**
  * A room walked to in one click, from a row that names it: the palette's
- * *Goto* and *Nearest* rows (todo 70). Planned and walked through `routeTo`
- * and `walkRoute`, the one navigation engine; what cannot be
- * walked unread opens the route panel on the room instead, so a click never
- * does nothing. See `mudengine-ui` › `parts/input.md`.
+ * *Goto* and *Nearest* rows (todo 70) and the console's right-click menu
+ * (todo 28). Planned and walked through `routeTo` and `walkRoute`, the one
+ * navigation engine; what cannot be walked unread opens the route panel on the
+ * room instead, so a click never does nothing. See `mudengine-ui` › `parts/input.md`.
  */
 import type { IpcApi, SessionId } from '@shared/ipc';
 import type { WorldRoom } from '@shared/world';

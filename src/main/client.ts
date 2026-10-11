@@ -46,6 +46,7 @@ import { PlayerBook } from './world/PlayerBook';
 import { UnreadTally } from './session/UnreadTally';
 import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
+import { LoopHistory } from './session/LoopHistory';
 import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
 import { NO_LOOKUP, nameAnswersTo, roomAddress, shopsNamedIn, unrouted } from '../shared/world';
@@ -773,6 +774,19 @@ function talkFor(id: SessionId): TalkSink {
  * one it had is closed on the way out so its deferred write lands.
  */
 const belongings = new Map<SessionId, Belongings>();
+
+/** The loops each character started by name (todo 28), opened on first use. */
+const loopHistories = new Map<SessionId, LoopHistory>();
+
+function loopHistoryFor(id: SessionId): LoopHistory {
+  const existing = loopHistories.get(id);
+  if (existing) return existing;
+  const history = new LoopHistory(home.record('recentLoops', id), (message) =>
+    announce('loops', message, 'warn', id)
+  );
+  loopHistories.set(id, history);
+  return history;
+}
 
 function belongingsAt(id: SessionId, played: Realm): CharacterRecord {
   const realm = realmName(played);
@@ -2066,6 +2080,10 @@ function registerIpc(): void {
       const agreed = typeof confirmed === 'number' && Number.isFinite(confirmed) ? confirmed : null;
       // Refused first where no room would change the answer, then placed (`Play`, todo 762).
       const answer = await playPlaced(() => host?.get(session)?.manager, loop, agreed);
+      // A loop the picker named and play started is a loop started by name (todo 28).
+      if (loop !== null && answer !== null && 'started' in answer) {
+        loopHistoryFor(session).remember(loop);
+      }
       return answer ?? { refused: t('app.session.notConnected') };
     }
   );
@@ -2151,7 +2169,18 @@ function registerIpc(): void {
     // Through the manager: one movement at a time, so a lap starting takes the
     // character off whatever route it was walking, out loud.
     const answer = slot.manager.startLoop(loop);
-    return 'refused' in answer ? answer.refused : null;
+    if ('refused' in answer) return answer.refused;
+    loopHistoryFor(session).remember(loop.name);
+    return null;
+  });
+  // Newest first, and only names the character still has a loop by (todo 28).
+  handle(Invoke.recentLoops, (_caller, session: SessionId): string[] => {
+    const manager = host?.get(session)?.manager;
+    if (manager === undefined) return [];
+    return loopHistoryFor(session).latest(
+      (name) => manager.loopNamed(name) !== undefined,
+      tuning().records.recentLoopsShown
+    );
   });
   /*
    * Walk a loop that is not in this character's options at all.
@@ -3724,6 +3753,9 @@ function teardown(): void {
   // put on in the last two seconds is on the same kind of deferred timer.
   for (const [id, record] of belongings) settle(`belongings ${id}`, () => record.close());
   belongings.clear();
+  // And the loops started by name, on the same deferred timer.
+  for (const [id, history] of loopHistories) settle(`recent loops ${id}`, () => history.close());
+  loopHistories.clear();
   settle('sessions', () => {
     host?.disposeAll();
     host = null;

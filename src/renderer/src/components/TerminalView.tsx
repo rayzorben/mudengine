@@ -6,7 +6,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { SearchAddon } from '@xterm/addon-search';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 
-import PopupMenu from './PopupMenu';
+import PopupMenu, { type MenuItem } from './PopupMenu';
 import { clipboardIntent, readClipboard, writeClipboard } from '../lib/clipboard';
 import { describeElement, ownsItsEnter } from '../lib/focus';
 import { linkAt } from '../lib/linkify';
@@ -133,6 +133,12 @@ export interface TerminalViewProps {
    * pressed and nothing else.
    */
   onAct?(action: TerminalActionName): void;
+  /**
+   * The rows under Copy and Paste: the recent rooms and loops (todo 28). Asked
+   * when the menu opens. Never rejects: `useRecentMenu` reports a failed ask
+   * in the console.
+   */
+  recent?(): Promise<MenuItem[]>;
   /** Live presentation options from the YAML file. */
   settings: TerminalConfig;
   /** Each line's time at the right edge (todo 25); nothing is drawn while off. */
@@ -181,6 +187,7 @@ export default function TerminalView({
   onSelectSlot,
   onChooseRoom,
   onAct,
+  recent,
   reportSize = true,
   settings,
   timestamps,
@@ -209,6 +216,8 @@ export default function TerminalView({
     selection: string;
     /** The address the right-click landed on; see `linkUnderPointer`. */
     link: string | null;
+    /** The recent rooms and loops, as they were when the menu was asked for. */
+    recent: MenuItem[];
   } | null>(null);
 
   /**
@@ -1128,6 +1137,19 @@ export default function TerminalView({
     };
   }, [fontStack, settings.font.size]);
 
+  /*
+   * Which right-click the menu still waits on: a newer right-click, a press
+   * anywhere in the console, or unmounting moves it on, so rows that arrive
+   * after the player gave up never open a menu (todo 28).
+   */
+  const menuAsk = useRef(0);
+  useEffect(
+    () => () => {
+      menuAsk.current += 1;
+    },
+    []
+  );
+
   /** Leaving the menu is a terminal action, so the keyboard goes back there. */
   const dismissMenu = useCallback(() => {
     setMenu(null);
@@ -1150,12 +1172,26 @@ export default function TerminalView({
         event.preventDefault();
         const term = termRef.current;
         const mount = mountRef.current;
-        setMenu({
+        const opened = {
           x: event.clientX,
           y: event.clientY,
           selection: term?.getSelection() ?? '',
           link: term && mount ? linkUnderPointer(term, mount, event) : null
+        };
+        // Opened once the recent rows are in, so it is measured and clamped
+        // with them (`Popup` measures once per anchor).
+        if (recent === undefined) {
+          setMenu({ ...opened, recent: [] });
+          return;
+        }
+        const ask = (menuAsk.current += 1);
+        void recent().then((rows) => {
+          if (menuAsk.current === ask) setMenu({ ...opened, recent: rows });
         });
+      }}
+      onPointerDown={(event) => {
+        // A right press precedes its own `contextmenu`, so only another button cancels.
+        if (event.button !== 2) menuAsk.current += 1;
       }}
     >
       <div className="terminal-mount" ref={mountRef} />
@@ -1201,7 +1237,14 @@ export default function TerminalView({
                 dismissMenu();
                 pasteClipboard();
               }
-            }
+            },
+            ...menu.recent.map((item) => ({
+              ...item,
+              run: () => {
+                dismissMenu();
+                item.run();
+              }
+            }))
           ]}
           onDismiss={dismissMenu}
         />

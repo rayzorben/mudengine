@@ -540,6 +540,14 @@ export class Travel implements SessionModule {
   }
 
   /**
+   * Whether the walk starting now is one the player named a room for
+   * (`startAsked`): the recent destinations take only those (todo 28).
+   */
+  get startingAskedWalk(): boolean {
+    return this.startingAsked;
+  }
+
+  /**
    * A walk started, whoever started it: nothing owed from a lost connection
    * outlives it, and one that did not come through `startAsked` (a walk home
    * after an escape, an errand's leg) replaces the asked walk without ending

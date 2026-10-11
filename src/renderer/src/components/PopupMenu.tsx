@@ -13,6 +13,10 @@ export interface MenuItem {
    * made the icons worth adding.
    */
   icon: IconName;
+  /** Quiet text after the label: a room's `map/room` and when it was walked to. */
+  hint?: string;
+  /** Starts a new group of rows, with a seam above it: the recent rooms under Copy and Paste. */
+  divided?: boolean;
   /** Costs something, and says so: closing a character, not copying text. */
   danger?: boolean;
   /**
@@ -49,6 +53,7 @@ export default function PopupMenu({ at, items, onDismiss }: PopupMenuProps) {
         <button
           className="entry"
           data-danger={item.danger === true ? 'true' : undefined}
+          data-divided={item.divided === true ? 'true' : undefined}
           disabled={item.disabled === true}
           // Keyed by position, not label: two entries may share a word, and the
           // list is fixed for the life of the menu, so the index is its identity.
@@ -59,6 +64,7 @@ export default function PopupMenu({ at, items, onDismiss }: PopupMenuProps) {
         >
           <Icon name={item.icon} />
           <span>{item.label}</span>
+          {item.hint !== undefined && <span className="hint">{item.hint}</span>}
         </button>
       ))}
     </Popup>

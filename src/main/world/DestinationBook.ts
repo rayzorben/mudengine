@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { matchVisits, rememberVisit, type VisitedDestination } from '../../shared/destinations';
+import { newestFirst } from '../../shared/recent';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { realmKey } from './RealmLore';
+import { readJsonRecord } from './readJsonRecord';
 
 /**
  * Where characters on this machine have walked, per realm.
@@ -97,37 +99,20 @@ export class DestinationBook {
     if (this.loaded) return;
     this.loaded = true;
 
-    let text: string;
-    try {
-      text = fs.readFileSync(this.options.file, 'utf8');
-    } catch (error) {
-      // A file that is simply not there yet is the ordinary first run, and
-      // saying so would be the client reporting its own startup as a fault.
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        this.suspended = true;
-        this.options.notify?.(
-          t('notices.world.destinations.readError', {
-            file: this.options.file,
-            message: errorMessage(error)
-          })
-        );
-      }
-      return;
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (error) {
+    const read = readJsonRecord(this.options.file);
+    // A file that is simply not there yet is the ordinary first run.
+    if (read.kind === 'absent') return;
+    if (read.kind === 'unreadable') {
       this.suspended = true;
       this.options.notify?.(
         t('notices.world.destinations.readError', {
           file: this.options.file,
-          message: errorMessage(error)
+          message: errorMessage(read.error)
         })
       );
       return;
     }
+    const parsed = read.value;
 
     if (typeof parsed !== 'object' || parsed === null) return;
     const realms = (parsed as Record<string, unknown>)['realms'];
@@ -141,7 +126,7 @@ export class DestinationBook {
         // Sorted on the way in rather than trusted: every reader below takes
         // the head of this list as "most recent", and a hand-edited file must
         // not be able to make that claim false.
-        .sort((a, b) => b.at - a.at);
+        .sort(newestFirst);
       if (rows.length > 0) this.visited.set(realmKey(realm), rows);
     }
   }

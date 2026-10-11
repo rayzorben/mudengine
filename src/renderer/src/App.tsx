@@ -50,6 +50,7 @@ import { useRoutePanel } from './hooks/useRoutePanel';
 import { useSearchBar } from './hooks/useSearchBar';
 import { useSettingsScreen } from './hooks/useSettingsScreen';
 import { useRouteOpeners } from './hooks/useRouteOpeners';
+import { useRecentMenu } from './hooks/useRecentMenu';
 import { useShownRealm } from './hooks/useShownRealm';
 import { useSlideOuts } from './hooks/useSlideOuts';
 import { EMPTY_VIEW, useSessionViews } from './hooks/useSessionViews';
@@ -93,7 +94,7 @@ import TripDialogs from './components/TripDialogs';
 import { useTripDialogs } from './hooks/useTripDialogs';
 import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import { type ProfileSummary, type SessionId, type SessionSummary } from '@shared/ipc';
-import type { ConnectionState, TerminalActionName, TerminalSize } from '@shared/types';
+import type { ConnectionState, TerminalSize } from '@shared/types';
 import { setTuning } from './lib/tuning';
 
 /** No characters loaded: one empty list, so the rail's props hold still while it is empty. */
@@ -853,19 +854,6 @@ export default function App() {
     [api, session, openRouteOn, inspect]
   );
 
-  /*
-   * A console button main runs, addressed to the character whose terminal it
-   * was pressed in — not to the focused pane, which may be a different one.
-   *
-   * Nothing crosses but the action's name. The figure a `Deposit All` needs is
-   * not knowable here, and was not knowable in main either at the moment the
-   * line was drawn, which is the whole reason this is an action rather than a
-   * list of commands (`TerminalIntentAction`).
-   */
-  const actInConsole = useCallback((sid: SessionId, action: TerminalActionName) => {
-    void api.terminalAct(sid, action);
-  }, []);
-
   /** The console's own name index, per character. */
   const nameIndexes = useNameIndexes(api, sessions, views);
 
@@ -884,6 +872,7 @@ export default function App() {
     stay,
     walkOn
   } = useMovement({ api, session, profiles, returnFocus, say: noticeTo });
+  const recentMenu = useRecentMenu({ api, openRouteOn, sayRefusal });
   const chooseLoop = useLoopJoin({ api, session, runChosenLoop, openToJoin, say: noticeTo });
 
   /** The loop builder, addressed at the shown character. */
@@ -1292,7 +1281,7 @@ export default function App() {
                   onInput={handleInput}
                   onInspect={inspect}
                   onChooseRoom={chooseRoomNamed}
-                  onAct={actInConsole}
+                  recentMenu={recentMenu}
                   onResize={handleResize}
                   onSelectPlayer={selectPlayer}
                   onSelectGang={slideOuts.selectGang}

@@ -8,9 +8,12 @@
  * before — `Forest Cavern`, not the two hundred `Darkwood Forest`s ahead of it
  * — and the client already knows which those are, because it planned the route.
  *
- * So a destination is written down when a walk is *started* toward it, and
- * every room search (the palette, the route panel, the Map card's fields, the
- * loop builder) puts its matches above the realm's own answer, under *Recent*.
+ * So a destination is written down when a walk the player asked for is
+ * *started* toward it (`Travel.startAsked`: the palette, the route panel, the
+ * console's menu), and every room search (the palette, the route panel, the
+ * Map card's fields, the loop builder) puts its matches above the realm's own
+ * answer, under *Recent*. A loop's legs, an errand's trips, a retreat and a
+ * step back are walks nobody named a room for, and are not written (todo 28).
  *
  * **A realm-wide fact, keyed like the lore and the player book.** Where a
  * character goes is a fact about the *map*, not about the character: four
@@ -28,6 +31,7 @@
  * Dependency-free: main keeps and persists it, the renderer reads the rows a
  * search answers with.
  */
+import { latestFirst } from './recent';
 import type { WorldRoom } from './world';
 
 /** One place a character was sent, and the last time it was. */
@@ -109,11 +113,7 @@ export function rememberVisit(
     visits: (previous?.visits ?? 0) + 1
   };
 
-  const rest = list.filter((other) => other.id !== id);
-  // Sorted rather than merely unshifted: a visit stamped earlier than one
-  // already held — a clock that moved, two windows on one realm — must not sit
-  // at the top claiming to be the latest.
-  return [entry, ...rest].sort((a, b) => b.at - a.at);
+  return latestFirst(list, entry, (other) => other.id === id);
 }
 
 /**

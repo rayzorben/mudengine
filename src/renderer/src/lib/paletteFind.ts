@@ -43,14 +43,12 @@ export interface PaletteFindDeps {
  * there — was the one thing it could not answer. `Ctrl/Cmd K`, `1 297` or
  * `bank of god`, Enter, and the character is walking.
  *
- * **This is the one path that walks without the plan being read first**, and
- * it is deliberate rather than an oversight of the rule the map click keeps.
- * The difference is what was chosen: a map click is a click on a picture, and
- * the easiest possible way to send a character somewhere by accident; this
- * row was typed, read and picked out of a list that names the room and its
- * reference. What cannot be walked still opens the panel — a blocked route
- * has conditions to read, and a refusal has a reason — so nothing silently
- * fails, and stopping is a keystroke away either way.
+ * This and the console's menu (`walkTo`) walk without the plan being read
+ * first. A map click is a click on a picture and is easy to make by accident;
+ * these rows were typed or picked from a list that names the room and its
+ * reference. What cannot be walked still opens the panel, since a blocked
+ * route has conditions to read and a refusal has a reason, and stopping is a
+ * keystroke away either way.
  *
  * The rows are `transient`: they exist for as long as the query, and a shelf
  * entry naming one would be a row nobody could reach from the shelf.
