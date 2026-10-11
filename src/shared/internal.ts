@@ -1326,6 +1326,10 @@ const TUNING_DEFAULTS = {
     cooldownMs: 10_000,
     expiresMs: 10_000
   },
+  /** The `i` after an `open <chest>` (`ChestOpening`); a listing after this is not the chest's. */
+  chest: {
+    expiresMs: 10_000
+  },
   /** Sitting down — `Recovery`. */
   rest: {
     /**

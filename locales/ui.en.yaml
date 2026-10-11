@@ -2606,6 +2606,7 @@ cards:
         fight: '{monster} makes it in a fight'
         attack: "{monster}'s attack makes it"
         use: 'using {item}'
+        open: 'open {item}'
         ask: 'ask {who} {say}'
         say: '{say} in {room}'
         sayRooms:
@@ -5855,6 +5856,18 @@ automation:
     reasonConfirm: 'banking: checking the balance'
     reasonCount: 'banking: checking cash on hand before spending it'
     reasonDeposit: 'banking: depositing {surplus} copper of your cash, keeping {keep}'
+  # What came out of a chest: `ChestOpening`. {chest} is the item's name as
+  # the inventory listed it; {copper} is a copper figure.
+  chest:
+    reasonCount: 'checking what the {chest} held'
+    found: 'The {chest} held {items} and {copper} copper.'
+    items: 'The {chest} held {items}.'
+    coins: 'The {chest} held {copper} copper.'
+    nothing: 'Nothing came out of the {chest}.'
+    itemsCoinsUnknown: 'The {chest} held {items}; cash on hand was unread, so its copper is unknown.'
+    coinsUnknown: 'No items came out of the {chest}; cash on hand was unread, so its copper is unknown.'
+    unread: "Can't tell what the {chest} held: the inventory before it was never listed."
+    and: ' and '
   drop:
     reasonJunk: 'drop: {item} is on the junk list'
     reasonWorthless: 'drop: the world data values {item} at nothing'

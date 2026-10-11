@@ -38,6 +38,8 @@ export type RarityFrom =
   /** `copies` is how many one run makes on average; a fight's is per round. */
   | { kind: 'spell'; monster: string; when: MonsterRun; copies: number }
   | { kind: 'use'; item: string; copies: number }
+  /** A chest, box or bag: `open` it, since the server answers `use` with "Use the "Open" command instead!". */
+  | { kind: 'open'; item: string; copies: number }
   | { kind: 'ask'; who: string; say: string; gate: RarityGate; copies: number }
   /** A phrase typed in any of `rooms`. */
   | { kind: 'say'; rooms: [RoomId, ...RoomId[]]; say: string; gate: RarityGate; copies: number };

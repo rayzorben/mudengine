@@ -23,12 +23,17 @@ const room = (number: number, more: Partial<WorldRoom> = {}): WorldRoom => ({
 function bookOf(
   rooms: WorldRoom[],
   supply: Partial<BuiltSupply>,
-  limits: Record<number, number> = {}
+  limits: Record<number, number> = {},
+  chests: readonly number[] = []
 ): RarityBook {
   const world: RarityWorld = {
     supply: () => readSupply({ sh: [], rt: [], ro: [], runs: [], ...supply }),
     everyRoom: () => rooms,
-    item: (id) => ({ name: `item ${id}`, ...(limits[id] ? { limit: limits[id] } : {}) }),
+    item: (id) => ({
+      name: `item ${id}`,
+      ...(limits[id] ? { limit: limits[id] } : {}),
+      ...(chests.includes(id) ? { kind: 'container' as const } : {})
+    }),
     mobById: (id) => ({ name: `monster ${id}` }),
     shop: (id) => ({ name: `shop ${id}` }),
     info: { family: null }
@@ -100,6 +105,22 @@ describe('RarityBook', () => {
     expect(book.of(40).hours).toBeCloseTo(constants.placedHours);
     expect(book.of(41).hours).toBeCloseTo(constants.placedHours * 2);
     expect(book.passes).toBeGreaterThan(1);
+  });
+
+  it('says a chest is opened and anything else is used', () => {
+    const book = bookOf(
+      [],
+      {
+        runs: [
+          { k: 'use', it: 40, gi: [[41, 1]] },
+          { k: 'use', it: 50, gi: [[51, 1]] }
+        ]
+      },
+      {},
+      [40]
+    );
+    expect(book.of(41).sources[0]?.from).toEqual({ kind: 'open', item: 'item 40', copies: 1 });
+    expect(book.of(51).sources[0]?.from).toEqual({ kind: 'use', item: 'item 50', copies: 1 });
   });
 
   it('calls a quest reward rare with no hours, and a limited item never common', () => {
