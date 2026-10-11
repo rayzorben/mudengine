@@ -150,6 +150,9 @@ export const USED_NOT_WORN: ReadonlySet<number> = new Set([16, 17]);
  */
 export const OFF_HAND = 'Off-Hand';
 
+/** Its `Items.Worn` code: what `EquipCommand` refuses beside a two-handed weapon. */
+export const OFF_HAND_WORN = 12;
+
 /**
  * The words the listing prints for a slot that `WORN_SLOT` does not: MajorMUD
  * prints a two-handed weapon as `demonic pitchfork (Two handed)`

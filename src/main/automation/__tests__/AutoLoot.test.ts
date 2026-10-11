@@ -13,6 +13,7 @@ import {
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem } from '../../../shared/entities';
+import type { FloorGear } from '../../../shared/upgrades';
 import { REREAD_ROOM } from '../../../shared/commands';
 import { tuning } from '../../app/tuning';
 import { CharacterTracker } from '../../parse/CharacterTracker';
@@ -863,7 +864,7 @@ describe('reading the floor after a kill', () => {
 
   // Coins say so as they land; with nothing but coins on the list, a kill is not asked about.
   it('spends nothing where the loot takes only what announces itself', () => {
-    const auto = make(loot({ coins: true }));
+    const auto = make(loot({ coins: true, upgrades: false }));
     auto.onBlock(kill(), state());
     drain();
     expect(sent).toEqual([]);
@@ -894,7 +895,7 @@ describe('reading the floor after a kill', () => {
         }
       };
     };
-    const auto = make(loot(), true, {
+    const auto = make(loot({ upgrades: false }), true, {
       enabled: true,
       items: [{ name: 'torch', min: 2, max: 4, shop: '', at: null }]
     });
@@ -1039,5 +1040,115 @@ describe('reading the floor after a kill', () => {
     drain();
     expect(sent).toEqual(['']);
     expect(auto.floorInFlight).toBe(false);
+  });
+});
+
+describe('gear better than what is worn (todo 77)', () => {
+  const BETTER: FloorGear = {
+    kind: 'better',
+    slot: 'Feet',
+    over: 'sandals',
+    replaces: null,
+    hands: null
+  };
+  /** A loot whose weighing calls leather boots better and anything else nothing. */
+  const withGear = (config: LootConfig, verdict: FloorGear = BETTER): AutoLoot => {
+    notices = [];
+    return floored(
+      (floor) =>
+        new AutoLoot(config, NO_SUPPLIES, true, queue, {
+          notice: (m) => notices.push(m),
+          onTheGround: () => false,
+          moveOnly: () => false,
+          floor,
+          // Leather boots weigh 60, for Max Item Weight.
+          realmItem: (name) => ({ ...wireItem(name), encumbrance: 60 }),
+          floorGear: (item) => (item.name === 'leather boots' ? verdict : null)
+        })
+    );
+  };
+  const carrying = (equipped: boolean, over: Partial<CharacterState> = {}): CharacterState => {
+    const base = state();
+    return {
+      ...base,
+      ...over,
+      inventory: {
+        ...base.inventory,
+        items: [
+          wireItem('sandals', { equipped: true, slot: 'Feet' }),
+          wireItem('leather boots', { equipped })
+        ]
+      }
+    };
+  };
+
+  it('takes it with why on the loot line, and puts it on once the pack holds it', () => {
+    const auto = withGear(loot());
+    auto.onBlock(block('room-items', { items: 'leather boots, rusty key' }), state());
+    drain();
+    expect(sent).toEqual(['get leather boots']);
+    auto.onCharacter(carrying(false));
+    drain();
+    expect(sent).toEqual(['get leather boots', 'wear leather boots']);
+    // Once: the next state asks nothing more.
+    auto.onCharacter(carrying(false));
+    drain();
+    expect(sent).toHaveLength(2);
+  });
+
+  it('waits out a fight before putting it on', () => {
+    const auto = withGear(loot());
+    auto.onBlock(block('room-items', { items: 'leather boots' }), state());
+    auto.onCharacter(carrying(false, { inCombat: true }));
+    drain();
+    expect(sent).toEqual(['get leather boots']);
+    // The positive control: the fight over, it goes on.
+    auto.onCharacter(carrying(false));
+    drain();
+    expect(sent).toEqual(['get leather boots', 'wear leather boots']);
+  });
+
+  it('takes nothing with the setting off', () => {
+    const auto = withGear(loot({ upgrades: false }));
+    auto.onBlock(block('room-items', { items: 'leather boots' }), state());
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('says a refusal once and takes nothing', () => {
+    const auto = withGear(loot(), { kind: 'refused', slot: 'Feet', why: 'heavy', worn: null });
+    auto.onBlock(block('room-items', { items: 'leather boots' }), state());
+    auto.onBlock(block('room-name', { name: 'Dark Cave' }), state());
+    auto.onBlock(block('room-items', { items: 'leather boots' }), state());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toHaveLength(1);
+  });
+
+  it('says Max Item Weight refused it, and puts on nothing typed after', () => {
+    const auto = withGear(loot({ maxEncumbrance: 50 }));
+    auto.onBlock(block('room-items', { items: 'leather boots' }), state());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toHaveLength(1);
+    // The player's own `get` lands it in the pack: nothing was owed a wear.
+    auto.onCharacter(carrying(false));
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('owes no read after a kill where nothing can weigh gear', () => {
+    notices = [];
+    const auto = make(loot());
+    auto.onBlock(block('user-gain-experience', { exp: '775' }), state());
+    drain();
+    expect(sent).toEqual([]);
+  });
+
+  it('reads the floor after a kill while it is on', () => {
+    const auto = withGear(loot());
+    auto.onBlock(block('user-gain-experience', { exp: '775' }), state());
+    drain();
+    expect(sent).toEqual(['']);
   });
 });

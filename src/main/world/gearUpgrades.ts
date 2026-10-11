@@ -155,7 +155,7 @@ export function versusWorn(ranking: SlotRanking, item: SlotFigures, worn: SlotFi
 }
 
 /** The names of what the pack holds and does not wear: never bought again. */
-function carriedUnworn(state: CharacterState): Set<string> {
+export function carriedUnworn(state: CharacterState): Set<string> {
   return new Set(
     state.inventory.items.filter((item) => !item.equipped).map((item) => item.name.toLowerCase())
   );

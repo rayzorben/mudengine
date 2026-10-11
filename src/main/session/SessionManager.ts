@@ -116,6 +116,7 @@ import { huntPlanner } from './huntPlanner';
 import { lightPlanner } from './lightPlanner';
 import { outgrownTrip } from './outgrownPlanner';
 import { questKeep } from './questKeep';
+import { floorGearReader } from './floorGearReader';
 import { areaSearchTrip, gearRecoveryTrip } from './collectPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
@@ -898,15 +899,11 @@ export class SessionManager {
     this.recovery = new Recovery(automation, this.queue, {
       notice,
       /*
-       * GreaterMUD's engine refuses `rest` outright while poisoned — unless
-       * the character is *immune*, which the server's own test says lifts it
-       * (`RestCommand.cs:28`) and which a Kang has from its race (todo 22).
-       * Telling a Kang it cannot rest would be the client inventing a
-       * refusal the server does not make.
-       *
-       * The family and not the loaded database: it is the server's branch,
-       * so a MajorMUD server running a converted GreaterMUD realm does not
-       * have it, and null is not `greatermud`.
+       * GreaterMUD's engine refuses `rest` while poisoned unless the character is
+       * immune (`RestCommand.cs:28`), as a Kang is by race (todo 22), so a Kang is
+       * never told it cannot. The family, not the loaded database: it is the
+       * server's branch, so a MajorMUD server running a converted GreaterMUD realm
+       * does not have it, and null is not `greatermud`.
        */
       poisonRefusesRest: () =>
         poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family)
@@ -919,7 +916,8 @@ export class SessionManager {
       onTheGround,
       moveOnly,
       floor,
-      coinWord: (coin) => this.vocabulary.coins.word(coin)
+      coinWord: (coin) => this.vocabulary.coins.word(coin),
+      floorGear: floorGearReader(this.world, this.errands, () => this.automationConfig)
     });
     this.deathSummons = new DeathSummons(floor);
     /*

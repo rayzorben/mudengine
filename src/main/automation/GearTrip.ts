@@ -10,7 +10,7 @@
  * `tuning.gear.maxLegs`. Yields to an escape; holds the lap; dropped on a
  * death; every ending said. See `mudengine-automation` › *Errands*.
  */
-import type { CommandQueue } from './CommandQueue';
+import { offerEach, type CommandQueue } from './CommandQueue';
 import { Handover, type HandoverEnd } from './Handover';
 import type { SessionModule } from './Module';
 import { tripRefusal, type TripPlanner } from './askedTrip';
@@ -346,17 +346,13 @@ export class GearTrip implements SessionModule {
     trip.stage = 'wearing';
     const expiresAt = this.now() + tuning().supplies.expiresMs;
     const bought = planBuys(trip.plan).filter((buy) => trip.bought.includes(buy.name));
-    const unsent: string[] = [];
-    for (const command of this.planner.wearCommands(bought, state)) {
-      const offered = this.queue.offer({
-        command,
-        priority: 'probe',
-        coalesceKey: `gear:wear:${command}`,
-        expiresAt,
-        reason: t('automation.gearTrip.reasonWear')
-      });
-      if (offered !== 'queued' && offered !== 'joined') unsent.push(command);
-    }
+    const unsent = offerEach(this.queue, this.planner.wearCommands(bought, state), (command) => ({
+      command,
+      priority: 'probe',
+      coalesceKey: `gear:wear:${command}`,
+      expiresAt,
+      reason: t('automation.gearTrip.reasonWear')
+    }));
     if (unsent.length > 0) {
       const commands = unsent.join(', ');
       this.say(t('automation.gearTrip.notWorn', { commands }), commands);

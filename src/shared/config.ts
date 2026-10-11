@@ -1164,13 +1164,9 @@ export interface LootConfig {
   items: string[];
   /**
    * Also pick up anything the realm prices at or above this, in copper.
-   * 0 never does.
-   *
-   * The named list above is an *instruction* and always wins; this is a
-   * standing question — "is this worth bending down for" — that only became
-   * askable when a floor item started arriving as an entity with the realm's
-   * price on it. Before that the client could not have answered it without a
-   * round trip per name.
+   * 0 never does. The named list above is an *instruction* and always wins;
+   * this is a standing question ("is this worth bending down for") answered
+   * from the realm's price on the floor item's entity.
    *
    * **An item the realm cannot price is never taken by this**, and the naming
    * is deliberate: `minPrice` is a claim about value, and an unknown value is
@@ -1190,6 +1186,8 @@ export interface LootConfig {
    * stop a derivative realm looting anything at all.
    */
   maxEncumbrance: number;
+  /** Also take and put on gear ranked above what is worn (`world/floorGear.ts`, todo 77). */
+  upgrades: boolean;
 }
 
 /**
@@ -2808,6 +2806,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       items: [],
       minPrice: 0,
       maxEncumbrance: 0,
+      upgrades: true,
       stopAtGrade: 'never',
       convertWith: '',
       convertAt: 'never'
@@ -3988,7 +3987,8 @@ function normalizeLoot(value: unknown): LootConfig {
     // Capped well above any price the shipped realm states, so a typo cannot
     // make the field mean "never", and floored at 0, which is what off means.
     minPrice: int(raw['minPrice'], d.minPrice, 0, 100_000_000),
-    maxEncumbrance: int(raw['maxEncumbrance'], d.maxEncumbrance, 0, 1_000_000)
+    maxEncumbrance: int(raw['maxEncumbrance'], d.maxEncumbrance, 0, 1_000_000),
+    upgrades: bool(raw['upgrades'], d.upgrades)
   };
 }
 

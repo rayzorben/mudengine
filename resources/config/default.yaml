@@ -1028,6 +1028,12 @@ automation:
     # because the two settings do.
     minPrice: 0
     maxEncumbrance: 0
+    # Also pick up gear the world data ranks above what you wear in its slot,
+    # as the Gear card ranks it, when you can wear it and your inventory has
+    # the free weight, and put it on. What comes off is outgrown gear, which
+    # `outgrown` below stashes, sells or drops when it is on. Not while gear
+    # sets are on and one names the item it would replace.
+    upgrades: true
 
   # Dropping named junk, unasked -- the other half of MegaMUD's drop list, and
   # what keeps auto-loot from hoarding a pack over the encumbrance the walker
