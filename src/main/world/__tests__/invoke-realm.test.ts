@@ -75,7 +75,9 @@ describe.skipIf(!available)('a weapon that blesses, on the shipped realm', () =>
         spell: 'weapon major bless',
         mana: 8,
         equipped: true,
-        mustBeEquipped: true
+        mustBeEquipped: true,
+        // `FullPartyArea`: a bare `use` blesses the party in the room.
+        party: true
       }
     ]);
   });

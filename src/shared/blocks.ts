@@ -458,6 +458,12 @@ export type BlockType =
    */
   | 'spell-failed'
   /**
+   * `You do not have enough mana to cast that spell.`, a cast or a `use` of a
+   * spell item refused before any roll (`Player.InitiateSpell`; server source
+   * only, todo 43). It spends no round and no mana.
+   */
+  | 'spell-short-of-mana'
+  /**
    * `You feel safe from evil!` — the per-spell onset sentence, printed the
    * instant a duration spell lands. Its wording is realm message data no realm
    * database on hand exports, so it cannot be mapped to a spell *name* — but it
@@ -667,6 +673,11 @@ export type BlockType =
    * `use` of an item with none left (`UseCommand.cs`; server source only).
    */
   | 'item-used-up'
+  /**
+   * `You do not have <item> equipped.`, a `use` of a weapon or armour that is
+   * not worn in its slot (`UseCommand.cs`; server source only, todo 43).
+   */
+  | 'item-not-equipped'
   | 'user-list'
   | 'shop-list'
   /**
@@ -1013,6 +1024,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'spell-refused': 'combat',
   'spell-cast': 'combat',
   'spell-failed': 'combat',
+  'spell-short-of-mana': 'combat',
   'spell-onset': 'combat',
   'user-buff-expired': 'status',
   'user-takes-damage': 'combat',
@@ -1072,6 +1084,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-withdraws': 'items',
   'item-uses-left': 'items',
   'item-used-up': 'items',
+  'item-not-equipped': 'items',
   'user-list': 'items',
   'shop-list': 'items',
   'room-coins': 'items',

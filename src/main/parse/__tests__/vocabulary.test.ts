@@ -178,6 +178,8 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/CashRun.ts',
       // The gear back on after recover corpse (todo 39).
       'src/main/automation/RecoveredCorpse.ts',
+      // The answer to a `use` of a blessing item (todo 43).
+      'src/main/automation/invokeAnswer.ts',
       'src/main/parse/expectations.ts'
     ]
       .filter((file) => fs.existsSync(path.resolve(file)))

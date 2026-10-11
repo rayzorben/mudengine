@@ -859,6 +859,13 @@ export const RULES: Rule[] = [
    */
   { type: 'spell-refused', pattern: /^You have already invoked a power this round!/ },
   /*
+   * The cast refused for mana before the roll, for a spell from the book or
+   * from an item (`Player.InitiateSpell`). Server source only (todo 43); take
+   * it on orohost before trusting the frame. Not `spell-refused`: it spends
+   * no magic energy, so the round is still open.
+   */
+  { type: 'spell-short-of-mana', pattern: /^You do not have enough mana to cast that spell\.$/ },
+  /*
    * The wrong book was asked for, and the answer names the right one —
    * captured live (`npm run probe:spellbook`, 2026-09-01): a KAI character's
    * `sp` gets the first sentence, a spellbook caster's `pow` the second.
@@ -2090,6 +2097,12 @@ export const RULES: Rule[] = [
     // the second for one carried. Not yet seen on the wire.
     type: 'item-used-up',
     pattern: /^(?:That item has no more uses left!|There are no more uses in (?<item>.+)\.)$/
+  },
+  {
+    // `UseCommand.cs`, for a weapon or armour not worn in its slot. Server
+    // source only (todo 43); take it on orohost before trusting the frame.
+    type: 'item-not-equipped',
+    pattern: /^You do not have (?<item>.+) equipped\.$/
   },
 
   /* ------------------------------------------------------------- room */

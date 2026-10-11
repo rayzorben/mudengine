@@ -7,6 +7,7 @@
  */
 import type { CarriedItem } from './character';
 import { bareName, itemInvocation, sameItem } from './items';
+import { spellTargeting } from './spellcraft';
 import { nameAnswersTo, type WorldItem, type WorldSpell } from './world';
 
 /** The realm lookups a blessing needs. `WorldGraph` answers both. */
@@ -24,6 +25,11 @@ export interface ItemBlessing {
    * command and a bless missed costs nothing.
    */
   mustBeEquipped: boolean;
+  /**
+   * The item casts more spells after this one. Each is refused for the round
+   * (`You have already cast a spell this round!`) every time it is used.
+   */
+  several: boolean;
 }
 
 /**
@@ -43,7 +49,11 @@ export function carriedBlessing(name: string, realm: BlessingRealm): ItemBlessin
   if (invocation === null || !invocation.unlimited) return null;
   const spell = realm.spellById(invocation.spell);
   if (spell === null || spell.duration === undefined || spell.duration <= 0) return null;
-  return { spell, mustBeEquipped: item.kind !== undefined ? isWorn(item.kind) : true };
+  return {
+    spell,
+    mustBeEquipped: item.kind !== undefined ? isWorn(item.kind) : true,
+    several: invocation.spells.length > 1
+  };
 }
 
 function isWorn(kind: NonNullable<WorldItem['kind']>): boolean {
@@ -60,6 +70,11 @@ export interface InvokeChoice {
   /** Worn or wielded now. */
   equipped: boolean;
   mustBeEquipped: boolean;
+  /**
+   * The spell lands on everyone in the party in the room (`FullPartyArea`,
+   * targets 13): a bare `use` blesses them all (todo 43).
+   */
+  party: boolean;
 }
 
 /** A carried item that can bless, as the pack lists it. */
@@ -99,7 +114,8 @@ export function invokeChoices(items: readonly CarriedItem[], realm: BlessingReal
     spell: blessing.spell.name,
     mana: blessing.spell.mana ?? null,
     equipped,
-    mustBeEquipped: blessing.mustBeEquipped
+    mustBeEquipped: blessing.mustBeEquipped,
+    party: spellTargeting(blessing.spell.targets) === 'party'
   }));
 }
 

@@ -4,7 +4,13 @@ import { wireItem } from '../entities';
 import { carriedBlessing, chosenToInvoke, invokeChoices, type BlessingRealm } from '../invoke';
 import type { WorldItem, WorldSpell } from '../world';
 
-const BLESS: WorldSpell = { id: 114, name: 'weapon major bless', mana: 8, duration: 60 };
+const BLESS: WorldSpell = {
+  id: 114,
+  name: 'weapon major bless',
+  mana: 8,
+  duration: 60,
+  targets: 13
+};
 const ITEMS: Record<string, WorldItem> = {
   'shimmering longsword': {
     id: 1,
@@ -49,9 +55,19 @@ describe('the blessing a carried item casts', () => {
         spell: 'weapon major bless',
         mana: 8,
         equipped: true,
-        mustBeEquipped: true
+        mustBeEquipped: true,
+        party: true
       }
     ]);
+  });
+
+  // `FullPartyArea` (13) lands on the party in the room; anything else is not said to.
+  it('says whether the spell lands on the whole party', () => {
+    const own: BlessingRealm = {
+      ...realm,
+      spellById: (id) => (id === 114 ? { ...BLESS, targets: 1 } : null)
+    };
+    expect(invokeChoices([carried('shimmering longsword', true)], own)[0]?.party).toBe(false);
   });
 
   it('matches a chosen name the way the pack spells it', () => {

@@ -1,4 +1,4 @@
-import { chosenToInvoke } from '@shared/invoke';
+import { chosenToInvoke, type InvokeChoice } from '@shared/invoke';
 import type { CharacterRealm } from '../hooks/useCharacterRealm';
 import BlessingChoiceNote from './BlessingChoiceNote';
 import { CheckField } from './FormField';
@@ -61,11 +61,7 @@ export default function InvokeFields({
       {carried.map((choice) => (
         <CheckField
           checked={chosenToInvoke(chosen, choice.item)}
-          hint={
-            choice.mana === null
-              ? t('settings.spells.invokeCastsUnpriced', { spell: choice.spell })
-              : t('settings.spells.invokeCasts', { spell: choice.spell, mana: choice.mana })
-          }
+          hint={castsHint(choice)}
           key={choice.item}
           label={
             choice.mustBeEquipped && !choice.equipped
@@ -89,4 +85,16 @@ export default function InvokeFields({
       <BlessingChoiceNote view={realm.blessingChoice} />
     </>
   );
+}
+
+/** What the item casts, its mana, and whether it lands on the whole party in the room. */
+function castsHint(choice: InvokeChoice): string {
+  const { spell, mana } = choice;
+  if (choice.party)
+    return mana === null
+      ? t('settings.spells.invokeCastsPartyUnpriced', { spell })
+      : t('settings.spells.invokeCastsParty', { spell, mana });
+  return mana === null
+    ? t('settings.spells.invokeCastsUnpriced', { spell })
+    : t('settings.spells.invokeCasts', { spell, mana });
 }
