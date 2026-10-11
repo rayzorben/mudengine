@@ -2303,17 +2303,13 @@ export interface PartyConfig {
   sayPanic: boolean;
   /** Ask a member for `@health` when they join (`AskHealth`). */
   askHealth: boolean;
-  /**
-   * In a party, send `par` every this many seconds in a fight and twice that
-   * out of one (`ParPeriod`). 0 sends it only when the party changes.
-   */
+  /** In a party, `par` every this many seconds in a fight, twice out of one (`ParPeriod`); 0 on a party change only. */
   parSeconds: number;
   /** In a party, send `par` after every combat round (`ParAfterRound`). */
   parAfterRound: boolean;
   /**
-   * In a party and a fight, send `par` at most this many rounds apart, and
-   * sooner the more health the party has lost since the last one (`PartyListing`).
-   * 0 never sends it by the round.
+   * In a party and a fight, send `par` at most this many rounds apart, sooner the
+   * more health the party has lost since the last one (`PartyListing`); 0 never.
    */
   parEveryRounds: number;
   /**
