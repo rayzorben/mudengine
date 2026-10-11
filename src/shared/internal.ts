@@ -2227,6 +2227,10 @@ const TUNING_DEFAULTS = {
      * every destination it matches, above the realm's own answer.
      */
     destinationsShown: 5,
+    /** Loops started by name offered on the console's right-click menu (todo 28). */
+    recentLoopsShown: 5,
+    /** Loops started by name one character's record keeps, newest first. */
+    recentLoopsKept: 25,
     /** How long a change to the player book waits before it is written. */
     playersSaveDelayMs: 5_000,
     /**

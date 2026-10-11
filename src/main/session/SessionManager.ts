@@ -778,11 +778,10 @@ export class SessionManager {
         this.tracker.hintMove(command, direction);
       },
       ...this.errands.walkFacts(),
-      // Where the player asked to go, taken here because every walk comes through the walker;
-      // and a new walk supersedes a journey still owed from a lost connection, whoever started it.
+      // Every walk supersedes a journey owed from a lost connection; only an asked one is recent.
       destination: (room, name) => {
+        if (this.travel.startingAskedWalk) this.sink.destination?.(room, name);
         this.travel.walkStarted();
-        this.sink.destination?.(room, name);
       },
       // The tracker's queue: the typed moves and leftover legs a route cannot see.
       pendingMoves: () => this.tracker.pendingMoves,

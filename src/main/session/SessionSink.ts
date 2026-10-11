@@ -123,7 +123,8 @@ export interface SessionSink {
   /** How a route walk is going, when one is running. */
   walk?(progress: WalkProgress): void;
   /**
-   * A walk was started toward this room — the palette's recent destinations.
+   * A walk the player asked for was started toward this room: the recent
+   * destinations the room searches and the console's menu offer (todo 28).
    *
    * A hook rather than a store, for the reason `memory` is an interface: this
    * is the session layer, and where the file goes belongs to whoever decided

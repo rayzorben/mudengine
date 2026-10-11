@@ -788,6 +788,12 @@ notices:
     alreadyConnected: Already connected to {host}:{port}.
     # Connect pressed while a dial was still waiting for the far end to answer.
     dialAgain: The last dial had no answer yet. Giving it up and dialing again.
+    # The loops started by name, for the console's right-click menu (todo 28).
+    recentLoops:
+      notAList: it holds no list of loops
+      readError: 'Could not read {file} ({message}). Recent loops start empty this run, and the
+        file is left as it is.'
+      writeError: 'Could not write {file}: {message}'
   world:
     converted: 'Realm {file}: {rooms} rooms in {seconds}s.'
     converting: Converting the world database {file}…
@@ -1042,6 +1048,7 @@ terminal:
     copy: Copy
     copyLink: Copy link
     paste: Paste
+    recentFailed: 'Could not list the recent rooms and loops: {message}'
   # A plain Enter the window saw and this console never sent (todo 00): where
   # the caret was, and the key's code, which tells an input method (229) apart.
   enterNotTaken: 'That Enter did not reach the game: the cursor was in {where} (key code {code}).'

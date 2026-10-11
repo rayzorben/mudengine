@@ -6464,6 +6464,20 @@ button.quest-tile-name:hover:not(:disabled) {
   color: var(--text-lo-quiet);
 }
 
+/* A new group of rows: the recent rooms and loops under Copy and Paste (todo 28). */
+.popup-menu .entry[data-divided='true'] {
+  margin-top: 4px;
+  box-shadow: 0 -1px 0 var(--seam);
+  border-radius: 0 0 var(--r-control) var(--r-control);
+}
+
+.popup-menu .entry .hint {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--text-lo-quiet);
+  font-family: var(--font-mono);
+}
+
 /* Closing a character is the one entry that can cost something. */
 .popup-menu .entry[data-danger='true']:hover,
 .popup-menu .entry[data-danger='true']:focus-visible {

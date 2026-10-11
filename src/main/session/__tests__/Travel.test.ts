@@ -665,3 +665,50 @@ describe('a stop on the way to the shop before a route', () => {
     );
   });
 });
+
+/*
+ * Todo 28: only a walk the player named a room for is a recent destination.
+ * `startingAskedWalk` is read inside `Walker.start`, where `destination` fires.
+ */
+describe('which walks are recent destinations', () => {
+  const ROUTE = {
+    steps: [{ from: '1/1', to: '1/2' }],
+    cost: 1,
+    blocked: false
+  } as unknown as Route;
+
+  function watching() {
+    const made = travel(
+      beside(),
+      'stepping',
+      false,
+      { on: true, writes: true },
+      { settings: config }
+    );
+    const asked: boolean[] = [];
+    made.parts.walker.start = vi.fn(() => {
+      asked.push(made.travel.startingAskedWalk);
+      made.travel.walkStarted();
+      return null;
+    });
+    made.parts.supplies.considerBeforeRoute = () => null;
+    made.parts.light.beforeRoute = () => false;
+    return { ...made, asked };
+  }
+
+  it('counts the route the player asked for', () => {
+    const { travel: moving, asked } = watching();
+    expect(moving.walkRoute(ROUTE)).toBeNull();
+    expect(asked).toEqual([true]);
+    expect(moving.startingAskedWalk).toBe(false);
+  });
+
+  it("leaves out an errand's leg", () => {
+    const { travel: moving, parts, asked } = watching();
+    vi.mocked(parts.errands.planFromHere).mockReturnValue(ROUTE);
+    expect(moving.walkLegTo('1/2')).toBeNull();
+    // Positive control: the leg did start.
+    expect(parts.walker.start).toHaveBeenCalledTimes(1);
+    expect(asked).toEqual([false]);
+  });
+});

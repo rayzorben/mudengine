@@ -13,6 +13,7 @@ import type { WalkProgress } from '@shared/walk';
 import type { LostEnter, TerminalActionName, TerminalSize } from '@shared/types';
 import type { NameIndex } from '../lib/names';
 import type { PopoverAnchor } from '../lib/popover';
+import type { MenuItem } from './PopupMenu';
 import type { TerminalPalette } from '@shared/themes';
 
 /** What a pane that is not being read reports to the search bar: nothing, and the same nothing every time. */
@@ -31,8 +32,8 @@ export interface SessionTerminalProps {
   onSelectSlot?(session: SessionId, slot: string, at: PopoverAnchor): void;
   /** A room's name clicked in the console: the route panel, on that room. */
   onChooseRoom?(name: string): void;
-  /** A console button main runs — `Deposit All`. See `TerminalIntentAction`. */
-  onAct?(session: SessionId, action: TerminalActionName): void;
+  /** This character's recent rooms and loops, for the right-click menu (`useRecentMenu`). */
+  recentMenu?(session: SessionId): Promise<MenuItem[]>;
   /** Whether a pane is currently showing this character. */
   shown: boolean;
   /** Whether this is the pane the keyboard is talking to. */
@@ -104,13 +105,13 @@ function SessionTerminal({
   onChunk,
   onSnapshot,
   onSearchResult,
-  onAct,
   index,
   onInspect,
   onSelectPlayer,
   onSelectGang,
   onSelectSlot,
   onChooseRoom,
+  recentMenu,
   run,
   walk,
   onStopRun
@@ -286,11 +287,15 @@ function SessionTerminal({
     (slot: string, at: PopoverAnchor) => onSelectSlot?.(session, slot, at),
     [onSelectSlot, session]
   );
-  // And the same for a console button: the counter it is asked at belongs to
-  // this terminal's character, never to whichever pane has the keyboard.
+  /*
+   * A console button main runs, addressed to this terminal's character, not
+   * to the focused pane. Nothing crosses but the action's name: the figure a
+   * `Deposit All` needs is not knowable until its `i` is answered
+   * (`TerminalIntentAction`). Out of `App` (todo 28).
+   */
   const act = useCallback(
-    (action: TerminalActionName) => onAct?.(session, action),
-    [onAct, session]
+    (action: TerminalActionName) => void api.terminalAct(session, action),
+    [api, session]
   );
   // The banner's Stop is this terminal's character's run, whichever pane has
   // the keyboard — the same reason `act` binds the session above. A press
@@ -298,6 +303,10 @@ function SessionTerminal({
   // jump-to-latest does, rather than leaving it on a node that is gone.
   const stopRun = useCallback(() => onStopRun(session), [onStopRun, session]);
   const focusConsole = useCallback(() => handleRef.current?.focus(), []);
+  const recent = useCallback(
+    () => recentMenu?.(session) ?? Promise.resolve([]),
+    [recentMenu, session]
+  );
 
   return (
     <div
@@ -334,6 +343,7 @@ function SessionTerminal({
         onSelectSlot={selectSlot}
         onChooseRoom={onChooseRoom}
         onAct={act}
+        recent={recent}
         onReady={handleReady}
         onResize={resize}
         onLostEnter={lostEnter}

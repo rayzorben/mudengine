@@ -748,6 +748,8 @@ export const Invoke = {
   stepBack: 'move:back',
   listLoops: 'loop:list',
   startLoop: 'loop:start',
+  /** The loops this character started by name, newest first: the console's menu (todo 28). */
+  recentLoops: 'loop:recent',
   /**
    * Walk a loop given whole, rather than one named in the character's options.
    *
@@ -1348,6 +1350,11 @@ export interface IpcApi {
   runLoop(session: SessionId, loop: Loop): Promise<string | null>;
   /** Start a named loop from `automation.loops`. Resolves to a refusal, or null. */
   startLoop(session: SessionId, name: string): Promise<string | null>;
+  /**
+   * The loops this character started by name, newest first, that are still in
+   * its options, at most `tuning.records.recentLoopsShown`.
+   */
+  recentLoops(session: SessionId): Promise<string[]>;
   /**
    * Where a lap of this loop, by name from `automation.loops` or handed over
    * whole, would join it from where the character stands. Asks nothing of the
