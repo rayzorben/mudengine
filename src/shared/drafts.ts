@@ -1212,6 +1212,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
                 notify,
                 // Meaningless with `notify` off, so it goes with it.
                 whileFocused: notify && entry['whileFocused'] === true,
+                onlyAway: notify && entry['onlyAway'] === true,
                 side: text(entry['side']).trim() === 'above' ? 'above' : 'below',
                 value: Math.max(0, Number(entry['value']) || 0),
                 percent: entry['percent'] !== false,

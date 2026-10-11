@@ -3355,6 +3355,8 @@ cards:
     sliderStatus: Card {fillPercent}% solid, text {textPercent}%
   vitals:
     badge:
+      # Todo 79: nothing typed for the AFK minutes.
+      away: AFK
       combat: combat
       idle: idle
       meditating: meditating
@@ -3478,7 +3480,9 @@ settings:
     enabledHint: After the minutes below with nothing typed for this character, incoming telepaths
       get the reply, once per sender every ten minutes, and never for an @ command.
     afterLabel: Away After, min
-    afterHint: Minutes without a keystroke for this character before it counts as away.
+    afterHint: Minutes without a keystroke for this character before it counts as away. Low health
+      hangs up only while you are away, and a character naked after a death hangs up when away and
+      something is attacking.
     replyLabel: Away Reply
     replyHint: MegaMUD's own {AFK} is what other MegaMUD clients recognize; you can write anything.
   alerts:
@@ -3504,6 +3508,8 @@ settings:
     ruleAlert: Alert
     ruleNotify: Notify
     ruleWhileFocused: Even when MudEngine is in front
+    # Todo 79: MegaMUD's Play Alert Only When AFK.
+    ruleOnlyAway: Only when AFK
     levelKeep: as decided
     rulePercent: '%'
     ruleNamePlaceholder: name to watch for
@@ -4935,9 +4941,14 @@ session:
     hangUpRunGotOut: the run got out and nothing is attacking here
     hangUpNoMonster: no monster is here and nothing is attacking
     hangUpRoomUnseen: the room has not been seen since connecting and nothing is attacking
+    # Todo 79: low health waits while somebody is at the keyboard.
+    hangUpAttended: you are at the keyboard
     hangUpRunCaught:
       'The run did not get you clear: {why}, and you were attacked or hurt again where
       it landed.'
+    # Todo 79: naked, nothing to lose but the share of health the realm charges.
+    hangingUpNakedCharged: "Hanging up: {why}. {realm}'s realm menu charges {percent}% of maximum
+      health and health is at {health}; there is no gear to lose."
     hangingUpUncharged: "Hanging up: {why}. {realm}'s realm menu says it has no hangup penalty."
     hangingUpUnchargedSetting: 'Hanging up: {why}. Your settings say this realm has no hangup
       penalty.'
@@ -4955,6 +4966,8 @@ session:
     # Todo 818: a monster's row says to escape it, or to hang up on it.
     whyDreaded: '{mob} is here, and its monster rule says to run'
     whyStalker: '{mob} is here, and its monster rule says to hang up'
+    # Todo 79: MegaMUD's Hangup If Naked, with nobody at the keyboard.
+    whyNaked: naked after a death with nobody at the keyboard, and something here is attacking or would attack
     # {why} is one of the two above and {reason} the switch's own word below,
     # so the notice and the trace cannot say different things.
     escapeSwitchedOff: 'Not running: {why}, but {reason}.'

@@ -27,7 +27,9 @@ import { useEffect, useRef } from 'react';
 
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
+import type { AutomationSnapshot } from '@shared/automation';
 import {
+  heldTillAway,
   raisable,
   raisableWhileFocused,
   type AlertRule,
@@ -45,6 +47,8 @@ export interface AlertSubject {
   notices: Notice[];
   /** Whose they are, for the notification's title. Null before the realm says. */
   character: { name: string | null };
+  /** Whether nobody is at that character's keyboard, for a row's `onlyAway` (todo 79). */
+  automation: Pick<AutomationSnapshot, 'away'>;
 }
 
 export interface DesktopAlertsOptions {
@@ -78,7 +82,7 @@ type Standing = 'ready' | 'asking' | 'refused' | 'absent';
  * sight that somebody has clicked away from. Either one means the alert is not
  * being read where it already is.
  */
-function away(): boolean {
+function outOfSight(): boolean {
   return document.visibilityState !== 'visible' || !document.hasFocus();
 }
 
@@ -167,7 +171,7 @@ export function useDesktopAlerts({
        * in front must not be silenced on behalf of all the rest.
        */
       const focusOk =
-        away() || subject.notices.some((notice) => raisableWhileFocused(notice, rules));
+        outOfSight() || subject.notices.some((notice) => raisableWhileFocused(notice, rules));
       if (!focusOk) continue;
 
       /*
@@ -190,8 +194,8 @@ export function useDesktopAlerts({
       for (const notice of [...fresh].reverse()) {
         const named = raisable(notice, rules);
         // And the focus rule for *this* notice, not for the batch.
-        if (named !== null && !away() && !raisableWhileFocused(notice, rules)) continue;
-        if (named === null) continue;
+        if (named !== null && !outOfSight() && !raisableWhileFocused(notice, rules)) continue;
+        if (named === null || heldTillAway(notice, rules, subject.automation.away)) continue;
         if (now - (rested.current.get(`${id}:${named}`) ?? -Infinity) < gap) continue;
         raise = notice;
         kind = named;

@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import type { CarriedItem } from '../character';
+import { EMPTY_CHARACTER, type CarriedItem } from '../character';
 import { wireItem } from '../entities';
 import type { Loadout } from '../gear';
-import { allowanceLeft, expiredSlots, freeLoadout, lockLoadout, releaseSlots } from '../gearLocks';
+import {
+  allowanceLeft,
+  expiredSlots,
+  freeLoadout,
+  lockLoadout,
+  nakedAfterDeath,
+  releaseSlots
+} from '../gearLocks';
 import { NO_TALLY, playedFor } from '../tally';
 
 const HOUR = 3_600_000;
@@ -60,5 +67,37 @@ describe('gear locks', () => {
     };
     expect(playedFor(tally, 10 * HOUR)).toBe(3 * HOUR);
     expect(playedFor({ ...tally, engagedSince: 9 * HOUR, doing: null }, 10 * HOUR)).toBe(4 * HOUR);
+  });
+});
+
+/* Todo 79: MegaMUD's Hangup If Naked reads the pack listed after the death the locks hold. */
+describe('naked after a death', () => {
+  const DIED = 100;
+  const held = lockLoadout(free, DIED, 0);
+  const after = (items: CarriedItem[], listedAt: number | null, loadout: Loadout = held) => ({
+    loadout,
+    inventory: { ...EMPTY_CHARACTER.inventory, items, listedAt }
+  });
+  const worn = (name: string, slot: string): CarriedItem => carried(name, { equipped: true, slot });
+
+  it('is naked with nothing worn in a pack listed since the death', () => {
+    expect(nakedAfterDeath(after([carried('rope')], DIED + 1))).toBe(true);
+  });
+
+  it('counts a lit light as nothing worn, and a worn helm as dressed', () => {
+    expect(nakedAfterDeath(after([worn('torch', 'Readied')], DIED + 1))).toBe(true);
+    expect(nakedAfterDeath(after([worn('padded helm', 'Head')], DIED + 1))).toBe(false);
+  });
+
+  it('does not know before the pack is listed since the latest lock', () => {
+    expect(nakedAfterDeath(after([], DIED - 1))).toBeNull();
+    expect(nakedAfterDeath(after([], null))).toBeNull();
+    const second = lockLoadout(releaseSlots(held, ['Head']), DIED + 50, 5);
+    expect(nakedAfterDeath(after([], DIED + 1, second))).toBeNull();
+    expect(nakedAfterDeath(after([], DIED + 51, second))).toBe(true);
+  });
+
+  it('is not naked with no slot held', () => {
+    expect(nakedAfterDeath(after([], DIED + 1, free))).toBe(false);
   });
 });

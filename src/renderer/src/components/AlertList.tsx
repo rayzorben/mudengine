@@ -318,7 +318,7 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                         // The one below means nothing without this, so it goes
                         // with it rather than being left behind, set, on a row
                         // that no longer notifies.
-                        ...(event.target.checked ? {} : { whileFocused: false })
+                        ...(event.target.checked ? {} : { whileFocused: false, onlyAway: false })
                       })
                     }
                     type="checkbox"
@@ -338,6 +338,16 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
                   />
                   <span>{t('settings.alerts.ruleWhileFocused')}</span>
                 </label>
+                <label className="blessing-check">
+                  <input
+                    checked={rule.onlyAway}
+                    disabled={!rule.notify}
+                    name={`${namePrefix}-${index}-only-away`}
+                    onChange={(event) => update(index, { onlyAway: event.target.checked })}
+                    type="checkbox"
+                  />
+                  <span>{t('settings.alerts.ruleOnlyAway')}</span>
+                </label>
               </div>
             </li>
           ))}
@@ -355,6 +365,7 @@ export default function AlertList({ rules, namePrefix, onChange }: AlertListProp
               alert: true,
               notify: false,
               whileFocused: false,
+              onlyAway: false,
               side: 'below',
               value: 50,
               percent: true,

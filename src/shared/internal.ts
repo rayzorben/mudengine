@@ -2051,6 +2051,13 @@ const TUNING_DEFAULTS = {
      * half of them.
      */
     hangUpAfterRunMs: 3_000,
+    /**
+     * The share of maximum health a naked character must keep above a
+     * charged realm's hang-up penalty before it hangs up anyway (todo 79):
+     * the charge is a share of maximum health, and a naked character has no
+     * items for it to take instead.
+     */
+    nakedHangMargin: 0.1,
     /** How long a `safe-haven` retreat waits for the escape move to land. */
     retreatSettleMs: 5_000,
     /**

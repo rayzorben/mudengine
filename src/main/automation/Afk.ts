@@ -9,12 +9,7 @@
  *
  * ## What "away" is
  *
- * Nothing typed into *this session* for `afterMinutes`. The signal is the
- * player's own keystrokes reaching `SessionManager.send` — the same fact the
- * command queue's hold reads — and the clock starts when the character enters
- * the realm, so a character logged in by autoconnect and never touched is
- * away after the timeout like any other. Automation typing does not count:
- * a loop walking all night is exactly the case this exists for.
+ * `Attendance`'s answer, which the hang-up reads too (todo 79).
  *
  * ## What it answers, and what it leaves alone
  *
@@ -31,6 +26,7 @@
  * a character that spoke to somebody is a fact the person at the keyboard
  * should be able to read back when they return.
  */
+import type { Attendance } from './Attendance';
 import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -44,8 +40,6 @@ export interface AfkEvents {
 }
 
 export class Afk implements SessionModule {
-  /** When the player last typed into this session, or entered the realm. Null until either. */
-  private attendedAt: number | null = null;
   /** When each sender was last told, by lower-cased name. */
   private readonly replied = new Map<string, number>();
 
@@ -53,6 +47,7 @@ export class Afk implements SessionModule {
     private config: AfkConfig,
     private enabled: boolean,
     private readonly queue: CommandQueue,
+    private readonly attendance: Pick<Attendance, 'away'>,
     private readonly events: AfkEvents = {},
     private readonly now: () => number = () => Date.now()
   ) {}
@@ -63,22 +58,14 @@ export class Afk implements SessionModule {
     this.enabled = enabled;
   }
 
-  /** The player typed into this session, or the character entered the realm. */
-  noteAttended(): void {
-    this.attendedAt = this.now();
-  }
-
-  /** A new session: nobody has typed, nobody has been told. */
+  /** A new session: nobody has been told. */
   reset(): void {
-    this.attendedAt = null;
     this.replied.clear();
   }
 
-  /** Whether nobody has typed for long enough to be away. Never before the realm. */
+  /** Whether the reply is on and nobody is at the keyboard. */
   get away(): boolean {
-    if (!this.enabled || !this.config.enabled) return false;
-    if (this.attendedAt === null) return false;
-    return this.now() - this.attendedAt >= this.config.afterMinutes * 60_000;
+    return this.enabled && this.config.enabled && this.attendance.away;
   }
 
   onBlock(block: Block, state: CharacterState): void {

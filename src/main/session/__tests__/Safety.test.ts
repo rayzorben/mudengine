@@ -68,7 +68,9 @@ function build(
   state: CharacterState,
   assessment: HangUpAssessment = { clean: true, reasons: [], clearInMs: null },
   danger: { fight?: Survival | null; percent?: number | null } = {},
-  run: { unanswered: boolean; landings?: number } = { unanswered: false }
+  run: { unanswered: boolean; landings?: number } = { unanswered: false },
+  attendance: { away: boolean } = { away: true },
+  recoverGear: SafetyParts['recoverGear'] = { busy: false, deciding: () => false }
 ) {
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
@@ -100,7 +102,9 @@ function build(
     },
     client: { connected: true },
     publisher: { state: LINK, noteSafety: (decision) => void decisions.push(decision) },
-    grounded: { down: false }
+    grounded: { down: false },
+    attendance,
+    recoverGear
   };
   const safety = new Safety(parts, {
     config: () => config,
@@ -383,5 +387,124 @@ describe('hanging up for health only where something could hit you', () => {
     const { safety, hungUp } = build(config, fighting);
     safety.considerHangingUp(fighting);
     expect(hungUp).toEqual(['client']);
+  });
+});
+
+/*
+ * Todo 79: MegaMUD's HangupNotAfk off and HangupIfNaked. Low health waits
+ * while somebody is at the keyboard; naked after a death with nobody there,
+ * somewhere a hang-up would be charged for, hangs up with no setting.
+ */
+describe('hanging up by whether anybody is at the keyboard', () => {
+  const hurtBy = (occupants: RoomOccupant[]): CharacterState => {
+    const state = standing(occupants);
+    return { ...state, vitals: { ...state.vitals, hp: 20 } };
+  };
+  const config = automation({ enabled: true, penalties: false, belowHealth: 0.35 }, []);
+  const unclean: HangUpAssessment = {
+    clean: false,
+    reasons: ['orc attacks on sight'],
+    clearInMs: null
+  };
+
+  it('holds low health while the player is at the keyboard, says so once, and goes once away', () => {
+    const attendance = { away: false };
+    const state = hurtBy([orc]);
+    const { safety, notices, hungUp } = build(config, state, undefined, {}, undefined, attendance);
+    safety.considerHangingUp(state);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    const why = t('session.safety.whyHealth', { percent: '20%' });
+    const refused = t('session.safety.hangUpAttended');
+    expect(notices).toEqual([t('session.safety.hangUpNotBut', { why, refused })]);
+    attendance.away = true;
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual(['client']);
+  });
+
+  const naked = (listedAt: number | null, occupants: RoomOccupant[] = [orc]): CharacterState => {
+    const state = standing(occupants);
+    return {
+      ...state,
+      // A death at 1000 holds the helm's slot (todo 82).
+      loadout: [{ slot: 'Head', item: 'padded helm', at: 1, locked: { at: 1000, played: 0 } }],
+      inventory: { ...state.inventory, listedAt, items: [] }
+    };
+  };
+  const off = automation({ enabled: false, penalties: false }, []);
+
+  it('hangs up naked after a death with nobody here, beside a danger, Auto-Hangup off', () => {
+    const state = naked(2000);
+    const { safety, decisions, hungUp } = build(off, state, unclean);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual(['client']);
+    expect(decisions.at(-1)).toMatchObject({
+      acted: true,
+      because: t('session.safety.whyNaked')
+    });
+  });
+
+  it('does not hang up naked while the player is at the keyboard', () => {
+    const state = naked(2000);
+    const { safety, hungUp } = build(off, state, unclean, {}, undefined, { away: false });
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+  });
+
+  it('does not call an unread pack naked, nor hang up where nothing is a danger', () => {
+    const unread = naked(500);
+    const first = build(off, unread, unclean);
+    first.safety.considerHangingUp(unread);
+    expect(first.hungUp).toEqual([]);
+    const empty = naked(2000, []);
+    const second = build(off, empty);
+    second.safety.considerHangingUp(empty);
+    expect(second.hungUp).toEqual([]);
+  });
+
+  it('is refused like any hang-up where the realm charges for it', () => {
+    const state = naked(2000);
+    const { safety, hungUp, decisions } = build(
+      automation({ enabled: false, penalties: true }, []),
+      state,
+      unclean
+    );
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    expect(decisions.at(-1)).toMatchObject({ acted: false, refused: 'orc attacks on sight' });
+  });
+
+  it('pays a charge the realm menu stated while health covers it, and refuses it once it does not', () => {
+    const charged = automation({ enabled: false, penalties: false }, []);
+    const whole = naked(2000);
+    const paid = build(charged, whole, unclean, { percent: 20 });
+    paid.safety.considerHangingUp(whole);
+    expect(paid.hungUp).toEqual(['client']);
+    expect(paid.decisions.at(-1)).toMatchObject({ acted: true });
+    const low = { ...whole, vitals: { ...whole.vitals, hp: 25 } };
+    const refused = build(charged, low, unclean, { percent: 20 });
+    refused.safety.considerHangingUp(low);
+    expect(refused.hungUp).toEqual([]);
+    expect(refused.decisions.at(-1)).toMatchObject({ acted: false });
+  });
+
+  it('leaves the walk back for the kit to finish', () => {
+    const state = naked(2000);
+    for (const recoverGear of [
+      { busy: true, deciding: () => false },
+      { busy: false, deciding: () => true }
+    ]) {
+      const { safety, hungUp } = build(
+        off,
+        state,
+        unclean,
+        {},
+        undefined,
+        { away: true },
+        recoverGear
+      );
+      safety.considerHangingUp(state);
+      expect(hungUp).toEqual([]);
+    }
   });
 });

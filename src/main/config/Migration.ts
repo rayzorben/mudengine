@@ -3370,7 +3370,7 @@ function alertSettingsBecameRows(home: Home, note: (message: string) => void): v
        * `AlertRule` no longer accepts. `alertRowsBecameEvents` converts them
        * in the same run -- see `HAPPENING_CHANNEL`.
        */
-      type WrittenRow = Omit<AlertRule, 'on' | 'quietSeconds'> & { on: string };
+      type WrittenRow = Omit<AlertRule, 'on' | 'quietSeconds' | 'onlyAway'> & { on: string };
       const rows: WrittenRow[] = [];
       const row = (over: Partial<WrittenRow> & Pick<WrittenRow, 'on'>): WrittenRow => ({
         enabled: true,

@@ -16,6 +16,8 @@ import {
   type HangUpAssessment,
   type HangUpWatch
 } from '../automation/HangUp';
+import type { Attendance } from '../automation/Attendance';
+import type { GearRecovery } from '../automation/GearRecovery';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
 import type { TelnetClient } from '../net/TelnetClient';
@@ -27,6 +29,7 @@ import type { Travel } from './Travel';
 import { healthFraction, percentText } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import { nakedAfterDeath } from '../../shared/gearLocks';
 import { stanceHere } from '../../shared/mobRules';
 import type { ConnectionEnd } from '../../shared/types';
 
@@ -41,6 +44,10 @@ export interface SafetyParts {
   readonly publisher: Pick<Publisher, 'state' | 'noteSafety'>;
   /** The ground: a player's blows reach this ahead of the session's gate. */
   readonly grounded: Pick<Grounded, 'down'>;
+  /** Whether anybody is at the keyboard (todo 79). */
+  readonly attendance: Pick<Attendance, 'away'>;
+  /** The walk back for the kit, which the naked hang-up leaves to finish (todo 79). */
+  readonly recoverGear: Pick<GearRecovery, 'busy' | 'deciding'>;
 }
 
 /** What the session that built this answers for it. */
@@ -61,6 +68,8 @@ export class Safety implements SessionModule {
   private readonly client: SafetyParts['client'];
   private readonly publisher: SafetyParts['publisher'];
   private readonly grounded: SafetyParts['grounded'];
+  private readonly attendance: SafetyParts['attendance'];
+  private readonly recoverGear: SafetyParts['recoverGear'];
   /**
    * Gang alerts already sent, by attacker, so a fight producing a blow line
    * per round is one broadcast per attacker per five-minute window — the
@@ -89,6 +98,8 @@ export class Safety implements SessionModule {
    * is said once a stretch and again when the room is first seen (todo 01).
    */
   private nothingHereSaid: string | null = null;
+  /** Whether low health held for the player at the keyboard has been said this stretch (todo 79). */
+  private attendedSaid = false;
 
   constructor(
     parts: SafetyParts,
@@ -102,6 +113,8 @@ export class Safety implements SessionModule {
     this.client = parts.client;
     this.publisher = parts.publisher;
     this.grounded = parts.grounded;
+    this.attendance = parts.attendance;
+    this.recoverGear = parts.recoverGear;
   }
 
   private get automationConfig(): AutomationConfig {
@@ -116,6 +129,7 @@ export class Safety implements SessionModule {
     this.runWaited = null;
     this.gotOut = null;
     this.nothingHereSaid = null;
+    this.attendedSaid = false;
   }
 
   /**
@@ -241,6 +255,21 @@ export class Safety implements SessionModule {
       this.automationConfig.combat.mobRules,
       'hangup'
     );
+    /*
+     * Naked after a death with nobody at the keyboard, somewhere a hang-up
+     * would be charged for a monster or a player: MegaMUD's `HangupNaked`,
+     * with no setting, Auto-Hangup off included (todo 79). In a charged realm
+     * the room that makes it dangerous is the room that makes it charged, so
+     * it goes there only while health covers the charge the realm menu
+     * stated (`nakedPaysTheCharge`); a naked character has no items to lose.
+     */
+    if (this.nakedAndAway(state)) {
+      const why = t('session.safety.whyNaked');
+      const paid = this.nakedPaysTheCharge(state, why);
+      if (paid === null) this.hangUpOrRefuse(state, why);
+      else this.hangUpNow(why, paid);
+      return;
+    }
     if (!safety.enabled) {
       this.sayStalkerRefused(stalker);
       return;
@@ -252,6 +281,7 @@ export class Safety implements SessionModule {
     if (!hurt && !company && stalker === null) {
       this.gotOut = null;
       this.nothingHereSaid = null;
+      this.attendedSaid = false;
       return;
     }
 
@@ -263,9 +293,16 @@ export class Safety implements SessionModule {
     // Health alone is a reason only beside a monster or in a fight (todo 01).
     if (hurt && !company && stalker === null && this.nothingHere(state, why)) return;
     this.nothingHereSaid = null;
+    // MegaMUD's HangupNotAfk off, for health alone: company and a `hangup` row still go (todo 79).
+    if (hurt && !company && stalker === null && this.playerIsHere(why)) return;
     if (this.waitForTheRun(why)) return;
     // Health alone: a player or a `hangup` row is a reason the run did not answer.
     if (!company && stalker === null && this.theRunGotOut(state, why)) return;
+    this.hangUpOrRefuse(state, why);
+  }
+
+  /** Hang up for `why`, or say once why a charge refuses it here. */
+  private hangUpOrRefuse(state: CharacterState, why: string): void {
     const refusal = this.refusedHere(state);
     if (refusal !== null) {
       // Once per reason-set, not once per status line: at low health this runs
@@ -287,20 +324,77 @@ export class Safety implements SessionModule {
       return;
     }
 
-    this.lastHangUpRefusal = null;
     const menu = this.realmMenu.penalty;
-    this.session.notice(
+    this.hangUpNow(
+      why,
       this.penalised
         ? t('session.safety.hangingUpClean', { why })
         : menu !== null
           ? t('session.safety.hangingUpUncharged', { why, realm: menu.realm })
           : t('session.safety.hangingUpUnchargedSetting', { why })
     );
+  }
+
+  /** Hang up for `why`, saying `notice`. */
+  private hangUpNow(why: string, notice: string): void {
+    this.lastHangUpRefusal = null;
+    this.session.notice(notice);
     this.publisher.noteSafety({ at: Date.now(), action: 'hang up', because: why, acted: true });
     // Through the same path the player's own disconnect takes, so the phase,
     // the walker, the queue and the roster are all torn down identically —
     // said as the *client's* doing, because nobody pressed anything.
     this.session.disconnect('client');
+  }
+
+  /**
+   * Naked after a death, nobody at the keyboard, and something here a
+   * hang-up would be charged for (`HangUpWatch.clean`: a fight, a monster
+   * that attacks on sight or one it cannot place, a player's blow inside
+   * five minutes). An unread pack is not naked.
+   */
+  private nakedAndAway(state: CharacterState): boolean {
+    return (
+      this.attendance.away &&
+      nakedAfterDeath(state) === true &&
+      // The walk back for the kit goes into the room that killed it (todo 79).
+      !this.recoverGear.busy &&
+      !this.recoverGear.deciding(state) &&
+      !this.hangUp.clean(state, Date.now())
+    );
+  }
+
+  /**
+   * The notice for a naked hang-up in a charged realm whose menu stated the
+   * charge, while health stays `nakedHangMargin` of maximum above it; null
+   * where the charge refuses it as any other hang-up. A setting saying the
+   * realm charges names no figure, so it always refuses.
+   */
+  private nakedPaysTheCharge(state: CharacterState, why: string): string | null {
+    const menu = this.realmMenu.penalty;
+    if (menu === null || menu.percent <= 0) return null;
+    const fraction = healthFraction(state);
+    const margin = tuning().session.nakedHangMargin;
+    if (fraction === null || fraction - menu.percent / 100 < margin) return null;
+    return t('session.safety.hangingUpNakedCharged', {
+      why,
+      realm: menu.realm,
+      percent: menu.percent,
+      health: percentText(fraction)
+    });
+  }
+
+  /**
+   * Whether low health waits because somebody is at the keyboard, which
+   * MegaMUD's `HangupNotAfk` off reads as playing by hand. Said once a
+   * stretch; the next line after the away time hangs up.
+   */
+  private playerIsHere(why: string): boolean {
+    if (this.attendance.away) return false;
+    if (!this.attendedSaid) {
+      this.attendedSaid = true;
+      this.sayNotHangingUp(why, t('session.safety.hangUpAttended'));
+    }
+    return true;
   }
 
   /**
@@ -373,6 +467,8 @@ export class Safety implements SessionModule {
     const out = this.gotOut;
     if (out === null || !caughtAfter(out.hp, state)) return false;
     if (!this.mayAct(state) || !this.automationConfig.safety.hangUp.enabled) return false;
+    // Low health waits for a player at the keyboard, so the run is not held for it (todo 79).
+    if (!this.attendance.away) return false;
     const fraction = healthFraction(state);
     if (fraction === null || !this.belowTheLine(fraction)) return false;
     return this.refusedHere(state) === null;

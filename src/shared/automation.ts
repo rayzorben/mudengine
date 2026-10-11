@@ -192,10 +192,13 @@ export interface AutomationSnapshot {
   engagements: EngageDecision[];
   /** Each installed extension's card view, by name (todo 84). */
   extensions: Record<string, unknown>;
+  /** Nobody has pressed a key for `automation.afk.afterMinutes` (`Attendance`, todo 79). */
+  away: boolean;
 }
 
 export const EMPTY_AUTOMATION: AutomationSnapshot = {
   enabled: false,
+  away: false,
   queue: EMPTY_QUEUE,
   sent: [],
   firings: [],

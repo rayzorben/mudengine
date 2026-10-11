@@ -1541,6 +1541,11 @@ tuning:
     # logs back in away from what it ran from.
     hangUpAfterRunMs: 3000
 
+    # How much maximum health, as a share, a naked character away from the
+    # keyboard keeps above the realm menu's hang-up charge before it hangs up
+    # in a charged realm anyway.
+    nakedHangMargin: 0.1
+
     # How long a `safe-haven` retreat waits for the escape move to land.
     retreatSettleMs: 5000
 

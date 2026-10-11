@@ -1356,6 +1356,7 @@ connection:
         alert: true,
         notify: true,
         whileFocused: true,
+        onlyAway: true,
         side: 'below',
         value: 60,
         percent: true,

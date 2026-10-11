@@ -321,7 +321,9 @@ ui:
     # automating a character is what lets you go and do something else; clicking
     # one brings the window forward and shows that character. `whileFocused`
     # raises it while this window is in front as well, and means nothing without
-    # `notify`, so it is stored off there.
+    # `notify`, so it is stored off there. `onlyAway: true` raises it only while
+    # you are AFK (nothing typed for `automation.afk.afterMinutes`), MegaMUD's
+    # Play Alert Only When AFK; it too means nothing without `notify`.
     #
     # Two switches under `desktop:` decided both of those for everything until
     # 2026-09-13. Every question they answered is one of the two keys above, and

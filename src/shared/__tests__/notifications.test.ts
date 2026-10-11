@@ -9,6 +9,7 @@ import {
   linkNotices,
   noticeFor,
   partyNotices,
+  heldTillAway,
   raisable,
   raisableWhileFocused,
   roomNotices,
@@ -147,6 +148,7 @@ describe('what is worth saying outside the window', () => {
     alert: true,
     notify: false,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 0,
     percent: true,
@@ -622,6 +624,7 @@ describe('the alert rules', () => {
     alert: true,
     notify: false,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 0,
     percent: true,
@@ -729,6 +732,21 @@ describe('the alert rules', () => {
       raisableWhileFocused(notice, [rule({ on: 'attacked', notify: false, whileFocused: true })])
     ).toBe(false);
   });
+
+  // Todo 79: MegaMUD's Play Alert Only When AFK.
+  it('lets a row hold its notification while somebody is at the keyboard', () => {
+    const notice = said({
+      channel: 'combat',
+      watch: 'attacked',
+      event: 'attacked',
+      desktop: 'attacked'
+    });
+    const rows = [rule({ on: 'attacked', notify: true, onlyAway: true })];
+    expect(heldTillAway(notice, rows, false)).toBe(true);
+    expect(heldTillAway(notice, rows, true)).toBe(false);
+    expect(heldTillAway(notice, [rule({ on: 'attacked', notify: true })], false)).toBe(false);
+    expect(heldTillAway(notice, [], false)).toBe(false);
+  });
 });
 
 /*
@@ -745,6 +763,7 @@ describe('a figure the player chose', () => {
     alert: true,
     notify: false,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 0,
     percent: true,
@@ -823,6 +842,7 @@ describe('a name the player is waiting for', () => {
     alert: true,
     notify: false,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 0,
     percent: true,
@@ -969,6 +989,7 @@ describe('the quiet time after a row fires', () => {
     alert: true,
     notify: false,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 0,
     percent: false,
