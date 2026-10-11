@@ -386,6 +386,12 @@ export function abilityValues(
   return (pairs ?? []).filter(([which]) => which === id).map(([, value]) => value);
 }
 
+/** `ShockShield`: the high end of what a damage shield does back, per landed blow (`damageShield.ts`). */
+export const SHOCK_SHIELD_ABILITY = 72;
+
+/** `ShockMsg`: the `Messages` row a damage shield prints; line 2 is the attacker's. */
+export const SHOCK_MESSAGE_ABILITY = 137;
+
 /**
  * `DescMsg` — the `Messages` row a spell's start, stop and `st` sentences come
  * from, the numbering `spell-messages.csv` keys as `desc_msg_id` (todo 824).

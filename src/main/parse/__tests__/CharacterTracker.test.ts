@@ -2915,6 +2915,17 @@ describe('the fight this character is in', () => {
     expect(tracker.current.tally.taken).toMatchObject({ hits: 2, damage: 22 });
   });
 
+  /* todo 56: `You are shocked for 3 damage!` was this character's blow on a monster named `shocked`. */
+  it('counts a shield’s or hit spell’s `You are … for N damage!` as damage taken, keeping the target', () => {
+    const tracker = fighting(
+      'You slash the orc rogue for 12 damage!',
+      'You are shocked for 3 damage!'
+    );
+    expect(tracker.current.combat.target).toBe('orc rogue');
+    expect(tracker.current.tally.taken).toMatchObject({ hits: 1, damage: 3 });
+    expect(tracker.current.tally.dealt.melee).toMatchObject({ hits: 1, damage: 12 });
+  });
+
   it('recognises a blow from a player, who has no article', () => {
     // Named by grammar alone, so the room has to vouch for him: `Acid burns
     // you for 1 damage!` has the same shape and names nobody.

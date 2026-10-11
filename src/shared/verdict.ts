@@ -6,7 +6,10 @@ import {
   type MenaceWeights,
   weighRoom
 } from './menace';
+import { shieldPerBlow, shieldsOf } from './damageShield';
 import {
+  blowsLanded,
+  MAX_SWINGS,
   PLAIN_ATTACK,
   swing,
   type ProwessAttack,
@@ -85,7 +88,8 @@ export interface Verdict {
    */
   rounds: Reckoning<number> | null;
   /**
-   * Health this fight is expected to cost: `menace.perRound × rounds`.
+   * Health this fight is expected to cost: `menace.perRound × rounds`, and
+   * its damage shield for each blow the character lands in those rounds.
    *
    * **This is the answer.** Not the monster's damage, not its health — what
    * taking it on takes off this character, which is the one number a person
@@ -128,10 +132,14 @@ export function verdictFor(
     how
   );
   const rounds = attack?.rounds ?? null;
+  // Its damage shield, set off by each blow that lands (`damageShield.ts`).
+  const landed = attack === null ? null : blowsLanded(attack);
+  const shield = shieldPerBlow(shieldsOf(subject.abilities));
+  const back = shield === 0 ? 0 : (landed ?? MAX_SWINGS) * shield;
   const cost =
     menace === null || rounds === null
       ? null
-      : { value: menace.perRound * rounds.value, from: 'bound' as const };
+      : { value: (menace.perRound + back) * rounds.value, from: 'bound' as const };
   return { menace, rounds, cost };
 }
 

@@ -290,9 +290,21 @@ export class FightTracker {
   justStruck(name: string, at: number, allowance: number): boolean {
     const landed = this.landed;
     if (landed === null || landed.used >= allowance) return false;
-    if (landed.key !== mobKey(name)) return false;
-    const window = tuning().parse.procWindowMs;
-    return at >= landed.at && at - landed.at <= window;
+    return landed.key === mobKey(name) && this.inWindow(landed.at, at);
+  }
+
+  /**
+   * The monster this character's own last named blow landed on, inside the
+   * proc window; null for none. The round half of reading a damage shield
+   * (`shield.ts`), which the server writes inside `Hit`, before any proc.
+   */
+  struckJustNow(at: number): string | null {
+    const landed = this.landed;
+    return landed !== null && this.inWindow(landed.at, at) ? landed.key : null;
+  }
+
+  private inWindow(from: number, at: number): boolean {
+    return at >= from && at - from <= tuning().parse.procWindowMs;
   }
 
   /** An attack went out at `at`, sent as `command`, naming `aimed` or (a bare verb) nothing. */

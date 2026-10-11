@@ -13,17 +13,19 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import { itemHitProcs } from '../../shared/items';
 import type { FightTracker } from './combat';
+import { readsAsShield } from './shield';
 
 /**
  * A block that may sit between this character's blow and the proc it fired
  * without breaking the two apart.
  *
- * Exactly two things do, and both are the terminal rather than the realm: the
+ * Two things do here, and both are the terminal rather than the realm: the
  * status line the server repaints in place after every write, and the blank
  * lines it pads with. Measured over all 581 procs in the recorded sessions of
- * 2026-09-06 — nothing else has ever appeared in that gap, and anything else
- * appearing there is another actor's line interleaved. See
- * `FightTracker.landed`.
+ * 2026-09-06: nothing else appeared in that gap, and anything else there is
+ * another actor's line interleaved. See `FightTracker.landed`. The third, the
+ * struck monster's damage shield, is in `keepsProcBinding` below and rests on
+ * the server's source only (todo 56).
  *
  * `unknown` is admitted **only when it carries no text**. An unclassified line
  * with words in it is somebody doing something — `Vulcan makes a complex
@@ -38,6 +40,20 @@ import type { FightTracker } from './combat';
 export function isProcHousekeeping(block: Block): boolean {
   if (block.type === 'status-line') return true;
   return block.type === 'unknown' && block.text.trim().length === 0;
+}
+
+/**
+ * Whether a block that is not a proc leaves the binding in place: the
+ * housekeeping above, or the struck monster's damage shield, which the server
+ * writes between the blow and its hit spell (`shield.ts`, todo 56). No capture
+ * shows a shield firing yet; the order is `PlayerAttackType.cs:269`, `:288`.
+ */
+export function keepsProcBinding(
+  block: Block,
+  state: CharacterState,
+  fight: Pick<FightTracker, 'struckJustNow'>
+): boolean {
+  return isProcHousekeeping(block) || readsAsShield(block, state, fight) !== null;
 }
 
 /**
