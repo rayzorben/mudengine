@@ -1549,13 +1549,14 @@ describe('what a counter charges, and which vault pays for it', () => {
       {
         items: [
           { id: 12, n: 'waterskin', price: 25, cur: 1 },
-          { id: 13, n: 'torch' },
-          { id: 14, n: 'short-spear', price: 2, cur: 2 }
+          { id: 13, n: 'torch', price: 0 },
+          { id: 14, n: 'short-spear', price: 2, cur: 2 },
+          { id: 15, n: 'rope' }
         ],
         shops: [
           { id: 1, n: 'Bank of Godfrey', items: [], t: 7 },
           { id: 2, n: 'Silvermere Bank', items: [], t: 7 },
-          { id: 3, n: 'General Store', items: [12, 13, 14], markup: 100 }
+          { id: 3, n: 'General Store', items: [12, 13, 14, 15], markup: 100 }
         ]
       },
       version
@@ -1573,8 +1574,11 @@ describe('what a counter charges, and which vault pays for it', () => {
     const world = town();
     expect(world.priceAt(12, 3)).toBe(500);
     expect(world.priceAt(14, 3)).toBe(400);
-    // Nothing stated is free, as the listing prints it.
+    // A price of 0 is free, as the listing prints it; no price stated is unknown (format 64).
     expect(world.priceAt(13, 3)).toBe(0);
+    expect(world.item(13)?.price).toBe(0);
+    expect(world.priceAt(15, 3)).toBeNull();
+    expect(world.item(15)?.price).toBeUndefined();
     expect(world.priceAt(99, 3)).toBeNull();
   });
 
