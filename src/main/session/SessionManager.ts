@@ -753,7 +753,7 @@ export class SessionManager {
           each.onWalkEnded(arrived, reason, this.tracker.current);
       },
       stepping: (command, direction, to, landing) => {
-        this.remotes.stepping(command, direction, to, this.tracker.current);
+        this.remotes.stepping(command, direction, to, this.tracker.current, landing);
         if (landing !== undefined && direction !== 'portal') {
           // An exit whose cast moves the character answers with two room blocks, the exit
           // table's and the spell's: both are this command's (`Expectations.hintCast`).

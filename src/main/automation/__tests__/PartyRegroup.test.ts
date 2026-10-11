@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { t } from '../../app/i18n';
 
 const PAR = DEFAULT_CONFIG.automation.onPartyChange;
 const TUNING = DEFAULT_INTERNAL.tuning;
@@ -101,6 +102,61 @@ describe('leading the party through a portal', () => {
     expect(it.regrouping(far)).toBe(true);
     expect(it.regrouping(state('3/25', ['Soul']))).toBe(false);
     it.dispose();
+  });
+
+  /* Todo 67: a compass exit whose cast lands in one room takes the party over and out of it. */
+  it('regroups behind an exit whose spell lands in one room, with no say', () => {
+    const hall = { spell: 1257, name: 'marble room', map: 17, low: 3042, high: 3042 };
+    const it = regroup();
+    it.stepping('e', 'e', '17/3042', state('17/3082', ['Soul']), hall);
+    drain();
+    expect(it.regrouping(state('17/3042', [], []))).toBe(true);
+    // The exit table's room comes first, read twice, and the cast moves the party on from it.
+    it.onCharacter(state('17/3043', ['Soul']));
+    it.onCharacter(state('17/3043', ['Soul']));
+    expect(it.regrouping(state('17/3043', ['Soul']))).toBe(true);
+    it.onCharacter(state('17/3042', [], ['Soul']));
+    it.onBlock(listing);
+    it.onCharacter(state('17/3042', [], ['Soul']));
+    drain();
+    expect(sent).toEqual([PAR, 'invite Soul']);
+    it.onCharacter(state('17/3042', ['Soul']));
+    expect(it.regrouping(state('17/3042', ['Soul']))).toBe(false);
+  });
+
+  it('stops waiting when such an exit ends somewhere past the one room it passes through', () => {
+    const hall = { spell: 1257, name: 'marble room', map: 17, low: 3042, high: 3042 };
+    const it = regroup();
+    it.stepping('e', 'e', '17/3042', state('17/3082', ['Soul']), hall);
+    it.onCharacter(state('17/3043', ['Soul']));
+    expect(it.regrouping(state('17/3043', ['Soul']))).toBe(true);
+    it.onCharacter(state('17/3044', ['Soul']));
+    expect(it.regrouping(state('17/3044', ['Soul']))).toBe(false);
+  });
+
+  it('regroups behind such an exit with the @party say switched off', () => {
+    const hall = { spell: 1257, name: 'marble room', map: 17, low: 3042, high: 3042 };
+    const it = regroup({ relayPortals: false });
+    it.stepping('e', 'e', '17/3042', state('17/3082', ['Soul']), hall);
+    expect(it.regrouping(state('17/3042', [], []))).toBe(true);
+    it.dispose();
+  });
+
+  it('holds nothing for a draw, where each member lands somewhere of their own, and says so once', () => {
+    const draw = { spell: 599, name: 'asylum', map: 9, low: 1250, high: 1273 };
+    const notices: string[] = [];
+    const it = new PartyRegroup(config(), queue, { notice: (message) => notices.push(message) });
+    it.stepping('w', 'w', '9/1281', state('9/1223', ['Soul']), draw);
+    // The same step sent again after a fight recalled it.
+    it.stepping('w', 'w', '9/1281', state('9/1223', ['Soul']), draw);
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([t('automation.party.apart', { members: 'Soul' })]);
+    expect(it.regrouping(state('9/1260', [], []))).toBe(false);
+    // Back at the exit on the next lap, it is said again.
+    it.onCharacter(state('9/1260', [], []));
+    it.stepping('w', 'w', '9/1281', state('9/1223', ['Soul']), draw);
+    expect(notices).toHaveLength(2);
   });
 
   it('says nothing following, alone, switched off, or with nobody here to hear it', () => {

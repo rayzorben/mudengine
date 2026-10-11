@@ -2315,9 +2315,10 @@ export interface PartyConfig {
    */
   relayPortals: boolean;
   /**
-   * Leading, after going through one, send `par`, invite again a member standing
-   * here who is out of the party, and hold the walk up to this many minutes
-   * for everyone to be here and in it. 0 invites and does not wait.
+   * Leading, after going through one, or through an exit whose spell lands the
+   * party in one room and out of the party (todo 67), send `par`, invite again
+   * a member standing here who is out of it, and hold the walk up to this many
+   * minutes for everyone to be here and in it. 0 invites and does not wait.
    */
   regroupMinutes: number;
   /** Following, pick or bash a door the leader fails to bash (`LeaderDoors`, todo 03). */

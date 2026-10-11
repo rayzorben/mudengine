@@ -120,7 +120,7 @@ import { BarrierRemotes } from './BarrierRemotes';
 import { jobCommand, type BarrierJob, type HandAnswer } from '../../shared/barrierHands';
 import { SheetReports } from './SheetReports';
 import { FollowerPacing } from './FollowerPacing';
-import type { Direction, RoomId } from '../../shared/world';
+import type { Direction, Landing, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
 
 /**
@@ -464,9 +464,10 @@ export class Remotes implements SessionModule {
     command: string,
     direction: Direction | 'portal',
     to: RoomId,
-    state: CharacterState
+    state: CharacterState,
+    landing?: Landing
   ): void {
-    this.regroup.stepping(command, direction, to, state);
+    this.regroup.stepping(command, direction, to, state, landing);
   }
 
   /** Whether the walk stands still for the party to rejoin (`Holds.holdForParty`). */
