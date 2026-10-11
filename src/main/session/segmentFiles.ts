@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 const name = (segment: number): string => String(segment).padStart(4, '0');
 
@@ -53,4 +54,15 @@ function numbersIn(names: readonly string[], ext: string): number[] {
     .map((entry) => numberOf(entry, ext))
     .filter((segment): segment is number => segment !== undefined)
     .sort((a, b) => a - b);
+}
+
+/**
+ * Appends one gzip member of JSON lines to `file`, creating it and its
+ * directory: the fight log's segments and the harm record beside them.
+ * Members concatenate, so a crash costs the last append and not the file.
+ */
+export function appendJsonLines(file: string, rows: readonly unknown[]): void {
+  const lines = rows.map((row) => `${JSON.stringify(row)}\n`).join('');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, zlib.gzipSync(Buffer.from(lines, 'utf8')));
 }

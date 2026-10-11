@@ -26,6 +26,7 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
+import type { HarmSink } from '../../shared/harm';
 import { roomAddress, unrouted } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { GearReads } from './gearReads';
@@ -62,6 +63,8 @@ export interface ExtensionWiring {
   >;
   world(): (ExtensionWorld & RarityWorld) | undefined;
   odds: Pick<OddsBook, 'lair' | 'lairsLeft' | 'mob' | 'mobAs'>;
+  /** What each monster did to the character (todo 26); null where nothing is kept. */
+  harm: Pick<HarmSink, 'taken'>;
   blessings: Pick<Blessings, 'entries'>;
   hunt: Pick<AutoHunt, 'steer' | 'hunting' | 'refusal' | 'heading' | 'waiting'>;
   supplies: Pick<Supplies, 'fetch' | 'current'>;
@@ -157,6 +160,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         const state = as ?? tracker.current;
         return world === undefined ? { state, learned: [] } : learning(state, spells, world);
       },
+      harmTaken: (since) => wiring.harm.taken(since),
       rarity: (item) => {
         const world = wiring.world();
         return world === undefined ? null : rarityBook(world).of(item);

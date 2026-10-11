@@ -22,6 +22,7 @@
  * are the same injected interfaces the tracker was given.
  */
 import {
+  fightIsRunning,
   NO_COMBAT,
   type CharacterState,
   type Combat,
@@ -30,12 +31,14 @@ import {
   type TargetHealth
 } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
-import type { FightRecord, FightSink } from '../../shared/fights';
+import { wornGear, type FightRecord, type FightSink } from '../../shared/fights';
+import type { HarmSink } from '../../shared/harm';
 import type { MobLore } from '../../shared/lore';
 import { mobKey, nameAnswersTo, roomAddress, roomId, type RoomId } from '../../shared/world';
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
 import { leavesRoom } from './departs';
+import { harmOf, HarmLedger } from './harm';
 import { LeftOff } from './leftOff';
 import { OwedAttacks } from './owed';
 
@@ -181,6 +184,8 @@ function resolveAgainstRoom(s: CharacterState, typed: string): string {
 export interface FightSources {
   lore: MobLore;
   fights: FightSink;
+  /** What each monster did to the character, and the prediction at its first line (todo 26). */
+  harm: HarmSink;
   /**
    * Puts a name into the room's occupant list, classified against the realm
    * and the roster — the room's (`RoomTracker`), because classification asks the realm's
@@ -269,7 +274,12 @@ export class FightTracker {
    */
   private landed: { key: string; at: number; used: number } | null = null;
 
-  constructor(private readonly sources: FightSources) {}
+  /** What each monster has done to this character in the fight running (todo 26). */
+  private readonly harm: HarmLedger;
+
+  constructor(private readonly sources: FightSources) {
+    this.harm = new HarmLedger(sources.harm);
+  }
 
   /**
    * Whether this character's own last named blow landed on `name` inside the
@@ -312,9 +322,23 @@ export class FightTracker {
     this.owed.sent(command, aimed, at);
   }
 
-  /** Every block, for the echo and the prompt that settle an owed attack (`OwedAttacks.heard`). */
-  heard(block: Pick<Block, 'type' | 'text'>): void {
+  /**
+   * Every block, for the echo and the prompt that settle an owed attack
+   * (`OwedAttacks.heard`), and the damage that names nobody (a hit spell's
+   * or a damage shield's `You are shocked for 3 damage!`) on a character
+   * in a fight, which goes in the fight's unnamed harm record (todo 26). A
+   * fight the state no longer shows (walked away from, its monster killed by
+   * another, no `*Combat Off*` printed) settles what each monster did then.
+   */
+  heard(block: Pick<Block, 'type' | 'text' | 'groups' | 'at'>, s: CharacterState): void {
     this.owed.heard(block);
+    if (!fightIsRunning(s)) {
+      this.harm.settle(block.at, 'off');
+      return;
+    }
+    if (block.type !== 'user-takes-damage') return;
+    const blow = harmOf(block);
+    if (blow !== null) this.harm.struck(s, block.at, undefined, blow);
   }
 
   /**
@@ -339,12 +363,23 @@ export class FightTracker {
   }
 
   /**
+   * The character died. What each monster did to it is written, ended by the
+   * death, before the fight is forgotten as `forget` forgets it: the fight
+   * that killed a character is the one its record most needs (todo 26).
+   */
+  diedHere(at: number): void {
+    this.harm.settle(at, 'died');
+    this.forget();
+  }
+
+  /**
    * A new session or a closed socket. Discarded rather than settled: a fight
    * that was in progress has an unknown outcome, and learning from it would
    * record a survival that never happened.
    */
   forget(): void {
     this.ledgers.clear();
+    this.harm.forget();
     this.owed.forget();
     this.leftOff.forget();
     this.landed = null;
@@ -479,8 +514,15 @@ export class FightTracker {
    * round before any damage: the attacker joins `attackers` and the room,
    * which is what raises the critical alert and starts the hang-up clock.
    */
-  blowOnMe(s: CharacterState, at: number, attacker: string | undefined): CharacterState {
+  blowOnMe(
+    s: CharacterState,
+    at: number,
+    attacker: string | undefined,
+    line?: Pick<Block, 'type' | 'text' | 'groups'>
+  ): CharacterState {
     this.fell = null;
+    const blow = line === undefined ? null : harmOf(line);
+    if (blow !== null) this.harm.struck(s, at, attacker, blow);
     if (!attacker) return { ...s, combat: struck(s.combat, at, {}) };
     const room = this.sources.withOccupant(s, attacker);
     return { ...s, room, combat: struck(s.combat, at, { by: attacker }) };
@@ -769,6 +811,7 @@ export class FightTracker {
       this.sources.lore.observe(ledger.key, { damage: total, killed, at });
     }
     this.ledgers.clear();
+    this.harm.settle(at, 'off');
     // The fight is over, so nothing after it is one of its procs. See
     // `landed`: the binding is to a blow inside a round, not to a name.
     this.landed = null;
@@ -825,11 +868,7 @@ export class FightTracker {
           : (s.online.find((entry) => entry.name.toLowerCase() === mine)?.alignment ?? null),
       encumbrance: s.inventory.encumbrance,
       encumbranceMax: s.inventory.encumbranceMax,
-      // Worn and wielded only: what is merely in the pack changes nothing about
-      // a fight except how much it weighs, and that is `encumbrance`.
-      gear: s.inventory.items
-        .filter((item) => item.equipped)
-        .map((item) => ({ name: item.name, slot: item.slot })),
+      gear: wornGear(s.inventory.items),
       room:
         s.room.map !== null && s.room.number !== null ? roomId(s.room.map, s.room.number) : null,
       roomName: s.room.name,

@@ -243,24 +243,38 @@ export function rollMobRound(random: Random, model: MobModel, state: MobState): 
  * this draw rolls it: a melee blow (its damage less resistance, and its hit
  * spell) at `mobSwingsPerRound`'s swings × chance × the hit roll, a spell slot
  * at swings × chance × the cast roll, a between-round cast at its marginal
- * chance. The one weighting `expectedHarm` and `expectedSummons` read.
+ * chance. `swings` is a melee slot's swings before the hit roll, 0 for the
+ * rest. The one weighting `expectedHarm`, `mobTerms` and `expectedSummons` read.
  */
 function roundEffects(
   model: MobModel
-): Array<{ weight: number; blow: number; effect: SpellEffect | null }> {
+): Array<{ swings: number; weight: number; blow: number; effect: SpellEffect | null }> {
   const swings = mobSwingsPerRound(model.slots);
   return [
     ...model.slots.map((slot) =>
       slot.kind === 'melee'
         ? {
+            swings: swings * slot.chance,
             weight: swings * slot.chance * slot.lands,
             blow: Math.max(0, (slot.min + slot.max) / 2 - model.resist),
             effect: slot.onHit
           }
-        : { weight: swings * slot.chance * slot.castChance, blow: 0, effect: slot.effect }
+        : {
+            swings: 0,
+            weight: swings * slot.chance * slot.castChance,
+            blow: 0,
+            effect: slot.effect
+          }
     ),
-    ...model.casts.map((cast) => ({ weight: cast.chance, blow: 0, effect: cast.effect }))
+    ...model.casts.map((cast) => ({ swings: 0, weight: cast.chance, blow: 0, effect: cast.effect }))
   ];
+}
+
+/** A spell's damage per attempt, the resistance taken off, a lasting wound counted once per tick. */
+function effectMean(effect: SpellEffect | null): number {
+  return effect === null
+    ? 0
+    : ((effect.low + effect.high) / 2) * (1 - effect.resist) * Math.max(1, effect.ticks);
 }
 
 /**
@@ -268,14 +282,54 @@ function roundEffects(
  * on, as this draw deals it, a lasting wound counted once per tick it runs.
  */
 export function expectedHarm(model: MobModel): number {
-  const mean = (effect: SpellEffect | null): number =>
-    effect === null
-      ? 0
-      : ((effect.low + effect.high) / 2) * (1 - effect.resist) * Math.max(1, effect.ticks);
   return roundEffects(model).reduce(
-    (sum, { weight, blow, effect }) => sum + weight * (blow + mean(effect)),
+    (sum, { weight, blow, effect }) => sum + weight * (blow + effectMean(effect)),
     0
   );
+}
+
+/**
+ * A round's harm split into the terms the model is made of, for setting
+ * beside what a fight's lines show (todo 26): the melee swings a round, the
+ * share that land, a landed blow's damage, the casts that land a round and a
+ * landed cast's damage (a hit spell counted as a cast, since the server
+ * prints it as a line of its own). `expectedHarm` is their whole. A term with nothing
+ * behind it (no melee slot, no cast) is null, not 0.
+ */
+export interface MobTerms {
+  swings: number;
+  lands: number | null;
+  perHit: number | null;
+  casts: number;
+  perCast: number | null;
+  harm: number;
+}
+
+export function mobTerms(model: MobModel): MobTerms {
+  let swings = 0;
+  let landed = 0;
+  let hitDamage = 0;
+  let casts = 0;
+  let castDamage = 0;
+  for (const { swings: tried, weight, blow, effect } of roundEffects(model)) {
+    swings += tried;
+    if (tried > 0) {
+      landed += weight;
+      hitDamage += weight * blow;
+    }
+    // A hit spell is a cast on the wire: its own line after the blow's.
+    if (effect === null || effect.high <= 0) continue;
+    casts += weight * (1 - effect.resist);
+    castDamage += weight * effectMean(effect);
+  }
+  return {
+    swings,
+    lands: swings > 0 ? landed / swings : null,
+    perHit: landed > 0 ? hitDamage / landed : null,
+    casts,
+    perCast: casts > 0 ? castDamage / casts : null,
+    harm: expectedHarm(model)
+  };
 }
 
 /**

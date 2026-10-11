@@ -39,6 +39,7 @@ import type { SpellLore } from '../../shared/spell-messages';
 import type { ShippedSentences } from '../../shared/sentences';
 import type { FightSimulator } from '../../shared/simulator';
 import type { FightSink } from '../../shared/fights';
+import type { HarmSink } from '../../shared/harm';
 import type { RealmMemory } from '../../shared/memory';
 import type { RealmFinds } from '../../shared/finds';
 import type { RealmShops } from '../../shared/shops';
@@ -172,6 +173,8 @@ export interface SessionHostOptions {
    * that fought it, and mixing two of them into one file makes both unusable.
    */
   fightsFor(id: SessionId): FightSink;
+  /** What each monster did to the character, beside its fights (todo 26); kept nowhere when absent. */
+  harmFor?(id: SessionId): HarmSink;
   /**
    * Where this character's conversation is written down, and read back from.
    *
@@ -584,6 +587,7 @@ export class SessionHost {
         lore: this.options.loreFor(id),
         memory: this.options.memoryFor(id),
         fights: this.options.fightsFor(id),
+        harm: this.options.harmFor?.(id),
         players: this.options.playersFor(id),
         spellLore: this.options.spellLoreFor?.(id),
         finds: this.options.findsFor?.(id),

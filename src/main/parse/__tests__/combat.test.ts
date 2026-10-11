@@ -4,6 +4,7 @@ import { FightTracker, playerDies } from '../combat';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { NO_LORE } from '../../../shared/lore';
 import type { FightRecord } from '../../../shared/fights';
+import { NO_HARM } from '../../../shared/harm';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 
 /*
@@ -42,6 +43,7 @@ function fight(occupants: RoomOccupant[] = []) {
   const tracker = new FightTracker({
     lore: NO_LORE,
     fights: { record: (record) => records.push(record) },
+    harm: NO_HARM,
     withOccupant: (s, name) =>
       s.room.occupants.some((who) => who.name === name)
         ? s.room
@@ -63,6 +65,7 @@ function healer(max: number, regen: number | null) {
       regenFor: () => regen
     },
     fights: { record: (record) => records.push(record) },
+    harm: NO_HARM,
     withOccupant: (s, name) =>
       s.room.occupants.some((who) => who.name === name)
         ? s.room

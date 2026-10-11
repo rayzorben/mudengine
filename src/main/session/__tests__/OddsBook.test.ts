@@ -94,7 +94,9 @@ function book(character: OddsBookParts['setup']['character'] = () => CHARACTER):
   const tracker = { current: inGame(10) };
   const world: OddsWorld = {
     mobNames: () => ['ogre'],
-    buildMobEntity: (name: string) => (name === 'ogre' ? ogre : undefined),
+    buildMobEntity: (name: string) =>
+      name === 'ogre' ? ogre : ({ name, source: 'wire', hp: null } as unknown as MobEntity),
+    mobAsPrinted: (name: string) => (name === 'ogre' ? { name: 'ogre' } : undefined),
     everyRoom: function* () {
       yield lairRoom;
     },
@@ -103,7 +105,7 @@ function book(character: OddsBookParts['setup']['character'] = () => CHARACTER):
   const parts: OddsBookParts = {
     tracker,
     world,
-    errands: { fitness: (state) => `level ${state.progress.level}` },
+    errands: { fitness: (state) => `level ${state.progress.level}`, realmSpeed: 1 },
     setup: {
       character,
       foes: (_state, _character, met) => ({
@@ -274,7 +276,7 @@ describe('the odds book', () => {
       {
         tracker,
         world,
-        errands: { fitness: () => 'fit' },
+        errands: { fitness: () => 'fit', realmSpeed: 1 },
         setup: {
           character: () => CHARACTER,
           foes: (_state, _character, foes) => {
@@ -325,7 +327,7 @@ describe('the odds book', () => {
       {
         tracker,
         world,
-        errands: { fitness: () => 'fit' },
+        errands: { fitness: () => 'fit', realmSpeed: 1 },
         setup: {
           character: () => CHARACTER,
           foes: (_state, _character, met) => ({
@@ -362,6 +364,37 @@ describe('the odds book', () => {
     expect(odds.mobAs('ogre', tracker.current, 'kic').kind).toBe('run');
     expect(odds.mobAs('ogre', tracker.current).kind).toBe('run');
     expect(asked).toEqual(['kic', undefined]);
+    odds.dispose();
+  });
+});
+
+describe('the prediction stamped on a fight at its opening (todo 26)', () => {
+  it('gives the terms and the round for a realm monster, asking for its fight', async () => {
+    const { odds, tracker } = book();
+    odds.refresh(tracker.current);
+    const predicted = odds.predict('ogre', tracker.current);
+    // One 1,000-energy melee slot: one swing a round.
+    expect(predicted).toMatchObject({ row: 'ogre', odds: { kind: 'pending' } });
+    expect(predicted?.terms?.swings).toBe(1);
+    expect(predicted?.roundMs).toBeGreaterThan(0);
+    await vi.waitFor(() => expect(odds.predict('ogre', tracker.current)?.odds.kind).toBe('run'));
+    odds.dispose();
+  });
+
+  it('names no row and weighs nothing for a monster only the wire has seen', () => {
+    const { odds, tracker } = book();
+    odds.refresh(tracker.current);
+    expect(odds.predict('glowing wisp', tracker.current)).toMatchObject({
+      row: null,
+      terms: null,
+      odds: { kind: 'unrun' }
+    });
+    odds.dispose();
+  });
+
+  it('predicts nothing without a character to predict against', () => {
+    const { odds, tracker } = book(() => null);
+    expect(odds.predict('ogre', tracker.current)).toBeNull();
     odds.dispose();
   });
 });

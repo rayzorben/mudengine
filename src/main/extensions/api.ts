@@ -26,6 +26,7 @@ import type { AutomationConfig, SupplyItem } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
+import type { HarmRecord } from '../../shared/harm';
 import type { HuntingAdvice, HuntOrder, HuntWait, SurveyAsk } from '../../shared/hunting';
 import type { ItemRarity } from '../../shared/rarity';
 import type { RunRisk } from '../../shared/runPass';
@@ -187,6 +188,15 @@ export interface ExtensionSessionHost {
    * and which of them matters is the extension's to say.
    */
   rarity(item: number): ItemRarity | null;
+  /**
+   * What each monster did to the character in the fights settled at or after
+   * `since` (epoch ms), oldest first, with the odds book's prediction stamped
+   * at each opening (todo 26). A death ends a fight, so the fight that killed
+   * the character is the last record and the next fight starts a new one.
+   * Only the session's last records are held. Null with `logging.fights` off,
+   * where nothing is kept.
+   */
+  harmTaken(since: number): readonly HarmRecord[] | null;
   /**
    * The player's last Search the area, once over: each room searched and
    * what its floors held as the walk went on. Null before one has ended.
