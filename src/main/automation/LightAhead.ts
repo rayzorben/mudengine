@@ -5,8 +5,9 @@
  * (`darkWay`, the realm's level against this character's sight) are weighed
  * against the inventory and the realm's lights (`planLight`); short of one,
  * the item trip buys it at the counter least out of the way and walks on, as
- * it fetches a key for a door. Every reason it is not bought is said, and the
- * walk goes on without. `AutoLight` lights what this buys. See
+ * it fetches a key for a door. Only rooms too dark to read are bought for; a
+ * dim one under `lightDimRooms` is said once, never shopped for. Every reason
+ * it is not bought is said, and the walk goes on without. See
  * `mudengine-automation` › *A light is bought before the dark*.
  */
 import { t } from '../app/i18n';
@@ -15,7 +16,14 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { carriedLights } from '../../shared/light';
-import { darkWay, lightsToCarry, planLight, type RealmLight } from '../../shared/lightPlan';
+import {
+  darkWay,
+  lightsToCarry,
+  planLight,
+  type DarkWay,
+  type LightAheadPlan,
+  type RealmLight
+} from '../../shared/lightPlan';
 import type { Loop } from '../../shared/loops';
 import { carriedCount } from '../../shared/supplies';
 import type { BuyingPlace, RoomId, Route, RouteStep } from '../../shared/world';
@@ -51,6 +59,9 @@ export interface LightFetch {
 const ACTION = 'buy light';
 
 export class LightAhead {
+  /** The last dim-rooms sentence said, so a lap after lap does not repeat it. */
+  private dimSaid: string | null = null;
+
   constructor(
     private readonly config: () => AutomationConfig,
     private readonly planner: LightPlanner,
@@ -104,18 +115,21 @@ export class LightAhead {
     const config = this.config();
     const movement = config.movement;
     if (!config.enabled || !movement.provideLight || !movement.buyLight) return null;
-    const way = darkWay(steps, state.sight?.vision ?? 0, movement.lightDimRooms);
-    if (way === null) return null;
+    const vision = state.sight?.vision ?? 0;
+    // A dimly lit room is described whole, so only rooms too dark to read are
+    // bought for. Buying for dim ones sent a character 1,816 steps for a
+    // 200-reach lamp when the 175 one it carried already read them.
+    const way = darkWay(steps, vision, false);
+    if (way === null) return this.noteDim(steps, vision, state);
     const dark = way.reaches.length;
     // Unread is not empty: the light may be in it, so nothing is bought on a guess.
     if (state.inventory.listedAt === null) {
       return this.refuse(t('automation.lightAhead.refusalUnlisted', { dark }));
     }
-    const sold = this.planner.lights();
-    const answer = planLight(way, carriedLights(state.inventory.items), sold);
+    const answer = planLight(way, carriedLights(state.inventory.items), this.planner.lights());
     switch (answer.kind) {
       case 'carried':
-        return null;
+        return this.noteDim(steps, vision, state);
       case 'none':
         return this.refuse(
           answer.reason === 'nothing sold'
@@ -150,16 +164,59 @@ export class LightAhead {
       count: carriedCount(state, light.name) + count,
       dark: true
     };
-    const said =
+    const said = this.buyingSentence(answer, way, light.name, count);
+    return { items: [item], said };
+  }
+
+  /** Why `item` ×`count` is bought: nothing usable carried, or what is carried falls short. */
+  private buyingSentence(
+    answer: Extract<LightAheadPlan, { kind: 'buy' }>,
+    way: DarkWay,
+    item: string,
+    count: number
+  ): string {
+    const dark = way.reaches.length;
+    const { brightest, unlit, want } = answer;
+    if (brightest === null) {
+      return unlit === 0
+        ? t('automation.lightAhead.buying', { dark, item, count })
+        : t('automation.lightAhead.buyingShort', { dark, item, count, unlit });
+    }
+    const short = {
+      dark,
+      carried: brightest.name,
+      reach: brightest.reach,
+      want,
+      item,
+      count
+    };
+    return unlit === 0
+      ? t('automation.lightAhead.buyingBrighter', short)
+      : t('automation.lightAhead.buyingBrighterShort', { ...short, unlit });
+  }
+
+  /**
+   * Under `lightDimRooms`, say once which rooms on the way stay dimly lit with
+   * what is carried and what would light them; nothing is bought for that.
+   */
+  private noteDim(steps: readonly RouteStep[], vision: number, state: CharacterState): null {
+    if (!this.config().movement.lightDimRooms || state.inventory.listedAt === null) return null;
+    const dim = darkWay(steps, vision, true);
+    if (dim === null) return null;
+    const answer = planLight(dim, carriedLights(state.inventory.items), this.planner.lights());
+    if (answer.kind !== 'buy') return null;
+    const items = answer.lights.map((light) => light.name).join(', ');
+    const sentence =
       answer.unlit === 0
-        ? t('automation.lightAhead.buying', { dark, item: light.name, count })
-        : t('automation.lightAhead.buyingShort', {
-            dark,
-            item: light.name,
-            count,
+        ? t('automation.lightAhead.dimOnly', { dim: dim.reaches.length, items })
+        : t('automation.lightAhead.dimOnlyShort', {
+            dim: dim.reaches.length,
+            items,
             unlit: answer.unlit
           });
-    return { items: [item], said };
+    if (sentence === this.dimSaid) return null;
+    this.dimSaid = sentence;
+    return this.refuse(sentence);
   }
 
   private refuse(why: string): null {

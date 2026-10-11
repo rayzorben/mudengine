@@ -5748,6 +5748,16 @@ automation:
       ×{count} first.'
     buyingShort: 'Dark rooms on the way: {dark}, and nothing in your inventory lights them. Buying
       {item} ×{count} first; still too dark even with it: {unlit}.'
+    buyingBrighter: 'Dark rooms on the way: {dark}, and {carried} is not bright enough for them (it
+      reaches {reach}, the darkest needs {want}). Buying {item} ×{count} first.'
+    buyingBrighterShort: 'Dark rooms on the way: {dark}, and {carried} is not bright enough for them
+      (it reaches {reach}, the darkest needs {want}). Buying {item} ×{count} first; still too dark
+      even with it: {unlit}.'
+    dimOnly: 'Rooms on the way that stay dimly lit with what you carry: {dim}. The game describes
+      them anyway, so no light is bought for them; {items} would light them fully.'
+    dimOnlyShort: 'Rooms on the way that stay dimly lit with what you carry: {dim}. The game
+      describes them anyway, so no light is bought for them; {items} would light them, though
+      {unlit} would still be dimly lit.'
     refusalUnlisted: 'Dark rooms on the way: {dark}. Your inventory has not been read, so no light
       is bought; walking on.'
     refusalNothingSold: 'Dark rooms on the way: {dark}, and no shop sells a light. Walking on
