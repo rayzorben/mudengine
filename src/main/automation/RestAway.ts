@@ -9,6 +9,7 @@
  * there, **peeks** into a neighbour the realm holds no lair in (`l <dir>`),
  * reads the peeked room as a different room, moves only into one that is
  * empty, rests there, and steps back when nothing else has the character.
+ * The room the character came from is looked into first.
  * See `mudengine-automation` § *A rest is taken next door to a lair*.
  */
 import type { CommandQueue } from './CommandQueue';
@@ -74,6 +75,9 @@ export class RestAway implements SessionModule {
   private allowedIn: RoomId | null = null;
   /** The lair and reason a rest here was kept to, said once for each. */
   private stayingSaid: string | null = null;
+  /** The room the character last stood in, and the one it stood in before that. */
+  private lastHere: RoomId | null = null;
+  private cameFrom: RoomId | null = null;
 
   constructor(
     private settings: RestAwaySettings,
@@ -106,6 +110,8 @@ export class RestAway implements SessionModule {
     this.saidIn = null;
     this.allowedIn = null;
     this.stayingSaid = null;
+    this.lastHere = null;
+    this.cameFrom = null;
   }
 
   /**
@@ -151,7 +157,14 @@ export class RestAway implements SessionModule {
     }
 
     const tried = this.tried.get(here) ?? new Set<Direction>();
-    const next = this.planner.neighbours(here).find((way) => !tried.has(way.direction));
+    /*
+     * The room the character walked in from first: it was just walked through,
+     * while a room further on may hold monsters the character has not seen
+     * (the user, 2026-10-10: rayzor stepped north out of 1/9468 into a room
+     * off his loop, with 1/9467 behind him).
+     */
+    const ways = this.planner.neighbours(here).filter((way) => !tried.has(way.direction));
+    const next = ways.find((way) => way.to === this.cameFrom) ?? ways[0];
     if (next === undefined) {
       this.allowedIn = here;
       this.events.notice?.(t('automation.restAway.noSafeRoom', { seconds: Math.round(clock) }));
@@ -292,6 +305,18 @@ export class RestAway implements SessionModule {
       reason: t('automation.restAway.reasonBack')
     });
     return 'not-mine';
+  }
+
+  /**
+   * Every changed state, ahead of every gate `consider` sits behind: a walk
+   * sends its next step from the line it arrives on, so a room seen only by
+   * `consider` can be two back. A room unresolved breaks the chain.
+   */
+  noteRoom(): void {
+    const here = this.planner.here();
+    if (here === this.lastHere) return;
+    this.cameFrom = here === null ? null : this.lastHere;
+    this.lastHere = here;
   }
 
   private sayStaying(here: RoomId, clock: number, why: string): void {

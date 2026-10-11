@@ -162,6 +162,34 @@ describe('resting in a lair with a short clock', () => {
     expect(sent).toEqual(['l n', 'l e']);
   });
 
+  /* rayzor, 2026-10-10: walked north into the lair and stepped on north to rest. */
+  it('looks first into the room the character came from', () => {
+    const auto = make();
+    here = '8/916';
+    auto.noteRoom();
+    here = '8/915';
+    auto.noteRoom();
+    auto.consider(hurtInTheLair(), true);
+    drain();
+    expect(sent).toEqual(['l e']);
+    expect(notices[0]).toBe(
+      t('automation.restAway.refusingHere', { seconds: 30, name: 'Ancient Stronghold, Hall' })
+    );
+  });
+
+  it('keeps the exits in order when the character came from no room next door', () => {
+    const auto = make();
+    here = '8/916';
+    auto.noteRoom();
+    here = null;
+    auto.noteRoom();
+    here = '8/915';
+    auto.noteRoom();
+    auto.consider(hurtInTheLair(), true);
+    drain();
+    expect(sent).toEqual(['l n']);
+  });
+
   it('rests here after all, once, when no neighbour is safe', () => {
     const auto = make(health(), { neighbours: () => [] });
     expect(auto.consider(hurtInTheLair(), true)).toBe('rest-here');
