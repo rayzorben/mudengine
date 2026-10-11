@@ -1198,11 +1198,10 @@ export default function CharacterForm({
               hint={t('settings.health.pvpActionHint')}
               label={t('settings.health.pvpActionLabel')}
               name="pvp-action"
-              onChange={(value) => patch({ pvpAction: value === 'retreat' ? 'retreat' : 'none' })}
-              options={PVP_ACTIONS.map((action) => ({
-                value: action,
-                label: action
-              }))}
+              onChange={(value) =>
+                patch({ pvpAction: PVP_ACTIONS.find((action) => action === value) ?? 'none' })
+              }
+              options={PVP_ACTIONS.map((action) => ({ value: action, label: action }))}
               value={form.pvpAction}
             />
           </fieldset>

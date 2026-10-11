@@ -161,6 +161,7 @@ export interface TravelParts {
     | 'resume'
     | 'restate'
     | 'noteEscaped'
+    | 'notePvpWindow'
     | 'noteOnline'
     | 'carried'
     | 'heading'
@@ -686,15 +687,18 @@ export class Travel implements SessionModule {
    * cooldown so a blow a round is one move, and only for a character the
    * client is taking somewhere (`staysToFight`). See `Safety.onPvpBlow`.
    */
-  runFromPlayer(state: CharacterState, attacker: string): void {
+  runFromPlayer(state: CharacterState, attacker: string, windowEnds: number): void {
+    // Every blow moves a held lap's end on, a second run or not (todo 78).
+    this.loops.notePvpWindow(windowEnds);
     const now = Date.now();
     if (now - this.lastAskedToEscape < this.automationConfig.safety.retreat.cooldownMs) return;
     const why = t('session.safety.whyPvp', { attacker });
     if (this.staysToFight(state, why, true, now)) return;
     this.lastAskedToEscape = now;
     // The shared escape, so the exit ladder and the configured strategy are
-    // honoured here exactly as at the health floor.
-    this.escape(state, why, now);
+    // honoured here exactly as at the health floor. The lap stays held until
+    // the attacker's window ends (todo 78).
+    this.escape(state, why, now, undefined, false, windowEnds);
   }
 
   /**
@@ -1396,7 +1400,9 @@ export class Travel implements SessionModule {
     now: number,
     tried: ReadonlySet<Direction> = new Set(),
     /** A run for health: what is swinging is kept off at this level, once a way out goes. */
-    forHealth = false
+    forHealth = false,
+    /** A run from a player: when the PvP window ends, so the lap waits it out. 0 is none. */
+    holdUntil = 0
   ): void {
     const safety = this.automationConfig.safety.retreat;
     const here =
@@ -1454,7 +1460,7 @@ export class Travel implements SessionModule {
     this.escapeRefusalSaid = null;
     // Not a run for mana, numbers or a row: those are not the monster's doing.
     if (forHealth) this.noteFled(state);
-    this.leaving(here, now);
+    this.leaving(here, now, holdUntil);
     if (safety.strategy === 'safe-haven' && safety.safeHavenRoom.length > 0) {
       this.retreat = { room: safety.safeHavenRoom, armedAt: now, from: here };
     }
@@ -1515,7 +1521,7 @@ export class Travel implements SessionModule {
    * room left, starts the sent clock everything that keeps a character alive
    * stands down on, and holds the loop and the route.
    */
-  private leaving(here: RoomId | null, now: number): void {
+  private leaving(here: RoomId | null, now: number, holdUntil = 0): void {
     /*
      * The room being run out of, so nothing walks back into it while the fight
      * that emptied it is still going. See `ranFrom`.
@@ -1564,7 +1570,7 @@ export class Travel implements SessionModule {
      * walk, and the runner waits for that walk to finish (`walking()`) before
      * it plans anything of its own.
      */
-    this.loops.noteEscaped();
+    this.loops.noteEscaped(holdUntil);
     /*
      * And the same for a route the player asked for, which now survives the
      * fight it ran from (`Holds.holdForFight`) and would otherwise plan its

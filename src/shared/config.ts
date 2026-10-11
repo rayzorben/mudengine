@@ -2201,7 +2201,7 @@ export interface SafetyConfig {
 }
 
 /** What a PvP reaction may do about the fight itself. */
-export const PVP_ACTIONS = ['none', 'retreat'] as const;
+export const PVP_ACTIONS = ['none', 'retreat', 'retreat-then-hangup'] as const;
 
 export type PvpAction = (typeof PVP_ACTIONS)[number];
 
@@ -2224,9 +2224,9 @@ export interface PvpConfig {
    */
   notifyGang: boolean;
   /**
-   * `retreat` runs the moment the attack is seen, whatever `retreat.enabled`
-   * says — this is its own trigger, not a health threshold. `none` leaves the
-   * fight to the player and the other settings.
+   * `retreat` runs when the attack is seen, whatever `retreat.enabled` says;
+   * `retreat-then-hangup` (MegaMUD's Flee Then Hangup) hangs up once it no
+   * longer counts, under the realm's penalty (`Safety`). `none` does neither.
    */
   action: PvpAction;
 }

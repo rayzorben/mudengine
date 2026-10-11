@@ -5428,8 +5428,10 @@ const BANKING_COMMENT = ` Banking the purse, unasked -- MegaMUD's StashCoin. At 
 const PVP_DEFAULT = { notifyGang: false, action: 'none' };
 const PVP_COMMENT = ` What to do the moment a player opens on you. \`notifyGang\` says so on the
  gangpath (\`bg\`), once per attacker per five-minute window, with the room
- and your health riding along. \`action\` is \`none\` or \`retreat\` -- the retreat
- runs the moment the attack is seen, whatever retreat.enabled says. Both off:
+ and your health riding along. \`action\` is \`none\`, \`retreat\` or
+ \`retreat-then-hangup\` -- a run goes the moment the attack is seen, whatever
+ retreat.enabled says, and the second also hangs up five minutes after the
+ last blow, whatever hangUp.enabled says. Both off:
  the broadcast speaks to your whole gang, and running away is the client
  deciding a fight is lost.`;
 

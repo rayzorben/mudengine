@@ -1217,7 +1217,7 @@ export default function GlobalSettings({
                   automation({
                     pvp: {
                       ...draft.automation.pvp,
-                      action: value === 'retreat' ? 'retreat' : 'none'
+                      action: PVP_ACTIONS.find((action) => action === value) ?? 'none'
                     }
                   })
                 }

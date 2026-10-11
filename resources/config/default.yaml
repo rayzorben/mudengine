@@ -2277,10 +2277,14 @@ automation:
     #
     # `notifyGang` says so on the gangpath (`bg`, the realm's own verb), once
     # per attacker per window, with the room and your health riding along.
-    # `action` is `none` or `retreat` -- the retreat runs the moment the attack
-    # is seen, whatever retreat.enabled says, because a PvP opener is not a
-    # health threshold. Both off: the broadcast speaks to your whole gang, and
-    # running away is the client deciding a fight is lost.
+    # `action` is `none`, `retreat` or `retreat-then-hangup`. A run goes the
+    # moment the attack is seen, whatever retreat.enabled says, because a PvP
+    # opener is not a health threshold, and the loop then waits until the
+    # attack no longer counts (five minutes after the last blow).
+    # `retreat-then-hangup` also hangs up once those five minutes are up,
+    # whatever hangUp.enabled says, unless the realm's hangup penalty still
+    # applies for something else. Both off: the broadcast speaks to your whole
+    # gang, and running away is the client deciding a fight is lost.
     pvp:
       notifyGang: false
       action: none

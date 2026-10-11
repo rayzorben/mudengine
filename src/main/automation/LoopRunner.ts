@@ -294,6 +294,12 @@ export class LoopRunner implements SessionModule {
   private escaped = false;
   private escapedAt = 0;
   /**
+   * The end of a player's PvP window when a player's attack was the reason
+   * (todo 78): the lap stays held until then, whatever the settle says. 0 is
+   * none. Each later blow pushes it on (`notePvpWindow`).
+   */
+  private escapedUntil = 0;
+  /**
    * Holding because the pack ran short and `Supplies` is walking the
    * character to a shop; see `noteErrand`. Its own flag for the reason
    * `escaped` is: it clears on a different fact — the errand ending — and
@@ -848,10 +854,12 @@ export class LoopRunner implements SessionModule {
    * while a loop is marching and allows it while one is held, so those two
    * seconds used to be the whole window the character had to sit down in.
    */
-  noteEscaped(): void {
-    if (this.status !== 'running' || this.escaped) return;
+  noteEscaped(until = 0): void {
+    if (this.status !== 'running') return;
+    if (this.escaped) return this.notePvpWindow(until);
     this.escaped = true;
     this.escapedAt = this.now();
+    this.escapedUntil = until;
     this.waiting = true;
     /*
      * The dwell is left exactly as it was, which is what `hurt` does too: a
@@ -859,8 +867,23 @@ export class LoopRunner implements SessionModule {
      * reached it, so when the hold lets go the lap goes on to the *next*
      * stop rather than walking back into the one it just ran out of.
      */
-    this.events.notice?.(t('automation.loops.heldAfterEscape'));
+    this.events.notice?.(
+      until > this.escapedAt
+        ? t('automation.loops.heldAfterPvp', {
+            minutes: Math.ceil((until - this.escapedAt) / 60_000)
+          })
+        : t('automation.loops.heldAfterEscape')
+    );
     this.publish();
+  }
+
+  /**
+   * A player's blow while the lap is held after a run: the hold lasts until
+   * its window ends, though no second run went (cooldown, or nothing taking
+   * the character anywhere). Nothing while no run holds the lap (todo 78).
+   */
+  notePvpWindow(until: number): void {
+    if (this.escaped) this.escapedUntil = Math.max(this.escapedUntil, until);
   }
 
   /**
@@ -1081,6 +1104,13 @@ export class LoopRunner implements SessionModule {
        * waited for a number nobody sent would never walk again.
        */
       if (this.now() - this.escapedAt < tuning().loop.escapeSettleMs) return;
+      /*
+       * A player's attack is over when the server stops counting it, not
+       * when the room is quiet: the lap walking on inside the window is the
+       * lap walking back towards the attacker, who can still swing and
+       * whose blow still makes a hang-up unclean (`PVP_WINDOW_MS`).
+       */
+      if (this.now() < this.escapedUntil) return;
       if (fraction !== null && fraction < this.resumeAt()) return;
       if (this.planner.walking()) return;
       this.escaped = false;
