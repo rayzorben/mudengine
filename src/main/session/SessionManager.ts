@@ -41,6 +41,7 @@ import { Remotes } from '../automation/Remotes';
 import { RecoveredCorpse } from '../automation/RecoveredCorpse';
 import { GearLockWatch } from '../automation/GearLockWatch';
 import { Afk } from '../automation/Afk';
+import { Attendance } from '../automation/Attendance';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
 import type { AutoInvoke } from '../automation/AutoInvoke';
@@ -427,6 +428,7 @@ export class SessionManager {
   readonly supplies: Supplies;
   private readonly remotes: Remotes;
   readonly statsBaseline: StatsBaseline;
+  private readonly attendance: Attendance;
   private readonly afk: Afk;
   private readonly heal: AutoHeal;
   private readonly castRound: CastRound;
@@ -1268,12 +1270,11 @@ export class SessionManager {
      * gives a percentage. Off unless the options file says otherwise — it is a
      * channel by which somebody else's typing moves this character.
      */
-    /*
-     * Answering for an absent player: a telepath that arrives after nothing
-     * has been typed here for a while is told so. Reads the same keystrokes
-     * the queue's hold does, and nothing automation sends.
-     */
-    this.afk = new Afk(automation.afk, automation.enabled, this.queue, this.sink);
+    // Whether anybody is at the keyboard: the telepath reply, the hang-up and the trace (todo 79).
+    this.attendance = new Attendance(automation.afk.afterMinutes, () =>
+      this.publisher.publishAutomation()
+    );
+    this.afk = new Afk(automation.afk, automation.enabled, this.queue, this.attendance, this.sink);
     // Write a switch to the character's file and read it back (`switchAutomationNow`).
     const switchNow = (name: AutomationSwitch, on: boolean): boolean =>
       this.sink.switchAutomationNow?.(name, on) ?? false;
@@ -1584,8 +1585,7 @@ export class SessionManager {
         tracker: this.tracker,
         appraisal: this.appraisal,
         queue: this.queue,
-        rules: this.rules,
-        client: this.client
+        ...{ rules: this.rules, client: this.client, attendance: this.attendance }
       },
       { config: () => this.automationConfig, extensions: () => this.extensions.views() },
       sink
@@ -1625,7 +1625,8 @@ export class SessionManager {
       travel: this.travel,
       client: this.client,
       publisher: this.publisher,
-      grounded: this.grounded
+      grounded: this.grounded,
+      ...{ attendance: this.attendance, recoverGear: this.recoverGear }
     };
     const safetySession = {
       config: () => this.automationConfig,
@@ -1698,6 +1699,7 @@ export class SessionManager {
       { module: this.keys, configure: (a) => this.keys.configure(a.movement, a.enabled) },
       { module: this.supplies, configure: (a) => this.supplies.configure(a.supplies, a.enabled) },
       { module: this.remotes, configure: (a) => this.remotes.configure(a) },
+      { module: this.attendance, configure: (a) => this.attendance.configure(a.afk.afterMinutes) },
       { module: this.afk, configure: (a) => this.afk.configure(a.afk, a.enabled) },
       { module: this.heal, configure: (a) => this.heal.configure(a.spells, a.enabled) },
       { module: this.castRound },
@@ -2083,6 +2085,7 @@ export class SessionManager {
      * which is every ordinary keystroke.
      */
     const outgoing = splitOntoChannel(this.outbound, data) ?? data;
+    this.attendance.note(); // Any key, not only a committed line: the first key ends away (todo 79).
 
     /*
      * The shadow of the server's input line. Movement is the strongest
@@ -2148,8 +2151,6 @@ export class SessionManager {
         this.noteSent(command, 'user');
         this.questWatch.noteSaid(command);
         this.remotes.noteTyped(command);
-        // A person is at the keyboard: the away clock starts over.
-        this.afk.noteAttended();
       } else {
         // The player pressing Return on an empty line reprints the room just
         // as the walker's nudge does, and the block it produces has to be
@@ -2301,9 +2302,8 @@ export class SessionManager {
     const was = this.phaseWas;
     this.phaseWas = state.phase;
     if (was === 'in-game' && state.phase !== 'in-game') this.leftTheRealm();
-    // Entering the realm starts the away clock: a character autoconnected and
-    // never touched is away after the timeout like any other.
-    if (was !== 'in-game' && state.phase === 'in-game') this.afk.noteAttended();
+    // Entering the realm starts the away clock (`Attendance`).
+    if (was !== 'in-game' && state.phase === 'in-game') this.attendance.note();
     this.noteRealmWord(state);
   }
 

@@ -90,6 +90,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
         <VitalsCard
           {...chrome}
           ask={ctx.ask}
+          away={view.automation.away}
           character={character}
           session={ctx.session}
           thresholds={ctx.thresholds}

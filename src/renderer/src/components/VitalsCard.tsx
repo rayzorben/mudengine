@@ -23,6 +23,8 @@ export interface VitalsCardProps extends CardChrome {
   session: SessionId;
   /** Where each meter turns yellow and red, from `ui.vitals`. */
   thresholds: { hp: VitalThresholds; mana: VitalThresholds };
+  /** Nobody has typed for `automation.afk.afterMinutes` (`AutomationSnapshot.away`, todo 79). */
+  away: boolean;
   /**
    * Sends a command on this character's behalf — `exp`, and nothing else.
    *
@@ -125,7 +127,7 @@ function figure(value: number | null): string {
  * read — it is the server's own arithmetic, and it is right about the next
  * level every time.
  */
-function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCardProps) {
+function VitalsCard({ character, session, thresholds, away, ask, ...chrome }: VitalsCardProps) {
   const { vitals, progress, phase, inCombat, stealth, afflictions } = character;
   const [face, chooseFace] = useRememberedChoice(session, 'vitals-tab', FACE_IDS, FACE_IDS[0]!);
   const elapsed =
@@ -436,7 +438,17 @@ function VitalsCard({ character, session, thresholds, ask, ...chrome }: VitalsCa
           : undefined
       }
       active={face}
-      badge={badge}
+      badge={
+        // AFK beside the condition: the hang-up and the alert rows read it too.
+        away && phase === 'in-game' ? (
+          <>
+            {badge}
+            <span className="chip warn">{t('cards.vitals.badge.away')}</span>
+          </>
+        ) : (
+          badge
+        )
+      }
       className="vitals-card"
       onActive={chooseFace}
       tabs={tabs}

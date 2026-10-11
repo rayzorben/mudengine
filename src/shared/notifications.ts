@@ -185,6 +185,15 @@ export function raisableWhileFocused(notice: Notice, rules: readonly AlertRule[]
 }
 
 /**
+ * Whether the row that claims this notice holds its notification until
+ * nobody is at the keyboard, and somebody still is (todo 79).
+ */
+export function heldTillAway(notice: Notice, rules: readonly AlertRule[], away: boolean): boolean {
+  const rule = ruleFor(rules, notice);
+  return rule !== null && rule.onlyAway && !away;
+}
+
+/**
  * Which blocks are worth a notice, and how loud.
  *
  * A table rather than a rule, so adding a block type to the parser and deciding
@@ -673,6 +682,12 @@ export interface AlertRule {
    * — and refused by the form — while `notify` is off.
    */
   whileFocused: boolean;
+  /**
+   * Raise that notification only while nobody is at the keyboard
+   * (`AutomationSnapshot.away`), MegaMUD's *Play Alert Only When AFK* (todo
+   * 79). Meaningless while `notify` is off, and stored off there.
+   */
+  onlyAway: boolean;
   /** `below` or `above`, for the two watches that are numbers. */
   side: AlertSide;
   /**
@@ -762,6 +777,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     alert: true,
     notify: true,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 35,
     percent: true,
@@ -775,6 +791,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     alert: true,
     notify: false,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 20,
     percent: true,
@@ -788,6 +805,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     alert: true,
     notify: true,
     whileFocused: true,
+    onlyAway: false,
     side: 'below',
     value: 0,
     percent: false,
@@ -801,6 +819,7 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     alert: true,
     notify: true,
     whileFocused: false,
+    onlyAway: false,
     side: 'below',
     value: 0,
     percent: false,

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Afk } from '../Afk';
+import { Attendance } from '../Attendance';
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG, type AfkConfig } from '../../../shared/config';
@@ -14,12 +15,14 @@ let sent: string[];
 let notices: string[];
 let queue: CommandQueue;
 let clock: number;
+let attendance: Attendance;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
   notices = [];
   clock = 1_700_000_000_000;
+  attendance = new Attendance(5, undefined, () => clock);
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
 });
 
@@ -31,7 +34,14 @@ afterEach(() => {
 const on: AfkConfig = { enabled: true, afterMinutes: 5, reply: '{AFK}' };
 
 function make(config: AfkConfig = on, enabled = true): Afk {
-  return new Afk(config, enabled, queue, { notice: (m) => notices.push(m) }, () => clock);
+  return new Afk(
+    config,
+    enabled,
+    queue,
+    attendance,
+    { notice: (m) => notices.push(m) },
+    () => clock
+  );
 }
 
 /** `<Name> telepaths: <message>` as the classifier frames it; no message is the sent receipt. */
@@ -58,7 +68,7 @@ function drain(): void {
 describe('answering for an absent player', () => {
   it('stays quiet while the player has typed recently', () => {
     const afk = make();
-    afk.noteAttended();
+    attendance.note();
     clock += 2 * MINUTE;
     afk.onBlock(telepath('Rend', 'you there?'), state());
     drain();
@@ -67,7 +77,7 @@ describe('answering for an absent player', () => {
 
   it('answers a telepath once nothing has been typed for the timeout, and says so', () => {
     const afk = make();
-    afk.noteAttended();
+    attendance.note();
     clock += 6 * MINUTE;
     afk.onBlock(telepath('Rend', 'you there?'), state());
     drain();
@@ -78,7 +88,7 @@ describe('answering for an absent player', () => {
   /* A person who telepaths twice in a minute has been answered once. */
   it('tells each sender once per window, and another sender separately', () => {
     const afk = make();
-    afk.noteAttended();
+    attendance.note();
     clock += 6 * MINUTE;
     afk.onBlock(telepath('Rend', 'hello'), state());
     afk.onBlock(telepath('Rend', 'hello?'), state());
@@ -94,7 +104,7 @@ describe('answering for an absent player', () => {
   /* `@` is `Remotes`' business, and the sent receipt is not a question. */
   it('leaves @ commands to the remotes and the sent receipt alone', () => {
     const afk = make();
-    afk.noteAttended();
+    attendance.note();
     clock += 6 * MINUTE;
     afk.onBlock(telepath('Rend', '@health'), state());
     afk.onBlock(telepath('Rend'), state());
@@ -104,10 +114,10 @@ describe('answering for an absent player', () => {
 
   it('is present again the moment the player types', () => {
     const afk = make();
-    afk.noteAttended();
+    attendance.note();
     clock += 6 * MINUTE;
     expect(afk.away).toBe(true);
-    afk.noteAttended();
+    attendance.note();
     expect(afk.away).toBe(false);
     afk.onBlock(telepath('Rend', 'hi'), state());
     drain();
@@ -124,7 +134,7 @@ describe('answering for an absent player', () => {
   it('does nothing while off, or under the master switch, or with a blank reply', () => {
     const cases = [make({ ...on, enabled: false }), make(on, false), make({ ...on, reply: '  ' })];
     for (const afk of cases) {
-      afk.noteAttended();
+      attendance.note();
       clock += 6 * MINUTE;
       afk.onBlock(telepath('Rend', 'hi'), state());
     }

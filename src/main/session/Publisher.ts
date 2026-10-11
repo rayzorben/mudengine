@@ -11,6 +11,7 @@
  * redacts, and nothing may*.
  */
 import { tuning } from '../app/tuning';
+import type { Attendance } from '../automation/Attendance';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { RuleEngine } from '../automation/RuleEngine';
 import type { TelnetClient } from '../net/TelnetClient';
@@ -36,6 +37,7 @@ export interface PublisherParts {
   readonly queue: Pick<CommandQueue, 'snapshot'>;
   readonly rules: Pick<RuleEngine, 'firings'>;
   readonly client: Pick<TelnetClient, 'negotiated'>;
+  readonly attendance: Pick<Attendance, 'away'>;
 }
 
 /** What the session that built this answers for it. */
@@ -58,6 +60,7 @@ export class Publisher {
   private readonly queue: PublisherParts['queue'];
   private readonly rules: PublisherParts['rules'];
   private readonly client: PublisherParts['client'];
+  private readonly attendance: PublisherParts['attendance'];
   private current: ConnectionState = IDLE_CONNECTION;
   /**
    * What was done, or refused, to keep this character alive.
@@ -121,6 +124,7 @@ export class Publisher {
     this.queue = parts.queue;
     this.rules = parts.rules;
     this.client = parts.client;
+    this.attendance = parts.attendance;
   }
 
   /** The connection as last published. */
@@ -199,7 +203,8 @@ export class Publisher {
       firings: this.rules.firings.reverse(),
       safety: [...this.safetyLog].reverse(),
       engagements: [...this.engageLog].reverse(),
-      extensions: this.session.extensions()
+      extensions: this.session.extensions(),
+      away: this.attendance.away
     };
   }
 

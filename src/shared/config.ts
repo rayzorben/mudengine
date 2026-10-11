@@ -483,7 +483,7 @@ export interface VitalsUiConfig {
  */
 export interface AfkConfig {
   enabled: boolean;
-  /** Minutes without a keystroke into this session before the player is away. */
+  /** Minutes without a keystroke before the player is away (`Attendance`, the hang-up's too). */
   afterMinutes: number;
   /** What an incoming telepath is answered with while away. Blank answers nothing. */
   reply: string;
@@ -3275,6 +3275,7 @@ function normalizeAlertRules(value: unknown): AlertRule[] {
       // Meaningless with `notify` off, and stored false there rather than
       // kept: a flag nothing reads is one that surprises somebody later.
       whileFocused: notify && bool(entry['whileFocused'], false),
+      onlyAway: notify && bool(entry['onlyAway'], false),
       side: oneOf(entry['side'], ALERT_SIDES, 'below'),
       // A share when `percent`, a figure otherwise; both are the player's own
       // number and neither is clamped to the other's range.

@@ -1475,6 +1475,8 @@ describe('hanging up to escape', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+    // Nobody at the keyboard: low health waits for a player who is (todo 79).
+    afk: { ...DEFAULT_CONFIG.automation.afk, afterMinutes: 0 },
     onEnterRealm: [],
     rules: [],
     safety: {
@@ -2159,6 +2161,7 @@ describe('the run goes before the hang-up', () => {
     ...DEFAULT_CONFIG.automation,
     enabled: true,
     idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+    afk: { ...DEFAULT_CONFIG.automation.afk, afterMinutes: 0 },
     onEnterRealm: [],
     rules: [],
     safety: {

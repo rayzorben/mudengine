@@ -9,9 +9,9 @@
  * parser (`died`, `rememberGear`) and `GearLockWatch` both use it. See
  * `mudengine-automation` › gear.
  */
-import type { CarriedItem } from './character';
+import type { CarriedItem, CharacterState } from './character';
 import type { Loadout, WornSlot } from './gear';
-import { sameItem } from './items';
+import { READIED, sameItem } from './items';
 
 /**
  * The loadout a death leaves: every free slot locked at `at`. A slot still
@@ -56,6 +56,27 @@ function filledByAnother(worn: WornSlot, items: readonly CarriedItem[]): boolean
 /** The slots still held. */
 export function lockedSlots(held: Loadout): WornSlot[] {
   return held.filter((worn) => worn.locked !== null);
+}
+
+/**
+ * Whether the character is naked after a death (todo 79, MegaMUD's
+ * `HangupNaked`): a death holds saved slots, the pack has been listed since
+ * the latest of those locks, and nothing in it is worn but a light. A death
+ * drops everything (`Player.Death`, `DropAllItems`), so the pack read after it
+ * holds nothing worn until the kit or spare gear goes on. Null while the pack
+ * is unread since the death; false with no slot held.
+ */
+export function nakedAfterDeath(
+  state: Pick<CharacterState, 'loadout' | 'inventory'>
+): boolean | null {
+  const marks = lockedSlots(state.loadout).flatMap((worn) =>
+    worn.locked === null ? [] : [worn.locked.at]
+  );
+  if (marks.length === 0) return false;
+  const listed = state.inventory.listedAt;
+  if (listed === null || listed < Math.max(...marks)) return null;
+  const light = READIED.toLowerCase();
+  return !state.inventory.items.some((item) => item.equipped && item.slot?.toLowerCase() !== light);
 }
 
 /** The locked slots whose allowance has run out at `played` (`playedFor`). */
