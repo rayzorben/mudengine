@@ -2052,6 +2052,10 @@ automation:
     # Following, leave the leader's @party commands unanswered.
     ignoreParty: false
 
+    # Leading, say @panic! to the party before teleporting away on low health
+    # (safety.fleeGoto), as MegaMUD's Say @panic When Leading does.
+    sayPanic: true
+
     # Telepath @health to a member who joins -- MegaMUD's Request Party Health.
     askHealth: true
 

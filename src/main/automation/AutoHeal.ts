@@ -256,36 +256,24 @@ export class AutoHeal implements SessionModule {
     if (this.config.autoChooseHeal && this.planned(state)) return;
 
     const self = this.config.heal.trim();
-    if (self.length > 0 || this.config.autoChooseHeal) {
-      const fraction = this.selfFraction(state);
-      if (this.wants(SELF, fraction, state.inCombat)) {
-        const { hp, hpMax } = state.vitals;
-        const spell = this.spellFor(state, 'self', this.deficit(hp, hpMax), self);
-        if (spell.length > 0) {
-          this.cast(spell, null, state, t('automation.heal.reasonSelf'));
-          return;
-        }
-      }
-    }
+    const selfShare = this.selfFraction(state);
+    const selfWanted =
+      (self.length > 0 || this.config.autoChooseHeal) &&
+      this.wants(SELF, selfShare, state.inCombat);
+    const members = this.membersWanting(state);
+    /*
+     * The lowest bar first (todo 61, MegaMUD's *Heal Party over self, IF
+     * lower*): a member whose share is under this character's is healed
+     * before this character is. A request does not jump this character's own
+     * bar, and equal shares heal this character.
+     */
+    const memberFirst =
+      selfShare !== null &&
+      members.some(({ share }) => share !== null && share < selfShare);
+    if (selfWanted && !memberFirst && this.healSelf(state)) return;
 
     const party = this.config.healPartyWith.trim();
-    if (!this.config.healParty || (party.length === 0 && !this.config.autoChooseHeal)) return;
-    // Those who asked first: their own word is the freshest figure there is,
-    // and a listing that lags keeps a member low for a round after the heal.
-    const asking = (member: PartyMember): number =>
-      this.asked.has(member.name.toLowerCase()) ? 0 : 1;
-    for (const member of joinedMembers(state).sort((a, b) => asking(a) - asking(b))) {
-      const key = member.name.toLowerCase();
-      const asked = this.asked.has(key);
-      /*
-       * A request is one cast and nothing more: it neither needs the listing's
-       * figure nor starts `healTo`'s run, so the thresholds decide everything
-       * after it exactly as they would have.
-       */
-      if (!asked) {
-        if (member.health === null) continue;
-        if (!this.wants(key, member.health, state.inCombat)) continue;
-      }
+    for (const { member, share, asked } of members) {
       /*
        * The percentage is enough to decide *whether* to heal and not enough to
        * decide *which*: 30% of 4,434 and 30% of 62 are the same bar. Only a
@@ -302,9 +290,45 @@ export class AutoHeal implements SessionModule {
        * healed must not stand in front of one that can.
        */
       if (spell.length === 0) continue;
-      this.healMember(spell, member.name, member.health, asked, state);
+      this.healMember(spell, member.name, share, asked, state);
       return;
     }
+    if (selfWanted && memberFirst) this.healSelf(state);
+  }
+
+  /** This character's own heal, bare; false where no spell answers. */
+  private healSelf(state: CharacterState): boolean {
+    const { hp, hpMax } = state.vitals;
+    const spell = this.spellFor(state, 'self', this.deficit(hp, hpMax), this.config.heal.trim());
+    if (spell.length === 0) return false;
+    this.cast(spell, null, state, t('automation.heal.reasonSelf'));
+    return true;
+  }
+
+  /**
+   * The joined members a heal is wanted for now, those who asked first and
+   * then the lowest share (todo 61); a share the listing does not state sorts
+   * last. A request is one cast and nothing more: it neither needs the
+   * listing's figure nor starts `healTo`'s run, so the thresholds decide
+   * everything after it exactly as they would have.
+   */
+  private membersWanting(
+    state: CharacterState
+  ): { member: PartyMember; share: number | null; asked: boolean }[] {
+    const party = this.config.healPartyWith.trim();
+    if (!this.config.healParty || (party.length === 0 && !this.config.autoChooseHeal)) return [];
+    const wanted: { member: PartyMember; share: number | null; asked: boolean }[] = [];
+    for (const member of joinedMembers(state)) {
+      const asked = this.asked.has(member.name.toLowerCase());
+      if (asked || this.wants(member.name.toLowerCase(), member.health, state.inCombat)) {
+        wanted.push({ member, share: member.health, asked });
+      }
+    }
+    const unstatedLast = (share: number | null): number => share ?? 2;
+    return wanted.sort(
+      (a, b) =>
+        Number(b.asked) - Number(a.asked) || unstatedLast(a.share) - unstatedLast(b.share)
+    );
   }
 
   /**

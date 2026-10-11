@@ -133,6 +133,13 @@ export interface ProwessClass {
   crits: number;
 }
 
+/** The class as a fight is priced: its rows, the realm's family, and the attack fought with. */
+export type FightingClass = ProwessClass & {
+  family: RealmFamily | null;
+  /** The attack fought with, as the class makes it; the plain one where absent. */
+  attack?: ProwessAttack;
+};
+
 /** What of a weapon the arithmetic reads — `Items.Min/Max/Accy/Speed/StrReq`. */
 export type ProwessWeapon = NonNullable<WorldItem['weapon']>;
 

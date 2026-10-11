@@ -81,6 +81,7 @@ import { avoided, type FledEntry } from '../../shared/fled';
 import type { Block } from '../../shared/blocks';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import {
+  healthLeft,
   standingOf,
   sameVisit,
   type CharacterState,
@@ -126,8 +127,7 @@ import {
   wieldedWeapon,
   type Verdict
 } from '../../shared/verdict';
-import type { RealmFamily } from '../../shared/realm';
-import { dodge, type ProwessAttack, type ProwessClass } from '../../shared/prowess';
+import { dodge, type FightingClass } from '../../shared/prowess';
 import type { MobAvoid } from '../../shared/mobs';
 import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
@@ -555,11 +555,7 @@ export class AutoCombat implements SessionModule {
      * character whose class the realm cannot place ranks exactly as it did
      * before — by menace over health — rather than not ranking at all.
      */
-    private readonly realmClass: () => ProwessClass & {
-      family: RealmFamily | null;
-      /** The attack typed, as the class makes it; the plain one where absent. */
-      attack?: ProwessAttack;
-    } = () => ({
+    private readonly realmClass: () => FightingClass = () => ({
       combat: null,
       magery: null,
       crits: 0,
@@ -2236,7 +2232,12 @@ export class AutoCombat implements SessionModule {
      */
     let cast =
       opener === null && state !== null
-        ? this.spell.opening(state, this.spellTarget(state, target), because)
+        ? this.spell.opening(
+            state,
+            this.spellTarget(state, target),
+            because,
+            this.swingFor(state, target)
+          )
         : null;
     const verb = opener ?? this.attackVerb(target);
     if (cast === null && verb.length === 0) return false;
@@ -2245,7 +2246,8 @@ export class AutoCombat implements SessionModule {
     if (reach.kind === 'cannot') {
       // The opener is a blow too (`AttackCommand.cs:210`); an attack spell can still open.
       if (opener === null || state === null) return false;
-      cast = this.spell.opening(state, this.spellTarget(state, target), because);
+      // No swing lands, so nothing is held for one (todo 54).
+      cast = this.spell.opening(state, this.spellTarget(state, target), because, '');
       if (cast === null) return false;
     }
     if (cast === null && opener === null) this.lastChosen = this.fightWord(target);
@@ -2300,15 +2302,21 @@ export class AutoCombat implements SessionModule {
     this.spell.sent(proposal.action);
   }
 
-  /** The monster a spell is chosen for, as the fight or else the room knows it. */
+  /**
+   * The monster a spell is chosen for, as the fight or else the room knows it.
+   * Its health in hit points: `TargetHealth.remaining` is a share of the bar,
+   * and handed over as it was, every spell's least roll "killed" 0.6 of a
+   * point (todo 54).
+   */
   private spellTarget(state: CharacterState, name: string): SpellTarget {
     const key = mobKey(name);
     const fought = state.combat.target !== null && mobKey(state.combat.target) === key;
     const listed = state.room.occupants.find((who) => mobKey(who.name) === key)?.mob ?? null;
+    const entity = fought ? state.combat.targetEntity : listed;
     return {
       name,
-      entity: fought ? state.combat.targetEntity : listed,
-      remaining: fought ? (state.combat.health?.remaining ?? null) : null
+      entity,
+      remaining: fought ? healthLeft(state.combat.health) : (entity?.hp ?? null)
     };
   }
 
@@ -2439,9 +2447,14 @@ export class AutoCombat implements SessionModule {
     return refused && said.kind !== 'swap' ? { kind: 'cannot' } : said;
   }
 
+  /** The verb a round would swing at `target`, empty where no blow of the hand lands (todo 54). */
+  private swingFor(state: CharacterState, target: string): string {
+    return this.reachOf(state, target).kind === 'cannot' ? '' : this.attackVerb(target);
+  }
+
   /** Whether an attack spell would open on `target` now, as `swing` asks it (todo 46). */
   private spellOpens(state: CharacterState, target: string): boolean {
-    return this.spell.opening(state, this.spellTarget(state, target), '') !== null;
+    return this.spell.opening(state, this.spellTarget(state, target), '', '') !== null;
   }
 
   /** The realm's class row says this character never hides (todo 28); unknown is not never. */
@@ -2561,7 +2574,12 @@ export class AutoCombat implements SessionModule {
     const target = state.combat.target;
     if (target === null) return;
     const verb = this.attackVerb(target);
-    const change = this.spell.change(state, this.spellTarget(state, target), verb);
+    const change = this.spell.change(
+      state,
+      this.spellTarget(state, target),
+      verb,
+      this.swingFor(state, target)
+    );
     if (change === null) return;
     if (change.action?.kind === 'melee') this.lastChosen = this.fightWord(target);
     this.queue.enqueue({

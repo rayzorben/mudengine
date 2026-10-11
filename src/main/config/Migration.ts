@@ -3006,6 +3006,7 @@ function statedThePartyPacing(
     ['ignoreWait', d.ignoreWait],
     ['manageParty', d.manageParty],
     ['ignoreParty', d.ignoreParty],
+    ['sayPanic', d.sayPanic],
     ['askHealth', d.askHealth],
     ['parSeconds', d.parSeconds],
     ['parAfterRound', d.parAfterRound],

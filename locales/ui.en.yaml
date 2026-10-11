@@ -4240,6 +4240,9 @@ settings:
       switch is on the Remotes page.
     restHint: Only out of combat, like every rest. Meditates only for a class with mana.
     restLabel: Rest With Leader
+    sayPanicHint: Leading, say @panic! to the party before teleporting away on low health
+      (Auto-Teleport on the Safety page), so the members' clients know the leader is gone.
+    sayPanicLabel: Say @panic When Leading
     waitBelowHint: Leading, stop the loop while a member in the room is under this share of health,
       as a follower's @wait does. 0 waits for nobody's health.
     waitBelowLabel: Wait For Party Members HP %
@@ -4829,6 +4832,7 @@ session:
     # The last-ditch teleport (todo 813): {command} is the realm's own, literally.
     teleporting: 'Teleporting out with {command}: {why}.'
     teleportReason: 'safety: teleport, {why}'
+    panicReason: 'safety: @panic! to the party before the teleport, {why}'
     teleportRefused: 'The game refused {command}: {answer}'
     teleportNot: 'Not teleporting: {why}, but {refused}.'
     teleportUnstated: no teleport command is stated for this realm or character
@@ -5364,6 +5368,10 @@ automation:
     # own answer, this fight or kept for the realm, says no spell in the book can touch it.
     noEffect: 'Auto Choose Best Spell: none of your attack spells has any effect on this monster;
       your regular attacks carry the fight.'
+    heldForMelee: 'No spell at {target}: about {left} hit points are left, and a round of {verb} is
+      expected to do {round}.'
+    heldForWorth: 'No spell at {target}: {exp} exp for about {mana} mana. The {next} is {nextExp} exp
+      for about {nextMana} mana, and {pool} mana pays for one of them. Fighting it with {verb}.'
     drainStarts: 'Health under {below}%: casting the drain spells until it is back to {to}%.'
     drainEnds: Health is back up; casting the attack spells again.
     drainNone: No drain spell to cast; casting the attack spells.

@@ -23,6 +23,7 @@ import type { Block, BlockType } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { landed } from '../../shared/walk';
+import { panicCall } from './panicCall';
 
 /** The action every decision here is traced under. */
 const ACTION = 'teleport';
@@ -176,13 +177,17 @@ export class FleeGoto implements SessionModule {
       echo: new EchoSince(command)
     };
     this.awaiting = awaiting;
+    // Dropped at the send once it is settled or the character is down.
+    const stillWanted = (): boolean => this.awaiting === awaiting && !this.grounded.down;
+    // The members are told first: one emergency band, sent in the order proposed.
+    const panic = panicCall(state, automation.party, why, stillWanted);
+    if (panic !== null) this.queue.enqueue(panic);
     this.queue.enqueue({
       command,
       priority: 'emergency',
       coalesceKey: 'escape:teleport',
       reason: t('session.safety.teleportReason', { why }),
-      // Dropped at the send once it is settled or the character is down.
-      stillWanted: () => this.awaiting === awaiting && !this.grounded.down,
+      stillWanted,
       onSent: () => {
         awaiting.sent = true;
         awaiting.deadline = Date.now() + tuning().session.retreatPatienceMs;

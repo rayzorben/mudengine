@@ -962,6 +962,16 @@ export interface TargetHealth {
   observed: WoundBand | null;
 }
 
+/**
+ * Hit points believed left: `remaining` of `max`, as the Combat card prints
+ * it. Null while either is unknown, never 0.
+ */
+export function healthLeft(health: Pick<TargetHealth, 'max' | 'remaining'> | null): number | null {
+  if (health === null || health.max === null || health.max <= 0 || health.remaining === null)
+    return null;
+  return Math.round(health.remaining * health.max);
+}
+
 export interface Combat {
   /** From the status line's `*Combat Engaged*`. The server's own word for it. */
   engaged: boolean;

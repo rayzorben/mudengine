@@ -1755,6 +1755,82 @@ describe('casting in a fight', () => {
     expect(notices.filter((n) => choseFireJet.test(n))).toHaveLength(1);
   });
 
+  /*
+   * Todo 54: `TargetHealth.remaining` is a share of the bar. Handed to the
+   * choice as hit points, every spell's least roll finished 0.8 of a point,
+   * so the cheapest spell won every round of every fight with a known maximum.
+   */
+  it('chooses against the hit points left, not the share of the bar', () => {
+    const realm = (name: string) =>
+      (
+        ({
+          'magic missile': {
+            id: 7,
+            name: 'magic missile',
+            short: 'mmis',
+            level: 1,
+            mana: 1,
+            targets: 8,
+            power: [5, 10]
+          },
+          'fire jet': {
+            id: 9,
+            name: 'fire jet',
+            short: 'fjet',
+            level: 6,
+            mana: 5,
+            targets: 8,
+            power: [30, 55],
+            element: 'fire'
+          }
+        }) as Record<string, WorldSpell>
+      )[name] ?? null;
+    const round = (remaining: number): string[] => {
+      sent.length = 0;
+      const auto = new AutoCombat(
+        combat({ engage: 'none' }),
+        true,
+        queue,
+        { notice: (m) => notices.push(m), onTheGround: () => down },
+        { ...DEFAULT_CONFIG.automation.spells, autoChoose: true, minMana: 0 },
+        realm
+      );
+      auto.onCharacter(
+        state({
+          inCombat: true,
+          combat: {
+            ...EMPTY_CHARACTER.combat,
+            engaged: true,
+            target: 'mutant',
+            health: {
+              name: 'mutant',
+              max: 100,
+              source: 'realm',
+              span: null,
+              damage: { mine: 0, others: 0 },
+              remaining,
+              observed: null
+            }
+          },
+          vitals: { ...EMPTY_CHARACTER.vitals, mana: 40, manaMax: 100, manaType: 'MA' },
+          progress: { ...EMPTY_CHARACTER.progress, level: 10 },
+          spellbook: [
+            { name: 'magic missile', short: 'mmis', level: 1, cost: 1 },
+            { name: 'fire jet', short: 'fjet', level: 6, cost: 5 }
+          ]
+        })
+      );
+      auto.onBlock(block('user-hits'));
+      vi.advanceTimersByTime(200);
+      drain();
+      return [...sent];
+    };
+    // 80 left: nothing kills it in one cast, so the hardest hitter.
+    expect(round(0.8)).toEqual(['fjet mutant']);
+    // 4 left: the cheapest spell whose least roll finishes it (the control).
+    expect(round(0.04)).toEqual(['mmis mutant']);
+  });
+
   it('asks for the book once when the choice has none to read', () => {
     let asked = 0;
     const auto = new AutoCombat(

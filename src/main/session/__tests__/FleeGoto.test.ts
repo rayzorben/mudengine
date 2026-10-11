@@ -115,6 +115,50 @@ describe('FleeGoto', () => {
     expect(sent).toHaveLength(1);
   });
 
+  /* Todo 61: MegaMUD's `@panic!`, the leader's word to the party it is leaving. */
+  describe('leading a party', () => {
+    const member = {
+      name: 'Brakkle',
+      activity: null,
+      className: null,
+      health: 0.8,
+      invited: false,
+      vitals: null,
+      mana: null,
+      rank: null
+    };
+    const leading = (): CharacterState =>
+      fighting(15, {
+        name: 'Rayzor',
+        party: { ...EMPTY_CHARACTER.party, following: null, members: [member] }
+      });
+
+    it('says @panic! to the party in the same band, before the teleport', () => {
+      const { flee, sent } = rig();
+      flee.consider(leading());
+      expect(sent.map((intent) => [intent.command, intent.priority])).toEqual([
+        ['.@panic!', 'emergency'],
+        ['sys go 1 297', 'emergency']
+      ]);
+    });
+
+    it('says nothing with Say @panic off, or with only an invitation out', () => {
+      const off = settings();
+      const quiet = rig({ ...off, party: { ...off.party, sayPanic: false } });
+      quiet.flee.consider(leading());
+      const invited = rig();
+      invited.flee.consider(
+        fighting(15, {
+          name: 'Rayzor',
+          party: { ...EMPTY_CHARACTER.party, members: [{ ...member, invited: true }] }
+        })
+      );
+      // Positive control: each sent its teleport, and nothing else.
+      expect(quiet.sent.map((intent) => intent.command)).toEqual(['sys go 1 297']);
+      expect(invited.sent.map((intent) => intent.command)).toEqual(['sys go 1 297']);
+    });
+  });
+
   /* The user, 2026-10-03: no run of any sort while nothing takes the character anywhere. */
   it('sends nothing for a follower or a character going nowhere, and says why once', () => {
     const { flee, tracker, sent, travel, notice } = rig();

@@ -4,7 +4,7 @@ import BentoCard, { type CardChrome } from './BentoCard';
 import FightOutlook from './FightOutlook';
 import MobFactRow from './MobFactRow';
 import RowPeaceChip from './RowPeaceChip';
-import type { CharacterState, TargetHealth } from '@shared/character';
+import { healthLeft, type CharacterState, type TargetHealth } from '@shared/character';
 import type { PlayerRegistry } from '@shared/players';
 import type { RoomVerdict } from '@shared/verdict';
 import { woundBandFor } from '@shared/wounds';
@@ -156,7 +156,7 @@ function TargetMeter({ health }: { health: TargetHealth }) {
       )}
 
       <span className="meter-label">
-        {known ? `${Math.round(remaining * max)}/${max}` : `−${dealt}`}
+        {known ? `${healthLeft(health)}/${max}` : `−${dealt}`}
         {word !== null && <span className="meter-state">{word}</span>}
       </span>
     </div>

@@ -94,6 +94,22 @@ export interface SpellTarget {
   nature?: MonsterNature | undefined;
 }
 
+/** A monster's row as the choice reads it, with the hit points believed left. */
+export function spellTargetOf(
+  entity:
+    | { magicResist?: number; abilities?: SpellTarget['abilities']; nature?: SpellTarget['nature'] }
+    | null
+    | undefined,
+  remaining: number | null
+): SpellTarget {
+  return {
+    remaining,
+    magicRes: entity?.magicResist ?? null,
+    abilities: entity?.abilities,
+    nature: entity?.nature
+  };
+}
+
 export interface SpellChoiceInput {
   book: ReadonlyArray<CastableSpell & { level?: number | null }>;
   realm: (name: string) => WorldSpell | null;
