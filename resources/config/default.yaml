@@ -1726,7 +1726,9 @@ automation:
     # charges you were saving, so the realm has to *say* -1 and silence is not
     # unlimited. A weapon or armour has to be worn or wielded, as the server
     # answers "You do not have ... equipped." otherwise. Never in a fight, and
-    # never for a spell with no duration -- that is not a blessing.
+    # never for a spell with no duration -- that is not a blessing. This switch
+    # is for the items ticked below; Auto Choose Blessings uses the item it
+    # picks whether it is on or not.
     invokeItems: false
 
     # The items invokeItems may use, by name. Empty uses none. The Spells page
@@ -1815,10 +1817,11 @@ automation:
 
     # Auto Choose Blessings: keep up the bless spells on yourself that make the
     # fight you are hunting go better. Each spell in your book that you can
-    # cast on yourself is tried in the fight (the lair you are hunting, or the
-    # one in the room) and kept up if it adds enough: fights survived where the
-    # fight is not safe, otherwise the exp rate, counting the time its mana
-    # takes to meditate back. The mana your heals need is kept back first.
+    # cast on yourself, and each item you carry that casts a lasting bless on
+    # you (worn, for a weapon or armour), is tried in the fight (the lair you
+    # are hunting, or the one in the room) and kept up if it adds enough:
+    # fights survived where the fight is not safe, otherwise the exp rate,
+    # counting the time its mana takes to meditate back. The mana your heals need is kept back first.
     # Your own self rows in the list above may be dropped; party rows are cast
     # as listed. While nothing is hunted the last choice is kept. It needs to
     # know how fast your mana comes back: the stat all sheet's figure, or, for

@@ -1,4 +1,6 @@
-import { chosenToInvoke, type InvokeChoice } from '@shared/invoke';
+import { chosenToInvoke } from '@shared/invoke';
+import type { CharacterRealm } from '../hooks/useCharacterRealm';
+import BlessingChoiceNote from './BlessingChoiceNote';
 import { CheckField } from './FormField';
 import { t } from '../lib/i18n';
 
@@ -7,8 +9,8 @@ export interface InvokeFieldsProps {
   enabled: boolean;
   /** `automation.spells.invokeWith`, the items it may use. */
   chosen: readonly string[];
-  /** What the inventory holds that can bless; null while it has not been listed. */
-  choices: readonly InvokeChoice[] | null;
+  /** What the inventory holds that can bless, and what Auto Choose Blessings last chose. */
+  realm: Pick<CharacterRealm, 'invokeChoices' | 'blessingChoice'>;
   onEnabled(enabled: boolean): void;
   onChosen(chosen: string[]): void;
 }
@@ -17,16 +19,18 @@ export interface InvokeFieldsProps {
  * The items that bless when used, as the character page draws them: the
  * switch, then one tick per item the inventory holds that can bless (from
  * `invokeChoices`), and one per item ticked that the inventory no longer
- * holds, so it can be unticked. A fragment, so each tick is a cell of the
- * fieldset's grid.
+ * holds, so it can be unticked; then what Auto Choose Blessings last chose,
+ * which it uses in place of the ticks. A fragment, so each tick is a cell of
+ * the fieldset's grid.
  */
 export default function InvokeFields({
   enabled,
   chosen,
-  choices,
+  realm,
   onEnabled,
   onChosen
 }: InvokeFieldsProps): React.JSX.Element {
+  const choices = realm.invokeChoices;
   const carried = choices ?? [];
   // Chosen and not among the choices. Before a listing nothing is known to be
   // carried or not, so those rows make no claim either way.
@@ -82,6 +86,7 @@ export default function InvokeFields({
           onChange={(on) => tick(item, on)}
         />
       ))}
+      <BlessingChoiceNote view={realm.blessingChoice} />
     </>
   );
 }

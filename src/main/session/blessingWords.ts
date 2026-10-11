@@ -1,50 +1,46 @@
 /**
  * What `BlessingChoice` says (todo 10): the blessings chosen for a fight, each
  * with what it adds, its upkeep and how long it lasts and from where, the
- * ones passed over and why, and a refusal with what is cast instead.
+ * ones passed over and why, and a refusal with what is cast instead, as the
+ * rows `choiceSentences` makes the notice and the Spells page from. An item's
+ * blessing is named with the item it is used from.
  */
 import { t } from '../app/i18n';
 import type {
   BlessingChoice,
+  BlessingChoiceView,
   BlessingMeasure,
   BlessingPick,
   BlessingRefusal
 } from '../../shared/blessingchoice';
 
-/** The choice made for the fight at `room`, in one notice. */
-export function choiceWords(
+/** The choice made for the fight at `room`, a row per blessing kept up and per one passed over. */
+export function choiceView(
   choice: Extract<BlessingChoice, { kind: 'chosen' }>,
   room: string
-): string {
-  const message =
-    choice.picks.length === 0
-      ? t('automation.blessing.choseNone', { room })
-      : t('automation.blessing.chose', {
-          room,
-          picks: choice.picks.map((pick) => pickWords(pick, choice.by)).join('; ')
-        });
-  const passed = choice.passed
-    .map(({ name, why }) => t('automation.blessing.passedOne', { spell: name, why: whyWords(why) }))
-    .join('; ');
-  return passed.length === 0
-    ? message
-    : `${message} ${t('automation.blessing.passed', { passed })}`;
+): BlessingChoiceView {
+  return {
+    room,
+    picks: choice.picks.map((pick) => pickWords(pick, choice.by)),
+    passed: choice.passed.map(({ name, why }) =>
+      t('automation.blessing.passedOne', { spell: name, why: whyWords(why) })
+    ),
+    refused: null
+  };
 }
 
 /** A refusal for the fight at `room` (null: no fight), and what is kept instead. */
-export function refusalWords(
+export function refusalView(
   why: BlessingRefusal,
   room: string | null,
   keptLast: boolean
-): { message: string; why: string } {
+): BlessingChoiceView {
   const kept = keptLast ? t('automation.blessing.keptLast') : t('automation.blessing.keptList');
-  const words = whyWords(why);
   return {
-    message:
-      room === null
-        ? t('automation.blessing.refusedNoFight', { why: words, kept })
-        : t('automation.blessing.refused', { room, why: words, kept }),
-    why: words
+    room,
+    picks: [],
+    passed: [],
+    refused: t('automation.blessing.refusal', { why: whyWords(why), kept })
   };
 }
 
@@ -56,7 +52,10 @@ function pickWords(pick: BlessingPick, by: BlessingMeasure): string {
       ? t('automation.blessing.lastsMeasured', { seconds })
       : t('automation.blessing.lastsRealm', { seconds });
   const upkeep = Math.round(pick.upkeepPerHour);
-  const spell = candidate.name;
+  const spell =
+    candidate.via.kind === 'item'
+      ? t('automation.blessing.fromItem', { spell: candidate.spell.name, item: candidate.via.item })
+      : candidate.name;
   switch (by) {
     case 'exp':
       return t('automation.blessing.pickExp', {
@@ -104,6 +103,10 @@ function whyWords(why: BlessingRefusal): string {
       return t('automation.blessing.whyUnknownDuration');
     case 'exclusive':
       return t('automation.blessing.whyExclusive');
+    case 'same-spell':
+      return t('automation.blessing.whySameSpell');
+    case 'not-worn':
+      return t('automation.blessing.whyNotWorn');
     case 'no-gain':
       return t('automation.blessing.whyNoGain');
     case 'over-budget':

@@ -268,4 +268,60 @@ describe('asking a carried item for its blessing', () => {
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['use shimmering longsword']);
   });
+
+  /* Todo 41: Auto Choose Blessings' items stand in for the hand list where it has chosen. */
+  it('uses the items Auto Choose Blessings picked, else the ticked ones', () => {
+    const picked = (items: readonly string[] | null) =>
+      new AutoInvoke(
+        { invokeItems: true, invokeWith: [] },
+        true,
+        queue,
+        sources(),
+        undefined,
+        undefined,
+        { chosenItems: () => items }
+      );
+    picked(null).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    picked(CHOSEN).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  /* Todo 41: the switch is for the hand list; a picked item would otherwise go unused. */
+  it('uses a picked item with the hand list switched off, and not the hand list', () => {
+    const listOff = (items: readonly string[] | null) =>
+      new AutoInvoke(
+        { invokeItems: false, invokeWith: CHOSEN },
+        true,
+        queue,
+        sources(),
+        undefined,
+        undefined,
+        { chosenItems: () => items }
+      );
+    listOff(null).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    listOff(CHOSEN).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  /* Todo 41: zeal takes the warhorn's blast off, so the blast is not used while zeal is up. */
+  it('leaves a blessing up that its spell would take off, or that takes it off', () => {
+    const zeal: WorldSpell = { id: 304, name: 'zeal', duration: 10, abilities: [[122, 114]] };
+    const over: Partial<InvokeSources> = {
+      spellNamed: (name) => (name === 'zeal' ? zeal : name === 'weapon major bless' ? BLESS : null)
+    };
+    // Positive control: another blessing up, and the item is used.
+    run(over).consider(state({ buffs: [{ spell: 'chant', by: null, appliedAt: 0 }] }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+    sent.length = 0;
+    run(over).consider(state({ buffs: [{ spell: 'zeal', by: null, appliedAt: 0 }] }));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+  });
 });

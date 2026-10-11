@@ -40,8 +40,9 @@ import { GearLockWatch } from '../automation/GearLockWatch';
 import { Afk } from '../automation/Afk';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
-import { AutoInvoke } from '../automation/AutoInvoke';
+import type { AutoInvoke } from '../automation/AutoInvoke';
 import type { Blessings } from '../automation/Blessings';
+import type { BlessingChoiceReport } from '../../shared/blessingchoice';
 import { CastRound } from '../automation/CastRound';
 import { Cures } from '../automation/Cures';
 import { Potions } from '../automation/Potions';
@@ -427,6 +428,8 @@ export class SessionManager {
   private readonly blessings: Blessings;
   /** Asking a carried item for the blessing it can cast. See `AutoInvoke`. */
   private readonly invoke: AutoInvoke;
+  /** What Auto Choose Blessings last decided, for the Spells page. */
+  readonly blessingChoice: BlessingChoiceReport;
   readonly loops: LoopRunner;
   /**
    * The character's own persisted record, as `useRealm` handed it over — the
@@ -1321,8 +1324,7 @@ export class SessionManager {
         if (this.tracker.noteRemoteRoom(from, room, name, Date.now())) this.publisher.players();
       }
     });
-    // All four casters share one realm lookup, handing over the realm's whole
-    // row, read at the point of use because `this.world` arrives with `useRealm`.
+    // One realm lookup for every caster, handing over the realm's whole row, read at the point of use.
     const realmSpell = (name: string): WorldSpell | null => this.world?.spellNamed(name) ?? null;
     this.castRound = new CastRound(reports, undefined, realmSpeed);
     this.heal = new AutoHeal(
@@ -1343,18 +1345,6 @@ export class SessionManager {
       undefined,
       realmSpell,
       { notice },
-      this.castRound
-    );
-    /* And the blessing a chosen carried item casts when used. See `AutoInvoke`. */
-    this.invoke = new AutoInvoke(
-      automation.spells,
-      automation.enabled,
-      this.queue,
-      {
-        itemsNamed: (names) => this.world?.itemsNamed(names) ?? {},
-        spellById: (id) => this.world?.spellById(id) ?? null,
-        spellNamed: realmSpell
-      },
       this.castRound
     );
     /*
@@ -1562,16 +1552,25 @@ export class SessionManager {
       deps.simulator
     );
     this.odds = book.odds;
-    this.blessings = blessingsFor(
+    ({
+      blessings: this.blessings,
+      invoke: this.invoke,
+      choice: this.blessingChoice
+    } = blessingsFor(
       { tracker: this.tracker, world, errands: this.errands, ...book, hunt: this.hunt },
-      { queue: this.queue, realmSpell, onTheGround, castGate: this.castRound },
+      {
+        queue: this.queue,
+        realmSpell,
+        onTheGround,
+        castGate: this.castRound
+      },
       {
         ...reports,
         config: () => this.automationConfig,
         durations: () => this.belongings.recallSpellDurations()
       },
       automation
-    );
+    ));
     this.appraisal = new Appraisal(
       { tracker: this.tracker, world, errands: this.errands, ...book },
       { config: () => this.automationConfig, watched: () => this.questWatch.watched }

@@ -212,12 +212,14 @@ describe('choosing blessings for the fight being hunted', () => {
   it('refuses on a kai pool nobody has watched rise, and says so once', async () => {
     const { made, tracker, notices, decisions } = choice();
     made.refresh(tracker.current);
-    const said = t('automation.blessing.refused', {
-      room: 'Den',
+    const refused = t('automation.blessing.refusal', {
       why: t('automation.blessing.whyUnknownMana'),
       kept: t('automation.blessing.keptList')
     });
+    const said = t('automation.blessing.refused', { room: 'Den', refused });
     await vi.waitFor(() => expect(notices).toContain(said));
+    // The Spells page reads the same refusal (todo 41).
+    expect(made.view()).toEqual({ room: 'Den', picks: [], passed: [], refused });
     made.refresh({ ...tracker.current, lastStatusAt: 1_000_500 });
     expect(notices.filter((each) => each === said)).toHaveLength(1);
     expect(made.chosen()).toBeNull();
@@ -291,6 +293,9 @@ describe('choosing blessings for the fight being hunted', () => {
     measure();
     await vi.waitFor(() => expect(made.chosen()).not.toBeNull());
     expect(made.chosen()!.map((row) => row.spell)).toEqual(['way of the tortoise']);
+    // The Spells page's row for it (todo 41).
+    expect(made.view()).toMatchObject({ room: 'Den', refused: null });
+    expect(made.view()!.picks).toHaveLength(1);
     made.dispose();
   });
 
@@ -333,5 +338,6 @@ describe('choosing blessings for the fight being hunted', () => {
     await new Promise((resolve) => setImmediate(resolve));
     expect(runs.count).toBe(0);
     expect(made.chosen()).toBeNull();
+    expect(made.view()).toBeNull();
   });
 });

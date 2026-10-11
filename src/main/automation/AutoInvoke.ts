@@ -2,16 +2,25 @@
  * Using a chosen carried item for the blessing it casts (`use <item>`), when
  * that blessing is not up. The realm's reading (unlimited items, spells with a
  * duration, a weapon or armour only while worn) is `carriedBlessing`, shared
- * with the Spells page's list. On top of it: only the items in `invokeWith`,
- * only when the spell's mana is there (an item cast costs it, `MA=21` to
- * `MA=13` on the wire), never in a fight, and one cast a round through
- * `CastGate`. See `mudengine-automation` › parts/recovery.md, *A weapon that
- * blesses is chosen, and pays the spell's mana*.
+ * with the Spells page's list. On top of it: only the items Auto Choose
+ * Blessings picked (`ChosenItems`), else those in `invokeWith`; only when the
+ * spell's mana is there (an item cast costs it, `MA=21` to `MA=13` on the
+ * wire); never over a blessing up that `RemovesSpell` ties it to; never in a
+ * fight; and one cast a round through `CastGate`. See `mudengine-automation`
+ * › parts/recovery.md, *A weapon that blesses is chosen, and pays the spell's
+ * mana*.
  */
 import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
+import { exclusive } from '../../shared/blessingeffects';
 import { bareName } from '../../shared/items';
-import { carriedBlessing, chosenToInvoke, type BlessingRealm } from '../../shared/invoke';
+import {
+  carriedBlessing,
+  chosenToInvoke,
+  NO_CHOSEN_ITEMS,
+  type BlessingRealm,
+  type ChosenItems
+} from '../../shared/invoke';
 import { gatedCast, OPEN_CAST_GATE, sameSpell, type CastGate } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { t } from '../app/i18n';
@@ -48,14 +57,17 @@ export class AutoInvoke implements SessionModule {
     private readonly queue: CommandQueue,
     private readonly sources: InvokeSources,
     private readonly gate: CastGate = OPEN_CAST_GATE,
-    private readonly now: () => number = () => Date.now()
+    private readonly now: () => number = () => Date.now(),
+    private readonly picked: ChosenItems = NO_CHOSEN_ITEMS
   ) {
     this.configure(spells, enabled);
   }
 
   configure(spells: InvokeSettings, enabled: boolean): void {
-    this.enabled = enabled && spells.invokeItems;
-    this.chosen = spells.invokeWith;
+    // `invokeItems` switches the hand list only: an item Auto Choose Blessings
+    // picked is used without it, or the choice it names would go unused.
+    this.enabled = enabled;
+    this.chosen = spells.invokeItems ? spells.invokeWith : [];
   }
 
   reset(): void {
@@ -80,9 +92,12 @@ export class AutoInvoke implements SessionModule {
     if (state.inventory.listedAt === null) return;
 
     const now = this.now();
+    // Auto Choose Blessings' items where it has chosen; the hand list otherwise.
+    const chosen = this.picked.chosenItems() ?? this.chosen;
+    if (chosen.length === 0) return;
     for (const carried of state.inventory.items) {
       const name = bareName(carried.name);
-      if (!chosenToInvoke(this.chosen, name)) continue;
+      if (!chosenToInvoke(chosen, name)) continue;
       const found = this.offer(name, carried.equipped, state);
       if (found === null) continue;
 
@@ -133,6 +148,17 @@ export class AutoInvoke implements SessionModule {
         sameSpell(candidate, spell.name, state.spellbook, this.sources.spellNamed)
       )
     );
-    return held ? null : spell;
+    if (held) return null;
+    /*
+     * A blessing up that this one takes off, or that takes this one off
+     * (`RemovesSpell`, `Spell.cs` applies it on the cast): the one up stays.
+     * Zeal takes off the engraved warhorn's blast, so a paladin with zeal on
+     * the list would otherwise spend a `use` on every zeal recast.
+     */
+    const clashes = state.buffs.some((buff) => {
+      const up = this.sources.spellNamed(buff.spell);
+      return up !== null && up.id !== spell.id && exclusive(up, spell);
+    });
+    return clashes ? null : spell;
   }
 }

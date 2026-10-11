@@ -320,6 +320,7 @@ export function createWebBridge(): IpcApi {
     roomBrief: (session, map, room) => invoke(Invoke.roomBrief, session, map, room),
     slotGear: (session, slot) => invoke(Invoke.slotGear, session, slot),
     chosenWords: (session) => invoke(Invoke.chosenWords, session),
+    blessingChoice: (session) => invoke(Invoke.blessingChoice, session),
     huntingGrounds: (session, measure) => invoke(Invoke.huntingGrounds, session, measure),
     trainers: (session) => invoke(Invoke.trainers, session),
     banks: (session) => invoke(Invoke.banks, session),

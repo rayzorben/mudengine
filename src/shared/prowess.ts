@@ -859,7 +859,7 @@ export interface CastOdds {
    * between two spells is choosing between two expected costs. This is the
    * figure that decides, and the listed one never was.
    */
-  expectedMana: Reckoning<number> | null;
+  expectedMana: Reckoning<number>;
 }
 
 /**
@@ -890,14 +890,16 @@ export function castOdds(
   const chance =
     Math.max(0, Math.min(MAX_SUCCESS_RATE, Math.trunc(sheet.spellcasting + spell.difficulty))) /
     100;
-  const mana = spell.mana;
-  const expectedMana =
-    mana === undefined
-      ? null
-      : {
-          value: chance * mana + (1 - chance) * Math.max(1, Math.trunc(mana / 2)),
-          from: 'source' as const
-        };
+  /*
+   * A realm that states a difficulty (format 22) writes the mana column only
+   * above zero (`buildRealm`'s spell rows), so absent here is the realm's 0: warhorn blast's horn costs
+   * nothing on a landed cast and the server's minimum of 1 on a failed one.
+   */
+  const mana = spell.mana ?? 0;
+  const expectedMana = {
+    value: chance * mana + (1 - chance) * Math.max(1, Math.trunc(mana / 2)),
+    from: 'source' as const
+  };
   return { chance: { value: chance, from: 'source' }, expectedMana };
 }
 

@@ -284,6 +284,16 @@ describe('cast odds — Spell.Cast', () => {
     expect(odds.expectedMana!.value).toBeGreaterThanOrEqual(1);
   });
 
+  it('reads an unstated mana as 0 once a difficulty is stated', () => {
+    // The conversion writes mana only above zero: a free cast still charges 1 when it fails.
+    const free = castOdds({ difficulty: 15 }, SHEET, 'greatermud')!;
+    expect(free.expectedMana.value).toBeCloseTo(0.45, 5);
+    // The positive control: a stated cost is priced as stated.
+    expect(
+      castOdds({ mana: 20, difficulty: 15 }, SHEET, 'greatermud')!.expectedMana.value
+    ).toBeCloseTo(15.5, 5);
+  });
+
   it('refuses when the realm does not state a difficulty', () => {
     // The realm's own zero is written out as absent, and a spell whose column
     // this client has never converted is the same shape. Neither may be read
