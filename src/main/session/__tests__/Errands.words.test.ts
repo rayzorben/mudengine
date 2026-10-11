@@ -25,7 +25,8 @@ function errands(attack: string): Errands {
         [ATTACK_ABILITY.jumpkick, 1]
       ]
     }),
-    raceAbilities: () => null
+    raceAbilities: () => null,
+    sparedItems: () => new Set([185])
   };
   return new Errands(
     { world, tracker: { current: MYSTIC }, fightRecord: {}, lore: {} } as unknown as ErrandsParts,
@@ -50,5 +51,24 @@ describe('the attack every price reads', () => {
 
   it('is the typed word where there is one', () => {
     expect(errands('a').realmClass()).toMatchObject({ verb: 'a', attack: { kind: 'attack' } });
+  });
+});
+
+/*
+ * Todo 31: which monsters wait to be struck moves with an item a monster
+ * spares its holder for, and the odds book's pass of a lair is keyed on
+ * fitness, so picking one up opens a new book. Any other item moves nothing.
+ */
+describe('the fitness key and the pack', () => {
+  const holding = (...rows: number[]): CharacterState => ({
+    ...MYSTIC,
+    inventory: { ...MYSTIC.inventory, rows, listedAt: 1 }
+  });
+
+  it('moves with an item a monster spares its holder for, and no other', () => {
+    const book = errands('a');
+    const bare = book.fitness(holding());
+    expect(book.fitness(holding(7))).toBe(bare);
+    expect(book.fitness(holding(7, 185))).not.toBe(bare);
   });
 });

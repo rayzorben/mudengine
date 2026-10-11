@@ -231,19 +231,10 @@ export class WorldGraph {
   private readonly rooms = new Map<RoomId, WorldRoom>();
   /**
    * The room-script teleports the router may walk, keyed by the room whose
-   * script offers them — `dive pool`, `go vortex`. Built by `linkPortals` once
-   * the rooms are loaded, and deliberately only from scripts whose every
-   * condition the router can genuinely evaluate against the traveller
-   * (`minlevel`/`maxlevel`, or none): a `nomonsters` or `roomitem` portal is a
-   * fact the Room card states and a person judges, because routing through a
-   * condition the client cannot read is how a character is walked somewhere it
-   * cannot get back from — the reason mme.md §6 deferred this half.
-   *
-   * A refused portal walls at `from|portal`, which is one key per *room*: a
-   * room offering two routable portals (exactly one on the shipped realm,
-   * 15/740) has both avoided when either is refused. Coarse on purpose — a
-   * refusal cannot say which phrase it answered, and over-avoiding for a
-   * session is the safe direction.
+   * script offers them (`dive pool`, `go vortex`), built by `linkPortals`. A
+   * refused portal walls at `from|portal`, one key per room: a room offering
+   * two (15/740 on the shipped realm) has both avoided when either is refused,
+   * the safe direction for a session.
    */
   private readonly portals = new Map<RoomId, PortalExit[]>();
   /**
@@ -459,6 +450,10 @@ export class WorldGraph {
 
   lairEntities(room: WorldRoom): MobEntity[] {
     return this.catalogue.lairEntities(room);
+  }
+
+  sparedItems(): ReadonlySet<number> {
+    return this.catalogue.sparedItems();
   }
 
   residentEntities(room: WorldRoom): MobEntity[] {

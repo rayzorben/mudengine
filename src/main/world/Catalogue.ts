@@ -57,6 +57,8 @@ import {
   ABILITY_REFERS,
   emptyReferredNames,
   HAZARD_ABILITY,
+  NO_ATTACK_IF_ITEM_ABILITY,
+  abilityValues,
   type ReferredNames,
   type ReferredTable
 } from '../../shared/abilities';
@@ -521,6 +523,8 @@ export class Catalogue {
   private droppers: Map<string, string[]> | null = null;
   /** Monster row → the monsters whose own spell summons it — `summonersOf`. */
   private summoners: Map<number, WorldMob[]> | null = null;
+  /** Every item some monster spares its holder for — `sparedItems`. */
+  private spared: ReadonlySet<number> | null = null;
   /** What the realm makes and what each run makes (format 56, `supply.ts`). */
   private supplied: WorldSupply = NO_SUPPLY;
 
@@ -932,6 +936,23 @@ export class Catalogue {
       }
     }
     return found;
+  }
+
+  /**
+   * Every item a monster of this realm names in `NoAttackIfItemNum` (185):
+   * holding one moves who attacks on sight (`attacksOnSight`), so it is the
+   * part of the pack a fight's figures depend on (`Errands.fitness`).
+   */
+  sparedItems(): ReadonlySet<number> {
+    if (this.spared === null) {
+      const items = new Set<number>();
+      const rows = [...this.mobs.values(), ...this.rowsById.values()];
+      for (const { abilities } of rows) {
+        for (const item of abilityValues(abilities, NO_ATTACK_IF_ITEM_ABILITY)) items.add(item);
+      }
+      this.spared = items;
+    }
+    return this.spared;
   }
 
   /**

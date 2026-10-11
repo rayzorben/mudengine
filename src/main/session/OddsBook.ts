@@ -49,8 +49,12 @@ export interface OddsBookSession {
 /** What a reader asks the book: one monster alone, or a lair. */
 export type OddsReader = Pick<OddsBook, 'mob' | 'lair'>;
 
-/** The readers, and the lair's fight as it stands without queueing it (the router's). */
-export type OddsPeeker = OddsReader & Pick<OddsBook, 'mobKnown' | 'lairKnown' | 'lairsLeft'>;
+/**
+ * The readers, a lair run past (todo 31), and the lair's fights as they stand
+ * without queueing them (the router's).
+ */
+export type OddsPeeker = OddsReader &
+  Pick<OddsBook, 'pass' | 'mobKnown' | 'lairKnown' | 'passKnown' | 'lairsLeft'>;
 
 /** What the session holds of the book: the readers, the what-if, and its life. */
 export type SessionOdds = Pick<
@@ -61,6 +65,8 @@ export type SessionOdds = Pick<
   | 'mobAs'
   | 'lair'
   | 'lairKnown'
+  | 'pass'
+  | 'passKnown'
   | 'lairsLeft'
   | 'reset'
   | 'dispose'
@@ -80,7 +86,14 @@ export function fightBook(
   return { setup, odds: new OddsBook({ ...parts, setup, simulator }, session), simulator };
 }
 
-type Job = { kind: 'mob'; name: string } | { kind: 'lair'; key: string; room: WorldRoom };
+/**
+ * How a lair is met: hunted, every monster struck in turn, or run past, where
+ * nobody is struck and what waits to be struck stays out of it (todo 31).
+ */
+type LairWay = 'hunt' | 'pass';
+
+type Job =
+  { kind: 'mob'; name: string } | { kind: 'lair'; key: string; room: WorldRoom; way: LairWay };
 
 /** What is run for one set of figures, and what is still owed it. */
 interface Book {
@@ -178,23 +191,63 @@ export class OddsBook implements SessionModule {
    * rooms nobody walks (todo 23). Pending until `lair` has asked for it.
    */
   lairKnown(room: WorldRoom): Odds {
-    if (room.lair === undefined) return UNRUN;
-    if (this.book === null) return UNREAD;
-    return this.book.lairs.get(lairKey(room.lair)) ?? PENDING;
+    return this.known(room, 'hunt');
   }
 
   /** A lair's fight: as many as it holds at its cap, drawn from its rows. */
   lair(room: WorldRoom): Odds {
+    return this.asked(room, 'hunt');
+  }
+
+  /** `passKnown`'s queueing twin: a lair run past, as a route about to be read meets it. */
+  pass(room: WorldRoom): Odds {
+    return this.asked(room, 'pass');
+  }
+
+  /**
+   * A lair run past as the book holds it, queueing nothing (`lairKnown`): the
+   * same draw, with only the monsters that attack on sight swinging. Where
+   * none of its monsters waits to be struck, it is the hunt's fight.
+   */
+  passKnown(room: WorldRoom): Odds {
+    return this.known(room, 'pass');
+  }
+
+  private known(room: WorldRoom, way: LairWay): Odds {
     if (room.lair === undefined) return UNRUN;
     if (this.book === null) return UNREAD;
-    const key = lairKey(room.lair);
-    const known = this.book.lairs.get(key);
+    return this.book.lairs.get(this.lairJob(room, way).key) ?? PENDING;
+  }
+
+  private asked(room: WorldRoom, way: LairWay): Odds {
+    if (room.lair === undefined) return UNRUN;
+    if (this.book === null) return UNREAD;
+    const job = this.lairJob(room, way);
+    const known = this.book.lairs.get(job.key);
     if (known !== undefined) return known;
-    this.promote(`lair:${key}`, { kind: 'lair', key, room }, false);
+    this.promote(`lair:${job.key}`, job, false);
     return PENDING;
   }
 
-  /** The lairs not yet run for the character as it stands: those queued and the one part way. */
+  /**
+   * A lair's job and the key its odds are kept under. A pass where nothing
+   * waits to be struck is the hunt's fight, so it shares the hunt's key and
+   * is never run twice. The book is per standing and per item held that a
+   * monster spares its holder for (`Errands.fitness`), so who waits is fixed
+   * for its life.
+   */
+  private lairJob(room: WorldRoom, way: LairWay): Job & { kind: 'lair' } {
+    const key = lairKey(room.lair ?? '');
+    const standing = standingOf(this.tracker.current);
+    const passes =
+      way === 'pass' &&
+      (this.world?.lairEntities(room) ?? []).some((entity) => waitsToBeStruck(entity, standing));
+    return passes
+      ? { kind: 'lair', key: `${key}#pass`, room, way }
+      : { kind: 'lair', key, room, way: 'hunt' };
+  }
+
+  /** The lair fights not yet run for the character as it stands (hunts and passes): those queued and the one part way. */
   get lairsLeft(): number {
     const book = this.book;
     if (book === null) return 0;
@@ -237,21 +290,29 @@ export class OddsBook implements SessionModule {
     this.book = kept ?? { ...this.owed(world), key };
   }
 
-  /** A new book's queue: every lair, once per spawn list, then every monster. */
+  /**
+   * A new book's queue: every lair hunted, once per spawn list, then each run
+   * past where some of it waits to be struck (the router prices a pass off
+   * the book without queueing it), then every monster.
+   */
   private owed(world: OddsWorld): Omit<Book, 'key'> {
-    const lairs = new Map<string, WorldRoom>();
+    const hunts: Job[] = [];
+    const passes: Job[] = [];
+    const seen = new Set<string>();
     for (const room of world.everyRoom()) {
       if (room.lair === undefined) continue;
-      const each = lairKey(room.lair);
-      if (!lairs.has(each)) lairs.set(each, room);
+      const hunt = this.lairJob(room, 'hunt');
+      if (seen.has(hunt.key)) continue;
+      seen.add(hunt.key);
+      hunts.push(hunt);
+      // Its pass where some of it waits to be struck; the hunt's own fight where none does.
+      const pass = this.lairJob(room, 'pass');
+      if (pass.key !== hunt.key) passes.push(pass);
     }
     return {
       mobs: new Map(),
       lairs: new Map(),
-      queue: [
-        ...[...lairs].map(([each, room]): Job => ({ kind: 'lair', key: each, room })),
-        ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))
-      ],
+      queue: [...hunts, ...passes, ...world.mobNames().map((name): Job => ({ kind: 'mob', name }))],
       asked: new Set(),
       told: new Set()
     };
@@ -349,8 +410,9 @@ export class OddsBook implements SessionModule {
       met = [{ name: job.name, subject: entity }];
     } else {
       /*
-       * Everything it spawns, at its cap: a lair is hunted, so all of it is
-       * fought, and what does not attack on sight joins only when struck.
+       * Everything it spawns, at its cap. Hunted, all of it is fought, and
+       * what does not attack on sight joins only when struck; run past,
+       * nothing is struck that does not swing first, so that never joins.
        */
       const standing = standingOf(state);
       met = world.lairEntities(job.room).map((entity) => ({
@@ -365,7 +427,8 @@ export class OddsBook implements SessionModule {
     return {
       ...character,
       ...this.setup.foes(state, character, met, 'arriving'),
-      ...(draw === undefined ? {} : { draw })
+      ...(draw === undefined ? {} : { draw }),
+      ...(job.kind === 'lair' && job.way === 'pass' ? { passing: true } : {})
     };
   }
 }

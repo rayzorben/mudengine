@@ -7,7 +7,7 @@
  */
 import type { Odds } from '../../shared/survival';
 import type { Route, RouteChances, WorldRoom } from '../../shared/world';
-import { openingOn, opensOn, runRiskOf, type RunRiskParts } from './runRisk';
+import { noneOpens, opensOn, runRiskOf, type RunRiskParts } from './runRisk';
 import { wanderersOf } from './wanderersIn';
 
 /** The chance of dying fighting what is met in one room; null where a fight has not run. */
@@ -15,8 +15,7 @@ function fightDeath(room: WorldRoom, parts: RunRiskParts): number | null {
   const lost = (odds: Odds): number | null =>
     odds.kind === 'run' ? 1 - odds.survival.survives : null;
   if (room.lair !== undefined) {
-    const opening = openingOn(parts.world.lairEntities(room), parts.state);
-    return opening !== null && opening.length === 0 ? 0 : lost(parts.lairOdds(room));
+    return noneOpens(parts.world.lairEntities(room), parts.state) ? 0 : lost(parts.lairOdds(room));
   }
   let death = 0;
   for (const { entity, chance } of wanderersOf(room, parts.world)) {

@@ -3,7 +3,8 @@
  * its monsters get in on a character passing with combat off (the move against
  * the round, the banked first round, the rooms a follower stays on, nothing
  * where a sneak holds past monsters that do not see hidden) and the chance
- * those rounds kill, off the odds book's fight of the lair; and a room with no
+ * those rounds kill, off the odds book's pass of the lair, where only what
+ * attacks on sight swings (todo 31); and a room with no
  * lair by the monsters that may wander in with the character (`wanderersOf`,
  * todo 25), each by its own fight. The router prices a room by `lairRunner` and the panel's
  * *Run it* chance is `runRiskOf`. See `src/shared/runPass.ts` for the
@@ -38,7 +39,10 @@ export interface RunRiskParts {
     byId(id: RoomId): WorldRoom | undefined;
     lairEntities(room: WorldRoom): MobEntity[];
   };
+  /** The lair hunted, as auto-combat fights it: the walk's figure (`routeChances`). */
   lairOdds(room: WorldRoom): Odds;
+  /** The lair run past, nobody struck: the run's figure (`OddsBook.pass`). */
+  passOdds(room: WorldRoom): Odds;
   /** One monster fought alone, arrivals and all: a wanderer's fight. */
   mobOdds(name: string): Odds;
   /** `tuning.hunting` at the realm's speed (`atSpeed`): the round, and the step where the family states no move delay. */
@@ -64,6 +68,11 @@ export function openingOn(
   if (mobs.length === 0) return null;
   const standing = standingOf(state);
   return mobs.filter((mob) => !waitsToBeStruck(mob, standing));
+}
+
+/** Whether every monster named waits to be struck: none opens, and none is unweighed. */
+export function noneOpens(mobs: readonly MobEntity[], state: CharacterState): boolean {
+  return openingOn(mobs, state)?.length === 0;
 }
 
 /** Whether one monster may open on the character (`openingOn`). */
@@ -138,11 +147,7 @@ export function lairRunner(parts: RunRiskParts): LairRunner {
       followRooms: followRooms(follows, runFollowRooms)
     }),
     seen: mobs.some((mob) => carriesAbility(mob.abilities, SEE_HIDDEN_ABILITY)),
-    /*
-     * Monsters that do not open on the character kill nobody in the
-     * simulated fight, so a passive lair dies of nothing here without a
-     * separate rule.
-     */
+    // Read off a pass for a lair (`passOdds`): a hunt strikes what waits, and it joins.
     standing: (rounds: number) =>
       odds.kind === 'run' ? standingAfter(odds.survival.horizons, rounds) : null
   });
@@ -157,7 +162,10 @@ export function lairRunner(parts: RunRiskParts): LairRunner {
     let read: Exposure[] | null;
     if (room.lair !== undefined) {
       const mobs = world.lairEntities(room);
-      read = [exposed(mobs, 1, parts.lairOdds(room), followsOf(mobs, state))];
+      // A lair where every monster waits to be struck gets no round in on a runner (todo 31).
+      read = noneOpens(mobs, state)
+        ? []
+        : [exposed(mobs, 1, parts.passOdds(room), followsOf(mobs, state))];
     } else {
       const met = wanderersOf(room, world);
       // A wanderer that waits to be struck gets no round in on a runner.
