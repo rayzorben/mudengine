@@ -50,8 +50,9 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the canHide and restsHidden comments, condensed as the chosen attack's wiring came (todo 47).
   // Lowered by the decided and canHide comments, condensed as the weapon reach came in (todo 46).
   // Lowered by `AutoInvoke`'s construction, out with the blessings' (`blessingsFor`, todo 41).
-  // Lowered by the blessings' wiring, folded onto one line as the swap's fight ask came (todo 42).
-  'src/main/session/SessionManager.ts': 3426,
+  // Lowered by the blessings' wiring, folded onto one line as the swap's fight ask came, and
+  // the kit comment, condensed as the reach weapon's hand-over came (todo 42).
+  'src/main/session/SessionManager.ts': 3425,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   'src/main/world/WorldGraph.ts': 2385,

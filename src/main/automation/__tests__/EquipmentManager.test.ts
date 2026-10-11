@@ -73,6 +73,7 @@ const sources = (over: Partial<EquipmentSources> = {}): EquipmentSources => ({
   slotOf: (name) => SLOTS[name] ?? null,
   handsOf: (name) => (name === 'nexus spear' ? 2 : 1),
   opensWithBackstab: () => false,
+  yieldSwap: () => null,
   ...over
 });
 
@@ -313,6 +314,31 @@ describe('the weapon that can hurt the monster', () => {
     expect(sent).toEqual(['wear golden pike']);
 
     // Positive control: the fight ends and the club goes back in hand.
+    manager.onCharacter(standing(holding), false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike', 'wear club']);
+  });
+
+  /* Todo 42: a fight came while a bless weapon was in hand for its `use`. */
+  it('puts back the weapon a bless swap would have, not the bless weapon', () => {
+    const yieldSwap = vi.fn(() => 'club');
+    const manager = make(off, { yieldSwap });
+    const blessing = [
+      carried('club'),
+      worn('shimmering longsword', WEAPON_HAND),
+      carried('golden pike')
+    ];
+    manager.wieldFor(standing(blessing, golem), 'golden pike', 'stone golem');
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike']);
+    expect(yieldSwap).toHaveBeenCalledTimes(1);
+
+    const holding = [
+      carried('club'),
+      carried('shimmering longsword'),
+      worn('golden pike', WEAPON_HAND)
+    ];
+    manager.onCharacter(fighting('stone golem', holding), false);
     manager.onCharacter(standing(holding), false);
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['wear golden pike', 'wear club']);

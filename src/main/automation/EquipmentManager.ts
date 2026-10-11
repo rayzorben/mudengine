@@ -40,6 +40,12 @@ export interface EquipmentSources {
   handsOf(name: string): 1 | 2 | null;
   /** Whether the next fight opens with a backstab with these in hand (`AutoCombat`). */
   opensWithBackstab(weapons: readonly string[]): boolean;
+  /**
+   * Hands the weapon hand over from a bless weapon's swap (`AutoInvoke.yieldHand`):
+   * what is left of it is dropped and the weapon it would have put back is
+   * returned, or null where no swap had started.
+   */
+  yieldSwap(): string | null;
 }
 
 export interface EquipmentEvents {
@@ -159,8 +165,10 @@ export class EquipmentManager implements SessionModule {
    */
   wieldFor(state: CharacterState, weapon: string, target: string): void {
     if (!this.enabled || state.inventory.listedAt === null) return;
-    const was = this.reached?.was ?? heldWeapon(state.inventory.items)?.name ?? null;
     if (!this.wieldInHand(state, weapon, 'combat')) return;
+    // A bless weapon's swap mid-way: the weapon it would put back is the one to come home.
+    const swapped = this.sources.yieldSwap();
+    const was = this.reached?.was ?? swapped ?? heldWeapon(state.inventory.items)?.name ?? null;
     this.reached = { weapon, was, target: mobKey(target), fought: false };
     this.events.notice?.(t('automation.gear.reachWield', { weapon, target }));
   }

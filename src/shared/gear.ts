@@ -206,9 +206,13 @@ export function dropAllPlan(items: readonly CarriedItem[], max: number): GearPla
   );
 }
 
+/** The server's verbs for putting an item on and taking it off (`equip`, `unequip`). */
+const WEAR = 'wear ';
+const REMOVE = 'remove ';
+
 /** One item, put on. The single-row button, and the unit the plans are built of. */
 export function equip(item: string): string {
-  return `wear ${item}`;
+  return `${WEAR}${item}`;
 }
 
 /**
@@ -223,7 +227,12 @@ export function equip(item: string): string {
  * standing in can pick it up from.
  */
 export function unequip(item: string): string {
-  return `remove ${item}`;
+  return `${REMOVE}${item}`;
+}
+
+/** Whether a command is one `equip` or `unequip` builds: it changes what is worn. */
+export function isEquipCommand(command: string): boolean {
+  return command.startsWith(WEAR) || command.startsWith(REMOVE);
 }
 
 /**

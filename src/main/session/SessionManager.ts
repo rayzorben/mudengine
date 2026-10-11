@@ -1348,11 +1348,9 @@ export class SessionManager {
       this.castRound
     );
     /*
-     * And which kit to be in. The pack is asked before the realm for both
-     * facts: a carried item carries the realm's own reading joined onto it
-     * (`ItemEntity.realmSlot`, `weapon.hands`), and that is the row the
-     * server will actually put on — a second row of the same name in the
-     * catalogue is not.
+     * And which kit to be in. The pack is asked before the realm for both facts:
+     * a carried item carries the realm's own reading joined onto it (`realmSlot`,
+     * `weapon.hands`): the row the server puts on, which a same-named row may not be.
      */
     this.gear = new EquipmentManager(
       automation.gear,
@@ -1361,7 +1359,8 @@ export class SessionManager {
       {
         slotOf: (name) => this.errands.gearSlotOf(name),
         handsOf: (name) => this.errands.gearHandsOf(name),
-        opensWithBackstab: (weapons) => this.combat.opensWithBackstab(weapons)
+        opensWithBackstab: (weapons) => this.combat.opensWithBackstab(weapons),
+        yieldSwap: () => this.invoke.yieldHand()
       },
       { notice }
     );

@@ -272,6 +272,61 @@ describe('asking a carried item for its blessing', () => {
     expect(sent).toHaveLength(3);
   });
 
+  /*
+   * A reach weapon for a fight takes the hand mid-swap (`EquipmentManager.wieldFor`):
+   * the watch ends and the fighting weapon is handed over, said by that module.
+   */
+  it('hands the fighting weapon over to a fight mid-swap', () => {
+    const notices: string[] = [];
+    const invoke = new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources(),
+      undefined,
+      undefined,
+      undefined,
+      { notice: (message) => notices.push(message) }
+    );
+    // Positive control: nothing started, so there is nothing to hand over.
+    expect(invoke.yieldHand()).toBeNull();
+    invoke.consider(
+      state({}, [
+        { ...carried('broadsword'), slot: 'Weapon Hand' },
+        carried('shimmering longsword', false)
+      ])
+    );
+    expect(sent).toHaveLength(3);
+    expect(invoke.yieldHand()).toBe('broadsword');
+    vi.advanceTimersByTime(60_000);
+    invoke.consider(
+      state({ inCombat: true }, [
+        carried('broadsword', false),
+        { ...carried('golden pike'), slot: 'Weapon Hand' }
+      ])
+    );
+    expect(notices).toEqual([]);
+  });
+
+  /* A gear set's or a reach weapon's `wear` still waiting: the hand is not settled. */
+  it('waits for another wear in the queue before swapping', () => {
+    const pack = [
+      { ...carried('broadsword'), slot: 'Weapon Hand' },
+      carried('shimmering longsword', false)
+    ];
+    // The window full, so the `wear` waits.
+    const looks = Array.from({ length: 20 }, (_, index) => `l ${index}`);
+    for (const command of [...looks, 'wear club'])
+      queue.enqueue({ command, priority: 'probe', coalesceKey: command, reason: 'test' });
+    expect(queue.queued((intent) => intent.command === 'wear club')).toBe(true);
+    run().consider(state({}, pack));
+    expect(queue.queued((intent) => intent.command === 'wear shimmering longsword')).toBe(false);
+    // Positive control: the same pack once nothing else waits.
+    queue.clear();
+    run().consider(state({}, pack));
+    expect(sent).toContain('wear shimmering longsword');
+  });
+
   /* A swap the queue dropped before anything went is forgotten, and asked again. */
   it('asks again once the queue has dropped a swap that never started', () => {
     let open = false;
