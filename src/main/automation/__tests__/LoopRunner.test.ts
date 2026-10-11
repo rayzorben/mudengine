@@ -840,6 +840,28 @@ describe('holding after an escape', () => {
     expect(walked).toEqual(['Arena', 'Road']);
   });
 
+  /* A player's attack is over when the server stops counting it (todo 78):
+     the lap waits out the window, and a later blow moves its end on. */
+  it('waits out the PvP window after a run from a player', () => {
+    const { planner: p, walked } = planner();
+    const runner = new LoopRunner(p, {});
+    runner.start(loop, at(100));
+    runner.onWalkEnded(true, null, at(100));
+    runner.noteEscaped(Date.now() + 60_000);
+    vi.advanceTimersByTime(30_000);
+    // A second blow inside the window: its end moves on by its own figure.
+    runner.notePvpWindow(Date.now() + 60_000);
+    vi.advanceTimersByTime(45_000);
+    runner.onCharacter(at(100));
+    // Past the settle and the first window, still inside the second.
+    expect(runner.progress.hold).toBe('retreated');
+    expect(walked).toEqual(['Arena']);
+    vi.advanceTimersByTime(16_000);
+    runner.onCharacter(at(100));
+    expect(runner.progress.hold).toBeNull();
+    expect(walked).toEqual(['Arena', 'Road']);
+  });
+
   /* Run away *and* hurt is the ordinary case, and the health ceiling outlives
      the settle: walking on at 40% is walking back into what the escape was for. */
   it('waits for the health as well as the clock', () => {

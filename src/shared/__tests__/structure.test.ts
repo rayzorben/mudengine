@@ -94,7 +94,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the dial switches, out whole with the lives that hold them (`DialFields`, todo 07).
   // Lowered by the gear recovery's switches, out whole (`RecoverFields`, todo 39).
   // Lowered by the attack and opener fields, out whole with their chosen words (`FightWordFields`, todo 47).
-  'src/renderer/src/components/CharacterForm.tsx': 1469
+  // Lowered by the PvP reaction's options, one line as its third member came (todo 78).
+  'src/renderer/src/components/CharacterForm.tsx': 1468
 };
 
 /**

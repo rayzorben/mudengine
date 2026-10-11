@@ -109,6 +109,7 @@ function travel(
       resume: vi.fn(),
       restate: vi.fn(),
       noteEscaped: vi.fn(),
+      notePvpWindow: vi.fn(),
       noteOnline: vi.fn(),
       carried: false,
       heading: null,

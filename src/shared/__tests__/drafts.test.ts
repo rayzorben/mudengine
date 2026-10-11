@@ -191,6 +191,12 @@ describe('a character', () => {
     ]);
   });
 
+  it('keeps every PvP reaction it is handed (todo 78)', () => {
+    const draft = asProfileDraft({ ...good, pvp: { action: 'retreat-then-hangup' } });
+    expect(draft?.pvp.action).toBe('retreat-then-hangup');
+    expect(asProfileDraft({ ...good, pvp: { action: 'fight' } })?.pvp.action).toBe('none');
+  });
+
   it('takes a well-formed one', () => {
     const draft = asProfileDraft(good);
     expect(draft).not.toBeNull();

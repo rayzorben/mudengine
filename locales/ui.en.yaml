@@ -3896,7 +3896,8 @@ settings:
     outnumberedLabel: Run If Attackers Exceed
     pvpActionHint: What to do about the fight itself. Running happens as soon as the attack is seen,
       whatever Auto-Run says, but only while a route or loop is moving you and never while you
-      follow a leader.
+      follow a leader. retreat-then-hangup (MegaMUD's Flee Then Hangup) also hangs up once the
+      PvP timer runs out.
     pvpActionLabel: PvP Reaction
     pvpLegend: Attacked by a Player
     pvpNotifyHint: Announces it on the gangpath (bg), once per attacker every five minutes, with the
@@ -4956,6 +4957,8 @@ session:
     realmChargesNothing: "{realm}'s realm menu says a hangup costs nothing."
     pvpAlertReason: 'safety: telling the gang about {attacker}'
     pvpAlerted: 'Telling the gang: {attacker} is attacking.'
+    # Todo 78: MegaMUD's Flee Then Hangup.
+    pvpHangUpLater: "Hanging up in {minutes} min, once {attacker}'s PvP timer runs out."
     pvpNoGang: 'Not telling anyone about {attacker}: the who list shows you in no gang.'
     pvpNoGangReason: the who list shows no gang to tell
     whyHealth: health at {percent}
@@ -4963,6 +4966,7 @@ session:
     whyAttackers: '{count} attackers'
     whyCompany: Player present in room (PvP abort)
     whyPvp: '{attacker} attacked you'
+    whyPvpOver: "{attacker}'s PvP timer ran out"
     # Todo 818: a monster's row says to escape it, or to hang up on it.
     whyDreaded: '{mob} is here, and its monster rule says to run'
     whyStalker: '{mob} is here, and its monster rule says to hang up'
@@ -5848,6 +5852,7 @@ automation:
     afflicted: Waiting out a condition before the next leg.
     afflictionOver: The condition has passed; the loop continues.
     heldAfterEscape: Ran away; the loop waits here until the fight is over and health is back.
+    heldAfterPvp: 'Ran from a player; the loop waits here {minutes} min for the PvP timer and for health to come back.'
     walkingOnAfterEscape: Recovered after running; the loop continues.
     heldOffline: Disconnected; the loop waits until you are back in the realm.
     carriedOver: 'Looping {loopName} from last time; it continues once you are back in the realm.'

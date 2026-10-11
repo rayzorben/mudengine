@@ -1,7 +1,8 @@
 /**
  * The session's safety decisions that are not a direction: hanging up below
  * a health floor, which on this server family is how a character dies rather
- * than how it escapes, and telling the gang a player opened on it. It reads
+ * than how it escapes, and telling the gang a player opened on it, then
+ * hanging up once that attack no longer counts when asked to. It reads
  * what the realm menu said a hang-up costs, what `HangUpWatch` has seen and
  * the settings, says every refusal once, and hangs up through the session's
  * own disconnect. Running away is `Travel`'s, the PvP retreat included. See
@@ -100,6 +101,12 @@ export class Safety implements SessionModule {
   private nothingHereSaid: string | null = null;
   /** Whether low health held for the player at the keyboard has been said this stretch (todo 79). */
   private attendedSaid = false;
+  /**
+   * `retreat-then-hangup`: the attacker and when the latest blow stops
+   * counting (`PVP_WINDOW_MS`), after which the hangup goes (todo 78). Null
+   * while no player has attacked under that setting.
+   */
+  private pvpHangUp: { readonly attacker: string; readonly at: number } | null = null;
 
   constructor(
     parts: SafetyParts,
@@ -130,6 +137,7 @@ export class Safety implements SessionModule {
     this.gotOut = null;
     this.nothingHereSaid = null;
     this.attendedSaid = false;
+    this.pvpHangUp = null;
   }
 
   /**
@@ -211,7 +219,28 @@ export class Safety implements SessionModule {
      * *Retreating … at -8%* by the PvP door. The gang alert above still goes:
      * `bg` is answered there, and it is how help is called.
      */
-    if (pvp.action === 'retreat' && !this.grounded.down) this.travel.runFromPlayer(state, attacker);
+    const windowEnds = at + PVP_WINDOW_MS;
+    if (pvp.action === 'retreat-then-hangup') this.hangUpAfterWindow(attacker, windowEnds);
+    if (pvp.action !== 'none' && !this.grounded.down)
+      this.travel.runFromPlayer(state, attacker, windowEnds);
+  }
+
+  /**
+   * MegaMUD's Flee Then Hangup: the hangup waits until the attack no longer
+   * counts, so it is never charged as PvP, and each later blow moves it on.
+   * Said when it is first set.
+   */
+  private hangUpAfterWindow(attacker: string, at: number): void {
+    const set = this.pvpHangUp;
+    if (set !== null && set.at >= at) return;
+    this.pvpHangUp = { attacker, at };
+    if (set === null)
+      this.session.notice(
+        t('session.safety.pvpHangUpLater', {
+          attacker,
+          minutes: Math.ceil(PVP_WINDOW_MS / 60_000)
+        })
+      );
   }
 
   /** A command answering the realm menu: what it said the realm chosen charges, said once. */
@@ -244,6 +273,21 @@ export class Safety implements SessionModule {
     this.settleTheRun(state);
     const safety = this.automationConfig.safety.hangUp;
     if (!this.mayAct(state)) return;
+    /*
+     * The PvP reaction's own hangup, past the window, under the realm's
+     * penalty (todo 78), while the setting still says so. Refused, the other
+     * reasons still have their say.
+     */
+    if (
+      this.pvpHangUp !== null &&
+      this.automationConfig.safety.pvp.action === 'retreat-then-hangup' &&
+      Date.now() >= this.pvpHangUp.at &&
+      this.hangUpOrRefuse(
+        state,
+        t('session.safety.whyPvpOver', { attacker: this.pvpHangUp.attacker })
+      )
+    )
+      return;
     /*
      * A monster whose row says to hang up on it (todo 818, MegaMUD's
      * *Hangup*) is a reason of its own, under the same switch and the same
@@ -301,8 +345,8 @@ export class Safety implements SessionModule {
     this.hangUpOrRefuse(state, why);
   }
 
-  /** Hang up for `why`, or say once why a charge refuses it here. */
-  private hangUpOrRefuse(state: CharacterState, why: string): void {
+  /** Hang up for `why`, or say once why a charge refuses it here. True when it hung up. */
+  private hangUpOrRefuse(state: CharacterState, why: string): boolean {
     const refusal = this.refusedHere(state);
     if (refusal !== null) {
       // Once per reason-set, not once per status line: at low health this runs
@@ -321,7 +365,7 @@ export class Safety implements SessionModule {
           refused: refusal.reasons.join('; ')
         });
       }
-      return;
+      return false;
     }
 
     const menu = this.realmMenu.penalty;
@@ -333,6 +377,7 @@ export class Safety implements SessionModule {
           ? t('session.safety.hangingUpUncharged', { why, realm: menu.realm })
           : t('session.safety.hangingUpUnchargedSetting', { why })
     );
+    return true;
   }
 
   /** Hang up for `why`, saying `notice`. */

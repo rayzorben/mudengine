@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { Safety, type SafetyParts } from '../Safety';
-import { HangUpWatch, type HangUpAssessment } from '../../automation/HangUp';
+import { HangUpWatch, PVP_WINDOW_MS, type HangUpAssessment } from '../../automation/HangUp';
 import type { SafetyDecision } from '../../../shared/automation';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
@@ -75,6 +75,7 @@ function build(
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
   const hungUp: ConnectionEnd[] = [];
+  const ran: { attacker: string; windowEnds: number }[] = [];
   const watch = new HangUpWatch();
   const parts: SafetyParts = {
     tracker: { current: state },
@@ -92,7 +93,7 @@ function build(
     },
     queue: { enqueue: () => true },
     travel: {
-      runFromPlayer: () => undefined,
+      runFromPlayer: (_state, attacker, windowEnds) => void ran.push({ attacker, windowEnds }),
       get escapeUnanswered() {
         return run.unanswered;
       },
@@ -111,7 +112,7 @@ function build(
     disconnect: (by) => void hungUp.push(by),
     notice: (message) => void notices.push(message)
   });
-  return { safety, notices, decisions, hungUp };
+  return { safety, notices, decisions, hungUp, ran };
 }
 
 /*
@@ -506,5 +507,92 @@ describe('hanging up by whether anybody is at the keyboard', () => {
       safety.considerHangingUp(state);
       expect(hungUp).toEqual([]);
     }
+  });
+});
+
+/*
+ * Todo 78: a run from a player holds the lap until the attack no longer
+ * counts, and MegaMUD's Flee Then Hangup hangs up only once it does.
+ */
+describe('reacting to a player', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const reacting = (action: AutomationConfig['safety']['pvp']['action']): AutomationConfig => {
+    const config = automation({ enabled: false }, []);
+    return { ...config, safety: { ...config.safety, pvp: { notifyGang: false, action } } };
+  };
+
+  it('asks the run with the end of the window, and moves it on with a later blow', () => {
+    const state = standing([]);
+    const { safety, ran, hungUp } = build(reacting('retreat'), state);
+    safety.onPvpBlow('Rayzor', 10_000);
+    safety.onPvpBlow('Rayzor', 40_000);
+    expect(ran).toEqual([
+      { attacker: 'Rayzor', windowEnds: 10_000 + PVP_WINDOW_MS },
+      { attacker: 'Rayzor', windowEnds: 40_000 + PVP_WINDOW_MS }
+    ]);
+    // `retreat` alone never hangs up.
+    vi.useFakeTimers({ now: 40_000 + PVP_WINDOW_MS });
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+  });
+
+  it('runs, then hangs up once the latest blow stops counting, Auto-Hangup off', () => {
+    vi.useFakeTimers({ now: 10_000 });
+    const state = standing([]);
+    const { safety, ran, hungUp, notices, decisions } = build(
+      reacting('retreat-then-hangup'),
+      state
+    );
+    safety.onPvpBlow('Rayzor', 10_000);
+    vi.setSystemTime(40_000);
+    safety.onPvpBlow('Rayzor', 40_000);
+    expect(ran).toHaveLength(2);
+    expect(notices).toEqual([
+      t('session.safety.pvpHangUpLater', { attacker: 'Rayzor', minutes: PVP_WINDOW_MS / 60_000 })
+    ]);
+    // Past the first blow's window, inside the second's.
+    vi.setSystemTime(10_000 + PVP_WINDOW_MS + 1000);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    vi.setSystemTime(40_000 + PVP_WINDOW_MS);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual(['client']);
+    expect(decisions.at(-1)).toMatchObject({
+      action: 'hang up',
+      acted: true,
+      because: t('session.safety.whyPvpOver', { attacker: 'Rayzor' })
+    });
+  });
+
+  it('does not hang up once the setting is changed back', () => {
+    vi.useFakeTimers({ now: 10_000 });
+    const state = standing([]);
+    const config = reacting('retreat-then-hangup');
+    const { safety, hungUp } = build(config, state);
+    safety.onPvpBlow('Rayzor', 10_000);
+    config.safety.pvp = { notifyGang: false, action: 'retreat' };
+    vi.setSystemTime(10_000 + PVP_WINDOW_MS);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+  });
+
+  it('is refused like any hang-up while the realm would still charge for it', () => {
+    vi.useFakeTimers({ now: 10_000 });
+    const state = standing([orc]);
+    const config = reacting('retreat-then-hangup');
+    const { safety, hungUp, decisions } = build(
+      {
+        ...config,
+        safety: { ...config.safety, hangUp: { ...config.safety.hangUp, penalties: true } }
+      },
+      state,
+      { clean: false, reasons: ['orc attacks on sight'], clearInMs: null }
+    );
+    safety.onPvpBlow('Rayzor', 10_000);
+    vi.setSystemTime(10_000 + PVP_WINDOW_MS);
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    expect(decisions.at(-1)).toMatchObject({ acted: false, refused: 'orc attacks on sight' });
   });
 });

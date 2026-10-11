@@ -32,6 +32,7 @@ import {
   POTION_WHENS,
   type PotionRule,
   type PotionWhen,
+  PVP_ACTIONS,
   type PvpAction,
   type PartyConfig,
   PARTY_RANGES,
@@ -889,7 +890,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     },
     pvp: {
       notifyGang: pvp['notifyGang'] === true,
-      action: pvp['action'] === 'retreat' ? 'retreat' : 'none'
+      action: oneOf<PvpAction>(pvp['action'], PVP_ACTIONS, 'none')
     },
     combat: {
       enabled: combat['enabled'] === true,
