@@ -193,6 +193,8 @@ export interface CharacterFields {
   /** Rest for mana with `med`, and meditate before resting. */
   useMeditate: boolean;
   meditateFirst: boolean;
+  /** The spell cast before a rest. */
+  restSpell: string;
   /** And where a running loop holds still and walks on again. */
   /** The player's own *use this when that* rules. See `PotionList`. */
   potionRules: PotionRule[];
@@ -489,6 +491,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     restToMana: percent(entry.health.restToMana),
     useMeditate: entry.health.useMeditate,
     meditateFirst: entry.health.meditateFirst,
+    restSpell: entry.health.restSpell,
     restNextDoor: entry.health.restNextDoor,
     potionRules: entry.health.potions.map((rule) => ({ ...rule })),
     useWards: entry.health.useWards,
@@ -673,6 +676,7 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       restToMana: fractionOf(form.restToMana),
       useMeditate: form.useMeditate,
       meditateFirst: form.meditateFirst,
+      restSpell: form.restSpell.trim(),
       restNextDoor: form.restNextDoor,
       // Kept whole, and a nameless row is dropped by `normalizePotionRules` the
       // way a nameless blessing is: a rule naming nothing fires on nothing.
@@ -986,6 +990,7 @@ export function emptyForm(
     restToMana: percent(health.restToMana),
     useMeditate: health.useMeditate,
     meditateFirst: health.meditateFirst,
+    restSpell: health.restSpell,
     restNextDoor: health.restNextDoor,
     potionRules: health.potions.map((rule) => ({ ...rule })),
     useWards: health.useWards,

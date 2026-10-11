@@ -992,18 +992,23 @@ export default function GlobalSettings({
                 namePrefix="global-"
                 onChange={(field, value) =>
                   automation({
-                    health: { ...draft.automation.health, [field]: fraction(value) }
+                    health: {
+                      ...draft.automation.health,
+                      [field]: field === 'restSpell' ? value : fraction(value)
+                    }
                   })
                 }
                 onCheck={(field, value) =>
                   automation({ health: { ...draft.automation.health, [field]: value } })
                 }
+                spells={realmSpells}
                 values={{
                   restBelow: percent(draft.automation.health.restBelow),
                   restTo: percent(draft.automation.health.restTo),
                   restBeforeTraps: percent(draft.automation.health.restBeforeTraps),
                   restBelowMana: percent(draft.automation.health.restBelowMana),
-                  restToMana: percent(draft.automation.health.restToMana)
+                  restToMana: percent(draft.automation.health.restToMana),
+                  restSpell: draft.automation.health.restSpell
                 }}
               />
             </fieldset>

@@ -322,6 +322,9 @@ notices:
     resistGear:
       many: 'Wear Resist Gear was added, on, to {count} files: {fileList}'
       one: 'Wear Resist Gear was added, on, to {fileList}'
+    restSpell:
+      many: 'Cast Before Resting was added, empty, to {count} files: {fileList}'
+      one: 'Cast Before Resting was added, empty, to {fileList}'
     lootUpgrades:
       many: 'Auto-Get Better Gear was added, on, to {count} files: {fileList}'
       one: 'Auto-Get Better Gear was added, on, to {fileList}'
@@ -3938,6 +3941,10 @@ settings:
     meditateFirst: Meditate Before Resting
     meditateFirstHint: With Use Meditate and health and mana both low, meditates first and then
       rests; when off, it rests first and meditates after.
+    restSpell: Cast Before Resting
+    restSpellHint: A spell that speeds up regeneration, cast just before resting for health when the
+      rest time it saves is more than its mana takes to come back. Casting stands a resting
+      character up, so it never goes out during a rest.
     restNextDoorHint: A room that spawns monsters on a short regen time is not a place to rest. The
       character looks into a neighboring room with no lair, steps in only if it is empty, rests, and
       steps back.
@@ -4400,6 +4407,7 @@ settings:
     itemRemoveAria: Remove item {item} from set {number}
     whenAlways: always
     whenMoving: while moving
+    whenResting: while resting
     whenBackstab: when backstabbing
     whenFighting: while fighting
     offRoundLegend: Between rounds
@@ -6150,6 +6158,10 @@ automation:
     reasonMana: 'recovery: mana is low'
     verbRefused: The game answered {verb} with "Your command had no effect."; not trying it again
       this session.
+    restSpellReason: 'casting {spell} before resting'
+    restSpellSavesNothing: Not casting {spell} before resting; it would not shorten this rest.
+    restSpellCostsMore: Not casting {spell} before resting; it saves {saved}s of rest and its mana
+      takes {payback}s to come back.
   routines:
     enteringRealm: Asking the game for {commands}.
     askingAgain: 'No answer yet to {commands} from entering the realm; asking again.'

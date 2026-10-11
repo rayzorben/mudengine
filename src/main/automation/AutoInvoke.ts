@@ -29,7 +29,13 @@ import {
   type BlessingRealm,
   type ChosenItems
 } from '../../shared/invoke';
-import { gatedCast, OPEN_CAST_GATE, sameSpell, type CastGate } from '../../shared/spellcraft';
+import {
+  gatedCast,
+  OPEN_CAST_GATE,
+  sameSpell,
+  spellIsUp,
+  type CastGate
+} from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -377,12 +383,7 @@ export class AutoInvoke implements SessionModule {
 
     // Already up, under its own name or any the establishing sentence could
     // have meant (`sameSpell`: the server prints the whole name).
-    const up = state.buffs.some((buff) =>
-      [buff.spell, ...(buff.candidates ?? [])].some((candidate) =>
-        sameSpell(candidate, spell.name, state.spellbook, this.sources.spellNamed)
-      )
-    );
-    if (up) return null;
+    if (spellIsUp(state.buffs, spell.name, state.spellbook, this.sources.spellNamed)) return null;
     /*
      * A blessing up that this one takes off, or that takes this one off
      * (`RemovesSpell`, `Spell.cs` applies it on the cast): the one up stays.

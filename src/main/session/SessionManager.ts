@@ -47,6 +47,7 @@ import { ItemCharges } from '../automation/ItemCharges';
 import type { Blessings } from '../automation/Blessings';
 import type { BlessingChoiceReport } from '../../shared/blessingchoice';
 import { CastRound } from '../automation/CastRound';
+import { RestSpell } from '../automation/RestSpell';
 import { Cures } from '../automation/Cures';
 import { Potions } from '../automation/Potions';
 import { LoopRunner } from '../automation/LoopRunner';
@@ -431,6 +432,7 @@ export class SessionManager {
   private readonly castRound: CastRound;
   private readonly potions: Potions;
   private readonly cures: Cures;
+  private readonly restSpell: RestSpell;
   /** Blessings kept up by events on this character and the party. */
   private readonly blessings: Blessings;
   /** Asking a carried item for the blessing it can cast. See `AutoInvoke`. */
@@ -907,7 +909,8 @@ export class SessionManager {
        * does not have it, and null is not `greatermud`.
        */
       poisonRefusesRest: () =>
-        poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family)
+        poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family),
+      beforeRest: (state, restTo) => this.restSpell.beforeRest(state, restTo)
     });
     // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
     const floor = new FloorAfterKill(this.queue, this.tracker, () => this.loot.taking());
@@ -1347,6 +1350,13 @@ export class SessionManager {
       { notice },
       this.castRound
     );
+    this.restSpell = new RestSpell(automation, this.queue, {
+      realmSpell,
+      realmClass: () => this.errands.realmClass(),
+      speed: realmSpeed,
+      notice,
+      gate: this.castRound
+    });
     // Which kit, with the room's armour; slot and hands are the pack's row (`realmSlot`) first.
     this.gear = new EquipmentManager(
       automation.gear,
@@ -1357,7 +1367,8 @@ export class SessionManager {
         slotOf: (name) => this.errands.gearSlotOf(name),
         handsOf: (name) => this.errands.gearHandsOf(name),
         opensWithBackstab: (weapons) => this.combat.opensWithBackstab(weapons),
-        yieldSwap: () => this.invoke.yieldHand()
+        yieldSwap: () => this.invoke.yieldHand(),
+        wantsRest: (state) => this.recovery.wouldRest(state) && this.mayRest()
       },
       { notice }
     );
@@ -1654,6 +1665,7 @@ export class SessionManager {
       { module: this.walker, configure: (a) => this.walker.configure(a) },
       { module: this.combat },
       { module: this.recovery, configure: (a) => this.recovery.configure(a) },
+      { module: this.restSpell, configure: (a) => this.restSpell.configure(a) },
       { module: this.loot, configure: (a) => this.loot.configure(a.loot, a.supplies, a.enabled) },
       { module: this.drop, configure: (a) => this.drop.configure(a.drop, a.enabled) },
       { module: this.search, configure: (a) => this.search.configure(a.search, a.enabled) },
@@ -3046,30 +3058,16 @@ export class SessionManager {
         // has just withdrawn to a shop.
         if (this.supplies.current === null) this.deposit.onCharacter(state);
       }
-      /*
-       * And the kit, outside the escape guard: a swap proposed during an escape
-       * queues behind it in a lower band and is asked again where it lands.
-       * What it must not cross is a move of this client's own.
-       */
+      // And the kit, outside the escape guard: a swap queues behind an escape in a
+      // lower band and is asked again where it lands; it never crosses a move of ours.
       if (this.tracker.pendingMoves === 0) {
         this.gear.onCharacter(
           state,
           this.walker.walking || this.loops.progress.status === 'running'
         );
       }
-      /*
-       * And not while a route is being walked.
-       *
-       * Nothing told `Recovery` a walk was running, so a character walking at
-       * low health was sat down by it and stood straight back up by the
-       * walker's next step — which is what moving does to a rest — and sat down
-       * again on the tick after: two subsystems spending commands undoing each
-       * other out of the budget the walk itself is spent from. Still true now
-       * that nothing sends a stand-up command, because the *step* is what
-       * breaks the rest and the steps keep coming. A character being walked
-       * somewhere is not one to sit down; when the walk ends, resting is
-       * considered again on the very next tick.
-       */
+      // The kit is dressed above the rest, so a resting set's `wear` goes ahead of
+      // the `rest` in `probe` (todo 60). Not while a route marches: see `mayRest`.
       /*
        * The shadows before the rest: `hide` then `rest` is the order a
        * backstabber wants, since a class with `ShadowHome` keeps its stealth

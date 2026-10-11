@@ -399,7 +399,13 @@ describe('choosing a kit for the situation', () => {
     'golden chalice': OFF_HAND
   };
   const slotOf = (name: string): string | null => SLOTS[name] ?? null;
-  const still: GearSituation = { moving: false, fighting: false, backstab: false, target: null };
+  const still: GearSituation = {
+    moving: false,
+    resting: false,
+    fighting: false,
+    backstab: false,
+    target: null
+  };
 
   it('takes the most specific set, and the first of two that match equally', () => {
     expect(overlayFor(sets, still)).toBeNull();
@@ -411,6 +417,25 @@ describe('choosing a kit for the situation', () => {
     expect(overlayFor(sets, { ...boss, target: 'big sandworm' })?.name).toBe('Fighting');
     // A fight outranks a walk: the fight decides what the next round costs.
     expect(overlayFor(sets, { ...still, moving: true, fighting: true })?.name).toBe('Fighting');
+  });
+
+  /*
+   * MegaMUD's `PreRestCmd` as a set (todo 60): a rest wanted or under way.
+   * It outranks a held walk's moving set and the backstab set, which the
+   * walker's next step puts on anyway, and gives way to a fight.
+   */
+  it('wears the resting set over a held walk, and not in a fight', () => {
+    const withRest: GearSet[] = [
+      ...sets,
+      { name: 'Backstab', when: 'backstab', mob: '', wear: ['nexus spear'] },
+      { name: 'Resting', when: 'resting', mob: '', wear: ['lightstone ring'] }
+    ];
+    const resting = { ...still, resting: true };
+    expect(overlayFor(sets, resting)).toBeNull();
+    expect(overlayFor(withRest, resting)?.name).toBe('Resting');
+    expect(overlayFor(withRest, { ...resting, backstab: true })?.name).toBe('Resting');
+    expect(overlayFor(withRest, { ...resting, moving: true })?.name).toBe('Resting');
+    expect(overlayFor(withRest, { ...resting, fighting: true })?.name).toBe('Fighting');
   });
 
   it('lays the set over the base rather than replacing it', () => {

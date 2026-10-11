@@ -629,9 +629,8 @@ export default function CharacterForm({
 
               <fieldset className="settings-menus" data-fieldset="combat-mob-rules">
                 <legend>{t('settings.combat.mobRuleLegend')}</legend>
-                {/* In the open rather than behind a hint: that the band skips the
-                    weighing is the one thing about this control somebody could
-                    otherwise have wrong for a whole evening. */}
+                {/* In the open: the band skips the weighing, and somebody could have
+                    that wrong for a whole evening. */}
                 <p className="settings-note">{t('settings.combat.mobRuleNote')}</p>
                 <MobRuleList
                   known={mobs}
@@ -658,6 +657,7 @@ export default function CharacterForm({
               namePrefix=""
               onChange={(field, value) => patch({ [field]: value })}
               onCheck={(field, value) => patch({ [field]: value })}
+              spells={shownBook.spells}
               values={form}
             />
           </fieldset>

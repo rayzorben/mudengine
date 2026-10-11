@@ -1506,13 +1506,10 @@ export interface HealthConfig {
    * command had no effect.` goes back to `rest` for the session.
    */
   useMeditate: boolean;
-  /**
-   * Under `useMeditate`, with health and mana both below their lines,
-   * meditate first and rest after; off rests first (the user, 2026-10-03).
-   * Either way the other goes on once the first is back, `med` and `rest`
-   * switching over while the character is still down.
-   */
+  /** Under `useMeditate`, both low: `med` first, else `rest` first (the user, 2026-10-03). */
   meditateFirst: boolean;
+  /** Cast just before a `rest` for health, MegaMUD's `RegenCmd`; empty none (`RestSpell`). */
+  restSpell: string;
   /**
    * What to use, and when — *use an item of this name when that is true*
    * (todo 19, 2026-09-12; the only potion setting since todo 00).
@@ -2792,6 +2789,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       restToMana: 0,
       useMeditate: false,
       meditateFirst: false,
+      restSpell: '',
       potions: [],
       useWards: true
     },
@@ -3877,6 +3875,7 @@ function normalizeHealth(value: unknown): HealthConfig {
     restToMana: ceilingOver(fraction(raw['restToMana'], d.restToMana), restBelowMana),
     useMeditate: bool(raw['useMeditate'], d.useMeditate),
     meditateFirst: bool(raw['meditateFirst'], d.meditateFirst),
+    restSpell: typeof raw['restSpell'] === 'string' ? raw['restSpell'].trim() : d.restSpell,
     potions: normalizePotionRules(raw['potions']),
     useWards: bool(raw['useWards'], d.useWards)
   };
