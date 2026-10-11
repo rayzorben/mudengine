@@ -51,7 +51,12 @@ import type { LoopProgress } from '../../shared/loops';
 import type { WalkProgress } from '../../shared/walk';
 import type { Block } from '../../shared/blocks';
 import { inAParty, joinedMembers, partyMembers, type CharacterState } from '../../shared/character';
-import type { AutomationConfig, RemotesConfig } from '../../shared/config';
+import {
+  readAutomationSwitch,
+  type AutomationConfig,
+  type AutomationSwitch,
+  type RemotesConfig
+} from '../../shared/config';
 import {
   EXTENDED_REMOTES,
   REMOTES,
@@ -318,11 +323,41 @@ export interface RemoteEvents {
   /** `@path`: where the character is going and how far, or null for `{none}`. */
   path?(): PathReport | null;
   /**
-   * `@auto-combat on|off`: write the auto-combat switch to this character's
-   * file and read it back. Returns whether it was written, which decides the
-   * `{ok}`.
+   * `@auto-combat`, `@auto-sneak` and the rest of `SWITCH_REMOTES`: write the
+   * switch to this character's file and read it back. Returns whether it was
+   * written, which decides the `{ok}`.
    */
-  switchCombat?(on: boolean): boolean;
+  switchAutomation?(name: AutomationSwitch, on: boolean): boolean;
+}
+
+/**
+ * MegaMUD's `[on / off]` remotes that are an automation switch here, and the
+ * switch each writes. One row per remote; the remote's row in `REMOTES` says
+ * `acted`, which `Remotes.test.ts` holds for every key here.
+ */
+export const SWITCH_REMOTES = {
+  'auto-combat': 'combat',
+  'auto-sneak': 'sneak'
+} as const satisfies Partial<Record<RemoteName, AutomationSwitch>>;
+
+export type SwitchRemote = keyof typeof SWITCH_REMOTES;
+
+/**
+ * The switch's name as the toolbar labels it, for the notice. One literal
+ * `t()` per key, as `i18n-coverage` reads them (see `switchLabel` in the
+ * renderer's `toolbar.ts`, which these keys are shared with).
+ */
+function switchRemoteLabel(remote: SwitchRemote): string {
+  switch (remote) {
+    case 'auto-combat':
+      return t('toolbar.combat');
+    case 'auto-sneak':
+      return t('toolbar.sneak');
+    default: {
+      const never: never = remote;
+      return never;
+    }
+  }
 }
 
 /** What a `@stop` stopped and is still waiting for a `@rego`, for `@status`. */
@@ -1448,22 +1483,10 @@ export class Remotes implements SessionModule {
         return;
       }
 
-      case 'auto-combat': {
-        // `{ok}` once the file says what was asked, already or now (todo 02).
-        const on = parseOnOff(command.argument);
-        if (on === null) {
-          this.events.notice?.(t('automation.remotes.autoCombatUnread', { from }));
-          return;
-        }
-        const words = { from, word: on ? 'on' : 'off' };
-        if (this.config.combat.enabled !== on && this.events.switchCombat?.(on) !== true) {
-          this.events.notice?.(t('automation.remotes.autoCombatNotWritten', words));
-          return;
-        }
-        this.events.notice?.(t('automation.remotes.autoCombatSwitched', words));
-        this.reply(from, '{ok}', prefix);
+      case 'auto-combat':
+      case 'auto-sneak':
+        this.switchByRemote(from, command.name, command.argument, prefix);
         return;
-      }
 
       case 'bless-expired': {
         /*
@@ -1561,6 +1584,35 @@ export class Remotes implements SessionModule {
         return never;
       }
     }
+  }
+
+  /**
+   * `@auto-combat on|off` and the other switch remotes: `{ok}` once the file
+   * says what was asked, already or now (todo 02, todo 85).
+   */
+  private switchByRemote(
+    from: string,
+    remote: SwitchRemote,
+    argument: string | null,
+    prefix: string
+  ): void {
+    const words = { from, remote, setting: switchRemoteLabel(remote) };
+    const on = parseOnOff(argument);
+    if (on === null) {
+      this.events.notice?.(t('automation.remotes.switchUnread', words));
+      return;
+    }
+    const name = SWITCH_REMOTES[remote];
+    const asked = { ...words, word: on ? 'on' : 'off' };
+    if (
+      readAutomationSwitch(this.config, name) !== on &&
+      this.events.switchAutomation?.(name, on) !== true
+    ) {
+      this.events.notice?.(t('automation.remotes.switchNotWritten', asked));
+      return;
+    }
+    this.events.notice?.(t('automation.remotes.switchSet', asked));
+    this.reply(from, '{ok}', prefix);
   }
 
   /** Whether this leader walks on through `from`'s `@wait` (`walksOnThroughWait`). */

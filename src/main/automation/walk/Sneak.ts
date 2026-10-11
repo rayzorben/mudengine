@@ -49,6 +49,8 @@ export const SNEAK_KEY = 'sneak';
 export class SneakBeforeStep {
   /** Whether *Stealth 0, not sneaking* has been said this session. */
   private saidNoStealth = false;
+  /** `movement.sneak` at the last ask, so a switch turned on is seen (`switchedOn`). */
+  private wantedBefore = false;
   /**
    * Sneaks refused in a row (`You don't think you're sneaking.`), and the
    * level they were counted at: at `tuning.walk.sneakGiveUp` the walk stops
@@ -88,6 +90,8 @@ export class SneakBeforeStep {
     // again (a hold let go, the clock and its deadline cleared) is asked again.
     const heard = this.held()?.heard === true;
     this.answer = null;
+    if (wanted && !this.wantedBefore) this.switchedOn();
+    this.wantedBefore = wanted;
     if (heard || !wanted) return false;
     // Sneaking, by the tracker's own reading: the refusals in a row are over.
     if (state.stealth === 'sneaking') {
@@ -134,6 +138,17 @@ export class SneakBeforeStep {
     // Not sent inside the offer: watched until it is (`waitForAnswer`).
     if (this.stillQueued()) this.waitForSend(step);
     return true;
+  }
+
+  /**
+   * Auto-Sneak on Move turned on, by the toolbar, the settings or a granted
+   * player's `@auto-sneak on` (todo 85): the player asked for sneaking, so
+   * the refusals counted so far start again and what still stops the sneak
+   * is said again at the next step.
+   */
+  private switchedOn(): void {
+    this.saidNoStealth = false;
+    this.sneakRefusals = { count: 0, level: null };
   }
 
   private stillQueued(): boolean {

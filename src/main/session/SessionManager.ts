@@ -1288,7 +1288,7 @@ export class SessionManager {
       }).events,
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
-      switchCombat: (on) => switchNow('combat', on),
+      switchAutomation: switchNow,
       // On their registry entry, which the Player card reads; pushed now, as nothing else moved.
       commanded: (from, raw, at) => {
         if (this.tracker.noteRemoteCall(from, raw, at)) this.publisher.players();

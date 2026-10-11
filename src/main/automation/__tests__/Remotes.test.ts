@@ -1,18 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommandQueue } from '../CommandQueue';
-import { Remotes } from '../Remotes';
+import { Remotes, SWITCH_REMOTES } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { wireExit, wireItem } from '../../../shared/entities';
-import type { AutomationConfig } from '../../../shared/config';
+import type { AutomationConfig, AutomationSwitch } from '../../../shared/config';
 import type { Block } from '../../../shared/blocks';
 import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
 import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
 import {
   ACTIONABLE_REMOTES,
+  REMOTES,
   parseRemoteReply,
   type MoveAnswer,
   type PathReport
@@ -446,44 +447,67 @@ describe('answering the imperative ones', () => {
     });
   });
 
-  /* Todo 02: the auto-combat switch on another player's word, `{ok}` once the file says so. */
-  describe('@auto-combat', () => {
-    let switched: boolean[];
+  /*
+   * Todo 02 and 85: a switch on another player's word, `{ok}` once the file
+   * says so. Every row of `SWITCH_REMOTES` is held to the same cases.
+   */
+  describe.each([
+    {
+      remote: 'auto-combat',
+      setting: t('toolbar.combat'),
+      at: (on: boolean): AutomationConfig => ({
+        ...config,
+        combat: { ...config.combat, enabled: on }
+      })
+    },
+    {
+      remote: 'auto-sneak',
+      setting: t('toolbar.sneak'),
+      at: (on: boolean): AutomationConfig => ({
+        ...config,
+        movement: { ...config.movement, sneak: on }
+      })
+    }
+  ] as const)('@$remote', ({ remote, setting, at }) => {
+    let switched: Array<[AutomationSwitch, boolean]>;
     let writes: boolean;
-    const remotes = (combatOn: boolean): Remotes => {
-      const withCombat = { ...config, combat: { ...config.combat, enabled: combatOn } };
-      return new Remotes(withCombat, queue, {
+    const name = SWITCH_REMOTES[remote];
+    const remotes = (switchOn: boolean): Remotes =>
+      new Remotes(at(switchOn), queue, {
         notice: (m) => notices.push(m),
-        switchCombat: (on) => {
-          switched.push(on);
+        switchAutomation: (which, on) => {
+          switched.push([which, on]);
           return writes;
         }
       });
-    };
+    const words = (word: 'on' | 'off') => ({ from: 'Rand', remote, setting, word });
     beforeEach(() => {
       switched = [];
       writes = true;
     });
 
-    it('turns auto-combat off and answers {ok}', () => {
-      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat off'), who());
+    it('is a remote a grant can carry', () => {
+      expect(REMOTES[remote].support).toBe('acted');
+    });
+
+    it('turns the switch off and answers {ok}', () => {
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', `@${remote} off`), who());
       drain();
-      expect(switched).toEqual([false]);
+      expect(switched).toEqual([[name, false]]);
       expect(sent).toEqual(['/Rand {ok}']);
-      expect(notices).toContain(
-        t('automation.remotes.autoCombatSwitched', { from: 'Rand', word: 'off' })
-      );
+      expect(notices).toContain(t('automation.remotes.switchSet', words('off')));
     });
 
     it('turns it on, whatever case the word is in', () => {
-      remotes(false).onBlock(said('conversation-telepath', 'Rand', '@auto-combat ON'), who());
+      remotes(false).onBlock(said('conversation-telepath', 'Rand', `@${remote} ON`), who());
       drain();
-      expect(switched).toEqual([true]);
+      expect(switched).toEqual([[name, true]]);
       expect(sent).toEqual(['/Rand {ok}']);
+      expect(notices).toContain(t('automation.remotes.switchSet', words('on')));
     });
 
     it('answers {ok} without writing when the switch already says so', () => {
-      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat on'), who());
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', `@${remote} on`), who());
       drain();
       expect(switched).toEqual([]);
       expect(sent).toEqual(['/Rand {ok}']);
@@ -491,44 +515,46 @@ describe('answering the imperative ones', () => {
 
     it('answers nothing when the file could not be written, and says so', () => {
       writes = false;
-      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat off'), who());
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', `@${remote} off`), who());
       drain();
-      expect(switched).toEqual([false]);
+      expect(switched).toEqual([[name, false]]);
       expect(sent).toEqual([]);
-      expect(notices).toContain(
-        t('automation.remotes.autoCombatNotWritten', { from: 'Rand', word: 'off' })
-      );
+      expect(notices).toContain(t('automation.remotes.switchNotWritten', words('off')));
     });
 
     it('changes nothing without on or off', () => {
-      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat'), who());
-      remotes(true).onBlock(said('conversation-telepath', 'Rand', '@auto-combat maybe'), who());
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', `@${remote}`), who());
+      remotes(true).onBlock(said('conversation-telepath', 'Rand', `@${remote} maybe`), who());
       drain();
       expect(switched).toEqual([]);
       expect(sent).toEqual([]);
-      expect(
-        notices.filter((n) => n === t('automation.remotes.autoCombatUnread', { from: 'Rand' }))
-      ).toHaveLength(2);
+      const unread = t('automation.remotes.switchUnread', { from: 'Rand', remote, setting });
+      expect(notices.filter((n) => n === unread)).toHaveLength(2);
     });
 
     it('answers nobody it was not granted to', () => {
       const refusing = remotes(true);
       refusing.configure({
-        ...config,
+        ...at(true),
         remotes: { ...config.remotes, players: {} }
       });
-      refusing.onBlock(said('conversation-telepath', 'Rand', '@auto-combat off'), who());
+      refusing.onBlock(said('conversation-telepath', 'Rand', `@${remote} off`), who());
       drain();
       expect(switched).toEqual([]);
       expect(sent).toEqual([]);
       expect(notices).toContain(
         t('automation.remotes.refusedNotGranted', {
           from: 'Rand',
-          raw: 'auto-combat',
+          raw: remote,
           unresolvedClause: ''
         })
       );
     });
+  });
+
+  /* Each switch remote is one row, and each row is a remote `REMOTES` says is acted. */
+  it('has a test row for every switch remote', () => {
+    expect(Object.keys(SWITCH_REMOTES).sort()).toEqual(['auto-combat', 'auto-sneak']);
   });
 
   it('joins the sender’s party on @join', () => {

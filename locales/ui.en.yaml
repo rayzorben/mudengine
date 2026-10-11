@@ -5988,10 +5988,10 @@ automation:
     ranDo: 'Remote execution (@do) by {from}: "{command}"'
     ranParty: '{from} asked the party to "{command}".'
     statsReset: '{from} sent @reset; the combat statistics start again from now.'
-    autoCombatUnread: '{from} sent @auto-combat without on or off, so nothing was changed.'
-    autoCombatSwitched: '{from} sent @auto-combat {word}; auto-combat is {word}.'
-    autoCombatNotWritten: "{from} sent @auto-combat {word}, but the character's file could not be
-      changed, so auto-combat was left as it was."
+    switchUnread: '{from} sent @{remote} without on or off, so {setting} was not changed.'
+    switchSet: '{from} sent @{remote} {word}; {setting} is {word}.'
+    switchNotWritten: "{from} sent @{remote} {word}, but the character's file could not be changed,
+      so {setting} was left as it was."
     skillTraps: Traps
     skillPicklocks: Picklocks
     skillStrength: Strength

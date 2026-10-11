@@ -2014,6 +2014,42 @@ describe('sneaking before a route', () => {
   });
 
   /*
+   * Auto-Sneak on Move turned on again, by the toolbar or a granted player's
+   * `@auto-sneak on` (todo 85): what stops the sneak is said again at the
+   * next step, so the switch does not look as if it did nothing.
+   */
+  it('says again why it is not sneaking when the switch is turned back on', () => {
+    const base = at(1, 1);
+    const noSkill = { ...base, progress: { ...base.progress, stealthSkill: 0 } };
+    let current: CharacterState = noSkill;
+    const walk = sneaking(() => current);
+    const inRoom = (n: number): CharacterState => ({
+      ...noSkill,
+      room: { ...noSkill.room, number: n }
+    });
+    const said = (): number =>
+      notices.filter((line) => line === t('automation.walk.sneakNoSkill')).length;
+    const three = routeOf(stepOf(1, 2, 'e'), stepOf(2, 3, 'e'), stepOf(3, 4, 'e'));
+    walk.start(three, noSkill);
+    vi.advanceTimersByTime(200);
+    expect(said()).toBe(1);
+    walk.configure({ ...config, movement: { ...config.movement, sneak: false } });
+    current = inRoom(2);
+    walk.onCharacter(current);
+    vi.advanceTimersByTime(200);
+    // The second step went (the positive control) and said nothing with the switch off.
+    expect(moves(sent)).toEqual(['e', 'e']);
+    expect(said()).toBe(1);
+    walk.configure({ ...config, movement: { ...config.movement, sneak: true } });
+    current = inRoom(3);
+    walk.onCharacter(current);
+    vi.advanceTimersByTime(200);
+    expect(moves(sent)).toEqual(['e', 'e', 'e']);
+    expect(said()).toBe(2);
+    walk.dispose();
+  });
+
+  /*
    * A low Stealth refuses where the sheet cannot show it (the roll counts
    * what is in the room too), so the answers decide: after `sneakGiveUp`
    * refusals in a row the walk stops asking, said once.
@@ -2038,6 +2074,62 @@ describe('sneaking before a route', () => {
     expect(sent.slice(giveUp + 1)).not.toContain('sn');
     const said = t('automation.walk.sneakGaveUp', { count: tuning().walk.sneakGiveUp });
     expect(notices.filter((line) => line === said)).toHaveLength(1);
+    walk.dispose();
+  });
+
+  /*
+   * A reconnect is not the switch turned on: the Stealth 0 notice stays said
+   * once for the session (todo 85 review).
+   */
+  it('does not say again why it is not sneaking after a reconnect', () => {
+    const base = at(1, 1);
+    const noSkill = { ...base, progress: { ...base.progress, stealthSkill: 0 } };
+    const walk = sneaking(() => noSkill);
+    const said = (): number =>
+      notices.filter((line) => line === t('automation.walk.sneakNoSkill')).length;
+    walk.start(ROUTE, noSkill);
+    vi.advanceTimersByTime(200);
+    expect(said()).toBe(1);
+    walk.reset();
+    walk.start(ROUTE, noSkill);
+    vi.advanceTimersByTime(200);
+    // The step went after the reconnect (the positive control), with nothing said.
+    expect(moves(sent)).toEqual(['e', 'e']);
+    expect(said()).toBe(1);
+    walk.dispose();
+  });
+
+  /*
+   * Auto-Sneak on Move turned on again after the walk gave up (todo 85): the
+   * player asked for sneaking, so the walk asks for it again.
+   */
+  it('asks again after giving up when the switch is turned back on', () => {
+    const base = at(1, 1);
+    let current: CharacterState = base;
+    const walk = sneaking(() => current);
+    const three = routeOf(stepOf(1, 2, 'e'), stepOf(2, 3, 'e'), stepOf(3, 4, 'e'));
+    walk.start(three, base);
+    vi.advanceTimersByTime(200);
+    const giveUp = tuning().walk.sneakGiveUp;
+    for (let i = 0; i < giveUp; i += 1) {
+      queue.notePrompt();
+      walk.onBlock(block('user-sneak-failed'));
+      vi.advanceTimersByTime(200);
+    }
+    expect(sent).toEqual([...Array<string>(giveUp).fill('sn'), 'e']);
+    walk.configure({ ...config, movement: { ...config.movement, sneak: false } });
+    current = { ...base, room: { ...base.room, number: 2 } };
+    queue.notePrompt();
+    walk.onCharacter(current);
+    vi.advanceTimersByTime(200);
+    // The second step went with the switch off (the positive control).
+    expect(sent).toEqual([...Array<string>(giveUp).fill('sn'), 'e', 'e']);
+    walk.configure({ ...config, movement: { ...config.movement, sneak: true } });
+    current = { ...base, room: { ...base.room, number: 3 } };
+    queue.notePrompt();
+    walk.onCharacter(current);
+    vi.advanceTimersByTime(200);
+    expect(sent.at(-1)).toBe('sn');
     walk.dispose();
   });
 
