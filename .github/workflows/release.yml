@@ -204,6 +204,9 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
+          # `.git` is not in the context, so the build is told its commit.
+          build-args: |
+            MUDENGINE_COMMIT=${{ github.sha }}
           push: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.publish) && env.DOCKERHUB_USERNAME != '' }}
           tags: |
             ${{ env.IMAGE }}:${{ steps.v.outputs.version }}

@@ -165,6 +165,7 @@ import {
   type WalkPages
 } from '../shared/routeLegs';
 import { errorMessage } from '../shared/values';
+import { BUILD, versionWithCommit } from '../shared/build';
 import { formatDebugReport } from '../shared/debug';
 import { fileSlug } from '../shared/files';
 /*
@@ -813,10 +814,11 @@ function labelOf(id: SessionId): { name: string; server: string; accent: string 
  * first report this wrote said `version 33.4.11` next to `Electron 33.4.11`,
  * which tells whoever is diagnosing it nothing at all. The repository's own
  * `package.json` is bundled at build time and is the same file electron-builder
- * takes the packaged version from, so the two cannot disagree.
+ * takes the packaged version from, so the two cannot disagree. The commit it
+ * was built from rides beside it (`src/shared/build.ts`).
  */
 function appVersion(): string {
-  return APP_VERSION;
+  return versionWithCommit(APP_VERSION, BUILD, t);
 }
 
 function logDirectory(): string {

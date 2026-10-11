@@ -57,6 +57,11 @@ RUN npm ci --ignore-scripts
 
 COPY . .
 
+# Which commit this is. `.git` stays out of the context (`.dockerignore`), so
+# the build is told (`scripts/lib/build-stamp.mjs`); unset, it shows unknown.
+ARG MUDENGINE_COMMIT=
+ARG MUDENGINE_DIRTY=
+
 # `npm run build` is typecheck + electron-vite build: `out/main` (the client
 # and both hosts), `out/preload` (unused here, and a few kilobytes) and
 # `out/renderer` (what the browser is served).

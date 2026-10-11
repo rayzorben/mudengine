@@ -29,6 +29,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { buildStamp } from './lib/build-stamp.mjs';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The repository the image is published under. */
@@ -179,7 +181,19 @@ if (action === 'build') {
 
   // Both tags in one build: `latest` and the version are the same image, and
   // building twice would produce two of them that could differ.
-  run('docker', ['build', '--tag', versioned, '--tag', latest, '.']);
+  const { commit, dirty } = buildStamp(root);
+  run('docker', [
+    'build',
+    '--build-arg',
+    `MUDENGINE_COMMIT=${commit ?? ''}`,
+    '--build-arg',
+    `MUDENGINE_DIRTY=${dirty ? '1' : ''}`,
+    '--tag',
+    versioned,
+    '--tag',
+    latest,
+    '.'
+  ]);
 
   refuseUserFilesInImage(versioned);
 
