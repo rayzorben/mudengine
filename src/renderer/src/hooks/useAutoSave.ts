@@ -124,23 +124,44 @@ export function useAutoSave<T>({
    */
   const again = useRef<Request<T> | null>(null);
   const lastIdentity = useRef(identity);
+  /**
+   * The write on its way, and whose it is.
+   *
+   * While it is set, an edit is compared with this. The file is renamed into place before `save` answers (it reloads the settings
+   * after), and a switch unticked and ticked again in that gap matched the
+   * baseline from before the write, so the second change was never saved
+   * (todo 35). Per identity, since a flushed write answers after a switch.
+   */
+  const sending = useRef<{ identity: string | null; value: T } | null>(null);
+  /**
+   * What an edit to `of` is compared with: the write on its way for `of`,
+   * otherwise the last write while `of` is on the form, otherwise unknown,
+   * which saves it.
+   */
+  const baseline = (of: string | null): T | null => {
+    if (sending.current !== null && sending.current.identity === of) return sending.current.value;
+    return of === lastIdentity.current ? written.current : null;
+  };
 
   const run = useRef(
     (request: Request<T> = { ...latest.current, identity: lastIdentity.current }): void => {
       const { value: current, save: write, same: alike } = request;
       dirty.current = false;
       if (current === null) return;
-      if (written.current !== null && alike(written.current, current)) return;
+      const base = baseline(request.identity);
+      if (base !== null && alike(base, current)) return;
       if (running.current) {
         again.current = request;
         return;
       }
 
       running.current = true;
+      sending.current = { identity: request.identity, value: current };
       setState('saving');
       void write(current).then(
         (refusal) => {
           running.current = false;
+          sending.current = null;
           if (refusal === null) {
             /*
              * Only while the same thing is still on the form. A write flushed
@@ -170,6 +191,7 @@ export function useAutoSave<T>({
           // be diagnosed from, or the failure is swallowed whole.
           console.error('autosave failed', reason);
           running.current = false;
+          sending.current = null;
           setError(t('settings.autoSave.saveDidNotAnswer'));
           setState('refused');
         }
@@ -206,7 +228,14 @@ export function useAutoSave<T>({
       written.current = value;
       return;
     }
-    if (same(written.current, value)) return;
+    const base = baseline(lastIdentity.current);
+    if (base !== null && same(base, value)) {
+      // Back to what the file holds or is about to: a write queued for an
+      // earlier edit of this form would now overwrite it, so it is dropped.
+      if (again.current?.identity === lastIdentity.current) again.current = null;
+      dirty.current = false;
+      return;
+    }
 
     setState('pending');
     dirty.current = true;
