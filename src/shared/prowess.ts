@@ -873,6 +873,11 @@ function landedPerRound(lands: number, mean: number, swings: Reckoning<number> |
   return lands * mean * Math.min(MAX_SWINGS, swings?.value ?? 1);
 }
 
+/** Blows a round of a `swing` lands, capped at `MAX_SWINGS`; null where the blows a round are unknown. */
+export function blowsLanded(blow: Swing): number | null {
+  return blow.swings === null ? null : landedPerRound(blow.lands.value, 1, blow.swings);
+}
+
 /** What a round of a `swing` lands on its target, hit spells included; null where the blow's range or blows are unknown. */
 export function swingRound(blow: Swing): number | null {
   return blow.range === null || blow.swings === null

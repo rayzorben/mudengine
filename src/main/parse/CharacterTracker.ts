@@ -100,7 +100,7 @@ import { seen, StealthReceipt } from './stealth';
 import { Trail } from './trail';
 import { DeathSentence } from './deathSentence';
 import { Kills } from './kills';
-import { isProcHousekeeping, readsAsProc } from './proc';
+import { keepsProcBinding, readsAsProc } from './proc';
 import { withJoinedItems, withPackRows, withSight, withSpans, withTargetEntity } from './joins';
 import { attackAim, occupantNamed } from '../../shared/aim';
 import { commandOf, type RereadClaim } from '../../shared/commands';
@@ -773,7 +773,7 @@ export class CharacterTracker {
     const proc = readsAsProc(block, before, this.fight);
     /*
      * And anything that is *not* the proc breaks the binding it would have
-     * ridden on, unless it is the prompt or a blank line.
+     * ridden on, unless it is the prompt, a blank line or the shield.
      *
      * The server composes a proc into the same write as the blow that fired
      * it — all 581 in the recorded sessions of 2026-09-06 arrive with nothing
@@ -788,7 +788,7 @@ export class CharacterTracker {
      * Before the reducer, so this character's own next blow clears the old
      * binding and then arms a new one in `FightTracker.hit`.
      */
-    if (!proc && !isProcHousekeeping(block)) this.fight.interrupt();
+    if (!proc && !keepsProcBinding(block, before, this.fight)) this.fight.interrupt();
     this.fight.heard(block);
     this.expect.heard(block); // The echo, and a `sys go` answered by no room (todos 768, 769).
     /*

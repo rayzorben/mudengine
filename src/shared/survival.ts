@@ -11,6 +11,7 @@
  * See mudengine-automation › *The verdict is also run as a fight*.
  */
 import { blessedPlayer, negated, sumEffects, type BlessingEffect } from './blessingeffects';
+import { rollShields, shieldsOf } from './damageShield';
 import { between, mulberry32, sampledCount } from './dice';
 import { guardsFirst, type GuardSubject } from './guards';
 import { weighRoom, type MenacePlayer, type MenaceSubject, type MenaceWeights } from './menace';
@@ -235,6 +236,8 @@ interface FoeSide {
   cast: { perRound: number; manaPerRound: number } | null;
   resist: number;
   death: ReturnType<typeof spellEffect>;
+  /** The high end of each damage shield it carries (`damageShield.ts`); empty for none. */
+  shields: number[];
 }
 
 /**
@@ -313,7 +316,8 @@ export function startFight(input: SurvivalInput): FightTrials | null {
         death:
           subject.deathSpell === undefined
             ? null
-            : spellEffect(subject.spells?.[subject.deathSpell], 0, player)
+            : spellEffect(subject.spells?.[subject.deathSpell], 0, player),
+        shields: shieldsOf(subject.abilities)
       };
     });
   const sides = compile(input.player, input.sheet);
@@ -387,6 +391,8 @@ export function startFight(input: SurvivalInput): FightTrials | null {
     // Recasts paid for and not yet cast (`recastNow`).
     let recasting = 0;
     let lost = 0;
+    // What the foes' damage shields did this round, for `worstRound`.
+    let struckBack = 0;
     let round = 0;
     let dead = false;
     let fled = false;
@@ -408,14 +414,14 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       );
       if (target === -1) break;
       round += 1;
+      struckBack = 0;
 
       if (held > 0) {
         held -= 1;
       } else if (!healed() && !recastNow()) {
         const side = facing[met[target]!]!;
         swinging[target] = true;
-        const dealt = strike(side);
-        alive[target] = alive[target]! - dealt;
+        alive[target] = strike(side, alive[target]!);
         if (alive[target]! <= 0 && side.death !== null) {
           const harm = side.death.high > 0 ? between(random, side.death.low, side.death.high) : 0;
           hp -= harm;
@@ -503,7 +509,7 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       }
       hp -= harm;
       lost += harm;
-      worstRound = Math.max(worstRound, harm);
+      worstRound = Math.max(worstRound, harm + struckBack);
       // Those called come in after the round, and swing from the next.
       summon(called);
     }
@@ -573,33 +579,43 @@ export function startFight(input: SurvivalInput): FightTrials | null {
       }
     }
 
-    /** The character's blows at one foe this round. */
-    function strike(side: FoeSide): number {
+    /**
+     * The character's blows at one foe this round: its health after them. A
+     * landed blow that leaves it standing sets off its damage shields on the
+     * character (`damageShield.ts`); the blow that kills it does not.
+     */
+    function strike(side: FoeSide, health: number): number {
       if (side.cast !== null && mana !== null && mana >= side.cast.manaPerRound) {
         mana -= side.cast.manaPerRound;
-        return side.cast.perRound;
+        return health - side.cast.perRound;
       }
       if (side.attack !== null) {
         const swings = sampledCount(random, Math.min(MAX_SWINGS, side.attack.swings?.value ?? 1));
-        let dealt = 0;
+        let left = health;
         for (let n = 0; n < swings; n += 1) {
           if (random() >= side.attack.lands.value) continue;
           // The blow's own range, as `prowess.swing` reads it, and a critical `rand(2 × max, 4 × max)`.
           const range = side.attack.range;
           if (range === null) {
-            dealt += side.attack.damage.value;
-            continue;
+            left -= side.attack.damage.value;
+          } else {
+            const critical = random() < (side.attack.crit?.value ?? 0);
+            const rolled = critical
+              ? between(random, 2 * range.high, 4 * range.high)
+              : between(random, range.low, range.high);
+            left -= Math.max(0, rolled - side.resist);
           }
-          const critical = random() < (side.attack.crit?.value ?? 0);
-          const rolled = critical
-            ? between(random, 2 * range.high, 4 * range.high)
-            : between(random, range.low, range.high);
-          dealt += Math.max(0, rolled - side.resist);
+          if (left > 0 && side.shields.length > 0) {
+            const back = rollShields(random, side.shields);
+            hp -= back;
+            lost += back;
+            struckBack += back;
+          }
         }
-        return dealt;
+        return left;
       }
       // With the pool unread the spell is cast every round; there is no swing to fall back on.
-      return side.cast !== null && mana === null ? side.cast.perRound : 0;
+      return side.cast !== null && mana === null ? health - side.cast.perRound : health;
     }
   };
 

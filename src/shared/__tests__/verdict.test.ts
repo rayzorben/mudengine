@@ -67,6 +67,25 @@ describe('a verdict is both halves or it is honest about the missing one', () =>
     expect(result.cost?.from).toBe('bound');
   });
 
+  /* todo 56: `HitCheckShockShield` hurts the attacker for each blow that lands. */
+  it('adds the damage shield for each blow the character lands', () => {
+    const target = { armourClass: 30, damageResist: 2, dodge: 10 };
+    const plain = verdictFor(menace(8, 120), target, SHEET, SWORD, 'greatermud');
+    const spined = verdictFor(
+      menace(8, 120),
+      { ...target, abilities: [[72, 3]] as const },
+      SHEET,
+      SWORD,
+      'greatermud'
+    );
+    expect(spined.rounds).toEqual(plain.rounds);
+    expect(spined.cost!.value).toBeGreaterThan(plain.cost!.value);
+    // 2 a landed blow over the same rounds: at most 2 × 6 blows a round more.
+    const added = (spined.cost!.value - plain.cost!.value) / plain.rounds!.value;
+    expect(added).toBeGreaterThan(0);
+    expect(added).toBeLessThanOrEqual(12);
+  });
+
   it('answers no cost when only one half is known', () => {
     // Half a product is not an estimate of it.
     // No swing arithmetic on this lineage, so no rounds.

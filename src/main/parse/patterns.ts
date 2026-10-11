@@ -997,10 +997,25 @@ export const RULES: Rule[] = [
     pattern:
       /^(?:You are overcome with a feeling of guilt and break off your attack\.|To do this action, you must turn off your evil warnings\.)$/
   },
-  /* `You take 8 fire damage!` — damage with no attacker, so no blow is recorded. */
-  { type: 'user-takes-damage', pattern: /^You take (?<damage>\d+) (?<kind>[\w ]+?) damage!$/ },
+  /*
+   * `You take 8 fire damage!` — damage with no attacker, so no blow is recorded.
+   * The kind is optional: `You take %d damage!` is the damage shield's default
+   * line when the monster has no `ShockMsg` (`ActionFigure.cs:508`, todo 56).
+   */
+  {
+    type: 'user-takes-damage',
+    pattern: /^You take (?<damage>\d+) (?:(?<kind>[\w ]+?) )?damage!$/
+  },
   // `You take 1 damage for bashing the door!` — captured live at a locked door.
   { type: 'user-takes-damage', pattern: /^You take (?<damage>\d+) damage for (?<kind>[\w ]+?)!$/ },
+  /*
+   * `You are shocked for 3 damage!`: a message row's second line, said to the
+   * one it hurts, naming nobody (a monster's damage shield or hit spell). The
+   * first `user-hits` frame below read it as this character's blow on a
+   * monster named `shocked` and made that the target (todo 56; 13 lines in
+   * captures/, 18 rows of this shape in messages.csv).
+   */
+  { type: 'user-takes-damage', pattern: /^You are (?<kind>[^"]+?) for (?<damage>\d+) damage!$/ },
   /*
    * Who hit whom, for a blow that landed. Three frames and one anchor.
    *

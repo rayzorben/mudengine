@@ -488,7 +488,7 @@ export type BlockType =
    * casts the duration measured from earlier cast→wear-off pairs.
    */
   | 'user-buff-expired'
-  /** `You take 8 fire damage!` — damage with no attacker: a trap, a spell's aftermath, the room. */
+  /** `You take 8 fire damage!` — damage with no attacker: a trap, a spell's aftermath, the room, a monster's damage shield or hit spell. */
   | 'user-takes-damage'
   /**
    * The realm's own conscience stopping an attack on a player: `You are

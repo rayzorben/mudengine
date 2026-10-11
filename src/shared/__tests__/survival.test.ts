@@ -96,6 +96,25 @@ describe('the room’s fight, run', () => {
     expect(warded.hpLeft).toBe(100);
   });
 
+  /* todo 56: a damage shield hurts the character for each blow it lands and the monster survives. */
+  it('prices the foe’s damage shield on every blow that leaves it standing', () => {
+    const tough = { hp: 200, profiles: [biter(1, 1, 1)] };
+    const bare = simulateFight(fight({ foes: [{ name: 'boar', subject: tough }] }))!;
+    const spined = simulateFight(
+      fight({ foes: [{ name: 'boar', subject: { ...tough, abilities: [[72, 10]] } }] })
+    )!;
+    expect(spined.lostMean).toBeGreaterThan(bare.lostMean + 10);
+    expect(spined.worstRound).toBeGreaterThan(bare.worstRound);
+    // The blow that kills does not set it off: a foe one blow takes down costs nothing back.
+    const frail = { hp: 1, profiles: [biter(1, 1, 1)] };
+    const once = simulateFight(
+      fight({ foes: [{ name: 'boar', subject: { ...frail, abilities: [[72, 10]] } }] })
+    )!;
+    expect(once.lostMean).toBe(
+      simulateFight(fight({ foes: [{ name: 'boar', subject: frail }] }))!.lostMean
+    );
+  });
+
   it('walks out of a room of rats every time', () => {
     const result = simulateFight(fight());
     expect(result).not.toBeNull();
