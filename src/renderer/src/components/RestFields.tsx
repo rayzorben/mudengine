@@ -2,22 +2,26 @@
  * The rest and meditate settings, one set of fields for the character form
  * and the options page (todo 825): rest below and to, rest before traps,
  * rest below and to for mana, then the switches: resting next door to a
- * lair, resting for mana with `med`, and meditating before resting. Each value is as the page holds it; the
+ * lair, resting for mana with `med`, and meditating before resting; then the
+ * spell cast before a rest (todo 60). Each value is as the page holds it; the
  * page turns a change back into its own draft. Where a maximum is known the
  * figure it means is drawn beside the field.
  */
 import { CheckField, NumberField } from './FormField';
+import SpellField from './SpellPicker';
 import { barOf, figureOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import type { VitalThresholds } from '@shared/character';
+import type { SpellOption } from '@shared/ipc';
 
 export type RestField = 'restBelow' | 'restTo' | 'restBeforeTraps' | 'restBelowMana' | 'restToMana';
 
 export type RestCheck = 'restNextDoor' | 'useMeditate' | 'meditateFirst';
 
 export interface RestFieldsProps {
-  values: Readonly<Record<RestField, number | string>>;
-  onChange(field: RestField, value: string): void;
+  /** The figures, and the spell cast before a rest (`restSpell`). */
+  values: Readonly<Record<RestField, number | string> & { restSpell: string }>;
+  onChange(field: RestField | 'restSpell', value: string): void;
   checks: Readonly<Record<RestCheck, boolean>>;
   onCheck(field: RestCheck, value: boolean): void;
   /** The meter bands the bars are drawn against. */
@@ -26,6 +30,8 @@ export interface RestFieldsProps {
   maxima?: { hpMax: number | null; manaMax: number | null };
   /** Prefixed to each field's name, so the two pages' fields stay apart. */
   namePrefix: string;
+  /** The spells offered for the one cast before a rest. */
+  spells: readonly SpellOption[];
 }
 
 interface Row {
@@ -106,7 +112,8 @@ export default function RestFields({
   onCheck,
   bands,
   maxima,
-  namePrefix
+  namePrefix,
+  spells
 }: RestFieldsProps): React.JSX.Element {
   return (
     <>
@@ -138,6 +145,16 @@ export default function RestFields({
           onChange={(value) => onCheck(row.field, value)}
         />
       ))}
+      <div className="settings-inline">
+        <SpellField
+          hint={t('settings.health.restSpellHint')}
+          label={t('settings.health.restSpell')}
+          name={`${namePrefix}rest-spell`}
+          onChange={(value) => onChange('restSpell', value)}
+          spells={spells}
+          value={values.restSpell}
+        />
+      </div>
     </>
   );
 }

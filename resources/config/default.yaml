@@ -1396,6 +1396,13 @@ automation:
     # the first is back, switching from one to the other without standing up.
     meditateFirst: false
 
+    # A spell cast just before sitting down to rest for health, MegaMUD's
+    # RegenCmd: rapid healing (rhel), song of life. It goes out before the
+    # `rest`, since any cast stands a resting character up, and only when the
+    # rest time its regeneration saves is more than its mana takes to come
+    # back; otherwise the client says why once. Empty casts nothing.
+    restSpell: ''
+
     # Potions and anything else, with its own condition -- *use this when that
     # is true*. MegaMUD's Health tab had one row beside "Heal if below" and
     # this client had two named slots; this replaced both, because it says
@@ -1528,6 +1535,11 @@ automation:
   # only needs the weapon. A weapon the game will not backstab with is not put
   # on again that session.
   #
+  # A `resting` set does what MegaMUD's PreRestCmd did: a ring that raises HP
+  # regen, put on before `rest` is sent and taken off at the next step of a
+  # walk. Nothing is worn while you are resting, because wearing
+  # anything stands you up.
+  #
   # The off-hand comes off before a two-handed weapon goes on, and the weapon
   # hand is sent before the rest, so coming back the other way frees the hand
   # before the shield is asked for. Handedness is the realm's own
@@ -1540,6 +1552,9 @@ automation:
   #     - name: Moving
   #       when: moving
   #       wear: [brown leather boots]
+  #     - name: Resting
+  #       when: resting
+  #       wear: [lightstone ring]
   #     - name: Backstab
   #       when: backstab
   #       wear: [ice crystal falchion]

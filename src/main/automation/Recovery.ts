@@ -289,6 +289,12 @@ export class Recovery implements SessionModule {
        * family is unknown: unknown is never the permissive answer.
        */
       poisonRefusesRest?(): boolean;
+      /**
+       * A `rest` for health is about to be proposed to a standing character:
+       * the moment a regeneration spell can still go out ahead of it, in the
+       * same band (`RestSpell`), since a cast stands a resting character up.
+       */
+      beforeRest?(state: CharacterState, restTo: number): void;
     } = {}
   ) {}
 
@@ -514,6 +520,7 @@ export class Recovery implements SessionModule {
         }
         return;
       }
+      if (restWanted) this.events.beforeRest?.(state, this.config.restTo);
       this.propose(
         'rest',
         restWanted ? t('automation.recovery.reasonHealth') : t('automation.recovery.reasonMana')

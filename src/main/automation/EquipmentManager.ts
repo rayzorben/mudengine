@@ -51,6 +51,8 @@ export interface EquipmentSources extends PlaceGearSources {
    * returned, or null where no swap had started.
    */
   yieldSwap(): string | null;
+  /** Whether a rest is wanted and the client may sit the character down (`Recovery.wouldRest`, `mayRest`). */
+  wantsRest(state: CharacterState): boolean;
 }
 
 export interface EquipmentEvents {
@@ -135,8 +137,22 @@ export class EquipmentManager implements SessionModule {
    * it is the one half of the situation that is not on the wire.
    */
   onCharacter(state: CharacterState, moving: boolean): void {
+    this.dress(state, moving, false);
+  }
+
+  /** `stepping` is the walker's next step about to go, which stands a resting character up. */
+  private dress(state: CharacterState, moving: boolean, stepping: boolean): void {
     if (state.phase !== 'in-game') return;
-    this.reachedBack(state);
+    /*
+     * Down, and no step about to go: a `wear` would stand the character up
+     * (`EquipCommand.cs:135,143`) and the next rest tick would pay nothing
+     * (`CalcRestTick`'s `BeenResting`). The resting set goes on before the
+     * `rest`, ahead of it in the same band; anything else, the reach weapon's
+     * return included, waits for the step or the fight that stands it up anyway.
+     */
+    const down = state.vitals.resting || state.vitals.meditating;
+    const holding = down && !stepping && !fightIsRunning(state);
+    if (!holding) this.reachedBack(state);
     if (!this.acting && !this.placing) return;
     /*
      * An unlisted pack is not an empty one. Nothing is worn off a listing
@@ -147,6 +163,7 @@ export class EquipmentManager implements SessionModule {
 
     const now: GearSituation = {
       moving,
+      resting: !stepping && (down || this.sources.wantsRest(state)),
       fighting: state.inCombat || state.combat.attackers.length > 0,
       backstab: this.opensWithBackstab(),
       target: state.combat.target
@@ -169,6 +186,8 @@ export class EquipmentManager implements SessionModule {
       this.saidMissing.clear();
       this.wearing = name;
     }
+
+    if (holding) return;
 
     const kit = kitFor(sets, now, (item) => this.sources.slotOf(item), layer);
     // A weapon wielded for a monster the hand cannot hurt outranks a set's until it goes back.
@@ -265,7 +284,7 @@ export class EquipmentManager implements SessionModule {
    * in the same band, and the queue keeps a band's order.
    */
   beforeStep(state: CharacterState): void {
-    this.onCharacter(state, true);
+    this.dress(state, true, true);
   }
 
   /**

@@ -30,6 +30,7 @@
 
 import { carriesAbility, DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from './abilities';
 import { CURES, type Cure, type SpellsConfig } from './config';
+import type { ActiveBuff } from './character';
 import type { WorldSpell } from './world';
 
 /**
@@ -166,6 +167,24 @@ export function sameSpell(
   if (one.realm !== null && other.realm !== null) return one.realm.id === other.realm.id;
   const theirs = namesOf(other);
   return namesOf(one).some((name) => theirs.includes(name));
+}
+
+/**
+ * Whether `spell` is up, under the name the buff list holds or any other the
+ * establishing sentence could have meant (`candidates`): `bless` seen as
+ * `chant` is up, and is not cast again.
+ */
+export function spellIsUp(
+  buffs: ReadonlyArray<ActiveBuff>,
+  spell: string,
+  spellbook: ReadonlyArray<CastableSpell> | null | undefined,
+  realmSpell: (name: string) => WorldSpell | null = () => null
+): boolean {
+  return buffs.some((buff) =>
+    [buff.spell, ...(buff.candidates ?? [])].some((name) =>
+      sameSpell(name, spell, spellbook, realmSpell)
+    )
+  );
 }
 
 /**

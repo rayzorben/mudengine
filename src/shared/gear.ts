@@ -699,14 +699,18 @@ export function equipVerdict(item: ItemEntity, wearer: Wearer, t: UiLookup): Equ
  * order is the precedence and `GEAR_WHENS.indexOf` is what ranks two sets that
  * both match.
  *
- * Four, because four is what the client can answer without guessing:
+ * Five, because five is what the client can answer without guessing:
  * `always` is the kit a character is in when nothing else is happening,
  * `moving` is a walk or a lap under way, `backstab` is between fights when the
- * next one opens with a backstab (MegaMUD's `BsWeapon`), `fighting` is
- * `fightIsRunning`. A band for *resting* was left out: a rest is broken by the
- * `wear` that would start it, so a set for it could never take effect.
+ * next one opens with a backstab (MegaMUD's `BsWeapon`), `resting` is a rest
+ * wanted or under way with no step about to go (MegaMUD's `PreRestCmd`, todo
+ * 60), `fighting` is `fightIsRunning`. Resting outranks moving (a walk or lap
+ * held for health rests) and backstab, because the walker's `beforeStep` puts
+ * either set on before the next step anyway. A `wear` stands a resting
+ * character up (`EquipCommand.cs:135,143`), so the resting set goes on before
+ * the `rest` and nothing is worn while down.
  */
-export const GEAR_WHENS = ['always', 'moving', 'backstab', 'fighting'] as const;
+export const GEAR_WHENS = ['always', 'moving', 'backstab', 'resting', 'fighting'] as const;
 
 export type GearWhen = (typeof GEAR_WHENS)[number];
 
@@ -742,6 +746,11 @@ export interface GearSet {
 export interface GearSituation {
   /** A route or a lap is under way. */
   moving: boolean;
+  /**
+   * A rest is wanted where the client may sit the character down, or it is
+   * already down, and no step is about to go. A walk held for health is one.
+   */
+  resting: boolean;
   /** Anything is swinging — `fightIsRunning`. */
   fighting: boolean;
   /** The next fight opens with a backstab (`AutoCombat.opensWithBackstab`). */
@@ -768,6 +777,9 @@ export function overlayFor(sets: readonly GearSet[], now: GearSituation): GearSe
         return false;
       case 'moving':
         return now.moving;
+      case 'resting':
+        // Over a held walk's moving set; a fight stands the character up anyway.
+        return now.resting && !now.fighting;
       case 'backstab':
         return now.backstab && !now.fighting;
       case 'fighting': {

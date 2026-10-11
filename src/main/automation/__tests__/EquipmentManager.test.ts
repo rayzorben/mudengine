@@ -77,6 +77,7 @@ const sources = (over: Partial<EquipmentSources> = {}): EquipmentSources => ({
   exposureAt: () => ({}),
   placeItem: () => null,
   minSaved: () => 2,
+  wantsRest: () => false,
   ...over
 });
 
@@ -237,6 +238,71 @@ describe('the backstab set', () => {
   });
 });
 
+/*
+ * MegaMUD's `PreRestCmd` as a set (todo 60). A `wear` stands a resting
+ * character up (`EquipCommand.cs:135,143`), so the ring goes on before the
+ * `rest`, nothing is worn while down, and the step that stands the character
+ * up is the one that puts the base kit back.
+ */
+describe('the resting set', () => {
+  const withRest = gear({
+    sets: [
+      {
+        name: 'Default',
+        when: 'always',
+        mob: '',
+        wear: ['plate boots', 'lifestealer', 'copper ring']
+      },
+      { name: 'Resting', when: 'resting', mob: '', wear: ['lightstone ring'] }
+    ]
+  });
+  const dressed = [
+    worn('plate boots', 'Feet'),
+    worn('lifestealer', WEAPON_HAND),
+    worn('copper ring', 'Finger')
+  ];
+  const ring = { 'lightstone ring': 'Finger', 'copper ring': 'Finger' };
+  const slotOf = (name: string): string | null =>
+    ring[name as keyof typeof ring] ?? SLOTS[name] ?? null;
+  const down = (items: CarriedItem[]): CharacterState => {
+    const state = standing(items);
+    return { ...state, vitals: { ...state.vitals, resting: true } };
+  };
+
+  it('is put on once a rest is wanted, in the band the rest goes out in', () => {
+    const offered = vi.spyOn(queue, 'enqueue');
+    const pack = [...dressed, carried('lightstone ring')];
+    make(withRest, { slotOf }).onCharacter(standing(pack), false);
+    expect(sent).toEqual([]);
+    make(withRest, { slotOf, wantsRest: () => true }).onCharacter(standing(pack), false);
+    expect(sent).toEqual(['wear lightstone ring']);
+    expect(offered.mock.calls.map(([intent]) => intent.priority)).toEqual(['probe']);
+  });
+
+  it('sends nothing while down, then puts the base kit back on the first step', () => {
+    const manager = make(withRest, { slotOf });
+    const pack = [...dressed, carried('lightstone ring')];
+    // Positive control: the same pack standing, a rest wanted, is dressed.
+    make(withRest, { slotOf, wantsRest: () => true }).onCharacter(standing(pack), false);
+    expect(sent).toEqual(['wear lightstone ring']);
+    sent.length = 0;
+    // Down without the ring on: no `wear` stands the character up.
+    manager.onCharacter(down(pack), false);
+    expect(sent).toEqual([]);
+    // Down with the ring on, and the walk's next step: the base kit goes back.
+    const resting = [
+      worn('plate boots', 'Feet'),
+      worn('lifestealer', WEAPON_HAND),
+      worn('lightstone ring', 'Finger'),
+      carried('copper ring')
+    ];
+    manager.onCharacter(down(resting), false);
+    expect(sent).toEqual([]);
+    manager.beforeStep(down(resting));
+    expect(sent).toEqual(['wear copper ring']);
+  });
+});
+
 describe('using an item between rounds', () => {
   const offRound = (over: Partial<GearConfig['offRound']> = {}): GearConfig =>
     gear({ offRound: { item: 'nexus spear', everyRounds: 1, ...over } });
@@ -318,6 +384,25 @@ describe('the weapon that can hurt the monster', () => {
 
     // Positive control: the fight ends and the club goes back in hand.
     manager.onCharacter(standing(holding), false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike', 'wear club']);
+  });
+
+  /* Todo 60: a `wear` stands a resting character up, so the old weapon waits for the step. */
+  it('waits to wield the old weapon while the character rests after the fight', () => {
+    const manager = make(off);
+    manager.wieldFor(
+      standing([worn('club', WEAPON_HAND), carried('golden pike')], golem),
+      'golden pike',
+      'stone golem'
+    );
+    const holding = [carried('club'), worn('golden pike', WEAPON_HAND)];
+    manager.onCharacter(fighting('stone golem', holding), false);
+    const resting = standing(holding);
+    manager.onCharacter({ ...resting, vitals: { ...resting.vitals, resting: true } }, false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike']);
+    manager.beforeStep(resting);
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['wear golden pike', 'wear club']);
   });

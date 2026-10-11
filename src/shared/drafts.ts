@@ -468,6 +468,8 @@ export interface ProfileDraft {
     /** Rest for mana with `med`, and meditate before resting. See `HealthConfig`. */
     useMeditate: boolean;
     meditateFirst: boolean;
+    /** The spell cast before a rest. See `HealthConfig.restSpell`. */
+    restSpell: string;
     /** The *use this when that* rules. See `PotionRule`. */
     potions: PotionRule[];
     /** The realm's own half of those rules. See `HealthConfig.useWards`. */
@@ -981,6 +983,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       restToMana: unit(health['restToMana']),
       useMeditate: health['useMeditate'] === true,
       meditateFirst: health['meditateFirst'] === true,
+      restSpell: typeof health['restSpell'] === 'string' ? health['restSpell'].trim() : '',
       /*
        * The rules, parsed at the boundary like everything else here: a row
        * with no name is dropped (a rule naming nothing fires on nothing), a

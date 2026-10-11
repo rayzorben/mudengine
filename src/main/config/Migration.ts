@@ -270,6 +270,7 @@ function migrateAll(options: MigrationOptions): void {
   statedGearLockHours(home, note, options.template);
   statedLootUpgrades(home, note, options.template);
   statedResistGear(home, note, options.template);
+  statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
@@ -4155,6 +4156,34 @@ function statedResistGear(
     stated.length === 1
       ? t('notices.migration.resistGear.one', params)
       : t('notices.migration.resistGear.many', params)
+  );
+}
+
+/**
+ * `automation.health.restSpell` (todo 60) into every file that states
+ * `health:` without it, empty as the template ships it, after
+ * `meditateFirst` and with the template's paragraph. Idempotent: a key stays
+ * added whatever the player types into it later.
+ */
+function statedTheRestSpell(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    HEALTH_BLOCK,
+    'restSpell',
+    DEFAULT_CONFIG.automation.health.restSpell,
+    'meditateFirst',
+    templateComments(template, 'automation').get('automation.health.restSpell')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.restSpell.one', params)
+      : t('notices.migration.restSpell.many', params)
   );
 }
 

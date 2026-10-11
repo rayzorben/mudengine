@@ -270,7 +270,7 @@ describe('a character', () => {
     it('takes them, as fractions', () => {
       const draft = asProfileDraft({
         ...good,
-        health: { restBelow: 0.5, restBelowMana: 0.25, restToMana: 0.6 },
+        health: { restBelow: 0.5, restBelowMana: 0.25, restToMana: 0.6, restSpell: ' rhel ' },
         movement: { openDoors: true, openTries: 2, sneak: true },
         spells: { attack: 'ice blade', minMana: 0.2, healMinMana: 0.1 }
       });
@@ -287,6 +287,8 @@ describe('a character', () => {
         // Absent above, and off: mana is rested for with `rest`, and resting comes first.
         useMeditate: false,
         meditateFirst: false,
+        // Trimmed, as the options file reads it.
+        restSpell: 'rhel',
         // The rules list, empty where the payload states none.
         potions: [],
         // And the realm's own half of them: absent above, and on, on the
@@ -408,6 +410,7 @@ describe('a character', () => {
         restToMana: 0,
         useMeditate: false,
         meditateFirst: false,
+        restSpell: '',
         // The rules list, empty where the payload states none.
         potions: [],
         useWards: true

@@ -180,6 +180,7 @@ export default function GearSetList({ sets, mobs, namePrefix, onChange }: GearSe
 const WHEN_WORD: Record<GearWhen, () => string> = {
   always: () => t('settings.gear.whenAlways'),
   moving: () => t('settings.gear.whenMoving'),
+  resting: () => t('settings.gear.whenResting'),
   backstab: () => t('settings.gear.whenBackstab'),
   fighting: () => t('settings.gear.whenFighting')
 };

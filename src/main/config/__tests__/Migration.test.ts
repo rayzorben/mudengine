@@ -260,6 +260,8 @@ describe('the "stand up at" health thresholds', () => {
       restToMana: 0,
       useMeditate: true,
       meditateFirst: false,
+      // And by `statedTheRestSpell`, empty.
+      restSpell: '',
       // And by `statedTheNewAutomation`, at the default.
       useWards: true
     });
@@ -4260,7 +4262,9 @@ describe('resting before a trap', () => {
       restBelowMana: 0,
       restToMana: 0,
       useMeditate: false,
-      meditateFirst: false
+      meditateFirst: false,
+      // And by `statedTheRestSpell`, empty.
+      restSpell: ''
     });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(
@@ -4304,7 +4308,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBelowMana: 0,
       restToMana: 0,
       useMeditate: false,
-      meditateFirst: false
+      meditateFirst: false,
+      // And by `statedTheRestSpell`, empty.
+      restSpell: ''
     });
   });
 
@@ -4329,7 +4335,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBelowMana: 0,
       restToMana: 0,
       useMeditate: false,
-      meditateFirst: false
+      meditateFirst: false,
+      // And by `statedTheRestSpell`, empty.
+      restSpell: ''
     });
   });
 
@@ -4347,7 +4355,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBelowMana: 0,
       restToMana: 0,
       useMeditate: false,
-      meditateFirst: false
+      meditateFirst: false,
+      // And by `statedTheRestSpell`, empty.
+      restSpell: ''
     });
   });
 
@@ -4367,7 +4377,9 @@ describe('the loop pause pair folded into the resting pair', () => {
       restBelowMana: 0,
       restToMana: 0,
       useMeditate: false,
-      meditateFirst: false
+      meditateFirst: false,
+      // And by `statedTheRestSpell`, empty.
+      restSpell: ''
     });
     const once = fs.readFileSync(profile.file, 'utf8');
     expect(
@@ -7092,6 +7104,53 @@ describe('wearing resist gear for the room is stated', () => {
     expect(fs.readFileSync(soul, 'utf8')).toContain('resists: false');
     expect(
       notesOf(said, 'notices.migration.resistGear.one', 'notices.migration.resistGear.many')
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
+// The spell cast before a rest (todo 60): empty after meditateFirst, once.
+describe('the spell cast before a rest is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-rest-spell-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes it empty after meditateFirst, once, and leaves a typed one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  health:\n    restBelow: 0.35\n    useMeditate: false\n    meditateFirst: false\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  health:\n    restSpell: rhel\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const health = (parse(text).automation as Record<string, Record<string, unknown>>)['health']!;
+    const keys = Object.keys(health);
+    expect(keys[keys.indexOf('meditateFirst') + 1]).toBe('restSpell');
+    expect(health['restSpell']).toBe('');
+    expect(fs.readFileSync(soul, 'utf8')).toContain('restSpell: rhel');
+    expect(
+      notesOf(said, 'notices.migration.restSpell.one', 'notices.migration.restSpell.many')
     ).toHaveLength(1);
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
