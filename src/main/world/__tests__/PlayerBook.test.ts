@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { PlayerBook, realmAddress } from '../PlayerBook';
+import { PlayerBook } from '../PlayerBook';
+import { realmAddress } from '../../../shared/types';
 import type { PlayerFacts } from '../../../shared/players';
 import { t } from '../../app/i18n';
 import { complaint } from './complaint';

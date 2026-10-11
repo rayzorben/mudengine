@@ -123,15 +123,17 @@ export class Company {
   }
 
   /**
-   * The realm the next connection dials, when it is not the character's own.
+   * The realm this connection plays: the one dialled, then the one its menu
+   * chose (todo 34).
    *
-   * A character can be dialled at a saved realm from the palette, and what is
-   * learned there belongs to *that* realm's book. Takes effect at `reset()`,
-   * which every connection runs: the registry is seeded from the new realm, and
-   * what was seeded from the old one goes with the session it was seeded for.
+   * What is learned belongs to *that* realm's book, so the registry is seeded
+   * from it at once: the menu is answered before anything is learned
+   * (`remember` waits for the realm), and a roster seeded from the address
+   * alone would show the other realm's players until the next dial.
    */
   useRealm(book: Book): void {
     this.book = book;
+    this.registry = absorbFacts(NO_PLAYERS, book.recall());
   }
 
   /**

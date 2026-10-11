@@ -82,7 +82,7 @@ export interface ExtensionSessionHost {
   /** The settings in force: the character's own with every extension's layer over them. */
   config(): AutomationConfig;
   tuning(): TuningConfig;
-  /** `host:port` of the realm connected to, or null. */
+  /** The realm played, `host:port` and then `/` and the realm its menu chose (`realmName`), or null. */
   realm(): string | null;
   world(): ExtensionWorld | undefined;
 

@@ -615,6 +615,15 @@ notices:
       'Removed {count} "You see ... hiding in the shadows." lines from the learned
       spell messages in {file}: they are a search finding a player, not a spell. A copy is in
       {file}.bak.'
+    realmIsTheMenusChoice:
+      "What was learned behind a realm menu is now kept per realm (PvE apart from PvP). Each
+      character keeps its own realm; players, refills, kill exp, finds and shops kept before
+      went to the menu's first realm, or to the one realm whose characters load that world.
+      Changed: {files}. The old files are kept beside them as .before-realms."
+    realmRecordsSetAside:
+      'Refills, kill exp, finds or shops kept for a world that characters on more than one realm
+      load could not be told apart, so they were set aside in the .before-realms copies and both realms
+      start empty: {records}.'
     themeCut: 'The theme "{from}" was removed, as it looked almost the same as another. {file}
       now uses {to}, the nearest one left.'
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden

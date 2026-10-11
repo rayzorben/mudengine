@@ -16,7 +16,7 @@ import { setTuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
 import { Push, type Addressed, type Notice, type SessionId } from '../../../shared/ipc';
 import { DEFAULT_CONFIG, type AppConfig } from '../../../shared/config';
-import type { ConnectionTarget, StreamChunk } from '../../../shared/types';
+import { realmOf, type Realm, type StreamChunk } from '../../../shared/types';
 
 /**
  * Real sockets, two of them, because the bug this file exists to catch is
@@ -57,7 +57,7 @@ let allSends: Sent[] = [];
 let rosterPublishes = 0;
 let notices: Notice[] = [];
 /** The addresses sessions were keyed on for their realm's players, per dial. */
-let dialledRealms: ConnectionTarget[] = [];
+let dialledRealms: Realm[] = [];
 /** Whether these sessions want a lost connection dialled back. See `Reconnect`. */
 let autoReconnect = false;
 /** Everything a session's backscroll holds. */
@@ -101,8 +101,9 @@ beforeEach(async () => {
     backscrollFor: (id) => path.join(backscrollDir, id),
     playersFor: () => NO_REALM_PLAYERS,
     destinationsFor: () => ({ remember: () => {}, matching: () => [] }),
-    playersAt: (target) => {
-      dialledRealms.push(target);
+    realmAt: (_id, target) => realmOf(target),
+    playersAt: (realm) => {
+      dialledRealms.push(realm);
       return NO_REALM_PLAYERS;
     },
     // Nowhere to write, like every other record in these runs.
@@ -260,7 +261,32 @@ describe('SessionHost', () => {
     const where = { ...target(), port };
     await host!.connect('thorn', where);
     await until(() => accepted.length === 1);
-    expect(dialledRealms).toEqual([where]);
+    expect(dialledRealms).toEqual([realmOf(where)]);
+  });
+
+  /*
+   * Paradigm lists PvE and PvP behind one address (todo 34,
+   * `2026-10-09_13-13-52_rayzor.log`): the menu's choice re-keys the session
+   * by the name it printed, and a choice of the realm already bound does not.
+   */
+  it('re-keys the players on the realm the menu chose, by its name', async () => {
+    const where = { ...target(), port };
+    await host!.connect('thorn', where);
+    await until(() => accepted.length === 1);
+    accepted[0]!.write(
+      [
+        '{ Realm Selection }',
+        '[1] . Paradigm PVE (v1.9.1) [ PvE ]',
+        '[2] . Paradigm PVP (v1.9.1) [ PvP Enabled ]',
+        '    . . Hang Penalties 25%',
+        'Please select a realm: ',
+        ''
+      ].join('\r\n')
+    );
+    await until(() => textFor('thorn').includes('Please select a realm'));
+    host!.get('thorn')!.manager.send('2\r');
+    await until(() => dialledRealms.length === 2);
+    expect(dialledRealms).toEqual([realmOf(where), realmOf(where, 'Paradigm PVP')]);
   });
 
   /*

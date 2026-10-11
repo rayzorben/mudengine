@@ -10,7 +10,6 @@ import {
   type PlayerFacts,
   type RealmPlayers
 } from '../../shared/players';
-import type { ConnectionTarget } from '../../shared/types';
 import { errorMessage } from '../../shared/values';
 import { t } from '../app/i18n';
 import { realmKey } from './RealmLore';
@@ -28,10 +27,10 @@ import { tuning } from '../app/tuning';
  *
  * **Keyed by realm, not by character**, for the reason `RealmLore` is: what
  * Soul wears is a fact about Soul, and four characters on one realm should not
- * each have to look. The realm is the **address dialled** (`realmAddress`) and
- * not the world file — Soul on GreaterMUD is not Soul on a MajorMUD board that
- * happens to ship the same map data, and two server entries that dial one
- * address are one realm.
+ * each have to look. The realm is the **address dialled and the realm its menu
+ * chose** (`realmName`, todo 34) and not the world file — Soul on GreaterMUD is
+ * not Soul on a MajorMUD board that happens to ship the same map data, and two
+ * server entries that dial one address and choose one realm are one realm.
  *
  * **Only facts about the player are here** (`PlayerFacts`); what is about one
  * character's dealings with them — whether *this* session has seen them
@@ -51,11 +50,9 @@ import { tuning } from '../app/tuning';
  * that moved only its sighting clock schedules nothing and tells nobody — see
  * `sameFacts` — or a party listing would rewrite this file every few seconds.
  *
- * The address is the whole of the identity, which is a choice with one known
- * edge: a board that fronts several games behind one address and different
- * menu steps would share one book. `docs/terminology.md` defines a realm by its
- * address, menus and name; only the address is stable enough to key a file on,
- * and the second sanctioned target (`bbs.bearfather.net:23`) fronts one game.
+ * Paradigm lists PvE and PvP behind one address (`paramud.mudinfo.net:2323`),
+ * so the address alone filed both games' players together; the menu's choice
+ * is the rest of the identity, and the host re-keys a session when it is read.
  * `realmKey` also collapses `.`, `-` and `_` alike, so two addresses differing
  * only in those would share a key — accepted, because no real pair does.
  */
@@ -83,16 +80,6 @@ interface PlayerFile {
 }
 
 type Listener = (batch: readonly PlayerFacts[]) => void;
-
-/**
- * The realm a target dials, as the book keys it: `orohost:2427`.
- *
- * Lower-cased because hostnames are, and trimmed because the profile's is what
- * somebody typed. `realmKey` then reduces it to a plain name inside the file.
- */
-export function realmAddress(target: Pick<ConnectionTarget, 'host' | 'port'>): string {
-  return `${target.host.trim().toLowerCase()}:${target.port}`;
-}
 
 export class PlayerBook {
   private readonly realms = new Map<string, Map<string, PlayerFacts>>();

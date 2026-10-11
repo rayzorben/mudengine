@@ -6,7 +6,8 @@
  * select a realm:`, the login script's or the player's. A realm marked `PvE`
  * that states no figure charges nothing; a PvP realm that states none is not
  * read, and the setting decides. See `mudengine-automation` › *Hanging up is
- * how you die, not how you escape*.
+ * how you die, not how you escape*. The chosen realm's name is also told on,
+ * penalty or not: it is half of which game this is (`Realm`, todo 34).
  */
 import type { Block } from '../../shared/blocks';
 import type { SessionModule } from '../automation/Module';
@@ -29,6 +30,9 @@ export class RealmMenu implements SessionModule {
   private latest: Listed | null = null;
   private asking = false;
   private chosen: RealmHangPenalty | null = null;
+
+  /** `named` hears the name the menu printed for each choice it could read. */
+  constructor(private readonly named: (realm: string) => void = () => {}) {}
 
   /** What the chosen realm charges, or null where no menu said. */
   get penalty(): RealmHangPenalty | null {
@@ -72,6 +76,7 @@ export class RealmMenu implements SessionModule {
     // never the previous realm's figure left standing.
     this.chosen = null;
     if (row === undefined) return null;
+    this.named(row.name);
     const percent = row.percent ?? (row.pve ? 0 : null);
     this.chosen = percent === null ? null : { realm: row.name, percent };
     return this.chosen;

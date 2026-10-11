@@ -30,6 +30,56 @@ export function sameTarget(a: ConnectionTarget, b: ConnectionTarget): boolean {
   return a.host.toLowerCase() === b.host.toLowerCase() && a.port === b.port;
 }
 
+/**
+ * Which game a connection plays: the address dialled, and the realm its BBS
+ * menu chose where it has one (todo 34).
+ *
+ * Paradigm lists `Paradigm PVE` and `Paradigm PVP` behind one address, so the
+ * address alone mixes two games' players, speeds and records. `chosen` is the
+ * name the menu printed for the entry picked (`RealmMenu`), not the number
+ * sent, so a renumbered menu keeps its data. Null where there is no menu
+ * (orohost), or before the menu has been answered and nothing is known.
+ */
+export interface Realm {
+  readonly host: string;
+  readonly port: number;
+  readonly chosen: string | null;
+}
+
+/** The realm at `target`, with the menu's choice where one was read. */
+export function realmOf(
+  target: Pick<ConnectionTarget, 'host' | 'port'>,
+  chosen: string | null = null
+): Realm {
+  return { host: target.host, port: target.port, chosen };
+}
+
+/**
+ * The address alone, `orohost:2427`: lower-cased because hostnames are, and
+ * trimmed because the profile's is what somebody typed.
+ */
+export function realmAddress(target: Pick<ConnectionTarget, 'host' | 'port'>): string {
+  return `${target.host.trim().toLowerCase()}:${target.port}`;
+}
+
+/** What a store keys a realm on: the address, then the chosen realm's name (`host:port/Paradigm PVP`). */
+export function realmName(realm: Realm): string {
+  const address = realmAddress(realm);
+  return realm.chosen === null ? address : `${address}/${realm.chosen}`;
+}
+
+/** A name `realmName` wrote, read back as a realm at `target`; null when it is another address's. */
+export function realmNamedAt(
+  name: string,
+  target: Pick<ConnectionTarget, 'host' | 'port'>
+): Realm | null {
+  const address = realmAddress(target);
+  if (name === address) return realmOf(target);
+  if (!name.startsWith(`${address}/`)) return null;
+  const chosen = name.slice(address.length + 1);
+  return chosen.length > 0 ? realmOf(target, chosen) : null;
+}
+
 /** Every `StreamEncoding`, the union's runtime half. */
 export const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
 

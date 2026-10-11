@@ -344,8 +344,8 @@ export class SessionManager {
   private readonly fleeGoto: FleeGoto;
   /** Talk-box lines queued this session, so each one's commands can be named together. */
   private macros = 0;
-  /** What the realm menu said a hang-up costs on the realm chosen (todo 01). */
-  private readonly realmMenu = new RealmMenu();
+  /** What the realm menu said a hang-up costs on the realm chosen (todo 01), and its name (todo 34). */
+  private readonly realmMenu = new RealmMenu((realm) => this.sink.realmChosen?.(realm));
   /** Nothing automated on a character lying mortally wounded. See `Grounded`. */
   private readonly grounded: Grounded;
   /** The arbiter stood down while the stat screen has the terminal. */
@@ -1619,7 +1619,6 @@ export class SessionManager {
       config: () => this.automationConfig,
       busy: () => this.errandHeld() || moveInFlight() || this.walker.walking,
       safety: () => this.publisher.automation.safety,
-      target: () => this.state.target,
       relayer: () => this.configure(...this.configured),
       notice,
       changed: () => this.publisher.publishAutomation(),
@@ -2486,10 +2485,10 @@ export class SessionManager {
   /**
    * What the realm about to be dialled knows of its players, and its speed last read (`kept`).
    *
-   * The host calls this with the *dialled* address before `connect`, because a
-   * character can be dialled at a saved realm other than its own and what it
-   * learns there is that realm's. The previous realm is unsubscribed first, so
-   * a session never absorbs two realms' players at once.
+   * The host calls this before `connect` and again when the menu's choice is
+   * read (todo 34), because what is learned belongs to the realm dialled and
+   * chosen. The previous realm is unsubscribed first and the roster re-seeded
+   * (pushed after the next line), so no session shows or absorbs two realms'.
    *
    * What another character on this realm learns about a player lands here and
    * is pushed, so the flyout on this tab says what the realm knows; no module
@@ -2501,12 +2500,12 @@ export class SessionManager {
     // What the realm said it lacks, and its family. See `Vocabulary.forgetRealm`.
     this.vocabulary.forgetRealm();
     this.tracker.useRealm(players);
-    // A vault and a kit are the server's, so they are re-keyed with the roster
-    // and not with the character. See `SessionHostOptions.belongingsAt`.
+    // A vault and a kit are the server's: re-keyed with the roster, re-seeded in place (todo 34).
     this.tracker.useBelongings(belongings);
     if (belongings !== this.belongings) this.carryOver.leave(this.belongings);
     this.belongings = belongings;
     this.statsBaseline.useStore(belongings);
+    this.tracker.forgetBelongings();
     this.forgetPlayers = players.subscribe((batch) => {
       if (this.tracker.absorbPlayers(batch)) this.publisher.players();
     });
