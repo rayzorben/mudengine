@@ -982,7 +982,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       ),
       restBelowMana: unit(health['restBelowMana']),
       restToMana: unit(health['restToMana']),
-      useMeditate: health['useMeditate'] === true,
+      useMeditate: health['useMeditate'] !== false,
       meditateFirst: health['meditateFirst'] === true,
       restSpell: typeof health['restSpell'] === 'string' ? health['restSpell'].trim() : '',
       /*
@@ -1025,7 +1025,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // answer — `captures/002` needed three picks and `captures/005` two
       // bashes — so a budget capped at the opener's would refuse the attempts
       // the captures show actually working.
-      pickLocks: movement['pickLocks'] === true,
+      pickLocks: movement['pickLocks'] !== false,
       pickTries: Math.min(10, Math.max(0, Math.trunc(Number(movement['pickTries']) || 0))),
       bashDoors: movement['bashDoors'] === true,
       bashTries: Math.min(10, Math.max(0, Math.trunc(Number(movement['bashTries']) || 0))),

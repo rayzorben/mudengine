@@ -368,7 +368,17 @@ export function canPick(
   margin: number,
   stated: boolean
 ): boolean {
-  return picklocks !== null && picklocks > 0 && meetsBarrier(need, picklocks, margin, stated);
+  return holdsPicklocks(picklocks) === true && meetsBarrier(need, picklocks, margin, stated);
+}
+
+/**
+ * Whether the stat sheet says this character can pick a lock at all: any
+ * figure above 0. The sheet prints the same `Player.Picklocks` that
+ * `Door.TryPickLock` tests (`Player.cs:7099`, `Door.cs:138`), so class, race
+ * and gear are already in it. Null before a sheet (todo 50).
+ */
+export function holdsPicklocks(picklocks: number | null): boolean | null {
+  return picklocks === null ? null : picklocks > 0;
 }
 
 /**

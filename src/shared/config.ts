@@ -1500,10 +1500,10 @@ export interface HealthConfig {
    */
   restToMana: number;
   /**
-   * Rest for mana with `med` rather than `rest` (2026-10-03): meditating ticks
-   * mana faster and needs the class's Meditate ability, so it is the player's
-   * to turn on once the character has it. A `med` the realm answers `Your
-   * command had no effect.` goes back to `rest` for the session.
+   * Rest for mana with `med` rather than `rest` when the character has
+   * Meditate: on by default (todo 50), off is *never*. An `abil` list
+   * without it rests (`holdsMeditate`); unknown tries `med`, and `Your command
+   * had no effect.` goes back to `rest` for the session.
    */
   useMeditate: boolean;
   /** Under `useMeditate`, both low: `med` first, else `rest` first (the user, 2026-10-03). */
@@ -1631,8 +1631,6 @@ export interface MovementConfig {
    * number, so this is never attempted against a barrier the character cannot
    * beat, `bashTries` caps it at three, and the alternative is a route that
    * stops dead at a lock the character was strong enough to walk through.
-   * `pickLocks` stays **off**: it is the same decision made with a skill this
-   * client cannot check the character has.
    */
   bashDoors: boolean;
   /** How many bashes, before the route gives up on the barrier. */
@@ -1650,7 +1648,9 @@ export interface MovementConfig {
    * bashing when both are available, because a failed pick costs a command and
    * a failed bash costs a command and some health. The router reads this and
    * `bashDoors` too (`Traveller.forcing`): a lock only a switched-off skill
-   * opens is planned round, never into.
+   * opens is planned round, never into. **On by default** (todo 50): the stat
+   * sheet's `Picklocks` says whether the character can (`holdsPicklocks`), so
+   * on is *when it can* and off is *never*.
    */
   pickLocks: boolean;
   /** How many picks, before the route gives up on the barrier. */
@@ -2788,7 +2788,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       restBeforeTraps: 0.45,
       restBelowMana: 0,
       restToMana: 0,
-      useMeditate: false,
+      useMeditate: true,
       meditateFirst: false,
       restSpell: '',
       potions: [],
@@ -2838,7 +2838,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       openTries: 1,
       bashDoors: true,
       bashTries: 3,
-      pickLocks: false,
+      pickLocks: true,
       pickTries: 3,
       sneak: false,
       runBetweenRounds: true,

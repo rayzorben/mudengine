@@ -4,6 +4,7 @@ import { EMPTY_CHARACTER, NO_AFFLICTIONS } from '../character';
 import { DEFAULT_CONFIG } from '../config';
 import {
   afflictionHolding,
+  holdsPicklocks,
   isAfflictionHold,
   portalLeftUnseen,
   stillFled,
@@ -140,5 +141,13 @@ describe('portalLeftUnseen', () => {
       portalLeftUnseen({ direction: 'n' }, { ...lit, room: { ...lit.room, light: 'pitch black' } })
     ).toBe(false);
     expect(portalLeftUnseen(portal, undefined)).toBe(false);
+  });
+});
+
+describe('holdsPicklocks (todo 50)', () => {
+  it('is unknown before a sheet, no at 0 and yes above it', () => {
+    expect(holdsPicklocks(null)).toBeNull();
+    expect(holdsPicklocks(0)).toBe(false);
+    expect(holdsPicklocks(65)).toBe(true);
   });
 });

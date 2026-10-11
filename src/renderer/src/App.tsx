@@ -23,6 +23,7 @@ import StatusRail from './components/StatusRail';
 import LoopsModal from './components/LoopsModal';
 import HomeBrowser from './components/HomeBrowser';
 import { TOOLBAR_ACTIONS } from './lib/toolbar';
+import { liveSheetOf } from './lib/liveSheet';
 import { useToolbarPins } from './hooks/useToolbarPins';
 import { type TerminalHandle } from './components/TerminalView';
 import { useConfig } from './hooks/useConfig';
@@ -242,22 +243,16 @@ export default function App() {
   const { remotesFor, suppliesFor, profileNameFor, switchesFor, restToFor } =
     useProfileReaders(profiles);
   /**
-   * What this character's percentages are percentages *of*, for the settings
-   * screen's fields.
+   * What this character's percentages are percentages *of*, and its picklocks
+   * and Meditate, for the settings screen's fields (todo 50).
    *
    * Read off the live view rather than carried on the settings snapshot: a
    * maximum comes from the stat sheet and moves when the character levels, and
    * a figure baked into a snapshot taken when the dialog opened would be
-   * confidently stale. Both are null for a character not in the realm, which is
+   * confidently stale. All are null for a character not in the realm, which is
    * the answer `figureOf` draws as nothing at all.
    */
-  const maximaFor = useCallback(
-    (id: SessionId): { hpMax: number | null; manaMax: number | null } => {
-      const vitals = views[id]?.character.vitals;
-      return { hpMax: vitals?.hpMax ?? null, manaMax: vitals?.manaMax ?? null };
-    },
-    [views]
-  );
+  const sheetFor = useCallback((id: SessionId) => liveSheetOf(views[id]?.character), [views]);
   // The designed status line's preview draws the character's own figures only
   // while it is in the realm; anything else is a sample, not a set of dashes.
   const figuresFor = useCallback(
@@ -1596,7 +1591,7 @@ export default function App() {
       <TripDialogs api={api} trips={trips} profiles={profiles} />
       <SettingsScreen
         {...settingsApi}
-        maximaFor={maximaFor}
+        sheetFor={sheetFor}
         figuresFor={figuresFor}
         palette={consolePalette}
         onClose={closeSettings}

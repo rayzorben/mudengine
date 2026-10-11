@@ -73,14 +73,15 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the reset prompt's question, out with its state (`ResetGate`, area search).
   // Lowered by the notices' routing, out whole (`useConsoleNotices`, notice per character).
   // Lowered by the status rail reading its own dial state (todo 22).
-  'src/renderer/src/App.tsx': 1609,
+  'src/renderer/src/App.tsx': 1604,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   // Lowered by the fight hold's comment, condensed as `FoughtPath` came (2026-10-10).
   // Lowered by `scriptGated`, out to the room commands' unit (`walk/RoomCommands.ts`, todo 65).
   // Lowered by the comments before the step, condensed as the disarm came (`walk/Disarm.ts`, todo 53).
   'src/main/automation/Walker.ts': 1925,
-  'src/renderer/src/components/SettingsScreen.tsx': 1215,
+  // Lowered by the live sheet beside Pick Locks and Use Meditate (todo 50).
+  'src/renderer/src/components/SettingsScreen.tsx': 1214,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
   // rest and meditate fields, shared with the options page (825), and the
@@ -95,7 +96,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the gear recovery's switches, out whole (`RecoverFields`, todo 39).
   // Lowered by the attack and opener fields, out whole with their chosen words (`FightWordFields`, todo 47).
   // Lowered by the PvP reaction's options, one line as its third member came (todo 78).
-  'src/renderer/src/components/CharacterForm.tsx': 1468
+  // Lowered by the pick-locks row, out with its sentence (`PickLockFields`, todo 50).
+  'src/renderer/src/components/CharacterForm.tsx': 1460
 };
 
 /**

@@ -107,6 +107,7 @@ import {
 } from '../../shared/config';
 import type { MobRule } from '../../shared/mobRules';
 import { tuning } from '../app/tuning';
+import { holdsMeditate } from '../../shared/abilities';
 import type { SessionModule } from './Module';
 
 /**
@@ -395,7 +396,7 @@ export class Recovery implements SessionModule {
     const { restTo, restBelowMana, restToMana } = this.config;
     if (restTo > 0 && (this.sitting || resting) && this.below(hp, hpMax, restTo)) return true;
     // And mana, where a rest is how it comes back.
-    if (this.meditates) return false;
+    if (this.meditates(state)) return false;
     if (this.below(mana, manaMax, restBelowMana)) return true;
     return (
       restToMana > 0 && (this.restingForMana || resting) && this.below(mana, manaMax, restToMana)
@@ -489,11 +490,11 @@ export class Recovery implements SessionModule {
      * without the Meditate ability gets its mana back (the user, 2026-10-03).
      */
     const manaWanted = this.wantsMana(mana, manaMax);
-    if (manaWanted && this.meditates && (this.config.meditateFirst || !restTakes)) {
+    if (manaWanted && this.meditates(state) && (this.config.meditateFirst || !restTakes)) {
       this.propose('med', t('automation.recovery.reasonMana'));
       return;
     }
-    const restForMana = manaWanted && !this.meditates && !this.refused.has('rest');
+    const restForMana = manaWanted && !this.meditates(state) && !this.refused.has('rest');
     if (restWanted || restForMana) {
       /*
        * **A poisoned character cannot rest at all on this engine.**
@@ -544,7 +545,7 @@ export class Recovery implements SessionModule {
     } else if (leader?.activity?.state === 'meditating' && manaMax !== null && manaMax > 0) {
       // Down beside the leader, by whichever verb this character rests for mana with.
       const name = leader.name;
-      if (this.meditates) {
+      if (this.meditates(state)) {
         this.propose('med', t('automation.party.reasonMeditateWithLeader', { leader: name }));
       } else if (!this.refused.has('rest')) {
         this.propose(
@@ -648,14 +649,20 @@ export class Recovery implements SessionModule {
     const canRest = !this.refused.has('rest') && !this.restIsPoisoned(state);
     const rest = this.wantsRest(hp, hpMax) && canRest;
     const short = this.wantsMana(mana, manaMax);
-    const med = short && this.meditates;
+    const med = short && this.meditates(state);
     if (resting) return med && (!rest || this.config.meditateFirst) ? 'med' : null;
     return rest && (!med || !this.config.meditateFirst) ? 'rest' : null;
   }
 
-  /** Whether mana is rested for with `med`: `useMeditate`, until the realm refuses it. */
-  private get meditates(): boolean {
-    return this.config.useMeditate && !this.refused.has('med');
+  /**
+   * Whether mana is rested for with `med`: `useMeditate`, unless an `abil`
+   * listing says the character lacks Meditate, and until the realm refuses
+   * it. Unknown tries `med`, since the refusal is one command and is said
+   * (todo 50).
+   */
+  private meditates(state: CharacterState): boolean {
+    if (!this.config.useMeditate || this.refused.has('med')) return false;
+    return holdsMeditate(state.abilities) !== false;
   }
 
   /** `wantsRest` for mana: `restBelowMana` starts a stretch and `restToMana` carries it (todo 825). */

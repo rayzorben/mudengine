@@ -255,7 +255,7 @@ describe('the "stand up at" health thresholds', () => {
       // And by `statedTheRestNextDoor`, on.
       restNextDoor: true,
       // Renamed by `theManaPairRests`, the ceiling stated off, and Use
-      // Meditate on, since the file rested for mana and that rest was `med`.
+      // Meditate at its default, on (todo 50).
       restBelowMana: 0.3,
       restToMana: 0,
       useMeditate: true,
@@ -726,6 +726,70 @@ describe('the mark at the head of the card rail', () => {
  * both keys into every file at the shipped default, so a flipped default alone
  * would reach nobody.
  */
+/*
+ * Todo 50: on is *when the sheet says the character can*, so a `false` still
+ * under the shipped note that told the player to turn it on is moved, and the
+ * new note is what stops it moving again.
+ */
+describe('pick locks and meditate follow the sheet', () => {
+  const stale =
+    'automation:\n  movement:\n' +
+    '    # made with a skill the client cannot check the character has.\n' +
+    '    pickLocks: false\n' +
+    '  health:\n' +
+    "    # but needs the class's Meditate ability: turn it on once the character has\n" +
+    '    # it.\n' +
+    '    useMeditate: false\n';
+  const answers = (): { pick: unknown; med: unknown } => {
+    const parsed = parse(fs.readFileSync(home.options, 'utf8')) as {
+      automation: { movement: Record<string, unknown>; health: Record<string, unknown> };
+    };
+    return {
+      pick: parsed.automation.movement['pickLocks'],
+      med: parsed.automation.health['useMeditate']
+    };
+  };
+
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('turns on a false under the old note, once, and says so', () => {
+    fs.writeFileSync(home.options, stale, 'utf8');
+    migrate(true);
+    expect(answers()).toEqual({ pick: true, med: true });
+    expect(fs.readFileSync(home.options, 'utf8')).not.toContain('cannot check the character has');
+    expect(
+      notesOf(
+        said,
+        'notices.migration.sheetAnswersSkills.one',
+        'notices.migration.sheetAnswersSkills.many'
+      )
+    ).toHaveLength(1);
+    // Switched off by hand under the new note: never moved again.
+    const after = fs.readFileSync(home.options, 'utf8');
+    fs.writeFileSync(
+      home.options,
+      after
+        .replace('pickLocks: true', 'pickLocks: false')
+        .replace('useMeditate: true', 'useMeditate: false'),
+      'utf8'
+    );
+    migrate(true);
+    expect(answers()).toEqual({ pick: false, med: false });
+  });
+
+  it('leaves a false with no note above it alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  movement:\n    pickLocks: false\n  health:\n    useMeditate: false\n',
+      'utf8'
+    );
+    migrate(true);
+    expect(answers()).toEqual({ pick: false, med: false });
+  });
+});
+
 describe('doors opening by default', () => {
   const movement = (body: string): string => `automation:\n  movement:\n${body}`;
 
@@ -747,7 +811,7 @@ describe('doors opening by default', () => {
     >;
     expect(after['openDoors']).toBe(true);
     expect(after['bashDoors']).toBe(true);
-    // The same decision made with a skill the client cannot check for.
+    // Not this step's: todo 50's moves a lock-pick only under the old note.
     expect(after['pickLocks']).toBe(false);
   });
 
@@ -4258,10 +4322,10 @@ describe('resting before a trap', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `theManaPairRests`, all off.
+      // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
       restBelowMana: 0,
       restToMana: 0,
-      useMeditate: false,
+      useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
       restSpell: ''
@@ -4304,10 +4368,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `theManaPairRests`, all off.
+      // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
       restBelowMana: 0,
       restToMana: 0,
-      useMeditate: false,
+      useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
       restSpell: ''
@@ -4331,10 +4395,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `theManaPairRests`, all off.
+      // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
       restBelowMana: 0,
       restToMana: 0,
-      useMeditate: false,
+      useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
       restSpell: ''
@@ -4351,10 +4415,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `theManaPairRests`, all off.
+      // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
       restBelowMana: 0,
       restToMana: 0,
-      useMeditate: false,
+      useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
       restSpell: ''
@@ -4373,10 +4437,10 @@ describe('the loop pause pair folded into the resting pair', () => {
       restNextDoor: true,
       // Written by `statedTheNewAutomation` in the same run, at the default.
       useWards: true,
-      // And by `theManaPairRests`, all off.
+      // And by `theManaPairRests`: off, but Use Meditate at its default (todo 50).
       restBelowMana: 0,
       restToMana: 0,
-      useMeditate: false,
+      useMeditate: true,
       meditateFirst: false,
       // And by `statedTheRestSpell`, empty.
       restSpell: ''
@@ -6791,14 +6855,14 @@ describe('the mana pair rests for mana', () => {
     expect(fs.readFileSync(profile, 'utf8')).toBe(text);
   });
 
-  it('leaves Use Meditate off where the file never rested for mana', () => {
+  it('states Use Meditate at its default where the file never rested for mana (todo 50)', () => {
     const profile = home.profile('soul').file;
     write(profile, '    restBelow: 0.4\n    meditateBelow: 0\n');
     migrate(true);
     const health = healthOf(profile);
     expect(health['restBelowMana']).toBe(0);
     expect(health['restToMana']).toBe(0);
-    expect(health['useMeditate']).toBe(false);
+    expect(health['useMeditate']).toBe(true);
   });
 });
 
