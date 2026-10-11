@@ -21,6 +21,7 @@ import {
   type RealmMemory
 } from '../../shared/memory';
 import type { Block } from '../../shared/blocks';
+import { countedCoins } from '../../shared/coins';
 import type { RealmShops } from '../../shared/shops';
 import { roomAddress } from '../../shared/world';
 
@@ -151,6 +152,7 @@ export class Records {
       // a single thing. See `Find.quantity`.
       quantity: item.count ?? null,
       copper: null,
+      coins: null,
       at
     }));
 
@@ -163,6 +165,7 @@ export class Records {
         name: cash.rawText ?? t('session.finds.coins'),
         quantity: null,
         copper: cash.totalCopper,
+        coins: countedCoins(cash),
         at
       });
     }

@@ -7208,6 +7208,8 @@ describe('SessionManager finds', () => {
     // the alert asks about and the one the card draws money with.
     const cash = rows.find((row) => row.copper !== null);
     expect(cash?.copper).toBe(4);
+    // The coins as the search counted them, which is what the card draws.
+    expect(cash?.coins).toEqual({ runic: 0, platinum: 0, gold: 0, silver: 0, copper: 4 });
     expect(rows.every((row) => row.room === '1/2140')).toBe(true);
     // Recorded, not announced: the rows above are the positive control, written
     // in the same call that once raised a notice per find.

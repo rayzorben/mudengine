@@ -19,11 +19,12 @@
  * shows a window on it. Dependency-free like the rest of `shared/`: main writes
  * these, the renderer reads them.
  */
+import type { Coins } from './character';
 import { DAY_MS } from './values';
 import type { RoomId } from './world';
 
 /** The file format's version, so a reader can refuse one it does not know. */
-export const FINDS_VERSION = 2;
+export const FINDS_VERSION = 3;
 
 export interface Find {
   /** Where it was turned up. Known, or the find is not worth writing down. */
@@ -52,6 +53,14 @@ export interface Find {
    * alert about them is an alert about how much.
    */
   copper: number | null;
+  /**
+   * The coins as the search printed them, by denomination: `24323 gold` stays
+   * gold. Null for a thing, and for cash written down before this was kept
+   * (format 3, 2026-10-10), which is shown blank until its room is searched
+   * again rather than as `copper` spread back over the ladder. Where it is set,
+   * `copper` is its total: both are written from one `CurrencyEntity`.
+   */
+  coins: Coins | null;
   /** When a search last turned it up here. */
   at: number;
   /**

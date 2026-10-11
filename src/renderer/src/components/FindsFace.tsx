@@ -6,7 +6,6 @@ import Icon from './Icon';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { coinText } from '../lib/coins';
-import { copperSpread } from '@shared/coins';
 import { ago } from '../lib/players';
 import { findRate, isCash, within, type Find } from '@shared/finds';
 import type { SessionId } from '@shared/ipc';
@@ -101,10 +100,7 @@ export default function FindsFace({
          * anybody asks of found money.
          */
         value: (find) => find.copper ?? find.quantity,
-        cell: (find) =>
-          find.copper !== null
-            ? coinText(copperSpread(find.copper), 1)
-            : (find.quantity?.toString() ?? '')
+        cell: howMany
       },
       {
         id: 'where',
@@ -223,18 +219,23 @@ function percentText(rate: number): string {
   return `${percent > 0 && percent < 10 ? percent.toFixed(1) : Math.round(percent)}%`;
 }
 
+/**
+ * The How many cell: cash as the search counted it (`24323 gold`); blank for
+ * a thing nobody counted and for cash kept before the coins were (`Find.coins`).
+ */
+function howMany(find: Find): string {
+  if (isCash(find)) return coinText(find.coins, 1);
+  return find.quantity?.toString() ?? '';
+}
+
 /** The face's own clipboard text: the table as it reads, rarest first. */
 export function findsCopyText(finds: readonly Find[], days: number, now: number): string {
   const rows = within(finds, days, now);
   if (rows.length === 0) return t('cards.room.finds.empty');
   return rows
     .map((find) => {
-      const many =
-        find.copper !== null
-          ? coinText(copperSpread(find.copper), 1)
-          : find.quantity === null
-            ? ''
-            : `${find.quantity} `;
+      const counted = howMany(find);
+      const many = counted === '' ? '' : `${counted} `;
       const rate = findRate(find);
       const chance = rate === null ? '' : `, ${percentText(rate)}`;
       return `${many}${find.name} — ${find.roomName} ${find.room}, ${ago(find.at, now)} (${find.seen}${chance})`;

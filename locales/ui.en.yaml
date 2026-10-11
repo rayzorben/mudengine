@@ -855,6 +855,8 @@ notices:
       saveError: 'Could not save {fileName}: {message}'
       upgraded: "{fileName} now counts searches, so each find's chance starts counting from the next
         search of its room. The old file is kept as {fileName}.bak."
+      coinsUpgraded: '{fileName} now keeps the coins each search turned up. Coins found before this
+        show blank until their room is searched again. The old file is kept as {fileName}.bak.'
     shops:
       invalidFile: '{fileName} is not a shop record, so shops start empty. The old file is kept as
         {fileName}.bak.'

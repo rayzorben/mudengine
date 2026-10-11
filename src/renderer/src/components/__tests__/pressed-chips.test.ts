@@ -46,3 +46,21 @@ describe('a chip that is a control says which way it is held', () => {
     expect(pressed.every((names) => names.split(/\s+/).includes('pick'))).toBe(true);
   });
 });
+
+describe('a facet chip says whether its rows are shown', () => {
+  it('draws on green and off red, inside the facet row only', () => {
+    const css = read('src/renderer/src/styles/index.css');
+    expect(css).toMatch(/\.table-facets \.chip\.toggle\[data-on='true'] \{[^}]*var\(--ok\)/);
+    expect(css).toMatch(
+      /\.table-facets \.chip\.toggle\[data-on='false'] \{[^}]*var\(--danger\)[^}]*\}/
+    );
+  });
+
+  it('and the facet chips sit in that row', () => {
+    const source = read('src/renderer/src/components/ListTools.tsx');
+    const row = source.indexOf('className="table-facets"');
+    // The positive control: both the row and a toggle chip are found, in order.
+    expect(row).toBeGreaterThan(-1);
+    expect(source.indexOf('className="chip toggle"', row)).toBeGreaterThan(row);
+  });
+});
