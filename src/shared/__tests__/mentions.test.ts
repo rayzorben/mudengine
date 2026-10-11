@@ -116,4 +116,16 @@ describe('mentionNotice', () => {
     ];
     expect(mentionNotice(tele, 'Festus', withTelepath)).toBeNull();
   });
+
+  it('raises a telepath opening on @name, which the telepath row skips', () => {
+    const tele = said('conversation-telepath', 'Rayzor telepaths: @festus you there?', {
+      player: 'Rayzor',
+      message: '@festus you there?'
+    });
+    const withTelepath = [
+      ...STARTER_ALERTS,
+      { ...STARTER_ALERTS.find((rule) => rule.on === 'mentioned')!, on: 'telepath' as const }
+    ];
+    expect(mentionNotice(tele, 'Festus', withTelepath)).not.toBeNull();
+  });
 });

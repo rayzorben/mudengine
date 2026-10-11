@@ -12,6 +12,7 @@
  */
 import type { Block } from './blocks';
 import { rowAsks, type AlertRule, type Notice } from './notifications';
+import { telepathNotice } from './characterNotices';
 import { isOwnName } from './players';
 import { parseRemoteCall } from './remotes';
 
@@ -56,8 +57,8 @@ export function mentionNotice(
   rules: readonly AlertRule[]
 ): Notice | null {
   if (!rowAsks(rules, 'mentioned')) return null;
-  // A telepath row already raises the line (`telepathNotice`); one line, one alert.
-  if (block.type === 'conversation-telepath' && rowAsks(rules, 'telepath')) return null;
+  // A telepath the telepath row raises (`telepathNotice`) is not raised twice.
+  if (telepathNotice(block, rules) !== null) return null;
   if (!mentions(block, self)) return null;
   return {
     id: `mention-${block.seq}`,

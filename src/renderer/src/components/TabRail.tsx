@@ -653,8 +653,8 @@ function TabRail({
                 the realm between it and the name — which put the *most*
                 variable thing in the column position and the least variable
                 thing where it had to be re-read. The name grows into whatever
-                is left (`.tab .name`, `flex: 1 1 auto`), so both hug the right
-                without either needing an offset of its own.
+                is left (`.tab .name`, `flex: 1 1 auto`), so the marks hug the right
+                with no offset of their own.
               */}
                   {/*
                     Somebody wrote `@name` while the tab was not in front (todo
