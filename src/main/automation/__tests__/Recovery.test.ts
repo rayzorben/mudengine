@@ -1087,3 +1087,49 @@ describe('resting for mana without meditate', () => {
     expect(meditating.wouldRest(state({ mana: 10, manaMax: 100 }))).toBe(false);
   });
 });
+
+/* The user, 2026-10-10: leading, rest while a member is under this character's own rest level. */
+describe('resting for a member under Manage Party Health', () => {
+  const leading = (soul: number): Partial<CharacterState> => ({
+    name: 'Vaelor',
+    party: {
+      ...EMPTY_CHARACTER.party,
+      following: null,
+      members: ['Vaelor', 'Soul'].map((name) => ({
+        name,
+        activity: null,
+        className: null,
+        health: name === 'Soul' ? soul : 1,
+        invited: false,
+        vitals: null,
+        mana: null,
+        rank: null
+      }))
+    },
+    room: {
+      ...EMPTY_CHARACTER.room,
+      occupants: [{ name: 'Soul', kind: 'player' } as CharacterState['room']['occupants'][number]]
+    }
+  });
+  const leader = (manageParty: boolean): Recovery =>
+    new Recovery(
+      settings({ ...DEFAULT_CONFIG.automation.health, restBelow: 0.5, restTo: 0.9 }, true, {
+        ...DEFAULT_CONFIG.automation.party,
+        manageParty
+      }),
+      queue
+    );
+
+  it('sits down beside a member under the rest level, only when managing', () => {
+    leader(false).onCharacter(state({ hp: 100, hpMax: 100, ...leading(0.3) }));
+    drain();
+    expect(sent).toEqual([]);
+    const managing = leader(true);
+    managing.onCharacter(state({ hp: 100, hpMax: 100, ...leading(0.6) }));
+    drain();
+    expect(sent).toEqual([]);
+    managing.onCharacter(state({ hp: 100, hpMax: 100, ...leading(0.3) }));
+    drain();
+    expect(sent).toEqual(['rest']);
+  });
+});

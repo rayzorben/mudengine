@@ -2965,10 +2965,12 @@ function statedThePartyPacing(
     ['waitBelow', d.waitBelow],
     ['waitMinutes', d.waitMinutes],
     ['ignoreWait', d.ignoreWait],
+    ['manageParty', d.manageParty],
     ['ignoreParty', d.ignoreParty],
     ['askHealth', d.askHealth],
     ['parSeconds', d.parSeconds],
     ['parAfterRound', d.parAfterRound],
+    ['parEveryRounds', d.parEveryRounds],
     ['relayPortals', d.relayPortals],
     ['regroupMinutes', d.regroupMinutes],
     ['helpWithDoors', d.helpWithDoors]
@@ -6939,6 +6941,8 @@ function theTuningBlockGainedKeys(
     addKey('remotes', 'telepathMax', DEFAULT_INTERNAL.tuning.remotes.telepathMax);
     // How long a console nobody is looking at waits for its WebGL renderer (todo 19, 2026-10-10).
     addKey('view', 'hiddenWebglMs', DEFAULT_INTERNAL.tuning.view.hiddenWebglMs);
+    // How much lost health brings the next par sooner (2026-10-10).
+    addKey('remotes', 'parAtLoss', DEFAULT_INTERNAL.tuning.remotes.parAtLoss);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

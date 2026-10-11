@@ -46,6 +46,7 @@ export default function PartyFields({
       | 'restWithLeader'
       | 'ignoreParty'
       | 'ignoreWait'
+      | 'manageParty'
       | 'parAfterRound'
       | 'relayPortals'
       | 'helpWithDoors'
@@ -114,7 +115,20 @@ export default function PartyFields({
             onChange={(value) => set('parSeconds', value)}
             value={party.parSeconds}
           />
+          <NumberField
+            hint={t('settings.party.parEveryRoundsHint')}
+            label={t('settings.party.parEveryRoundsLabel')}
+            name={`${namePrefix}party-par-every-rounds`}
+            onChange={(value) => set('parEveryRounds', value)}
+            value={party.parEveryRounds}
+          />
         </div>
+        {check(
+          'manageParty',
+          t('settings.party.managePartyLabel'),
+          t('settings.party.managePartyHint'),
+          'manage-party'
+        )}
         {check(
           'ignoreWait',
           t('settings.party.ignoreWaitLabel'),

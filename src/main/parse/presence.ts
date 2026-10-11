@@ -24,6 +24,7 @@ import { asAlignment } from '../../shared/alignment';
 import { parseRemoteReply } from '../../shared/remotes';
 import { observe, type PlayerRegistry, type WornItem } from '../../shared/players';
 import { figure } from '../../shared/values';
+import { listedVitals } from './memberBars';
 
 /**
  * A fold that writes the registry as well as the state: `state` null where the
@@ -539,15 +540,18 @@ export function withPartyListing(
     .map((row): PartyMember | null => {
       const name = row['name'];
       if (!name) return null;
+      const health = percent(row['health']);
+      const mana = percent(row['mana']);
+      const held = s.party.members.find((entry) => entry.name === name)?.vitals ?? null;
       return {
         name,
         className: row['class']?.trim() || null,
-        health: percent(row['health']),
-        mana: percent(row['mana']),
+        health,
+        mana,
         rank: rankOf(row['rank']),
         activity: partyActivity(row['flag']),
         invited: row['invited'] !== undefined,
-        vitals: s.party.members.find((held) => held.name === name)?.vitals ?? null
+        vitals: listedVitals(held, health, mana)
       };
     })
     .filter((entry): entry is PartyMember => entry !== null);

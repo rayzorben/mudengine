@@ -2027,6 +2027,13 @@ automation:
     # still stops the loop.
     ignoreWait: false
 
+    # Leading, hold every member to this character's own health settings: stop
+    # and rest while a member here is under restBelow or restBelowMana, until it
+    # is back to restTo or restToMana, and walk on through a @wait that is only
+    # about health or mana. A @wait because a member is held, blind, confused
+    # or poisoned still stops the loop until their @ok.
+    manageParty: true
+
     # Following, leave the leader's @party commands unanswered.
     ignoreParty: false
 
@@ -2040,6 +2047,11 @@ automation:
 
     # In a party, send par after every combat round.
     parAfterRound: false
+
+    # In a party and a fight, send par at most this many rounds apart, and
+    # sooner the more health the party has lost since the last one. 0 sends
+    # none by the round.
+    parEveryRounds: 5
 
     # Leading, say @party <command> before a room's own command that moves only
     # the one who types it (go vortex), so the party runs it too. A text exit

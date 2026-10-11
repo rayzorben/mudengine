@@ -742,10 +742,12 @@ describe('following somebody', () => {
       waitBelow: 0,
       waitMinutes: 2,
       ignoreWait: false,
+      manageParty: true,
       ignoreParty: false,
       askHealth: true,
       parSeconds: 0,
       parAfterRound: false,
+      parEveryRounds: 5,
       relayPortals: true,
       regroupMinutes: 5,
       helpWithDoors: false

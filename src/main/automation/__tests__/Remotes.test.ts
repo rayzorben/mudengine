@@ -790,18 +790,18 @@ describe('asking, which is the other half of the same vocabulary', () => {
    * `@wait` and `@ok` are the pacing pair, sent on the **crossing** rather than
    * on every status line — a character resting for a minute is one message.
    */
-  it('tells the leader it has sat down, once, and that it is up again', () => {
-    const resting = who({
-      party: { engaged: {}, threatened: {}, following: 'Soul', members: [] },
-      vitals: { ...EMPTY_CHARACTER.vitals, resting: true }
-    });
-    peers.onCharacter(resting);
-    peers.onCharacter(resting);
-    peers.onCharacter(
-      who({ party: { engaged: {}, threatened: {}, following: 'Soul', members: [] } })
-    );
+  it('tells the leader it is under its floor, once, and that it is up again', () => {
+    const low = (hp: number): CharacterState =>
+      who({
+        party: { engaged: {}, threatened: {}, following: 'Soul', members: [] },
+        vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 100 }
+      });
+    const floor = DEFAULT_CONFIG.automation.health.restBelow * 100;
+    peers.onCharacter(low(floor - 1));
+    peers.onCharacter(low(floor - 1));
+    peers.onCharacter(low(100));
     drain();
-    expect(sent).toEqual(['/Soul @wait', '/Soul @ok']);
+    expect(sent).toEqual(["/Soul @wait (HP's too low)", '/Soul @ok']);
   });
 
   /* A leader telling itself to wait would be talking to nobody. */
@@ -2178,6 +2178,30 @@ describe('party pacing', () => {
     expect(paced).toEqual(['Soul:wait']);
   });
 
+  /* The user, 2026-10-10: leading, health and mana are held to this character's own settings. */
+  it('walks on through a health @wait under Manage Party Health, and stops for a condition', () => {
+    const leading = (soul: ReturnType<typeof member>): CharacterState =>
+      who({ party: { engaged: {}, threatened: {}, following: null, members: [soul] } });
+    const wait = (argument: string, row = member('Soul', 0.6), party = {}): string[] => {
+      const remotes = make(party);
+      remotes.onBlock(said('conversation-telepath', 'Soul', `@wait${argument}`), leading(row));
+      return paced;
+    };
+    expect(wait('')).toEqual([]);
+    expect(notices).toContain(t('automation.remotes.managedWait', { from: 'Soul' }));
+    expect(wait(" (HP's too low)")).toEqual([]);
+    expect(wait(' (Mana/Kai too low)')).toEqual([]);
+    expect(wait(" (can't move)")).toEqual(['Soul:wait']);
+    expect(wait(' (blinded)')).toEqual(['Soul:wait']);
+    expect(wait(' (poisoned)')).toEqual(['Soul:wait']);
+    // No reading of the member, or a flag this client cannot read: the @wait stands.
+    expect(wait('', member('Soul', null))).toEqual(['Soul:wait']);
+    expect(
+      wait('', { ...member('Soul', 0.6), activity: { state: 'unknown', flag: 'P' } as never })
+    ).toEqual(['Soul:wait']);
+    expect(wait('', member('Soul', 0.6), { manageParty: false })).toEqual(['Soul:wait']);
+  });
+
   it('refuses @party under Ignore @party If Following, and says so', () => {
     const following = who({
       party: { engaged: {}, threatened: {}, following: 'Soul', members: [member('Soul', 1)] }
@@ -2229,6 +2253,32 @@ describe('party pacing', () => {
     remotes.onCharacter(follower(60));
     remotes.onCharacter(follower(85));
     drain();
-    expect(sent).toEqual(['/Soul @wait', '/Soul @ok']);
+    expect(sent).toEqual(["/Soul @wait (HP's too low)", '/Soul @ok']);
+  });
+
+  /*
+   * The user, 2026-10-10: Brakkle sat at 134/134 with the rest flag up and his
+   * @ok went 21s later. The rest-up line is the @ok, whether or not the server
+   * still has the character sitting.
+   */
+  it('says @ok at the rest-up line while still sitting, and gives a condition its own reason', () => {
+    const follower = (hp: number, held = false): CharacterState =>
+      who({
+        vitals: { ...EMPTY_CHARACTER.vitals, hp, hpMax: 100, resting: true },
+        afflictions: { ...EMPTY_CHARACTER.afflictions, held: held ? 'yes' : 'no' },
+        party: { engaged: {}, threatened: {}, following: 'Soul', members: [member('Soul', 1)] }
+      });
+    const remotes = make({}, { restBelow: 0.5, restTo: 0.8 });
+    remotes.onCharacter(follower(30));
+    remotes.onCharacter(follower(80));
+    remotes.onCharacter(follower(100, true));
+    remotes.onCharacter(follower(100));
+    drain();
+    expect(sent).toEqual([
+      "/Soul @wait (HP's too low)",
+      '/Soul @ok',
+      "/Soul @wait (can't move)",
+      '/Soul @ok'
+    ]);
   });
 });

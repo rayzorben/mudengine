@@ -4201,12 +4201,20 @@ settings:
     healNote: A member's @heal is answered by Auto-Heal Party Members on the Spells page, when @heal
       is checked under Party @ commands below.
     legend: Leading and Following
+    managePartyHint: Leading, hold the party to your own Rest settings. Stop and rest while a member
+      is under your Rest If Below HP %, until they are back to Keep Resting To HP % (and the same
+      for mana), and walk on through a @wait that is only about HP or mana. A @wait because a member is held, blind, confused or
+      poisoned still stops the loop until their @ok.
+    managePartyLabel: Manage Party Health If Leading
     parAfterRoundHint: Send par after every combat round, in a party.
     parAfterRoundLabel: Send PAR After Combat Round
     parSecondsHint:
       How often to send par in a fight, in seconds; twice as long out of one. 0 sends it
       only when the party changes.
     parSecondsLabel: Par Frequency
+    parEveryRoundsHint: In a fight, send par at most this many rounds apart, and sooner the more
+      health the party has lost since the last one. 0 sends none by the round.
+    parEveryRoundsLabel: Rounds Between Par
     remotesLegend: Party @ commands
     remotesNote: What anyone who has **joined** this party may ask this character for. An invitation
       nobody accepted is not membership, and a Deny on someone by name still overrides this.
@@ -4684,6 +4692,7 @@ session:
     unknownStopName: The world data has no room called {name}.
     pausedForRemote: '{who} asked the party to wait'
     pausedForHealth: 'Waiting for {who}, under Wait For Party Members'
+    pausedForRest: 'Waiting for {who} to rest to your own settings, under Manage Party Health If Leading'
     partyWaitGaveUp: 'Waited {minutes} min for {who}; walking on (Wait No Longer Than).'
   # Play and stop. A character is routing, looping or stopped, so there is one
   # of each rather than one per mechanism -- see `src/shared/movement.ts`.
@@ -5825,6 +5834,7 @@ automation:
     reasonAssistRoom: 'assist: {leader} is attacking everyone in the room; {why}'
     reasonDefend: 'defend: {target} is attacking {member}'
     reasonRestWithLeader: 'resting with {leader}'
+    reasonRestForMember: 'resting until {who} is back to Keep Resting To HP %'
     reasonMeditateWithLeader: 'meditating with {leader}'
     reasonRestWhileLeaderMeditates: 'resting while {leader} meditates'
     # Todo 839: the party led through a room's own command, and waited for.
@@ -5864,6 +5874,8 @@ automation:
       '{from} invited this character; not joining, because {from} has not been granted
       @join.{unresolvedClause}'
     ignoredWait: 'Walking on through @wait from {from}: Ignore @wait If Leading is on.'
+    managedWait: 'Walking on through @wait from {from}: Manage Party Health If Leading holds them to
+      your own rest settings.'
     dropAllCapped: '{from} sent @drop-all; dropped the first {max} of {total} carried.'
     dropAllEmpty: '{from} sent @drop-all and nothing is in the pack.'
     ranEquipAll: '{from} sent @equip-all; putting your gear back on.'

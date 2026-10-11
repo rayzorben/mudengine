@@ -99,6 +99,7 @@ import { countThreats } from './RuleEngine';
 import { t } from '../app/i18n';
 import { leaderOf, type CharacterState } from '../../shared/character';
 import {
+  membersStill,
   type AutomationConfig,
   type CombatConfig,
   type HealthConfig,
@@ -229,6 +230,8 @@ export class Recovery implements SessionModule {
   private sitting = false;
   /** The same for mana: `restBelowMana` or the wire starts it, `restToMana` ends it. */
   private restingForMana = false;
+  /** Leading under `party.manageParty`, the members' vitals held under its floors (`membersStill`). */
+  private membersHeld: ReadonlyMap<string, string> = new Map();
   /**
    * A figure a walk is waiting on, in hit points, or null.
    *
@@ -315,6 +318,7 @@ export class Recovery implements SessionModule {
     this.askedUntil = 0;
     this.sitting = false;
     this.restingForMana = false;
+    this.membersHeld = new Map();
     this.needed = null;
     this.refused.clear();
     this.saidPoisoned = false;
@@ -400,6 +404,10 @@ export class Recovery implements SessionModule {
     // A figure seen under its floor starts a stretch, fight or no fight (todo 825).
     if (this.below(hp, hpMax, this.config.restBelow)) this.sitting = true;
     if (this.below(mana, manaMax, this.config.restBelowMana)) this.restingForMana = true;
+    this.membersHeld =
+      this.party.manageParty && state.party.following === null
+        ? membersStill(state, this.config, this.membersHeld, tuning().loop.resumeMarginWhenUncapped)
+        : new Map();
     // A rest is broken by being attacked, so one sent while something is
     // actually swinging is a command spent to be told so — out of the same
     // budget the fight is being fought with. The flag alone is not that; see
@@ -513,6 +521,8 @@ export class Recovery implements SessionModule {
       return;
     }
 
+    if (this.restForMembers(state)) return;
+
     /*
      * Sitting down because the leader has. The party listing's flag and `stops
      * to rest` say who is resting; a follower still standing while its leader
@@ -536,6 +546,20 @@ export class Recovery implements SessionModule {
         );
       }
     }
+  }
+
+  /**
+   * Leading under `party.manageParty`, sitting down while a member here is
+   * under this character's own rest floors, until it is back to the rest-up
+   * line: the lap waits for it (`PartyWait`), and this character mends beside
+   * it. Never poisoned, which the server refuses (`restIsPoisoned`).
+   */
+  private restForMembers(state: CharacterState): boolean {
+    if (this.membersHeld.size === 0 || this.refused.has('rest')) return false;
+    if (this.restIsPoisoned(state)) return false;
+    const who = [...new Set(this.membersHeld.values())].join(', ');
+    this.propose('rest', t('automation.party.reasonRestForMember', { who }));
+    return true;
   }
 
   /**

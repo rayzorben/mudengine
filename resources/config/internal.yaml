@@ -1394,6 +1394,11 @@ tuning:
     # listing still prints them [Invited].
     inviteAgainMs: 5000
 
+    # The share of a member's health lost since the last par that sends the
+    # next one on this round (party.parEveryRounds). Half of it sends par half
+    # as many rounds sooner.
+    parAtLoss: 0.25
+
     # The longest line the server keeps: GreaterMUD appends a typed character
     # only while the line is under 255 (TGSModule.cs:299). A @loop or @goto
     # answer listing several matches is cut to fit, on the whole /<name> {...}

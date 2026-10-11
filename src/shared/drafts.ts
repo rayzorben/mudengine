@@ -932,6 +932,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         DEFAULT_CONFIG.automation.party.waitMinutes
       ),
       ignoreWait: party['ignoreWait'] === true,
+      // On unless said off, as it ships.
+      manageParty: party['manageParty'] !== false,
       ignoreParty: party['ignoreParty'] === true,
       // On unless said off: it is what the client has always done.
       askHealth: party['askHealth'] !== false,
@@ -941,6 +943,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         DEFAULT_CONFIG.automation.party.parSeconds
       ),
       parAfterRound: party['parAfterRound'] === true,
+      parEveryRounds: clamp(
+        party['parEveryRounds'],
+        ...PARTY_RANGES.parEveryRounds,
+        DEFAULT_CONFIG.automation.party.parEveryRounds
+      ),
       relayPortals:
         typeof party['relayPortals'] === 'boolean'
           ? party['relayPortals']
