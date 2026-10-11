@@ -2712,6 +2712,8 @@ cards:
       givenByLabel: Given by
       givenAsking: Asking
       givenAskingFor: for
+      # What the script's `price` takes from cash on hand first.
+      givenFor: 'paying {price}'
       givenIn: in
       givenKilling: Killing
       givenMoreWords: '+{count} more'
@@ -2869,6 +2871,8 @@ cards:
       outOfReachNote: ' — not available yet'
       powerLabel: Power
       powerRange: '{min}–{max}'
+      scrollLabel: Scroll
+      taughtByLabel: Taught by
     title: Reference
   room:
     actions:

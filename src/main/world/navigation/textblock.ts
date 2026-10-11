@@ -510,11 +510,15 @@ export function rollOf(line: TbLine): number | null {
 
 /**
  * Whether a phrase is a step's argument rather than something a person says:
- * one holding a digit. A roll table's lines read as phrases are not 180
- * things to type.
+ * one holding a digit (a roll table's lines read as phrases are not 180 things
+ * to type), except words ending in a number of their own that are not a verb
+ * the server runs. `AskCommand` hands the block the rest of the line, and
+ * Naram Fireblade teaches on `learn 1` to `learn 7` (todo 71).
  */
 export function isStepArgument(phrase: string): boolean {
-  return /\d/.test(phrase);
+  const topic = /^([a-z][a-z' ]*?)\s+\d+$/i.exec(phrase.trim());
+  if (topic === null) return /\d/.test(phrase);
+  return topic[1]!.split(' ')[0]!.toLowerCase() in SERVER_LINE;
 }
 
 /**

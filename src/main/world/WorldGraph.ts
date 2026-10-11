@@ -32,6 +32,7 @@ import {
   type RoomId,
   type WorldExit,
   type WorldItem,
+  type ItemHandover,
   type WardRule,
   type WorldLookup,
   type BankChoice,
@@ -1368,27 +1369,26 @@ export class WorldGraph {
        * names come back untouched, span and all.
        */
       mobs: found.mobs.map((mob) => this.mobAt(mob.name, at) ?? mob),
-      items: found.items.map((item) => this.withPlacements(this.placingHandovers(item)))
+      items: found.items.map((item) => this.withPlacements(this.placingHandovers(item))),
+      spells: found.spells.map((spell) => this.placingHandovers(spell))
     };
   }
 
   /**
-   * An item with each of its handovers' rooms named — format 39.
+   * A row with each handover's room named: an item's (format 39), a spell's
+   * teachers (68). The join `shopPlaces` and `QuestStep.place` are: the file
+   * carries the `map/room` the realm states, and `9/146` is not somewhere
+   * anybody can picture. Made here, not at load, because the rooms arrive
+   * line by line *after* the header the rows are in.
    *
-   * The join `shopPlaces` and `QuestStep.place` are: the file carries the
-   * `map/room` because that is what the realm states, and `9/146` is not
-   * somewhere anybody can picture. Made here rather than at load, because the
-   * rooms arrive line by line *after* the header the items are in.
-   *
-   * A copy, never a write into the cached row — the map holds one object per
-   * item and every lookup shares it. Untouched where the realm names no
-   * handover, which is the great majority, so this costs nothing per query.
+   * A copy, never a write into the cached row, which every lookup shares.
+   * Untouched where the realm names no handover, the great majority.
    */
-  private placingHandovers(item: WorldItem): WorldItem {
-    if (item.from === undefined || item.from.length === 0) return item;
+  private placingHandovers<T extends { from?: ItemHandover[] }>(row: T): T {
+    if (row.from === undefined || row.from.length === 0) return row;
     return {
-      ...item,
-      from: item.from.map((handover) => {
+      ...row,
+      from: row.from.map((handover) => {
         if (handover.room === undefined || handover.place !== undefined) return handover;
         const name = this.rooms.get(handover.room as RoomId)?.name.trim();
         return name === undefined || name.length === 0 ? handover : { ...handover, place: name };

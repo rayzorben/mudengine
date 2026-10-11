@@ -48,7 +48,7 @@ import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
 import { invokeChoices } from '../shared/invoke';
-import { NO_LOOKUP, nameAnswersTo, roomAddress, unrouted } from '../shared/world';
+import { NO_LOOKUP, nameAnswersTo, roomAddress, shopsNamedIn, unrouted } from '../shared/world';
 import { rowPeaceFor, type RowPeace } from '../shared/mobRules';
 import type { ItemRarity } from '../shared/rarity';
 import {
@@ -2817,13 +2817,11 @@ function registerIpc(): void {
      * nowhere.
      */
     const shopPlaces: Record<string, ShopPlace> = {};
-    for (const item of found.items) {
-      for (const shop of item.shops ?? []) {
-        const key = shop.trim().toLowerCase();
-        if (key.length === 0 || key in shopPlaces) continue;
-        const place = world.shopPlace(shop);
-        if (place !== undefined) shopPlaces[key] = place;
-      }
+    for (const shop of shopsNamedIn(found)) {
+      const key = shop.trim().toLowerCase();
+      if (key.length === 0 || key in shopPlaces) continue;
+      const place = world.shopPlace(shop);
+      if (place !== undefined) shopPlaces[key] = place;
     }
     /*
      * And where the realm puts each monster named.

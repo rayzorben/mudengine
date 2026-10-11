@@ -10,7 +10,13 @@ import { parseAction } from './instructions';
 import { itemKind } from '../../shared/items';
 import { HAZARD_ABILITY, MIN_LEVEL_ABILITY } from '../../shared/abilities';
 import type { Quest } from '../../shared/quests';
-import { blocksInReach, indexQuests, itemsInReach, landingsOfItems } from './indexQuests';
+import {
+  blocksInReach,
+  indexQuests,
+  itemsInReach,
+  landingsOfItems,
+  spellsTaughtInReach
+} from './indexQuests';
 import type { BuiltItemFrom, ItemLanding } from './indexQuests';
 import { indexSpellHazards } from './spellHazard';
 import { gateNames, nameGate } from './navigation/stepGates';
@@ -139,8 +145,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 65 | **What a kill pays is `EXP × ExpMulti`.** GreaterMUD's import stores the product as a monster's `Exp` (`[Exp Multiplier] * [Experience]`), and `Mob.Killed` pays that times the realm's `XPMultiplier`, split among everyone targeting it. `BuiltMob.xp` and `BuiltMobRow.xp` are the product: the cave bear is 100 × 3, and orohost paid 300 for one (todo 70). 147 of gmud.zip's rows with experience have an `ExpMulti` other than 1 (todo 48) |
  * | 66 | **A room nobody can attack in.** `RM_PROTECTED` (1) of `Rooms.Attributes`, which no `.mdb` export carries, is read from GreaterMUD's own `Rooms.sql` into `resources/world/protected-rooms.csv` (`scripts/build-protected-rooms.mjs`, control-room inheritance applied) and joined by map, room and name: `WorldRoom.safe`. Bank of Godfrey (1/297) is one; 105 of gmud.zip's rooms, 85 of Paradigm's, 83 of stock's. A room the table does not name is unknown (todo 87) |
  * | 67 | **Two level gates on one line keep the tighter.** `gatesOf` let the later `minlevel` overwrite the earlier, so Meditate's Mystic line (TBInfo 9046: `minlevel 27 2614` … `minlevel 23`) read level 23, where the server runs both and the 27 bars. A `minlevel` now keeps the highest and a `maxlevel` the lowest. One line on pmud.zip and on gmud.zip, none on the stock data (todo 81) |
+ * | 68 | **Where a spell is learned.** A script's `learnspell` (Chancellor Annora's `knowledge` teaches a Druid `frozen spike`) was a quest reward and nothing else, so a spell's detail could not say where to go. `BuiltSpell.from` is `spellsTaughtInReach`, the owners, rooms and words an item's `from` carries, and each handover's `p` is the copper its line's `price` takes. A topic ending in a number is a word again (`isStepArgument`), so Naram Fireblade's `learn 3` (`flame enchantment`, 360,000 copper) and his three peers' tables are reached: 36 more blocks in gmud.zip, 54 in pmud.zip, and every `NPC #N` the export's `Spells."Learned From"` names is found (todo 71) |
  */
-export const REALM_FORMAT = 67;
+export const REALM_FORMAT = 68;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -532,6 +539,8 @@ export interface BuiltSpell {
   sm?: BuiltPicks;
   /** Takes every spell off whoever it is cast on (format 63, `spellNegates`). */
   ng?: 1;
+  /** Where a reached script teaches it (`learnspell`), as `BuiltItem.from` (format 68). */
+  from?: BuiltItemFrom[];
 }
 
 /**
@@ -1537,6 +1546,11 @@ export function buildRealm(
   const spells = indexSpells(source);
   const reach = blocksInReach(source, spells, blocks);
   const fromScripts = itemsInReach(reach);
+  const taught = spellsTaughtInReach(reach);
+  for (const spell of spells) {
+    const from = taught.get(spell.id);
+    if (from !== undefined) spell.from = from;
+  }
   /*
    * And which items are *doors* — format 40. An item that casts a spell whose
    * text block teleports you is a way into somewhere, exactly as a key on a

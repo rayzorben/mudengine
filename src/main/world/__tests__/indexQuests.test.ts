@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { blocksInReach, indexQuests, itemsInReach } from '../indexQuests';
+import { blocksInReach, indexQuests, itemsInReach, spellsTaughtInReach } from '../indexQuests';
 import type { RealmSource, RealmTable } from '../RealmSource';
 
 /** A realm database made of literals, as `buildRealm.test.ts` builds one. */
@@ -327,6 +327,61 @@ describe('where a script hands an item over', () => {
     const answer = read();
     expect(answer.from.has(4242)).toBe(false);
     expect(answer.named.has(4242)).toBe(false);
+  });
+});
+
+/*
+ * Where a spell is learned (todo 71), as gmud.mdb states it: Naram Fireblade
+ * teaches on `learn 3` through an empty block that links on, for a price, and
+ * the room at 16/2667 teaches a Ninja's form for a totem handed over.
+ */
+describe('where a script teaches a spell', () => {
+  const TEACHERS = {
+    Monsters: [
+      {
+        Number: 1288,
+        Name: 'Naram Fireblade',
+        GreetTXT: 5252,
+        DeathSpell: 0,
+        'Summoned By': 'Room 1/274'
+      }
+    ],
+    Rooms: [{ 'Map Number': 16, 'Room Number': 2667, Name: 'Shrine', CMD: 2903 }],
+    TBInfo: [
+      { Number: 5252, Action: 'spells:5254\nlearn 3:5272', LinkTo: 0 },
+      { Number: 5272, Action: '', LinkTo: 5273 },
+      {
+        Number: 5273,
+        Action: 'class 11:minlevel 24 9392:price 360000:learnspell 5539:text 5274',
+        LinkTo: 0
+      },
+      {
+        Number: 2903,
+        Action:
+          'give crane totem to kuel:check class:class 15:race 1:checkitem 1276 2552:takeitem 1276 2552:learnspell 838:text 2904',
+        LinkTo: 0
+      },
+      // An orphan teaches nobody anything.
+      { Number: 9999, Action: 'learnspell 4242', LinkTo: 0 }
+    ]
+  };
+  const taught = (): ReturnType<typeof spellsTaughtInReach> =>
+    spellsTaughtInReach(blocksInReach(fake(TEACHERS), []));
+
+  it('places a trainer’s spell on the trainer, with the topic and the price', () => {
+    expect(taught().get(5539)).toEqual([
+      { k: 'npc', w: 'Naram Fireblade', at: '1/274', say: ['learn 3'], p: 360000 }
+    ]);
+  });
+
+  it('places a room’s spell on the room, with its words', () => {
+    expect(taught().get(838)).toEqual([
+      { k: 'room', at: '16/2667', say: ['give crane totem to kuel'] }
+    ]);
+  });
+
+  it('teaches nothing from a block the realm can never run', () => {
+    expect(taught().has(4242)).toBe(false);
   });
 });
 

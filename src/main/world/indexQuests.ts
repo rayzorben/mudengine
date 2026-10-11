@@ -189,6 +189,8 @@ export interface BuiltItemFrom {
   w?: string;
   at?: string;
   say?: string[];
+  /** The copper the line's `price` steps take first (`TextBlockPart.cs:863`). */
+  p?: number;
 }
 
 /**
@@ -209,33 +211,55 @@ export interface BuiltItemFrom {
  * - **`from`** is the handing-over alone — `giveitem`, and `roomitem` which
  *   puts one on the floor instead of in the pack. A `checkitem` is a demand
  *   and says nothing about where the thing is.
- *
- * Only **reached** blocks, because an orphan block is a script the realm has
- * no way to run: three of the stock database's `TBInfo` rows give an item and
- * are reachable from nothing, and offering them as places to go would be the
- * client inventing an errand.
  */
 export function itemsInReach(read: BlocksInReach): {
   named: Set<number>;
   from: Map<number, BuiltItemFrom[]>;
 } {
   const reachedBlocks: Textblock[] = [];
-  const from = new Map<number, BuiltItemFrom[]>();
+  for (const id of [...read.reached.keys()].sort((a, b) => a - b)) {
+    const block = read.blocks.get(id);
+    if (block !== undefined && block.action.length > 0) reachedBlocks.push(block);
+  }
+  return { named: itemsInScripts(reachedBlocks), from: handoversInReach(read, itemsGivenInLine) };
+}
 
+/**
+ * Where a script teaches each spell (`learnspell`), as `from` says where one
+ * hands an item over: the trainer asked, the room's words, the death. Format
+ * 68, todo 71. The export's `Spells."Learned From"` names the same owners
+ * (`NPC #244`, `Textblock #2903`) without the words or the room, and is not read.
+ */
+export function spellsTaughtInReach(read: BlocksInReach): Map<number, BuiltItemFrom[]> {
+  return handoversInReach(read, spellsTaughtInLine);
+}
+
+/**
+ * Each row a reached block's lines hand over, by the owner that runs it.
+ *
+ * Only **reached** blocks, because an orphan block is a script the realm has
+ * no way to run: three of the stock database's `TBInfo` rows give an item and
+ * are reachable from nothing, and offering them as places to go would be the
+ * client inventing an errand.
+ */
+function handoversInReach(
+  read: BlocksInReach,
+  given: (line: TbLine) => number[]
+): Map<number, BuiltItemFrom[]> {
+  const from = new Map<number, BuiltItemFrom[]>();
   // Sorted by block, so a realm converted at runtime and one built by the
   // script produce byte-identical output — the traversal's map is in queue
   // order, which is the row order of three different tables.
   for (const id of [...read.reached.keys()].sort((a, b) => a - b)) {
     const block = read.blocks.get(id);
     if (block === undefined || block.action.length === 0) continue;
-    reachedBlocks.push(block);
 
     const found = read.reached.get(id)!;
     const owner = found.owner;
     if (owner === null) continue;
     for (const line of block.lines) {
-      const given = itemsGivenInLine(line);
-      if (given.length === 0) continue;
+      const rows = given(line);
+      if (rows.length === 0) continue;
       /*
        * The words, on the rule `sayOf` states: an NPC's come from the keyword
        * table that reached the block, a room's from this line's own first
@@ -248,23 +272,31 @@ export function itemsInReach(read: BlocksInReach): {
           : owner.kind === 'room' && phrase !== null
             ? [phrase]
             : [];
+      const fee = priceOfLine(line);
       const place: BuiltItemFrom = {
         k: owner.kind,
         ...maybe('w', owner.kind === 'room' ? undefined : owner.who),
         ...maybe('at', owner.room),
-        ...maybe('say', say.length > 0 ? say : undefined)
+        ...maybe('say', say.length > 0 ? say : undefined),
+        ...maybe('p', fee > 0 ? fee : undefined)
       };
-      for (const item of given) {
-        const held = from.get(item);
+      for (const row of rows) {
+        const held = from.get(row);
         if (held === undefined) {
-          from.set(item, [place]);
+          from.set(row, [place]);
           continue;
         }
         // One owner is one place, however many of its lines hand the thing
         // over: block 1446 says `get roots`, `pick roots`, `pull roots`, `cut
         // roots` and `grab roots`, and they are one errand with five spellings.
+        // A different price is a different offer: Naram Fireblade's `learn 1`
+        // and `learn 3` each charge their own.
         const twin = held.find(
-          (entry) => entry.k === place.k && entry.w === place.w && entry.at === place.at
+          (entry) =>
+            entry.k === place.k &&
+            entry.w === place.w &&
+            entry.at === place.at &&
+            entry.p === place.p
         );
         if (twin === undefined) {
           held.push(place);
@@ -277,7 +309,7 @@ export function itemsInReach(read: BlocksInReach): {
       }
     }
   }
-  return { named: itemsInScripts(reachedBlocks), from };
+  return from;
 }
 
 /**
@@ -478,6 +510,21 @@ function itemsGivenInLine(line: TbLine): number[] {
     if (id !== null && id > 0) given.push(id);
   }
   return given;
+}
+
+/** The copper a line's `price` steps take; a price read from a setting is not counted. */
+function priceOfLine(line: TbLine): number {
+  return line.steps.reduce(
+    (sum, step) => (step.verb === 'price' ? sum + (step.copper ?? 0) : sum),
+    0
+  );
+}
+
+/** The spells a line's `learnspell` steps put in the reader's spellbook. */
+function spellsTaughtInLine(line: TbLine): number[] {
+  return line.steps.flatMap((step) =>
+    step.verb === 'learnspell' && step.spell > 0 ? [step.spell] : []
+  );
 }
 
 /**
