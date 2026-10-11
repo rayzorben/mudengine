@@ -622,8 +622,8 @@ notices:
       Changed: {files}. The old files are kept beside them as .before-realms."
     realmRecordsSetAside:
       'Refills, kill exp, finds or shops kept for a world that characters on more than one realm
-      load could not be told apart, so they were set aside in the .before-realms copies and both realms
-      start empty: {records}.'
+      load could not be told apart, so they were set aside in the .before-realms copies and each of
+      those realms starts without them: {records}.'
     themeCut: 'The theme "{from}" was removed, as it looked almost the same as another. {file}
       now uses {to}, the nearest one left.'
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden

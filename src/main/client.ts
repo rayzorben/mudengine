@@ -348,7 +348,7 @@ function createWorldBook(): WorldBook {
 
 function createRealms(): RealmLibrary {
   return new RealmLibrary({
-    shippedDir: path.join(resourcesDir(), 'world'),
+    shippedDir: shippedWorldsDir(),
     /*
      * So a realm can name a database **beside the client's own files**,
      * relatively. No shipped realm does today -- the six that ship are Paradigm
@@ -426,7 +426,7 @@ function spellLoreFor(id: SessionId): SpellLore {
 /** The shipped table, with the realm's renamed spells joined by message record. */
 function shippedSpellMessages(world: WorldGraph | undefined): SpellMessageBook {
   const rows = (spellMessages ??= loadSpellMessages(
-    path.join(resourcesDir(), 'world', 'spell-messages.csv'),
+    path.join(shippedWorldsDir(), 'spell-messages.csv'),
     (message) => announce('world', message)
   ));
   if (world === undefined) return (plainSpellMessages ??= SpellMessageBook.fromRows(rows));
@@ -446,7 +446,7 @@ function shippedSpellMessages(world: WorldGraph | undefined): SpellMessageBook {
  * Read on first use, like the spell table, and reported the same way.
  */
 function sentences(): ShippedSentences {
-  shippedSentences ??= loadShippedSentences(path.join(resourcesDir(), 'world'), (message) =>
+  shippedSentences ??= loadShippedSentences(shippedWorldsDir(), (message) =>
     announce('world', message)
   );
   return shippedSentences;
@@ -887,6 +887,11 @@ function resourcesDir(): string {
   const found = candidates.find((dir) => existsSync(path.join(dir, 'config', 'default.yaml')));
   if (!found) console.warn(`resources: none of ${candidates.join(', ')} look right`);
   return found ?? candidates[0]!;
+}
+
+/** Where the bundled worlds and their sentence tables are. */
+function shippedWorldsDir(): string {
+  return path.join(resourcesDir(), 'world');
 }
 
 /**
@@ -3480,6 +3485,8 @@ function build(): void {
      * copied loop on disk -- and is warm for the picker where there is one.
      */
     loopShelf: () => loopCatalogue().all(),
+    // So a realm's database file is matched to the world it loads, as `createRealms` loads it.
+    worlds: { shippedDir: shippedWorldsDir(), resourcesDir: resourcesDir() },
     note: (message) => announce('home', message, 'log')
   });
   config = createConfig();

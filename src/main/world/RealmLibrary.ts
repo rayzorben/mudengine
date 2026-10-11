@@ -5,7 +5,8 @@ import crypto from 'node:crypto';
 
 import { t } from '../app/i18n';
 import { WorldGraph } from './WorldGraph';
-import { buildRealm, identityOfArchive, REALM_FORMAT } from './buildRealm';
+import { buildRealm, REALM_FORMAT } from './buildRealm';
+import { archiveWorldOf, databasePath, shippedArchives, shippedWorldPath } from './bundledArchive';
 import { loadProtectedRooms } from './protectedRooms';
 import { openRealm } from './RealmSource';
 import { tuning } from '../app/tuning';
@@ -14,8 +15,6 @@ import {
   asShippedWorld,
   DEFAULT_SHIPPED_WORLD,
   SHIPPED_WORLD_LABEL,
-  SHIPPED_WORLDS,
-  shippedWorldFile,
   type ArchiveIdentity,
   type ShippedWorld
 } from '../../shared/worlds';
@@ -97,7 +96,7 @@ export class RealmLibrary {
    * player names can be matched against the archives they were built from
    * before either is loaded whole. Read once; a missing world reads as null.
    */
-  private archives: Map<ShippedWorld, ArchiveIdentity> | null = null;
+  private archives: ReadonlyMap<ShippedWorld, ArchiveIdentity> | null = null;
   /**
    * Which bundled world a named database turned out to **be**, by the same
    * identity key the conversions use, so the verdict is reached — and said —
@@ -117,7 +116,7 @@ export class RealmLibrary {
 
   /** Where one bundled world is kept. */
   private shippedFile(world: ShippedWorld): string {
-    return path.join(this.options.shippedDir, shippedWorldFile(world));
+    return shippedWorldPath(this.options.shippedDir, world);
   }
 
   /**
@@ -161,23 +160,13 @@ export class RealmLibrary {
    * size agrees, so a private realm costs no read at all.
    */
   private bundledFor(file: string): ShippedWorld | null {
-    if (this.archives === null) {
-      this.archives = new Map();
-      for (const world of SHIPPED_WORLDS) {
-        const archive = WorldGraph.meta(this.shippedFile(world))?.archive ?? null;
-        if (archive !== null) this.archives.set(world, archive);
-      }
-    }
-    let size: number;
+    this.archives ??= shippedArchives(this.options.shippedDir);
     try {
-      size = fs.statSync(file).size;
+      return archiveWorldOf(file, this.archives);
     } catch {
+      // `identity` read it a moment ago; if it is gone now, the conversion fails and reports that.
       return null;
     }
-    const candidates = [...this.archives].filter(([, archive]) => archive.size === size);
-    if (candidates.length === 0) return null;
-    const sha1 = identityOfArchive(file).sha1;
-    return candidates.find(([, archive]) => archive.sha1 === sha1)?.[0] ?? null;
   }
 
   /**
@@ -231,10 +220,7 @@ export class RealmLibrary {
    * 57,511 rooms twice, and `identity()` cannot tell them apart.
    */
   private resolve(database: string): string {
-    if (database.length === 0) return database;
-    const root = this.options.resourcesDir;
-    if (root === undefined || path.isAbsolute(database)) return database;
-    return path.join(root, database);
+    return databasePath(database, this.options.resourcesDir);
   }
 
   /**
