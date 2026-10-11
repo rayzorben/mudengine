@@ -7225,6 +7225,8 @@ function theTuningBlockGainedKeys(
     // The tone an alert row with `sound` plays (todo 80, 2026-10-11).
     for (const key of ['alertToneHz', 'alertToneMs'] as const)
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
+    // Paradigm's split regeneration tick, read for the realm's speed (todo 81, 2026-10-11).
+    addKey('hunting', 'speedTickParts', DEFAULT_INTERNAL.tuning.hunting.speedTickParts);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

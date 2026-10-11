@@ -69,6 +69,7 @@
  */
 import { HAZARD_ABILITY, PROTECTION_ABILITY } from './abilities';
 import type { ActiveBuff, CharacterState } from './character';
+import type { RealmFamily } from './realm';
 import type { MobEntity } from './entities';
 import type { MobAttack, MobProfile, WorldSpell } from './world';
 
@@ -95,6 +96,8 @@ export interface MenacePlayer {
   versusGood?: number | null;
   /** `Player.Dodge`, in points (`prowess.dodge`). Absent or null dodges nothing. */
   dodge?: number | null;
+  /** Whose hit roll a blow at the character meets (`hitChance`); absent or null is unread (`UNREAD_HIT`). */
+  family?: RealmFamily | null;
 }
 
 /**
@@ -179,9 +182,17 @@ export const RESIST_ROLL_CEILING = 196;
  * `targetOf`).
  */
 export const REALM_ARMOUR_SCALE = 10;
-/** MME's `GMUD_HIT_MIN` and `GMUD_HIT_CAP`: no blow is ever certain to miss. */
-const HIT_FLOOR = 2;
-const HIT_CEILING = 100;
+/**
+ * Where the hit roll is held, in percent: MME's `GMUD_HIT_MIN` and
+ * `GMUD_HIT_CAP` (no blow is ever certain to miss) for the GreaterMUD lineage,
+ * and its `STOCK_HIT_MIN` and `STOCK_HIT_CAP` for stock MajorMUD
+ * (`modMMudFunc.bas:13-20`), where the roll is out of 99 (MudPlay 3.134.58
+ * says 9, MME 8; todo 03 made MME the tiebreak).
+ */
+const GREATERMUD_HIT = { floor: 2, ceiling: 100 } as const;
+const STOCK_HIT = { floor: 8, ceiling: 99 } as const;
+/** An unread family takes the higher of each, the bounds that land the most blows at the character. */
+const UNREAD_HIT = { floor: 8, ceiling: 100 } as const;
 
 /*
  * `Spells.Targets` as a *monster's* cast reads it — `Mob.InvokeBetweenRoundSpell`,
@@ -206,17 +217,24 @@ export function landsOnCaster(spell: WorldSpell): boolean {
  *     fixedDefense = (AC + secondary) / 10
  *     tempacc = 100 - (fixedDefense² / max((Acc² / 14) / 10, 1))
  *
- * in integer arithmetic throughout, then held between MME's 2% and 100%
- * (`GetHitMin`, `GetHitCap`), which it applies to both sides' blows. The
+ * in integer arithmetic throughout, then held between MME's bounds for the
+ * realm's family (`GetHitMin`, `GetHitCap`), which it applies to both sides'
+ * blows: 2% to 100%, or 8% to 99% on stock MajorMUD. The
  * sheet's figure *is* `AC / 10`, so it goes in whole; the party-rank and
  * protection bonuses are taken as none. An unread armour class is taken as
  * none, which is the answer that makes every blow land.
  */
-export function hitChance(accuracy: number, armourClass: number | null): number {
+export function hitChance(
+  accuracy: number,
+  armourClass: number | null,
+  family: RealmFamily | null
+): number {
+  const { floor, ceiling } =
+    family === 'majormud' ? STOCK_HIT : family === 'greatermud' ? GREATERMUD_HIT : UNREAD_HIT;
   const fixed = Math.max(0, Math.trunc(armourClass ?? 0));
   const reach = Math.max(Math.trunc(Math.trunc((accuracy * accuracy) / 14) / 10), 1);
   const percent = 100 - Math.trunc((fixed * fixed) / reach);
-  return Math.min(HIT_CEILING, Math.max(HIT_FLOOR, percent)) / 100;
+  return Math.min(ceiling, Math.max(floor, percent)) / 100;
 }
 
 /**
@@ -287,7 +305,8 @@ export function facing(player: MenacePlayer, mob: MenaceSubject): MenacePlayer {
 /** The chance one blow of this accuracy does anything: the hit roll, less what dodge turns away. */
 export function landsOn(accuracy: number, player: MenacePlayer): number {
   return (
-    hitChance(accuracy, player.armourClass) * (1 - dodgedFraction(player.dodge ?? null, accuracy))
+    hitChance(accuracy, player.armourClass, player.family ?? null) *
+    (1 - dodgedFraction(player.dodge ?? null, accuracy))
   );
 }
 

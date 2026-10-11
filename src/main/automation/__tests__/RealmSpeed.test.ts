@@ -129,6 +129,30 @@ describe('the realm’s speed', () => {
     expect(resting.multiplier).toBe(5);
   });
 
+  /* Todo 81: paramud, speed 1, rose a third of HP Regen every 10 s standing (2026-10-05); MudPlay 3.143.38 has resting every 5 s. Whole ticks read 3. */
+  it('reads Paradigm’s split tick as the realm’s own speed, standing, resting and beside a fight', () => {
+    const { speedRounds } = tuning().hunting;
+    const standing = new RealmSpeed();
+    for (let tick = 0; tick <= speedRounds + 1; tick += 1)
+      standing.healthRose(40 + tick * 3, false, false, tick * 10_000);
+    expect(standing.multiplier).toBe(1);
+    const resting = new RealmSpeed();
+    for (let tick = 0; tick <= speedRounds + 1; tick += 1)
+      resting.healthRose(40 + tick * 3, true, false, tick * 5000);
+    expect(resting.multiplier).toBe(1);
+    const mixed = new RealmSpeed();
+    let at = 0;
+    for (let lap = 0; lap < 6; lap += 1) {
+      at = fight(mixed, at, 3, 5000);
+      mixed.onBlock({ type: 'room-name', at });
+      for (let tick = 0; tick < 4; tick += 1) {
+        at += 10_000;
+        mixed.healthRose(40 + lap * 20 + tick * 3, false, false, at);
+      }
+    }
+    expect(mixed.multiplier).toBe(1);
+  });
+
   it('counts no rise in a fight, nor a gap past the longest, nor a fall', () => {
     const speed = new RealmSpeed();
     speed.healthRose(40, false, false, 0);

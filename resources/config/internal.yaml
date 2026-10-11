@@ -737,13 +737,16 @@ tuning:
     # speed explains speedShare of the gaps, the figure is the slowest speed
     # that explains speedShare of what the best explains, a gap being explained
     # where it is a whole number of the speed's rounds, give or take speedSlack
-    # of a round. Every clock above, and the step, divide by it.
+    # of a round. Every clock above, and the step, divide by it. Health rising
+    # out of a fight is timed in speedTickParts of a regeneration tick, since
+    # Paradigm gives a third of the tick every 10 seconds standing.
     speedQuietMs: 500
     speedGapMostMs: 7500
     speedRounds: 12
     speedKept: 60
     speedSlack: 0.15
     speedShare: 0.8
+    speedTickParts: 3
     killOverheadMs: 1500
     stepMs: 1250
     greatermudRespawnOffsetSeconds: 30

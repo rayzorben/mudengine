@@ -79,21 +79,33 @@ const HOLD: WorldSpell = {
 describe('whether a blow lands', () => {
   it('rolls the sheet’s armour class against the slot’s accuracy as the server does', () => {
     // (45² / 14) / 10 = 14; 20² / 14 = 28; 100 − 28.
-    expect(hitChance(45, 20)).toBe(0.72);
+    expect(hitChance(45, 20, 'greatermud')).toBe(0.72);
     // (80² / 14) / 10 = 45; 30² / 45 = 20.
-    expect(hitChance(80, 30)).toBe(0.8);
+    expect(hitChance(80, 30, 'greatermud')).toBe(0.8);
   });
 
   it('never goes below MME’s floor', () => {
     // A rat’s accuracy of 10 reaches nothing: (100 / 14) / 10 = 0, floored to 1,
     // and 400 / 1 is far past 100; MME's `GMUD_HIT_MIN` still lands 2 in 100.
-    expect(hitChance(10, 20)).toBe(0.02);
+    expect(hitChance(10, 20, 'greatermud')).toBe(0.02);
+  });
+
+  /* Todo 81: stock MajorMUD rolls out of 99 (MME's `STOCK_HIT_MIN` 8, `STOCK_HIT_CAP` 99). */
+  it('holds a blow on a stock world between MME’s stock bounds', () => {
+    expect(hitChance(10, 20, 'majormud')).toBe(0.08);
+    expect(hitChance(45, null, 'majormud')).toBe(0.99);
+    // An unread family meets the higher of each bound.
+    expect(hitChance(10, 20, null)).toBe(0.08);
+    expect(hitChance(45, null, null)).toBe(1);
+    expect(landsOn(10, { armourClass: 20, damageResist: 0, magicRes: 0, family: 'majormud' })).toBe(
+      0.08
+    );
   });
 
   /* Unknown is never the reassuring answer: a sheet nobody has read makes
      every blow land. */
   it('treats an unread armour class as none', () => {
-    expect(hitChance(45, null)).toBe(1);
+    expect(hitChance(45, null, null)).toBe(1);
   });
 });
 
@@ -130,8 +142,8 @@ describe('the protection the server adds', () => {
   });
 
   it('rolls the leader and the raider as the server does', () => {
-    expect(hitChance(110, 68)).toBe(0.47);
-    expect(hitChance(105, 68)).toBe(0.41);
+    expect(hitChance(110, 68, 'greatermud')).toBe(0.47);
+    expect(hitChance(105, 68, 'greatermud')).toBe(0.41);
     // Dodge 11 turns 1% away: 121 / 78.
     expect(landsOn(110, facing(guarded, evil))).toBeCloseTo(0.3 * 0.99, 5);
     expect(landsOn(105, facing(guarded, evil))).toBeCloseTo(0.22 * 0.99, 5);

@@ -43,8 +43,8 @@ export type StaleFact =
   | 'experience'
   /**
    * `? exp` — the table of what each level costs, one below to eight above.
-   * orohost's `exp` prints only the summary line, and past level 13 nothing
-   * works the table out (`EXPERIENCE_CONFIRMED_TO`), so this is the only
+   * orohost's `exp` prints only the summary line, and past
+   * `EXPERIENCE_CONFIRMED_TO` nothing works the table out, so this is the only
    * place a price beyond the next level comes from.
    */
   | 'chart'

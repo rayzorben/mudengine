@@ -96,10 +96,9 @@ import {
 } from '../../shared/hunting';
 import { matchStop, type RoomMatch } from '../../shared/loops';
 import { bareName, sameItem } from '../../shared/items';
-import { afflictionsOf, protectionOf, weighRoom, type MenacePlayer } from '../../shared/menace';
+import { afflictionsOf, weighRoom, type MenacePlayer } from '../../shared/menace';
 import { attacksOnSight, fightable, waitsToBeStruck } from '../../shared/mobs';
 import {
-  dodge,
   regeneration,
   swing,
   type ProwessAttack,
@@ -140,6 +139,7 @@ import {
   lairPass,
   roadPass,
   passShare,
+  menacePlayerOf,
   prowessSheetOf,
   weighVerdicts,
   wieldedWeapon,
@@ -1994,7 +1994,12 @@ export class Errands implements SessionModule {
 
     const player = this.menacePlayer(state);
     // The same character with nothing on: every blow lands, at its full figure.
-    const naked: MenacePlayer = { armourClass: 0, damageResist: 0, magicRes: player.magicRes };
+    const naked: MenacePlayer = {
+      armourClass: 0,
+      damageResist: 0,
+      magicRes: player.magicRes,
+      family: player.family
+    };
     const weapon = wieldedWeapon(state.inventory.items);
     const weights = tuning().menace;
     /*
@@ -2859,20 +2864,9 @@ export class Errands implements SessionModule {
     );
   }
 
-  /**
-   * What a monster's blow or cast is measured against: the sheet's three
-   * figures, the protection the server adds that the sheet does not print,
-   * and the character's dodge. `AutoCombat.weigh` reads the same.
-   */
+  /** What a monster's blow or cast is measured against (`menacePlayerOf`). */
   menacePlayer(state: CharacterState): MenacePlayer {
-    const { combat, magery, crits, family } = this.realmClass();
-    return {
-      armourClass: state.progress.armourClass,
-      damageResist: state.progress.damageResist,
-      magicRes: state.progress.magicRes,
-      ...protectionOf(state, (name) => this.world?.spellNamed(name) ?? null),
-      dodge: dodge(prowessSheetOf(state, { combat, magery, crits }), family)?.value ?? null
-    };
+    return menacePlayerOf(state, this.realmClass(), (name) => this.world?.spellNamed(name) ?? null);
   }
 
   /**

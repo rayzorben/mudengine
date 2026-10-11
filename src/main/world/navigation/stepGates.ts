@@ -12,6 +12,9 @@ import type { RealmSource } from '../RealmSource';
 import { number, text } from '../values';
 import type { TbStep } from './textblock';
 
+/** A level gate's bounds as they fold: the highest `minlevel`, the lowest `maxlevel`. */
+type LevelBand = { min?: number; max?: number };
+
 export function gatesOf(steps: readonly TbStep[]): Gate[] {
   const gates: Gate[] = [];
   const abilities = new Map<number, { atLeast?: number; atMost?: number }>();
@@ -20,7 +23,7 @@ export function gatesOf(steps: readonly TbStep[]): Gate[] {
     abilities.set(id, held);
     return held;
   };
-  let level: { min?: number; max?: number } | null = null;
+  let level: LevelBand | null = null;
   let alignment: { atMost?: number; atLeast?: number } | null = null;
 
   for (const step of steps) {
@@ -71,12 +74,18 @@ export function gatesOf(steps: readonly TbStep[]): Gate[] {
       case 'monsters':
         gates.push({ kind: 'occupied' });
         break;
-      case 'minlevel':
-        level = { ...(level ?? {}), min: step.level };
+      // Each gate is run in turn and every one must pass, so the tightest holds:
+      // Meditate's Mystic line asks `minlevel 27` and later `minlevel 23` (TBInfo 9046).
+      case 'minlevel': {
+        const held: LevelBand = level ?? {};
+        level = { ...held, min: Math.max(step.level, held.min ?? step.level) };
         break;
-      case 'maxlevel':
-        level = { ...(level ?? {}), max: step.level };
+      }
+      case 'maxlevel': {
+        const held: LevelBand = level ?? {};
+        level = { ...held, max: Math.min(step.level, held.max ?? step.level) };
         break;
+      }
       case 'goodaligned':
         alignment = { ...(alignment ?? {}), atMost: step.value };
         break;

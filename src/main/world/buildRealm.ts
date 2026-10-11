@@ -138,8 +138,9 @@ import { NO_PROTECTED_ROOMS, type ProtectedRooms } from './protectedRooms';
  * | 64 | **An item the realm values at nothing.** `Items.Price` 0 was dropped with the unpriced, so `price` absent read as both *worth nothing* and *not stated*, and `drop.worthless` (which drops a `price` of 0) never dropped anything. `BuiltItem.price` is written when zero or more: 397 of the 1,563 items the shipped stock world carries state 0, and 395 of Paradigm's 2,342. Absent is now unknown only, and `Catalogue.priceAt` answers null for it rather than free |
  * | 65 | **What a kill pays is `EXP × ExpMulti`.** GreaterMUD's import stores the product as a monster's `Exp` (`[Exp Multiplier] * [Experience]`), and `Mob.Killed` pays that times the realm's `XPMultiplier`, split among everyone targeting it. `BuiltMob.xp` and `BuiltMobRow.xp` are the product: the cave bear is 100 × 3, and orohost paid 300 for one (todo 70). 147 of gmud.zip's rows with experience have an `ExpMulti` other than 1 (todo 48) |
  * | 66 | **A room nobody can attack in.** `RM_PROTECTED` (1) of `Rooms.Attributes`, which no `.mdb` export carries, is read from GreaterMUD's own `Rooms.sql` into `resources/world/protected-rooms.csv` (`scripts/build-protected-rooms.mjs`, control-room inheritance applied) and joined by map, room and name: `WorldRoom.safe`. Bank of Godfrey (1/297) is one; 105 of gmud.zip's rooms, 85 of Paradigm's, 83 of stock's. A room the table does not name is unknown (todo 87) |
+ * | 67 | **Two level gates on one line keep the tighter.** `gatesOf` let the later `minlevel` overwrite the earlier, so Meditate's Mystic line (TBInfo 9046: `minlevel 27 2614` … `minlevel 23`) read level 23, where the server runs both and the 27 bars. A `minlevel` now keeps the highest and a `maxlevel` the lowest. One line on pmud.zip and on gmud.zip, none on the stock data (todo 81) |
  */
-export const REALM_FORMAT = 66;
+export const REALM_FORMAT = 67;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
