@@ -4911,6 +4911,12 @@ session:
     restHeld: 'Not sending the rest of that line, from {command} on: {reason}.'
     restRefused: 'Not sending the rest of that line, from {command} on: the command queue would not
       accept it.'
+    unknownPlaceholder: 'Not sending that line: the client has nothing to fill in for {name}.'
+    noMob: 'Stopped that line at {command}: there is nothing here auto-combat would attack.'
+    noValue: 'Stopped that line at {command}: the client does not know {name} yet.'
+  clientCommand:
+    getAllEmpty: Nothing is listed on the floor to get.
+    getAllCapped: 'Getting the first {max} of the {total} items listed on the floor.'
   move:
     alreadyMoving: This character is already moving.
     noSuchLoop: There is no loop called {name}.

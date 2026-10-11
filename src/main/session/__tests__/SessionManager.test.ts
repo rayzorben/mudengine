@@ -8656,6 +8656,28 @@ describe('a talk-box line of several commands', () => {
     await until(() => notices.includes(t('session.macro.droppedDied.many', { count: 3 })));
     expect(manager!.queue.snapshot.depth).toBe(0);
   });
+
+  // Todo 83: the terminal sends each key, so the server holds the line by Enter.
+  it('erases a client command typed in the terminal and runs it instead', async () => {
+    const { socket, notices } = await inTheRealm();
+    const written = wire(socket);
+    for (const key of 'get all') manager!.send(key);
+    manager!.send('\r');
+    // Positive control: the floor is empty, so the command ran and said so.
+    await until(() => notices.includes(t('session.clientCommand.getAllEmpty')));
+    await until(() => written().length >= 14);
+    expect(written()).toBe(`get all${'\b'.repeat(7)}`);
+    expect(manager!.queue.snapshot.depth).toBe(0);
+  });
+
+  it('commits any other line typed in the terminal as it always has', async () => {
+    const { socket } = await inTheRealm();
+    const written = wire(socket);
+    for (const key of 'smile') manager!.send(key);
+    manager!.send('\r');
+    await until(() => written().includes('\r\n'));
+    expect(written()).toBe('smile\r\n');
+  });
 });
 
 /*

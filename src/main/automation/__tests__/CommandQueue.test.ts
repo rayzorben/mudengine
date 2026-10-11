@@ -714,3 +714,35 @@ describe('a screen that is not the command prompt', () => {
     expect(queue.snapshot.suppressed).toBe(false);
   });
 });
+
+// A macro step worked out at its turn (todo 83).
+describe('an intent resolved at the send', () => {
+  it('asks at the send, sends the first and keeps the rest ahead of later intents', () => {
+    let floor = ['torch'];
+    queue.enqueue({ command: 'n', priority: 'user' });
+    queue.enqueue({
+      command: 'get all',
+      priority: 'user',
+      resolve: () => floor.map((item) => `get ${item}`)
+    });
+    queue.enqueue({ command: 'equip all', priority: 'user' });
+    // Positive control: the floor read is the one at the send, not at the proposal.
+    floor = ['sword', 'shield'];
+    vi.advanceTimersByTime(100);
+    queue.notePrompt();
+    vi.advanceTimersByTime(100);
+    queue.notePrompt();
+    vi.advanceTimersByTime(100);
+    queue.notePrompt();
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['n', 'get sword', 'get shield', 'equip all']);
+  });
+
+  it('drops one that stands for nothing now, and sends what follows', () => {
+    queue.enqueue({ command: 'a {mob}', priority: 'user', resolve: () => [] });
+    queue.enqueue({ command: 'grin', priority: 'user' });
+    vi.advanceTimersByTime(100);
+    expect(sent).toEqual(['grin']);
+    expect(queue.snapshot.depth).toBe(0);
+  });
+});

@@ -113,6 +113,7 @@ import {
 import type { SessionModule } from './Module';
 import { AutoJoin, joinIntent } from './AutoJoin';
 import { restoreKit } from './restoreKit';
+import { takeFloor } from './takeFloor';
 import { InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
 import { LeaderDoors } from './LeaderDoors';
@@ -1310,33 +1311,20 @@ export class Remotes implements SessionModule {
       case 'get-all': {
         /*
          * What is on the floor is what the room listing says is on the floor —
-         * the maintained list this client already keeps. No `get all` is sent,
-         * because no capture shows this server accepting one and a command it
-         * does not know is *said out loud in the room*.
+         * the maintained list this client already keeps (`takeFloor`).
          */
-        // The names, because `get` takes a name: the entities behind them are
-        // what an automation chooses *by*, and this one was asked for all of it.
-        const items = state.room.items.map((item) => item.name).slice(0, tuning().spending.maxGets);
-        if (items.length === 0) {
-          this.events.notice?.(t('automation.remotes.getAllEmpty', { from }));
-          return;
-        }
-        for (const item of items) {
+        const { sent, listed, max } = takeFloor(state, (command) =>
           this.queue.enqueue({
-            command: `get ${item}`,
+            command,
             priority: 'probe',
-            coalesceKey: `remote:get:${item.toLowerCase()}`,
+            coalesceKey: `remote:${command.toLowerCase()}`,
             reason: t('automation.remotes.reasonGetAll', { from })
-          });
-        }
-        if (state.room.items.length > tuning().spending.maxGets) {
-          this.events.notice?.(
-            t('automation.remotes.getAllCapped', {
-              from,
-              max: tuning().spending.maxGets,
-              total: state.room.items.length
-            })
-          );
+          })
+        );
+        if (sent === 0) {
+          this.events.notice?.(t('automation.remotes.getAllEmpty', { from }));
+        } else if (listed > max) {
+          this.events.notice?.(t('automation.remotes.getAllCapped', { from, max, total: listed }));
         }
         return;
       }

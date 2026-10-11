@@ -58,7 +58,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the walk's rest comment, one pointer to `mayRest`, as the resting set came (todo 60).
   // Lowered by the bank counter's comments, condensed as `ChestOpening` came (todo 68).
   // Lowered by the extensions' realm, handed in by the host (todo 34).
-  'src/main/session/SessionManager.ts': 3404,
+  // Lowered by the Drop notice's wording, out to `macros.ts`, and the paste comment (todo 83).
+  'src/main/session/SessionManager.ts': 3394,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

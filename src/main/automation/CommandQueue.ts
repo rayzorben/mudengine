@@ -98,6 +98,17 @@ export interface Intent {
    * proposal was made against.
    */
   stillWanted?: () => boolean;
+  /**
+   * The commands this stands for, worked out immediately before the send.
+   *
+   * For a macro step whose words turn on what an earlier step changed: `{mob}`
+   * after `sw` names a monster in the next room, and `get all` there reads the
+   * next room's floor (todo 83). The first goes out now and the rest wait at
+   * the head of the band, so the macro's later steps stay behind them. Empty
+   * drops it the way `stillWanted` does; the proposer has said why. `command`
+   * is what the queue shows while it waits.
+   */
+  resolve?: () => readonly string[];
   /** Free-text note, for the decision trace. */
   reason?: string;
   /**
@@ -651,7 +662,11 @@ export class CommandQueue {
       this.schedule(Math.max(1, soonest - now));
       return;
     }
-    const next = this.pending.splice(at, 1)[0]!;
+    const next = this.resolved(this.pending.splice(at, 1)[0]!);
+    if (next === null) {
+      this.schedule(10);
+      return;
+    }
     /*
      * The one exception to the typing hold, and it is documented as one: an
      * emergency — an escape — outranks even the player. It cannot simply be
@@ -696,6 +711,21 @@ export class CommandQueue {
      * of the held.
      */
     if (this.pending.length > 0) this.schedule(this.config.pacing.minGapMs);
+  }
+
+  /**
+   * The intent with its words worked out (`Intent.resolve`), or null where it
+   * stands for nothing now. What follows the first command keeps its `seq`,
+   * as a resend does, so it goes next within the band. Each is a plain intent
+   * from here, so a fumble puts back the words that were sent.
+   */
+  private resolved(intent: Queued): Queued | null {
+    if (intent.resolve === undefined) return intent;
+    const { resolve, ...plain } = intent;
+    const [first, ...rest] = resolve();
+    if (first === undefined) return null;
+    this.pending.push(...rest.map((command) => ({ ...plain, command })));
+    return { ...plain, command: first };
   }
 
   /** Milliseconds until a send is allowed, or 0 if one is allowed now. */
