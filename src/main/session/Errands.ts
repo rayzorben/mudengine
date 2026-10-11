@@ -357,6 +357,12 @@ export class Errands implements SessionModule {
    * is not the authority on.
    */
   private readonly shutEdges = new Set<string>();
+  /**
+   * Room commands whose check can pass later (a room to empty, a roll),
+   * refused twice (`from|direction`), and until when routes go round them
+   * (todo 65): unlike `refusedEdges` this lapses.
+   */
+  private readonly forNowEdges = new Map<string, number>();
   /** Rooms run out of for health, and until when they are kept out of (todo 73). */
   private readonly shunned = new Map<RoomId, number>();
   /** The rooms run from that a trip's route has been said to meet, each once per run (todo 19). */
@@ -419,6 +425,7 @@ export class Errands implements SessionModule {
   reset(): void {
     this.refusedEdges.clear();
     this.shutEdges.clear();
+    this.forNowEdges.clear();
     this.shunned.clear();
     this.ranFromSaid.clear();
     this.clocks.reset();
@@ -478,6 +485,14 @@ export class Errands implements SessionModule {
    */
   noteRefused(...[from, direction, why]: Parameters<NonNullable<WalkerEvents['refused']>>): void {
     const edge = `${from}|${direction}`;
+    if (why === 'for-now') {
+      const forMs = tuning().walk.refusedForNowMs;
+      this.forNowEdges.set(edge, Date.now() + forMs);
+      this.session.notice(
+        t('session.walk.exitForNow', { direction, seconds: Math.round(forMs / 1000) })
+      );
+      return;
+    }
     this.refusedEdges.add(edge);
     // Only a way the realm records as *shut* can be opened by somebody
     // walking over and pulling its levers, so only that one is ever given
@@ -496,7 +511,9 @@ export class Errands implements SessionModule {
     this.session.notice(
       why === 'shut'
         ? t('session.walk.exitShut', { direction })
-        : t('session.walk.exitRefused', { direction })
+        : why === 'checked'
+          ? t('session.walk.exitChecked', { direction })
+          : t('session.walk.exitRefused', { direction })
     );
   }
 
@@ -795,7 +812,7 @@ export class Errands implements SessionModule {
       // for a room spell one of them stops (todo 105).
       spellsUp: up,
       ...pack,
-      refused: this.refusedEdges,
+      refused: this.refusedNow(),
       ...(preferring ? { preferred: this.preferredEdges() } : {}),
       // What waits in each room, against this character as they stand now.
       danger: (room) => this.lairDanger(room, state),
@@ -1187,11 +1204,15 @@ export class Errands implements SessionModule {
     this.ranFromSaid.delete(room);
   }
 
+  /** The refused edges, with those refused for now still kept out of; the lapsed dropped. */
+  private refusedNow(): ReadonlySet<string> {
+    if (this.forNowEdges.size === 0) return this.refusedEdges;
+    return new Set([...this.refusedEdges, ...stillKept(this.forNowEdges)]);
+  }
+
   /** The rooms still kept out of, the lapsed dropped. */
   private shunnedNow(): ReadonlySet<RoomId> {
-    const now = Date.now();
-    for (const [room, until] of this.shunned) if (until <= now) this.shunned.delete(room);
-    return new Set(this.shunned.keys());
+    return new Set(stillKept(this.shunned));
   }
 
   /**
@@ -3032,4 +3053,11 @@ export function killExpScale(
     if (typeof stated === 'number' && stated > 0) ratios.push(exp / stated);
   }
   return median(ratios) ?? 1;
+}
+
+/** The keys of a keep-out-until map whose time has not come, the lapsed dropped from it. */
+function stillKept<K>(until: Map<K, number>): K[] {
+  const now = Date.now();
+  for (const [key, at] of until) if (at <= now) until.delete(key);
+  return [...until.keys()];
 }

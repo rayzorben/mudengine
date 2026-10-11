@@ -6240,6 +6240,29 @@ describe('a command this realm has no word for', () => {
   });
 
   /*
+   * `GMUDInGameState.Process` at twenty queued: the slow-down line, then this,
+   * and the command dropped (todo 65). The same two facts as a fumble.
+   */
+  it('sends an automated command again when the realm ignores it for typing too quickly', async () => {
+    const { sink, notices } = collect();
+    manager = build(sink);
+    await manager.connect(dial());
+    const socket = await client();
+    socket.write('[HP=134/MA=24]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.phase === 'in-game');
+
+    const written: string[] = [];
+    socket.on('data', (chunk: Buffer) => written.push(chunk.toString('utf8')));
+    manager.queue.enqueue({ command: 'e', priority: 'movement' });
+    await until(() => written.join('').includes('e'));
+
+    socket.write('[HP=134/MA=24]:e' + PROMPT_REPAINT);
+    socket.write("Why don't you slow down for a few seconds?\r\n");
+    socket.write('You are typing too quickly - command ignored\r\n');
+    await until(() => notices.includes(t('automation.queue.fumbledResend', { command: 'e' })));
+  });
+
+  /*
    * Not a person's own typing. The queue never sees it, and the echo is what
    * says which of the two the fumbled command was.
    */

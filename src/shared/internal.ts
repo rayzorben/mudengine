@@ -1373,6 +1373,12 @@ const TUNING_DEFAULTS = {
     /** How many holds run back to back before it walks on regardless. */
     maxHolds: 3,
     /**
+     * A room command whose check can pass later (a room to empty, a roll),
+     * refused twice, is kept out of routes for this long (todo 65): a monster
+     * dies or moves on, and the room refills on about this clock.
+     */
+    refusedForNowMs: 120_000,
+    /**
      * How long a walk stands in the room it has just arrived in before
      * stepping out of it again, where the room it left held a monster.
      *

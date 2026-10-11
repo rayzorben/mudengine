@@ -795,6 +795,13 @@ export type BlockType =
   | 'user-list-failed'
   | 'command-ignored'
   | 'slow-down'
+  /**
+   * A room command's own check failing: `You cannot do that right now!` and
+   * its two spellings, the messages gmud's `nomonsters` and item checks name
+   * (`messages.csv` 289, 503, 1093, 1692, 1981). The realm's message table, not
+   * a capture yet (todo 65).
+   */
+  | 'room-command-refused'
   | 'user-search-failed'
   | 'user-search-succeeded'
   // presence
@@ -1111,6 +1118,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'user-list-failed': 'failure',
   'command-ignored': 'failure',
   'slow-down': 'failure',
+  'room-command-refused': 'failure',
   'user-search-failed': 'failure',
   'user-search-succeeded': 'failure',
 

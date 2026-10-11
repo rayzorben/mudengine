@@ -1865,6 +1865,11 @@ export const RULES: Rule[] = [
   { type: 'user-list-failed', pattern: /^You cannot LIST if you are not in a shop!/ },
   { type: 'command-ignored', pattern: /^You are typing too quickly - command ignored/ },
   { type: 'slow-down', pattern: /^Why don't you slow down for a few seconds\?/ },
+  {
+    type: 'room-command-refused',
+    pattern:
+      /^You (?:cannot do that right now|can't do that right now|can't get to that right now|cannot do that while there are enemies present)!$/
+  },
   { type: 'user-search-failed', pattern: /^You notice nothing different to the (?<direction>\w+)/ },
   // MajorMUD's phrasing of the same answer, 59 lines in 11 captures.
   { type: 'user-search-failed', pattern: /^Your search revealed nothing\.$/ },

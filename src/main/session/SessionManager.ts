@@ -2874,10 +2874,10 @@ export class SessionManager {
     if (block.type === 'command-no-effect') {
       this.recovery.noteNoEffect(this.answering);
       this.vocabulary.noteNoEffectMissing(this.answering);
-    } else if (block.type === 'command-fumbled') {
+    } else if (block.type === 'command-fumbled' || block.type === 'command-ignored') {
       /*
-       * The server threw the command away before it looked at it — todo 02.
-       *
+       * The server threw the command away before it looked at it — todo 02;
+       * `command-ignored` is `GMUDInGameState.Process` at twenty queued (todo 65).
        * Two things follow, and they are separate facts. **No room is coming**
        * for it, so the expectation it queued goes, exactly as a refused
        * `go manhole`'s does; leaving it is how dead reckoning is poisoned.

@@ -170,9 +170,15 @@ export interface WalkerEvents {
   /**
    * The server refused a step the realm data promised — the `no exit` shape,
    * not a closed door. The edge is named so the session can stop planning
-   * through it.
+   * through it. A room command's own check (todo 65) is `checked` (level,
+   * class, item: for the session) or `for-now` (a room to empty, a roll: kept
+   * out of only for a while).
    */
-  refused?(from: RoomId, direction: Direction | 'portal', why: 'missing' | 'shut'): void;
+  refused?(
+    from: RoomId,
+    direction: Direction | 'portal',
+    why: 'missing' | 'shut' | 'checked' | 'for-now'
+  ): void;
   /**
    * A walk has been started, and this is where it is going.
    *

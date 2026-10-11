@@ -78,6 +78,7 @@ import { Holds } from './walk/Holds';
 import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
+import { RoomCommands, scriptGated } from './walk/RoomCommands';
 import { StepTimes } from './walk/StepTimes';
 import { OffRounds } from './walk/OffRounds';
 import { FoughtPath } from './walk/FoughtPath';
@@ -236,6 +237,8 @@ export class Walker implements SessionModule {
   private readonly levers: Levers;
   /** The barrier ladder and the search for a hidden exit. */
   private readonly barriers: Barriers;
+  /** A room command's own check refusing the step (todo 65). */
+  private readonly roomCommands: RoomCommands;
 
   constructor(
     private config: AutomationConfig,
@@ -288,6 +291,8 @@ export class Walker implements SessionModule {
       this.holds,
       this.levers
     );
+    const onward = (state: CharacterState, here: RoomId): void => this.onward(state, here);
+    this.roomCommands = new RoomCommands(events, { ...inFlight, onward }, this.clock);
   }
 
   configure(config: AutomationConfig): void {
@@ -908,6 +913,9 @@ export class Walker implements SessionModule {
         return;
       case 'door-changed':
         this.barriers.onBarrierChanged(block);
+        return;
+      case 'room-command-refused':
+        if (this.stepSent) this.roomCommands.onRefused();
         return;
       case 'user-search-succeeded':
       case 'user-search-failed':
@@ -1587,6 +1595,7 @@ export class Walker implements SessionModule {
     const cast = step.requirement?.landing;
     const moves =
       step.requirement?.spellEffect === 'scatters' || step.requirement?.spellEffect === 'teleports';
+    if (now !== undefined && this.roomCommands.refuseBeforeSending(step, now)) return;
     this.events.stepping?.(step.command, step.direction, step.to, moves ? cast : undefined);
     this.askedWhereAt = null;
     this.dispatch(step, step.command, t('automation.walk.reasonStepping', { stepName: step.name }));
@@ -1798,7 +1807,7 @@ export class Walker implements SessionModule {
        * with no answer is not waiting on any of them. Down, it was refused (764).
        */
       if (this.afterTheLine(() => this.waitForPrompt(command))) return;
-      if (this.holds.refusedAtDeadline(command)) return;
+      if (this.holds.refusedAtDeadline(command) || this.roomCommands.refusedAtDeadline()) return;
       this.stop(t('automation.walk.reasonTimeout', { command }));
     });
   }
@@ -1902,18 +1911,6 @@ export class Walker implements SessionModule {
 export function cannotSneakHere(state: CharacterState): boolean {
   if (fightIsRunning(state)) return true;
   return state.room.occupants.some((occupant) => occupant.kind === 'mob');
-}
-
-/**
- * Whether this step is a room script with conditions, and so whether landing
- * somewhere else is a surprise the plan already allowed for: a script's
- * *landing* depends on a branch (`WorldGraph.linkPortals`; live, `9/1291`'s
- * portal put a character at rank 4 two maps away), and the router takes the
- * landing it has. A condition that stops the move outright leaves the
- * character where it was, which `here === step.from` reads as *not landed yet*.
- */
-function scriptGated(step: RouteStep): boolean {
-  return (step.requirement?.gates?.length ?? 0) > 0;
 }
 
 /**

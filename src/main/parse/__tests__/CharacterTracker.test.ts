@@ -1296,6 +1296,34 @@ describe.runIf(realm !== null && realm.size > 0)('keeping track while walking', 
     expect(tracker.pendingMoves).toBe(0);
   });
 
+  /* A room command's own check failing (todo 65): the move at the head is the
+     one refused, and a look there is not a move, so it stays owed. */
+  it('gives back the move a room command refused, and never a look', () => {
+    const refusal = (tracker: CharacterTracker): void => {
+      const classifier = new Classifier({ present: () => [], mob: () => undefined });
+      const text = 'You cannot do that right now!';
+      const { block } = classifier.classify({
+        seq: 1,
+        at: 1,
+        text,
+        plain: text,
+        terminator: 'newline'
+      });
+      expect(block.type).toBe('room-command-refused');
+      tracker.apply(block);
+    };
+    const stepping = new CharacterTracker();
+    stepping.observeCommand('n');
+    expect(stepping.pendingMoves).toBe(1);
+    refusal(stepping);
+    expect(stepping.pendingMoves).toBe(0);
+
+    const looking = new CharacterTracker();
+    looking.observeCommand('l n');
+    refusal(looking);
+    expect(looking.pendingCount).toBe(1);
+  });
+
   /* And the exit is not written off with it: the step failed because the
      character is at zero, not because the corridor is shut. */
   it('does not read that refusal as a corridor the realm refuses', () => {
