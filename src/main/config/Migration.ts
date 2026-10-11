@@ -271,6 +271,7 @@ function migrateAll(options: MigrationOptions): void {
   statedLogKeeping(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
   theThemesWereCut(home, note);
+  pathFollowsStatus(home, note);
 }
 
 /**
@@ -1715,37 +1716,61 @@ const LOOT_DISCARD_COMMENT = ` Which coins to put back on the floor whenever any
 function theRoomRemoteFollowsWhere(home: Home, note: (message: string) => void): void {
   let added = 0;
   editOptions(home, (document) => {
-    const remotes = document.getIn(['automation', 'remotes'], true);
-    if (!isMap(remotes)) return false;
-
-    let changed = false;
-    const follow = (node: unknown): void => {
-      if (!isSeq(node)) return;
-      const words = node.items.map((item) => (isScalar(item) ? String(item.value).trim() : ''));
-      const spelling = words.find((word) => word.replace(/^@/, '').toLowerCase() === 'where');
-      if (spelling === undefined) return;
-      if (words.some((word) => word.replace(/^@/, '').toLowerCase() === 'where-room')) return;
-      // Their own spelling: a file that writes `@where` keeps its `@`.
-      node.items.push(document.createNode(spelling.startsWith('@') ? '@where-room' : 'where-room'));
-      changed = true;
-      added += 1;
-    };
-
-    follow(remotes.get('gang', true));
-    follow(remotes.get('party', true));
-    const players = remotes.get('players', true);
-    if (isMap(players)) {
-      for (const item of players.items) {
-        const grant = item.value;
-        if (isMap(grant)) follow(grant.get('allow', true));
-      }
-    }
-    return changed;
+    const count = grantBeside(document, 'where', 'where-room');
+    added += count;
+    return count > 0;
   });
 
   if (added > 0) {
     note(t('notices.migration.roomRemoteFollowsWhere', { file: home.options, count: added }));
   }
+}
+
+/**
+ * `path` granted wherever `status` is (todo 32, 2026-10-10): both say where
+ * the character is going, and `@path` was not grantable before. In the global
+ * options and every character's file, each backed up by `edit`.
+ */
+function pathFollowsStatus(home: Home, note: (message: string) => void): void {
+  let added = 0;
+  for (const file of everySettingsFile(home)) {
+    edit(file, (document) => {
+      const count = grantBeside(document, 'status', 'path');
+      added += count;
+      return count > 0;
+    });
+  }
+  if (added > 0) note(t('notices.migration.pathFollowsStatus', { count: added }));
+}
+
+/**
+ * `add` written into every permission list that grants `had` and not `add`
+ * (the gang's, the party's, each player's `allow`), in the list's own
+ * spelling: a file that writes `@where` keeps its `@`. How many lists gained it.
+ */
+function grantBeside(document: Document, had: string, add: string): number {
+  const remotes = document.getIn(['automation', 'remotes'], true);
+  if (!isMap(remotes)) return 0;
+  let added = 0;
+  const follow = (node: unknown): void => {
+    if (!isSeq(node)) return;
+    const words = node.items.map((item) => (isScalar(item) ? String(item.value).trim() : ''));
+    const bare = (word: string): string => word.replace(/^@/, '').toLowerCase();
+    const spelling = words.find((word) => bare(word) === had);
+    if (spelling === undefined || words.some((word) => bare(word) === add)) return;
+    node.items.push(document.createNode(spelling.startsWith('@') ? `@${add}` : add));
+    added += 1;
+  };
+  follow(remotes.get('gang', true));
+  follow(remotes.get('party', true));
+  const players = remotes.get('players', true);
+  if (isMap(players)) {
+    for (const item of players.items) {
+      const grant = item.value;
+      if (isMap(grant)) follow(grant.get('allow', true));
+    }
+  }
+  return added;
 }
 
 /**
@@ -6910,6 +6935,8 @@ function theTuningBlockGainedKeys(
       addKey('queue', key, DEFAULT_INTERNAL.tuning.queue[key]);
     // How often an invitation nobody has answered is followed up (todo 01, 2026-10-09).
     addKey('remotes', 'inviteAgainMs', DEFAULT_INTERNAL.tuning.remotes.inviteAgainMs);
+    // The longest telepath a @loop or @goto answer is cut to (todo 32, 2026-10-10).
+    addKey('remotes', 'telepathMax', DEFAULT_INTERNAL.tuning.remotes.telepathMax);
     // How long a console nobody is looking at waits for its WebGL renderer (todo 19, 2026-10-10).
     addKey('view', 'hiddenWebglMs', DEFAULT_INTERNAL.tuning.view.hiddenWebglMs);
 

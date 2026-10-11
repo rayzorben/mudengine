@@ -46,7 +46,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the Quests card's questions, out to `questDesk` beside the Gear card's (`gearDesk`).
   // Lowered by the level trip's construction, out beside its planner (`trainTrip`, todo 39).
   // Lowered by `BUSY_PHASES`, gone as a Connect mid-dial dials again (todo 22).
-  'src/main/session/SessionManager.ts': 3443,
+  // Lowered by `@loop`'s lists, handed to `RemoteMoves` whole (todo 32).
+  'src/main/session/SessionManager.ts': 3441,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   'src/main/world/WorldGraph.ts': 2385,

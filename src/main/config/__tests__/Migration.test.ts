@@ -5600,6 +5600,50 @@ describe('the room remote follows where', () => {
   });
 });
 
+/* Todo 32: `@path` became grantable, and goes wherever `@status` is granted. */
+describe('path follows status', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({ home, legacyOptions: [], note: (message) => said.push(message) });
+  const remotesIn = (file: string): Record<string, unknown> =>
+    (parse(fs.readFileSync(file, 'utf8')).automation as Record<string, unknown>)[
+      'remotes'
+    ] as Record<string, unknown>;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-path-remote-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('grants it in the options and in a character’s own file, once', () => {
+    fs.writeFileSync(home.options, 'automation:\n  remotes:\n    gang: [status]\n', 'utf8');
+    const character = home.profile('rayzor').file;
+    fs.mkdirSync(path.dirname(character), { recursive: true });
+    fs.writeFileSync(
+      character,
+      'name: Rayzor\nautomation:\n  remotes:\n    players:\n      brakkle:\n' +
+        '        allow: ["@status", goto, loop]\n        deny: []\n',
+      'utf8'
+    );
+    migrate();
+    expect(remotesIn(home.options)['gang']).toEqual(['status', 'path']);
+    const players = remotesIn(character)['players'] as Record<string, { allow: string[] }>;
+    expect(players['brakkle']?.allow).toEqual(['@status', 'goto', 'loop', '@path']);
+    expect(fs.existsSync(`${character}.bak`)).toBe(true);
+    expect(notesOf(said, 'notices.migration.pathFollowsStatus')).toHaveLength(1);
+    const after = fs.readFileSync(character, 'utf8');
+    migrate();
+    expect(fs.readFileSync(character, 'utf8')).toBe(after);
+  });
+});
+
 /*
  * `automation.party.askForHealBelow` is a key inside a block the file may
  * already state, which `reconcileWithTemplate` never reaches.

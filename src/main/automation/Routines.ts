@@ -685,6 +685,8 @@ export class Routines implements SessionModule {
         return t('automation.routines.reasonDied');
       case 'user-stats-assigned':
         return t('automation.routines.reasonStatsTrained');
+      case 'light-refused':
+        return t('automation.routines.reasonLightRefused');
       default: {
         const never: never = type;
         return never;

@@ -165,3 +165,39 @@ describe.skipIf(realm === null)('what the character sees by', () => {
     expect(tracker.current.sight).toMatchObject({ vision: 200, reach: 0, lit: null, total: 200 });
   });
 });
+
+/*
+ * rayzor, 2026-10-09 (todo 30): `i` printed `torch (Readied/5)` and `l rayz`
+ * printed `torch (Readied)` under `He is equipped with:`, and both are the
+ * torch lit beside an unlit lamp.
+ */
+describe('a lit torch read from either listing', () => {
+  const lit = (tracker: CharacterTracker): Array<[string, boolean]> =>
+    tracker.current.inventory.items.map((item) => [item.name, item.equipped]);
+
+  it('is lit from `i`', () => {
+    const { tracker, feed, pack } = feeder();
+    for (const line of SHEET) feed(line);
+    pack('You are carrying torch (Readied/5), brass lamp');
+    expect(lit(tracker)).toEqual([
+      ['torch', true],
+      ['brass lamp', false]
+    ]);
+  });
+
+  it('is lit from a look at yourself', () => {
+    const { tracker, feed, pack } = feeder();
+    for (const line of SHEET) feed(line);
+    pack('You are carrying torch, brass lamp');
+    feed('[HP=86/MA=4]:l festus');
+    feed('[ Festus Marcus ]');
+    feed('Festus is a big, strong Kang Paladin.');
+    feed('He is equipped with:');
+    feed('torch                          (Readied)');
+    feed('[HP=86/MA=4]:');
+    expect(lit(tracker)).toEqual([
+      ['torch', true],
+      ['brass lamp', false]
+    ]);
+  });
+});

@@ -1996,6 +1996,8 @@ export const RULES: Rule[] = [
       `^Your (?<item>${ITEM_NAME}+?) (?:flickers and goes out|runs out of oil, and goes out)\\.$`
     )
   },
+  // `light` over a readied light, live 2026-10-09 (rayzor, a torch lit, `light brass lamp`).
+  { type: 'light-refused', pattern: /^You already have something lit!$/ },
   {
     type: 'user-buys',
     // `for nothing` is the free purchase's own spelling, captured live beside

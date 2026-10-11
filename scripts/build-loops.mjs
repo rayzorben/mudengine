@@ -274,7 +274,8 @@ const body = loops
     const stops = loop.stops
       .map((room) => `      - ${quote(`${room.name} ${room.map}/${room.room}`)}`)
       .join('\n');
-    return `  - name: ${quote(loop.name)}\n    stops:\n${stops}`;
+    // MegaMUD's own file name, which its `@path` answers with and `@loop` reads back.
+    return `  - name: ${quote(loop.name)}\n    pathFile: ${quote(loop.file)}\n    stops:\n${stops}`;
   })
   .join('\n');
 

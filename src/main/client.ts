@@ -1403,6 +1403,7 @@ function createHost(): SessionHost {
     // The same write the toolbar's press makes, so the toggle shows it.
     flipSwitch: (id, name, on) => new SettingsEditor({ home }).setAutomationSwitch(id, name, on).ok,
     reread: () => profiles?.refresh(),
+    loopShelf: () => loopCatalogue().all(),
     internal: () => internal?.config ?? DEFAULT_INTERNAL,
     loreFor,
     spellLoreFor,

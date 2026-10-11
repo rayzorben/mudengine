@@ -11,7 +11,12 @@ import type { AutomationConfig } from '../../../shared/config';
 import type { Block } from '../../../shared/blocks';
 import { NO_LOOP, type LoopProgress } from '../../../shared/loops';
 import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
-import { ACTIONABLE_REMOTES } from '../../../shared/remotes';
+import {
+  ACTIONABLE_REMOTES,
+  parseRemoteReply,
+  type MoveAnswer,
+  type PathReport
+} from '../../../shared/remotes';
 import { NO_PLAYERS, recordOf, type PlayerRegistry } from '../../../shared/players';
 
 /**
@@ -1978,9 +1983,9 @@ describe('@stop and @rego', () => {
   });
 });
 
-/* Todo 16: one of this character's loops, on the sender's word. */
+/* Todo 16: one of this character's loops, on the sender's word; todo 32: every answer goes back. */
 describe('@loop', () => {
-  const driven = (answers: boolean, on: AutomationConfig = config) => {
+  const driven = (answers: MoveAnswer, on: AutomationConfig = config) => {
     const asked: string[] = [];
     const notices: string[] = [];
     const remotes = new Remotes(on, queue, {
@@ -1991,28 +1996,50 @@ describe('@loop', () => {
   };
 
   it('hands the name over whole, and answers {ok} when a loop started', () => {
-    const { asked, remotes } = driven(true);
+    const { asked, remotes } = driven({ kind: 'ok' });
     remotes.onBlock(said('conversation-telepath', 'Soul', '@loop Overgrown Trail'), who());
     drain();
     expect(asked).toEqual(['Soul:Overgrown Trail']);
     expect(sent).toEqual(['/Soul {ok}']);
   });
 
-  it('sends nothing back when no loop started', () => {
-    const { asked, remotes } = driven(false);
+  it('answers {failed} when a loop matched and could not start', () => {
+    const { remotes } = driven({ kind: 'failed' });
     remotes.onBlock(said('conversation-telepath', 'Soul', '@loop 17/16'), who());
     drain();
-    expect(asked).toEqual(['Soul:17/16']);
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Soul {failed}']);
   });
 
-  it('starts nothing without a name, and says so', () => {
-    const { asked, notices, remotes } = driven(true);
+  it('answers {unknown - "<name>"} when nothing matched', () => {
+    const { remotes } = driven({ kind: 'unknown', request: 'Rats', candidates: [] });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@loop Rats'), who());
+    drain();
+    expect(sent).toEqual(['/Soul {unknown - "Rats"}']);
+  });
+
+  it('answers a bare @loop {unknown - ""}, and says so', () => {
+    const { asked, notices, remotes } = driven({ kind: 'ok' });
     remotes.onBlock(said('conversation-telepath', 'Soul', '@loop'), who());
     drain();
     expect(asked).toEqual([]);
     expect(notices).toEqual([t('automation.remotes.loopUnnamed', { from: 'Soul' })]);
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Soul {unknown - ""}']);
+  });
+
+  it('lists what fits in one telepath, the whole line counted', () => {
+    const candidates = Array.from({ length: 40 }, (_, at) => `Black House: Caveworm Area ${at}`);
+    const { remotes } = driven({ kind: 'unknown', request: 'cave', candidates });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@loop cave'), who());
+    drain();
+    const line = sent[0]!;
+    expect(line.length).toBeLessThanOrEqual(255);
+    expect(line).toMatch(
+      /^\/Soul \{unknown - "cave": Black House: Caveworm Area 0; .* \+\d+ more\}$/
+    );
+    const reply = parseRemoteReply(line.slice('/Soul '.length));
+    expect(reply).toMatchObject({ kind: 'unknown', request: 'cave' });
+    if (reply?.kind !== 'unknown') return;
+    expect(reply.candidates.length + reply.more).toBe(40);
   });
 
   it('is not granted by the shipped lists', () => {
@@ -2020,16 +2047,16 @@ describe('@loop', () => {
       ...config,
       remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
     };
-    const { asked, remotes } = driven(true, shipped);
+    const { asked, remotes } = driven({ kind: 'ok' }, shipped);
     remotes.onBlock(said('conversation-telepath', 'Soul', '@loop Rats'), who());
     drain();
     expect(asked).toEqual([]);
   });
 });
 
-/* Todo 17: a room named as a loop stop names one, on the sender's word. */
+/* Todo 17: a room named as a loop stop names one, on the sender's word; todo 32: answered. */
 describe('@goto', () => {
-  const driven = (answers: boolean, on: AutomationConfig = config) => {
+  const driven = (answers: MoveAnswer, on: AutomationConfig = config) => {
     const asked: string[] = [];
     const notices: string[] = [];
     const remotes = new Remotes(on, queue, {
@@ -2040,28 +2067,31 @@ describe('@goto', () => {
   };
 
   it('hands the room over whole, and answers {ok} when the walk started', () => {
-    const { asked, remotes } = driven(true);
+    const { asked, remotes } = driven({ kind: 'ok' });
     remotes.onBlock(said('conversation-telepath', 'Soul', '@goto Town Gates 1/2150'), who());
     drain();
     expect(asked).toEqual(['Soul:Town Gates 1/2150']);
     expect(sent).toEqual(['/Soul {ok}']);
   });
 
-  it('sends nothing back when no walk started', () => {
-    const { asked, remotes } = driven(false);
-    remotes.onBlock(said('conversation-telepath', 'Soul', '@goto BFOT'), who());
+  it('answers the rooms a shared name could be, by map/room', () => {
+    const { remotes } = driven({
+      kind: 'unknown',
+      request: 'Sewer Tunnel',
+      candidates: ['1/766', '1/1348']
+    });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@goto Sewer Tunnel'), who());
     drain();
-    expect(asked).toEqual(['Soul:BFOT']);
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Soul {unknown - "Sewer Tunnel": 1/766; 1/1348}']);
   });
 
-  it('walks nothing without a room, and says so', () => {
-    const { asked, notices, remotes } = driven(true);
+  it('walks nothing without a room, says so, and answers {unknown - ""}', () => {
+    const { asked, notices, remotes } = driven({ kind: 'ok' });
     remotes.onBlock(said('conversation-telepath', 'Soul', '@goto'), who());
     drain();
     expect(asked).toEqual([]);
     expect(notices).toEqual([t('automation.remotes.gotoUnnamed', { from: 'Soul' })]);
-    expect(sent).toEqual([]);
+    expect(sent).toEqual(['/Soul {unknown - ""}']);
   });
 
   it('is not granted by the shipped lists', () => {
@@ -2069,10 +2099,46 @@ describe('@goto', () => {
       ...config,
       remotes: { ...DEFAULT_CONFIG.automation.remotes, enabled: true }
     };
-    const { asked, remotes } = driven(true, shipped);
+    const { asked, remotes } = driven({ kind: 'ok' }, shipped);
     remotes.onBlock(said('conversation-telepath', 'Soul', '@goto 17/16'), who());
     drain();
     expect(asked).toEqual([]);
+  });
+});
+
+/* Todo 32: where the character is going, in MegaMUD's frame; and the answers this one hears. */
+describe('@path', () => {
+  it('answers what the session reports, and {none} for nothing', () => {
+    const report: PathReport = {
+      path: 'DCCWLOOP.mp',
+      title: 'Sewers: CaveWorm',
+      to: null,
+      why: null,
+      steps: 4,
+      end: 'lap end'
+    };
+    let now: PathReport | null = report;
+    const remotes = new Remotes(config, queue, { path: () => now });
+    remotes.onBlock(said('conversation-telepath', 'Soul', '@path'), who());
+    drain();
+    now = null;
+    remotes.onBlock(said('conversation-telepath', 'Rand', '@path'), who());
+    drain();
+    expect(sent).toEqual([
+      '/Soul {DCCWLOOP.mp (Sewers: CaveWorm) - 4 steps to lap end}',
+      '/Rand {none}'
+    ]);
+  });
+
+  it('reads the answer to a typed /<name> @path, and to nothing else', () => {
+    const notices: string[] = [];
+    const remotes = new Remotes(config, queue, { notice: (message) => notices.push(message) });
+    const answer = '{DCCWLOOP.mp (Sewers: CaveWorm) - 4 steps to lap end}';
+    remotes.onBlock(said('conversation-telepath', 'Soul', answer), who());
+    expect(notices).toEqual([]);
+    remotes.noteTyped('/soul @path');
+    remotes.onBlock(said('conversation-telepath', 'Soul', answer), who());
+    expect(notices).toEqual([t('automation.remotes.heardPath', { who: 'Soul', path: answer })]);
   });
 });
 

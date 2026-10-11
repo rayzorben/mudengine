@@ -1277,7 +1277,10 @@ export class SessionManager {
       this.sink.switchAutomationNow?.(name, on) ?? false;
     this.remotes = new Remotes(automation, this.queue, {
       notice,
-      ...new RemoteMoves(this, this.errands, notice).events,
+      ...new RemoteMoves(this, this.errands, notice, {
+        own: () => this.automationConfig.loops,
+        shelf: () => sink.loopShelf?.() ?? []
+      }).events,
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
       switchCombat: (on) => switchNow('combat', on),
@@ -2135,6 +2138,7 @@ export class SessionManager {
         this.statScreen.noteSent(command, 'user');
         this.noteSent(command, 'user');
         this.questWatch.noteSaid(command);
+        this.remotes.noteTyped(command);
         // A person is at the keyboard: the away clock starts over.
         this.afk.noteAttended();
       } else {
@@ -2729,8 +2733,6 @@ export class SessionManager {
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
     this.extensions.onBlock(block);
     for (const each of [this.hostTrips, this.areaSearch, this.errands]) each.onBlock(block);
-    // The experience figure said again, which is what the next banked level waits for (todo 107).
-    this.trainLevel.onBlock(block);
     this.corpse.onBlock(block);
     /*
      * Before `tracker.apply`, deliberately: a wear-off is about to take the
@@ -2821,6 +2823,7 @@ export class SessionManager {
      */
     if (batch?.type === 'user-inventory') {
       this.deposit.onListing(this.tracker.current);
+      this.light.onListing();
       // And the quest run and the item errand, which read only the listing
       // their own ask answered.
       this.questRunner.noteListing(this.answering);
@@ -3276,11 +3279,6 @@ export class SessionManager {
   /** The loops this character's options define, by name. */
   loopNamed(name: string): Loop | undefined {
     return this.automationConfig.loops.find((entry) => entry.name === name);
-  }
-
-  /** Every loop this character can run, for `@loop` to pick from. */
-  get loopsDefined(): readonly Loop[] {
-    return this.automationConfig.loops;
   }
 
   /** The palette's view: each loop by name, with how many stops it visits. */

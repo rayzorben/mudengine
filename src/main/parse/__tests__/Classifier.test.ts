@@ -1981,6 +1981,11 @@ describe('the cheap eight', () => {
     );
   });
 
+  // rayzor, 2026-10-09: `light brass lamp` with a torch readied.
+  it('reads the refusal to light over a readied light, captured live', () => {
+    expectType('You already have something lit!', 'light-refused');
+  });
+
   it('reads the two refusals the stealth probe captured live', () => {
     expectType('That is not a door or a gate!', 'open-failed');
     expect(expectType('The door is locked.', 'open-failed')).toMatchObject({

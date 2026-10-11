@@ -327,9 +327,8 @@ describe('going to collect the level', () => {
    * Todo 107: a character with two banked levels collected one and stood
    * under the other for ever, because a success wrote the *new* level into
    * `attempted`. The level moving spends the attempt; the next is asked about
-   * once the experience figure has been said again (`user-levels` leaves a
-   * stale 0 behind and the staleness table asks `exp`), or after the confirm
-   * window if nothing answers.
+   * once the experience figure is known again: the tracker leaves `expNeeded`
+   * unknown at a new level the realm's table does not price (`neededAt`).
    */
   it('collects a second banked level once the experience figure is said again', () => {
     const errand = make();
@@ -339,41 +338,16 @@ describe('going to collect the level', () => {
     drain();
     expect(sent).toEqual(['train']);
     const base = owed();
-    // Welcome to level 31; `expNeeded` still reads the stale 0.
-    const levelled = { ...base, progress: { ...base.progress, level: 31, expNeeded: 0 } };
-    errand.onCharacter(levelled);
-    errand.onCharacter(levelled);
+    // Welcome to level 31: what is needed now is unknown, so `exp` is asked and nothing trains.
+    const unread = { ...base, progress: { ...base.progress, level: 31, expNeeded: null } };
+    errand.onCharacter(unread);
+    errand.onCharacter(unread);
     drain();
-    expect(sent).toEqual(['train']);
-    // The `exp` answer lands: the figure is fresh and still says a level is owed.
-    errand.onBlock({
-      seq: 1,
-      at: 0,
-      type: 'user-experience',
-      domain: 'status',
-      terminator: 'newline',
-      groups: {},
-      text: 'Exp: 1 Level: 31 Exp needed for next level: 0 (12)',
-      confidence: 1
-    });
-    errand.onCharacter(levelled);
+    expect(sent).toEqual(['train', 'exp']);
+    // The answer says a level is still owed.
+    errand.onCharacter({ ...base, progress: { ...base.progress, level: 31, expNeeded: 0 } });
     drain();
-    expect(sent).toEqual(['train', 'train']);
-  });
-
-  it('asks again after the confirm window when the experience figure is never said again', () => {
-    const errand = make();
-    errand.onCharacter(owed());
-    here = '3/542';
-    errand.onWalkEnded(true, null, owed());
-    drain();
-    const base = owed();
-    const levelled = { ...base, progress: { ...base.progress, level: 31, expNeeded: 0 } };
-    errand.onCharacter(levelled);
-    vi.advanceTimersByTime(11_000);
-    errand.onCharacter(levelled);
-    drain();
-    expect(sent).toEqual(['train', 'train']);
+    expect(sent).toEqual(['train', 'exp', 'train']);
   });
 
   /*

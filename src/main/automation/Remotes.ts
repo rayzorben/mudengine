@@ -58,6 +58,8 @@ import {
   formatEncumbrance,
   formatExp,
   formatHave,
+  formatMoveAnswer,
+  formatPath,
   formatLevel,
   formatLives,
   formatRoomAddress,
@@ -79,6 +81,8 @@ import {
   parseRoomAddress,
   plainRemote,
   reachableBy,
+  type MoveAnswer,
+  type PathReport,
   type RemoteCall,
   type RemoteName,
   type RemoteRefusal,
@@ -90,6 +94,7 @@ import { CLIENT_NAME, CLIENT_VERSION } from '../app/version';
 import { bareName, countedLabel } from '../../shared/items';
 import { playerKey, type PlayerRecord } from '../../shared/players';
 import type { CommandQueue } from './CommandQueue';
+import { RemoteAnswers } from './RemoteAnswers';
 import { tuning } from '../app/tuning';
 import { experienceOf } from '../../shared/experience';
 import {
@@ -292,17 +297,18 @@ export interface RemoteEvents {
   stopMoving?(from: string): boolean;
   resumeMoving?(from: string): boolean;
   /**
-   * `@loop`: start the loop `request` names, by name or by its start room,
-   * as the player's own palette does. Returns whether a loop started, which
-   * decides the `{ok}`; the session says why when none did.
+   * `@loop`: start the loop `request` names, by path file, name or start
+   * room, as the player's own palette does. The answer goes back in
+   * MegaMUD's words (`formatMoveAnswer`); the session says why on this screen.
    */
-  startLoop?(from: string, request: string): boolean;
+  startLoop?(from: string, request: string): MoveAnswer;
   /**
    * `@goto`: walk to the room `request` names as a loop stop names one, as
-   * the player's own route walks. Returns whether the walk started, which
-   * decides the `{ok}`; the session says why when none did.
+   * the player's own route walks, answered as `startLoop` is.
    */
-  goTo?(from: string, request: string): boolean;
+  goTo?(from: string, request: string): MoveAnswer;
+  /** `@path`: where the character is going and how far, or null for `{none}`. */
+  path?(): PathReport | null;
   /**
    * `@auto-combat on|off`: write the auto-combat switch to this character's
    * file and read it back. Returns whether it was written, which decides the
@@ -350,6 +356,8 @@ export class Remotes implements SessionModule {
 
   /** Questions sent and not yet answered, by player. See {@link Outstanding}. */
   private readonly asked = new Map<string, Outstanding>();
+  /** The player's own `@path`, `@loop` and `@goto`, whose answers are said here. */
+  private readonly answers = new RemoteAnswers();
 
   /** When this character last asked for a heal. See `askForHeal`. */
   private askedForHealAt: number | null = null;
@@ -556,6 +564,11 @@ export class Remotes implements SessionModule {
    * same character its health twice is one question, asking two characters is
    * two.
    */
+  /** A line the player typed, so the answer to a typed `/<name> @path` is read too. */
+  noteTyped(command: string): void {
+    this.answers.noteTyped(command, Date.now());
+  }
+
   ask(who: string, name: RemoteName, state: CharacterState, argument?: string): boolean {
     /*
      * The better wording, for somebody who has said they can read it.
@@ -612,6 +625,7 @@ export class Remotes implements SessionModule {
     if (taken && (name === 'version' || isExtended(name))) {
       this.asked.set(playerKey(who), { name, who, at: Date.now() });
     }
+    if (taken) this.answers.noteAsked(who, name, Date.now());
     return taken;
   }
 
@@ -790,6 +804,11 @@ export class Remotes implements SessionModule {
    * shapes collide.
    */
   private readReply(from: string, reply: RemoteReply): boolean {
+    const heard = this.answers.heard(from, reply, Date.now());
+    if (heard !== null) {
+      this.events.notice?.(heard);
+      return true;
+    }
     const key = playerKey(from);
     const outstanding = this.asked.get(key);
     if (outstanding === undefined) return false;
@@ -840,6 +859,7 @@ export class Remotes implements SessionModule {
     this.still.health = false;
     this.still.mana = false;
     this.asked.clear();
+    this.answers.reset();
     this.askedForHealAt = null;
     this.wantsHeal = false;
     this.seen = false;
@@ -1374,25 +1394,34 @@ export class Remotes implements SessionModule {
         return;
       }
 
-      case 'loop': {
-        // `{ok}` only for a loop that started, the rule `@stop` follows.
-        if (command.argument === null) {
-          this.events.notice?.(t('automation.remotes.loopUnnamed', { from }));
-          return;
-        }
-        if (this.events.startLoop?.(from, command.argument) === true) {
-          this.reply(from, '{ok}', prefix);
-        }
+      case 'path':
+        this.reply(from, formatPath(this.events.path?.() ?? null), prefix);
         return;
-      }
 
+      case 'loop':
       case 'goto': {
-        // `{ok}` only for a walk that started, the rule `@loop` follows.
+        /*
+         * Every answer goes back, in MegaMUD's words (todo 32): an empty name
+         * matches nothing, so a bare `@loop` is `{unknown - ""}`, and a
+         * several-way match lists what fits in one telepath.
+         */
+        const request = command.argument ?? '';
         if (command.argument === null) {
-          this.events.notice?.(t('automation.remotes.gotoUnnamed', { from }));
-          return;
+          this.events.notice?.(
+            command.name === 'loop'
+              ? t('automation.remotes.loopUnnamed', { from })
+              : t('automation.remotes.gotoUnnamed', { from })
+          );
         }
-        if (this.events.goTo?.(from, command.argument) === true) this.reply(from, '{ok}', prefix);
+        const answer: MoveAnswer | undefined =
+          command.argument === null
+            ? { kind: 'unknown', request, candidates: [] }
+            : command.name === 'loop'
+              ? this.events.startLoop?.(from, request)
+              : this.events.goTo?.(from, request);
+        if (answer === undefined) return;
+        const room = tuning().remotes.telepathMax - prefix.length;
+        this.reply(from, formatMoveAnswer(answer, room), prefix);
         return;
       }
 

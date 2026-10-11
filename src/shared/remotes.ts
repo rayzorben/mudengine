@@ -255,11 +255,11 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   status: { name: 'status', support: 'answered' },
   lives: { name: 'lives', support: 'answered' },
   where: { name: 'where', support: 'answered' },
-  path: {
-    name: 'path',
-    support: 'unread',
-    because: 'no capture shows the reply format, and a loop here is not a path file'
-  },
+  /*
+   * Where the character is going and how far, in MegaMUD 2.1's frame, read
+   * from its disassembly (`formatPath`, todo 32). Granted beside `status`.
+   */
+  path: { name: 'path', support: 'answered' },
   seen: {
     name: 'seen',
     support: 'unread',
@@ -299,18 +299,16 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   },
   /*
    * A room named as a loop stop is (`readStop`, `matchStop`), walked as the
-   * player's own route is. `{ok}` only when the walk started, `@stop`'s rule
-   * (todo 17, 2026-10-03). A name several rooms share, or none, walks nothing
-   * and is reported only on this character's screen: no capture shows
-   * MegaMUD's answer. MegaMUD's four-letter room codes are not read; a code
-   * is a name the world data does not hold. Granted by nothing shipped.
+   * player's own route is (todo 17, 2026-10-03), answered as MegaMUD answers
+   * (`MoveAnswer`, todo 32). MegaMUD's four-letter room codes are not read; a
+   * code is a name the world data does not hold. Granted by nothing shipped.
    */
   goto: { name: 'goto', support: 'acted' },
   /*
-   * One of this character's loops, by name or start room (`matchLoop`),
-   * started as the palette starts it. `{ok}` only when one started, `@stop`'s
-   * rule (todo 16, 2026-10-03). No match, or several, start nothing and are
-   * reported only on this character's screen. Granted by nothing shipped.
+   * A loop by path file, name or start room (`matchLoopIn`: this character's
+   * own, the lap it is on, then the shelf), started as the palette starts it
+   * (todo 16) and answered as MegaMUD answers (`MoveAnswer`, todo 32).
+   * Granted by nothing shipped.
    */
   loop: { name: 'loop', support: 'acted' },
   looponce: {
@@ -553,7 +551,15 @@ export type RemoteReply =
    * rather than the character, and it is what tells this client that an
    * extended remote reached a client that is not this one.
    */
-  | { kind: 'refused' };
+  | { kind: 'refused' }
+  /** `{none}`: no path loaded (`@path`). */
+  | { kind: 'none' }
+  /** `@path` in MegaMUD's frame (`formatPath`). */
+  | { kind: 'path'; report: PathReport }
+  /** `{unknown - "<name>"}`, with the candidates a several-way match sent. */
+  | { kind: 'unknown'; request: string; candidates: string[]; more: number }
+  /** `{failed}`: matched, and could not start. */
+  | { kind: 'failed' };
 
 const VITALS =
   /^\{\s*(?:HP|H)\s*=\s*(?<hp>\d+)\s*\/\s*(?<hpMax>\d+)(?:\s*,\s*(?:MA|KAI|M|K)\s*=\s*(?<mana>\d+)\s*\/\s*(?<manaMax>\d+))?\s*\}$/i;
@@ -584,6 +590,20 @@ export function parseRemoteReply(message: string): RemoteReply | null {
   const text = message.trim();
   if (/^\{\s*ok\s*\}$/i.test(text)) return { kind: 'ok' };
   if (REFUSED.test(text)) return { kind: 'refused' };
+  if (/^\{\s*none\s*\}$/i.test(text)) return { kind: 'none' };
+  if (/^\{\s*failed\s*\}$/i.test(text)) return { kind: 'failed' };
+  const unknown = UNKNOWN.exec(text);
+  if (unknown?.groups) {
+    const list = unknown.groups['list'];
+    return {
+      kind: 'unknown',
+      request: unknown.groups['request']!,
+      candidates: list === undefined ? [] : list.split('; '),
+      more: Number(unknown.groups['more'] ?? 0)
+    };
+  }
+  const report = readPath(text);
+  if (report !== null) return { kind: 'path', report };
   const room = ROOM_ADDRESS.exec(text);
   if (room?.groups) {
     const name = room.groups['name'] ?? '';
@@ -835,6 +855,104 @@ export function formatRoomAddress(
 ): string | null {
   if (map === null || room === null) return null;
   return name === null ? `{${map}/${room}}` : `{${map}/${room} ${name}}`;
+}
+
+/**
+ * What `@path` says: where the character is going and how far (todo 32).
+ *
+ * MegaMUD 2.1's frame, read from its disassembly (`megamud.exe`, handler at
+ * `0x4afe45`), not a capture: `{<path file>[ (<title>)][ -> <to>[ (<why>)]]
+ * - <n> step[s] to <go|lap end>}`. The first field is what `@loop` (or
+ * `@goto`, for a walk) takes back unchanged. `steps` null is MegaMUD's `?`.
+ */
+export interface PathReport {
+  /** The path file, a loop's name where it has none, or a walk's destination. */
+  path: string;
+  title: string | null;
+  /** A detour's destination, and why. */
+  to: string | null;
+  why: string | null;
+  steps: number | null;
+  /** A lap counts to its end; a walk or a detour to where it goes. */
+  end: 'go' | 'lap end';
+}
+
+export function formatPath(report: PathReport | null): string {
+  if (report === null) return '{none}';
+  const title = report.title === null ? '' : ` (${report.title})`;
+  const why = report.why === null ? '' : ` (${report.why})`;
+  const to = report.to === null ? '' : ` -> ${report.to}${why}`;
+  const steps = report.steps ?? '?';
+  return `{${report.path}${title}${to} - ${steps} step${steps === 1 ? '' : 's'} to ${report.end}}`;
+}
+
+const PATH_FRAME =
+  /^\{(?<head>.+?)(?: -> (?<to>.+?))? - (?<steps>\d+|\?) steps? to (?<end>go|lap end)\}$/;
+
+/**
+ * `formatPath` read back, from the right, so a name holding a colon or
+ * brackets stays whole. A path file has no space, so a head with one is a
+ * name or a destination and is kept whole too.
+ */
+function readPath(text: string): PathReport | null {
+  const frame = PATH_FRAME.exec(text);
+  if (!frame?.groups) return null;
+  const head = /^(?<path>\S+) \((?<title>.*)\)$/.exec(frame.groups['head']!);
+  const to = frame.groups['to'];
+  const detour = to === undefined ? null : /^(?<to>.+) \((?<why>[^()]*)\)$/.exec(to);
+  const steps = frame.groups['steps']!;
+  return {
+    path: head?.groups?.['path'] ?? frame.groups['head']!,
+    title: head?.groups?.['title'] ?? null,
+    to: detour?.groups?.['to'] ?? to ?? null,
+    why: detour?.groups?.['why'] ?? null,
+    steps: steps === '?' ? null : Number(steps),
+    end: frame.groups['end'] === 'go' ? 'go' : 'lap end'
+  };
+}
+
+/**
+ * What `@loop` and `@goto` did, answered in MegaMUD's words (todo 32): `{ok}`,
+ * `{failed}` (matched, and refused), or `{unknown - "<name>"}`, which a
+ * several-way match follows with its candidates, each spelled so sending it
+ * back picks out that one.
+ */
+export type MoveAnswer =
+  | { kind: 'ok' }
+  | { kind: 'failed' }
+  | { kind: 'unknown'; request: string; candidates: readonly string[] };
+
+const UNKNOWN = /^\{unknown - "(?<request>.*?)"(?:: (?<list>.+?))?(?: \+(?<more>\d+) more)?\}$/;
+
+/**
+ * The answer in at most `room` characters: the candidates that fit whole, in
+ * order, and `+N more` for the rest. Never splits a candidate.
+ */
+export function formatMoveAnswer(answer: MoveAnswer, room: number): string {
+  switch (answer.kind) {
+    case 'ok':
+      return '{ok}';
+    case 'failed':
+      return '{failed}';
+    case 'unknown': {
+      const { candidates } = answer;
+      // A request too long for the line is cut, so even the bare frame closes.
+      const bare = `{unknown - ""${candidates.length > 0 ? ` +${candidates.length} more` : ''}}`;
+      const head = `{unknown - "${answer.request.slice(0, Math.max(0, room - bare.length))}"`;
+      let shown = 0;
+      const body = (count: number): string => {
+        const left = candidates.length - count;
+        const list = count === 0 ? '' : `: ${candidates.slice(0, count).join('; ')}`;
+        return `${head}${list}${left > 0 ? ` +${left} more` : ''}}`;
+      };
+      while (shown < candidates.length && body(shown + 1).length <= room) shown += 1;
+      return body(shown);
+    }
+    default: {
+      const never: never = answer;
+      return never;
+    }
+  }
 }
 
 /**

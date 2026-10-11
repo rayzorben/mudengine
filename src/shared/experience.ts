@@ -411,6 +411,22 @@ export function experienceOwed(
   };
 }
 
+/**
+ * What `Exp needed for next level` would say at `level`: the realm's own row
+ * for the level above, less what is held, at least 0. Null where the realm has
+ * not stated that row, since a derived row can be wrong (orohost's class rates
+ * are not gmud.zip's) and a wrong 0 sends the character to a trainer.
+ */
+export function neededAt(
+  level: number,
+  exp: number | null,
+  table: ExperienceTable | null
+): number | null {
+  const next = table?.rows.find((row) => row.level === level + 1);
+  if (exp === null || next === undefined || workedOut(next.source)) return null;
+  return Math.max(0, next.experience - exp);
+}
+
 /** What the realm has said about this character's experience, as `Progress` holds it. */
 export interface ExperienceProgress {
   level: number | null;
