@@ -1662,6 +1662,11 @@ tuning:
     # route there is.
     wallCost: 100000
 
+    # How long a door or hidden exit the walk opened is routed as open
+    # (todo 62): the shortest close timer GreaterMUD runs (`Para` of 1 is
+    # 300 s, `RoomManager.cs:176`, `:196`), at the realm's measured speed.
+    openedWayMs: 300000
+
     # How many sweeps of the rooms within reach are kept for one character as
     # it stands: the hunting survey's whole realm and each spot's ring rooms
     # (hunting.maxSpots spots of up to hunting.maxLoopRooms rooms).

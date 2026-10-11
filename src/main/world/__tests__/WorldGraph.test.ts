@@ -4136,6 +4136,22 @@ describe('naming what blocked a route', () => {
     expect(route.reason).toContain('Vault');
   });
 
+  // Todo 62: a door this session's walk opened is a plain corridor inside its
+  // close timer, so the same pack crosses with no key and nothing is named.
+  it('crosses a key door the walk opened with no key and names nothing', () => {
+    const graph = makeWorld(gated('Key: 1124'));
+    const traveller = { keys: [], packKnown: true };
+    // Positive control: the same door, not opened, is still refused.
+    expect(graph.route(roomId(1, 1), roomId(1, 2), traveller).blocked).toBe(true);
+    const route = graph.route(roomId(1, 1), roomId(1, 2), {
+      ...traveller,
+      opened: new Set(['1/1|e'])
+    });
+    expect(route.blocked).toBe(false);
+    expect(route.blocks ?? []).toEqual([]);
+    expect(route.steps.map((step) => step.command)).toEqual(['e']);
+  });
+
   it('names the level it wanted and the level the character is', () => {
     const graph = makeWorld(gated('Level: 12 to 999'));
     const route = graph.route(roomId(1, 1), roomId(1, 2), { level: 9 });

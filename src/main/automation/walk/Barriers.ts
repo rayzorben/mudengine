@@ -33,14 +33,14 @@
  */
 import { asSpokenDirection, type RouteStep } from '../../../shared/world';
 import type { Block } from '../../../shared/blocks';
-import type { CharacterState } from '../../../shared/character';
+import { shutBarrier, type CharacterState } from '../../../shared/character';
 import type { AutomationConfig } from '../../../shared/config';
 import { barrierStated, canPick, meetsBarrier, tooHurtToBash } from '../../../shared/walk';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { CommandQueue } from '../CommandQueue';
 import type { WalkClock } from './clock';
-import type { WalkerEvents, WalkInFlight } from './ports';
+import type { OpenedKind, WalkerEvents, WalkInFlight } from './ports';
 import type { Holds } from './Holds';
 import type { Levers } from './Levers';
 
@@ -75,7 +75,7 @@ export interface BarriersWalk extends Pick<
 
 export type BarriersEvents = Pick<
   WalkerEvents,
-  'notice' | 'keyToUse' | 'refused' | 'stateNow' | 'pendingMoves'
+  'notice' | 'keyToUse' | 'refused' | 'opened' | 'stateNow' | 'pendingMoves'
 >;
 
 /** The lever rungs, which are the last on the ladder, and the pulls spent at the step. */
@@ -573,6 +573,7 @@ export class Barriers {
     if (block.type === 'user-search-succeeded') {
       // The one fact that ends the searching. See `found`.
       this.found = true;
+      this.noteOpened(step, 'hidden', block.at);
     } else {
       const every = tuning().walk.searchRecheckEvery;
       if (every <= 0 || this.searched % every !== 0) return;
@@ -641,10 +642,7 @@ export class Barriers {
   private shutAhead(state: CharacterState, step: RouteStep): string | null {
     if (state.room.exits.length === 0) return null;
     const exit = state.room.exits.find((one) => one.direction === step.direction);
-    const note = exit?.note ?? null;
-    if (note === null) return null;
-    const shut = /^closed\s+(?<barrier>.+)$/.exec(note);
-    return shut?.groups?.['barrier'] ?? null;
+    return shutBarrier(exit?.note);
   }
 
   /**
@@ -714,6 +712,13 @@ export class Barriers {
     const step = this.walk.step();
     if (step === undefined) return;
 
+    // A bash, a pick or a key starts the door's close-and-lock timer
+    // (`Door.TryBashDoor`, `TryPickLock`, `TryUnlock`); a plain `open` does not,
+    // so its answer says nothing about when the timer began (todo 62).
+    const moved = block.groups['state2'] === 'unlocked' || block.groups['state'] === 'open';
+    if (moved && this.forcing !== 'open' && block.groups['already'] === undefined) {
+      this.noteOpened(step, 'door', block.at);
+    }
     if (block.groups['state2'] === 'unlocked') {
       this.forcing = null;
       this.forgetLock();
@@ -1088,6 +1093,11 @@ export class Barriers {
    */
   forgetLock(): void {
     this.locked = false;
+  }
+  /** The server's close timer started on this step's way (todo 62); a portal has none. */
+  private noteOpened(step: RouteStep, kind: OpenedKind, at: number): void {
+    if (step.direction === 'portal') return;
+    this.events.opened?.(step.from, step.direction, kind, at);
   }
   /** Whether the door ahead is locked: said so on this step, or at this door earlier in the session. */
   private lockedAt(step: RouteStep): boolean {

@@ -2183,6 +2183,12 @@ const TUNING_DEFAULTS = {
      */
     wallCost: 100_000,
     /**
+     * How long a door or hidden exit the walk opened is routed as open
+     * (todo 62): the shortest close timer GreaterMUD runs (`Para` of 1 is
+     * 300 s, `RoomManager.cs:176`, `:196`), at the realm's measured speed.
+     */
+    openedWayMs: 300_000,
+    /**
      * How many sweeps of the rooms within reach the navigation engine keeps
      * for one character as it stands (`Navigation.withinNow`): the hunting
      * survey's whole realm and each spot's ring rooms (`hunting.maxSpots`

@@ -63,6 +63,7 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
 
   const kind = MATCHERS.find((matcher) => matcher.test.test(text))?.kind ?? 'unknown';
   const requirement: Requirement = { kind, raw: text };
+  if (kind === 'item' && /^Ticket\//i.test(text)) requirement.ticket = true;
 
   /*
    * `[or 301 picklocks/strength]`, the bare `Door [1000 picklocks/strength]`
@@ -321,6 +322,7 @@ export function parseInstruction(raw: string | undefined): Requirement | null {
   if (kind === 'hidden') {
     // `Hidden/Searchable` can be revealed with `search <direction>`.
     requirement.searchable = /searchable/i.test(text);
+    if (/^Hidden\/Passable\b/i.test(text)) requirement.passable = true;
     /*
      * `Hidden/Needs 2 Actions, specific order` — how many levers, and whether
      * they have to be pulled in the realm's own numbering. **What** those

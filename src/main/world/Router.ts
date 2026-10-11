@@ -13,16 +13,19 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { describeObstacle, leverOpening } from './obstacle';
 import { exitGates, gateRequirement } from './navigation/exitGates';
+import { familyOpens, searchCost, standingRequirement } from './navigation/exitFamily';
 import { RealmJoins } from './RealmJoins';
 import type { PortalExit, RoomIndex } from './RoomIndex';
 import { abilityName } from '../../shared/abilities';
 import type { Alignment } from '../../shared/alignment';
+import type { RealmFamily } from '../../shared/realm';
 import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
 import { judge, type Gate, type GateKind, type Verdict } from '../../shared/gates';
 import {
   describeBlock,
   unrouted,
   DIRECTION_COMMAND,
+  edgeKey,
   hazardAvoided,
   itemDemanded,
   landingRooms,
@@ -140,6 +143,19 @@ export interface Traveller {
    * character.
    */
   forcing?: { pick: boolean; bash: boolean };
+  /** Perception off the sheet, for a hidden exit found by searching (todo 62). Absent is unread. */
+  perception?: number | null;
+  /**
+   * The server's family as the wire stated it (`Vocabulary.family`), for the
+   * exit types it loads as plain exits (`familyOpens`). Absent is unread.
+   */
+  family?: RealmFamily | null;
+  /**
+   * Doors and hidden exits this session's walk opened, as `from|direction`,
+   * still inside the shortest close timer the server runs (`OpenedWays`,
+   * todo 62): crossed as plain corridors until then.
+   */
+  opened?: ReadonlySet<string>;
   /**
    * The ways and places this traveller keeps out of (`movement.keepOutOf`,
    * todo 806): a word a way's script phrase says, or a room's name does.
@@ -515,7 +531,7 @@ export function edgeBlock(
   /** The item a lever wants, when the block is a hidden exit's; `keyId` otherwise. */
   itemId?: number;
 } | null {
-  if (!requirement) return null;
+  if (!requirement || familyOpens(requirement, traveller.family)) return null;
   switch (requirement.kind) {
     case 'hidden': {
       // A listed pack lacking a lever's item; anything else about a hidden
@@ -836,7 +852,7 @@ function corridorCost(requirement: Requirement | null): number | null {
  * an intent, and it is not reproduced.
  */
 function statedPenalty(requirement: Requirement | null, traveller: Traveller): number | null {
-  if (!requirement) return 0;
+  if (!requirement || familyOpens(requirement, traveller.family)) return 0;
 
   switch (requirement.kind) {
     case 'text':
@@ -900,8 +916,15 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * price is what the edge costs when it is already open, plus a
        * discouragement, which is what this is.
        */
-      if (requirement.searchable) return 25;
+      if (requirement.searchable) {
+        // `100 / Perception` searches and the reprints between them (todo 62).
+        const found = searchCost(traveller.perception, tuning().walk.searchRecheckEvery);
+        return found === 'unknown' ? 25 : (found ?? tuning().world.wallCost);
+      }
       if (openableHere(requirement)) return 25 + 5 * requirement.actions!.length;
+      // `Hidden/Passable` is walked through unsearched (`HiddenExit.TryMoveThroughExit`);
+      // priced free on the user's standing answer to todo 62 (2026-10-11).
+      if (requirement.passable === true) return 0;
       return 200;
     }
 
@@ -997,13 +1020,10 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * in the other, which is the whole survey.
        *
        * An exit that is open on a schedule, and this client holds no clock the
-       * server shares: the shape has one sample, the units are unread, and
-       * GreaterMUD does not implement the case at all (`RoomManager.LoadRooms`
-       * case 16 builds a plain exit and says `//fix this`). Pricing it free on
-       * the strength of a server that skips it would be encoding one build's
-       * omission as a fact about the realm, so it stays discouraged — a route
-       * through it is offered and not preferred, and the chip carries the
-       * realm's own words.
+       * server shares. A GreaterMUD server builds it as a plain exit
+       * (`RoomManager.LoadRooms` case 16, `//fix this`), which `familyOpens`
+       * prices free once the wire has said the family (todo 62); anywhere
+       * else it stays discouraged and the chip carries the realm's own words.
        */
       return UNEVALUATED;
 
@@ -1663,12 +1683,15 @@ export class Router {
         (step.runDeath ?? 0) >= otherWayRun
       )
         worst.add(step.to);
-      const edge = `${step.from}|${step.direction}`;
+      const edge = edgeKey(step.from, step.direction);
       // A door the realm names a word for is not something to search round:
       // `stepCost` prices it as the lever it is, so this has to read it the
       // same way or the two disagree about what the plan crosses.
       const walled =
-        edgeWall(step.requirement, traveller) !== null &&
+        edgeWall(
+          standingRequirement(step.requirement, step.from, step.direction, traveller),
+          traveller
+        ) !== null &&
         this.leverPrice(step.from, step.direction, step.requirement?.actionsNeeded, traveller) ===
           null;
       if (walled || traveller.refused?.has(edge) === true) {
@@ -2530,8 +2553,9 @@ export class Router {
      * the way into the Warped Asylum at 275,000 steps and put the plan's cost
      * above the figure that makes a route report itself as crossing a wall.
      */
+    const requirement = standingRequirement(exit.requirement, from, exit.direction, traveller);
     const priced =
-      exit.requirement?.spellEffect === 'scatters' ? 0 : edgePenalty(exit.requirement, traveller);
+      requirement?.spellEffect === 'scatters' ? 0 : edgePenalty(requirement, traveller);
     // A gate held open is still the worst edge on the map, so the path this
     // finds is the one that was *nearly* walkable rather than a detour
     // through every locked door in the realm.
@@ -2576,7 +2600,7 @@ export class Router {
         : 0;
     // Sizes first: these keys are strings built per edge, and the sets are nearly always empty.
     const wall =
-      (traveller.refused?.size ?? 0) > 0 && traveller.refused!.has(`${from}|${exit.direction}`)
+      (traveller.refused?.size ?? 0) > 0 && traveller.refused!.has(edgeKey(from, exit.direction))
         ? 100_000
         : 0;
     // The whole step — the door's price and the portal's with it — is
@@ -2730,7 +2754,9 @@ export class Router {
         : current.exits;
       for (const exit of ways) {
         if (!keysAhead) {
-          const item = itemDemanded(exit.requirement ?? null);
+          const item = itemDemanded(
+            standingRequirement(exit.requirement ?? null, currentId, exit.direction, traveller)
+          );
           keysAhead = item !== null && traveller.keys?.includes(item) !== true;
         }
         /*
@@ -2803,7 +2829,8 @@ export class Router {
       if (kept !== null) {
         blocks.unshift({ kind: 'keptOut', at: prev, to: cursor, name: into!.name, word: kept });
       }
-      const blocked = edgeBlock(exit.requirement, traveller);
+      const standing = standingRequirement(exit.requirement, prev, exit.direction, traveller);
+      const blocked = edgeBlock(standing, traveller);
       if (blocked) {
         const name = this.rooms.get(cursor)?.name ?? cursor;
         const requirement = blocked.requirement;
@@ -2957,7 +2984,7 @@ export class Router {
       } else {
         // Not pruned, but priced as a wall: a door below both skills, which
         // the plan itself walks when nothing else leads there.
-        const wall = edgeWall(exit.requirement, traveller);
+        const wall = edgeWall(standing, traveller);
         // Named as a wall only where nothing here opens it, the reading
         // `stepCost` priced it by. `Levers.pullLevers` sends the phrase.
         if (
@@ -3379,7 +3406,7 @@ export class Router {
     const here = rooms.get(from);
     if (!everyRoom && here !== undefined) return { pulled: here, detour: 0 };
     if (this.pricingLever) return null;
-    const key = `${from}|${direction}`;
+    const key = edgeKey(from, direction);
     const known = this.leverDetours.get(traveller) ?? new Map<string, LeverWalk | null>();
     this.leverDetours.set(traveller, known);
     if (known.has(key)) return known.get(key) ?? null;
