@@ -26,6 +26,8 @@ export interface StatusRailProps {
   /** Dial or hang up the character being shown. */
   onToggleConnection(): void;
   onOpenPalette(): void;
+  /** The help page (todo 75), so it has a door besides the palette. */
+  onOpenHelp(): void;
 }
 
 const PHASE_LABEL: Record<ConnectionState['phase'], string> = {
@@ -52,6 +54,7 @@ function StatusRail({
   size,
   onToggleConnection,
   onOpenPalette,
+  onOpenHelp,
   meter,
   pressure,
   density,
@@ -168,6 +171,15 @@ function StatusRail({
       </span>
       <button className="quiet kbd-hint" onClick={onOpenPalette} type="button">
         {t('statusRail.palette.button')} <kbd>{chord('K', true)}</kbd>
+      </button>
+      <button
+        aria-label={t('statusRail.help.tooltip')}
+        className="quiet"
+        onClick={onOpenHelp}
+        title={t('statusRail.help.tooltip')}
+        type="button"
+      >
+        ?
       </button>
       <button
         className="quiet"

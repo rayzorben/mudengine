@@ -296,6 +296,7 @@ function migrateAll(options: MigrationOptions): void {
   theSheetAnswersPickAndMeditate(home, note, options.template);
   aFoundPlayerIsNoEffect(home, note);
   theRealmIsTheMenusChoice(home, note, options.worlds);
+  theDebugTraceGrew(home, note);
 }
 
 /**
@@ -922,6 +923,25 @@ function namesAnAccount(item: unknown): boolean {
   if (!isMap(item)) return false;
   const send = item.get('send');
   return typeof send === 'string' && credentialsNamed(send).length > 0;
+}
+
+/**
+ * `session.debugLogLimit` 4,000 → 10,000 records (todo 75, 2026-10-11), for
+ * `theTalkHoldGrew`'s reason: only where it still says the old default. 4,000
+ * covered 2.3 minutes of a fight on Paradigm, too short for a bug report.
+ */
+function theDebugTraceGrew(home: Home, note: (message: string) => void): void {
+  let changed = false;
+  edit(home.internal, (document) => {
+    const session = document.getIn(['tuning', 'session'], true);
+    if (!isMap(session)) return false;
+    const held = session.get('debugLogLimit', true);
+    if (!isScalar(held) || Number(held.value) !== 4000) return false;
+    held.value = DEFAULT_INTERNAL.tuning.session.debugLogLimit;
+    changed = true;
+    return true;
+  });
+  if (changed) note(t('notices.migration.debugTrace', { file: home.internal }));
 }
 
 /** The template's own words, so a migrated file reads like a shipped one. */

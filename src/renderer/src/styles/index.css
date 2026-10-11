@@ -13907,3 +13907,50 @@ tr:hover .row-action.worn,
   color: var(--text-lo);
   font-size: var(--font-micro);
 }
+
+/*
+ * The help page (todo 75): the home browser's box and head, with prose in it.
+ * A card's sentence sits beside its name in two columns, the name column as
+ * wide as the longest title.
+ */
+.help-screen {
+  max-height: 80vh;
+}
+
+.help-body {
+  overflow-y: auto;
+  padding: 4px 16px 16px;
+}
+
+.help-body h2 {
+  color: var(--text-hi);
+  font-size: var(--font-ui);
+  font-weight: 600;
+  margin: 14px 0 4px;
+}
+
+.help-body p {
+  color: var(--text-lo);
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
+
+.help-body dl {
+  display: grid;
+  gap: 4px 12px;
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+}
+
+.help-body dl > div {
+  display: contents;
+}
+
+.help-body dt {
+  color: var(--text-hi);
+}
+
+.help-body dd {
+  color: var(--text-lo);
+  margin: 0;
+}

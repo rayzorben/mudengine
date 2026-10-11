@@ -25,9 +25,18 @@ app:
     refusedAlias: 'The alias {name} in your options file is not loaded: {reason}.'
     refusedKey: 'The key {name} in your options file is not loaded: {reason}.'
   debug:
+    globalOwner: the Global settings
     noSession: There is no session to write a report for.
+    realmDataUnknown: No world database is loaded for this character.
     realmUnknown: (not dialed)
     reportTitle: mudengine debug report
+    secretFound: The report was not written because it holds the password set for {owner}. Change
+      that password, or report this as a bug without the file.
+    section:
+      character: The character now
+      engagements: Fights started or not, newest first
+      realmData: World database
+      safety: Safety decisions, newest first
   gpu:
     softwareCompositing: The window is not drawn by the GPU (compositing {compositing},
       rasterization {rasterization}, WebGL {webgl}). Every frame is drawn in software, which is why
@@ -188,6 +197,8 @@ notices:
         {backup}.'
       many: '{count} lines of {file} were not fights and were left out. The whole file is still
         in {backup}.'
+    debugTrace: The debug window now keeps the last 10,000 records instead of 4,000, about six
+      minutes of a fight, so a bug report reaches further back. {file} was updated to match.
     talkHold: The Talk card now holds its place for 45 seconds after you scroll, instead of 15.
       {file} was updated to match.
     hunting: Auto-Hunt is now a setting, off by default. It was added to {file} with a comment
@@ -989,7 +1000,11 @@ palette:
     showCardsLabel: Show the cards
     showDiagnosticsLabel: Show diagnostics
     showTimestampsLabel: Show the times in the console
+    bugReportHint: written to the session logs folder
+    bugReportLabel: Save a bug report
     debugHint: raw, framed, classified
+    hideHelpLabel: Hide the help
+    showHelpLabel: Help
     hideDebugLabel: Hide the debug window
     showDebugLabel: Show the debug window
     consolePaletteFollowHint: whatever palette the theme uses
@@ -1164,6 +1179,8 @@ statusRail:
   density:
     autoLabel: auto · {density}
     tooltip: Cycle information density ({shortcut})
+  help:
+    tooltip: Help
   narrow:
     chip: narrow
     tooltip: The realm always formats for {columns} columns. Narrower than that, maps and stat
@@ -1239,6 +1256,7 @@ debug:
   revealReport: Show the folder
   saveFailed: 'Could not write the report: {error}'
   saveTooltip: Save this trace as a bug report
+  savedAndCopied: 'Written to {path}. The path is on the clipboard.'
   savedTo: 'Written to {path}'
   showAll: Show everything
   title: Debug
@@ -1252,6 +1270,81 @@ debug:
     seenIn: 'Last seen in {room}'
     toggle: Unread lines
     unknown: Unread
+
+# The help page (todo 75): what the client is for, never a second settings
+# screen. A setting is explained where it is edited.
+help:
+  ariaLabel: Help
+  close: Close
+  about:
+    title: What this is
+    what: mudengine is a client for MajorMUD and the realms built on it, GreaterMUD and Paradigm. It
+      plays the game in the console and reads everything the server prints into the cards beside
+      it, and it can walk, fight, rest and run for a character the way MegaMUD does.
+    palette: Every command is in the palette, {palette}. Type a word for what you want, a room or a
+      monster's name, or browse the headings.
+  character:
+    title: Making a character
+    make: Open settings ({settings}) and add a character. It needs a realm, which is an address
+      and the world database the realm runs on, and the account name and password the realm asked
+      for when you made the account. Nothing connects until a character exists.
+    files: Each character is its own file in the characters folder, and a realm is its own folder
+      beside it. The palette's Show the characters folder opens it.
+  cards:
+    title: The cards
+    arrange: The cards sit beside the console, above or below it, or float over it. Drag one by its
+      title to move it, and put one away or bring one back from the palette. Each character keeps
+      its own arrangement.
+    alerts: What the client warned about, newest first.
+    automation: What automation sent, fought or refused, and why.
+    banks: What each bank this character used holds.
+    builder: The map to draw a loop on, a room at a time.
+    combat: The fight in progress, and how the monster is holding up.
+    extension: An installed extension's own page.
+    gang: This character's gang, and who in it may send @ commands.
+    gear: The best gear for each slot, what the cash on hand buys now, and a trip to buy it.
+    hunting: Where to hunt from here, priced for this character, best first.
+    inventory: What this character is carrying and wearing.
+    link: The connection, and what the server and the client agreed on.
+    map: The rooms around this character, and the route being walked.
+    navigation: The route or the loop being walked, and how far along it is.
+    party: The party, and each member's health.
+    players: Every player this client has seen, where, and when.
+    quests: The realm's quests, with their steps and where each one is done.
+    realm: Who is in the realm now, from the who list.
+    reference: What the world database says about a monster, an item or a spell. Click a name
+      anywhere to look it up.
+    room: The room this character is in, what is here, and the shop, bank or trainer if there is
+      one.
+    self: The character itself, from the stat sheet.
+    session: The realm's address, the console's size and how fast text is arriving.
+    shops: The last shop list read in each shop of this realm.
+    stats: How the fighting has gone, hits and misses.
+    stream: Each line as the client framed it, for finding out why one was misread.
+    talk: Gossip, gang talk, telepaths and what was said in the room.
+    toolbar: Buttons for the automation switches and moving. Lit means on.
+    vitals: Health, mana, experience and what is wrong with the character.
+  automation:
+    title: What automation does unasked
+    master: The {automation} button on the toolbar turns all of it on and off. With it off, the
+      client sends nothing on its own, whatever the other buttons say.
+    onByDefault: 'A new character starts with these on: {switches}. Attacking monsters is off until
+      you turn it on.'
+    stop: A character that has been stopped stays where it is. Nothing walks it, rests it in
+      another room or runs it unless a route or a loop is moving it. {hangUp} hangs up the
+      character on screen.
+    refusals: When automation decides not to do something, such as not attacking a monster or not
+      running, it says so on the Automation card and in the bug report.
+  report:
+    title: Reporting a bug
+    how: In the palette ({palette}), Save a bug report writes a file to the session logs folder,
+      says where and puts its path on the clipboard. Send that file with a sentence about what went
+      wrong.
+    what: It holds the character as it is now, the last safety decisions and fights started or
+      not, the version, the realm and its world database, and the last few minutes of what the
+      server sent and the client did.
+    passwords: No password is in it. Before the file is written it is checked for every password you
+      have set up, and if one is there it is not written at all.
 
 # The bento cards, by card; cards.titles is the vocabulary the rail and picker share.
 # The words a listing the console draws itself uses: column names for a

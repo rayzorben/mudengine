@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { paletteCommands, paletteKeys, type PaletteDeps } from '../palette';
 import { chord } from '../platform';
 import { THEMES } from '@shared/themes';
-import type { Revealed, SessionId } from '@shared/ipc';
+import { NO_SESSION, type Revealed, type SessionId } from '@shared/ipc';
 
 const HERO = 'hero' as SessionId;
 const HEALER = 'healer' as SessionId;
@@ -24,7 +24,9 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
       stopMoving: vi.fn(async () => undefined),
       revealConfig: vi.fn(async () => OPENED),
       revealProfiles: vi.fn(async () => OPENED),
-      revealLogs: vi.fn(async () => OPENED)
+      revealLogs: vi.fn(async () => OPENED),
+      saveDebug: vi.fn(async () => ({ path: '/logs/debug-hero.txt', download: null })),
+      copyText: vi.fn(async () => undefined)
     },
     session: HERO,
     sessions: [{ id: HERO, name: 'Hero' }],
@@ -40,6 +42,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     loggingEnabled: true,
     railOpen: false,
     debugOpen: false,
+    helpOpen: false,
     hud: 'on',
     setHud: vi.fn(),
     timestamps: 'off',
@@ -87,6 +90,7 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     openSearch: vi.fn(),
     toggleRail: vi.fn(),
     toggleDebug: vi.fn(),
+    toggleHelp: vi.fn(),
     toggleLoops: vi.fn(),
     trips: { areaSearch: vi.fn(), cashRun: vi.fn() },
     reveal: vi.fn(),
@@ -168,6 +172,38 @@ describe('the palette commands', () => {
     find('loop:north', { api, say, loops: [{ name: 'north', stops: 4 }] }).run();
     expect(startLoop).toHaveBeenCalledWith(HERO, 'north');
     await vi.waitFor(() => expect(say).toHaveBeenCalledWith(HERO, 'nothing to loop'));
+  });
+
+  it('saves a bug report for the shown character and says where, or why not, in its console', async () => {
+    const say = vi.fn();
+    const copyText = vi.fn(async () => undefined);
+    const api = { ...deps().api, copyText } as PaletteDeps['api'];
+    find('debug:save', { api, say }).run();
+    await vi.waitFor(() =>
+      expect(say).toHaveBeenCalledWith(
+        HERO,
+        t('debug.savedAndCopied', { path: '/logs/debug-hero.txt' })
+      )
+    );
+    expect(copyText).toHaveBeenCalledWith('/logs/debug-hero.txt');
+    const failed = vi.fn(async () => ({ error: 'disk full' }));
+    find('debug:save', { api: { ...api, saveDebug: failed } as PaletteDeps['api'], say }).run();
+    await vi.waitFor(() =>
+      expect(say).toHaveBeenCalledWith(HERO, t('debug.saveFailed', { error: 'disk full' }))
+    );
+  });
+
+  it('offers the bug report only with a character on screen to say the answer in', () => {
+    expect(ids()).toContain('debug:save');
+    expect(ids({ session: NO_SESSION })).not.toContain('debug:save');
+  });
+
+  it('opens the help page, which takes the caret', () => {
+    const toggleHelp = vi.fn();
+    const help = find('help', { toggleHelp });
+    help.run();
+    expect(toggleHelp).toHaveBeenCalledOnce();
+    expect(help.movesFocus).toBe(true);
   });
 
   it('always offers auto layout, and its undo only while there is a layout kept', () => {

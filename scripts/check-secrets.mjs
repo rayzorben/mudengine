@@ -40,6 +40,7 @@ import YAML from 'yaml';
 
 import { normalizeConfig } from '../src/shared/config.ts';
 import { resolveProfile } from '../src/shared/profiles.ts';
+import { configuredSecrets } from '../src/shared/secrets.ts';
 import { homePaths } from './lib/home.mjs';
 import { baseConfig } from './lib/local-realm.mjs';
 
@@ -74,19 +75,15 @@ const logsFor = (resolved) =>
  * character resolves to — every account is inline on its own file now, so
  * there is no separate named-account list to walk.
  *
- * Short ones are skipped. A two-character password would match half the corpus
- * and bury the real answer in noise — and anybody using one has a different
- * problem.
+ * Short ones are skipped (`SECRET_MIN_LENGTH`), the same rule the bug report
+ * checks itself by.
  */
-const secrets = new Set();
-const consider = (value) => {
-  if (typeof value === 'string' && value.length >= 4) secrets.add(value);
-};
+const configs = [];
 // The options file has held no account since 2026-08-29 (`dropAnonymousConnection`
 // takes an old one out), but this runs without the app, against whatever is on
 // disk — and a file the migration has not yet touched is exactly the kind of
 // file this check exists for.
-consider(config.connection.login.password);
+configs.push({ owner: 'options file', config });
 
 /** Where the client writes. `out/` is where every probe and harness puts things. */
 const roots = new Set([path.resolve('out'), path.resolve('dist'), home.root, logsFor(config)]);
@@ -102,7 +99,7 @@ if (fs.existsSync(profilesDir)) {
       const result = resolveProfile(entry.name, raw, source);
       if (result.error !== undefined) continue;
       characters += 1;
-      consider(result.profile.config.connection.login.password);
+      configs.push({ owner: entry.name, config: result.profile.config });
       // A character may log somewhere of its own; that directory is one more root.
       roots.add(logsFor(result.profile.config));
     } catch {
@@ -111,11 +108,12 @@ if (fs.existsSync(profilesDir)) {
   }
 }
 
+const secrets = configuredSecrets(configs);
 console.log(
-  `\n${characters} character(s) resolved, ${secrets.size} distinct password(s) to look for`
+  `\n${characters} character(s) resolved, ${secrets.length} distinct password(s) to look for`
 );
 
-if (secrets.size === 0) {
+if (secrets.length === 0) {
   console.log('\nNo passwords configured, so there is nothing that could have leaked.\n');
   process.exit(0);
 }
@@ -127,9 +125,9 @@ if (secrets.size === 0) {
  * going through main. A byte search also reads an `.asar` archive as it is,
  * which is a plain concatenation of the files it holds.
  */
-const needles = [...secrets].flatMap((secret) => [
-  Buffer.from(secret, 'utf8'),
-  Buffer.from(secret, 'utf16le')
+const needles = secrets.flatMap(({ value }) => [
+  Buffer.from(value, 'utf8'),
+  Buffer.from(value, 'utf16le')
 ]);
 
 /**

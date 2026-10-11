@@ -1,3 +1,4 @@
+import type { EngageDecision, SafetyDecision } from './automation';
 import type { Block } from './blocks';
 import type { CharacterState } from './character';
 import type { PlayerRegistry } from './players';
@@ -100,6 +101,25 @@ export function summariseBlock(block: Block): string {
   return groups.length > 0 ? `${confidence}  ${groups}` : confidence;
 }
 
+/** A value in a record: unknown as `—`, never as `0`. */
+export function shown(value: unknown): string {
+  return value === null || value === undefined ? '—' : String(value);
+}
+
+/** One safety decision, as the trace and the report's refusals both write it. */
+export function safetyText(decision: SafetyDecision): string {
+  return decision.acted
+    ? `${decision.action} — ${decision.because}`
+    : `${decision.action} refused: ${decision.refused ?? decision.because}`;
+}
+
+/** One engagement, as the trace and the report's refusals both write it. */
+export function engageText(decision: EngageDecision): string {
+  return decision.acted
+    ? `attacked ${decision.target}${decision.because === undefined ? '' : ` — ${decision.because}`}`
+    : `left ${decision.target}: ${decision.refused ?? 'no reason given'}`;
+}
+
 /**
  * What changed about the character, and nothing else.
  *
@@ -117,11 +137,9 @@ export function summariseBlock(block: Block): string {
  */
 export function describeStateChange(before: CharacterState, after: CharacterState): string[] {
   const changes: string[] = [];
-  const show = (value: unknown): string =>
-    value === null || value === undefined ? '—' : String(value);
   const note = (what: string, from: unknown, to: unknown): void => {
     if (from === to) return;
-    changes.push(`${what} ${show(from)} → ${show(to)}`);
+    changes.push(`${what} ${shown(from)} → ${shown(to)}`);
   };
 
   note('phase', before.phase, after.phase);
@@ -163,6 +181,12 @@ export function describePlayersChange(before: PlayerRegistry, after: PlayerRegis
     .map(([, record]) => record.name);
 }
 
+/** A titled block of the report written ahead of the trace. */
+export interface ReportSection {
+  title: string;
+  lines: readonly string[];
+}
+
 /**
  * The saved bug report, as text.
  *
@@ -190,7 +214,13 @@ export function formatDebugReport(
     /** How many records the ring dropped before the oldest one kept. */
     dropped: number;
   },
-  records: readonly DebugRecord[]
+  records: readonly DebugRecord[],
+  /**
+   * What holds now, ahead of the trace (todo 75): the ring keeps a few
+   * minutes of a fight, so the character and the last refusals are written
+   * from their own state rather than left to whatever the ring still holds.
+   */
+  sections: readonly ReportSection[] = []
 ): string {
   const stamp = (at: number): string => new Date(at).toISOString().slice(11, 23);
   const lines: string[] = [
@@ -207,6 +237,12 @@ export function formatDebugReport(
     'Times are UTC. Control bytes are shown as their Unicode control pictures:',
     '␛ is ESC, ␍ is CR, ␊ is LF. Passwords are never recorded.',
     '',
+    ...sections.flatMap((section) => [
+      section.title,
+      '-'.repeat(section.title.length),
+      ...section.lines,
+      ''
+    ]),
     `${'time'.padEnd(12)} ${'kind'.padEnd(6)} ${'tag'.padEnd(22)} what`,
     `${'-'.repeat(12)} ${'-'.repeat(6)} ${'-'.repeat(22)} ${'-'.repeat(40)}`
   ];

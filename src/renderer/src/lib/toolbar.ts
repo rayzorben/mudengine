@@ -125,7 +125,7 @@ const SWITCH_ICONS: Record<AutomationSwitch, IconName> = {
  * interpolating the switch name into a key would be an unexempted dynamic
  * call and, worse, unfindable by anybody grepping the dictionary.
  */
-function switchLabel(name: AutomationSwitch): string {
+export function switchLabel(name: AutomationSwitch): string {
   switch (name) {
     case 'automation':
       return t('toolbar.automation');

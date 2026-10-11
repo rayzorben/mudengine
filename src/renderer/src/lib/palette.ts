@@ -31,7 +31,14 @@ import {
   type DensityPreference,
   type Server
 } from '@shared/config';
-import type { IpcApi, ProfileSummary, Revealed, SessionId, SessionSummary } from '@shared/ipc';
+import {
+  NO_SESSION,
+  type IpcApi,
+  type ProfileSummary,
+  type Revealed,
+  type SessionId,
+  type SessionSummary
+} from '@shared/ipc';
 import { CONSOLE_PALETTES, TERMINAL_THEMES, THEME_PREFERENCES, THEMES } from '@shared/themes';
 import type { ConnectionState, ConnectionTarget } from '@shared/types';
 import type { Switch } from './switch';
@@ -49,6 +56,8 @@ export type PaletteApi = Pick<
   | 'revealConfig'
   | 'revealProfiles'
   | 'revealLogs'
+  | 'saveDebug'
+  | 'copyText'
 >;
 
 /** What a command does to the console on screen. */
@@ -74,6 +83,8 @@ export interface PaletteDeps {
   loggingEnabled: boolean;
   railOpen: boolean;
   debugOpen: boolean;
+  /** Whether the help page is up (todo 75). */
+  helpOpen: boolean;
   hud: Switch;
   setHud(value: Switch): void;
   /** Each line's time at the console's right edge (`terminal.timestamps`). */
@@ -118,6 +129,7 @@ export interface PaletteDeps {
   openSearch(): void;
   toggleRail(): void;
   toggleDebug(): void;
+  toggleHelp(): void;
   toggleLoops(): void;
   /** The Search the area and Cash run dialogs, for the shown character. */
   trips: { areaSearch(): void; cashRun(): void };
@@ -545,8 +557,55 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
        * calls it; `raw`, `ansi`, `parse` and `trace` are what they are
        * actually looking for when they do not know either.
        */
-      keywords: ['debug', 'bug', 'report', 'raw', 'ansi', 'parse', 'trace', 'diagnose'],
+      keywords: ['debug', 'raw', 'ansi', 'parse', 'trace', 'diagnose'],
       run: deps.toggleDebug
+    },
+    /*
+     * The report without opening the debug view (todo 75): the same file its
+     * Save button writes, where it went said in the shown console and its path
+     * put on the clipboard. The text itself is 150 to 750 KB, too long to paste
+     * into an issue or a chat. A browser tab downloads it instead.
+     * Offered only with a character on screen, since its answer is said there.
+     */
+    ...(deps.session === NO_SESSION
+      ? []
+      : [
+          {
+            id: 'debug:save',
+            icon: 'fileText' as const,
+            label: t('palette.view.bugReportLabel'),
+            hint: t('palette.view.bugReportHint'),
+            group: 'view' as const,
+            keywords: ['bug', 'report', 'issue', 'problem', 'save'],
+            run: () => {
+              const sid = deps.session;
+              void deps.api.saveDebug(sid).then(async (saved) => {
+                if (!('path' in saved))
+                  return deps.say(sid, t('debug.saveFailed', { error: saved.error }));
+                if (saved.download !== null)
+                  return deps.say(sid, t('debug.savedTo', { path: saved.path }));
+                const copied = await deps.api.copyText(saved.path).then(
+                  () => true,
+                  () => false
+                );
+                deps.say(
+                  sid,
+                  copied
+                    ? t('debug.savedAndCopied', { path: saved.path })
+                    : t('debug.savedTo', { path: saved.path })
+                );
+              });
+            }
+          }
+        ]),
+    {
+      id: 'help',
+      icon: 'help' as const,
+      label: deps.helpOpen ? t('palette.view.hideHelpLabel') : t('palette.view.showHelpLabel'),
+      group: 'view',
+      keywords: ['help', 'manual', 'guide', 'how', '?'],
+      movesFocus: true,
+      run: deps.toggleHelp
     },
     {
       id: 'jump',

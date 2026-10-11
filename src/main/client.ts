@@ -83,6 +83,7 @@ import { loadShippedSentences } from './world/ShippedSentences';
 import type { ShippedSentences } from '../shared/sentences';
 import { NO_REALM_PLAYERS, type RealmPlayers } from '../shared/players';
 import { NO_FIGHTS, type FightSink } from '../shared/fights';
+import { writeBugReport } from './session/BugReport';
 import { FightLog } from './session/FightLog';
 import { HarmLog } from './session/HarmLog';
 import { NO_HARM, type HarmSink } from '../shared/harm';
@@ -173,8 +174,8 @@ import {
 } from '../shared/routeLegs';
 import { errorMessage } from '../shared/values';
 import { BUILD, versionWithCommit } from '../shared/build';
-import { formatDebugReport } from '../shared/debug';
 import { fileSlug } from '../shared/files';
+import { configuredSecrets } from '../shared/secrets';
 /*
  * The one field, by name. A default import would inline the whole manifest into
  * the main chunk — the maintainer's email address and every dependency's name
@@ -1755,44 +1756,39 @@ function registerIpc(): void {
   });
 
   /*
-   * The bug report, written by main.
-   *
-   * Main writes it for the reason main owns the clipboard: the window has no
-   * filesystem. It goes into the same `logs/` directory the session logs and
-   * captures do, which is the directory `npm run check:secrets` already walks —
-   * a report saved anywhere else would be one nobody can promise carries no
-   * password, and this is a file whose whole purpose is being sent to somebody
-   * else.
-   *
-   * Named after the character and the moment, because a player reporting two
-   * problems in an evening has to be able to say which file is which.
+   * The bug report, written by main into the `logs/` directory
+   * `check:secrets` walks (`session/BugReport.ts`), named after the character
+   * and the moment so two reports in an evening can be told apart.
    */
   handle(Invoke.saveDebug, async (caller, session: SessionId): Promise<DebugSave> => {
     const slot = host?.get(session);
     if (!slot) return { error: t('app.debug.noSession') };
     const who = labelOf(session);
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const directory = logDirectory();
-    const file = path.join(directory, `debug-${fileSlug(who.name)}-${stamp}.txt`);
     try {
-      await fs.mkdir(directory, { recursive: true });
-      await fs.writeFile(
-        file,
-        formatDebugReport(
-          {
-            title: t('app.debug.reportTitle'),
-            version: appVersion(),
-            platform: `${process.platform} ${process.arch}, ${platform.runtime}`,
-            character: who.name,
-            realm: who.server.length > 0 ? who.server : t('app.debug.realmUnknown'),
-            at: Date.now(),
-            dropped: slot.debug.lost
-          },
-          slot.debug.all
-        ),
-        'utf8'
-      );
-      return { path: file, download: platform.deliver(caller, file) };
+      return await writeBugReport({
+        directory: logDirectory(),
+        slug: fileSlug(who.name),
+        header: {
+          title: t('app.debug.reportTitle'),
+          version: appVersion(),
+          platform: `${process.platform} ${process.arch}, ${platform.runtime}`,
+          character: who.name,
+          realm: who.server.length > 0 ? who.server : t('app.debug.realmUnknown'),
+          at: Date.now(),
+          dropped: slot.debug.lost
+        },
+        character: slot.manager.character,
+        automation: slot.manager.automation,
+        build: worldFor(session)?.info.build ?? null,
+        records: slot.debug.all,
+        // Every configured password, not only this character's: a report is
+        // sent to somebody else, and no account of the player's belongs in it.
+        secrets: configuredSecrets([
+          { owner: t('app.debug.globalOwner'), config: config?.config ?? DEFAULT_CONFIG },
+          ...(profiles?.profiles ?? []).map(({ name, config }) => ({ owner: name, config }))
+        ]),
+        deliver: (file) => platform.deliver(caller, file)
+      });
     } catch (error) {
       // Said out loud rather than swallowed: a save button that quietly did
       // nothing is worse than one that reports why it could not.

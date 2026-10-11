@@ -22,6 +22,7 @@ import type { DebugRecord } from '@shared/debug';
 import StatusRail from './components/StatusRail';
 import LoopsModal from './components/LoopsModal';
 import HomeBrowser from './components/HomeBrowser';
+import HelpScreen from './components/HelpScreen';
 import { TOOLBAR_ACTIONS } from './lib/toolbar';
 import { liveSheetOf } from './lib/liveSheet';
 import { useToolbarPins } from './hooks/useToolbarPins';
@@ -40,6 +41,7 @@ import { usePaneWidths } from './hooks/usePaneWidths';
 import { useConsoleWidth } from './hooks/useConsoleWidth';
 import { useLoopBuilder } from './hooks/useLoopBuilder';
 import { useLoopsModal } from './hooks/useLoopsModal';
+import { useHelpScreen } from './hooks/useHelpScreen';
 import { useLoopJoin } from './hooks/useLoopJoin';
 import { useMovement } from './hooks/useMovement';
 import { usePanes } from './hooks/usePanes';
@@ -535,6 +537,7 @@ export default function App() {
     say: noticeTo
   });
   const trips = useTripDialogs(session, returnFocus);
+  const { helpOpen, toggleHelp, closeHelp } = useHelpScreen(returnFocus);
 
   /** What the shown character asks its realm. */
   const {
@@ -971,6 +974,7 @@ export default function App() {
     loggingEnabled: config.logging.enabled,
     railOpen,
     debugOpen,
+    helpOpen,
     hud,
     setHud,
     timestamps: times,
@@ -1009,6 +1013,7 @@ export default function App() {
     openSearch,
     toggleRail,
     toggleDebug,
+    toggleHelp,
     toggleLoops,
     trips: trips.opens,
     reveal,
@@ -1037,6 +1042,14 @@ export default function App() {
   );
   const toolbarPins = useToolbarPins(internalConfig.toolbar.pinned, toolbarIds);
 
+  const covered =
+    asked !== null ||
+    flyout !== null ||
+    browsing !== null ||
+    paletteOpen ||
+    loopsOpen ||
+    settingsOpen ||
+    helpOpen;
   useHotkeys([
     // Each chord is `CLIENT_KEYS`'s; the connection's are `useConnectionKeys`.
     { ...CLIENT_KEYS.palette, run: togglePalette },
@@ -1073,59 +1086,20 @@ export default function App() {
      */
     { ...CLIENT_KEYS.settings, run: openSettings },
     /*
-     * `loopsOpen` joins the palette and the settings screen in every guard
-     * below: the modal holds the caret and owns its own Escape, so a window
-     * binding firing as well would put two surfaces away with one keystroke —
-     * the failure `useHotkeys` records for the diagnostics rail eating the
-     * Talk card's Escape.
+     * A dialog that holds the caret owns its own Escape (`covered`), so a
+     * window binding firing as well would put two surfaces away with one
+     * keystroke: the failure `useHotkeys` records for the diagnostics rail
+     * eating the Talk card's Escape. Below that, the topmost of the route
+     * panel, the search bar, the rail and the debug window takes it. The
+     * debug window covers the console and every control in it uses
+     * `keepFocus`, so without its binding Escape went to the realm unseen.
      */
-    ...(asked === null &&
-    flyout === null &&
-    browsing === null &&
-    routeOpen &&
-    !paletteOpen &&
-    !loopsOpen &&
-    !settingsOpen
-      ? [{ key: 'Escape', run: closeRoute }]
-      : []),
-    ...(asked === null &&
-    flyout === null &&
-    browsing === null &&
-    searchOpen &&
-    !paletteOpen &&
-    !loopsOpen &&
-    !routeOpen &&
-    !settingsOpen
-      ? [{ key: 'Escape', run: closeSearch }]
-      : []),
-    ...(asked === null &&
-    flyout === null &&
-    browsing === null &&
-    railOpen &&
-    !paletteOpen &&
-    !loopsOpen &&
-    !searchOpen &&
-    !routeOpen &&
-    !settingsOpen
+    ...(!covered && routeOpen ? [{ key: 'Escape', run: closeRoute }] : []),
+    ...(!covered && searchOpen && !routeOpen ? [{ key: 'Escape', run: closeSearch }] : []),
+    ...(!covered && railOpen && !searchOpen && !routeOpen
       ? [{ key: 'Escape', run: toggleRail }]
       : []),
-    /*
-     * And the debug window, which is the one surface here that *covers* the
-     * console. Every control in it uses `keepFocus`, so the caret is still in
-     * the terminal — without this, Escape pressed to dismiss a full-console
-     * overlay goes to the realm instead, with the console covered so nobody
-     * can see what it did. Last in the chain, like the rail it is modelled on.
-     */
-    ...(asked === null &&
-    flyout === null &&
-    browsing === null &&
-    debugOpen &&
-    !paletteOpen &&
-    !loopsOpen &&
-    !searchOpen &&
-    !routeOpen &&
-    !railOpen &&
-    !settingsOpen
+    ...(!covered && debugOpen && !railOpen && !searchOpen && !routeOpen
       ? [{ key: 'Escape', run: closeDebug }]
       : [])
   ]);
@@ -1485,6 +1459,7 @@ export default function App() {
         densityPreference={preference}
         onCycleDensity={cycle}
         onOpenPalette={openPalette}
+        onOpenHelp={toggleHelp}
         onToggleConnection={toggleConnection}
         pressure={pressure}
         size={size}
@@ -1549,12 +1524,7 @@ export default function App() {
       {browsing !== null && (
         <HomeBrowser onClose={closeBrowser} onPick={browsing.pick} start={browsing.start} />
       )}
-
-      {/*
-        The way in for somebody who has not read the source. Everything it does
-        not cover — automation rules, per-character UI — stays in the YAML,
-        which is what YAML is good at, and the screen says where the files are.
-      */}
+      {helpOpen && <HelpScreen onClose={closeHelp} />}
       {/*
         Play asked back: the character has wandered a long way from what it was
         walking. The same play is pressed again, `confirmed`, or the movement

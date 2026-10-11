@@ -2060,9 +2060,10 @@ const TUNING_DEFAULTS = {
      * and a report that only covers the last few seconds does not cover the
      * thing somebody is reporting. It fills whether or not the window is open,
      * because a trace you have to turn on before the surprise is one that never
-     * catches it.
+     * catches it. 10,000 is about six minutes of a fight on Paradigm and about
+     * 1.9 MB of report; 4,000 was 2.3 minutes (todo 75).
      */
-    debugLogLimit: 4000,
+    debugLogLimit: 10000,
     /**
      * Shapes of unread line the debug window keeps per realm (todo 73). The
      * corpus puts a capture at 15 distinct shapes median, 87 at p95 and 368 at
