@@ -136,6 +136,9 @@ export class OutgrownGear implements SessionModule {
     if (state.inCombat || state.combat.attackers.length > 0) return;
     if (state.vitals.resting || state.vitals.meditating) return;
     if (this.planner.moveInFlight() || this.planner.walking() || this.planner.busy()) return;
+    // Where the character stands is unknown: no way can be planned, and a way
+    // refused now would stay refused for the session, so nothing is decided yet.
+    if (this.planner.here() === null) return;
     this.looked = state.inventory;
     for (const item of this.planner.outgrown(state)) {
       const plan = this.planFor(item, state);

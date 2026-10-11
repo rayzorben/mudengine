@@ -236,6 +236,19 @@ describe('getting rid of outgrown gear', () => {
     expect(sent).toEqual(['drop sandals']);
   });
 
+  it('decides nothing while the room is unknown, and goes once it is known', () => {
+    const errand = trip();
+    found = [outgrown('silver ring', 50_000)];
+    here = null;
+    const state = packed(entity('silver ring'));
+    errand.onCharacter(state);
+    expect(walked).toEqual([]);
+    expect(sent).toEqual([]);
+    here = '1/10';
+    errand.onCharacter(state);
+    expect(walked).toHaveLength(1);
+  });
+
   it('does nothing while switched off', () => {
     const errand = new OutgrownGear({ ...ON, enabled: false }, true, queue, planner());
     found = [outgrown('sandals', 200)];
