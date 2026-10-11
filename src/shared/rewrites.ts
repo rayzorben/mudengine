@@ -17,6 +17,7 @@ import { loadPercent } from './load';
 import { entityNumber, type ItemEntity } from './entities';
 import type { ReadEffect } from './abilities';
 import type { EquipVerdict } from './gear';
+import type { LearnRefusal, ScrollLesson } from './learning';
 import type { UiLookup } from './i18n';
 import { countedLabel, ITEM_KIND_WORD } from './items';
 import type { StatlineFigures } from './statline';
@@ -217,6 +218,7 @@ const SOLD_FIELDS: readonly FieldSpec[] = [
   text('afford'),
   flag('short'),
   text('usable'),
+  flag('learned'),
   flag('wearable'),
   text('note'),
   number('basePrice'),
@@ -411,7 +413,7 @@ export const DEFAULT_REWRITES: readonly RewriteDesign[] = [
     template: [
       '{table header}',
       '{for item in items}',
-      '{bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}',
+      '{bold}{if item.learned}{strike}{/if}{item}{/strike}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}',
       '{/for}',
       '{/table}'
     ].join('\n')
@@ -549,6 +551,12 @@ export interface ShopRow {
   verdict: EquipVerdict;
   /** What the realm says it does, read by main. See `InventoryRow.effects`. */
   effects: ReadEffects;
+  /**
+   * What reading it would teach this character, for a scroll whose spells the
+   * realm names (`scrollLesson`); null for anything else. Main's for the same
+   * reason as `verdict`: the class row and the spell rows are the realm's.
+   */
+  lesson: ScrollLesson | null;
 }
 
 export interface PartyRow {
@@ -861,10 +869,50 @@ export function whoScope(rows: readonly WhoRow[]): Row {
   };
 }
 
+/** The Afford column's marks (todo 770): a tick or a cross, one cell each. */
+const AFFORD_MARK = { yes: '✓', no: '✗' } as const;
+
+/** The Afford cell: a tick within the purse, a red cross past it, blank where either is unknown. */
+function affordCell(short: boolean | null): Figure {
+  if (short === null) return { text: '' };
+  return short
+    ? { text: AFFORD_MARK.no, colour: 'brightRed' }
+    : { text: AFFORD_MARK.yes, colour: 'brightGreen' };
+}
+
+/** The server's reason for refusing to teach a spell, in the shelf's words. */
+function refusalWords(why: LearnRefusal, t: UiLookup): string {
+  switch (why) {
+    case 'magery':
+      return t('rewrites.shop.learn.magery');
+    case 'magery-level':
+      return t('rewrites.shop.learn.mageryLevel');
+    case 'too-low':
+    case 'req-level':
+      return t('rewrites.shop.learn.tooLow');
+    case 'too-high':
+      return t('rewrites.shop.learn.tooHigh');
+    case 'alignment':
+      return t('rewrites.shop.learn.alignment');
+    default: {
+      const never: never = why;
+      return never;
+    }
+  }
+}
+
+/** Why this character may not use a thing on the shelf: wear it, or learn its spell. */
+function usableCell(sold: ShopRow, t: UiLookup): Figure {
+  if (sold.verdict.state === 'blocked') return { text: sold.verdict.label, colour: 'yellow' };
+  const verdict = sold.lesson?.verdict;
+  if (verdict?.kind === 'refused') return { text: refusalWords(verdict.why, t), colour: 'yellow' };
+  return { text: '' };
+}
+
 export function shopScope(rows: readonly ShopRow[], wealth: number | null, t: UiLookup): Row {
   return {
     items: rows.map((sold) => {
-      const short = wealth !== null && sold.cost !== null && sold.cost > wealth;
+      const short = wealth === null || sold.cost === null ? null : sold.cost > wealth;
       return {
         item: sold.name,
         name: sold.name,
@@ -877,12 +925,10 @@ export function shopScope(rows: readonly ShopRow[], wealth: number | null, t: Ui
          */
         priceLong: sold.cost === null || sold.cost === 0 ? sold.price : wealthLong(sold.cost, t),
         cost: fact(sold.cost),
-        afford: short ? { text: t('rewrites.shop.short'), colour: 'brightRed' } : { text: '' },
-        short: wealth === null || sold.cost === null ? null : short,
-        usable:
-          sold.verdict.state === 'blocked'
-            ? { text: sold.verdict.label, colour: 'yellow' }
-            : { text: '' },
+        afford: affordCell(short),
+        short,
+        usable: usableCell(sold, t),
+        learned: sold.lesson?.learned ?? null,
         wearable: sold.verdict.state === 'wearable' || sold.verdict.state === 'worn',
         note: fact(sold.note),
         basePrice: fact(sold.item.price),

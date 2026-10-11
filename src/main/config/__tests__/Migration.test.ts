@@ -1494,6 +1494,41 @@ describe('owning the status line', () => {
     expect(notesOf(said, 'notices.migration.exitsDesigned')).toEqual([]);
   });
 
+  it('gives the shipped shop design the strike, and leaves a written one alone', () => {
+    const designs = (file: string): Record<string, unknown>[] =>
+      (parse(fs.readFileSync(file, 'utf8')) as { ui: { rewrites: { designs: [] } } }).ui.rewrites
+        .designs;
+    const shipped = DEFAULT_CONFIG.ui.rewrites.designs.find((design) => design.entity === 'shop');
+    const before = [
+      'ui:',
+      '  rewrites:',
+      '    designs:',
+      '      - name: Shop shelf',
+      '        entity: shop',
+      '        enabled: true',
+      '        template: |',
+      '          {table header}',
+      '          {for item in items}',
+      '          {bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}',
+      '          {/for}',
+      '          {/table}',
+      '      - name: Mine',
+      '        entity: shop',
+      '        enabled: false',
+      "        template: '{item} {item.afford}'",
+      ''
+    ].join('\n');
+    fs.writeFileSync(home.options, before, 'utf8');
+    migrate();
+    expect(String(designs(home.options)[0]?.['template']).trimEnd()).toBe(shipped?.template);
+    expect(designs(home.options)[0]?.['enabled']).toBe(true);
+    expect(designs(home.options)[1]?.['template']).toBe('{item} {item.afford}');
+    expect(notesOf(said, 'notices.migration.shelfStrikesLearned')).toHaveLength(1);
+    said = [];
+    migrate();
+    expect(notesOf(said, 'notices.migration.shelfStrikesLearned')).toEqual([]);
+  });
+
   it('leaves a file that already answered it alone, twice over', () => {
     fs.writeFileSync(home.options, 'automation:\n  statline:\n    control: true\n', 'utf8');
     migrate();

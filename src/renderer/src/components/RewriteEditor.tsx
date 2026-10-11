@@ -25,6 +25,7 @@ import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import type { ItemEntity } from '@shared/entities';
 import { equipVerdict, type Wearer } from '@shared/gear';
+import type { ScrollLesson } from '@shared/learning';
 import { readEffects } from '@shared/abilities';
 import {
   CHARACTER_FIELDS,
@@ -46,6 +47,8 @@ import {
   ANSI_COLOURS,
   isAnsiColour,
   parseTemplate,
+  STYLE_CLOSERS,
+  STYLE_TAGS,
   type Drawn,
   type PlacedGlyph,
   type Segment
@@ -556,7 +559,7 @@ function Colours({
         />
         <span className="hint">{t('settings.rewrites.editor.sidebar.pickColour')}</span>
       </label>
-      {['bold', 'dim', 'reset'].map((tag) => (
+      {STYLE_TAGS.map((tag) => (
         <button
           className="rewrite-tag"
           key={tag}
@@ -569,7 +572,7 @@ function Colours({
       ))}
       <span className="settings-label">{t('settings.rewrites.editor.sidebar.closers')}</span>
       <div className="rewrite-tag-row" title={t('settings.rewrites.editor.sidebar.closersHint')}>
-        {['/colour', '/bg', '/bold', '/dim'].map((tag) => (
+        {STYLE_CLOSERS.map((name) => `/${name}`).map((tag) => (
           <button
             className="rewrite-tag"
             key={tag}
@@ -775,6 +778,9 @@ const SAMPLE_PACK: ItemEntity[] = [
   sampleItem('token of Silvermere', { encumbrance: 0, notDroppable: false })
 ];
 
+/** A scroll on the sample shelf: realm-free, since the preview's lesson is written out. */
+const SAMPLE_SCROLL: ItemEntity = sampleItem('scroll', { encumbrance: 1 });
+
 /**
  * The sample's own effects, read exactly as main reads a real pack's.
  *
@@ -836,15 +842,26 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
         ]
       };
     case 'shop': {
+      /*
+       * One scroll whose spell the sample already has and one its magery
+       * cannot learn, so `{item.learned}` and a refused `{item.usable}` preview.
+       */
+      const learned: ScrollLesson = { learned: true, verdict: { kind: 'learns' } };
+      const refused: ScrollLesson = {
+        learned: false,
+        verdict: { kind: 'refused', why: 'magery' }
+      };
       const rows = [
-        ['padded gloves', 3, '12 silver crowns', SAMPLE_PACK[3]!],
-        ['golden battleaxe', 1, '18 gold crowns', SAMPLE_PACK[2]!],
-        ['torch', 20, '5 copper farthings', SAMPLE_PACK[4]!]
+        ['padded gloves', 3, '12 silver crowns', SAMPLE_PACK[3]!, null],
+        ['golden battleaxe', 1, '18 gold crowns', SAMPLE_PACK[2]!, null],
+        ['torch', 20, '5 copper farthings', SAMPLE_PACK[4]!, null],
+        ['minor healing scroll', 4, '30 silver nobles', SAMPLE_SCROLL, learned],
+        ['magic missile scroll', 2, '40 silver nobles', SAMPLE_SCROLL, refused]
       ] as const;
       return {
         entity,
         figures,
-        rows: rows.map(([name, quantity, price, item]) => ({
+        rows: rows.map(([name, quantity, price, item, lesson]) => ({
           name,
           quantity,
           price,
@@ -852,7 +869,8 @@ export function sampleFacts(entity: RewriteEntity, own: StatlineFigures | null):
           note: null,
           item,
           verdict: equipVerdict(item, SAMPLE_WEARER, t),
-          effects: sampleEffects(item)
+          effects: sampleEffects(item),
+          lesson
         }))
       };
     }
@@ -999,7 +1017,8 @@ export function Preview({
                         background: colourOf(piece.segment.bg),
                         color: colourOf(piece.segment.fg),
                         fontWeight: piece.segment.bold ? 700 : undefined,
-                        opacity: piece.segment.dim ? 0.6 : undefined
+                        opacity: piece.segment.dim ? 0.6 : undefined,
+                        textDecoration: piece.segment.strike ? 'line-through' : undefined
                       }}
                     >
                       {piece.text}
@@ -1014,7 +1033,8 @@ export function Preview({
                       background: colourOf(ending?.bg ?? null),
                       color: colourOf(ending?.fg ?? null),
                       fontWeight: ending?.bold ? 700 : undefined,
-                      opacity: ending?.dim ? 0.6 : undefined
+                      opacity: ending?.dim ? 0.6 : undefined,
+                      textDecoration: ending?.strike ? 'line-through' : undefined
                     }}
                   >
                     {typed}

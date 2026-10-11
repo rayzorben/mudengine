@@ -22,6 +22,8 @@ import { quotedInCopper } from '../../shared/coins';
 import { wireItem, type ItemEntity } from '../../shared/entities';
 import { equipVerdict, type Wearer } from '../../shared/gear';
 import { readEffects } from '../../shared/abilities';
+import { scrollLesson, taughtBy, type Learner, type ScrollLesson } from '../../shared/learning';
+import type { WorldSpell } from '../../shared/world';
 import {
   activeDesign,
   ENTITY_SPECS,
@@ -46,17 +48,37 @@ import { t } from '../app/i18n';
 import { itemList, parseCarriedEntries, parseCoinEntry, parseKeyEntries } from '../parse/inventory';
 import { cannotBe, parseExit, printedExitWords } from '../parse/room';
 import type { WorldGraph } from '../world/WorldGraph';
+import { learnerIn } from '../world/learning';
 
 /** What a rewrite asks the world database: the joins a row is drawn with, and the room. */
 export type RewriteWorld = Pick<
   WorldGraph,
-  'buildItemEntity' | 'namedClasses' | 'referredNames' | 'byId'
+  'buildItemEntity' | 'namedClasses' | 'referredNames' | 'byId' | 'spellById' | 'classNamed'
 >;
 
 export interface RewriteContext {
   state: CharacterState;
   world: RewriteWorld | undefined;
   wearer: Wearer;
+}
+
+/**
+ * What reading a shelf's scroll would teach: its `LearnSp` rows, by id, never
+ * by name (two rows share `minor healing`). A row the realm lacks is skipped,
+ * as the server's `read` skips it; null for anything that teaches nothing.
+ */
+function lessonOf(
+  item: ItemEntity,
+  learner: Learner | null,
+  state: CharacterState,
+  world: RewriteWorld | undefined
+): ScrollLesson | null {
+  if (world === undefined || learner === null) return null;
+  const spells = taughtBy(item).flatMap((id): WorldSpell[] => {
+    const spell = world.spellById(id);
+    return spell === null ? [] : [spell];
+  });
+  return scrollLesson(spells, learner, state.spellbook);
 }
 
 /** What the console is fed in the listing's place. */
@@ -265,6 +287,8 @@ export class Rewriter {
         return { entity, figures, rows: who };
       }
       case 'shop': {
+        const world = context.world;
+        const learner = world === undefined ? null : learnerIn(context.state, world);
         const shelf: ShopRow[] = rows
           .map((row) => {
             const name = row['item']?.trim() ?? '';
@@ -278,7 +302,8 @@ export class Rewriter {
               note: row['note']?.trim() || null,
               item,
               verdict: equipVerdict(item, context.wearer, t),
-              effects: this.effectsOf(item, context)
+              effects: this.effectsOf(item, context),
+              lesson: lessonOf(item, learner, context.state, world)
             };
           })
           .filter((row) => row.name.length > 0);

@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import { Rewriter, type RewriteWorld } from '../Rewriter';
+import type { BatchBlock } from '../../parse/Classifier';
+import { LEARN_SPELL_ABILITY } from '../../../shared/abilities';
 import { EMPTY_CHARACTER, emptyRoom, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { wireItem } from '../../../shared/entities';
 import { UNKNOWN_WEARER } from '../../../shared/gear';
-import { roomId, type Direction, type WorldRoom } from '../../../shared/world';
+import {
+  roomId,
+  type Direction,
+  type WorldClass,
+  type WorldRoom,
+  type WorldSpell
+} from '../../../shared/world';
 import { stripAnsi } from '../../net/LineTokenizer';
 import { t } from '../../app/i18n';
 
@@ -42,11 +50,24 @@ const YARD: WorldRoom = {
 };
 const ROOMS = new Map([HALL, YARD].map((room) => [roomId(room.map, room.room), room]));
 
+/** Two prayer scrolls: Priest 1 and Priest 3, the user's own example (todo 770). */
+const SPELLS = new Map<number, WorldSpell>([
+  [7, { id: 7, name: 'minor healing', mageryType: 2, mageryLevel: 1 }],
+  [8, { id: 8, name: 'cure poison', mageryType: 2, mageryLevel: 3 }]
+]);
+const SCROLLS: Record<string, number> = { 'healing scroll': 7, 'cure scroll': 8 };
+const CLERIC: WorldClass = { id: 3, name: 'Cleric', mageryType: 2, magery: 2 };
+
 const WORLD: RewriteWorld = {
-  buildItemEntity: (name) => wireItem(name),
+  buildItemEntity: (name) =>
+    SCROLLS[name] === undefined
+      ? wireItem(name)
+      : { ...wireItem(name), abilities: [[LEARN_SPELL_ABILITY, SCROLLS[name]]] },
   namedClasses: () => ({}),
   referredNames: () => ({ item: {}, spell: {}, mob: {} }),
-  byId: (id) => ROOMS.get(id)
+  byId: (id) => ROOMS.get(id),
+  spellById: (id) => SPELLS.get(id) ?? null,
+  classNamed: (name) => (name === CLERIC.name ? CLERIC : null)
 };
 
 const AT = 500;
@@ -139,5 +160,55 @@ describe('the exits line', () => {
       }
     };
     expect(drawn(exitsBlock('south'), state)).toBe(`south, ${hidden('up')}|up`);
+  });
+});
+
+describe('a scroll on the shelf', () => {
+  const shelf = (...items: string[]): BatchBlock => ({
+    seq: 1,
+    at: AT,
+    type: 'shop-list',
+    domain: 'items',
+    groups: {},
+    text: 'The following items are for sale here:',
+    terminator: 'newline',
+    confidence: 1,
+    rows: items.map((item) => ({ item, quantity: '1', price: '30 silver nobles' }))
+  });
+  const draw = (block: BatchBlock, state: CharacterState): string[] => {
+    const rewriter = new Rewriter();
+    rewriter.configure({
+      ...DEFAULT_CONFIG.ui.rewrites,
+      designs: [
+        {
+          name: '',
+          entity: 'shop',
+          enabled: true,
+          template: '{for item in items}{item}|{item.learned}|{item.usable}\n{/for}'
+        }
+      ]
+    });
+    const chunk = rewriter.render(block, { state, world: WORLD, wearer: UNKNOWN_WEARER });
+    return chunk === null ? [] : stripAnsi(chunk.text).trimEnd().split(/\r?\n/);
+  };
+  const cleric: CharacterState = {
+    ...EMPTY_CHARACTER,
+    className: 'Cleric',
+    progress: { ...EMPTY_CHARACTER.progress, level: 10 },
+    spellbook: [{ name: 'minor healing', short: 'mihe', level: 1, cost: 2 }]
+  };
+
+  it('marks a scroll whose spell the book lists, and says why a Cleric cannot learn Priest 3', () => {
+    expect(draw(shelf('healing scroll', 'cure scroll', 'torch'), cleric)).toEqual([
+      'healing scroll|true|',
+      `cure scroll|false|${t('rewrites.shop.learn.mageryLevel')}`,
+      'torch|?|'
+    ]);
+  });
+
+  it('leaves learned unknown while the spell list was never read', () => {
+    expect(draw(shelf('healing scroll'), { ...cleric, spellbook: null })).toEqual([
+      'healing scroll|?|'
+    ]);
   });
 });

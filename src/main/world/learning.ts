@@ -20,6 +20,14 @@ export function learnerOf(state: CharacterState, row: WorldClass | null): Learne
   };
 }
 
+/** The learner for the class the stat sheet named, looked up in the realm's class table. */
+export function learnerIn(
+  state: CharacterState,
+  classes: { classNamed(name: string): WorldClass | null }
+): Learner {
+  return learnerOf(state, classes.classNamed(state.className ?? ''));
+}
+
 export function learning(
   state: CharacterState,
   ids: readonly number[],
