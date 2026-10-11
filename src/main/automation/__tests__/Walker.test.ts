@@ -1910,13 +1910,14 @@ describe('a locked barrier in the way', () => {
   });
 });
 
-describe('sneaking before a route', () => {
-  const sneaking = (now?: () => CharacterState): Walker =>
-    new Walker({ ...config, movement: { ...config.movement, sneak: true } }, queue, {
-      notice: (m) => notices.push(m),
-      ...(now === undefined ? {} : { stateNow: now })
-    });
+/* A walker with sneak on, reading the world through `now` when given. */
+const sneaking = (now?: () => CharacterState): Walker =>
+  new Walker({ ...config, movement: { ...config.movement, sneak: true } }, queue, {
+    notice: (m) => notices.push(m),
+    ...(now === undefined ? {} : { stateNow: now })
+  });
 
+describe('sneaking before a route', () => {
   it('sneaks first when asked to', () => {
     const walk = sneaking();
     walk.start(ROUTE, at(1, 1));
@@ -2516,6 +2517,46 @@ describe('stepping out of a room something may have followed into', () => {
     vi.advanceTimersByTime(TUNING.walk.holdMs);
     expect(sent).toEqual(['e']);
     expect(walker.progress.done).toBe(1);
+  });
+
+  /*
+   * `SneakCommand.cs` refuses `sn` while `Room.Mobs` holds anything,
+   * so a follower that walked in behind the room block costs no `sn`: the
+   * step goes seen. The second test is the positive control, the same arrival
+   * with nothing following, where the `sn` is asked. Where it holds, the
+   * sneak is what ends a chase: `Mob.CheckFollow` reads the mover's live
+   * `Sneaking` on every spell tick.
+   */
+  it('spends no sneak in a room a follower walked into', () => {
+    let world: CharacterState = { ...holding(1, 1, 'tall saracen leader'), stealth: 'seen' };
+    walker = sneaking(() => world);
+    walker.start(ROUTE, world);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['e']);
+
+    world = { ...at(1, 2), stealth: 'seen' };
+    walker.onCharacter(world);
+    // `A tall saracen leader moves into the room from the west.`, the same read.
+    world = { ...holding(1, 2, 'tall saracen leader'), stealth: 'seen' };
+    walker.onCharacter(world);
+    vi.advanceTimersByTime(TUNING.walk.followSettleMs + 10);
+    expect(sent).toEqual(['e', 'e']);
+  });
+
+  it('asks for the sneak where nothing followed', () => {
+    let world: CharacterState = { ...holding(1, 1, 'tall saracen leader'), stealth: 'seen' };
+    walker = sneaking(() => world);
+    walker.start(ROUTE, world);
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['e']);
+
+    world = { ...at(1, 2), stealth: 'seen' };
+    walker.onCharacter(world);
+    vi.advanceTimersByTime(TUNING.walk.followSettleMs + 10);
+    expect(sent).toEqual(['e', 'sn']);
+    walker.onBlock(block('user-sneak-initiate'));
+    vi.advanceTimersByTime(50);
+    expect(sent).toEqual(['e', 'sn', 'e']);
   });
 
   /*
