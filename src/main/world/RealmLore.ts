@@ -106,15 +106,16 @@ interface LoreFile {
    */
   noEffects?: Record<string, Record<string, NoEffectRow>>;
   /**
-   * How soon each room made its monsters again, per realm, keyed by room,
-   * timed on the wire where the world database states no clock. See
-   * `src/shared/spawns.ts`. Optional for the same reason `slots` is.
+   * How soon each room made its monsters again, per realm played
+   * (`playedKey`), keyed by room, timed on the wire where the world database
+   * states no clock. See `src/shared/spawns.ts`. Optional for the same reason
+   * `slots` is.
    */
   spawns?: Record<string, Record<string, LearnedSpawns>>;
   /**
-   * What each realm paid for a solo kill of each monster, keyed by the realm's
-   * row name (todo 70). See `KillExpLore`. Optional for the same reason
-   * `slots` is.
+   * What each realm played (`playedKey`) paid for a solo kill of each
+   * monster, keyed by the realm's row name (todo 70). See `KillExpLore`.
+   * Optional for the same reason `slots` is.
    */
   killExp?: Record<string, Record<string, LearnedKillExp>>;
 }
@@ -178,9 +179,14 @@ export class RealmLore {
    * A narrow object rather than this one, because `CharacterTracker` asks about
    * a monster and must not be able to ask about a *realm* — which is the door
    * through which a character on one realm would read another's monsters.
+   *
+   * `played` is the realm the session plays (`realmName`), asked at each read:
+   * refills and kill exp differ between two realms on one world file, and the
+   * menu can change it mid-connection (todo 34).
    */
-  forRealm(realm: string, world: WorldGraph | undefined): RealmLoreView {
+  forRealm(realm: string, world: WorldGraph | undefined, played: () => string): RealmLoreView {
     const key = realmKey(realm);
+    const playing = (): string => playedKey(realm, played());
     // The realm's own row, so `large cave bear` is `cave bear` (`rowNameOf`).
     const rowOf = (name: string): string =>
       rowNameOf(mobKey(name), (who) => world?.mob(who) !== undefined);
@@ -228,13 +234,13 @@ export class RealmLore {
         return this.noEffects.changes(key);
       },
       // Filed under the realm's row name, as a death sentence is.
-      observeKillExp: (name, exp, at) => this.observeKillExp(key, rowOf(name), exp, at),
-      killExpFor: (name) => this.killExpTable(key).get(rowOf(name))?.exp ?? null,
+      observeKillExp: (name, exp, at) => this.observeKillExp(playing(), rowOf(name), exp, at),
+      killExpFor: (name) => this.killExpTable(playing()).get(rowOf(name))?.exp ?? null,
       allKillExp: () =>
-        new Map([...this.killExpTable(key)].map(([name, entry]) => [name, entry.exp])),
-      spawnsAt: (room) => this.spawnTable(key).get(room) ?? null,
-      allSpawns: () => this.spawnTable(key),
-      observeRefill: (refill, at) => this.observeRefill(key, refill, at)
+        new Map([...this.killExpTable(playing())].map(([name, entry]) => [name, entry.exp])),
+      spawnsAt: (room) => this.spawnTable(playing()).get(room) ?? null,
+      allSpawns: () => this.spawnTable(playing()),
+      observeRefill: (refill, at) => this.observeRefill(playing(), refill, at)
     };
   }
 
@@ -1037,6 +1043,20 @@ function readSlotEntry(value: unknown): SlotLoreEntry | null {
   if (words.length === 0) return null;
   const at = record['at'];
   return { words, at: typeof at === 'number' && Number.isFinite(at) ? at : 0 };
+}
+
+/**
+ * The key of what one realm played on one world file learned: refills, kill
+ * exp, finds and shops (todo 34). `played` is `realmName`'s, so Paradigm's PvE
+ * and PvP keep apart on one world, and orohost and paramud on one file.
+ */
+export function playedKey(world: string, played: string): string {
+  return realmKey(playedStamp(world, played));
+}
+
+/** The same, unfolded: the `realm` a find or shop file is stamped with. */
+export function playedStamp(world: string, played: string): string {
+  return `${world}@${played}`;
 }
 
 /**

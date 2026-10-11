@@ -35,6 +35,8 @@ import type { AttackSpellLore } from '../../../shared/lore';
 import { RealmLore } from '../../world/RealmLore';
 import type { ProwessClass } from '../../../shared/prowess';
 
+const PLAYED = (): string => 'orohost:2427';
+
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
   // No pacing in the way: these tests are about what is *proposed*, and the
@@ -2746,7 +2748,7 @@ describe('an attack spell opens the fight', () => {
         caster({ attack }),
         undefined,
         undefined,
-        lore.forRealm('greatermud', undefined)
+        lore.forRealm('greatermud', undefined, PLAYED)
       );
       auto.onCharacter({ ...standing(), spellbook: book });
       drain();
@@ -2819,7 +2821,7 @@ describe('an attack spell opens the fight', () => {
         caster(),
         undefined,
         undefined,
-        lore.forRealm('greatermud', undefined)
+        lore.forRealm('greatermud', undefined, PLAYED)
       );
       auto.onCharacter({ ...room, spellbook: book });
       drain();

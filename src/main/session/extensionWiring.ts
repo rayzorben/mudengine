@@ -26,7 +26,6 @@ import type { SafetyDecision } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
 import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
-import type { ConnectionTarget } from '../../shared/types';
 import { roomAddress, unrouted } from '../../shared/world';
 import type { Errands } from './Errands';
 import type { GearReads } from './gearReads';
@@ -43,6 +42,8 @@ export interface ExtensionDeps {
   keep(writes: readonly LayerWrite[]): string | null;
   /** The last lines of the session, escape sequences intact; older lines are read from disk. */
   backscroll(lines: number): Promise<string>;
+  /** The realm played, as stores key it (`realmName`); null before a dial. */
+  realm(): string | null;
 }
 
 export interface ExtensionWiring {
@@ -77,7 +78,6 @@ export interface ExtensionWiring {
   fled(): readonly FledEntry[];
   busy(): boolean;
   safety(): readonly SafetyDecision[];
-  target(): ConnectionTarget | null;
   /** Configures the session again, so a layer lands. */
   relayer(): void;
   notice(message: string): void;
@@ -115,10 +115,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
       character: () => tracker.current,
       config: wiring.config,
       tuning,
-      realm: () => {
-        const target = wiring.target();
-        return target === null ? null : `${target.host}:${target.port}`;
-      },
+      realm: () => deps?.realm() ?? null,
       world: wiring.world,
       huntingGrounds: (options) => errands.huntingGrounds(null, null, options),
       realmSpeed: () => errands.realmSpeed,

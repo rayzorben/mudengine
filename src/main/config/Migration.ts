@@ -57,8 +57,14 @@ import { DENOMINATIONS } from '../../shared/character';
 import { SERVER_FILE, type Home } from '../app/home';
 import { directoryNames } from './dirs';
 import { discoveryKey, type Discovery } from '../../shared/memory';
-import { realmKey } from '../world/RealmLore';
-import type { ShippedWorld } from '../../shared/worlds';
+import { playedKey, playedStamp, realmKey } from '../world/RealmLore';
+import { realmAddress } from '../../shared/types';
+import {
+  DEFAULT_SHIPPED_WORLD,
+  SHIPPED_WORLDS,
+  asShippedWorld,
+  type ShippedWorld
+} from '../../shared/worlds';
 import { CONDITION_WAIT_KEYS } from '../../shared/walk';
 import { DEFAULT_LOW_LIVES } from '../../shared/lives';
 import { THEMES, type ThemeId } from '../../shared/themes';
@@ -281,6 +287,243 @@ function migrateAll(options: MigrationOptions): void {
   theAttackIsChosen(home, note, options.template);
   theSheetAnswersPickAndMeditate(home, note, options.template);
   aFoundPlayerIsNoEffect(home, note);
+  theRealmIsTheMenusChoice(home, note);
+}
+
+/**
+ * The realm menus whose entries this migration can name, as the server printed
+ * them (`logs/2026-10-09_13-13-52_rayzor.log:110-153`, 2026-10-09), first
+ * entry first. Only the address the user's characters play behind one.
+ */
+const MENUS_READ: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
+  'paramud.mudinfo.net:2323': [
+    ['1', 'Paradigm PVE'],
+    ['2', 'Paradigm PVP']
+  ]
+};
+
+/**
+ * A login step's `when` that answers the realm menu. The wire's own line is
+ * `prompt-realm` (`src/main/parse/patterns.ts`); this matches a script's text.
+ */
+const REALM_PROMPT = /select a realm/i;
+
+/**
+ * The suffix of this migration's backups, its own so a later migration's
+ * `.bak` cannot overwrite what was set aside here.
+ */
+const BEFORE_REALMS = '.before-realms';
+
+/** Where one character plays, as this migration reads it off the files. */
+interface PlayedBy {
+  id: string;
+  address: string;
+  /** `realmName` of the realm its login step picks off a menu `MENUS_READ` names; null otherwise. */
+  chosen: string | null;
+  /**
+   * The keys its world's lore may have been kept under (`realmKey` of the
+   * source the database loads). A file may load as itself, as the shipped
+   * world it is the archive of, or as the shipped world a failed conversion
+   * falls back to (`RealmLibrary.load`), so a file claims all three rather
+   * than this migration deciding which: a world two realms may load is then
+   * set aside, never filed under the wrong one.
+   */
+  worlds: readonly string[];
+}
+
+/**
+ * Todo 34: a realm is the address and the realm its menu chose
+ * (`realmName`), and the stores keyed by address or by world file alone mixed
+ * Paradigm's PvE and PvP. Each character's record is restamped with the realm
+ * its login step picks; players kept by address go to the menu's first entry
+ * (PvE, where most were learned); the world and speed an address said go to
+ * each of its realms. Refills, kill exp, finds and shops kept by world file go
+ * to the one realm whose characters load that world (a menu's first entry, or
+ * the address); a world characters on two realms load is set aside in the
+ * backup, since there is no telling whose it was. Every file is backed up
+ * first and written atomically; idempotent, since each move takes its source.
+ */
+function theRealmIsTheMenusChoice(home: Home, note: (message: string) => void): void {
+  const written = new Set<string>();
+  const setAside: string[] = [];
+  const json = (file: string): Record<string, unknown> | null => {
+    try {
+      const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return isRecord(parsed) ? parsed : null;
+    } catch {
+      // Missing, or left alone for the store that reads it to report.
+      return null;
+    }
+  };
+  const save = (file: string, value: unknown): void => {
+    // The first run's copy is the one before any of this; a later run keeps it.
+    if (!written.has(file) && !fs.existsSync(`${file}${BEFORE_REALMS}`)) {
+      fs.copyFileSync(file, `${file}${BEFORE_REALMS}`);
+    }
+    writeJsonAtomically(file, value);
+    written.add(file);
+  };
+  const first = (address: string): string => {
+    const menu = MENUS_READ[address];
+    return menu?.[0] === undefined ? address : `${address}/${menu[0][1]}`;
+  };
+
+  const worldsFile = home.state('worlds.json');
+  const worlds = json(worldsFile);
+  const playing = playedBy(home, worlds?.['realms']);
+
+  for (const { id, address, chosen } of playing) {
+    const file = home.record('belongings', id);
+    const record = chosen === null ? null : json(file);
+    if (record === null || record['realm'] !== address) continue;
+    save(file, { ...record, realm: chosen });
+  }
+
+  const playersFile = home.state('players.json');
+  const players = json(playersFile);
+  const realms = players?.['realms'];
+  if (players !== null && isRecord(realms)) {
+    let moved = false;
+    for (const address of Object.keys(MENUS_READ)) {
+      const from = realms[realmKey(address)];
+      if (!isRecord(from)) continue;
+      const into = realms[realmKey(first(address))];
+      realms[realmKey(first(address))] = { ...from, ...(isRecord(into) ? into : {}) };
+      delete realms[realmKey(address)];
+      moved = true;
+    }
+    if (moved) save(playersFile, players);
+  }
+
+  if (worlds !== null) {
+    let added = false;
+    for (const section of ['realms', 'speeds']) {
+      const table = worlds[section];
+      if (!isRecord(table)) continue;
+      for (const [address, menu] of Object.entries(MENUS_READ)) {
+        if (table[address] === undefined) continue;
+        for (const [, name] of menu) {
+          if (table[`${address}/${name}`] !== undefined) continue;
+          table[`${address}/${name}`] = table[address];
+          added = true;
+        }
+      }
+    }
+    if (added) save(worldsFile, worlds);
+  }
+
+  // Each world file's characters' realms: one is where its records go.
+  const claims = new Map<string, Set<string>>();
+  for (const { worlds: loaded, address } of playing) {
+    for (const world of loaded) {
+      claims.set(world, (claims.get(world) ?? new Set()).add(first(address)));
+    }
+  }
+  const loreFile = home.state('mob-lore.json');
+  const lore = json(loreFile);
+  let loreMoved = false;
+  for (const [world, played] of claims) {
+    const only = played.size === 1 ? ([...played][0] as string) : null;
+    for (const section of ['spawns', 'killExp']) {
+      const table = lore?.[section];
+      const from = isRecord(table) ? table[world] : undefined;
+      if (!isRecord(table) || !isRecord(from)) continue;
+      if (only === null) {
+        setAside.push(`${loreFile} ${section}.${world}`);
+      } else {
+        const into = table[playedKey(world, only)];
+        table[playedKey(world, only)] = { ...from, ...(isRecord(into) ? into : {}) };
+      }
+      delete table[world];
+      loreMoved = true;
+    }
+    for (const kind of ['finds', 'shops']) {
+      const from = home.state('memory', `${kind}-${world}.json`);
+      const kept = json(from);
+      if (kept === null || typeof kept['realm'] !== 'string') continue;
+      if (only === null) {
+        setAside.push(from);
+      } else {
+        const to = home.state('memory', `${kind}-${playedKey(world, only)}.json`);
+        // A store already under the new key has been written since; the old one waits in the backup.
+        if (fs.existsSync(to)) {
+          setAside.push(from);
+        } else {
+          writeJsonAtomically(to, { ...kept, realm: playedStamp(kept['realm'], only) });
+          written.add(to);
+        }
+      }
+      fs.renameSync(from, `${from}${BEFORE_REALMS}`);
+    }
+  }
+  if (loreMoved) save(loreFile, lore);
+
+  if (written.size > 0) {
+    note(t('notices.migration.realmIsTheMenusChoice', { files: [...written].join(', ') }));
+  }
+  if (setAside.length > 0) {
+    note(t('notices.migration.realmRecordsSetAside', { records: setAside.join(', ') }));
+  }
+}
+
+/**
+ * Where each character plays, read as `resolveProfile` reads it: the server it
+ * names, its login steps (its own, else its server's, else the options
+ * file's) and the world its server's `database` loads, which is the world the
+ * address said (`worlds.json`, else the default) when it states none.
+ */
+function playedBy(home: Home, said: unknown): PlayedBy[] {
+  const servers = directories(home.serversDir).flatMap((id) => {
+    const document = documentOf(home.server(id).file);
+    const name = document?.get('name');
+    const host = document?.get('host');
+    const port = document?.get('port');
+    const database = document?.get('database');
+    if (typeof name !== 'string' || typeof host !== 'string' || typeof port !== 'number') return [];
+    return [
+      {
+        name: name.trim().toLowerCase(),
+        address: realmAddress({ host, port }),
+        database: typeof database === 'string' ? database.trim() : '',
+        login: document?.get('login', true)
+      }
+    ];
+  });
+  const worldSaid = (address: string): string => {
+    const entry = isRecord(said) ? said[address] : undefined;
+    return (isRecord(entry) ? asShippedWorld(entry['world']) : null) ?? DEFAULT_SHIPPED_WORLD;
+  };
+  const shared = documentOf(home.options)?.getIn(['connection', 'login', 'steps'], true);
+  return directories(home.profilesDir).flatMap((id) => {
+    const document = documentOf(home.profile(id).file);
+    const named = document?.get('server');
+    if (typeof named !== 'string') return [];
+    const server = servers.find((each) => each.name === named.trim().toLowerCase());
+    if (server === undefined) return [];
+    const steps = [document?.getIn(['login', 'steps'], true), server.login, shared].find(isSeq);
+    const answer = steps?.items
+      .filter(isMap)
+      .find((step) => REALM_PROMPT.test(String(step.get('when') ?? '')))
+      ?.get('send');
+    const entry = MENUS_READ[server.address]?.find(
+      ([number]) => number === String(answer ?? '').trim()
+    );
+    const shipped = asShippedWorld(server.database);
+    const worlds =
+      server.database.length === 0
+        ? [worldSaid(server.address)]
+        : shipped !== null
+          ? [shipped]
+          : [realmKey(path.basename(server.database)), ...SHIPPED_WORLDS];
+    return [
+      {
+        id,
+        address: server.address,
+        chosen: entry === undefined ? null : `${server.address}/${entry[1]}`,
+        worlds
+      }
+    ];
+  });
 }
 
 /**

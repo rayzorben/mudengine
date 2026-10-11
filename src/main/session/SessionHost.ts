@@ -51,7 +51,14 @@ import {
 } from '../../shared/ipc';
 import type { AppConfig, AutomationSwitch } from '../../shared/config';
 import type { RealmWords } from '../../shared/profiles';
-import { sameTarget, type ConnectionState, type ConnectionTarget } from '../../shared/types';
+import {
+  realmName,
+  realmOf,
+  sameTarget,
+  type ConnectionState,
+  type ConnectionTarget,
+  type Realm
+} from '../../shared/types';
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
 import type { RealmDestinations } from '../world/DestinationBook';
@@ -80,6 +87,8 @@ export interface SessionSlot {
   readonly lowLives: LowLivesHold;
   log: SessionLog | null;
   capture: SessionCapture | null;
+  /** The realm the session's records are keyed on: the last known at a dial, then the menu's choice (todo 34). */
+  realm: Realm | null;
   /**
    * The debug ring, for the debug window and for a bug report.
    *
@@ -192,7 +201,7 @@ export interface SessionHostOptions {
   /**
    * What is known about the other players on *this character's* realm.
    *
-   * Per realm, like the lore, and keyed by the address dialled: what Soul
+   * Per realm, like the lore, and keyed by the realm (`Realm`): what Soul
    * wears is a fact about Soul, and every character on the realm shares it —
    * live, and across restarts. See `PlayerBook`.
    */
@@ -207,40 +216,45 @@ export interface SessionHostOptions {
    */
   destinationsFor(id: SessionId): RealmDestinations;
   /**
-   * The same, for the address a session is about to dial. A character can be
-   * dialled at a saved realm other than its own from the palette, and what it
-   * learns there is that realm's; `connect` re-keys the session with this.
+   * Which realm a dial at `target` is, before its menu says (todo 34): the one
+   * this character's record last played at that address, else the address
+   * alone. The menu's choice re-keys the session when it is read.
    */
-  playersAt(target: ConnectionTarget): RealmPlayers;
+  realmAt(id: SessionId, target: ConnectionTarget): Realm;
   /**
-   * Where the realm's speed is kept for the address about to be dialled
-   * (`WorldBook`), so every character dialling it starts on the figure last
-   * read. Optional for a test, which keeps nothing.
+   * The same, for the realm a session plays. A character can be dialled at a
+   * saved realm other than its own from the palette, and what it learns there
+   * is that realm's; a dial and the menu's choice re-key the session with this.
    */
-  speedAt?(target: ConnectionTarget): KeptSpeed;
+  playersAt(realm: Realm): RealmPlayers;
+  /**
+   * Where the realm's speed is kept (`WorldBook`), so every character playing
+   * it starts on the figure last read. Optional for a test, which keeps nothing.
+   */
+  speedAt?(realm: Realm): KeptSpeed;
   /**
    * Where *this character's own* record is kept — what each bank holds and what
-   * was in each worn slot — for the address it is about to dial.
+   * was in each worn slot — for the realm it plays.
    *
    * Per character **and** per realm, which no other record here is. Neither
    * fact is shared the way the lore and the player book are — Rand's savings
    * are not Probe's, and neither is the kit on Rand's back — and neither is
    * portable the way the memory is, because the vault and the slots both
-   * belong to the server. So both keys are needed, and `connect` is where the
-   * second one is known.
+   * belong to the server. So both keys are needed, and a dial and the menu's
+   * choice are where the second one is known.
    */
-  belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord;
+  belongingsAt(id: SessionId, realm: Realm): CharacterRecord;
   /**
    * Where what a `search` turns up is written down.
    *
-   * Keyed on the **realm** and handed over beside `memoryFor`, whose shared
-   * half keys the same way: that a room hides a rusty key is a fact about the
-   * world, and a second character re-learning it spends a search to be told
-   * what the first already knew. Optional: a test and the anonymous case write
-   * nothing down.
+   * Keyed on the world file and the realm played (`playedKey`, todo 34), and
+   * read through the realm at each ask, so a menu's choice moves it: a second
+   * character re-learning a find spends a search to be told what the first
+   * already knew, and Paradigm's PvE finds are not in its PvP. Optional: a
+   * test and the anonymous case write nothing down.
    */
   findsFor?(id: SessionId): RealmFinds | undefined;
-  /** Where each counter's `list` is written down, keyed on the realm like `findsFor`. */
+  /** Where each counter's `list` is written down, keyed like `findsFor`. */
   shopsFor?(id: SessionId): RealmShops | undefined;
   /**
    * Where this character's record last placed it, read from the record for the
@@ -250,13 +264,13 @@ export interface SessionHostOptions {
   /** The lives the character's record last read on the realm at `target`, before a dial there. */
   livesAt(id: SessionId, target: ConnectionTarget): KeptLives | null;
   /**
-   * The realm at `target` named its own data (`SessionSink.realmTold`).
+   * The realm played named its own data (`SessionSink.realmTold`).
    *
-   * Handed the address actually dialled, like `playersAt`, because the word is
+   * Handed the realm actually played, like `playersAt`, because the word is
    * the server's and a character dialled ad hoc at another saved realm heard
    * that realm's. Optional: a test and the anonymous case remember nothing.
    */
-  realmTold?(id: SessionId, target: ConnectionTarget, realm: RealmWord): void;
+  realmTold?(id: SessionId, realm: Realm, word: RealmWord): void;
   /**
    * A session has just established a socket.
    *
@@ -506,11 +520,18 @@ export class SessionHost {
         statsBase: (base) => this.options.toAll(Push.statsBase, { session: id, payload: base }),
         switchAutomationNow: (name, on) => this.switchNow(id, name, on),
         loopShelf: () => this.options.loopShelf?.() ?? [],
-        realmTold: (realm) => {
-          // The address this connection actually went to, which the manager
-          // holds from `connect`; a word with no address is a word about nowhere.
+        realmTold: (word) => {
+          // The realm this connection actually plays, bound at the dial; a word
+          // with no realm is a word about nowhere.
+          if (slot.realm !== null) this.options.realmTold?.(id, slot.realm, word);
+        },
+        realmChosen: (chosen) => {
           const target = slot.manager.state.target;
-          if (target !== null) this.options.realmTold?.(id, target, realm);
+          if (target === null) return;
+          const realm = realmOf(target, chosen);
+          if (slot.realm !== null && realmName(slot.realm) === realmName(realm)) return;
+          slot.realm = realm;
+          this.useRealm(slot);
         },
         state: (state) => {
           debug.connection(state);
@@ -590,7 +611,8 @@ export class SessionHost {
       log: null,
       capture: null,
       debug,
-      named: null
+      named: null,
+      realm: null
     };
     this.slots.set(id, slot);
     /*
@@ -734,12 +756,25 @@ export class SessionHost {
 
     // Keyed on where this connection actually goes, not where the character's
     // file says it lives: the two differ when a saved realm is dialled ad hoc.
-    slot.manager.useRealm(
-      this.options.playersAt(target),
-      this.options.belongingsAt(id, target),
-      this.options.speedAt?.(target)
-    );
+    slot.realm = this.options.realmAt(id, target);
+    this.useRealm(slot);
     return slot.manager.connect(target);
+  }
+
+  /** Re-keys a session's realm records on the realm its slot now plays. */
+  private useRealm(slot: SessionSlot): void {
+    if (slot.realm === null) return;
+    slot.manager.useRealm(
+      this.options.playersAt(slot.realm),
+      this.options.belongingsAt(slot.id, slot.realm),
+      this.options.speedAt?.(slot.realm)
+    );
+    // Finds and shops are read through the realm played at each ask, so only
+    // the cards need telling: what they hold is the last realm's.
+    const finds = this.options.findsFor?.(slot.id);
+    const shops = this.options.shopsFor?.(slot.id);
+    if (finds) this.options.toAll(Push.finds, { session: slot.id, payload: [...finds.all] });
+    if (shops) this.options.toAll(Push.shops, { session: slot.id, payload: [...shops.all] });
   }
 
   /** What one character's extensions are handed: the slot's backscroll, empty until it exists. */
@@ -750,6 +785,10 @@ export class SessionHost {
       extensions: given.loaded(),
       home: given.home,
       records: (name) => given.records(name, id),
+      realm: () => {
+        const realm = this.slots.get(id)?.realm;
+        return realm ? realmName(realm) : null;
+      },
       keep: (writes) => given.keep(id, writes),
       backscroll: async (lines) =>
         unstamped((await this.slots.get(id)?.backscroll.page(lines))?.text ?? '')

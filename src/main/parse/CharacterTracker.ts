@@ -1000,7 +1000,7 @@ export class CharacterTracker {
     return this.company.noteRemoteRoom(from, room, name, at);
   }
 
-  /** The realm the next connection dials, from `reset()` on — `Company.useRealm`. */
+  /** The realm this connection plays, re-seeding the roster at once — `Company.useRealm`. */
   useRealm(players: RealmPlayers): void {
     this.company.useRealm(players);
     // A different realm may be a different lineage, and carrying the last

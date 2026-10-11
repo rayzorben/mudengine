@@ -115,7 +115,7 @@ interface BelongingsFile {
 export interface BelongingsOptions {
   /** Where this character's record lives. Created on demand. */
   file: string;
-  /** The address dialled, as `realmAddress` folds it. */
+  /** The realm played, as `realmName` writes it: the address, then the menu's choice (todo 34). */
   realm: string;
   /**
    * Reported rather than thrown: failing to read a balance file must not stop
@@ -615,12 +615,26 @@ export function peekLives(file: string, realm: string): KeptLives | null {
   return peek(file, realm)?.lives ?? null;
 }
 
+/**
+ * The realm the record was last kept for, as `realmName` wrote it, read the
+ * same way: which of an address's realms a dial there is before its menu says
+ * (todo 34). Null for a missing or unreadable file.
+ */
+export function peekRealm(file: string): string | null {
+  return readRecord(file)?.realm ?? null;
+}
+
 /** The record for `realm`, or null for a missing, unreadable or other realm's file. */
 function peek(file: string, realm: string): BelongingsFile | null {
+  const record = readRecord(file);
+  return record?.realm === realm ? record : null;
+}
+
+function readRecord(file: string): BelongingsFile | null {
   try {
     if (!fs.existsSync(file)) return null;
     const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return isBelongingsFile(parsed) && parsed.realm === realm ? parsed : null;
+    return isBelongingsFile(parsed) ? parsed : null;
   } catch {
     return null;
   }

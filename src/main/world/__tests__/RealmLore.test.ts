@@ -3,13 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { RealmLore, realmKey } from '../RealmLore';
+import { RealmLore, playedKey, realmKey } from '../RealmLore';
 import type { WorldGraph } from '../WorldGraph';
 import { mobNameCandidates } from '../../../shared/mobs';
 import { SpellMessageBook } from '../../../shared/spell-messages';
 import { SPAWNS_VERSION } from '../../../shared/spawns';
 import { t } from '../../app/i18n';
 import { complaint } from './complaint';
+
+/** The realm played, which only refills and kill exp are keyed by (todo 34). */
+const PLAYED = (): string => 'orohost:2427';
 
 /** The two rows this realm names. */
 const rows: Record<string, { name: string; hp: number; span?: [number, number] }> = {
@@ -85,7 +88,7 @@ describe('the two halves of the health estimate ask the same question', () => {
   } as unknown as WorldGraph;
 
   it('resolves the regeneration by the room, as the maximum beside it is', () => {
-    const lore = store().forRealm('gmud.sqlite', byRoom);
+    const lore = store().forRealm('gmud.sqlite', byRoom, PLAYED);
     expect(lore.regenFor('gnoll scout', '1/1')).toBe(8);
     // No room, or one that cannot tell the rows apart: the fold, as before.
     expect(lore.regenFor('gnoll scout')).toBe(168);
@@ -95,7 +98,7 @@ describe('the two halves of the health estimate ask the same question', () => {
 
 describe('what is known about a monster', () => {
   it('answers from the realm data where the realm speaks', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(lore.maximumFor('The Giant Rat')).toEqual({ max: 12, source: 'realm', span: null });
   });
 
@@ -106,20 +109,20 @@ describe('what is known about a monster', () => {
    * for something the shipped realm knows the number for.
    */
   it('sees through the modifier the server hangs off a name', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(lore.maximumFor('large giant rat')).toEqual({ max: 12, source: 'realm', span: null });
   });
 
   /* The realm is exact; learning is a bound. A bound never outranks a number. */
   it('lets the realm data outrank anything fighting taught', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     lore.observe('giant rat', { damage: 400, killed: true, at: 1 });
     expect(lore.maximumFor('giant rat').source).toBe('realm');
     expect(lore.maximumFor('giant rat').max).toBe(12);
   });
 
   it('carries the span for a name the realm data is unsure about', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(lore.maximumFor('cocoon').span).toEqual([100, 250]);
   });
 
@@ -128,12 +131,12 @@ describe('what is known about a monster', () => {
    * saying so is what stops a bar being drawn against a number nobody has.
    */
   it('knows nothing about a monster nothing has taught it', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(lore.maximumFor('grue')).toEqual({ max: null, source: null, span: null });
   });
 
   it('answers from what fighting taught, once something has died', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     lore.observe('grue', { damage: 300, killed: false, at: 1 });
     // Still standing after 300 is a floor, not a maximum, and not a bar.
     expect(lore.maximumFor('grue').max).toBeNull();
@@ -145,27 +148,44 @@ describe('what is known about a monster', () => {
 describe('keeping what was learned', () => {
   it('writes what it learned and reads it back', () => {
     const first = store();
-    first.forRealm('gmud.sqlite', world).observe('grue', { damage: 420, killed: true, at: 2 });
+    first
+      .forRealm('gmud.sqlite', world, PLAYED)
+      .observe('grue', { damage: 420, killed: true, at: 2 });
     first.flush();
 
-    expect(store().forRealm('gmud.sqlite', world).maximumFor('grue').max).toBe(420);
+    expect(store().forRealm('gmud.sqlite', world, PLAYED).maximumFor('grue').max).toBe(420);
   });
 
   it('keeps the refills it timed per realm and reads them back', () => {
     const first = store();
-    const view = first.forRealm('gmud.sqlite', world);
+    const view = first.forRealm('gmud.sqlite', world, PLAYED);
     view.observeRefill({ room: '1/2156', seconds: 32, names: ['cave bear'], lair: true }, 5);
     view.observeRefill({ room: '1/2156', seconds: 19, names: ['cave bear'], lair: true }, 6);
     first.flush();
 
     const again = store();
-    expect(again.forRealm('gmud.sqlite', world).spawnsAt('1/2156')).toEqual({
+    expect(again.forRealm('gmud.sqlite', world, PLAYED).spawnsAt('1/2156')).toEqual({
       refills: [32, 19],
       seen: { 'cave bear': 2 },
       at: 6,
       v: SPAWNS_VERSION
     });
-    expect(again.forRealm('other.sqlite', world).spawnsAt('1/2156')).toBeNull();
+    expect(again.forRealm('other.sqlite', world, PLAYED).spawnsAt('1/2156')).toBeNull();
+  });
+
+  /* Todo 34: Paradigm's PvE and PvP run one world file behind one address. */
+  it('keeps refills and kill exp to the realm played, and the monsters to the world', () => {
+    const lore = store();
+    const pve = lore.forRealm('gmud.sqlite', world, () => 'paramud:2323/Paradigm PVE');
+    const pvp = lore.forRealm('gmud.sqlite', world, () => 'paramud:2323/Paradigm PVP');
+    pve.observeRefill({ room: '1/2156', seconds: 32, names: ['cave bear'], lair: true }, 5);
+    pve.observeKillExp?.('giant rat', 40, 5);
+    pve.observe('grue', { damage: 420, killed: true, at: 5 });
+    expect(pve.spawnsAt('1/2156')).not.toBeNull();
+    expect(pvp.spawnsAt('1/2156')).toBeNull();
+    expect(pve.killExpFor('giant rat')).toBe(40);
+    expect(pvp.killExpFor('giant rat')).toBeNull();
+    expect(pvp.maximumFor('grue').max).toBe(420);
   });
 
   /*
@@ -175,17 +195,19 @@ describe('keeping what was learned', () => {
    */
   it('keeps one realm’s monsters out of another’s', () => {
     const lore = store();
-    lore.forRealm('gmud.sqlite', world).observe('grue', { damage: 420, killed: true, at: 2 });
+    lore
+      .forRealm('gmud.sqlite', world, PLAYED)
+      .observe('grue', { damage: 420, killed: true, at: 2 });
     lore.flush();
 
     const reopened = store();
-    expect(reopened.forRealm('gmud.sqlite', undefined).maximumFor('grue').max).toBe(420);
-    expect(reopened.forRealm('paradigm.mdb', undefined).maximumFor('grue').max).toBeNull();
+    expect(reopened.forRealm('gmud.sqlite', undefined, PLAYED).maximumFor('grue').max).toBe(420);
+    expect(reopened.forRealm('paradigm.mdb', undefined, PLAYED).maximumFor('grue').max).toBeNull();
   });
 
   it('does not touch the disk when nothing was learned', () => {
     const lore = store();
-    const realm = lore.forRealm('gmud.sqlite', world);
+    const realm = lore.forRealm('gmud.sqlite', world, PLAYED);
     realm.observe('grue', { damage: 300, killed: false, at: 2 });
     lore.flush();
     const stamp = fs.statSync(file).mtimeMs;
@@ -208,7 +230,9 @@ describe('keeping what was learned', () => {
     const said: string[] = [];
     const lore = store((message) => said.push(message));
 
-    lore.forRealm('gmud.sqlite', world).observe('grue', { damage: 420, killed: true, at: 2 });
+    lore
+      .forRealm('gmud.sqlite', world, PLAYED)
+      .observe('grue', { damage: 420, killed: true, at: 2 });
     lore.flush();
 
     expect(said).toContain(
@@ -225,13 +249,13 @@ describe('keeping what was learned', () => {
       file,
       JSON.stringify({ v: 1, realms: { 'gmud.sqlite': { grue: {}, ghost: { kill: 'lots' } } } })
     );
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(lore.maximumFor('grue').max).toBeNull();
     expect(lore.maximumFor('ghost').max).toBeNull();
   });
 
   it('starts from nothing when there is no file yet', () => {
-    expect(store().forRealm('gmud.sqlite', world).maximumFor('grue').max).toBeNull();
+    expect(store().forRealm('gmud.sqlite', world, PLAYED).maximumFor('grue').max).toBeNull();
   });
 });
 
@@ -241,7 +265,7 @@ describe('how a monster dies', () => {
   it('learns the sentence once, says so, persists it and answers it back', () => {
     const said: string[] = [];
     const realm = store((message) => said.push(message));
-    const lore = realm.forRealm('gmud.sqlite', undefined);
+    const lore = realm.forRealm('gmud.sqlite', undefined, PLAYED);
     lore.observeDeath?.('The Mutant', 'The mutant sighs softy, and dies!', 5);
     lore.observeDeath?.('mutant', 'The mutant sighs softy, and dies!', 9);
     expect(said).toHaveLength(1);
@@ -256,11 +280,13 @@ describe('how a monster dies', () => {
       at: 5
     });
 
-    const again = store().forRealm('gmud.sqlite', undefined);
+    const again = store().forRealm('gmud.sqlite', undefined, PLAYED);
     expect(again.deathOf?.('The mutant sighs softy, and dies!')).toEqual(['mutant']);
     // Another realm learned nothing.
     expect(
-      store().forRealm('paradigm.sqlite', undefined).deathOf?.('The mutant sighs softy, and dies!')
+      store()
+        .forRealm('paradigm.sqlite', undefined, PLAYED)
+        .deathOf?.('The mutant sighs softy, and dies!')
     ).toEqual([]);
   });
 
@@ -275,7 +301,7 @@ describe('how a monster dies', () => {
    */
   it('files the sentence under the realm’s own row, not the room’s spelling', () => {
     const realm = store();
-    const lore = realm.forRealm('gmud.sqlite', world);
+    const lore = realm.forRealm('gmud.sqlite', world, PLAYED);
     lore.observeDeath?.('thin giant rat', 'The giant rat squeals, and dies.', 5);
     expect(lore.deathOf?.('The giant rat squeals, and dies.')).toEqual(['giant rat']);
 
@@ -286,7 +312,7 @@ describe('how a monster dies', () => {
 
   /* `giant rat king` is a row of its own, so its leading words are no modifier. */
   it('leaves a name the realm gives its own row alone', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     lore.observeDeath?.('giant rat king', 'The rat king shrieks, and dies.', 5);
     expect(lore.deathOf?.('The rat king shrieks, and dies.')).toEqual(['giant rat king']);
   });
@@ -307,7 +333,7 @@ describe('how a monster dies', () => {
       })
     );
     const realm = store();
-    const lore = realm.forRealm('gmud.sqlite', world);
+    const lore = realm.forRealm('gmud.sqlite', world, PLAYED);
     lore.observeDeath?.('fat giant rat', 'The giant rat squeals, and dies.', 5);
     expect(lore.deathOf?.('The giant rat squeals, and dies.')).toEqual(['giant rat']);
 
@@ -319,7 +345,7 @@ describe('how a monster dies', () => {
   /* Two rows may share one record, and an answer naming one of them is a
      guess. The room settles which, or nothing does. */
   it('answers with every monster a sentence was learned for', () => {
-    const lore = store().forRealm('gmud.sqlite', world);
+    const lore = store().forRealm('gmud.sqlite', world, PLAYED);
     lore.observeDeath?.('giant rat', 'The rodent expires.', 5);
     lore.observeDeath?.('cocoon', 'The rodent expires.', 6);
     expect(lore.deathOf?.('The rodent expires.')).toEqual(['giant rat', 'cocoon']);
@@ -339,7 +365,7 @@ describe('the record, whole, for a card', () => {
      taught, kept even where the realm speaks -- "seen to survive 20 against a
      realm figure of 12" is the sentence that decides whether to trust the bar. */
   it('is null before anything is learned, and the entry afterwards, realm figure or not', () => {
-    const lore = store().forRealm(realmKey('test'), world);
+    const lore = store().forRealm(realmKey('test'), world, PLAYED);
     expect(lore.learnedFor('giant rat')).toBeNull();
     lore.observe('giant rat', { damage: 20, killed: false, at: 1 });
     lore.observe('giant rat', { damage: 14, killed: true, at: 2 });
@@ -351,7 +377,7 @@ describe('the record, whole, for a card', () => {
      the table's bare name. The record has to be reachable from the bare name or
      the fights with a `small` one are evidence nothing can read. */
   it('gathers every printed spelling that resolves to the asked name', () => {
-    const lore = store().forRealm(realmKey('test'), world);
+    const lore = store().forRealm(realmKey('test'), world, PLAYED);
     lore.observe('small giant rat', { damage: 9, killed: true, at: 1 });
     lore.observe('giant rat', { damage: 30, killed: false, at: 2 });
     lore.observe('large giant rat', { damage: 11, killed: true, at: 3 });
@@ -373,13 +399,13 @@ describe('the record, whole, for a card', () => {
 describe('what the listing calls a worn slot', () => {
   it('answers the word once a listing has taught the code, and persists it', () => {
     const first = store();
-    const lore = first.forRealm('Test Realm', world);
+    const lore = first.forRealm('Test Realm', world, PLAYED);
     expect(lore.slotWordsFor(5)).toEqual([]);
     lore.observeSlot(5, 'Feet', 1_000);
     expect(lore.slotWordsFor(5)).toEqual(['Feet']);
     first.save();
 
-    const again = store().forRealm('Test Realm', world);
+    const again = store().forRealm('Test Realm', world, PLAYED);
     expect(again.slotWordsFor(5)).toEqual(['Feet']);
     const written = JSON.parse(fs.readFileSync(file, 'utf8')) as {
       slots: Record<string, Record<string, { words: string[] }>>;
@@ -394,7 +420,7 @@ describe('what the listing calls a worn slot', () => {
    * stand in (`CharacterTracker.slotOf`).
    */
   it('keeps both words for one code rather than choosing', () => {
-    const lore = store().forRealm('Test Realm', world);
+    const lore = store().forRealm('Test Realm', world, PLAYED);
     lore.observeSlot(5, 'Feet', 1_000);
     lore.observeSlot(5, 'Boots', 1_001);
     expect(lore.slotWordsFor(5)).toEqual(['Boots', 'Feet']);
@@ -402,13 +428,13 @@ describe('what the listing calls a worn slot', () => {
 
   it('keeps one realm’s words out of another’s', () => {
     const one = store();
-    one.forRealm('One', world).observeSlot(2, 'Head', 1_000);
-    expect(one.forRealm('Two', world).slotWordsFor(2)).toEqual([]);
+    one.forRealm('One', world, PLAYED).observeSlot(2, 'Head', 1_000);
+    expect(one.forRealm('Two', world, PLAYED).slotWordsFor(2)).toEqual([]);
   });
 
   it('does not touch the disk for a word it already knows', () => {
     const lore = store();
-    const view = lore.forRealm('Test Realm', world);
+    const view = lore.forRealm('Test Realm', world, PLAYED);
     view.observeSlot(5, 'Feet', 1_000);
     lore.save();
     const before = fs.statSync(file).mtimeMs;
@@ -562,26 +588,28 @@ describe('the effects a realm could not name', () => {
 describe('the attack spells a realm answered instantly', () => {
   it('persists by the realm’s spell name, per realm, and reads back', () => {
     const lore = store();
-    lore.forRealm('gmud.sqlite', world).observeInstantSpell('Hold Person ', 7);
+    lore.forRealm('gmud.sqlite', world, PLAYED).observeInstantSpell('Hold Person ', 7);
     lore.flush();
     const file = JSON.parse(fs.readFileSync(path.join(dir, 'mob-lore.json'), 'utf8'));
     expect(file.instants[realmKey('gmud.sqlite')]).toEqual({ 'hold person': { at: 7 } });
 
     const again = store();
-    expect(again.forRealm('gmud.sqlite', world).isInstantSpell('hold person')).toBe(true);
+    expect(again.forRealm('gmud.sqlite', world, PLAYED).isInstantSpell('hold person')).toBe(true);
     // The control: a spell never answered instantly is not.
-    expect(again.forRealm('gmud.sqlite', world).isInstantSpell('harm')).toBe(false);
+    expect(again.forRealm('gmud.sqlite', world, PLAYED).isInstantSpell('harm')).toBe(false);
     // Another realm learned nothing.
-    expect(again.forRealm('paradigm.sqlite', world).isInstantSpell('hold person')).toBe(false);
+    expect(again.forRealm('paradigm.sqlite', world, PLAYED).isInstantSpell('hold person')).toBe(
+      false
+    );
   });
 
   it('does not touch the disk for a spell it already holds', () => {
     const lore = store();
-    lore.forRealm('gmud.sqlite', world).observeInstantSpell('hold person', 7);
+    lore.forRealm('gmud.sqlite', world, PLAYED).observeInstantSpell('hold person', 7);
     lore.flush();
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('"at": 7', '"at": 8'));
     const again = store();
-    again.forRealm('gmud.sqlite', world).observeInstantSpell('hold person', 9);
+    again.forRealm('gmud.sqlite', world, PLAYED).observeInstantSpell('hold person', 9);
     again.flush();
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).instants['gmud.sqlite']).toEqual({
       'hold person': { at: 8 }
@@ -590,12 +618,12 @@ describe('the attack spells a realm answered instantly', () => {
 
   it('forgets a lesson the wire contradicted, on disk too', () => {
     const lore = store();
-    const realm = lore.forRealm('gmud.sqlite', world);
+    const realm = lore.forRealm('gmud.sqlite', world, PLAYED);
     realm.observeInstantSpell('hold person', 7);
     realm.observeInstantSpell('slow', 7);
     realm.forgetInstantSpell('Hold Person');
     lore.flush();
-    const again = store().forRealm('gmud.sqlite', world);
+    const again = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(again.isInstantSpell('hold person')).toBe(false);
     // The control: the other lesson stands.
     expect(again.isInstantSpell('slow')).toBe(true);
@@ -603,10 +631,12 @@ describe('the attack spells a realm answered instantly', () => {
 
   it('is forgotten by the player’s reset of realm lore, deleting the file', () => {
     const lore = store();
-    lore.forRealm('gmud.sqlite', world).observeInstantSpell('hold person', 7);
+    lore.forRealm('gmud.sqlite', world, PLAYED).observeInstantSpell('hold person', 7);
     lore.flush();
     fs.rmSync(file);
-    expect(store().forRealm('gmud.sqlite', world).isInstantSpell('hold person')).toBe(false);
+    expect(store().forRealm('gmud.sqlite', world, PLAYED).isInstantSpell('hold person')).toBe(
+      false
+    );
   });
 });
 
@@ -618,21 +648,23 @@ describe('the attack spells a realm answered instantly', () => {
 describe('the spells a realm said have no effect on a monster', () => {
   it('persists under the row name, per realm, and reads back', () => {
     const lore = store();
-    lore.forRealm('gmud.sqlite', world).observeNoEffect('Harm', 'big giant rat', 7);
+    lore.forRealm('gmud.sqlite', world, PLAYED).observeNoEffect('Harm', 'big giant rat', 7);
     lore.flush();
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).noEffects['gmud.sqlite']).toEqual({
       'giant rat': { harm: 7 }
     });
-    const again = store().forRealm('gmud.sqlite', world);
+    const again = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(again.hasNoEffect('harm', 'fat giant rat')).toBe(true);
     // The controls: another spell, another monster, another realm.
     expect(again.hasNoEffect('magic missile', 'giant rat')).toBe(false);
     expect(again.hasNoEffect('harm', 'cave bear')).toBe(false);
-    expect(store().forRealm('paradigm.sqlite', world).hasNoEffect('harm', 'giant rat')).toBe(false);
+    expect(
+      store().forRealm('paradigm.sqlite', world, PLAYED).hasNoEffect('harm', 'giant rat')
+    ).toBe(false);
   });
 
   it('counts a change, and not a repeat, for a price to key on', () => {
-    const realm = store().forRealm('gmud.sqlite', world);
+    const realm = store().forRealm('gmud.sqlite', world, PLAYED);
     const start = realm.noEffectChanges();
     realm.observeNoEffect('harm', 'giant rat', 7);
     const kept = realm.noEffectChanges();
@@ -645,12 +677,12 @@ describe('the spells a realm said have no effect on a monster', () => {
 
   it('forgets one the wire took back, on disk too', () => {
     const lore = store();
-    const realm = lore.forRealm('gmud.sqlite', world);
+    const realm = lore.forRealm('gmud.sqlite', world, PLAYED);
     realm.observeNoEffect('harm', 'giant rat', 7);
     realm.observeNoEffect('cause light wounds', 'giant rat', 7);
     realm.forgetNoEffect('harm', 'thin giant rat');
     lore.flush();
-    const again = store().forRealm('gmud.sqlite', world);
+    const again = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(again.hasNoEffect('harm', 'giant rat')).toBe(false);
     expect(again.hasNoEffect('cause light wounds', 'giant rat')).toBe(true);
   });
@@ -664,22 +696,24 @@ describe('the spells a realm said have no effect on a monster', () => {
 describe('what a realm pays for a kill', () => {
   it('keeps the last solo kill under the row name, per realm, and reads it back', () => {
     const lore = store();
-    lore.forRealm('gmud.sqlite', world).observeKillExp?.('big giant rat', 27, 7);
+    lore.forRealm('gmud.sqlite', world, PLAYED).observeKillExp?.('big giant rat', 27, 7);
     lore.flush();
-    expect(JSON.parse(fs.readFileSync(file, 'utf8')).killExp['gmud.sqlite']).toEqual({
+    expect(
+      JSON.parse(fs.readFileSync(file, 'utf8')).killExp[playedKey('gmud.sqlite', PLAYED())]
+    ).toEqual({
       'giant rat': { exp: 27, at: 7 }
     });
-    const again = store().forRealm('gmud.sqlite', world);
+    const again = store().forRealm('gmud.sqlite', world, PLAYED);
     expect(again.killExpFor('giant rat')).toBe(27);
     expect(again.killExpFor('fat giant rat')).toBe(27);
     expect([...again.allKillExp()]).toEqual([['giant rat', 27]]);
     // Another realm learned nothing.
-    expect(store().forRealm('paradigm.sqlite', world).killExpFor('giant rat')).toBeNull();
+    expect(store().forRealm('paradigm.sqlite', world, PLAYED).killExpFor('giant rat')).toBeNull();
   });
 
   it('keeps nothing from a kill that paid nothing', () => {
     const lore = store();
-    lore.forRealm('gmud.sqlite', world).observeKillExp?.('giant rat', 0, 7);
-    expect(lore.forRealm('gmud.sqlite', world).killExpFor('giant rat')).toBeNull();
+    lore.forRealm('gmud.sqlite', world, PLAYED).observeKillExp?.('giant rat', 0, 7);
+    expect(lore.forRealm('gmud.sqlite', world, PLAYED).killExpFor('giant rat')).toBeNull();
   });
 });

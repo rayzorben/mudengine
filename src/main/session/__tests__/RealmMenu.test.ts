@@ -84,3 +84,19 @@ describe('what a realm menu says about hanging up', () => {
     expect(read.penalty).toBeNull();
   });
 });
+
+/* Todo 34: the name is half of which game this is, whatever the menu says a hang-up costs. */
+describe('which realm the menu chose', () => {
+  it('names every choice it can read, penalty or not, and nothing it cannot', () => {
+    const named: string[] = [];
+    const read = new RealmMenu((realm) => named.push(realm));
+    const silent = PARADIGM.filter((line) => !line.includes('Hang Penalties'));
+    for (const block of blocks(silent)) read.onBlock(block);
+    expect(read.noteCommand('2')).toBeNull();
+    for (const block of blocks(silent)) read.onBlock(block);
+    expect(read.noteCommand('9')).toBeNull();
+    for (const block of blocks(silent)) read.onBlock(block);
+    read.noteCommand('1');
+    expect(named).toEqual(['Paradigm PVP', 'Paradigm PVE']);
+  });
+});

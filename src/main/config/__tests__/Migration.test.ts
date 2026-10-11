@@ -15,6 +15,7 @@ import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { Loop } from '../../../shared/loops';
 import { t } from '../../app/i18n';
 import { composes, notesOf } from '../../app/copyMatch';
+import { playedKey, playedStamp, realmKey } from '../../world/RealmLore';
 
 let dir = '';
 let old = '';
@@ -7491,5 +7492,127 @@ describe('aFoundPlayerIsNoEffect', () => {
     expect(notesOf(said, 'notices.migration.foundPlayerNoEffect')).toHaveLength(1);
     migrate();
     expect(notesOf(said, 'notices.migration.foundPlayerNoEffect')).toEqual([]);
+  });
+});
+
+/* Todo 34: Paradigm's PvE and PvP sit behind one address and shared every store. */
+describe('theRealmIsTheMenusChoice', () => {
+  const ADDRESS = 'paramud.mudinfo.net:2323';
+  const PVE = `${ADDRESS}/Paradigm PVE`;
+  const PVP = `${ADDRESS}/Paradigm PVP`;
+  const write = (file: string, value: unknown): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(value));
+  };
+  // JSON.parse's own answer, read back by the assertions below.
+  const read = (file: string) => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+  beforeEach(() => {
+    const server = home.server('paradigm');
+    fs.mkdirSync(server.dir, { recursive: true });
+    fs.writeFileSync(
+      server.file,
+      `name: Paradigm\nhost: paramud.mudinfo.net\nport: 2323\nlogin:\n  - when: Please select a realm\n    send: '1'\n`
+    );
+    profile('festus', 'server: Paradigm\n');
+    profile(
+      'rayzor',
+      `server: paradigm\nlogin:\n  steps:\n    - when: Please select a realm\n      send: '2'\n`
+    );
+    write(home.record('belongings', 'festus'), { v: 1, realm: ADDRESS });
+    write(home.record('belongings', 'rayzor'), { v: 1, realm: ADDRESS });
+    write(home.state('players.json'), {
+      v: 1,
+      realms: { 'paramud.mudinfo.net-2323': { nusse: { name: 'Nusse' } }, orohost: {} }
+    });
+    write(home.state('worlds.json'), {
+      v: 1,
+      realms: { [ADDRESS]: { world: 'paradigm', realm: 'paradigm', at: 1 } },
+      speeds: { [ADDRESS]: { speed: 5, at: 1 } }
+    });
+    write(home.state('mob-lore.json'), {
+      v: 1,
+      realms: { paradigm: { grue: { kill: 1 } } },
+      spawns: { paradigm: { '1/2': { refills: [30] } } },
+      killExp: { paradigm: { 'giant rat': { exp: 27, at: 1 } } }
+    });
+    write(home.state('memory', 'finds-paradigm.json'), {
+      version: 1,
+      realm: 'paradigm',
+      finds: []
+    });
+  });
+
+  it('restamps each character by its menu answer and files what carries no realm under the first', () => {
+    migrate();
+    expect(read(home.record('belongings', 'festus')).realm).toBe(PVE);
+    expect(read(home.record('belongings', 'rayzor')).realm).toBe(PVP);
+    expect(fs.existsSync(`${home.record('belongings', 'rayzor')}.before-realms`)).toBe(true);
+    expect(Object.keys(read(home.state('players.json')).realms).sort()).toEqual([
+      'orohost',
+      realmKey(PVE)
+    ]);
+    const worlds = read(home.state('worlds.json'));
+    expect(worlds.realms[PVP].world).toBe('paradigm');
+    expect(worlds.speeds[PVE].speed).toBe(5);
+    expect(worlds.realms[ADDRESS].world).toBe('paradigm');
+    const lore = read(home.state('mob-lore.json'));
+    expect(lore.realms.paradigm).toBeDefined();
+    expect(Object.keys(lore.spawns)).toEqual([playedKey('paradigm', PVE)]);
+    expect(Object.keys(lore.killExp)).toEqual([playedKey('paradigm', PVE)]);
+    const finds = read(home.state('memory', `finds-${playedKey('paradigm', PVE)}.json`));
+    expect(finds.realm).toBe(playedStamp('paradigm', PVE));
+    expect(fs.existsSync(home.state('memory', 'finds-paradigm.json'))).toBe(false);
+    expect(notesOf(said, 'notices.migration.realmIsTheMenusChoice')).toHaveLength(1);
+
+    migrate();
+    expect(notesOf(said, 'notices.migration.realmIsTheMenusChoice')).toEqual([]);
+    expect(read(home.record('belongings', 'rayzor')).realm).toBe(PVP);
+  });
+
+  it('sets aside a world characters on two realms load, and says so once', () => {
+    const server = home.server('orohost');
+    fs.mkdirSync(server.dir, { recursive: true });
+    fs.writeFileSync(server.file, 'name: Local\nhost: orohost\nport: 2427\ndatabase: paradigm\n');
+    profile('vaelor', 'server: Local\n');
+    migrate();
+    expect(read(home.state('mob-lore.json')).spawns).toEqual({});
+    expect(read(`${home.state('mob-lore.json')}.before-realms`).spawns.paradigm).toBeDefined();
+    expect(fs.existsSync(home.state('memory', 'finds-paradigm.json'))).toBe(false);
+    expect(fs.existsSync(home.state('memory', 'finds-paradigm.json.before-realms'))).toBe(true);
+    expect(notesOf(said, 'notices.migration.realmRecordsSetAside')).toHaveLength(1);
+    migrate();
+    expect(notesOf(said, 'notices.migration.realmRecordsSetAside')).toEqual([]);
+  });
+
+  it('counts a database file as possibly the shipped world it may load', () => {
+    const server = home.server('orohost');
+    fs.mkdirSync(server.dir, { recursive: true });
+    fs.writeFileSync(
+      server.file,
+      'name: Local\nhost: orohost\nport: 2427\ndatabase: /data/pmud.zip\n'
+    );
+    profile('vaelor', 'server: Local\n');
+    migrate();
+    expect(read(home.state('mob-lore.json')).spawns).toEqual({});
+    expect(notesOf(said, 'notices.migration.realmRecordsSetAside')).toHaveLength(1);
+  });
+
+  it('keys a converted database by its file name and a realm with no menu by its address', () => {
+    fs.rmSync(home.server('paradigm').dir, { recursive: true });
+    fs.rmSync(home.profile('festus').dir, { recursive: true });
+    fs.rmSync(home.profile('rayzor').dir, { recursive: true });
+    const server = home.server('orohost');
+    fs.mkdirSync(server.dir, { recursive: true });
+    fs.writeFileSync(
+      server.file,
+      'name: Local\nhost: orohost\nport: 2427\ndatabase: mdb/gmud.zip\n'
+    );
+    profile('vaelor', 'server: Local\n');
+    write(home.state('mob-lore.json'), { v: 1, realms: {}, spawns: { 'gmud.zip': { '1/2': {} } } });
+    migrate();
+    expect(Object.keys(read(home.state('mob-lore.json')).spawns)).toEqual([
+      playedKey('gmud.zip', 'orohost:2427')
+    ]);
   });
 });

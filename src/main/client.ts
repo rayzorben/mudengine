@@ -35,11 +35,13 @@ import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
 import { FindBook } from './world/FindBook';
 import { ShopBook } from './world/ShopBook';
+import type { RealmFinds } from '../shared/finds';
+import type { RealmShops } from '../shared/shops';
 import { WorldBook } from './world/WorldBook';
 import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from '../shared/memory';
-import { RealmLore, realmKey } from './world/RealmLore';
-import { PlayerBook, realmAddress } from './world/PlayerBook';
+import { RealmLore, playedKey, playedStamp, realmKey } from './world/RealmLore';
+import { PlayerBook } from './world/PlayerBook';
 import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
@@ -62,7 +64,7 @@ import {
 } from '../shared/gear';
 import { planNotices } from './automation/gearNotices';
 import { restoreKit } from './automation/restoreKit';
-import { Belongings, peekLives, peekRoom, peekSpellbook } from './session/Belongings';
+import { Belongings, peekLives, peekRealm, peekRoom, peekSpellbook } from './session/Belongings';
 import type { CharacterRecord, KeptLives, KeptRoom } from '../shared/belongings';
 import { asLowLivesAnswer } from '../shared/lives';
 import { NO_LORE, type RealmLoreView } from '../shared/lore';
@@ -181,8 +183,13 @@ import { version as APP_VERSION } from '../../package.json';
 import {
   asConnectionTarget,
   asLostEnter,
+  realmAddress,
+  realmName,
+  realmNamedAt,
+  realmOf,
   TERMINAL_ACTIONS,
   type ConnectionTarget,
+  type Realm,
   type TerminalActionName,
   type TerminalSize
 } from '../shared/types';
@@ -378,7 +385,7 @@ function createRealms(): RealmLibrary {
  */
 function worldFor(id: SessionId): WorldGraph | undefined {
   const profile = profileFor(id);
-  const learned = profile ? (worldBook?.at(realmAddress(profile.target)) ?? null) : null;
+  const learned = profile ? (worldBook?.at(realmName(realmAt(id, profile.target))) ?? null) : null;
   return realms?.load(profile?.database ?? '', learned).graph;
 }
 
@@ -394,7 +401,7 @@ function loreFor(id: SessionId): RealmLoreView {
   const world = worldFor(id);
   // Before the store exists there is nothing to learn from and nowhere to
   // learn to, which is the honest answer rather than a reason to throw.
-  return lore?.forRealm(world?.info.source ?? 'none', world) ?? NO_LORE;
+  return lore?.forRealm(world?.info.source ?? 'none', world, () => playedBy(id)) ?? NO_LORE;
 }
 
 /**
@@ -464,21 +471,31 @@ function destinationsFor(id: SessionId): RealmDestinations {
 }
 
 /**
- * What is known about the other players at one address.
+ * What is known about the other players in one realm.
  *
- * Keyed on the **address dialled**, not on the world file the lore uses: Soul
- * on GreaterMUD is not Soul on a MajorMUD board that ships the same map data,
- * and two server entries that dial one address are one realm. The host asks
- * with the address each connection actually goes to.
+ * Keyed on the **realm played** (`realmName`), not on the world file the lore
+ * uses: Soul on GreaterMUD is not Soul on a MajorMUD board that ships the same
+ * map data, and Paradigm's PvE and PvP sit behind one address (todo 34). The
+ * host asks with the realm each connection actually plays.
  */
-function playersAt(target: ConnectionTarget): RealmPlayers {
-  return playerBook?.forRealm(realmAddress(target)) ?? NO_REALM_PLAYERS;
+function playersAt(realm: Realm): RealmPlayers {
+  return playerBook?.forRealm(realmName(realm)) ?? NO_REALM_PLAYERS;
 }
 
 /** The same, for where a character's own file says it plays — what a session starts seeded from. */
 function playersFor(id: SessionId): RealmPlayers {
   const target = profileFor(id)?.target;
-  return target ? playersAt(target) : NO_REALM_PLAYERS;
+  return target ? playersAt(realmAt(id, target)) : NO_REALM_PLAYERS;
+}
+
+/**
+ * Which realm a dial at `target` is before its menu says (todo 34): the one
+ * this character's record was last kept for at that address, else the address
+ * alone. The open record's first, since the file lags it by a deferred write.
+ */
+function realmAt(id: SessionId, target: ConnectionTarget): Realm {
+  const kept = belongings.get(id)?.realm ?? peekRealm(home.record('belongings', id));
+  return (kept === null ? null : realmNamedAt(kept, target)) ?? realmOf(target);
 }
 
 /**
@@ -519,47 +536,85 @@ function realmMemoryFor(realm: string): WorldMemory {
 }
 
 /**
- * One find log per realm, created on first use.
- *
- * Keyed exactly as `realmMemories` is and for the same reason: a room number
- * only means a place within one map, so a find written against the shipped
- * realm says nothing about a private one.
+ * The realm `id` plays now, as `realmName` writes it: the open record's, which
+ * the host re-keys when the menu is answered, else the last known one. Asked
+ * at each read rather than once, since the menu can change it mid-connection
+ * (todo 34).
+ */
+function playedBy(id: SessionId): string {
+  const open = belongings.get(id)?.realm;
+  if (open !== undefined) return open;
+  const target = profileFor(id)?.target;
+  return target ? realmName(realmAt(id, target)) : 'none';
+}
+
+/**
+ * One find log per realm played on one world file (`playedKey`), created on
+ * first use. A room number only means a place within one map, and a find in
+ * Paradigm's PvE is not in its PvP (todo 34).
  */
 const realmFinds = new Map<string, FindBook>();
 
-function findsFor(id: SessionId): FindBook | undefined {
-  const realm = worldFor(id)?.info.source;
+function findsFor(id: SessionId): RealmFinds | undefined {
+  const world = worldFor(id)?.info.source;
   // Nothing to be wrong about and nothing to write against: see `memoryFor`.
-  if (realm === undefined) return undefined;
-  return findsForRealm(realm);
+  if (world === undefined) return undefined;
+  const book = (): FindBook =>
+    keptPerPlayed(
+      realmFinds,
+      world,
+      playedBy(id),
+      (file, stamp) => new FindBook(file, stamp, (message) => announce('memory', message)),
+      'finds'
+    );
+  return {
+    search: (room, found) => book().search(room, found),
+    forget: (key) => book().forget(key),
+    get all() {
+      return book().all;
+    }
+  };
 }
 
-function findsForRealm(realm: string): FindBook {
-  const existing = realmFinds.get(realmKey(realm));
-  if (existing) return existing;
-  const store = new FindBook(
-    home.state('memory', `finds-${realmKey(realm)}.json`),
-    realm,
-    (message) => announce('memory', message)
-  );
-  realmFinds.set(realmKey(realm), store);
-  return store;
-}
-
-/** One shop record per realm, created on first use and keyed as `realmFinds` is. */
+/** One shop record per realm played on one world file, kept as `realmFinds` is. */
 const realmShops = new Map<string, ShopBook>();
 
-function shopsFor(id: SessionId): ShopBook | undefined {
-  const realm = worldFor(id)?.info.source;
-  if (realm === undefined) return undefined;
-  const existing = realmShops.get(realmKey(realm));
+function shopsFor(id: SessionId): RealmShops | undefined {
+  const world = worldFor(id)?.info.source;
+  if (world === undefined) return undefined;
+  const book = (): ShopBook =>
+    keptPerPlayed(
+      realmShops,
+      world,
+      playedBy(id),
+      (file, stamp) => new ShopBook(file, stamp, (message) => announce('memory', message)),
+      'shops'
+    );
+  return {
+    stock: (shelf) => book().stock(shelf),
+    get all() {
+      return book().all;
+    }
+  };
+}
+
+/**
+ * The store for one realm played on one world, opened on first use at
+ * `memory/<kind>-<playedKey>.json` and stamped `world@played`, which is what
+ * the todo 34 migration writes.
+ */
+function keptPerPlayed<T>(
+  open: Map<string, T>,
+  world: string,
+  played: string,
+  create: (file: string, stamp: string) => T,
+  kind: 'finds' | 'shops'
+): T {
+  const key = playedKey(world, played);
+  const existing = open.get(key);
   if (existing) return existing;
-  const store = new ShopBook(
-    home.state('memory', `shops-${realmKey(realm)}.json`),
-    realm,
-    (message) => announce('memory', message)
-  );
-  realmShops.set(realmKey(realm), store);
+  const store = create(home.state('memory', `${kind}-${key}.json`), playedStamp(world, played));
+  open.set(key, store);
   return store;
 }
 
@@ -682,8 +737,8 @@ function talkFor(id: SessionId): TalkSink {
  */
 const belongings = new Map<SessionId, Belongings>();
 
-function belongingsAt(id: SessionId, target: ConnectionTarget): CharacterRecord {
-  const realm = realmAddress(target);
+function belongingsAt(id: SessionId, played: Realm): CharacterRecord {
+  const realm = realmName(played);
   const existing = belongings.get(id);
   if (existing) {
     if (existing.realm === realm) return existing;
@@ -724,7 +779,7 @@ function fromRecord<T>(
   live: (open: Belongings) => T,
   peek: (file: string, realm: string) => T
 ): T {
-  const realm = realmAddress(target);
+  const realm = realmName(realmAt(id, target));
   const open = belongings.get(id);
   return open?.realm === realm ? live(open) : peek(home.record('belongings', id), realm);
 }
@@ -1421,12 +1476,13 @@ function createHost(): SessionHost {
     playersFor,
     destinationsFor,
     playersAt,
-    speedAt: (target) => worldBook?.keptSpeed(realmAddress(target)) ?? NOT_KEPT,
+    realmAt,
+    speedAt: (realm) => worldBook?.keptSpeed(realmName(realm)) ?? NOT_KEPT,
     findsFor,
     shopsFor,
-    // What the realm called itself, by the address it was dialled at, so the
-    // next session built for it starts on the right world.
-    realmTold: (_id, target, realm) => worldBook?.learn(realmAddress(target), realm),
+    // What the realm called itself, by the realm played, so the next session
+    // built for it starts on the right world.
+    realmTold: (_id, realm, word) => worldBook?.learn(realmName(realm), word),
     // Not a domain concern: see `keepSignalsWorking`.
     onConnected: keepSignalsWorking,
     // Per window: which characters have tabs where is the one roster question

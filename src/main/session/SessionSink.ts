@@ -156,6 +156,8 @@ export interface SessionSink {
    * down by whoever decided where the files go (`WorldBook`).
    */
   realmTold?(realm: RealmWord): void;
+  /** The BBS menu's realm was chosen, by the name it printed (`RealmMenu`, todo 34): the host re-keys the realm. */
+  realmChosen?(realm: string): void;
   /**
    * Flip one automation switch in this character's own file and read it back
    * before this returns: a route the player sent the character on with

@@ -148,12 +148,14 @@ describe('what reaches the realm’s book', () => {
     expect(told).toEqual(['Soul']);
   });
 
-  it('seeds from, and tells, the book a new realm hands it, from the next reset on', () => {
+  /* The menu's choice re-keys a connection already open (todo 34), so the swap cannot wait for a reset. */
+  it('seeds from, and tells, the book a new realm hands it, at once and across a reset', () => {
     const a = bookOf([toFacts(newPlayer('Nester', T))]);
     const b = bookOf([toFacts(newPlayer('Durnan', T))]);
     const { company } = rig(true, a);
-    company.useRealm(b.book);
     expect(Object.keys(company.players)).toEqual(['nester']);
+    company.useRealm(b.book);
+    expect(Object.keys(company.players)).toEqual(['durnan']);
     company.reset();
     expect(Object.keys(company.players)).toEqual(['durnan']);
     company.noteRemoteCall('Soul', '@health', T);
