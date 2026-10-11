@@ -44,7 +44,9 @@ describe('the counter a row naming no shop is bought at', () => {
       shops: ['General Store'],
       places: [counter(2147, 'General Store', 4), counter(301, 'General Store', 19)]
     });
-    expect(nearestCounter(realm, 'torch', '1/1', () => TRAVELLER, new Set(['1/2147']))).toMatchObject({
+    expect(
+      nearestCounter(realm, 'torch', '1/1', () => TRAVELLER, new Set(['1/2147']))
+    ).toMatchObject({
       room: '1/301'
     });
   });
@@ -64,7 +66,9 @@ describe('the counter a row naming no shop is bought at', () => {
   });
 
   it('is nowhere when the name is no one row, rather than a guess', () => {
-    expect(nearestCounter(world({ id: null }), 'iron key', '1/1', () => TRAVELLER, new Set())).toEqual({
+    expect(
+      nearestCounter(world({ id: null }), 'iron key', '1/1', () => TRAVELLER, new Set())
+    ).toEqual({
       kind: 'nowhere',
       why: t('session.supplies.noSingleRow', { item: 'iron key' })
     });
