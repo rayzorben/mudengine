@@ -1239,6 +1239,16 @@ debug:
   savedTo: 'Written to {path}'
   showAll: Show everything
   title: Debug
+  unread:
+    counts: '{shapes} kinds of line unread, {messages} of them server messages'
+    empty: Every line on this realm has been read since the client started.
+    loading: Loading…
+    message: 'Server message {number}'
+    refresh: Refresh
+    roomUnknown: an unknown room
+    seenIn: 'Last seen in {room}'
+    toggle: Unread lines
+    unknown: Unread
 
 # The bento cards, by card; cards.titles is the vocabulary the rail and picker share.
 # The words a listing the console draws itself uses: column names for a

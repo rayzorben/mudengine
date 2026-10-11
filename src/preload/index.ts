@@ -49,6 +49,7 @@ const api: WireApi = {
   getTelnetLog: (session) => ipcRenderer.invoke(Invoke.getTelnetLog, session),
   getLines: (session) => ipcRenderer.invoke(Invoke.getLines, session),
   getDebug: (session) => ipcRenderer.invoke(Invoke.getDebug, session),
+  getUnread: (session) => ipcRenderer.invoke(Invoke.getUnread, session),
   saveDebug: (session) => ipcRenderer.invoke(Invoke.saveDebug, session),
   getCharacter: (session) => ipcRenderer.invoke(Invoke.getCharacter, session),
   routeTo: (session, map, room) => ipcRenderer.invoke(Invoke.routeTo, session, map, room),

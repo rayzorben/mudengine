@@ -76,7 +76,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the notices' routing, out whole (`useConsoleNotices`, notice per character).
   // Lowered by the status rail reading its own dial state (todo 22).
   // Lowered by the alerts' comment, condensed as the alert sound came (todo 80).
-  'src/renderer/src/App.tsx': 1603,
+  // Lowered by handing the debug view its api whole (todo 73).
+  'src/renderer/src/App.tsx': 1595,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   // Lowered by the fight hold's comment, condensed as `FoughtPath` came (2026-10-10).

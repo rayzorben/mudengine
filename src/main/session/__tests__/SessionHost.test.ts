@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { SessionHost } from '../SessionHost';
+import { UnreadTally } from '../UnreadTally';
 import { DeadSocket } from '../../net/__tests__/deadSocket';
 import { setTuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
@@ -56,6 +57,8 @@ let allSends: Sent[] = [];
  */
 let rosterPublishes = 0;
 let notices: Notice[] = [];
+/** The unread lines, one tally for every address these tests dial. */
+let unread = new UnreadTally();
 /** The addresses sessions were keyed on for their realm's players, per dial. */
 let dialledRealms: Realm[] = [];
 /** Whether these sessions want a lost connection dialled back. See `Reconnect`. */
@@ -77,6 +80,7 @@ beforeEach(async () => {
   notices = [];
   dialledRealms = [];
   autoReconnect = false;
+  unread = new UnreadTally();
 
   server = net.createServer((socket) => {
     const index = accepted.length;
@@ -106,6 +110,7 @@ beforeEach(async () => {
       dialledRealms.push(realm);
       return NO_REALM_PLAYERS;
     },
+    unreadAt: () => unread,
     // Nowhere to write, like every other record in these runs.
     belongingsAt: () => NO_RECORD,
     internal: () => DEFAULT_INTERNAL,
@@ -287,6 +292,19 @@ describe('SessionHost', () => {
     host!.get('thorn')!.manager.send('2\r');
     await until(() => dialledRealms.length === 2);
     expect(dialledRealms).toEqual([realmOf(where), realmOf(where, 'Paradigm PVP')]);
+  });
+
+  // Todo 73: a line nothing read is counted for the realm it came from.
+  it('counts a line the parser did not read for the debug window', async () => {
+    await host!.connect('thorn', target());
+    await until(() => accepted.length === 1);
+    accepted[0]!.write('A strange hum fills the air 3 times.\r\n');
+    await until(() => unread.list().length > 0);
+    expect(unread.list()[0]).toMatchObject({
+      kind: 'unknown',
+      shape: 'A strange hum fills the air # times.',
+      count: 1
+    });
   });
 
   /*

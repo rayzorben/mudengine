@@ -75,8 +75,8 @@ console.log(
 );
 console.log(`corpus: ${files.length} captures\n`);
 
-/** Collapses a line to its shape, so variants group together. */
-const shapeOf = (text) => text.replace(/\d+/g, '#').replace(/\s+/g, ' ').trim().slice(0, 90);
+// The shape the debug window's unread lines are grouped by, so the two agree (todo 73).
+const { shapeOf } = await import('../src/shared/unread.ts');
 
 const byType = new Map();
 const unknown = new Map();

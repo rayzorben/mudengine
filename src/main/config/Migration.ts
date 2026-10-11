@@ -7513,6 +7513,8 @@ function theTuningBlockGainedKeys(
       addKey('view', key, DEFAULT_INTERNAL.tuning.view[key]);
     // Paradigm's split regeneration tick, read for the realm's speed (todo 81, 2026-10-11).
     addKey('hunting', 'speedTickParts', DEFAULT_INTERNAL.tuning.hunting.speedTickParts);
+    // The debug window's unread lines, per realm (todo 73, 2026-10-11).
+    addKey('session', 'unreadShapes', DEFAULT_INTERNAL.tuning.session.unreadShapes);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {

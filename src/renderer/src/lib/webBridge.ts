@@ -205,6 +205,7 @@ export function createWebBridge(): IpcApi {
     getTelnetLog: (session) => invoke(Invoke.getTelnetLog, session),
     getLines: (session) => invoke(Invoke.getLines, session),
     getDebug: (session) => invoke(Invoke.getDebug, session),
+    getUnread: (session) => invoke(Invoke.getUnread, session),
     saveDebug: async (session) => {
       const saved = await invoke<DebugSave>(Invoke.saveDebug, session);
       if ('path' in saved) download(saved.download);

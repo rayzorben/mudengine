@@ -790,6 +790,7 @@ export default function App() {
       load: (sid: SessionId) => api.getDebug(sid),
       save: (sid: SessionId) => api.saveDebug(sid),
       reveal: () => reveal(() => api.revealLogs()),
+      unread: (sid: SessionId) => api.getUnread(sid),
       subscribe: (handler: (sid: SessionId, record: DebugRecord) => void) =>
         api.onDebug(({ session: sid, payload }) => handler(sid, payload))
     }),
@@ -1362,16 +1363,7 @@ export default function App() {
 
               Addressed at the shown character, like every other diagnostic.
             */}
-            {debugOpen && (
-              <DebugView
-                load={debugApi.load}
-                onClose={closeDebug}
-                reveal={debugApi.reveal}
-                save={debugApi.save}
-                session={session}
-                subscribe={debugApi.subscribe}
-              />
-            )}
+            {debugOpen && <DebugView api={debugApi} onClose={closeDebug} session={session} />}
           </div>
           <SearchBar
             onClose={closeSearch}

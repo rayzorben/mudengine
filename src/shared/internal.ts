@@ -2064,6 +2064,13 @@ const TUNING_DEFAULTS = {
      */
     debugLogLimit: 4000,
     /**
+     * Shapes of unread line the debug window keeps per realm (todo 73). The
+     * corpus puts a capture at 15 distinct shapes median, 87 at p95 and 368 at
+     * most (`todo/73-unread-tally-census.txt`); past this the one seen longest
+     * ago goes.
+     */
+    unreadShapes: 500,
+    /**
      * Sent commands the decision trace keeps — enough to cover the minute
      * before something went wrong, which is the window anyone asks about.
      */
