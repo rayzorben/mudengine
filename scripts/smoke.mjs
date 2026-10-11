@@ -15774,12 +15774,13 @@ check(
   const cold = await readUntil(
     () => menuEntries(),
     (cold) =>
-      cold.length === 2 &&
+      cold.length >= 2 &&
       isCopy(cold[0]?.label, 'terminal.contextMenu.copy') &&
       isCopy(cold[1]?.label, 'terminal.contextMenu.paste')
   );
+  // Copy and Paste lead; the recent walks and loops (todo 28) follow them.
   check(
-    cold.length === 2 &&
+    cold.length >= 2 &&
       isCopy(cold[0]?.label, 'terminal.contextMenu.copy') &&
       isCopy(cold[1]?.label, 'terminal.contextMenu.paste'),
     'offering Copy and Paste',
