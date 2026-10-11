@@ -10,6 +10,7 @@
  * rather than trust a list off the wire. `mudengine-ui` › *The Talk card*.
  */
 
+import { GUARD_FIELDS } from './config';
 import { channelPrefix } from './talk';
 
 /** One command and how many times it goes out. */
@@ -50,6 +51,33 @@ export function parseMacro(line: string): MacroStep[] | null {
     }
   }
   return directive && steps.length > 0 ? steps : null;
+}
+
+/**
+ * What a macro step may ask to be filled in when it goes out (todo 83):
+ * `{mob}` is the monster auto-combat would open on in the room the character
+ * is in by then, and every field a rule's guard reads (`{hp}`, `{target}`)
+ * is spelled as a rule spells it. Anything else in braces is reported, never
+ * sent.
+ */
+export const MACRO_PLACEHOLDERS = ['mob'] as const;
+
+const BRACED = /\{([^{}\s]+)\}/g;
+
+/** Every `{name}` in a command, in order, known or not. */
+export function placeholdersIn(command: string): string[] {
+  return [...command.matchAll(BRACED)].map((found) => found[1]!);
+}
+
+/** The first `{name}` that is neither a placeholder nor a guard field, or null. */
+export function unknownPlaceholder(command: string): string | null {
+  const known: readonly string[] = [...MACRO_PLACEHOLDERS, ...GUARD_FIELDS];
+  return placeholdersIn(command).find((name) => !known.includes(name)) ?? null;
+}
+
+/** The command with each `{mob}` replaced by the monster's name. */
+export function fillMob(command: string, mob: string): string {
+  return command.replace(/\{mob\}/g, () => mob);
 }
 
 /** How many commands the steps put on the wire. */

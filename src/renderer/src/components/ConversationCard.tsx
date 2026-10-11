@@ -29,7 +29,7 @@ import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
 import { isOwnName, type PlayerRegistry } from '@shared/players';
 import type { Block } from '@shared/blocks';
-import { parseMacro } from '@shared/macro';
+import { mainReads } from '@shared/clientCommands';
 
 export interface ConversationCardProps extends CardChrome {
   /** What this character's card carries (`isTalkBlock`), oldest first. */
@@ -462,10 +462,12 @@ function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
       if (draft.trim().length === 0) return;
       /*
        * Several commands in one line (todo 04): `;` between them, `2d,6s` for
-       * repeats. Handed to main whole, which parses it again and sends one a
-       * prompt. Only this box: a channel's message may carry a semicolon.
+       * repeats; or a line main runs itself, `get all` or one with `{mob}`,
+       * or one marked to go as typed (todo 83). Handed to main whole, which
+       * parses it again and sends one a prompt. Only this box: a channel's
+       * message may carry a semicolon.
        */
-      if (macro !== undefined && parseMacro(draft) !== null) macro(draft);
+      if (macro !== undefined && mainReads(draft)) macro(draft);
       else send(draft);
     } else {
       /*

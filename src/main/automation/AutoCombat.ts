@@ -2027,8 +2027,12 @@ export class AutoCombat implements SessionModule {
     };
   }
 
-  /** The old name, kept for `quarry`: a target or nothing. */
-  private pick(state: CharacterState): string | null {
+  /**
+   * The monster `choose` would open on here, or nothing: `quarry`'s question,
+   * and a macro's `{mob}` (todo 83), which the player asked for and so skips
+   * the gates `quarry` adds.
+   */
+  pick(state: CharacterState): string | null {
     return this.choose(state)?.target ?? null;
   }
 

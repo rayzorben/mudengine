@@ -124,7 +124,8 @@ import { areaSearchTrip, gearRecoveryTrip } from './collectPlanner';
 import { CarryOver } from './CarryOver';
 import { UNSTATED_WORDS, Vocabulary, type VocabularyParts } from './Vocabulary';
 import { itemPlanner } from './itemPlanner';
-import { queueMacro } from './macros';
+import { droppedNotice, queueMacro } from './macros';
+import { takeBackAtEnter } from './takeBack';
 import { sessionExtensions, type ExtensionDeps } from './extensionWiring';
 import type { SessionExtensions } from '../extensions/SessionExtensions';
 
@@ -2075,20 +2076,19 @@ export class SessionManager {
   }
 
   send(data: string): void {
+    // A line the client reads itself is erased at Enter, not committed (`takeBack.ts`).
+    const reads = this.queue.holding === null && this.tracker.current.phase === 'in-game';
+    const back = reads ? takeBackAtEnter(this.outbound, data) : null;
+    if (back !== null) {
+      this.send(back.erase);
+      this.sendMacro(back.line);
+      return;
+    }
     /*
-     * A pasted run split onto the channel the player has already named.
-     *
-     * Typing `-` and pasting three lines put `-a`, then `b`, then `c` on the
-     * wire: one broadcast and two bare commands said out loud in the room
-     * (todo 03). The realm's input line cannot know a paste happened, and the
-     * only thing that knows a channel was named is the half-line already on
-     * it — which is `this.outbound`, kept here for the queue.
-     *
-     * Rewritten before anything else looks at `data`, so the tracker, the
-     * classifier, the capture and the queue all see the lines that actually
-     * reach the socket. `splitOntoChannel` answers `null` for a single line,
-     * a run with no channel named and a run whose extra lines are all blank,
-     * which is every ordinary keystroke.
+     * A pasted run split onto the channel the player has already named: `-`
+     * then three pasted lines was one broadcast and two bare commands said in
+     * the room (todo 03). Rewritten before anything else reads `data`, so all
+     * see the lines that reach the socket; `null` for an ordinary keystroke.
      */
     const outgoing = splitOntoChannel(this.outbound, data) ?? data;
     this.attendance.note(); // Any key, not only a committed line: the first key ends away (todo 79).
@@ -2211,7 +2211,9 @@ export class SessionManager {
       connected: () => this.client.connected,
       notice: (message) => this.sink.notice(message),
       published: () => this.publisher.publishAutomation(),
-      batch: () => (this.macros += 1)
+      batch: () => (this.macros += 1),
+      state: () => this.tracker.current,
+      mob: (state) => this.combat.pick(state)
     });
   }
 
@@ -2225,19 +2227,7 @@ export class SessionManager {
     if (count === 0) return;
     // The box's count is read off the snapshot, and nothing else may move soon.
     this.publisher.publishAutomation();
-    if (died) {
-      this.sink.notice(
-        count === 1
-          ? t('session.macro.droppedDied.one', { count })
-          : t('session.macro.droppedDied.many', { count })
-      );
-    } else {
-      this.sink.notice(
-        count === 1
-          ? t('session.macro.dropped.one', { count })
-          : t('session.macro.dropped.many', { count })
-      );
-    }
+    this.sink.notice(droppedNotice(count, died));
   }
 
   resize(size: TerminalSize): void {
