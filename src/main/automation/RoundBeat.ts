@@ -5,8 +5,7 @@
  * runs faster than the server's own clocks (`RealmSpeed`: orohost at 5, a
  * round a second) the quiet is that much shorter, never under `speedQuietMs`;
  * at the server's own quiet a whole fight there read as one round. `CastRound`
- * reopens the round's cast with it, `FightHeal` counts the blows taken by it,
- * and `RoundClock` numbers the rounds on it.
+ * reopens the round's cast with it and `RoundClock` numbers the rounds on it.
  */
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';

@@ -441,45 +441,28 @@ export function healDeficit(
   return Math.max(0, Math.ceil(healCeiling(healTo) * hpMax) - hp);
 }
 
-/**
- * Whether a chosen heal is worth the round in a fight: casting ends the
- * attack, so one expected to mend less than `floor`, what the round is worth
- * (`FightHeal`), is not cast at all (todo 23).
- */
-export function mendsTheRound(expected: number, floor: number): boolean {
-  return expected >= floor;
-}
-
 /** What `AutoHeal` casts for a deficit, and why. */
-export type HealPick<F> =
+export type HealPick =
   | { kind: 'configured'; why: 'switched-off' | 'no-figures' }
   | { kind: 'refused'; refusal: HealChoiceRefusal | null }
-  | { kind: 'chosen'; choice: HealChoice; chosen: HealCandidate; deficit: number }
-  | { kind: 'too-little'; chosen: HealCandidate; deficit: number; floor: F };
+  | { kind: 'chosen'; choice: HealChoice; chosen: HealCandidate; deficit: number };
 
 /**
  * Which heal `AutoHeal` casts: under Auto Choose Best Heal, `chooseHealSpell`
  * against the deficit; the configured spell with the switch off, the deficit
- * unread, or the choice naming nothing, since a heal not cast is a death. In
- * a fight (`inFight`, asked only then) a chosen heal that does not mend the
- * round is not cast and does not fall back. `AutoHeal` casts by it and
- * `thresholdHeal` prices by it.
+ * unread, or the choice naming nothing, since a heal not cast is a death.
+ * `AutoHeal` casts by it and `thresholdHeal` prices by it.
  */
-export function pickHeal<F extends { floor: number }>(
+export function pickHeal(
   autoChooseHeal: boolean,
   deficit: number | null,
-  choose: (deficit: number) => HealChoice,
-  inFight: ((deficit: number) => F) | null
-): HealPick<F> {
+  choose: (deficit: number) => HealChoice
+): HealPick {
   if (!autoChooseHeal) return { kind: 'configured', why: 'switched-off' };
   if (deficit === null) return { kind: 'configured', why: 'no-figures' };
   const choice = choose(deficit);
   const chosen = choice.chosen;
   if (chosen === null) return { kind: 'refused', refusal: choice.refusal };
-  const floor = inFight?.(deficit) ?? null;
-  if (floor !== null && !mendsTheRound(chosen.expected, floor.floor)) {
-    return { kind: 'too-little', chosen, deficit, floor };
-  }
   return { kind: 'chosen', choice, chosen, deficit };
 }
 
@@ -490,12 +473,6 @@ export interface PricedHeal {
   restores: [number, number];
   /** The book's own figure, else the realm's; null where neither states one. */
   cost: number | null;
-  /**
-   * What a cast is expected to mend, its odds folded in, where the choice
-   * named it, so a fight weighs it against the round (`mendsTheRound`); null
-   * for the configured spell, which is cast whatever the round is worth.
-   */
-  chosenMends: number | null;
 }
 
 export interface ThresholdHealInput extends Omit<HealCastInput, 'book'> {
@@ -510,8 +487,7 @@ export interface ThresholdHealInput extends Omit<HealCastInput, 'book'> {
  * The heal `AutoHeal` casts on this character when the bar falls under
  * `below`, by `pickHeal` against the deficit there. The fight the simulator
  * runs (`FightSetup`) and the hunting survey's cycle (`Errands`) both read
- * it; a run fight weighs a chosen one against each round as `AutoHeal` does.
- * Null where none would be cast, the level is unread, or the realm marks no
+ * it. Null where none would be cast, the level is unread, or the realm marks no
  * heal on the row.
  */
 export function thresholdHeal(input: ThresholdHealInput): PricedHeal | null {
@@ -519,18 +495,13 @@ export function thresholdHeal(input: ThresholdHealInput): PricedHeal | null {
   if (below <= 0 || level === null) return null;
   // Cast while the share is under `below`: the bar one point beneath it.
   const hp = hpMax === null ? null : Math.max(0, Math.ceil(below * hpMax) - 1);
-  const pick = pickHeal(
-    spells.autoChooseHeal,
-    healDeficit(spells.healTo, hp, hpMax),
-    (deficit) =>
-      chooseHealSpell(book === null ? { book } : { ...input, book, deficit, aim: 'self' }),
-    null
+  const pick = pickHeal(spells.autoChooseHeal, healDeficit(spells.healTo, hp, hpMax), (deficit) =>
+    chooseHealSpell(book === null ? { book } : { ...input, book, deficit, aim: 'self' })
   );
   switch (pick.kind) {
-    case 'chosen':
-    case 'too-little': {
-      const { realm, min, max, cost, expected } = pick.chosen;
-      return { realm, restores: [min, max], cost, chosenMends: expected };
+    case 'chosen': {
+      const { realm, min, max, cost } = pick.chosen;
+      return { realm, restores: [min, max], cost };
     }
     case 'configured':
     case 'refused': {
@@ -539,7 +510,7 @@ export function thresholdHeal(input: ThresholdHealInput): PricedHeal | null {
       const restores = realm === null ? null : healPower(realm, level);
       return realm === null || restores === null
         ? null
-        : { realm, restores, cost: spellCost(configured), chosenMends: null };
+        : { realm, restores, cost: spellCost(configured) };
     }
     default: {
       const unreachable: never = pick;

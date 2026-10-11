@@ -659,12 +659,6 @@ const TUNING_DEFAULTS = {
     killConfidence: 0.9,
     /** How long a heal proposal stays worth sending. */
     healExpiresMs: 3000,
-    /**
-     * In a fight, the share of the hit points missing a chosen heal must be
-     * expected to mend, or it is not cast: casting ends the attack, so a
-     * minor heal at 92 missing gave up the round for 11 (festus, 2026-10-03).
-     */
-    fightHealShare: 0.25,
     /** Long enough for the next status line to say whether the heal worked. */
     healCooldownMs: 6000,
     /**

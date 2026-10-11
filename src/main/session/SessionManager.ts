@@ -363,7 +363,7 @@ export class SessionManager {
   /** What the window is told: the trace, the appraisal, the connection's state. See `Publisher`. */
   private readonly publisher: Publisher;
   /** The room weighed against the character; the client reads it. See `Appraisal`. */
-  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise' | 'fightPerRound'>;
+  readonly appraisal: Pick<Appraisal, 'verdict' | 'asks' | 'appraise'>;
   /** Every monster's and lair's fight, run in the background; the map reads it. See `OddsBook`. */
   readonly odds: SessionOdds;
   private automationConfig: AutomationConfig;
@@ -1334,9 +1334,7 @@ export class SessionManager {
       realmSpell,
       { notice },
       () => this.errands.realmClass(),
-      this.castRound,
-      (state) => this.appraisal.fightPerRound(state),
-      realmSpeed
+      this.castRound
     );
     this.potions = new Potions(automation.health, automation.enabled, this.queue);
     this.cures = new Cures(
@@ -2741,7 +2739,6 @@ export class SessionManager {
      */
     this.blessings.onBlock(block, this.tracker.current);
     this.castRound.onBlock(block);
-    this.heal.onBlock(block);
     /*
      * A party forming or breaking up is the moment its roster becomes worth
      * having — and the moment it is emptiest, because nothing has asked.
