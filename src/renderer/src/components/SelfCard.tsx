@@ -31,9 +31,10 @@ import type { CharacterState } from '@shared/character';
 import type { SupplyItem } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 import { CAN_SEE_FROM, lightPhrase } from '@shared/light';
-import { carriedCount } from '@shared/supplies';
+import { carriedCount, type SupplyCounter } from '@shared/supplies';
 import { CountInput, type SupplyList } from './SupplyControls';
 import { useRememberedChoice } from '../hooks/useRemembered';
+import { useSupplyCounters } from '../hooks/useSupplyCounters';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 
@@ -103,6 +104,65 @@ function Row({
       </dd>
     </>
   );
+}
+
+/**
+ * The Shop cell of a row naming no shop (todo 49): the nearest counter that
+ * sells it and how far, `found` for a row no counter sells and a monster drops
+ * (`AutoLoot.stockingUp` fills it, a `black star key` at min 2, max 2), or why
+ * there is none.
+ */
+function NearestShop({
+  counter,
+  failed
+}: {
+  counter: SupplyCounter | undefined;
+  failed: string | null;
+}) {
+  if (counter === undefined) {
+    return (
+      <span className="slot" title={failed ?? t('cards.self.supplies.nearestTooltip')}>
+        {t('cards.self.supplies.nearestShop')}
+      </span>
+    );
+  }
+  switch (counter.kind) {
+    case 'counter':
+      return (
+        <span className="slot" title={t('cards.self.supplies.nearestTooltip')}>
+          {counter.moves === null
+            ? counter.name
+            : counter.moves === 1
+              ? t('cards.self.supplies.nearestAt.one', { shop: counter.name })
+              : t('cards.self.supplies.nearestAt.many', {
+                  shop: counter.name,
+                  steps: counter.moves
+                })}
+        </span>
+      );
+    case 'found':
+      return (
+        <span className="slot" title={t('cards.self.supplies.foundTooltip')}>
+          {t('cards.self.supplies.foundOnly')}
+        </span>
+      );
+    case 'nowhere':
+      return (
+        <span className="slot inert" title={counter.why}>
+          —
+        </span>
+      );
+    case 'refused':
+      return (
+        <span className="slot" title={counter.why}>
+          {t('cards.self.supplies.nearestShop')}
+        </span>
+      );
+    default: {
+      const never: never = counter;
+      return never;
+    }
+  }
 }
 
 function SelfCard({
@@ -329,6 +389,7 @@ function SelfCard({
   );
 
   const rows = supplies?.items ?? [];
+  const { counters, failed } = useSupplyCounters(supplies, face === 'supplies');
   const columns: Column<SupplyItem>[] = [
     {
       id: 'item',
@@ -415,12 +476,7 @@ function SelfCard({
             {row.shop}
           </span>
         ) : (
-          // A row with no shop is not a row that does nothing: it is filled
-          // off the floor instead of out of a shop (`AutoLoot.stockingUp`),
-          // which is what a `black star key` at min 2, max 2 is for.
-          <span className="slot" title={t('cards.self.supplies.foundTooltip')}>
-            {t('cards.self.supplies.foundOnly')}
-          </span>
+          <NearestShop counter={counters?.[row.name]} failed={failed} />
         )
     },
     {

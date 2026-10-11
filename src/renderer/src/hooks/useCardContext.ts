@@ -267,6 +267,7 @@ export type CardApi = Pick<
   | 'setGangRemotes'
   | 'setRemoteGangpath'
   | 'setSupplies'
+  | 'supplyCounters'
   | 'input'
   | 'macro'
   | 'dropMacro'
@@ -521,12 +522,13 @@ export function useCardContext({
           const list = withSupply(newest, name, next);
           if (entry) entry.written = list;
           save(list);
-        }
+        },
+        counters: () => api.supplyCounters(sid)
       };
       suppliesCache.current.set(sid, { items, save, bundle, written: null });
       return bundle;
     },
-    [boundFor, suppliesFor]
+    [api, boundFor, suppliesFor]
   );
 
   /**

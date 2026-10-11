@@ -105,7 +105,7 @@ function planner(over: Partial<SupplyPlanner> = {}) {
   let here = '1/1';
   const base: SupplyPlanner = {
     here: () => here,
-    shopRoom: () => ({ room: '1/2147', name: 'General Store' }),
+    shopRoom: () => ({ kind: 'counter', room: '1/2147', name: 'General Store', moves: null }),
     routeTo: (room) => {
       log.push(`route:${room}`);
       return ROUTE;
@@ -228,7 +228,9 @@ describe('noticing the pack is short', () => {
   });
 
   it('refuses out loud when the shop cannot be settled, and leaves the item alone for a while', () => {
-    const { planner: p, log } = planner({ shopRoom: () => 'six rooms are called General Store' });
+    const { planner: p, log } = planner({
+      shopRoom: () => ({ kind: 'refused', why: 'six rooms are called General Store' })
+    });
     const auto = make(p);
     auto.onCharacter(character(1));
     auto.onCharacter(character(1));
@@ -642,15 +644,17 @@ describe('what the pack holds over the maximum', () => {
 });
 
 describe('a row that names no shop', () => {
+  const TORCH_ANYWHERE: SuppliesConfig = {
+    enabled: true,
+    items: [{ name: 'torch', min: 3, max: 5, shop: '', at: null }]
+  };
   const KEYS: SuppliesConfig = {
     enabled: true,
     items: [{ name: 'black star key', min: 2, max: 2, shop: '', at: null }]
   };
 
-  it('is never walked to a shop, and never refused for having none', () => {
-    const { planner: p, log } = planner({
-      shopRoom: () => 'no shop is named for it'
-    });
+  it('is never walked to a shop when no counter sells it, and never refused for that', () => {
+    const { planner: p, log } = planner({ shopRoom: () => ({ kind: 'found' }) });
     make(p, KEYS).onCharacter(character(1));
     drain();
     // Found rather than bought (`AutoLoot.stockingUp`), so a status line does
@@ -658,6 +662,119 @@ describe('a row that names no shop', () => {
     expect(sent).toEqual([]);
     expect(log).toEqual([]);
     expect(notices).toEqual([]);
+  });
+
+  it('is walked to the counter the planner derives when one sells it (todo 49)', () => {
+    const asked: string[] = [];
+    const { planner: p, log } = planner({
+      shopRoom: (row, passOver) => {
+        asked.push(`${row.shop}|${[...passOver].join(',')}`);
+        return { kind: 'counter', room: '1/2147', name: 'General Store', moves: null };
+      }
+    });
+    const auto = make(p, TORCH_ANYWHERE);
+    auto.onCharacter(character(1));
+    expect(asked).toEqual(['|']);
+    expect(log).toEqual(['hold', 'route:1/2147', 'walk']);
+  });
+
+  it('says once that nothing sells or drops it, and walks nowhere', () => {
+    const { planner: p, log } = planner({
+      shopRoom: () => ({ kind: 'nowhere', why: 'no shop sells it and no monster drops it' })
+    });
+    const auto = make(p, KEYS);
+    auto.onCharacter(character(1));
+    auto.onCharacter(character(1));
+    expect(log).toEqual([]);
+    expect(notices).toEqual([
+      t('automation.supplies.refused', {
+        item: 'black star key',
+        why: 'no shop sells it and no monster drops it'
+      })
+    ]);
+  });
+
+  it('goes on to the next nearest counter when the derived one does not list it', () => {
+    const passed: string[][] = [];
+    const { planner: p, arrive } = planner({
+      shopRoom: (_row, passOver) => {
+        passed.push([...passOver]);
+        return { kind: 'counter', room: '1/2147', name: 'General Store', moves: null };
+      }
+    });
+    const auto = make(p, TORCH_ANYWHERE);
+    auto.onCharacter(character(2));
+    arrive();
+    auto.onWalkEnded(true, null, character(2));
+    auto.onCharacter({
+      ...character(2),
+      shopListing: {
+        at: Date.now() + 1,
+        items: [{ name: 'lantern', quantity: null, price: '2 gold crowns', note: null }]
+      }
+    });
+    // The positive control: the counter refused, so the next ask follows it.
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalNotSold', { item: 'torch', shop: 'General Store' })
+    );
+    auto.onCharacter(character(2));
+    expect(passed).toEqual([[], ['1/2147']]);
+    // And once the shelf has had the item's retry to refill, it is a candidate again.
+    auto.abandon('test');
+    vi.advanceTimersByTime(TUNING.supplies.retryMs + 1);
+    auto.onCharacter(character(2));
+    expect(passed.at(-1)).toEqual([]);
+  });
+
+  it('waits the retry once countersPerTrip counters did not list it', () => {
+    const passed: string[][] = [];
+    const rooms = ['1/2147', '1/3000', '1/4000'];
+    let here = '1/1';
+    let chosen = '1/1';
+    const { planner: p } = planner({
+      here: () => here,
+      shopRoom: (_row, passOver) => {
+        passed.push([...passOver]);
+        chosen = rooms.find((each) => !passOver.has(each)) ?? '1/9999';
+        return { kind: 'counter', room: chosen, name: 'General Store', moves: 3 };
+      }
+    });
+    const auto = make(p, TORCH_ANYWHERE);
+    const empty = (): void => {
+      auto.onCharacter(character(2));
+      here = chosen;
+      auto.onWalkEnded(true, null, character(2));
+      auto.onCharacter({
+        ...character(2),
+        shopListing: {
+          at: Date.now() + 1,
+          items: [{ name: 'lantern', quantity: null, price: '2 gold crowns', note: null }]
+        }
+      });
+    };
+    for (let trip = 0; trip < TUNING.supplies.countersPerTrip; trip++) empty();
+    // The positive control: each counter refused it in turn.
+    expect(passed).toEqual([[], ['1/2147']]);
+    expect(decisions.filter((each) => each.refused !== undefined)).toHaveLength(2);
+    expect(decisions.at(-1)?.refused).toBe(
+      t('automation.supplies.refusalNotSold', { item: 'torch', shop: 'General Store' })
+    );
+    auto.onCharacter(character(2));
+    expect(passed).toHaveLength(TUNING.supplies.countersPerTrip);
+  });
+
+  it('answers each row\'s counter for the Supplies face, passing over an empty one', () => {
+    const { planner: p } = planner({
+      shopRoom: (row, passOver) =>
+        row.name === 'torch'
+          ? { kind: 'counter', room: '1/2147', name: 'General Store', moves: passOver.size + 4 }
+          : { kind: 'found' }
+    });
+    const auto = make(p, { enabled: true, items: [...TORCH_ANYWHERE.items, ...KEYS.items] });
+    expect(auto.counters()).toEqual({
+      torch: { kind: 'counter', room: '1/2147', name: 'General Store', moves: 4 },
+      'black star key': { kind: 'found' }
+    });
   });
 
   it('still has its ceiling kept', () => {

@@ -931,9 +931,11 @@ automation:
   # Keeping the pack stocked -- MegaMUD's Must Have Minimum.
   #
   # Each item names a thing to keep, the count below which the character goes
-  # shopping (`min`), the count it buys back up to (`max`), and the shop --
-  # by name, with the room it was settled to, because six rooms are called
-  # General Store. When the pack runs short the client holds whatever it was
+  # shopping (`min`), the count it buys back up to (`max`), and optionally the
+  # shop -- by name, with the room it was settled to, because six rooms are
+  # called General Store. With no shop the character goes to the nearest one
+  # that sells the item; an item no shop sells is picked up off the floor
+  # instead (`loot`). When the pack runs short the client holds whatever it was
   # doing, walks to the shop, asks the counter what it sells, buys one at a time
   # on the counter's own confirmation, and lets the loop go on from the shop.
   # Per character: state a list in a character's own file, or add items from the
@@ -941,7 +943,8 @@ automation:
   # list of its own inherits.
   #
   #   items:
-  #     - { name: torch, min: 3, max: 7, shop: General Store, at: { map: 1, room: 2147 } }
+  #     - { name: torch, min: 3, max: 7 }
+  #     - { name: rations, min: 2, max: 5, shop: General Store, at: { map: 1, room: 2147 } }
   supplies:
     enabled: true
     items: []

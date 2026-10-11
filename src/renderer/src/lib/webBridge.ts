@@ -325,6 +325,7 @@ export function createWebBridge(): IpcApi {
     huntingGrounds: (session, measure) => invoke(Invoke.huntingGrounds, session, measure),
     trainers: (session) => invoke(Invoke.trainers, session),
     banks: (session) => invoke(Invoke.banks, session),
+    supplyCounters: (session) => invoke(Invoke.supplyCounters, session),
     itemsServing: (session) => invoke(Invoke.itemsServing, session),
     wards: (session) => invoke(Invoke.wards, session),
     invokeChoices: (session) => invoke(Invoke.invokeChoices, session),

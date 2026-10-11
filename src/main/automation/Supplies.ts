@@ -66,7 +66,13 @@ import type { SafetyDecision } from '../../shared/automation';
 import { chargedInCopper, quotedInCopper } from '../../shared/coins';
 import type { SuppliesConfig, SupplyItem } from '../../shared/config';
 import { bareName } from '../../shared/items';
-import { carriedCount, stockCeiling } from '../../shared/supplies';
+import {
+  carriedCount,
+  stockCeiling,
+  namesNoShop,
+  type SupplyCounter,
+  type SupplyCounters
+} from '../../shared/supplies';
 import { nameAnswersTo, roomId, type CashPlace, type RoomId, type Route } from '../../shared/world';
 import type { SessionModule } from './Module';
 import { stoppedByPerson } from './personStop';
@@ -75,8 +81,11 @@ import { Withdrawal, type WithdrawalEnd } from './Withdrawal';
 export interface SupplyPlanner {
   /** Where the character is, or null while it is not placed. */
   here(): RoomId | null;
-  /** The room a supply's shop is in, or the reason the shop cannot be settled. */
-  shopRoom(item: SupplyItem): { room: RoomId; name: string } | string;
+  /**
+   * The counter a supply is bought at: the row's own shop, or with none named
+   * the nearest that sells it, less the rooms in `passOver` (todo 49).
+   */
+  shopRoom(item: SupplyItem, passOver: ReadonlySet<RoomId>): SupplyCounter;
   routeTo(room: RoomId): Route | string;
   /** What one costs at the counter in that room, in copper before charm; null where unsaid. */
   priceAt(item: SupplyItem, shop: RoomId): number | null;
@@ -146,6 +155,19 @@ function legOf(errand: Errand): { room: RoomId; name: string } {
     : { room: errand.bank.room, name: errand.bank.place.name };
 }
 
+/** What a refused row says, and why the errand was considered at all. */
+function refusalOf(item: SupplyItem, why: string): { because: string; message: string } {
+  return {
+    because: t('automation.supplies.becauseShortRefused', { item: item.name, min: item.min }),
+    message: t('automation.supplies.refused', { item: item.name, why })
+  };
+}
+
+/** One counter's shelf for one item, as `emptyUntil` keys it. */
+function shelfKey(item: string, room: RoomId | ''): string {
+  return `${bareName(item)}@${room}`;
+}
+
 /** What the errand asks a counter or a vault, withdrawn when it walks on before the answer. */
 const ERRAND_ASKS = new Set(['supplies:list', 'supplies:bank', 'supplies:withdraw']);
 
@@ -153,6 +175,12 @@ export class Supplies implements SessionModule {
   private errand: Errand | null = null;
   /** Items refused recently, and until when they are left alone. */
   private readonly retryAt = new Map<string, number>();
+  /**
+   * Counters that did not list an item, by `item@room`, and until when they
+   * are passed over: a row naming no shop goes to the next nearest instead
+   * (todo 49). The item's own `retryMs`, since it is not tried sooner.
+   */
+  private readonly emptyUntil = new Map<string, number>();
   /** Standing conditions already said, so they are said once. See `report`. */
   private readonly reported = new Set<string>();
   /**
@@ -207,6 +235,7 @@ export class Supplies implements SessionModule {
     this.withdrawal.cancel();
     this.errand = null;
     this.retryAt.clear();
+    this.emptyUntil.clear();
     this.reported.clear();
     this.droppedUntil.clear();
   }
@@ -232,6 +261,16 @@ export class Supplies implements SessionModule {
 
   get current(): Errand | null {
     return this.errand;
+  }
+
+  /** Where each row would be bought from here now, as the Supplies face shows it (todo 49). */
+  counters(): SupplyCounters {
+    const now = this.now();
+    const rows = this.config.items.map((item) => [
+      item.name,
+      this.planner.shopRoom(item, this.passedOver(item, now))
+    ]);
+    return Object.fromEntries(rows);
   }
 
   /**
@@ -309,6 +348,10 @@ export class Supplies implements SessionModule {
           nameAnswersTo(bareName(entry.name), bareName(errand.item.name))
         );
         if (row === undefined) {
+          this.emptyUntil.set(
+            shelfKey(errand.item.name, errand.room),
+            this.now() + tuning().supplies.retryMs
+          );
           this.finish(
             errand,
             false,
@@ -317,6 +360,12 @@ export class Supplies implements SessionModule {
               shop: errand.shopName
             })
           );
+          // A row naming no shop goes on to the next nearest counter now, up
+          // to `countersPerTrip` of them; then the item waits `retryMs`.
+          const tried = this.passedOver(errand.item, this.now()).size;
+          if (namesNoShop(errand.item) && tried < tuning().supplies.countersPerTrip) {
+            this.retryAt.delete(bareName(errand.item.name));
+          }
           return;
         }
         if (this.recountAtCounter(errand, state)) return;
@@ -468,19 +517,24 @@ export class Supplies implements SessionModule {
     const now = this.now();
     for (const item of this.config.items) {
       if (item.min <= 0) continue;
-      /*
-       * A row naming no shop is a thing that is found rather than bought — a
-       * `black star key` at min 2, max 2 is sold nowhere. Skipped in silence
-       * rather than refused per status line: `AutoLoot` fills it off the floor
-       * (`stockingUp`), and *no shop chosen* said once a second about a row
-       * that is working correctly is noise.
-       */
-      if (item.shop.trim().length === 0) continue;
       const until = this.retryAt.get(bareName(item.name));
       if (until !== undefined && until > now) continue;
       const have = carriedCount(state, item.name);
       if (have >= item.min) continue;
-      this.begin(item, have, state);
+      const counter = this.planner.shopRoom(item, this.passedOver(item, now));
+      /*
+       * A row no counter sells is found rather than bought (a `black star
+       * key` at min 2, max 2): `AutoLoot.stockingUp` fills it off the floor,
+       * so it is skipped in silence. One nothing sells or drops is said once
+       * (todo 49), and the realm is asked again only on the next short pack.
+       */
+      if (counter.kind === 'found') continue;
+      if (counter.kind === 'nowhere') {
+        const { because, message } = refusalOf(item, counter.why);
+        this.report(`supplies:nowhere:${bareName(item.name)}`, because, message);
+        continue;
+      }
+      this.begin(item, have, state, counter);
       return;
     }
   }
@@ -607,11 +661,42 @@ export class Supplies implements SessionModule {
     });
   }
 
-  private begin(item: SupplyItem, have: number, state: CharacterState): void {
-    const found = this.planner.shopRoom(item);
-    if (typeof found === 'string') {
-      this.refuse(item, t('automation.supplies.refusalNoShop', { item: item.name, why: found }));
-      return;
+  /** The counters that did not list this item lately, to be passed over. */
+  private passedOver(item: SupplyItem, now: number): Set<RoomId> {
+    const rooms = new Set<RoomId>();
+    const prefix = shelfKey(item.name, '');
+    for (const [key, until] of this.emptyUntil) {
+      if (until <= now) this.emptyUntil.delete(key);
+      else if (key.startsWith(prefix)) rooms.add(key.slice(prefix.length));
+    }
+    return rooms;
+  }
+
+  private begin(
+    item: SupplyItem,
+    have: number,
+    state: CharacterState,
+    counter: SupplyCounter = this.planner.shopRoom(item, this.passedOver(item, this.now()))
+  ): void {
+    let found: { room: RoomId; name: string };
+    switch (counter.kind) {
+      case 'counter':
+        found = counter;
+        break;
+      case 'found':
+      case 'nowhere':
+      case 'refused': {
+        const why =
+          counter.kind === 'found'
+            ? t('session.supplies.notSold', { item: item.name })
+            : counter.why;
+        this.refuse(item, t('automation.supplies.refusalNoShop', { item: item.name, why }));
+        return;
+      }
+      default: {
+        const never: never = counter;
+        return never;
+      }
     }
     const errand: Errand = {
       item,
@@ -1007,11 +1092,12 @@ export class Supplies implements SessionModule {
 
   private refuse(item: SupplyItem, why: string): void {
     this.retryAt.set(bareName(item.name), this.now() + tuning().supplies.retryMs);
-    this.events.notice?.(t('automation.supplies.refused', { item: item.name, why }));
+    const { because, message } = refusalOf(item, why);
+    this.events.notice?.(message);
     this.events.decided?.({
       at: this.now(),
       action: 'supplies',
-      because: t('automation.supplies.becauseShortRefused', { item: item.name, min: item.min }),
+      because,
       acted: false,
       refused: why
     });

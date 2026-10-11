@@ -7012,6 +7012,8 @@ function theTuningBlockGainedKeys(
     addKey('view', 'hiddenWebglMs', DEFAULT_INTERNAL.tuning.view.hiddenWebglMs);
     // How much lost health brings the next par sooner (2026-10-10).
     addKey('remotes', 'parAtLoss', DEFAULT_INTERNAL.tuning.remotes.parAtLoss);
+    // How many shops a row naming no shop tries before it waits (todo 49, 2026-10-11).
+    addKey('supplies', 'countersPerTrip', DEFAULT_INTERNAL.tuning.supplies.countersPerTrip);
 
     /** A key this build no longer reads, taken out rather than left to mean nothing. */
     const dropKey = (group: string, key: string): void => {
