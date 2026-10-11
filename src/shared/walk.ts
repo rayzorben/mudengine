@@ -389,3 +389,52 @@ export function tooHurtToBash(vitals: Vitals, restBelow: number): boolean {
   if (hp === null || hpMax === null || hpMax <= 0) return false;
   return hp / hpMax < restBelow;
 }
+
+/**
+ * The chance one `disarm trap <dir>` holds, from the sheet's `Traps:`, or null
+ * when nobody has read it. `TrapExit.TryDisarm` and `SpellTrapExit.TryDisarm`
+ * both succeed when `Traps >= rand(1,100)`, so the figure is the percentage;
+ * a sheet of 0 never succeeds and one past 100 always does.
+ */
+export function disarmOdds(traps: number | null): number | null {
+  if (traps === null) return null;
+  return Math.min(100, Math.max(0, traps)) / 100;
+}
+
+/**
+ * Whether disarming a trap costs less hurt than walking into it, for a way
+ * `walkers` characters will walk (this one and the party behind it).
+ *
+ * A failed disarm fires the trap at the disarmer for its full damage, which is
+ * what walking into it costs (`TrapExit.cs:104-120`), and leaves the trap
+ * armed. Trying until it holds therefore costs `damage × (1 − p) / p` on
+ * average, against `damage × walkers` for everyone walking through, so it is
+ * worth it when `(1 − p) / p < walkers`: above 50 Traps alone, above 25 with
+ * two behind. The odds are the same every try, so a try worth making is worth
+ * making again; `disarmDoubt` bounds the count.
+ */
+export function disarmWorth(odds: number | null, walkers: number): boolean {
+  if (odds === null || odds <= 0) return false;
+  return (1 - odds) / odds < Math.max(1, walkers);
+}
+
+/**
+ * What one character expects a trap to take on the way through: its damage
+ * walked into, or the failed disarms before one holds where that costs less
+ * (`disarmWorth` for one walker). Null damage stays null.
+ */
+export function trapHurt(damage: number | null, odds: number | null): number | null {
+  if (damage === null) return null;
+  if (!disarmWorth(odds, 1) || odds === null) return damage;
+  return Math.round((damage * (1 - odds)) / odds);
+}
+
+/**
+ * How many failed disarms in a row make the sheet's figure the likelier thing
+ * to be wrong: the count `odds` fails that often with a chance under `doubt`.
+ * Past it the walk goes through on the trap hold's terms and says so.
+ */
+export function disarmTries(odds: number, doubt: number): number {
+  if (odds >= 1) return 1;
+  return Math.max(1, Math.ceil(Math.log(doubt) / Math.log(1 - odds)));
+}

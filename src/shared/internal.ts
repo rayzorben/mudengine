@@ -1368,6 +1368,23 @@ const TUNING_DEFAULTS = {
      * lost line, not a slow server, so it is the step's own order of time.
      */
     sneakAnswerMs: 5_000,
+    /**
+     * How long a step waits, from the send, for `disarm trap <dir>` to say it
+     * held before counting the try as failed (todo 53). A failure has no
+     * fixed line, so this is the failure's answer as well as a lost line's.
+     */
+    disarmAnswerMs: 3_000,
+    /**
+     * Failed disarms in a row whose chance at the stats' Traps falls under
+     * this make the figure the likelier thing to be wrong, and the walk goes
+     * through on the trap hold's terms (`disarmTries`).
+     */
+    disarmDoubt: 0.01,
+    /**
+     * How long a disarmed way stays safe: the server re-arms it 300 s after
+     * the disarm (`TrapExit.TryDisarm`), read short by the answer's travel.
+     */
+    trapRearmMs: 290_000,
     /** How long one hold lasts before the walk tries the step again. */
     holdMs: 1_500,
     /** How many holds run back to back before it walks on regardless. */

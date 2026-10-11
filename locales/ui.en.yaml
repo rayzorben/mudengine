@@ -6115,6 +6115,11 @@ automation:
     trapHolding: The way into {stepName} has a trap of up to {damage} damage; resting here to
       {needed} HP (now {hp}) before going through.
     trapResumed: Enough health for the trap into {stepName}; walking on.
+    reasonDisarm: disarming the trap into {stepName}
+    trapDisarmed: Disarmed the trap into {stepName}; walking on.
+    disarmGaveUp: 'Not disarming the trap into {stepName}: {count} tries in a row failed, more
+      than your Traps should miss. Walking through it instead.'
+    disarmUnsent: The disarm for the trap into {stepName} was never sent; walking on.
     offRoundsTimed: 'Timing the run to the rounds: a round every {round} s, a step takes {step} s.'
     offRoundsNoRounds: 'Not timing the run to the rounds: no round seen yet.'
     offRoundsNoSteps: 'Not timing the run to the rounds: not enough steps timed yet.'

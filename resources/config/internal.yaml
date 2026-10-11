@@ -1033,6 +1033,14 @@ tuning:
     # How long a step waits, from the send, for the answer to the sn ahead of
     # it before it goes without knowing whether the character is sneaking.
     sneakAnswerMs: 5000
+    # How long a step waits, from the send, for disarm trap to say it held
+    # before counting the try as failed. A failure has no fixed line.
+    disarmAnswerMs: 3000
+    # Failed disarms in a row whose chance at the stats' Traps falls under this
+    # mean the figure is likelier wrong; the walk then goes through the trap.
+    disarmDoubt: 0.01
+    # How long a disarmed way stays safe: the game re-arms it 300 s after.
+    trapRearmMs: 290000
 
     # How long one hold lasts before the walk tries the step again.
     holdMs: 1500

@@ -3550,3 +3550,19 @@ describe('a miss between two others with a two-word verb', () => {
     });
   });
 });
+
+/* Todo 53: `disarm trap <dir>`'s two answers that end it (`TrapExit.TryDisarm`, source). */
+describe('a trap disarmed', () => {
+  it('reads the success with its way, and the already-disarmed line without one', () => {
+    const done = classify('You successfully disarmed the trap to the northeast.');
+    expect(done.type).toBe('trap-disarmed');
+    expect(done.groups['direction']).toBe('northeast');
+    const already = classify('The trap is already disarmed.');
+    expect(already.type).toBe('trap-disarmed');
+    expect(already.groups['direction']).toBeUndefined();
+  });
+
+  it('leaves a failed pick as a failed pick', () => {
+    expect(classify('Your skill fails you this time.').type).toBe('skill-failed');
+  });
+});

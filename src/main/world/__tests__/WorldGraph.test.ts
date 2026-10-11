@@ -419,6 +419,15 @@ describe('edgePenalty', () => {
     expect(edgePenalty(heavy, {})!).toBeGreaterThan(edgePenalty(light, {})!);
   });
 
+  /* Todo 53: a character whose Traps beat 50 disarms first, and a failed
+     disarm costs the damage, so the way costs the failures it expects. */
+  it('prices a trap at the failed disarms for a character who disarms', () => {
+    const trap = { kind: 'trap' as const, raw: 'Trap, 400 damage', damage: 400 };
+    expect(edgePenalty(trap, { trapSkill: 75 })).toBe(20 + 133);
+    expect(edgePenalty(trap, { trapSkill: 40 })).toBe(edgePenalty(trap, {}));
+    expect(edgePenalty(trap, { trapSkill: null })).toBe(20 + 400);
+  });
+
   it('never returns a negative penalty', () => {
     // The original A* charged -500 for a door, which makes the search prefer
     // doors and breaks admissibility. That is not reproduced.
