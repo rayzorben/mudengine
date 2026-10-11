@@ -30,6 +30,7 @@ import EntityNumber from './EntityNumber';
 import LairList from './LairList';
 import { shopKindLabel } from './ShopFace';
 import PopoverHead, { PopoverSizer } from './PopoverHead';
+import RoomSpellRows from './RoomSpellRows';
 import { usePopoverFrame } from '../hooks/usePopoverFrame';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
@@ -261,48 +262,17 @@ function RoomFacts({ brief, standing }: { brief: RoomBrief; standing: Standing }
         )}
         {/*
          * The spell the realm casts on whoever stands here. Written into the
-         * realm file since format 13 and read by nothing until now — 13,016
-         * of the shipped realm's rooms carry one, and a room that heals you
-         * and a room that drowns you are the same column.
+         * realm file since format 13 — 13,603 of Paradigm's rooms carry one,
+         * and a room that heals you and a room that drowns you are the same
+         * column. Drawn as the Room card draws it (`RoomSpellRows`).
          */}
-        {brief.spell !== undefined && (
-          <>
-            <dt>{t('cards.roomPeek.roomSpellLabel')}</dt>
-            <dd className="span">
-              {brief.spell.name}
-              {/* And what it actually does — `river damage` and `inn rest`
-                  are the same column, and the name alone does not answer the
-                  question the reader is asking. */}
-              {brief.hazard !== undefined && (
-                <span
-                  className={
-                    brief.hazard.unread === true || brief.hazard.summons === true
-                      ? 'chip warn'
-                      : 'chip bad'
-                  }
-                >
-                  {/* Read off the field rather than inferred from the absence
-                      of the other two: a spell that only names what stops it
-                      would otherwise be reported as moving you. */}
-                  {brief.hazard.damage !== undefined
-                    ? t('cards.roomPeek.roomSpellDamage', { damage: brief.hazard.damage })
-                    : brief.hazard.relocates === true
-                      ? t('cards.roomPeek.roomSpellMoves')
-                      : brief.hazard.summons === true
-                        ? t('cards.roomPeek.roomSpellSummons')
-                        : t('cards.route.hazardUnread')}
-                </span>
-              )}
-            </dd>
-          </>
-        )}
-        {/* What stops it. The half that decides what to do: a room that bashes
-            you against the rocks is a corridor if you are carrying a boat. */}
-        {brief.hazardItems !== undefined && (
-          <>
-            <dt>{t('cards.roomPeek.roomSpellStoppedBy')}</dt>
-            <dd className="span">{brief.hazardItems.map((item) => item.name).join(', ')}</dd>
-          </>
+        {(brief.spell !== undefined || brief.passage !== undefined) && (
+          <RoomSpellRows
+            hazard={brief.hazard}
+            passage={brief.passage}
+            spell={brief.spell ?? null}
+            stoppedBy={brief.stoppedBy}
+          />
         )}
         {/* What the realm furnishes it with and puts back every night —
             format 42. Names, not controls, for the lair's reason below; the

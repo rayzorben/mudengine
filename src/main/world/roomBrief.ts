@@ -16,6 +16,7 @@
 import type { RealmFamily } from '../../shared/realm';
 import type { RoomBrief, RoomBriefExit, RoomId } from '../../shared/world';
 import { describeObstacle, leverOpening } from './obstacle';
+import { namedStoppers } from './stoppers';
 import type { WorldGraph } from './WorldGraph';
 
 /**
@@ -93,17 +94,17 @@ export function roomBrief(
   /*
    * And what it does. The name alone does not answer the question — `river
    * damage` and `inn rest` are the same column, and the realm states which is
-   * which. The items that stop it are named here, where the item table is.
+   * which. What stops it is named here, where the item and spell tables are.
    */
   const hazard = graph.hazardOf(room, level);
   if (hazard !== null) {
     brief.hazard = hazard;
-    const named = (hazard.avoidedBy ?? []).flatMap((id) => {
-      const item = graph.item(id);
-      return item === undefined ? [] : [{ id, name: item.name }];
-    });
-    if (named.length > 0) brief.hazardItems = named;
+    const stoppers = namedStoppers(graph, hazard);
+    if (stoppers !== null) brief.stoppedBy = stoppers;
   }
+
+  const passage = graph.spellOver(id);
+  if (passage !== null) brief.passage = passage;
 
   if (room.light !== undefined) brief.light = room.light;
   if (room.commands !== undefined && room.commands.length > 0) brief.commands = room.commands;

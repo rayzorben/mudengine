@@ -10,6 +10,8 @@ import { useHotkeys } from '../hooks/useHotkeys';
 import { useListNavigation } from '../hooks/useListNavigation';
 import { useRoomSearch } from '../hooks/useRoomSearch';
 import RoomMatches from './RoomMatches';
+import { corridorTitle } from '../lib/corridor';
+import { healthShareWords } from '../lib/healthShare';
 import { t } from '../lib/i18n';
 import { type LocalMap } from '@shared/map';
 import { errorMessage } from '@shared/values';
@@ -1294,15 +1296,7 @@ export default function RoutePanel({
                         <span
                           className={hazard.corridor.ends ? 'chip info' : 'chip warn'}
                           key={`corridor:${hazard.spell}`}
-                          title={
-                            hazard.corridor.ticks !== undefined &&
-                            hazard.corridor.then !== undefined
-                              ? t('cards.route.corridorTitle', {
-                                  ticks: hazard.corridor.ticks,
-                                  then: hazard.corridor.then
-                                })
-                              : t('cards.route.corridorTitleShort')
-                          }
+                          title={corridorTitle(hazard.corridor)}
                         >
                           {hazard.corridor.ends
                             ? t('cards.route.corridor', {
@@ -1339,15 +1333,7 @@ export default function RoutePanel({
                                 ? t('cards.route.hazardSummons')
                                 : hazard.share === null
                                   ? null
-                                  : // Under a percent is said as *under a percent*:
-                                    // rounding it up to one is a figure the data
-                                    // did not give, and rounding it to zero is a
-                                    // reassurance it did not give either.
-                                    hazard.share * 100 < 1
-                                    ? t('cards.route.hazardSlight')
-                                    : t('cards.route.hazardShare', {
-                                        percent: Math.round(hazard.share * 100)
-                                      })
+                                  : healthShareWords(hazard.share)
                           ]
                             .filter((part) => part !== null)
                             .join(' · ')}

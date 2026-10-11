@@ -1623,8 +1623,9 @@ export class Catalogue {
     /*
      * Narrowed to the character being planned for, where the realm gates an
      * effect on level and the client knows which character it is (todo 01).
-     * This is the one join, so it is the one place the narrowing can be made
-     * without a reader forgetting to — and `hazardFor` keeps the whole hazard
+     * Every reader narrows through `hazardFor`: here for a room asked about,
+     * and on the Room card for the room stood in, so a level-up there shows
+     * without a move (todo 72). `hazardFor` keeps the whole hazard
      * for an unstated level, which is the ordinary refuse-rather-than-guess
      * answer and what every caller got before.
      */

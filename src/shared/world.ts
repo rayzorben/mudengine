@@ -2373,8 +2373,10 @@ export interface RoomBrief {
    * with it where there is one. See {@link SpellHazard}.
    */
   hazard?: SpellHazard;
-  /** Those of `hazard.avoidedBy` the realm can name, so the panel can say them. */
-  hazardItems?: Array<{ id: number; name: string }>;
+  /** What stops `hazard`, named where the realm can name it. See {@link SpellStoppers}. */
+  stoppedBy?: SpellStoppers;
+  /** The timed passage this room is inside (`WorldGraph.spellOver`), where it is one. */
+  passage?: Corridor;
   /** The realm's own light level, where it records one. Negative is dark. */
   light?: number;
   /** The words the room answers to, from its own script. */
@@ -2385,6 +2387,17 @@ export interface RoomBrief {
    * most of them: a sign, a coffin, a tree.
    */
   placed?: Array<{ id: number; name: string; fixed?: true }>;
+}
+
+/**
+ * The items and spells that stop a room's own spell (`SpellHazard.avoidedBy`
+ * and `avoidedBySpell`), named against the realm's tables. A row the table
+ * lacks is left out, as the server skips it too. Built by `namedStoppers`
+ * (`src/main/world/stoppers.ts`), the one join, for the peek and the Room card.
+ */
+export interface SpellStoppers {
+  items: Array<{ id: number; name: string }>;
+  spells: Array<{ id: number; name: string }>;
 }
 
 export interface RoomBriefExit {
