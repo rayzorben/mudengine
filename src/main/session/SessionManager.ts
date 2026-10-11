@@ -57,6 +57,7 @@ import { ItemErrand } from '../automation/ItemErrand';
 import type { OutgrownGear } from '../automation/OutgrownGear';
 import { hostTrips, type HostTrips } from './hostTrips';
 import { gearDesk, type GearDesk } from './gearDesk';
+import { handReach } from './weaponReach';
 import { questDesk, type QuestDesk } from './questDesk';
 import type { AreaSearch } from '../automation/AreaSearch';
 import { QuestRunner } from '../automation/QuestRunner';
@@ -847,19 +848,15 @@ export class SessionManager {
         needBook: () => this.routines.askBook(this.tracker.current),
         // The round beat: the gear's off-round invocation (todo 00), the party listing (831).
         round: (state) => [this.gear, this.routines].forEach((it) => it.round(state)),
-        /*
-         * The trace, not the console. A refusal to open a fight is not news
-         * the *game's* surface should carry — it happens in every corridor and
-         * would be the chrome talking over the realm — but it is exactly what
-         * somebody asking "why did it walk past those thugs" needs, and the
-         * Automation card is where a decision is read back.
-         */
+        // The trace, not the console: a refusal happens in every corridor (the Automation card).
         decided: (decision) => this.publisher.noteEngagement(decision),
-        /*
-         * Whether this class can get into the shadows at all, from the realm's
-         * own class row (todo 28): `ClassStealth`, which the class row grants
-         * and a Thief carries beside `Stealth`. Null while unread, never refusing.
-         */
+        reach: handReach(
+          this.errands,
+          () => this.world,
+          () => this.gearDesk.reads
+        ),
+        wield: (state, weapon, target) => this.gear.wieldFor(state, weapon, target),
+        // The class row's `ClassStealth` (a Thief also has `Stealth`, todo 28); null never refuses.
         canHide: () => holdsAbility(this.errands.capabilities(), CLASS_STEALTH_ABILITY),
         // The words fought with, typed or chosen (todo 47).
         attackWord: (target) => this.errands.words.attack([target]).verb,
