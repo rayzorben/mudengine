@@ -2,11 +2,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import ClearField from './ClearField';
 import Icon from './Icon';
+import UnreadList from './UnreadList';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { tuning } from '../lib/tuning';
 import type { DebugKind, DebugRecord } from '@shared/debug';
 import type { DebugSave, SessionId } from '@shared/ipc';
+import type { UnreadLine } from '@shared/unread';
 import { timeOfDay } from '@shared/values';
 
 /**
@@ -54,9 +56,8 @@ const KINDS: readonly DebugKind[] = (Object.keys(KIND_LABEL) as DebugKind[]).sor
   (a, b) => KIND_ORDER[a] - KIND_ORDER[b]
 );
 
-export interface DebugViewProps {
-  /** The character this is a trace of. */
-  session: SessionId;
+/** What the view asks main for, handed over whole. */
+export interface DebugApi {
   /** Everything the ring holds, and how much it has already thrown away. */
   load(session: SessionId): Promise<{ records: DebugRecord[]; dropped: number }>;
   /** Subscribes to the live feed; returns the unsubscribe. */
@@ -65,6 +66,14 @@ export interface DebugViewProps {
   save(session: SessionId): Promise<DebugSave>;
   /** Open the folder the report was written into. */
   reveal(): void;
+  /** The lines the parser did not read on the session's realm (todo 73). */
+  unread(session: SessionId): Promise<UnreadLine[]>;
+}
+
+export interface DebugViewProps {
+  /** The character this is a trace of. */
+  session: SessionId;
+  api: DebugApi;
   onClose(): void;
 }
 
@@ -95,7 +104,10 @@ export interface DebugViewProps {
  * view re-renders for a feed only this view reads — and the history comes from
  * one fetch on open, because main records whether or not anybody is watching.
  */
-function DebugView({ session, load, subscribe, save, reveal, onClose }: DebugViewProps) {
+function DebugView({ session, api, onClose }: DebugViewProps) {
+  const { load, subscribe, save, reveal } = api;
+  /** The trace, or the realm's unread lines in its place (todo 73). */
+  const [unreadShown, setUnreadShown] = useState(false);
   const [records, setRecords] = useState<DebugRecord[]>([]);
   const [dropped, setDropped] = useState(0);
   const [muted, setMuted] = useState<ReadonlySet<DebugKind>>(new Set());
@@ -222,55 +234,72 @@ function DebugView({ session, load, subscribe, save, reveal, onClose }: DebugVie
     <div className="surface debug-view" role="region" aria-label={t('debug.ariaLabel')}>
       <header className="debug-head">
         <h2>{t('debug.title')}</h2>
-        {/*
+        <button
+          aria-pressed={unreadShown}
+          className="chip"
+          onClick={() => setUnreadShown((shown) => !shown)}
+          onMouseDown={keepFocus}
+          type="button"
+        >
+          {t('debug.unread.toggle')}
+        </button>
+        {!unreadShown && (
+          <>
+            {/*
           Every kind is a chip, present whether or not anything of that kind has
           arrived — the map legend's rule. A row that gained a chip the first
           time a rule fired would change width while somebody was reading it,
           and the absence of a kind is itself a fact worth being able to see.
         */}
-        <div className="debug-kinds" role="group" aria-label={t('debug.kindsAria')}>
-          {KINDS.map((kind) => (
+            <div className="debug-kinds" role="group" aria-label={t('debug.kindsAria')}>
+              {KINDS.map((kind) => (
+                <button
+                  aria-pressed={!muted.has(kind)}
+                  className={`chip debug-kind${muted.has(kind) ? ' off' : ''}`}
+                  data-kind={kind}
+                  key={kind}
+                  onClick={() => toggle(kind)}
+                  onMouseDown={keepFocus}
+                  type="button"
+                >
+                  {KIND_LABEL[kind]}
+                </button>
+              ))}
+            </div>
+            <ClearField
+              label={t('debug.findPlaceholder')}
+              onClear={() => setQuery('')}
+              query={query}
+            >
+              <input
+                className="debug-find"
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  // Escape means done *once*: it clears the query and hands the caret
+                  // back in one press, exactly as a card's find field does.
+                  if (event.key !== 'Escape') return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setQuery('');
+                  event.currentTarget.blur();
+                }}
+                placeholder={t('debug.findPlaceholder')}
+                type="text"
+                value={query}
+              />
+            </ClearField>
             <button
-              aria-pressed={!muted.has(kind)}
-              className={`chip debug-kind${muted.has(kind) ? ' off' : ''}`}
-              data-kind={kind}
-              key={kind}
-              onClick={() => toggle(kind)}
+              className="card-action"
+              onClick={write}
               onMouseDown={keepFocus}
+              title={t('debug.saveTooltip')}
               type="button"
             >
-              {KIND_LABEL[kind]}
+              <Icon name="fileText" />
+              <span className="sr-only">{t('debug.saveTooltip')}</span>
             </button>
-          ))}
-        </div>
-        <ClearField label={t('debug.findPlaceholder')} onClear={() => setQuery('')} query={query}>
-          <input
-            className="debug-find"
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              // Escape means done *once*: it clears the query and hands the caret
-              // back in one press, exactly as a card's find field does.
-              if (event.key !== 'Escape') return;
-              event.preventDefault();
-              event.stopPropagation();
-              setQuery('');
-              event.currentTarget.blur();
-            }}
-            placeholder={t('debug.findPlaceholder')}
-            type="text"
-            value={query}
-          />
-        </ClearField>
-        <button
-          className="card-action"
-          onClick={write}
-          onMouseDown={keepFocus}
-          title={t('debug.saveTooltip')}
-          type="button"
-        >
-          <Icon name="fileText" />
-          <span className="sr-only">{t('debug.saveTooltip')}</span>
-        </button>
+          </>
+        )}
         <button
           aria-label={t('cards.chrome.close')}
           className="card-action card-close"
@@ -289,59 +318,70 @@ function DebugView({ session, load, subscribe, save, reveal, onClose }: DebugVie
         view lying about what happened, which here is worse than on a card —
         somebody reading this is trying to find out what happened.
       */}
-      <div className="debug-status">
-        <span>
-          {t('debug.counts', { shown: shown.length, total: records.length })}
-          {dropped > 0 ? ` · ${t('debug.dropped', { count: dropped })}` : ''}
-        </span>
-        {hidden > 0 && (
-          <button
-            className="quiet"
-            onClick={() => {
-              setMuted(new Set());
-              setQuery('');
-            }}
-            onMouseDown={keepFocus}
-            type="button"
-          >
-            {t('debug.showAll')}
-          </button>
-        )}
-        {!following && (
-          <button
-            className="quiet"
-            onClick={() => setFollowing(true)}
-            onMouseDown={keepFocus}
-            type="button"
-          >
-            {t('debug.follow')}
-          </button>
-        )}
-        {saved !== null && (
-          <span className={'path' in saved ? 'debug-saved' : 'debug-failed'}>
-            {'path' in saved ? (
-              <>
-                {t('debug.savedTo', { path: saved.path })}{' '}
-                <button className="quiet" onClick={reveal} onMouseDown={keepFocus} type="button">
-                  {t('debug.revealReport')}
-                </button>
-              </>
-            ) : (
-              t('debug.saveFailed', { error: saved.error })
+      {unreadShown ? (
+        <UnreadList load={api.unread} session={session} />
+      ) : (
+        <>
+          <div className="debug-status">
+            <span>
+              {t('debug.counts', { shown: shown.length, total: records.length })}
+              {dropped > 0 ? ` · ${t('debug.dropped', { count: dropped })}` : ''}
+            </span>
+            {hidden > 0 && (
+              <button
+                className="quiet"
+                onClick={() => {
+                  setMuted(new Set());
+                  setQuery('');
+                }}
+                onMouseDown={keepFocus}
+                type="button"
+              >
+                {t('debug.showAll')}
+              </button>
             )}
-          </span>
-        )}
-      </div>
-
-      <div className="debug-log" onScroll={onScroll} ref={scroller}>
-        {shown.length === 0 ? (
-          <div className="empty">
-            {records.length === 0 ? t('debug.emptyNothingYet') : t('debug.emptyAllFiltered')}
+            {!following && (
+              <button
+                className="quiet"
+                onClick={() => setFollowing(true)}
+                onMouseDown={keepFocus}
+                type="button"
+              >
+                {t('debug.follow')}
+              </button>
+            )}
+            {saved !== null && (
+              <span className={'path' in saved ? 'debug-saved' : 'debug-failed'}>
+                {'path' in saved ? (
+                  <>
+                    {t('debug.savedTo', { path: saved.path })}{' '}
+                    <button
+                      className="quiet"
+                      onClick={reveal}
+                      onMouseDown={keepFocus}
+                      type="button"
+                    >
+                      {t('debug.revealReport')}
+                    </button>
+                  </>
+                ) : (
+                  t('debug.saveFailed', { error: saved.error })
+                )}
+              </span>
+            )}
           </div>
-        ) : (
-          shown.map((record) => <DebugRow key={record.seq} record={record} />)
-        )}
-      </div>
+
+          <div className="debug-log" onScroll={onScroll} ref={scroller}>
+            {shown.length === 0 ? (
+              <div className="empty">
+                {records.length === 0 ? t('debug.emptyNothingYet') : t('debug.emptyAllFiltered')}
+              </div>
+            ) : (
+              shown.map((record) => <DebugRow key={record.seq} record={record} />)
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

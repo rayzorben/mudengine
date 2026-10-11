@@ -42,6 +42,7 @@ import { SplitMemory } from './world/SplitMemory';
 import type { RealmMemory } from '../shared/memory';
 import { RealmLore, playedKey, playedStamp, realmKey } from './world/RealmLore';
 import { PlayerBook } from './world/PlayerBook';
+import { UnreadTally } from './session/UnreadTally';
 import { cureGates, servesOf, spellTargeting } from '../shared/spellcraft';
 import { DestinationBook, type RealmDestinations } from './world/DestinationBook';
 import { bareName, wornOfWord } from '../shared/items';
@@ -482,6 +483,21 @@ function destinationsFor(id: SessionId): RealmDestinations {
  */
 function playersAt(realm: Realm): RealmPlayers {
   return playerBook?.forRealm(realmName(realm)) ?? NO_REALM_PLAYERS;
+}
+
+/**
+ * The lines the parser did not read in one realm, for the debug window
+ * (todo 73). Keyed on the realm played (`realmName`), like `playersAt`; held
+ * for the life of the process and never written down.
+ */
+const unreadBooks = new Map<string, UnreadTally>();
+function unreadFor(realm: string): UnreadTally {
+  let tally = unreadBooks.get(realm);
+  if (tally === undefined) {
+    tally = new UnreadTally();
+    unreadBooks.set(realm, tally);
+  }
+  return tally;
 }
 
 /** The same, for where a character's own file says it plays — what a session starts seeded from. */
@@ -1501,6 +1517,7 @@ function createHost(): SessionHost {
     destinationsFor,
     playersAt,
     realmAt,
+    unreadAt: (realm) => unreadFor(realmName(realm)),
     speedAt: (realm) => worldBook?.keptSpeed(realmName(realm)) ?? NOT_KEPT,
     findsFor,
     shopsFor,
@@ -1720,6 +1737,12 @@ function registerIpc(): void {
     (_caller, session: SessionId) => host?.get(session)?.manager.log ?? []
   );
   handle(Invoke.getLines, (_caller, session: SessionId) => host?.get(session)?.manager.lines ?? []);
+  // The realm the session plays now, or where its file says it plays. Read
+  // without creating a tally: only a line seen in a realm starts one.
+  handle(
+    Invoke.getUnread,
+    (_caller, session: SessionId) => unreadBooks.get(playedBy(session))?.list() ?? []
+  );
   handle(Invoke.getDebug, (_caller, session: SessionId) => {
     const slot = host?.get(session);
     if (!slot) return { records: [], dropped: 0 };

@@ -36,8 +36,12 @@ export interface SessionSink {
   bytes?(payload: Buffer): void;
   /** One framed line of server output. See `LineTokenizer` for why this is not CRLF. */
   line(line: StreamLine): void;
-  /** One classified line. Facts only — see docs/legacy-assessment.md §6. */
-  block(block: Block): void;
+  /**
+   * One classified line. Facts only — see docs/legacy-assessment.md §6.
+   * `collecting` is `LineAct.collecting`: the line belongs to a listing, so an
+   * `unknown` here is a row the listing reads, not a line nothing read.
+   */
+  block(block: Block, collecting: boolean): void;
   /** Character and room state, republished only when it actually changed. */
   character(state: CharacterState): void;
   /**

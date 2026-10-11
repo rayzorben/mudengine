@@ -62,6 +62,7 @@ import {
 } from '../../shared/types';
 import type { RealmFamily as RealmWord } from '../../shared/character';
 import type { RealmPlayers } from '../../shared/players';
+import type { RealmUnread } from '../../shared/unread';
 import type { RealmDestinations } from '../world/DestinationBook';
 import type { CharacterRecord, KeptLives, KeptRoom } from '../../shared/belongings';
 import type { KeptSpeed } from '../../shared/hunting';
@@ -230,6 +231,11 @@ export interface SessionHostOptions {
    * is that realm's; a dial and the menu's choice re-key the session with this.
    */
   playersAt(realm: Realm): RealmPlayers;
+  /**
+   * The lines the parser did not read in the realm a session plays, for the
+   * debug window (todo 73). Keyed like `playersAt`.
+   */
+  unreadAt(realm: Realm): RealmUnread;
   /**
    * Where the realm's speed is kept (`WorldBook`), so every character playing
    * it starts on the figure last read. Optional for a test, which keeps nothing.
@@ -480,8 +486,13 @@ export class SessionHost {
           debug.line(line);
           this.options.toDiagnostics(Push.line, { session: id, payload: line });
         },
-        block: (block) => {
+        block: (block, collecting) => {
           debug.block(block);
+          // Before the tracker reads the line, so the room is the one it came in.
+          if (!collecting && slot.realm !== null) {
+            const { name, map, number } = slot.manager.character.room;
+            this.options.unreadAt(slot.realm).observe(block, { name, map, number }, block.at);
+          }
           this.options.toAll(Push.block, { session: id, payload: block });
           // What was said outlives the socket: the Talk card's history is
           // written down and seeded back into the next attach's snapshot.

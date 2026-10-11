@@ -9669,6 +9669,14 @@ button.lookup:focus-visible {
   padding: 0 var(--pad-card) 6px;
 }
 
+/* The unread lines (todo 73): a server message is a gap the table names,
+   so it wears the classified hue; a line nothing read wears the client's. */
+.unread-row[data-unread='realm-message'] {
+  --debug-hue: var(--ok);
+}
+.unread-row[data-unread='unknown'] {
+  --debug-hue: var(--danger);
+}
 .debug-saved {
   color: var(--ok);
 }

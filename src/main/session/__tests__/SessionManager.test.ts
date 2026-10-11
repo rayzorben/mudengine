@@ -2450,6 +2450,42 @@ describe('the status line the player designed', () => {
 });
 
 /*
+ * Todo 73: a listing's folded rows stay `unknown` until the batch closes, so
+ * the sink is told they belong to a listing and the unread tally skips them.
+ * The fold is CharacterTracker.test.ts's, from captures/065:193.
+ */
+describe('a listing reaching the sink', () => {
+  it("marks a pack row the server folded as the listing's, not a line nothing read", async () => {
+    const seen: Array<{ type: string; text: string; collecting: boolean }> = [];
+    const { sink } = collect();
+    manager = build({
+      ...sink,
+      block: (block, collecting) => seen.push({ type: block.type, text: block.text, collecting })
+    });
+    manager.configure(
+      { ...DEFAULT_CONFIG.automation, enabled: false },
+      DEFAULT_CONFIG.connection.login
+    );
+    await manager.connect({ host: '127.0.0.1', port, encoding: 'cp437' });
+    const socket = await client();
+    socket.write('[HP=709]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.vitals.hp === 709);
+    socket.write(
+      'You are carrying 12 platinum pieces, sunstone wristband (Wrist),\r\n' +
+        'rope and grapple, magma amulet, vorpal sword, severed head of Irikani\r\n' +
+        'Wealth: 120000 copper farthings\r\n' +
+        'Encumbrance: 3304/4800 - Heavy [68%]\r\n' +
+        '[HP=708]:'
+    );
+    // The closing prompt is the positive control: the batch has been sent.
+    await until(() => manager!.character.vitals.hp === 708);
+    const row = seen.find((block) => block.text.startsWith('rope and grapple'));
+    expect(row).toMatchObject({ type: 'unknown', collecting: true });
+    expect(seen.some((block) => block.type === 'unknown' && !block.collecting)).toBe(false);
+  });
+});
+
+/*
  * A listing the client draws itself (`ui.rewrites`): the pack's lines are
  * withheld and the table drawn at the prompt that ends them, with the equip
  * gate's glyph beside each row.

@@ -2621,8 +2621,8 @@ export class SessionManager {
   /** Everything that happens because of what a line was. */
   private act(step: LineAct): void {
     const { block, batch } = step;
-    this.sink.block(block);
-    if (batch) this.sink.block(batch);
+    this.sink.block(block, step.collecting);
+    if (batch) this.sink.block(batch, true);
     /*
      * Armed *before* the automator sees the block, because it answers the
      * prompt synchronously from inside that call. Arming afterwards redacts the

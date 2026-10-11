@@ -1545,6 +1545,11 @@ tuning:
     # catches it.
     debugLogLimit: 4000
 
+    # Shapes of unread line the debug window keeps per realm: lines the parser
+    # did not read, grouped with their figures as #. Past this the shape seen
+    # longest ago goes.
+    unreadShapes: 500
+
     # Sent commands the decision trace keeps — enough to cover the minute
     # before something went wrong, which is the window anyone asks about.
     sentLogLimit: 60

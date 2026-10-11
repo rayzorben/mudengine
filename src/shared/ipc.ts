@@ -25,6 +25,7 @@ import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
 import type { PlayerRegistry } from './players';
 import type { DebugRecord } from './debug';
+import type { UnreadLine } from './unread';
 import type { GearAction, Wearer } from './gear';
 import type { SlotGear } from './slotGear';
 import type { ChosenWords } from './attackChoice';
@@ -671,6 +672,8 @@ export const Invoke = {
   getLines: 'session:get-lines',
   /** The debug ring, for a window that has just opened the debug view. */
   getDebug: 'session:get-debug',
+  /** The lines the parser did not read on this session's realm, by shape (todo 73). */
+  getUnread: 'session:get-unread',
   /**
    * Write the debug ring out as a bug report and answer with the path.
    *
@@ -1254,6 +1257,8 @@ export interface IpcApi {
   getLines(session: SessionId): Promise<StreamLine[]>;
   /** Everything the debug ring holds, and how much it has already dropped. */
   getDebug(session: SessionId): Promise<{ records: DebugRecord[]; dropped: number }>;
+  /** The lines the parser did not read on this session's realm, commonest first. */
+  getUnread(session: SessionId): Promise<UnreadLine[]>;
   /** Writes the bug report and answers with where it went, or the failure. */
   saveDebug(session: SessionId): Promise<DebugSave>;
   getCharacter(session: SessionId): Promise<CharacterState>;
