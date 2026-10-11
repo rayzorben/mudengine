@@ -61,6 +61,7 @@ import type { BlessingConfig, BlessingSource } from '../../shared/blessings';
 import type { SpellsConfig } from '../../shared/config';
 import type { Block } from '../../shared/blocks';
 import {
+  gatedCast,
   OPEN_CAST_GATE,
   resolveSpell,
   sameSpell,
@@ -487,16 +488,14 @@ export class Blessings implements SessionModule {
       priority: state.inCombat ? 'combat' : 'probe',
       coalesceKey: `blessing:${key}`,
       expiresAt: now + tuning().spells.buffExpiresMs,
-      stillWanted: () => this.gate.mayCast(found.configured),
       reason: t('automation.blessing.reason', { name: entry.spell }),
       // The clocks are spent when the cast leaves, so one held for the round
       // is proposed again rather than waiting out `blessRetryMs`.
-      onSent: () => {
+      ...gatedCast(this.gate, found.configured, () => {
         const sentAt = this.now();
         this.proposedAt.set(key, sentAt);
         this.lastProposalAt = sentAt;
-        this.gate.noteCast();
-      }
+      })
     });
     return true;
   }

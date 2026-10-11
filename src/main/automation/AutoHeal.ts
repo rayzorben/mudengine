@@ -92,6 +92,7 @@ import type { SpellsConfig } from '../../shared/config';
 import {
   castsBare,
   healFloor,
+  gatedCast,
   OPEN_CAST_GATE,
   resolveSpell,
   spellCost,
@@ -596,13 +597,11 @@ export class AutoHeal implements SessionModule {
       priority: 'combat',
       coalesceKey: `heal:${keys[0]}`,
       expiresAt: at + tuning().spells.healExpiresMs,
-      stillWanted: () => this.gate.mayCast(found.configured),
       reason,
-      onSent: () => {
+      ...gatedCast(this.gate, found.configured, () => {
         for (const key of keys) this.lastCastAt.set(key, this.now());
-        this.gate.noteCast();
         onSent?.();
-      }
+      })
     });
   }
 }

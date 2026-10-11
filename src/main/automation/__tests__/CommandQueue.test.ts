@@ -550,6 +550,22 @@ describe('putting back a command the realm threw away', () => {
     expect(sent).toEqual(['e', 'e', 'e']);
   });
 
+  /* Todo 58: what the send spent is given back once, and spent again by the resend. */
+  it('tells the proposer its send was thrown away, then that the resend went', () => {
+    const calls: string[] = [];
+    queue.enqueue({
+      command: 'mend',
+      priority: 'combat',
+      onSent: () => calls.push('sent'),
+      onFumbled: () => calls.push('fumbled')
+    });
+    expect(queue.resendLast('mend')).toBe(true);
+    expect(queue.resendLast('mend')).toBe(false);
+    vi.advanceTimersByTime(2000);
+    expect(sent).toEqual(['mend', 'mend']);
+    expect(calls).toEqual(['sent', 'fumbled', 'sent']);
+  });
+
   /*
    * An escape must never queue behind a walk step serving out a confusion
    * delay: `drain` skips what is not due rather than waiting on it.

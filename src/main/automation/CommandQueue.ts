@@ -136,6 +136,13 @@ export interface Intent {
    * the wait to reach the wire at all.
    */
   onSent?: () => void;
+  /**
+   * The server threw this send away before reading it, and `resendLast` is
+   * putting it back: whatever `onSent` spent on the server's behalf is undone
+   * here (todo 58: a cast fumbled while stunned spent no round). The resend
+   * runs `onSent` again when it goes.
+   */
+  onFumbled?: () => void;
 }
 
 interface Queued extends Intent {
@@ -378,6 +385,7 @@ export class CommandQueue {
          */
         if (intent.onSent !== undefined && intent.command === existing.command) {
           existing.onSent = intent.onSent;
+          existing.onFumbled = intent.onFumbled;
         }
         return 'joined';
       }
@@ -442,6 +450,7 @@ export class CommandQueue {
     // list when it is sent, which is what makes a confusion that eats four in
     // a row four resends rather than a loop over one intent.
     const last = this.recentlySent.splice(at, 1)[0]!.intent;
+    last.onFumbled?.();
     const notBefore = now + tuning().queue.fumbleRetryMs;
     /*
      * Its own deadline is moved with it. An intent that expires while the

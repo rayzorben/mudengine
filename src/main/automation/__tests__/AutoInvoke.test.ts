@@ -240,7 +240,7 @@ describe('asking a carried item for its blessing', () => {
 
   /* A `use` spends the round's magic energy like a cast does. */
   it('holds for the round when a cast has already gone', () => {
-    const held = { mayCast: vi.fn(() => false), noteCast: vi.fn() };
+    const held = { mayCast: vi.fn(() => false), noteCast: vi.fn(), noteFumbled: vi.fn() };
     const invoke = new AutoInvoke(
       { invokeItems: true, invokeWith: CHOSEN },
       true,
