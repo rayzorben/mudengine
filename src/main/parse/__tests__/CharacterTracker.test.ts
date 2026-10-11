@@ -11807,6 +11807,34 @@ describe('what the fighting adds up to', () => {
     expect(handed.experience).toBe(500);
   });
 
+  /*
+   * An area spell that kills several: MajorMUD prints `*Combat Off*` after each
+   * experience line (captures/069, captures/081), so only the first was ever
+   * read as in a fight. Each line is its own kill (todo 57); a prompt between
+   * two ends the run, and experience after it is a hand-in again.
+   */
+  it('counts every kill of one area spell, and none after the prompt', () => {
+    const tally = play([
+      '[HP=57/KAI=0]: ',
+      '*Combat Engaged*',
+      'You make a sharp gesture!',
+      'An earthquake rocks the room for 184 damage!',
+      'The orc warrior slips in his own blood, and falls dead.',
+      'You gain 275 experience.',
+      '*Combat Off*',
+      'The orc warrior slips in his own blood, and falls dead.',
+      'You gain 275 experience.',
+      '*Combat Off*',
+      'The orc fanatic dies gurgling on its own froth.',
+      'You gain 400 experience.',
+      '*Combat Off*',
+      '[HP=57/KAI=0]: ',
+      'You gain 500 experience.'
+    ]).current.tally;
+    expect(tally.kills).toBe(3);
+    expect(tally.experience).toBe(1450);
+  });
+
   /* The server's own word for being in a fight, both ends of it. */
   it('closes the engagement clock when the server says the fight is over', () => {
     const tally = play([

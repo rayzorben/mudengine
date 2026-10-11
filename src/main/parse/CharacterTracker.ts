@@ -42,7 +42,7 @@ import { resolveFromCoordinates } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
 import type { Direction, RoomId, TrailStep } from '../../shared/world';
 import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
-import type { Block } from '../../shared/blocks';
+import { deathNamed, type Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
 import { NO_LORE, type MobLore } from '../../shared/lore';
 import type { RealmFamily } from '../../shared/realm';
@@ -109,6 +109,7 @@ import { Company } from './company';
 import { claimedBy, engagedBy, swingingAtMe, threatenedBy, vouchedFor } from './engagements';
 import { keepPartyCurrent } from './partyUpkeep';
 import { freshTally, pastimeOf, trackTally } from './tally';
+import { KillRun } from './killRun';
 import { NO_TALLY, settleClocks, withPastime, type CombatTally } from '../../shared/tally';
 import {
   withArrival,
@@ -240,6 +241,7 @@ export class CharacterTracker {
   private listingOpen = false;
   /** Whether a route is being walked, handed in by `noteMoving`. */
   private moving = false;
+  private readonly killRun = new KillRun();
   /**
    * Where this character's own record is kept between sessions — the balances
    * each bank stated, and what was in each worn slot.
@@ -863,13 +865,9 @@ export class CharacterTracker {
      */
     const base = derivedExperience(next ?? this.state, before, this.world);
     this.company.track(block, base, before);
-    /*
-     * And what the fighting has added up to, folded from the same place and
-     * for the same reason — see `trackTally`. It reads the engagement clock
-     * off the *transition*, so it is given both states rather than only the
-     * one the reducer produced.
-     */
-    const tally = trackTally(base.tally, block, base, before, proc, this.moving);
+    // What the fighting adds up to, read off the transition, so both states (`trackTally`).
+    const paid = this.killRun.paid(block, before);
+    const tally = trackTally(base.tally, block, base, before, proc, this.moving, paid);
     // Written down as it moves (deferred), so the Combat Stats card opens where it was left.
     if (tally !== this.state.tally) this.belongings.rememberStats(tally);
     // Folded from the same place and for the same reason `trackPlayers` is: a
@@ -1681,8 +1679,8 @@ export class CharacterTracker {
        * reach, somebody else's, one worth nothing, or the second of two.
        */
       case 'mob-dies': {
-        const named = g['mob'] ?? g['attacker'] ?? g['line'] ?? '';
-        if (named.length === 0) return null;
+        const named = deathNamed(block);
+        if (named === null) return null;
         const after = this.fight.diedNamed(s, named, block.at);
         if (after === s) return null;
         this.kills.noted(named);

@@ -83,7 +83,9 @@ export function trackTally(
    */
   proc = false,
   /** Whether a route is being walked: the walker's fact, handed in (`noteMoving`). */
-  moving = false
+  moving = false,
+  /** Whether an experience line is a kill (`KillRun`, todo 57). */
+  paid = false
 ): CombatTally {
   const g = block.groups ?? {};
   let next = tally;
@@ -177,19 +179,14 @@ export function trackTally(
       break;
 
     /*
-     * `You gain N experience.` — and, when the character was in a fight at the
-     * time, a kill.
-     *
-     * The server never says a monster died; the client's own death suspicion
-     * is what removes it from the room. So the kill count is *this* claim and
-     * says so: experience gained while engaged. Experience from anything else
-     * — a quest, a hand-in — arrives out of combat and is counted as
-     * experience without being counted as a kill.
+     * `You gain N experience.` — and, when `KillRun` says it was paid for one,
+     * a kill: in a fight, or in a run of an area spell's kills. Experience
+     * from a quest or a hand-in is experience without being a kill.
      */
     case 'user-gain-experience': {
       count({
         experience: next.experience + int(g['exp']),
-        kills: before.inCombat ? next.kills + 1 : next.kills
+        kills: paid ? next.kills + 1 : next.kills
       });
       // And the moment, for the rate graph (todo 08).
       next = withSample(

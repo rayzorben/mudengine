@@ -25,6 +25,8 @@ import { AutoDeposit } from '../automation/AutoDeposit';
 import { AutoDrop } from '../automation/AutoDrop';
 import { AutoSearch } from '../automation/AutoSearch';
 import { AutoLoot } from '../automation/AutoLoot';
+import { DeathSummons } from '../automation/DeathSummons';
+import { FloorAfterKill } from '../automation/FloorAfterKill';
 import { AutoLight } from '../automation/AutoLight';
 import { LightAhead } from '../automation/LightAhead';
 import { AutoStealth } from '../automation/AutoStealth';
@@ -378,6 +380,7 @@ export class SessionManager {
   private readonly login: LoginAutomator;
   private readonly recovery: Recovery;
   private readonly loot: AutoLoot;
+  private readonly deathSummons: DeathSummons;
   private readonly drop: AutoDrop;
   /** Looking for what a room did not print. See `AutoSearch`. */
   private readonly search: AutoSearch;
@@ -907,21 +910,17 @@ export class SessionManager {
       poisonRefusesRest: () =>
         poisonRefusesRest(this.errands.capabilities(), this.vocabulary.family)
     });
-    /*
-     * The realm's row for a name on the floor. Read at the point of use, like
-     * `realmSpell` below and for the same reason: `this.world` arrives with
-     * `useRealm` and may not exist yet. A realm with no data answers a whole
-     * wire entity, which is what makes the predicates decline rather than
-     * throw.
-     */
+    // Rows read at use (`this.world` comes with `useRealm`); the kill's room read is shared (57).
+    const floor = new FloorAfterKill(this.queue, this.tracker, () => this.loot.taking());
     this.loot = new AutoLoot(automation.loot, automation.supplies, automation.enabled, this.queue, {
       realmItem: (name) => this.world?.buildItemEntity(name) ?? wireItem(name),
       notice,
       onTheGround,
       moveOnly,
-      rereads: this.tracker,
+      floor,
       coinWord: (coin) => this.vocabulary.coins.word(coin)
     });
+    this.deathSummons = new DeathSummons(floor);
     /*
      * The light, asked by the walker before every step (`beforeStep`) and by
      * the state on every arrival. Its refusals go to the safety trace, because
@@ -2724,6 +2723,7 @@ export class SessionManager {
      */
     this.combat.onBlock(block, this.answering);
     this.loot.onBlock(block, this.tracker.current);
+    this.deathSummons.onBlock(block, this.tracker.current);
     // A floor listing the server wrapped arrives as a batch, and the loot
     // reads the floor; without this a pile long enough to wrap — which is the
     // pile worth having — was one the loot was never told about (todo 03).
