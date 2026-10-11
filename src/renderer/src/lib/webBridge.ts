@@ -20,12 +20,17 @@
  * - **a saved file** — the debug report and a character export are written
  *   on the client's disk as on the desktop, then fetched into the browser's
  *   downloads over the link main hands back (`Host.deliver`);
- * - **a lost socket** — said out loud over the whole window, and the page
- *   reloads itself once the client answers again, which re-attaches every
- *   character and replays the backscroll main kept for exactly this.
+ * - a lost socket: dialled again at once and then every
+ *   `webReconnectMs`; once it is back, `onRelinked` remounts the window, which
+ *   re-attaches every character and replays the backscroll main kept for
+ *   exactly this. The window is covered only if the link stays down past
+ *   `webLostCoverMs`. A beat the client sends with every ping (`RpcBeat`) is
+ *   how a socket that died without closing is found.
  *
- * Calls made before the socket opens are queued, not dropped: `App` sends
- * `clientReady` on its first effect and the handshake is still in flight.
+ * Calls made before the socket first opens are queued, not dropped: `App`
+ * sends `clientReady` on its first effect and the handshake is still in
+ * flight. Nothing made while the link is down is queued: keys typed into a
+ * dead link would arrive as a burst of moves seconds later.
  */
 import {
   Invoke,
@@ -48,13 +53,25 @@ interface Pending {
   reject(error: Error): void;
 }
 
-export function createWebBridge(): IpcApi {
+/**
+ * @param onRelinked The socket is back after a loss; the window remounts.
+ * @param signal Ends the bridge: its timers, its listeners and its socket.
+ */
+export function createWebBridge(onRelinked: () => void, signal: AbortSignal): IpcApi {
   const listeners = new Map<string, Set<Listener>>();
   const pending = new Map<number, Pending>();
   const queue: RpcRequest[] = [];
   let socket: WebSocket | null = null;
   let nextId = 1;
-  let lost = false;
+  /** The socket has opened once, so what is not sent now is not sent. */
+  let opened = false;
+  /** The link was lost and is not back yet. */
+  let down = false;
+  let cover: ReturnType<typeof setTimeout> | null = null;
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  /** When the client was last heard, and how long it may be quiet after. */
+  let heardAt = 0;
+  let quietFor: number | null = null;
 
   /** A notice into the console, from the window itself. Same shape as main's. */
   const notice = (message: string): void => {
@@ -92,49 +109,110 @@ export function createWebBridge(): IpcApi {
   const transmit = (request: RpcRequest): void => {
     if (socket !== null && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify(request));
-    } else {
+    } else if (!opened) {
       queue.push(request);
     }
   };
 
   /**
-   * The socket is gone. The window says so over everything, then asks the
-   * client every `webReconnectMs` whether it is back and reloads when it is.
-   * A reload rather than a re-handshake: the attach flow was written for a
-   * renderer that mounts afresh, and reusing it is the one path that cannot
-   * drift from the desktop's.
-   *
-   * Every call waiting on the socket is left waiting, deliberately, and so
-   * is every call made from now on. Rejecting them was tried first and every
-   * one surfaced as an uncaught rejection: the callers are the same effects
-   * and handlers the desktop runs, and on the desktop the bridge cannot fail
-   * — Electron's IPC outlives the window — so none of them catches. The tab
-   * is covered and about to reload; a promise that never settles under it
-   * costs nothing, where seven errors nobody can act on cost the console.
+   * The socket is gone. Every call waiting on it is left waiting,
+   * deliberately, and so is every call made until it is back. Rejecting them
+   * was tried first and every one surfaced as an uncaught rejection: the
+   * callers are the same effects and handlers the desktop runs, and on the
+   * desktop the bridge cannot fail, so none of them catches. The window
+   * remounts once the link is back, and a promise that never settles under an
+   * unmounted tree costs nothing.
    */
   const onLost = (): void => {
-    if (lost) return;
-    lost = true;
+    if (down) return;
+    down = true;
+    quietFor = null;
     pending.clear();
-    showLost();
-    const probe = (): void => {
-      fetch('/health', { cache: 'no-store' })
-        .then((response) => {
-          if (response.ok) location.reload();
-          else setTimeout(probe, tuning().webReconnectMs);
-        })
-        .catch(() => setTimeout(probe, tuning().webReconnectMs));
+    cover = setTimeout(showLost, tuning().webLostCoverMs);
+    connect();
+  };
+
+  const onBack = (): void => {
+    if (cover !== null) clearTimeout(cover);
+    cover = null;
+    document.getElementById('link-lost')?.remove();
+    if (!down) return;
+    down = false;
+    onRelinked();
+  };
+
+  /**
+   * A dial that never opened. A refused upgrade looks the same as a dead
+   * network from here, so the page itself is asked for: a 401 is a sign-in
+   * the client no longer holds (it keeps them in memory, so a restart drops
+   * every one), and only a reload can show the sign-in page.
+   */
+  const dialLater = (): void => {
+    if (retry !== null || signal.aborted) return;
+    const again = (): void => {
+      if (signal.aborted) return;
+      retry = setTimeout(() => {
+        retry = null;
+        connect();
+      }, tuning().webReconnectMs);
     };
-    setTimeout(probe, tuning().webReconnectMs);
+    fetch('/', { method: 'HEAD', cache: 'no-store' })
+      .then((response) => {
+        if (response.status === 401) location.reload();
+        else again();
+      })
+      .catch(again);
+  };
+
+  /** Dial now rather than at the next try: the browser says the way is open. */
+  const dialNow = (): void => {
+    if (retry === null) return;
+    clearTimeout(retry);
+    retry = null;
+    connect();
+  };
+
+  /**
+   * A socket that has heard nothing for two beats is dead however open it
+   * looks. Dialled again before it is closed, since its close can wait on a
+   * handshake the dead link will never carry, and a late close from a socket
+   * already replaced is ignored.
+   */
+  const checkHeard = (): void => {
+    const dead = socket;
+    if (quietFor === null || dead === null || Date.now() - heardAt <= quietFor) return;
+    onLost();
+    dead.close();
   };
 
   const connect = (): void => {
+    if (signal.aborted) return;
     const ws = new WebSocket(url());
     socket = ws;
+    let open = false;
+    /*
+     * A dial made while the network is still coming up can sit connecting
+     * with no end the browser enforces; past the deadline it is given up and
+     * the next one made, as a refused one is.
+     */
+    const deadline = setTimeout(() => {
+      if (open || socket !== ws) return;
+      ws.onclose = null;
+      ws.close();
+      dialLater();
+    }, tuning().webDialMs);
     ws.onopen = () => {
+      clearTimeout(deadline);
+      open = true;
+      opened = true;
+      heardAt = Date.now();
       for (const request of queue.splice(0)) ws.send(JSON.stringify(request));
+      onBack();
     };
     ws.onmessage = (event) => {
+      // A socket already replaced speaks for a tree about to remount.
+      if (socket !== ws) return;
+      heardAt = Date.now();
       let parsed: unknown;
       try {
         parsed = JSON.parse(String(event.data));
@@ -143,6 +221,10 @@ export function createWebBridge(): IpcApi {
       }
       const message = asRpcOutbound(parsed);
       if (message === null) return;
+      if (message.k === 'beat') {
+        quietFor = 2 * message.next;
+        return;
+      }
       if (message.k === 'push') {
         for (const listener of listeners.get(message.c) ?? []) listener(message.p);
         return;
@@ -153,7 +235,13 @@ export function createWebBridge(): IpcApi {
       if ('e' in message) entry.reject(new Error(message.e));
       else entry.resolve(message.r);
     };
-    ws.onclose = onLost;
+    ws.onclose = () => {
+      clearTimeout(deadline);
+      // A socket replaced after it went quiet closes late; the new one is the link.
+      if (socket !== ws || signal.aborted) return;
+      if (open) onLost();
+      else dialLater();
+    };
     ws.onerror = () => ws.close();
   };
 
@@ -163,9 +251,8 @@ export function createWebBridge(): IpcApi {
 
   const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
     new Promise<T>((resolve, reject) => {
-      // Left waiting, for the reason `onLost` gives: the tab is covered and
-      // about to reload, and a rejection here reaches nobody who catches.
-      if (lost) return;
+      // Left waiting, for the reason `onLost` gives.
+      if (down) return;
       const id = nextId;
       nextId += 1;
       pending.set(id, { resolve: (value) => resolve(value as T), reject });
@@ -186,6 +273,23 @@ export function createWebBridge(): IpcApi {
   };
 
   connect();
+  const heard = setInterval(checkHeard, tuning().webReconnectMs);
+  window.addEventListener('online', dialNow, { signal });
+  document.addEventListener(
+    'visibilitychange',
+    () => {
+      if (document.visibilityState !== 'visible') return;
+      checkHeard();
+      dialNow();
+    },
+    { signal }
+  );
+  signal.addEventListener('abort', () => {
+    clearInterval(heard);
+    if (cover !== null) clearTimeout(cover);
+    if (retry !== null) clearTimeout(retry);
+    socket?.close();
+  });
 
   return {
     host: 'web',

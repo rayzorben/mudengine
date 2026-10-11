@@ -15,19 +15,27 @@
  * actually read from — never against the previous poll, so a write racing a
  * read is picked up on the next tick instead of being mistaken for the
  * starting state.
+ *
+ * The poll reads asynchronously and the settle synchronously (`revision.ts`):
+ * the poll runs twice a second and on a network share each listing is round
+ * trips, while a settle follows a read the store just did, and an async one
+ * would let an edit land between the read and the revision and be absorbed.
+ * A poll in flight when a settle lands is dropped, since it read the files
+ * before the settle did.
  */
 
+import { errorMessage } from '../../shared/values';
 import { tuning } from '../app/tuning';
+import { revision, revisionNow, type Watched } from './revision';
 
 export interface PollerOptions {
   /**
-   * Identifies what is on disk right now. Cheap: it runs twice a second.
-   *
-   * Must describe everything a reload would notice — for a tree that means a
-   * file appearing or disappearing as well as one changing, or a deleted
-   * character would go on being offered until the next restart.
+   * What is on disk for this store. Must cover everything a reload would
+   * notice: for a tree that means a file appearing or disappearing as well
+   * as one changing, or a deleted character would go on being offered until
+   * the next restart.
    */
-  signature(): string;
+  watched(): readonly Watched[];
   /** Re-read. Called after the debounce, never during construction. */
   reload(): void;
 }
@@ -38,17 +46,25 @@ export class Poller {
 
   /** The revision the current values were read from. */
   private seen = '';
+  /** Moves on every settle, so a poll that began before one is dropped. */
+  private settled = 0;
+  private checking = false;
 
   constructor(private readonly options: PollerOptions) {}
 
   /** Records what the caller has just read, so the next poll compares to it. */
   settle(): void {
-    this.seen = this.safeSignature();
+    this.settled += 1;
+    try {
+      this.seen = revisionNow(this.options.watched());
+    } catch (error) {
+      this.seen = unreadable(error);
+    }
   }
 
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.poll(), tuning().files.pollIntervalMs);
+    this.timer = setInterval(() => void this.poll(), tuning().files.pollIntervalMs);
     this.timer.unref?.();
   }
 
@@ -59,9 +75,20 @@ export class Poller {
     this.debounce = null;
   }
 
-  /** One check. Exposed so a test need not wait out an interval. */
-  poll(): void {
-    if (this.safeSignature() === this.seen) return;
+  /** One check. A poll that ends after `stop` schedules nothing. */
+  async poll(): Promise<void> {
+    if (this.checking) return;
+    this.checking = true;
+    const settled = this.settled;
+    let now: string;
+    try {
+      now = await revision(this.options.watched());
+    } catch (error) {
+      now = unreadable(error);
+    } finally {
+      this.checking = false;
+    }
+    if (settled !== this.settled || now === this.seen || this.timer === null) return;
     if (this.debounce) clearTimeout(this.debounce);
     this.debounce = setTimeout(() => {
       this.debounce = null;
@@ -69,19 +96,12 @@ export class Poller {
     }, tuning().files.debounceMs);
     this.debounce.unref?.();
   }
+}
 
-  /**
-   * A signature that throws is not a reason to stop watching.
-   *
-   * A directory can be removed and put back — that is what a sync client does
-   * to one — and a watcher that died the first time it happened would leave the
-   * client reporting values nobody can change any more.
-   */
-  private safeSignature(): string {
-    try {
-      return this.options.signature();
-    } catch {
-      return 'unreadable';
-    }
-  }
+/**
+ * A store's own description throwing is not a reason to stop watching: it is
+ * read as a state, as a missing file is, so the store reloads when it clears.
+ */
+function unreadable(error: unknown): string {
+  return `unreadable:${errorMessage(error)}`;
 }

@@ -72,9 +72,6 @@ export declare interface ProfileStore {
   ): boolean;
 }
 
-/** Identifies a particular revision of the whole directory. */
-type Listing = string;
-
 export class ProfileStore extends EventEmitter {
   private readonly dir: string;
   private current: Profile[] = [];
@@ -86,7 +83,13 @@ export class ProfileStore extends EventEmitter {
     super();
     this.dir = options.directory;
     this.poller = new Poller({
-      signature: () => this.listing(),
+      watched: () => [
+        {
+          kind: 'each',
+          dir: this.dir,
+          each: (id) => [{ kind: 'file', path: path.join(this.dir, id, PROFILE_FILE) }]
+        }
+      ],
       reload: () => {
         this.read();
         this.emit('change', this.snapshot);
@@ -152,32 +155,6 @@ export class ProfileStore extends EventEmitter {
      */
     this.poller.settle();
     this.load();
-  }
-
-  /**
-   * Every profile file's name, size and mtime, as one comparable string.
-   *
-   * A file added or removed changes the listing just as an edit does, which is
-   * the whole reason this is a directory digest rather than a set of per-file
-   * stats: dropping a YAML file in is the entire gesture for adding a
-   * character, and it has to be noticed.
-   */
-  private listing(): Listing {
-    try {
-      return this.ids()
-        .map((id) => {
-          try {
-            const stat = fs.statSync(path.join(this.dir, id, PROFILE_FILE));
-            return `${id}:${stat.mtimeMs}:${stat.size}`;
-          } catch {
-            return `${id}:gone`;
-          }
-        })
-        .join('|');
-    } catch {
-      // No directory yet is a valid state, and a stable one.
-      return '';
-    }
   }
 
   /**

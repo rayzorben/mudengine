@@ -67,6 +67,13 @@ describe('asRpcOutbound', () => {
     expect(parsed && 'r' in parsed ? parsed.r : 'missing').toBeUndefined();
   });
 
+  it('accepts a beat with a usable gap, and nothing else under the name', () => {
+    expect(asRpcOutbound({ k: 'beat', next: 10000 })).toEqual({ k: 'beat', next: 10000 });
+    expect(asRpcOutbound({ k: 'beat', next: 0 })).toBeNull();
+    expect(asRpcOutbound({ k: 'beat', next: Infinity })).toBeNull();
+    expect(asRpcOutbound({ k: 'beat' })).toBeNull();
+  });
+
   it('refuses the request shapes and everything else', () => {
     expect(asRpcOutbound({ k: 'send', c: 'x', a: [] })).toBeNull();
     expect(asRpcOutbound({ k: 'invoke', id: 1, c: 'x', a: [] })).toBeNull();

@@ -13,10 +13,20 @@
  * listing surfaces the error — so the caller keeps its own catch policy
  * rather than this helper guessing one.
  */
-import { readdirSync } from 'node:fs';
+import { readdirSync, type Dirent } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 
 export function directoryNames(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true })
+  return visible(readdirSync(dir, { withFileTypes: true }));
+}
+
+/** The same listing without holding the thread (`revision.ts`'s poll). */
+export async function directoryNamesLater(dir: string): Promise<string[]> {
+  return visible(await readdir(dir, { withFileTypes: true }));
+}
+
+function visible(entries: Dirent[]): string[] {
+  return entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
     .map((entry) => entry.name)
     .sort();

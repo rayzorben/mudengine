@@ -739,6 +739,52 @@ check(
   'and draws the one rail every tab draws'
 );
 
+// ------------------------------------------------- assert: the link comes back
+
+/*
+ * A message over the client's cap is closed with 1009, which is a lost link
+ * from the tab's side. The tab dials again and remounts in place: the mark
+ * set on the page survives (no reload), the cover never goes up for a link
+ * back this quickly, and the shown character is the one shown before.
+ */
+const shownBefore = await second.evaluate(
+  `document.querySelector('.tab[data-active="true"]')?.dataset.session ?? null`
+);
+await second.evaluate(`(window.__smokeMark = 1, true)`);
+await second.evaluate(
+  `(window.mudengine.ask(${JSON.stringify(SESSION)}, 'x'.repeat(2_000_000)), true)`
+);
+check(
+  (await waitFor(() => (/tab \d+ from .* closed \(1009/.test(serverOut) ? true : null), 40)) ===
+    true,
+  'a message over the cap closes the tab’s socket'
+);
+const relinked = await waitFor(
+  () => (/tab \d+ connected from/.test(serverOut.split(/closed \(1009/).pop() ?? '') ? true : null),
+  40
+);
+check(relinked === true, 'and the tab dials again by itself');
+check(
+  (await waitFor(() => second.evaluate(`!!document.querySelector('.status-rail')`), 40)) === true &&
+    (await second.evaluate(`window.__smokeMark === 1`)) === true,
+  'and comes back in place, without a reload'
+);
+check(
+  (await second.evaluate(`!document.querySelector('.link-lost')`)) === true,
+  'and never covered the window for a link back at once'
+);
+check(
+  (await waitFor(
+    () =>
+      second.evaluate(
+        `document.querySelector('.tab[data-active="true"]')?.dataset.session ?? null`
+      ),
+    40
+  )) === shownBefore,
+  'and shows the character it showed before',
+  `${shownBefore}`
+);
+
 // ------------------------------------------------------- assert: the game
 
 /*

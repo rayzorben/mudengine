@@ -2658,9 +2658,11 @@ const TUNING_DEFAULTS = {
     /**
      * How often the client pings each tab. A proxy closes an idle socket and
      * a tab that vanished never says goodbye; a ping unanswered by the next
-     * one is how either is found, and the interval is what it costs.
+     * one is how either is found, and the interval is what it costs. Each ping
+     * goes with a beat the page hears (`RpcBeat`); a tab that has heard nothing
+     * for two of these dials again.
      */
-    pingIntervalMs: 20000
+    pingIntervalMs: 10000
   },
   /**
    * The window's own numbers.
@@ -2673,11 +2675,21 @@ const TUNING_DEFAULTS = {
     /** Diagnostics log kept in renderer memory. */
     telnetLogLimit: 500,
     /**
-     * How often a browser tab that lost its socket tries the client again
-     * before reloading itself. Web mode only; the desktop window has no socket
-     * to lose.
+     * How long a browser tab that lost its socket waits between tries at the
+     * client; the first try is at once. Web mode only; the desktop window has
+     * no socket to lose.
      */
-    webReconnectMs: 1500,
+    webReconnectMs: 1000,
+    /**
+     * How long a browser tab that lost its socket goes on showing the game
+     * before covering the window. A link back within this is not shown.
+     */
+    webLostCoverMs: 1500,
+    /**
+     * How long a browser tab's dial may stay connecting before it is given
+     * up and made again. A dial made while the network comes back can hang.
+     */
+    webDialMs: 5000,
     /** Framed lines kept for the Stream card. */
     lineLogLimit: 200,
     /** Where an item comes from, on the Reference card: this many, quickest first, then a count. */

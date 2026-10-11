@@ -2005,8 +2005,10 @@ tuning:
 
     # How often the client pings each tab. A proxy closes an idle socket and a
     # tab that vanished never says goodbye; a ping unanswered by the next one
-    # is how either is found.
-    pingIntervalMs: 20000
+    # is how either is found. Each ping goes with a beat the page hears, and a
+    # tab that has heard nothing for two of these dials again, so this is also
+    # how long a dead link can look alive in the browser.
+    pingIntervalMs: 10000
 
   # The window's own numbers.
   #
@@ -2017,9 +2019,19 @@ tuning:
     # Diagnostics log kept in renderer memory.
     telnetLogLimit: 500
 
-    # How often a browser tab that lost its socket tries the client again
-    # before reloading itself. Web mode only.
-    webReconnectMs: 1500
+    # How long a browser tab that lost its socket waits between tries at the
+    # client. The first try is at once. Web mode only.
+    webReconnectMs: 1000
+
+    # How long a browser tab that lost its socket goes on showing the game
+    # before it covers the window and says so. A link back within this is not
+    # shown at all. Web mode only.
+    webLostCoverMs: 1500
+
+    # How long a browser tab's dial may stay connecting before it is given up
+    # and made again. A dial made while the network comes back can hang. Web
+    # mode only.
+    webDialMs: 5000
 
     # Framed lines kept for the Stream card.
     lineLogLimit: 200

@@ -18,6 +18,10 @@ describe('a tab outbox', () => {
     expect(admit(outbox, push(Push.character, { session: 's1', payload: { hp: 1 } }))).toBe(true);
   });
 
+  it('sends a beat before the tab is ready, since it is how the tab knows the link is alive', () => {
+    expect(admit(new TabOutbox(), { k: 'beat', next: 10000 })).toBe(true);
+  });
+
   it('skips a character push identical to the last one for that session', () => {
     const outbox = new TabOutbox();
     outbox.markReady();
