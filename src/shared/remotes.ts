@@ -347,8 +347,9 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
   /*
    * `@auto-combat on` and `off`: the auto-combat switch, written to this
    * character's file as the player's own toggle writes it (todo 02,
-   * 2026-10-04). `{ok}` once the file says so, as the user gave the reply. A
-   * sender not granted it hears nothing (`refuse`). Granted by nothing shipped.
+   * 2026-10-04; `SWITCH_REMOTES` in `Remotes.ts`). `{ok}` once the file says
+   * so, as the user gave the reply. A sender not granted it hears nothing
+   * (`refuse`). Granted by nothing shipped.
    */
   'auto-combat': { name: 'auto-combat', support: 'acted' },
   'auto-nuke': {
@@ -381,11 +382,13 @@ export const REMOTES: Readonly<Record<RemoteName, RemoteSpec>> = {
     support: 'unread',
     because: 'the setting exists (`automation.loot`) and no capture shows the reply'
   },
-  'auto-sneak': {
-    name: 'auto-sneak',
-    support: 'unread',
-    because: 'the setting exists (`automation.movement.sneak`) and no capture shows the reply'
-  },
+  /*
+   * `@auto-sneak on` and `off`: Auto-Sneak on Move, written as `@auto-combat`
+   * writes its switch (todo 85, 2026-10-10; `SWITCH_REMOTES` in `Remotes.ts`).
+   * `{ok}` by `@auto-combat`'s reply; no capture shows MegaMUD's own. Granted
+   * by nothing shipped.
+   */
+  'auto-sneak': { name: 'auto-sneak', support: 'acted' },
   'auto-hide': {
     name: 'auto-hide',
     support: 'unread',
