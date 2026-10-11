@@ -275,6 +275,7 @@ function migrateAll(options: MigrationOptions): void {
   statedTheBlessingChoice(home, note, options.template);
   statedTheOutgrownGear(home, note, options.template);
   statedBuyingALight(home, note, options.template);
+  statedTheAliases(home, note, options.template);
   theHealKeptItsOwnFloor(home, note, options.template);
   theCombatOverridesWent(home, note);
   theManaPairRests(home, note, options.template);
@@ -4428,6 +4429,24 @@ function statedBuyingALight(
       ? t('notices.migration.buyLight.one', params)
       : t('notices.migration.buyLight.many', params)
   );
+}
+
+/**
+ * `automation.aliases` (todo 74) into the options file's `automation:` block,
+ * empty, after `afk` and with the template's paragraph, so the player finds
+ * where shorthand goes. A character's own list only adds to it, so a
+ * character's file is left alone. Idempotent: a key stays added whatever its
+ * value.
+ */
+function statedTheAliases(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get('automation.aliases');
+  const empty = (): unknown => ({ ...DEFAULT_CONFIG.automation.aliases });
+  if (!stateInFile(home.options, ['automation'], 'aliases', empty, 'afk', comment)) return;
+  note(t('notices.migration.aliases', { file: home.options }));
 }
 
 /**

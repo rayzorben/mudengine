@@ -17,6 +17,7 @@ import { cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { ConfigStore } from './config/ConfigStore';
+import { RefusedEntries } from './config/RefusedEntries';
 import { reconcileWithTemplate } from './config/reconcile';
 import { InternalStore } from './config/InternalStore';
 import { setTuning, tuning } from './app/tuning';
@@ -1124,6 +1125,8 @@ function createConfig(): ConfigStore {
     template: configTemplate()
   });
 
+  // An alias or a key the file states and the client does not load (todo 74).
+  const refused = new RefusedEntries();
   store.on('change', (snapshot) => {
     push(Push.config, snapshot);
     /*
@@ -1144,8 +1147,10 @@ function createConfig(): ConfigStore {
      * changed.
      */
     if (snapshot.error) notice(t('app.config.reloadFailed', { error: snapshot.error }));
+    for (const message of refused.fresh(store.source)) notice(message);
   });
 
+  for (const message of refused.fresh(store.source)) notice(message);
   store.watch();
   return store;
 }

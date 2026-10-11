@@ -63,6 +63,8 @@ import { useAlerts } from './hooks/useAlerts';
 import { useAlertSounds } from './hooks/useAlertSounds';
 import { useDesktopAlerts } from './hooks/useDesktopAlerts';
 import { useHotkeys } from './hooks/useHotkeys';
+import { useBoundKeys } from './hooks/useBoundKeys';
+import { CLIENT_KEYS } from '@shared/keys';
 import { useOverridablePreference, useOverridableSwitch } from './hooks/usePreference';
 import { useTheme } from './hooks/useTheme';
 import { useStreamPressure } from './hooks/useStreamPressure';
@@ -715,6 +717,8 @@ export default function App() {
     connected,
     reset
   });
+  // The keys bound to a line, MegaMUD's macros, for the character on screen (todo 74).
+  useBoundKeys(api, activeRef, config.keys);
 
   /*
    * The alerts worth saying outside the window, and a row's sound (todo 80),
@@ -1034,33 +1038,26 @@ export default function App() {
   const toolbarPins = useToolbarPins(internalConfig.toolbar.pinned, toolbarIds);
 
   useHotkeys([
-    { key: 'k', mod: true, run: togglePalette },
-    /*
-     * The Loops modal. `Ctrl/Cmd L` was free (jump-to-latest is `Ctrl/Cmd Shift L`)
-     * and the realm's command list (docs/greatermud) claims no control character
-     * here. It is a chord, so a text field in the chrome keeps its own keys.
-     */
-    { key: 'l', mod: true, run: toggleLoops },
-    // Ctrl/Cmd Enter, Alt H and Ctrl/Cmd Q are `useConnectionKeys`, bound by `useConnection`.
-    { key: 'd', mod: true, shift: true, run: toggleRail },
-    { key: 'l', mod: true, shift: true, run: () => activeTerminal()?.jumpToLatest() },
-    { key: '<', mod: true, shift: true, run: cycle },
-    { key: ',', mod: true, shift: true, run: cycle },
-    { key: 't', mod: true, shift: true, run: cycleTheme },
-    { key: 'f', mod: true, run: toggleSearch },
-    // Browser muscle memory, and the game has no use for either chord.
+    // Each chord is `CLIENT_KEYS`'s; the connection's are `useConnectionKeys`.
+    { ...CLIENT_KEYS.palette, run: togglePalette },
+    { ...CLIENT_KEYS.loops, run: toggleLoops },
+    { ...CLIENT_KEYS.rail, run: toggleRail },
+    { ...CLIENT_KEYS.latest, run: () => activeTerminal()?.jumpToLatest() },
+    { ...CLIENT_KEYS.density, run: cycle },
+    { ...CLIENT_KEYS.densityComma, run: cycle },
+    { ...CLIENT_KEYS.theme, run: cycleTheme },
+    { ...CLIENT_KEYS.search, run: toggleSearch },
     {
-      key: '\\',
-      mod: true,
+      ...CLIENT_KEYS.pane,
       run: () => {
         const next = sessions.find((entry) => !panes.includes(entry.id));
         if (next) addPane(next.id);
         else closePane();
       }
     },
-    { key: 'Tab', mod: true, run: () => stepSession(1) },
-    { key: 'Tab', mod: true, shift: true, run: () => stepSession(-1) },
-    { key: 'g', mod: true, run: toggleRoute },
+    { ...CLIENT_KEYS.nextTab, run: () => stepSession(1) },
+    { ...CLIENT_KEYS.previousTab, run: () => stepSession(-1) },
+    { ...CLIENT_KEYS.route, run: toggleRoute },
     /*
      * Escape dismisses the topmost thing that is open, and is registered only
      * while something is. The palette handles its own Escape because it holds
@@ -1074,7 +1071,7 @@ export default function App() {
      * fire) — so nothing here claims the key until it has gone. Otherwise
      * Escape closed the panel *and* the rail.
      */
-    { key: ',', mod: true, run: openSettings },
+    { ...CLIENT_KEYS.settings, run: openSettings },
     /*
      * `loopsOpen` joins the palette and the settings screen in every guard
      * below: the modal holds the caret and owns its own Escape, so a window

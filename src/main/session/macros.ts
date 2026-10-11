@@ -5,7 +5,9 @@
  * at a time: written at once, fifteen commands fill the realm's queue and the
  * automation behind them is told to slow down (`Intent.typed`). A client
  * command or a `{mob}` step is worked out at its turn (todo 83), since the
- * steps before it may have moved the character.
+ * steps before it may have moved the character. A line that opens on one of
+ * the player's aliases is expanded first (todo 74), so a named macro is an
+ * alias whose line is a macro.
  */
 import type { CharacterState } from '../../shared/character';
 import { asTyped, clientCommandOf, stepsOf } from '../../shared/clientCommands';
@@ -14,6 +16,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CommandQueue, Intent } from '../automation/CommandQueue';
 import { interpolate } from '../automation/RuleEngine';
+import { expandAlias, type Aliases } from '../../shared/aliases';
 import { clientCommandWords } from './clientCommands';
 
 export interface MacroParts {
@@ -30,9 +33,12 @@ export interface MacroParts {
   state(): CharacterState;
   /** The monster auto-combat would open on (`AutoCombat.pick`), for `{mob}`. */
   mob(state: CharacterState): string | null;
+  /** The character's aliases as the file states them now. */
+  aliases(): Aliases;
 }
 
-export function queueMacro(line: string, parts: MacroParts): void {
+export function queueMacro(typed: string, parts: MacroParts): void {
+  const line = expandAlias(typed, parts.aliases()) ?? typed;
   const steps = stepsOf(line);
   if (steps === null) {
     parts.send(`${asTyped(line) ?? line}\r`);

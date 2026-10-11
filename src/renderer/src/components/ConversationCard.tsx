@@ -29,7 +29,6 @@ import type { SessionId } from '@shared/ipc';
 import type { CharacterState } from '@shared/character';
 import { isOwnName, type PlayerRegistry } from '@shared/players';
 import type { Block } from '@shared/blocks';
-import { mainReads } from '@shared/clientCommands';
 
 export interface ConversationCardProps extends CardChrome {
   /** What this character's card carries (`isTalkBlock`), oldest first. */
@@ -49,8 +48,9 @@ export interface ConversationCardProps extends CardChrome {
    */
   onSend?(line: string): void;
   /**
-   * A line of several commands (`parseMacro`), handed to main as typed, which
-   * parses it again and paces it by the prompt (todo 04). With `onSend`.
+   * A line off the box with no channel picked, handed to main as typed, which
+   * expands an alias (todo 74) and paces a line of several commands by the
+   * prompt (todo 04). With `onSend`.
    */
   onMacro?(line: string): void;
   /** How many of the box's commands are still waiting their turn in main. */
@@ -461,13 +461,12 @@ function Composer({ picker, send, macro, queued, drop }: ComposerProps) {
        */
       if (draft.trim().length === 0) return;
       /*
-       * Several commands in one line (todo 04): `;` between them, `2d,6s` for
-       * repeats; or a line main runs itself, `get all` or one with `{mob}`,
-       * or one marked to go as typed (todo 83). Handed to main whole, which
-       * parses it again and sends one a prompt. Only this box: a channel's
-       * message may carry a semicolon.
+       * Main reads the line: an alias it expands (todo 74), several commands
+       * (`;`, `2d,6s`) it sends one a prompt (todo 04), a line it runs itself
+       * (todo 83), and anything else it sends as typed. Only here: a
+       * channel's message is never any of these.
        */
-      if (macro !== undefined && mainReads(draft)) macro(draft);
+      if (macro !== undefined) macro(draft);
       else send(draft);
     } else {
       /*

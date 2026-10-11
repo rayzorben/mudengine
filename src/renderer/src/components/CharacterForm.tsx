@@ -47,6 +47,7 @@ import LoopSection, { type LoopShelf } from './LoopSection';
 import PlayerGrants from './PlayerGrants';
 import RemoteList from './RemoteList';
 import RemoteSwitches from './RemoteSwitches';
+import AliasFields from './AliasFields';
 import TrainStatFields from './TrainStatFields';
 import RewritesDesigner from './RewriteDesigner';
 
@@ -1166,13 +1167,7 @@ export default function CharacterForm({
         <SettingsSection {...sectionOf('talk')}>
           <fieldset className="settings-menus" data-fieldset="talk">
             <legend>{t('settings.talk.legend')}</legend>
-            {/*
-            The cost is stated above the switch rather than behind a
-            hover, the way the remotes warning is: this one spends a
-            command per stranger *and* tells them they were looked
-            at, which on a PvP realm is the half somebody would want
-            to know before turning it on rather than after.
-          */}
+            {/* In the open, as the remotes warning is: a look costs a command and is seen. */}
             <p className="settings-warn">{t('settings.talk.lookWarning')}</p>
             <CheckField
               checked={form.lookAtPlayers}
@@ -1183,6 +1178,11 @@ export default function CharacterForm({
             />
           </fieldset>
 
+          <AliasFields
+            aliases={form.aliases}
+            character
+            onChange={(aliases) => patch({ aliases })}
+          />
           <fieldset className="settings-menus" data-fieldset="talk-pvp">
             <legend>{t('settings.health.pvpLegend')}</legend>
             <CheckField

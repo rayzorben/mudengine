@@ -5,11 +5,12 @@
  * All three are chords, so they work with the caret in a chrome field too.
  */
 import { useHotkeys } from './useHotkeys';
+import { CLIENT_KEYS } from '@shared/keys';
 
 export function useConnectionKeys(toggleConnection: () => void, hangUp: () => void): void {
   useHotkeys([
-    { key: 'Enter', mod: true, run: toggleConnection },
-    { key: 'h', alt: true, run: hangUp },
-    { key: 'q', mod: true, run: hangUp }
+    { ...CLIENT_KEYS.connection, run: toggleConnection },
+    { ...CLIENT_KEYS.hangUp, run: hangUp },
+    { ...CLIENT_KEYS.hangUpQuit, run: hangUp }
   ]);
 }

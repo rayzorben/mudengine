@@ -22,6 +22,8 @@ app:
     internalTemplateAdded: 'Added to internal.yaml, from the template: {added}.'
     templateAdded: 'Added to your options file, from the template: {added}.'
     templateReconcileFailed: 'Options file not changed: {error}'
+    refusedAlias: 'The alias {name} in your options file is not loaded: {reason}.'
+    refusedKey: 'The key {name} in your options file is not loaded: {reason}.'
   debug:
     noSession: There is no session to write a report for.
     realmUnknown: (not dialed)
@@ -312,6 +314,7 @@ notices:
     buyLight:
       many: 'Buy a Light First was added, on, to {count} files: {fileList}'
       one: 'Buy a Light First was added, on, to {fileList}'
+    aliases: 'An empty aliases list was added to {file}'
     runBetweenRounds:
       many: 'Run Between Rounds was added, on, to {count} files: {fileList}'
       one: 'Run Between Rounds was added, on, to {fileList}'
@@ -3510,6 +3513,42 @@ map:
     trapped: Trapped
 # The settings screens. Labels of at most four words; hints of one sentence.
 settings:
+  # Aliases, `automation.aliases` (todo 74): a word that stands for a line.
+  aliases:
+    legend: Aliases
+    note: A word typed in the Talk box or the terminal, alone or before more words, sends its
+      line with the rest after it. A line can be several commands, like ret for 2d,6s;rest.
+    characterNote: These add to the aliases on the Global page. A word with an empty line drops
+      the Global one for this character.
+    wordAria: 'Alias {number}: word'
+    lineAria: 'Alias {number}: line'
+    wordPlaceholder: kk
+    linePlaceholder: pu kobold
+    add: Add Alias
+    removeAria: 'Remove alias {number}'
+    dropsGlobal: An empty line drops Global's alias of this word for this character
+    refusal:
+      word: use letters and digits, starting with a letter, up to 16
+      empty: it sends nothing
+      command: the realm already has this command
+      twice: the word is set twice, so neither loads
+  # Keys, `keys:` (todo 74): MegaMUD's macros, a key that sends a line.
+  keys:
+    legend: Keys
+    note: A key sends its line the way the Talk box does, so it can be an alias or several
+      commands. MegaMUD's keypad keys come set; the keypad works with NumLock on or off.
+    press: Press a key…
+    pressAria: 'Key {number}: press to change'
+    lineAria: 'Key {number}: line'
+    linePlaceholder: rest
+    add: Add Key
+    removeAria: 'Remove key {number}'
+    refusal:
+      chord: it names no key
+      empty: it sends nothing
+      twice: it is set twice, so neither loads
+      client: the client already uses it
+      typing: it types into the line
   actions:
     confirmKeep: Keep it
     confirmRemoveCharacter: Remove this character?
@@ -3730,6 +3769,7 @@ settings:
         hand-typed login.
     tabs:
       appearance: Appearance
+      keys: Keys
       records: Records
   combat:
     attackForMe: Auto-Attack

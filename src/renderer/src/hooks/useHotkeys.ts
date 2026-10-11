@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+import { codeOfKey } from '@shared/keys';
+
 /**
  * Window-level keyboard accelerators for the chrome.
  *
@@ -47,6 +49,8 @@ function chromeOwnsKeys(target: EventTarget | null): boolean {
 export interface Hotkey {
   /** `event.key`, compared case-insensitively. */
   key: string;
+  /** `event.code`, the physical key, matched instead of `key` when set (todo 74). */
+  code?: string;
   /** Require Ctrl on Windows/Linux or Meta on macOS. */
   mod?: boolean;
   /** Require Alt (Option on macOS). A chord, like `mod`. */
@@ -59,8 +63,10 @@ function matches(event: KeyboardEvent, hotkey: Hotkey): boolean {
   // Option turns a letter into another character on macOS (Option R is `®`),
   // so an Alt chord also answers to the physical key.
   const named =
-    event.key.toLowerCase() === hotkey.key.toLowerCase() ||
-    ((hotkey.alt ?? false) && event.code === `Key${hotkey.key.toUpperCase()}`);
+    hotkey.code !== undefined
+      ? event.code === hotkey.code
+      : event.key.toLowerCase() === hotkey.key.toLowerCase() ||
+        ((hotkey.alt ?? false) && event.code === codeOfKey(hotkey.key));
   if (!named) return false;
   const mod = event.ctrlKey || event.metaKey;
   if ((hotkey.mod ?? false) !== mod) return false;

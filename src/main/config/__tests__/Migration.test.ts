@@ -6973,6 +6973,52 @@ describe('buying a light is stated', () => {
   });
 });
 
+// Aliases (todo 74): empty after afk in the options file, with the template's paragraph, once.
+describe('the aliases are stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-aliases-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes an empty list after afk in the options file, once', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  afk:\n    enabled: false\n  movement:\n    sneak: false\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  afk:\n    enabled: true\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const automation = parse(text).automation as Record<string, unknown>;
+    const keys = Object.keys(automation);
+    expect(keys[keys.indexOf('afk') + 1]).toBe('aliases');
+    expect(automation['aliases']).toEqual({});
+    // A character's own list only adds to the options file's, so its file is left alone.
+    expect(parse(fs.readFileSync(soul, 'utf8')).automation).not.toHaveProperty('aliases');
+    expect(notesOf(said, 'notices.migration.aliases')).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
 // Run between rounds (2026-10-04): on after sneak, with the template's paragraph, once.
 describe('running between rounds is stated', () => {
   let home: Home;

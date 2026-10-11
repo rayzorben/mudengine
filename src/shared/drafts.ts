@@ -84,6 +84,7 @@ import {
 } from './themes';
 import type { StreamEncoding } from './types';
 import { isRecord } from './values';
+import { asStatedPairs, type StatedPair } from './pairs';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
 
 const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
@@ -301,9 +302,12 @@ export interface GlobalDraft {
     afk: ProfileDraft['afk'];
     talk: ProfileDraft['talk'];
     statline: ProfileDraft['statline'];
+    aliases: ProfileDraft['aliases'];
   };
   /** The loops every character may walk: `global/loops/`. */
   loops: Loop[];
+  /** `keys:`, MegaMUD's macros, as the file writes them. See `shared/keys.ts`. */
+  keys: StatedPair[];
 }
 
 /** One vital's two thresholds, as fractions of maximum. */
@@ -648,6 +652,11 @@ export interface ProfileDraft {
   talk: TalkDraft;
   /** `automation.statline` — whether the client sets the prompt's shape. */
   statline: StatlineDraft;
+  /**
+   * `automation.aliases` as the file writes them, refused entries included so
+   * a save keeps them. A character's are its own, added to Global's.
+   */
+  aliases: StatedPair[];
   /** `ui.rewrites` — the status line and listings this player designed for this character. */
   rewrites: RewritesUiConfig;
 }
@@ -1237,6 +1246,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     remotes: remotesDraft(remotes),
     talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true },
     statline: { control: isRecord(value['statline']) && value['statline']['control'] === true },
+    aliases: asStatedPairs(value['aliases']),
     rewrites: normalizeRewrites(value['rewrites'])
   };
 }
@@ -1415,9 +1425,11 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       },
       statline: {
         control: isRecord(automation['statline']) && automation['statline']['control'] === true
-      }
+      },
+      aliases: asStatedPairs(automation['aliases'])
     },
-    loops: asLoops(value['loops'], LOOP_LIMITS)
+    loops: asLoops(value['loops'], LOOP_LIMITS),
+    keys: asStatedPairs(value['keys'])
   };
 }
 
