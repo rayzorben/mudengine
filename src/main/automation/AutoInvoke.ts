@@ -1,7 +1,7 @@
 /**
  * Using a chosen carried item for the blessing it casts (`use <item>`), when
  * that blessing is not up. The realm's reading (unlimited items, spells with a
- * duration, a weapon or armour only while worn) is `carriedBlessing`, shared
+ * duration, a weapon or armour only while worn) is `renewingBlessing`, shared
  * with the Spells page's list. On top of it: only the items Auto Choose
  * Blessings picked (`ChosenItems`), else those in `invokeWith`; only when the
  * spell's mana is there (an item cast costs it, `MA=21` to `MA=13` on the
@@ -22,7 +22,7 @@ import { exclusive } from '../../shared/blessingeffects';
 import { isEquipCommand, offRoundSteps, type HandsOf } from '../../shared/gear';
 import { bareName, sameItem } from '../../shared/items';
 import {
-  carriedBlessing,
+  renewingBlessing,
   chosenToInvoke,
   NO_CHOSEN_ITEMS,
   type BlessingRealm,
@@ -34,6 +34,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CommandQueue, Intent } from './CommandQueue';
 import { answerOf, holdFor, stillHeld, type InvokeHold, type UseOut } from './invokeAnswer';
+import type { ChargeLedger } from './ItemCharges';
 import { canPayFor } from './mana';
 import type { SessionModule } from './Module';
 import { SwapBack, type SwapBackEvents } from './SwapBack';
@@ -49,6 +50,8 @@ export interface InvokeSources extends BlessingRealm {
    * where a configuration may hold a short one.
    */
   spellNamed(name: string): WorldSpell | null;
+  /** The uses left on a charged item, and a look to learn them (`ItemCharges`, todo 44). */
+  charges: Pick<ChargeLedger, 'usesLeft' | 'lookOnce' | 'used'>;
   /** One hand or two, as `Errands.gearHandsOf` reads it, or null. */
   handsOf: HandsOf;
   /**
@@ -83,6 +86,8 @@ export class AutoInvoke implements SessionModule {
   private out: { use: UseOut; at: number } | null = null;
   /** Items a refusal holds, by the pack's spelling. */
   private readonly held = new Map<string, InvokeHold>();
+  /** Charged items said to be at none left, so the refusal is said once until the uses come back. */
+  private readonly saidSpent = new Set<string>();
   private enabled = false;
   private chosen: readonly string[] = [];
   private readonly swapBack: SwapBack;
@@ -111,6 +116,7 @@ export class AutoInvoke implements SessionModule {
   reset(): void {
     this.sentAt.clear();
     this.held.clear();
+    this.saidSpent.clear();
     this.out = null;
     this.swapBack.reset();
   }
@@ -136,18 +142,24 @@ export class AutoInvoke implements SessionModule {
     );
     if (answer === null) return;
     this.out = null;
-    if (answer === 'landed') return;
+    if (answer === 'landed') {
+      this.sources.charges.used(use.item);
+      return;
+    }
     // Tried again next round: the cast gate paces it, not the retry floor.
     this.sentAt.delete(use.item);
     const hold = holdFor(answer, before);
     if (hold === null) return;
-    this.held.set(use.item, hold);
+    // A charged item at none left is held by the ledger's count, which the cleanup refills.
+    const today = hold.answer === 'used-up' && this.charged(use.item);
+    if (today) this.saidSpent.add(use.item);
+    else this.held.set(use.item, hold);
     this.events.decided?.({
       at: this.now(),
       action: 'use',
       because: use.item,
       acted: false,
-      refused: refusalOf(hold, use)
+      refused: today ? t('automation.invoke.usedUpToday', { item: use.item }) : refusalOf(hold, use)
     });
   }
 
@@ -317,6 +329,24 @@ export class AutoInvoke implements SessionModule {
     return true;
   }
 
+  /** A charged item at none left, said once until its uses come back. */
+  private saySpent(item: string): void {
+    if (this.saidSpent.has(item)) return;
+    this.saidSpent.add(item);
+    this.events.decided?.({
+      at: this.now(),
+      action: 'use',
+      because: item,
+      acted: false,
+      refused: t('automation.invoke.usedUpToday', { item })
+    });
+  }
+
+  /** Whether the realm gives `item` a count of uses rather than for ever. */
+  private charged(item: string): boolean {
+    return renewingBlessing(item, this.sources)?.capacity.kind === 'charged';
+  }
+
   /**
    * The buff this chosen item would give now, or null when it would give
    * none worth asking for: the realm's reading first, then the hand, the
@@ -324,8 +354,18 @@ export class AutoInvoke implements SessionModule {
    * swap; armour in the pack waits to be worn.
    */
   private offer(name: string, equipped: boolean, state: CharacterState): Offer | null {
-    const blessing = carriedBlessing(name, this.sources);
+    const blessing = renewingBlessing(name, this.sources);
     if (blessing === null) return null;
+    if (blessing.capacity.kind === 'charged') {
+      const left = this.sources.charges.usesLeft(name);
+      if (left === 0) {
+        this.saySpent(name);
+        return null;
+      }
+      this.saidSpent.delete(name);
+      if (left === null)
+        this.sources.charges.lookOnce(name, t('automation.invoke.lookReason', { item: name }));
+    }
     const swap = blessing.mustBeEquipped && !equipped;
     if (swap && !blessing.weapon) return null;
     const { spell, several } = blessing;

@@ -131,8 +131,9 @@ import { coinMaximaOf, expectedCopper, type CoinMaxima } from '../../shared/coin
  * | 59 | **What a token's trip costs.** A recall token's block runs `price 200000` ahead of its `teleport`, and the server takes that copper from cash on hand or refuses the use and spends nothing. `ItemLanding.fare` adds up the chain's `price` steps ahead of the teleport, and `BuiltItem.fare` carries it, so a cash run knows before it uses a token whether the cash it carries pays for the trip: 20 platinum for Silvermere and Rhudaur, 30 for Khazarad, in both gmud.zip and pmud.zip |
  * | 60 | **Who a monster's spell brings into the fight.** A call for aid is a spell whose Summon ability (12) names a monster row (`Spell.ApplySpellAbilities`, `Room.TrySummon`), and the runs (format 56) kept what a monster's casts make but not which cast made it, so the fight odds could not tie a summons to the round's one roll. `BuiltSpell.sm` is who one cast brings in, a pick of `[row, chance]` per Summon modifier, as the server summons once per modifier (`Makings.summonPicks`): the half-orc sentry's *summon orc warrior* (593) brings row 480, a fat orc warrior |
  * | 61 | **Who a room's group may put in it as a player walks in.** `Room.Regen` (Room.cs:520-535) gives a room with no lair a 10% chance a player, each regen pass, of one monster of its group's rows, and a player walking in runs a pass (Player.cs:782). The export lists those rows per monster as a plain `Group:` entry; `BuiltRoom.wd` is them per room (`groupWanderers`), so a run and a walk past Slum Street price its thugs and orc rogues. 39,097 of pmud.zip's 57,511 rooms, none of them a lair |
+ * | 62 | **Whether a charged item survives its last use.** `Items.Retain After Uses` (`BuiltItem.ret`): the server destroys a copy at zero uses unless it is set, and then answers a `use` with `There are no more uses in X.` until the cleanup's `Recharge` refills it (`UseCommand.cs`). Without it a cloak of faith and a green potion read alike, and spending a use on a bless could not be told from spending the item (todo 44) |
  */
-export const REALM_FORMAT = 61;
+export const REALM_FORMAT = 62;
 
 /**
  * What `build-world.mjs` says about a world it is bundling: which of the two
@@ -340,6 +341,8 @@ export interface BuiltItem {
    * `0` is still left out: it is the realm's empty cell, not a count.
    */
   uses?: number;
+  /** `Retain After Uses`: a charged copy is kept at none left, not destroyed. Only when true. Format 62. */
+  ret?: 1;
   /**
    * `Abil-n` / `AbilVal-n`, the realm's effect system — format 12.
    *
@@ -2557,13 +2560,16 @@ export function indexItems(
      */
     const type = number(item['ItemType']);
     if (type === null) continue;
-    const kind: Pick<BuiltItem, 'type' | 'worn' | 'wpn' | 'arm' | 'uses'> = { type };
+    const kind: Pick<BuiltItem, 'type' | 'worn' | 'wpn' | 'arm' | 'uses' | 'ret'> = { type };
     const worn = positive(item, 'Worn');
     if (worn !== undefined) kind.worn = worn;
     // Any non-zero count, so the realm's `-1` (unlimited) survives; see
     // `BuiltItem.uses` for what dropping it cost.
     const uses = number(item['UseCount']);
     if (uses !== null && uses !== 0) kind.uses = uses;
+    // An Access yes/no column, read as a boolean; a derivative's number is the same claim.
+    const retain = item['Retain After Uses'];
+    if (uses !== null && uses > 0 && (retain === true || (number(retain) ?? 0) !== 0)) kind.ret = 1;
     if (itemKind(type) === 'weapon') {
       const min = number(item['Min']) ?? 0;
       const max = number(item['Max']) ?? 0;

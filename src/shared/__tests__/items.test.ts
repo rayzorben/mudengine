@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { chargeCapacity } from '../charges';
 import {
   countedLabel,
   countedList,
@@ -113,7 +114,7 @@ describe('what an item casts when it is used', () => {
   };
 
   it('finds the bless a weapon can be asked for', () => {
-    expect(itemInvocation(LONGSWORD)).toEqual({ spell: 114, spells: [114], unlimited: true });
+    expect(itemInvocation(LONGSWORD)).toEqual({ spell: 114, spells: [114] });
   });
 
   /*
@@ -145,7 +146,7 @@ describe('what an item casts when it is used', () => {
       ] as ReadonlyArray<readonly [number, number]>,
       uses: 3
     };
-    expect(itemInvocation(mask)).toEqual({ spell: 917, spells: [917], unlimited: false });
+    expect(itemInvocation(mask)).toEqual({ spell: 917, spells: [917] });
   });
 
   /*
@@ -154,21 +155,17 @@ describe('what an item casts when it is used', () => {
    * exists to end.
    */
   it('does not read silence as unlimited', () => {
-    expect(itemInvocation({ abilities: [[43, 114]] })).toEqual({
-      spell: 114,
-      spells: [114],
-      unlimited: false
-    });
+    expect(chargeCapacity({ abilities: [[43, 114]] })).toBeNull();
   });
 
   it('says nothing about an item that casts nothing', () => {
-    expect(itemInvocation({ abilities: [[28, 1]], uses: -1 })).toBeNull();
+    expect(itemInvocation({ abilities: [[28, 1]] })).toBeNull();
     expect(itemInvocation({})).toBeNull();
   });
 
   /* Slot zero is the realm's empty cell, not a spell. */
   it('refuses a spell of zero', () => {
-    expect(itemInvocation({ abilities: [[43, 0]], uses: -1 })).toBeNull();
+    expect(itemInvocation({ abilities: [[43, 0]] })).toBeNull();
   });
 
   /*
@@ -185,7 +182,7 @@ describe('what an item casts when it is used', () => {
       ] as ReadonlyArray<readonly [number, number]>,
       uses: -1
     };
-    expect(itemInvocation(greatsword)).toEqual({ spell: 114, spells: [114, 170], unlimited: true });
+    expect(itemInvocation(greatsword)).toEqual({ spell: 114, spells: [114, 170] });
     expect(itemHitProcs(greatsword)).toEqual([]);
   });
 });
@@ -232,7 +229,7 @@ describe('the chance-on-hit an item carries', () => {
       { spell: 402, chance: 25 },
       { spell: 894, chance: 25 }
     ]);
-    expect(itemInvocation({ ...lance, uses: -1 })).toBeNull();
+    expect(itemInvocation(lance)).toBeNull();
   });
 
   /*

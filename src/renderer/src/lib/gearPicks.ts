@@ -34,7 +34,7 @@ export function gainWords(gain: GearGain): string {
 }
 
 /** Where an item comes from: the shop, else who drops it, else neither. */
-export function sourceWords(item: GearChoice): string {
+export function sourceWords(item: Pick<GearChoice, 'sold' | 'counters' | 'droppedBy'>): string {
   if (item.sold !== null) {
     return item.counters > 1
       ? t('cards.gear.soldMore', { shop: item.sold.shop, more: item.counters - 1 })

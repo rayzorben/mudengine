@@ -734,6 +734,11 @@ export interface WorldItem {
   /** How many times it can be used before it is gone: scrolls, potions, food. */
   uses?: number;
   /**
+   * `Retain After Uses`: a charged copy is kept at none left and refilled by
+   * its `Recharge`, rather than destroyed (format 62). Absent is destroyed.
+   */
+  retains?: true;
+  /**
    * What it does, from `Items.Abil-n` / `AbilVal-n` — format 12.
    *
    * The realm's own `[id, value]` pairs, in slot order and undecoded.

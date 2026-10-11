@@ -29,6 +29,7 @@ import type { GearAction, Wearer } from './gear';
 import type { SlotGear } from './slotGear';
 import type { ChosenWords } from './attackChoice';
 import type { GearPick, GearTripPlan, GearTripProgress } from './gearTrip';
+import type { BlessItem } from './blessItems';
 import type { GearChoices } from './upgrades';
 import type {
   Quest,
@@ -989,6 +990,8 @@ export const Invoke = {
   questStop: 'world:quest-stop',
   /** The Gear card's slots: what is worn, and the better items with where each comes from. */
   gearChoices: 'world:gear',
+  /** The Gear card's Bless Items: the realm's items that would bless, and where each comes from. */
+  gearBlessItems: 'world:gear-bless-items',
   /** The trip to buy the picked items, from where the character stands. */
   gearPlan: 'world:gear-plan',
   /** Walk or run that trip, planned again from here. The refusal, or null once under way. */
@@ -1516,6 +1519,12 @@ export interface IpcApi {
    * Null while no session or realm data is loaded.
    */
   gearChoices(session: SessionId): Promise<GearChoices | null>;
+  /**
+   * The items in the realm that would bless this character and are not
+   * carried, what each adds and where each comes from (todo 44). Null while
+   * no session, realm data, placed room or read level.
+   */
+  gearBlessItems(session: SessionId): Promise<BlessItem[] | null>;
   /** The trip to buy `picks`, from here: vaults first where the purse is short, then the counters. */
   gearPlan(session: SessionId, picks: readonly GearPick[]): Promise<GearTripPlan | null>;
   /** Walk (or `run`) the trip, planned again from here. The refusal, or null once under way. */

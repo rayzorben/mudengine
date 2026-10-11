@@ -69,6 +69,7 @@ const sources = (over: Partial<InvokeSources> = {}): InvokeSources => ({
   spellNamed: (name) => (name.trim().toLowerCase() === 'weapon major bless' ? BLESS : null),
   handsOf: () => 1,
   fightHere: () => false,
+  charges: { usesLeft: () => null, lookOnce: () => undefined, used: () => undefined },
   ...over
 });
 
@@ -653,5 +654,101 @@ describe('reading the answer to a use', () => {
     invoke.consider({ ...base, inventory: { ...base.inventory, listedAt: 2_000 } });
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['use shimmering longsword']);
+  });
+});
+
+/*
+ * A charged item kept at none and recharged at the new day (todo 44), as
+ * gmud.zip's cloak of faith is: 3 uses, 3 back at each cleanup.
+ */
+describe('a charged bless item whose uses come back', () => {
+  const RENEWING: WorldItem = {
+    ...LONGSWORD,
+    uses: 3,
+    retains: true,
+    abilities: [[121, 3], ...(LONGSWORD.abilities ?? [])]
+  };
+  const ledger = (left: number | null) => {
+    const asked = { looks: [] as string[], used: [] as string[], left };
+    const charges: InvokeSources['charges'] = {
+      usesLeft: () => asked.left,
+      lookOnce: (item) => void asked.looks.push(item),
+      used: (item) => void asked.used.push(item)
+    };
+    return { asked, charges };
+  };
+  const make = (charges: InvokeSources['charges'], decided: SafetyDecision[] = []) =>
+    new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources({ itemsNamed: named(() => RENEWING), charges }),
+      undefined,
+      undefined,
+      undefined,
+      { decided: (decision) => decided.push(decision) }
+    );
+
+  it('looks at it once while its uses are unknown, and uses it', () => {
+    const { asked, charges } = ledger(null);
+    make(charges).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(asked.looks).toEqual(['shimmering longsword']);
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  it('leaves it at none left until the ledger says the uses are back, said once', () => {
+    const { asked, charges } = ledger(0);
+    const decided: SafetyDecision[] = [];
+    const invoke = make(charges, decided);
+    invoke.consider(state());
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    expect(decided).toHaveLength(1);
+    // The positive control: the new day gives the uses back.
+    asked.left = 3;
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  it('counts a landed use on the ledger', () => {
+    const { asked, charges } = ledger(2);
+    const invoke = make(charges);
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    invoke.onBlock(blockOf('spell-onset', '', {}, Date.now()), state());
+    expect(asked.used).toEqual(['shimmering longsword']);
+  });
+
+  it('says it is used up for the day, and holds it only by the count', () => {
+    const { asked, charges } = ledger(1);
+    const decided: SafetyDecision[] = [];
+    const invoke = make(charges, decided);
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    invoke.onBlock(
+      blockOf('item-used-up', '', { item: 'shimmering longsword' }, Date.now()),
+      state()
+    );
+    expect(decided).toHaveLength(1);
+    asked.left = 3;
+    vi.advanceTimersByTime(5_000);
+    invoke.consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual(['use shimmering longsword', 'use shimmering longsword']);
+  });
+
+  it('refuses a charged item that is destroyed at its last use', () => {
+    const { charges } = ledger(3);
+    new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources({ itemsNamed: named(() => ({ ...RENEWING, retains: undefined })), charges })
+    ).consider(state());
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
   });
 });

@@ -12,6 +12,7 @@ import type { SessionModule } from '../automation/Module';
 import type { AutoDeposit } from '../automation/AutoDeposit';
 import type { AutoLoot } from '../automation/AutoLoot';
 import { CashRun, type CashRunEvents, type CashRunPlanner } from '../automation/CashRun';
+import type { ChargeLedger } from '../automation/ItemCharges';
 import { GearTrip, type GearTripEvents } from '../automation/GearTrip';
 import { SellTrip, type SellTripEvents } from '../automation/SellTrip';
 import type { StashFetch, StashFetchEvents } from '../automation/StashFetch';
@@ -79,6 +80,8 @@ export class HostTrips implements SessionModule {
 
 /** The collect trips' modules, and the realm's counters for naming the one a sale walks to. */
 export interface HostTripParts extends CollectParts {
+  /** The looks at a token and their answers (`ItemCharges`). */
+  charges: Pick<ChargeLedger, 'look'>;
   modules(): CollectModules & {
     world: Pick<WorldGraph, 'byId' | 'shop' | 'item' | 'banks' | 'itemIdsCarried'> | undefined;
     travel: Pick<
@@ -147,7 +150,7 @@ export function hostTrips(
     },
     events
   );
-  const cash = new CashRun(automation.enabled, queue, cashRunPlanner(parts), events);
+  const cash = new CashRun(automation.enabled, queue, cashRunPlanner(parts), parts.charges, events);
   return new HostTrips(stashFetchTrip(automation, queue, events, parts), sell, gear, cash);
 }
 

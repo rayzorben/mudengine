@@ -87,8 +87,22 @@ export default function InvokeFields({
   );
 }
 
-/** What the item casts, its mana, and whether it lands on the whole party in the room. */
+/** What the item casts, its mana, whether it lands on the party, and a charged item's uses. */
 function castsHint(choice: InvokeChoice): string {
+  const uses = usesHint(choice.charges);
+  const casts = castsOf(choice);
+  return uses === null ? casts : `${casts} ${uses}`;
+}
+
+function usesHint(charges: InvokeChoice['charges']): string | null {
+  if (charges === null) return null;
+  const { left, of, daily } = charges;
+  return left === null
+    ? t('settings.spells.invokeUsesUnread', { of, daily })
+    : t('settings.spells.invokeUses', { left, of, daily });
+}
+
+function castsOf(choice: InvokeChoice): string {
   const { spell, mana } = choice;
   if (choice.party)
     return mana === null

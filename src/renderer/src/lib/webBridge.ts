@@ -312,6 +312,7 @@ export function createWebBridge(): IpcApi {
     questPlan: (session, block, marked) => invoke(Invoke.questPlan, session, block, marked),
     questRun: (session, block, marked) => invoke(Invoke.questRun, session, block, marked),
     gearChoices: (session) => invoke(Invoke.gearChoices, session),
+    gearBlessItems: (session) => invoke(Invoke.gearBlessItems, session),
     gearPlan: (session, picks) => invoke(Invoke.gearPlan, session, picks),
     gearTrip: (session, picks, run) => invoke(Invoke.gearTrip, session, picks, run),
     gearStop: (session) => invoke(Invoke.gearStop, session),

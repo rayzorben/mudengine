@@ -4,6 +4,7 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import { CashRun, type CashRunPlanner } from '../CashRun';
 import { CommandQueue } from '../CommandQueue';
+import { ItemCharges } from '../ItemCharges';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import type { CashRunAsk, CashRunToken } from '../../../shared/cashRun';
 import {
@@ -85,6 +86,7 @@ let here: string | null;
 let current: CharacterState;
 let looping: boolean;
 let queue: CommandQueue;
+let charges: ItemCharges;
 
 const planner = (over: Partial<CashRunPlanner> = {}): CashRunPlanner => ({
   here: () => here as never,
@@ -131,6 +133,7 @@ beforeEach(() => {
   looping = false;
   current = character(50_000, { platinum: 5 });
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  charges = new ItemCharges(queue, () => undefined);
 });
 
 afterEach(() => {
@@ -139,12 +142,14 @@ afterEach(() => {
 });
 
 const make = (over: Partial<CashRunPlanner> = {}): CashRun =>
-  new CashRun(true, queue, planner(over), { notice: (message) => notices.push(message) });
+  new CashRun(true, queue, planner(over), charges, {
+    notice: (message) => notices.push(message)
+  });
 const drain = (): void => void vi.advanceTimersByTime(200);
 /** The look answering, after the prompt that credits the queue. */
 const answer = (run: CashRun, uses: number): void => {
   drain();
-  run.onBlock(block('item-uses-left', { uses: String(uses) }));
+  charges.onBlock(block('item-uses-left', { uses: String(uses) }));
   drain();
 };
 const started = (run: CashRun, uses: [number, number] = [2, 5]): void => {
@@ -248,9 +253,9 @@ describe('a cash run', () => {
     drain();
     expect(sent).toEqual(['look token of Silvermere', 'look token of Rhudaur']);
     // The first answer arrives late: it is Silvermere's, not Rhudaur's.
-    run.onBlock(block('item-uses-left', { uses: '0' }));
+    charges.onBlock(block('item-uses-left', { uses: '0' }));
     expect(run.running).toBe(true);
-    run.onBlock(block('item-uses-left', { uses: '5' }));
+    charges.onBlock(block('item-uses-left', { uses: '5' }));
     expect(notices.at(-1)).toBe(
       t('automation.cashRun.usesLeft.many', { token: RHUDAUR.name, uses: 5 })
     );

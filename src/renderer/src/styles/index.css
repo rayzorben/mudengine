@@ -13838,3 +13838,30 @@ tr:hover .row-action.worn,
   border: 0;
   background: transparent;
 }
+
+/* The Gear card's Bless Items face (todo 44): a tile per item, those whose uses come back tinted. */
+.bless-items {
+  transition: opacity var(--dur-surface) var(--ease-out);
+}
+
+.bless-items[data-loading='true'] {
+  opacity: 0.6;
+}
+
+.bless-item {
+  gap: 4px;
+}
+
+.bless-item[data-renews='true'] {
+  --slot-tone: var(--ok);
+}
+
+.bless-item-casts {
+  color: var(--text-hi);
+}
+
+.bless-item-uses,
+.bless-item-source {
+  color: var(--text-lo);
+  font-size: var(--font-micro);
+}

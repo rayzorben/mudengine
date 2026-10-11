@@ -2389,6 +2389,8 @@ function readItemKind(record: Record<string, unknown>, item: WorldItem): void {
    */
   const uses = Number(record['uses']);
   if (Number.isFinite(uses) && uses !== 0) item.uses = uses;
+  // Format 62; an older file states none, which reads as destroyed at its last use.
+  if (record['ret'] === 1) item.retains = true;
 
   const wpn = record['wpn'];
   if (kind === 'weapon' && typeof wpn === 'object' && wpn !== null) {

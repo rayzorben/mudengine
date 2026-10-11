@@ -39,23 +39,35 @@ export interface GearReads {
   choices(perSlot: number): GearChoices;
 }
 
+/** The realm's gear as the slot rankings read it, priced from where `state` stands; null unplaced. */
+export function gearRealmOf(
+  state: CharacterState,
+  world: ExtensionWorld,
+  errands: GearReadParts['errands']
+): UpgradeRealm | null {
+  const here = roomAddress(state.room);
+  if (here === null) return null;
+  const traveller = errands.travellerNow(state);
+  return {
+    itemsWornIn: (worn) => world.itemsWornIn(worn),
+    stockingPlaces: (items) => world.stockingPlaces(items, here, null, traveller),
+    priceAt: (name, at) => errands.priceAt(name, at)
+  };
+}
+
+/** The monsters whose drop list names an item of this name, in `world`. */
+export function dropsIn(world: ExtensionWorld): (item: string) => readonly string[] {
+  return (item) => world.buildItemEntity(item).droppedBy ?? [];
+}
+
 export function gearReads(parts: GearReadParts): GearReads {
   const { tracker, errands } = parts;
   const askerOf = (state: CharacterState, world: ExtensionWorld): SlotAsker => {
     const fought = errands.realmClass();
     return slotAskerOf(state, world, fought, fought.verb);
   };
-  /** The realm's gear as the slot rankings read it, priced from where `state` stands; null unplaced. */
-  const gearRealm = (state: CharacterState, world: ExtensionWorld): UpgradeRealm | null => {
-    const here = roomAddress(state.room);
-    if (here === null) return null;
-    const traveller = errands.travellerNow(state);
-    return {
-      itemsWornIn: (worn) => world.itemsWornIn(worn),
-      stockingPlaces: (items) => world.stockingPlaces(items, here, null, traveller),
-      priceAt: (name, at) => errands.priceAt(name, at)
-    };
-  };
+  const gearRealm = (state: CharacterState, world: ExtensionWorld): UpgradeRealm | null =>
+    gearRealmOf(state, world, errands);
   const reads: Omit<GearReads, 'choices'> = {
     gearUpgrades: (perSlot, as) => {
       const world = parts.world();
@@ -69,7 +81,7 @@ export function gearReads(parts: GearReadParts): GearReads {
       const state = as ?? tracker.current;
       const realm = world === undefined ? null : gearRealm(state, world);
       if (world === undefined || realm === null) return [];
-      const dropsOf = (item: string) => world.buildItemEntity(item).droppedBy ?? [];
+      const dropsOf = dropsIn(world);
       return bestInSlot(state, { ...realm, dropsOf }, askerOf(state, world), perSlot);
     },
     wearing: (items, as) => {

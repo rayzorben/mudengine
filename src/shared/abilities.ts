@@ -393,6 +393,14 @@ export function abilityValues(
 export const DESC_MESSAGE_ABILITY = 115;
 
 /**
+ * `Recharge`: the uses a charged item gets back at each cleanup
+ * (`ItemManager.RechargeAll` from `GMUDServer.DoCleanup`, `A new day has
+ * come!`), capped at its `UseCount`. Ability 56, `RechargeItem`, is declared
+ * in the server and read nowhere.
+ */
+export const RECHARGE_ABILITY = 121;
+
+/**
  * What a character can *do*, from the realm's own class and race rows
  * (todo 22, 2026-09-12).
  *

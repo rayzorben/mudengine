@@ -10,6 +10,7 @@
  * only. See `mudengine-automation` › *Errands* › *A cash run*.
  */
 import type { CommandQueue } from './CommandQueue';
+import type { ChargeLedger } from './ItemCharges';
 import type { SessionModule } from './Module';
 import { walkLeg } from './errandLeg';
 import { stoppedByPerson } from './personStop';
@@ -101,19 +102,13 @@ const USE_KEY = 'cash:use';
 export class CashRun implements SessionModule {
   private run: Run | null = null;
   private timer: NodeJS.Timeout | null = null;
-  /** Whether the look asked for has gone out, so an older answer is not taken for it. */
-  private lookSent = false;
-  /**
-   * Looks sent and not yet answered. The server answers in order and a token
-   * always prints its uses, so a late answer to a look given up on is the one
-   * ahead of the newest, never taken for it.
-   */
-  private looksOut = 0;
 
   constructor(
     private enabled: boolean,
     private readonly queue: CommandQueue,
     private readonly planner: CashRunPlanner,
+    /** The looks and their answers, paired in order (`ItemCharges`). */
+    private readonly charges: Pick<ChargeLedger, 'look'>,
     private readonly events: CashRunEvents = {},
     private readonly now: () => number = () => Date.now()
   ) {}
@@ -126,7 +121,6 @@ export class CashRun implements SessionModule {
   reset(): void {
     this.clear();
     this.run = null;
-    this.looksOut = 0;
   }
 
   /** A trip off the loop under way: the lap held, not the opening looks or the collecting. */
@@ -210,14 +204,6 @@ export class CashRun implements SessionModule {
     const run = this.run;
     if (run === null) return;
     switch (block.type) {
-      case 'item-uses-left': {
-        const newest = this.looksOut <= 1;
-        this.looksOut = Math.max(0, this.looksOut - 1);
-        if (newest && run.stage === 'looking' && this.lookSent) {
-          this.looked(run, Number(block.groups['uses']));
-        }
-        return;
-      }
       case 'item-used-up': {
         // `There are no more uses in X.` names the item; the other sentence names none.
         const item = block.groups['item'];
@@ -360,16 +346,15 @@ export class CashRun implements SessionModule {
   private lookAt(run: Run, token: Token): void {
     run.stage = 'looking';
     run.token = token;
-    this.lookSent = false;
-    this.queue.enqueue({
-      command: `look ${token.name}`,
-      priority: 'probe',
+    const ask = {
       coalesceKey: LOOK_KEY,
       expiresAt: this.now() + tuning().cashRun.sendMs,
-      reason: t('automation.cashRun.reasonLook', { token: token.name }),
-      onSent: () => {
-        this.lookSent = true;
-        this.looksOut += 1;
+      reason: t('automation.cashRun.reasonLook', { token: token.name })
+    };
+    // Its own look's answer only: a late one to a look given up on is that token's.
+    this.charges.look(token.name, ask, (uses) => {
+      if (this.run === run && run.stage === 'looking' && run.token === token) {
+        this.looked(run, uses);
       }
     });
     this.arm(tuning().cashRun.lookMs, () => this.looked(run, null));

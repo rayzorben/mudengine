@@ -41,6 +41,7 @@ import { Afk } from '../automation/Afk';
 import type { RemoteName } from '../../shared/remotes';
 import { AutoHeal } from '../automation/AutoHeal';
 import type { AutoInvoke } from '../automation/AutoInvoke';
+import { ItemCharges } from '../automation/ItemCharges';
 import type { Blessings } from '../automation/Blessings';
 import type { BlessingChoiceReport } from '../../shared/blessingchoice';
 import { CastRound } from '../automation/CastRound';
@@ -428,6 +429,8 @@ export class SessionManager {
   private readonly blessings: Blessings;
   /** Asking a carried item for the blessing it can cast. See `AutoInvoke`. */
   private readonly invoke: AutoInvoke;
+  /** The uses left on each charged item carried (todo 44), read by the use and the cash run. */
+  readonly charges: ItemCharges;
   /** What Auto Choose Blessings last decided, for the Spells page. */
   readonly blessingChoice: BlessingChoiceReport;
   readonly loops: LoopRunner;
@@ -1066,7 +1069,8 @@ export class SessionManager {
       ...{ vocabulary: this.vocabulary, combat: this.combat, loot: this.loot },
       ...{ deposit: this.deposit }
     });
-    const trip = { modules: legs, release: releaseErrand };
+    const charges = (this.charges = new ItemCharges(this.queue, () => this.world));
+    const trip = { modules: legs, release: releaseErrand, charges };
     // The gear after a death, a fetch from a stash and the area: walks and searches (`Collect`).
     const escaping = () => this.travel.escaping;
     this.recoverGear = gearRecoveryTrip(automation, this.queue, reports, {
@@ -1557,7 +1561,14 @@ export class SessionManager {
       choice: this.blessingChoice
     } = blessingsFor(
       { tracker: this.tracker, world, errands: this.errands, ...book, hunt: this.hunt },
-      { queue: this.queue, realmSpell, onTheGround, castGate: this.castRound, combat: this.combat },
+      {
+        queue: this.queue,
+        realmSpell,
+        onTheGround,
+        castGate: this.castRound,
+        combat: this.combat,
+        charges
+      },
       {
         ...reports,
         config: () => this.automationConfig,
@@ -1694,6 +1705,7 @@ export class SessionManager {
       { module: this.blessings, configure: (a) => this.blessings.configure(a.spells, a.enabled) },
       { module: this.extensions, configure: () => this.extensions.configure(this.configured[0]) },
       { module: this.invoke, configure: (a) => this.invoke.configure(a.spells, a.enabled) },
+      { module: this.charges },
       { module: this.events, configure: (a) => this.events.configure(a.events, a.enabled) },
       { module: this.hangUp },
       { module: this.rowOverrides, configure: (a) => this.rowOverrides.configure(a) },
@@ -2728,6 +2740,7 @@ export class SessionManager {
      */
     for (const read of batch ? [block, batch] : [block]) this.routines.onBlock(read);
     this.extensions.onBlock(block);
+    this.charges.onBlock(block); // First: the cash run and the use read the count it takes.
     for (const each of [this.hostTrips, this.areaSearch, this.errands]) each.onBlock(block);
     this.corpse.onBlock(block);
     /*
@@ -3174,34 +3187,17 @@ export class SessionManager {
   }
 
   /**
-   * Re-decide, with nothing new to decide from.
-   *
-   * The modules here are the ones whose answer can change while the wire
-   * says nothing at all — because what changed is a **clock of their own**: a
-   * heal or a potion coming off its cooldown, a cure's thirty seconds while
-   * the affliction is still stated, a `rest` whose in-flight window has
-   * lapsed. Every one of them re-derives its whole decision from the state it
-   * is handed and refuses for itself, so a tick on which nothing has moved
-   * proposes nothing; they are idempotent by construction, which is what makes
-   * a second caller safe at all.
-   *
-   * What is **not** driven from here, and why:
-   *
-   * - **`Blessings`** already owns this exact clock for this exact reason, and
-   *   two things ticking one module would recast a buff twice as often as its
-   *   interval says.
-   * - **The walker, the loop, the rules, auto-combat and both escapes.** Every
-   *   one of those decides from a fact the wire delivers — a room, a blow, a
-   *   roster — and a fact that has not arrived has not changed. Re-running
-   *   them against a stale state is how a client acts twice on one event.
-   * - **Shedding, searching and banking**, which are driven by a pack or a
-   *   room listing rather than by a number on a clock.
-   *
-   * The order is the block path's order with the clockless modules removed,
-   * and the priority argument that puts `blessings.urgent` ahead of the heal
-   * is meaningless here for the reason `Blessings` states about its own tick:
-   * on a tick where nothing else is being decided there is nothing to be ahead
-   * of.
+   * Re-decide, with nothing new to decide from: the modules whose answer
+   * changes on a clock of their own (a heal or potion off cooldown, a cure's
+   * thirty seconds, a `rest` whose in-flight window lapsed). Each re-derives
+   * from the state and refuses for itself, so a tick where nothing moved
+   * proposes nothing. Not driven here: `Blessings`, which owns this clock
+   * already (two would recast twice as often); the walker, the loop, the
+   * rules, auto-combat and both escapes, which decide from a fact the wire
+   * delivers, so a re-run against a stale state acts twice on one event; and
+   * shedding, searching and banking, driven by a listing. The order is the
+   * block path's, less those; `blessings.urgent`'s priority means nothing on
+   * a tick with nothing else being decided.
    */
   private reconsider(): void {
     const state = this.tracker.current;

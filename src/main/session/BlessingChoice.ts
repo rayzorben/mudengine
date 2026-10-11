@@ -395,6 +395,8 @@ export function blessingsFor(
     readonly queue: CommandQueue;
     /** A fight asked for and not yet answered, which a swap must not go out into. */
     readonly combat: Pick<AutoCombat, 'quarry'>;
+    /** The uses left on each charged item (todo 44). */
+    readonly charges: InvokeSources['charges'];
   },
   session: Omit<BlessingChoiceSession, 'learnedDuration'> & {
     /** `Belongings.recallSpellDurations`, read at the point of use: the store arrives with `useRealm`. */
@@ -410,7 +412,7 @@ export function blessingsFor(
   const learnedDuration = (spell: string): number | null =>
     session.durations()[spell.trim().toLowerCase()] ?? null;
   const source = new BlessingChoice(parts, { ...session, learnedDuration });
-  const { queue, combat, ...rest } = deps;
+  const { queue, combat, charges, ...rest } = deps;
   // The realm `AutoInvoke` reads: the choice's own, at the point of use.
   const { world, errands, tracker } = parts;
   const invoke: InvokeSources = {
@@ -418,6 +420,7 @@ export function blessingsFor(
     spellById: (id) => world?.spellById(id) ?? null,
     spellNamed: (name) => world?.spellNamed(name) ?? null,
     handsOf: (name) => errands.gearHandsOf(name),
+    charges,
     fightHere: () => fightIsRunning(tracker.current) || combat.quarry(tracker.current)
   };
   const blessings = new Blessings(automation.spells, automation.enabled, queue, {
