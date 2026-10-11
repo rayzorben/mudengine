@@ -140,13 +140,10 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
    * (`stepsThrough`); the trip's own leg is planned when it starts.
    */
   const nearestVault = (house: number): { room: RoomId; name: string } | { refused: string } => {
-    const { world, errands, tracker } = m();
+    const { world, errands } = m();
     const vaults = world === undefined ? [] : ganghouseVaults(world, house);
     const first = vaults[0];
     if (first === undefined) return { refused: t('automation.outgrown.noStashRoom', { house }) };
-    // Where the character stands is unknown: no reach can be read, so the first
-    // vault is taken as a typed room is, and the trip's own leg says why it waits.
-    if (roomAddress(tracker.current.room) === null) return first;
     const open = vaults
       .map((vault) => ({ vault, steps: errands.stepsThrough([vault.room]) }))
       .filter((way): way is { vault: (typeof vaults)[number]; steps: number } => way.steps !== null)
