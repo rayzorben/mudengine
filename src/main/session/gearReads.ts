@@ -6,12 +6,11 @@
  * stands or as a hypothetical `as`. Out of the extension wiring, so the card
  * reads the same answers an extension does.
  */
-import { attackOptions, type AttackOption } from '../../shared/attackOptions';
+import type { AttackOption } from '../../shared/attackOptions';
 import type { CharacterState } from '../../shared/character';
 import { chargedInCopper } from '../../shared/coins';
 import { placesOf, sheetGain } from '../../shared/gearWorth';
 import type { GearChoices, SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
-import { prowessSheetOf, prowessTargetOf, wieldedWeapon } from '../../shared/verdict';
 import { roomAddress } from '../../shared/world';
 import type { ExtensionWorld } from '../extensions/api';
 import type { CharacterTracker } from '../parse/CharacterTracker';
@@ -23,10 +22,8 @@ import type { Errands } from './Errands';
 
 export interface GearReadParts {
   tracker: Pick<CharacterTracker, 'current'>;
-  errands: Pick<Errands, 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt'>;
+  errands: Pick<Errands, 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'words'>;
   world(): ExtensionWorld | undefined;
-  /** `combat.attack`, the verb the character opens a fight with. */
-  attack(): string;
 }
 
 export interface GearReads {
@@ -44,8 +41,10 @@ export interface GearReads {
 
 export function gearReads(parts: GearReadParts): GearReads {
   const { tracker, errands } = parts;
-  const askerOf = (state: CharacterState, world: ExtensionWorld): SlotAsker =>
-    slotAskerOf(state, world, errands.realmClass(), parts.attack());
+  const askerOf = (state: CharacterState, world: ExtensionWorld): SlotAsker => {
+    const fought = errands.realmClass();
+    return slotAskerOf(state, world, fought, fought.verb);
+  };
   /** The realm's gear as the slot rankings read it, priced from where `state` stands; null unplaced. */
   const gearRealm = (state: CharacterState, world: ExtensionWorld): UpgradeRealm | null => {
     const here = roomAddress(state.room);
@@ -83,23 +82,7 @@ export function gearReads(parts: GearReadParts): GearReads {
       };
       return wearing(state, items, realm, askerOf(state, world));
     },
-    attacks: (as, against = []) => {
-      const state = as ?? tracker.current;
-      const { combat, magery, crits, family } = errands.realmClass();
-      const world = parts.world();
-      // A name the world database cannot place is no armour anybody knows: its round is unknown.
-      const targets = against.map((name) => {
-        const mob = world?.buildMobEntity(name, { at: null });
-        return mob === undefined || mob.source === 'wire' ? null : prowessTargetOf(mob);
-      });
-      return attackOptions(
-        prowessSheetOf(state, { combat, magery, crits }),
-        wieldedWeapon(state.inventory.items),
-        errands.capabilities().abilities,
-        family,
-        targets
-      );
-    }
+    attacks: (as, against = []) => errands.words.options(as ?? tracker.current, against)
   };
   /** The best attack's damage a round, as the character stands or as `as`; null where unknown. */
   const bestRound = (as?: CharacterState): number | null => {

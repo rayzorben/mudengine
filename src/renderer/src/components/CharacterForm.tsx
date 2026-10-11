@@ -37,6 +37,7 @@ import RecoverFields from './RecoverFields';
 import DialFields from './DialFields';
 import InvokeFields from './InvokeFields';
 import AttackFields from './AttackFields';
+import FightWordFields from './FightWordFields';
 import DrainFields from './DrainFields';
 import HealFields from './HealFields';
 import LoopSection, { type LoopShelf } from './LoopSection';
@@ -582,23 +583,13 @@ export default function CharacterForm({
               <fieldset className="settings-menus" data-fieldset="combat-attacks">
                 <legend>{t('settings.combat.attacksLegend')}</legend>
                 <div className="settings-inline">
-                  <TextField
-                    hint={t('settings.combat.attackVerbHint')}
-                    label={t('settings.combat.attackVerbLabel')}
-                    name="attack"
-                    onChange={(value) => patch({ combatAttack: value })}
-                    placeholder={t('settings.combat.attackVerbPlaceholder')}
-                    spellCheck={false}
-                    value={form.combatAttack}
-                  />
-                  <TextField
-                    hint={t('settings.combat.openerHint')}
-                    label={t('settings.combat.openerLabel')}
-                    name="opener"
-                    onChange={(value) => patch({ combatOpener: value })}
-                    placeholder={t('settings.combat.openerPlaceholder')}
-                    spellCheck={false}
-                    value={form.combatOpener}
+                  <FightWordFields
+                    attack={form.combatAttack}
+                    chosen={realm.chosen}
+                    onAttack={(value) => patch({ combatAttack: value })}
+                    onOpener={(value) => patch({ combatOpener: value })}
+                    opener={form.combatOpener}
+                    prefix=""
                   />
                 </div>
                 <CheckField

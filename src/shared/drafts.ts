@@ -14,6 +14,7 @@
 import {
   DEFAULT_CONFIG,
   ENGAGE_POLICIES,
+  firstWord,
   RETREAT_STRATEGIES,
   normalizeRewrites,
   normalizeHuntingAutomation,
@@ -889,14 +890,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     },
     combat: {
       enabled: combat['enabled'] === true,
-      /*
-       * Defaulted rather than passed through empty, unlike `opener`. A blank
-       * attack verb would send a bare newline at whatever is in the room, which
-       * on this server re-reads the room — so a cleared field would look like
-       * auto-combat doing nothing while it spent a command per status line.
-       * Blank *is* meaningful for `opener`: it means the character has none.
-       */
-      attack: word(combat['attack']) || 'a',
+      // Blank chooses the attack and the opener (`FightWords`, todo 47).
+      attack: word(combat['attack']),
       opener: word(combat['opener']),
       // Off unless said: it spends a command per fight.
       hideForOpener: combat['hideForOpener'] === true,
@@ -1449,7 +1444,7 @@ function unit(value: unknown, fallback = 0): number {
 }
 
 function word(value: unknown): string {
-  return text(value).split(/\s+/)[0] ?? '';
+  return firstWord(text(value));
 }
 
 /**

@@ -273,6 +273,44 @@ function migrateAll(options: MigrationOptions): void {
   statedLowLives(home, note, options.profileTemplate);
   theThemesWereCut(home, note);
   pathFollowsStatus(home, note);
+  theAttackIsChosen(home, note, options.template);
+}
+
+/**
+ * `automation.combat.attack` blank chooses the attack (todo 47, 2026-10-10),
+ * so a file stating the old default `a` is set blank, and its paragraph and
+ * the opener's are the template's again: the old ones said blank opener is
+ * none. A file that typed any other verb keeps it. The limit is
+ * `stoppedAnnouncingTheLook`'s: nothing records which migrations ran, so a
+ * player who wants the plain attack types it `attack`, which the template and
+ * the hint say; an `a` typed later is blanked again, and said again.
+ */
+function theAttackIsChosen(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comments = templateComments(template, 'automation');
+  for (const file of everySettingsFile(home)) {
+    let chosen = false;
+    edit(file, (document) => {
+      const combat = document.getIn(['automation', 'combat'], true);
+      if (!isMap(combat)) return false;
+      const attack = combat.get('attack', true);
+      if (!isScalar(attack) || attack.value !== 'a') return false;
+      attack.value = '';
+      for (const item of combat.items) {
+        const key = keyText(item);
+        const comment = comments.get(`automation.combat.${key}`);
+        if ((key === 'attack' || key === 'opener') && comment !== undefined && isScalar(item.key)) {
+          item.key.commentBefore = comment;
+        }
+      }
+      chosen = true;
+      return true;
+    });
+    if (chosen) note(t('notices.migration.attackChosen', { file }));
+  }
 }
 
 /**

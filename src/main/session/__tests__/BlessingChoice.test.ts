@@ -171,7 +171,8 @@ function choice(on: AutomationConfig = config, realmSpeed = 1) {
         crits: 0,
         mageryType: null,
         family: 'greatermud',
-        attack: PLAIN_ATTACK
+        attack: PLAIN_ATTACK,
+        verb: 'a'
       })
     },
     setup: {

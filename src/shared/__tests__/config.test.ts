@@ -403,18 +403,15 @@ describe('automation.combat', () => {
     expect(combat({ engage: 'players' }).engage).toBe('hostile');
   });
 
-  /*
-   * A blank attack verb would send a bare newline at whatever is in the room,
-   * which on this server re-reads the room — so it would look like auto-combat
-   * doing nothing while it spent a command per status line.
-   */
-  it('puts the attack verb back when the file empties it', () => {
-    expect(combat({ attack: '' }).attack).toBe('a');
-    expect(combat({ attack: '   ' }).attack).toBe('a');
+  /* Blank chooses the attack (todo 47); `AutoCombat` never sends a bare line. */
+  it('keeps a blank attack verb, which chooses the attack', () => {
+    expect(combat({ attack: '' }).attack).toBe('');
+    expect(combat({ attack: '   ' }).attack).toBe('');
+    expect(combat({ attack: ' aa the rat' }).attack).toBe('aa');
   });
 
-  /* Blank *is* meaningful for the opener: the character has none. */
-  it('keeps an empty opener, which means there is no opener', () => {
+  /* Blank is meaningful for the opener: it is chosen, and may be none. */
+  it('keeps an empty opener, which chooses the opener', () => {
     expect(combat({ opener: '' }).opener).toBe('');
     expect(combat({ opener: 'bs' }).opener).toBe('bs');
   });

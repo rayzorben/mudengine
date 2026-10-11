@@ -370,7 +370,7 @@ describe('the combat and potion settings that went', () => {
       [
         'automation:',
         '  combat:',
-        '    attack: a',
+        '    attack: kic',
         '    whileWalking: true',
         '    avoidUndead: true',
         '    avoidDeathSpell: true',
@@ -381,7 +381,7 @@ describe('the combat and potion settings that went', () => {
     );
     migrate();
     const combat = combatOf();
-    expect(combat['attack']).toBe('a');
+    expect(combat['attack']).toBe('kic');
     for (const key of ['whileWalking', 'avoidUndead', 'avoidDeathSpell', 'prefer']) {
       expect(combat).not.toHaveProperty(key);
     }
@@ -490,7 +490,7 @@ describe('the round combat macro', () => {
   const OPTIONS_WITH = `automation:
   # Fighting for you, rather than keeping you alive.
   combat:
-    attack: a
+    attack: kic
     rounds: [kic, pu]
     engage: hostile
 `;
@@ -503,7 +503,7 @@ describe('the round combat macro', () => {
   it('goes from the options file, leaving the rest of the block', () => {
     migrate();
     expect(parse(fs.readFileSync(home.options, 'utf8')).automation.combat).toEqual({
-      attack: 'a',
+      attack: 'kic',
       engage: 'hostile',
       // Written by `statedTheEntityPredicates` in the same run, after this
       // step, at the defaults that change nothing.
@@ -7191,5 +7191,49 @@ describe('the themes that were cut', () => {
       'nord'
     );
     expect(notesOf(said, 'notices.migration.themeCut')).toEqual([]);
+  });
+});
+
+/*
+ * Todo 47: a blank `combat.attack` chooses the attack, so a file still stating
+ * the old default `a` is set blank, with the template's paragraphs, and says
+ * so; a verb the player typed stays.
+ */
+describe('the attack is chosen', () => {
+  beforeEach(() => {
+    fs.mkdirSync(home.globalDir, { recursive: true });
+  });
+
+  it('blanks the old default and keeps a typed verb, safe to run again', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  combat:\n    enabled: false\n    attack: a\n    opener: ""\n',
+      'utf8'
+    );
+    const festus = profile('festus', 'automation:\n  combat:\n    attack: aa\n    opener: ""\n');
+    // The plain attack kept on purpose is spelled out, which the template asks for.
+    const yang = profile('yang', 'automation:\n  combat:\n    attack: attack\n');
+    migrate(true);
+    const text = fs.readFileSync(home.options, 'utf8');
+    const combat = (parse(text) as { automation: { combat: { attack: string } } }).automation
+      .combat;
+    expect(combat.attack).toBe('');
+    // The template's paragraph is above the key now.
+    const lines = text.split('\n');
+    expect(lines[lines.findIndex((line) => line.trim().startsWith('attack:')) - 1]).toMatch(
+      /^\s*#/
+    );
+    expect(
+      (parse(fs.readFileSync(festus, 'utf8')) as { automation: { combat: { attack: string } } })
+        .automation.combat.attack
+    ).toBe('aa');
+    expect(
+      (parse(fs.readFileSync(yang, 'utf8')) as { automation: { combat: { attack: string } } })
+        .automation.combat.attack
+    ).toBe('attack');
+    expect(notesOf(said, 'notices.migration.attackChosen')).toHaveLength(1);
+    migrate(true);
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+    expect(notesOf(said, 'notices.migration.attackChosen')).toEqual([]);
   });
 });

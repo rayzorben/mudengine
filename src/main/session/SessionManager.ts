@@ -857,15 +857,13 @@ export class SessionManager {
         decided: (decision) => this.publisher.noteEngagement(decision),
         /*
          * Whether this class can get into the shadows at all, from the realm's
-         * own class row (todo 28). `combat.opener` survives a reroll, so a
-         * profile set up for a Ninja asked for `bs` as a Mage and was told why
-         * it was withheld *this time* — which cannot be acted on.
-         *
-         * `ClassStealth` rather than `Stealth`: the class row grants the
-         * first, and a Thief carries both. Null while the realm or the class
-         * is unread, which never refuses.
+         * own class row (todo 28): `ClassStealth`, which the class row grants
+         * and a Thief carries beside `Stealth`. Null while unread, never refusing.
          */
         canHide: () => holdsAbility(this.errands.capabilities(), CLASS_STEALTH_ABILITY),
+        // The words fought with, typed or chosen (todo 47).
+        attackWord: (target) => this.errands.words.attack([target]).verb,
+        openerWord: () => this.errands.words.opener(),
         onTheGround,
         realmSpeed
       },
@@ -959,14 +957,9 @@ export class SessionManager {
       moving: () => this.walker.walking || this.loops.progress.status === 'running',
       moveInFlight: () => this.tracker.pendingMoves > 0,
       openerRefused: () => this.combat.openerRefused(),
-      /*
-       * Whether resting and hiding undo each other for this class, read off the
-       * realm's own class row. The shipped data is the reason it is read rather
-       * than named: Paradigm grants `ShadowHome` to seven classes and
-       * MajorMUD's realm to none, so the file loaded already answers it — and
-       * the family gates the *behaviour*, which belongs to GreaterMUD's engine
-       * whatever database it is running.
-       */
+      opener: () => this.errands.words.opener(),
+      // Whether resting and hiding undo each other, off the realm's class row (Paradigm grants
+      // `ShadowHome` to seven classes, MajorMUD none); the family gates GreaterMUD's behaviour.
       restsHidden: () =>
         restsInTheShadows(
           this.world?.classNamed(this.tracker.current.className ?? '')?.abilities,
@@ -1601,7 +1594,7 @@ export class SessionManager {
     this.statHold = new StatScreenHold(this.queue, this.publisher, sink, () => this.dropTyped());
     this.gearDesk = gearDesk({
       ...{ tracker: this.tracker, errands: this.errands, world: () => this.world },
-      ...{ attack: () => this.automationConfig.combat.attack, travel: () => this.travel },
+      travel: () => this.travel,
       trip: () => this.hostTrips.gear
     });
     this.questDesk = questDesk({
@@ -1912,6 +1905,11 @@ export class SessionManager {
   /** The class row's combat and magery and the wire's family, read once. See `Errands.realmClass`. */
   get realmClass(): RealmClass {
     return this.errands.realmClass();
+  }
+
+  /** The attack and opener fought with, typed or chosen (todo 47). See `FightWords`. */
+  get fightWords(): Errands['words'] {
+    return this.errands.words;
   }
 
   /** What this character has learned about the realm the data does not have. See `Records`. */

@@ -2489,6 +2489,12 @@ function registerIpc(): void {
   handle(Invoke.gearChoices, (_caller, session: SessionId) => {
     return host?.get(session)?.manager?.gearDesk.choices() ?? null;
   });
+  handle(Invoke.chosenWords, (_caller, session: SessionId) => {
+    const manager = host?.get(session)?.manager;
+    // Out of the realm the sheet is unread, and the field says what blank does instead.
+    if (!manager || manager.character.phase !== 'in-game') return null;
+    return manager.fightWords.untyped();
+  });
   handle(Invoke.gearPlan, (_caller, session: SessionId, picks: unknown) => {
     // Parsed at the boundary: the plan is a sweep per counter and an A* per leg.
     const parsed = asGearPicks(picks);
@@ -2654,12 +2660,12 @@ function registerIpc(): void {
     if (!world || !manager || typeof slot !== 'string') return null;
     const worn = wornOfWord(slot);
     if (worn === null) return null;
-    const { combat, magery, crits, family } = manager.realmClass;
+    const { combat, magery, crits, family, verb } = manager.realmClass;
     return slotGear(worn, world, {
       wearer: wearerIn(session),
       sheet: prowessSheetOf(manager.character, { combat, magery, crits }),
       family,
-      attack: configFor(session).automation.combat.attack
+      attack: verb
     });
   });
 

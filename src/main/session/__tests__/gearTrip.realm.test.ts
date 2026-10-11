@@ -83,8 +83,11 @@ describe.skipIf(!available)('the Gear card on gmud.mdb', () => {
         crits: null,
         mageryType: null,
         family: null,
-        attack: null
+        attack: null,
+        verb: 'attack'
       }),
+      // No class row is read, so no attack is priced (`attackOptions` would price none either).
+      words: { options: () => [] },
       capabilities: () => ({ abilities: null }),
       travellerNow: () => ({ level: 5 }),
       priceAt,
@@ -97,8 +100,7 @@ describe.skipIf(!available)('the Gear card on gmud.mdb', () => {
         }
       },
       errands: errands as never,
-      world: () => w,
-      attack: () => 'attack'
+      world: () => w
     });
 
     const started = performance.now();

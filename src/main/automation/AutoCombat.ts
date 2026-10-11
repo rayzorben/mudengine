@@ -166,6 +166,13 @@ export interface AutoCombatEvents extends AttackSpellEvents {
    */
   canHide?(): boolean | null;
   /**
+   * The attack word against `target` and the opener, typed or, where blank,
+   * chosen from the class rows (`FightWords`, todo 47). Absent, the typed
+   * words stand, a blank attack being the plain one.
+   */
+  attackWord?(target: string): string;
+  openerWord?(): string;
+  /**
    * A round of a fight this character is in has come round (todo 00).
    *
    * Raised rather than acted on, because the round clock is this module's and
@@ -454,6 +461,8 @@ export class AutoCombat implements SessionModule {
    * the book and the realm say of the word (`offAnswering`).
    */
   private sentAttack: Proposal | null = null;
+  /** The attack word last sent, typed or chosen (`fightWord`), so its refusal is said as the attack's. */
+  private lastChosen: string | null = null;
   /**
    * A cast at a monster whose `*Combat Off*` has not yet been followed. A
    * combat spell's is the first half of its re-engagement, an instant spell's
@@ -674,6 +683,7 @@ export class AutoCombat implements SessionModule {
     this.cannotBackstabWith.clear();
     this.spell.reset();
     this.sentAttack = null;
+    this.lastChosen = null;
     this.refusedLast = null;
     this.lastAttackBy = 'module';
     this.offBy = null;
@@ -1027,7 +1037,10 @@ export class AutoCombat implements SessionModule {
          * client would name it from can be absent or a minute old.
          */
         // When the verb refused is the configured attack, the notice says the plain attack goes in its place.
-        const standsIn = blamed.blames === 'character' && answersTo(skill, this.config.attack);
+        const fought = [this.config.attack, this.lastChosen].some(
+          (word) => word !== null && answersTo(skill, word)
+        );
+        const standsIn = blamed.blames === 'character' && fought;
         this.events.notice?.(
           standsIn
             ? t('automation.combat.attackStandsIn', { verb, plain: PLAIN_ATTACK_VERB })
@@ -1624,7 +1637,10 @@ export class AutoCombat implements SessionModule {
     // A party's fight is joined whether or not the proposal got through: the
     // trace says so either way, because the decision was made.
     const swung = this.swing(choice.target, choice.because);
-    if (swung || joined !== null) this.note(choice.target, true, undefined, choice.because);
+    if (swung || joined !== null) {
+      // The word the fight is fought with, typed or chosen for this monster (todo 47).
+      this.note(choice.target, true, undefined, choice.because, this.attackVerb(choice.target));
+    }
   }
 
   /**
@@ -2022,7 +2038,13 @@ export class AutoCombat implements SessionModule {
    * the same refusal behind it is worth a line, and the same monster refused
    * for the same reason on the next prompt is not.
    */
-  private note(target: string, acted: boolean, refused?: string, because?: string): void {
+  private note(
+    target: string,
+    acted: boolean,
+    refused?: string,
+    because?: string,
+    attack?: string
+  ): void {
     const key = `${acted ? 'act' : 'no'}|${mobKey(target)}|${refused ?? ''}`;
     if (key === this.lastDecision) return;
     this.lastDecision = key;
@@ -2031,7 +2053,8 @@ export class AutoCombat implements SessionModule {
       target,
       acted,
       ...(refused === undefined ? {} : { refused }),
-      ...(because === undefined ? {} : { because })
+      ...(because === undefined ? {} : { because }),
+      ...(attack === undefined ? {} : { attack })
     });
   }
 
@@ -2101,7 +2124,8 @@ export class AutoCombat implements SessionModule {
     }
     const word = (text: string): string => text.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
     const verb = word(command);
-    return verb === word(this.attackVerb()) || verb === word(this.config.opener)
+    const target = this.state.combat.target;
+    return verb === word(this.attackVerb(target)) || verb === word(this.openerWord())
       ? 'attack'
       : 'other';
   }
@@ -2199,8 +2223,9 @@ export class AutoCombat implements SessionModule {
       opener === null && state !== null
         ? this.spell.opening(state, this.spellTarget(state, target), because)
         : null;
-    const verb = opener ?? this.attackVerb();
+    const verb = opener ?? this.attackVerb(target);
     if (cast === null && verb.length === 0) return false;
+    if (cast === null && opener === null) this.lastChosen = this.fightWord(target);
     const proposal = cast ?? {
       command: `${verb} ${target}`,
       action: { kind: 'melee' } as const,
@@ -2295,7 +2320,7 @@ export class AutoCombat implements SessionModule {
     target: string
   ): { verb: string } | { held: OpenerHeld } {
     if (this.openerSpent) return { held: 'other' };
-    const opener = this.config.opener.trim();
+    const opener = this.openerWord();
     if (opener.length === 0) return { held: 'other' };
     if (this.isRefused(opener)) return { held: 'other' };
     if (answersTo('backstab', opener)) {
@@ -2359,7 +2384,7 @@ export class AutoCombat implements SessionModule {
    * a backstab the server would not perform.
    */
   openerRefused(): boolean {
-    return this.isRefused(this.config.opener);
+    return this.isRefused(this.openerWord());
   }
 
   /**
@@ -2371,7 +2396,7 @@ export class AutoCombat implements SessionModule {
    * (`EquipmentManager`), and the refusal is given back when the hand changes.
    */
   opensWithBackstab(weapons: readonly string[]): boolean {
-    const opener = this.config.opener;
+    const opener = this.openerWord();
     if (!this.acting || !answersTo('backstab', opener) || this.classCannotHide()) return false;
     for (const refused of this.cannotBackstabWith) {
       if (weapons.some((weapon) => sameItem(weapon, refused))) return false;
@@ -2385,13 +2410,26 @@ export class AutoCombat implements SessionModule {
   }
 
   /**
-   * `combat.attack`, or the plain attack once the game has refused it for
+   * The attack word, or the plain attack once the game has refused it for
    * this character: a Mage left with a Mystic's `kic` was told `You don't
    * know the first thing about kicking!` 21 times in one session and never
    * landed a blow with it (orohost, `logs/2026-10-05_14-39-59_main:722`).
    */
-  private attackVerb(): string {
-    return this.isRefused(this.config.attack, 'character') ? PLAIN_ATTACK_VERB : this.config.attack;
+  private attackVerb(target: string | null): string {
+    const verb = this.fightWord(target);
+    return this.isRefused(verb, 'character') ? PLAIN_ATTACK_VERB : verb;
+  }
+
+  /** The attack typed or chosen against `target` (`attackWord`); never blank, which sends a bare line. */
+  private fightWord(target: string | null): string {
+    const chosen = target === null ? undefined : this.events.attackWord?.(target);
+    const word = (chosen ?? this.config.attack).trim();
+    return word.length > 0 ? word : PLAIN_ATTACK_VERB;
+  }
+
+  /** The opener typed or chosen (`openerWord`); blank for none. */
+  private openerWord(): string {
+    return (this.events.openerWord?.() ?? this.config.opener).trim();
   }
 
   /**
@@ -2482,12 +2520,10 @@ export class AutoCombat implements SessionModule {
   private roundChange(state: CharacterState): void {
     const target = state.combat.target;
     if (target === null) return;
-    const change = this.spell.change(
-      state,
-      this.spellTarget(state, target),
-      this.attackVerb().trim()
-    );
+    const verb = this.attackVerb(target);
+    const change = this.spell.change(state, this.spellTarget(state, target), verb);
     if (change === null) return;
+    if (change.action?.kind === 'melee') this.lastChosen = this.fightWord(target);
     this.queue.enqueue({
       // The realm's short name is itself the command (`castWord`), and a room
       // spell goes bare, as the wire shows it (captures/131).

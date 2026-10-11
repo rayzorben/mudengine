@@ -27,6 +27,7 @@ import type { PlayerRegistry } from './players';
 import type { DebugRecord } from './debug';
 import type { GearAction, Wearer } from './gear';
 import type { SlotGear } from './slotGear';
+import type { ChosenWords } from './attackChoice';
 import type { GearPick, GearTripPlan, GearTripProgress } from './gearTrip';
 import type { GearChoices } from './upgrades';
 import type {
@@ -997,6 +998,8 @@ export const Invoke = {
   roomBrief: 'world:room',
   /** Every item one slot takes that this character can use, best first. */
   slotGear: 'world:slot',
+  /** What blank attack and opener fields choose for this character (todo 47). */
+  chosenWords: 'world:attack',
   wearer: 'world:wearer',
   /**
    * Everything the realm knows about a name — monster, item or spell — for
@@ -1532,6 +1535,12 @@ export interface IpcApi {
    * that names no slot, or a realm with nothing loaded.
    */
   slotGear(session: SessionId, slot: string): Promise<SlotGear | null>;
+  /**
+   * The attack and opener a blank Attack Command and Opening Attack choose
+   * for this character, from its class and race rows and its sheet (todo 47).
+   * Null while the character is not in the realm, whose sheet is unread.
+   */
+  chosenWords(session: SessionId): Promise<ChosenWords | null>;
   /**
    * Where this character should hunt: every lair the exits reach from where
    * it stands, priced by the realm's own respawn clock and the same
