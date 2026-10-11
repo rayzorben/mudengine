@@ -9,7 +9,8 @@ import {
   TerminalFeed,
   type Emitted,
   type FeedSource,
-  type LineFacts
+  type LineFacts,
+  type Painted
 } from '../TerminalFeed';
 import type { BatchBlock } from '../../parse/Classifier';
 import type { Block } from '../../../shared/blocks';
@@ -20,10 +21,21 @@ import { PROMPT_REPAINT } from '../../net/stream-quirks';
 import { STATUS_LINE } from '../../parse/patterns';
 import type { BlockType } from '../../../shared/blocks';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import { clearOf, stampChunk, stampOf } from '../../../shared/stamps';
 
 const PROMPT_HOLD_MS = DEFAULT_INTERNAL.tuning.session.promptHoldMs;
 
 const PROMPT = '\x1b[1;32m[HP=34/MA=12]:\x1b[0m';
+/** Where a row gets its time, and where text takes it off, drawn into the painted text. */
+const TIME = '<t>';
+const CLEAR = '<x>';
+
+/** A painted chunk with its row times drawn in as `TIME` and `CLEAR`. */
+function drawn(painted: Painted): string {
+  return stampChunk({ seq: 1, at: 7, text: painted.text, times: painted.times })
+    .text.replaceAll(stampOf(7), TIME)
+    .replaceAll(clearOf(), CLEAR);
+}
 
 /**
  * A stand-in for the classifier: the handful of shapes these tests need,
@@ -65,22 +77,39 @@ function harness(
     const type = typeOf(plain);
     feed.line(framed.text, framed.terminator, plain, type, undefined, facts(plain, type));
   };
-  const chunk = (text: string): string => {
+  const read = (text: string): Painted => {
     // As `SessionManager`'s data handler does, before the packet's lines.
     feed.arrived();
     for (const framed of tokenizer.push(text)) publish(framed);
     feed.partial(tokenizer.buffered);
     const out = feed.take();
     painted.push(out.text);
-    return out.text;
+    return out;
   };
-  const flush = (): string => {
+  const end = (): Painted => {
     for (const framed of tokenizer.flush()) publish(framed);
     const out = feed.take();
     painted.push(out.text);
-    return out.text;
+    return out;
   };
-  return { feed, tokenizer, facts, chunk, flush, released, painted, shown: () => painted.join('') };
+  const chunk = (text: string): string => read(text).text;
+  const flush = (): string => end().text;
+  /** As `chunk` and `flush`, with the row times drawn in. */
+  const timed = {
+    chunk: (text: string): string => drawn(read(text)),
+    flush: (): string => drawn(end())
+  };
+  return {
+    feed,
+    tokenizer,
+    facts,
+    chunk,
+    flush,
+    timed,
+    released,
+    painted,
+    shown: () => painted.join('')
+  };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -698,5 +727,68 @@ describe('marks', () => {
     const out = h.feed.take();
     expect(out.text).toBe('Town\r\nGeneral Store\r\n');
     expect(out.marks).toEqual([{ offset: 6, mark: { icon: 'shop', label: 'a shop' } }]);
+  });
+});
+
+describe('a time on the status line and on no other row', () => {
+  const STATUS = '[HP=34/MA=12]:';
+
+  it('times the status line, not the room in front of it', () => {
+    const h = harness(['rm']);
+    expect(h.timed.chunk(`Town Square\r\nObvious exits: north\r\n${STATUS}`)).toBe(
+      `Town Square\r\nObvious exits: north\r\n${TIME}${STATUS}`
+    );
+    expect(h.timed.flush()).toBe('');
+  });
+
+  it("leaves the row's time alone when the realm repaints the prompt", () => {
+    const h = harness(['rm']);
+    h.timed.chunk(STATUS);
+    h.timed.flush();
+    expect(h.timed.chunk(PROMPT_REPAINT + STATUS)).toBe(PROMPT_REPAINT + STATUS);
+  });
+
+  it('moves the row to the moment a typed command is echoed', () => {
+    const h = harness(['rm']);
+    h.timed.chunk(STATUS);
+    h.timed.flush();
+    h.feed.sent('who', 'user');
+    expect(h.timed.chunk(`who\r\nNorth Road\r\n${STATUS}`)).toBe(
+      `${TIME}who\r\nNorth Road\r\n${TIME}${STATUS}`
+    );
+  });
+
+  it('moves the row when the prompt and the echo arrive as one line, and times no echo on a row of its own', () => {
+    const h = harness(['rm']);
+    h.feed.sent('who', 'user');
+    expect(h.timed.chunk(`${STATUS}who\r\n`)).toBe(`${TIME}${STATUS}who\r\n`);
+    h.feed.sent('l', 'user');
+    expect(h.timed.chunk('A rat squeaks.\r\nl\r\n')).toBe('A rat squeaks.\r\nl\r\n');
+  });
+
+  /* Paradigm (paramud.mudinfo.net) erases the prompt row and writes the next line over it. */
+  it('takes the time off a prompt row the next line is written over', () => {
+    const h = harness(['rm']);
+    h.timed.chunk(STATUS);
+    h.timed.flush();
+    expect(h.timed.chunk(`${PROMPT_REPAINT}*Combat Engaged*\r\n${PROMPT_REPAINT}${STATUS}`)).toBe(
+      `${PROMPT_REPAINT}${CLEAR}*Combat Engaged*\r\n${PROMPT_REPAINT}${TIME}${STATUS}`
+    );
+  });
+
+  it('times a status line split across two reads once, when it reads as one', () => {
+    const h = harness(['rm']);
+    expect(h.timed.chunk('[HP=34/MA')).toBe('[HP=34/MA');
+    expect(h.timed.chunk('=12]:')).toBe(`${TIME}=12]:`);
+    expect(h.timed.flush()).toBe('');
+  });
+
+  it('times the prompt a quiet command ends, without its withheld answer', () => {
+    const h = harness(['rm']);
+    h.timed.chunk(STATUS);
+    h.timed.flush();
+    h.feed.sent('rm', 'automation');
+    expect(h.timed.chunk('rm\r\nLocation: 1,2\r\n')).toBe('');
+    expect(h.timed.chunk(PROMPT_REPAINT + STATUS)).toBe(PROMPT_REPAINT + STATUS);
   });
 });

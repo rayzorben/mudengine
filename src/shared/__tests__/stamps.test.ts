@@ -1,29 +1,30 @@
 import { describe, expect, it } from 'vitest';
 
-import { afterStamp, stampAt, stampChunk, stampOf, unstamped } from '../stamps';
+import { afterStamp, clearOf, lastStamp, stampAt, stampChunk, stampOf, unstamped } from '../stamps';
 import type { TerminalMark } from '../types';
 
 const mark: TerminalMark = { icon: 'shop', label: 'General Store' };
 
-describe('a block carries the time it reached the console', () => {
-  it('opens the chunk with its time and moves each mark past it', () => {
+describe('a status line carries the time it reached the console', () => {
+  it('writes each row time in at its offset and moves each mark past it', () => {
     const chunk = stampChunk({
       seq: 1,
       at: 1791418218773,
-      text: 'a\r\nShop\r\n',
-      marks: [{ offset: 3, mark }]
+      text: 'Shop\r\n[HP=1]:',
+      marks: [{ offset: 0, mark }],
+      times: [
+        { offset: 0, put: 'clear' },
+        { offset: 6, put: 'time' }
+      ]
     });
     const stamp = stampOf(1791418218773);
-    expect(chunk.text).toBe(`${stamp}a\r\nShop\r\n`);
-    expect(chunk.text.slice(chunk.marks?.[0]?.offset)).toBe('Shop\r\n');
+    expect(chunk.text).toBe(`${clearOf()}Shop\r\n${stamp}[HP=1]:`);
+    expect(chunk.text.slice(chunk.marks?.[0]?.offset)).toBe('Shop\r\n' + stamp + '[HP=1]:');
+    expect('times' in chunk).toBe(false);
   });
 
-  /* A reply leaves the command's row on the time it went out. */
-  it('goes after the line break a reply opens with, unless nothing follows it', () => {
-    expect(stampChunk({ seq: 1, at: 7, text: '\r\nTown Square\r\n' }).text).toBe(
-      `\r\n${stampOf(7)}Town Square\r\n`
-    );
-    expect(stampChunk({ seq: 1, at: 7, text: '\r\n' }).text).toBe(`${stampOf(7)}\r\n`);
+  it('leaves a chunk that times no row as it is', () => {
+    expect(stampChunk({ seq: 1, at: 7, text: 'Town Square\r\n' }).text).toBe('Town Square\r\n');
     expect(afterStamp(`${stampOf(7)}[HP=1]:`)).toBe(stampOf(7).length);
     expect(afterStamp('[HP=1]:')).toBe(0);
   });
@@ -33,10 +34,14 @@ describe('a block carries the time it reached the console', () => {
       '\x1b[79D\x1b[K[HP=30]:'
     );
     expect(unstamped('\x1b]0;title\x07')).toBe('\x1b]0;title\x07');
+    expect(unstamped(`a${clearOf()}b`)).toBe('ab');
+    expect(lastStamp(`${stampOf(5)}x${clearOf()}y`)).toBe(clearOf());
+    expect(lastStamp('x')).toBe('');
   });
 
   it('reads back the time, and nothing else', () => {
     expect(stampAt('1791418218773')).toBe(1791418218773);
+    expect(stampAt('-')).toBe('clear');
     expect(stampAt('')).toBeNull();
     expect(stampAt('12;x')).toBeNull();
   });
