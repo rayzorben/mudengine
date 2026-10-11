@@ -7,6 +7,7 @@ import type { AutoLayoutApi, CardId } from '../lib/cards';
 import { keepFocus } from '../lib/focus';
 import { t } from '../lib/i18n';
 import { version } from '../../../../package.json';
+import { BUILD, versionWithCommit } from '@shared/build';
 
 export interface CardRailHeadProps {
   /** Cards currently put away; the chip is drawn only while there are some. */
@@ -21,6 +22,19 @@ export interface CardRailHeadProps {
   autoLayout: AutoLayoutApi;
 }
 
+const MARK_NAME = t('app.windowTitle');
+const FULL_VERSION = versionWithCommit(version, BUILD, t);
+
+/** Name, version, commit and build time: fixed for the life of the window. */
+const MARK_TOOLTIP =
+  BUILD.builtAt === null
+    ? t('app.markTooltip', { name: MARK_NAME, version: FULL_VERSION })
+    : t('app.markTooltipBuilt', {
+        name: MARK_NAME,
+        version: FULL_VERSION,
+        built: new Date(BUILD.builtAt).toLocaleString()
+      });
+
 /**
  * The row at the head of the card rail: the put-away chip, auto layout and
  * its undo, and the mark.
@@ -32,8 +46,8 @@ export interface CardRailHeadProps {
  * is put away, when the row is the mark's alone.
  *
  * The mark sits at the far right with the version to its left; the tooltip
- * carries both either way, from the same `package.json` main reports
- * (`appVersion`).
+ * carries both, with the commit and when it was built, from the same
+ * `package.json` and stamp main reports (`appVersion`).
  */
 export default function CardRailHead({
   away: put,
@@ -44,7 +58,6 @@ export default function CardRailHead({
   // The extension card is offered only where an extension draws one.
   const installed = useExtensions().length > 0;
   const away = installed ? put : put.filter((id) => id !== 'extension');
-  const name = t('app.windowTitle');
   return (
     <div className="card-rail-head">
       <CardPicker cards={away} {...picker} />
@@ -74,7 +87,7 @@ export default function CardRailHead({
         </button>
       )}
       {showLogo && (
-        <span className="app-mark" title={t('app.markTooltip', { name, version })}>
+        <span className="app-mark" title={MARK_TOOLTIP}>
           <span className="app-mark-version">{t('app.markVersion', { version })}</span>
           <span aria-hidden="true" className="app-mark-glyph" />
         </span>

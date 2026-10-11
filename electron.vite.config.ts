@@ -2,9 +2,13 @@ import { resolve } from 'node:path';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
+import { buildStamp } from './scripts/lib/build-stamp.mjs';
 import { yamlPlugin } from './scripts/lib/yaml-module.mjs';
 
 const shared = resolve('src/shared');
+
+/** Which commit main and the window were built from (`src/shared/build.ts`). */
+const stamp = { __BUILD_STAMP__: JSON.stringify(buildStamp(resolve('.'))) };
 
 /**
  * Bundled rather than externalised.
@@ -107,6 +111,7 @@ const CHUNK_LIMIT_KB = { main: 1400, preload: 100, renderer: 2000 } as const;
 export default defineConfig({
   main: {
     ...stripComments,
+    define: stamp,
     plugins: [externalizeDepsPlugin({ exclude: BUNDLED }), yamlPlugin()],
     resolve: { alias: { '@shared': shared, '@main': resolve('src/main') } },
     build: {
@@ -133,6 +138,7 @@ export default defineConfig({
   },
   renderer: {
     ...stripComments,
+    define: stamp,
     root: resolve('src/renderer'),
     plugins: [react(), yamlPlugin()],
     resolve: { alias: { '@shared': shared, '@renderer': resolve('src/renderer/src') } },

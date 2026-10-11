@@ -130,8 +130,11 @@ app:
     unreadable: '{path} could not be listed: {message}'
   clipboard:
     none: This host has no clipboard, so the window keeps its own.
+  commitUnknown: unknown
   markTooltip: '{name} {version}'
+  markTooltipBuilt: '{name} {version}, built {built}'
   markVersion: v{version}
+  versionWithCommit: '{version}, commit {commit}'
   windowTitle: mudengine
 # Lines the client itself prints into the terminal or pushes as one-off notices.
 notices:
