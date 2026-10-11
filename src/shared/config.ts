@@ -1270,8 +1270,8 @@ export interface OutgrownConfig {
   enabled: boolean;
   /**
    * The ganghouse room to `hide` things in, as a loop stop names a room
-   * (`Silver House Vault 15/921`). The world database does not say which rooms
-   * belong to which house. Empty stashes nothing.
+   * (`Silver House Vault 15/921`). Empty uses the house's nearest vault the
+   * world data shows (`ganghouseVaults`, todo 51).
    */
   ganghouseRoom: string;
 }

@@ -4215,8 +4215,8 @@ settings:
       hidden in the ganghouse when it is worth enough, else sold at the nearest shop that buys it,
       else dropped. Never anything worn, a key, a supply, a gear set item or a loyal item.'
     outgrownRoomLabel: Ganghouse Room
-    outgrownRoomHint: 'Where to hide gear worth keeping, named as a loop stop names a room. The
-      world data does not say which rooms belong to which ganghouse. Empty hides nothing.'
+    outgrownRoomHint: 'Where to hide gear worth keeping, named as a loop stop names a room. Empty
+      uses the nearest vault of the house your emblem names, where the world data shows one.'
     outgrownRoomPlaceholder: Silver House Vault 15/921
     searchEnabledHint: The game hides exits, and a route may be planned through one nobody has found
       yet. Never in combat or while resting, and once per room, not once per status line.
@@ -5933,8 +5933,10 @@ automation:
       dropping instead.'
     noStashKey: 'Not stashing in the {gang} ganghouse: you carry no key to it. Selling or dropping
       instead.'
-    noStashRoom: "Not stashing in ganghouse {house}: no Ganghouse Room is set, and the world data
-      does not say which rooms are the house's. Selling or dropping instead."
+    noStashRoom: 'Not stashing in ganghouse {house}: no Ganghouse Room is set, and the world data
+      shows no vault for the house. Selling or dropping instead.'
+    noStashVaultShut: 'Not stashing in ganghouse {house}: there is no way into {room} with the keys
+      you carry. Selling or dropping instead.'
     noStashRoomUnfound:
       'Not stashing in the ganghouse: {room} could not be found ({why}). Selling or
       dropping instead.'
