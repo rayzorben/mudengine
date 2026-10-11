@@ -121,6 +121,13 @@ const SELF = '@self';
 /** The key a party-wide heal's cooldown is filed under: it has no one target. */
 const AREA = '@party';
 
+/** A joined member a heal is wanted for, with the listing's share and whether they asked. */
+interface WantedMember {
+  readonly member: PartyMember;
+  readonly share: number | null;
+  readonly asked: boolean;
+}
+
 export class AutoHeal implements SessionModule {
   private lastCastAt = new Map<string, number>();
   /**
@@ -267,11 +274,15 @@ export class AutoHeal implements SessionModule {
      * before this character is. A request does not jump this character's own
      * bar, and equal shares heal this character.
      */
-    const memberFirst =
-      selfShare !== null &&
-      members.some(({ share }) => share !== null && share < selfShare);
-    if (selfWanted && !memberFirst && this.healSelf(state)) return;
+    const lower = ({ share }: WantedMember): boolean =>
+      selfShare !== null && share !== null && share < selfShare;
+    if (selfWanted && this.healMembers(state, members.filter(lower))) return;
+    if (selfWanted && this.healSelf(state)) return;
+    this.healMembers(state, members);
+  }
 
+  /** The first of `members` a party heal answers, cast; false where none does. */
+  private healMembers(state: CharacterState, members: readonly WantedMember[]): boolean {
     const party = this.config.healPartyWith.trim();
     for (const { member, share, asked } of members) {
       /*
@@ -291,9 +302,9 @@ export class AutoHeal implements SessionModule {
        */
       if (spell.length === 0) continue;
       this.healMember(spell, member.name, share, asked, state);
-      return;
+      return true;
     }
-    if (selfWanted && memberFirst) this.healSelf(state);
+    return false;
   }
 
   /** This character's own heal, bare; false where no spell answers. */
@@ -312,22 +323,23 @@ export class AutoHeal implements SessionModule {
    * listing's figure nor starts `healTo`'s run, so the thresholds decide
    * everything after it exactly as they would have.
    */
-  private membersWanting(
-    state: CharacterState
-  ): { member: PartyMember; share: number | null; asked: boolean }[] {
+  private membersWanting(state: CharacterState): WantedMember[] {
     const party = this.config.healPartyWith.trim();
     if (!this.config.healParty || (party.length === 0 && !this.config.autoChooseHeal)) return [];
-    const wanted: { member: PartyMember; share: number | null; asked: boolean }[] = [];
+    const wanted: WantedMember[] = [];
     for (const member of joinedMembers(state)) {
       const asked = this.asked.has(member.name.toLowerCase());
-      if (asked || this.wants(member.name.toLowerCase(), member.health, state.inCombat)) {
+      // An unstated share leaves `healTo`'s run as it was: unknown is not "healed".
+      const low =
+        member.health !== null &&
+        this.wants(member.name.toLowerCase(), member.health, state.inCombat);
+      if (asked || low) {
         wanted.push({ member, share: member.health, asked });
       }
     }
     const unstatedLast = (share: number | null): number => share ?? 2;
     return wanted.sort(
-      (a, b) =>
-        Number(b.asked) - Number(a.asked) || unstatedLast(a.share) - unstatedLast(b.share)
+      (a, b) => Number(b.asked) - Number(a.asked) || unstatedLast(a.share) - unstatedLast(b.share)
     );
   }
 

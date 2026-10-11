@@ -170,12 +170,26 @@ describe('healing by a number', () => {
 
     it('heals the lowest member first, whatever order the listing prints', () => {
       const auto = healer();
-      auto.onCharacter(state({}, [member('Brok', 0.45), member('Yang', 0.2), member('Soul', null)]));
+      auto.onCharacter(
+        state({}, [member('Brok', 0.45), member('Yang', 0.2), member('Soul', null)])
+      );
       drain();
       // Yang mended past any ceiling, so Brok is the one left under the floor.
       auto.onCharacter(state({}, [member('Brok', 0.45), member('Yang', 1), member('Soul', null)]));
       drain();
       expect(sent).toEqual(['minor healing Yang', 'minor healing Brok']);
+    });
+
+    it('heals a lower member, then this character, before one who asked from higher', () => {
+      const auto = healer();
+      const now = state({ hp: 30 }, [member('Yang', 0.9), member('Brok', 0.2)]);
+      auto.request('Yang', now);
+      auto.onCharacter(now);
+      drain();
+      vi.advanceTimersByTime(7000);
+      auto.onCharacter(state({ hp: 30 }, [member('Yang', 0.9), member('Brok', 1)]));
+      drain();
+      expect(sent).toEqual(['minor healing Brok', 'way of the swan']);
     });
   });
 

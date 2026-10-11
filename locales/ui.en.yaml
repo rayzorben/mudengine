@@ -5967,7 +5967,8 @@ automation:
         is the escape that works
       kill: this client never attacks a player on its own; the first attack starts the five-minute
         window that makes a disconnect deadly, and the other character is a real person
-      panic: the only part of it this client could do is the hangup, which is refused above
+      panic: the leader is about to teleport or hang up, and a follower never runs or hangs up;
+        this character stays where it is
       relog: it hangs up first, and hanging up is refused above
     refusedDenied: '{from} sent @{raw}; ignored, because @{raw} is denied to {from} by name.'
     refusedGangpathOff: '{from} sent @{raw} on the gangpath; ignored, because this character does
