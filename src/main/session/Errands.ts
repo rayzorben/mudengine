@@ -17,6 +17,7 @@ import { Navigation } from './navigation';
 import { exitGates, itemsAsked } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
+import { partyTraps, walkersThrough } from '../../shared/barrierHands';
 import type { WalkKind } from '../../shared/walk';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -799,7 +800,9 @@ export class Errands implements SessionModule {
             )
           }
         : {}),
-      trapSkill: state.progress.traps,
+      // Leading, the party's best Traps and its size (todo 86): the walk sends the best hand.
+      trapSkill: partyTraps(state),
+      trapWalkers: walkersThrough(state),
       // And which of the two the walker will spend: a door planned on a skill
       // whose switch is off is a door the walk stops at.
       forcing: {

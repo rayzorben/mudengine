@@ -21,6 +21,7 @@ import {
   type RealmPlayers
 } from '../../shared/players';
 import { withOwnEquipment } from './inventory';
+import { withMemberSheet } from './memberSheet';
 import { noteRemoteCall, noteRemoteClient, trackPlayers } from './players';
 import {
   withDescription,
@@ -338,14 +339,20 @@ export class Company {
     return this.fold(withGangLeft(s, this.registry, name, gang, at));
   }
 
-  /** A `conversation-*` line: another client's `@health` answer, if it is one (`withRemoteVitals`). */
-  remoteVitals(
+  /**
+   * A `conversation-*` line: another client's `@health` answer (`withRemoteVitals`)
+   * or `@stats` answer (`withMemberSheet`), if it is one.
+   */
+  remoteAnswer(
     s: CharacterState,
     name: string | undefined,
     message: string | undefined,
     at: number
   ): CharacterState | null {
-    return this.fold(withRemoteVitals(s, this.registry, name, message, at));
+    return (
+      this.fold(withRemoteVitals(s, this.registry, name, message, at)) ??
+      withMemberSheet(s, name, message)
+    );
   }
 
   /** A registry folded outside `apply`, kept and told to the book; whether it moved. */

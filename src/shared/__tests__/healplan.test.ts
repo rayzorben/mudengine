@@ -179,6 +179,7 @@ describe('who a heal could reach', () => {
     activity: null,
     invited: false,
     vitals: null,
+    sheet: null,
     ...over
   });
   const state = (members: PartyMember[]): CharacterState => ({

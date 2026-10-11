@@ -261,18 +261,39 @@ describe('answering the questions the way MegaMUD does', () => {
 });
 
 describe('answering @stats, which is this client’s own', () => {
-  const sheet = { strength: 60, intellect: 45, willpower: 50, agility: 55, health: 45, charm: 40 };
+  const six = { strength: 60, intellect: 45, willpower: 50, agility: 55, health: 45, charm: 40 };
+  const sheet = { ...six, level: 12, traps: 40, picklocks: 35 };
 
   it('states the six in the stat screen’s order, in @health’s frame', () => {
-    expect(formatStats(sheet)).toBe('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}');
+    expect(formatStats({ ...sheet, level: null, traps: null, picklocks: null })).toBe(
+      '{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}'
+    );
+  });
+
+  it('carries the level, Traps and Picklocks a leader chooses by, and reads them back (todo 86)', () => {
+    const body = formatStats(sheet);
+    expect(body).toBe('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40,LVL=12,TRA=40,PIC=35}');
+    expect(parseRemoteReply(body!)).toEqual({
+      kind: 'stats',
+      sheet: { strength: 60, level: 12, traps: 40, picklocks: 35 }
+    });
+  });
+
+  it('reads a figure the sheet left out as unknown, and a short sheet as no answer', () => {
+    expect(parseRemoteReply('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40,LVL=3}')).toEqual({
+      kind: 'stats',
+      sheet: { strength: 60, level: 3, traps: null, picklocks: null }
+    });
+    expect(parseRemoteReply('{STR=60,INT=45,WIL=50,AGI=55,HEA=45}')).toBeNull();
+    expect(parseRemoteReply('{HP=600/600}')).toMatchObject({ kind: 'vitals' });
   });
 
   it('says nothing rather than part of a sheet', () => {
     expect(formatStats({ ...sheet, charm: null })).toBeNull();
   });
 
-  it('is read as no other reply, and is not mistaken for @status', () => {
-    expect(parseRemoteReply('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}')).toBeNull();
+  it('is read as a sheet and no other reply, and is not mistaken for @status', () => {
+    expect(parseRemoteReply('{STR=60,INT=45,WIL=50,AGI=55,HEA=45,CHA=40}')?.kind).toBe('stats');
     expect(parseRemoteCall('@stats')?.name).toBe('stats');
     expect(parseRemoteCall('@status')?.name).toBe('status');
   });

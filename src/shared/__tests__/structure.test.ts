@@ -54,7 +54,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // the kit comment, condensed as the reach weapon's hand-over came (todo 42).
   // Lowered by the clock tick's comment, condensed as the charge ledger came (todo 44).
   // Lowered by the learned durations, handed to `blessingsFor` with the deps (todo 59).
-  'src/main/session/SessionManager.ts': 3419,
+  // Lowered by the walker's and remotes' comments, condensed as the party's hands came (todo 86).
+  'src/main/session/SessionManager.ts': 3417,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).

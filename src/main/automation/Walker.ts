@@ -56,6 +56,7 @@
 import { gatesWords } from '../../shared/gateWords';
 import type { WalkHold, WalkKind, WalkProgress, WalkStatus } from '../../shared/walk';
 import { portalLeftUnseen } from '../../shared/walk';
+import type { HandAnswer } from '../../shared/barrierHands';
 import {
   roomAddress,
   type RoomId,
@@ -77,6 +78,7 @@ import type { IntentFilter, WalkerEvents, WalkInFlight } from './walk/ports';
 import { Holds } from './walk/Holds';
 import { SneakBeforeStep, isSneakAnswer } from './walk/Sneak';
 import { DisarmBeforeStep } from './walk/Disarm';
+import { PartyHands } from './walk/PartyHands';
 import { Levers } from './walk/Levers';
 import { Barriers } from './walk/Barriers';
 import { RoomCommands, scriptGated } from './walk/RoomCommands';
@@ -174,26 +176,18 @@ export class Walker implements SessionModule {
    */
   private readonly stepTimes = new StepTimes();
   private readonly fought = new FoughtPath();
-  /** A run's steps out of an empty room, timed to the rounds. */
-  private readonly offRounds: OffRounds;
+  private readonly offRounds: OffRounds; // a run's steps out of an empty room, timed to the rounds
   /** The `sn` before each step, and when not to ask (`walk/Sneak.ts`). */
   private readonly sneak: SneakBeforeStep;
   private readonly disarm: DisarmBeforeStep;
+  private readonly hands: PartyHands;
   /**
-   * Whether this walk is owed back after the connection is lost and regained.
-   *
-   * True for a route the **player** asked for, for `resumeAfterFight`'s
-   * reason: it is the one walk with nobody else holding its destination. A
-   * loop's leg, an errand's walk and a retreat's walk home are each planned
-   * again by what asked for them, so they opt out — `journey` answers null for
-   * them, and `SessionManager` picks up only what it is handed.
+   * Whether this walk is owed back after the connection is lost and regained:
+   * a route the player asked for, the one walk nobody else holds the end of.
+   * A leg, an errand or a retreat is planned again by what asked (`journey` null).
    */
   private resumeAfterLoss = true;
-  /**
-   * What this walk is for, handed back to every re-plan: a lap's leg
-   * (`LoopRunner`) by distance alone, a trip round a room run from. See
-   * `WalkKind` and `mudengine-automation` › *A lap walks the shortest way*.
-   */
+  /** What this walk is for, handed back to every re-plan (`WalkKind`, *A lap walks the shortest way*). */
   private kind: WalkKind = 'walk';
   /*
    * This walker keeps no list of confirmed steps: a fight stops the walk before
@@ -214,10 +208,8 @@ export class Walker implements SessionModule {
    * loops, which is what keeps a plain walk a plain walk. A route planned from
    * the palette is loud, because there the walk *is* the thing that happened.
    *
-   * Quiet is about the console and never about the fact: `progress` still
-   * carries the destination, the step and the reason for the card to draw, and
-   * `ended` still reaches whoever is walking because of something else. The
-   * same distinction `stop`'s own `quiet` already makes for combat.
+   * Quiet is about the console, never the fact: `progress` and `ended` still
+   * carry it all, as `stop`'s own `quiet` does for combat.
    */
   private quiet = false;
   /**
@@ -257,7 +249,8 @@ export class Walker implements SessionModule {
       stepWhenFree: () => this.retry(this.events.stateNow?.(), false)
     };
     this.sneak = new SneakBeforeStep(queue, events, cannotSneakHere, inFlight, this.clock);
-    this.disarm = new DisarmBeforeStep(queue, events, inFlight, this.clock);
+    this.hands = new PartyHands(events, inFlight, this.clock);
+    this.disarm = new DisarmBeforeStep(queue, events, inFlight, this.clock, this.hands);
     this.offRounds = new OffRounds(this.stepTimes, events);
     this.holds = new Holds(
       config,
@@ -293,7 +286,8 @@ export class Walker implements SessionModule {
       },
       this.clock,
       this.holds,
-      this.levers
+      this.levers,
+      this.hands
     );
     const onward = (state: CharacterState, here: RoomId): void => this.onward(state, here);
     this.roomCommands = new RoomCommands(events, { ...inFlight, onward }, this.clock);
@@ -803,7 +797,13 @@ export class Walker implements SessionModule {
     this.levers.reset();
     this.sneak.reset();
     this.disarm.reset();
+    this.hands.reset();
     this.publish();
+  }
+
+  /** A member's answer to the `@disarm`, `@pick` or `@bash` this walk sent (todo 86). */
+  handAnswered(name: string, answer: HandAnswer): void {
+    this.hands.answered(name, answer);
   }
 
   dispose(): void {

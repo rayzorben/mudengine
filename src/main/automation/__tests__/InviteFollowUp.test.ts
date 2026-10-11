@@ -26,7 +26,8 @@ function state(
     rank: null,
     activity: null,
     invited: isInvited,
-    vitals: null
+    vitals: null,
+    sheet: null
   });
   return {
     ...base,

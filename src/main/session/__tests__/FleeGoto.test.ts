@@ -125,7 +125,8 @@ describe('FleeGoto', () => {
       invited: false,
       vitals: null,
       mana: null,
-      rank: null
+      rank: null,
+      sheet: null
     };
     const leading = (): CharacterState =>
       fighting(15, {

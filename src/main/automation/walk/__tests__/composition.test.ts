@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 describe('the walker puts its units down', () => {
-  // Mutants: the order reversed; any one of the seven left out. The move timing
+  // Mutants: the order reversed; any one of the eight left out. The move timing
   // and the run's round clock first, where `answers` was cleared (todo 00).
   it('resets them in the order their fields were cleared before the carve', () => {
     const resets = [...body(/^ {2}reset\(\): void/).matchAll(/this\.(\w+)\.reset\(\)/g)];
@@ -39,7 +39,8 @@ describe('the walker puts its units down', () => {
       'barriers',
       'levers',
       'sneak',
-      'disarm'
+      'disarm',
+      'hands'
     ]);
   });
 

@@ -194,6 +194,42 @@ describe('what the ladder remembers, let go', () => {
     expect(moves(sent)[0]).toBe('open e');
   });
 
+  /* Todo 86: leading, the member with the better Picklocks is sent `@pick`, and the leader opens. */
+  it('sends a member who picks better at a locked door, and opens on their {ok}', () => {
+    const shut: CharacterState = {
+      ...skilled(0, 0),
+      name: 'Rayzor',
+      room: { ...printing(1, [['e', 'closed door']]).room, occupants: [{ name: 'Rand' } as never] },
+      party: {
+        following: null,
+        members: [
+          { name: 'Rand', sheet: { strength: 10, level: 9, traps: null, picklocks: 90 } } as never
+        ],
+        engaged: {},
+        threatened: {}
+      }
+    };
+    const asked: string[] = [];
+    const { walker, sent } = walkerOn(
+      {
+        stateNow: () => shut,
+        askHand: (name, job, direction) => asked.push(`${name} ${job} ${direction}`) > 0
+      },
+      configWith({ movement: { openDoors: true, openTries: 1, pickLocks: true, pickTries: 1 } })
+    );
+    walker.onCharacter(shut);
+    walker.start(GATED, shut);
+    vi.advanceTimersByTime(50);
+    walker.onBlock(wire('open-failed', { barrier: 'door', reason: 'locked' }));
+    vi.advanceTimersByTime(200);
+    expect(asked).toEqual(['Rand pick e']);
+    expect(moves(sent)).not.toContain('pi e');
+    sent.length = 0;
+    walker.handAnswered('Rand', 'held');
+    vi.advanceTimersByTime(200);
+    expect(moves(sent).slice(0, 2)).toEqual(['open e', 'e']);
+  });
+
   // Mutant: a new connection keeps the last one's locks.
   it('asks a door to open again on a new connection', () => {
     const { walker, sent } = walkerOn(
@@ -311,7 +347,8 @@ describe('Barriers, put down', () => {
         fetchLever: () => false,
         blameable: () => true,
         forgetPulls: () => {}
-      }
+      },
+      { best: () => null, ask: () => false, waitingAt: () => false, forget: () => {} }
     );
     return { barriers, dispatched, notices, clock };
   };

@@ -428,6 +428,13 @@ describe('edgePenalty', () => {
     expect(edgePenalty(trap, { trapSkill: null })).toBe(20 + 400);
   });
 
+  /* Todo 86: leading, the party walks it too, so a lower Traps is worth the disarm, its cost shared. */
+  it('prices a trap at the failed disarms for a party that walks it behind the hand', () => {
+    const trap = { kind: 'trap' as const, raw: 'Trap, 400 damage', damage: 400 };
+    expect(edgePenalty(trap, { trapSkill: 40, trapWalkers: 3 })).toBe(20 + 200);
+    expect(edgePenalty(trap, { trapSkill: 40, trapWalkers: 1 })).toBe(20 + 400);
+  });
+
   it('never returns a negative penalty', () => {
     // The original A* charged -500 for a door, which makes the search prefer
     // doors and breaks admissibility. That is not reproduced.

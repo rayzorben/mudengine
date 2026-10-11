@@ -40,9 +40,11 @@ import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { CommandQueue } from '../CommandQueue';
 import type { WalkClock } from './clock';
-import type { OpenedKind, WalkerEvents, WalkInFlight } from './ports';
+import { wayOf, type OpenedKind, type WalkerEvents, type WalkInFlight } from './ports';
 import type { Holds } from './Holds';
 import type { Levers } from './Levers';
+import { jobCommand } from '../../../shared/barrierHands';
+import type { PartyHands } from './PartyHands';
 
 /**
  * The attempt on a barrier that is on the wire, while it is.
@@ -190,7 +192,9 @@ export class Barriers {
     private readonly clock: Pick<WalkClock, 'afterHold' | 'afterStep' | 'clear'>,
     /** The one-deep hold slot, which `Holds` owns: a door and a search take it. */
     private readonly slot: Pick<Holds, 'current' | 'take'>,
-    private readonly levers: BarrierLevers
+    private readonly levers: BarrierLevers,
+    /** Leading, the member sent at a lock this character is the worse hand for (todo 86). */
+    private readonly hands: Pick<PartyHands, 'best' | 'ask' | 'waitingAt' | 'forget'>
   ) {}
 
   configure(config: AutomationConfig): void {
@@ -303,7 +307,7 @@ export class Barriers {
     const step = this.walk.step();
     if (block.groups['reason'] === 'locked') {
       this.locked = true;
-      if (step !== undefined) this.lockedDoors.add(doorOf(step));
+      if (step !== undefined) this.lockedDoors.add(wayOf(step));
     }
     if (step === undefined) return;
     const barrier = block.groups['barrier'] ?? t('automation.walk.fallbackBarrier');
@@ -361,7 +365,7 @@ export class Barriers {
       if (this.force(step, barrier)) return;
       // Remembered locked, and nothing left to force it with: the door may since have been
       // unlocked, so `open` is asked rather than standing here for the session (todo 74).
-      if (!this.locked && this.lockedDoors.delete(doorOf(step)) && this.config.movement.openDoors) {
+      if (!this.locked && this.lockedDoors.delete(wayOf(step)) && this.config.movement.openDoors) {
         this.sendOpen(step, barrier);
         return;
       }
@@ -674,9 +678,9 @@ export class Barriers {
      * before was already told. With no rung left to force it, the memory goes
      * and `open` is asked, since the door may since have been unlocked.
      */
-    if (!this.locked && this.lockedDoors.has(doorOf(step))) {
+    if (!this.locked && this.lockedDoors.has(wayOf(step))) {
       if (this.force(step, barrier)) return true;
-      this.lockedDoors.delete(doorOf(step));
+      this.lockedDoors.delete(wayOf(step));
     }
     if (this.locked || !this.config.movement.openDoors) return false;
     if (this.opened >= this.config.movement.openTries) return false;
@@ -720,8 +724,20 @@ export class Barriers {
     }
     if (block.groups['state2'] === 'unlocked') {
       this.forcing = null;
-      this.forgetLock();
-      this.lockedDoors.delete(doorOf(step));
+      this.throughAfter(step, 'unlocked');
+      return;
+    }
+    if (block.groups['state'] === 'open') {
+      this.forcing = null;
+      this.throughAfter(step, 'open');
+    }
+  }
+
+  /** The door unlocked (opened first) or open: the lock is forgotten and the step goes again. */
+  private throughAfter(step: RouteStep, now: 'unlocked' | 'open'): void {
+    this.forgetLock();
+    this.lockedDoors.delete(wayOf(step));
+    if (now === 'unlocked') {
       this.queue.enqueue({
         command: `open ${step.direction}`,
         priority: 'movement',
@@ -730,15 +746,60 @@ export class Barriers {
           stepName: step.name
         })
       });
-      this.walk.stepAgain();
-      return;
     }
-    if (block.groups['state'] === 'open') {
-      this.forcing = null;
-      this.forgetLock();
-      this.lockedDoors.delete(doorOf(step));
-      this.walk.stepAgain();
+    this.walk.stepAgain();
+  }
+
+  /**
+   * Leading, a member with better odds at the lock than this character's own
+   * is sent (`PartyHands`, todo 86): a pick first, a bash when nobody can
+   * pick. True while the walk waits on their answer; false when this
+   * character is the best hand left, or nobody is.
+   */
+  private sendHand(step: RouteStep): boolean {
+    if (this.hands.waitingAt(step)) return true;
+    const state = this.events.stateNow?.();
+    if (state === undefined) return false;
+    const { movement } = this.config;
+    const need = step.requirement;
+    const stated = barrierStated(need);
+    const { pickMargin, bashMargin } = tuning().walk;
+    const jobs = [
+      {
+        job: 'pick',
+        on: movement.pickLocks,
+        tries: movement.pickTries,
+        selfDone:
+          this.picked >= movement.pickTries ||
+          !canPick(need?.pickDifficulty, this.picklocks, pickMargin, stated)
+      },
+      {
+        job: 'bash',
+        on: movement.bashDoors,
+        tries: movement.bashTries,
+        selfDone:
+          this.bashed >= movement.bashTries ||
+          this.tooHurtToBash() ||
+          !meetsBarrier(need?.bashDifficulty, this.strength, bashMargin, stated)
+      }
+    ] as const;
+    for (const { job, on, tries, selfDone } of jobs) {
+      if (!on) continue;
+      const hand = this.hands.best(job, step, state, selfDone);
+      if (hand === null) continue;
+      if (hand.self) return false;
+      const asked = this.hands.ask(job, step, hand, tries, (answer) => {
+        if (!this.walk.walking() || this.walk.step() !== step) return;
+        if (answer === 'failed') return this.forceAgainOrHold();
+        // Only a held answer started the door's close timer; an `@do` pick may not have.
+        if (answer === 'held') this.noteOpened(step, 'door', Date.now());
+        // A `tried` pick is opened to see: still locked, the ladder asks the next hand.
+        this.throughAfter(step, job === 'pick' ? 'unlocked' : 'open');
+      });
+      // Nothing went to them; they count as asked, so the next hand is asked.
+      return asked || this.sendHand(step);
     }
+    return false;
   }
 
   /**
@@ -808,6 +869,7 @@ export class Barriers {
         return true;
       }
     }
+    if (this.sendHand(step)) return true;
     // The realm records a number for some barriers and nothing for others. No
     // number at all is not "impossible" — it is the plain `Door` the router
     // already priced as ordinary when it planned this route through it, so
@@ -820,7 +882,7 @@ export class Barriers {
       canPick(need?.pickDifficulty, this.picklocks, tuning().walk.pickMargin, stated)
     ) {
       this.picked += 1;
-      this.sendForcing('pick', `pi ${step.direction}`, step, barrier);
+      this.sendForcing('pick', jobCommand('pick', step.direction), step, barrier);
       return true;
     }
     if (
@@ -830,7 +892,7 @@ export class Barriers {
       meetsBarrier(need?.bashDifficulty, this.strength, tuning().walk.bashMargin, stated)
     ) {
       this.bashed += 1;
-      this.sendForcing('bash', `bas ${step.direction}`, step, barrier);
+      this.sendForcing('bash', jobCommand('bash', step.direction), step, barrier);
       return true;
     }
     return false;
@@ -910,6 +972,8 @@ export class Barriers {
       );
     }
     this.barrierRounds += 1;
+    // A new round of the ladder asks the party again too.
+    this.hands.forget(step);
     // The step's deadline was timing a move the refusal has already answered.
     this.clock.clear();
     this.slot.take('barrier');
@@ -1100,7 +1164,7 @@ export class Barriers {
   }
   /** Whether the door ahead is locked: said so on this step, or at this door earlier in the session. */
   private lockedAt(step: RouteStep): boolean {
-    return this.locked || this.lockedDoors.has(doorOf(step));
+    return this.locked || this.lockedDoors.has(wayOf(step));
   }
 }
 
@@ -1114,9 +1178,4 @@ export class Barriers {
  */
 function shutRatherThanMissing(step: RouteStep): 'missing' | 'shut' {
   return step.requirement?.kind === 'hidden' ? 'shut' : 'missing';
-}
-
-/** A door as the session remembers it: the room it is left from, and the way. */
-function doorOf(step: RouteStep): string {
-  return `${step.from}|${step.direction}`;
 }

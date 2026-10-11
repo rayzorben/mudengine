@@ -9,6 +9,8 @@
  * try per failed bash seen: the leader's own tries bound ours, and one left
  * in the queue when the room changes is dropped. A door the realm has no
  * record of is picked but never bashed: it may be one only a key opens.
+ * Only for a leader on another client: one on this client chooses the hand
+ * and sends `@pick` or `@bash` (`walk/PartyHands.ts`, todo 86).
  * `mudengine-automation` › parts/remotes.md.
  */
 import { t } from '../app/i18n';
@@ -28,6 +30,8 @@ import type { CommandQueue } from './CommandQueue';
 
 export interface LeaderDoorsEvents {
   notice?(message: string): void;
+  /** Whether the leader runs this client, so it sends the party at a door itself. */
+  leaderSendsHands?(leader: string): boolean;
 }
 
 const DOOR_KEY = 'party:door';
@@ -105,6 +109,7 @@ export class LeaderDoors {
     const leader = state.party.following;
     const who = block.groups['player'];
     if (leader === null || who?.toLowerCase() !== leader.toLowerCase()) return;
+    if (this.events.leaderSendsHands?.(leader) === true) return;
     const direction = asSpokenDirection(block.groups['direction'] ?? '');
     if (direction === null) return;
 

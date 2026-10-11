@@ -90,7 +90,8 @@ describe('a leader waiting for its party', () => {
       rank: null,
       activity: null,
       invited: false,
-      vitals: null
+      vitals: null,
+      sheet: null
     });
     const leading = (soul: number | null, here = ['Vaelor', 'Soul']): CharacterState => {
       const base = structuredClone(EMPTY_CHARACTER);

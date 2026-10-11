@@ -99,6 +99,8 @@ let peers: Remotes;
 let clients: string[];
 let placed: string[];
 let comebacks: string[];
+/** The members' answers to a `@disarm`, `@pick` or `@bash` this character sent (`askHand`). */
+let handed: string[];
 /** What the registry holds, read through `peer` as the session's tracker is. */
 let registry: PlayerRegistry;
 /** Whether the fixture's `comeBack` says a walk started. See the block below. */
@@ -112,6 +114,7 @@ beforeEach(() => {
   clients = [];
   placed = [];
   comebacks = [];
+  handed = [];
   registry = NO_PLAYERS;
   walks = true;
   queue = new CommandQueue(config, { send: (command) => sent.push(command) });
@@ -121,6 +124,7 @@ beforeEach(() => {
     commanded: (from, raw) => commanded.push(`${from}:${raw}`),
     clientNamed: (from, client, extended) => clients.push(`${from}:${client ?? '-'}:${extended}`),
     placed: (from, map, room, name) => placed.push(`${from}:${map}/${room}:${name ?? '-'}`),
+    handAnswered: (from, ok) => handed.push(`${from}:${ok}`),
     comeBack: (from, map, room) => {
       comebacks.push(`${from}:${map}/${room}`);
       return walks;
@@ -208,6 +212,32 @@ describe('answering the questions MegaMUD 2.1 was seen to answer', () => {
     expect(notices).toContain(
       t('automation.remotes.answerUnknown', { from: 'Rand', raw: 'stats' })
     );
+  });
+
+  it('hands @pick to the door path, which picks and answers (todo 86)', () => {
+    const lockedNe = who({
+      progress: { ...EMPTY_CHARACTER.progress, picklocks: 90 },
+      room: {
+        ...EMPTY_CHARACTER.room,
+        map: 1,
+        number: 7,
+        exits: [
+          {
+            direction: 'ne',
+            note: null,
+            targetMap: 1,
+            targetRoom: 8,
+            targetName: null,
+            requirement: { kind: 'door', raw: '', pickDifficulty: 10 }
+          }
+        ]
+      }
+    });
+    peers.onBlock(said('conversation-telepath', 'Rand', '@pick ne'), lockedNe);
+    drain();
+    expect(sent).toEqual(['pi ne']);
+    // Its answer deadline would outlive the test and speak into the next one.
+    peers.dispose();
   });
 
   it('answers @wealth and @enc from the listing', () => {
@@ -1073,6 +1103,17 @@ describe('the gate: who may ask, and for what', () => {
     );
   });
 
+  /* The positive control is `hands @pick to the door path`: granted, the same line picks. */
+  it('stays silent to @disarm from a member not granted it (todo 86)', () => {
+    peers.configure(grant({ yang: { allow: ['health'] } }));
+    peers.onBlock(
+      said('conversation-telepath', 'Yang', '@disarm ne'),
+      live({ progress: { ...EMPTY_CHARACTER.progress, traps: 90 } })
+    );
+    drain();
+    expect(sent).toEqual([]);
+  });
+
   it('ignores somebody granted nothing at all', () => {
     peers.configure(grant({ yang: { allow: ['health'] } }));
     peers.onBlock(said('conversation-telepath', 'Rend', '@health'), live());
@@ -1247,7 +1288,8 @@ describe('the gate: who may ask, and for what', () => {
     rank: null,
     activity: null,
     invited,
-    vitals: null
+    vitals: null,
+    sheet: null
   });
 
   const withParty = (...members: ReturnType<typeof member>[]): Partial<CharacterState> => ({
@@ -1516,6 +1558,35 @@ describe('talking to another one of these clients', () => {
     room: { ...structuredClone(EMPTY_CHARACTER.room), map, number, name }
   });
 
+  /* Todo 86: the leader's half. */
+  it('sends @pick to a member on this client and @do pi to anyone else', () => {
+    knowing('Soul', 'yes');
+    peers.askHand('Soul', 'pick', 'ne');
+    peers.askHand('Rand', 'pick', 'e');
+    drain();
+    expect(sent).toEqual(['/Soul @pick ne', '/Rand @do pi e']);
+  });
+
+  /* An `@do` is answered on taking it, before the roll: a disarm taken as held walks into the trap. */
+  it('never sends a disarm or a bash through @do, and reads an @do {ok} as tried', () => {
+    expect(peers.askHand('Rand', 'disarm', 'e')).toBe(false);
+    expect(peers.askHand('Rand', 'bash', 'e')).toBe(false);
+    peers.askHand('Rand', 'pick', 'e');
+    drain();
+    expect(sent).toEqual(['/Rand @do pi e']);
+    peers.onBlock(said('conversation-telepath', 'Rand', '{ok}'), who());
+    expect(handed).toEqual(['Rand:tried']);
+  });
+
+  it('hands a member’s {ok} or {failed} back to the walk, once', () => {
+    knowing('Soul', 'yes');
+    peers.askHand('Soul', 'bash', 'n');
+    drain();
+    peers.onBlock(said('conversation-telepath', 'Soul', '{failed}'), who());
+    peers.onBlock(said('conversation-telepath', 'Soul', '{ok}'), who());
+    expect(handed).toEqual(['Soul:failed']);
+  });
+
   it('asks the plain question of somebody nothing has said anything about', () => {
     peers.ask('Soul', 'where', who());
     drain();
@@ -1559,7 +1630,8 @@ describe('talking to another one of these clients', () => {
     knowing('Soul', 'yes');
     peers.onBlock(joins('player', 'Soul'), who());
     drain();
-    expect(sent).toEqual(['/Soul @health']);
+    // Their sheet is asked instead: only this client answers it (todo 86).
+    expect(sent).toEqual(['/Soul @health', '/Soul @stats']);
   });
 
   it('does not ask again after a @version went unanswered', () => {
@@ -1692,7 +1764,8 @@ describe('@heal', () => {
     rank: null,
     activity: null,
     invited,
-    vitals: null
+    vitals: null,
+    sheet: null
   });
   // Known to be seen, so the ask is the room say; `hidden` below covers the rest.
   const inParty = (hp: number | null, ...others: string[]): CharacterState =>
@@ -2168,7 +2241,8 @@ describe('party pacing', () => {
     rank: null,
     activity: null,
     invited: false,
-    vitals: null
+    vitals: null,
+    sheet: null
   });
   it('walks on through @wait under Ignore @wait If Leading, and says so', () => {
     make({ ignoreWait: true }).onBlock(said('conversation-telepath', 'Soul', '@wait'), who());

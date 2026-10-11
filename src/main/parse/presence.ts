@@ -70,6 +70,7 @@ export function member(name: string, over: Partial<PartyMember> = {}): PartyMemb
     activity: null,
     invited: false,
     vitals: null,
+    sheet: null,
     ...over
   };
 }
@@ -542,7 +543,8 @@ export function withPartyListing(
       if (!name) return null;
       const health = percent(row['health']);
       const mana = percent(row['mana']);
-      const held = s.party.members.find((entry) => entry.name === name)?.vitals ?? null;
+      const kept = s.party.members.find((entry) => entry.name === name);
+      const held = kept?.vitals ?? null;
       return {
         name,
         className: row['class']?.trim() || null,
@@ -551,7 +553,8 @@ export function withPartyListing(
         rank: rankOf(row['rank']),
         activity: partyActivity(row['flag']),
         invited: row['invited'] !== undefined,
-        vitals: listedVitals(held, health, mana)
+        vitals: listedVitals(held, health, mana),
+        sheet: kept?.sheet ?? null
       };
     })
     .filter((entry): entry is PartyMember => entry !== null);

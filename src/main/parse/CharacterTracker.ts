@@ -1609,7 +1609,7 @@ export class CharacterTracker {
       case 'party-alone':
         return withPartyListing(s, rows, block.type === 'party-alone');
 
-      /* What is said: read here only for another client answering `@health` (`withRemoteVitals`). */
+      /* What is said: read here only for another client answering `@health` or `@stats`. */
       case 'conversation-telepath':
       case 'conversation-directed':
       case 'conversation-local':
@@ -1617,7 +1617,7 @@ export class CharacterTracker {
       case 'conversation-broadcast':
       case 'conversation-auction':
       case 'conversation-gangpath':
-        return this.company.remoteVitals(s, g['player'], g['message'], block.at);
+        return this.company.remoteAnswer(s, g['player'], g['message'], block.at);
 
       case 'party-following':
         return withFollowing(s, g['leader']);

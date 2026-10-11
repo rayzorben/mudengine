@@ -3305,7 +3305,8 @@ describe('the party this character travels with', () => {
       rank: null,
       activity: null,
       invited: false,
-      vitals: null
+      vitals: null,
+      sheet: null
     });
   });
 
@@ -3331,7 +3332,8 @@ describe('the party this character travels with', () => {
         rank: null,
         activity: null,
         invited: true,
-        vitals: null
+        vitals: null,
+        sheet: null
       }
     ]);
 
@@ -3348,7 +3350,8 @@ describe('the party this character travels with', () => {
       health: null,
       rank: null,
       invited: true,
-      vitals: null
+      vitals: null,
+      sheet: null
     });
   });
 
@@ -6695,7 +6698,8 @@ describe('loot and listings from other realms', () => {
         rank: 'mid',
         activity: null,
         invited: false,
-        vitals: null
+        vitals: null,
+        sheet: null
       },
       {
         name: 'Dungeon',
@@ -6705,7 +6709,8 @@ describe('loot and listings from other realms', () => {
         rank: 'front',
         activity: null,
         invited: false,
-        vitals: null
+        vitals: null,
+        sheet: null
       }
     ]);
   });

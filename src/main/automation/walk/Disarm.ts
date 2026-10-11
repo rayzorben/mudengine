@@ -6,22 +6,22 @@
  * walking in (`TrapExit.TryDisarm`). Before the sneak, since a failure breaks
  * stealth. A failure has no fixed line (it is the exit's own message), so the
  * answer is the success line or the deadline, which counts as a failure and
- * goes back through the holds. The why is `mudengine-automation` ›
+ * goes back through the holds. Leading, a member with better odds is sent
+ * instead (`PartyHands`, todo 86). The why is `mudengine-automation` ›
  * `parts/walking.md`.
  */
 import type { CommandQueue } from '../CommandQueue';
-import { joinedMembers, type CharacterState } from '../../../shared/character';
-import { disarmOdds, disarmTries, disarmWorth } from '../../../shared/walk';
+import type { CharacterState } from '../../../shared/character';
+import { jobCommand, walkersThrough, type HandAnswer } from '../../../shared/barrierHands';
+import { disarmTries, disarmWorth } from '../../../shared/walk';
 import { asSpokenDirection, trapOn, type RouteStep } from '../../../shared/world';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
 import type { WalkClock } from './clock';
-import type { WalkInFlight, WalkerEvents } from './ports';
+import { wayOf, type WalkInFlight, type WalkerEvents } from './ports';
+import type { PartyHands } from './PartyHands';
 
 const DISARM_KEY = 'disarm-trap';
-
-/** A trapped way, as `from|direction`: each side of a way is its own exit. */
-const wayOf = (step: RouteStep): string => `${step.from}|${step.direction}`;
 
 export class DisarmBeforeStep {
   /** Ways this session saw disarmed, and until when they are safe to walk. */
@@ -40,6 +40,7 @@ export class DisarmBeforeStep {
     private readonly events: Pick<WalkerEvents, 'notice' | 'moveOnly'>,
     private readonly inFlight: Pick<WalkInFlight, 'walking' | 'quiet' | 'step' | 'stepWhenFree'>,
     private readonly clock: Pick<WalkClock, 'afterStep' | 'clear'>,
+    private readonly hands: Pick<PartyHands, 'best' | 'ask' | 'waitingAt'>,
     private readonly now: () => number = Date.now
   ) {}
 
@@ -69,23 +70,36 @@ export class DisarmBeforeStep {
       this.deadline(step);
       return true;
     }
+    if (this.hands.waitingAt(step)) return true;
     if (trapOn(step) === null || step.direction === 'portal') return false;
     if (this.disarmed(step)) return false;
-    // Given up at these Traps; a trained or levelled figure tries again.
-    const gaveUpAt = this.givenUp.get(wayOf(step));
-    if (gaveUpAt !== undefined && gaveUpAt === state.progress.traps) return false;
-    this.traps = state.progress.traps;
     // Inside a timed spell's corridor the next step is the one thing that helps (todo 104).
     if (this.events.moveOnly?.(state) === true) return false;
-    const odds = disarmOdds(state.progress.traps);
-    // Leading, the party walks it too; following, the leader's walk decides.
-    const walkers = state.party.following === null ? 1 + joinedMembers(state).length : 1;
-    if (!disarmWorth(odds, walkers)) return false;
+    // Given up at these Traps; a trained or levelled figure tries again.
+    const gaveUpAt = this.givenUp.get(wayOf(step));
+    const selfDone = gaveUpAt !== undefined && gaveUpAt === state.progress.traps;
+    this.traps = state.progress.traps;
+    // The best hand here, a member leading; worth it for everyone who walks the way.
+    const hand = this.hands.best('disarm', step, state, selfDone);
+    if (hand === null || hand.odds === null || !disarmWorth(hand.odds, walkersThrough(state))) {
+      return false;
+    }
+    if (!hand.self) {
+      const tries = disarmTries(hand.odds, tuning().walk.disarmDoubt);
+      if (
+        this.hands.ask('disarm', step, hand, tries, (answer) => this.memberAnswered(step, answer))
+      ) {
+        return true;
+      }
+      // Nothing went to them; they count as asked, so the next hand is asked.
+      return this.ask(state);
+    }
+    const odds = hand.odds;
     this.waiting = step;
     this.sent = false;
-    this.odds = odds ?? 0;
+    this.odds = odds;
     const offered = this.queue.offer({
-      command: `disarm trap ${step.direction}`,
+      command: jobCommand('disarm', step.direction),
       priority: 'movement',
       coalesceKey: DISARM_KEY,
       reason: t('automation.walk.reasonDisarm', { stepName: step.name }),
@@ -117,6 +131,12 @@ export class DisarmBeforeStep {
     if (!this.inFlight.quiet()) {
       this.events.notice?.(t('automation.walk.trapDisarmed', { stepName: step.name }));
     }
+    this.goOn();
+  }
+
+  /** A member's answer: a disarm holds the way for the re-arm; a failure asks the next hand. */
+  private memberAnswered(step: RouteStep, answer: HandAnswer): void {
+    if (answer === 'held') this.safeUntil.set(wayOf(step), this.now() + tuning().walk.trapRearmMs);
     this.goOn();
   }
 
