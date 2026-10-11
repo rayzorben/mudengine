@@ -8912,7 +8912,8 @@ describe('what the server has said is wrong with the character', () => {
       poisoned: 'yes',
       diseased: 'unknown',
       held: 'yes',
-      confused: 'unknown'
+      confused: 'unknown',
+      afraid: 'unknown'
     });
     const later = play([
       '[HP=34]:',
@@ -8926,7 +8927,8 @@ describe('what the server has said is wrong with the character', () => {
       poisoned: 'no',
       diseased: 'unknown',
       held: 'no',
-      confused: 'unknown'
+      confused: 'unknown',
+      afraid: 'unknown'
     });
   });
 
@@ -9027,7 +9029,8 @@ describe('what the server has said is wrong with the character', () => {
         poisoned: 'no',
         diseased: 'no',
         held: 'no',
-        confused: 'no'
+        confused: 'no',
+        afraid: 'no'
       });
       expect(dead.current.buffs).toEqual([]);
     });
@@ -12668,6 +12671,60 @@ describe('confusion', () => {
       sporeTable()
     );
     expect(over.current.afflictions.confused).toBe('no');
+  });
+});
+
+/*
+ * Fear (todo 66): `Spell.cs`'s `Fear` case shoves the target through a random
+ * exit on the cast and on every spell tick, and prints only the room it lands
+ * in. `captures/150`:13-37 is the shape: `You are afraid!`, then a room nobody
+ * asked for. The landing and the wear-off are `phoenix terror`'s shipped row.
+ */
+describe.runIf(realm !== null && realm.size > 0)('fear', () => {
+  const fearTable = () =>
+    spellLoreOf(
+      SpellMessageBook.fromRows([
+        {
+          spell: 'phoenix terror',
+          start: 'You are afraid!',
+          stop: 'The effects of fear wear off!'
+        }
+      ]),
+      new SpellMessageBook()
+    );
+  const feared = (lines: string[]) =>
+    play(lines, realm!, undefined, undefined, undefined, fearTable());
+  const EAST_CAVE = ['Dark Cave', 'Obvious exits: west, southeast'];
+  const WEST_CAVE = ['Dark Cave', 'Obvious exits: east'];
+
+  it('is stated by the spell’s landing and ended by its wear-off', () => {
+    expect(feared(['[HP=452]:', 'You are afraid!']).current.afflictions.afraid).toBe('yes');
+    expect(
+      feared(['[HP=452]:', 'You are afraid!', 'The effects of fear wear off!']).current.afflictions
+        .afraid
+    ).toBe('no');
+  });
+
+  it('reads the room a shove lands in as an arrival from the room left', () => {
+    const before = feared(['Location:   1,865', ...EAST_CAVE]).current.room.arrival;
+    const tracker = feared(['Location:   1,865', ...EAST_CAVE, 'You are afraid!', ...WEST_CAVE]);
+    expect(tracker.current.room).toMatchObject({ map: 1, number: 866, resolvedBy: 'neighbour' });
+    expect(tracker.current.room.arrival).toBe(before + 1);
+  });
+
+  // The positive control: the same room unafraid is placed the same way and not counted.
+  it('counts no arrival for the same room when nothing frightened the character', () => {
+    const before = feared(['Location:   1,865', ...EAST_CAVE]).current.room.arrival;
+    const tracker = feared(['Location:   1,865', ...EAST_CAVE, ...WEST_CAVE]);
+    expect(tracker.current.room).toMatchObject({ map: 1, number: 866 });
+    expect(tracker.current.room.arrival).toBe(before);
+  });
+
+  it('keeps a re-look at the room being stood in while afraid', () => {
+    const before = feared(['Location:   1,865', ...EAST_CAVE]).current.room.arrival;
+    const tracker = feared(['Location:   1,865', ...EAST_CAVE, 'You are afraid!', ...EAST_CAVE]);
+    expect(tracker.current.room).toMatchObject({ map: 1, number: 865 });
+    expect(tracker.current.room.arrival).toBe(before);
   });
 });
 

@@ -520,7 +520,15 @@ export function parseRemoteCall(message: string): RemoteCall | null {
  * poison, so `(poisoned)` is this client's. A leader reads the bracket with
  * `readWaitReason`.
  */
-export const WAIT_REASONS = ['health', 'mana', 'blind', 'held', 'confused', 'poisoned'] as const;
+export const WAIT_REASONS = [
+  'health',
+  'mana',
+  'blind',
+  'held',
+  'confused',
+  'poisoned',
+  'afraid'
+] as const;
 export type WaitReason = (typeof WAIT_REASONS)[number];
 
 const WAIT_WORDS: Readonly<Record<WaitReason, string>> = {
@@ -529,7 +537,9 @@ const WAIT_WORDS: Readonly<Record<WaitReason, string>> = {
   blind: 'blinded',
   held: "can't move",
   confused: "can't move",
-  poisoned: 'poisoned'
+  poisoned: 'poisoned',
+  // No MegaMUD wording is on hand for fear; this client's, as `poisoned` is (todo 66, open question 3).
+  afraid: 'afraid'
 };
 
 /** The bracket a `@wait` carries for this reason. */

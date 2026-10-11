@@ -713,6 +713,8 @@ function afflictionStatus(hold: AfflictionHold): string {
       return t('cards.navigation.loop.statusPoisoned');
     case 'confused':
       return t('cards.navigation.loop.statusConfused');
+    case 'afraid':
+      return t('cards.navigation.loop.statusAfraid');
     default: {
       const unreachable: never = hold;
       return unreachable;

@@ -139,7 +139,7 @@ export interface WalkProgress {
  * *is this hold a condition?* asks `isAfflictionHold`, so a fourth condition
  * reaches every such reader by being added here.
  */
-export const AFFLICTION_HOLDS = ['blind', 'held', 'poisoned', 'confused'] as const;
+export const AFFLICTION_HOLDS = ['blind', 'held', 'poisoned', 'confused', 'afraid'] as const;
 export type AfflictionHold = (typeof AFFLICTION_HOLDS)[number];
 
 /** Whether a walk's or a loop's hold is a stated affliction being waited out. */
@@ -238,6 +238,9 @@ export function afflictionHolding(
   movement: ConditionWaits
 ): AfflictionHold | null {
   if (afflictions.held === 'yes') return 'held';
+  // Always, like `held` (todo 66, open question 1): a step while afraid is
+  // planned from a room the next spell tick may already have left.
+  if (afflictions.afraid === 'yes') return 'afraid';
   if (afflictions.blind === 'yes' && !movement.walkWhileBlind) return 'blind';
   if (afflictions.poisoned === 'yes' && !movement.walkWhilePoisoned) return 'poisoned';
   if (afflictions.confused === 'yes' && !movement.walkWhileConfused) return 'confused';

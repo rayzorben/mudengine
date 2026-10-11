@@ -101,8 +101,20 @@ describe('which stated condition stands a walk still', () => {
     ).toBe('held');
   });
 
+  // Todo 66: fear has no switch; the next spell tick may move the character off the step.
+  it('waits fear out, whatever the switches say', () => {
+    expect(
+      afflictionHolding(
+        { ...NO_AFFLICTIONS, afraid: 'yes' },
+        { ...movement, walkWhileBlind: true, walkWhileConfused: true, walkWhilePoisoned: true }
+      )
+    ).toBe('afraid');
+    expect(afflictionHolding({ ...NO_AFFLICTIONS, afraid: 'no' }, movement)).toBeNull();
+  });
+
   it('counts confusion among the holds a card names as a condition', () => {
     expect(isAfflictionHold('confused')).toBe(true);
+    expect(isAfflictionHold('afraid')).toBe(true);
     expect(isAfflictionHold('health')).toBe(false);
     expect(isAfflictionHold(null)).toBe(false);
   });
