@@ -4,7 +4,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../character';
 import type { ExperienceTable } from '../experience';
 import { domainOf, type Block } from '../blocks';
 import { levelReadyNotices, levelWaiting, telepathNotice } from '../characterNotices';
-import { sounds, STARTER_ALERTS, type AlertRule } from '../notifications';
+import { sounds, STARTER_ALERTS, wanted, type AlertRule } from '../notifications';
 
 const t = (key: string, params?: Record<string, unknown>): string =>
   `${key}${params === undefined ? '' : JSON.stringify(params)}`;
@@ -67,21 +67,33 @@ describe('a level waiting at a trainer (todo 80)', () => {
 });
 
 describe('a telepath to this character (todo 80)', () => {
-  it('is a notice, and an @ command is not', () => {
-    expect(telepathNotice(telepath('hi there'))).toMatchObject({
+  const row: AlertRule = { ...STARTER_ALERTS[0]!, on: 'telepath', alert: true };
+
+  it('is a notice while a row asks, and an @ command is not', () => {
+    expect(telepathNotice(telepath('hi there'), [row])).toMatchObject({
       event: 'telepath',
       text: 'Soul telepaths: hi there'
     });
-    expect(telepathNotice(telepath('@health'))).toBeNull();
+    expect(telepathNotice(telepath('@health'), [row])).toBeNull();
+  });
+
+  it('stays on the Talk card with no telepath row', () => {
+    expect(telepathNotice(telepath('hi there'), [])).toBeNull();
+    expect(telepathNotice(telepath('hi there'), STARTER_ALERTS)).toBeNull();
+    expect(telepathNotice(telepath('hi there'), [{ ...row, enabled: false }])).toBeNull();
+  });
+
+  it('is shown on the Alerts card by a telepath row with alert on', () => {
+    expect(wanted({ rules: [row] }, [telepathNotice(telepath('hi'), [row])])).toHaveLength(1);
   });
 });
 
 describe('a row that sounds', () => {
   it('sounds for a telepath row that asks, and not for an unclaimed notice', () => {
-    const notice = telepathNotice(telepath('hi'));
+    const row: AlertRule = { ...STARTER_ALERTS[0]!, on: 'telepath', sound: true };
+    const notice = telepathNotice(telepath('hi'), [row]);
     expect(notice).not.toBeNull();
     if (notice === null) return;
-    const row: AlertRule = { ...STARTER_ALERTS[0]!, on: 'telepath', sound: true };
     expect(sounds(notice, [row])).toBe(true);
     expect(sounds(notice, [{ ...row, sound: false }])).toBe(false);
     expect(sounds(notice, [])).toBe(false);

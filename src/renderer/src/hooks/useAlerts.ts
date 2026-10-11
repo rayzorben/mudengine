@@ -158,7 +158,7 @@ export function useAlerts(vitals: VitalsUiConfig, alerts: AlertsUiConfig): Alert
       questRun: (id, was, now) => worth(id, questRunNotices(was, now, Date.now())),
       gearTrip: (id, was, now) => worth(id, gearTripNotices(was, now, Date.now())),
       block: (id, block, character) =>
-        worth(id, [noticeFor(block, t, character), telepathNotice(block)])
+        worth(id, [noticeFor(block, t, character), telepathNotice(block, alertsRef.current.rules)])
     };
   });
   return raiser;

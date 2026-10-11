@@ -7,7 +7,7 @@ import type { Block } from './blocks';
 import type { CharacterState } from './character';
 import { experienceOf } from './experience';
 import type { UiLookup } from './i18n';
-import type { Notice } from './notifications';
+import type { AlertRule, Notice } from './notifications';
 
 /**
  * The highest level the experience pays for past the one held, or null when
@@ -49,9 +49,14 @@ export function levelReadyNotices(
  * A player's telepath to this character, in the server's words. Never an `@`
  * command, which is one client asking another and arrives every few seconds
  * in a party, and never the receipt for one this character sent.
+ *
+ * Only while an enabled row names `telepath`, the same gate as `namedNotices`:
+ * conversation belongs on the Talk card, and `wanted` shows a notice no row
+ * claims.
  */
-export function telepathNotice(block: Block): Notice | null {
+export function telepathNotice(block: Block, rules: readonly AlertRule[]): Notice | null {
   if (block.type !== 'conversation-telepath') return null;
+  if (!rules.some((rule) => rule.enabled && rule.on === 'telepath')) return null;
   const message = block.groups['message'];
   if (message === undefined || message.trimStart().startsWith('@')) return null;
   return {
