@@ -11,7 +11,7 @@
  */
 import { HAZARD_ABILITY } from './abilities';
 import { ROUND_SECONDS, spellSlots, woundOf } from './menace';
-import { RESIST_ABILITY, type SpellElement } from './spellchoice';
+import { RESIST_ABILITY, type SpellElement } from './spellDamage';
 import type { MobProfile, WorldSpell } from './world';
 
 /** The elements a resistance takes damage off; normal and poison have none to wear. */

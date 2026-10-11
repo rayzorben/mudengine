@@ -7,12 +7,12 @@ import {
   healDeficit,
   healPower,
   pickHeal,
-  spellElementOf,
   thresholdHeal,
   type HealChoiceInput,
   type ThresholdHealInput,
   type SpellChoiceInput
 } from '../spellchoice';
+import { spellElementOf } from '../spellDamage';
 import type { ProwessSheet } from '../prowess';
 import type { WorldSpell } from '../world';
 

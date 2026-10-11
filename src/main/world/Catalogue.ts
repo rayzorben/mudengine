@@ -10,7 +10,7 @@
  * See `mudengine-world` › *The catalogue is its own unit*.
  */
 import { tuning } from '../app/tuning';
-import { spellElementOf } from '../../shared/spellchoice';
+import { spellElementOf } from '../../shared/spellDamage';
 import { natureOf } from '../../shared/spellReach';
 import {
   mobKey,
@@ -77,6 +77,7 @@ import type { RealmFamily } from '../../shared/realm';
 import type { RealmHeader } from './realmHeader';
 import { castBy, picksRead, NO_SUPPLY, readSupply, type WorldSupply } from './supply';
 import { fightSpellsOf } from '../../shared/summons';
+import { hitSpellsOf } from '../../shared/hitSpells';
 
 export class Catalogue {
   /**
@@ -1092,7 +1093,11 @@ export class Catalogue {
     if (known.kind !== undefined) entity.kind = known.kind;
     if (known.worn !== undefined) entity.wornSlotCode = known.worn;
     if (known.slot !== undefined) entity.realmSlot = known.slot;
-    if (known.weapon !== undefined) entity.weapon = known.weapon;
+    if (known.weapon !== undefined) {
+      // Joined here as a monster's fight spells are, so the round reads them off the hand.
+      const hits = hitSpellsOf(known, (id) => this.spellById(id));
+      entity.weapon = hits.length === 0 ? known.weapon : { ...known.weapon, hits };
+    }
     if (known.armour !== undefined) entity.armour = known.armour;
     if (known.uses !== undefined) entity.uses = known.uses;
     if (known.abilities !== undefined) entity.abilities = known.abilities;

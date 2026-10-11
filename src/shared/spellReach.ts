@@ -66,9 +66,15 @@ export function natureOf(rows: readonly NatureRow[]): MonsterNature {
 /**
  * Whether the spell can touch a monster of this nature: false where the
  * server is sure to answer *no effect*, true where it is sure not to, null
- * where the rows disagree or nothing says.
+ * where the rows disagree or nothing says. `skipsImmunityLevel` is the
+ * server's `inOverrideSpellImmuCheck`: a spell filling the room, and a
+ * weapon's hit spell (`PlayerAttackType`), are stopped only by `SpellImmu` 999.
  */
-export function spellReaches(spell: WorldSpell, nature: MonsterNature | undefined): boolean | null {
+export function spellReaches(
+  spell: WorldSpell,
+  nature: MonsterNature | undefined,
+  skipsImmunityLevel = spell.targets === FULL_ATTACK_AREA
+): boolean | null {
   if (nature === undefined) return null;
   const spellCarries = (id: number): boolean => carriesAbility(spell.abilities, id);
   const answers: Array<boolean | null> = [];
@@ -78,20 +84,24 @@ export function spellReaches(spell: WorldSpell, nature: MonsterNature | undefine
   refusedWhen(spellCarries(SPELL_REACH_ABILITY.affectsUndead), invert(nature.undead));
   refusedWhen(spellCarries(SPELL_REACH_ABILITY.affectsLiving), nature.nonLiving);
   refusedWhen(spellCarries(SPELL_REACH_ABILITY.affectsAnimals), invert(nature.animal));
-  answers.push(immunityLets(spell, nature.spellImmunity));
+  answers.push(immunityLets(spell, nature.spellImmunity, skipsImmunityLevel));
   if (answers.includes(false)) return false;
   return answers.includes(null) ? null : true;
 }
 
 const invert = (value: boolean | null): boolean | null => (value === null ? null : !value);
 
-/** `SpellImmu` 999 stops every spell; a lower one stops a spell whose `ReqLevel` is below it, unless the spell fills the room. */
-function immunityLets(spell: WorldSpell, range: readonly [number, number] | null): boolean | null {
+/** `SpellImmu` 999 stops every spell; a lower one stops a spell whose `ReqLevel` is below it, unless the level is not checked. */
+function immunityLets(
+  spell: WorldSpell,
+  range: readonly [number, number] | null,
+  skipsLevel: boolean
+): boolean | null {
   if (range === null) return null;
   const stops = (immunity: number): boolean | null => {
     if (immunity <= 0) return false;
     if (immunity >= IMMUNE_TO_ALL) return true;
-    if (spell.targets === FULL_ATTACK_AREA) return false;
+    if (skipsLevel) return false;
     return spell.level === undefined ? null : spell.level < immunity;
   };
   // The least immune row stopping it is every row stopping it.

@@ -7833,3 +7833,41 @@ describe('a room the character ran out of', () => {
     expect([...reach.keys()]).toEqual(['1/1', '1/2', '1/3', '1/4']);
   });
 });
+
+/* Todo 36: a weapon's hit spells are joined onto its weapon row, so every reader of the hand prices them. */
+describe('a weapon that casts on a hit', () => {
+  const graph = makeWorld(
+    [],
+    {
+      items: [
+        {
+          id: 1,
+          n: 'blizzardfang',
+          type: 1,
+          worn: 1,
+          wpn: { min: 6, max: 20, spd: 1400, kind: 2 },
+          ab: [
+            [114, 100],
+            [43, 400]
+          ]
+        },
+        { id: 2, n: 'longsword', type: 1, worn: 1, wpn: { min: 3, max: 12, spd: 1300, kind: 2 } }
+      ],
+      spells: [{ id: 400, n: 'frost hits', ab: [[1, 0]], pw: [2, 8] }]
+    },
+    64
+  );
+
+  it('carries the spell and its chance on the weapon', () => {
+    const hits = graph.buildItemEntity('blizzardfang').weapon?.hits;
+    expect(hits?.map(({ chance, spell }) => [chance, spell.name, spell.power])).toEqual([
+      [100, 'frost hits', [2, 8]]
+    ]);
+  });
+
+  it('leaves a weapon that casts nothing without hits', () => {
+    // Positive control: the same realm joins blizzardfang's above.
+    expect(graph.buildItemEntity('longsword').weapon).toBeDefined();
+    expect(graph.buildItemEntity('longsword').weapon?.hits).toBeUndefined();
+  });
+});

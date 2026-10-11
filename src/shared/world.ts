@@ -11,7 +11,7 @@
 import type { ItemRarity } from './rarity';
 import { asGates, type AbilityBounds, type Gate } from './gates';
 import type { Alignment } from './alignment';
-import type { SpellElement } from './spellchoice';
+import type { SpellElement } from './spellDamage';
 import type { MonsterNature } from './spellReach';
 import type { FightSummary } from './fights';
 import type { MobLoreEntry } from './lore';

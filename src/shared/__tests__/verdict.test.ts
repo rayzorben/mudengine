@@ -194,7 +194,13 @@ describe('the monster’s side of the roll', () => {
      column is the sheet's figure as it stands. 2026-10-05: it was divided again, and a blood
      skeleton's 50 read 5 (Festus 99.8% to hit where the wire has 80.7%). */
   it('takes the realm’s armour and resistance as they stand, and reads dodge off slot 34', () => {
-    expect(targetOf(thug)).toEqual({ armourClass: 40, damageResist: 3, dodge: 12, hp: 60 });
+    expect(targetOf(thug)).toEqual({
+      armourClass: 40,
+      damageResist: 3,
+      dodge: 12,
+      hp: 60,
+      abilities: thug.abilities
+    });
   });
 
   it('claims nothing about a monster the realm cannot place', () => {
