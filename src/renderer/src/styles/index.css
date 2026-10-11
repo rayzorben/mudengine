@@ -10465,12 +10465,14 @@ tr:hover .row-action.worn,
 }
 
 /*
- * A ranked toggle carries its rank only while it is *on*.
+ * A ranked choice carries its rank only while it is *on*.
  *
- * Off is already said by the strike-through and the drop in opacity above, and
- * a toggle that kept its colour while struck through would be stating a
- * condition it is not in -- a red DENY with a line through it reads, at the
- * glance these are read at, as a denial rather than as the absence of one.
+ * For a chip that picks one of several (a loop's destination, a grant's player)
+ * or is one half of an ALLOW/DENY pair, off is said by the strike-through and
+ * the drop in opacity above. Such a chip that kept its colour while struck
+ * through would state a condition it is not in: a red DENY with a line through
+ * it reads as a denial rather than as the absence of one. A table's facet chip
+ * is a plain on/off switch and is drawn green and red below (todo 84).
  */
 .chip.toggle[data-level='critical'][data-on='true'] {
   background: color-mix(in srgb, var(--danger) var(--tone), transparent);
@@ -10501,6 +10503,28 @@ tr:hover .row-action.worn,
 .chip.toggle[data-level='ok'][data-on='true'] {
   background: color-mix(in srgb, var(--ok) var(--tone), transparent);
   color: var(--ok);
+}
+
+/*
+ * A table's facet chip shows or hides its rows (user, 2026-10-10, todo 84):
+ * green while they are shown, red and struck through while they are hidden,
+ * the colours the Remotes On chip and the gear suggestions use for on and off.
+ * Kept to `.table-facets`, since a red unpicked choice or a red struck DENY
+ * above would read as a refusal.
+ *
+ * Placed after the ranked rules and as specific as them, so a ranked facet (the
+ * Alerts card's levels) goes green when on as well: the rank is printed in each
+ * row, and a red chip both on and off would differ by the line alone.
+ */
+.table-facets .chip.toggle[data-on='true'] {
+  background: color-mix(in srgb, var(--ok) var(--tone), transparent);
+  color: var(--ok);
+}
+
+.table-facets .chip.toggle[data-on='false'] {
+  background: color-mix(in srgb, var(--danger) var(--tone), transparent);
+  color: var(--danger);
+  opacity: 1;
 }
 
 /* ---------------------------------------------------------- saying things */

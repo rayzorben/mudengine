@@ -22,6 +22,7 @@ function find(over: Partial<Find> = {}): Find {
     name: 'rusty key',
     quantity: null,
     copper: null,
+    coins: null,
     at: NOW,
     seen: 1,
     hits: 1,

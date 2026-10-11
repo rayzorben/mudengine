@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { FindBook } from '../FindBook';
-import { findKey, findRate, type Sighting } from '../../../shared/finds';
+import { findKey, findRate, FINDS_VERSION, type Sighting } from '../../../shared/finds';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { setTuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
@@ -38,6 +38,7 @@ const found = (over: Partial<Sighting> = {}): Sighting => ({
   name: 'rusty key',
   quantity: null,
   copper: null,
+  coins: null,
   at: 1_757_000_000_000,
   ...over
 });
@@ -180,7 +181,12 @@ describe('the file', () => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(
       file,
-      JSON.stringify({ version: 2, realm: 'greatermud', searches: {}, finds: [{ room: '1/1' }] }),
+      JSON.stringify({
+        version: FINDS_VERSION,
+        realm: 'greatermud',
+        searches: {},
+        finds: [{ room: '1/1' }]
+      }),
       'utf8'
     );
     expect(book().all).toHaveLength(0);
@@ -193,7 +199,12 @@ describe('the file', () => {
     const row = { room: ROOM, ...found(), seen: 3, hits: 3 };
     fs.writeFileSync(
       file,
-      JSON.stringify({ version: 2, realm: 'greatermud', searches: { [ROOM]: 2 }, finds: [row] }),
+      JSON.stringify({
+        version: FINDS_VERSION,
+        realm: 'greatermud',
+        searches: { [ROOM]: 2 },
+        finds: [row]
+      }),
       'utf8'
     );
     expect(book().all).toHaveLength(0);
@@ -213,7 +224,49 @@ describe('the file', () => {
     expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe(original);
 
     close(store);
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ version: 2, searches: {} });
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({
+      version: FINDS_VERSION,
+      searches: {}
+    });
+  });
+
+  it('brings a version 2 log up once, with no coins for the cash it held', () => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const { coins: _none, ...v2 } = found({ name: 'coins', copper: 24_323 * 100 });
+    const row = { room: ROOM, ...v2, seen: 1, hits: 1 };
+    const original = JSON.stringify({
+      version: 2,
+      realm: 'greatermud',
+      searches: { [ROOM]: 1 },
+      finds: [row]
+    });
+    fs.writeFileSync(file, original, 'utf8');
+
+    const store = book();
+    // The total stays; the coins it was made of were never kept, so none.
+    expect(store.all).toMatchObject([{ copper: 2_432_300, coins: null }]);
+    expect(said).toContain(
+      t('notices.world.finds.coinsUpgraded', { fileName: path.basename(file) })
+    );
+    expect(said).not.toContain(
+      t('notices.world.finds.upgraded', { fileName: path.basename(file) })
+    );
+    expect(fs.readFileSync(`${file}.bak`, 'utf8')).toBe(original);
+    close(store);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ version: FINDS_VERSION });
+  });
+
+  it('keeps the coins a search counted, and the next search replaces them', () => {
+    const gold = { runic: 0, platinum: 0, gold: 24_323, silver: 0, copper: 0 };
+    const store = book();
+    store.search(ROOM, [found({ name: 'coins', copper: 2_432_300, coins: gold })]);
+    store.search(ROOM, [
+      found({ name: 'coins', copper: 5, coins: { ...gold, gold: 0, copper: 5 } })
+    ]);
+    close(store);
+    expect(book().all).toMatchObject([
+      { copper: 5, coins: { gold: 0, copper: 5 }, seen: 2, hits: 2 }
+    ]);
   });
 
   it('reports unreadable JSON and keeps it', () => {

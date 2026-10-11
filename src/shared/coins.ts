@@ -23,7 +23,7 @@
  * is realm data, and captures/024's realm renames the runic coin outright. A
  * denomination this table does not name yields null — unknown, never zero.
  */
-import { coinNamed, DENOMINATIONS, type Denomination } from './character';
+import { coinNamed, DENOMINATIONS, type Coins, type Denomination } from './character';
 import type { CurrencyEntity } from './entities';
 import { escapeRegExp } from './regex';
 
@@ -203,6 +203,20 @@ export function copperSpread(copper: number): CurrencyEntity {
     left -= counts[which] * each;
   }
   return currencyOf(counts);
+}
+
+/**
+ * The counts alone, without the total or the line: what a record keeps of a
+ * pile so it can be written out as the server counted it (`coinText`).
+ */
+export function countedCoins(cash: CurrencyEntity): Coins {
+  return {
+    runic: cash.runic,
+    platinum: cash.platinum,
+    gold: cash.gold,
+    silver: cash.silver,
+    copper: cash.copper
+  };
 }
 
 /** The same, with one denomination added to what is already counted. */

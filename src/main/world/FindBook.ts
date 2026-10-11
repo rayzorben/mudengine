@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { DENOMINATIONS, type Coins } from '../../shared/character';
 import { findKey, FINDS_VERSION, type Find, type Sighting } from '../../shared/finds';
 import type { RoomId } from '../../shared/world';
 import { errorMessage } from '../../shared/values';
@@ -125,6 +126,7 @@ export class FindBook {
         // today and none tomorrow is a room that had four farthings today.
         known.quantity = sighting.quantity;
         known.copper = sighting.copper;
+        known.coins = sighting.coins;
         continue;
       }
 
@@ -173,7 +175,9 @@ export class FindBook {
     try {
       if (!fs.existsSync(this.file)) return;
       const read: unknown = JSON.parse(fs.readFileSync(this.file, 'utf8'));
-      const upgraded = fromVersion1(read);
+      const counting = fromVersion1(read);
+      const coined = fromVersion2(counting ?? read);
+      const upgraded = coined ?? counting;
       const parsed = upgraded ?? read;
       if (!isFindsFile(parsed)) {
         this.onError?.(
@@ -212,8 +216,10 @@ export class FindBook {
       }
 
       if (upgraded !== null) {
+        const fileName = path.basename(this.file);
         fs.copyFileSync(this.file, `${this.file}.bak`);
-        this.onError?.(t('notices.world.finds.upgraded', { fileName: path.basename(this.file) }));
+        if (counting !== null) this.onError?.(t('notices.world.finds.upgraded', { fileName }));
+        if (coined !== null) this.onError?.(t('notices.world.finds.coinsUpgraded', { fileName }));
         this.schedule();
       }
     } catch (error) {
@@ -252,10 +258,32 @@ function fromVersion1(value: unknown): unknown {
   if (file.version !== 1 || !Array.isArray(file.finds)) return null;
   return {
     ...file,
-    version: FINDS_VERSION,
+    version: 2,
     searches: {},
     finds: file.finds.map((row: unknown) =>
       typeof row === 'object' && row !== null ? { ...row, hits: 0 } : row
+    )
+  };
+}
+
+/**
+ * A version 2 log as version 3, or null for anything else (2026-10-10, todo 84).
+ *
+ * Version 2 kept found cash as a copper total only, and the coins the search
+ * printed cannot be recovered from it: `copperSpread` gives one spelling of the
+ * total, not the one the room held. Every row gets no coins, which the card
+ * shows blank until the room's next search writes them. Goes when no version 2
+ * file remains.
+ */
+function fromVersion2(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return null;
+  const file = value as { version?: unknown; finds?: unknown };
+  if (file.version !== 2 || !Array.isArray(file.finds)) return null;
+  return {
+    ...file,
+    version: FINDS_VERSION,
+    finds: file.finds.map((row: unknown) =>
+      typeof row === 'object' && row !== null ? { ...row, coins: null } : row
     )
   };
 }
@@ -283,10 +311,20 @@ function isKept(value: unknown): value is Kept {
     typeof find.name === 'string' &&
     (find.quantity === null || typeof find.quantity === 'number') &&
     (find.copper === null || typeof find.copper === 'number') &&
+    (find.coins === null || isCoins(find.coins)) &&
     typeof find.at === 'number' &&
     typeof find.seen === 'number' &&
     typeof find.hits === 'number' &&
     Number.isInteger(find.hits) &&
     find.hits >= 0
+  );
+}
+
+function isCoins(value: unknown): value is Coins {
+  if (typeof value !== 'object' || value === null) return false;
+  const coins = value as Partial<Record<string, unknown>>;
+  return DENOMINATIONS.every(
+    (coin) =>
+      coins[coin] === null || (Number.isInteger(coins[coin]) && (coins[coin] as number) >= 0)
   );
 }
