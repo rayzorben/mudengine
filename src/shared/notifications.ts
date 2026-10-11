@@ -231,6 +231,7 @@ export const NOTABLE: Partial<Record<BlockType, { severity: Severity; channel: N
   'command-not-understood': { severity: 'warning', channel: 'command' },
   'command-ignored': { severity: 'warning', channel: 'command' },
   'slow-down': { severity: 'warning', channel: 'command' },
+  'room-command-refused': { severity: 'warning', channel: 'movement' },
   'comms-throttled': { severity: 'warning', channel: 'command' },
   'attack-refused': { severity: 'warning', channel: 'combat' },
   'attack-ineffective': { severity: 'warning', channel: 'combat' },
@@ -450,7 +451,10 @@ export const ALERT_EVENTS = {
   cleanup: { channel: 'realm', types: ['realm-cleanup'] },
 
   /* Getting about. */
-  'way-blocked': { channel: 'movement', types: ['direction-failed', 'open-failed'] },
+  'way-blocked': {
+    channel: 'movement',
+    types: ['direction-failed', 'open-failed', 'room-command-refused']
+  },
   'bash-failed': { channel: 'movement', types: ['bash-failed'] },
 
   /* The shadows. */

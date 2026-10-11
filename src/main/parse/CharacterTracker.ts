@@ -1491,15 +1491,15 @@ export class CharacterTracker {
        * one this shares. The direction is deliberately **not** written off:
        * the step failed because the character is at zero health, and
        * blacklisting the edge would cost every route through it for the rest
-       * of the session.
-       *
-       * Left unread it stranded a move for 126 seconds in
-       * `2026-09-01_21-49-21_festus` — with the escape, the walker and the
-       * loop all gated on `pendingMoves`, at `[HP=-21]`, which is precisely
-       * when a character needs to be able to run.
+       * of the session. Left unread it stranded a move for 126 seconds at
+       * `[HP=-21]` (`2026-09-01_21-49-21_festus`), when a character must run.
        */
       case 'command-refused':
         this.expect.shiftRefused();
+        return null;
+      // A room command's check failed (todo 65); only a move at the head is its.
+      case 'room-command-refused':
+        this.expect.shiftHeldMove();
         return null;
 
       /*

@@ -650,6 +650,11 @@ describe('conversation, movement, items', () => {
       ]
     ).toBe('black star key');
     expectType("Why don't you slow down for a few seconds?", 'slow-down');
+    // The realm's message table (`messages.csv` 503, 1093, 1692, 1981), todo 65.
+    expectType('You cannot do that right now!', 'room-command-refused');
+    expectType("You can't do that right now!", 'room-command-refused');
+    expectType("You can't get to that right now!", 'room-command-refused');
+    expectType('You cannot do that while there are enemies present!', 'room-command-refused');
   });
 
   it('reads item actions', () => {

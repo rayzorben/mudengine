@@ -73,7 +73,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   // Lowered by the fight hold's comment, condensed as `FoughtPath` came (2026-10-10).
-  'src/main/automation/Walker.ts': 1932,
+  // Lowered by `scriptGated`, out to the room commands' unit (`walk/RoomCommands.ts`, todo 65).
+  'src/main/automation/Walker.ts': 1929,
   'src/renderer/src/components/SettingsScreen.tsx': 1215,
   // Out of the screen whole (741), so it may not grow back into a monolith;
   // lowered by its login rows, shared with the realm's form (811), and by the
