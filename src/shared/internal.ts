@@ -1924,6 +1924,15 @@ const TUNING_DEFAULTS = {
     /** One press of the gear button. */
     maxGear: 10
   },
+  /** The armour the room the character stands in calls for (todo 69, `PlaceGear`). */
+  placeGear: {
+    /**
+     * Hit points a round a swap has to save before it is made. The swap is a
+     * `wear` there and another back at the edge; below this the commands buy
+     * less than a heal does (todo 69, open question 2).
+     */
+    minSaved: 2
+  },
   /** What one session keeps in memory for the diagnostics cards. */
   session: {
     /**

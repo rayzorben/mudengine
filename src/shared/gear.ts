@@ -800,6 +800,24 @@ export function baseSet(sets: readonly GearSet[]): GearSet | null {
 }
 
 /**
+ * The armour the room calls for (`wear`) and what it replaced, to go back on
+ * where the room calls for none (`putBack`), slot → item, slots lowercased as
+ * `kitFor` keys them (todo 69, `PlaceGear`).
+ */
+export interface PlaceLayer {
+  wear: ReadonlyMap<string, string>;
+  putBack: ReadonlyMap<string, string>;
+}
+
+/** What a layer asks for, as one string: whether the place's ask changed. */
+export function placeKey(layer: PlaceLayer): string {
+  return `${[...layer.wear.values()].join(',')}|${[...layer.putBack.values()].join(',')}`;
+}
+
+/** No armour called for: the layer with the place switched off. */
+export const NO_PLACE: PlaceLayer = { wear: new Map(), putBack: new Map() };
+
+/**
  * The kit the character should be in: the base, overlaid by whichever set
  * applies, as slot → item.
  *
@@ -813,7 +831,8 @@ export function baseSet(sets: readonly GearSet[]): GearSet | null {
 export function kitFor(
   sets: readonly GearSet[],
   now: GearSituation,
-  slotOf: (name: string) => string | null
+  slotOf: (name: string) => string | null,
+  place: PlaceLayer = NO_PLACE
 ): Map<string, string> {
   const kit = new Map<string, string>();
   const lay = (set: GearSet | null): void => {
@@ -823,7 +842,11 @@ export function kitFor(
       kit.set((slotOf(item) ?? `item:${item}`).toLowerCase(), item);
     }
   };
+  // What the place's armour replaced goes back under the base, so a set the
+  // player wrote for that slot wins; the place's own armour goes over it.
+  for (const [slot, item] of place.putBack) kit.set(slot, item);
   lay(baseSet(sets));
+  for (const [slot, item] of place.wear) kit.set(slot, item);
   const overlay = overlayFor(sets, now);
   // A backstab set holds the weapon for the opening blow, so it is laid over
   // the moving set and the walking boots stay on.

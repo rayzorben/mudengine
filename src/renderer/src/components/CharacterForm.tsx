@@ -12,6 +12,7 @@ import MobRuleList from './MobRuleList';
 import SettingsSection from './SettingsSection';
 import { CHARACTER_SECTION_LABEL } from './characterNav';
 import GearSetList from './GearSetList';
+import GearSwitches from './GearSwitches';
 import PotionList, { WardRules } from './PotionList';
 import Icon from './Icon';
 import LoginStepRows from './LoginStepRows';
@@ -1039,21 +1040,19 @@ export default function CharacterForm({
       {shows('gear') && (
         <SettingsSection {...sectionOf('gear')}>
           {/*
-            The kit, and when to be in it (todo 00). The sets are
-            the section; the off-round invocation is its own
-            fieldset because it is a different verb — `use` rather
-            than `wear` — and the only control here that spends a
-            round of a fight.
+            The kit, and when to be in it (todo 00). The off-round
+            invocation is its own fieldset: another verb (`use`),
+            and the only control that spends a round.
           */}
           <fieldset className="settings-menus" data-fieldset="gear">
             <legend>{t('settings.gear.legend')}</legend>
             <p className="settings-note">{t('settings.gear.note')}</p>
-            <CheckField
-              checked={form.gearEnabled}
-              hint={t('settings.gear.enabledHint')}
-              label={t('settings.gear.enabled')}
-              name="gear-enabled"
-              onChange={(value) => patch({ gearEnabled: value })}
+            <GearSwitches
+              enabled={form.gearEnabled}
+              namePrefix="gear"
+              onEnabled={(value) => patch({ gearEnabled: value })}
+              onResists={(value) => patch({ gearResists: value })}
+              resists={form.gearResists}
             />
             <GearSetList
               mobs={mobs}

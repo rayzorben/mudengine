@@ -684,33 +684,67 @@ function rowPerRound(
 
   const swings = mobSwingsPerRound(profile.attacks);
   let blows = 0;
-  let perSwing = 0;
   for (const attack of profile.attacks) {
-    if (attack.kind === 'melee') {
-      const hit = landsOn(attack.accuracy, player);
-      const { damage, lands } = expectedBlow(attack.min, attack.max, player.damageResist);
-      blows += attack.chance * hit * damage;
-      // The hit spell rides on a blow that did damage, at level zero —
-      // `spell.ApplyMobCastSpell(this, tempTargets, 0, true)`.
-      if (attack.onHit !== undefined) {
-        perSwing += take(
-          hazardOf(spells[attack.onHit], 0, unit, player, weights),
-          attack.chance * hit * lands
-        );
-      }
-    } else {
-      perSwing += take(
-        hazardOf(spells[attack.spell], attack.level, unit, player, weights),
-        attack.chance * attack.castChance
-      );
-    }
+    if (attack.kind !== 'melee') continue;
+    const hit = landsOn(attack.accuracy, player);
+    blows += attack.chance * hit * expectedBlow(attack.min, attack.max, player.damageResist).damage;
   }
-  let perRound = swings * (blows + perSwing);
   blows *= swings;
-  for (const cast of profile.casts) {
-    perRound += take(hazardOf(spells[cast.spell], cast.level, unit, player, weights), cast.chance);
+  let perRound = blows;
+  for (const slot of spellSlots(profile, (attack) => blowLands(attack, player))) {
+    perRound += take(
+      hazardOf(spells[slot.spell], slot.level, unit, player, weights),
+      slot.perRound
+    );
   }
   return { perRound, blows, kinds, wide };
+}
+
+/** How often a melee row's blow lands and does damage, against this character. */
+function blowLands(attack: Extract<MobAttack, { kind: 'melee' }>, player: MenacePlayer): number {
+  return (
+    landsOn(attack.accuracy, player) *
+    expectedBlow(attack.min, attack.max, player.damageResist).lands
+  );
+}
+
+/** One spell a monster row casts, at what level, and how many times a round. */
+export interface SpellSlot {
+  spell: number;
+  level: number;
+  perRound: number;
+}
+
+/**
+ * Every spell a monster row casts and how often a round: a spell attack
+ * (`chance × castChance` a swing), a hit spell riding a blow that did damage
+ * at level zero (`spell.ApplyMobCastSpell(this, tempTargets, 0, true)`), and
+ * the between-round casts. `lands` is how often a melee row's blow lands and
+ * does damage; the menace and the armour a room calls for (`placeGear`) both
+ * read this.
+ */
+export function spellSlots(
+  profile: MobProfile,
+  lands: (attack: Extract<MobAttack, { kind: 'melee' }>) => number
+): SpellSlot[] {
+  const swings = mobSwingsPerRound(profile.attacks);
+  const out: SpellSlot[] = [];
+  for (const attack of profile.attacks) {
+    if (attack.kind === 'melee') {
+      if (attack.onHit === undefined) continue;
+      out.push({ spell: attack.onHit, level: 0, perRound: swings * attack.chance * lands(attack) });
+    } else {
+      out.push({
+        spell: attack.spell,
+        level: attack.level,
+        perRound: swings * attack.chance * attack.castChance
+      });
+    }
+  }
+  for (const cast of profile.casts) {
+    out.push({ spell: cast.spell, level: cast.level, perRound: cast.chance });
+  }
+  return out;
 }
 
 /**

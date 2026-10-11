@@ -2468,16 +2468,14 @@ export interface GearConfig {
   sets: GearSet[];
   /** The off-round weapon invocation. See `OffRoundConfig`. */
   offRound: OffRoundConfig;
+  /** Wear carried armour the room's elements call for (todo 69, `PlaceGear`); apart from `enabled`. */
+  resists: boolean;
 }
 
 /**
- * `use <item> <target>` between rounds — todo 00's nexus spear.
- *
- * **It costs the round.** The item has to be in hand before `use` will take
- * it (`UseCommand` answers *You do not have <item> equipped.*), so a
- * two-handed one is six commands — off-hand off, spear on, use, weapon
- * back, off-hand back — against a window of three. `everyRounds` is the
- * floor under that, and 0 is off, which is where it ships.
+ * `use <item> <target>` between rounds (todo 00's nexus spear). It costs the
+ * round: `UseCommand` takes only an item in hand, so a two-handed one is six
+ * commands against a window of three. `everyRounds` is the floor; 0, as shipped, is off.
  */
 export interface OffRoundConfig {
   /** The item to invoke. Blank is off, whatever `everyRounds` says. */
@@ -2873,7 +2871,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       trainer: 0
     },
     quests: { enabled: false },
-    gear: { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 } },
+    gear: { enabled: false, sets: [], offRound: { item: '', everyRounds: 0 }, resists: true },
     spells: {
       autoChoose: false,
       attack: '',
@@ -3831,7 +3829,8 @@ export function normalizeGear(value: unknown): GearConfig {
       item: str(offRound['item'], ''),
       // Bounded low: a floor of twenty rounds is a fight that has ended.
       everyRounds: int(offRound['everyRounds'], d.offRound.everyRounds, 0, 20)
-    }
+    },
+    resists: bool(raw['resists'], d.resists)
   };
 }
 

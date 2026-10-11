@@ -74,6 +74,9 @@ const sources = (over: Partial<EquipmentSources> = {}): EquipmentSources => ({
   handsOf: (name) => (name === 'nexus spear' ? 2 : 1),
   opensWithBackstab: () => false,
   yieldSwap: () => null,
+  exposureAt: () => ({}),
+  placeItem: () => null,
+  minSaved: () => 2,
   ...over
 });
 
@@ -359,5 +362,129 @@ describe('the weapon that can hurt the monster', () => {
     manager.onCharacter(standing(holding), false);
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['wear golden pike', 'wear club']);
+  });
+});
+
+/*
+ * Todo 69: the armour the room calls for. A desert room casting fire for 20 a
+ * round, a fire-resisting tunic in the pack and a plain one on.
+ */
+describe('the armour the room calls for', () => {
+  const RESIST_FIRE = 5;
+  const TUNICS: Record<string, { fire: number; ac: number }> = {
+    'leather tunic': { fire: 0, ac: 20 },
+    'skirts of flame': { fire: 25, ac: 20 },
+    chainmail: { fire: 0, ac: 20 }
+  };
+  const placeSources = (fire: number): Partial<EquipmentSources> => ({
+    slotOf: (name) => (name in TUNICS ? 'Torso' : (SLOTS[name] ?? null)),
+    exposureAt: (room) => (room === '1/2' ? { fire } : {}),
+    placeItem: (item) => {
+      const row = TUNICS[item.name];
+      return row === undefined
+        ? null
+        : {
+            name: item.name,
+            slot: 'torso',
+            equipped: item.equipped,
+            abilities: [[RESIST_FIRE, row.fire]],
+            armour: { ac: row.ac, dr: 0 }
+          };
+    }
+  });
+  const at = (map: number, number: number, items: CarriedItem[]): CharacterState => {
+    const state = standing(items);
+    return { ...state, room: { ...state.room, map, number } };
+  };
+  const noSets = gear({ sets: [] });
+
+  it('wears the resisting tunic in the room and the old one back outside it', () => {
+    const manager = make(noSets, placeSources(20));
+    manager.onCharacter(
+      at(1, 2, [worn('leather tunic', 'Torso'), carried('skirts of flame')]),
+      false
+    );
+    expect(sent).toEqual(['wear skirts of flame']);
+    manager.onCharacter(
+      at(1, 3, [carried('leather tunic'), worn('skirts of flame', 'Torso')]),
+      false
+    );
+    expect(sent).toEqual(['wear skirts of flame', 'wear leather tunic']);
+  });
+
+  it('keeps the resisting tunic on while it stands in the room', () => {
+    const manager = make(noSets, placeSources(20));
+    manager.onCharacter(
+      at(1, 2, [worn('leather tunic', 'Torso'), carried('skirts of flame')]),
+      false
+    );
+    clock += 60_000;
+    manager.onCharacter(
+      at(1, 2, [carried('leather tunic'), worn('skirts of flame', 'Torso')]),
+      false
+    );
+    expect(sent).toEqual(['wear skirts of flame']);
+  });
+
+  // The first test is the positive control: the same pack in the same room swaps at 20 a round.
+  it('leaves the tunic alone where it saves less than the floor', () => {
+    make(noSets, placeSources(4)).onCharacter(
+      at(1, 2, [worn('leather tunic', 'Torso'), carried('skirts of flame')]),
+      false
+    );
+    expect(sent).toEqual([]);
+  });
+
+  it('gives way to a set the player wrote for the slot', () => {
+    const sets: GearSet[] = [{ name: 'Fight', when: 'fighting', mob: '', wear: ['leather tunic'] }];
+    const state = {
+      ...at(1, 2, [worn('leather tunic', 'Torso'), carried('skirts of flame')]),
+      inCombat: true
+    };
+    make(gear({ sets }), placeSources(20)).onCharacter(state, false);
+    expect(sent).toEqual([]);
+  });
+
+  it('dresses for the room with gear sets off, and not with its own switch off', () => {
+    const pack = [worn('leather tunic', 'Torso'), carried('skirts of flame')];
+    make(gear({ enabled: false, sets: [] }), placeSources(20)).onCharacter(at(1, 2, pack), false);
+    expect(sent).toEqual(['wear skirts of flame']);
+    sent.length = 0;
+    make(gear({ enabled: false, sets: [], resists: false }), placeSources(20)).onCharacter(
+      at(1, 2, pack),
+      false
+    );
+    expect(sent).toEqual([]);
+  });
+
+  it('forgets a replaced tunic the pack no longer holds', () => {
+    const manager = make(noSets, placeSources(20));
+    manager.onCharacter(
+      at(1, 2, [worn('leather tunic', 'Torso'), carried('skirts of flame')]),
+      false
+    );
+    expect(sent).toEqual(['wear skirts of flame']);
+    // Sold while dressed: nothing to put back, and nothing said missing.
+    manager.onCharacter(at(1, 3, [worn('skirts of flame', 'Torso')]), false);
+    expect(sent).toEqual(['wear skirts of flame']);
+    expect(notices.filter((line) => line.includes('leather tunic'))).toEqual([]);
+  });
+
+  it('puts back what someone else wore over the resisting tunic, not what it replaced', () => {
+    const manager = make(noSets, placeSources(20));
+    manager.onCharacter(
+      at(1, 2, [worn('leather tunic', 'Torso'), carried('skirts of flame')]),
+      false
+    );
+    // Better gear off the floor (todo 77) went on in its place, then the room was left.
+    manager.onCharacter(
+      at(1, 2, [carried('leather tunic'), carried('skirts of flame'), worn('chainmail', 'Torso')]),
+      false
+    );
+    manager.onCharacter(
+      at(1, 3, [carried('leather tunic'), worn('skirts of flame', 'Torso'), carried('chainmail')]),
+      false
+    );
+    expect(sent.at(-1)).toBe('wear chainmail');
   });
 });

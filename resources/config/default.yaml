@@ -1559,6 +1559,12 @@ automation:
     offRound:
       item: ''
       everyRounds: 0
+    # Wear carried armour that resists the cold, fire, lightning, stone or
+    # water the room you stand in deals, from its own spell or its monsters'
+    # spells, when it saves at least `placeGear.minSaved` hit points a round,
+    # and put back what it replaced once you are out of it. Weapons are not
+    # swapped, and a set above that names the slot wins. Apart from `enabled`.
+    resists: true
 
   # Going hunting on its own: where this character should be at all.
   #

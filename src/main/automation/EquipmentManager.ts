@@ -29,11 +29,16 @@ import {
   swapPlan,
   type GearSet,
   type GearSituation,
-  type GearPlan
+  type GearPlan,
+  type PlaceLayer,
+  NO_PLACE,
+  placeKey
 } from '../../shared/gear';
+import { sameItem } from '../../shared/items';
 import type { SessionModule } from './Module';
+import { PlaceGear, type PlaceGearSources } from './PlaceGear';
 
-export interface EquipmentSources {
+export interface EquipmentSources extends PlaceGearSources {
   /** Which slot the realm says an item goes in, by name, or null. */
   slotOf(name: string): string | null;
   /** One hand or two, off `Items.WeaponType`, or null where the realm cannot say. */
@@ -75,6 +80,10 @@ export class EquipmentManager implements SessionModule {
     target: string;
     fought: boolean;
   } | null = null;
+  /** The armour the room calls for (todo 69). */
+  private readonly place: PlaceGear;
+  /** What the place layer last asked for, so its notice is said once a change. */
+  private placeSaid = '';
 
   constructor(
     private config: GearConfig,
@@ -83,7 +92,9 @@ export class EquipmentManager implements SessionModule {
     private readonly sources: EquipmentSources,
     private readonly events: EquipmentEvents = {},
     private readonly now: () => number = () => Date.now()
-  ) {}
+  ) {
+    this.place = new PlaceGear(sources);
+  }
 
   configure(config: GearConfig, enabled: boolean): void {
     this.config = config;
@@ -103,10 +114,18 @@ export class EquipmentManager implements SessionModule {
     this.invokedAt = 0;
     this.roundsSince = 0;
     this.reached = null;
+    this.place.reset();
+    this.placeSaid = '';
   }
 
+  /** The player's own sets. */
   private get acting(): boolean {
     return this.enabled && this.config.enabled;
+  }
+
+  /** The armour the room calls for, its own switch (`automation.gear.resists`). */
+  private get placing(): boolean {
+    return this.enabled && this.config.resists;
   }
 
   /**
@@ -118,7 +137,7 @@ export class EquipmentManager implements SessionModule {
   onCharacter(state: CharacterState, moving: boolean): void {
     if (state.phase !== 'in-game') return;
     this.reachedBack(state);
-    if (!this.acting) return;
+    if (!this.acting && !this.placing) return;
     /*
      * An unlisted pack is not an empty one. Nothing is worn off a listing
      * nobody has read, and nothing is reported missing on its account either —
@@ -132,8 +151,12 @@ export class EquipmentManager implements SessionModule {
       backstab: this.opensWithBackstab(),
       target: state.combat.target
     };
-    const set = overlayFor(this.config.sets, now);
-    const name = set?.name ?? '';
+    const sets = this.acting ? this.config.sets : [];
+    const set = overlayFor(sets, now);
+    const layer = this.placing ? this.place.layer(state, now.fighting) : NO_PLACE;
+    // The place is part of the situation: walking out of the desert and back
+    // in inside the retry floor must still put the armour back on.
+    const name = `${set?.name ?? ''}|${placeKey(layer)}`;
     if (name !== this.wearing) {
       /*
        * The situation changed, so the floor below has nothing to say about it.
@@ -147,10 +170,11 @@ export class EquipmentManager implements SessionModule {
       this.wearing = name;
     }
 
-    const kit = kitFor(this.config.sets, now, (item) => this.sources.slotOf(item));
+    const kit = kitFor(sets, now, (item) => this.sources.slotOf(item), layer);
     // A weapon wielded for a monster the hand cannot hurt outranks a set's until it goes back.
     if (this.reached !== null && kit.has(WEAPON_KEY)) kit.set(WEAPON_KEY, this.reached.weapon);
     if (kit.size === 0) return;
+    this.sayPlace(layer, state);
     const plan = swapPlan(kit, state.inventory.items, tuning().spending.maxGear, (item) =>
       this.sources.handsOf(item)
     );
@@ -207,6 +231,25 @@ export class EquipmentManager implements SessionModule {
     if (plan.commands.length === 0) return false;
     this.send(plan, band, null);
     return true;
+  }
+
+  /** Said once each time the place layer changes what it wants on, and only for what is not on yet. */
+  private sayPlace(layer: PlaceLayer, state: CharacterState): void {
+    const key = placeKey(layer);
+    if (key === this.placeSaid) return;
+    this.placeSaid = key;
+    const off = (names: Iterable<string>): string[] =>
+      [...names].filter(
+        (name) => !state.inventory.items.some((item) => item.equipped && sameItem(item.name, name))
+      );
+    const wear = off(layer.wear.values());
+    const back = off(layer.putBack.values());
+    if (wear.length > 0) {
+      this.events.notice?.(t('automation.gear.forPlace', { items: wear.join(', ') }));
+    }
+    if (back.length > 0) {
+      this.events.notice?.(t('automation.gear.placeBack', { items: back.join(', ') }));
+    }
   }
 
   /** Whether a backstab set is written and the next fight opens with its weapon. */

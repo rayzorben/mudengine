@@ -269,6 +269,7 @@ function migrateAll(options: MigrationOptions): void {
   statedReequipOnRecover(home, note, options.template);
   statedGearLockHours(home, note, options.template);
   statedLootUpgrades(home, note, options.template);
+  statedResistGear(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
@@ -4127,6 +4128,33 @@ function statedGearLockHours(
     stated.length === 1
       ? t('notices.migration.gearLockHours.one', params)
       : t('notices.migration.gearLockHours.many', params)
+  );
+}
+
+/**
+ * `automation.gear.resists` (todo 69) into every file that states `gear:`
+ * without it, as the template ships it, after `offRound` and with the
+ * template's paragraph. Idempotent: a key stays added whatever its value.
+ */
+function statedResistGear(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    ['automation', 'gear'],
+    'resists',
+    DEFAULT_CONFIG.automation.gear.resists,
+    'offRound',
+    templateComments(template, 'automation').get('automation.gear.resists')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.resistGear.one', params)
+      : t('notices.migration.resistGear.many', params)
   );
 }
 

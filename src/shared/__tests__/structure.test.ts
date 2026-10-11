@@ -55,7 +55,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the clock tick's comment, condensed as the charge ledger came (todo 44).
   // Lowered by the learned durations, handed to `blessingsFor` with the deps (todo 59).
   // Lowered by the walker's and remotes' comments, condensed as the party's hands came (todo 86).
-  'src/main/session/SessionManager.ts': 3415,
+  'src/main/session/SessionManager.ts': 3413,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).
@@ -92,7 +92,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the dial switches, out whole with the lives that hold them (`DialFields`, todo 07).
   // Lowered by the gear recovery's switches, out whole (`RecoverFields`, todo 39).
   // Lowered by the attack and opener fields, out whole with their chosen words (`FightWordFields`, todo 47).
-  'src/renderer/src/components/CharacterForm.tsx': 1470
+  'src/renderer/src/components/CharacterForm.tsx': 1469
 };
 
 /**

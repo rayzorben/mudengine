@@ -66,6 +66,7 @@ import { questDesk, type QuestDesk } from './questDesk';
 import type { AreaSearch } from '../automation/AreaSearch';
 import { QuestRunner } from '../automation/QuestRunner';
 import { EquipmentManager } from '../automation/EquipmentManager';
+import { placeReads } from './placeReads';
 import { Wards } from '../automation/Wards';
 import { RealmMenu } from './RealmMenu';
 import { RowOverrides } from '../automation/RowOverrides';
@@ -1346,16 +1347,13 @@ export class SessionManager {
       { notice },
       this.castRound
     );
-    /*
-     * And which kit to be in. The pack is asked before the realm for both facts:
-     * a carried item carries the realm's own reading joined onto it (`realmSlot`,
-     * `weapon.hands`): the row the server puts on, which a same-named row may not be.
-     */
+    // Which kit, with the room's armour; slot and hands are the pack's row (`realmSlot`) first.
     this.gear = new EquipmentManager(
       automation.gear,
       automation.enabled,
       this.queue,
       {
+        ...placeReads(() => this.world, this.errands),
         slotOf: (name) => this.errands.gearSlotOf(name),
         handsOf: (name) => this.errands.gearHandsOf(name),
         opensWithBackstab: (weapons) => this.combat.opensWithBackstab(weapons),
