@@ -2910,6 +2910,7 @@ export class SessionManager {
        * symptom instead of what happened.
        */
       this.notePlayerSteering(state);
+      this.restAway.noteRoom();
       /*
        * And what a lost connection left owed, before anything automated reads
        * the state: the route is handed back to the walker and the loop's hold
@@ -3086,11 +3087,10 @@ export class SessionManager {
        */
       this.stealth.onCharacter(state);
       /*
-       * And *where* the rest is taken, before whether (todo 08): a room that
-       * makes monsters on a short clock is not a resting place while a
-       * neighbour can be looked into and found empty. `took-over` is the rest
-       * refused here and the step out in flight; `rest-here` is a lair with no
-       * safe neighbour, where the rest goes ahead, said once.
+       * And *where* the rest is taken, before whether (todo 08): not in a lair
+       * on a short clock while a neighbour, the room the character came from
+       * first (noted above), is found empty. `took-over` is the step out;
+       * `rest-here` is a lair with no safe neighbour, said once.
        */
       const away = this.restAway.consider(state, this.recovery.wouldRest(state));
       if (away !== 'took-over' && this.mayRest()) this.restNow(state);
