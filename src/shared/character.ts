@@ -291,6 +291,15 @@ export interface RoomExit {
 }
 
 /**
+ * The barrier an exit's note calls shut (`closed gate` → `gate`), or null. One
+ * reading for the walk and the opened-way memory, so the two agree on a door.
+ */
+export function shutBarrier(note: string | null | undefined): string | null {
+  if (note === null || note === undefined) return null;
+  return /^closed\s+(?<barrier>.+)$/.exec(note)?.groups?.['barrier'] ?? null;
+}
+
+/**
  * One thing standing in the room, and which of the two kinds it is.
  *
  * `Also here:` is one comma-separated line and it mixes players and monsters

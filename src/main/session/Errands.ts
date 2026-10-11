@@ -34,6 +34,7 @@ import type { MobEntity } from '../../shared/entities';
 import { spotJoiners } from './spotJoiners';
 import { LairCosts } from '../world/LairCosts';
 import { RoomClocks, type RefillingRoom } from './RoomClocks';
+import { OpenedWays } from './OpenedWays';
 import { lairRunner, runRiskOf, type RunRiskParts } from './runRisk';
 import { withChances } from './routeChances';
 import type { RunRisk } from '../../shared/runPass';
@@ -146,6 +147,7 @@ import {
   nameAnswersTo,
   lairKey,
   parseLair,
+  edgeKey,
   roomAddress,
   roomId,
   type BuyingPlace,
@@ -314,6 +316,8 @@ export class Errands implements SessionModule {
   private readonly clocks: RoomClocks;
   /** How many times faster than the server's own clocks this realm runs, read off its rounds, kept per address. */
   private readonly speed = new RealmSpeed();
+  /** The doors and hidden exits the walk opened, inside their close timers (todo 62). */
+  private readonly openedWays = new OpenedWays(() => this.world ?? null);
   /** The last `fitness` answer and the state it was for; dropped when the family moves. */
   private fitted: { state: CharacterState; key: string } | null = null;
   /** What each room's lair costs this character, remembered per fitness. See `lairDanger`. */
@@ -431,6 +435,7 @@ export class Errands implements SessionModule {
     this.ranFromSaid.clear();
     this.clocks.reset();
     this.speed.reset();
+    this.openedWays.reset();
   }
 
   /**
@@ -440,6 +445,7 @@ export class Errands implements SessionModule {
    */
   onCharacter(state: CharacterState, block: Pick<Block, 'type' | 'at'>): void {
     this.unrefuseWhatTheRoomPrints(state);
+    this.openedWays.onRoom(state);
     this.clocks.onCharacter(state, block, this.tracker.pendingMoves > 0);
     this.speed.healthRose(state.vitals.hp, state.vitals.resting, fightIsRunning(state), block.at);
   }
@@ -480,12 +486,20 @@ export class Errands implements SessionModule {
     return JSON.stringify([loops, movement]);
   }
 
+  /** What the walk tells the session about the ways it met: refused, or opened (todo 62). */
+  walkFacts(): Required<Pick<WalkerEvents, 'refused' | 'opened'>> {
+    return {
+      refused: (from, direction, why) => this.noteRefused(from, direction, why),
+      opened: (from, direction, kind, at) => this.openedWays.noteOpened(from, direction, kind, at)
+    };
+  }
+
   /**
    * A step the live server refused (`WalkerEvents.refused`): avoided for the
    * session, and said in the words that fit the realm's own record of it.
    */
   noteRefused(...[from, direction, why]: Parameters<NonNullable<WalkerEvents['refused']>>): void {
-    const edge = `${from}|${direction}`;
+    const edge = edgeKey(from, direction);
     if (why === 'for-now') {
       const forMs = tuning().walk.refusedForNowMs;
       this.forNowEdges.set(edge, Date.now() + forMs);
@@ -543,7 +557,7 @@ export class Errands implements SessionModule {
     if (map === null || number === null) return;
     const here = roomId(map, number);
     for (const exit of state.room.exits) {
-      const key = `${here}|${exit.direction}`;
+      const key = edgeKey(here, exit.direction);
       // Spent whether or not the edge was still refused, so the offer is made
       // once per edge per session and cannot become a cycle.
       if (!this.shutEdges.delete(key)) continue;
@@ -774,6 +788,17 @@ export class Errands implements SessionModule {
       level: state.progress.level ?? null,
       strength: state.progress.strength ?? null,
       pickSkill: state.progress.picklocks ?? undefined,
+      perception: state.progress.perception,
+      family: this.serverFamily,
+      // Only where the source that states the timers is this server's (todo 62's open question).
+      ...(this.serverFamily === 'greatermud'
+        ? {
+            opened: this.openedWays.openAt(
+              Date.now(),
+              tuning().world.openedWayMs / this.speed.multiplier
+            )
+          }
+        : {}),
       // And which of the two the walker will spend: a door planned on a skill
       // whose switch is off is a door the walk stops at.
       forcing: {

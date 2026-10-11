@@ -340,3 +340,62 @@ describe('Barriers, put down', () => {
     clock.dispose();
   });
 });
+
+describe('the ways the walk opens, told to the session (todo 62)', () => {
+  const hidden = routeOf(
+    stepOf(1, 2, 'e', {
+      requirement: { kind: 'hidden', raw: 'Hidden/Searchable', searchable: true }
+    })
+  );
+
+  // Mutant: the find not told.
+  it('tells the session the hidden exit its search found, and nothing for a miss', () => {
+    const unfound = printing(1, [['n', null]]);
+    const opened = vi.fn();
+    const { walker, sent } = walkerOn({ stateNow: () => unfound, opened });
+    walker.start(hidden, unfound);
+    expect(sent).toEqual(['search e']);
+    // Positive control first: the misses were read (every
+    // `searchRecheckEvery`th one asks for the room again), and opened nothing.
+    const { searchRecheckEvery, searchRetryMs } = DEFAULT_INTERNAL.tuning.walk;
+    for (let miss = 0; miss < searchRecheckEvery; miss += 1) {
+      walker.onBlock(wire('user-search-failed', { direction: 'east' }));
+      vi.advanceTimersByTime(searchRetryMs + 50);
+    }
+    expect(sent).toContain('');
+    expect(opened).not.toHaveBeenCalled();
+    walker.onBlock(wire('user-search-succeeded', { direction: 'east' }));
+    expect(opened).toHaveBeenCalledWith('1/1', 'e', 'hidden', expect.any(Number));
+  });
+
+  // Mutants: the bash not told; a plain open told as starting the timer.
+  it('tells the session the door it bashed open, and not one it only opened', () => {
+    const bashed = vi.fn();
+    const bash = walkerOn(
+      { opened: bashed },
+      configWith({ movement: { bashDoors: true, bashTries: 1 } })
+    );
+    bash.walker.onCharacter(skilled(60, 0));
+    bash.walker.start(GATED, at(1, 1));
+    bash.walker.onBlock(wire('direction-failed', { barrier: 'door' }));
+    vi.advanceTimersByTime(200);
+    expect(moves(bash.sent)).toEqual(['e', 'bas e']);
+    bash.walker.onBlock(wire('door-changed', { barrier: 'door', state: 'open' }));
+    expect(bashed).toHaveBeenCalledWith('1/1', 'e', 'door', expect.any(Number));
+
+    const shut = printing(1, [['e', 'closed door']]);
+    const plain = vi.fn();
+    const open = walkerOn(
+      { stateNow: () => shut, opened: plain },
+      configWith({ movement: { openDoors: true, openTries: 1 } })
+    );
+    open.walker.start(ROUTE, shut);
+    vi.advanceTimersByTime(50);
+    expect(open.sent).toEqual(['open e']);
+    open.walker.onBlock(wire('door-changed', { barrier: 'door', state: 'open' }));
+    // Positive control: the answer was read, since the step went out behind it.
+    vi.advanceTimersByTime(200);
+    expect(moves(open.sent)).toContain('e');
+    expect(plain).not.toHaveBeenCalled();
+  });
+});

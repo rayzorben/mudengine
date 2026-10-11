@@ -766,7 +766,7 @@ export class SessionManager {
         }
         this.tracker.hintMove(command, direction);
       },
-      refused: (from, direction, why) => this.errands.noteRefused(from, direction, why),
+      ...this.errands.walkFacts(),
       // Where the player asked to go, taken here because every walk comes through the walker;
       // and a new walk supersedes a journey still owed from a lost connection, whoever started it.
       destination: (room, name) => {

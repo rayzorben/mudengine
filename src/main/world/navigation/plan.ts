@@ -33,6 +33,7 @@ import {
 } from '../../../shared/world';
 import type { RouteOptions, Traveller } from '../Router';
 import type { ItemSource } from './sources';
+import { standingRequirement } from './exitFamily';
 
 /** What the planner reads of the realm. */
 export interface PlanRealm {
@@ -112,14 +113,25 @@ function wayHolding(
   const keys = [...new Set([...held, ...extra])];
   const options: RouteOptions = within === undefined ? {} : { within };
   const way = realm.route(from, to, { ...traveller, keys }, options);
-  return walkable(way) ? { way, needs: keysUsed(realm, way, held) } : null;
+  return walkable(way) ? { way, needs: keysUsed(realm, way, held, traveller) } : null;
 }
 
-/** The items a way's steps demand that the pack does not hold, each once, in order. */
-function keysUsed(realm: PlanRealm, way: Route, held: readonly number[]): PlannedItem[] {
+/**
+ * The items a way's steps demand that the pack does not hold, each once, in
+ * order; an exit standing open for the traveller demands nothing
+ * (`standingRequirement`, todo 62).
+ */
+function keysUsed(
+  realm: PlanRealm,
+  way: Route,
+  held: readonly number[],
+  traveller: Traveller
+): PlannedItem[] {
   const needs = new Map<number, PlannedItem>();
   for (const step of way.steps) {
-    const id = itemDemanded(step.requirement);
+    const id = itemDemanded(
+      standingRequirement(step.requirement, step.from, step.direction, traveller)
+    );
     if (id === null || held.includes(id) || needs.has(id)) continue;
     needs.set(id, { id, name: realm.itemName(id) ?? `#${id}` });
   }

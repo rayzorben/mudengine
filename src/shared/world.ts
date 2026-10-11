@@ -443,6 +443,18 @@ export interface Requirement {
   /** `Hidden/Searchable` — must be searched for before it can be used. */
   searchable?: boolean;
   /**
+   * `Hidden/Passable` — unlisted, and walked through without a search or a
+   * lever: `HiddenExit.TryMoveThroughExit` lets a `HiddenPassable` exit
+   * through whatever its step (GreaterMUD source, todo 62). 1,000 exits in
+   * each shipped realm.
+   */
+  passable?: boolean;
+  /**
+   * `Ticket/Item: N` — exit type 17, which a GreaterMUD server loads as a
+   * plain exit (`RoomManager.cs:268`, `//fix this`). One exit in each realm.
+   */
+  ticket?: boolean;
+  /**
    * `Hidden/Needs 2 Actions` — how many levers the realm says open it.
    *
    * Kept beside `actions` rather than derived from it, because the two can
@@ -2516,6 +2528,14 @@ export type RoomId = string;
 
 export function roomId(map: number, room: number): RoomId {
   return `${map}/${room}`;
+}
+
+/**
+ * An exit as the router keys it (`Traveller.refused`, `Traveller.opened`): the
+ * room it leaves and its direction. One spelling for the session and the router.
+ */
+export function edgeKey(from: RoomId, direction: string): string {
+  return `${from}|${direction}`;
 }
 
 /**

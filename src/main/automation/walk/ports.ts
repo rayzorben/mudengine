@@ -18,6 +18,9 @@ import type {
   RouteStep
 } from '../../../shared/world';
 
+/** What the walk opened: a door shuts both sides at once, a hidden exit only its own. */
+export type OpenedKind = 'door' | 'hidden';
+
 export interface WalkerEvents {
   /** The session's figure for the realm's speed (`RealmSpeed`), which sets the rounds a run steps between. */
   realmSpeed?(): number;
@@ -179,6 +182,11 @@ export interface WalkerEvents {
     direction: Direction | 'portal',
     why: 'missing' | 'shut' | 'checked' | 'for-now'
   ): void;
+  /**
+   * The walk opened a way at `at`: a door it unlocked or bashed open, or a
+   * hidden exit its search found. Each starts the server's close timer (todo 62).
+   */
+  opened?(from: RoomId, direction: Direction, kind: OpenedKind, at: number): void;
   /**
    * A walk has been started, and this is where it is going.
    *

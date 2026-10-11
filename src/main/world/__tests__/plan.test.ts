@@ -94,6 +94,41 @@ describe('a plan made whole before the first step', () => {
   });
 
   /*
+   * Todo 62: the way to the goal crosses key 1's door, which the walk opened,
+   * then key 2's. Only key 2 is fetched; key 1's door stands open.
+   */
+  it('fetches no key for a door the walk opened', () => {
+    const twoDoors: Route = {
+      steps: [step('here', 'hall', 1), { ...step('hall', 'goal', 2), direction: 'e' }],
+      cost: 10,
+      blocked: false
+    };
+    const keyTwo: Route = {
+      ...shut,
+      blocks: [{ kind: 'key', at: 'hall', to: 'goal', name: 'goal', keyId: 2 }]
+    };
+    const opened: PlanRealm = {
+      ...realm,
+      route: (from, to, traveller: Traveller) => {
+        if (to !== 'goal') return way(from, to);
+        const keys = traveller.keys ?? [];
+        const first = keys.includes(1) || traveller.opened?.has('here|n') === true;
+        return first && keys.includes(2) ? twoDoors : first ? keyTwo : shut;
+      },
+      sources: (item): ItemSource[] => [{ kind: 'buy', room: `shop${item}` }]
+    };
+    const bought = (traveller: Traveller): string[] => {
+      const made = plan(opened, odds(WON), 'here', 'goal', traveller);
+      return made.kind === 'plan'
+        ? made.steps.flatMap((s) => (s.kind === 'buy' ? [s.item.name] : []))
+        : [made.kind];
+    };
+    // Positive control: shut, both keys are bought.
+    expect(bought(nobody).sort()).toEqual(['bone key', 'iron key']);
+    expect(bought({ ...nobody, opened: new Set(['here|n']) })).toEqual(['iron key']);
+  });
+
+  /*
    * Survival never refuses a plan (the user, 2026-10-03): a fight the
    * character would lose, or one not worked out yet, is planned with its odds
    * on the step, and whether to go is the player's.
