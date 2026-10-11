@@ -628,6 +628,15 @@ export type BlockType =
   | 'player-drops'
   | 'user-equipped'
   | 'user-equipped-failed'
+  /**
+   * The equip reply's second line for a weapon (`EquipCommand.cs:147-161`):
+   * `This weapon feels heavy in your hands.` when its `StrReq` is over the
+   * character's strength, else `You are extremely quick and deadly with this
+   * weapon.` when the swing earns the quick-and-deadly bonus. `feel` is
+   * `heavy` or `quick`. Typed so it never reaches the effect learning as an
+   * unread sentence.
+   */
+  | 'user-weapon-feel'
   | 'user-removed'
   /**
    * `Your torch flickers and goes out.` — a readied light has burnt down.
@@ -1091,6 +1100,7 @@ const DOMAIN_OF: Record<BlockType, BlockDomain> = {
   'player-drops': 'items',
   'user-equipped': 'items',
   'user-equipped-failed': 'items',
+  'user-weapon-feel': 'items',
   'user-removed': 'items',
   'light-out': 'items',
   'light-refused': 'items',

@@ -11,12 +11,14 @@ import {
   equip,
   equipAllPlan,
   equipBlock,
+  equipVerdict,
   GEAR_ACTIONS,
   isWearable,
   learnLoadout,
   restorePlan,
   unequip,
   UNKNOWN_WEARER,
+  weaponHeavy,
   type EquipRestrictions,
   type GearSet,
   type GearSituation,
@@ -26,6 +28,7 @@ import {
 import { OFF_HAND, WEAPON_HAND } from '../items';
 import type { CarriedItem } from '../character';
 import { wireItem } from '../entities';
+import type { UiLookup } from '../i18n';
 
 const NOW = 1_700_000_000_000;
 
@@ -333,12 +336,41 @@ describe('who the realm lets wear a thing', () => {
     expect(equipBlock(item({ minLevel: 28 }), mystic)).toBeNull();
   });
 
-  it('refuses a weapon this character cannot lift', () => {
-    expect(equipBlock(item({ weapon: { strength: 90 } }), mystic)).toEqual({
-      kind: 'strength',
-      needs: 90,
-      has: 40
+  /*
+   * Todo 33: platinum mace (StrReq 45) went on a Strength 40 Priest with
+   * `This weapon feels heavy in your hands.` The server never refuses on
+   * strength (`EquipCommand.cs:147`), so neither does this.
+   */
+  it('lets a weapon over the character’s strength go on, marked heavy', () => {
+    const mace = item({ kind: 'weapon', weapon: { strength: 90 } });
+    expect(equipBlock(mace, mystic)).toBeNull();
+    expect(weaponHeavy(mace, mystic)).toEqual({ needs: 90, has: 40 });
+  });
+
+  it('offers the heavy weapon with the note, in the one verdict the card and listing share', () => {
+    const said: UiLookup = (key, params) => JSON.stringify({ key, params });
+    const mace = {
+      ...wireItem('platinum mace'),
+      id: 348,
+      realmSlot: 'Weapon Hand',
+      kind: 'weapon' as const,
+      weapon: { min: 6, max: 15, kind: 0, strength: 45 }
+    };
+    const verdict = equipVerdict(mace, mystic, said);
+    expect(verdict.state).toBe('wearable');
+    expect(JSON.parse(verdict.label)).toEqual({
+      key: 'cards.inventory.equipHeavyTooltip',
+      params: { item: 'platinum mace', needed: 45, have: 40 }
     });
+    // The control: the same mace on a stronger character carries the plain tooltip.
+    const strong = equipVerdict(mace, { ...mystic, strength: 45 }, said);
+    expect(JSON.parse(strong.label).key).toBe('cards.inventory.equipTooltip');
+  });
+
+  it('marks nothing heavy at exactly its strength, or with either half unknown', () => {
+    expect(weaponHeavy(item({ weapon: { strength: 40 } }), mystic)).toBeNull();
+    expect(weaponHeavy(item({ weapon: { strength: 90 } }), UNKNOWN_WEARER)).toBeNull();
+    expect(weaponHeavy(item({ weapon: {} }), mystic)).toBeNull();
   });
 
   /*

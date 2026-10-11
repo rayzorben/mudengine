@@ -9978,6 +9978,40 @@ describe('the spell message table and what it teaches', () => {
     expect(names(tracker)).toContain('odd hum');
   });
 
+  /*
+   * Todo 33: `ar mace` on orohost printed the heavy line after the equip and
+   * the client spent an `st` on it, then wrote it down as no lasting effect.
+   * The control is an unclaimed sentence in the same place, which does ask.
+   */
+  it('wants no stat sheet for the equip reply’s heavy line', () => {
+    const { lore } = table();
+    const opening = [
+      '[HP=34]:',
+      'You cast strange glow on yourself!',
+      'You shimmer with a strange light.',
+      { wait: 60_000 },
+      'You are now holding platinum mace.'
+    ];
+    const heavy = play(
+      [...opening, 'This weapon feels heavy in your hands.'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      lore
+    );
+    expect(heavy.takeSheetRequest()).toBe(false);
+    const control = play(
+      [...opening, 'The strange light fades.'],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      table().lore
+    );
+    expect(control.takeSheetRequest()).toBe(true);
+  });
+
   it('wants the stat sheet only when a sheet could settle the question', () => {
     const { lore } = table();
     // A learned start means the sheet would print it: one buff, one unknown ending — ask.
