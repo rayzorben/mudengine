@@ -288,6 +288,8 @@ export interface CharacterFields {
   questsEnabled: boolean;
   /** Which kit to be in, and when — `automation.gear`. */
   gearEnabled: boolean;
+  /** The armour the room calls for, `automation.gear.resists`. */
+  gearResists: boolean;
   gearSets: GearSet[];
   gearOffRoundItem: string;
   /** As text, so a half-typed figure is not read as 0. */
@@ -550,6 +552,7 @@ export function formOf(entry: ProfileEditable): CharacterFields {
     trainWanted: wantedStrings(entry.train.wanted),
     questsEnabled: entry.quests.enabled,
     gearEnabled: entry.gear.enabled,
+    gearResists: entry.gear.resists,
     gearSets: entry.gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
     gearOffRoundItem: entry.gear.offRound.item,
     gearOffRoundEvery:
@@ -768,7 +771,8 @@ export function draftOf(form: CharacterFields): ProfileDraft {
       offRound: {
         item: form.gearOffRoundItem.trim(),
         everyRounds: Number.parseInt(form.gearOffRoundEvery, 10) || 0
-      }
+      },
+      resists: form.gearResists
     },
     loot: form.loot,
     drop: form.drop,
@@ -1045,6 +1049,7 @@ export function emptyForm(
     trainWanted: wantedStrings(train.wanted),
     questsEnabled: quests.enabled,
     gearEnabled: gear.enabled,
+    gearResists: gear.resists,
     gearSets: gear.sets.map((set) => ({ ...set, wear: [...set.wear] })),
     gearOffRoundItem: gear.offRound.item,
     gearOffRoundEvery: gear.offRound.everyRounds > 0 ? String(gear.offRound.everyRounds) : '',

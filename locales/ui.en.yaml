@@ -319,6 +319,9 @@ notices:
     gearLockHours:
       many: 'Hold Gear After Death was added, at {hours} hours, to {count} files: {fileList}'
       one: 'Hold Gear After Death was added, at {hours} hours, to {fileList}'
+    resistGear:
+      many: 'Wear Resist Gear was added, on, to {count} files: {fileList}'
+      one: 'Wear Resist Gear was added, on, to {fileList}'
     lootUpgrades:
       many: 'Auto-Get Better Gear was added, on, to {count} files: {fileList}'
       one: 'Auto-Get Better Gear was added, on, to {fileList}'
@@ -4378,6 +4381,9 @@ settings:
       walking, fighting, or fighting one named monster. The off-hand item comes off before a
       two-handed weapon goes on, and the weapon hand goes first, so switching back frees the hand
       before the shield is equipped.'
+    resists: Wear Resist Gear
+    resistsHint: Wears carried armour that resists the cold, fire, lightning, stone or water this
+      room and its monsters cast, and puts back what it replaced once you leave the room.
     setAdd: Add a set
     setNamePlaceholder: What to call it
     setNameAria: Set {number} name
@@ -5020,7 +5026,8 @@ session:
     exitRefused: The world data says there is an exit {direction}, but the game refuses it; routes
       will avoid it.
     # Todo 65: a room command refused by a check that can pass later (a room to empty, a roll).
-    exitForNow: The game would not let you take the way {direction} just now; routes will go round it
+    exitForNow:
+      The game would not let you take the way {direction} just now; routes will go round it
       for {seconds} seconds.
     # Todo 65: a room command refused by a level, class or item check.
     exitChecked: The game will not let you take the way {direction}; routes will avoid it.
@@ -5714,6 +5721,8 @@ automation:
     noneRecorded: No worn slot is recorded yet, so there is nothing to put back on. Type i to list
       what you are wearing.
     wearing: 'Changing into {set}.'
+    forPlace: 'Wearing {items} against what this room casts.'
+    placeBack: 'Putting {items} back on.'
     missingFromSet: '{item} is in an equipment set but not in your inventory.'
     offRound: 'Using {item} on {target} between rounds.'
     offRoundMissing: '{item} is set to be used between rounds but is not in your inventory.'

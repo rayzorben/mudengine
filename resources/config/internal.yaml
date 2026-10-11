@@ -1441,6 +1441,11 @@ tuning:
     # One press of the gear button.
     maxGear: 10
 
+  # The armour the room the character stands in calls for.
+  placeGear:
+    # Hit points a round a swap has to save before it is made.
+    minSaved: 2
+
   # What one session keeps in memory for the diagnostics cards.
   session:
     # How far experience must fall before the client suspects a character was

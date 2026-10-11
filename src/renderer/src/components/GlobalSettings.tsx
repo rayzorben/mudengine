@@ -13,6 +13,7 @@ import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
 import MobRuleList from './MobRuleList';
 import GearSetList from './GearSetList';
+import GearSwitches from './GearSwitches';
 import PotionList from './PotionList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
 import SettingsSection from './SettingsSection';
@@ -1783,14 +1784,12 @@ export default function GlobalSettings({
             <fieldset className="settings-menus" data-fieldset="gear">
               <legend>{t('settings.gear.legend')}</legend>
               <p className="settings-note">{t('settings.gear.note')}</p>
-              <CheckField
-                checked={draft.automation.gear.enabled}
-                hint={t('settings.gear.enabledHint')}
-                label={t('settings.gear.enabled')}
-                name="global-gear-enabled"
-                onChange={(value) =>
-                  automation({ gear: { ...draft.automation.gear, enabled: value } })
-                }
+              <GearSwitches
+                enabled={draft.automation.gear.enabled}
+                namePrefix="global-gear"
+                onEnabled={(enabled) => automation({ gear: { ...draft.automation.gear, enabled } })}
+                onResists={(resists) => automation({ gear: { ...draft.automation.gear, resists } })}
+                resists={draft.automation.gear.resists}
               />
               <GearSetList
                 mobs={[]}

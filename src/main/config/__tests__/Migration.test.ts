@@ -7051,6 +7051,53 @@ describe('the hours a death keeps the saved gear are stated', () => {
   });
 });
 
+// Armour for the room (todo 69): on after offRound, once.
+describe('wearing resist gear for the room is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-resist-gear-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch on after offRound, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      "automation:\n  gear:\n    enabled: false\n    sets: []\n    offRound:\n      item: ''\n      everyRounds: 0\n",
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  gear:\n    resists: false\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const gear = (parse(text).automation as Record<string, Record<string, unknown>>)['gear']!;
+    const keys = Object.keys(gear);
+    expect(keys[keys.indexOf('offRound') + 1]).toBe('resists');
+    expect(gear['resists']).toBe(true);
+    expect(fs.readFileSync(soul, 'utf8')).toContain('resists: false');
+    expect(
+      notesOf(said, 'notices.migration.resistGear.one', 'notices.migration.resistGear.many')
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
 // Better gear off the floor (todo 77): on after maxEncumbrance, once.
 describe('taking better gear off the floor is stated', () => {
   let home: Home;
