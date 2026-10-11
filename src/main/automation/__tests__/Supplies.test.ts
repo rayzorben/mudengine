@@ -763,7 +763,7 @@ describe('a row that names no shop', () => {
     expect(passed).toHaveLength(TUNING.supplies.countersPerTrip);
   });
 
-  it('answers each row\'s counter for the Supplies face, passing over an empty one', () => {
+  it("answers each row's counter for the Supplies face, passing over an empty one", () => {
     const { planner: p } = planner({
       shopRoom: (row, passOver) =>
         row.name === 'torch'

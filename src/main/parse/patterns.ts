@@ -1802,9 +1802,7 @@ export const RULES: Rule[] = [
    */
   {
     type: 'trap-disarmed',
-    pattern: new RegExp(
-      `^You successfully disarmed the trap to the (?<direction>${ANY_WAY})\\.$`
-    )
+    pattern: new RegExp(`^You successfully disarmed the trap to the (?<direction>${ANY_WAY})\\.$`)
   },
   { type: 'trap-disarmed', pattern: /^The trap is already disarmed\.$/ },
   /*
@@ -1814,9 +1812,7 @@ export const RULES: Rule[] = [
    */
   {
     type: 'user-tracks',
-    pattern: new RegExp(
-      `^(?<player>[A-Z][\\w'-]*) went (?<direction>${ANY_WAY}) from here\\.$`
-    )
+    pattern: new RegExp(`^(?<player>[A-Z][\\w'-]*) went (?<direction>${ANY_WAY}) from here\\.$`)
   },
   { type: 'user-tracks-failed', pattern: /^Your tracking skills fail you this time\.$/ },
   {
