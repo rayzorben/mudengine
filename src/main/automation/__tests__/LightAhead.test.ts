@@ -162,12 +162,82 @@ describe('a route through the dark', () => {
     expect(decisions.every((decision) => !decision.acted)).toBe(true);
   });
 
+  it('names the carried light that is not bright enough', () => {
+    const deep = { ...CAVE, steps: [step('1/2'), step('1/3', -260)] } as Route;
+    ahead().beforeRoute(deep, character([torchCarried()]), false);
+    expect(collected[0]?.items).toEqual([{ id: 176, name: 'lantern', count: 1, dark: true }]);
+    expect(notices).toEqual([
+      t('automation.lightAhead.buyingBrighter', {
+        dark: 1,
+        carried: 'torch',
+        reach: 100,
+        want: 110,
+        item: 'lantern',
+        count: 1
+      })
+    ]);
+  });
+
   it('says the item trip refused, and walks on', () => {
     collectRefusal = 'Auto-Buy is off';
     expect(ahead().beforeRoute(CAVE, character([]), false)).toBe(false);
     expect(notices).toEqual([
       t('automation.lightAhead.refusalCollect', { why: 'Auto-Buy is off' })
     ]);
+  });
+});
+
+/**
+ * Brakkle, 2026-10-10: Musty Grottos at −200 under `lightDimRooms`, a brass
+ * lamp (175) carried. It reads every room as dimly lit, so the moon-lamp
+ * (200) 1,816 steps off is named, never bought.
+ */
+describe('rooms a carried light leaves dimly lit', () => {
+  const MOON_LAMP: RealmLight = { id: 1153, name: 'moon-lamp', reach: 200, uses: null };
+  const lamp: ItemEntity = { ...wireItem('brass lamp'), kind: 'light', abilities: [[54, 175]] };
+  const grottos = {
+    ...CAVE,
+    steps: [step('1/9450', -200), step('1/9459', -200), step('1/9460', -200)]
+  } as Route;
+
+  beforeEach(() => {
+    sold = [TORCH, LANTERN, MOON_LAMP];
+    counters = [shop(1153)];
+  });
+
+  it('buys nothing for them, and says once what would light them', () => {
+    settings = config({ lightDimRooms: true });
+    const light = ahead();
+    expect(light.beforeRoute(grottos, character([lamp]), false)).toBe(false);
+    lap = grottos.steps;
+    light.beforeLap({ name: 'grottos', stops: [] }, character([lamp]));
+    expect(collected).toEqual([]);
+    expect(notices).toEqual([t('automation.lightAhead.dimOnly', { dim: 3, items: 'moon-lamp' })]);
+    expect(decisions.map((decision) => decision.acted)).toEqual([false]);
+  });
+
+  it('says how many stay dim where nothing sold lights them fully', () => {
+    settings = config({ lightDimRooms: true });
+    sold = [TORCH, LANTERN];
+    const dimmer = { ...grottos, steps: [...grottos.steps, step('1/9461', -150)] } as Route;
+    const torches = character([torchCarried()]);
+    expect(ahead().beforeRoute(dimmer, torches, false)).toBe(false);
+    expect(collected).toEqual([]);
+    expect(notices).toEqual([
+      t('automation.lightAhead.dimOnlyShort', { dim: 4, items: 'lantern', unlit: 3 })
+    ]);
+  });
+
+  it('says nothing about them with the setting off', () => {
+    expect(ahead().beforeRoute(grottos, character([lamp]), false)).toBe(false);
+    expect(collected).toEqual([]);
+    expect(notices).toEqual([]);
+  });
+
+  it('still buys where nothing carried reads them', () => {
+    settings = config({ lightDimRooms: true });
+    ahead().beforeRoute(grottos, character([]), false);
+    expect(collected[0]?.items).toMatchObject([{ id: 1153 }]);
   });
 });
 

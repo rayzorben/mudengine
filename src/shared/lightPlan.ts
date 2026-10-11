@@ -89,14 +89,28 @@ export function darkWay(
   return reaches.length === 0 ? null : { reaches, span: last - first + 1 };
 }
 
+/** A carried light by name and stated reach. */
+export interface NamedReach {
+  name: string;
+  reach: number;
+}
+
 export type LightAheadPlan =
   /** A usable light in the pack reaches as far as anything sold would. */
   | { kind: 'carried' }
   /**
    * Buy one of `lights`, each reaching as far as anything sold reaches.
-   * `unlit` is how many dark steps stay dark even so.
+   * `unlit` is how many dark steps stay dark even so; `want` is the reach the
+   * darkest step wants; `brightest` is the usable carried light of stated
+   * reach that falls short, or null for none.
    */
-  | { kind: 'buy'; lights: RealmLight[]; unlit: number }
+  | {
+      kind: 'buy';
+      lights: RealmLight[];
+      unlit: number;
+      want: number;
+      brightest: NamedReach | null;
+    }
   | { kind: 'none'; reason: 'nothing sold' | 'nothing reaches' };
 
 /**
@@ -120,10 +134,18 @@ export function planLight(
     return { kind: 'none', reason: sold.length === 0 ? 'nothing sold' : 'nothing reaches' };
   }
   if (usable.some(reaches)) return { kind: 'carried' };
+  let brightest: NamedReach | null = null;
+  for (const light of usable) {
+    if (light.reach !== null && (brightest === null || light.reach > brightest.reach)) {
+      brightest = { name: light.name, reach: light.reach };
+    }
+  }
   return {
     kind: 'buy',
     lights: sold.filter((light) => light.reach >= target),
-    unlit: way.reaches.filter((reach) => reach > target).length
+    unlit: way.reaches.filter((reach) => reach > target).length,
+    want,
+    brightest
   };
 }
 

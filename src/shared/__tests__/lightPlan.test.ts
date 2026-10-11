@@ -71,7 +71,9 @@ describe('what to do about it', () => {
     expect(planLight(way, [], [TORCH, LANTERN])).toEqual({
       kind: 'buy',
       lights: [TORCH, LANTERN],
-      unlit: 0
+      unlit: 0,
+      want: 75,
+      brightest: null
     });
   });
 
@@ -80,13 +82,19 @@ describe('what to do about it', () => {
     expect(planLight(way, [carried({ reach: null })], [TORCH])).toEqual({ kind: 'carried' });
   });
 
-  it('buys over a spent light, and over one too weak', () => {
-    expect(planLight(way, [carried({ charges: 0 })], [TORCH]).kind).toBe('buy');
+  it('buys over a spent light, and over one too weak, naming the brightest that falls short', () => {
+    expect(planLight(way, [carried({ charges: 0 })], [TORCH])).toMatchObject({
+      kind: 'buy',
+      brightest: null
+    });
     const deep = { reaches: [150], span: 1 };
-    expect(planLight(deep, [carried()], [TORCH, LANTERN])).toEqual({
+    const pack = [carried({ name: 'candle', reach: 50 }), carried(), carried({ charges: 0 })];
+    expect(planLight(deep, pack, [TORCH, LANTERN])).toEqual({
       kind: 'buy',
       lights: [LANTERN],
-      unlit: 0
+      unlit: 0,
+      want: 150,
+      brightest: { name: 'torch', reach: 100 }
     });
   });
 
@@ -95,7 +103,9 @@ describe('what to do about it', () => {
     expect(planLight(deep, [], [TORCH, LANTERN])).toEqual({
       kind: 'buy',
       lights: [LANTERN],
-      unlit: 1
+      unlit: 1,
+      want: 849,
+      brightest: null
     });
   });
 
