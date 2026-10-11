@@ -257,6 +257,32 @@ describe('putting the light out', () => {
     expect(sent).toEqual([]);
   });
 
+  /* Six typed `e` sent a `remove` of the light once per room, all six in the last (todo 88). */
+  it('waits for the moves typed ahead, then removes it once', () => {
+    let moves = 6;
+    const auto = new AutoLight(movement(), true, queue, { moveInFlight: () => moves > 0 });
+    const lit = character([torch({ equipped: true, slot: 'Readied', charges: 62 })]);
+    for (; moves > 0; moves -= 1) {
+      auto.onCharacter({ ...lit, room: { ...lit.room, number: 100 + moves } }, false);
+    }
+    drain();
+    expect(sent).toEqual([]);
+    auto.onCharacter(lit, false);
+    drain();
+    expect(sent).toEqual(['remove torch']);
+  });
+
+  it('drops the remove when a move is typed before it goes out', () => {
+    let moves = 0;
+    const auto = new AutoLight(movement(), true, queue, { moveInFlight: () => moves > 0 });
+    queue.noteTyping(true);
+    auto.onCharacter(character([torch({ equipped: true, slot: 'Readied', charges: 62 })]), false);
+    moves = 1;
+    queue.noteTyping(false);
+    drain();
+    expect(sent).toEqual([]);
+  });
+
   it('leaves the torch lit for a race whose vision needs it in this room', () => {
     // −100 with vision 0 and torch 100 reads 0; without the torch, −100 is
     // barely visible — readable, so the torch comes out. With dim rooms on

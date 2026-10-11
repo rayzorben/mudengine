@@ -60,6 +60,26 @@ import type { SearchConfig } from '../../shared/config';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
+/** What the session tells the search, asked at the proposal and again at the send. */
+export interface SearchEvents {
+  /**
+   * The character as it is *now*, for the ask made at the send.
+   *
+   * The state handed to `onCharacter` is the state the proposal was made
+   * against, and the whole point of the second ask is that it is no longer
+   * true. `Walker` takes its own `stateNow` for the same reason.
+   */
+  stateNow(): CharacterState;
+  /** `AutoCombat.quarry`: asked rather than worked out, for `holdAt`'s reason. */
+  quarry(state: CharacterState): boolean;
+  /**
+   * Whether a move is outstanding (`CharacterTracker.pendingMoves`). The
+   * server runs typed-ahead moves before anything sent now, so a search sent
+   * while one waits lands in the room the moves end in (todo 88).
+   */
+  moveInFlight(): boolean;
+}
+
 /**
  * How this client addresses the room it is standing in, for the purpose of
  * remembering that it has looked here.
@@ -103,21 +123,24 @@ export class AutoSearch implements SessionModule {
     private config: SearchConfig,
     private enabled: boolean,
     private readonly queue: CommandQueue,
-    /**
-     * The character as it is *now*, for the ask made at the send.
-     *
-     * The state handed to `onCharacter` is the state the proposal was made
-     * against, and the whole point of the second ask is that it is no longer
-     * true. `Walker` takes its own `stateNow` for the same reason.
-     */
-    private readonly stateNow: () => CharacterState,
-    /** `AutoCombat.quarry`: asked rather than worked out, for `holdAt`'s reason. */
-    private readonly quarry: (state: CharacterState) => boolean
+    private readonly events: SearchEvents
   ) {}
 
   /** A fight running here, or one auto-combat is about to open. */
   private fightHere(state: CharacterState): boolean {
-    return fightIsRunning(state) || this.quarry(state);
+    return fightIsRunning(state) || this.events.quarry(state);
+  }
+
+  /**
+   * Whether a search sent now would be about `here`: no fight, no move the
+   * server has still to run, and the character still standing on the arrival
+   * it was proposed for. Six typed `e` put six moves in the server's input
+   * before the first room printed, and a search proposed on that room ran
+   * after all six (todo 88).
+   */
+  private searchesHere(here: string): boolean {
+    const now = this.events.stateNow();
+    return !this.fightHere(now) && !this.events.moveInFlight() && whereIsThis(now) === here;
   }
 
   configure(config: SearchConfig, enabled: boolean): void {
@@ -161,6 +184,8 @@ export class AutoSearch implements SessionModule {
      * pair would disagree about the round between a kill and the next swing.
      */
     if (this.fightHere(state)) return;
+    // A search sent now would run in the room the typed moves end in.
+    if (this.events.moveInFlight()) return;
     if (this.tries >= this.config.tries) return;
 
     this.queue.enqueue({
@@ -184,11 +209,11 @@ export class AutoSearch implements SessionModule {
       coalesceKey: `search:${here}`,
       expiresAt: Date.now() + tuning().search.expiresMs,
       /*
-       * The fight that started between the proposal and the send. Dropped
-       * rather than held: the next status line after the fight proposes it
+       * The fight that started, or the move typed, between the proposal and
+       * the send. Dropped rather than held: the next status line proposes it
        * again, and the budget below is spent on what actually went out.
        */
-      stillWanted: () => !this.fightHere(this.stateNow()),
+      stillWanted: () => this.searchesHere(here),
       /*
        * **Counted at the send, never at the proposal.** A search the guard
        * above dropped never reached the server, and charging it to the room's
