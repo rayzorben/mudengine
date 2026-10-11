@@ -18,6 +18,7 @@ import { loopIsResting, type LoopProgress } from '@shared/loops';
 import { keepFocus } from '../lib/focus';
 import { useTabDrag } from '../hooks/useTabDrag';
 import { t } from '../lib/i18n';
+import type { Unseen } from '../lib/unseen';
 import { dialWaits, type ConnectionState } from '@shared/types';
 
 /**
@@ -44,7 +45,7 @@ export interface RailView {
    * and the point of this rail is that it reports on the ones whose terminal is
    * not on screen. Vitals and walk state already reached it; alerts did not.
    */
-  unseen: { critical: number; warning: number; latest: string | null };
+  unseen: Unseen;
 }
 
 export interface TabRailProps {
@@ -114,6 +115,10 @@ export interface TabRailProps {
   onToggleConnection(session: SessionId): void;
   /** Stop reconnecting this character: the tab's second control while a reconnect runs. */
   onStopRetrying(session: SessionId): void;
+}
+
+function mentionLabel(count: number): string {
+  return count === 1 ? t('tabs.tab.mentionSingular') : t('tabs.tab.mentionPlural', { count });
 }
 
 function alertLabel(count: number): string {
@@ -651,6 +656,18 @@ function TabRail({
                 is left (`.tab .name`, `flex: 1 1 auto`), so both hug the right
                 without either needing an offset of its own.
               */}
+                  {/*
+                    Somebody wrote `@name` while the tab was not in front (todo
+                    29). Its own mark beside the status: a mention says nothing
+                    about what the character is doing, and `attention()`'s one
+                    mark per tab is for that. When drawn it takes the push to
+                    the right edge and the status sits beside it.
+                  */}
+                  {view !== undefined && view.unseen.mentions > 0 && (
+                    <span className="mention" title={view.unseen.mention ?? undefined}>
+                      {mentionLabel(view.unseen.mentions)}
+                    </span>
+                  )}
                   {mark && (
                     // The newest alert as the tooltip: the count says how much and
                     // this says what, without the tab growing to hold a sentence.

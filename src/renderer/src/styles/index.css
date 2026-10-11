@@ -6133,13 +6133,17 @@ button.quest-tile-name:hover:not(:disabled) {
  * pair the eye goes to when a character it is not watching starts doing
  * something, so it may not depend on another element having room.
  */
-.tab .mark {
+.tab .mark,
+.tab .mention {
   flex: 0 0 auto;
   margin-left: auto;
   padding: 1px 5px;
   border-radius: var(--r-chip);
   font-size: 0.62rem;
   letter-spacing: 0.04em;
+}
+
+.tab .mark {
   text-transform: uppercase;
 }
 
@@ -6161,6 +6165,20 @@ button.quest-tile-name:hover:not(:disabled) {
 .tab .mark[data-level='info'] {
   background: color-mix(in srgb, var(--tab-accent) var(--tone), transparent);
   color: var(--tab-accent);
+}
+
+/*
+ * Somebody wrote `@name` while the tab was not in front (todo 29). The chip's
+ * own shape in the accent, the loud element, since it is aimed at the player;
+ * it takes the push to the right edge and the status mark sits beside it.
+ */
+.tab .mention {
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
+}
+
+.tab .mention + .mark {
+  margin-left: 4px;
 }
 
 /* A disconnected character is dimmed rather than marked twice over. */
@@ -7129,6 +7147,17 @@ button.quest-tile-name:hover:not(:disabled) {
   grid-template-columns: var(--talk-stamp-track,) auto auto minmax(0, 1fr);
   gap: 3px 6px;
   align-items: baseline;
+}
+
+/*
+ * `@name` in somebody else's line (todo 29): the word in the accent, on the
+ * tonal ground the chips use, so the eye finds it in a page of gossip.
+ */
+.conversation-log mark.mention {
+  padding: 0 2px;
+  border-radius: var(--r-chip);
+  background: color-mix(in srgb, var(--accent) var(--tone), transparent);
+  color: var(--accent);
 }
 
 /* The stamp's column, where one is drawn: empty, the templates have none. */

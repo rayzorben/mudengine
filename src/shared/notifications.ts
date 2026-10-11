@@ -64,6 +64,8 @@ export const NOTICE_CHANNELS = [
   'items',
   'stealth',
   'presence',
+  // Somebody else's line of talk that is about this character (`@name`, todo 29).
+  'talk',
   'session'
 ] as const;
 
@@ -86,7 +88,15 @@ export type NoticeChannel = (typeof NOTICE_CHANNELS)[number];
  * window rests a notification's *kind* on, so a burst of blows cannot swallow
  * the notice that the character then died.
  */
-export const DESKTOP_ALERTS = ['attacked', 'hurt', 'arrived', 'hungup', 'critical'] as const;
+export const DESKTOP_ALERTS = [
+  'attacked',
+  'hurt',
+  'arrived',
+  'hungup',
+  // Its own rest, so a player spamming `@name` cannot hold back a `critical`.
+  'mentioned',
+  'critical'
+] as const;
 
 export type DesktopAlert = (typeof DESKTOP_ALERTS)[number];
 
@@ -507,6 +517,8 @@ export const ALERT_EVENTS = {
   'hostile-in-realm': { channel: 'realm', types: [] },
   'party-hurt': { channel: 'party', types: [] },
   'vitals-crossing': { channel: 'vitals', types: [] },
+  // Somebody's line with `@name` in it (`mentionNotice`, `src/shared/mentions.ts`).
+  mentioned: { channel: 'talk', types: [] },
 
   /* The character itself, and the connection under it. */
   'level-ready': { channel: 'session', types: [] },
@@ -761,7 +773,7 @@ export function watchOf(on: AlertEvent): AlertWatch | undefined {
  * on it — nothing to read, nothing to copy, and no way to learn what a row can
  * say without writing one blind.
  *
- * **Four rows, in the two categories the ask named**, and every one of them a
+ * **Five rows**, the first four in the two categories the ask named, and every one of them a
  * thing somebody would otherwise have had to discover:
  *
  * - the two vitals, as the crossings a player actually watches for, with the
@@ -770,7 +782,9 @@ export function watchOf(on: AlertEvent): AlertWatch | undefined {
  *   the one the channels cannot say — `combat` carries every monster's blow as
  *   well;
  * - arriving where you asked to go, which is `info` in the ranking and is the
- *   reason somebody walked away from the keyboard.
+ *   reason somebody walked away from the keyboard;
+ * - somebody writing `@name` (todo 29, 2026-10-10), notified because the user
+ *   asked for exactly that.
  *
  * Low health also sounds (todo 80, MegaMUD's `[Alerts]`); any row can.
  *
@@ -842,6 +856,22 @@ export const STARTER_ALERTS: readonly AlertRule[] = [
     percent: false,
     name: '',
     quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
+  },
+  // Somebody writing `@name` (todo 29): the user asked for the desktop notification.
+  {
+    on: 'mentioned',
+    enabled: true,
+    level: null,
+    alert: true,
+    notify: true,
+    whileFocused: false,
+    onlyAway: false,
+    sound: false,
+    side: 'below',
+    value: 0,
+    percent: false,
+    name: '',
+    quietSeconds: DEFAULT_ALERT_DEBOUNCE_SECONDS
   }
 ];
 
@@ -877,6 +907,15 @@ export function ruleFor(rules: readonly AlertRule[], notice: Notice): AlertRule 
     if (rule.enabled && rule.on === notice.event) return rule;
   }
   return null;
+}
+
+/**
+ * Whether an enabled row names `event`: the gate for a notice drawn from talk
+ * (`telepathNotice`, `mentionNotice`), since conversation belongs on the Talk
+ * card and `wanted` shows a notice no row claims.
+ */
+export function rowAsks(rules: readonly AlertRule[], event: AlertEvent): boolean {
+  return rules.some((rule) => rule.enabled && rule.on === event);
 }
 
 /**

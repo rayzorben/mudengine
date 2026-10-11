@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { keepRoster } from '../lib/roster';
 import { tuning } from '../lib/tuning';
+import { EMPTY_UNSEEN, mentionMissed, missed, nothingUnseen, type Unseen } from '../lib/unseen';
 import type { AlertRaiser } from './useAlerts';
 import { EMPTY_AUTOMATION, type AutomationSnapshot } from '@shared/automation';
 import type { Block } from '@shared/blocks';
@@ -102,9 +103,10 @@ export interface SessionView {
    *
    * Cleared when the character is put on screen, because that is what "seen"
    * means. Counted rather than kept: the notices themselves are already in
-   * `notices`, and a tab has room for a number.
+   * `notices`, and a tab has room for a number. Mentions of `@name` are
+   * counted beside them (`lib/unseen.ts`).
    */
-  unseen: { critical: number; warning: number; latest: string | null };
+  unseen: Unseen;
   /**
    * What this character has found that the realm data does not have.
    *
@@ -140,8 +142,6 @@ export interface SessionView {
   gearTrip: GearTripProgress | null;
 }
 
-const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
-
 export const EMPTY_VIEW: SessionView = {
   state: IDLE_CONNECTION,
   character: EMPTY_CHARACTER,
@@ -164,30 +164,6 @@ export const EMPTY_VIEW: SessionView = {
   questRun: IDLE_QUEST_RUN,
   gearTrip: null
 };
-
-/**
- * Folds new notices into the unseen count for a character.
- *
- * A character on screen has seen them by definition, so nothing accumulates for
- * the one being played — the count exists for the other three. `info` is not
- * counted: a tab that lights up for somebody arriving in the realm is a tab
- * nobody reads, and the whole value of the mark is that it is rare.
- */
-function missed(
-  current: SessionView['unseen'],
-  raised: Notice[],
-  shown: boolean
-): SessionView['unseen'] {
-  if (shown) return current.critical === 0 && current.warning === 0 ? current : EMPTY_UNSEEN;
-  const worth = raised.filter((notice) => notice.severity !== 'info');
-  if (worth.length === 0) return current;
-  return {
-    critical: current.critical + worth.filter((n) => n.severity === 'critical').length,
-    warning: current.warning + worth.filter((n) => n.severity === 'warning').length,
-    // The newest, for the tab's title: a number says how much and this says what.
-    latest: worth[worth.length - 1]!.text
-  };
-}
 
 /** Keeps a log bounded without reallocating it on every append. */
 function capped<T>(log: T[], entry: T, limit: number): T[] {
@@ -363,9 +339,7 @@ export function useSessionViews(
   useEffect(() => {
     shownRef.current = new Set(shown);
     for (const id of shown) {
-      patchView(id, (v) =>
-        v.unseen.critical === 0 && v.unseen.warning === 0 ? v : { ...v, unseen: EMPTY_UNSEEN }
-      );
+      patchView(id, (v) => (nothingUnseen(v.unseen) ? v : { ...v, unseen: EMPTY_UNSEEN }));
     }
   }, [shown, patchView]);
 
@@ -484,10 +458,14 @@ export function useSessionViews(
            * The roster that tells them apart is on the view being patched.
            */
           const raised = alerts.block(id, payload, v.character);
+          const onScreen = shownRef.current.has(id);
+          const told = heard(v, raised, onScreen);
           return {
             ...v,
             talk: conversation ? capped(v.talk, payload, tuning().talkLimit) : v.talk,
-            ...heard(v, raised, shownRef.current.has(id))
+            ...told,
+            // A line with `@name` in it marks the tab whatever the alert rows let through (todo 29).
+            unseen: mentionMissed(told.unseen, payload, v.character.name, onScreen)
           };
         });
       })

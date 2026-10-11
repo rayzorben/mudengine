@@ -16,6 +16,7 @@ import type { CharacterState } from '@shared/character';
 import type { AlertsUiConfig, VitalsUiConfig } from '@shared/config';
 import type { SessionId } from '@shared/ipc';
 import type { GearTripProgress } from '@shared/gearTrip';
+import { mentionNotice } from '@shared/mentions';
 import {
   alertQuiet,
   linkNotices,
@@ -157,8 +158,13 @@ export function useAlerts(vitals: VitalsUiConfig, alerts: AlertsUiConfig): Alert
       walk: (id, was, now) => worth(id, walkNotices(was, now, Date.now(), t)),
       questRun: (id, was, now) => worth(id, questRunNotices(was, now, Date.now())),
       gearTrip: (id, was, now) => worth(id, gearTripNotices(was, now, Date.now())),
+      // Telepaths and `@name` mentions (todo 29) each only while a row asks.
       block: (id, block, character) =>
-        worth(id, [noticeFor(block, t, character), telepathNotice(block, alertsRef.current.rules)])
+        worth(id, [
+          noticeFor(block, t, character),
+          telepathNotice(block, alertsRef.current.rules),
+          mentionNotice(block, character.name, alertsRef.current.rules)
+        ])
     };
   });
   return raiser;
