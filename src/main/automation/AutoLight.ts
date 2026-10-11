@@ -74,6 +74,8 @@ export interface LightEvents {
   decided?(decision: SafetyDecision): void;
   /** Whether an escape is in flight; nothing is lit while one is. See `on`. */
   escaping?(): boolean;
+  /** Whether a move is outstanding; see `SearchEvents.moveInFlight`. */
+  moveInFlight?(): boolean;
 }
 
 /** What `beforeStep` is told about the room being stepped into. */
@@ -387,6 +389,7 @@ export class AutoLight implements SessionModule {
    */
   private extinguish(state: CharacterState, walking: boolean, here: string | null): void {
     if (!this.config.extinguishInLight || walking || here === null) return;
+    if (this.events.moveInFlight?.() === true) return;
     if (this.extinguishedIn === here) return;
     if (this.now() - this.litAt < tuning().light.expiresMs) return;
     const sight = state.sight;
@@ -399,6 +402,8 @@ export class AutoLight implements SessionModule {
       priority: 'probe',
       coalesceKey: 'light:out',
       expiresAt: this.now() + tuning().light.expiresMs,
+      // A move typed after the proposal would take the light off in the next room, which may be dark.
+      stillWanted: () => this.events.moveInFlight?.() !== true && this.decidedIn === here,
       reason: t('automation.light.reasonExtinguish', { item: sight.lit })
     });
     this.events.decided?.({

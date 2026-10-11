@@ -736,6 +736,7 @@ export class SessionManager {
 
     // What the light, the errands and the travel tell the session:
     // a line for the console, and a decision for the safety trace.
+    const moveInFlight = (): boolean => this.tracker.pendingMoves > 0;
     const reports = {
       notice,
       decided: (decision: SafetyDecision): void => this.publisher.noteSafety(decision)
@@ -948,7 +949,8 @@ export class SessionManager {
     );
     this.light = new AutoLight(automation.movement, automation.enabled, this.queue, {
       ...reports,
-      escaping: () => this.travel.isRetreating()
+      escaping: () => this.travel.isRetreating(),
+      moveInFlight
     });
     /*
      * The shadows, asked for between fights. Told whether a lap or a route
@@ -959,7 +961,7 @@ export class SessionManager {
       notice,
       escaping: () => this.travel.isRetreating(),
       moving: () => this.walker.walking || this.loops.progress.status === 'running',
-      moveInFlight: () => this.tracker.pendingMoves > 0,
+      moveInFlight,
       openerRefused: () => this.combat.openerRefused(),
       opener: () => this.errands.words.opener(),
       // Whether resting and hiding undo each other, off the realm's class row (Paradigm grants
@@ -997,7 +999,7 @@ export class SessionManager {
          * which outranks the `probe` this proposes in, so a `get` behind it is
          * spent in the room after this one.
          */
-        busy: () => this.tracker.pendingMoves > 0 || this.walker.walking
+        busy: () => moveInFlight() || this.walker.walking
       }
     );
     // An errand letting a held lap go, and a lap stopped with its walk: one each.
@@ -1044,7 +1046,7 @@ export class SessionManager {
             quiet: true,
             resumeAfterFight: false
           }),
-        moveInFlight: () => this.tracker.pendingMoves > 0,
+        moveInFlight,
         walkingTo: () => this.walker.remaining.at(-1)?.to ?? null,
         busy: () => this.travel.isRetreating() || this.travel.retreatArmed,
         looping: () => this.loops.progress.status === 'running',
@@ -1160,7 +1162,7 @@ export class SessionManager {
         stopWalking: (reason) => {
           if (this.walker.walking && !this.travel.walkIsAsked) this.walker.stop(reason);
         },
-        moveInFlight: () => this.tracker.pendingMoves > 0,
+        moveInFlight,
         walking: () => this.walker.walking,
         busy: () => this.travel.escaping,
         looping: () => this.loops.progress.status === 'running',
@@ -1198,7 +1200,7 @@ export class SessionManager {
         here: () => roomAddress(this.tracker.current.room),
         lairClock: (room) => this.errands.lairClock(room),
         neighbours: (room) => this.errands.neighbours(room),
-        moveInFlight: () => this.tracker.pendingMoves > 0,
+        moveInFlight,
         walking: () => this.walker.walking && this.walker.holding === null,
         looping: () => this.loops.progress.status === 'running',
         stayingReason: () => this.travel.stayingReason(this.tracker.current),
@@ -1234,14 +1236,12 @@ export class SessionManager {
     );
     // And its opposite number: what the loot hoarded, the drop list sheds.
     this.drop = new AutoDrop(automation.drop, automation.enabled, this.queue, trip.kept, reports);
-    this.search = new AutoSearch(
-      automation.search,
-      automation.enabled,
-      this.queue,
+    this.search = new AutoSearch(automation.search, automation.enabled, this.queue, {
       // The state as it is at the send, not as it was at the proposal.
-      () => this.tracker.current,
-      (state) => this.combat.quarry(state)
-    );
+      stateNow: () => this.tracker.current,
+      quarry: (state) => this.combat.quarry(state),
+      moveInFlight
+    });
     /*
      * And what neither should be carrying: the purse over the threshold, banked
      * at a counter. The counter is the *resolved* room's own shop — never the
@@ -1447,7 +1447,7 @@ export class SessionManager {
             // And by distance, however the walker comes to re-plan it.
             kind: 'lap'
           }),
-        moveInFlight: () => this.tracker.pendingMoves > 0,
+        moveInFlight,
         // A rest this client asked for a millisecond ago. The lap waits a beat
         // rather than stepping into it — see `Recovery.restInFlight`, todo 14.
         restInFlight: () => this.recovery.restInFlight,
@@ -1613,7 +1613,7 @@ export class SessionManager {
       world: () => this.world,
       odds: this.odds,
       config: () => this.automationConfig,
-      busy: () => this.errandHeld() || this.tracker.pendingMoves > 0 || this.walker.walking,
+      busy: () => this.errandHeld() || moveInFlight() || this.walker.walking,
       safety: () => this.publisher.automation.safety,
       target: () => this.state.target,
       relayer: () => this.configure(...this.configured),

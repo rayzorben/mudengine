@@ -57,6 +57,8 @@ let queue: CommandQueue;
 let now: CharacterState;
 /** `AutoCombat.quarry`, as the session hands it in: nothing to fight unless a test says so. */
 let quarry: (state: CharacterState) => boolean;
+/** Moves the server has still to run (`CharacterTracker.pendingMoves`): none unless a test says so. */
+let moves: number;
 let queueSearch: (config?: SearchConfig, enabled?: boolean) => AutoSearch;
 /** A status line: proposed against this state, and sent against it too. */
 const at = (search: AutoSearch, said: CharacterState): void => {
@@ -69,14 +71,13 @@ beforeEach(() => {
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
   now = state();
   quarry = () => false;
+  moves = 0;
   queueSearch = (over = config(), enabled = true) =>
-    new AutoSearch(
-      over,
-      enabled,
-      queue,
-      () => now,
-      (said) => quarry(said)
-    );
+    new AutoSearch(over, enabled, queue, {
+      stateNow: () => now,
+      quarry: (said) => quarry(said),
+      moveInFlight: () => moves > 0
+    });
 });
 afterEach(() => {
   queue.dispose();
@@ -318,6 +319,48 @@ describe('when it will not search', () => {
     at(search, state({ arrival: 7, occupants: [] }));
     at(search, state({ arrival: 7 }));
     expect(sent).toEqual(['search']);
+  });
+});
+
+/*
+ * Typed ahead: `n` and six `e` typed fast put seven moves in the server's
+ * input before the first room printed. A search sent on each room ran after
+ * all of them, six in the last room (live, 2026-10-10, todo 88).
+ */
+describe('moves typed ahead', () => {
+  const street = (arrival: number): CharacterState => state({ number: 2150 + arrival, arrival });
+
+  it('searches only the room the moves end in', () => {
+    const search = queueSearch();
+    for (let arrival = 1; arrival <= 7; arrival += 1) {
+      moves = 7 - arrival;
+      at(search, street(arrival));
+    }
+    expect(sent).toEqual(['search']);
+  });
+
+  it('drops a search when a move is typed before it goes out', () => {
+    const search = queueSearch();
+    queue.noteTyping(true);
+    at(search, street(1));
+    expect(sent).toEqual([]);
+    // The player's `e` went out ahead of the search.
+    moves = 1;
+    queue.noteTyping(false);
+    expect(sent).toEqual([]);
+    // The next room is searched, once the move is answered.
+    moves = 0;
+    at(search, street(2));
+    expect(sent).toEqual(['search']);
+  });
+
+  it('drops a search when the character has already arrived somewhere else', () => {
+    const search = queueSearch();
+    queue.noteTyping(true);
+    at(search, street(1));
+    now = street(2);
+    queue.noteTyping(false);
+    expect(sent).toEqual([]);
   });
 });
 
