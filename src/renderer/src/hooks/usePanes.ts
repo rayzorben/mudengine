@@ -8,11 +8,12 @@
  * the stylesheet's own). See
  * `mudengine-ui` › *The window redraws what changed*.
  */
-import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 
 import { consoleGrid, consoleRoom } from '../lib/consoleWidth';
 import { t } from '../lib/i18n';
 import { CONSOLE_COLUMNS as MIN_COLUMNS, type PaneFlow } from '../lib/splitter';
+import { readShown, writeShown } from '../lib/shownPanes';
 import { tuning } from '../lib/tuning';
 import { useOverridablePreference } from './usePreference';
 import { NO_SESSION, type SessionId, type SessionSummary } from '@shared/ipc';
@@ -57,8 +58,9 @@ export function usePanes(
    * six documents rather than watching four characters. See docs/profiles.md
    * §7.3.
    */
-  const [paneIds, setPaneIds] = useState<SessionId[]>([]);
-  const [focusedPane, setFocusedPane] = useState(0);
+  const [shown] = useState(readShown);
+  const [paneIds, setPaneIds] = useState<SessionId[]>(shown.panes);
+  const [focusedPane, setFocusedPane] = useState(shown.at);
 
   /**
    * The panes, filtered to characters that are still loaded.
@@ -75,6 +77,12 @@ export function usePanes(
 
   const paneAt = Math.min(focusedPane, Math.max(0, panes.length - 1));
   const session = panes[paneAt] ?? NO_SESSION;
+
+  // Nothing is written before the roster arrives, or a reload would forget
+  // the choice it is about to restore.
+  useEffect(() => {
+    if (panes.length > 0) writeShown({ panes, at: paneAt });
+  }, [panes, paneAt]);
 
   /**
    * Stacked or side by side.

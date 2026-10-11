@@ -48,7 +48,7 @@ export class InternalStore extends EventEmitter {
   constructor(private readonly options: InternalStoreOptions) {
     super();
     this.poller = new Poller({
-      signature: () => this.signature(),
+      watched: () => [{ kind: 'file', path: this.options.file }],
       reload: () => {
         this.read();
         this.emit('change', this.current);
@@ -108,11 +108,5 @@ export class InternalStore extends EventEmitter {
       // where somebody can fix it.
       this.options.onError?.(`${path.basename(this.options.file)}: ${errorMessage(cause)}`);
     }
-  }
-
-  /** One file's revision. A throw — no file yet — is `Poller`'s to absorb. */
-  private signature(): string {
-    const stat = fs.statSync(this.options.file);
-    return `${stat.mtimeMs}:${stat.size}`;
   }
 }

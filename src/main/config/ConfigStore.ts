@@ -114,7 +114,7 @@ export class ConfigStore extends EventEmitter {
     super();
     this.file = ConfigStore.locate(options);
     this.poller = new Poller({
-      signature: () => this.signature(),
+      watched: () => [{ kind: 'file', path: this.file }],
       reload: () => {
         this.read();
         this.emit('change', this.snapshot);
@@ -251,12 +251,6 @@ export class ConfigStore extends EventEmitter {
 
   private recompose(): void {
     this.current = normalizeConfig(this.composed());
-  }
-
-  /** One file's revision. A throw — no file yet — is `Poller`'s to absorb. */
-  private signature(): string {
-    const stat = fs.statSync(this.file);
-    return `${stat.mtimeMs}:${stat.size}`;
   }
 
   /**

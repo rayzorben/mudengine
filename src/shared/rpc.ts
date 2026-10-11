@@ -61,7 +61,19 @@ export interface RpcPush {
   p: unknown;
 }
 
-export type RpcOutbound = RpcReply | RpcPush;
+/**
+ * The client is still there, sent to every tab each ping sweep. A browser
+ * answers a WebSocket ping without telling the page, and a socket a sleep or
+ * a network change killed can look open to the tab for minutes; a tab that
+ * has heard nothing for two beats (`next` is the gap to the next one) knows
+ * the link is gone and dials again.
+ */
+export interface RpcBeat {
+  k: 'beat';
+  next: number;
+}
+
+export type RpcOutbound = RpcReply | RpcPush | RpcBeat;
 
 /**
  * A channel name is a short, fixed string from `ipc.ts`; anything else on the
@@ -99,6 +111,12 @@ export function asRpcOutbound(value: unknown): RpcOutbound | null {
   if (value['k'] === 'push') {
     if (!isChannel(value['c'])) return null;
     return { k: 'push', c: value['c'], p: value['p'] };
+  }
+  if (value['k'] === 'beat') {
+    const next = value['next'];
+    return typeof next === 'number' && Number.isFinite(next) && next > 0
+      ? { k: 'beat', next }
+      : null;
   }
   if (value['k'] === 'reply' && isId(value['id'])) {
     if (typeof value['e'] === 'string') return { k: 'reply', id: value['id'], e: value['e'] };

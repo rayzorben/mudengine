@@ -65,7 +65,13 @@ export class ServerStore extends EventEmitter {
   ) {
     super();
     this.poller = new Poller({
-      signature: () => this.signature(),
+      watched: () => [
+        {
+          kind: 'each',
+          dir: this.home.serversDir,
+          each: (id) => [{ kind: 'file', path: this.home.server(id).file }]
+        }
+      ],
       reload: () => {
         this.read();
         this.emit('change');
@@ -153,18 +159,5 @@ export class ServerStore extends EventEmitter {
     } catch {
       return [];
     }
-  }
-
-  private signature(): string {
-    return this.ids()
-      .map((id) => {
-        try {
-          const info = fs.statSync(this.home.server(id).file);
-          return `${id}:${info.size}:${info.mtimeMs}`;
-        } catch {
-          return `${id}:gone`;
-        }
-      })
-      .join('|');
   }
 }

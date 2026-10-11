@@ -36,6 +36,7 @@ import { asLoops, type Loop } from '../../shared/loops';
 import type { Home } from '../app/home';
 import { directoryNames } from './dirs';
 import { Poller } from './Poller';
+import type { Watched } from './revision';
 
 export interface LoopStoreEvents {
   change: () => void;
@@ -59,7 +60,7 @@ export class LoopStore extends EventEmitter {
   ) {
     super();
     this.poller = new Poller({
-      signature: () => this.signature(),
+      watched: () => this.watched(),
       reload: () => {
         this.read();
         this.emit('change');
@@ -146,21 +147,19 @@ export class LoopStore extends EventEmitter {
   }
 
   /**
-   * What is on disk right now, across all three scopes.
+   * The loop files across all three scopes.
    *
    * Names, sizes and mtimes rather than contents: the point is to notice a
    * change cheaply, and re-reading every loop twice a second to find out
    * whether any of them changed is the cost this avoids.
    */
-  private signature(): string {
-    const parts: string[] = [stamp(this.home.globalLoops)];
-    for (const id of directories(this.home.serversDir)) {
-      parts.push(`s:${id}:${stamp(this.home.server(id).loops)}`);
-    }
-    for (const id of directories(this.home.profilesDir)) {
-      parts.push(`p:${id}:${stamp(this.home.profile(id).loops)}`);
-    }
-    return parts.join('|');
+  private watched(): Watched[] {
+    const loops = (dir: string): Watched[] => [{ kind: 'files', dir, accept: isLoopFileName }];
+    return [
+      ...loops(this.home.globalLoops),
+      { kind: 'each', dir: this.home.serversDir, each: (id) => loops(this.home.server(id).loops) },
+      { kind: 'each', dir: this.home.profilesDir, each: (id) => loops(this.home.profile(id).loops) }
+    ];
   }
 }
 
@@ -202,18 +201,4 @@ function yamlFiles(dir: string): string[] {
   } catch {
     return [];
   }
-}
-
-/** One directory's listing as a revision string. */
-function stamp(dir: string): string {
-  return yamlFiles(dir)
-    .map((name) => {
-      try {
-        const info = fs.statSync(path.join(dir, name));
-        return `${name}:${info.size}:${info.mtimeMs}`;
-      } catch {
-        return `${name}:gone`;
-      }
-    })
-    .join(',');
 }

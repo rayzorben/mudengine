@@ -295,11 +295,13 @@ export function createWebHost(layout: Layout): Host {
    * Find the tabs that have gone without saying so.
    *
    * A tab that did not answer the last ping is closed; every other one is
-   * pinged again. Rescheduled from the file each time rather than set once,
-   * so an edit to `pingIntervalMs` reaches the next tick.
+   * pinged again, and sent a beat the page itself can hear (`RpcBeat`).
+   * Rescheduled from the file each time rather than set once, so an edit to
+   * `pingIntervalMs` reaches the next tick.
    */
-  const scheduleSweep = (): void => {
+  const scheduleSweep = (gap: number): void => {
     sweep = setTimeout(() => {
+      const next = tuning().web.pingIntervalMs;
       for (const tab of tabs.values()) {
         if (!tab.alive) {
           tab.connection.close(1001, 'no answer to ping');
@@ -307,9 +309,10 @@ export function createWebHost(layout: Layout): Host {
         }
         tab.alive = false;
         tab.connection.ping();
+        push(tab, { k: 'beat', next });
       }
-      scheduleSweep();
-    }, tuning().web.pingIntervalMs);
+      scheduleSweep(next);
+    }, gap);
   };
 
   return {
@@ -368,7 +371,7 @@ export function createWebHost(layout: Layout): Host {
       server.listen(port, bind).then(
         (bound) => {
           say(banner(bound, access, hooks.home.root, trustProxy));
-          scheduleSweep();
+          scheduleSweep(tuning().web.pingIntervalMs);
         },
         (error: unknown) => hooks.abort(`web: could not listen: ${errorMessage(error)}`)
       );
