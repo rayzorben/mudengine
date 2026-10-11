@@ -7051,6 +7051,53 @@ describe('the hours a death keeps the saved gear are stated', () => {
   });
 });
 
+// Better gear off the floor (todo 77): on after maxEncumbrance, once.
+describe('taking better gear off the floor is stated', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-loot-upgrades-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('writes the switch on after maxEncumbrance, once, and leaves a stated one alone', () => {
+    fs.writeFileSync(
+      home.options,
+      'automation:\n  loot:\n    coins: true\n    minPrice: 0\n    maxEncumbrance: 0\n',
+      'utf8'
+    );
+    const soul = home.profile('soul').file;
+    fs.mkdirSync(path.dirname(soul), { recursive: true });
+    fs.writeFileSync(soul, 'name: Soul\nautomation:\n  loot:\n    upgrades: false\n', 'utf8');
+    migrate();
+    const text = fs.readFileSync(home.options, 'utf8');
+    const loot = (parse(text).automation as Record<string, Record<string, unknown>>)['loot']!;
+    const keys = Object.keys(loot);
+    expect(keys[keys.indexOf('maxEncumbrance') + 1]).toBe('upgrades');
+    expect(loot['upgrades']).toBe(true);
+    expect(fs.readFileSync(soul, 'utf8')).toContain('upgrades: false');
+    expect(
+      notesOf(said, 'notices.migration.lootUpgrades.one', 'notices.migration.lootUpgrades.many')
+    ).toHaveLength(1);
+    migrate();
+    expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
 describe('how long logs are kept is stated', () => {
   let home: Home;
   let dir: string;

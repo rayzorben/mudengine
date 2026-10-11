@@ -319,6 +319,9 @@ notices:
     gearLockHours:
       many: 'Hold Gear After Death was added, at {hours} hours, to {count} files: {fileList}'
       one: 'Hold Gear After Death was added, at {hours} hours, to {fileList}'
+    lootUpgrades:
+      many: 'Auto-Get Better Gear was added, on, to {count} files: {fileList}'
+      one: 'Auto-Get Better Gear was added, on, to {fileList}'
     markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -4161,6 +4164,9 @@ settings:
     lootMaxEncumbranceHint: Never picks up anything heavier, whatever the list says. 0 is no limit;
       items with no weight in the world data are not refused.
     lootMaxEncumbranceLabel: Max Item Weight
+    lootUpgradesLabel: Auto-Get Better Gear
+    lootUpgradesHint: Picks up gear the world data ranks above what you wear in its slot, when you
+      can wear it and your inventory has room for its weight, and puts it on.
     dropWorthlessHint: 'Drops anything the world data values at zero: only an explicit zero, never
       an item with no value listed, and never one marked Not Droppable.'
     dropWorthlessLabel: Auto-Drop Worthless Items
@@ -5949,6 +5955,23 @@ automation:
     reasonWorth: 'loot: {item} is over the value threshold'
     # The room read again after a kill: items drop without a word (todo 814).
     reasonFloorAfterKill: 'loot: checking the floor for what the kill dropped'
+    # Gear better than what is worn (todo 77).
+    reasonGear: 'loot: {item} is better than your {worn} ({slot})'
+    reasonGearEmpty: 'loot: {item} for your empty {slot}'
+    reasonWear: 'loot: wearing {item} ({slot})'
+    notWorn: 'Picked up {item} but did not put it on: {commands} could not be queued.'
+    gearHeavy: 'Not picking up {item}: it is better than what you wear ({slot}), but your inventory
+      does not have the free weight for it.'
+    gearCeiling: 'Not picking up {item}: it is better than what you wear ({slot}), but it is over
+      your Max Item Weight.'
+    gearUnread: 'Not picking up {item}: it is better than what you wear ({slot}), but your
+      inventory weight has not been read yet.'
+    gearKit: 'Not picking up {item}: it is better than your {worn} ({slot}), but a gear set names
+      {worn} and would put it back on.'
+    gearHands: 'Not picking up {item}: a two-handed weapon and an off-hand item cannot be worn
+      together, and you wear {worn}.'
+    # A slot held since a death (todo 82) keeps the gear died in.
+    gearLocked: 'Not picking up {item}: your {slot} is held for the {worn} you died in.'
   party:
     reasonAssist: 'assist: {leader} is fighting {target}'
     reasonAssistRoom: 'assist: {leader} is attacking everyone in the room; {why}'

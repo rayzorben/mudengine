@@ -533,6 +533,7 @@ export interface ProfileDraft {
     items: string[];
     minPrice: number;
     maxEncumbrance: number;
+    upgrades: boolean;
     stopAtGrade: EncumbranceGate;
     convertWith: string;
     convertAt: EncumbranceGate;
@@ -1102,7 +1103,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       convertAt: asGate(loot['convertAt']),
       items: words(loot['items'], 32),
       minPrice: Math.max(0, Math.round(Number(loot['minPrice']) || 0)),
-      maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0))
+      maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0)),
+      upgrades: loot['upgrades'] !== false
     },
     drop: {
       enabled: drop['enabled'] === true,

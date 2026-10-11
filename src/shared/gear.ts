@@ -903,7 +903,7 @@ export function heldWeapon(items: readonly CarriedItem[]): CarriedItem | undefin
 }
 
 /** What is worn in the off-hand, which a two-handed weapon needs taken off first. */
-function inOffHand(items: readonly CarriedItem[]): CarriedItem | undefined {
+export function inOffHand(items: readonly CarriedItem[]): CarriedItem | undefined {
   return items.find(
     (item) => item.equipped && (item.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
   );

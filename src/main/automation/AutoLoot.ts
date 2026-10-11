@@ -21,10 +21,10 @@
  *   specifically breaks one has never been asked of the wire. Refusing is the
  *   direction that cannot cost anything but a delay, so coins go on waiting
  *   until `npm run probe:rest` says. The claim has a date on it.
- * - **Pick up anything not named.** Coins are a switch and a list of
- *   denominations; everything else is a list of names, matched by prefix
- *   because that is how the server reads `get`. Nothing here weighs, values or
- *   sells.
+ * - **Pick up anything not named**, bar gear better than what is worn
+ *   (`FoundGear`, todo 77). Coins are a switch and a list of denominations;
+ *   everything else is a list of names, matched by prefix because that is how
+ *   the server reads `get`. Nothing here sells.
  *
  * ## A supply is collected off the floor as well as bought
  *
@@ -81,8 +81,10 @@ import { coinNamed, type Denomination } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
 import { nameAnswersTo } from '../../shared/world';
 import { wireItem, type ItemEntity } from '../../shared/entities';
+import type { FloorGearReader } from '../../shared/upgrades';
 import { tuning } from '../app/tuning';
 import type { FloorAfterKill } from './FloorAfterKill';
+import { FoundGear } from './FoundGear';
 import type { SessionModule } from './Module';
 
 /**
@@ -184,6 +186,8 @@ export interface AutoLootDeps {
   readonly floor: FloorAfterKill;
   /** The word that picks a coin up on this realm (`Vocabulary.coins`, todo 830); omitted, the denomination. */
   readonly coinWord?: (coin: Denomination) => string;
+  /** A floor item weighed against the gear worn (`floorGear`, todo 77); omitted where no realm data can weigh it. */
+  readonly floorGear?: FloorGearReader;
 }
 
 export class AutoLoot implements SessionModule {
@@ -229,6 +233,8 @@ export class AutoLoot implements SessionModule {
   private readonly coinWord: (coin: Denomination) => string;
   /** The room read again after a kill, since items drop unannounced (todo 814). */
   private readonly floor: FloorAfterKill;
+  /** Gear better than what is worn: taken, then put on (todo 77). */
+  private readonly found: FoundGear;
   /** Whether a `get` this module asked for is still waiting its turn: a walk out waits on it. */
   readonly taking: () => boolean;
 
@@ -252,6 +258,7 @@ export class AutoLoot implements SessionModule {
     this.coinWord = deps.coinWord ?? ((coin) => coin);
     this.taking = () => queue.queued((intent) => intent.coalesceKey?.startsWith(TAKE_KEY) === true);
     this.floor = deps.floor;
+    this.found = new FoundGear(queue, deps.floorGear, this.notice);
   }
 
   /** Whether the floor read asked after a kill is unanswered — the walk waits on it. */
@@ -318,6 +325,7 @@ export class AutoLoot implements SessionModule {
     this.wanted.clear();
     this.coinsFor = null;
     this.floor.reset();
+    this.found.reset();
   }
 
   /**
@@ -339,6 +347,7 @@ export class AutoLoot implements SessionModule {
     }
 
     if (!this.enabled || state.phase !== 'in-game') return;
+    if (!this.moveOnly(state)) this.found.onCharacter(state);
     if (this.config.discardKinds.length === 0) return;
     if (state.inCombat) return;
     // Unmeasured rather than settled, as for the `get` above.
@@ -384,6 +393,7 @@ export class AutoLoot implements SessionModule {
     // A new room is a new floor; the memory belongs to the old one.
     if (block.type === 'room-name') {
       this.attempted.clear();
+      this.found.leftRoom(state);
       return;
     }
     // The pack confirming a pick-up frees the name for the next drop.
@@ -492,7 +502,8 @@ export class AutoLoot implements SessionModule {
           // same instruction, said by a door rather than by the list, and kept
           // in the session rather than in the player's file.
           [...this.wanted].find((name) => bare.toLowerCase().startsWith(name.toLowerCase()));
-        const worth = this.worthTaking(bare);
+        const entity = this.realmItem(bare);
+        const worth = this.worthTaking(entity);
         if (named !== undefined) {
           // A name on the list is an instruction, and the only thing that
           // overrides it is the weight ceiling — which exists precisely to
@@ -521,6 +532,13 @@ export class AutoLoot implements SessionModule {
               })
             );
           }
+          continue;
+        }
+        const better = this.config.upgrades
+          ? this.found.consider(entity, item, state, worth === 'too heavy')
+          : null;
+        if (better !== null) {
+          this.take(bare, better);
           continue;
         }
         if (worth === 'worth it') {
@@ -569,12 +587,18 @@ export class AutoLoot implements SessionModule {
 
   /**
    * Whether a floor listing could hold anything this would take: a name on
-   * the list or an errand's, anything priced over `minPrice`, or a supply the
-   * pack is under the ceiling of — the three readings `onBlock` takes an item
-   * by. Coins are left out: their drop line says so the moment they land.
+   * the list or an errand's, anything priced over `minPrice`, a supply the
+   * pack is under the ceiling of, or gear better than what is worn — the four
+   * readings `onBlock` takes an item by. Coins are left out: their drop line says so the moment they land.
    */
   private looksForItems(state: CharacterState): boolean {
-    if (this.config.items.length > 0 || this.wanted.size > 0 || this.config.minPrice > 0) {
+    const { items, minPrice, upgrades } = this.config;
+    if (
+      items.length > 0 ||
+      this.wanted.size > 0 ||
+      minPrice > 0 ||
+      (upgrades && this.found.weighs)
+    ) {
       return true;
     }
     return (
@@ -598,10 +622,9 @@ export class AutoLoot implements SessionModule {
    * refusing on absence would stop a derivative realm looting anything at all.
    * The two absences point opposite ways because the two settings do.
    */
-  private worthTaking(name: string): 'worth it' | 'not worth it' | 'too heavy' {
+  private worthTaking(item: ItemEntity): 'worth it' | 'not worth it' | 'too heavy' {
     const { minPrice, maxEncumbrance } = this.config;
     if (minPrice <= 0 && maxEncumbrance <= 0) return 'not worth it';
-    const item = this.realmItem(name);
     if (maxEncumbrance > 0 && item.encumbrance !== undefined && item.encumbrance > maxEncumbrance) {
       return 'too heavy';
     }

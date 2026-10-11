@@ -268,6 +268,7 @@ function migrateAll(options: MigrationOptions): void {
   statedRunBetweenRounds(home, note, options.template);
   statedReequipOnRecover(home, note, options.template);
   statedGearLockHours(home, note, options.template);
+  statedLootUpgrades(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
   statedLogKeeping(home, note, options.template);
   statedLowLives(home, note, options.profileTemplate);
@@ -4126,6 +4127,33 @@ function statedGearLockHours(
     stated.length === 1
       ? t('notices.migration.gearLockHours.one', params)
       : t('notices.migration.gearLockHours.many', params)
+  );
+}
+
+/**
+ * `automation.loot.upgrades` (todo 77) into every file that states `loot:`
+ * without it, as the template ships it, after `maxEncumbrance` and with the
+ * template's paragraph. Idempotent: a key stays added whatever its value.
+ */
+function statedLootUpgrades(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const stated = stateIn(
+    home,
+    ['automation', 'loot'],
+    'upgrades',
+    DEFAULT_CONFIG.automation.loot.upgrades,
+    'maxEncumbrance',
+    templateComments(template, 'automation').get('automation.loot.upgrades')
+  );
+  if (stated.length === 0) return;
+  const params = { count: stated.length, fileList: stated.join(', ') };
+  note(
+    stated.length === 1
+      ? t('notices.migration.lootUpgrades.one', params)
+      : t('notices.migration.lootUpgrades.many', params)
   );
 }
 

@@ -5,6 +5,7 @@
  * neither).
  */
 import type { CharacterState } from './character';
+import type { ItemEntity } from './entities';
 import type { GearGain } from './gearWorth';
 
 /** An item the realm puts in a slot, and what it gives there. */
@@ -100,3 +101,36 @@ export interface GearChoices {
   /** Where class, race, level or alignment is unread, so a row may be refused that would not be. */
   unread: boolean;
 }
+
+/** Why a floor item better than what is worn is left lying (`FloorGear`). */
+export type FloorRefusal = 'heavy' | 'ceiling' | 'unread' | 'kit' | 'hands' | 'locked';
+
+/**
+ * What an item on the floor is to the character's gear (todo 77): better than
+ * the weakest worn in its slot, or filling an empty place, and so worth taking
+ * and wearing; or better and left lying, with why. Null where it is no better,
+ * not worn gear, or not usable by this character.
+ */
+export type FloorGear =
+  | {
+      kind: 'better';
+      slot: string;
+      /** The weakest worn, which it outranks; null where a place in the slot is empty. */
+      over: string | null;
+      /** What comes off first where the slot has several places, all worn (`WearWanted.replaces`). */
+      replaces: string | null;
+      hands: 1 | 2 | null;
+    }
+  | {
+      kind: 'refused';
+      slot: string;
+      why: FloorRefusal;
+      /**
+       * The worn item a gear set keeps, the hand item a two-hander or an off-hand
+       * item cannot share, or the saved item a death holds the slot for; null otherwise.
+       */
+      worn: string | null;
+    };
+
+/** The loot's question about a floor item, composed by the session (`session/floorGearReader.ts`). */
+export type FloorGearReader = (floor: ItemEntity, state: CharacterState) => FloorGear | null;
