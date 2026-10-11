@@ -99,6 +99,7 @@ import {
   type ProwessSheet
 } from '../../shared/prowess';
 import { attackFor } from '../../shared/attackOptions';
+import { fightWords, type FightWords } from './fightWords';
 import { EFFECT_ABILITY } from '../../shared/abilities';
 import { abilitySum } from '../../shared/light';
 import { chooseByExp } from '../../shared/statGains';
@@ -135,6 +136,7 @@ import {
   weighVerdicts,
   wieldedWeapon,
   backstabsWith,
+  prowessTargetOf,
   type LairPass
 } from '../../shared/verdict';
 import {
@@ -210,8 +212,10 @@ export interface RealmClass extends ProwessClass {
   /** `Classes.MageryType`, which stat the mana tick is figured off (`regeneration`). */
   mageryType: number | null;
   family: RealmFamily | null;
-  /** The attack `combat.attack` types, as the class can make it (`attackFor`). */
+  /** The attack fought with (`FightWords.attack`), as the class can make it (`attackFor`). */
   attack: ProwessAttack;
+  /** Its word, as typed or chosen: what slot rankings and what-ifs price. */
+  verb: string;
 }
 
 /** What `chooseAttackSpell` is handed about the caster, before a target. */
@@ -299,6 +303,8 @@ export interface ErrandsSession {
 
 export class Errands implements SessionModule {
   private readonly world: ErrandsWorld | undefined;
+  /** The attack and opener fought with, typed or chosen (todo 47). */
+  readonly words: FightWords;
   private readonly tracker: ErrandsParts['tracker'];
   private readonly fightRecord: ErrandsParts['fightRecord'];
   private readonly kills: KillExpLore;
@@ -372,6 +378,17 @@ export class Errands implements SessionModule {
     this.clocks = new RoomClocks(parts.lore);
     this.kills = parts.lore;
     this.noEffects = parts.lore;
+    this.words = fightWords({
+      combat: () => this.automationConfig.combat,
+      current: () => this.tracker.current,
+      rows: () => this.classRows(),
+      capabilities: () => this.capabilities(),
+      targetOf: (name) => {
+        const mob = this.world?.buildMobEntity(name, { at: null });
+        // A name the world database cannot place is no armour anybody knows: its round is unknown.
+        return mob === undefined || mob.source === 'wire' ? null : prowessTargetOf(mob);
+      }
+    });
     this.navigation = new Navigation({
       world: () => this.world,
       tracker: parts.tracker,
@@ -1071,7 +1088,7 @@ export class Errands implements SessionModule {
       JSON.stringify(gearEffect(state.inventory.items)),
       this.serverFamily,
       JSON.stringify(statedNow(state)),
-      this.automationConfig.combat.attack
+      this.words.attack().verb
     ].join('|');
     this.fitted = { state, key };
     return key;
@@ -1769,7 +1786,7 @@ export class Errands implements SessionModule {
      * credited, as before.
      */
     const backstab =
-      commandOf(this.automationConfig.combat.opener.trim()) === 'BackStab' &&
+      commandOf(this.words.opener()) === 'BackStab' &&
       backstabsWith(state.inventory.items) !== false;
     /*
      * One step is the server's own movement delay from the pack's weight
@@ -1936,9 +1953,9 @@ export class Errands implements SessionModule {
       scale,
       this.automationConfig.spells.attack,
       this.automationConfig.spells.autoChoose,
-      this.automationConfig.combat.opener,
+      this.words.opener(),
       backstab,
-      this.automationConfig.combat.attack,
+      this.words.attack().verb,
       state.spellbook?.length ?? -1,
       state.vitals.manaMax,
       measured === null ? '-' : Math.round(measured.perRound),
@@ -2687,9 +2704,18 @@ export class Errands implements SessionModule {
    * decides which *formulas* run, and the formulas are the server's. The two
    * can legitimately differ — see `Vocabulary.noteFamily` — and on the
    * shipped configuration they do. `attack` is the word priced:
-   * `combat.attack`'s, unless a what-if names another.
+   * the word fought with (`words.attack`), unless a what-if names another.
    */
-  realmClass(attack = this.automationConfig.combat.attack): RealmClass {
+  realmClass(attack = this.words.attack().verb): RealmClass {
+    return {
+      ...this.classRows(),
+      attack: attackFor(attack, this.capabilities().abilities),
+      verb: attack
+    };
+  }
+
+  /** `realmClass` without the attack, which `words` prices every attack from. */
+  private classRows(): Omit<RealmClass, 'attack' | 'verb'> {
     const row = this.world?.classNamed(this.tracker.current.className ?? '') ?? null;
     const abilities = this.capabilities().abilities;
     return {
@@ -2697,7 +2723,6 @@ export class Errands implements SessionModule {
       magery: row?.magery ?? null,
       mageryType: row?.mageryType ?? null,
       family: this.serverFamily,
-      attack: attackFor(attack, abilities),
       crits: abilities === null ? 0 : abilitySum(abilities, EFFECT_ABILITY.crits)
     };
   }

@@ -83,7 +83,8 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
         sets: config.gear.sets.flatMap((set) => set.wear),
         keys: state.inventory.keys
       };
-      const asker = slotAskerOf(state, world, errands.realmClass(), config.combat.attack);
+      const fought = errands.realmClass();
+      const asker = slotAskerOf(state, world, fought, fought.verb);
       const realm = {
         itemsWornIn: (worn: number) => world.itemsWornIn(worn),
         item: (id: number) => world.item(id),

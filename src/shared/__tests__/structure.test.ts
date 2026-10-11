@@ -47,7 +47,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the level trip's construction, out beside its planner (`trainTrip`, todo 39).
   // Lowered by `BUSY_PHASES`, gone as a Connect mid-dial dials again (todo 22).
   // Lowered by `@loop`'s lists, handed to `RemoteMoves` whole (todo 32).
-  'src/main/session/SessionManager.ts': 3437,
+  // Lowered by the canHide and restsHidden comments, condensed as the chosen attack's wiring came (todo 47).
+  'src/main/session/SessionManager.ts': 3435,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   'src/main/world/WorldGraph.ts': 2385,
@@ -79,7 +80,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the items that bless, out whole (`InvokeFields`, todo 03).
   // Lowered by the dial switches, out whole with the lives that hold them (`DialFields`, todo 07).
   // Lowered by the gear recovery's switches, out whole (`RecoverFields`, todo 39).
-  'src/renderer/src/components/CharacterForm.tsx': 1479
+  // Lowered by the attack and opener fields, out whole with their chosen words (`FightWordFields`, todo 47).
+  'src/renderer/src/components/CharacterForm.tsx': 1470
 };
 
 /**

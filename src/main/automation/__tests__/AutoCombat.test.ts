@@ -1361,6 +1361,48 @@ describe('a verb the realm refuses', () => {
     expect(notices).toEqual([t('automation.combat.attackStandsIn', { verb: 'kick', plain: 'a' })]);
   });
 
+  /* Todo 47: a blank attack and opener are the ones chosen per monster. */
+  it('fights with the chosen attack and opener, and the plain one where the chosen is refused', () => {
+    const asked: string[] = [];
+    const auto = new AutoCombat(combat({ attack: '', opener: '' }), true, queue, {
+      notice: (m) => notices.push(m),
+      attackWord: (target) => {
+        asked.push(target);
+        return 'pu';
+      },
+      openerWord: () => opener,
+      onTheGround: () => down,
+      realmSpeed: () => speed
+    });
+    let opener = 'ju';
+    const rat = state({
+      room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] }
+    });
+    auto.onCharacter(rat);
+    drain();
+    expect(sent).toEqual(['ju giant rat']);
+    // No opener chosen: the chosen attack opens, and its refusal is the attack's.
+    opener = '';
+    auto.reset();
+    auto.onCharacter(rat);
+    drain();
+    expect(sent).toEqual(['ju giant rat', 'pu giant rat']);
+    expect(asked).toContain('giant rat');
+    auto.onBlock(block('attack-refused', { skill: 'punching' }));
+    drain();
+    expect(sent).toEqual(['ju giant rat', 'pu giant rat', 'a giant rat']);
+    expect(notices).toEqual([t('automation.combat.attackStandsIn', { verb: 'punch', plain: 'a' })]);
+  });
+
+  it('attacks with the plain attack when the attack is blank and nothing chooses one', () => {
+    const auto = make(combat({ attack: '' }));
+    auto.onCharacter(
+      state({ room: { ...EMPTY_CHARACTER.room, occupants: [mob('giant rat', 'hostile')] } })
+    );
+    drain();
+    expect(sent).toEqual(['a giant rat']);
+  });
+
   /* The wait for an attack's answer is a bound on an attack nobody answered,
      at the realm's speed: orohost runs five rounds to the server's one. */
   it('sends an unanswered attack again after the wait at the realm speed, not before', () => {

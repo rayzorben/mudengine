@@ -588,6 +588,9 @@ notices:
     actionsFamilied: Actions on a carried item are now a set of separate controls. {file} had a
       rewrite using "{action}", which no longer draws anything, so it now uses
       "{action.toggleEquip}". "{action.drop}" adds a drop control next to it.
+    attackChosen:
+      'The attack command was the old default "a", so it is now blank and the client uses
+      the attack that hits hardest for this class. Type "attack" to keep the plain one. {file}'
     themeCut: 'The theme "{from}" was removed, as it looked almost the same as another. {file}
       now uses {to}, the nearest one left.'
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
@@ -3612,11 +3615,13 @@ settings:
     attackForMe: Auto-Attack
     attackLegend: Attack
     attacksLegend: Attacks
-    attackVerbHint: The game's own command. A command this class cannot use is dropped the first
-      time the game says so.
+    attackVerbHint: Blank uses the attack that hits hardest for this class and race. Type attack to
+      always use the plain one. A command this class cannot use is dropped the first time the game
+      says so.
     attackVerbLabel: Attack Command
-    attackVerbPlaceholder: a
-    attackWithPlaceholder: a
+    attackVerbPlaceholder: Hardest hitting
+    attackChosen: '{verb}, {perRound} a round'
+    attackChosenUnpriced: '{verb}, damage not known yet'
     mobRuleAdd: Add a monster
     mobRuleDefault: 'Default: use the normal rules'
     mobRuleDuplicate: Already listed above. A monster can only have one rule, so this row does
@@ -3681,9 +3686,11 @@ settings:
     maxMobsHint: Will not start a fight in a room with more monsters than this. 0 is no limit.
     maxMobsLabel: Max Monsters in Room
     monstersLegend: Monsters
-    openerHint: Sent only for the first attack of a fight. Blank for none.
+    openerHint: Sent only for the first attack of a fight. Blank sends bs for a class that can hide.
     openerLabel: Opening Attack
-    openerPlaceholder: bs
+    openerPlaceholder: bs for a class that can hide
+    openerChosen: '{verb}, as it can hide'
+    openerChosenNone: None for this character
     hideForOpener: Hide Between Fights
     hideForOpenerHint: Sends hide when this character is in an empty room, or sneak during a loop or
       route, so your opening backstab works again. Only used when the opener is bs.

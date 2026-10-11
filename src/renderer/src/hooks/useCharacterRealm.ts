@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import type { ChosenWords } from '@shared/attackChoice';
 import type { PotionWhen } from '@shared/config';
 import type { InvokeChoice } from '@shared/invoke';
 import type { SessionId } from '@shared/ipc';
@@ -20,6 +21,8 @@ export interface CharacterRealm {
   banks: BankChoice[] | null;
   /** What the inventory holds that can bless; null while nobody has listed it. */
   invokeChoices: InvokeChoice[] | null;
+  /** What blank attack and opener fields choose; null while the character is not in the realm. */
+  chosen: ChosenWords | null;
 }
 
 /** The questions it asks, each addressed to the character on screen. */
@@ -65,6 +68,8 @@ export interface CharacterRealmLoaders {
    * the Spells page's list. About the character, so asked on that page.
    */
   loadInvokeChoices(session: SessionId): Promise<InvokeChoice[] | null>;
+  /** What blank attack and opener fields choose for the character, asked on the Combat page. */
+  loadChosenWords(session: SessionId): Promise<ChosenWords | null>;
 }
 
 /**
@@ -84,7 +89,8 @@ export function useCharacterRealm(
     loadServing,
     loadWards,
     loadMobNames,
-    loadInvokeChoices
+    loadInvokeChoices,
+    loadChosenWords
   }: CharacterRealmLoaders
 ): CharacterRealm {
   /*
@@ -133,6 +139,8 @@ export function useCharacterRealm(
    * as such rather than as carrying nothing.
    */
   const [invokeChoices, setInvokeChoices] = useState<InvokeChoice[] | null>(null);
+  // What blank attack fields choose. Null is out of the realm, drawn as what blank does.
+  const [chosen, setChosen] = useState<ChosenWords | null>(null);
   useEffect(() => {
     if (!active || section !== 'train') return;
     if (session === null) {
@@ -203,6 +211,20 @@ export function useCharacterRealm(
     };
   }, [active, section, session, loadMobNames]);
   useEffect(() => {
+    if (!active || section !== 'combat') return;
+    setChosen(null);
+    if (session === null) return;
+    let stale = false;
+    void loadChosenWords(session).then(
+      (found) => void (stale || setChosen(found)),
+      // Not a reason to refuse the save: the fields say what blank does.
+      () => void (stale || setChosen(null))
+    );
+    return () => {
+      stale = true;
+    };
+  }, [active, section, session, loadChosenWords]);
+  useEffect(() => {
     if (!active || section !== 'spells') return;
     setInvokeChoices(null);
     if (session === null) return;
@@ -216,5 +238,5 @@ export function useCharacterRealm(
       stale = true;
     };
   }, [active, section, session, loadInvokeChoices]);
-  return { trainers, serving, wards, mobs, banks, invokeChoices };
+  return { trainers, serving, wards, mobs, banks, invokeChoices, chosen };
 }

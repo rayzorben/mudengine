@@ -43,6 +43,8 @@ export interface StealthEvents {
    * for a backstab the server will not perform is a wasted command.
    */
   openerRefused?(): boolean;
+  /** The opener the next fight opens with, typed or chosen (`AutoCombat.openerWord`); absent, the typed one. */
+  opener?(): string;
   /**
    * Whether this character's class carries `ShadowHome` on the loaded realm —
    * `restsInTheShadows` (`src/shared/abilities.ts`), which reads the realm's
@@ -88,7 +90,7 @@ export class AutoStealth implements SessionModule {
   /** Every state change: is the character standing seen in an empty room? */
   onCharacter(state: CharacterState): void {
     if (state.phase !== 'in-game') return;
-    const opener = this.config.opener.trim();
+    const opener = (this.events.opener?.() ?? this.config.opener).trim();
     // The command table's own reading: `bs` is `BackStab`, and nothing else is.
     const backstabber = commandOf(opener) === 'BackStab';
     if (backstabber) this.sayCeiling(state);

@@ -824,9 +824,8 @@ export default function App() {
       revealConfig: () => reveal(() => api.revealConfig()),
       revealProfiles: () => reveal(() => api.revealProfiles()),
       chooseRealm: () => api.chooseRealm(),
-      // The shelf of shipped loops, for the Movement tab. Asked for when
-      // that picker opens rather than with the snapshot: four hundred
-      // loops, and most visits to that screen are about a password.
+      // The shelf of shipped loops, for the Movement tab, asked when that picker opens:
+      // four hundred loops, and most visits to that screen are about a password.
       loadLoops: () => api.loopCatalogue(),
       // And the trainers that will take a character, for the Train tab's
       // picker. Addressed: the bands are per level and per class.
@@ -840,7 +839,8 @@ export default function App() {
       // And the monsters the realm names, for the priority list's picker.
       loadMobNames: (session: SessionId) => api.mobNames(session),
       // And what the inventory holds that can bless, for the Spells page.
-      loadInvokeChoices: (session: SessionId) => api.invokeChoices(session)
+      loadInvokeChoices: (session: SessionId) => api.invokeChoices(session),
+      loadChosenWords: (session: SessionId) => api.chosenWords(session)
     }),
     [api, reveal]
   );

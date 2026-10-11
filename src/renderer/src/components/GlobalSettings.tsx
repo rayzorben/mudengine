@@ -23,6 +23,7 @@ import HealFields from './HealFields';
 import CarrySections from './CarrySections';
 import Icon from './Icon';
 import { CheckField, NumberField, SelectField, TextField } from './FormField';
+import FightWordFields from './FightWordFields';
 import RemoteList from './RemoteList';
 import RemoteSwitches from './RemoteSwitches';
 import { ACTIONABLE_REMOTES } from '@shared/remotes';
@@ -787,27 +788,17 @@ export default function GlobalSettings({
             />
 
             <div className="settings-inline">
-              <TextField
-                hint={t('settings.combat.attackVerbHint')}
-                label={t('settings.combat.attackVerbLabel')}
-                name="global-attack"
-                onChange={(value) =>
+              <FightWordFields
+                attack={draft.automation.combat.attack}
+                chosen={null}
+                onAttack={(value) =>
                   automation({ combat: { ...draft.automation.combat, attack: value } })
                 }
-                placeholder={t('settings.combat.attackWithPlaceholder')}
-                spellCheck={false}
-                value={draft.automation.combat.attack}
-              />
-              <TextField
-                hint={t('settings.combat.openerHint')}
-                label={t('settings.combat.openerLabel')}
-                name="global-opener"
-                onChange={(value) =>
+                onOpener={(value) =>
                   automation({ combat: { ...draft.automation.combat, opener: value } })
                 }
-                placeholder={t('settings.combat.openerPlaceholder')}
-                spellCheck={false}
-                value={draft.automation.combat.opener}
+                opener={draft.automation.combat.opener}
+                prefix="global-"
               />
               {/*
               The same four words the character form shows, rather than the

@@ -607,7 +607,7 @@ describe('a character', () => {
       expect(draft?.combat.enabled).toBe(false);
       expect(draft?.combat.retaliate).toBe(true);
       expect(draft?.combat.engage).toBe('hostile');
-      expect(draft?.combat.attack).toBe('a');
+      expect(draft?.combat.attack).toBe('');
     });
 
     it('refuses an engage policy it has never heard of', () => {

@@ -174,6 +174,8 @@ export interface EngageDecision {
    * room's listing it needed an answer that could be read back.
    */
   because?: string;
+  /** The attack word it swung with, typed or chosen for this monster (todo 47). */
+  attack?: string;
 }
 
 export interface AutomationSnapshot {

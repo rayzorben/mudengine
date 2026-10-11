@@ -1901,15 +1901,21 @@ automation:
     # `bash` is all-out, `bs` backstabs, `sm` smashes, and `pu`, `kic` and `ju`
     # are the mystic's punch, kick and jumpkick.
     #
+    # Blank picks the attack that does the most damage a round against the
+    # monster, out of the ones this class and race can use: `pu` or `ju` for a
+    # mystic, `aa` where bashing out-hits a plain `a`. A verb typed here is
+    # always used instead; type `attack` for the plain attack, since an `a` is
+    # read as the old default and set blank again.
+    #
     # A verb this character cannot use is dropped the first time the realm says
     # so -- `You don't know the first thing about bashing!` -- and said once in
     # the terminal. That refusal is printed in the room, so a client that kept
     # sending it would keep announcing it.
-    attack: a
+    attack: ''
 
     # Sent instead of `attack` for the first blow of a fight, and only the
-    # first: spending it is the point of having it. `bs` for a thief, `ju` for a
-    # mystic. Blank for none.
+    # first: spending it is the point of having it. Blank sends `bs` for a class
+    # that can hide, with a weapon it can backstab with, and nothing otherwise.
     opener: ''
 
     # Get back into the shadows between fights, so `bs` lands again.

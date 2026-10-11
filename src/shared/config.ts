@@ -747,7 +747,8 @@ export interface CombatConfig {
   /** Off unless somebody asks for it. */
   enabled: boolean;
   /**
-   * The verb that opens a fight. `a` — `Attack` in the command table.
+   * The verb that opens a fight; blank chooses the best round the class and
+   * race rows allow (`chooseAttack`, todo 47), and a typed verb wins.
    *
    * Configurable because the vocabulary is the *realm's*, not this client's
    * (docs/greatermud/commands.md: every abbreviation is listed by hand, and a
@@ -756,19 +757,16 @@ export interface CombatConfig {
    */
   attack: string;
   /**
-   * Sent instead of `attack` for the first blow only. Empty for none.
+   * Sent instead of `attack` for the first blow only. Blank chooses `bs`
+   * where the class hides and the hand backstabs, else none (`chooseOpener`).
    *
    * The opener a class gets one of per fight: `bs` for a thief, `ju` for a
    * mystic. Separate from `attack` because it is *not* repeatable — spending
    * it is the point of having it.
    *
-   * There is no list of verbs beside these two. A `rounds` list, cycled one
-   * verb per round on the mid-round tick, was carried here for four phases on
-   * the belief that some classes have to ask for their attack every round; the
-   * wire says otherwise (captures/032, a mystic's `bs ha` answered by dozens of
-   * unprompted jumpkicks over 94 lines), and so does MegaMUD's own help, whose
-   * single *Attack Command* is what `pu`, `kic` and `ju` go in. Removed
-   * 2026-09-02.
+   * No `rounds` list beside these (removed 2026-09-02): the server repeats the
+   * attack every round (captures/032, a mystic's `bs ha` then 94 lines of
+   * jumpkicks), and MegaMUD's help puts `pu`, `kic` and `ju` in one field.
    */
   opener: string;
   /**
@@ -2743,7 +2741,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     // you, and let the server roll the rounds.
     combat: {
       enabled: false,
-      attack: 'a',
+      attack: '',
       opener: '',
       hideForOpener: false,
       engage: 'hostile',
@@ -4297,6 +4295,11 @@ function normalizeParty(value: unknown): PartyConfig {
   };
 }
 
+/** A typed command's first word. Blank is kept: it chooses the attack or opener (`FightWords`). */
+export function firstWord(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? (value.trim().split(/\s+/)[0] ?? fallback) : fallback;
+}
+
 /**
  * Fighting on the character's behalf.
  *
@@ -4311,11 +4314,8 @@ function normalizeCombat(value: unknown): CombatConfig {
   const engage = String(raw['engage'] ?? d.engage);
   return {
     enabled: bool(raw['enabled'], d.enabled),
-    // A blank attack verb would send a bare newline at everything in the room,
-    // which on this server re-reads the room; the default is put back instead.
-    attack: str(raw['attack'], d.attack).split(/\s+/)[0] ?? d.attack,
-    // Blank is meaningful here and means "no opener", so it is *not* defaulted.
-    opener: typeof raw['opener'] === 'string' ? raw['opener'].trim().split(/\s+/)[0] || '' : '',
+    attack: firstWord(raw['attack'], d.attack),
+    opener: firstWord(raw['opener'], d.opener),
     hideForOpener: bool(raw['hideForOpener'], d.hideForOpener),
     engage: ENGAGE_POLICIES.includes(engage as EngagePolicy) ? (engage as EngagePolicy) : d.engage,
     retaliate: bool(raw['retaliate'], d.retaliate),

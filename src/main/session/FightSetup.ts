@@ -244,11 +244,11 @@ export class FightSetup {
    * what a fight's odds move with that the sheet does not show.
    */
   settingsKey(state: CharacterState): string {
-    const { spells, combat } = this.session.config();
+    const { spells } = this.session.config();
     return [
       JSON.stringify(this.up(state)),
       JSON.stringify(this.retreat(state, this.errands.realmClass().family, 'rested')),
-      combat.attack,
+      this.errands.realmClass().verb,
       spells.heal,
       spells.autoChooseHeal,
       spells.healTo,

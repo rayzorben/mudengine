@@ -133,7 +133,11 @@ function AutomationCard({ automation, ...chrome }: AutomationCardProps) {
                 key={`${decision.at}-${index}`}
               >
                 <span className="trace-at from-medium">{clock(decision.at)}</span>
-                <span className="trace-command">{decision.target}</span>
+                <span className="trace-command">
+                  {decision.attack === undefined
+                    ? decision.target
+                    : `${decision.attack} ${decision.target}`}
+                </span>
                 <span className="trace-reason">
                   {decision.acted
                     ? decision.because === undefined
