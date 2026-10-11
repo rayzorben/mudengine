@@ -11,9 +11,10 @@ const world = (stated: Record<string, number>): Pick<WorldGraph, 'mob'> =>
   }) as unknown as Pick<WorldGraph, 'mob'>;
 
 /*
- * Todo 70: Paradigm paid 300 for a cave bear its database rates at 100, and
- * 9 for a giant rat rated 3. The realm's scale is the median of what solo
- * kills paid over what the database says.
+ * Todo 70: the realm's scale is the median of what solo kills paid over what
+ * the database says. The fixture is a realm paying three times its database.
+ * orohost's 300 for a cave bear is no such realm: gmud.zip states it as EXP
+ * 100 × ExpMulti 3, which the stated figure carries since format 65 (todo 48).
  */
 describe('what the realm pays against its database', () => {
   it('is the median of learned over stated', () => {
@@ -22,11 +23,14 @@ describe('what the realm pays against its database', () => {
       ['giant rat', 9],
       ['kobold', 50]
     ]);
-    expect(killExpScale(learned, world({ 'cave bear': 100, 'giant rat': 3, kobold: 10 }))).toBe(3);
+    expect(killExpScale(learned, world({ 'cave bear': 100, 'giant rat': 3, kobold: 10 }))).toEqual({
+      scale: 3,
+      monsters: 3
+    });
   });
 
   it('is 1 before any kill the database can price', () => {
-    expect(killExpScale(new Map(), world({}))).toBe(1);
-    expect(killExpScale(new Map([['ghost', 40]]), world({}))).toBe(1);
+    expect(killExpScale(new Map(), world({}))).toEqual({ scale: 1, monsters: 0 });
+    expect(killExpScale(new Map([['ghost', 40]]), world({}))).toEqual({ scale: 1, monsters: 0 });
   });
 });

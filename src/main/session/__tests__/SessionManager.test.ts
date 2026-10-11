@@ -8144,7 +8144,7 @@ describe('the hunting survey prices a kill off the fight record', () => {
     spawns?: Map<string, LearnedSpawns>,
     opener = '',
     kept?: KeptSpeed
-  ): Promise<void> {
+  ): Promise<Awaited<ReturnType<typeof client>>> {
     const { sink } = collect();
     manager = build(sink, {
       world: lairs(dragon, goodOrc, spawns !== undefined),
@@ -8187,7 +8187,26 @@ describe('the hunting survey prices a kill off the fight record', () => {
     await until(
       () => manager!.character.progress.level === 10 && manager!.character.room.number !== null
     );
+    return socket;
   }
+
+  /* Todo 48: `Mob.Killed` splits a kill among the party (mamba: 50,000 paid 8,333 six ways). */
+  it('prices each kill at its share of the party', async () => {
+    const socket = await surveyed(record().fights);
+    const goblinPay = (advice: HuntingAdvice): number | null | undefined =>
+      [...advice.spots, ...advice.unmeasured].find((spot) => spot.mobs[0]?.name === 'goblin')
+        ?.mobs[0]?.experience;
+    // Positive control: alone, the database's whole kill.
+    const alone = await settled();
+    expect(goblinPay(alone)).toBe(300);
+    expect(alone.pay).toEqual({ scale: 1, monsters: 0, share: 1 });
+
+    socket.write('Soul started to follow you.\r\n[HP=148/MA=5]:' + PROMPT_REPAINT);
+    await until(() => manager!.character.party.members.length > 0);
+    const paired = await settled();
+    expect(paired.pay?.share).toBe(2);
+    expect(goblinPay(paired)).toBe(150);
+  });
 
   /* 2026-10-06: read afresh on each connection, orohost's speed took a caster eleven minutes. */
   it('prices the first survey of a connection at the speed kept for the address dialled', async () => {

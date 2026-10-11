@@ -997,6 +997,7 @@ describe("a caster's cycle", () => {
 describe('what hunting measured', () => {
   const use = {
     level: 5,
+    share: 1,
     now: 1_000_000,
     forgetMs: 600_000,
     minutesLeast: 10,
@@ -1078,6 +1079,29 @@ describe('what hunting measured', () => {
       use
     );
     expect(pace).toBe(10);
+  });
+
+  /* Todo 48: `Mob.Killed` splits a kill among the party, so an hour measured alone pays a party of two half. */
+  it('sets a rate measured at one party size against the party as it is', () => {
+    const solo = withMeasured(
+      [spot('bear', 8_000, 8_000)],
+      new Map([['bear', rate(48_000, { share: 1 })]]),
+      use
+    );
+    expect(spotRate(solo.spots[0]!)).toBe(48_000);
+    const paired = withMeasured(
+      [spot('bear', 4_000, 4_000)],
+      new Map([['bear', rate(48_000, { share: 1 })]]),
+      { ...use, share: 2 }
+    );
+    expect(spotRate(paired.spots[0]!)).toBe(24_000);
+    expect(paired.pace).toBe(6);
+    const measuredInParty = withMeasured(
+      [spot('bear', 8_000, 8_000)],
+      new Map([['bear', rate(24_000, { share: 2 })]]),
+      use
+    );
+    expect(spotRate(measuredInParty.spots[0]!)).toBe(48_000);
   });
 
   it('ranks a hunted spot on what it paid', () => {

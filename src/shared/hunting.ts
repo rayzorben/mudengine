@@ -1382,8 +1382,23 @@ export interface HuntingAdvice {
   floor: CashFloor;
   /** Measured over estimated where both are known, scaling every unhunted ground; null before any (`withMeasured`). */
   pace: number | null;
+  /** How the estimates priced a kill; null on a refusal. See `KillPay`. */
+  pay: KillPay | null;
   /** Why there is no answer, said out loud. */
   refusal: string | null;
+}
+
+/**
+ * What an estimate prices a kill at, and where that comes from (todo 48): the
+ * world database's `EXP × ExpMulti`, times `scale`, the realm's pay over the
+ * database read from the `monsters` a solo kill has priced (its `XPMultiplier`; 1 before any),
+ * divided `share` ways among the party (`killShare`). A monster a solo kill
+ * has priced is taken at that figure over `share` instead.
+ */
+export interface KillPay {
+  scale: number;
+  monsters: number;
+  share: number;
 }
 
 /**
@@ -1502,10 +1517,18 @@ export interface MeasuredRate {
    * was recorded.
    */
   estimated?: number | null;
+  /**
+   * How many ways each kill split while it was measured (`killShare`, todo
+   * 48). A party of a different size is paid `share` over its own share of
+   * it. Absent on a rate kept before it was recorded, read as alone.
+   */
+  share?: number;
 }
 
 export interface MeasuredUse {
   level: number | null;
+  /** How many ways a kill splits now (`killShare`), which a rate's own share is set against. */
+  share: number;
   now: number;
   /** A measurement older than this says nothing (`tuning.hunting.measuredForgetMs`). */
   forgetMs: number;
@@ -1539,6 +1562,8 @@ export function withMeasured(
   const valid = (rate: MeasuredRate | undefined): rate is MeasuredRate =>
     fresh(rate) && use.level !== null && rate.level === use.level;
   const bound = (ratio: number): number => Math.min(use.paceMost, Math.max(use.paceLeast, ratio));
+  // What the rate pays the party as it is now: a solo hour in a party of two is half (todo 48).
+  const paid = (rate: MeasuredRate): number => (rate.perHour * (rate.share ?? 1)) / use.share;
   /*
    * Within `levelsAcross` levels of the one it was measured at, a rate prices
    * its spot by its ratio to the model's figure it was measured beside, so a
@@ -1558,7 +1583,7 @@ export function withMeasured(
   for (const spot of spots) {
     const rate = rates.get(spot.key);
     const estimated = spot.estimate.expPerHour;
-    if (valid(rate) && estimated !== null && estimated > 0) ratios.push(rate.perHour / estimated);
+    if (valid(rate) && estimated !== null && estimated > 0) ratios.push(paid(rate) / estimated);
     const ratio = carried(rate);
     if (ratio !== null) across.push(ratio);
   }
@@ -1582,7 +1607,7 @@ export function withMeasured(
           ...spot,
           estimate: {
             ...modelled,
-            measured: { perHour: rate.perHour, minutes: rate.minutes, at: rate.at }
+            measured: { perHour: paid(rate), minutes: rate.minutes, at: rate.at }
           }
         };
       }

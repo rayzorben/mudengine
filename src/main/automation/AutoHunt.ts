@@ -19,7 +19,7 @@
  * `mudengine-automation` § *Hunting is a switch, and the loop it runs is
  * never filed*.
  */
-import { companyIn } from '../../shared/company';
+import { companyIn, killShare } from '../../shared/company';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
@@ -576,7 +576,8 @@ export class AutoHunt implements SessionModule {
         minutes: measured.minutes,
         level,
         at: this.now(),
-        estimated: this.phase.spot.estimate.modelPerHour ?? null
+        estimated: this.phase.spot.estimate.modelPerHour ?? null,
+        share: killShare(state)
       });
     }
 

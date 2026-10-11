@@ -1524,6 +1524,13 @@ cards:
       estimates. A spot you hunted a few levels ago is scaled by what it paid against its own
       estimate.'
     measuredHint: 'What hunting here paid at this level, over {minutes} minutes.'
+    # Where the experience an estimate puts on each kill comes from (todo 48): EXP x ExpMulti from
+    # the world database, scaled by what kills made alone have paid on this realm, split among the party.
+    payDatabase: Kills are priced at the world database's experience until a monster is killed alone.
+    payLearned:
+      many: 'Kills are priced at {scale}x the world database, from {count} monsters killed alone.'
+      one: 'Kills are priced at {scale}x the world database, from one monster killed alone.'
+    payShared: 'Each kill is split {share} ways in this party.'
     # The fight itself unpriced -- the rounds to kill, or the blows, unknown --
     # so the row is ordered by distance and never by what it pays.
     unpricedOne: The fight in one of them could not be rated, so it is listed by distance.
@@ -5454,10 +5461,10 @@ automation:
       of the target.'
     choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast and {perRound} a round,
       {cost} mana): the strongest spell your mana can pay for.'
-    roomTakeover: 'Casting {spell} at the room: {first} can''t be cast now, and {spell} is the next
-      room spell in your spellbook by damage per mana.'
-    debuffFirst: 'Casting {spell} before {room}: lowering the room''s magic resistance adds about
-      {gain} damage over the rounds it lasts.'
+    roomTakeover: "Casting {spell} at the room: {first} can't be cast now, and {spell} is the next
+      room spell in your spellbook by damage per mana."
+    debuffFirst: "Casting {spell} before {room}: lowering the room's magic resistance adds about
+      {gain} damage over the rounds it lasts."
     debuffFirstAt: 'Casting {spell} at {target} before {room}: lowering its magic resistance adds
       about {gain} damage over the rounds it lasts.'
     noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the game for it.

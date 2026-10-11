@@ -453,6 +453,29 @@ describe('naming what a monster is worth in health', () => {
     ]);
   });
 
+  /*
+   * Format 65 (todo 48). GreaterMUD's import stores `ExpMulti × EXP` as the
+   * monster's experience, and orohost paid 300 for a cave bear the database
+   * states as 100 × 3. A row with no `ExpMulti` column pays its `EXP`, and
+   * one with `ExpMulti` 0 pays nothing.
+   */
+  it('prices a kill at EXP times ExpMulti', () => {
+    const mobs = indexMobs(
+      fake({
+        Monsters: [
+          { Number: 80, Name: 'cave bear', HP: 90, EXP: 100, ExpMulti: 3, 'In Game': 1 },
+          { Number: 1, Name: 'giant rat', HP: 9, EXP: 9, 'In Game': 1 },
+          { Number: 1027, Name: 'beautiful woman', HP: 50, EXP: 20000, ExpMulti: 0, 'In Game': 1 }
+        ]
+      })
+    );
+    const xp = (name: string) => mobs.find((mob) => mob.n === name)?.xp;
+    expect(xp('cave bear')).toBe(300);
+    expect(xp('giant rat')).toBe(9);
+    // Pays nothing, which the index writes as it writes an `EXP` of 0: not stated.
+    expect(xp('beautiful woman')).toBeUndefined();
+  });
+
   it('writes no per-row record for a name the realm places once', () => {
     const mobs = indexMobs(
       fake({ Monsters: [{ Number: 224, Name: 'gnoll scout', HP: 100, 'In Game': 1 }] })

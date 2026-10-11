@@ -14,7 +14,8 @@ import {
   type HuntingAdvice,
   type HuntingRoom,
   type HuntingSpot,
-  type HuntingUnknown
+  type HuntingUnknown,
+  type KillPay
 } from '@shared/hunting';
 import type { AfflictionKind } from '@shared/menace';
 import type { IpcApi, SessionId } from '@shared/ipc';
@@ -107,6 +108,22 @@ function mobClock(regenSeconds: number): string {
   return hoursOf === 1
     ? t('cards.hunting.mobClock.one', { hours: hoursOf })
     : t('cards.hunting.mobClock.many', { hours: hoursOf });
+}
+
+/** Where the estimates' experience a kill comes from, for the head (todo 48). */
+function payWords(pay: KillPay | null): string[] {
+  if (pay === null) return [];
+  return [
+    pay.monsters === 0
+      ? t('cards.hunting.payDatabase')
+      : pay.monsters === 1
+        ? t('cards.hunting.payLearned.one', { scale: Number(pay.scale.toFixed(2)) })
+        : t('cards.hunting.payLearned.many', {
+            scale: Number(pay.scale.toFixed(2)),
+            count: pay.monsters
+          }),
+    pay.share > 1 ? t('cards.hunting.payShared', { share: pay.share }) : ''
+  ];
 }
 
 /** Every lair the survey kept, measured or not, in one order. */
@@ -313,7 +330,8 @@ function HuntingCard({
           advice.excluded.gated > 0
             ? t('cards.hunting.gated', { count: advice.excluded.gated })
             : '',
-          advice.pace !== null ? t('cards.hunting.paced', { pace: advice.pace.toFixed(1) }) : ''
+          advice.pace !== null ? t('cards.hunting.paced', { pace: advice.pace.toFixed(1) }) : '',
+          ...payWords(advice.pay)
         ]
           .filter((part) => part.length > 0)
           .join(' ');
