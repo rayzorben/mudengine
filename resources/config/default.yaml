@@ -577,7 +577,7 @@ ui:
         template: |
           {table header}
           {for item in items}
-          {bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}
+          {bold}{if item.learned}{strike}{/if}{item}{/strike}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}
           {/for}
           {/table}
       - name: Party

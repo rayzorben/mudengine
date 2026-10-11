@@ -74,14 +74,53 @@ describe('the tags', () => {
 });
 
 describe('the styles', () => {
-  const plain = { bg: null, bold: false, dim: false };
+  const plain = { bg: null, bold: false, dim: false, strike: false };
 
   it('takes a hex, a background and the attributes, and reset clears them all', () => {
     const [line] = renderTemplate('{#ff8800}{bg:blue}{bold}{dim}x{reset}y', {});
     expect(line?.segments).toEqual([
-      { text: 'x', fg: '#ff8800', bg: 'blue', bold: true, dim: true },
+      { text: 'x', fg: '#ff8800', bg: 'blue', bold: true, dim: true, strike: false },
       { text: 'y', fg: null, ...plain }
     ]);
+  });
+
+  /*
+   * Todo 770: `{strike}` is one more attribute on the same stack, SGR 9 on
+   * the wire. A table's padding and its header never wear it: the header is
+   * drawn on the first row's fields, so a strike that row opens would cross
+   * the labels out, and a line through blank cells reads as a longer name.
+   */
+  it('strikes text, closes and resets the strike, and sends SGR 9', () => {
+    const [line] = renderTemplate('{strike}a{/strike}b{strike}c{reset}d', {});
+    expect(line?.segments.map((s) => [s.text, s.strike])).toEqual([
+      ['a', true],
+      ['b', false],
+      ['c', true],
+      ['d', false]
+    ]);
+    expect(toAnsi(line!.segments)).toContain('\x1b[0;9ma');
+  });
+
+  it('strikes neither the padding of a column nor the header', () => {
+    const scope = {
+      rows: [
+        { name: 'ab', gone: true },
+        { name: 'abcd', gone: false }
+      ]
+    };
+    const drawn = renderTemplate(
+      '{table header}{for row in rows}{if row.gone}{strike}{/if}{row.name}{/strike}|\n{/for}{/table}',
+      scope
+    );
+    expect(drawn.map((line) => line.segments.map((s) => s.text).join(''))).toEqual([
+      'name|',
+      'ab  |',
+      'abcd|'
+    ]);
+    // The positive control: the first row is struck, its padding is not.
+    expect(drawn[1]?.segments.find((s) => s.text === 'ab')?.strike).toBe(true);
+    expect(drawn[1]?.segments.filter((s) => s.strike).map((s) => s.text)).toEqual(['ab']);
+    expect(drawn[0]?.segments.some((s) => s.strike)).toBe(false);
   });
 
   it('puts back what was in effect before when a colour or attribute is closed', () => {
@@ -108,8 +147,8 @@ describe('the styles', () => {
   it('writes bytes the console reads: one SGR per run and a reset at the end', () => {
     expect(
       toAnsi([
-        { text: 'HP ', fg: 'brightWhite', bg: null, bold: true, dim: false },
-        { text: '120', fg: '#ff8800', bg: 'blue', bold: false, dim: false }
+        { text: 'HP ', fg: 'brightWhite', bg: null, bold: true, dim: false, strike: false },
+        { text: '120', fg: '#ff8800', bg: 'blue', bold: false, dim: false, strike: false }
       ])
     ).toBe('\x1b[0;1;97mHP \x1b[0;38;2;255;136;0;44m120\x1b[0m');
   });

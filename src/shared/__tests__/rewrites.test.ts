@@ -28,6 +28,7 @@ import { equipVerdict, UNKNOWN_WEARER, type Wearer } from '../gear';
 import { asUiDict, flattenDict, makeT } from '../i18n';
 import { wireItem, type ItemEntity } from '../entities';
 import { readEffects } from '../abilities';
+import type { ScrollLesson } from '../learning';
 import type { StatlineFigures } from '../statline';
 import { asSpokenDirection } from '../world';
 import { readFileSync } from 'node:fs';
@@ -91,7 +92,7 @@ const shipped = (entity: RewriteDesign['entity']): RewriteDesign => ({
 
 describe('the prompt row', () => {
   const facts: RewriteFacts = { entity: 'statline', figures: FIGURES };
-  const plain = { bg: null, bold: false, dim: false };
+  const plain = { bg: null, bold: false, dim: false, strike: false };
 
   it('draws the figures, colours a banded one for its own characters only, and hands the colour back', () => {
     const bands: VitalBands = {
@@ -445,7 +446,7 @@ describe('the other listings', () => {
     ]);
   });
 
-  it('marks a price the purse cannot meet and a thing this character may not wear', () => {
+  it('marks a price the purse cannot meet, one it can, and a thing this character may not wear', () => {
     const wearer: Wearer = { ...UNKNOWN_WEARER, classId: 2, classNames: { 1: 'Warrior' } };
     const axe = { ...wireItem('golden battleaxe'), id: 3, realmSlot: 'Weapon Hand', classes: [1] };
     const drawn = renderRewrite(
@@ -462,7 +463,8 @@ describe('the other listings', () => {
             note: null,
             item: axe,
             effects: NO_EFFECTS,
-            verdict: equipVerdict(axe, wearer, t)
+            verdict: equipVerdict(axe, wearer, t),
+            lesson: null
           },
           {
             name: 'torch',
@@ -472,20 +474,97 @@ describe('the other listings', () => {
             note: null,
             item: wireItem('torch'),
             effects: NO_EFFECTS,
-            verdict: equipVerdict(wireItem('torch'), wearer, t)
+            verdict: equipVerdict(wireItem('torch'), wearer, t),
+            lesson: null
           }
         ]
       },
       BANDS,
       t
     );
-    const short = t('rewrites.shop.short');
     const only = t('cards.inventory.blocked.byClass', { classList: 'Warrior' });
-    expect(drawn.map(plainOf)).toEqual([
-      `golden battleaxe|${short}|${only}|!`,
-      `${'torch'.padEnd(16)}|${' '.repeat(short.length)}|${' '.repeat(only.length)}|`
-    ]);
-    expect(drawn[0]?.segments.find((s) => s.text.startsWith(short))?.fg).toBe('brightRed');
+    const [axeRow, torchRow] = drawn.map(plainOf);
+    const cross = axeRow!.split('|')[1]!;
+    const tick = torchRow!.split('|')[1]!;
+    expect(cross).not.toBe(tick);
+    expect(axeRow).toBe(`golden battleaxe|${cross}|${only}|!`);
+    expect(torchRow).toBe(`${'torch'.padEnd(16)}|${tick}|${' '.repeat(only.length)}|`);
+    expect(drawn[0]?.segments.find((s) => s.text === cross)?.fg).toBe('brightRed');
+    expect(drawn[1]?.segments.find((s) => s.text === tick)?.fg).toBe('brightGreen');
+  });
+
+  it('leaves Afford blank where the price or the purse is unknown', () => {
+    const row = (cost: number | null) => ({
+      name: 'rope',
+      quantity: 1,
+      price: '3 trade beads',
+      cost,
+      note: null,
+      item: wireItem('rope'),
+      effects: NO_EFFECTS,
+      verdict: equipVerdict(wireItem('rope'), UNKNOWN_WEARER, t),
+      lesson: null
+    });
+    const afford = (wealth: number | null, cost: number | null): string =>
+      plainOf(
+        renderRewrite(
+          design('shop', '{for item in items}[{item.afford}]{/for}'),
+          { entity: 'shop', figures: { ...FIGURES, wealth }, rows: [row(cost)] },
+          BANDS,
+          t
+        )[0]!
+      );
+    expect(afford(null, 5)).toBe('[]');
+    expect(afford(100, null)).toBe('[]');
+    // The positive control: the same row against a known purse draws a mark.
+    expect(afford(100, 5)).not.toBe('[]');
+  });
+
+  /*
+   * Todo 770 (2026-10-10): a scroll whose spell the book lists is struck out
+   * in the shipped design, and a scroll the server would refuse says why in
+   * Usable. A book never read strikes nothing.
+   */
+  it('strikes out a learned scroll and says why one cannot be learned', () => {
+    const scroll = (name: string, lesson: ScrollLesson | null) => ({
+      name,
+      quantity: 1,
+      price: '30 silver nobles',
+      cost: 300,
+      note: null,
+      item: wireItem(name),
+      effects: NO_EFFECTS,
+      verdict: equipVerdict(wireItem(name), UNKNOWN_WEARER, t),
+      lesson
+    });
+    const shelf = DEFAULT_REWRITES.find((each) => each.entity === 'shop')!;
+    const drawn = renderRewrite(
+      shelf,
+      {
+        entity: 'shop',
+        figures: { ...FIGURES, wealth: 1000 },
+        rows: [
+          scroll('minor healing scroll', { learned: true, verdict: { kind: 'learns' } }),
+          scroll('magic missile scroll', {
+            learned: false,
+            verdict: { kind: 'refused', why: 'magery' }
+          }),
+          scroll('bless scroll', { learned: null, verdict: { kind: 'unknown' } })
+        ]
+      },
+      BANDS,
+      t
+    );
+    const struck = (row: number, text: string): boolean | undefined =>
+      drawn[row]?.segments.find((segment) => segment.text === text)?.strike;
+    // The header is row 0; the name's column padding is never struck.
+    expect(struck(1, 'minor healing scroll')).toBe(true);
+    expect(drawn[2]?.segments.some((segment) => segment.strike)).toBe(false);
+    expect(drawn[3]?.segments.some((segment) => segment.strike)).toBe(false);
+    expect(plainOf(drawn[2]!)).toContain(t('rewrites.shop.learn.magery'));
+    expect(
+      drawn[2]?.segments.find((s) => s.text.startsWith(t('rewrites.shop.learn.magery')))?.fg
+    ).toBe('yellow');
   });
 
   /*
@@ -502,7 +581,8 @@ describe('the other listings', () => {
       note: null,
       item: wireItem('rope'),
       effects: NO_EFFECTS,
-      verdict: equipVerdict(wireItem('rope'), UNKNOWN_WEARER, t)
+      verdict: equipVerdict(wireItem('rope'), UNKNOWN_WEARER, t),
+      lesson: null
     });
     const drawn = renderRewrite(
       design('shop', '{for item in items}{item.priceLong}\n{/for}'),

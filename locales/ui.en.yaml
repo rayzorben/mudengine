@@ -640,6 +640,8 @@ notices:
       those realms starts without them: {records}.'
     themeCut: 'The theme "{from}" was removed, as it looked almost the same as another. {file}
       now uses {to}, the nearest one left.'
+    shelfStrikesLearned: The shipped shop design in {file} now strikes out a scroll whose spell
+      you already have.
     exitsDesigned: 'The "Obvious exits:" line can now be redrawn with the world database''s hidden
       exits in it, as "south (hidden)". A design for it, off, was added to the designs in {file};
       turn it on under Rewrites.'
@@ -1376,8 +1378,9 @@ rewrites:
     quantity: Qty
     priceLong: Price
     cost: Copper
-    afford: Cash
+    afford: Afford
     usable: Usable
+    learned: Learned
     note: Note
     class: Class
     health: HP%
@@ -1515,9 +1518,10 @@ rewrites:
     quantity: How many the shop has.
     priceLong: The shop's price in coins, largest first, such as 5 runic, 3 gold.
     cost: The price in copper.
-    afford: Says short when the price is more than your cash.
+    afford: A check mark when your cash covers the price, a red cross when it does not.
     short: Whether the price is more than your cash.
-    usable: Why this character may not wear it, where they may not.
+    usable: Why this character may not wear it or learn its spell, where they may not.
+    learned: Whether this character already has the spell the scroll teaches.
     note: The shop's own note on the row.
     basePrice: The base price from the world data, before the shop's markup.
     members: The rows of the party, one per member.
@@ -1561,7 +1565,12 @@ rewrites:
     silver: silver
     copper: copper
   shop:
-    short: short
+    learn:
+      magery: wrong magery
+      mageryLevel: magery too low
+      tooLow: level too low
+      tooHigh: level too high
+      alignment: wrong alignment
   room:
     hiddenExit: '{exit} (hidden)'
   party:

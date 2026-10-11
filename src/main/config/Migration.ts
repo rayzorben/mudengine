@@ -297,6 +297,7 @@ function migrateAll(options: MigrationOptions): void {
   aFoundPlayerIsNoEffect(home, note);
   theRealmIsTheMenusChoice(home, note, options.worlds);
   theDebugTraceGrew(home, note);
+  theShelfStrikesLearned(home, note);
 }
 
 /**
@@ -705,6 +706,41 @@ function statedLowLives(
       ? t('notices.migration.lowLivesStated.one', params)
       : t('notices.migration.lowLivesStated.many', params)
   );
+}
+
+/**
+ * The shipped *Shop shelf* strikes out a scroll whose spell is learnt already
+ * (2026-10-10, todo 770). A shop design whose template is still the shipped
+ * one, word for word, takes the new one; a design the player wrote is theirs
+ * and is left as it is. Idempotent: the old text is never written.
+ */
+const SHELF_BEFORE_STRIKE = [
+  '{table header}',
+  '{for item in items}',
+  '{bold}{item}{/bold}  {dim}x{item.quantity}{/dim}  {item.priceLong}  {item.afford}  {item.usable}  {item.icon}',
+  '{/for}',
+  '{/table}'
+].join('\n');
+
+function theShelfStrikesLearned(home: Home, note: (message: string) => void): void {
+  for (const file of everySettingsFile(home)) {
+    let moved = false;
+    edit(file, (document) => {
+      const designs = document.getIn(['ui', 'rewrites', 'designs'], true);
+      if (!isSeq(designs)) return false;
+      for (const design of designs.items) {
+        if (!isMap(design) || design.get('entity') !== 'shop') continue;
+        const template = design.get('template', true);
+        if (!isScalar(template) || typeof template.value !== 'string') continue;
+        if (template.value.trimEnd() !== SHELF_BEFORE_STRIKE) continue;
+        template.value = shippedDesign('shop').template;
+        template.type = Scalar.BLOCK_LITERAL;
+        moved = true;
+      }
+      return moved;
+    });
+    if (moved) note(t('notices.migration.shelfStrikesLearned', { file }));
+  }
 }
 
 /**

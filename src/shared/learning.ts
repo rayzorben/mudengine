@@ -86,6 +86,34 @@ export function learnVerdict(spell: LearnedSpell, learner: Learner): LearnVerdic
   return unknown ? { kind: 'unknown' } : { kind: 'learns' };
 }
 
+/**
+ * What a scroll on a shelf would do for this character: whether every spell
+ * it teaches is in the book already (null while the book was never read), and
+ * the server's verdict on reading it. `read` walks the scroll's `LearnSp` rows
+ * in order and stops at the first it refuses (GreaterMUD `ReadCommand`), so the
+ * first refusal is the scroll's; an unknown on any row is the scroll's unknown.
+ */
+export interface ScrollLesson {
+  learned: boolean | null;
+  verdict: LearnVerdict;
+}
+
+export function scrollLesson(
+  spells: readonly (LearnedSpell & Pick<WorldSpell, 'name'>)[],
+  learner: Learner,
+  book: readonly KnownSpell[] | null
+): ScrollLesson | null {
+  if (spells.length === 0) return null;
+  const learned = book === null ? null : spells.every((spell) => listsSpell(book, spell.name));
+  let verdict: LearnVerdict = { kind: 'learns' };
+  for (const spell of spells) {
+    const each = learnVerdict(spell, learner);
+    if (each.kind === 'refused') return { learned, verdict: each };
+    if (each.kind === 'unknown') verdict = each;
+  }
+  return { learned, verdict };
+}
+
 /** Whether a book already lists a spell by this name. */
 export function listsSpell(book: readonly KnownSpell[], name: string): boolean {
   return book.some((entry) => entry.name.toLowerCase() === name.toLowerCase());

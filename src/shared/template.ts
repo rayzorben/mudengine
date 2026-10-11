@@ -3,8 +3,8 @@
  *
  * A template is text with `{tags}`: a figure (`{hp}`, `{item.weight}`,
  * `{keys|or:none}`), a colour (`{red}`, `{#ff8800}`, `{bg:blue}`), `{bold}`,
- * `{dim}`, `{reset}`, a closer that puts back what was in effect before
- * (`{/red}`, `{/colour}`, `{/bold}`), and three controls: `{if …}` with
+ * `{dim}`, `{strike}`, `{reset}`, a closer that puts back what was in effect before
+ * (`{/red}`, `{/colour}`, `{/bold}`, `{/strike}`), and three controls: `{if …}` with
  * `{else if …}` and `{else}`, `{for list}` once per row with the row's
  * fields in scope, and `{table}` / `{table header}` in which every figure is a
  * column. A tag it does not know is drawn as typed, so a typo shows itself.
@@ -63,6 +63,18 @@ export interface Segment {
   bg: string | null;
   bold: boolean;
   dim: boolean;
+  /** A line through the text: a shop's scroll whose spell is learnt already (todo 770). */
+  strike: boolean;
+}
+
+/** The attributes a run wears, without its text: what two runs must share to be one. */
+type Look = Omit<Segment, 'text'>;
+
+/** Whether two runs wear the same attributes, so they draw as one. */
+function sameLook(a: Look, b: Look): boolean {
+  return (
+    a.fg === b.fg && a.bg === b.bg && a.bold === b.bold && a.dim === b.dim && a.strike === b.strike
+  );
 }
 
 /**
@@ -199,8 +211,14 @@ const NAME = /^[A-Za-z_]\w*$/;
 const BLOCK_OPEN = /^(if|else if|elif|else|for|table|group)(?:\s|$)/;
 const BLOCK_CLOSE = /^\/(if|for|table)$/;
 
+/** The named style tags, as the designer's sidebar offers them. */
+export const STYLE_TAGS: readonly string[] = ['bold', 'dim', 'strike', 'reset'];
+
+/** The named closers the sidebar offers; `{/color}` and `{/<colour>}` close too. */
+export const STYLE_CLOSERS: readonly string[] = ['colour', 'bg', 'bold', 'dim', 'strike'];
+
 function isStyleTag(tag: string): boolean {
-  if (tag === 'bold' || tag === 'dim' || tag === 'reset') return true;
+  if (STYLE_TAGS.includes(tag)) return true;
   if (tag.startsWith('bg:')) {
     const colour = tag.slice(3);
     return isAnsiColour(colour) || HEX.test(colour);
@@ -208,13 +226,11 @@ function isStyleTag(tag: string): boolean {
   return isAnsiColour(tag) || HEX.test(tag);
 }
 
-/** `{/red}`, `{/colour}`, `{/bg}`, `{/bold}`, `{/dim}`: a closer of a style. */
+/** `{/red}`, `{/colour}`, `{/bg}`, `{/bold}`, `{/dim}`, `{/strike}`: a closer of a style. */
 function isStyleCloser(tag: string): boolean {
   if (!tag.startsWith('/')) return false;
   const name = tag.slice(1);
-  if (name === 'colour' || name === 'color' || name === 'bg' || name === 'bold' || name === 'dim') {
-    return true;
-  }
+  if (name === 'color' || STYLE_CLOSERS.includes(name)) return true;
   if (name.startsWith('bg:')) return isStyleTag(name);
   return isAnsiColour(name) || HEX.test(name);
 }
@@ -803,17 +819,14 @@ interface Style {
   bg: string[];
   bold: number;
   dim: number;
+  strike: number;
 }
 
 type Align = 'left' | 'right' | 'center';
 
 /** One run of a line before the table pass: text, or a figure that may become a column. */
-interface Piece {
+interface Piece extends Look {
   text: string;
-  fg: string | null;
-  bg: string | null;
-  bold: boolean;
-  dim: boolean;
   glyph?: Glyph;
   /** Set on a figure drawn inside a table: the column it belongs to. */
   column?: { key: string; align: Align | null; numeric: boolean; header: boolean };
@@ -921,7 +934,19 @@ export function renderTemplate(
   const parsed = typeof template === 'string' ? parseTemplate(template) : template;
   const label = options.label ?? ((path: string) => path.split('.').pop() ?? path);
 
-  const style: Style = { fg: [], bg: [], bold: 0, dim: 0 };
+  const style: Style = { fg: [], bg: [], bold: 0, dim: 0, strike: 0 };
+  /**
+   * The attributes the style stack puts on whatever is drawn next. A header
+   * is never struck: it is drawn on the first row's fields, so a strike that
+   * row opens with `{if}` would strike the labels (todo 770).
+   */
+  const look = (asHeader = false): Look => ({
+    fg: style.fg[style.fg.length - 1] ?? null,
+    bg: style.bg[style.bg.length - 1] ?? null,
+    bold: style.bold > 0,
+    dim: style.dim > 0,
+    strike: style.strike > 0 && !asHeader
+  });
   const chain: Row[] = [{ ...scope }];
   const lines: Piece[][] = [[]];
   /** The lines a table is collecting, or null outside one. */
@@ -931,14 +956,8 @@ export function renderTemplate(
     const target = table ? table.lines : lines;
     return target[target.length - 1]!;
   };
-  const push = (piece: Omit<Piece, 'fg' | 'bg' | 'bold' | 'dim'> & Partial<Piece>): void => {
-    current().push({
-      fg: style.fg[style.fg.length - 1] ?? null,
-      bg: style.bg[style.bg.length - 1] ?? null,
-      bold: style.bold > 0,
-      dim: style.dim > 0,
-      ...piece
-    });
+  const push = (piece: Omit<Piece, keyof Look> & Partial<Piece>, asHeader = false): void => {
+    current().push({ ...look(asHeader), ...piece });
   };
   const newline = (): void => {
     (table ? table.lines : lines).push([]);
@@ -950,10 +969,13 @@ export function renderTemplate(
       style.bg = [];
       style.bold = 0;
       style.dim = 0;
+      style.strike = 0;
     } else if (tag === 'bold') style.bold += 1;
     else if (tag === 'dim') style.dim += 1;
+    else if (tag === 'strike') style.strike += 1;
     else if (tag === '/bold') style.bold = Math.max(0, style.bold - 1);
     else if (tag === '/dim') style.dim = Math.max(0, style.dim - 1);
+    else if (tag === '/strike') style.strike = Math.max(0, style.strike - 1);
     else if (tag === '/bg' || tag.startsWith('/bg:')) style.bg.pop();
     else if (tag.startsWith('/')) style.fg.pop();
     else if (tag.startsWith('bg:')) style.bg.push(tag.slice(3));
@@ -963,7 +985,7 @@ export function renderTemplate(
   const drawFigure = (node: Extract<Node, { kind: 'figure' }>, asHeader: boolean): void => {
     const found = lookupIn(chain, node.path);
     if (found === undefined) {
-      push({ text: node.raw });
+      push({ text: node.raw }, asHeader);
       return;
     }
     const base: Figure = isFigure(found)
@@ -979,11 +1001,9 @@ export function renderTemplate(
         }
       : applyFilters(base, node.filters);
     const piece: Piece = {
+      ...look(asHeader),
       text: figure.text,
       fg: figure.colour ?? style.fg[style.fg.length - 1] ?? null,
-      bg: style.bg[style.bg.length - 1] ?? null,
-      bold: style.bold > 0,
-      dim: style.dim > 0,
       ...(figure.glyph === undefined ? {} : { glyph: figure.glyph }),
       ...(table === null ? {} : { column: { key: node.path, align, numeric, header: asHeader } })
     };
@@ -994,7 +1014,7 @@ export function renderTemplate(
     for (const node of nodes) {
       switch (node.kind) {
         case 'text':
-          push({ text: node.text });
+          push({ text: node.text }, asHeader);
           break;
         case 'newline':
           newline();
@@ -1196,21 +1216,8 @@ export function renderTemplate(
    */
   const tail = lines[lines.length - 1]!;
   const last = tail[tail.length - 1];
-  const ending = {
-    fg: style.fg[style.fg.length - 1] ?? null,
-    bg: style.bg[style.bg.length - 1] ?? null,
-    bold: style.bold > 0,
-    dim: style.dim > 0
-  };
-  if (
-    last === undefined ||
-    last.fg !== ending.fg ||
-    last.bg !== ending.bg ||
-    last.bold !== ending.bold ||
-    last.dim !== ending.dim
-  ) {
-    tail.push({ text: '', ...ending });
-  }
+  const ending = look();
+  if (last === undefined || !sameLook(last, ending)) tail.push({ text: '', ...ending });
 
   return lines.map(toDrawn);
 }
@@ -1257,20 +1264,32 @@ function alignColumns(lines: Piece[][]): Piece[][] {
   }
   if (widths.size === 0) return lines;
   return lines.map((line) =>
-    line.map((piece) => {
-      if (piece.column === undefined) return piece;
+    line.flatMap((piece): Piece[] => {
+      if (piece.column === undefined) return [piece];
       const { key } = piece.column;
       const pad = Math.max(0, (widths.get(key) ?? 0) - widthOf(piece));
-      if (pad === 0) return piece;
+      if (pad === 0) return [piece];
       const align = aligns.get(key) ?? (numeric.get(key) === true ? 'right' : 'left');
       const before = align === 'right' ? pad : align === 'center' ? Math.floor(pad / 2) : 0;
       const after = pad - before;
       if (piece.glyph !== undefined) {
-        return { ...piece, lead: ' '.repeat(before), text: piece.text + ' '.repeat(after) };
+        return [{ ...piece, lead: ' '.repeat(before), text: piece.text + ' '.repeat(after) }];
       }
-      return { ...piece, text: ' '.repeat(before) + piece.text + ' '.repeat(after) };
+      // A line through the column's padding would strike blank cells past the
+      // name: the padding wears everything but the strike.
+      if (piece.strike) {
+        const blank = (cells: number): Piece[] =>
+          cells === 0 ? [] : [{ ...lookOf(piece), strike: false, text: ' '.repeat(cells) }];
+        return [...blank(before), piece, ...blank(after)];
+      }
+      return [{ ...piece, text: ' '.repeat(before) + piece.text + ' '.repeat(after) }];
     })
   );
+}
+
+/** A piece's attributes alone, without its column or glyph. */
+function lookOf(piece: Look): Look {
+  return { fg: piece.fg, bg: piece.bg, bold: piece.bold, dim: piece.dim, strike: piece.strike };
 }
 
 /** A line's pieces as runs, glyphs placed at the cell they start in. */
@@ -1282,16 +1301,10 @@ function toDrawn(pieces: readonly Piece[]): Drawn {
     if (text.length === 0) return;
     cells += cellsOf(text);
     const last = segments[segments.length - 1];
-    if (
-      last &&
-      last.fg === piece.fg &&
-      last.bg === piece.bg &&
-      last.bold === piece.bold &&
-      last.dim === piece.dim
-    ) {
+    if (last && sameLook(last, piece)) {
       last.text += text;
     } else {
-      segments.push({ text, fg: piece.fg, bg: piece.bg, bold: piece.bold, dim: piece.dim });
+      segments.push({ text, ...lookOf(piece) });
     }
   };
   for (const piece of pieces) {
@@ -1311,21 +1324,8 @@ function toDrawn(pieces: readonly Piece[]): Drawn {
   const ending = pieces[pieces.length - 1];
   if (ending !== undefined && ending.text.length === 0 && ending.glyph === undefined) {
     const drawn = segments[segments.length - 1];
-    if (
-      drawn === undefined ||
-      drawn.fg !== ending.fg ||
-      drawn.bg !== ending.bg ||
-      drawn.bold !== ending.bold ||
-      drawn.dim !== ending.dim
-    ) {
-      segments.push({
-        text: '',
-        fg: ending.fg,
-        bg: ending.bg,
-        bold: ending.bold,
-        dim: ending.dim
-      });
-    }
+    if (drawn === undefined || !sameLook(drawn, ending))
+      segments.push({ text: '', ...lookOf(ending) });
   }
   return { segments, glyphs, cells };
 }
@@ -1402,6 +1402,7 @@ export function toAnsi(segments: readonly Segment[]): string {
     const codes = ['0'];
     if (segment.bold) codes.push('1');
     if (segment.dim) codes.push('2');
+    if (segment.strike) codes.push('9');
     if (segment.fg !== null) codes.push(sgrColour(segment.fg, false));
     if (segment.bg !== null) codes.push(sgrColour(segment.bg, true));
     out += `\x1b[${codes.join(';')}m${segment.text}`;

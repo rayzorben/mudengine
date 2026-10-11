@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MAX_LEVEL_ABILITY, MIN_LEVEL_ABILITY } from '../abilities';
-import { learnVerdict, taughtBy, withSpell, type Learner } from '../learning';
+import { learnVerdict, scrollLesson, taughtBy, withSpell, type Learner } from '../learning';
 import { poolOf } from '../spellchoice';
 
 /*
@@ -99,5 +99,50 @@ describe('the scroll and the pool', () => {
     expect(poolOf(null, 1)).toBe('MA');
     expect(poolOf(null, 0)).toBeNull();
     expect(poolOf('MA', 5)).toBe('MA');
+  });
+});
+
+/*
+ * Todo 770: a scroll on a shop's shelf. The user's own example: a Priest
+ * (Priest 3) can learn Priest 1-3 spells, a Cleric (Priest 2) only Priest 1-2,
+ * and a Mage spell is refused to both.
+ */
+describe('what a scroll on the shelf would teach', () => {
+  const PRIEST: Learner = { mageryType: 2, mageryLevel: 3, level: 10, alignment: null };
+  const CLERIC: Learner = { ...PRIEST, mageryLevel: 2 };
+  const prayer = (name: string, mageryLevel: number) => ({ name, mageryType: 2, mageryLevel });
+  const book = [{ name: 'Minor Healing', short: 'mihe', level: 1, cost: 2 }];
+
+  it('learns by magery type and level, as the user put it', () => {
+    const third = [prayer('cure poison', 3)];
+    expect(scrollLesson(third, PRIEST, [])?.verdict).toEqual({ kind: 'learns' });
+    expect(scrollLesson(third, CLERIC, [])?.verdict).toEqual({
+      kind: 'refused',
+      why: 'magery-level'
+    });
+    expect(scrollLesson([prayer('bless', 2)], CLERIC, [])?.verdict).toEqual({ kind: 'learns' });
+    const missile = [{ name: 'magic missile', mageryType: 1, mageryLevel: 1 }];
+    expect(scrollLesson(missile, PRIEST, [])?.verdict).toEqual({ kind: 'refused', why: 'magery' });
+  });
+
+  it('is learned when the book lists every spell, and unknown when the book was never read', () => {
+    const healing = [prayer('minor healing', 1)];
+    expect(scrollLesson(healing, PRIEST, book)?.learned).toBe(true);
+    expect(scrollLesson([prayer('bless', 1)], PRIEST, book)?.learned).toBe(false);
+    expect(scrollLesson(healing, PRIEST, null)?.learned).toBeNull();
+  });
+
+  it('takes the first refusal, and is unknown where the class is', () => {
+    const two = [prayer('bless', 1), prayer('cure poison', 3)];
+    expect(scrollLesson(two, CLERIC, [])?.verdict).toEqual({
+      kind: 'refused',
+      why: 'magery-level'
+    });
+    const unread: Learner = { ...PRIEST, mageryType: null, mageryLevel: null };
+    expect(scrollLesson(two, unread, [])?.verdict).toEqual({ kind: 'unknown' });
+  });
+
+  it('is nothing for a thing that teaches nothing', () => {
+    expect(scrollLesson([], PRIEST, book)).toBeNull();
   });
 });

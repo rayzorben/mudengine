@@ -20,7 +20,7 @@ import { SessionExtensions } from '../extensions/SessionExtensions';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import { rarityBook, type RarityWorld } from '../world/itemRarity';
 import { salePlaces } from '../world/salePlaces';
-import { learnerOf, learning } from '../world/learning';
+import { learnerIn, learning } from '../world/learning';
 import { spellScrolls } from '../world/spellScrolls';
 import type { SafetyDecision } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
@@ -147,7 +147,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         const here = roomAddress(state.room);
         if (world === undefined || here === null) return [];
         const traveller = errands.travellerNow(state);
-        const learner = learnerOf(state, world.classNamed(state.className ?? ''));
+        const learner = learnerIn(state, world);
         return spellScrolls(state, learner, {
           itemsWhere: (test) => world.itemsWhere(test),
           spellById: (id) => world.spellById(id),
