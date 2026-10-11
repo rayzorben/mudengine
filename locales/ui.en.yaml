@@ -1104,6 +1104,7 @@ tabs:
     markHeld: held
     markPoisoned: poisoned
     markConfused: confused
+    markAfraid: afraid
     markShopping: shopping
     markResting: resting
     markRestingTo: resting to {percent}%
@@ -2354,6 +2355,7 @@ cards:
       statusHeld: held
       statusPoisoned: poisoned
       statusConfused: confused
+      statusAfraid: afraid
       statusOffline: offline
       statusResting: resting
       statusRunning: running
@@ -3364,6 +3366,7 @@ cards:
     # stated `yes` is drawn: unknown is not a condition, and `no` is the
     # ordinary state of a character.
     afflicted:
+      afraid: afraid
       blind: blind
       confused: confused
       diseased: diseased
@@ -6114,6 +6117,7 @@ automation:
     holdingHeld: Held fast; waiting here until you can move again.
     holdingPoisoned: Poisoned; waiting here until it runs its course.
     holdingConfused: Confused; waiting here until your head clears.
+    holdingAfraid: Afraid; waiting here until the fear wears off.
     afflictionResumed: The condition has passed; walking on.
     holdingDark: Too dark to tell where this is; waiting for a light.
     lightResumed: The room can be read again; walking on.

@@ -21,7 +21,7 @@ import {
   wordsOf,
   type SpellLore
 } from '../../shared/spell-messages';
-import { confuses, holdsMovement } from '../../shared/spellcraft';
+import { confuses, frightens, holdsMovement } from '../../shared/spellcraft';
 import type { BelongingsSink } from '../../shared/belongings';
 import type { Block } from '../../shared/blocks';
 import { tuning } from '../app/tuning';
@@ -756,6 +756,7 @@ export class EffectTracker {
     const row = this.world?.spellNamed(name);
     if (holdsMovement(row)) conditions.push('held');
     if (confuses(row)) conditions.push('confused');
+    if (frightens(row)) conditions.push('afraid');
     const start = this.spellLore.startOf(name);
     const stated = start === null ? null : afflictionOnset(start);
     if (stated !== null && !conditions.includes(stated)) conditions.push(stated);
@@ -896,6 +897,9 @@ export class EffectTracker {
     // A confusion landing refuses nothing by itself — the fumbles come later,
     // one command at a time — so the flag is set and no claim is taken.
     if (rows.some(confuses)) next = afflicted(next ?? s, 'confused', 'yes') ?? next;
+    // Fear refuses nothing either: the shoves come on the spell's ticks, each
+    // as a room nobody asked for (todo 66).
+    if (rows.some(frightens)) next = afflicted(next ?? s, 'afraid', 'yes') ?? next;
     return next;
   }
 

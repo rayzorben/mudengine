@@ -795,6 +795,23 @@ export class RoomTracker {
       }
 
       /*
+       * A fear shove (todo 66): afraid, nothing queued, and not a re-look at
+       * the room being stood in. `Spell.cs`'s `Fear` case walks the character
+       * through a random exit and the server prints only the room it lands in,
+       * so this is an arrival like any step, with the direction unknown:
+       * counted (`Room.arrival`), with no search finds carried from the room
+       * left, resolved by `resolveRoom`'s neighbour rung, and never a
+       * discovery, since what was last said did not cause it. In a room never
+       * placed, a re-look cannot be told from a shove and counts as one.
+       */
+      const shoved = !movedSomehow && s.afflictions.afraid === 'yes';
+      if (shoved) {
+        room.arrival += 1;
+        room.hidden = [];
+        room.hiddenCash = null;
+      }
+
+      /*
        * A cast exit's landing, where the claim this block answers carried
        * one. It replaces the previous room and the direction rather than
        * joining them — see `ResolveInput.among` — because this is the
@@ -844,7 +861,7 @@ export class RoomTracker {
        * learned where they land.
        */
       if (answered?.kind !== 'move' || answered.landing === undefined) {
-        this.notice(s.room, room, moved ?? said, located.candidates.length);
+        this.notice(s.room, room, shoved ? null : (moved ?? said), located.candidates.length);
       }
     }
 

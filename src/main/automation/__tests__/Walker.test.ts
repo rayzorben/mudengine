@@ -4882,6 +4882,46 @@ describe('waiting out a condition', () => {
   });
 
   /*
+   * Fear (todo 66): each spell tick may shove the character through a random
+   * exit, so the route waits it out, follows the shove as a room nothing of
+   * the route's answered, and plans on from there once the fear wears off.
+   */
+  it('waits while afraid, follows a shove, and plans on from it when the fear ends', async () => {
+    const asked: string[] = [];
+    const { walk, become } = walkerWith(
+      { walkWhileBlind: true, walkWhilePoisoned: true, walkWhileConfused: true },
+      {
+        replan: (to) => {
+          asked.push(to);
+          return ROUTE;
+        }
+      }
+    );
+    become(afflicted({ afraid: 'yes' }));
+    expect(walk.start(ROUTE, afflicted({ afraid: 'yes' }))).toBeNull();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sent).toEqual([]);
+    expect(walk.progress.hold).toBe('afraid');
+    expect(notices).toContain(t('automation.walk.holdingAfraid'));
+
+    const shoved = afflicted({ afraid: 'yes' });
+    shoved.room = { ...shoved.room, map: 9, number: 9, name: 'Elsewhere' };
+    become(shoved);
+    walk.onCharacter(shoved);
+    expect(asked).toEqual([ROUTE.steps.at(-1)?.to]);
+    expect(walk.progress.status).toBe('walking');
+    expect(sent).toEqual([]);
+
+    const calm = afflicted({ afraid: 'no' });
+    calm.room = shoved.room;
+    become(calm);
+    await vi.advanceTimersByTimeAsync(DEFAULT_INTERNAL.tuning.walk.holdMs + 600);
+    expect(walk.progress.hold).toBeNull();
+    expect(sent).toHaveLength(1);
+    walk.dispose();
+  });
+
+  /*
    * Reported live 2026-09-11: `ne`, answered with `You are flat on your back!`
    * and nothing else, and eight seconds later *Walk stopped: nothing came back
    * after ne*. The client knew exactly where the character was standing the

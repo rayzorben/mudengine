@@ -299,12 +299,23 @@ describe('every condition is readable in both directions', () => {
     poisoned: 'user-poison-ends',
     diseased: 'user-disease-ends',
     held: 'user-held-ends',
-    confused: null
+    confused: null,
+    afraid: null
   };
+  /*
+   * A condition whose onset, too, is only ever the table's (todo 66): the
+   * server's code fixes no fear sentence, so `You are afraid!` reaches the
+   * tracker as the spell's own `spell-onset`, read through `frightens`.
+   */
+  const TABLE_ONLY: ReadonlyArray<keyof Afflictions> = ['afraid'];
 
   it('states an onset sentence for each of the five', () => {
     const conditions = AFFLICTION_ONSETS.map((onset) => onset.condition).sort();
-    expect(conditions).toEqual((Object.keys(ENDINGS) as (keyof Afflictions)[]).sort());
+    expect(conditions).toEqual(
+      (Object.keys(ENDINGS) as (keyof Afflictions)[])
+        .filter((condition) => !TABLE_ONLY.includes(condition))
+        .sort()
+    );
   });
 
   it('puts every onset in the rule table, so the sentence is actually matched', () => {
@@ -338,5 +349,19 @@ describe('every condition is readable in both directions', () => {
       expect(row!.stop, `${spell} states an ending`).toBeTruthy();
     }
     expect(byName.get('confusion')!.start).toBe('You are confused!');
+  });
+
+  /* The same for fear, whose onset is the table's as well (todo 66, `66-fear-census.txt`). */
+  it('finds a start and a stop sentence in the shipped table for the spells monsters frighten with', () => {
+    const table = parseSpellMessagesCsv(
+      fs.readFileSync(path.resolve('resources/world/spell-messages.csv'), 'utf8')
+    );
+    const byName = new Map(table.map((row) => [row.spell, row]));
+    for (const spell of ['fear', 'terror', 'phoenix terror', 'cloud of spores']) {
+      const row = byName.get(spell);
+      expect(row, `${spell} is in the table`).toBeDefined();
+      expect(row!.start, `${spell} states a landing`).toBeTruthy();
+      expect(row!.stop, `${spell} states an ending`).toBeTruthy();
+    }
   });
 });

@@ -270,7 +270,14 @@ describe('sitting down', () => {
  */
 describe('resting while poisoned', () => {
   const poisoned = (): Partial<CharacterState> => ({
-    afflictions: { blind: 'no', poisoned: 'yes', diseased: 'no', held: 'no', confused: 'no' }
+    afflictions: {
+      blind: 'no',
+      poisoned: 'yes',
+      diseased: 'no',
+      held: 'no',
+      confused: 'no',
+      afraid: 'no'
+    }
   });
 
   const onGreaterMud = (config: HealthConfig, said: string[] = []): Recovery =>
@@ -307,7 +314,14 @@ describe('resting while poisoned', () => {
       state({
         hp: 20,
         hpMax: 100,
-        afflictions: { blind: 'no', poisoned: 'no', diseased: 'no', held: 'no', confused: 'no' }
+        afflictions: {
+          blind: 'no',
+          poisoned: 'no',
+          diseased: 'no',
+          held: 'no',
+          confused: 'no',
+          afraid: 'no'
+        }
       })
     );
     drain();
@@ -332,7 +346,14 @@ describe('resting while poisoned', () => {
       state({
         hp: 100,
         hpMax: 100,
-        afflictions: { blind: 'no', poisoned: 'no', diseased: 'no', held: 'no', confused: 'no' }
+        afflictions: {
+          blind: 'no',
+          poisoned: 'no',
+          diseased: 'no',
+          held: 'no',
+          confused: 'no',
+          afraid: 'no'
+        }
       })
     );
     drain();

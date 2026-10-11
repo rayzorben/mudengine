@@ -94,6 +94,14 @@ export interface Afflictions {
    * the fumble itself, which proves it.
    */
   confused: Affliction;
+  /**
+   * Afraid: on every spell tick the effect is up, a roll shoves the character
+   * through a random exit it could walk (`Spell.cs`, `GMUDAbilityType.Fear`),
+   * and the server prints only the room it lands in. Set by the landing of a
+   * spell whose row carries `Fear` (60), and cleared by that spell's wear-off
+   * message (todo 66).
+   */
+  afraid: Affliction;
 }
 
 export const NO_AFFLICTIONS: Afflictions = {
@@ -101,7 +109,8 @@ export const NO_AFFLICTIONS: Afflictions = {
   poisoned: 'unknown',
   diseased: 'unknown',
   held: 'unknown',
-  confused: 'unknown'
+  confused: 'unknown',
+  afraid: 'unknown'
 };
 
 /** What a death leaves: `Player.Killed` ends every spell effect (`RemoveSpellAbilities`, `Player.cs:1503`), so each condition is `no`. */
@@ -110,7 +119,8 @@ export const AFFLICTIONS_ENDED: Afflictions = {
   poisoned: 'no',
   diseased: 'no',
   held: 'no',
-  confused: 'no'
+  confused: 'no',
+  afraid: 'no'
 };
 
 /**

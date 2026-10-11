@@ -28,7 +28,7 @@
  * it imports nothing from here, which `module-cycle.test.ts` holds.
  */
 
-import { DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from './abilities';
+import { carriesAbility, DISPELL_MAGIC_ABILITY, HAZARD_ABILITY } from './abilities';
 import { CURES, type Cure, type SpellsConfig } from './config';
 import type { WorldSpell } from './world';
 
@@ -352,7 +352,7 @@ export function cureGates(spells: ReadonlyArray<AbilityPairs | undefined>): Cure
  * `spell-onset` case.
  */
 export function holdsMovement(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
-  return (spell?.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.holdPerson);
+  return carriesAbility(spell?.abilities, HAZARD_ABILITY.holdPerson);
 }
 
 /**
@@ -362,7 +362,17 @@ export function holdsMovement(spell: Pick<WorldSpell, 'abilities'> | null | unde
  * are message data, the ability is the realm's own word (todo 05).
  */
 export function confuses(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
-  return (spell?.abilities ?? []).some(([id]) => id === HAZARD_ABILITY.confusion);
+  return carriesAbility(spell?.abilities, HAZARD_ABILITY.confusion);
+}
+
+/**
+ * Whether a spell frightens: `GMUDAbilityType.Fear` (60) rolls on the cast and
+ * on every spell tick to move the target through a random exit it could walk
+ * (`Spell.cs`, the `Fear` case). `holdsMovement`'s shape, for its reason
+ * (todo 66).
+ */
+export function frightens(spell: Pick<WorldSpell, 'abilities'> | null | undefined): boolean {
+  return carriesAbility(spell?.abilities, HAZARD_ABILITY.fear);
 }
 
 /**
