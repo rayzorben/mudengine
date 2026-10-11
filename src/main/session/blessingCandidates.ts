@@ -61,6 +61,7 @@ export function itemCandidates(
 ): BlessingCandidate[] {
   if (bare.inventory.listedAt === null) return [];
   const items = bare.inventory.items;
+  // Unlimited items only: upkeep over an hour outruns a charged item's uses a day (todo 44).
   return carriedBlessings(items, realm).flatMap(
     ({ item, blessing, equipped }): BlessingCandidate[] => {
       const hand = handOf(item, blessing, equipped, items, handsOf);

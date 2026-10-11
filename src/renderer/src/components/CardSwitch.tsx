@@ -453,6 +453,7 @@ export function cardElement(id: CardId, ctx: CardContext): ReactNode {
             .filter((item) => item.equipped)
             .map((item) => item.name)
             .join(',')}`}
+          loadBlessItems={ctx.loadBlessItems}
           loadGear={ctx.loadGear}
           planGear={ctx.planGear}
           purse={character.inventory.wealth}

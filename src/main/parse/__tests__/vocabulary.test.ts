@@ -174,8 +174,10 @@ describe('every fact the parser produces reaches something', () => {
       'src/main/automation/LeaderDoors.ts',
       // A player searching here whom the room did not list.
       'src/main/automation/UnlistedSearcher.ts',
-      // A token's uses left, and a use with none (the cash run).
+      // A use with none left (the cash run).
       'src/main/automation/CashRun.ts',
+      // A charged item's uses left, a use with none, and the new day (todo 44).
+      'src/main/automation/ItemCharges.ts',
       // The gear back on after recover corpse (todo 39).
       'src/main/automation/RecoveredCorpse.ts',
       // The answer to a `use` of a blessing item (todo 43).

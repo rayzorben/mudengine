@@ -6,6 +6,7 @@
  * `Player.InitiateSpell`; see `mudengine-automation` › parts/recovery.md.
  */
 import type { CarriedItem } from './character';
+import { chargeCapacity, renews, type ChargeCapacity } from './charges';
 import { bareName, itemInvocation, sameItem } from './items';
 import { spellTargeting } from './spellcraft';
 import { nameAnswersTo, type WorldItem, type WorldSpell } from './world';
@@ -35,31 +36,73 @@ export interface ItemBlessing {
    * cast and put away again (todo 42). False where the kind is unstated.
    */
   weapon: boolean;
+  /** Unlimited, or the uses a fresh copy holds and gets back each day. */
+  capacity: ChargeCapacity;
 }
 
 /**
  * The blessing the item a listing spelled `name` casts for ever, or null.
  *
  * Only an unlimited item (the realm says `UseCount: -1`; silence is not
- * unlimited, and a charge spent on a buff does not come back), and only a
- * spell with a duration, since anything else is not a blessing.
+ * unlimited, and a charge spent on a buff does not come back until the
+ * cleanup). A charged one is `itemBlessing`, which routine upkeep never uses.
  */
 export function carriedBlessing(name: string, realm: BlessingRealm): ItemBlessing | null {
+  const blessing = itemBlessing(name, realm);
+  return blessing?.capacity.kind === 'unlimited' ? blessing : null;
+}
+
+/**
+ * The blessing an item casts whose uses come back (`renews`): unlimited, or
+ * kept at none left and refilled at each cleanup. What `AutoInvoke` uses and
+ * the Spells page lists (todo 44); a charge spent on one returns by the next
+ * day, while a potion's or an unrecharged wand's never does.
+ */
+export function renewingBlessing(name: string, realm: BlessingRealm): ItemBlessing | null {
+  const blessing = itemBlessing(name, realm);
+  return blessing !== null && renews(blessing.capacity) ? blessing : null;
+}
+
+/**
+ * The blessing the item a listing spelled `name` casts, charged or not, or
+ * null. Only a spell with a duration, since anything else is not a blessing,
+ * and only an item whose `UseCount` the realm states.
+ */
+export function itemBlessing(name: string, realm: BlessingRealm): ItemBlessing | null {
   const item = realm.itemsNamed([name])[name];
   if (item === undefined) return null;
   // The pack's spelling has to be one the server resolves to this item, or
   // the command goes out for something else.
   if (!nameAnswersTo(bareName(item.name), name)) return null;
+  return blessingOf(item, realm);
+}
+
+/** The blessing a realm row casts on `use`, charged or not, or null: `itemBlessing` without the name. */
+export function blessingOf(
+  item: WorldItem,
+  realm: Pick<BlessingRealm, 'spellById'>
+): ItemBlessing | null {
   const invocation = itemInvocation(item);
-  if (invocation === null || !invocation.unlimited) return null;
+  const capacity = chargeCapacity(item);
+  if (invocation === null || capacity === null) return null;
   const spell = realm.spellById(invocation.spell);
   if (spell === null || spell.duration === undefined || spell.duration <= 0) return null;
   return {
     spell,
     mustBeEquipped: item.kind !== undefined ? isWorn(item.kind) : true,
     several: invocation.spells.length > 1,
-    weapon: item.kind === 'weapon'
+    weapon: item.kind === 'weapon',
+    capacity
   };
+}
+
+/** What the realm says a copy of the item the pack spelled `name` holds; null unstated. */
+export function capacityNamed(
+  name: string,
+  realm: Pick<BlessingRealm, 'itemsNamed'> | undefined
+): ChargeCapacity | null {
+  const item = realm?.itemsNamed([name])[name];
+  return item === undefined ? null : chargeCapacity(item);
 }
 
 function isWorn(kind: NonNullable<WorldItem['kind']>): boolean {
@@ -81,6 +124,11 @@ export interface InvokeChoice {
    * targets 13): a bare `use` blesses them all (todo 43).
    */
   party: boolean;
+  /**
+   * A charged item's `UseCount` and daily `Recharge`, with the uses left as
+   * the wire last said (null unknown); null for an unlimited item.
+   */
+  charges: { of: number; daily: number; left: number | null } | null;
 }
 
 /** A carried item that can bless, as the pack lists it. */
@@ -98,12 +146,13 @@ export interface CarriedBlessing {
  */
 export function carriedBlessings(
   items: readonly CarriedItem[],
-  realm: BlessingRealm
+  realm: BlessingRealm,
+  reading: (name: string, realm: BlessingRealm) => ItemBlessing | null = carriedBlessing
 ): CarriedBlessing[] {
   const byName = new Map<string, CarriedBlessing>();
   for (const carried of items) {
     const item = bareName(carried.name);
-    const blessing = carriedBlessing(item, realm);
+    const blessing = reading(item, realm);
     if (blessing === null) continue;
     const known = byName.get(item);
     // Two of one weapon, one wielded: the row says what can be used now.
@@ -113,16 +162,30 @@ export function carriedBlessings(
   return [...byName.values()];
 }
 
-/** Every item in a listed inventory that can bless, each name once. */
-export function invokeChoices(items: readonly CarriedItem[], realm: BlessingRealm): InvokeChoice[] {
-  return carriedBlessings(items, realm).map(({ item, blessing, equipped }) => ({
+/**
+ * Every item in a listed inventory that can bless and whose uses come back,
+ * each name once; `usesLeft` is the ledger's count for a charged one.
+ */
+export function invokeChoices(
+  items: readonly CarriedItem[],
+  realm: BlessingRealm,
+  usesLeft: (item: string) => number | null
+): InvokeChoice[] {
+  return carriedBlessings(items, realm, renewingBlessing).map(({ item, blessing, equipped }) => ({
     item,
     spell: blessing.spell.name,
     mana: blessing.spell.mana ?? null,
     equipped,
     mustBeEquipped: blessing.mustBeEquipped,
-    party: spellTargeting(blessing.spell.targets) === 'party'
+    party: spellTargeting(blessing.spell.targets) === 'party',
+    charges: chargesOf(blessing.capacity, () => usesLeft(item))
   }));
+}
+
+function chargesOf(capacity: ChargeCapacity, left: () => number | null): InvokeChoice['charges'] {
+  return capacity.kind === 'unlimited'
+    ? null
+    : { of: capacity.of, daily: capacity.daily, left: left() };
 }
 
 /**

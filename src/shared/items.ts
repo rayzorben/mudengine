@@ -439,14 +439,6 @@ export interface ItemInvocation {
   spell: number;
   /** Every `Spells` row the server reads as `UseSpell`, in slot order. */
   spells: readonly number[];
-  /**
-   * True where the realm states `UseCount: -1`.
-   *
-   * The distinction is the whole of whether invoking it spends a charge: 39
-   * items in the shipped realm are unlimited and 266 are not, and an item with
-   * three charges spent on a buff is three charges somebody was saving.
-   */
-  unlimited: boolean;
 }
 
 /** An item's ability slots, the runtime spelling `WorldItem.abilities` uses. */
@@ -494,12 +486,11 @@ export function itemInvocation(item: {
    * the one every caller has.
    */
   abilities?: AbilitySlots;
-  uses?: number;
 }): ItemInvocation | null {
   const spells = spellSlots(item.abilities).use;
   const spell = spells[0];
   if (spell === undefined) return null;
-  return { spell, spells, unlimited: item.uses === -1 };
+  return { spell, spells };
 }
 
 /** A chance-on-hit the realm hangs off an item. */

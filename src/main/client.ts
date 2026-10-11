@@ -2489,6 +2489,9 @@ function registerIpc(): void {
   handle(Invoke.gearChoices, (_caller, session: SessionId) => {
     return host?.get(session)?.manager?.gearDesk.choices() ?? null;
   });
+  handle(Invoke.gearBlessItems, (_caller, session: SessionId) => {
+    return host?.get(session)?.manager?.gearDesk.blessItems() ?? null;
+  });
   handle(Invoke.chosenWords, (_caller, session: SessionId) => {
     const manager = host?.get(session)?.manager;
     // Out of the realm the sheet is unread, and the field says what blank does instead.
@@ -2604,9 +2607,11 @@ function registerIpc(): void {
   /* What this character's listed inventory holds that can bless when used. */
   handle(Invoke.invokeChoices, (_caller, session: SessionId) => {
     const world = worldFor(session);
-    const inventory = host?.get(session)?.manager.character.inventory;
-    if (!world || inventory === undefined || inventory.listedAt === null) return null;
-    return invokeChoices(inventory.items, world);
+    const manager = host?.get(session)?.manager;
+    const inventory = manager?.character.inventory;
+    if (!world || manager === undefined || inventory === undefined || inventory.listedAt === null)
+      return null;
+    return invokeChoices(inventory.items, world, (item) => manager.charges.usesLeft(item));
   });
   handle(Invoke.blessingChoice, (_caller, session: SessionId) => {
     return host?.get(session)?.manager.blessingChoice.view() ?? null;

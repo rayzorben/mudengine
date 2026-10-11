@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 
 import BentoCard, { type CardChrome, type CardTab } from './BentoCard';
+import GearBlessFace from './GearBlessFace';
 import GearBudget from './GearBudget';
 import GearSlotTile from './GearSlotTile';
 import GearTripFace from './GearTripFace';
@@ -37,11 +38,13 @@ import type { GearChoice, GearChoices, GearSlot } from '@shared/upgrades';
  * the slot giving most per copper first (`withinBudget`, shared with the
  * planner extension), after any item the player chose instead. *Plan the trip*
  * asks main for the banks and shops in the shortest order, each leg with what
- * it meets; the trip face walks or runs it. Put away by default and found in
- * the palette.
+ * it meets; the trip face walks or runs it. The Bless Items face lists the
+ * realm's items that would bless and where each comes from (`GearBlessFace`).
+ * Put away by default and found in the palette.
  */
 export interface GearCardProps extends CardChrome {
   loadGear(): ReturnType<IpcApi['gearChoices']>;
+  loadBlessItems(): ReturnType<IpcApi['gearBlessItems']>;
   planGear(picks: GearPick[]): ReturnType<IpcApi['gearPlan']>;
   goGear(picks: GearPick[], run: boolean): ReturnType<IpcApi['gearTrip']>;
   stopGear(): void;
@@ -74,6 +77,7 @@ function inOrder(slots: readonly GearSlot[]): GearSlot[] {
 
 function GearCard({
   loadGear,
+  loadBlessItems,
   planGear,
   goGear,
   stopGear,
@@ -258,6 +262,12 @@ function GearCard({
   const shown = running ? trip.plan : plan;
   const tabs: CardTab[] = [
     { id: 'slots', label: t('cards.gear.title'), content: slotsFace, paned: true },
+    {
+      id: 'bless',
+      label: t('cards.gear.blessFace'),
+      paned: true,
+      content: <GearBlessFace askKey={`${kitKey}|${asked}`} load={loadBlessItems} />
+    },
     ...(shown === null
       ? []
       : [

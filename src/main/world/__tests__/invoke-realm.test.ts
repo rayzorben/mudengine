@@ -4,6 +4,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { wireItem } from '../../../shared/entities';
+import { chargeCapacity } from '../../../shared/charges';
 import { invokeChoices } from '../../../shared/invoke';
 import { itemHitProcs, itemInvocation } from '../../../shared/items';
 import { WorldGraph } from '../WorldGraph';
@@ -42,7 +43,7 @@ describe.skipIf(!available)('a weapon that blesses, on the shipped realm', () =>
     expect(invocation).not.toBeNull();
     // 114 is `weapon major bless`; 170 is the proc, and must not be offered.
     expect(invocation!.spell).toBe(114);
-    expect(invocation!.unlimited).toBe(true);
+    expect(chargeCapacity(item!)).toEqual({ kind: 'unlimited' });
   });
 
   /*
@@ -69,7 +70,7 @@ describe.skipIf(!available)('a weapon that blesses, on the shipped realm', () =>
   /* The Spells page's list, read from a pack holding the weapon wielded. */
   it('lists the wielded weapon as a choice, with its mana', () => {
     const pack = [{ ...wireItem('shimmering longsword'), equipped: true }];
-    expect(invokeChoices(pack, graph!)).toEqual([
+    expect(invokeChoices(pack, graph!, () => null)).toEqual([
       {
         item: 'shimmering longsword',
         spell: 'weapon major bless',
@@ -77,7 +78,8 @@ describe.skipIf(!available)('a weapon that blesses, on the shipped realm', () =>
         equipped: true,
         mustBeEquipped: true,
         // `FullPartyArea`: a bare `use` blesses the party in the room.
-        party: true
+        party: true,
+        charges: null
       }
     ]);
   });
@@ -112,8 +114,8 @@ describe.skipIf(!available)('a weapon that blesses, on the shipped realm', () =>
       items?: Array<{ ab?: Array<[number, number]>; uses?: number }>;
     };
     const found = (header.items ?? []).filter((row) => {
-      const invocation = itemInvocation({ abilities: row.ab, uses: row.uses });
-      return invocation !== null && invocation.unlimited;
+      const invocation = itemInvocation({ abilities: row.ab });
+      return invocation !== null && row.uses === -1;
     });
     expect(found.length).toBeGreaterThanOrEqual(20);
   });

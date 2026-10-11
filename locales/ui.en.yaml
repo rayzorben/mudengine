@@ -1677,6 +1677,33 @@ cards:
     legNeeds: 'needs {items} first'
     legHazard: '{spell} ({rooms} rooms)'
     runTooltip: Go with auto-combat off, and turn it back on at the last shop
+    # The Bless Items face (todo 44): items in the realm that would bless this character.
+    blessFace: Bless Items
+    blessLoading: Looking through every item that casts a bless…
+    blessUnread: Your level and the room you stand in have to be read first.
+    blessNone: No item in the world database casts a bless on you that you do not carry.
+    blessCasts: '{spell}'
+    blessCastsParty: '{spell} on your party in the room'
+    blessForEver: uses for ever
+    blessRenews: '{of} uses, {daily} back each new day'
+    blessCharged:
+      one: 1 use, then gone
+      many: '{of} uses, then gone'
+    blessGiven: 'Given by {who}'
+    blessLevel: 'from level {level}'
+    blessFigure:
+      armourClass: '{value} AC'
+      damageResist: '{value} DR'
+      magicRes: '{value} MR'
+      dodge: '{value} dodge'
+      accuracy: '{value} accuracy'
+      maxDamage: '{value} max damage'
+      martialAccuracy: '{value} martial arts accuracy'
+      martialDamage: '{value} martial arts damage'
+      crits: '{value} crits'
+      maxHp: '{value} max HP'
+      hpRegen: '{value}% HP regen'
+      speed: '{value}% speed'
     walkTooltip: Walk to each bank and shop in turn and buy
     copyRow: '{slot}: {worn}; best {best}'
     trip:
@@ -4403,11 +4430,13 @@ settings:
       need kept back. Your own self blesses below may be dropped; party blesses are cast as listed.'
     invokeItemsLabel: Bless From an Item
     invokeItemsHint: Use the items ticked under Items That Bless on a character's page to cast the
-      bless each grants, when it is not up and the mana is there. It spends no charge, but takes the
-      spell's mana. Auto Choose Blessings uses the item it picks whether this is on or not.
+      bless each grants, when it is not up and the mana is there. It takes the spell's mana, and a
+      use from an item whose uses come back each new day. Auto Choose Blessings uses the item it
+      picks whether this is on or not.
     invokeLegend: Items That Bless
-    invokeNote: Items in your inventory that cast a bless for ever when used. Tick the ones to use;
-      a weapon or armour blesses only while it is worn or wielded.
+    invokeNote: Items in your inventory that cast a bless when used, for ever or with uses that come
+      back each new day. Tick the ones to use; a weapon or armour blesses only while it is worn or
+      wielded.
     invokeUnlisted: List your inventory (i) in the realm to see which items can bless.
     invokeNone: Nothing in your inventory can bless.
     invokeNoneChosen: No item is ticked, so the switch uses none. Tick one below.
@@ -4417,6 +4446,9 @@ settings:
     invokeCastsPartyUnpriced: Casts {spell} on everyone in your party in the room; the world
       database states no mana for it.
     invokeNotCarried: Not in your inventory when it was last listed.
+    # A charged item kept at none and recharged at the cleanup (todo 44).
+    invokeUses: '{left} of {of} uses left, {daily} back each new day.'
+    invokeUsesUnread: '{of} uses, {daily} back each new day; uses left not looked at yet.'
     invokeUnequipped: '{item} (not equipped)'
     invokeAway: '{item} (not carried)'
     notifyWearOffHint: When a party member's bless on this character wears off, telepath them
@@ -5321,6 +5353,9 @@ automation:
     shortOfMana: '{item}: not enough mana to cast {spell}; using it again when the mana rises'
     notEquipped: '{item} is not equipped; using it again once your inventory is checked'
     usedUp: '{item} has no more uses left; not using it again this session'
+    # A charged item kept at none and recharged at the new day (todo 44).
+    usedUpToday: '{item} has no more uses left; using it again after the next new day'
+    lookReason: looking at {item} for its uses left
     # A bless weapon in the pack, wielded for the cast and put away (todo 42).
     swapReason: wielding {item} to cast {spell}, then the weapon you fight with
     notPutBack: '{weapon} is not back in your hand after using {item}: you are holding {held}.'
