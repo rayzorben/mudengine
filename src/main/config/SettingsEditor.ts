@@ -40,6 +40,8 @@ import type { ProfileEditable, SettingsSnapshot, SpellOption } from '../../share
 import type { CureGates } from '../../shared/spellcraft';
 import type { ConnectionTarget } from '../../shared/types';
 import { errorMessage, isRecord } from '../../shared/values';
+import { pairsRecord, statedPairs } from '../../shared/pairs';
+import { statedKeys } from '../../shared/keys';
 
 /**
  * Writing what a settings screen collects into the files that own it.
@@ -417,6 +419,11 @@ export class SettingsEditor {
           ) {
             document.setIn(at, { ...block });
           }
+        }
+        // Its own aliases, added to Global's by the overlay, so never a copy of them.
+        const aliases = pairsRecord(draft.aliases);
+        if (document.hasIn(['automation', 'aliases']) || Object.keys(aliases).length > 0) {
+          document.setIn(['automation', 'aliases'], aliases);
         }
 
         /*
@@ -940,7 +947,10 @@ export class SettingsEditor {
    * file and nothing more, exactly as for a character.
    */
   globalDraft(): GlobalDraft {
-    const config = normalizeConfig(this.readOptions());
+    const file = this.readOptions();
+    const config = normalizeConfig(file);
+    // As written, for `statedPairs`'s reason: a refused entry is shown, not lost on a save.
+    const stated = isRecord(file) ? file : {};
     const loops = new LoopStore(this.home).globalLoops;
 
     return {
@@ -1033,9 +1043,13 @@ export class SettingsEditor {
         remotes: { ...config.automation.remotes },
         afk: { ...config.automation.afk },
         talk: { ...config.automation.talk },
-        statline: { ...config.automation.statline }
+        statline: { ...config.automation.statline },
+        aliases: statedPairs(
+          isRecord(stated['automation']) ? stated['automation']['aliases'] : null
+        )
       },
-      loops
+      loops,
+      keys: statedKeys(stated['keys'])
     };
   }
 
@@ -1142,6 +1156,8 @@ export class SettingsEditor {
         set(['automation', 'remotes'], { ...draft.automation.remotes });
         set(['automation', 'afk'], { ...draft.automation.afk });
         set(['automation', 'statline'], { ...draft.automation.statline });
+        set(['automation', 'aliases'], pairsRecord(draft.automation.aliases));
+        set(['keys'], pairsRecord(draft.keys));
       },
       verify: (value) => {
         /*
@@ -1309,6 +1325,10 @@ export class SettingsEditor {
         afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
         talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
         statline: effective?.automation.statline ?? DEFAULT_CONFIG.automation.statline,
+        // Its own, read raw: the resolved list holds Global's too.
+        aliases: statedPairs(
+          isRecord(record['automation']) ? record['automation']['aliases'] : null
+        ),
         rewrites: effective?.ui.rewrites ?? DEFAULT_CONFIG.ui.rewrites,
         /*
          * This character's *own* loops, from its own directory — not the
@@ -1484,6 +1504,7 @@ function blank(id: string): ProfileEditable {
     afk: DEFAULT_CONFIG.automation.afk,
     talk: DEFAULT_CONFIG.automation.talk,
     statline: DEFAULT_CONFIG.automation.statline,
+    aliases: [],
     rewrites: DEFAULT_CONFIG.ui.rewrites,
     loops: [],
     inherited: [],
