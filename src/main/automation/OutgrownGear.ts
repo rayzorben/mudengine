@@ -21,12 +21,13 @@ import {
   type OutgrownItem,
   type OutgrownWay
 } from '../../shared/outgrown';
+import type { QuestKeep } from '../../shared/questKeep';
 import type { SalePlace } from '../../shared/selling';
 import { sheddable } from '../../shared/rarity';
 import { roomId, type RoomId } from '../../shared/world';
 import type { SessionModule } from './Module';
 
-export interface OutgrownPlanner extends HandoverPlanner {
+export interface OutgrownPlanner extends HandoverPlanner, QuestKeep {
   /** The pack's outgrown gear that nothing keeps (`outgrownItems` less `keptRegardless`). */
   outgrown(state: CharacterState): OutgrownItem[];
   /** The ganghouse room to stash in, or why there is none, as a sentence. */
@@ -147,6 +148,11 @@ export class OutgrownGear implements SessionModule {
   /** Where this item goes, or null where it is kept, said once with the reason. */
   private planFor(item: OutgrownItem, state: CharacterState): Plan | null {
     const name = item.item.name;
+    const quest = this.planner.wantedBy(item.item);
+    if (quest !== null) {
+      this.sayOnce(t('automation.outgrown.keptQuest', { item: name, quest }));
+      return null;
+    }
     // A spare of the item worn goes too: `hide`, `sell` and `drop` take an unworn copy
     // first (`ItemContainer.GetItems`; `drop 12 iron` left Soul's worn staff in hand,
     // `logs/2026-10-05_14-39-59_soul.log:275`).

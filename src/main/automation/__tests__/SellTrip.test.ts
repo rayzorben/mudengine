@@ -49,6 +49,7 @@ const planner = (over: Partial<SellTripPlanner> = {}): SellTripPlanner => ({
   looping: () => true,
   hold: () => void (held += 1),
   release: () => void (released += 1),
+  wantedBy: () => null,
   ...over
 });
 
@@ -74,6 +75,38 @@ const make = (over: Partial<SellTripPlanner> = {}, enabled = true): SellTrip =>
     decided: (d) => decisions.push(d)
   });
 const drain = (): void => void vi.advanceTimersByTime(500);
+
+describe('keeping what an unfinished quest still needs (todo 52)', () => {
+  const wantsDagger = {
+    wantedBy: (item: { id?: number }) => (item.id === 953 ? 'GoodQuest' : null)
+  };
+  const pack = (): CharacterState => {
+    const state = carrying('gleaming dagger', 'rusty sword');
+    state.inventory.items = state.inventory.items.map((item) =>
+      item.name === 'gleaming dagger' ? { ...item, id: 953 } : item
+    );
+    return state;
+  };
+
+  it('sells the rest and says which item a quest kept', () => {
+    const trip = make(wantsDagger);
+    const why = t('automation.quests.stillNeeds', { quest: 'GoodQuest', item: 'gleaming dagger' });
+    expect(
+      trip.sell({ room: STORE, items: ['gleaming dagger', 'rusty sword'] }, pack())
+    ).toBeNull();
+    expect(trip.current?.items).toEqual(['rusty sword']);
+    expect(notices).toContain(t('automation.sellTrip.refused', { why }));
+    expect(decisions.filter((d) => !d.acted)).toHaveLength(1);
+  });
+
+  it('refuses the trip when a quest keeps everything asked for', () => {
+    const trip = make(wantsDagger);
+    const why = t('automation.quests.stillNeeds', { quest: 'GoodQuest', item: 'gleaming dagger' });
+    expect(trip.sell({ room: STORE, items: ['gleaming dagger'] }, pack())).toBe(why);
+    expect(trip.busy).toBe(false);
+    expect(held).toBe(0);
+  });
+});
 
 describe('selling at a counter for an extension', () => {
   it('walks to the counter holding the lap, sells each item in turn, and says what sold', () => {
