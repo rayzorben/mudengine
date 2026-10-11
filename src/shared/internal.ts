@@ -719,6 +719,18 @@ const TUNING_DEFAULTS = {
      * (`chooseBlessings`).
      */
     blessMinGain: 0.02,
+    /**
+     * The most commands an hour Auto Choose Blessings lets a bless weapon's
+     * swap from the pack spend (todo 42): the swap's commands, once each time
+     * the blessing lapses. This client's own ceiling, like `blessMinGain`.
+     */
+    blessSwapCommandsPerHour: 120,
+    /**
+     * How long after a bless weapon's swap sent its last `wear` the weapon it
+     * put back may still be missing from the hand before the player is told
+     * (`SwapBack`, todo 42). The server answers a `wear` within the round.
+     */
+    swapBackMs: 10_000,
     /** Heal casts a chosen blessing's mana floor keeps affordable after its own cast. */
     blessHealReserve: 2,
     /** Runs of the hunted fight, bare and with each set of blessings, kept for the choice. */

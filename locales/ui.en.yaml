@@ -5321,6 +5321,10 @@ automation:
     shortOfMana: '{item}: not enough mana to cast {spell}; using it again when the mana rises'
     notEquipped: '{item} is not equipped; using it again once your inventory is checked'
     usedUp: '{item} has no more uses left; not using it again this session'
+    # A bless weapon in the pack, wielded for the cast and put away (todo 42).
+    swapReason: wielding {item} to cast {spell}, then the weapon you fight with
+    notPutBack: '{weapon} is not back in your hand after using {item}: you are holding {held}.'
+    emptyHand: nothing
   blessing:
     reason: 'bless: {name}'
     notifyReason: 'telling {caster} their {spell} wore off'
@@ -5355,6 +5359,7 @@ automation:
     whyExclusive: it cancels a spell already chosen
     whySameSpell: the same spell is already chosen
     whyNotWorn: it blesses only while worn, and it is in your pack
+    whySwapTooOften: it wears off too soon to be worth wielding it from your pack and back each time
     whyNoGain: not worth its mana here
     whyOverBudget: the heals would run short of mana
   castRound:

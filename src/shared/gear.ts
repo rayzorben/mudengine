@@ -943,33 +943,57 @@ export function wearPlan(wanted: readonly WearWanted[], items: readonly CarriedI
  * back the remainder (`ItemContainer.cs:277`) — so `use nexus spear big
  * sandworm` reaches the right pair with nothing for this client to escape.
  *
+ * A null target is `use <item>` on the character itself: a bless weapon
+ * carried in the pack, wielded for the cast and put away again (todo 42).
+ *
  * Returns the commands in order and nothing else: the caller decides whether
  * the round can afford them, because only the caller knows what else is
  * queued.
  */
 export function offRoundPlan(
   item: string,
-  target: string,
+  target: string | null,
   items: readonly CarriedItem[],
-  handsOf: (name: string) => 1 | 2 | null
+  handsOf: HandsOf
 ): string[] {
+  return offRoundSteps(item, target, items, handsOf)?.commands ?? [];
+}
+
+/** `offRoundPlan` with its shape stated, for a caller that treats the steps apart. */
+export interface OffRoundSteps {
+  commands: string[];
+  /** Where the `use` is in `commands`. */
+  useAt: number;
+  /** The first item put back on after the `use`, or null when nothing is. */
+  putBack: string | null;
+}
+
+/** One hand or two, as the pack or the realm says; null unknown. */
+export type HandsOf = (name: string) => 1 | 2 | null;
+
+/** The plan `offRoundPlan` sends, or null where there is none. */
+export function offRoundSteps(
+  item: string,
+  target: string | null,
+  items: readonly CarriedItem[],
+  handsOf: HandsOf
+): OffRoundSteps | null {
   const spear = items.find((each) => sameItem(each.name, item));
-  if (spear === undefined || target.trim().length === 0) return [];
+  if (spear === undefined || (target !== null && target.trim().length === 0)) return null;
+  const use = target === null ? `use ${spear.name}` : `use ${spear.name} ${target}`;
 
   const inHand = heldWeapon(items);
-  const offHand = items.find(
-    (each) => each.equipped && (each.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
-  );
   // Already the weapon in hand: the whole dance is one command.
-  if (inHand !== undefined && sameItem(inHand.name, item)) return [`use ${spear.name} ${target}`];
+  if (inHand !== undefined && sameItem(inHand.name, item))
+    return { commands: [use], useAt: 0, putBack: null };
 
-  const twoHanded = handsOf(spear.name) === 2;
-  return [
-    ...(twoHanded && offHand !== undefined ? [unequip(offHand.name)] : []),
-    equip(spear.name),
-    `use ${spear.name} ${target}`,
-    // Back the way it was, weapon first so the hand is free for the off-hand.
-    ...(inHand === undefined ? [] : [equip(inHand.name)]),
-    ...(twoHanded && offHand !== undefined ? [equip(offHand.name)] : [])
-  ];
+  const offHand = handsOf(spear.name) === 2 ? inOffHand(items) : undefined;
+  const off = offHand === undefined ? [] : [unequip(offHand.name)];
+  // Back the way it was, weapon first so the hand is free for the off-hand.
+  const back = [inHand, offHand].flatMap((each) => (each === undefined ? [] : [each.name]));
+  return {
+    commands: [...off, equip(spear.name), use, ...back.map(equip)],
+    useAt: off.length + 1,
+    putBack: back[0] ?? null
+  };
 }

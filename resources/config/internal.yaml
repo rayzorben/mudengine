@@ -629,6 +629,13 @@ tuning:
     # upkeep: survival in shares of fights, the health a fight costs in shares
     # of the bar, or the exp rate as a share of the rate without it.
     blessMinGain: 0.02
+    # The most commands an hour autoChooseBlessings lets a bless weapon's swap
+    # from the pack spend: wielding it, and putting the fighting weapon back,
+    # once each time the blessing wears off.
+    blessSwapCommandsPerHour: 120
+    # How long after a bless weapon's swap sent its last wear the weapon it put
+    # back may still be missing from the hand before the player is told.
+    swapBackMs: 10000
     # Heal casts a chosen blessing's mana floor keeps affordable after its own
     # cast.
     blessHealReserve: 2

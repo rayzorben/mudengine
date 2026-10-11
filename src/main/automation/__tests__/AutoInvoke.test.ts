@@ -67,6 +67,8 @@ const sources = (over: Partial<InvokeSources> = {}): InvokeSources => ({
   itemsNamed: named((name) => (name === 'shimmering longsword' ? LONGSWORD : null)),
   spellById: (id) => (id === 114 ? BLESS : null),
   spellNamed: (name) => (name.trim().toLowerCase() === 'weapon major bless' ? BLESS : null),
+  handsOf: () => 1,
+  fightHere: () => false,
   ...over
 });
 
@@ -218,11 +220,142 @@ describe('asking a carried item for its blessing', () => {
     expect(sent).toEqual(['use shimmering longsword']);
   });
 
-  /* `You do not have shimmering longsword equipped.` (`UseCommand.cs`). */
-  it('waits for a weapon to be wielded', () => {
-    run().consider(state({}, [carried('shimmering longsword', false)]));
+  /*
+   * `You do not have shimmering longsword equipped.` (`UseCommand.cs`), so a
+   * bless weapon in the pack is wielded for the `use` and the fighting weapon
+   * put back (todo 42).
+   */
+  it('wields a bless weapon from the pack and puts the fighting weapon back', () => {
+    run().consider(
+      state({}, [
+        { ...carried('broadsword'), slot: 'Weapon Hand' },
+        carried('shimmering longsword', false)
+      ])
+    );
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([
+      'wear shimmering longsword',
+      'use shimmering longsword',
+      'wear broadsword'
+    ]);
+  });
+
+  /* Armour must be worn in its own place, which this swap does not do. */
+  it('leaves bless armour in the pack alone', () => {
+    const tome: WorldItem = { ...LONGSWORD, kind: 'armour' };
+    run({ itemsNamed: named(() => tome) }).consider(
+      state({}, [carried('shimmering longsword', false)])
+    );
     vi.advanceTimersByTime(200);
     expect(sent).toEqual([]);
+  });
+
+  /* Never mid-fight: `use` and `wear` both break combat. */
+  it('does not start a swap in a fight', () => {
+    run().consider(state({ inCombat: true }, [carried('shimmering longsword', false)]));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+  });
+
+  /* An `aa` unanswered is not yet a fight on the status line, but it is one. */
+  it('does not start a swap into a fight asked for', () => {
+    const pack = [
+      { ...carried('broadsword'), slot: 'Weapon Hand' },
+      carried('shimmering longsword', false)
+    ];
+    run({ fightHere: () => true }).consider(state({}, pack));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    // Positive control: the same pack with no fight asked for swaps.
+    run().consider(state({}, pack));
+    vi.advanceTimersByTime(200);
+    expect(sent).toHaveLength(3);
+  });
+
+  /* A swap the queue dropped before anything went is forgotten, and asked again. */
+  it('asks again once the queue has dropped a swap that never started', () => {
+    let open = false;
+    const gate = { mayCast: () => open, noteCast: vi.fn(), noteFumbled: vi.fn() };
+    const invoke = new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources(),
+      gate
+    );
+    const pack = [
+      { ...carried('broadsword'), slot: 'Weapon Hand' },
+      carried('shimmering longsword', false)
+    ];
+    invoke.consider(state({}, pack));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([]);
+    open = true;
+    invoke.consider(state({}, pack));
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([
+      'wear shimmering longsword',
+      'use shimmering longsword',
+      'wear broadsword'
+    ]);
+  });
+
+  /*
+   * The swap-back failed: the fighting weapon is not in hand once its `wear`
+   * went and `swapBackMs` passed. Said once. The positive control is the
+   * same swap with the weapon back, which says nothing.
+   */
+  it('says when the fighting weapon is not back in hand', () => {
+    const notices: string[] = [];
+    const invoke = new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources(),
+      undefined,
+      undefined,
+      undefined,
+      { notice: (message) => notices.push(message) }
+    );
+    const sword = { ...carried('broadsword'), slot: 'Weapon Hand' };
+    invoke.consider(state({}, [sword, carried('shimmering longsword', false)]));
+    vi.advanceTimersByTime(200);
+    expect(sent).toHaveLength(3);
+    const blessInHand = [
+      { ...carried('broadsword', false) },
+      { ...carried('shimmering longsword'), slot: 'Weapon Hand' }
+    ];
+    invoke.consider(state({}, blessInHand));
+    expect(notices).toEqual([]);
+    vi.advanceTimersByTime(60_000);
+    invoke.consider(state({}, blessInHand));
+    invoke.consider(state({}, blessInHand));
+    expect(notices).toHaveLength(1);
+  });
+
+  it('says nothing when the fighting weapon is back', () => {
+    const notices: string[] = [];
+    const invoke = new AutoInvoke(
+      { invokeItems: true, invokeWith: CHOSEN },
+      true,
+      queue,
+      sources(),
+      undefined,
+      undefined,
+      undefined,
+      { notice: (message) => notices.push(message) }
+    );
+    const sword = { ...carried('broadsword'), slot: 'Weapon Hand' };
+    const pack = [sword, carried('shimmering longsword', false)];
+    invoke.consider(state({}, pack));
+    vi.advanceTimersByTime(200);
+    expect(sent).toHaveLength(3);
+    invoke.consider(
+      state({ buffs: [{ spell: 'weapon major bless', by: null, appliedAt: 0 }] }, pack)
+    );
+    vi.advanceTimersByTime(60_000);
+    invoke.consider(state({ inCombat: true }, pack));
+    expect(notices).toEqual([]);
   });
 
   /*
@@ -290,6 +423,30 @@ describe('asking a carried item for its blessing', () => {
     picked(CHOSEN).consider(state());
     vi.advanceTimersByTime(200);
     expect(sent).toEqual(['use shimmering longsword']);
+  });
+
+  /* Todo 42: the chooser priced the swap and picked the weapon in the pack. */
+  it('swaps to a picked weapon in the pack', () => {
+    new AutoInvoke(
+      { invokeItems: false, invokeWith: [] },
+      true,
+      queue,
+      sources(),
+      undefined,
+      undefined,
+      { chosenItems: () => CHOSEN }
+    ).consider(
+      state({}, [
+        { ...carried('broadsword'), slot: 'Weapon Hand' },
+        carried('shimmering longsword', false)
+      ])
+    );
+    vi.advanceTimersByTime(200);
+    expect(sent).toEqual([
+      'wear shimmering longsword',
+      'use shimmering longsword',
+      'wear broadsword'
+    ]);
   });
 
   /* Todo 41: the switch is for the hand list; a picked item would otherwise go unused. */

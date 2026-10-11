@@ -529,6 +529,22 @@ describe('using an item between rounds', () => {
     ]);
   });
 
+  /* A bless weapon in the pack, used on the character itself (todo 42). */
+  it('uses the item on the character when there is no target', () => {
+    const pack = [
+      worn('golden chalice', OFF_HAND),
+      worn('lifestealer', WEAPON_HAND),
+      carried({ name: 'nexus spear' })
+    ];
+    expect(offRoundPlan('nexus spear', null, pack, hands)).toEqual([
+      'remove golden chalice',
+      'wear nexus spear',
+      'use nexus spear',
+      'wear lifestealer',
+      'wear golden chalice'
+    ]);
+  });
+
   it('is one command when the item is already the weapon in hand', () => {
     const pack = [worn('nexus spear', WEAPON_HAND)];
     expect(offRoundPlan('nexus spear', 'big sandworm', pack, hands)).toEqual([

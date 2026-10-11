@@ -13,6 +13,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import { AutoInvoke, type InvokeSources } from '../automation/AutoInvoke';
 import { Blessings, type BlessingsDeps } from '../automation/Blessings';
+import type { AutoCombat } from '../automation/AutoCombat';
 import type { AutoHunt } from '../automation/AutoHunt';
 import type { CommandQueue } from '../automation/CommandQueue';
 import type { SessionModule } from '../automation/Module';
@@ -37,7 +38,7 @@ import {
   type SpotCycle
 } from '../../shared/blessingchoice';
 import { bareStateOf, sumEffects } from '../../shared/blessingeffects';
-import type { CharacterState } from '../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { atSpeed, sittingPerSecond, type HuntingSpot } from '../../shared/hunting';
 import type { ChosenItems } from '../../shared/invoke';
@@ -53,7 +54,7 @@ export interface BlessingChoiceParts {
   readonly world:
     | Pick<WorldGraph, 'spellNamed' | 'byId' | 'lairEntities' | 'itemsNamed' | 'spellById'>
     | undefined;
-  readonly errands: Pick<Errands, 'fitness' | 'realmClass' | 'realmSpeed'>;
+  readonly errands: Pick<Errands, 'fitness' | 'realmClass' | 'realmSpeed' | 'gearHandsOf'>;
   readonly setup: Pick<FightSetup, 'blessed' | 'foes' | 'settingsKey'>;
   readonly hunt: Pick<AutoHunt, 'quarry'>;
   readonly simulator: FightSimulator;
@@ -194,7 +195,8 @@ export class BlessingChoice
       manaMax: bare.vitals.manaMax,
       hpMax: bare.vitals.hpMax,
       healReserve: tuning().spells.blessHealReserve,
-      roundSeconds: atSpeed(tuning().hunting, this.errands.realmSpeed).roundSeconds
+      roundSeconds: atSpeed(tuning().hunting, this.errands.realmSpeed).roundSeconds,
+      swapCommandsPerHour: tuning().spells.blessSwapCommandsPerHour
     });
     this.take(choice, fight);
   }
@@ -257,7 +259,7 @@ export class BlessingChoice
     const own = config.spells.blessings.filter((row) => row.target === 'self');
     return [
       ...bookCandidates(bare, pricing, own, spellOf),
-      ...itemCandidates(bare, pricing, world)
+      ...itemCandidates(bare, pricing, world, (name) => this.errands.gearHandsOf(name))
     ];
   }
 
@@ -389,7 +391,11 @@ export class BlessingChoice
  */
 export function blessingsFor(
   parts: BlessingChoiceParts,
-  deps: Omit<BlessingsDeps, 'source' | 'learnedDuration'> & { readonly queue: CommandQueue },
+  deps: Omit<BlessingsDeps, 'source' | 'learnedDuration'> & {
+    readonly queue: CommandQueue;
+    /** A fight asked for and not yet answered, which a swap must not go out into. */
+    readonly combat: Pick<AutoCombat, 'quarry'>;
+  },
   session: Omit<BlessingChoiceSession, 'learnedDuration'> & {
     /** `Belongings.recallSpellDurations`, read at the point of use: the store arrives with `useRealm`. */
     durations(): Readonly<Record<string, number>>;
@@ -404,13 +410,15 @@ export function blessingsFor(
   const learnedDuration = (spell: string): number | null =>
     session.durations()[spell.trim().toLowerCase()] ?? null;
   const source = new BlessingChoice(parts, { ...session, learnedDuration });
-  const { queue, ...rest } = deps;
+  const { queue, combat, ...rest } = deps;
   // The realm `AutoInvoke` reads: the choice's own, at the point of use.
-  const { world } = parts;
+  const { world, errands, tracker } = parts;
   const invoke: InvokeSources = {
     itemsNamed: (names) => world?.itemsNamed(names) ?? {},
     spellById: (id) => world?.spellById(id) ?? null,
-    spellNamed: (name) => world?.spellNamed(name) ?? null
+    spellNamed: (name) => world?.spellNamed(name) ?? null,
+    handsOf: (name) => errands.gearHandsOf(name),
+    fightHere: () => fightIsRunning(tracker.current) || combat.quarry(tracker.current)
   };
   const blessings = new Blessings(automation.spells, automation.enabled, queue, {
     ...rest,
@@ -429,7 +437,7 @@ export function blessingsFor(
       rest.castGate,
       undefined,
       source,
-      { decided: session.decided }
+      { decided: session.decided, notice: session.notice }
     )
   };
 }

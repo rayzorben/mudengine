@@ -19,6 +19,7 @@ import { slotAskerOf } from '../world/slotGear';
 import type { WorldGraph } from '../world/WorldGraph';
 import { ownGang, type CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
+import { carriedBlessings, type BlessingRealm } from '../../shared/invoke';
 import { splitStop } from '../../shared/loops';
 import { ganghouseHeld, keptRegardless, type KitPiece } from '../../shared/outgrown';
 import { roomAddress, roomId } from '../../shared/world';
@@ -39,6 +40,7 @@ export interface OutgrownPlannerModules extends LegModules {
         | 'raceId'
         | 'namedClasses'
         | 'namedRaces'
+        | keyof BlessingRealm
         | keyof RarityWorld
       >
     | undefined;
@@ -70,6 +72,22 @@ function keyRows(state: CharacterState, world: OutgrownPlannerModules['world']):
   });
 }
 
+/**
+ * The items that bless which `AutoInvoke` may use (todo 42): the ticked list
+ * while `invokeItems` is on, and under Auto Choose Blessings every carried
+ * item that blesses, armour in the pack included, since its pick moves with
+ * the fight hunted and armour may be worn later.
+ */
+function blessKept(
+  state: CharacterState,
+  config: AutomationConfig,
+  realm: BlessingRealm
+): readonly string[] {
+  const ticked = config.spells.invokeItems ? config.spells.invokeWith : [];
+  if (!config.spells.autoChooseBlessings) return ticked;
+  return [...ticked, ...carriedBlessings(state.inventory.items, realm).map(({ item }) => item)];
+}
+
 export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
   const m = parts.modules;
   return {
@@ -81,7 +99,8 @@ export function outgrownPlanner(parts: OutgrownPlannerParts): OutgrownPlanner {
       const kept = {
         supplies: config.supplies.items.map((row) => row.name),
         sets: config.gear.sets.flatMap((set) => set.wear),
-        keys: state.inventory.keys
+        keys: state.inventory.keys,
+        blessWith: blessKept(state, config, world)
       };
       const fought = errands.realmClass();
       const asker = slotAskerOf(state, world, fought, fought.verb);
