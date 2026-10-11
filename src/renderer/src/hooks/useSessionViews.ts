@@ -31,24 +31,14 @@ import {
 } from '@shared/quests';
 import type { CombatTally } from '@shared/tally';
 import { isTalkBlock } from '@shared/talk';
-import type { ConnectionState, StreamLine, TelnetEvent } from '@shared/types';
+import {
+  IDLE_CONNECTION,
+  type ConnectionState,
+  type StreamLine,
+  type TelnetEvent
+} from '@shared/types';
 import { EMPTY_ROOM_VERDICT, type RoomVerdict } from '@shared/verdict';
 import { IDLE_WALK, type WalkProgress } from '@shared/walk';
-
-const INITIAL_STATE: ConnectionState = {
-  phase: 'idle',
-  target: null,
-  connectedAt: null,
-  detail: null,
-  endedBy: null,
-  negotiated: {
-    localEnabled: [],
-    remoteEnabled: [],
-    binary: false,
-    suppressGoAhead: false,
-    remoteEcho: false
-  }
-};
 
 /**
  * What this window knows about one character.
@@ -153,7 +143,7 @@ export interface SessionView {
 const EMPTY_UNSEEN = { critical: 0, warning: 0, latest: null } as const;
 
 export const EMPTY_VIEW: SessionView = {
-  state: INITIAL_STATE,
+  state: IDLE_CONNECTION,
   character: EMPTY_CHARACTER,
   players: NO_PLAYERS,
   walk: IDLE_WALK,
@@ -402,7 +392,7 @@ export function useSessionViews(
       feeds.onSessions((roster) => {
         for (const entry of roster) {
           patchView(entry.id, (v) =>
-            v.state === INITIAL_STATE ? { ...v, state: entry.state } : v
+            v.state === IDLE_CONNECTION ? { ...v, state: entry.state } : v
           );
         }
       }),

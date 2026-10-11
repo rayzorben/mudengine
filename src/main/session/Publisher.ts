@@ -26,7 +26,7 @@ import {
 } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
 import type { PlayerRegistry } from '../../shared/players';
-import type { ConnectionState } from '../../shared/types';
+import { IDLE_CONNECTION, type ConnectionState } from '../../shared/types';
 import { roomVerdictKey } from '../../shared/verdict';
 
 /** What is told is read from: the character, its appraisal, the modules reported on, the socket. */
@@ -58,20 +58,7 @@ export class Publisher {
   private readonly queue: PublisherParts['queue'];
   private readonly rules: PublisherParts['rules'];
   private readonly client: PublisherParts['client'];
-  private current: ConnectionState = {
-    phase: 'idle',
-    target: null,
-    connectedAt: null,
-    detail: null,
-    endedBy: null,
-    negotiated: {
-      localEnabled: [],
-      remoteEnabled: [],
-      binary: false,
-      suppressGoAhead: false,
-      remoteEcho: false
-    }
-  };
+  private current: ConnectionState = IDLE_CONNECTION;
   /**
    * What was done, or refused, to keep this character alive.
    *

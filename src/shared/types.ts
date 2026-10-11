@@ -95,6 +95,22 @@ export interface ConnectionState {
   negotiated: NegotiatedOptions;
 }
 
+/** A character that has never been dialled. The window draws it until told otherwise. */
+export const IDLE_CONNECTION: ConnectionState = {
+  phase: 'idle',
+  target: null,
+  connectedAt: null,
+  detail: null,
+  endedBy: null,
+  negotiated: {
+    localEnabled: [],
+    remoteEnabled: [],
+    binary: false,
+    suppressGoAhead: false,
+    remoteEcho: false
+  }
+};
+
 /** Who ended a connection. See `ConnectionState.endedBy`. */
 export type ConnectionEnd = 'player' | 'client' | 'realm';
 
