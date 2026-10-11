@@ -1558,12 +1558,7 @@ export class SessionManager {
       choice: this.blessingChoice
     } = blessingsFor(
       { tracker: this.tracker, world, errands: this.errands, ...book, hunt: this.hunt },
-      {
-        queue: this.queue,
-        realmSpell,
-        onTheGround,
-        castGate: this.castRound
-      },
+      { queue: this.queue, realmSpell, onTheGround, castGate: this.castRound, combat: this.combat },
       {
         ...reports,
         config: () => this.automationConfig,

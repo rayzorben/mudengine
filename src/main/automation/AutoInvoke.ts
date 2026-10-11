@@ -8,7 +8,9 @@
  * wire); never over a blessing up that `RemovesSpell` ties it to; never in a
  * fight; and one cast a round through `CastGate`. The server's answer to a
  * `use` is read (`invokeAnswer.ts`): a failed roll or a spent round is tried
- * again next round, a refusal holds the item and is said. See
+ * again next round, a refusal holds the item and is said. A bless weapon in
+ * the pack is wielded for the `use` and the fighting weapon put back
+ * (`offRoundPlan`, todo 42), watched by `SwapBack`. See
  * `mudengine-automation` › parts/recovery.md, *A weapon that blesses is
  * chosen, and pays the spell's mana*.
  */
@@ -17,6 +19,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import { exclusive } from '../../shared/blessingeffects';
+import { offRoundSteps, type HandsOf } from '../../shared/gear';
 import { bareName, sameItem } from '../../shared/items';
 import {
   carriedBlessing,
@@ -29,10 +32,11 @@ import { gatedCast, OPEN_CAST_GATE, sameSpell, type CastGate } from '../../share
 import type { WorldSpell } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
-import type { CommandQueue } from './CommandQueue';
+import type { CommandQueue, Intent } from './CommandQueue';
 import { answerOf, holdFor, stillHeld, type InvokeHold, type UseOut } from './invokeAnswer';
 import { canPayFor } from './mana';
 import type { SessionModule } from './Module';
+import { SwapBack, type SwapBackEvents } from './SwapBack';
 
 /** What this needs of the realm, injected as functions. */
 export interface InvokeSources extends BlessingRealm {
@@ -45,11 +49,28 @@ export interface InvokeSources extends BlessingRealm {
    * where a configuration may hold a short one.
    */
   spellNamed(name: string): WorldSpell | null;
+  /** One hand or two, as `Errands.gearHandsOf` reads it, or null. */
+  handsOf: HandsOf;
+  /**
+   * A fight running or asked for, on the state at the send
+   * (`fightIsRunning || AutoCombat.quarry`, as `AutoSearch.fightHere`).
+   */
+  fightHere(): boolean;
 }
 
-/** Where a refusal to use an item is said. */
-export interface AutoInvokeEvents {
+/** Where a refusal to use an item is said, and a fighting weapon not put back. */
+export interface AutoInvokeEvents extends SwapBackEvents {
   decided?(decision: SafetyDecision): void;
+}
+
+/** The coalesce keys of a swap's commands, by which the queue says one is still waiting. */
+const SWAP_KEY = 'invoke-swap:';
+
+/** What a chosen item would give now, and whether it is wielded from the pack first. */
+interface Offer {
+  spell: WorldSpell;
+  several: boolean;
+  swap: boolean;
 }
 
 /** The two settings this reads: the switch and the items it may use. */
@@ -64,6 +85,7 @@ export class AutoInvoke implements SessionModule {
   private readonly held = new Map<string, InvokeHold>();
   private enabled = false;
   private chosen: readonly string[] = [];
+  private readonly swapBack: SwapBack;
 
   constructor(
     spells: InvokeSettings,
@@ -75,6 +97,7 @@ export class AutoInvoke implements SessionModule {
     private readonly picked: ChosenItems = NO_CHOSEN_ITEMS,
     private readonly events: AutoInvokeEvents = {}
   ) {
+    this.swapBack = new SwapBack(events, now);
     this.configure(spells, enabled);
   }
 
@@ -89,6 +112,7 @@ export class AutoInvoke implements SessionModule {
     this.sentAt.clear();
     this.held.clear();
     this.out = null;
+    this.swapBack.reset();
   }
 
   /**
@@ -135,6 +159,9 @@ export class AutoInvoke implements SessionModule {
    * status line.
    */
   consider(state: CharacterState): void {
+    // Watched with the switch off too: a swap started before it went off still
+    // has to end with the fighting weapon in hand.
+    this.swapBack.check(state);
     if (!this.enabled) return;
     // A `use` spends the round like a cast. Blessing is what you do before a
     // fight, not during one.
@@ -143,6 +170,8 @@ export class AutoInvoke implements SessionModule {
     // on the same silence, and this refuses on it too rather than asking for
     // items nobody has read.
     if (state.inventory.listedAt === null) return;
+    // One swap at a time: the hand is not settled until it ends.
+    if (this.swapBack.pending) return;
 
     const now = this.now();
     // Auto Choose Blessings' items where it has chosen; the hand list otherwise.
@@ -167,6 +196,10 @@ export class AutoInvoke implements SessionModule {
        */
       if (now - (this.sentAt.get(name) ?? 0) < tuning().spells.blessRetryMs) continue;
 
+      if (found.swap) {
+        if (this.swap(name, found, state, now)) return;
+        continue;
+      }
       this.queue.enqueue({
         // The item's own name, as the pack listed it: `use` reads everything
         // before the last word as the item, and the last word as an exit —
@@ -178,31 +211,109 @@ export class AutoInvoke implements SessionModule {
         reason: t('automation.invoke.reason', { item: name, spell: spell.name }),
         // Spent when the `use` leaves, so one held for the round is proposed
         // again rather than waiting out `blessRetryMs`.
-        ...gatedCast(this.gate, spell.name, () => {
-          this.sentAt.set(name, this.now());
-          this.out = {
-            use: { item: name, spell: spell.name, several: found.several },
-            at: this.now()
-          };
-        })
+        ...gatedCast(this.gate, spell.name, () => this.used(name, found))
       });
       return;
     }
   }
 
+  /** The `use` went: the retry floor starts and its answer is read. */
+  private used(name: string, found: Offer): void {
+    this.sentAt.set(name, this.now());
+    this.out = {
+      use: { item: name, spell: found.spell.name, several: found.several },
+      at: this.now()
+    };
+  }
+
+  /**
+   * A bless weapon in the pack: wielded, used, and the fighting weapon (and a
+   * two-hander's off-hand) put back, in one band so nothing of this module's
+   * comes between. Only the first command (the off-hand off, or the `wear`)
+   * and the `use` can be dropped (a fight, the round's cast spent, expired);
+   * once the first has gone the rest always follow, since the swap-back is
+   * what must not be lost. False where there is nothing to swap.
+   */
+  private swap(name: string, found: Offer, state: CharacterState, now: number): boolean {
+    // A fight running or asked for (`aa` unanswered) is a fight: never swap into one.
+    if (this.sources.fightHere()) return false;
+    const plan = offRoundSteps(name, null, state.inventory.items, (item) =>
+      this.sources.handsOf(item)
+    );
+    if (plan === null) return false;
+    const { commands, useAt, putBack } = plan;
+    const spell = found.spell.name;
+    const expiresAt = now + tuning().spells.buffExpiresMs;
+    const reason = t('automation.invoke.swapReason', { item: name, spell });
+    const wanted = (): boolean => !this.sources.fightHere() && this.gate.mayCast(spell);
+    let started = false;
+    const last = commands.length - 1;
+    const steps = commands.map((command, index): Intent => {
+      const step = {
+        command,
+        priority: 'probe' as const,
+        coalesceKey: `${SWAP_KEY}${index}:${command}`,
+        reason
+      };
+      const backSent = (): void => {
+        if (index === last) this.swapBack.backSent();
+      };
+      if (index === 0)
+        return {
+          ...step,
+          expiresAt,
+          stillWanted: wanted,
+          onSent: () => {
+            started = true;
+            this.sentAt.set(name, this.now());
+            this.swapBack.begun();
+            backSent();
+          }
+        };
+      if (index === useAt) {
+        const cast = gatedCast(this.gate, spell, () => this.used(name, found));
+        return {
+          ...step,
+          expiresAt,
+          ...cast,
+          stillWanted: () => started && wanted(),
+          onSent: () => {
+            cast.onSent();
+            backSent();
+          }
+        };
+      }
+      return { ...step, stillWanted: () => started, onSent: backSent };
+    });
+    const [first, ...rest] = steps;
+    if (first === undefined) return false;
+    // Armed before the offer: the queue may send the first command at once.
+    // Nothing to put back (an empty hand): the bless weapon stays wielded.
+    if (putBack !== null)
+      this.swapBack.queued(name, putBack, () =>
+        this.queue.queued((intent) => intent.coalesceKey?.startsWith(SWAP_KEY) === true)
+      );
+    const offered = this.queue.offer(first);
+    // Refused at the door (switched off, held): nothing of the swap goes.
+    if (offered !== 'queued' && offered !== 'joined') {
+      this.swapBack.reset();
+      return false;
+    }
+    for (const step of rest) this.queue.enqueue(step);
+    return true;
+  }
+
   /**
    * The buff this chosen item would give now, or null when it would give
    * none worth asking for: the realm's reading first, then the hand, the
-   * mana, and the buffs that are up.
+   * mana, and the buffs that are up. A weapon in the pack is offered as a
+   * swap; armour in the pack waits to be worn.
    */
-  private offer(
-    name: string,
-    equipped: boolean,
-    state: CharacterState
-  ): { spell: WorldSpell; several: boolean } | null {
+  private offer(name: string, equipped: boolean, state: CharacterState): Offer | null {
     const blessing = carriedBlessing(name, this.sources);
     if (blessing === null) return null;
-    if (blessing.mustBeEquipped && !equipped) return null;
+    const swap = blessing.mustBeEquipped && !equipped;
+    if (swap && !blessing.weapon) return null;
     const { spell, several } = blessing;
     if (!canPayFor(state, spell.mana ?? null)) return null;
 
@@ -224,7 +335,7 @@ export class AutoInvoke implements SessionModule {
       const removes = this.sources.spellNamed(buff.spell);
       return removes !== null && removes.id !== spell.id && exclusive(removes, spell);
     });
-    return clashes ? null : { spell, several };
+    return clashes ? null : { spell, several, swap };
   }
 }
 

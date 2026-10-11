@@ -30,6 +30,11 @@ export interface ItemBlessing {
    * (`You have already cast a spell this round!`) every time it is used.
    */
   several: boolean;
+  /**
+   * A weapon by the realm's word, which can be wielded from the pack for the
+   * cast and put away again (todo 42). False where the kind is unstated.
+   */
+  weapon: boolean;
 }
 
 /**
@@ -52,7 +57,8 @@ export function carriedBlessing(name: string, realm: BlessingRealm): ItemBlessin
   return {
     spell,
     mustBeEquipped: item.kind !== undefined ? isWorn(item.kind) : true,
-    several: invocation.spells.length > 1
+    several: invocation.spells.length > 1,
+    weapon: item.kind === 'weapon'
   };
 }
 

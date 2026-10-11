@@ -7,11 +7,12 @@
  * `TryInvokeSpell`), so both are priced the same way. See
  * mudengine-automation › *Recovery*.
  */
-import type { BlessingCandidate, BlessingVia } from '../../shared/blessingchoice';
+import type { BlessingCandidate, BlessingVia, ItemHand } from '../../shared/blessingchoice';
 import { effectOf } from '../../shared/blessingeffects';
 import type { BlessingConfig } from '../../shared/blessings';
 import type { CharacterState } from '../../shared/character';
-import { carriedBlessings, type BlessingRealm } from '../../shared/invoke';
+import { offRoundPlan, type HandsOf } from '../../shared/gear';
+import { carriedBlessings, type BlessingRealm, type ItemBlessing } from '../../shared/invoke';
 import { effectSeconds, scaledDuration } from '../../shared/menace';
 import { castOdds, type ProwessSheet } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
@@ -48,22 +49,40 @@ export function bookCandidates(
 
 /**
  * The carried items that bless, each priced. Only a listed pack: an unlisted
- * one is not an empty one. A weapon or armour in the pack is a candidate with
- * `inHand` false, so the choice can say why it was passed over.
+ * one is not an empty one. A weapon in the pack carries its swap's commands
+ * and armour in the pack is `not-worn`, so the choice can price the one and
+ * say why it passed over the other.
  */
 export function itemCandidates(
   bare: CharacterState,
   pricing: CandidatePricing,
-  realm: BlessingRealm
+  realm: BlessingRealm,
+  handsOf: HandsOf
 ): BlessingCandidate[] {
   if (bare.inventory.listedAt === null) return [];
-  return carriedBlessings(bare.inventory.items, realm).flatMap(
+  const items = bare.inventory.items;
+  return carriedBlessings(items, realm).flatMap(
     ({ item, blessing, equipped }): BlessingCandidate[] => {
-      const inHand = equipped || !blessing.mustBeEquipped;
-      const candidate = priced(item, blessing.spell, pricing, { kind: 'item', item, inHand });
+      const hand = handOf(item, blessing, equipped, items, handsOf);
+      const candidate = priced(item, blessing.spell, pricing, { kind: 'item', item, hand });
       return candidate === null ? [] : [candidate];
     }
   );
+}
+
+/** How `use` takes the item as carried; a swap is the one `AutoInvoke` sends. */
+function handOf(
+  item: string,
+  blessing: ItemBlessing,
+  equipped: boolean,
+  items: CharacterState['inventory']['items'],
+  handsOf: HandsOf
+): ItemHand {
+  if (equipped || !blessing.mustBeEquipped) return { kind: 'ready' };
+  if (!blessing.weapon) return { kind: 'not-worn' };
+  // The `use` is a cast like any book cast; the commands around it are the swap.
+  const commands = offRoundPlan(item, null, items, handsOf).length - 1;
+  return commands < 1 ? { kind: 'not-worn' } : { kind: 'swap', commands };
 }
 
 /**

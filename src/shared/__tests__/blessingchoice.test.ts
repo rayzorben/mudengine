@@ -6,7 +6,8 @@ import {
   chooseBlessings,
   type BlessingCandidate,
   type BlessingChoiceInput,
-  type FightRun
+  type FightRun,
+  type ItemHand
 } from '../blessingchoice';
 import { NO_EFFECT, type BlessingEffect } from '../blessingeffects';
 import type { WorldSpell } from '../world';
@@ -29,8 +30,12 @@ function candidate(
 }
 
 /** The same spell, used from a carried item. */
-function fromItem(of: BlessingCandidate, item: string, inHand = true): BlessingCandidate {
-  return { ...of, name: item, via: { kind: 'item', item, inHand } };
+function fromItem(
+  of: BlessingCandidate,
+  item: string,
+  hand: ItemHand = { kind: 'ready' }
+): BlessingCandidate {
+  return { ...of, name: item, via: { kind: 'item', item, hand } };
 }
 
 /**
@@ -72,6 +77,7 @@ function input(overrides: Partial<BlessingChoiceInput>): BlessingChoiceInput {
     hpMax: 100,
     healReserve: 2,
     roundSeconds: 5,
+    swapCommandsPerHour: 120,
     ...overrides
   };
 }
@@ -206,18 +212,36 @@ describe('choosing the blessings that pay', () => {
     expect(choice.passed).toEqual([{ name: 'tortoise', why: 'same-spell' }]);
   });
 
-  it('passes over a weapon that blesses while it is in the pack', () => {
+  it('passes over armour that blesses while it is in the pack', () => {
     const worn = fromItem(candidate('tiger', { maxDamage: 3 }, 3), 'black flail');
-    const packed = fromItem(
-      candidate('tortoise', { armourClass: 2 }, 3),
-      'large silvery cross',
-      false
-    );
+    const packed = fromItem(candidate('tortoise', { armourClass: 2 }, 3), 'large silvery cross', {
+      kind: 'not-worn'
+    });
     const choice = chooseBlessings(input({ candidates: [worn, packed] }));
     if (choice.kind !== 'chosen') throw new Error(choice.why);
     // Positive control: the worn one is weighed and taken.
     expect(choice.picks.map((pick) => pick.candidate.name)).toEqual(['black flail']);
     expect(choice.passed).toEqual([{ name: 'large silvery cross', why: 'not-worn' }]);
+  });
+
+  /*
+   * A swap is wielding the weapon, the `use`, and the fighting weapon back:
+   * two commands besides the cast, once a lapse. At 120 an hour a blessing
+   * lasting 60 s may spend two (120 an hour), one lasting 30 s may not (240).
+   */
+  it('prices a swap from the pack against how long the blessing lasts', () => {
+    const swap: ItemHand = { kind: 'swap', commands: 2 };
+    const lasting = fromItem(candidate('tiger', { maxDamage: 3 }, 1, 60), 'black flail', swap);
+    const brief = fromItem(
+      candidate('tortoise', { armourClass: 2 }, 1, 30),
+      'shimmering longsword',
+      swap
+    );
+    const choice = chooseBlessings(input({ candidates: [lasting, brief] }));
+    if (choice.kind !== 'chosen') throw new Error(choice.why);
+    // Positive control: the lasting one's swap is within the budget and taken.
+    expect(choice.picks.map((pick) => pick.candidate.name)).toEqual(['black flail']);
+    expect(choice.passed).toEqual([{ name: 'shimmering longsword', why: 'swap-too-often' }]);
   });
 
   it('waits while a fight it needs is still being run', () => {

@@ -8,7 +8,7 @@ import {
   type WayChoice
 } from '../outgrown';
 
-const NONE = { supplies: [], sets: [], keys: [] };
+const NONE = { supplies: [], sets: [], keys: [], blessWith: [] };
 const piece = (over: Partial<KitPiece> = {}): KitPiece => ({
   name: 'sandals',
   equipped: false,
@@ -26,6 +26,7 @@ describe('what is kept whatever the ranking says', () => {
     expect(keptRegardless(piece(), { ...NONE, keys: ['sandals'] })).toBe(true);
     expect(keptRegardless(piece(), { ...NONE, supplies: ['sandal'] })).toBe(true);
     expect(keptRegardless(piece(), { ...NONE, sets: ['sandals'] })).toBe(true);
+    expect(keptRegardless(piece(), { ...NONE, blessWith: ['sandals'] })).toBe(true);
     // A flag claims by presence: `LoyalItem 0` is loyal.
     expect(keptRegardless(piece({ abilities: [[100, 0]] }), NONE)).toBe(true);
     for (const id of [181, 183, 184]) {

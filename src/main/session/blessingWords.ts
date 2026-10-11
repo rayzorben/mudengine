@@ -107,6 +107,8 @@ function whyWords(why: BlessingRefusal): string {
       return t('automation.blessing.whySameSpell');
     case 'not-worn':
       return t('automation.blessing.whyNotWorn');
+    case 'swap-too-often':
+      return t('automation.blessing.whySwapTooOften');
     case 'no-gain':
       return t('automation.blessing.whyNoGain');
     case 'over-budget':

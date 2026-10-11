@@ -44,8 +44,10 @@ export const BLESSING_REFUSALS = [
   'exclusive',
   /** The same spell is already chosen, from the spellbook or another item. */
   'same-spell',
-  /** A weapon or armour that blesses only while worn, and it is in the pack. */
+  /** Armour that blesses only while worn, and it is in the pack. */
   'not-worn',
+  /** A weapon in the pack whose swap would cost more commands an hour than a swap may. */
+  'swap-too-often',
   /** Up, the fight goes no better by enough to pay for it. */
   'no-gain',
   /** Its upkeep would leave the heals short of mana. */
@@ -56,11 +58,19 @@ export type BlessingRefusal = (typeof BLESSING_REFUSALS)[number];
 
 /**
  * Where a blessing comes from: a spell in the book, cast by the player's own
- * row where the list has one, or a carried item, used. `inHand` is false for
- * a weapon or armour in the pack, which `use` refuses until it is worn.
+ * row where the list has one, or a carried item, used.
  */
 export type BlessingVia =
-  { kind: 'book'; row: BlessingConfig | null } | { kind: 'item'; item: string; inHand: boolean };
+  { kind: 'book'; row: BlessingConfig | null } | { kind: 'item'; item: string; hand: ItemHand };
+
+/**
+ * Whether `use` takes the item as it is carried. `use` refuses a weapon or
+ * armour that is not worn; a weapon in the pack is wielded for the cast and
+ * the fighting weapon put back (`offRoundPlan`, todo 42), `commands` more
+ * than the `use`; armour in the pack waits to be worn.
+ */
+export type ItemHand =
+  { kind: 'ready' } | { kind: 'swap'; commands: number } | { kind: 'not-worn' };
 
 /** How a chosen blessing is kept up: a row `Blessings` casts, or an item `AutoInvoke` uses. */
 export type BlessingCast = { kind: 'book'; row: BlessingConfig } | { kind: 'item'; item: string };
@@ -132,6 +142,8 @@ export interface BlessingChoiceInput {
   healReserve: number;
   /** The realm's round, seconds: the server's over its speed (`atSpeed`), as the income's ticks are. */
   roundSeconds: number;
+  /** The most commands an hour a swap from the pack may spend keeping its blessing up. */
+  swapCommandsPerHour: number;
 }
 
 export interface BlessingPick {
@@ -221,11 +233,17 @@ export function chooseBlessings(input: BlessingChoiceInput): BlessingChoice {
   const passed = new Map<string, BlessingRefusal>();
   const eligible: Weighed[] = [];
   for (const candidate of input.candidates) {
-    if (candidate.via.kind === 'item' && !candidate.via.inHand)
-      passed.set(candidate.name, 'not-worn');
+    const hand = candidate.via.kind === 'item' ? candidate.via.hand : null;
+    if (hand?.kind === 'not-worn') passed.set(candidate.name, 'not-worn');
     else if (candidate.cost === null) passed.set(candidate.name, 'unknown-cost');
     else if (candidate.duration === null || candidate.duration.seconds <= 0)
       passed.set(candidate.name, 'unknown-duration');
+    // The swap's commands, once a lapse, against the budget walking and fighting share.
+    else if (
+      hand?.kind === 'swap' &&
+      (hand.commands * 3600) / candidate.duration.seconds > input.swapCommandsPerHour
+    )
+      passed.set(candidate.name, 'swap-too-often');
     else
       eligible.push({
         candidate,

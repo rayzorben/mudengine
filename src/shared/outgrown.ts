@@ -65,21 +65,29 @@ export interface KeptNames {
   sets: readonly string[];
   /** The key ring, which the pack listing prints apart from the items. */
   keys: readonly string[];
+  /**
+   * The items that bless which the client may use: a bless weapon carried in
+   * the pack is outranked by the one in hand, and is the one the swap wields
+   * (todo 42). Filled by `outgrownPlanner`'s `blessKept`.
+   */
+  blessWith: readonly string[];
 }
 
 const GANG_KIT = [GANG_HOUSE_DEED_ABILITY, GANG_HOUSE_ITEM_ABILITY, GANG_SHOP_ITEM_ABILITY];
 
 /**
  * Whether an item stays whatever the ranking says: worn, a key, on the supply
- * list, in a gear set, loyal, or ganghouse gear (deed, emblem, keys). A quest run's or an item
- * trip's wants are kept by the trip never starting while either runs.
+ * list, in a gear set, chosen to bless with, loyal, or ganghouse gear (deed,
+ * emblem, keys). A quest run's or an item trip's wants are kept by the trip
+ * never starting while either runs.
  */
 export function keptRegardless(item: KitPiece, kept: KeptNames): boolean {
   if (item.equipped || item.kind === 'key') return true;
   const name = bareName(item.name);
   const named = (list: readonly string[]): boolean =>
     list.some((entry) => nameAnswersTo(name, bareName(entry)));
-  if (named(kept.keys) || named(kept.supplies) || named(kept.sets)) return true;
+  const lists = [kept.keys, kept.supplies, kept.sets, kept.blessWith];
+  if (lists.some(named)) return true;
   if (carriesAbility(item.abilities, LOYAL_ITEM_ABILITY)) return true;
   return GANG_KIT.some((id) => carriesAbility(item.abilities, id));
 }
