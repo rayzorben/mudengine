@@ -131,8 +131,46 @@ export function statedBasis(state: BasisState): StatedBasis {
 }
 
 /**
- * The sheet's figures, where they still hold — `null` when there is no sheet
- * or nothing it states is still true.
+ * The most sheets kept at once. A loop's blessings come and go in the same few
+ * sets, so a sheet asked once for each set holds again whenever that set is up:
+ * 11.4 hours of Rayzor on Paradigm (2026-10-10) met six (todo 45's `basis-changes.mjs`).
+ * In `shared/`, which cannot read `tuning:`, so the figure lives here.
+ */
+export const STATED_SHEETS_KEPT = 16;
+
+/**
+ * The sheets with `sheet` added, newest first: one per basis, the one it
+ * replaces dropped, the oldest past `STATED_SHEETS_KEPT` dropped. A sheet a
+ * player asked against a monster (`stat all <number>`) is not kept: nothing
+ * reads one yet (todo 45, open question 1), and it must not displace the own.
+ */
+export function keepSheet(
+  sheets: readonly StatedSheet[] | null,
+  sheet: StatedSheet
+): readonly StatedSheet[] | null {
+  if (sheet.against !== null) return sheets;
+  const others = (sheets ?? []).filter((kept) => kept.basis.gear !== sheet.basis.gear);
+  return [sheet, ...others].slice(0, STATED_SHEETS_KEPT);
+}
+
+/**
+ * The character's own sheet (`stat all` with no monster) computed from what
+ * it wears, is and has up now, or null. A sheet run against a monster is never
+ * the character's: its range is after that monster's resistance.
+ */
+export function ownSheetFor(
+  state: BasisState & Partial<Pick<CharacterState, 'stated'>>
+): StatedSheet | null {
+  const sheets = state.stated;
+  if (sheets === undefined || sheets === null) return null;
+  const { gear } = statedBasis(state);
+  return sheets.find((sheet) => sheet.against === null && sheet.basis.gear === gear) ?? null;
+}
+
+/**
+ * The own sheet's figures, where they still hold — `null` when no sheet was
+ * computed from what the character wears, is and has up now, or nothing it
+ * states is still true.
  *
  * **A figure is dropped the moment what it was computed from moves**, and
  * never adjusted: a server figure nudged by the client's arithmetic is the
@@ -142,10 +180,9 @@ export function statedBasis(state: BasisState): StatedBasis {
 export function statedNow(
   state: BasisState & Partial<Pick<CharacterState, 'stated'>>
 ): StatedProwess | null {
-  const sheet = state.stated;
-  if (sheet === undefined || sheet === null) return null;
+  const sheet = ownSheetFor(state);
+  if (sheet === null) return null;
   const now = statedBasis(state);
-  if (now.gear !== sheet.basis.gear) return null;
   const figures: StatedProwess = {};
   if (sheet.healthRegen !== null) figures.health = sheet.healthRegen;
   if (sheet.restingRegen !== null) figures.resting = sheet.restingRegen;
@@ -161,9 +198,7 @@ export function statedNow(
   const loaded = now.load === sheet.basis.load;
   const attacks: Partial<Record<AttackKind, StatedAttack>> = {};
   for (const [kind, round] of Object.entries(sheet.rounds) as Array<[AttackKind, StatedRound]>) {
-    const held: StatedAttack = {};
-    // Against a monster the range is after its resistance: not the character's.
-    if (sheet.against === null) held.damage = { min: round.min, max: round.max };
+    const held: StatedAttack = { damage: { min: round.min, max: round.max } };
     if (loaded) {
       held.accuracy = round.accuracy;
       held.swings = round.swings;

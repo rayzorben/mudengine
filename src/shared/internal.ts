@@ -649,6 +649,22 @@ const TUNING_DEFAULTS = {
      */
     survivalBooksKept: 3
   },
+  /** Asking `stat a` for the game's own figures (`StatAllAsk`). */
+  statAll: {
+    /**
+     * How long what `stat all` is computed from has to hold before `stat a`
+     * is asked (todo 45): a blessing cast lands a moment before the next, and
+     * a sheet asked between them is asked again. 10 s kept Rayzor's 11.4 h
+     * on Paradigm (2026-10-10) to six asks with each basis remembered
+     * (todo 45's `basis-changes.mjs`); 5 s and 30 s gave seven and six.
+     */
+    settleMs: 10_000,
+    /**
+     * Asks in a row with no sheet back before the realm is taken not to have
+     * `stat all` and is not asked again this session.
+     */
+    unansweredAsks: 3
+  },
   /** Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`. */
   spells: {
     /**

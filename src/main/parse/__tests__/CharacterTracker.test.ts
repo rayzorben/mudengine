@@ -11131,7 +11131,7 @@ describe('the stat all sheet', () => {
 
   it('keeps the figures, and they hold while nothing has moved', () => {
     const state = play(sheet).current;
-    expect(state.stated).toMatchObject({ healthRegen: 6, restingRegen: 18, manaRegen: 3 });
+    expect(state.stated?.[0]).toMatchObject({ healthRegen: 6, restingRegen: 18, manaRegen: 3 });
     expect(statedNow(state)).toMatchObject({
       health: 6,
       attacks: {

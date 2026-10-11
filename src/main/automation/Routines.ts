@@ -68,6 +68,7 @@ import type { SessionModule } from './Module';
 import { StaleFacts } from './StaleFacts';
 import { AgedFacts } from './AgedFacts';
 import { UnlistedSearcher } from './UnlistedSearcher';
+import { StatAllAsk } from './StatAllAsk';
 
 export interface RoutineEvents {
   notice?(message: string): void;
@@ -162,6 +163,8 @@ export class Routines implements SessionModule {
   private readonly aged = new AgedFacts();
   /** A player searching here whom the room did not list. See `UnlistedSearcher`. */
   private readonly searcher: UnlistedSearcher;
+  /** `stat a` once per basis, out of a fight (todo 45). See `StatAllAsk`. */
+  private readonly statAll: StatAllAsk;
 
   constructor(
     private config: AutomationConfig,
@@ -171,6 +174,7 @@ export class Routines implements SessionModule {
     this.partyListing = new PartyListing(queue, () => this.config);
     this.stale = new StaleFacts(queue);
     this.searcher = new UnlistedSearcher(queue);
+    this.statAll = new StatAllAsk(queue, (message) => this.events.notice?.(message));
   }
 
   configure(config: AutomationConfig): void {
@@ -200,6 +204,7 @@ export class Routines implements SessionModule {
     this.stale.reset();
     this.aged.reset();
     this.searcher.reset();
+    this.statAll.reset();
     this.stopIdle();
   }
 
@@ -337,6 +342,7 @@ export class Routines implements SessionModule {
       const aged = fightIsRunning(state) ? [] : this.aged.due(Date.now());
       if (aged.length > 0) this.stale.owe(aged, t('automation.routines.reasonAged'));
       else this.stale.ask();
+      this.statAll.onCharacter(state);
     }
     // And the party listing on its clock (todo 831).
     this.partyListing.onCharacter(state);
@@ -594,6 +600,7 @@ export class Routines implements SessionModule {
     for (const fact of readBy(block.type)) this.read.add(fact);
     this.stale.answered(block.type);
     this.aged.answered(block.type, Date.now());
+    this.statAll.onBlock(block);
     if (!this.config.enabled) return;
     this.searcher.onBlock(block);
     if (block.type === 'spellbook-refused') {

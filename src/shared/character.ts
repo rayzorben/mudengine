@@ -1604,10 +1604,11 @@ export interface CharacterState {
    */
   abilities: AbilitySums | null;
   /**
-   * What the last `stat all` said, or null until one has been read. Carries
-   * what it was computed from; `statedNow` says what of it still holds.
+   * What each `stat all` said, newest first, one per basis and monster
+   * (`keepSheet`), or null until one has been read. Each carries what it was
+   * computed from; `statedNow` says what of the matching one still holds.
    */
-  stated: StatedSheet | null;
+  stated: readonly StatedSheet[] | null;
   /** See `StatusLineFacts`. */
   statline: StatusLineFacts;
   /** Epoch ms of the last status line, i.e. the last confirmed heartbeat. */

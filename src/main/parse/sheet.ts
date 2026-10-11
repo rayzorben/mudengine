@@ -32,7 +32,7 @@ import { listsSpell, taughtBy, withSpell } from '../../shared/learning';
 import { bareName } from '../../shared/items';
 import { lockLoadout } from '../../shared/gearLocks';
 import { playedFor } from '../../shared/tally';
-import { readStatAll, statedBasis } from '../../shared/stated';
+import { keepSheet, readStatAll, statedBasis } from '../../shared/stated';
 import type { Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
 import type { WorldSpell } from '../../shared/world';
@@ -431,8 +431,8 @@ export function abilitiesListed(
 
 /** `user-stat-all`: the server's arithmetic, with what it was computed from. */
 export function statAll(s: CharacterState, rows: Rows): CharacterState | null {
-  const stated = readStatAll(rows, statedBasis(s));
-  return stated === null ? null : { ...s, stated };
+  const sheet = readStatAll(rows, statedBasis(s));
+  return sheet === null ? null : { ...s, stated: keepSheet(s.stated, sheet) };
 }
 
 /** The resource the book that answered is spent from: `powers` are Kai, `spells` mana. */

@@ -341,15 +341,17 @@ describe('a spell held back while the melee round is expected to finish the mons
   // `st a`'s row for the plain attack: two blows of 10 that every armour lets through.
   const armed: CharacterState = {
     ...base,
-    stated: {
-      against: null,
-      healthRegen: null,
-      restingRegen: null,
-      baseManaRegen: null,
-      manaRegen: null,
-      rounds: { attack: { swings: 2, accuracy: 200, min: 10, max: 10, crits: null } },
-      basis: statedBasis(base)
-    }
+    stated: [
+      {
+        against: null,
+        healthRegen: null,
+        restingRegen: null,
+        baseManaRegen: null,
+        manaRegen: null,
+        rounds: { attack: { swings: 2, accuracy: 200, min: 10, max: 10, crits: null } },
+        basis: statedBasis(base)
+      }
+    ]
   };
   const kobold = (remaining: number | null) => ({ name: 'kobold', entity: null, remaining });
   const unit = (family: RealmFamily | null = 'greatermud') => {
