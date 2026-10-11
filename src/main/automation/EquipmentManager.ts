@@ -17,10 +17,13 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Priority } from '../../shared/automation';
-import type { CharacterState } from '../../shared/character';
+import { fightIsRunning, type CharacterState } from '../../shared/character';
 import type { GearConfig } from '../../shared/config';
+import { mobKey } from '../../shared/world';
 import {
+  heldWeapon,
   kitFor,
+  WEAPON_KEY,
   offRoundPlan,
   overlayFor,
   swapPlan,
@@ -54,6 +57,18 @@ export class EquipmentManager implements SessionModule {
   private invokedAt = 0;
   /** Rounds seen since the last invocation, so `everyRounds` counts rounds and not seconds. */
   private roundsSince = 0;
+  /**
+   * The weapon put in hand for a monster the hand could not hurt (todo 46),
+   * what it replaced, that monster's key, and whether a fight has been seen
+   * since: the old weapon waits for that fight to end, not for the line
+   * before it opens.
+   */
+  private reached: {
+    weapon: string;
+    was: string | null;
+    target: string;
+    fought: boolean;
+  } | null = null;
 
   constructor(
     private config: GearConfig,
@@ -81,6 +96,7 @@ export class EquipmentManager implements SessionModule {
     this.saidMissing.clear();
     this.invokedAt = 0;
     this.roundsSince = 0;
+    this.reached = null;
   }
 
   private get acting(): boolean {
@@ -94,7 +110,9 @@ export class EquipmentManager implements SessionModule {
    * it is the one half of the situation that is not on the wire.
    */
   onCharacter(state: CharacterState, moving: boolean): void {
-    if (!this.acting || state.phase !== 'in-game') return;
+    if (state.phase !== 'in-game') return;
+    this.reachedBack(state);
+    if (!this.acting) return;
     /*
      * An unlisted pack is not an empty one. Nothing is worn off a listing
      * nobody has read, and nothing is reported missing on its account either —
@@ -124,11 +142,63 @@ export class EquipmentManager implements SessionModule {
     }
 
     const kit = kitFor(this.config.sets, now, (item) => this.sources.slotOf(item));
+    // A weapon wielded for a monster the hand cannot hurt outranks a set's until it goes back.
+    if (this.reached !== null && kit.has(WEAPON_KEY)) kit.set(WEAPON_KEY, this.reached.weapon);
     if (kit.size === 0) return;
     const plan = swapPlan(kit, state.inventory.items, tuning().spending.maxGear, (item) =>
       this.sources.handsOf(item)
     );
     this.send(plan, bandFor(now, set), set);
+  }
+
+  /**
+   * Put a carried weapon in hand because the one there cannot hurt `target`
+   * (`AutoCombatEvents.wield`, todo 46). Not gated on the gear sets: it is
+   * the attack's own precondition, sent in `combat` so the queue keeps it
+   * ahead of the attack that asked for it.
+   */
+  wieldFor(state: CharacterState, weapon: string, target: string): void {
+    if (!this.enabled || state.inventory.listedAt === null) return;
+    const was = this.reached?.was ?? heldWeapon(state.inventory.items)?.name ?? null;
+    if (!this.wieldInHand(state, weapon, 'combat')) return;
+    this.reached = { weapon, was, target: mobKey(target), fought: false };
+    this.events.notice?.(t('automation.gear.reachWield', { weapon, target }));
+  }
+
+  /**
+   * The weapon that was in hand before `wieldFor`, back once its fight is
+   * over, or once the monster is no longer in the room with no fight on
+   * (the attack never opened one, or the character moved on).
+   */
+  private reachedBack(state: CharacterState): void {
+    const reached = this.reached;
+    if (reached === null) return;
+    if (fightIsRunning(state)) {
+      if (!reached.fought) this.reached = { ...reached, fought: true };
+      return;
+    }
+    const here = state.room.occupants.some(
+      (who) => who.kind === 'mob' && mobKey(who.name) === reached.target
+    );
+    if (!reached.fought && here) return;
+    this.reached = null;
+    if (reached.was === null || !this.enabled) return;
+    if (this.wieldInHand(state, reached.was, 'probe')) {
+      this.events.notice?.(t('automation.gear.reachBack', { weapon: reached.was }));
+    }
+  }
+
+  /** `swapPlan` for the weapon hand alone; whether anything was sent. */
+  private wieldInHand(state: CharacterState, weapon: string, band: Priority): boolean {
+    const plan = swapPlan(
+      new Map([[WEAPON_KEY, weapon]]),
+      state.inventory.items,
+      tuning().spending.maxGear,
+      (item) => this.sources.handsOf(item)
+    );
+    if (plan.commands.length === 0) return false;
+    this.send(plan, band, null);
+    return true;
   }
 
   /** Whether a backstab set is written and the next fight opens with its weapon. */

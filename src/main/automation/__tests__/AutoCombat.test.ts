@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { AutoCombat, canStillHit, type OpeningGuard } from '../AutoCombat';
+import { AutoCombat, canStillHit, type AutoCombatEvents, type OpeningGuard } from '../AutoCombat';
+import type { WeaponReach } from '../../../shared/reach';
 import type { FledEntry } from '../../../shared/fled';
 import type { Survival } from '../../../shared/survival';
 import type { EngageDecision } from '../../../shared/automation';
@@ -166,7 +167,9 @@ function make(
   /** What the realm's wire taught about its attack spells (todo 820). */
   spellLore?: AttackSpellLore,
   /** What opening a fight is weighed against (`OpeningGuard`). */
-  guard?: OpeningGuard
+  guard?: OpeningGuard,
+  /** Further events, such as the weapon reach (todo 46). */
+  extra: Partial<AutoCombatEvents> = {}
 ): AutoCombat {
   return new AutoCombat(
     config,
@@ -177,7 +180,8 @@ function make(
       decided: (decision) => decisions.push(decision),
       ...(canHide === undefined ? {} : { canHide }),
       onTheGround: () => down,
-      realmSpeed: () => speed
+      realmSpeed: () => speed,
+      ...extra
     },
     spells ?? DEFAULT_CONFIG.automation.spells,
     undefined,
@@ -4727,5 +4731,81 @@ describe('a monster the realm data says to avoid', () => {
     );
     drain();
     expect(sent).toEqual(['a obsidian statue']);
+  });
+});
+
+/*
+ * A weapon that cannot hurt the monster (todo 46). The realm's rows answer
+ * before the attack (`weaponReach`); the server's own `Your weapon has no
+ * effect against this monster!` answers after it, with this hand.
+ */
+describe('a weapon that cannot hurt the monster', () => {
+  const golem = { ...EMPTY_CHARACTER.room, occupants: [mob('stone golem', 'hostile')] };
+  const holding = (weapon: string): CharacterState =>
+    state({
+      room: golem,
+      inventory: {
+        ...EMPTY_CHARACTER.inventory,
+        items: [{ name: weapon, source: 'wire', slot: WEAPON_HAND, equipped: true, charges: null }]
+      }
+    });
+  const reaching = (answer: WeaponReach, wielded: string[] = []) =>
+    make(combat(), true, undefined, undefined, undefined, undefined, undefined, {
+      reach: () => answer,
+      wield: (_state, weapon) => wielded.push(weapon)
+    });
+
+  it('does not open on a monster nothing carried can hurt, and says why', () => {
+    const auto = reaching({ kind: 'cannot' });
+    auto.onCharacter(holding('club'));
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      `stone golem — ${t('automation.combat.refusedCannotHurt', { target: 'stone golem' })}`
+    ]);
+  });
+
+  it('puts the carried weapon that can in hand before the attack', () => {
+    const wielded: string[] = [];
+    const auto = reaching({ kind: 'swap', weapon: 'golden pike' }, wielded);
+    auto.onCharacter(holding('club'));
+    drain();
+    expect(wielded).toEqual(['golden pike']);
+    expect(sent).toEqual(['a stone golem']);
+  });
+
+  it('lets a set-up attack spell open on a monster the hand cannot hurt', () => {
+    const spells = {
+      ...DEFAULT_CONFIG.automation.spells,
+      attack: 'harm',
+      autoChoose: false,
+      minMana: 0
+    };
+    const auto = make(combat(), true, spells, undefined, undefined, undefined, undefined, {
+      reach: () => ({ kind: 'cannot' })
+    });
+    const mana = { ...EMPTY_CHARACTER.vitals, mana: 40, manaMax: 100, manaType: 'MA' as const };
+    auto.onCharacter({ ...holding('club'), vitals: mana });
+    drain();
+    expect(sent).toEqual(['harm stone golem']);
+    expect(refusals()).toEqual([]);
+  });
+
+  it('stops attacking once the server says the hand has no effect, until the hand changes', () => {
+    const auto = reaching({ kind: 'unknown' });
+    auto.onCharacter(holding('club'));
+    drain();
+    expect(sent).toEqual(['a stone golem']);
+    auto.onBlock(block('attack-ineffective', { weapon: 'weapon', target: 'monster' }));
+
+    vi.advanceTimersByTime(tuning().combat.engageCooldownMs + 1);
+    auto.onCharacter(holding('club'));
+    drain();
+    expect(sent).toEqual(['a stone golem']);
+
+    // Positive control: another weapon in hand, and the attack goes again.
+    auto.onCharacter(holding('golden pike'));
+    drain();
+    expect(sent).toEqual(['a stone golem', 'a stone golem']);
   });
 });

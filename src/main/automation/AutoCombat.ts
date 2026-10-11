@@ -112,7 +112,9 @@ import {
   type MobStance
 } from '../../shared/mobRules';
 import type { MobEntity } from '../../shared/entities';
-import { sameItem, WEAPON_HAND } from '../../shared/items';
+import { sameItem } from '../../shared/items';
+import { heldWeapon } from '../../shared/gear';
+import { REACH_UNKNOWN, type WeaponReach } from '../../shared/reach';
 import { guardsFirst, inTheFight, protects } from '../../shared/guards';
 import { protectionOf, weighRoom, type HazardKind, type Menace } from '../../shared/menace';
 import {
@@ -131,6 +133,7 @@ import { mobKey, nameAnswersTo, type WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 import { BrokenFight } from './BrokenFight';
+import { NoEffect } from './NoEffect';
 
 /**
  * `notice`, and `needBook` — the spellbook never read while *Auto Choose Best
@@ -192,6 +195,14 @@ export interface AutoCombatEvents extends AttackSpellEvents {
   onTheGround(): boolean;
   /** How many times faster than the server's clocks the realm runs (`RealmSpeed`); 1 where unread. */
   realmSpeed?(): number;
+  /**
+   * Whether the weapon in hand can hurt `target`, from the realm's rows
+   * (`weaponReach`, todo 46), or with `handRefused` once the server said the
+   * hand has no effect. Undefined is unknown, which never refuses.
+   */
+  reach?(state: CharacterState, target: string, handRefused: boolean): WeaponReach;
+  /** Put `weapon` in hand ahead of the attack on `target` (`EquipmentManager.wieldFor`). */
+  wield?(state: CharacterState, weapon: string, target: string): void;
 }
 
 /**
@@ -247,8 +258,7 @@ const REFUSED_WORDS: Record<string, readonly string[]> = {
  * a backstab — so a name is the whole answer and `null` is a real one.
  */
 function weaponInHand(state: CharacterState): string | null {
-  const held = state.inventory.items.find((item) => item.equipped && item.slot === WEAPON_HAND);
-  return held?.name ?? null;
+  return heldWeapon(state.inventory.items)?.name ?? null;
 }
 
 /**
@@ -396,6 +406,8 @@ export class AutoCombat implements SessionModule {
    * put the same weapon on before every fight to be refused again (todo 02).
    */
   private readonly cannotBackstabWith = new Set<string>();
+  /** Monsters the server said the hand cannot hurt (todo 46). */
+  private readonly noEffect = new NoEffect();
   /**
    * Rounds counted **since the last look**, for `refreshRounds`.
    *
@@ -681,6 +693,7 @@ export class AutoCombat implements SessionModule {
     this.moveOnly = false;
     this.refused.clear();
     this.cannotBackstabWith.clear();
+    this.noEffect.reset();
     this.spell.reset();
     this.sentAttack = null;
     this.lastChosen = null;
@@ -1054,22 +1067,19 @@ export class AutoCombat implements SessionModule {
       }
 
       /*
-       * `attack-ineffective` is deliberately absent, and its absence is the
-       * decision.
-       *
-       * The attack is landing and doing nothing — the wrong weapon entirely,
-       * and nothing else in the stream says so because the damage lines that
-       * would say it never arrive. But what to *do* about it is a judgement
-       * with a character on the end of it: change weapon, run, or keep
-       * swinging because somebody else in the room can hurt it. This client
-       * does not have the information to choose between those.
-       *
-       * So it is ranked in `NOTABLE` and kept on the Alerts card, where it can
-       * be gone back to, and it is **not** echoed into the terminal — the
-       * server has already said the words, in the room, in full, and a client
-       * that repeated them with a frame around them would be the mistake
-       * `command-not-understood` already taught (see CLAUDE.md).
+       * `Your weapon has no effect against this monster!` opens no fight
+       * (`AttackCommand.cs:467-489`): sent again, the same attack earns the
+       * same line. Kept against the hand, so the monster is declined until
+       * the hand changes, and the attack's wait ends here (todo 46). Not
+       * echoed: the server has said it in full.
        */
+      case 'attack-ineffective': {
+        const target = this.focus;
+        if (target === null || this.state === null || this.inAFight() !== null) return;
+        this.noEffect.heard(target, weaponInHand(this.state));
+        this.answeredNo(null);
+        return;
+      }
       default:
         return;
     }
@@ -1814,6 +1824,11 @@ export class AutoCombat implements SessionModule {
         decline(who, t('automation.combat.refusedCostly', { target: who.name }));
         continue;
       }
+      // Nothing carried can hurt it and no attack spell opens on it (todo 46).
+      if (this.reachOf(state, who.name).kind === 'cannot' && !this.spellOpens(state, who.name)) {
+        decline(who, t('automation.combat.refusedCannotHurt', { target: who.name }));
+        continue;
+      }
       if (few !== null && row?.stopToKill !== true) {
         decline(who, few);
         continue;
@@ -2219,12 +2234,20 @@ export class AutoCombat implements SessionModule {
      * so it is the fight's first command rather than a round's. The class's
      * own opener still goes first; the round then changes to the spell.
      */
-    const cast =
+    let cast =
       opener === null && state !== null
         ? this.spell.opening(state, this.spellTarget(state, target), because)
         : null;
     const verb = opener ?? this.attackVerb(target);
     if (cast === null && verb.length === 0) return false;
+    // A blow the hand cannot land is not sent; a carried weapon that can goes in hand first.
+    const reach = cast === null && state !== null ? this.reachOf(state, target) : REACH_UNKNOWN;
+    if (reach.kind === 'cannot') {
+      // The opener is a blow too (`AttackCommand.cs:210`); an attack spell can still open.
+      if (opener === null || state === null) return false;
+      cast = this.spell.opening(state, this.spellTarget(state, target), because);
+      if (cast === null) return false;
+    }
     if (cast === null && opener === null) this.lastChosen = this.fightWord(target);
     const proposal = cast ?? {
       command: `${verb} ${target}`,
@@ -2246,6 +2269,7 @@ export class AutoCombat implements SessionModule {
     this.opened.set(key, now);
     this.focus = key;
     this.openerSpent = true;
+    if (reach.kind === 'swap' && state !== null) this.events.wield?.(state, reach.weapon, target);
     /*
      * Not announced, unlike an escape.
      *
@@ -2402,6 +2426,22 @@ export class AutoCombat implements SessionModule {
       if (weapons.some((weapon) => sameItem(weapon, refused))) return false;
     }
     return !this.isRefused(opener, 'character');
+  }
+
+  /**
+   * What the hand can do to `target`: the server's own refusal with this hand
+   * outranks the realm's `hurts` or `unknown`; a carried weapon the realm says
+   * can still goes in hand.
+   */
+  private reachOf(state: CharacterState, target: string): WeaponReach {
+    const refused = this.noEffect.refuses(target, weaponInHand(state));
+    const said = this.events.reach?.(state, target, refused) ?? REACH_UNKNOWN;
+    return refused && said.kind !== 'swap' ? { kind: 'cannot' } : said;
+  }
+
+  /** Whether an attack spell would open on `target` now, as `swing` asks it (todo 46). */
+  private spellOpens(state: CharacterState, target: string): boolean {
+    return this.spell.opening(state, this.spellTarget(state, target), '') !== null;
   }
 
   /** The realm's class row says this character never hides (todo 28); unknown is not never. */

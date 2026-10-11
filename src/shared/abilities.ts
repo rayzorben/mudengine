@@ -449,6 +449,18 @@ export function holdsAbility(capabilities: Capabilities, id: number): boolean | 
   return capabilities.abilities.some(([which]) => which === id);
 }
 
+/**
+ * The rows the server's reach test reads (`Player.CanPlayerHitTarget`):
+ * a monster's `Magical` and `ReqToHit`, a weapon's `Magical` and
+ * `MeetsReqToHit`, the attacker's `HitMagic` (todo 46, `shared/reach.ts`).
+ */
+export const REACH_ABILITY = {
+  magical: 28,
+  hitMagic: 142,
+  reqToHit: 158,
+  meetsReqToHit: 1101
+} as const;
+
 /** `ImmuPoison` — a Kang's, and what makes `rest` work where it otherwise would not. */
 export const IMMUNE_TO_POISON_ABILITY = 21;
 /** `GrantPicklocks` — a Ninja's and a Thief's by class, a Gnome's by race. */

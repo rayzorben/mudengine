@@ -5220,6 +5220,7 @@ automation:
     # hands a blow at {target} to it; {why} is the guard's own refusal.
     refusedGuarded: '{guard} protects {target}, and attacking the guard is refused: {why}'
     refusedCostly: Attacking {target} costs alignment (-10).
+    refusedCannotHurt: 'no weapon you carry can hurt {target}'
     refusedEngageNone: Attack Target Selection is Retaliate Only, so no fight is started
     refusedTooTough: '{target} has {hp} health, over the Max Target Health of {cap}'
     refusedFled: 'you ran from {target} at level {level}; it is left alone until level {until}'
@@ -5619,6 +5620,8 @@ automation:
     missingFromSet: '{item} is in an equipment set but not in your inventory.'
     offRound: 'Using {item} on {target} between rounds.'
     offRoundMissing: '{item} is set to be used between rounds but is not in your inventory.'
+    reachWield: 'Wielding {weapon}: the weapon in hand has no effect against {target}.'
+    reachBack: 'Wielding {weapon} again after the fight.'
   hangUp:
     reasonInCombat: you are in combat
     reasonMobEngaged: something in the room is still attacking you

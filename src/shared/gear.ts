@@ -823,6 +823,9 @@ export function kitFor(
   return kit;
 }
 
+/** The weapon hand's key in a kit, as `kitFor` files a slot. */
+export const WEAPON_KEY = WEAPON_HAND.toLowerCase();
+
 /**
  * What to send to get into a kit, in the order it has to be sent.
  *
@@ -863,7 +866,7 @@ export function swapPlan(
     wanted.push({ slot, item: name });
   }
 
-  const weapon = wanted.find((row) => row.slot === WEAPON_HAND.toLowerCase());
+  const weapon = wanted.find((row) => row.slot === WEAPON_KEY);
   /*
    * The off-hand item to take off first: only where a two-hander is going on,
    * only where something is actually in that hand, and only where the kit is
@@ -883,6 +886,11 @@ export function swapPlan(
     ...rest.map((row) => equip(row.item))
   ];
   return capped(commands, missing, max);
+}
+
+/** What is in the weapon hand, or undefined while nothing listed says. */
+export function heldWeapon(items: readonly CarriedItem[]): CarriedItem | undefined {
+  return items.find((each) => each.equipped && (each.slot ?? '').toLowerCase() === WEAPON_KEY);
 }
 
 /** What is worn in the off-hand, which a two-handed weapon needs taken off first. */
@@ -948,9 +956,7 @@ export function offRoundPlan(
   const spear = items.find((each) => sameItem(each.name, item));
   if (spear === undefined || target.trim().length === 0) return [];
 
-  const inHand = items.find(
-    (each) => each.equipped && (each.slot ?? '').toLowerCase() === WEAPON_HAND.toLowerCase()
-  );
+  const inHand = heldWeapon(items);
   const offHand = items.find(
     (each) => each.equipped && (each.slot ?? '').toLowerCase() === OFF_HAND.toLowerCase()
   );

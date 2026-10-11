@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG, type AutomationConfig, type GearConfig } from '../../..
 import { wireItem } from '../../../shared/entities';
 import { OFF_HAND, WEAPON_HAND } from '../../../shared/items';
 import type { GearSet } from '../../../shared/gear';
+import { classifyOccupant } from '../../../shared/mobs';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -278,5 +279,59 @@ describe('using an item between rounds', () => {
     const first = sent.length;
     manager.round(state);
     expect(sent).toHaveLength(first);
+  });
+});
+
+/*
+ * The weapon put in hand for a monster the hand cannot hurt (todo 46): sent
+ * with no gear sets switched on, and the old weapon back once the fight it
+ * was for is over, not on the line before that fight opens.
+ */
+describe('the weapon that can hurt the monster', () => {
+  const off = gear({ enabled: false, sets: [] });
+  const golem: Partial<CharacterState> = {
+    room: {
+      ...structuredClone(EMPTY_CHARACTER).room,
+      occupants: [
+        classifyOccupant('stone golem', { players: new Set<string>(), mob: () => undefined })
+      ]
+    }
+  };
+
+  it('wields it with the sets off, and wields the old weapon again after the fight', () => {
+    const manager = make(off);
+    const before = [worn('club', WEAPON_HAND), carried('golden pike')];
+    manager.wieldFor(standing(before, golem), 'golden pike', 'stone golem');
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike']);
+
+    const holding = [carried('club'), worn('golden pike', WEAPON_HAND)];
+    // The line before the fight opens sends nothing back.
+    manager.onCharacter(standing(holding, golem), false);
+    manager.onCharacter(fighting('stone golem', holding), false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike']);
+
+    // Positive control: the fight ends and the club goes back in hand.
+    manager.onCharacter(standing(holding), false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike', 'wear club']);
+  });
+
+  it('wields the old weapon again when the monster is gone with no fight', () => {
+    const manager = make(off);
+    manager.wieldFor(
+      standing([worn('club', WEAPON_HAND), carried('golden pike')], golem),
+      'golden pike',
+      'stone golem'
+    );
+    const holding = [carried('club'), worn('golden pike', WEAPON_HAND)];
+    manager.onCharacter(standing(holding, golem), false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike']);
+
+    manager.onCharacter(standing(holding), false);
+    vi.advanceTimersByTime(500);
+    expect(sent).toEqual(['wear golden pike', 'wear club']);
   });
 });
