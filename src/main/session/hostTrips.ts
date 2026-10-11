@@ -24,10 +24,11 @@ import { NO_SALE, saleOnTheWay, saleReadsOf, type SaleModules } from './saleOnTh
 import type { WorldGraph } from '../world/WorldGraph';
 import { stashFetchTrip, type CollectModules, type CollectParts } from './collectPlanner';
 import { legPlanner } from './legPlanner';
+import { nearestOf } from './placeDesk';
 import { wearPlan } from '../../shared/gear';
 import { useNegates } from '../../shared/items';
 import type { QuestKeep } from '../../shared/questKeep';
-import { counterIn, landsFromAnywhere, roomAddress, roomId, type RoomId } from '../../shared/world';
+import { counterIn, landsFromAnywhere, roomAddress, roomId } from '../../shared/world';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Travel } from './Travel';
@@ -208,15 +209,10 @@ function cashRunPlanner(parts: HostTripParts): CashRunPlanner {
       const reach = errands.tripReach();
       const graph = world();
       if (here === null || reach === null || graph === undefined) return null;
-      const moves = reach.within(here, tuning().cashRun.bankSteps);
-      let best: { room: RoomId; name: string; moves: number } | null = null;
-      for (const bank of graph.banks()) {
-        const room = roomId(bank.map, bank.room);
-        const steps = moves.get(room);
-        if (steps === undefined || (best !== null && best.moves <= steps)) continue;
-        best = { room, name: bank.name, moves: steps };
-      }
-      return best === null ? null : { room: best.room, name: best.name };
+      const best = nearestOf(graph.banks(), reach.within(here, tuning().cashRun.bankSteps))[0];
+      return best === undefined
+        ? null
+        : { room: roomId(best.place.map, best.place.room), name: best.place.name };
     },
     saleOnTheWay: (bank, tokens) => {
       const reads = saleReadsOf(parts.modules(), parts.config(), parts.kept);

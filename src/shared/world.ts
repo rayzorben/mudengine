@@ -888,21 +888,25 @@ export type ShopKind = 'shop' | 'temple' | 'tavern' | 'bank' | 'trainer' | 'inn'
  * one is offering a choice that cannot work.
  */
 /**
- * A bank counter the realm places, for the settings picker (todo 00).
- *
- * The shape `TrainerChoice` has, minus the arithmetic: a bank charges nothing
- * and takes every character, so the row and where it is are the whole answer.
- * Keyed by the shop's own row for `trainersTaking`'s reason — two rows can
- * share a name and be different counters, and a balance is per row.
+ * A counter the realm places: a shop row and a room holding it
+ * (`WorldGraph.counters`). Keyed by the shop's own row for `trainersTaking`'s
+ * reason: two rows can share a name and be different counters.
  */
-export interface BankChoice {
-  /** The shop's own row, which is what the setting stores. */
+export interface CounterPlace {
+  /** The shop's own row, which is what the bank setting stores. */
   shop: number;
   name: string;
   map: number;
   room: number;
   roomName: string;
 }
+
+/**
+ * A bank counter, for the settings picker (todo 00). A bank charges nothing
+ * and takes every character, so the row and where it is are the whole answer,
+ * and a balance is per row.
+ */
+export type BankChoice = CounterPlace;
 
 /**
  * A vault to draw cash from on the way to a counter — `WorldGraph.cashPlaces`,
@@ -916,13 +920,7 @@ export interface CashPlace extends BankChoice {
   moves: number;
 }
 
-export interface TrainerChoice {
-  /** The shop's own row, which is what the setting stores. */
-  shop: number;
-  name: string;
-  map: number;
-  room: number;
-  roomName: string;
+export interface TrainerChoice extends CounterPlace {
   /** What one level costs here, in copper, at the level asked about. */
   cost: number;
   /** The band, for a picker that says why this one and not the class room. */

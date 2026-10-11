@@ -59,12 +59,14 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the bank counter's comments, condensed as `ChestOpening` came (todo 68).
   // Lowered by the extensions' realm, handed in by the host (todo 34).
   // Lowered by the Drop notice's wording, out to `macros.ts`, and the paste comment (todo 83).
-  'src/main/session/SessionManager.ts': 3394,
+  // Lowered by the trainers' delegation, out to the place desk with the nearest of each kind (todo 70).
+  'src/main/session/SessionManager.ts': 3393,
   // Lowered by `mobRow`, read by nothing but a test, gone as `itemsOfKind` came (todo 11).
   // Lowered by the lever cell's reader, out with the row lists' (`roomColumns.ts`, todo 25).
   // Lowered by shortening the portals' comment, as `sparedItems` came (todo 31).
   // Lowered by the room's own fields on one line, as the protected room came (todo 87).
-  'src/main/world/WorldGraph.ts': 2376,
+  // Lowered by `banks`, one filter over `counters` (todo 70).
+  'src/main/world/WorldGraph.ts': 2370,
   // Lowered by the record's seeding, one helper for `reset` and `forgetBelongings` (todo 05).
   // Lowered by the scroll's comment, shortened as `user-reads-known` came (todo 20).
   // Lowered by the death sentence's name, read by `deathNamed` beside `DeathSummons` (todo 57).

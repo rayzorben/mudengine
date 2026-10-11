@@ -937,6 +937,7 @@ palette:
     found: Go to
     layout: Layout
     navigate: Navigate
+    nearest: Nearest
     pinned: Pinned
     realm: In the realm
     view: View
@@ -968,6 +969,10 @@ palette:
     loopLabel: 'Loop: {loopName}'
     lookupLabel: 'Look up: {name}'
     lookupNumberHint: '{kindWord} #{number}'
+    nearestHint:
+      many: '{moves} moves · {reference}'
+      one: '{moves} move · {reference}'
+    nearestLabel: 'Goto: {name}, {roomName}'
     moveStopHint: routing or looping; it keeps its place, so play resumes it
     moveStopLabel: Stop moving
     loopStopsHint:

@@ -41,6 +41,7 @@ import type {
   RoomAsk
 } from './quests';
 import type { AreaSearchPreview } from './areaSearch';
+import type { NearPlace, PlaceKind } from './places';
 import type { CashRunAsk, CashRunToken } from './cashRun';
 import type { SupplyCounters } from './supplies';
 import type { HuntingAdvice } from './hunting';
@@ -972,6 +973,8 @@ export const Invoke = {
   banks: 'world:banks',
   /** Where each supply row would be bought from where the character stands (todo 49). */
   supplyCounters: 'world:supply-counters',
+  /** The nearest places of a kind this character can use (todo 70). */
+  nearestPlaces: 'world:nearest-places',
   itemsServing: 'world:serving',
   /** The realm's own *use this item there* rules, for the same list. */
   wards: 'world:wards',
@@ -1601,6 +1604,12 @@ export interface IpcApi {
   banks(session: SessionId): Promise<BankChoice[]>;
   /** Each supply row's counter by the row's name: the shop and how far, found, or why none (todo 49). */
   supplyCounters(session: SessionId): Promise<SupplyCounters>;
+  /**
+   * Every place of `kind` this character can use and reach, fewest moves
+   * first (todo 70): a trainer that takes its level and class, a counter
+   * restocking kit its class and race may wear. Empty while unplaced.
+   */
+  nearestPlaces(session: SessionId, kind: PlaceKind): Promise<NearPlace[]>;
   /**
    * The items the realm says would serve each condition a potion rule can
    * name — the picker's suggestions (todo 19).

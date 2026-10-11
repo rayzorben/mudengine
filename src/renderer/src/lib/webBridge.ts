@@ -328,6 +328,7 @@ export function createWebBridge(): IpcApi {
     trainers: (session) => invoke(Invoke.trainers, session),
     banks: (session) => invoke(Invoke.banks, session),
     supplyCounters: (session) => invoke(Invoke.supplyCounters, session),
+    nearestPlaces: (session, kind) => invoke(Invoke.nearestPlaces, session, kind),
     itemsServing: (session) => invoke(Invoke.itemsServing, session),
     wards: (session) => invoke(Invoke.wards, session),
     invokeChoices: (session) => invoke(Invoke.invokeChoices, session),
