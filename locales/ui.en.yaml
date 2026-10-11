@@ -5454,6 +5454,12 @@ automation:
       of the target.'
     choseHardest: 'Casting {spell} ({min}–{max}, about {expected} a cast and {perRound} a round,
       {cost} mana): the strongest spell your mana can pay for.'
+    roomTakeover: 'Casting {spell} at the room: {first} can''t be cast now, and {spell} is the next
+      room spell in your spellbook by damage per mana.'
+    debuffFirst: 'Casting {spell} before {room}: lowering the room''s magic resistance adds about
+      {gain} damage over the rounds it lasts.'
+    debuffFirstAt: 'Casting {spell} at {target} before {room}: lowering its magic resistance adds
+      about {gain} damage over the rounds it lasts.'
     noBookYet: Auto Choose Best Spell has no spellbook to choose from yet; asking the game for it.
     emptyBook: 'Auto Choose Best Spell: the spellbook is empty; this character has no spells yet.'
     noAttackSpells: 'Auto Choose Best Spell: nothing in the spellbook attacks a single target.'
