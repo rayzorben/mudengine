@@ -570,6 +570,17 @@ tuning:
     # picks its run up where it was instead of starting over.
     survivalBooksKept: 3
 
+  # Asking `stat a` for the game's own figures — `StatAllAsk`.
+  statAll:
+    # How long what the figures are worked out from (level, stats, worn gear,
+    # spells up) has to stay the same before `stat a` is asked, in
+    # milliseconds, so a sheet is not asked between two blessings.
+    settleMs: 10000
+
+    # Asks in a row with no figures back before the game is taken not to have
+    # `stat all`, and is not asked again until you reconnect.
+    unansweredAsks: 3
+
   # Casting on the character's behalf — `AutoHeal`, `Cures`, `Blessings`.
   spells:
     # How sure one cast has to be of finishing the monster before the cheapest

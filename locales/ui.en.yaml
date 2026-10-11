@@ -6238,6 +6238,9 @@ automation:
     reasonStatline: setting the status line so every prompt shows maximum health and mana, exp and
       cash
     reasonProfile: checking which status line the game has
+    reasonStatAll: reading the game's own figures for what you wear and have up
+    statAllGaveUp: The game answered {command} {count} times with no figures; not asking again until
+      you reconnect.
     spellbookCorrected: Asked for the wrong spellbook; the game says to list {book}, so asking for
       that instead.
   walk:

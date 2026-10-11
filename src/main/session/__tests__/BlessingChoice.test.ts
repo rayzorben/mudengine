@@ -234,15 +234,17 @@ describe('choosing blessings for the fight being hunted', () => {
     const read = standing(LAIR, 0, 0);
     tracker.current = {
       ...read,
-      stated: {
-        against: null,
-        healthRegen: null,
-        restingRegen: null,
-        baseManaRegen: 3,
-        manaRegen: 3,
-        rounds: {},
-        basis: statedBasis(read)
-      }
+      stated: [
+        {
+          against: null,
+          healthRegen: null,
+          restingRegen: null,
+          baseManaRegen: 3,
+          manaRegen: 3,
+          rounds: {},
+          basis: statedBasis(read)
+        }
+      ]
     };
     made.refresh(tracker.current);
     await vi.waitFor(() => expect(made.chosen()).not.toBeNull());
@@ -269,15 +271,17 @@ describe('choosing blessings for the fight being hunted', () => {
       const read = standing(LAIR, 0, 0);
       tracker.current = {
         ...read,
-        stated: {
-          against: null,
-          healthRegen: null,
-          restingRegen: null,
-          baseManaRegen: 3,
-          manaRegen: 3,
-          rounds: {},
-          basis: statedBasis(read)
-        }
+        stated: [
+          {
+            against: null,
+            healthRegen: null,
+            restingRegen: null,
+            baseManaRegen: 3,
+            manaRegen: 3,
+            rounds: {},
+            basis: statedBasis(read)
+          }
+        ]
       };
       made.refresh(tracker.current);
       await vi.waitFor(() => expect(made.chosen()).not.toBeNull());

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, type CharacterState } from '../character';
-import { readStatAll, statedBasis, statedNow } from '../stated';
+import {
+  keepSheet,
+  readStatAll,
+  STATED_SHEETS_KEPT,
+  statedBasis,
+  statedNow,
+  type StatedSheet
+} from '../stated';
 
 /** The rows `user-stat-all` builds from the user's own sheet (2026-09-18). */
 const ROWS: Array<Record<string, string>> = [
@@ -47,9 +54,11 @@ const STATE: CharacterState = {
   buffs: [{ spell: 'bless', by: null, appliedAt: 0 }]
 };
 
+const sheetAt = (state: CharacterState): StatedSheet => readStatAll(ROWS, statedBasis(state))!;
+
 const sheetOf = (state: CharacterState): CharacterState => ({
   ...state,
-  stated: readStatAll(ROWS, statedBasis(state))
+  stated: keepSheet(state.stated, sheetAt(state))
 });
 
 describe('reading stat all', () => {
@@ -123,7 +132,7 @@ describe('what of a sheet still holds', () => {
   /* `Player.cs`: a KaiBound Mystic's `MARegen` is `-1`, a sentinel and not a rate. */
   it('states no mana rate from the KaiBind sentinel', () => {
     const read = sheetOf(STATE);
-    const bound = { ...read, stated: { ...read.stated!, manaRegen: -1 } };
+    const bound = { ...read, stated: [{ ...read.stated![0]!, manaRegen: -1 }] };
     expect(statedNow(bound)).not.toHaveProperty('mana');
     expect(statedNow(bound)?.meditating).toBe(3);
   });
@@ -162,14 +171,50 @@ describe('what of a sheet still holds', () => {
     });
   });
 
-  it('takes no range from a sheet run against a monster', () => {
+  it('takes nothing from a sheet run against a monster', () => {
+    const against = { ...STATE, stated: [{ ...sheetAt(STATE), against: 'black orc captain' }] };
+    expect(statedNow(against)).toBeNull();
+  });
+
+  /* `stat all <id>` used to replace the character's own sheet and lose its range. */
+  it('keeps the own sheet beside one run against a monster', () => {
     const read = sheetOf(STATE);
-    const against = { ...read, stated: { ...read.stated!, against: 'black orc captain' } };
-    expect(statedNow(against)?.attacks?.attack).not.toHaveProperty('damage');
-    expect(statedNow(against)?.attacks?.attack?.accuracy).toBe(105);
+    const both = {
+      ...read,
+      stated: keepSheet(read.stated, { ...sheetAt(STATE), against: 'black orc captain' })
+    };
+    expect(both.stated).toHaveLength(1);
+    expect(statedNow(both)?.attacks?.attack?.damage).toEqual({ min: 8, max: 25 });
+  });
+
+  /* A loop's blessings come round in the same few sets (todo 45). */
+  it('finds the sheet again when an effect it was computed with comes back', () => {
+    const blessed = sheetOf(STATE);
+    const bare = sheetOf({ ...blessed, buffs: [] });
+    expect(bare.stated).toHaveLength(2);
+    expect(statedNow({ ...bare, buffs: STATE.buffs })?.health).toBe(6);
   });
 
   it('is nothing before a sheet is read', () => {
     expect(statedNow(STATE)).toBeNull();
+  });
+});
+
+describe('keeping sheets', () => {
+  it('replaces the sheet for the same basis, newest first', () => {
+    const first = sheetAt(STATE);
+    const again = { ...first, healthRegen: 7 };
+    expect(keepSheet(keepSheet(null, first), again)).toEqual([again]);
+  });
+
+  it('keeps at most STATED_SHEETS_KEPT, dropping the oldest', () => {
+    let sheets: readonly StatedSheet[] | null = null;
+    for (let level = 1; level <= STATED_SHEETS_KEPT + 1; level += 1) {
+      const state = { ...STATE, progress: { ...STATE.progress, level } };
+      sheets = keepSheet(sheets, sheetAt(state));
+    }
+    expect(sheets).toHaveLength(STATED_SHEETS_KEPT);
+    const levelOne = statedBasis({ ...STATE, progress: { ...STATE.progress, level: 1 } }).gear;
+    expect(sheets!.some((sheet) => sheet.basis.gear === levelOne)).toBe(false);
   });
 });

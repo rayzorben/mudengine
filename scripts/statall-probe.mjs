@@ -197,15 +197,15 @@ async function main() {
    * and an id nobody can read is a guess about which monster was asked about.
    */
   const standing = session.character.room.occupants.find(
-    (who) => who.kind === 'mob' && who.mob?.id !== undefined
+    (who) => who.kind === 'mob' && (who.mob?.ids?.length ?? 0) > 0
   );
   const named = [standing?.name, mobName, 'giant rat', 'rat', 'kobold thief', 'thug']
     .filter((name) => typeof name === 'string')
     .map((name) => world.mob(name))
-    .find((mob) => mob?.id !== undefined);
+    .find((mob) => mob?.ids?.length === 1);
   if (named) {
-    console.log(`   [probe] second sheet against ${named.name} (realm #${named.id}).`);
-    await run(`stat all ${named.id}`, 3000);
+    console.log(`   [probe] second sheet against ${named.name} (realm #${named.ids[0]}).`);
+    await run(`stat all ${named.ids[0]}`, 3000);
   } else {
     console.log(`   [probe] no monster to ask about; skipping the second sheet.`);
   }
