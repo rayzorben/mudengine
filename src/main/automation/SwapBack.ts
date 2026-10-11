@@ -59,6 +59,13 @@ export class SwapBack {
     this.armed = null;
   }
 
+  /** Ends the watch, giving the weapon to put back where the swap's first command went. */
+  handOver(): string | null {
+    const armed = this.armed;
+    this.armed = null;
+    return armed?.begun === true ? armed.back : null;
+  }
+
   /**
    * On every state change. Ended by the queue, never by a clock of its own:
    * forgotten when nothing of a swap whose first command never went is still

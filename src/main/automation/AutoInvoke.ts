@@ -19,7 +19,7 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
 import { exclusive } from '../../shared/blessingeffects';
-import { offRoundSteps, type HandsOf } from '../../shared/gear';
+import { isEquipCommand, offRoundSteps, type HandsOf } from '../../shared/gear';
 import { bareName, sameItem } from '../../shared/items';
 import {
   carriedBlessing,
@@ -217,6 +217,17 @@ export class AutoInvoke implements SessionModule {
     }
   }
 
+  /**
+   * The weapon hand is wanted for a fight (`EquipmentManager.wieldFor`): the
+   * swap's commands still queued are dropped, and the weapon it would have
+   * put back is returned for that module to put back after the fight; null
+   * where no swap had started.
+   */
+  yieldHand(): string | null {
+    this.queue.cancel((intent) => intent.coalesceKey?.startsWith(SWAP_KEY) === true);
+    return this.swapBack.handOver();
+  }
+
   /** The `use` went: the retry floor starts and its answer is read. */
   private used(name: string, found: Offer): void {
     this.sentAt.set(name, this.now());
@@ -237,6 +248,9 @@ export class AutoInvoke implements SessionModule {
   private swap(name: string, found: Offer, state: CharacterState, now: number): boolean {
     // A fight running or asked for (`aa` unanswered) is a fight: never swap into one.
     if (this.sources.fightHere()) return false;
+    // Another module's `wear` or `remove` waiting (a gear set, a reach weapon
+    // going back): the hand this would put back is not settled yet.
+    if (this.queue.queued((intent) => isEquipCommand(intent.command))) return false;
     const plan = offRoundSteps(name, null, state.inventory.items, (item) =>
       this.sources.handsOf(item)
     );
