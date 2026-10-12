@@ -64,7 +64,7 @@ import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import type { SafetyDecision } from '../../shared/automation';
 import { chargedInCopper, quotedInCopper } from '../../shared/coins';
-import type { EncumbranceGate, SuppliesConfig, SupplyItem } from '../../shared/config';
+import type { SuppliesConfig, SupplyItem } from '../../shared/config';
 import { countThatFits } from '../../shared/carrying';
 import { bareName } from '../../shared/items';
 import {
@@ -92,8 +92,6 @@ export interface SupplyPlanner {
   priceAt(item: SupplyItem, shop: RoomId): number | null;
   /** What one weighs, from that counter's realm row; null where unsaid (todo 80). */
   weightAt(item: SupplyItem, shop: RoomId): number | null;
-  /** The grade AutoLoot stops at, which a trip buys no further than (todo 80). */
-  carryGate(): EncumbranceGate;
   /** The vaults the record says hold `need` copper, best first on the way to `then`. */
   cashFrom(need: number, then: RoomId): CashPlace[];
   /** Hands the route to the walker; a refusal, or null once walking. */
@@ -940,14 +938,14 @@ export class Supplies implements SessionModule {
   }
 
   /**
-   * The count no heavier than the pack takes: below the grade AutoLoot stops
-   * at, and below the maximum the server refuses a `buy` at. Said when it cuts
-   * the count; an unread pack or an unweighed item cuts nothing.
+   * The count no heavier than the pack takes: below the maximum the server
+   * refuses a `buy` at. Said when it cuts the count; an unread pack or an
+   * unweighed item cuts nothing.
    */
   private thatFits(errand: Errand, state: CharacterState, short: number): number {
     const { encumbrance, encumbranceMax } = state.inventory;
     const weight = this.planner.weightAt(errand.item, errand.room);
-    const fits = countThatFits(encumbrance, encumbranceMax, weight, this.planner.carryGate());
+    const fits = countThatFits(encumbrance, encumbranceMax, weight);
     if (fits === null || fits >= short || fits === 0) return Math.min(short, fits ?? short);
     this.events.notice?.(
       t('automation.supplies.cutByWeight', { item: errand.item.name, count: fits, short })
