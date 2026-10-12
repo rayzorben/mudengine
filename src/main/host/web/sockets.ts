@@ -15,8 +15,14 @@
  * bytes (1002), a binary frame (1003), invalid UTF-8 (1007), and a message
  * larger than the cap (1009). The cap is `tuning.web.maxMessageBytes` and is
  * checked on the *declared* length before a byte of payload is held.
+ *
+ * `permessage-deflate` (RFC 7692) when the browser offers it, each message
+ * on its own (no context takeover either way): the browser inflates in its
+ * network layer, off the page's thread, and nothing is kept per socket. A
+ * compressed message is inflated under the same cap.
  */
 import { createHash } from 'node:crypto';
+import { constants as zlib, deflateRawSync, inflateRawSync } from 'node:zlib';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 
@@ -31,6 +37,22 @@ export const OPCODE = {
   ping: 0x9,
   pong: 0xa
 } as const;
+
+/** What a deflated message ends with before the sender strips it (RFC 7692 §7.2.1). */
+const DEFLATE_TAIL = Buffer.from([0x00, 0x00, 0xff, 0xff]);
+/** The bit a compressed message's first frame carries. */
+const RSV1 = 0x40;
+
+/** The extension this server agrees to: each message deflated on its own. */
+const DEFLATE_RESPONSE =
+  'permessage-deflate; server_no_context_takeover; client_no_context_takeover';
+
+/** Whether the browser offered `permessage-deflate`. */
+export function offersDeflate(request: IncomingMessage): boolean {
+  return String(request.headers['sec-websocket-extensions'] ?? '')
+    .split(',')
+    .some((offer) => offer.split(';')[0]!.trim().toLowerCase() === 'permessage-deflate');
+}
 
 /** `Sec-WebSocket-Accept` for a client's `Sec-WebSocket-Key`. */
 export function acceptKey(key: string): string {
@@ -56,19 +78,20 @@ export function isWebSocketUpgrade(request: IncomingMessage): boolean {
  * One frame, server to client: never masked, which is what the RFC says of
  * a server. Exported for the tests, which are the other side of the wire.
  */
-export function frame(opcode: number, payload: Buffer): Buffer {
+export function frame(opcode: number, payload: Buffer, compressed = false): Buffer {
   const length = payload.length;
+  const first = 0x80 | (compressed ? RSV1 : 0) | opcode;
   let header: Buffer;
   if (length < 126) {
-    header = Buffer.from([0x80 | opcode, length]);
+    header = Buffer.from([first, length]);
   } else if (length < 0x10000) {
     header = Buffer.alloc(4);
-    header[0] = 0x80 | opcode;
+    header[0] = first;
     header[1] = 126;
     header.writeUInt16BE(length, 2);
   } else {
     header = Buffer.alloc(10);
-    header[0] = 0x80 | opcode;
+    header[0] = first;
     header[1] = 127;
     header.writeBigUInt64BE(BigInt(length), 2);
   }
@@ -85,6 +108,8 @@ export interface ConnectionOptions {
    * main's heap until the ping sweep noticed.
    */
   maxBufferedBytes: number;
+  /** Messages shorter than this go uncompressed: a beat or an ack gains nothing. */
+  deflateMinBytes: number;
 }
 
 /**
@@ -103,6 +128,8 @@ export class WebSocketConnection {
   /** A message being reassembled from fragments, or null between messages. */
   private fragments: Buffer[] | null = null;
   private fragmentBytes = 0;
+  /** The message being reassembled was sent compressed. */
+  private fragmentsDeflated = false;
   private closeSent = false;
   private closed = false;
   /** What this side said on the way out, so the end is reported as it was meant. */
@@ -116,7 +143,9 @@ export class WebSocketConnection {
 
   constructor(
     private readonly socket: Duplex,
-    private readonly options: ConnectionOptions
+    private readonly options: ConnectionOptions,
+    /** `permessage-deflate` was agreed in the handshake. */
+    private readonly deflate = false
   ) {
     socket.on('data', (chunk: Buffer) => this.feed(chunk));
     socket.on('error', () => this.socket.destroy());
@@ -137,7 +166,7 @@ export class WebSocketConnection {
   send(text: string, requested = false): void {
     if (!this.open) return;
     if (!this.roomToWrite()) return;
-    const bytes = frame(OPCODE.text, Buffer.from(text, 'utf8'));
+    const bytes = this.textFrame(Buffer.from(text, 'utf8'));
     if (!requested) {
       this.socket.write(bytes);
       return;
@@ -146,6 +175,14 @@ export class WebSocketConnection {
     this.socket.write(bytes, () => {
       this.requested -= bytes.length;
     });
+  }
+
+  private textFrame(payload: Buffer): Buffer {
+    if (!this.deflate || payload.length < this.options.deflateMinBytes) {
+      return frame(OPCODE.text, payload);
+    }
+    const deflated = deflateRawSync(payload, { finishFlush: zlib.Z_SYNC_FLUSH });
+    return frame(OPCODE.text, deflated.subarray(0, deflated.length - DEFLATE_TAIL.length), true);
   }
 
   /**
@@ -204,8 +241,14 @@ export class WebSocketConnection {
       const b0 = this.buffer[0]!;
       const b1 = this.buffer[1]!;
       const fin = (b0 & 0x80) !== 0;
-      if ((b0 & 0x70) !== 0) return this.fail(1002, 'reserved bits set');
       const opcode = b0 & 0x0f;
+      // RSV1 is the compressed bit, on a message's first frame only, and only
+      // once agreed; RSV2 and RSV3 mean nothing here.
+      const deflated = (b0 & RSV1) !== 0;
+      if ((b0 & 0x30) !== 0) return this.fail(1002, 'reserved bits set');
+      if (deflated && (!this.deflate || opcode === OPCODE.continuation || opcode >= 0x8)) {
+        return this.fail(1002, 'reserved bits set');
+      }
       const masked = (b1 & 0x80) !== 0;
       let length = b1 & 0x7f;
       let offset = 2;
@@ -252,9 +295,10 @@ export class WebSocketConnection {
       }
 
       if (fin && this.fragments === null) {
-        this.deliver(payload);
+        this.deliver(payload, deflated);
         continue;
       }
+      if (this.fragments === null) this.fragmentsDeflated = deflated;
       this.fragments ??= [];
       this.fragments.push(payload);
       this.fragmentBytes += payload.length;
@@ -265,7 +309,7 @@ export class WebSocketConnection {
         const whole = Buffer.concat(this.fragments);
         this.fragments = null;
         this.fragmentBytes = 0;
-        this.deliver(whole);
+        this.deliver(whole, this.fragmentsDeflated);
       }
     }
   }
@@ -290,10 +334,23 @@ export class WebSocketConnection {
     this.fail(1002, 'unknown control opcode');
   }
 
-  private deliver(payload: Buffer): void {
+  private deliver(payload: Buffer, deflated: boolean): void {
+    let raw = payload;
+    if (deflated) {
+      try {
+        raw = inflateRawSync(Buffer.concat([payload, DEFLATE_TAIL]), {
+          finishFlush: zlib.Z_SYNC_FLUSH,
+          maxOutputLength: this.options.maxMessageBytes
+        });
+      } catch (error) {
+        const tooLarge = (error as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE';
+        this.fail(tooLarge ? 1009 : 1007, tooLarge ? 'message too large' : 'not deflate data');
+        return;
+      }
+    }
     let text: string;
     try {
-      text = this.decoder.decode(payload);
+      text = this.decoder.decode(raw);
     } catch {
       this.fail(1007, 'text frame is not UTF-8');
       return;
@@ -315,17 +372,19 @@ export function acceptUpgrade(
   options: ConnectionOptions
 ): WebSocketConnection {
   const key = String(request.headers['sec-websocket-key'] ?? '');
+  const deflate = offersDeflate(request);
   socket.write(
     [
       'HTTP/1.1 101 Switching Protocols',
       'Upgrade: websocket',
       'Connection: Upgrade',
       `Sec-WebSocket-Accept: ${acceptKey(key)}`,
+      ...(deflate ? [`Sec-WebSocket-Extensions: ${DEFLATE_RESPONSE}`] : []),
       '',
       ''
     ].join('\r\n')
   );
-  const connection = new WebSocketConnection(socket, options);
+  const connection = new WebSocketConnection(socket, options, deflate);
   // Bytes that arrived with the upgrade are the first frames.
   if (head.length > 0) socket.unshift(head);
   return connection;

@@ -8,7 +8,7 @@
  * it missed while loading is covered by the attach snapshot. Every push to
  * that window, a replay included, goes through the same filter.
  */
-import { Push } from '../../shared/ipc';
+import { addressedOf, Push } from '../../shared/ipc';
 
 export class RepeatedCharacters {
   /** The last `character` push sent, by session, as serialised. */
@@ -17,17 +17,10 @@ export class RepeatedCharacters {
   /** Whether a push on `channel`, serialised as `text`, is the character this window was last sent. */
   repeats(channel: string, payload: unknown, text: string): boolean {
     if (channel !== Push.character) return false;
-    const session = sessionOf(payload);
+    const session = addressedOf(payload)?.session ?? null;
     if (session === null) return false;
     if (this.last.get(session) === text) return true;
     this.last.set(session, text);
     return false;
   }
-}
-
-/** The session a push is about, where its payload names one (`{ session, payload }`). */
-function sessionOf(payload: unknown): string | null {
-  if (typeof payload !== 'object' || payload === null) return null;
-  const session = (payload as Record<string, unknown>)['session'];
-  return typeof session === 'string' ? session : null;
 }

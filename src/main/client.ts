@@ -3649,7 +3649,8 @@ function build(): void {
     quitting,
     appIcon,
     abort,
-    record
+    record,
+    logDirectory
   });
 }
 

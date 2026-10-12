@@ -2673,6 +2673,15 @@ const TUNING_DEFAULTS = {
     resumeMs: 14_400_000,
     /** How long a new socket may stay silent before it is closed: a tab's hello is its first word. */
     helloMs: 10_000,
+    /** Past this, `logs/web.log` is moved to `web.log.1` and started again. */
+    logBytes: 5_242_880,
+    /** How often `logs/web.log` says what each tab was sent, by channel. */
+    trafficLogMs: 60_000,
+    /**
+     * Messages to a browser tab this long or longer are sent deflated, when
+     * the browser offers it; shorter ones gain nothing for the work.
+     */
+    deflateMinBytes: 256,
     /**
      * The most held for a tab that has not taken it, away or not reading,
      * before it is let go and comes back as a new window.
@@ -2705,6 +2714,8 @@ const TUNING_DEFAULTS = {
      * up and made again. A dial made while the network comes back can hang.
      */
     webDialMs: 5000,
+    /** How often a browser tab reports how it is faring, into `logs/web.log`. */
+    webReportMs: 60_000,
     /** Framed lines kept for the Stream card. */
     lineLogLimit: 200,
     /** Where an item comes from, on the Reference card: this many, quickest first, then a count. */

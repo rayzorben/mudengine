@@ -20,8 +20,9 @@
  * the tab sends is numbered (`q`) and taken once, and a tab that dials again
  * names itself (`RpcHello`) and is sent what it missed (`RpcWelcome`).
  *
- * Dependency-free, like everything in `src/shared/`.
+ * Dependency-free, like everything in `src/shared/`, but for `ipc.ts`'s names.
  */
+import { Push } from './ipc';
 
 /** Where the socket is upgraded, under whatever origin the client is served from. */
 export const RPC_PATH = '/ws';
@@ -67,7 +68,45 @@ export interface RpcAck {
   n: number;
 }
 
-export type RpcInbound = RpcRequest | RpcHello | RpcAck;
+/**
+ * How the tab has fared since its last report, sent every `webReportMs` and
+ * written to `logs/web.log`: what the player felt is in the browser, where
+ * the client cannot see it. Times are milliseconds.
+ */
+export interface TabHealthFigures {
+  /** What this report covers. */
+  periodMs: number;
+  visible: boolean;
+  /** Main-thread tasks over 50 ms (the browser's long tasks). */
+  longTasks: number;
+  longTaskMs: number;
+  longestTaskMs: number;
+  /** Keys pressed, those over 100 ms from press to paint, and the slowest. */
+  keys: number;
+  slowKeys: number;
+  slowestKeyMs: number;
+  /** The most a one-second timer ran late: the thread was busy or paused. */
+  timerLagMs: number;
+  /** Each socket that closed, as `code@seconds into the period`. */
+  closes: string[];
+  /** Time with no linked socket, comebacks as the same window, and new windows. */
+  downMs: number;
+  resumes: number;
+  renewals: number;
+  /** Messages taken and their characters. */
+  frames: number;
+  chars: number;
+}
+
+/** The most closes one report lists, and the longest each may be. */
+export const REPORT_CLOSES = 50;
+export const REPORT_CLOSE_CHARS = 40;
+
+export interface RpcReport extends TabHealthFigures {
+  k: 'report';
+}
+
+export type RpcInbound = RpcRequest | RpcHello | RpcAck | RpcReport;
 
 /** An invoke answered. */
 export interface RpcResult {
@@ -95,8 +134,24 @@ export interface RpcPush {
 /** What main says to a tab, before it is numbered for the wire. */
 export type RpcOutbound = RpcReply | RpcPush;
 
+/**
+ * A push sent as what changed (`main/host/web/patches.ts`): the top-level
+ * fields of `s`'s payload that differ from the last one this tab was sent on
+ * `c`, and those it no longer has. The tab puts the payload back together.
+ */
+export interface RpcPatch {
+  k: 'patch';
+  c: string;
+  s: string;
+  set: Record<string, unknown>;
+  drop: string[];
+}
+
+/** The pushes sent to a browser tab as patches: each a whole state per character, mostly unchanged. */
+export const PATCHED_PUSHES: ReadonlySet<string> = new Set([Push.character, Push.automation]);
+
 /** A message as it crosses: `n` is its place among everything sent to the tab. */
-export type RpcNumbered = RpcOutbound & { n: number };
+export type RpcNumbered = (RpcOutbound | RpcPatch) & { n: number };
 
 /**
  * The answer to a hello. `resumed` is the same window brought up to date, its
@@ -156,12 +211,55 @@ export function asRpcInbound(value: unknown): RpcInbound | null {
     return { k: 'hello', tab, key, last };
   }
   if (value['k'] === 'ack') return isCount(value['n']) ? { k: 'ack', n: value['n'] } : null;
+  if (value['k'] === 'report') return asReport(value);
   if (!isId(value['q']) || !isChannel(value['c']) || !Array.isArray(value['a'])) return null;
   if (value['k'] === 'send') return { k: 'send', q: value['q'], c: value['c'], a: value['a'] };
   if (value['k'] === 'invoke' && isId(value['id'])) {
     return { k: 'invoke', q: value['q'], id: value['id'], c: value['c'], a: value['a'] };
   }
   return null;
+}
+
+const REPORT_COUNTS = [
+  'periodMs',
+  'longTasks',
+  'longTaskMs',
+  'longestTaskMs',
+  'keys',
+  'slowKeys',
+  'slowestKeyMs',
+  'timerLagMs',
+  'downMs',
+  'resumes',
+  'renewals',
+  'frames',
+  'chars'
+] as const satisfies ReadonlyArray<keyof TabHealthFigures>;
+
+/** A figure a browser measured: finite and not negative; the caller rounds it. */
+function isMeasure(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function asReport(value: Record<string, unknown>): RpcReport | null {
+  const closes = value['closes'];
+  if (typeof value['visible'] !== 'boolean' || !Array.isArray(closes)) return null;
+  if (closes.length > REPORT_CLOSES) return null;
+  if (!closes.every((close) => typeof close === 'string' && close.length <= REPORT_CLOSE_CHARS)) {
+    return null;
+  }
+  const counts: Partial<Record<(typeof REPORT_COUNTS)[number], number>> = {};
+  for (const name of REPORT_COUNTS) {
+    const measured = value[name];
+    if (!isMeasure(measured)) return null;
+    counts[name] = Math.round(measured);
+  }
+  return {
+    k: 'report',
+    ...(counts as Record<(typeof REPORT_COUNTS)[number], number>),
+    visible: value['visible'],
+    closes: closes as string[]
+  };
 }
 
 /** What the client may say back. */
@@ -183,6 +281,13 @@ export function asRpcFrame(value: unknown): RpcFrame | null {
   }
   const n = value['n'];
   if (!isId(n)) return null;
+  if (value['k'] === 'patch') {
+    const { c, s, set, drop } = value;
+    if (!isChannel(c) || typeof s !== 'string' || !isRecord(set) || !Array.isArray(drop))
+      return null;
+    if (!drop.every((field) => typeof field === 'string')) return null;
+    return { k: 'patch', n, c, s, set, drop: drop as string[] };
+  }
   if (value['k'] === 'push') {
     if (!isChannel(value['c'])) return null;
     return { k: 'push', n, c: value['c'], p: value['p'] };

@@ -43,6 +43,7 @@ function open() {
     },
     request: (tab, request) => requests.push({ tab: tab.id, request }),
     ended: (id) => ended.push(id),
+    report: () => {},
     log: () => {}
   };
   const tabs = new TabSessions(2, events);
@@ -214,5 +215,20 @@ describe('a browser tab kept across its sockets', () => {
     tabs.push(tabOf(welcome.tab), { k: 'push', c: 'session:data', p: half });
     expect(ended).toEqual([welcome.tab]);
     expect(socket.closed?.code).toBe(1008);
+  });
+
+  it('drops a report it cannot read and keeps the link', () => {
+    const logged: string[] = [];
+    const tabs = new TabSessions(2, {
+      opened: () => {},
+      request: () => {},
+      ended: () => {},
+      report: () => {},
+      log: (line) => logged.push(line)
+    });
+    const { socket } = join(tabs, FIRST);
+    socket.say({ k: 'report', periodMs: -5 });
+    expect(socket.closed).toBeNull();
+    expect(logged.some((line) => line.includes('did not parse'))).toBe(true);
   });
 });
