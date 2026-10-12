@@ -135,6 +135,8 @@ export interface ClientHooks {
    * disposed: each window's renderer, through its debugger.
    */
   record(thread: string, port: ProfilerPort): { dispose(): void };
+  /** Where the session logs go, as the options file says (`logging.directory`). */
+  logDirectory(): string;
 }
 
 /**

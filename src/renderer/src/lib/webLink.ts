@@ -21,6 +21,8 @@ import {
 } from '@shared/rpc';
 
 import { t } from './i18n';
+import { PushPatches } from './patches';
+import { TabHealth } from './tabHealth';
 import { tuning } from './tuning';
 
 /** A request before the link numbers it. */
@@ -70,6 +72,8 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
   let retry: ReturnType<typeof setTimeout> | null = null;
   let heardAt = 0;
   let quietFor: number | null = null;
+  const health = new TabHealth(signal);
+  const patches = new PushPatches();
 
   const url = (): string => {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -91,6 +95,7 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
   /** The link went down: dial at once, and cover the window if it stays down. */
   const lost = (): void => {
     linked = false;
+    health.down();
     quietFor = null;
     if (!down) {
       down = true;
@@ -185,12 +190,14 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
   };
 
   const welcome = (ws: WebSocket, frame: RpcWelcome): void => {
-    const renewed = !frame.resumed && welcomedOnce;
+    const returning = welcomedOnce;
+    const renewed = !frame.resumed && returning;
     tab = frame.tab;
     key = frame.key;
     if (!frame.resumed) {
       last = 0;
       acked = 0;
+      patches.clear();
     }
     // A new window owes nothing the old one asked: the remount asks again.
     if (renewed) held = [];
@@ -204,6 +211,7 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
     linked = true;
     welcomedOnce = true;
     for (const entry of held) ws.send(entry.text);
+    if (returning) health.up(frame.resumed);
     back();
     if (renewed) events.renewed();
   };
@@ -251,11 +259,13 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
           release(frame.got);
           return;
         case 'push':
-        case 'reply': {
+        case 'reply':
+        case 'patch': {
           if (!linked || frame.n <= last) return;
           last = frame.n;
+          health.frame(String(event.data).length);
           const { n: _taken, ...message } = frame;
-          events.frame(message);
+          events.frame(message.k === 'patch' ? patches.apply(message) : message);
           return;
         }
         default: {
@@ -266,6 +276,7 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
     };
     ws.onclose = (event) => {
       clearTimeout(deadline);
+      health.closed(event.code);
       if (socket !== ws || signal.aborted) return;
       if (REFUSED.has(event.code)) refused = true;
       if (linked) lost();
@@ -276,6 +287,11 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
 
   connect();
   const ticking = setInterval(tick, tuning().webReconnectMs);
+  // What the player felt, for `logs/web.log`: sent once linked, kept otherwise.
+  const reporting = setInterval(() => {
+    if (!linked || socket?.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ k: 'report', ...health.take() }));
+  }, tuning().webReportMs);
   window.addEventListener('online', dialNow, { signal });
   document.addEventListener(
     'visibilitychange',
@@ -289,6 +305,7 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
   );
   signal.addEventListener('abort', () => {
     clearInterval(ticking);
+    clearInterval(reporting);
     if (cover !== null) clearTimeout(cover);
     if (retry !== null) clearTimeout(retry);
     socket?.close(PAGE_CLOSED);

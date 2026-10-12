@@ -11,12 +11,21 @@
  * `WebHost` composes this: it answers the requests and owns the window
  * registry, through `TabEvents`.
  */
-import type { RpcBeat, RpcInbound, RpcOutbound, RpcRequest, RpcWelcome } from '../../../shared/rpc';
+import type {
+  RpcBeat,
+  RpcInbound,
+  RpcOutbound,
+  RpcReport,
+  RpcRequest,
+  RpcWelcome
+} from '../../../shared/rpc';
 import { asRpcInbound, PAGE_CLOSED } from '../../../shared/rpc';
 import { tuning } from '../../app/tuning';
 import { serialise } from '../serialise';
 import { TabLink } from './link';
 import { TabOutbox } from './outbox';
+import { PushPatcher } from './patches';
+import { TabTraffic } from './traffic';
 import type { WebSocketConnection } from './sockets';
 
 /** What of a socket the tabs use. */
@@ -36,6 +45,10 @@ export interface Tab {
   alive: boolean;
   /** Lets the tab go if it does not come back. */
   away: NodeJS.Timeout | null;
+  /** What it was last sent of each patched push (`patches.ts`). */
+  readonly patcher: PushPatcher;
+  /** What was sent to it since it was last counted, by channel. */
+  readonly traffic: TabTraffic;
 }
 
 export interface TabEvents {
@@ -45,6 +58,8 @@ export interface TabEvents {
   request(tab: Tab, request: RpcRequest): void;
   /** Gone for good: drop everything kept for it. */
   ended(id: number): void;
+  /** How the tab says it fared. */
+  report(tab: Tab, report: RpcReport): void;
   log(line: string): void;
 }
 
@@ -74,6 +89,12 @@ export class TabSessions {
     silent.unref?.();
     connection.onMessage = (text) => {
       const message = parse(text);
+      if (message === UNREAD_REPORT) {
+        // Only figures for the log: a bad one costs the log a line, never the
+        // link, whose close would also cost a held request (`webLink.ts`).
+        this.events.log(`web: a report from ${remote} did not parse; dropped.`);
+        return;
+      }
       if (message === null) {
         // Not our bridge: closed with the code that says the message was
         // refused, which the tab reads as not to send it again.
@@ -92,6 +113,10 @@ export class TabSessions {
       }
       if (message.k === 'ack') {
         tab.link.ack(message.n);
+        return;
+      }
+      if (message.k === 'report') {
+        this.events.report(tab, message);
         return;
       }
       if (tab.link.takes(message.q)) this.events.request(tab, message);
@@ -125,7 +150,9 @@ export class TabSessions {
     if (!tab.outbox.admits(message, text)) return;
     // Numbered after the repeat test, which compares the message alone. The
     // text is a JSON object, so the number goes in as its first field.
-    const framed = tab.link.hold((n) => `{"n":${n},${text.slice(1)}`);
+    const body = (message.k === 'push' ? tab.patcher.patch(message) : null) ?? text.slice(1);
+    const framed = tab.link.hold((n) => `{"n":${n},${body}`);
+    tab.traffic.count(message.k === 'push' ? message.c : 'reply', framed.length);
     if (tab.link.overflowing(tuning().web.resumeBytes)) {
       this.end(tab, 'fell too far behind to be brought up to date');
       return;
@@ -152,6 +179,11 @@ export class TabSessions {
       const beat: RpcBeat = { k: 'beat', next, got: tab.link.got };
       connection.send(JSON.stringify(beat));
     }
+  }
+
+  /** Each tab, for what is said of it (`TabTraffic`, held characters). */
+  each(): Iterable<Tab> {
+    return this.tabs.values();
   }
 
   close(): void {
@@ -184,7 +216,9 @@ export class TabSessions {
       outbox: new TabOutbox(),
       connection,
       alive: true,
-      away: null
+      away: null,
+      patcher: new PushPatcher(),
+      traffic: new TabTraffic()
     };
     this.nextId += 1;
     this.tabs.set(tab.id, tab);
@@ -238,10 +272,18 @@ export class TabSessions {
   }
 }
 
-function parse(text: string): RpcInbound | null {
+/** A tab's report that did not parse, told apart from a message that is not ours. */
+const UNREAD_REPORT = Symbol('unread report');
+
+function parse(text: string): RpcInbound | typeof UNREAD_REPORT | null {
+  let value: unknown;
   try {
-    return asRpcInbound(JSON.parse(text));
+    value = JSON.parse(text);
   } catch {
     return null;
   }
+  const message = asRpcInbound(value);
+  if (message !== null) return message;
+  const kind = typeof value === 'object' && value !== null ? (value as { k?: unknown }).k : null;
+  return kind === 'report' ? UNREAD_REPORT : null;
 }

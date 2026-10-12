@@ -2021,6 +2021,16 @@ tuning:
     # is its first word.
     helloMs: 10000
 
+    # Past this, logs/web.log is moved to web.log.1 and started again.
+    logBytes: 5242880
+
+    # How often logs/web.log says what each tab was sent, by channel.
+    trafficLogMs: 60000
+
+    # Messages to a browser tab this long or longer are sent deflated, when
+    # the browser offers it; shorter ones gain nothing for the work.
+    deflateMinBytes: 256
+
     # The most held for a tab that has not taken it, away or not reading,
     # before it is let go and comes back as a new window.
     resumeBytes: 33554432
@@ -2047,6 +2057,10 @@ tuning:
     # and made again. A dial made while the network comes back can hang. Web
     # mode only.
     webDialMs: 5000
+
+    # How often a browser tab reports how it is faring (its long tasks, key
+    # timings, drops) into logs/web.log. Web mode only.
+    webReportMs: 60000
 
     # Framed lines kept for the Stream card.
     lineLogLimit: 200

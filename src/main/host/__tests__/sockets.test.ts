@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import net from 'node:net';
+import { constants as zlibConstants, deflateRawSync, inflateRawSync } from 'node:zlib';
 
 import {
   acceptKey,
@@ -18,7 +19,11 @@ import {
  * the refusals, against raw frames written by hand, because a compliant
  * client cannot be made to send a malformed one.
  */
-const GENEROUS = { maxMessageBytes: 1024 * 1024, maxBufferedBytes: 64 * 1024 * 1024 };
+const GENEROUS = {
+  maxMessageBytes: 1024 * 1024,
+  maxBufferedBytes: 64 * 1024 * 1024,
+  deflateMinBytes: 256
+};
 
 let server: http.Server;
 let port = 0;
@@ -179,7 +184,9 @@ describe('a compliant client', () => {
  * A raw client, for the frames a compliant one cannot be made to send. It
  * performs the handshake by hand and then writes bytes.
  */
-async function rawClient(): Promise<{ socket: net.Socket; closeCode: Promise<number> }> {
+async function rawClient(
+  extensions?: string
+): Promise<{ socket: net.Socket; closeCode: Promise<number>; handshake: string }> {
   const socket = net.connect(port, '127.0.0.1');
   await new Promise<void>((resolve) => socket.once('connect', resolve));
   socket.write(
@@ -190,6 +197,7 @@ async function rawClient(): Promise<{ socket: net.Socket; closeCode: Promise<num
       'Connection: Upgrade',
       'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
       'Sec-WebSocket-Version: 13',
+      ...(extensions === undefined ? [] : [`Sec-WebSocket-Extensions: ${extensions}`]),
       '',
       ''
     ].join('\r\n')
@@ -205,15 +213,15 @@ async function rawClient(): Promise<{ socket: net.Socket; closeCode: Promise<num
       if (seen.length >= 4 && (seen[0]! & 0x0f) === OPCODE.close) resolve(seen.readUInt16BE(2));
     });
   });
-  return { socket, closeCode };
+  return { socket, closeCode, handshake };
 }
 
 /** A masked client frame, which is what the protocol requires of a client. */
-function masked(opcode: number, payload: Buffer, fin = true): Buffer {
+function masked(opcode: number, payload: Buffer, fin = true, deflated = false): Buffer {
   const mask = Buffer.from([0x12, 0x34, 0x56, 0x78]);
   const body = Buffer.from(payload);
   for (let i = 0; i < body.length; i += 1) body[i] = body[i]! ^ mask[i & 3]!;
-  const head = Buffer.from([(fin ? 0x80 : 0) | opcode, 0x80 | body.length]);
+  const head = Buffer.from([(fin ? 0x80 : 0) | (deflated ? 0x40 : 0) | opcode, 0x80 | body.length]);
   return Buffer.concat([head, mask, body]);
 }
 
@@ -233,7 +241,8 @@ describe('a peer that stops reading', () => {
     });
     const connection = new WebSocketConnection(stalled, {
       maxMessageBytes: 1024,
-      maxBufferedBytes: 2048
+      maxBufferedBytes: 2048,
+      deflateMinBytes: 256
     });
     let ended: { code: number; reason: string } | null = null;
     connection.onClose = (code, reason) => {
@@ -317,7 +326,8 @@ describe('a reply the tab asked for', () => {
     });
     const connection = new WebSocketConnection(stalled, {
       maxMessageBytes: 1024,
-      maxBufferedBytes: 2048
+      maxBufferedBytes: 2048,
+      deflateMinBytes: 256
     });
     return { stalled, connection };
   };
@@ -356,7 +366,8 @@ describe('a reply the tab took', () => {
     });
     const connection = new WebSocketConnection(peer, {
       maxMessageBytes: 1024,
-      maxBufferedBytes: 2048
+      maxBufferedBytes: 2048,
+      deflateMinBytes: 256
     });
     // Many small replies, all taken: none of them excuses anything later.
     for (let n = 0; n < 20; n += 1) connection.send('x'.repeat(500), true);
@@ -368,5 +379,93 @@ describe('a reply the tab took', () => {
     connection.send('one more');
     expect(connection.open).toBe(false);
     peer.destroy();
+  });
+});
+
+/** A message deflated as RFC 7692 sends it: the sync flush's tail taken off. */
+function deflated(text: string): Buffer {
+  const out = deflateRawSync(Buffer.from(text), { finishFlush: zlibConstants.Z_SYNC_FLUSH });
+  return out.subarray(0, out.length - 4);
+}
+
+/** The first whole frame the server sends after the handshake. */
+function nextFrame(socket: net.Socket): Promise<{ rsv1: boolean; payload: Buffer }> {
+  return new Promise((resolve) => {
+    let seen = Buffer.alloc(0);
+    const take = (chunk: Buffer): void => {
+      seen = Buffer.concat([seen, chunk]);
+      if (seen.length < 2) return;
+      let length = seen[1]! & 0x7f;
+      let offset = 2;
+      if (length === 126) {
+        if (seen.length < 4) return;
+        length = seen.readUInt16BE(2);
+        offset = 4;
+      }
+      if (seen.length < offset + length) return;
+      socket.off('data', take);
+      resolve({ rsv1: (seen[0]! & 0x40) !== 0, payload: seen.subarray(offset, offset + length) });
+    };
+    socket.on('data', take);
+  });
+}
+
+describe('permessage-deflate', () => {
+  it('is agreed when the browser offers it, each message on its own', async () => {
+    const { socket, handshake } = await rawClient('permessage-deflate; client_max_window_bits');
+    expect(handshake).toContain(
+      'Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover'
+    );
+    socket.destroy();
+  });
+
+  it('is not agreed when nothing offers it', async () => {
+    const { socket, handshake } = await rawClient();
+    expect(handshake).not.toContain('Sec-WebSocket-Extensions');
+    socket.destroy();
+  });
+
+  it('sends a long message deflated and a short one as it is', async () => {
+    const { socket } = await rawClient('permessage-deflate');
+    const connection = accepted[0]!;
+    const long = JSON.stringify({ room: 'Town Square '.repeat(60) });
+    const first = nextFrame(socket);
+    connection.send(long);
+    const sent = await first;
+    expect(sent.rsv1).toBe(true);
+    expect(sent.payload.length).toBeLessThan(long.length / 4);
+    expect(
+      inflateRawSync(Buffer.concat([sent.payload, Buffer.from([0, 0, 0xff, 0xff])]), {
+        finishFlush: zlibConstants.Z_SYNC_FLUSH
+      }).toString()
+    ).toBe(long);
+
+    const second = nextFrame(socket);
+    connection.send('{"k":"beat"}');
+    expect(await second).toEqual({ rsv1: false, payload: Buffer.from('{"k":"beat"}') });
+    socket.destroy();
+  });
+
+  it('reads a message the browser deflated', async () => {
+    const { socket } = await rawClient('permessage-deflate');
+    const heard = nextMessage(accepted[0]!);
+    socket.write(masked(OPCODE.text, deflated('{"k":"ack","n":3}'), true, true));
+    expect(await heard).toBe('{"k":"ack","n":3}');
+    socket.destroy();
+  });
+
+  it('refuses a deflated message nobody agreed to', async () => {
+    const { socket, closeCode } = await rawClient();
+    socket.write(masked(OPCODE.text, deflated('x'), true, true));
+    expect(await closeCode).toBe(1002);
+  });
+
+  it('refuses a deflated message that inflates past the cap', async () => {
+    options = { ...GENEROUS, maxMessageBytes: 1024 };
+    const { socket, closeCode } = await rawClient('permessage-deflate');
+    const bomb = deflated('a'.repeat(5000));
+    expect(bomb.length).toBeLessThan(126);
+    socket.write(masked(OPCODE.text, bomb, true, true));
+    expect(await closeCode).toBe(1009);
   });
 });

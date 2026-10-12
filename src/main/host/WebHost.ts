@@ -40,6 +40,7 @@ import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Ho
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
 import { Downloads } from './web/downloads';
+import { WebLog } from './web/log';
 import { TabSessions, type Tab } from './web/tabs';
 import { Send } from '../../shared/ipc';
 
@@ -174,6 +175,7 @@ export function createWebHost(layout: Layout): Host {
   const listeners = new Map<string, Handler>();
   let server: WebServer | null = null;
   let sweep: NodeJS.Timeout | null = null;
+  let counting: NodeJS.Timeout | null = null;
   /** The window registry, known once the client opens. */
   let windows: ClientHooks['windows'] | null = null;
   /** Where a file the tab asks to save is written, known once the client opens. */
@@ -186,6 +188,12 @@ export function createWebHost(layout: Layout): Host {
   };
 
   const say = (line: string): void => console.log(line);
+  /** The tabs' links, said and kept: the console dies with the container. */
+  let log: WebLog | null = null;
+  const sayAndKeep = (line: string): void => {
+    say(line);
+    log?.write(line);
+  };
 
   /** One request from a tab, answered on its channel. */
   const answer = (tab: Tab, request: RpcRequest): void => {
@@ -241,7 +249,9 @@ export function createWebHost(layout: Layout): Host {
       downloads.dropTab(id);
       windows?.remove(id);
     },
-    log: say
+    report: (tab, { k: _report, ...figures }) =>
+      log?.write(`web: tab ${tab.id} fared ${JSON.stringify(figures)}`),
+    log: sayAndKeep
   });
 
   /**
@@ -276,6 +286,18 @@ export function createWebHost(layout: Layout): Host {
     open: (hooks) => {
       exportsDir = hooks.home.state('exports');
       windows = hooks.windows;
+      log = new WebLog(() => hooks.logDirectory());
+      // What each tab is sent, by channel (`TabTraffic`).
+      counting = setInterval(() => {
+        for (const tab of tabs.each()) {
+          const sent = tab.traffic.take();
+          if (Object.keys(sent).length === 0) continue;
+          const held = tab.link.heldChars;
+          const connected = tab.connection !== null;
+          log?.write(`web: tab ${tab.id} sent ${JSON.stringify({ connected, held, sent })}`);
+        }
+      }, tuning().web.trafficLogMs);
+      counting.unref?.();
       let access: AccessPassword;
       try {
         access = resolveAccessPassword(process.env, hooks.home.root);
@@ -368,6 +390,7 @@ export function createWebHost(layout: Layout): Host {
 
     close: () => {
       if (sweep !== null) clearTimeout(sweep);
+      if (counting !== null) clearInterval(counting);
       sweep = null;
       tabs.close();
       server?.close();

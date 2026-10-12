@@ -146,6 +146,14 @@ export interface Addressed<T> {
   payload: T;
 }
 
+/** A push's payload as `Addressed`, where it names a session, or null. */
+export function addressedOf(payload: unknown): Addressed<unknown> | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const session = (payload as Record<string, unknown>)['session'];
+  if (typeof session !== 'string') return null;
+  return { session, payload: (payload as Record<string, unknown>)['payload'] };
+}
+
 /**
  * What the window is running under.
  *

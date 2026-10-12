@@ -539,7 +539,8 @@ export function createWebServer(options: WebServerOptions): WebServer {
     }
     const connection = acceptUpgrade(request, socket, head, {
       maxMessageBytes: tuning().web.maxMessageBytes,
-      maxBufferedBytes: tuning().web.maxBufferedBytes
+      maxBufferedBytes: tuning().web.maxBufferedBytes,
+      deflateMinBytes: tuning().web.deflateMinBytes
     });
     options.onSocket(connection, remoteOf(request));
   };
