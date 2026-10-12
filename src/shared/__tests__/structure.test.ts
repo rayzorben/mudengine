@@ -84,7 +84,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the window keys' chords, out to `CLIENT_KEYS` (todo 74).
   // Lowered by one `covered` for the Escape guards, as the help page came (todo 75).
   // Lowered by the console's buttons, run by the console that draws them (todo 28).
-  'src/renderer/src/App.tsx': 1551,
+  'src/renderer/src/App.tsx': 1544,
   // Lowered by the sneak before each step, out whole (`walk/Sneak.ts`), and by
   // the move timing, out whole (`walk/StepTimes.ts`, todo 00).
   // Lowered by the fight hold's comment, condensed as `FoughtPath` came (2026-10-10).

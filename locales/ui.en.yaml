@@ -3464,16 +3464,6 @@ cards:
     timeCaption: Time Analysis
     title: Combat Stats
     willLevelLabel: Will level in
-  standby:
-    connectionFailed: The connection failed.
-    dialling: Dialing…
-    hangingUp: Hanging up…
-    hint: The other cards come back once this character is in the realm.
-    lastKnownAs: Last known as {name}.
-    loginPrompt: At a login prompt or menu.
-    notConnected: Not connected.
-    title: Offline
-    waitingForRealm: Connected, waiting for the realm.
   stream:
     empty: No lines framed yet.
     terminatorTooltip: terminated by {terminator}
@@ -6823,6 +6813,8 @@ web:
     password: Password
     signInButton: Sign in
     wrongPassword: That is not the password.
+    updated: The client was updated. Loading the new version…
+    updateStuck: The client was updated, but this page still loads the old version. Reload it once the client has finished starting.
   clipboard:
     readRefused: The browser would not give the clipboard to the client; paste with Ctrl+V or
       Shift+Insert, which the browser handles itself.

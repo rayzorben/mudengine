@@ -164,6 +164,8 @@ export interface RpcWelcome {
   key: string;
   resumed: boolean;
   got: number;
+  /** The client's build (`buildId`): a page holding another build's code loads this one. */
+  build: string | null;
 }
 
 /**
@@ -266,11 +268,12 @@ function asReport(value: Record<string, unknown>): RpcReport | null {
 export function asRpcFrame(value: unknown): RpcFrame | null {
   if (!isRecord(value)) return null;
   if (value['k'] === 'welcome') {
-    const { tab, key, resumed, got } = value;
+    const { tab, key, resumed, got, build } = value;
     if (!isId(tab) || typeof key !== 'string' || typeof resumed !== 'boolean' || !isCount(got)) {
       return null;
     }
-    return { k: 'welcome', tab, key, resumed, got };
+    if (build !== null && typeof build !== 'string') return null;
+    return { k: 'welcome', tab, key, resumed, got, build };
   }
   if (value['k'] === 'beat') {
     const { next, got } = value;

@@ -20,8 +20,10 @@ import {
   type RpcWelcome
 } from '@shared/rpc';
 
+import { BUILD, buildId } from '@shared/build';
 import { t } from './i18n';
 import { PushPatches } from './patches';
+import { readStored, writeStored } from './storage';
 import { TabHealth } from './tabHealth';
 import { tuning } from './tuning';
 
@@ -45,6 +47,9 @@ export interface WebLink {
   /** The window is covered: the link has been down past `webLostCoverMs`. */
   readonly covered: boolean;
 }
+
+/** The client build this tab last reloaded to reach (`welcome`). */
+const RELOADED_FOR = 'mudengine.reloadedFor';
 
 /** The client refused something this tab sent: malformed (1007) or too large (1009). */
 const REFUSED = new Set([1007, 1009]);
@@ -190,6 +195,32 @@ export function openWebLink(events: WebLinkEvents, signal: AbortSignal): WebLink
   };
 
   const welcome = (ws: WebSocket, frame: RpcWelcome): void => {
+    /*
+     * The client restarted onto another build, and this page holds the old
+     * one's code, which cannot read what the new one sends (2026-10-11: a
+     * page from before patches ignored every character push and froze on
+     * the login). Only a reload brings in the new code. Once per build: a
+     * page that comes back still behind (the files served are not the build
+     * running) says so rather than reloading round and round.
+     */
+    const own = buildId(BUILD);
+    if (frame.build !== null && own !== null && frame.build !== own) {
+      if (
+        readStored(
+          RELOADED_FOR,
+          (stored) => stored,
+          () => '',
+          'session'
+        ) === frame.build
+      ) {
+        showCover(t('web.link.updateStuck'));
+        return;
+      }
+      writeStored(RELOADED_FOR, frame.build, 'session');
+      showCover(t('web.link.updated'));
+      location.reload();
+      return;
+    }
     const returning = welcomedOnce;
     const renewed = !frame.resumed && returning;
     tab = frame.tab;

@@ -17465,21 +17465,6 @@ check(
   'the rail keeps its space when the character leaves the realm'
 );
 /*
- * The socket closing and the character *leaving the realm* are two pushes, and
- * the dot above is the first of them. Waiting on the dot and then asserting the
- * standby card reads the rail one push early — which is what the fixed sleep
- * here used to paper over.
- */
-await shown('.standby-card');
-check(
-  await evaluate(`!!document.querySelector('.standby-card')`),
-  'and says it is offline rather than emptying out',
-  await evaluate(
-    `JSON.stringify([...document.querySelectorAll('.rail .card')].map((c) => c.className))`
-  )
-);
-
-/*
  * The toolbar stays too (todo 02), and is the one with controls to keep.
  *
  * It carries the dial that puts the character back, and switches that write

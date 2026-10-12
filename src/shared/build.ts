@@ -21,6 +21,16 @@ export const BUILD: BuildStamp =
     ? { commit: null, dirty: false, builtAt: null }
     : __BUILD_STAMP__;
 
+/**
+ * One build told from another: its commit and when it was made, both halves
+ * of one build stamped alike. Null where unstamped (run from source).
+ */
+export function buildId(stamp: BuildStamp): string | null {
+  return stamp.commit === null || stamp.builtAt === null
+    ? null
+    : `${stamp.commit}@${stamp.builtAt}`;
+}
+
 /** The version with its commit, a dirty build marked `-dirty` as its Azure image tag is. */
 export function versionWithCommit(version: string, stamp: BuildStamp, t: UiLookup): string {
   const commit =

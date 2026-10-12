@@ -88,7 +88,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const WELCOME = { k: 'welcome', tab: 2, key: 'secret', resumed: false, got: 0 };
+const WELCOME = { k: 'welcome', tab: 2, key: 'secret', resumed: false, got: 0, build: null };
 const kinds = (socket: FakeWebSocket) => socket.sent.map((message) => message['k']);
 
 describe('a browser tab’s link', () => {

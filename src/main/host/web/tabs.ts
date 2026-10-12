@@ -20,6 +20,7 @@ import type {
   RpcWelcome
 } from '../../../shared/rpc';
 import { asRpcInbound, PAGE_CLOSED } from '../../../shared/rpc';
+import { BUILD, buildId } from '../../../shared/build';
 import { tuning } from '../../app/tuning';
 import { serialise } from '../serialise';
 import { TabLink } from './link';
@@ -247,7 +248,8 @@ export class TabSessions {
       tab: tab.id,
       key: tab.link.key,
       resumed,
-      got: tab.link.got
+      got: tab.link.got,
+      build: buildId(BUILD)
     };
     connection.send(JSON.stringify(welcome), true);
   }

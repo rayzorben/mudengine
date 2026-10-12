@@ -117,7 +117,7 @@ export function useRailGrid(): RailGrid {
         const cell = grid ? gridCell(grid) : 0;
         if (!grid || !rail || cell <= 0) return null;
         // The grid's top as it would be with the rail at its top: what is
-        // above it (the head, the standby card) stays in view.
+        // above it (the head) stays in view.
         const top = grid.getBoundingClientRect().top + rail.scrollTop;
         const bottom = rail.getBoundingClientRect().top + rail.clientTop + rail.clientHeight;
         return Math.max(0, Math.floor((bottom - top) / cell));

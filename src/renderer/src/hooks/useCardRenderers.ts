@@ -75,7 +75,7 @@ export function useCardRenderers({
    *
    * Returns `null` for a card its group has hidden. A card is **not** taken
    * away when the character leaves the realm: it keeps its place and the last
-   * true things it said, and the standby card says why nothing is moving.
+   * true things it said; the tab and the status line say it is offline.
    */
   const renderCard = useCallback(
     (id: CardId): ReactNode => {
