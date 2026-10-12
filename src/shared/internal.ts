@@ -2662,7 +2662,22 @@ const TUNING_DEFAULTS = {
      * goes with a beat the page hears (`RpcBeat`); a tab that has heard nothing
      * for two of these dials again.
      */
-    pingIntervalMs: 10000
+    pingIntervalMs: 10000,
+    /**
+     * How long the client keeps a browser tab whose socket dropped, and holds
+     * what it sends that tab, so the tab can come back as the same window.
+     * Past it, the tab comes back as a new window and redraws everything.
+     * `resumeBytes` bounds the memory, so this can be long: a laptop asleep
+     * over lunch.
+     */
+    resumeMs: 14_400_000,
+    /** How long a new socket may stay silent before it is closed: a tab's hello is its first word. */
+    helloMs: 10_000,
+    /**
+     * The most held for a tab that has not taken it, away or not reading,
+     * before it is let go and comes back as a new window.
+     */
+    resumeBytes: 33_554_432
   },
   /**
    * The window's own numbers.

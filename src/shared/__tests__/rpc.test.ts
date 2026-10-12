@@ -1,85 +1,131 @@
 import { describe, expect, it } from 'vitest';
 
-import { asRpcOutbound, asRpcRequest, trimArgs } from '../rpc';
+import { asRpcFrame, asRpcInbound, trimArgs } from '../rpc';
 
-/**
- * The web transport's envelope is parsed at both ends, never trusted: a
- * browser tab is a client like any other. These are the shapes it accepts
- * and, more to the point, the ones it refuses.
+/*
+ * Both ends of the web transport parse what they are sent. A message that
+ * does not fit is `null`, and the connection that sent it is closed rather
+ * than answered in a shape nobody expects.
  */
-describe('asRpcRequest', () => {
-  it('accepts a send and an invoke', () => {
-    expect(asRpcRequest({ k: 'send', c: 'session:input', a: ['smoke', 'n\r'] })).toEqual({
+describe('asRpcInbound', () => {
+  it('accepts a numbered send and invoke', () => {
+    expect(asRpcInbound({ k: 'send', q: 1, c: 'session:input', a: ['smoke', 'n\r'] })).toEqual({
       k: 'send',
+      q: 1,
       c: 'session:input',
       a: ['smoke', 'n\r']
     });
-    expect(asRpcRequest({ k: 'invoke', id: 7, c: 'session:connect', a: ['smoke'] })).toEqual({
+    expect(asRpcInbound({ k: 'invoke', q: 2, id: 7, c: 'session:connect', a: ['smoke'] })).toEqual({
       k: 'invoke',
+      q: 2,
       id: 7,
       c: 'session:connect',
       a: ['smoke']
     });
   });
 
-  it('refuses what is not a message', () => {
-    expect(asRpcRequest(null)).toBeNull();
-    expect(asRpcRequest('session:input')).toBeNull();
-    expect(asRpcRequest([])).toBeNull();
-    expect(asRpcRequest({ k: 'push', c: 'session:data', p: {} })).toBeNull();
-    expect(asRpcRequest({ k: 'reply', id: 1, r: null })).toBeNull();
+  it('refuses a request without its number, since a resend could not be told apart', () => {
+    expect(asRpcInbound({ k: 'send', c: 'session:input', a: [] })).toBeNull();
+    expect(asRpcInbound({ k: 'send', q: 0, c: 'session:input', a: [] })).toBeNull();
+    expect(asRpcInbound({ k: 'invoke', q: 1.5, id: 1, c: 'x', a: [] })).toBeNull();
   });
 
-  it('refuses an invoke without a usable id', () => {
-    expect(asRpcRequest({ k: 'invoke', c: 'x', a: [] })).toBeNull();
-    expect(asRpcRequest({ k: 'invoke', id: 0, c: 'x', a: [] })).toBeNull();
-    expect(asRpcRequest({ k: 'invoke', id: 1.5, c: 'x', a: [] })).toBeNull();
-    expect(asRpcRequest({ k: 'invoke', id: '1', c: 'x', a: [] })).toBeNull();
+  it('accepts a first hello and a returning one, and nothing between', () => {
+    expect(asRpcInbound({ k: 'hello', tab: null, key: null, last: 0 })).toEqual({
+      k: 'hello',
+      tab: null,
+      key: null,
+      last: 0
+    });
+    expect(asRpcInbound({ k: 'hello', tab: 3, key: 'k', last: 41 })).toEqual({
+      k: 'hello',
+      tab: 3,
+      key: 'k',
+      last: 41
+    });
+    expect(asRpcInbound({ k: 'hello', tab: 3, key: null, last: 0 })).toBeNull();
+    expect(asRpcInbound({ k: 'hello', tab: 3, key: '', last: 0 })).toBeNull();
+    expect(asRpcInbound({ k: 'hello', tab: null, key: null, last: -1 })).toBeNull();
   });
 
-  it('refuses a channel that is not one of ours in shape', () => {
-    expect(asRpcRequest({ k: 'send', c: '', a: [] })).toBeNull();
-    expect(asRpcRequest({ k: 'send', c: 'Session:Input', a: [] })).toBeNull();
-    expect(asRpcRequest({ k: 'send', c: 'a'.repeat(65), a: [] })).toBeNull();
-    expect(asRpcRequest({ k: 'send', c: 'session:input', a: 'n' })).toBeNull();
+  it('accepts an ack', () => {
+    expect(asRpcInbound({ k: 'ack', n: 12 })).toEqual({ k: 'ack', n: 12 });
+    expect(asRpcInbound({ k: 'ack', n: 'x' })).toBeNull();
+  });
+
+  it('refuses what is not a message, or not ours in shape', () => {
+    expect(asRpcInbound(null)).toBeNull();
+    expect(asRpcInbound('session:input')).toBeNull();
+    expect(asRpcInbound([])).toBeNull();
+    expect(asRpcInbound({ k: 'push', n: 1, c: 'session:data', p: {} })).toBeNull();
+    expect(asRpcInbound({ k: 'invoke', q: 1, id: 0, c: 'x', a: [] })).toBeNull();
+    expect(asRpcInbound({ k: 'send', q: 1, c: 'Session:Input', a: [] })).toBeNull();
+    expect(asRpcInbound({ k: 'send', q: 1, c: 'a'.repeat(65), a: [] })).toBeNull();
+    expect(asRpcInbound({ k: 'send', q: 1, c: 'session:input', a: 'n' })).toBeNull();
   });
 
   it('keeps only the fields it declares', () => {
-    const parsed = asRpcRequest({ k: 'send', c: 'x', a: [], extra: 'smuggled' });
-    expect(parsed).toEqual({ k: 'send', c: 'x', a: [] });
+    const parsed = asRpcInbound({ k: 'send', q: 1, c: 'x', a: [], extra: 'smuggled' });
+    expect(parsed).toEqual({ k: 'send', q: 1, c: 'x', a: [] });
   });
 });
 
-describe('asRpcOutbound', () => {
-  it('accepts a push, a result and a failure', () => {
-    expect(asRpcOutbound({ k: 'push', c: 'session:data', p: { seq: 1 } })).toEqual({
+describe('asRpcFrame', () => {
+  it('accepts a numbered push, result and failure', () => {
+    expect(asRpcFrame({ k: 'push', n: 1, c: 'session:data', p: { seq: 1 } })).toEqual({
       k: 'push',
+      n: 1,
       c: 'session:data',
       p: { seq: 1 }
     });
-    expect(asRpcOutbound({ k: 'reply', id: 3, r: 42 })).toEqual({ k: 'reply', id: 3, r: 42 });
-    expect(asRpcOutbound({ k: 'reply', id: 3, e: 'no' })).toEqual({ k: 'reply', id: 3, e: 'no' });
+    expect(asRpcFrame({ k: 'reply', n: 2, id: 3, r: 42 })).toEqual({
+      k: 'reply',
+      n: 2,
+      id: 3,
+      r: 42
+    });
+    expect(asRpcFrame({ k: 'reply', n: 2, id: 3, e: 'no' })).toEqual({
+      k: 'reply',
+      n: 2,
+      id: 3,
+      e: 'no'
+    });
   });
 
   it('carries an absent result as undefined, which is what a void handler answers', () => {
-    const parsed = asRpcOutbound({ k: 'reply', id: 3 });
+    const parsed = asRpcFrame({ k: 'reply', n: 1, id: 3 });
     expect(parsed).not.toBeNull();
     expect(parsed && 'r' in parsed ? parsed.r : 'missing').toBeUndefined();
   });
 
-  it('accepts a beat with a usable gap, and nothing else under the name', () => {
-    expect(asRpcOutbound({ k: 'beat', next: 10000 })).toEqual({ k: 'beat', next: 10000 });
-    expect(asRpcOutbound({ k: 'beat', next: 0 })).toBeNull();
-    expect(asRpcOutbound({ k: 'beat', next: Infinity })).toBeNull();
-    expect(asRpcOutbound({ k: 'beat' })).toBeNull();
+  it('refuses a push or reply without its number', () => {
+    expect(asRpcFrame({ k: 'push', c: 'session:data', p: 1 })).toBeNull();
+    expect(asRpcFrame({ k: 'reply', n: 0, id: 3, r: 1 })).toBeNull();
+  });
+
+  it('accepts a welcome and a beat', () => {
+    expect(asRpcFrame({ k: 'welcome', tab: 2, key: 'k', resumed: true, got: 0 })).toEqual({
+      k: 'welcome',
+      tab: 2,
+      key: 'k',
+      resumed: true,
+      got: 0
+    });
+    expect(asRpcFrame({ k: 'beat', next: 10000, got: 4 })).toEqual({
+      k: 'beat',
+      next: 10000,
+      got: 4
+    });
+    expect(asRpcFrame({ k: 'beat', next: 0, got: 0 })).toBeNull();
+    expect(asRpcFrame({ k: 'beat', next: Infinity, got: 0 })).toBeNull();
+    expect(asRpcFrame({ k: 'welcome', tab: 2, key: 'k', resumed: 'yes', got: 0 })).toBeNull();
   });
 
   it('refuses the request shapes and everything else', () => {
-    expect(asRpcOutbound({ k: 'send', c: 'x', a: [] })).toBeNull();
-    expect(asRpcOutbound({ k: 'invoke', id: 1, c: 'x', a: [] })).toBeNull();
-    expect(asRpcOutbound({ k: 'reply', id: 0, r: 1 })).toBeNull();
-    expect(asRpcOutbound({ k: 'push', c: '', p: 1 })).toBeNull();
-    expect(asRpcOutbound(undefined)).toBeNull();
+    expect(asRpcFrame({ k: 'send', q: 1, c: 'x', a: [] })).toBeNull();
+    expect(asRpcFrame({ k: 'hello', tab: null, key: null, last: 0 })).toBeNull();
+    expect(asRpcFrame({ k: 'push', n: 1, c: '', p: 1 })).toBeNull();
+    expect(asRpcFrame(undefined)).toBeNull();
   });
 });
 

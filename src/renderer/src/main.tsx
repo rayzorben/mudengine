@@ -27,11 +27,11 @@ if (!container) throw new Error('Root container missing from index.html');
 const root = createRoot(container);
 
 /*
- * A browser tab whose socket came back is a new window to main, holding
- * nothing. Mounting the tree afresh re-runs the one attach flow the desktop
- * runs (`clientReady`, the roster, each console's attach and backscroll),
- * which a page reload also did, without the reload's sign-in check, fetch
- * and flash; the shown character comes back from `usePanes`.
+ * A browser tab the client no longer knows (it restarted, or the tab was
+ * away too long; `lib/webLink.ts`) is a new window to main, holding nothing.
+ * Mounting the tree afresh re-runs the one attach flow the desktop runs
+ * (`clientReady`, the roster, each console's attach and backscroll) without
+ * reloading the page; the shown character comes back from `usePanes`.
  */
 let mounted = 0;
 const mount = (): void => {
