@@ -1,11 +1,12 @@
 /**
- * The console holds a page of backscroll, not all of it.
+ * A console holds a page of backscroll, not all of it.
  *
- * Main keeps `terminal.scrollback` lines; a console holds
- * `tuning.view.consolePageLines`, offers the next page back at its top, and
- * drops to one page again at the live edge. A tab attaching after a day of play
- * was sent every line main kept, and the web image closed it for the size
- * (2026-09-28). `mudengine-ui` › *A console holds a page of backscroll*.
+ * Main keeps `terminal.scrollback` lines; a console is sent
+ * `tuning.view.consoleLiveLines` when it attaches and keeps up to
+ * `consolePageLines`. Past that, the copy of the backscroll (todo 120) holds
+ * a page and offers the next one back at its top. A tab attaching after a day
+ * of play was sent every line main kept, and the web image closed it for the
+ * size (2026-09-28). `mudengine-ui` › *A console holds a short scroll up*.
  */
 
 /** Where the reader is: the oldest line held, the live edge, or neither. */

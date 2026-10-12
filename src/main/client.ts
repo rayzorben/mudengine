@@ -2397,7 +2397,8 @@ function registerIpc(): void {
         talk: (id) => talkFor(id).backlog()
       },
       session,
-      tuning().view.consolePageLines
+      // A short scroll up, drawn at once; the copy of the backscroll reads further (todo 120).
+      tuning().view.consoleLiveLines
     )
   );
 

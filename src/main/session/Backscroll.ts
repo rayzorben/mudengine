@@ -19,6 +19,7 @@ import { stripAnsi } from '../net/LineTokenizer';
 import { PROMPT_REPAINT } from '../net/stream-quirks';
 import { afterStamp, lastStamp, unstamped } from '../../shared/stamps';
 import { segmentPath, segmentsIn, segmentsInAsync } from './segmentFiles';
+import { colourBefore } from './sgr';
 
 /** A segment's suffix, and the old one-file backscroll's. */
 export const BACKSCROLL_EXT = '.log';
@@ -398,7 +399,8 @@ export class Backscroll {
       have += each.lines;
     }
     const from = afterNewlines(parts[0]!, Math.max(0, have - take));
-    parts[0] = parts[0]!.slice(from);
+    // A page cut inside a coloured run opens in that colour (`sgr.ts`).
+    parts[0] = colourBefore(parts[0]!, from) + parts[0]!.slice(from);
     const shown = Math.min(have, take);
     return { text: parts.join(''), older: retained - shown };
   }

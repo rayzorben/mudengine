@@ -1,7 +1,7 @@
 /**
- * How much of a character's backscroll its console holds, and the page it
- * brings back at the top. See `lib/pages.ts` and `mudengine-ui` › *A console
- * holds a page of backscroll*.
+ * How much the copy of a character's backscroll holds, and the page
+ * it brings back at the top (`ReadBackConsole`, todo 120). See `lib/pages.ts`
+ * and `mudengine-ui` › *A console holds a page of backscroll*.
  */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
@@ -21,10 +21,29 @@ export interface BackscrollPages {
   loading: boolean;
   /** Where the reader is, from the console. */
   onEdge(edge: ScrollEdge): void;
-  /** How many lines main kept older than the page the attach handed over. */
+  /** How many lines main kept older than the first page handed over. */
   attached(older: number): void;
-  /** Rewrite the lines held, for what the console draws off the text as it is parsed (each line's time). */
-  redraw(): void;
+}
+
+/**
+ * A console rewritten with main's newest `lines` lines: the one way a console
+ * is filled from main after its attach. `done` has the older lines main still
+ * keeps, or null when the page could not be had (said through `into.notice`).
+ */
+export function fillFrom(
+  api: Pick<IpcApi, 'backscrollPage'>,
+  session: SessionId,
+  lines: number,
+  into: Pick<TerminalHandle, 'refill' | 'notice'>,
+  done: (older: number | null) => void
+): void {
+  api.backscrollPage(session, lines).then(
+    (got) => into.refill(got.text, lines, () => done(got.older)),
+    (error: unknown) => {
+      into.notice(t('terminal.loadMoreFailed', { message: errorMessage(error) }));
+      done(null);
+    }
+  );
 }
 
 export function useBackscrollPages(
@@ -77,21 +96,14 @@ export function useBackscrollPages(
       loadingRef.current = true;
       setLoading(true);
       setOffer(0);
-      const finish = (): void => {
+      fillFrom(api, session, lines, to, (got) => {
+        if (got !== null) {
+          older.current = got;
+          setHold(lines);
+        }
         loadingRef.current = false;
         setLoading(false);
-      };
-      api.backscrollPage(session, lines).then(
-        (got) => {
-          older.current = got.older;
-          setHold(lines);
-          to.refill(got.text, lines, finish);
-        },
-        (error: unknown) => {
-          finish();
-          to.notice(t('terminal.loadMoreFailed', { message: errorMessage(error) }));
-        }
-      );
+      });
     },
     [api, session, handle]
   );
@@ -100,8 +112,6 @@ export function useBackscrollPages(
     () => fetchPage(widened(holdRef.current, page, keep)),
     [fetchPage, page, keep]
   );
-
-  const redraw = useCallback(() => fetchPage(holdRef.current), [fetchPage]);
 
   const attached = useCallback((count: number) => {
     older.current = count;
@@ -112,7 +122,6 @@ export function useBackscrollPages(
     more: offer > 0 && !loading ? { count: offer, load } : null,
     loading,
     onEdge,
-    attached,
-    redraw
+    attached
   };
 }

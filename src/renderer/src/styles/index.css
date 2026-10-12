@@ -500,6 +500,28 @@ option {
 
 .terminal-layer > .terminal-cell {
   height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+/*
+ * The copy of the backscroll (todo 120): over the live console once drawn, under it
+ * while it fills. The live console is opaque, so the fill is never seen, and
+ * the copy is never hidden while it fills (that turned the fill into one long
+ * task; `mudengine-ui` › *The console is never hidden while it fills*).
+ */
+.terminal-layer > .read-back {
+  inset: 0;
+  position: absolute;
+  z-index: 0;
+}
+
+.terminal-layer > .read-back[data-shown='true'] {
+  z-index: 2;
+}
+
+.terminal-layer > .read-back > .terminal-cell {
+  height: 100%;
 }
 
 /*
