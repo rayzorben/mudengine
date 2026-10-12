@@ -245,7 +245,8 @@ export interface Notice {
 /**
  * The newest lines of a character's backscroll, escape sequences intact and
  * starting at a line boundary, and how many older lines main still keeps. A
- * console holds `tuning.view.consolePageLines` and asks for more at its top.
+ * console is sent `tuning.view.consoleLiveLines` when it attaches and keeps up
+ * to `consolePageLines`; the copy of the backscroll asks for more at its top.
  */
 export interface BackscrollPage {
   text: string;

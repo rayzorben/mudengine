@@ -81,6 +81,16 @@ describe('Backscroll', () => {
     expect(await scroll.page(50)).toEqual({ text: whole, older: 0 });
   });
 
+  // Todo 120: a page cut inside a coloured run opens in that colour.
+  it('opens a page in the colour in effect at its cut', async () => {
+    const scroll = await opened(100);
+    scroll.write('\x1b[0mplain\n\x1b[31mred one\nred two\n\x1b[0mplain again\n');
+    expect((await scroll.page(2)).text).toBe('\x1b[0m\x1b[31mred two\n\x1b[0mplain again\n');
+    // The positive control: a cut after a reset carries nothing.
+    scroll.write('\x1b[31mred\x1b[0m\nplain at last\n');
+    expect((await scroll.page(1)).text).toBe('plain at last\n');
+  });
+
   it('fixes what a page covers when it is asked, so later output is not in it', async () => {
     const scroll = await opened(100);
     for (let i = 0; i < 10; i += 1) scroll.write(`line ${i}\n`);

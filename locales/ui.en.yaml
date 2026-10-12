@@ -1059,11 +1059,12 @@ terminal:
   fontNotFixedPitch: "{fontName} is not fixed-width ('{widest}' is wider than '{narrowest}'), so
     maps and frames will not line up."
   jumpToLatest: Jump to latest ↓
-  # At the top of a console holding tuning.view.consolePageLines: the next
+  # At the top of the copy of the backscroll (todo 120): the next
   # page back from what the client keeps (terminal.scrollback).
   loadMore: Load {count} more lines ↑
   loadingMore: Loading earlier lines…
   loadMoreFailed: Could not load earlier lines ({message}).
+  readBackLost: The line you were reading was not found in the lines brought back, so this starts at the newest of them.
   # The run of a quest plan, as a banner over the top of this character's
   # console (2026-09-22): the chain as a row of numbered stops with the one
   # being carried lit, the phase in a word, and what it is about after it.

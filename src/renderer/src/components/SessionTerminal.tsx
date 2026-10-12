@@ -1,11 +1,15 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import QuestRunBanner from './QuestRunBanner';
+import ReadBackConsole from './ReadBackConsole';
 import TerminalView, { type TerminalHandle } from './TerminalView';
 import { errorMessage } from '@shared/values';
 import { t } from '../lib/i18n';
 import { restores } from '../lib/restore';
-import { useBackscrollPages } from '../hooks/useBackscrollPages';
+import { onePage } from '../lib/pages';
+import { tuning } from '../lib/tuning';
+import { fillFrom } from '../hooks/useBackscrollPages';
+import { useReadBack } from '../hooks/useReadBack';
 import type { AttachSnapshot, SessionId } from '@shared/ipc';
 import type { TerminalConfig } from '@shared/config';
 import type { QuestRunProgress } from '@shared/quests';
@@ -124,20 +128,33 @@ function SessionTerminal({
   const [ready, setReady] = useState(false);
   const shownRef = useRef(shown);
   shownRef.current = shown;
-  const pages = useBackscrollPages(api, session, handleRef, settings.scrollback);
-  const { attached: pageAttached } = pages;
+  /**
+   * Sent a few screens at attach, so it draws at once (todo 120); it keeps
+   * what it gathers after, up to a page. Further back is a copy (`useReadBack`).
+   */
+  const sent = onePage(tuning().consoleLiveLines, settings.scrollback);
+  const liveLines = onePage(tuning().consolePageLines, settings.scrollback);
+  const send = useCallback((data: string) => onInput(session, data), [onInput, session]);
+  const readBack = useReadBack(handleRef, send);
+  const { rewriting, close: closeReadBack, handOut, olderThanLive } = readBack;
 
   /*
    * A line's time is drawn as its text is parsed, so the lines already held
-   * have none when the times are turned on; the page held is written again.
-   * Off needs nothing: the console lets go of the times it drew.
+   * have none when the times are turned on; the live lines are written again
+   * and the copy is closed. Off needs nothing: the console lets go of the
+   * times it drew.
    */
-  const { redraw } = pages;
   const timesDrawn = useRef(timestamps);
   useEffect(() => {
-    if (timestamps && !timesDrawn.current && attached.current) redraw();
+    const handle = handleRef.current;
+    if (timestamps && !timesDrawn.current && attached.current && handle !== null) {
+      closeReadBack();
+      rewriting(true);
+      // As much as an attach sends; anything older is the copy's to show.
+      fillFrom(api, session, sent, handle, () => rewriting(false));
+    }
     timesDrawn.current = timestamps;
-  }, [timestamps, redraw]);
+  }, [timestamps, api, session, sent, closeReadBack, rewriting]);
 
   const handleReady = useCallback(
     (handle: TerminalHandle) => {
@@ -152,11 +169,12 @@ function SessionTerminal({
         notice: (message) => {
           if (attached.current) handle.notice(message);
           else pending.current.push((to) => to.notice(message));
-        }
+        },
+        ...handOut(handle)
       });
       setReady(true);
     },
-    [onHandle, session]
+    [onHandle, session, handOut]
   );
 
   useEffect(() => {
@@ -200,7 +218,7 @@ function SessionTerminal({
         if (!live) return;
         // The cards have the snapshot at once; the console waits its turn.
         onSnapshot(session, snapshot);
-        pageAttached(snapshot.backscroll.older);
+        olderThanLive(snapshot.backscroll.older);
         /*
          * What arrived during the round trip stays held until the backscroll
          * is queued ahead of it, and the backscroll is queued behind the
@@ -250,9 +268,9 @@ function SessionTerminal({
       attached.current = false;
       void api.detach(session);
     };
-  }, [api, session, ready, onSnapshot, pageAttached]);
+  }, [api, session, ready, onSnapshot, olderThanLive]);
 
-  const input = useCallback((data: string) => onInput(session, data), [onInput, session]);
+  const failedCopy = useCallback((message: string) => handleRef.current?.notice(message), []);
   const resize = useCallback((size: TerminalSize) => onResize(session, size), [onResize, session]);
   // Sent straight to the bridge, as `App` does; nothing between here and main acts on it.
   const lostEnter = useCallback(
@@ -318,25 +336,10 @@ function SessionTerminal({
     >
       {/* Over this pane rather than docked: `mudengine-ui` › quests, *the run is a banner*. */}
       <QuestRunBanner onSettled={focusConsole} onStop={stopRun} run={run} walk={walk} />
-      {(pages.more !== null || pages.loading) && (
-        <button
-          className="jump-latest load-more"
-          disabled={pages.loading}
-          onClick={() => {
-            pages.more?.load();
-            focusConsole();
-          }}
-          type="button"
-        >
-          {pages.loading
-            ? t('terminal.loadingMore')
-            : t('terminal.loadMore', { count: (pages.more?.count ?? 0).toLocaleString() })}
-        </button>
-      )}
       <TerminalView
         fontStack={fontStack}
         index={index}
-        onInput={input}
+        onInput={readBack.input}
         onInspect={onInspect}
         onSelectPlayer={selectPlayer}
         onSelectGang={selectGang}
@@ -358,9 +361,32 @@ function SessionTerminal({
         reportSize={shown}
         settings={settings}
         timestamps={timestamps}
-        scrollback={pages.hold}
-        onEdge={pages.onEdge}
+        scrollback={liveLines}
+        onEdge={readBack.liveEdge}
       />
+      {readBack.open !== null && (
+        <ReadBackConsole
+          api={api}
+          session={session}
+          place={readBack.open.place}
+          onShown={readBack.shown}
+          onClose={readBack.close}
+          onGone={readBack.gone}
+          onInput={readBack.input}
+          onFailed={failedCopy}
+          onSearchResult={focused ? onSearchResult : NO_RESULT}
+          settings={settings}
+          timestamps={timestamps}
+          fontStack={fontStack}
+          palette={palette}
+          index={index}
+          onInspect={onInspect}
+          onSelectPlayer={selectPlayer}
+          onSelectGang={selectGang}
+          onSelectSlot={selectSlot}
+          onChooseRoom={onChooseRoom}
+        />
+      )}
     </div>
   );
 }

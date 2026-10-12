@@ -36,6 +36,7 @@ import { tuning } from '../lib/tuning';
 import { silenceQueries } from '../lib/terminalQueries';
 import { drawStamps, type ConsoleStamps } from '../lib/consoleStamps';
 import { edgeOf, type ScrollEdge } from '../lib/pages';
+import { linesOf, placeAt, rowOf, rowsOf, type Place } from '../lib/readBack';
 import { whenIdle } from '../lib/idle';
 
 /** The handle the parent uses to drive the terminal once it has mounted. */
@@ -65,6 +66,10 @@ export interface TerminalHandle {
   focus(): void;
   /** Find in the backscroll. Empty query clears the highlight. */
   search(query: string, direction: 'next' | 'previous'): void;
+  /** The reader's place: the line at the top of the view (`lib/readBack.ts`). */
+  place(): Place | null;
+  /** Puts `place` at the top of the view; false when it is not held within reach. */
+  showPlace(place: Place): boolean;
 }
 
 /** How the lost-Enter notice names each place other than a control. */
@@ -165,6 +170,11 @@ export interface TerminalViewProps {
    * again, at which point it reports whatever it really is now.
    */
   reportSize?: boolean;
+  /**
+   * A console the reader leaves rather than scrolls to its end (the copy of
+   * the backscroll, todo 120): Jump to latest is always offered and calls this.
+   */
+  onLeave?(): void;
 }
 
 /**
@@ -193,6 +203,7 @@ export default function TerminalView({
   timestamps,
   scrollback,
   onEdge,
+  onLeave,
   fontStack,
   palette
 }: TerminalViewProps) {
@@ -1011,6 +1022,20 @@ export default function TerminalView({
         }),
       notice: postNotice,
       jumpToLatest,
+      place: () => {
+        const buffer = term.buffer.active;
+        return placeAt(linesOf(rowsOf(buffer)), buffer.viewportY);
+      },
+      showPlace: (place) => {
+        const buffer = term.buffer.active;
+        const row = rowOf(linesOf(rowsOf(buffer)), place, tuning().readBackReach);
+        if (row === null) return false;
+        term.scrollToLine(row);
+        // Said afresh: the edges a fill passed were not heard by the reader.
+        edge = null;
+        syncPin();
+        return true;
+      },
       focus: () => term.focus(),
       search: (query, direction) => {
         if (query.length === 0) {
@@ -1195,8 +1220,8 @@ export default function TerminalView({
       }}
     >
       <div className="terminal-mount" ref={mountRef} />
-      {!pinned && (
-        <button className="jump-latest" onClick={jumpToLatest} type="button">
+      {(!pinned || onLeave !== undefined) && (
+        <button className="jump-latest" onClick={onLeave ?? jumpToLatest} type="button">
           {t('terminal.jumpToLatest')}
         </button>
       )}

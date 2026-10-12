@@ -2180,6 +2180,12 @@ const TUNING_DEFAULTS = {
     talkHeld: 500,
     /** How long painted console output waits before it is written down. */
     backscrollFlushMs: 2000,
+    /**
+     * How far back from a page's cut the colour in effect is looked for.
+     * Measured on Festus's capture of 2026-10-12 (18,252 lines): resets came
+     * at most 1,269 characters apart, 130 at the 99th percentile.
+     */
+    colourLookBehind: 4096,
     /** How long a balance change waits before it is written. */
     belongingsWriteDelayMs: 2000,
     /**
@@ -3010,15 +3016,32 @@ const TUNING_DEFAULTS = {
      */
     hiddenWebglMs: 3000,
     /**
-     * How many lines of backscroll a console holds, and how many more each
-     * *Load more* at its top brings back from main. Main keeps
-     * `terminal.scrollback`; a tab attaching after a day of play was sent all
-     * 100,000 lines (8 MB) and the web image closed it for it (2026-09-28).
-     * Back at the live edge the console drops to this again. It is also how
-     * many lines each backscroll file on disk holds, and only the newest is
-     * kept in memory.
+     * How many lines a console is sent when it attaches: a few screens, drawn
+     * in a frame, so showing a character never plays its backscroll back
+     * (todo 120). It keeps what it gathers after, up to `consolePageLines`.
+     */
+    consoleLiveLines: 300,
+    /**
+     * How many lines a console keeps as it plays, and how many lines of
+     * backscroll the copy of the backscroll holds when it opens, and
+     * how many more each *Load more* at its top brings back from main. Main
+     * keeps `terminal.scrollback`; a tab attaching after a day of play was sent
+     * all 100,000 lines (8 MB) and the web image closed it for it (2026-09-28).
+     * It is also how many lines each backscroll file on disk holds, and only
+     * the newest is kept in memory.
      */
     consolePageLines: 10000,
+    /**
+     * How many lines either side of where the reader's place should be in the
+     * copy of the backscroll it is looked for: what arrived while the copy was being
+     * read from main, with room to spare.
+     */
+    readBackReach: 2000,
+    /**
+     * How many lines in a row tell the reader's place from a line that
+     * repeats: a fight prints the same swing several times over.
+     */
+    readBackSpan: 3,
     /**
      * How long after a plain Enter the shown console must have turned it into
      * input before the console says it did not (todo 00). xterm hands a key

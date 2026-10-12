@@ -16058,8 +16058,9 @@ if (logFiles[0]) {
   );
   const answer = 'Location: 1,2140';
   check(body.includes(answer), 'the log still holds the answer to a quiet command');
+  // The whole record: an attach sends only a few screens of it (todo 120).
   const fed = await evaluate(
-    `window.mudengine.attach('${SESSION}').then((s) => s.backscroll.text)`
+    `window.mudengine.backscrollPage('${SESSION}', 1000000).then((page) => page.text)`
   );
   const leak = typeof fed === 'string' ? fed.indexOf(answer) : -1;
   check(
@@ -16343,6 +16344,47 @@ if (logFiles[0]) {
     (await geometry()) === before,
     'with the geometry it never lost',
     `${before} -> ${await geometry()}`
+  );
+}
+
+// ------------------------------------------------- assert: the copy of the backscroll
+//
+// Todo 120: the live console holds a short scroll up; past its top, a copy of
+// main's record opens and the live console runs on underneath. Jump to latest
+// closes it. A burst past `consolePageLines` (what the live console keeps)
+// makes sure there is more than it holds. That the copy opens on the reader's line is `readBack.test.ts`'s: a
+// WebGL console has no text in the page to read.
+{
+  const LAYER = '.terminal-layer[data-shown="true"]';
+  const burst = Array.from({ length: 10_400 }, (_, i) => `history line ${i}\r\n`).join('');
+  liveSockets[0]?.write(Buffer.from(burst, 'latin1'));
+  await waitFor(async () =>
+    evaluate(
+      `window.mudengine.backscrollPage('${SESSION}', 3).then((p) => /history line 10399/.test(p.text))`
+    )
+  );
+  // Up to the top of what the live console holds, as a wheel would.
+  await evaluate(`
+    (() => {
+      const viewport = document.querySelector('${LAYER} > .terminal-cell .xterm-viewport');
+      viewport.scrollTop = 0;
+      viewport.dispatchEvent(new Event('scroll'));
+      return true;
+    })()
+  `);
+  await waitFor(async () =>
+    evaluate(`!!document.querySelector('${LAYER} > .read-back[data-shown="true"]')`)
+  );
+  check(
+    await evaluate(`!!document.querySelector('${LAYER} > .read-back[data-shown="true"]')`),
+    'past the top of the live console, the copy of the backscroll opens'
+  );
+  await evaluate(`(document.querySelector('${LAYER} > .read-back .jump-latest')?.click(), true)`);
+  await waitFor(async () => !(await evaluate(`!!document.querySelector('${LAYER} > .read-back')`)));
+  check(
+    !(await evaluate(`!!document.querySelector('${LAYER} > .read-back')`)) &&
+      !(await evaluate(`!!document.querySelector('${LAYER} .jump-latest')`)),
+    'and Jump to latest closes it, back on the live edge'
   );
 }
 
