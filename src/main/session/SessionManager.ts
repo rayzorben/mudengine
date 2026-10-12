@@ -1030,7 +1030,6 @@ export class SessionManager {
         routeTo: (room) => this.errands.planFromHere(room, {}, ERRAND_LEG.kind),
         priceAt: (item, shop) => this.errands.priceAt(item.name, shop),
         weightAt: (item, shop) => this.errands.weightAt(item.name, shop),
-        carryGate: () => this.automationConfig.loot.stopAtGrade,
         cashFrom: (need, then) => {
           const state = this.tracker.current;
           const here = roomAddress(state.room);

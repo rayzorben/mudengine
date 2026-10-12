@@ -112,7 +112,6 @@ function planner(over: Partial<SupplyPlanner> = {}) {
     },
     priceAt: () => null,
     weightAt: () => null,
-    carryGate: () => 'never',
     cashFrom: () => [],
     walk: () => {
       log.push('walk');
@@ -314,22 +313,39 @@ describe('at the counter', () => {
   });
 
   /*
-   * Todo 80: `BuyCommand` refuses a buy that brings the pack to its maximum,
-   * and the grade AutoLoot stops at holds the count under it.
+   * Todo 80: `BuyCommand` refuses a buy that brings the pack to its maximum.
+   * The grade AutoLoot stops at is no limit: Rayzor, Medium at 761 of 2112,
+   * walked to the General Store for torches and bought none (2026-10-12).
    */
+  it('buys past Medium and Heavy, up to the maximum the server takes', () => {
+    const loaded = (torches: number, encumbrance: number): CharacterState => {
+      const base = character(torches);
+      return { ...base, inventory: { ...base.inventory, encumbrance, encumbranceMax: 2112 } };
+    };
+    const { planner: p, arrive } = planner({ weightAt: () => 7 });
+    const auto = make(p);
+    auto.onCharacter(loaded(2, 1500));
+    arrive();
+    auto.onWalkEnded(true, null, loaded(2, 1500));
+    auto.onCharacter(listed(loaded(2, 1500)));
+    drain();
+    expect(sent).toEqual(['list', 'buy torch']);
+    expect(auto.current?.wanted).toBe(3);
+  });
+
   it('buys no more than the pack takes, and says when it cuts the count', () => {
     const loaded = (torches: number, encumbrance: number): CharacterState => {
       const base = character(torches);
       return { ...base, inventory: { ...base.inventory, encumbrance, encumbranceMax: 1000 } };
     };
-    const { planner: p, arrive } = planner({ weightAt: () => 100, carryGate: () => 'medium' });
+    const { planner: p, arrive } = planner({ weightAt: () => 100 });
     const auto = make(p);
-    auto.onCharacter(loaded(2, 100));
+    auto.onCharacter(loaded(2, 750));
     arrive();
-    auto.onWalkEnded(true, null, loaded(2, 100));
-    auto.onCharacter(listed(loaded(2, 100)));
+    auto.onWalkEnded(true, null, loaded(2, 750));
+    auto.onCharacter(listed(loaded(2, 750)));
     drain();
-    // Medium starts past 333 of 1000: two torches of 100 fit on 100, not three.
+    // The server refuses a buy that reaches 1000: two torches of 100 fit on 750, not three.
     expect(auto.current?.wanted).toBe(2);
     expect(notices).toContain(
       t('automation.supplies.cutByWeight', { item: 'torch', count: 2, short: 3 })
