@@ -12,7 +12,6 @@ import DragMarks from './components/DragMarks';
 import FloatLayer from './components/FloatLayer';
 import PinnedFloats from './components/PinnedFloats';
 import SettingsScreen from './components/SettingsScreen';
-import StandbyCard from './components/StandbyCard';
 import SessionTerminal from './components/SessionTerminal';
 import SlideOuts from './components/SlideOuts';
 import TabRail, { type RailSide } from './components/TabRail';
@@ -1384,12 +1383,6 @@ export default function App() {
               onGrab={grabCard}
               showLogo={config.ui.showLogo}
             />
-
-            {/*
-              The rail says what it is waiting for rather than emptying out.
-              A blank column beside a live one reads as damage, not as offline.
-            */}
-            {hudOpen && !inGame && <StandbyCard character={character} state={state} />}
 
             {/*
               Where this character put them, on the grid. One list, rendered by

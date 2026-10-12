@@ -104,12 +104,15 @@ describe('asRpcFrame', () => {
   });
 
   it('accepts a welcome and a beat', () => {
-    expect(asRpcFrame({ k: 'welcome', tab: 2, key: 'k', resumed: true, got: 0 })).toEqual({
+    expect(
+      asRpcFrame({ k: 'welcome', tab: 2, key: 'k', resumed: true, got: 0, build: 'abc@t' })
+    ).toEqual({
       k: 'welcome',
       tab: 2,
       key: 'k',
       resumed: true,
-      got: 0
+      got: 0,
+      build: 'abc@t'
     });
     expect(asRpcFrame({ k: 'beat', next: 10000, got: 4 })).toEqual({
       k: 'beat',
@@ -118,7 +121,12 @@ describe('asRpcFrame', () => {
     });
     expect(asRpcFrame({ k: 'beat', next: 0, got: 0 })).toBeNull();
     expect(asRpcFrame({ k: 'beat', next: Infinity, got: 0 })).toBeNull();
-    expect(asRpcFrame({ k: 'welcome', tab: 2, key: 'k', resumed: 'yes', got: 0 })).toBeNull();
+    expect(
+      asRpcFrame({ k: 'welcome', tab: 2, key: 'k', resumed: 'yes', got: 0, build: null })
+    ).toBeNull();
+    expect(
+      asRpcFrame({ k: 'welcome', tab: 2, key: 'k', resumed: true, got: 0, build: 7 })
+    ).toBeNull();
   });
 
   it('refuses the request shapes and everything else', () => {

@@ -329,7 +329,7 @@ option {
    * The rail is what the console leaves, and its cards stand on a grid of
    * square cells (todo 09, 2026-10-03), placed like icons on a desktop: each
    * where the player put it, never over another, and the grid runs on down
-   * the rail, which scrolls. The head and the standby card sit above the grid.
+   * the rail, which scrolls. The head sits above the grid.
    */
   display: flex;
   flex-direction: column;
@@ -356,10 +356,6 @@ option {
 
 .rail > * {
   flex: none;
-}
-
-.rail > .standby-card {
-  height: 152px;
 }
 
 /*
@@ -10431,23 +10427,6 @@ tr:hover .row-action.worn,
 .card-heading-action[data-danger='true']:hover,
 .card-heading-action[data-danger='true']:focus-visible {
   background: color-mix(in srgb, var(--danger) var(--tone-strong), transparent);
-}
-
-/* ------------------------------------------------------------- standby */
-
-/*
- * The rail's resting state. It keeps its space and says what it is waiting for,
- * because a blank column beside a live one reads as damage rather than as
- * "this character is offline".
- */
-.standby-card .standby-what {
-  color: var(--text-hi);
-  margin: 0 0 4px;
-}
-
-.standby-card .standby-who {
-  color: var(--text-lo);
-  margin: 0 0 8px;
 }
 
 /* --------------------------------------------------------------- alerts */
