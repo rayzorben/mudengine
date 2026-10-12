@@ -9,7 +9,7 @@
  *
  * | duty | here |
  * |---|---|
- * | transport | `RpcRequest` in, `RpcOutbound` out, one socket per tab |
+ * | transport | `RpcRequest` in, `RpcOutbound` out, a tab kept across its sockets (`web/tabs.ts`) |
  * | windows | none: `windows` is null, and every tab draws the one rail |
  * | reveal, picker, clipboard | refused; the window answers each its own way |
  * | GPU | null: nothing here composites, and a guess would be the alarming kind |
@@ -31,7 +31,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { asRpcRequest, type RpcOutbound } from '../../shared/rpc';
+import type { RpcRequest } from '../../shared/rpc';
 import { errorMessage } from '../../shared/values';
 import { platformUserData } from '../app/home';
 import { t } from '../app/i18n';
@@ -40,9 +40,7 @@ import type { Caller, ClientHooks, Handler, Host, Layout, Transport } from './Ho
 import { AccessTokens, resolveAccessPassword, type AccessPassword } from './web/access';
 import { createWebServer, type WebServer } from './web/server';
 import { Downloads } from './web/downloads';
-import type { WebSocketConnection } from './web/sockets';
-import { serialise } from './serialise';
-import { TabOutbox } from './web/outbox';
+import { TabSessions, type Tab } from './web/tabs';
 import { Send } from '../../shared/ipc';
 
 /** The one rail every tab draws. Tabs are numbered from the next id up. */
@@ -51,15 +49,6 @@ export const WEB_RAIL = 1;
 /** What a client that is not behind a proxy listens on: this machine only. */
 const DEFAULT_PORT = 8080;
 const DEFAULT_BIND = '127.0.0.1';
-
-interface Tab {
-  readonly id: number;
-  readonly connection: WebSocketConnection;
-  /** Answered the last ping; cleared when the next one goes out. */
-  alive: boolean;
-  /** What goes to this tab, and when: ready, and the repeats skipped. See `TabOutbox`. */
-  readonly outbox: TabOutbox;
-}
 
 /** `MUDENGINE_PORT`, or the default; `0` asks the system for a free one. */
 function portFrom(env: NodeJS.ProcessEnv): number {
@@ -183,11 +172,10 @@ async function claimFileIn(dir: string, name: string): Promise<string> {
 export function createWebHost(layout: Layout): Host {
   const handlers = new Map<string, Handler>();
   const listeners = new Map<string, Handler>();
-  const tabs = new Map<number, Tab>();
-  let nextId = WEB_RAIL + 1;
   let server: WebServer | null = null;
   let sweep: NodeJS.Timeout | null = null;
-  let closing = false;
+  /** The window registry, known once the client opens. */
+  let windows: ClientHooks['windows'] | null = null;
   /** Where a file the tab asks to save is written, known once the client opens. */
   let exportsDir: string | null = null;
   const downloads = new Downloads();
@@ -199,37 +187,12 @@ export function createWebHost(layout: Layout): Host {
 
   const say = (line: string): void => console.log(line);
 
-  const push = (tab: Tab, message: RpcOutbound): void => {
-    if (!tab.connection.open) return;
-    const { text, error } = serialise(message, `a web message on ${message.k}`);
-    if (text === null) {
-      // A reply the tab is waiting on is answered with the failure.
-      if (message.k === 'reply') {
-        tab.connection.send(JSON.stringify({ k: 'reply', id: message.id, e: error }));
-      }
-      return;
-    }
-    if (!tab.outbox.admits(message, text)) return;
-    // A reply the tab asked for does not count against the cap (todo 836).
-    tab.connection.send(text, message.k === 'reply');
-  };
-
-  /** One message from a tab, parsed and dispatched. */
-  const dispatch = (tab: Tab, caller: Caller, text: string): void => {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = null;
-    }
-    const request = asRpcRequest(parsed);
-    // Not our bridge. A tab that speaks something else is not answered in
-    // kind; it is closed with the code that says the message was refused.
-    if (request === null) {
-      tab.connection.close(1008, 'malformed message');
-      return;
-    }
-
+  /** One request from a tab, answered on its channel. */
+  const answer = (tab: Tab, request: RpcRequest): void => {
+    const caller: Caller = {
+      windowId: tab.id,
+      send: (channel, payload) => tabs.push(tab, { k: 'push', c: channel, p: payload })
+    };
     if (request.k === 'send') {
       // Ready before the listener runs, so the replay it starts reaches the tab.
       if (request.c === Send.clientReady) tab.outbox.markReady();
@@ -251,66 +214,46 @@ export function createWebHost(layout: Layout): Host {
 
     const handler = handlers.get(request.c);
     if (!handler) {
-      push(tab, { k: 'reply', id: request.id, e: t('web.rpc.noHandler', { channel: request.c }) });
+      tabs.push(tab, {
+        k: 'reply',
+        id: request.id,
+        e: t('web.rpc.noHandler', { channel: request.c })
+      });
       return;
     }
     Promise.resolve()
       .then(() => handler(caller, ...request.a))
       .then(
-        (result) => push(tab, { k: 'reply', id: request.id, r: result }),
-        (error: unknown) => push(tab, { k: 'reply', id: request.id, e: errorMessage(error) })
+        (result) => tabs.push(tab, { k: 'reply', id: request.id, r: result }),
+        (error: unknown) => tabs.push(tab, { k: 'reply', id: request.id, e: errorMessage(error) })
       );
   };
 
-  const attach = (hooks: ClientHooks, connection: WebSocketConnection, remote: string): void => {
-    const id = nextId;
-    nextId += 1;
-    const tab: Tab = { id, connection, alive: true, outbox: new TabOutbox() };
-    tabs.set(id, tab);
-    const caller: Caller = {
-      windowId: id,
-      send: (channel, payload) => push(tab, { k: 'push', c: channel, p: payload })
-    };
-    hooks.windows.add({
-      id,
-      isDestroyed: () => !connection.open,
-      send: (channel, payload) => push(tab, { k: 'push', c: channel, p: payload })
-    });
-    connection.onPong = () => {
-      tab.alive = true;
-    };
-    connection.onMessage = (text) => dispatch(tab, caller, text);
-    connection.onClose = (code, reason) => {
-      tabs.delete(id);
+  const tabs = new TabSessions(WEB_RAIL + 1, {
+    opened: (tab) =>
+      windows?.add({
+        id: tab.id,
+        isDestroyed: () => !tabs.has(tab.id),
+        send: (channel, payload) => tabs.push(tab, { k: 'push', c: channel, p: payload })
+      }),
+    request: answer,
+    ended: (id) => {
       downloads.dropTab(id);
-      hooks.windows.remove(id);
-      if (!closing) {
-        say(`web: tab ${id} from ${remote} closed (${code}${reason ? ` ${reason}` : ''}).`);
-      }
-    };
-    say(`web: tab ${id} connected from ${remote}.`);
-  };
+      windows?.remove(id);
+    },
+    log: say
+  });
 
   /**
-   * Find the tabs that have gone without saying so.
-   *
-   * A tab that did not answer the last ping is closed; every other one is
-   * pinged again, and sent a beat the page itself can hear (`RpcBeat`).
+   * Find the tabs that have gone without saying so (`TabSessions.sweep`).
    * Rescheduled from the file each time rather than set once, so an edit to
-   * `pingIntervalMs` reaches the next tick.
+   * `pingIntervalMs` reaches the next tick; the beat says the same gap the
+   * timer waits.
    */
   const scheduleSweep = (gap: number): void => {
     sweep = setTimeout(() => {
       const next = tuning().web.pingIntervalMs;
-      for (const tab of tabs.values()) {
-        if (!tab.alive) {
-          tab.connection.close(1001, 'no answer to ping');
-          continue;
-        }
-        tab.alive = false;
-        tab.connection.ping();
-        push(tab, { k: 'beat', next });
-      }
+      tabs.sweep(next);
       scheduleSweep(next);
     }, gap);
   };
@@ -332,6 +275,7 @@ export function createWebHost(layout: Layout): Host {
 
     open: (hooks) => {
       exportsDir = hooks.home.state('exports');
+      windows = hooks.windows;
       let access: AccessPassword;
       try {
         access = resolveAccessPassword(process.env, hooks.home.root);
@@ -363,7 +307,7 @@ export function createWebHost(layout: Layout): Host {
         password: access.password,
         tokens,
         trustProxy,
-        onSocket: (connection, remote) => attach(hooks, connection, remote),
+        onSocket: (connection, remote) => tabs.connect(connection, remote),
         log: say,
         extensionFile: (name, relative) => hooks.extensionFile(name, relative),
         download: (token) => downloads.take(token)
@@ -423,11 +367,9 @@ export function createWebHost(layout: Layout): Host {
     },
 
     close: () => {
-      closing = true;
       if (sweep !== null) clearTimeout(sweep);
       sweep = null;
-      for (const tab of tabs.values()) tab.connection.close(1001, 'the client is shutting down');
-      tabs.clear();
+      tabs.close();
       server?.close();
       server = null;
     },

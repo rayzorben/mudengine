@@ -6819,6 +6819,10 @@ web:
       a network you trust, or put a TLS proxy in front of the client.'
   link:
     lost: The connection to the client was lost. Waiting for it to answer again…
+    signIn: The client was restarted and needs the password again.
+    password: Password
+    signInButton: Sign in
+    wrongPassword: That is not the password.
   clipboard:
     readRefused: The browser would not give the clipboard to the client; paste with Ctrl+V or
       Shift+Insert, which the browser handles itself.

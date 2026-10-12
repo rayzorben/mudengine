@@ -2010,6 +2010,21 @@ tuning:
     # how long a dead link can look alive in the browser.
     pingIntervalMs: 10000
 
+    # How long the client keeps a browser tab whose socket dropped, and holds
+    # what it sends that tab, so the tab can come back as the same window.
+    # Past it, the tab comes back as a new window and redraws everything.
+    # resumeBytes bounds the memory, so this can be long: a laptop asleep over
+    # lunch.
+    resumeMs: 14400000
+
+    # How long a new socket may stay silent before it is closed: a tab's hello
+    # is its first word.
+    helloMs: 10000
+
+    # The most held for a tab that has not taken it, away or not reading,
+    # before it is let go and comes back as a new window.
+    resumeBytes: 33554432
+
   # The window's own numbers.
   #
   # Read through `src/renderer/src/lib/tuning.ts`, which is fed the moment

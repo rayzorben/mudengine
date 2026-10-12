@@ -13934,6 +13934,20 @@ tr:hover .row-action.worn,
   padding: 20px 26px;
 }
 
+/* The password, asked in the cover when the client no longer holds the sign-in. */
+.link-sign-in {
+  display: grid;
+  gap: 10px;
+}
+
+.link-sign-in p {
+  margin: 0;
+}
+
+.link-sign-in-wrong:empty {
+  display: none;
+}
+
 /* ======================================================= extension card */
 /* An extension's own page (todo 84): the frame fills the card's body. */
 .extension-card > .body {
