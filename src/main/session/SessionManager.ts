@@ -1601,7 +1601,7 @@ export class SessionManager {
     this.statHold = new StatScreenHold(this.queue, this.publisher, sink, () => this.dropTyped());
     this.gearDesk = gearDesk({
       ...{ tracker: this.tracker, errands: this.errands, world: () => this.world },
-      travel: () => this.travel,
+      ...{ travel: () => this.travel, config: () => this.automationConfig },
       trip: () => this.hostTrips.gear
     });
     this.places = placeDesk({

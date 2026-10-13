@@ -1057,8 +1057,28 @@ automation:
     # as the Gear card ranks it, when you can wear it and your inventory has
     # the free weight, and put it on. What comes off is outgrown gear, which
     # `outgrown` below stashes, sells or drops when it is on. Not while gear
-    # sets are on and one names the item it would replace.
-    upgrades: true
+    # sets are on and one names the item it would replace. Off by default:
+    # turn it on once the weights below suit the character.
+    upgrades: false
+    # How many of an item's AC points one point of each ability is worth when
+    # gear is ranked: here, on the Gear card and for the gear trip. AC is the
+    # item's own figure, ten to a point of Armour Class on the stat sheet. The
+    # server counts a point of ProtEvil or ProtGood as 10 AC against an evil or
+    # a good monster. MaxMana and ManaRgn count only for a class that casts,
+    # Stealth only while `movement.sneak` is on. 0 ignores an ability. The
+    # loot line says what a swap gains and gives up.
+    gearWeights:
+      damageResist: 1
+      protectionEvil: 10
+      protectionGood: 10
+      maxDamage: 10
+      accuracy: 10
+      maxHp: 5
+      hpRegen: 2
+      maxMana: 2
+      manaRegen: 2
+      stealth: 10
+      shockShield: 5
 
   # Dropping named junk, unasked -- the other half of MegaMUD's drop list, and
   # what keeps auto-loot from hoarding a pack over the encumbrance the walker

@@ -27,6 +27,10 @@ export function gainWords(gain: GearGain): string {
   if (gain.armourClass !== null && gain.armourClass !== 0) {
     parts.push(t('cards.gear.gainArmour', { ac: Math.round(gain.armourClass * 10) / 10 }));
   }
+  // The weighed worth, where the abilities move it off the armour class (todo 117).
+  if (gain.worth !== null && gain.worth !== (gain.armourClass ?? 0)) {
+    parts.push(t('cards.gear.gainWorth', { worth: Math.round(gain.worth * 10) / 10 }));
+  }
   if (gain.perRound !== null && gain.perRound !== 0) {
     parts.push(t('cards.gear.gainRound', { damage: Math.round(gain.perRound * 10) / 10 }));
   }

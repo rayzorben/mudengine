@@ -21,7 +21,8 @@ export function floorGearReader(
   return (floor, state) => {
     const config = configNow();
     const kit = config.gear.enabled ? config.gear.sets.flatMap((set) => set.wear) : [];
-    const askerOf = () => slotAskerOf(state, world, errands.realmClass(), config.combat.attack);
+    const askerOf = () =>
+      slotAskerOf(state, world, errands.realmClass(), config.combat.attack, config);
     return floorGear(floor, state, world, askerOf, kit);
   };
 }

@@ -16,12 +16,14 @@ import type { ExtensionWorld } from '../extensions/api';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import { bestInSlot } from '../world/bestInSlot';
 import { gearUpgrades, type UpgradeRealm } from '../world/gearUpgrades';
-import { slotAskerOf, type SlotAsker } from '../world/slotGear';
+import { slotAskerOf, type SlotAsker, type WeighingSettings } from '../world/slotGear';
 import { wearing } from '../world/wearing';
 import type { Errands } from './Errands';
 
 export interface GearReadParts {
   tracker: Pick<CharacterTracker, 'current'>;
+  /** The settings the slot rankings weigh by (`WeighingSettings`, todo 117). */
+  config(): WeighingSettings;
   errands: Pick<Errands, 'realmClass' | 'capabilities' | 'travellerNow' | 'priceAt' | 'words'>;
   world(): ExtensionWorld | undefined;
 }
@@ -64,7 +66,7 @@ export function gearReads(parts: GearReadParts): GearReads {
   const { tracker, errands } = parts;
   const askerOf = (state: CharacterState, world: ExtensionWorld): SlotAsker => {
     const fought = errands.realmClass();
-    return slotAskerOf(state, world, fought, fought.verb);
+    return slotAskerOf(state, world, fought, fought.verb, parts.config());
   };
   const gearRealm = (state: CharacterState, world: ExtensionWorld): UpgradeRealm | null =>
     gearRealmOf(state, world, errands);

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { bestOfSlot, placesOf, sheetGain, withinBudget, worth } from '../gearWorth';
 import { REALM_ARMOUR_SCALE } from '../menace';
 
-const armour = (ac: number) => ({ expPerHour: null, armourClass: ac, perRound: null });
+const armour = (ac: number) => ({ expPerHour: null, armourClass: ac, perRound: null, worth: null });
 
 function option(slot: string, item: number, gain: number, copper: number) {
   return { slot, item, gain: armour(gain), copper };
@@ -11,14 +11,32 @@ function option(slot: string, item: number, gain: number, copper: number) {
 
 describe('what an item is worth', () => {
   it('reads armour over what is worn, on the realm scale', () => {
-    expect(sheetGain({ ranking: 'armour', wornFigure: 10 }, { figure: 30 }, null).armourClass).toBe(
-      20 / REALM_ARMOUR_SCALE
+    expect(
+      sheetGain(
+        { ranking: 'armour', wornFigure: 10, wornWorth: null },
+        { figure: 30, worth: null },
+        null
+      ).armourClass
+    ).toBe(20 / REALM_ARMOUR_SCALE);
+  });
+
+  it('prices armour by its weighed worth over what is worn, where the weights move it (todo 117)', () => {
+    // The chalice worn (AC 0, worth 110 for a caster) against the shield (AC 75, worth 97).
+    const gain = sheetGain(
+      { ranking: 'armour', wornFigure: 0, wornWorth: 110 },
+      { figure: 75, worth: 97 },
+      null
     );
+    expect(gain.armourClass).toBe(75 / REALM_ARMOUR_SCALE);
+    expect(gain.worth).toBe(-13 / REALM_ARMOUR_SCALE);
+    expect(worth({ gain, copper: 100 })).toBeNull();
+    // The positive control: the same AC with no worth read is priced by AC.
+    expect(worth({ gain: { ...gain, worth: null }, copper: 100 })?.gain).toBe(7.5);
   });
 
   it('keeps out an item whose survey says it costs exp', () => {
     expect(
-      worth({ gain: { expPerHour: -5, armourClass: 3, perRound: null }, copper: 1 })
+      worth({ gain: { expPerHour: -5, armourClass: 3, perRound: null, worth: null }, copper: 1 })
     ).toBeNull();
   });
 

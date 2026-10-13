@@ -5,11 +5,13 @@ import {
   cashAt,
   costOf,
   declineKey,
+  gainWords,
   roomFor,
   suggestionsOf,
   toggled,
   tripPicks
 } from '../gearPicks';
+import { t } from '../i18n';
 import type { GearChoice, GearChoices, GearSlot } from '@shared/upgrades';
 
 function item(slot: string, id: number, ac: number, charged: number | null): GearChoice {
@@ -19,6 +21,7 @@ function item(slot: string, id: number, ac: number, charged: number | null): Gea
     figure: ac,
     ac,
     dr: null,
+    worth: ac,
     minLevel: null,
     sold:
       charged === null
@@ -28,7 +31,7 @@ function item(slot: string, id: number, ac: number, charged: number | null): Gea
     counters: charged === null ? 0 : 1,
     slot,
     charged,
-    gain: { expPerHour: null, armourClass: ac, perRound: null }
+    gain: { expPerHour: null, armourClass: ac, perRound: null, worth: null }
   };
 }
 
@@ -37,6 +40,7 @@ function slot(name: string, items: GearChoice[], over: Partial<GearSlot> = {}): 
     slot: name,
     worn: null,
     wornFigure: null,
+    wornWorth: null,
     wornDr: null,
     free: 1,
     ranking: 'armour',
@@ -95,5 +99,17 @@ describe('the Gear card picks', () => {
     expect(toggled(CHOICES.slots[0]!, [1], 1)).toEqual([]);
     const fingers = slot('Finger', [], { places: 2, free: 2 });
     expect(toggled(fingers, [3], 4)).toEqual([3, 4]);
+  });
+});
+
+describe('what an item adds, as the card says it (todo 117)', () => {
+  it('names the weighed worth beside the AC where the abilities move it, and not where they do not', () => {
+    const gain = { expPerHour: null, armourClass: 7.5, perRound: null, worth: -1.3 };
+    expect(gainWords(gain)).toBe(
+      [t('cards.gear.gainArmour', { ac: 7.5 }), t('cards.gear.gainWorth', { worth: -1.3 })].join(
+        ' '
+      )
+    );
+    expect(gainWords({ ...gain, worth: 7.5 })).toBe(t('cards.gear.gainArmour', { ac: 7.5 }));
   });
 });

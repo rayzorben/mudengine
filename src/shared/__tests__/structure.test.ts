@@ -109,7 +109,8 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the PvP reaction's options, one line as its third member came (todo 78).
   // Lowered by the pick-locks row, out with its sentence (`PickLockFields`, todo 50).
   // Lowered by the train comments, condensed as the level ceiling came (todo 80).
-  'src/renderer/src/components/CharacterForm.tsx': 1455
+  // Lowered by the off-round fields, shared with the Global page (`OffRoundFields`, todo 117).
+  'src/renderer/src/components/CharacterForm.tsx': 1452
 };
 
 /**

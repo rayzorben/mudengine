@@ -14,6 +14,8 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem } from '../../../shared/entities';
 import type { FloorGear } from '../../../shared/upgrades';
+import { tradeWords } from '../../../shared/gearWeighing';
+import { t } from '../../app/i18n';
 import { REREAD_ROOM } from '../../../shared/commands';
 import { tuning } from '../../app/tuning';
 import { CharacterTracker } from '../../parse/CharacterTracker';
@@ -1049,7 +1051,8 @@ describe('gear better than what is worn (todo 77)', () => {
     slot: 'Feet',
     over: 'sandals',
     replaces: null,
-    hands: null
+    hands: null,
+    trade: null
   };
   /** A loot whose weighing calls leather boots better and anything else nothing. */
   const withGear = (config: LootConfig, verdict: FloorGear = BETTER): AutoLoot => {
@@ -1083,7 +1086,7 @@ describe('gear better than what is worn (todo 77)', () => {
   };
 
   it('takes it with why on the loot line, and puts it on once the pack holds it', () => {
-    const auto = withGear(loot());
+    const auto = withGear(loot({ upgrades: true }));
     auto.onBlock(block('room-items', { items: 'leather boots, rusty key' }), state());
     drain();
     expect(sent).toEqual(['get leather boots']);
@@ -1097,7 +1100,7 @@ describe('gear better than what is worn (todo 77)', () => {
   });
 
   it('waits out a fight before putting it on', () => {
-    const auto = withGear(loot());
+    const auto = withGear(loot({ upgrades: true }));
     auto.onBlock(block('room-items', { items: 'leather boots' }), state());
     auto.onCharacter(carrying(false, { inCombat: true }));
     drain();
@@ -1116,7 +1119,12 @@ describe('gear better than what is worn (todo 77)', () => {
   });
 
   it('says a refusal once and takes nothing', () => {
-    const auto = withGear(loot(), { kind: 'refused', slot: 'Feet', why: 'heavy', worn: null });
+    const auto = withGear(loot({ upgrades: true }), {
+      kind: 'refused',
+      slot: 'Feet',
+      why: 'heavy',
+      worn: null
+    });
     auto.onBlock(block('room-items', { items: 'leather boots' }), state());
     auto.onBlock(block('room-name', { name: 'Dark Cave' }), state());
     auto.onBlock(block('room-items', { items: 'leather boots' }), state());
@@ -1126,7 +1134,7 @@ describe('gear better than what is worn (todo 77)', () => {
   });
 
   it('says Max Item Weight refused it, and puts on nothing typed after', () => {
-    const auto = withGear(loot({ maxEncumbrance: 50 }));
+    const auto = withGear(loot({ upgrades: true, maxEncumbrance: 50 }));
     auto.onBlock(block('room-items', { items: 'leather boots' }), state());
     drain();
     expect(sent).toEqual([]);
@@ -1146,9 +1154,43 @@ describe('gear better than what is worn (todo 77)', () => {
   });
 
   it('reads the floor after a kill while it is on', () => {
-    const auto = withGear(loot());
+    const auto = withGear(loot({ upgrades: true }));
     auto.onBlock(block('user-gain-experience', { exp: '775' }), state());
     drain();
     expect(sent).toEqual(['']);
+  });
+
+  it('says on the loot line what the swap gains and gives up (todo 117)', () => {
+    const trade = {
+      gained: [{ ability: 2, by: 75 }],
+      lost: [{ ability: 24, by: -5 }]
+    };
+    const offer = vi.spyOn(queue, 'offer');
+    const auto = withGear(loot({ upgrades: true }), { ...BETTER, trade });
+    auto.onBlock(block('room-items', { items: 'leather boots' }), state());
+    expect(offer.mock.calls.map(([intent]) => intent.reason)).toContain(
+      t('automation.loot.reasonGearTrade', {
+        item: 'leather boots',
+        worn: 'sandals',
+        slot: 'Feet',
+        gained: tradeWords(trade.gained),
+        lost: tradeWords(trade.lost)
+      })
+    );
+  });
+
+  it('says once that an unread class swaps no armour', () => {
+    const auto = withGear(loot({ upgrades: true }), {
+      kind: 'refused',
+      slot: 'Feet',
+      why: 'classUnread',
+      worn: 'sandals'
+    });
+    auto.onBlock(block('room-items', { items: 'leather boots' }), state());
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toEqual([
+      t('automation.loot.gearClassUnread', { item: 'leather boots', slot: 'Feet', worn: 'sandals' })
+    ]);
   });
 });
