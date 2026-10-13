@@ -95,7 +95,7 @@ function ReadBackConsole({
       handleRef.current = handle;
       // A failure is said in the live console, which outlives the copy.
       const into = { refill: handle.refill, notice: onFailed };
-      fillFrom(api, session, firstPage.current, into, (older) => {
+      fillFrom(api, session, firstPage.current, firstPage.current, into, (older) => {
         if (!mounted.current) return;
         if (older === null) {
           onClose();

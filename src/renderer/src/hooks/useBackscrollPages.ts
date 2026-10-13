@@ -34,11 +34,13 @@ export function fillFrom(
   api: Pick<IpcApi, 'backscrollPage'>,
   session: SessionId,
   lines: number,
+  /** The lines the console keeps once filled; at least `lines`. */
+  keep: number,
   into: Pick<TerminalHandle, 'refill' | 'notice'>,
   done: (older: number | null) => void
 ): void {
   api.backscrollPage(session, lines).then(
-    (got) => into.refill(got.text, lines, () => done(got.older)),
+    (got) => into.refill(got.text, Math.max(lines, keep), () => done(got.older)),
     (error: unknown) => {
       into.notice(t('terminal.loadMoreFailed', { message: errorMessage(error) }));
       done(null);
@@ -96,7 +98,7 @@ export function useBackscrollPages(
       loadingRef.current = true;
       setLoading(true);
       setOffer(0);
-      fillFrom(api, session, lines, to, (got) => {
+      fillFrom(api, session, lines, lines, to, (got) => {
         if (got !== null) {
           older.current = got;
           setHold(lines);
