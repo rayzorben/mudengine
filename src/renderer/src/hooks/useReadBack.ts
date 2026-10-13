@@ -20,7 +20,10 @@ export interface ReadBack {
   liveEdge(edge: ScrollEdge): void;
   /** Main keeps this many lines older than the live console was sent. */
   olderThanLive(count: number): void;
-  /** The live console is being rewritten; the edges it passes are not the reader's. */
+  /**
+   * A rewrite of the live console starts or ends; the edges it passes are not
+   * the reader's. Rewrites can overlap, and each start is ended once.
+   */
   rewriting(on: boolean): void;
   /** A key for the game, typed in either console: it ends the reading back. */
   input(data: string): void;
@@ -45,7 +48,8 @@ export function useReadBack(
   /** A search asked for before the copy was drawn, run once it is. */
   const waiting = useRef<((copy: TerminalHandle) => void) | null>(null);
   const older = useRef(0);
-  const isRewriting = useRef(false);
+  /** Rewrites under way: a second can start before the first is drawn. */
+  const rewrites = useRef(0);
 
   const openOn = useCallback((place: Place | null) => {
     if (isOpen.current) return;
@@ -76,7 +80,7 @@ export function useReadBack(
   const liveEdge = useCallback(
     (edge: ScrollEdge) => {
       const handle = live.current;
-      if (edge !== 'top' || handle === null || isRewriting.current) return;
+      if (edge !== 'top' || handle === null || rewrites.current > 0) return;
       if (older.current > 0 || handle.atCapacity()) openOn(handle.place());
     },
     [live, openOn]
@@ -87,7 +91,7 @@ export function useReadBack(
   }, []);
 
   const rewriting = useCallback((on: boolean) => {
-    isRewriting.current = on;
+    rewrites.current = Math.max(0, rewrites.current + (on ? 1 : -1));
   }, []);
 
   const input = useCallback(

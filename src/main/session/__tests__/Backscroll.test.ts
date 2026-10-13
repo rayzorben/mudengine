@@ -99,6 +99,23 @@ describe('Backscroll', () => {
     expect((await page).text).toBe(Array.from({ length: 8 }, (_, i) => `line ${i + 2}\n`).join(''));
   });
 
+  // A console redrawn from `latest` is reset when the answer arrives; lines it
+  // was sent before then, as while a closed segment is read, must be in it.
+  it('adds to a latest page what was written before it was answered', async () => {
+    const scroll = await opened(100);
+    for (let i = 0; i < 10; i += 1) scroll.write(`line ${i}\n`);
+    const fixed = scroll.page(8);
+    const latest = scroll.latest(8);
+    scroll.write('later\n');
+    const eight = Array.from({ length: 8 }, (_, i) => `line ${i + 2}\n`).join('');
+    // The control: the same read fixed at the call has not got it.
+    expect((await fixed).text).toBe(eight);
+    expect((await latest).text).toBe(`${eight}later\n`);
+    // Nothing is kept for a page already answered.
+    scroll.write('after\n');
+    expect((await scroll.latest(1)).text).toBe('after\n');
+  });
+
   it('counts the unterminated tail as part of the line it is on, not as a line', async () => {
     const scroll = await opened(2);
     scroll.write('a\nb\nc\n');

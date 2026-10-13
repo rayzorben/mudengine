@@ -7,6 +7,7 @@ import { errorMessage } from '@shared/values';
 import { t } from '../lib/i18n';
 import { restores } from '../lib/restore';
 import { onePage } from '../lib/pages';
+import { documentVisibility, missedWhileHidden } from '../lib/hiddenPage';
 import { tuning } from '../lib/tuning';
 import { fillFrom } from '../hooks/useBackscrollPages';
 import { useReadBack } from '../hooks/useReadBack';
@@ -138,6 +139,19 @@ function SessionTerminal({
   const readBack = useReadBack(handleRef, send);
   const { rewriting, close: closeReadBack, handOut, olderThanLive } = readBack;
 
+  /** The live console written again from main's record: as much as an attach sends. */
+  const redrawLive = useCallback(() => {
+    const handle = handleRef.current;
+    if (handle === null || !attached.current) return;
+    rewriting(true);
+    fillFrom(api, session, sent, liveLines, handle, (older) => {
+      if (older !== null) olderThanLive(older);
+      rewriting(false);
+    });
+  }, [api, session, sent, liveLines, rewriting, olderThanLive]);
+  const redrawRef = useRef(redrawLive);
+  redrawRef.current = redrawLive;
+
   /*
    * A line's time is drawn as its text is parsed, so the lines already held
    * have none when the times are turned on; the live lines are written again
@@ -146,15 +160,12 @@ function SessionTerminal({
    */
   const timesDrawn = useRef(timestamps);
   useEffect(() => {
-    const handle = handleRef.current;
-    if (timestamps && !timesDrawn.current && attached.current && handle !== null) {
+    if (timestamps && !timesDrawn.current && attached.current && handleRef.current !== null) {
       closeReadBack();
-      rewriting(true);
-      // As much as an attach sends; anything older is the copy's to show.
-      fillFrom(api, session, sent, handle, () => rewriting(false));
+      redrawLive();
     }
     timesDrawn.current = timestamps;
-  }, [timestamps, api, session, sent, closeReadBack, rewriting]);
+  }, [timestamps, closeReadBack, redrawLive]);
 
   const handleReady = useCallback(
     (handle: TerminalHandle) => {
@@ -186,13 +197,20 @@ function SessionTerminal({
 
   /** This character's output, and nobody else's. */
   useEffect(() => {
-    return api.onData(({ session: from, payload }) => {
+    // Nothing is written while the page is hidden (`lib/hiddenPage.ts`).
+    const hidden = missedWhileHidden(documentVisibility(), () => redrawRef.current());
+    const stop = api.onData(({ session: from, payload }) => {
       if (from !== session) return;
       onChunk(session, payload.text.length);
       const handle = handleRef.current;
-      if (handle && attached.current) handle.write(payload);
-      else pending.current.push((to) => to.write(payload));
+      if (handle && attached.current) {
+        if (!hidden.skip()) handle.write(payload);
+      } else pending.current.push((to) => to.write(payload));
     });
+    return () => {
+      stop();
+      hidden.dispose();
+    };
   }, [api, session, onChunk]);
 
   /**

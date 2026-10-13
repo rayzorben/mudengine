@@ -92,6 +92,8 @@ export class Backscroll {
   private limit: number;
   private timer: NodeJS.Timeout | null = null;
   private readonly reported = new Set<'readError' | 'saveError'>();
+  /** What each `latest` still being read has missed, written since it was asked. */
+  private readonly reading = new Set<string[]>();
   /** `opening` until the record is read; `suspended` once it failed, and memory carries on. */
   private phase: 'opening' | 'open' | 'suspended' | 'closed' = 'opening';
   /** What a page asked for while opening waits on; null once opened. */
@@ -132,8 +134,26 @@ export class Backscroll {
     );
   }
 
+  /**
+   * As `page`, but current when it is answered: what is written while closed
+   * segments are read is added at the end. A console redrawn from it is reset
+   * when the answer arrives, wiping the lines that reached it in the meantime,
+   * which a page fixed at the call does not have.
+   */
+  async latest(lines: number): Promise<BackscrollPage> {
+    const since: string[] = [];
+    this.reading.add(since);
+    try {
+      const got = await this.page(lines);
+      return { ...got, text: got.text + since.join('') };
+    } finally {
+      this.reading.delete(since);
+    }
+  }
+
   write(text: string): void {
     if (text.length === 0 || this.phase === 'closed') return;
+    for (const since of this.reading) since.push(text);
     // A status line's time in what the repaint drops stays with its row (todo 27).
     const kept = text.startsWith(PROMPT_REPAINT, afterStamp(text)) ? this.coalesceRepaint() : '';
     const chunk = measure(kept + text);
