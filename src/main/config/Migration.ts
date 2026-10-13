@@ -284,6 +284,7 @@ function migrateAll(options: MigrationOptions): void {
   statedReequipOnRecover(home, note, options.template);
   statedGearLockHours(home, note, options.template);
   statedLootUpgrades(home, note, options.template);
+  statedGearWeights(home, note, options.template);
   statedResistGear(home, note, options.template);
   statedTheRestSpell(home, note, options.template);
   pinTheRunBetweenRounds(home, note);
@@ -4670,6 +4671,57 @@ function statedLootUpgrades(
       ? t('notices.migration.lootUpgrades.one', params)
       : t('notices.migration.lootUpgrades.many', params)
   );
+}
+
+/**
+ * `automation.loot.gearWeights` (todo 117) into every file that states `loot:`
+ * without it, as the template ships it, after `upgrades` and with the
+ * template's paragraph. In the same edit Auto-Get Better Gear goes off where
+ * the file holds `true`, since todo 77 migrated it on everywhere and it now
+ * ships off (the user, 2026-10-13). The weights being stated is the mark that
+ * this ran, so a player who turns it back on keeps it on.
+ */
+function statedGearWeights(
+  home: Home,
+  note: (message: string) => void,
+  template: string | undefined
+): void {
+  const comment = templateComments(template, 'automation').get('automation.loot.gearWeights');
+  const stated: string[] = [];
+  const turnedOff: string[] = [];
+  for (const file of everySettingsFile(home)) {
+    let off = false;
+    const added = stateInFile(
+      file,
+      ['automation', 'loot'],
+      'gearWeights',
+      (map) => {
+        off = map.get('upgrades') === true;
+        if (off) map.set('upgrades', false);
+        return { ...DEFAULT_CONFIG.automation.loot.gearWeights };
+      },
+      'upgrades',
+      comment
+    );
+    if (added) stated.push(file);
+    if (added && off) turnedOff.push(file);
+  }
+  if (stated.length > 0) {
+    const params = { count: stated.length, fileList: stated.join(', ') };
+    note(
+      stated.length === 1
+        ? t('notices.migration.gearWeights.one', params)
+        : t('notices.migration.gearWeights.many', params)
+    );
+  }
+  if (turnedOff.length > 0) {
+    const params = { count: turnedOff.length, fileList: turnedOff.join(', ') };
+    note(
+      turnedOff.length === 1
+        ? t('notices.migration.lootUpgradesOff.one', params)
+        : t('notices.migration.lootUpgradesOff.many', params)
+    );
+  }
 }
 
 /**

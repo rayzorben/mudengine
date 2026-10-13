@@ -7,6 +7,7 @@
 import type { CharacterState } from './character';
 import type { ItemEntity } from './entities';
 import type { GearGain } from './gearWorth';
+import type { GearTrade } from './gearWeighing';
 
 /** An item the realm puts in a slot, and what it gives there. */
 export interface GearRow {
@@ -17,6 +18,8 @@ export interface GearRow {
   figure: number | null;
   ac: number | null;
   dr: number | null;
+  /** Armour's weighed worth in AC points (`gearWeighing.ts`, todo 117); null for a weapon. */
+  worth: number | null;
   minLevel: number | null;
 }
 
@@ -48,6 +51,8 @@ export interface SlotWorn {
   /** The weakest worn there, which an upgrade replaces; null where nothing is worn. */
   worn: string | null;
   wornFigure: number | null;
+  /** The worn item's weighed worth, armour only; null where nothing is worn or it is a weapon. */
+  wornWorth: number | null;
   /**
    * Places in the slot nothing is worn in (a second ring finger): an offer
    * there fills one and replaces nothing.
@@ -103,7 +108,8 @@ export interface GearChoices {
 }
 
 /** Why a floor item better than what is worn is left lying (`FloorGear`). */
-export type FloorRefusal = 'heavy' | 'ceiling' | 'unread' | 'kit' | 'hands' | 'locked';
+export type FloorRefusal =
+  'heavy' | 'ceiling' | 'unread' | 'classUnread' | 'kit' | 'hands' | 'locked';
 
 /**
  * What an item on the floor is to the character's gear (todo 77): better than
@@ -120,6 +126,8 @@ export type FloorGear =
       /** What comes off first where the slot has several places, all worn (`WearWanted.replaces`). */
       replaces: string | null;
       hands: 1 | 2 | null;
+      /** What wearing it over `over` gains and gives up, by the weights; null with a place free or in the weapon hand. */
+      trade: GearTrade | null;
     }
   | {
       kind: 'refused';
@@ -127,7 +135,8 @@ export type FloorGear =
       why: FloorRefusal;
       /**
        * The worn item a gear set keeps, the hand item a two-hander or an off-hand
-       * item cannot share, or the saved item a death holds the slot for; null otherwise.
+       * item cannot share, the saved item a death holds the slot for, or the
+       * armour an unread class leaves on; null otherwise.
        */
       worn: string | null;
     };

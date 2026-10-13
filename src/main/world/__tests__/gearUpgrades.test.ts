@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { ItemEntity } from '../../../shared/entities';
 import { UNKNOWN_WEARER } from '../../../shared/gear';
 import type { ProwessSheet } from '../../../shared/prowess';
@@ -66,7 +67,10 @@ function wearing(...items: Array<Partial<ItemEntity>>): CharacterState {
   };
 }
 
-const asker = { wearer: UNKNOWN_WEARER, sheet: SHEET, family: 'greatermud' as const, attack: 'a' };
+const asker = {
+  ...{ wearer: UNKNOWN_WEARER, sheet: SHEET, family: 'greatermud' as const, attack: 'a' },
+  weighing: { weights: DEFAULT_CONFIG.automation.loot.gearWeights, casts: false, sneaks: false }
+};
 
 describe('the better gear the realm sells, per slot', () => {
   it('offers what is better than the worn item and sold at a counter, with its price', () => {

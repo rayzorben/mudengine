@@ -224,13 +224,6 @@ export default function CarrySections({
             value={String(loot.maxEncumbrance)}
           />
         </div>
-        <CheckField
-          checked={loot.upgrades}
-          hint={t('settings.movement.lootUpgradesHint')}
-          label={t('settings.movement.lootUpgradesLabel')}
-          name={id('loot-upgrades')}
-          onChange={(value) => setLoot({ upgrades: value })}
-        />
       </fieldset>
 
       <fieldset className="settings-menus">

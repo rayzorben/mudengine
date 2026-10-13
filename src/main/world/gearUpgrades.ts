@@ -12,6 +12,7 @@
  */
 import { placesIn, USED_NOT_WORN, WORN_SLOT } from '../../shared/items';
 import type { CharacterState } from '../../shared/character';
+import type { GearWeighing } from '../../shared/gearWeighing';
 import { wornCopy, type ItemEntity } from '../../shared/entities';
 import type { GearCounter, GearOffer, GearRow, SlotUpgrade, SlotWorn } from '../../shared/upgrades';
 import {
@@ -49,6 +50,7 @@ export function gearRowOf(row: SlotGearRow): GearRow {
     figure: figureOf(row),
     ac: row.ac,
     dr: row.dr,
+    worth: row.damage === null ? row.worth : null,
     minLevel: row.minLevel
   };
 }
@@ -75,7 +77,7 @@ export function scanSlots(
     const gear = slotGear(code, realm, asker);
     const wornHere = worn.get(code) ?? [];
     const free = Math.max(0, placesIn(code) - wornHere.length);
-    const weakest = weakestWorn(gear.rows, wornHere, gear.ranking);
+    const weakest = weakestWorn(gear.rows, wornHere, gear.ranking, asker.weighing);
     const current = weakest?.item.name ?? null;
     const wornRow = gear.rows.find((row) => row.name.toLowerCase() === current?.toLowerCase());
     return {
@@ -84,6 +86,7 @@ export function scanSlots(
         worn: current,
         wornFigure: wornRow === undefined ? null : figureOf(wornRow),
         wornDr: wornRow?.dr ?? null,
+        wornWorth: gear.ranking.by === 'armour' ? (weakest?.figures.worth ?? null) : null,
         ranking: gear.ranking.by,
         free
       },
@@ -106,21 +109,26 @@ export function wornBySlot(state: CharacterState): Map<number, ItemEntity[]> {
 }
 
 /** A carried item as a row of the slot: its own row where the list holds it, else its own figures. */
-export function figuresOf(rows: readonly SlotGearRow[], item: ItemEntity): SlotFigures {
+export function figuresOf(
+  rows: readonly SlotGearRow[],
+  item: ItemEntity,
+  weighing: GearWeighing
+): SlotFigures {
   const name = item.name.toLowerCase();
-  return rows.find((each) => each.name.toLowerCase() === name) ?? figuresOfItem(item);
+  return rows.find((each) => each.name.toLowerCase() === name) ?? figuresOfItem(item, weighing);
 }
 
 /** The weakest of what is worn in a slot, which an upgrade there replaces; null where none is. */
 export function weakestWorn(
   rows: readonly SlotGearRow[],
   worn: readonly ItemEntity[],
-  ranking: SlotRanking
+  ranking: SlotRanking,
+  weighing: GearWeighing
 ): { item: ItemEntity; figures: SlotFigures } | null {
   const figures = outranks(ranking);
   let weakest: { item: ItemEntity; figures: SlotFigures } | null = null;
   for (const item of worn) {
-    const own = figuresOf(rows, item);
+    const own = figuresOf(rows, item, weighing);
     if (weakest === null || figures(own, weakest.figures) > 0) weakest = { item, figures: own };
   }
   return weakest;

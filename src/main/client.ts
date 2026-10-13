@@ -104,7 +104,7 @@ import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
 import { roomBrief } from './world/roomBrief';
-import { slotGear } from './world/slotGear';
+import { slotGear, weighingOf } from './world/slotGear';
 import { asGearPicks } from '../shared/gearTrip';
 import { atSpeed, NO_EXCLUSIONS, NO_FLOOR, NOT_KEPT, type HuntingAdvice } from '../shared/hunting';
 import { playPlaced } from './session/Play';
@@ -2804,7 +2804,8 @@ function registerIpc(): void {
       wearer: wearerIn(session),
       sheet: prowessSheetOf(manager.character, { combat, magery, crits }),
       family,
-      attack: verb
+      attack: verb,
+      weighing: weighingOf({ magery }, configFor(session).automation)
     });
   });
 

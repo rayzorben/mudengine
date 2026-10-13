@@ -498,6 +498,12 @@ export const TRAPS_ABILITY = 1002;
  */
 export const CLASS_STEALTH_ABILITY = 103;
 
+/** `Stealth` (27): points on the sneak roll, `Player.BonusStealth` (`Player.cs:3792`); armour often carries a loss. */
+export const STEALTH_ABILITY = 27;
+
+/** `MaxMana` (69) and `ManaRgn` (145): mana added to the bar, and per cent on the mana tick (`Player.cs:4612`). */
+export const MANA_ABILITY = { max: 69, regen: 145 } as const;
+
 /**
  * `SeeHidden` on a monster row: `Mob.cs:1833` never targets a sneaking player
  * unless the monster carries it, so a sneak past one buys nothing.

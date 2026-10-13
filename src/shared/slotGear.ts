@@ -5,12 +5,13 @@
  * `SlotQuickView`. See `mudengine-ui` › *tables* and `gear.ts` for who may use
  * what.
  */
+import type { GearFigures } from './gearWeighing';
 import type { WeaponClass } from './items';
 import type { Reckoning, SwingMethod } from './prowess';
 
 /** How a slot's items are put in order. */
 export type SlotRanking =
-  /** Armour class, then damage resistance. */
+  /** Worth (armour class and the weighed abilities, `gearWeighing.ts`), then armour class, then damage resistance. */
   | { by: 'armour' }
   /**
    * Damage a round swung the way the character attacks (`combat.attack`), or,
@@ -36,10 +37,17 @@ export interface SlotGearRow {
   speed: number | null;
   /** `roundDamage`, or null where the sheet or the realm family cannot say. */
   perRound: Reckoning<number> | null;
+  /** What the slot's ranking reads off the item's own columns and ability rows (todo 117). */
+  figures: GearFigures;
+  /** `weighedWorth` in AC points; null for a row that is neither armour nor carries a weighed ability. */
+  worth: number | null;
 }
 
-/** What a slot's items are ranked by: armour's class and resistance, a weapon's blow and round. */
-export type SlotFigures = Pick<SlotGearRow, 'ac' | 'dr' | 'perRound' | 'damage'>;
+/** What a slot's items are ranked by: armour's worth, class and resistance, a weapon's blow and round. */
+export type SlotFigures = Pick<
+  SlotGearRow,
+  'ac' | 'dr' | 'perRound' | 'damage' | 'figures' | 'worth'
+>;
 
 export interface SlotGear {
   /** The slot as `WORN_SLOT` spells it. */

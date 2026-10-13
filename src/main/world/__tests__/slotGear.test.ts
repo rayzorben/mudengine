@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { DEFAULT_CONFIG } from '../../../shared/config';
 import { UNKNOWN_WEARER, type Wearer } from '../../../shared/gear';
 import type { ProwessSheet } from '../../../shared/prowess';
 import { armourPerWeight } from '../../../shared/slotGear';
@@ -28,7 +29,11 @@ const SHEET: ProwessSheet = {
 const WARRIOR: Wearer = { ...UNKNOWN_WEARER, classId: 1, level: 20, weaponType: 8, armourType: 9 };
 
 function asker(over: Partial<SlotAsker> = {}): SlotAsker {
-  return { wearer: WARRIOR, sheet: SHEET, family: 'greatermud', attack: 'a', ...over };
+  return {
+    ...{ wearer: WARRIOR, sheet: SHEET, family: 'greatermud', attack: 'a' },
+    weighing: { weights: DEFAULT_CONFIG.automation.loot.gearWeights, casts: false, sneaks: false },
+    ...over
+  };
 }
 
 function realm(items: WorldItem[]): { itemsWornIn(worn: number): WorldItem[] } {
@@ -179,7 +184,8 @@ describe("a weapon's own rows", () => {
       state,
       null,
       { combat: 4, magery: null, crits: 0, family: 'greatermud' },
-      'a'
+      'a',
+      DEFAULT_CONFIG.automation
     );
     expect(made.sheet.effects?.maxDamage).toBe(2);
   });

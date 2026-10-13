@@ -12,7 +12,9 @@ import ConditionWaitFields from './ConditionWaitFields';
 import SneakAndRunFields from './SneakAndRunFields';
 import LightFields from './LightFields';
 import MobRuleList from './MobRuleList';
+import BetterGearFields from './BetterGearFields';
 import GearSetList from './GearSetList';
+import OffRoundFields from './OffRoundFields';
 import GearSwitches from './GearSwitches';
 import PotionList from './PotionList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
@@ -217,6 +219,7 @@ const SECTION_FIELDSETS: Record<Section, readonly NavFieldset[]> = {
   train: [{ id: 'train', label: t('settings.train.legend') }],
   gear: [
     { id: 'gear', label: t('settings.gear.legend') },
+    { id: 'gear-better', label: t('settings.gear.betterLegend') },
     { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
   ],
   quests: [{ id: 'quests', label: t('settings.quests.legend') }],
@@ -316,6 +319,10 @@ export default function GlobalSettings({
     (value: Partial<GlobalDraft['automation']>): void => patch('automation', value),
     [patch]
   );
+  const offRound = (value: Partial<GlobalDraft['automation']['gear']['offRound']>): void =>
+    automation({
+      gear: { ...draft.automation.gear, offRound: { ...draft.automation.gear.offRound, ...value } }
+    });
 
   const themes = useMemo(() => THEME_IDS.map((id) => ({ id, label: THEMES[id].label })), []);
   /*
@@ -1813,43 +1820,25 @@ export default function GlobalSettings({
               />
             </fieldset>
 
-            <fieldset className="settings-menus" data-fieldset="gear-offround">
-              <legend>{t('settings.gear.offRoundLegend')}</legend>
-              <p className="settings-note">{t('settings.gear.offRoundNote')}</p>
-              <div className="settings-inline">
-                <TextField
-                  hint={t('settings.gear.offRoundItemHint')}
-                  label={t('settings.gear.offRoundItem')}
-                  name="global-gear-offround-item"
-                  onChange={(value) =>
-                    automation({
-                      gear: {
-                        ...draft.automation.gear,
-                        offRound: { ...draft.automation.gear.offRound, item: value }
-                      }
-                    })
-                  }
-                  value={draft.automation.gear.offRound.item}
-                />
-                <NumberField
-                  hint={t('settings.gear.offRoundEveryHint')}
-                  label={t('settings.gear.offRoundEvery')}
-                  name="global-gear-offround-every"
-                  onChange={(value) =>
-                    automation({
-                      gear: {
-                        ...draft.automation.gear,
-                        offRound: {
-                          ...draft.automation.gear.offRound,
-                          everyRounds: Number.parseInt(value, 10) || 0
-                        }
-                      }
-                    })
-                  }
-                  value={String(draft.automation.gear.offRound.everyRounds)}
-                />
-              </div>
-            </fieldset>
+            <BetterGearFields
+              namePrefix="global-gear"
+              onUpgrades={(upgrades) =>
+                automation({ loot: { ...draft.automation.loot, upgrades } })
+              }
+              onWeights={(gearWeights) =>
+                automation({ loot: { ...draft.automation.loot, gearWeights } })
+              }
+              upgrades={draft.automation.loot.upgrades}
+              weights={draft.automation.loot.gearWeights}
+            />
+
+            <OffRoundFields
+              every={String(draft.automation.gear.offRound.everyRounds)}
+              item={draft.automation.gear.offRound.item}
+              namePrefix="global-gear"
+              onEvery={(value) => offRound({ everyRounds: Number.parseInt(value, 10) || 0 })}
+              onItem={(item) => offRound({ item })}
+            />
           </SettingsSection>
         )}
 

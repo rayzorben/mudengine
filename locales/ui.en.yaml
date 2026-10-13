@@ -342,8 +342,14 @@ notices:
       many: 'Cast Before Resting was added, empty, to {count} files: {fileList}'
       one: 'Cast Before Resting was added, empty, to {fileList}'
     lootUpgrades:
-      many: 'Auto-Get Better Gear was added, on, to {count} files: {fileList}'
-      one: 'Auto-Get Better Gear was added, on, to {fileList}'
+      many: 'Auto-Get Better Gear was added, off, to {count} files: {fileList}'
+      one: 'Auto-Get Better Gear was added, off, to {fileList}'
+    gearWeights:
+      many: 'Gear weights were added, as shipped, to {count} files: {fileList}'
+      one: 'Gear weights were added, as shipped, to {fileList}'
+    lootUpgradesOff:
+      many: 'Auto-Get Better Gear was turned off in {count} files, as it now ships: {fileList}. Turn it on in the Gear section once the gear weights suit the character.'
+      one: 'Auto-Get Better Gear was turned off in {fileList}, as it now ships. Turn it on in the Gear section once the gear weights suit the character.'
     markStated: '"ui.showLogo" was added to {file}, turned on. The client shows its logo at the top
       of the card rail. Turn it off there, or on the MudEngine settings page.'
     alertRowsBecameEvents: Alert rows in {count} file(s) ({fileList}) now name events instead of
@@ -1818,6 +1824,7 @@ cards:
     dropped: 'Dropped by {monsters}'
     nowhere: Not sold, no known drop
     gainArmour: '+{ac} AC'
+    gainWorth: '{worth} AC with abilities'
     gainRound: '+{damage} damage a round'
     level: 'level {level}'
     buying: Buying
@@ -4423,9 +4430,6 @@ settings:
     lootMaxEncumbranceHint: Never picks up anything heavier, whatever the list says. 0 is no limit;
       items with no weight in the world data are not refused.
     lootMaxEncumbranceLabel: Max Item Weight
-    lootUpgradesLabel: Auto-Get Better Gear
-    lootUpgradesHint: Picks up gear the world data ranks above what you wear in its slot, when you
-      can wear it and your inventory has room for its weight, and puts it on.
     dropWorthlessHint: 'Drops anything the world data values at zero: only an explicit zero, never
       an item with no value listed, and never one marked Not Droppable.'
     dropWorthlessLabel: Auto-Drop Worthless Items
@@ -4654,6 +4658,37 @@ settings:
     resists: Wear Resist Gear
     resistsHint: Wears carried armour that resists the cold, fire, lightning, stone or water this
       room and its monsters cast, and puts back what it replaced once you leave the room.
+    upgradesLabel: Auto-Get Better Gear
+    upgradesHint: Picks up gear the world data ranks above what you wear in its slot, when you
+      can wear it and your inventory has room for its weight, and puts it on.
+    betterLegend: Better Gear
+    betterNote: How many of an item's AC points one point of each ability is worth when
+      Auto-Get Better Gear and the Gear card rank gear. 0 ignores it.
+    weightDamageResistLabel: DR
+    weightDamageResistHint: An item's DR, in the same points as its AC.
+    weightProtectionEvilLabel: ProtEvil
+    weightProtectionEvilHint: Protection from evil. The server counts each point as 10 AC
+      against an evil monster.
+    weightProtectionGoodLabel: ProtGood
+    weightProtectionGoodHint: Protection from good. The server counts each point as 10 AC
+      against a good monster.
+    weightMaxDamageLabel: MaxDamage
+    weightMaxDamageHint: Added to the top of every blow.
+    weightAccuracyLabel: Accuracy
+    weightAccuracyHint: Added to your chance to hit.
+    weightMaxHpLabel: MaxHP
+    weightMaxHpHint: Hit points added to your maximum.
+    weightHpRegenLabel: HPRegen
+    weightHpRegenHint: Per cent added to each hit point tick.
+    weightMaxManaLabel: MaxMana
+    weightMaxManaHint: Mana added to your maximum. Counted only for a class that casts.
+    weightManaRegenLabel: ManaRgn
+    weightManaRegenHint: Per cent added to each mana tick. Counted only for a class that casts.
+    weightStealthLabel: Stealth
+    weightStealthHint: Counted only while Auto-Sneak on Move is on, so a Stealth loss weighs
+      against an item for a character that sneaks.
+    weightShockShieldLabel: ShockShield
+    weightShockShieldHint: Damage done back to a monster that hits you.
     setAdd: Add a set
     setNamePlaceholder: What to call it
     setNameAria: Set {number} name
@@ -6294,6 +6329,8 @@ automation:
     # Gear better than what is worn (todo 77).
     reasonGear: 'loot: {item} is better than your {worn} ({slot})'
     reasonGearEmpty: 'loot: {item} for your empty {slot}'
+    reasonGearGains: 'loot: {item} is better than your {worn} ({slot}): {gained}'
+    reasonGearTrade: 'loot: {item} is better than your {worn} ({slot}): {gained}; gives up {lost}'
     reasonWear: 'loot: wearing {item} ({slot})'
     notWorn: 'Picked up {item} but did not put it on: {commands} could not be queued.'
     gearHeavy: 'Not picking up {item}: it is better than what you wear ({slot}), but your inventory
@@ -6302,6 +6339,8 @@ automation:
       your Max Item Weight.'
     gearUnread: 'Not picking up {item}: it is better than what you wear ({slot}), but your
       inventory weight has not been read yet.'
+    gearClassUnread: 'Not picking up {item} for your {worn} ({slot}): your class is not read yet,
+      so what MaxMana and ManaRgn are worth to you is not known.'
     gearKit: 'Not picking up {item}: it is better than your {worn} ({slot}), but a gear set names
       {worn} and would put it back on.'
     gearHands: 'Not picking up {item}: a two-handed weapon and an off-hand item cannot be worn

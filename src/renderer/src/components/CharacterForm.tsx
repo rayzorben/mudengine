@@ -11,7 +11,9 @@ import AlertList from './AlertList';
 import MobRuleList from './MobRuleList';
 import SettingsSection from './SettingsSection';
 import { CHARACTER_SECTION_LABEL } from './characterNav';
+import BetterGearFields from './BetterGearFields';
 import GearSetList from './GearSetList';
+import OffRoundFields from './OffRoundFields';
 import GearSwitches from './GearSwitches';
 import PotionList, { WardRules } from './PotionList';
 import Icon from './Icon';
@@ -1061,26 +1063,21 @@ export default function CharacterForm({
             />
           </fieldset>
 
-          <fieldset className="settings-menus" data-fieldset="gear-offround">
-            <legend>{t('settings.gear.offRoundLegend')}</legend>
-            <p className="settings-note">{t('settings.gear.offRoundNote')}</p>
-            <div className="settings-inline">
-              <TextField
-                hint={t('settings.gear.offRoundItemHint')}
-                label={t('settings.gear.offRoundItem')}
-                name="gear-offround-item"
-                onChange={(value) => patch({ gearOffRoundItem: value })}
-                value={form.gearOffRoundItem}
-              />
-              <NumberField
-                hint={t('settings.gear.offRoundEveryHint')}
-                label={t('settings.gear.offRoundEvery')}
-                name="gear-offround-every"
-                onChange={(value) => patch({ gearOffRoundEvery: value })}
-                value={form.gearOffRoundEvery}
-              />
-            </div>
-          </fieldset>
+          <BetterGearFields
+            namePrefix="gear"
+            onUpgrades={(upgrades) => patch({ loot: { ...form.loot, upgrades } })}
+            onWeights={(gearWeights) => patch({ loot: { ...form.loot, gearWeights } })}
+            upgrades={form.loot.upgrades}
+            weights={form.loot.gearWeights}
+          />
+
+          <OffRoundFields
+            every={form.gearOffRoundEvery}
+            item={form.gearOffRoundItem}
+            namePrefix="gear"
+            onEvery={(value) => patch({ gearOffRoundEvery: value })}
+            onItem={(value) => patch({ gearOffRoundItem: value })}
+          />
         </SettingsSection>
       )}
 

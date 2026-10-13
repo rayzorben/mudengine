@@ -7363,7 +7363,7 @@ describe('taking better gear off the floor is stated', () => {
 
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-  it('writes the switch on after maxEncumbrance, once, and leaves a stated one alone', () => {
+  it('writes the switch off after maxEncumbrance, once, and leaves a stated one alone', () => {
     fs.writeFileSync(
       home.options,
       'automation:\n  loot:\n    coins: true\n    minPrice: 0\n    maxEncumbrance: 0\n',
@@ -7377,13 +7377,77 @@ describe('taking better gear off the floor is stated', () => {
     const loot = (parse(text).automation as Record<string, Record<string, unknown>>)['loot']!;
     const keys = Object.keys(loot);
     expect(keys[keys.indexOf('maxEncumbrance') + 1]).toBe('upgrades');
-    expect(loot['upgrades']).toBe(true);
+    expect(loot['upgrades']).toBe(false);
     expect(fs.readFileSync(soul, 'utf8')).toContain('upgrades: false');
     expect(
       notesOf(said, 'notices.migration.lootUpgrades.one', 'notices.migration.lootUpgrades.many')
     ).toHaveLength(1);
     migrate();
     expect(fs.readFileSync(home.options, 'utf8')).toBe(text);
+  });
+});
+
+describe('the gear weights are stated and Auto-Get Better Gear goes off once (todo 117)', () => {
+  let home: Home;
+  let dir: string;
+  const said: string[] = [];
+
+  const migrate = (): void =>
+    migrateHome({
+      home,
+      legacyOptions: [],
+      note: (message) => said.push(message),
+      template: path.resolve('resources/config/default.yaml')
+    });
+  const lootOf = (file: string): Record<string, unknown> =>
+    (parse(fs.readFileSync(file, 'utf8')).automation as Record<string, Record<string, unknown>>)[
+      'loot'
+    ]!;
+
+  beforeEach(() => {
+    said.length = 0;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mudengine-gear-weights-'));
+    home = homeAt(dir);
+    fs.mkdirSync(path.dirname(home.options), { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  it('adds the weights after upgrades with the paragraph, turns a true off, and keeps a later true', () => {
+    fs.writeFileSync(home.options, 'automation:\n  loot:\n    upgrades: false\n', 'utf8');
+    const festus = home.profile('festus').file;
+    fs.mkdirSync(path.dirname(festus), { recursive: true });
+    fs.writeFileSync(festus, 'name: Festus\nautomation:\n  loot:\n    upgrades: true\n', 'utf8');
+    migrate();
+    const loot = lootOf(festus);
+    const keys = Object.keys(loot);
+    expect(keys[keys.indexOf('upgrades') + 1]).toBe('gearWeights');
+    expect(loot['upgrades']).toBe(false);
+    expect(loot['gearWeights']).toEqual(DEFAULT_CONFIG.automation.loot.gearWeights);
+    expect(fs.readFileSync(festus, 'utf8')).toContain('# How many of an item');
+    expect(lootOf(home.options)['gearWeights']).toEqual(DEFAULT_CONFIG.automation.loot.gearWeights);
+    expect(
+      notesOf(said, 'notices.migration.gearWeights.one', 'notices.migration.gearWeights.many')
+    ).toHaveLength(1);
+    expect(
+      notesOf(
+        said,
+        'notices.migration.lootUpgradesOff.one',
+        'notices.migration.lootUpgradesOff.many'
+      )
+    ).toHaveLength(1);
+    // The player turns it back on: a second run leaves the file as it is.
+    fs.writeFileSync(
+      festus,
+      fs.readFileSync(festus, 'utf8').replace('upgrades: false', 'upgrades: true'),
+      'utf8'
+    );
+    const text = fs.readFileSync(festus, 'utf8');
+    said.length = 0;
+    migrate();
+    expect(fs.readFileSync(festus, 'utf8')).toBe(text);
+    expect(lootOf(festus)['upgrades']).toBe(true);
+    expect(said).toEqual([]);
   });
 });
 

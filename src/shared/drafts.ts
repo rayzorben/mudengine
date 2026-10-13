@@ -53,6 +53,7 @@ import {
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
 import { asCoinNames, type CoinNames } from './coins';
+import { asGearWeights, type GearWeights } from './gearWeighing';
 import { asLowLives } from './lives';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import { DEFAULT_LOGGING, LOG_DAYS_MAX } from './logging';
@@ -542,6 +543,7 @@ export interface ProfileDraft {
     minPrice: number;
     maxEncumbrance: number;
     upgrades: boolean;
+    gearWeights: GearWeights;
     stopAtGrade: EncumbranceGate;
     convertWith: string;
     convertAt: EncumbranceGate;
@@ -1118,7 +1120,11 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       items: words(loot['items'], 32),
       minPrice: Math.max(0, Math.round(Number(loot['minPrice']) || 0)),
       maxEncumbrance: Math.max(0, Math.round(Number(loot['maxEncumbrance']) || 0)),
-      upgrades: loot['upgrades'] !== false
+      upgrades:
+        typeof loot['upgrades'] === 'boolean'
+          ? loot['upgrades']
+          : DEFAULT_CONFIG.automation.loot.upgrades,
+      gearWeights: asGearWeights(loot['gearWeights'], DEFAULT_CONFIG.automation.loot.gearWeights)
     },
     drop: {
       enabled: drop['enabled'] === true,

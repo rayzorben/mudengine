@@ -77,6 +77,7 @@ const SECTION_FIELDSETS: Record<CharacterSection, readonly NavFieldset[]> = {
   ],
   gear: [
     { id: 'gear', label: t('settings.gear.legend') },
+    { id: 'gear-better', label: t('settings.gear.betterLegend') },
     { id: 'gear-offround', label: t('settings.gear.offRoundLegend') }
   ],
   train: [{ id: 'train', label: t('settings.train.legend') }],

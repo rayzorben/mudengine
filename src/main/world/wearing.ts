@@ -45,8 +45,10 @@ export function wearing(
     if (wornCopy(wornHere, on) !== undefined) continue;
     const free = wornHere.length < placesIn(code);
     const gear = slotGear(code, realm, asker);
-    const off = free ? null : (weakestWorn(gear.rows, wornHere, gear.ranking) ?? null);
-    const onFigures = figuresOf(gear.rows, on);
+    const off = free
+      ? null
+      : (weakestWorn(gear.rows, wornHere, gear.ranking, asker.weighing) ?? null);
+    const onFigures = figuresOf(gear.rows, on, asker.weighing);
     // A realm row with no armour block has none; only an item the realm does not hold is unknown.
     const offAc =
       off === null ? 0 : off.item.id === undefined ? off.figures.ac : (off.figures.ac ?? 0);

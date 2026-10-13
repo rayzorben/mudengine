@@ -65,9 +65,10 @@ export function outgrownItems(
     if (wornHere.length < placesIn(code)) continue;
     const gear = slots.get(code) ?? slotGear(code, realm, asker);
     slots.set(code, gear);
-    const weakest = weakestWorn(gear.rows, wornHere, gear.ranking);
+    const weakest = weakestWorn(gear.rows, wornHere, gear.ranking, asker.weighing);
     if (weakest === null) continue;
-    if (versusWorn(gear.ranking, figuresOf(gear.rows, item), weakest.figures) < 0) continue;
+    if (versusWorn(gear.ranking, figuresOf(gear.rows, item, asker.weighing), weakest.figures) < 0)
+      continue;
     found.push({
       item,
       slot: gear.slot,

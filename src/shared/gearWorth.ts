@@ -17,6 +17,11 @@ export interface GearGain {
   armourClass: number | null;
   /** Damage a round added, for a weapon. */
   perRound: number | null;
+  /**
+   * Armour's weighed worth added (`gearWeighing.ts`, todo 117), on the sheet's
+   * scale like `armourClass`: what the loot ranks by, so the card prices by it too.
+   */
+  worth: number | null;
 }
 
 /** The places of a slot's kind (two ring fingers), as the realm's `Worn` code holds them. */
@@ -31,22 +36,26 @@ export function placesOf(slot: string): number {
  * punch or a kick swings no weapon, so an empty hand is not nothing).
  */
 export function sheetGain(
-  slot: Pick<SlotWorn, 'ranking' | 'wornFigure'>,
-  item: Pick<GearRow, 'figure'>,
+  slot: Pick<SlotWorn, 'ranking' | 'wornFigure' | 'wornWorth'>,
+  item: Pick<GearRow, 'figure' | 'worth'>,
   perRound: number | null
 ): GearGain {
-  if (slot.ranking === 'weapon') return { expPerHour: null, armourClass: null, perRound };
+  if (slot.ranking === 'weapon') {
+    return { expPerHour: null, armourClass: null, perRound, worth: null };
+  }
   const more = item.figure === null ? null : item.figure - (slot.wornFigure ?? 0);
+  const worthMore = item.worth === null ? null : item.worth - (slot.wornWorth ?? 0);
   return {
     expPerHour: null,
     armourClass: more === null ? null : more / REALM_ARMOUR_SCALE,
-    perRound: null
+    perRound: null,
+    worth: worthMore === null ? null : worthMore / REALM_ARMOUR_SCALE
   };
 }
 
-/** The sheet's gain as one figure: armour added plus damage a round added. */
+/** The sheet's gain as one figure: armour's worth (else its class) added plus damage a round added. */
 export function sheetFigure(gain: GearGain | null): number {
-  return (gain?.armourClass ?? 0) + (gain?.perRound ?? 0);
+  return (gain?.worth ?? gain?.armourClass ?? 0) + (gain?.perRound ?? 0);
 }
 
 /** An item as the worth reads it: what it gives and what it costs, in copper. */

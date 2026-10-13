@@ -9,6 +9,7 @@ import type { CharacterState } from '../../shared/character';
 import { entityNumber, wornCopy, type ItemEntity } from '../../shared/entities';
 import { inOffHand } from '../../shared/gear';
 import { lockedSlots } from '../../shared/gearLocks';
+import { gearTrade } from '../../shared/gearWeighing';
 import { OFF_HAND_WORN, placesIn, sameItem, WEAPON_WORN, wornOfWord } from '../../shared/items';
 import type { FloorGear, FloorRefusal } from '../../shared/upgrades';
 import { nameAnswersTo, type WorldItem } from '../../shared/world';
@@ -48,12 +49,13 @@ export function floorGear(
   if (carriedUnworn(state).has(row.name.toLowerCase())) return null;
   if (wornCopy(wornHere, { name: row.name, id: row.id }) !== undefined) return null;
   const wornRows = wornHere.flatMap((item) => rowOf(item, realm) ?? []);
-  const gear = slotGear(code, { itemsWornIn: () => [row, ...wornRows] }, askerOf());
+  const asker = askerOf();
+  const gear = slotGear(code, { itemsWornIn: () => [row, ...wornRows] }, asker);
   // Refused by the equip check (class, race, level, alignment, armour kind).
   const candidate = gear.rows.find((each) => each.id === row.id);
   if (candidate === undefined) return null;
   const free = placesIn(code) - wornHere.length;
-  const weakest = free > 0 ? null : weakestWorn(gear.rows, wornHere, gear.ranking);
+  const weakest = free > 0 ? null : weakestWorn(gear.rows, wornHere, gear.ranking, asker.weighing);
   if (free <= 0 && (weakest === null || versusWorn(gear.ranking, candidate, weakest.figures) >= 0))
     return null;
   const over = weakest?.item.name ?? null;
@@ -64,6 +66,10 @@ export function floorGear(
     worn
   });
   if (over !== null && kit.some((name) => nameAnswersTo(over, name))) return refused('kit', over);
+  // Unread, mana counts nothing, so a caster's mana item could go for AC (todo 117).
+  if (over !== null && gear.ranking.by === 'armour' && asker.weighing.casts === null) {
+    return refused('classUnread', over);
+  }
   // A slot held since a death keeps the gear died in (todo 82); only that item may fill it.
   const held = lockedSlots(state.loadout).find(
     (worn) => wornOfWord(worn.slot) === code && !sameItem(worn.item, row.name)
@@ -93,6 +99,12 @@ export function floorGear(
     slot: gear.slot,
     over,
     replaces: placesIn(code) > 1 ? over : null,
-    hands
+    hands,
+    // What the loot line says an armour swap gains and gives up (todo 117); a free place
+    // gives up nothing, and a weapon is ranked by its round, which the line already names.
+    trade:
+      weakest === null || gear.ranking.by !== 'armour'
+        ? null
+        : gearTrade(candidate.figures, weakest.figures.figures, asker.weighing)
   };
 }

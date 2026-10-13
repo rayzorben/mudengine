@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
+import { DEFAULT_CONFIG } from '../../../shared/config';
 import { buildRealm } from '../../world/buildRealm';
 import { openRealm } from '../../world/RealmSource';
 import { WorldGraph } from '../../world/WorldGraph';
@@ -100,7 +101,8 @@ describe.skipIf(!available)('the Gear card on gmud.mdb', () => {
         }
       },
       errands: errands as never,
-      world: () => w
+      world: () => w,
+      config: () => DEFAULT_CONFIG.automation
     });
 
     const started = performance.now();

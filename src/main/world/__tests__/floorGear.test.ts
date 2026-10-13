@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { ItemEntity } from '../../../shared/entities';
 import { UNKNOWN_WEARER } from '../../../shared/gear';
 import type { ProwessSheet } from '../../../shared/prowess';
@@ -46,7 +47,8 @@ const askerOf = () => ({
   wearer: UNKNOWN_WEARER,
   sheet: SHEET,
   family: 'greatermud' as const,
-  attack: 'a'
+  attack: 'a',
+  weighing: { weights: DEFAULT_CONFIG.automation.loot.gearWeights, casts: false, sneaks: false }
 });
 
 const row = (id: number, over: Partial<ItemEntity> = {}): ItemEntity => {
@@ -89,7 +91,8 @@ describe('gear on the floor against what is worn', () => {
       slot: 'Feet',
       over: 'sandals',
       replaces: null,
-      hands: null
+      hands: null,
+      trade: { gained: [{ ability: 2, by: 10 }], lost: [] }
     });
   });
 
@@ -170,5 +173,78 @@ describe('gear on the floor against what is worn', () => {
     const state = wearing([row(1, { equipped: true, slot: 'Feet' })]);
     const shared = row(3, { id: undefined, ids: [3, 6] });
     expect(floorGear(shared, state, realm, askerOf, [])).toBeNull();
+  });
+});
+
+describe('the golden chalice against the crimson spiked shield (todo 117)', () => {
+  const CHALICE = {
+    id: 499,
+    name: 'golden chalice',
+    worn: 12,
+    kind: 'armour',
+    abilities: [
+      [4, 2],
+      [24, 5],
+      [69, 10],
+      [145, 10]
+    ],
+    encumbrance: 50
+  } as WorldItem;
+  const SHIELD = {
+    id: 1067,
+    name: 'crimson spiked shield',
+    worn: 12,
+    kind: 'armour',
+    armour: { ac: 75, dr: 7 },
+    abilities: [
+      [27, -5],
+      [72, 3]
+    ],
+    encumbrance: 350
+  } as WorldItem;
+  const both: FloorRealm = { item: (id) => [CHALICE, SHIELD].find((item) => item.id === id) };
+  const entity = (item: WorldItem, equipped: boolean): ItemEntity =>
+    ({
+      source: 'world',
+      slot: null,
+      charges: null,
+      equipped,
+      name: item.name,
+      id: item.id,
+      wornSlotCode: 12,
+      ...(item.armour === undefined ? {} : { armour: item.armour }),
+      abilities: item.abilities
+    }) as unknown as ItemEntity;
+  const asking = (casts: boolean | null) => () => ({
+    ...askerOf(),
+    weighing: { ...askerOf().weighing, casts }
+  });
+
+  it('leaves the shield lying for a caster wearing the chalice', () => {
+    const state = wearing([entity(CHALICE, true)]);
+    expect(floorGear(entity(SHIELD, false), state, both, asking(true), [])).toBeNull();
+  });
+
+  it('takes it for a class with no mana, and says what the swap gives up', () => {
+    const state = wearing([entity(CHALICE, true)]);
+    const gear = floorGear(entity(SHIELD, false), state, both, asking(false), []);
+    expect(gear?.kind).toBe('better');
+    if (gear?.kind !== 'better') return;
+    expect(gear.trade?.lost.map((part) => part.ability)).toEqual([24, 4]);
+    expect(gear.trade?.gained.map((part) => part.ability)).toEqual([2, 7, 72]);
+  });
+
+  it('swaps no armour while the class is unread, and still fills an empty place', () => {
+    const state = wearing([entity(CHALICE, true)]);
+    expect(floorGear(entity(SHIELD, false), state, both, asking(null), [])).toEqual({
+      kind: 'refused',
+      slot: 'Off-Hand',
+      why: 'classUnread',
+      worn: 'golden chalice'
+    });
+    expect(floorGear(entity(SHIELD, false), wearing([]), both, asking(null), [])).toMatchObject({
+      kind: 'better',
+      over: null
+    });
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { DEFAULT_CONFIG } from '../../../shared/config';
 import type { ItemEntity } from '../../../shared/entities';
 import { UNKNOWN_WEARER } from '../../../shared/gear';
 import type { ProwessSheet } from '../../../shared/prowess';
@@ -39,7 +40,10 @@ const realm: OutgrownRealm = {
   rarity: (id) => (id === 5 ? 'rare' : 'common')
 };
 
-const asker = { wearer: UNKNOWN_WEARER, sheet: SHEET, family: 'greatermud' as const, attack: 'a' };
+const asker = {
+  ...{ wearer: UNKNOWN_WEARER, sheet: SHEET, family: 'greatermud' as const, attack: 'a' },
+  weighing: { weights: DEFAULT_CONFIG.automation.loot.gearWeights, casts: false, sneaks: false }
+};
 
 function carrying(...items: Array<Partial<ItemEntity>>): CharacterState {
   const base = structuredClone(EMPTY_CHARACTER);

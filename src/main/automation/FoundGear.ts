@@ -11,11 +11,28 @@ import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import type { ItemEntity } from '../../shared/entities';
 import { wearPlan } from '../../shared/gear';
+import { tradeWords } from '../../shared/gearWeighing';
 import { sameItem } from '../../shared/items';
 import type { FloorGear, FloorGearReader } from '../../shared/upgrades';
 import { offerEach, type CommandQueue } from './CommandQueue';
 
 type Better = Extract<FloorGear, { kind: 'better' }>;
+
+/** The loot line's reason: what it fills, or what it is better than and, by the weights, what the swap gains and gives up. */
+function reasonFor(item: string, gear: Better): string {
+  const { slot, over, trade } = gear;
+  if (over === null) return t('automation.loot.reasonGearEmpty', { item, slot });
+  if (trade === null || trade.gained.length === 0) {
+    return t('automation.loot.reasonGear', { item, worn: over, slot });
+  }
+  const gained = tradeWords(trade.gained);
+  return trade.lost.length === 0
+    ? t('automation.loot.reasonGearGains', { item, worn: over, slot, gained })
+    : t('automation.loot.reasonGearTrade', {
+        ...{ item, worn: over, slot, gained },
+        lost: tradeWords(trade.lost)
+      });
+}
 
 export class FoundGear {
   /** Taken for wearing, by name: what the pack confirming it puts on. */
@@ -58,9 +75,7 @@ export class FoundGear {
           return null;
         }
         this.pending.set(floor.name.toLowerCase(), gear);
-        return gear.over === null
-          ? t('automation.loot.reasonGearEmpty', { item: listed, slot: gear.slot })
-          : t('automation.loot.reasonGear', { item: listed, worn: gear.over, slot: gear.slot });
+        return reasonFor(listed, gear);
       case 'refused':
         this.refused(floor.name, gear);
         return null;
@@ -124,6 +139,9 @@ export class FoundGear {
         return;
       case 'unread':
         this.notice(t('automation.loot.gearUnread', { item: name, slot: gear.slot }));
+        return;
+      case 'classUnread':
+        this.notice(t('automation.loot.gearClassUnread', { item: name, slot: gear.slot, worn }));
         return;
       case 'kit':
         this.notice(t('automation.loot.gearKit', { item: name, slot: gear.slot, worn }));

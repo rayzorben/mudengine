@@ -122,7 +122,7 @@ export function outgrownNow(
   if (world === undefined) return [];
   const kept = keptNow(state, config, world);
   const fought = errands.realmClass();
-  const asker = slotAskerOf(state, world, fought, fought.verb);
+  const asker = slotAskerOf(state, world, fought, fought.verb, config);
   const realm = {
     itemsWornIn: (worn: number) => world.itemsWornIn(worn),
     item: (id: number) => world.item(id),

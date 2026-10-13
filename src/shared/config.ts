@@ -23,6 +23,7 @@ import { asEvents, type ScheduledEvent } from './events';
 import { GEAR_WHENS, type GearSet, type GearWhen } from './gear';
 import { asLoops, mergeNamed, type Loop } from './loops';
 import { asCoinNames, type CoinNames } from './coins';
+import { asGearWeights, DEFAULT_GEAR_WEIGHTS, type GearWeights } from './gearWeighing';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import { DEFAULT_LOGGING, normalizeLogging, type LoggingConfig } from './logging';
 /*
@@ -1165,16 +1166,10 @@ export interface LootConfig {
   /** Item names to pick up whenever a look lists them. Prefixes, as `get` reads them. */
   items: string[];
   /**
-   * Also pick up anything the realm prices at or above this, in copper.
-   * 0 never does. The named list above is an *instruction* and always wins;
-   * this is a standing question ("is this worth bending down for") answered
-   * from the realm's price on the floor item's entity.
-   *
-   * **An item the realm cannot price is never taken by this**, and the naming
-   * is deliberate: `minPrice` is a claim about value, and an unknown value is
-   * not a high one. Somebody on a derivative realm who wants everything says
-   * so with a name on the list, which is the instruction that does not depend
-   * on data the realm does not have.
+   * Also pick up anything the realm prices at or above this, in copper; 0
+   * never does. The named list always wins. An item the realm cannot price is
+   * never taken by this: an unknown value is not a high one, and a player who
+   * wants everything names it on the list.
    */
   minPrice: number;
   /**
@@ -1190,6 +1185,8 @@ export interface LootConfig {
   maxEncumbrance: number;
   /** Also take and put on gear ranked above what is worn (`world/floorGear.ts`, todo 77). */
   upgrades: boolean;
+  /** AC points a point of each ability is worth wherever gear is ranked (`gearWeighing.ts`, todo 117). */
+  gearWeights: GearWeights;
 }
 
 /**
@@ -2803,7 +2800,8 @@ export const DEFAULT_CONFIG: AppConfig = {
       items: [],
       minPrice: 0,
       maxEncumbrance: 0,
-      upgrades: true,
+      upgrades: false,
+      gearWeights: DEFAULT_GEAR_WEIGHTS,
       stopAtGrade: 'never',
       convertWith: '',
       convertAt: 'never'
@@ -3987,7 +3985,8 @@ function normalizeLoot(value: unknown): LootConfig {
     // make the field mean "never", and floored at 0, which is what off means.
     minPrice: int(raw['minPrice'], d.minPrice, 0, 100_000_000),
     maxEncumbrance: int(raw['maxEncumbrance'], d.maxEncumbrance, 0, 1_000_000),
-    upgrades: bool(raw['upgrades'], d.upgrades)
+    upgrades: bool(raw['upgrades'], d.upgrades),
+    gearWeights: asGearWeights(raw['gearWeights'], d.gearWeights)
   };
 }
 
