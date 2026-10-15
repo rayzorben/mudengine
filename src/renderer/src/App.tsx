@@ -48,6 +48,10 @@ import { useProfileReaders } from './hooks/useProfileReaders';
 import { useRoutePanel } from './hooks/useRoutePanel';
 import { useSearchBar } from './hooks/useSearchBar';
 import { useSettingsScreen } from './hooks/useSettingsScreen';
+import { useSettingsApi } from './hooks/useSettingsApi';
+import { useGameView } from './hooks/useGameView';
+import GameView from './components/game/GameView';
+import { cardElement } from './components/CardSwitch';
 import { useRouteOpeners } from './hooks/useRouteOpeners';
 import { useRecentMenu } from './hooks/useRecentMenu';
 import { useShownRealm } from './hooks/useShownRealm';
@@ -91,7 +95,6 @@ import { useLowLivesAsk } from './hooks/useLowLivesAsk';
 import { useConsoleNotices } from './hooks/useConsoleNotices';
 import TripDialogs from './components/TripDialogs';
 import { useTripDialogs } from './hooks/useTripDialogs';
-import type { GlobalDraft, ProfileDraft, ServerDraft } from '@shared/drafts';
 import { type ProfileSummary, type SessionId, type SessionSummary } from '@shared/ipc';
 import type { ConnectionState, TerminalSize } from '@shared/types';
 import { setTuning } from './lib/tuning';
@@ -482,12 +485,14 @@ export default function App() {
    * three (2026-09-07). A dialog hands the caret back on its own exit, which is
    * the rule that makes standing down here correct rather than lenient.
    */
+  // The game view, or the classic one (todo 140); its command layer is where focus settles.
+  const game = useGameView(config.gameView, activeTerminal, size.cols);
   const returnFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
-      if (document.activeElement?.closest('[role="dialog"]')) return;
+      if (document.activeElement?.closest('[role="dialog"]') || game.takeFocus()) return;
       activeTerminal()?.focus();
     });
-  }, [activeTerminal]);
+  }, [activeTerminal, game.takeFocus]);
   const { asked: livesAsked, answer: answerLowLives } = useLowLivesAsk(api, returnFocus);
 
   /*
@@ -808,44 +813,7 @@ export default function App() {
     returnFocus();
   }, [returnFocus]);
 
-  /**
-   * Stable callbacks for the settings screen.
-   *
-   * Inline arrows would be a new function on every render, and a child that
-   * keys an effect on one then runs it on every render — which is how a refused
-   * save came to flash and vanish before anybody could read it.
-   */
-  const settingsApi = useMemo(
-    () => ({
-      load: () => api.settingsSnapshot(),
-      saveProfile: (id: string, draft: ProfileDraft) => api.saveProfile(id, draft),
-      deleteProfile: (id: string) => api.deleteProfile(id),
-      saveServer: (previous: string | null, draft: ServerDraft) => api.saveServer(previous, draft),
-      deleteServer: (name: string) => api.deleteServer(name),
-      saveGlobal: (draft: GlobalDraft) => api.saveGlobal(draft),
-      revealConfig: () => reveal(() => api.revealConfig()),
-      revealProfiles: () => reveal(() => api.revealProfiles()),
-      chooseRealm: () => api.chooseRealm(),
-      // The shelf of shipped loops, for the Movement tab, asked when that picker opens:
-      // four hundred loops, and most visits to that screen are about a password.
-      loadLoops: () => api.loopCatalogue(),
-      // And the trainers that will take a character, for the Train tab, by level and class.
-      loadTrainers: (session: SessionId) => api.trainers(session),
-      loadBanks: (session: SessionId) => api.banks(session),
-      // And what the realm says would serve each condition, for the potion
-      // rule list's suggestions.
-      loadServing: (session: SessionId) => api.itemsServing(session),
-      // And the realm's own rules of the same kind, for the rows under it.
-      loadWards: (session: SessionId) => api.wards(session),
-      // And the monsters the realm names, for the priority list's picker.
-      loadMobNames: (session: SessionId) => api.mobNames(session),
-      // And what the inventory holds that can bless, for the Spells page.
-      loadInvokeChoices: (session: SessionId) => api.invokeChoices(session),
-      loadBlessingChoice: (session: SessionId) => api.blessingChoice(session),
-      loadChosenWords: (session: SessionId) => api.chosenWords(session)
-    }),
-    [api, reveal]
-  );
+  const settingsApi = useSettingsApi(api, reveal);
 
   /** What a typed query reaches past the commands (`lib/paletteFind.ts`). */
   const findFromPalette = useCallback(
@@ -970,6 +938,8 @@ export default function App() {
     density,
     densityPreference: preference,
     cycleDensity: cycle,
+    gameView: game.on,
+    toggleGameView: game.toggle,
     theme: {
       theme,
       preference: themePreference,
@@ -1161,8 +1131,17 @@ export default function App() {
     pinnedChrome
   });
 
+  // The Talk card in the game view's panel, with the panel's own close (todo 140).
+  const renderTalk = useCallback(
+    (onClose: () => void) =>
+      cardElement(
+        'conversation',
+        contextFor(session, view, { cardId: 'conversation', onClose, returnFocus })
+      ),
+    [contextFor, session, view, returnFocus]
+  );
   return (
-    <div className="app">
+    <div className="app" {...game.appProps}>
       <div
         className="workspace"
         data-dragging={drag.state?.live ? 'true' : undefined}
@@ -1290,7 +1269,7 @@ export default function App() {
                   // A character with no pane parks in the focused one, hidden:
                   // laid out, so it stays measurable, and out of the tab order.
                   pane={at >= 0 ? at : paneAt}
-                  palette={consolePalette}
+                  palette={game.paint(consolePalette)}
                   // The run banner over this pane: the push main addresses at
                   // this character, whichever pane is being read.
                   run={views[entry.id]?.questRun ?? IDLE_QUEST_RUN}
@@ -1419,6 +1398,21 @@ export default function App() {
           state={drag.state}
         />
       </div>
+
+      {game.on && (
+        <GameView
+          api={api}
+          game={game}
+          keys={config.keys}
+          openRouteOn={openRouteOn}
+          profile={profiles.find((one) => one.id === session) ?? null}
+          renderTalk={renderTalk}
+          say={noticeTo}
+          session={session}
+          stepBack={stepBackIn}
+          view={view}
+        />
+      )}
 
       <SlideOuts
         api={api}

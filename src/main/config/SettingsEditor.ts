@@ -993,6 +993,7 @@ export class SettingsEditor {
         },
         rewrites: structuredClone(config.ui.rewrites)
       },
+      gameView: { ...config.gameView },
       logging: {
         enabled: config.logging.enabled,
         directory: config.logging.directory,
@@ -1118,6 +1119,8 @@ export class SettingsEditor {
         set(['ui', 'alerts', 'rules'], structuredClone(draft.ui.alerts.rules));
         set(['ui', 'rewrites'], structuredClone(draft.ui.rewrites));
 
+        set(['gameView', 'dock'], draft.gameView.dock);
+        set(['gameView', 'opacity'], draft.gameView.opacity);
         set(['logging', 'enabled'], draft.logging.enabled);
         set(['logging', 'directory'], draft.logging.directory);
         set(['logging', 'capture'], draft.logging.capture);

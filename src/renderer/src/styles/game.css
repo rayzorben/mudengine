@@ -1,0 +1,1167 @@
+/*
+ * The game view (todo 140): the world fills the window, the HUD sits at its
+ * edges, and the console is a live thumbnail in the corner that opens docked.
+ * The prototype's layout, agreed with the user on 2026-10-14; its colours are
+ * the `--game-*` tokens.
+ *
+ * The consoles never move (`useGameView`): in the game view the classic
+ * workspace's other children are not drawn, and `.terminal-stack` is restyled
+ * in place from the properties `.app` carries. The see-through console with
+ * rounded corners is a dated exemption from the plain-console rule (user,
+ * 2026-10-14), for this view only.
+ */
+
+/* ---------------------------------------------------------------- the swap */
+
+.app[data-view='game'] .workspace > :not(.terminal-stack),
+.app[data-view='game'] > .status-rail,
+.app[data-view='game'] .terminal-stack > .dock {
+  display: none;
+}
+
+.app[data-view='game'] .terminal-stack {
+  position: fixed;
+  left: var(--console-left);
+  top: var(--console-top);
+  width: var(--console-width);
+  height: var(--console-height);
+  z-index: 14;
+  overflow: hidden;
+  border: 1px solid var(--game-line-strong);
+  border-radius: 12px;
+  background: color-mix(
+    in srgb,
+    var(--game-shade) calc(max(var(--console-opacity), 0.82) * 100%),
+    transparent
+  );
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--game-shade) 80%, transparent);
+  cursor: pointer;
+  transition:
+    left var(--dur-game-dock) var(--ease-out),
+    top var(--dur-game-dock) var(--ease-out),
+    width var(--dur-game-dock) var(--ease-out),
+    height var(--dur-game-dock) var(--ease-out);
+}
+
+.app[data-view='game'][data-console='open'] .terminal-stack {
+  background: color-mix(
+    in srgb,
+    var(--game-shade) calc(var(--console-opacity) * 100%),
+    transparent
+  );
+  box-shadow: 0 30px 90px color-mix(in srgb, var(--game-shade) 50%, transparent);
+  cursor: text;
+}
+
+/* The exemption itself: the console's own ground gives way to the stack's, which is see-through. */
+.app[data-view='game'] .terminal-cell {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* The console keeps its docked size in both states, so NAWS never sees the thumbnail. */
+.app[data-view='game'] .terminal-layers {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--console-fit-width);
+  height: var(--console-fit-height);
+  flex: none;
+  transform: scale(var(--console-scale));
+  transform-origin: 0 100%;
+  transition: transform var(--dur-game-dock) var(--ease-out);
+}
+
+.app[data-view='game'][data-console='shut'] .terminal-layers {
+  pointer-events: none;
+}
+
+.app[data-view='game'][data-console='open'] .xterm-rows {
+  text-shadow:
+    0 1px 2px color-mix(in srgb, var(--game-shade) 100%, transparent),
+    0 0 6px color-mix(in srgb, var(--game-shade) 60%, transparent);
+}
+
+/* --------------------------------------------------------------- the ground */
+
+.gv-root {
+  color: var(--game-text);
+  font-family: var(--font-ui-family);
+  font-size: 13px;
+  outline: none;
+  user-select: none;
+}
+
+.gv-root button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.gv-root button:focus-visible {
+  outline: 2px solid var(--game-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.gv-root kbd {
+  display: inline-block;
+  min-width: 15px;
+  padding: 0 3px;
+  border: 1px solid var(--game-line-strong);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--game-white) 6%, transparent);
+  color: var(--game-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+}
+
+.gv-world {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  background: var(--game-ground);
+  cursor: grab;
+}
+
+.gv-world[data-pointer='pointer'] {
+  cursor: pointer;
+}
+
+.gv-hud {
+  position: fixed;
+  z-index: 12;
+}
+
+.gv-glass {
+  border: 1px solid var(--game-line);
+  border-radius: 12px;
+  background: var(--game-glass);
+  backdrop-filter: var(--game-blur);
+}
+
+.gv-quiet {
+  color: var(--game-faint);
+  font-size: 11px;
+}
+
+/* ----------------------------------------------------------- the player bar */
+
+.gv-player {
+  top: 10px;
+  left: 16px;
+  right: 16px;
+  display: grid;
+  grid-template-columns: auto minmax(260px, 440px) minmax(200px, 320px) 1fr auto;
+  gap: 22px;
+  align-items: center;
+  padding: 8px 16px 8px 9px;
+}
+
+.gv-player-id {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.gv-player-id b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.gv-player-id span {
+  color: var(--game-muted);
+  font-size: 11.5px;
+}
+
+.gv-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--game-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--game-accent) 60%, transparent);
+  color: var(--game-accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gv-vitals {
+  display: grid;
+  gap: 3px;
+}
+
+.gv-meter {
+  --tone: var(--game-hp);
+  position: relative;
+  height: 17px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--game-white) 7%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--game-white) 5%, transparent);
+}
+
+.gv-meter[data-tone='mana'] {
+  --tone: var(--game-mana);
+}
+
+.gv-meter[data-tone='kai'] {
+  --tone: var(--game-kai);
+}
+
+.gv-meter[data-size='small'] {
+  height: 13px;
+}
+
+.gv-meter[data-unknown='true'] {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--game-white) 10%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.gv-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tone) 82%, var(--game-white)),
+    var(--tone)
+  );
+  transition: width var(--dur-game-fill);
+}
+
+.gv-meter-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: var(--game-text);
+  opacity: 0.9;
+}
+
+.gv-meter-mark[data-tone='rest'] {
+  background: var(--game-mana);
+}
+
+.gv-meter-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 7px;
+  color: var(--game-white);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--game-shade) 80%, transparent);
+}
+
+.gv-meter[data-size='small'] .gv-meter-text {
+  font-size: 10px;
+}
+
+.gv-meter-text small {
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.gv-exp {
+  display: grid;
+  gap: 5px;
+}
+
+.gv-exp-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--game-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.gv-exp-row b {
+  color: var(--game-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gv-exp-row b small {
+  color: var(--game-faint);
+  font-size: 11px;
+}
+
+.gv-thin {
+  --tone: var(--game-accent);
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--game-white) 8%, transparent);
+}
+
+.gv-thin[data-tone='hp'] {
+  --tone: var(--game-hp);
+}
+
+.gv-thin[data-tone='mana'] {
+  --tone: var(--game-mana);
+}
+
+.gv-thin[data-tone='kai'] {
+  --tone: var(--game-kai);
+}
+
+.gv-thin[data-unknown='true'] {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--game-white) 10%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.gv-thin > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 99px;
+  background: var(--tone);
+  transition: width var(--dur-game-fill);
+}
+
+.gv-status {
+  display: flex;
+  gap: 5px;
+  justify-content: flex-end;
+}
+
+.gv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px 0 6px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--game-white) 6%, transparent);
+  color: var(--game-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.gv-chip .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.gv-chip[data-tone='combat'] {
+  background: color-mix(in srgb, var(--game-hp) 18%, transparent);
+  color: color-mix(in srgb, var(--game-hp) 40%, var(--game-white));
+}
+
+.gv-chip[data-tone='poison'] {
+  background: color-mix(in srgb, var(--game-poison) 10%, transparent);
+  color: var(--game-poison);
+}
+
+.gv-chip[data-tone='buff'] {
+  background: color-mix(in srgb, var(--game-accent) 10%, transparent);
+  color: var(--game-accent);
+}
+
+.gv-chip[data-tone='sneak'] {
+  background: color-mix(in srgb, var(--game-player) 10%, transparent);
+  color: var(--game-player);
+}
+
+.gv-chip[data-tone='rest'] {
+  color: var(--game-mana);
+}
+
+.gv-chip[data-tone='unknown'] {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--game-line-strong);
+  color: var(--game-faint);
+}
+
+.gv-figures {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--game-line);
+}
+
+.gv-figures div {
+  display: grid;
+}
+
+.gv-figures span {
+  color: var(--game-faint);
+  font-size: 10.5px;
+}
+
+.gv-figures b {
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------- the legend */
+
+.gv-legend {
+  top: 70px;
+  left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100vw - 760px);
+}
+
+.gv-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px 0 7px;
+  border: 1px solid var(--game-line);
+  border-radius: 7px;
+  background: var(--game-glass);
+  color: var(--game-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  backdrop-filter: var(--game-blur);
+}
+
+.gv-root svg[data-tone] {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.gv-root svg[data-tone='bank'] {
+  fill: var(--game-bank);
+}
+
+.gv-root svg[data-tone='shop'] {
+  fill: var(--game-shop);
+}
+
+.gv-root svg[data-tone='temple'] {
+  fill: var(--game-temple);
+}
+
+.gv-root svg[data-tone='tavern'] {
+  fill: var(--game-tavern);
+}
+
+.gv-root svg[data-tone='trainer'] {
+  fill: var(--game-trainer);
+}
+
+.gv-root svg[data-tone='lair'] {
+  fill: var(--game-hp);
+}
+
+.gv-root svg[data-tone='player'] {
+  fill: var(--game-player);
+}
+
+/* -------------------------------------------------------------- the autos */
+
+.gv-autos {
+  top: 70px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+}
+
+.gv-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px !important;
+  border-radius: 7px;
+  color: var(--game-faint) !important;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.gv-toggle::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px currentcolor;
+}
+
+.gv-toggle[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--game-white) 8%, transparent) !important;
+  color: var(--game-text) !important;
+}
+
+.gv-toggle[aria-pressed='true']::before {
+  background: var(--game-accent);
+  box-shadow: 0 0 6px var(--game-accent);
+}
+
+.gv-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gv-rule {
+  width: 1px;
+  height: 18px;
+  background: var(--game-line-strong);
+}
+
+.gv-stepper {
+  --tone: var(--game-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--game-muted);
+  font-size: 12px;
+}
+
+.gv-stepper[data-tone='rest'] {
+  --tone: var(--game-mana);
+}
+
+.gv-stepper[data-off='true'] > b,
+.gv-stepper[data-off='true'] > i {
+  opacity: 0.4;
+}
+
+.gv-stepper-name {
+  color: var(--game-muted) !important;
+}
+
+.gv-stepper-name[aria-pressed='true'] {
+  color: var(--game-text) !important;
+}
+
+.gv-stepper > i {
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--tone);
+}
+
+.gv-stepper b {
+  min-width: 28px;
+  color: var(--game-text);
+  font-weight: 600;
+  text-align: right;
+}
+
+.gv-stepper button {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  color: var(--game-faint) !important;
+}
+
+.gv-stepper button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--game-white) 8%, transparent) !important;
+  color: var(--game-text) !important;
+}
+
+/* ------------------------------------------------------------- the target */
+
+.gv-target {
+  top: 118px;
+  right: 16px;
+  width: min(300px, 30vw);
+  padding: 10px 14px 11px;
+  transition: opacity var(--dur-control);
+}
+
+.gv-target[data-shown='false'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gv-target-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.gv-target-row b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gv-target-row > span {
+  color: var(--game-muted);
+  font-size: 12px;
+}
+
+.gv-target-row.gv-quiet > span {
+  color: var(--game-faint);
+  font-size: 11.5px;
+}
+
+.gv-wound {
+  position: relative;
+  height: 6px;
+  margin: 7px 0 6px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--game-white) 7%, transparent);
+}
+
+.gv-wound[data-unknown='true'] {
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--game-white) 10%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.gv-wound i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 99px;
+  transition: all var(--dur-surface);
+}
+
+.gv-wound-sure {
+  left: 0;
+  background: var(--game-hp);
+}
+
+.gv-wound-maybe {
+  background: color-mix(in srgb, var(--game-hp) 35%, transparent);
+}
+
+/* -------------------------------------------------------------- the party */
+
+.gv-party {
+  top: 50%;
+  left: 20px;
+  display: grid;
+  gap: 2px;
+  width: 196px;
+  padding: 6px;
+  transform: translateY(-50%);
+}
+
+.gv-frame {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr);
+  gap: 9px;
+  padding: 7px 8px 7px 6px;
+  border-radius: 8px;
+}
+
+.gv-frame[data-away='true'] {
+  opacity: 0.42;
+}
+
+.gv-frame-mark {
+  border-radius: 2px;
+  background: var(--game-heal);
+}
+
+.gv-frame[data-self='true'] .gv-frame-mark {
+  background: var(--game-accent);
+}
+
+.gv-frame-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 5px;
+  font-size: 12.5px;
+}
+
+.gv-frame-row b {
+  font-weight: 600;
+}
+
+.gv-frame-row small {
+  margin-left: 5px;
+  color: var(--game-faint);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.gv-frame-row > span {
+  color: var(--game-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gv-frame .gv-thin + .gv-thin {
+  height: 3px;
+  margin-top: 3px;
+}
+
+.gv-frame-note {
+  min-height: 13px;
+  margin-top: 4px;
+  color: var(--game-faint);
+  font-size: 10.5px;
+}
+
+.gv-frame-note [data-tone='poison'] {
+  color: var(--game-poison);
+}
+
+/* ------------------------------------------------------- the command bar */
+
+.gv-commands {
+  left: 16px;
+  right: 436px;
+  bottom: 22px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.gv-root[data-console='open'] .gv-commands {
+  opacity: 0;
+}
+
+.gv-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 6px;
+  overflow-x: auto;
+  pointer-events: auto;
+  scrollbar-width: none;
+}
+
+.gv-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.gv-group + .gv-group {
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid var(--game-line-strong);
+}
+
+.gv-group > .gv-quiet {
+  padding: 0 6px 0 4px;
+  font-size: 10.5px;
+}
+
+.gv-command {
+  display: inline-flex !important;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 10px 0 6px !important;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.gv-command:hover,
+.gv-move:hover {
+  background: color-mix(in srgb, var(--game-white) 8%, transparent) !important;
+}
+
+.gv-command kbd {
+  min-width: 20px;
+  border-color: color-mix(in srgb, var(--game-white) 18%, transparent);
+  background: color-mix(in srgb, var(--game-white) 9%, transparent);
+  color: var(--game-text);
+  font-size: 11px;
+  line-height: 20px;
+}
+
+.gv-command .icon,
+.gv-command svg {
+  width: 15px;
+  height: 15px;
+  color: var(--game-muted);
+}
+
+.gv-command[data-main='true'] {
+  background: color-mix(in srgb, var(--game-accent) 16%, transparent) !important;
+  color: color-mix(in srgb, var(--game-accent) 30%, var(--game-white)) !important;
+}
+
+.gv-command[data-main='true'] kbd {
+  border-color: var(--game-accent);
+  background: var(--game-accent);
+  color: var(--game-ink);
+}
+
+.gv-command[data-main='true'] .icon {
+  color: var(--game-accent);
+}
+
+.gv-command[data-fired='true'] {
+  animation: gv-fire var(--dur-control) var(--ease-out);
+}
+
+@keyframes gv-fire {
+  from {
+    background: color-mix(in srgb, var(--game-accent) 35%, transparent);
+  }
+}
+
+.gv-move {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 7px !important;
+  border-radius: 9px;
+  color: var(--game-heal) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.gv-move[data-door='true'] {
+  color: var(--game-door) !important;
+}
+
+/* ---------------------------------------------------------------- the talk */
+
+.gv-talk-feed {
+  left: 16px;
+  bottom: 84px;
+  display: grid;
+  gap: 2px;
+  width: min(460px, 40vw);
+  pointer-events: none;
+}
+
+.gv-talk-feed p {
+  margin: 0;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--game-ink) 62%, transparent);
+  color: var(--game-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px var(--game-shade);
+  animation: gv-talk-fade var(--dur-game-talk-fade) ease-in var(--dur-game-talk-linger) forwards;
+}
+
+.gv-talk-feed p[data-channel='conversation-gossip'],
+.gv-talk-feed p[data-channel='conversation-broadcast'] {
+  color: var(--game-player);
+}
+
+.gv-talk-feed p[data-channel='conversation-gangpath'] {
+  color: var(--game-heal);
+}
+
+.gv-talk-feed p[data-for-you='true'] {
+  box-shadow: inset 2px 0 0 var(--game-accent);
+  color: var(--game-text);
+  animation: none;
+}
+
+@keyframes gv-talk-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+.gv-talk-hint {
+  padding: 2px 9px;
+  color: var(--game-accent);
+  font-size: 11px;
+}
+
+.gv-talk-panel {
+  left: 16px;
+  top: 118px;
+  bottom: 84px;
+  z-index: 13;
+  display: flex;
+  width: min(460px, 40vw);
+}
+
+.gv-talk-panel > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.gv-root[data-talk='open'] .gv-party {
+  display: none;
+}
+
+.gv-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--game-accent);
+  color: var(--game-ink);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- the rest */
+
+.gv-zoom {
+  right: 20px;
+  bottom: 226px;
+  display: grid;
+  gap: 2px;
+  padding: 3px;
+}
+
+.gv-zoom button {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--game-muted) !important;
+  font-size: 15px;
+}
+
+.gv-zoom button:hover,
+.gv-zoom button[data-on='true'] {
+  background: color-mix(in srgb, var(--game-white) 8%, transparent) !important;
+  color: var(--game-text) !important;
+}
+
+.gv-zoom button[data-on='true'] {
+  color: var(--game-accent) !important;
+}
+
+.gv-sheet {
+  top: 118px;
+  right: 16px;
+  bottom: 230px;
+  z-index: 13;
+  width: 320px;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+
+.gv-sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.gv-sheet h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.gv-icon-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--game-muted) !important;
+  font-size: 16px;
+}
+
+.gv-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+}
+
+.gv-sheet-grid div {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--game-line);
+  font-size: 12.5px;
+}
+
+.gv-sheet-grid dt {
+  color: var(--game-muted);
+}
+
+.gv-sheet-grid dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The console's bar sits on the open console's top edge; its badge on the shut thumbnail. */
+.gv-console-bar,
+.gv-console-badge {
+  position: fixed;
+  z-index: 15;
+}
+
+.gv-console-bar {
+  left: var(--console-left);
+  top: var(--console-top);
+  width: var(--console-width);
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--game-line);
+  border-radius: 12px 12px 0 0;
+  background: color-mix(in srgb, var(--game-ink) 60%, transparent);
+  color: var(--game-muted);
+  font-size: 12px;
+}
+
+.gv-console-bar > b {
+  color: var(--game-heal);
+  text-transform: uppercase;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.gv-segments {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--game-line);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--game-white) 5%, transparent);
+}
+
+.gv-segments button {
+  height: 24px;
+  padding: 0 9px !important;
+  border-radius: 5px;
+  color: var(--game-muted) !important;
+  font-size: 12px;
+}
+
+.gv-segments button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--game-white) 12%, transparent) !important;
+  color: var(--game-text) !important;
+}
+
+.gv-console-bar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gv-console-bar input[type='range'] {
+  width: 110px;
+  accent-color: var(--game-accent);
+}
+
+.gv-grow {
+  flex: 1;
+}
+
+.gv-console-badge {
+  left: calc(var(--console-left) + var(--console-width) - 8px);
+  top: calc(var(--console-top) + 8px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 7px;
+  transform: translateX(-100%);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--game-accent) 16%, transparent);
+  color: var(--game-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gv-console-badge span {
+  color: var(--game-muted);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gv-tip {
+  position: fixed;
+  z-index: 16;
+  max-width: min(380px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid var(--game-line-strong);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--game-ink) 95%, transparent);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--game-shade) 80%, transparent);
+  color: var(--game-text);
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.gv-tip-quiet {
+  color: var(--game-muted);
+}
+
+.gv-tip-act {
+  margin-top: 5px;
+  color: var(--game-accent);
+}
+
+@media (width <= 900px) {
+  .gv-party {
+    top: auto;
+    bottom: 118px;
+    width: 170px;
+    transform: none;
+  }
+
+  .gv-autos,
+  .gv-status,
+  .gv-figures,
+  .gv-zoom {
+    display: none;
+  }
+
+  .gv-player {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px 16px;
+  }
+
+  .gv-commands {
+    right: 16px;
+    bottom: 96px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gv-root *,
+  .app[data-view='game'] .terminal-stack,
+  .app[data-view='game'] .terminal-layers {
+    animation: none !important;
+    transition: none !important;
+  }
+}

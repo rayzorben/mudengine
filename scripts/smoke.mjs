@@ -15986,6 +15986,103 @@ if (paletteOpen) {
   await capture('smoke-palette.png', 'palette');
 }
 
+// ------------------------------------------------------- assert: the game view
+//
+// One interface or the other, switched from the palette and nowhere else
+// (todo 140, user 2026-10-14). The chords keep working over it: Ctrl+L opens
+// the Loops modal, Ctrl+K the palette that switches back. The console is
+// never remounted, and its thumbnail keeps the docked size over NAWS.
+{
+  const key = async (key, code, vk, modifiers = 0) => {
+    for (const type of ['rawKeyDown', 'keyUp'])
+      await cdp('Input.dispatchKeyEvent', {
+        type,
+        key,
+        code,
+        windowsVirtualKeyCode: vk,
+        modifiers
+      });
+  };
+  const pick = async (label) => {
+    await paletteReady();
+    await evaluate(`
+      (() => {
+        const el = document.querySelector('.palette input');
+        const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set;
+        set.call(el, ${JSON.stringify(label)});
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()
+    `);
+    await waitFor(
+      async () =>
+        (await evaluate(
+          `document.querySelector('.palette li[data-active="true"]')?.dataset.command ?? ''`
+        )) === 'game-view'
+    );
+    await key('Enter', 'Enter', 13);
+  };
+  const view = () => evaluate(`document.querySelector('.app')?.dataset.view ?? 'classic'`);
+  const consoleCols = () =>
+    evaluate(
+      `Number(document.querySelector('.terminal-layer[data-shown="true"] .xterm')?.dataset.cols ?? 0)`
+    );
+  const mounted = await evaluate(
+    `document.querySelector('.terminal-layer[data-shown="true"] .xterm-screen') !== null`
+  );
+  await evaluate(
+    `(window.__gameViewScreen = document.querySelector('.terminal-layer[data-shown="true"] .xterm-screen'), true)`
+  );
+
+  await pick(copy('palette.view.gameViewLabel'));
+  check((await readUntil(view, (v) => v === 'game')) === 'game', 'the palette shows the game view');
+  check(
+    await readUntil(
+      () => evaluate(`document.activeElement?.classList.contains('gv-root') === true`),
+      (on) => on
+    ),
+    'and its command layer takes the caret'
+  );
+  check(
+    mounted &&
+      (await evaluate(
+        `window.__gameViewScreen === document.querySelector('.terminal-layer[data-shown="true"] .xterm-screen')`
+      )),
+    'the console is the same element, not remounted'
+  );
+  check(
+    await evaluate(`getComputedStyle(document.querySelector('.status-rail')).display === 'none'`),
+    'the classic chrome is not drawn beside it'
+  );
+  check(
+    (await readUntil(consoleCols, (cols) => cols >= 80)) >= 80,
+    'the shut console still reports at least 80 columns',
+    String(await consoleCols())
+  );
+  await capture('smoke-game-view.png', 'game view');
+
+  await key('l', 'KeyL', 76, 2);
+  const loops = () => evaluate(`!!document.querySelector('.loops-modal')`);
+  check(await readUntil(loops, (open) => open), 'Ctrl+L opens the Loops modal over the game view');
+  await key('Escape', 'Escape', 27);
+  await readUntil(loops, (open) => !open);
+  check(!(await loops()), 'and Escape puts it away');
+
+  await key('k', 'KeyK', 75, 2);
+  await pick(copy('palette.view.classicViewLabel'));
+  check(
+    (await readUntil(view, (v) => v === 'classic')) === 'classic',
+    'the palette switches back to the classic view'
+  );
+  check(
+    await evaluate(`getComputedStyle(document.querySelector('.status-rail')).display !== 'none'`),
+    'with its chrome drawn again'
+  );
+  // As this run found the window: the palette open, for the checks after this.
+  await key('k', 'KeyK', 75, 2);
+  await paletteReady();
+}
+
 // ------------------------------------------------------------------ screenshot
 
 async function capture(file, label) {

@@ -80,6 +80,8 @@ const api: WireApi = {
   setRemoteGangpath: (session, on) => ipcRenderer.invoke(Invoke.setRemoteGangpath, session, on),
   setAutomationSwitch: (session, name, on) =>
     ipcRenderer.invoke(Invoke.setAutomationSwitch, session, name, on),
+  setThreshold: (session, which, value) =>
+    ipcRenderer.invoke(Invoke.setThreshold, session, which, value),
   setSupplies: (session, items) => ipcRenderer.invoke(Invoke.setSupplies, session, items),
   addLoop: (scope, owner, loop) => ipcRenderer.invoke(Invoke.addLoop, scope, owner, loop),
   runLoop: (session, loop) => ipcRenderer.invoke(Invoke.runLoop, session, loop),
@@ -138,6 +140,7 @@ const api: WireApi = {
   questStop: (session) => ipcRenderer.invoke(Invoke.questStop, session),
   localMap: (session, map, room, radius) =>
     ipcRenderer.invoke(Invoke.localMap, session, map, room, radius),
+  gameMap: (session, ask) => ipcRenderer.invoke(Invoke.gameMap, session, ask),
   roomBrief: (session, map, room) => ipcRenderer.invoke(Invoke.roomBrief, session, map, room),
   slotGear: (session, slot) => ipcRenderer.invoke(Invoke.slotGear, session, slot),
   chosenWords: (session) => ipcRenderer.invoke(Invoke.chosenWords, session),

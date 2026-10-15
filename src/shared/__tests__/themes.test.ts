@@ -22,16 +22,9 @@ import {
   type Theme,
   type TerminalPalette
 } from '../themes';
+import { contrast } from '../colour';
 
 const ALL: Theme[] = THEME_IDS.map((id) => THEMES[id]);
-
-/** sRGB relative luminance, per WCAG 2.1. */
-function luminance(hex: string): number {
-  const value = hex.replace('#', '');
-  const channels = [0, 2, 4].map((i) => Number.parseInt(value.slice(i, i + 2), 16) / 255);
-  const linear = channels.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
-  return 0.2126 * (linear[0] ?? 0) + 0.7152 * (linear[1] ?? 0) + 0.0722 * (linear[2] ?? 0);
-}
 
 /**
  * `color-mix(in srgb, a <p>%, b)`, as the engine computes it.
@@ -50,11 +43,6 @@ function mix(a: string, b: string, p: number): string {
       .padStart(2, '0');
   });
   return `#${channels.join('')}`;
-}
-
-function contrast(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
 }
 
 describe('theme registry', () => {

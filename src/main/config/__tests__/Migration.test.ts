@@ -7670,6 +7670,37 @@ describe('aFoundPlayerIsNoEffect', () => {
   });
 });
 
+describe('theSightingNamesItsMap', () => {
+  it('clears a last room kept as a bare number, keeps its name and time, backs up, and runs once', () => {
+    const file = home.state('players.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        v: 1,
+        realms: {
+          orohost: {
+            nusse: { name: 'Nusse', lastRoom: 1124, lastRoomName: 'Town Square', lastRoomAt: 5 },
+            soul: { name: 'Soul', lastRoom: '1/7', lastRoomName: 'Docks', lastRoomAt: 6 }
+          }
+        }
+      })
+    );
+    migrate();
+    const players = JSON.parse(fs.readFileSync(file, 'utf8')).realms.orohost;
+    expect(players.nusse).toMatchObject({
+      lastRoom: null,
+      lastRoomName: 'Town Square',
+      lastRoomAt: 5
+    });
+    expect(players.soul.lastRoom).toBe('1/7');
+    expect(fs.existsSync(`${file}.before-maps`)).toBe(true);
+    expect(notesOf(said, 'notices.migration.sightingNamesItsMap')).toHaveLength(1);
+    migrate();
+    expect(notesOf(said, 'notices.migration.sightingNamesItsMap')).toEqual([]);
+  });
+});
+
 /* Todo 34: Paradigm's PvE and PvP sit behind one address and shared every store. */
 describe('theRealmIsTheMenusChoice', () => {
   const ADDRESS = 'paramud.mudinfo.net:2323';

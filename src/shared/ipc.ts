@@ -17,6 +17,8 @@
 import type { AutomationSnapshot } from './automation';
 import type { Block } from './blocks';
 import type { LocalMap } from './map';
+import type { GameMapAsk, GameMapWindow } from './gameMap';
+import type { HudThreshold } from './gameViewConfig';
 import type { RoutePages, WalkPages } from './routeLegs';
 import type { Discovery } from './memory';
 import type { Find } from './finds';
@@ -385,6 +387,13 @@ export interface ProfileSummary {
    * character is actually resting to.
    */
   restTo: number;
+  /** `automation.health.restBelow`, resolved, for the game view's Rest stepper. */
+  restBelow: number;
+  /**
+   * `automation.safety.retreat.belowHealth`, resolved, for the game view's Run
+   * stepper; whether the character runs at all is the `retreat` switch.
+   */
+  runBelow: number;
   /**
    * What this character keeps in its pack — `automation.supplies`, resolved,
    * for the Self card's Supplies face and the item panel's controls. Beside
@@ -946,6 +955,8 @@ export const Invoke = {
    * character's own file and turn an overlay into a copy.
    */
   setAutomationSwitch: 'settings:automation-switch',
+  /** One HUD threshold, Run or Rest, in a character's own file (todo 140). */
+  setThreshold: 'settings:threshold',
   /**
    * This character's whole supplies list, from the Self card or the item
    * panel — `automation.supplies.items`, written whole for the reason the
@@ -1025,6 +1036,8 @@ export const Invoke = {
   gearStop: 'world:gear-stop',
   /** The rooms around a given one, laid out on a grid. */
   localMap: 'world:map',
+  /** A square of one map's whole plane, themed, for the game view (todo 140). */
+  gameMap: 'world:game-map',
   /** Everything the realm knows about one room, for a room nobody is in. */
   roomBrief: 'world:room',
   /** Every item one slot takes that this character can use, best first. */
@@ -1474,6 +1487,8 @@ export interface IpcApi {
   ): Promise<string | null>;
   /** Writes this character's whole supplies list. See `Invoke.setSupplies`. */
   setSupplies(session: SessionId, items: SupplyItem[]): Promise<string | null>;
+  /** Sets Run or Rest, a fraction of health, in a character's own file; the refusal or null. */
+  setThreshold(session: SessionId, which: HudThreshold, value: number): Promise<string | null>;
   /**
    * Puts one loop into one scope, and reports why not.
    *
@@ -1565,6 +1580,8 @@ export interface IpcApi {
   gearTrip(session: SessionId, picks: readonly GearPick[], run: boolean): Promise<string | null>;
   gearStop(session: SessionId): Promise<void>;
   localMap(session: SessionId, map: number, room: number, radius?: number): Promise<LocalMap>;
+  /** A square of a map's plane around a room or a point, with its areas and labels. */
+  gameMap(session: SessionId, ask: GameMapAsk): Promise<GameMapWindow>;
   /**
    * The realm's whole answer about one room — its ways out, the place it
    * holds, what its lair spawns, the spell it casts on whoever stands in it.

@@ -64,7 +64,7 @@ describe('folding what the realm knows into a record', () => {
 
   it('moves a room and a quotation by their own clocks', () => {
     const base = facts({
-      lastRoom: 1,
+      lastRoom: '1/1',
       lastRoomName: 'Town Square',
       lastRoomAt: 500,
       vitals: { hp: 10, hpMax: 20, mana: null, manaMax: null },
@@ -73,14 +73,14 @@ describe('folding what the realm knows into a record', () => {
     const merged = mergeFacts(
       base,
       facts({
-        lastRoom: 2,
+        lastRoom: '1/2',
         lastRoomName: 'Docks',
         lastRoomAt: 600,
         vitals: { hp: 1, hpMax: 20, mana: null, manaMax: null },
         vitalsAt: 100
       })
     );
-    expect(merged).toMatchObject({ lastRoom: 2, lastRoomName: 'Docks', lastRoomAt: 600 });
+    expect(merged).toMatchObject({ lastRoom: '1/2', lastRoomName: 'Docks', lastRoomAt: 600 });
     expect(merged.vitals?.hp).toBe(10);
   });
 

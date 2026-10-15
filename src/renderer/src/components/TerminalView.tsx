@@ -428,6 +428,9 @@ export default function TerminalView({
       lineHeight: 1,
       letterSpacing: 0,
       theme: initial.current.palette,
+      // The game view draws the console over its map, see-through (todo 140): a
+      // palette with a transparent background, which xterm draws only when allowed.
+      allowTransparency: true,
       // Server output is never rewrapped by us; the game formats to a fixed
       // width and rewrapping would corrupt ASCII maps and box art.
       windowsMode: false

@@ -50,6 +50,8 @@ function deps(over: Partial<PaletteDeps> = {}): PaletteDeps {
     density: 'comfortable',
     densityPreference: 'auto',
     cycleDensity: vi.fn(),
+    gameView: false,
+    toggleGameView: vi.fn(),
     theme: {
       theme: THEMES.dark,
       preference: 'dark',
@@ -150,6 +152,15 @@ describe('the palette commands', () => {
     expect(openSettings).toHaveBeenCalledOnce();
     expect(command.movesFocus).toBe(true);
     expect(find('rail').movesFocus).toBeUndefined();
+  });
+
+  it('offers the game view in the classic view and the classic view in the game view, on no chord', () => {
+    const toggleGameView = vi.fn();
+    expect(find('game-view').label).toBe(t('palette.view.gameViewLabel'));
+    expect(find('game-view', { gameView: true }).label).toBe(t('palette.view.classicViewLabel'));
+    expect(find('game-view').hint).toBeUndefined();
+    find('game-view', { toggleGameView }).run();
+    expect(toggleGameView).toHaveBeenCalledOnce();
   });
 
   it('turns the cards off when they are on', () => {

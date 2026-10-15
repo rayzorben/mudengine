@@ -93,6 +93,9 @@ export interface PaletteDeps {
   density: Density;
   densityPreference: DensityPreference;
   cycleDensity(): void;
+  /** Whether the game view is shown rather than the classic one (todo 140). */
+  gameView: boolean;
+  toggleGameView(): void;
   theme: Pick<
     UseTheme,
     'theme' | 'preference' | 'consolePreference' | 'cycle' | 'choose' | 'chooseConsole'
@@ -647,6 +650,17 @@ export function paletteCommands(deps: PaletteDeps): Command[] {
       group: 'view',
       keywords: ['density', 'compact', 'comfortable', 'spacing', 'size'],
       run: deps.cycleDensity
+    },
+    // The only way in or out of the game view, for now (user, 2026-10-14).
+    {
+      id: 'game-view',
+      icon: 'layout' as const,
+      label: deps.gameView ? t('palette.view.classicViewLabel') : t('palette.view.gameViewLabel'),
+      group: 'view',
+      keywords: ['game', 'view', 'map', 'world', 'classic', 'interface', 'hud', 'arena'],
+      // The view that comes up places the caret itself (`useGameView`).
+      movesFocus: true,
+      run: deps.toggleGameView
     },
     {
       id: 'focus',

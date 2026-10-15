@@ -19,6 +19,9 @@ import GearSwitches from './GearSwitches';
 import PotionList from './PotionList';
 import SettingsNav, { type NavFieldset } from './SettingsNav';
 import SettingsSection from './SettingsSection';
+import { GAME_DOCKS, isGameDock } from '@shared/gameMap';
+import { GAME_VIEW_OPACITY_FLOOR } from '@shared/gameViewConfig';
+import { dockLabel } from '../lib/gameDock';
 import type { SettingsFind } from '../hooks/useSettingsFind';
 import AttackFields, { ATTACK_KIND } from './AttackFields';
 import DrainFields, { isDrainText } from './DrainFields';
@@ -473,6 +476,29 @@ export default function GlobalSettings({
                   { value: 'top', label: t('settings.client.appearance.tabsTop') }
                 ]}
                 value={draft.ui.tabs}
+              />
+              <SelectField
+                hint={t('settings.client.appearance.gameDockHint')}
+                label={t('settings.client.appearance.gameDockLabel')}
+                name="global-game-dock"
+                onChange={(value) => isGameDock(value) && patch('gameView', { dock: value })}
+                options={GAME_DOCKS.map((dock) => ({ value: dock, label: dockLabel(dock) }))}
+                value={draft.gameView.dock}
+              />
+              <NumberField
+                hint={t('settings.client.appearance.gameOpacityHint', {
+                  floor: Math.round(GAME_VIEW_OPACITY_FLOOR * 100)
+                })}
+                label={t('settings.client.appearance.gameOpacityLabel')}
+                name="global-game-opacity"
+                onChange={(value) => {
+                  const percent = Number.parseInt(value, 10);
+                  if (Number.isFinite(percent))
+                    patch('gameView', {
+                      opacity: Math.max(GAME_VIEW_OPACITY_FLOOR, Math.min(1, percent / 100))
+                    });
+                }}
+                value={Math.round(draft.gameView.opacity * 100)}
               />
             </div>
 

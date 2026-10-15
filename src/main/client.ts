@@ -36,6 +36,8 @@ import { REALM_EXTENSIONS } from './world/RealmSource';
 import { WorldMemory } from './world/WorldMemory';
 import { FindBook } from './world/FindBook';
 import { ShopBook } from './world/ShopBook';
+import { DescriptionBook } from './world/DescriptionBook';
+import type { RealmDescriptions } from '../shared/descriptions';
 import type { RealmFinds } from '../shared/finds';
 import type { RealmShops } from '../shared/shops';
 import { WorldBook } from './world/WorldBook';
@@ -103,6 +105,11 @@ import type { AreaSearchPreview } from '../shared/areaSearch';
 import { asCashRunAsk, type CashRunToken } from '../shared/cashRun';
 import type { FightSummary } from '../shared/fights';
 import { localMap, type LairLevel } from './world/localMap';
+import { GameMaps } from './world/GameMaps';
+import { loadThemePack, type ThemePack } from './world/themePack';
+import { asGameMapAsk, EMPTY_GAME_MAP } from '../shared/gameMap';
+import { themePackFile } from '../shared/worlds';
+import { asHudThreshold, HUD_THRESHOLDS } from '../shared/gameViewConfig';
 import { roomBrief } from './world/roomBrief';
 import { slotGear, weighingOf } from './world/slotGear';
 import { asGearPicks } from '../shared/gearTrip';
@@ -452,6 +459,24 @@ function shippedSpellMessages(world: WorldGraph | undefined): SpellMessageBook {
  * every session: neither is a fact about a realm, so neither is keyed on one.
  * Read on first use, like the spell table, and reported the same way.
  */
+/**
+ * Each world's game view map (todo 140), laid out on first ask. Paradigm's
+ * theme pack serves every world, read once and reported like the sentences.
+ */
+const gameMaps = new WeakMap<WorldGraph, GameMaps>();
+let themePack: ThemePack | null = null;
+function gameMapsFor(world: WorldGraph): GameMaps {
+  themePack ??= loadThemePack(shippedWorldsDir(), themePackFile('paradigm'), (message) =>
+    announce('world', message)
+  );
+  let maps = gameMaps.get(world);
+  if (!maps) {
+    maps = new GameMaps(world, themePack);
+    gameMaps.set(world, maps);
+  }
+  return maps;
+}
+
 function sentences(): ShippedSentences {
   shippedSentences ??= loadShippedSentences(shippedWorldsDir(), (message) =>
     announce('world', message)
@@ -620,6 +645,24 @@ function shopsFor(id: SessionId): RealmShops | undefined {
   };
 }
 
+/** The room descriptions read in each realm played on one world (todo 140), kept as `realmShops` is. */
+const realmDescriptions = new Map<string, DescriptionBook>();
+
+function descriptionsFor(id: SessionId): RealmDescriptions | undefined {
+  const world = worldFor(id)?.info.source;
+  if (world === undefined) return undefined;
+  return {
+    saw: (room, at) =>
+      keptPerPlayed(
+        realmDescriptions,
+        world,
+        playedBy(id),
+        (file, stamp) => new DescriptionBook(file, stamp, (message) => announce('memory', message)),
+        'descriptions'
+      ).saw(room, at)
+  };
+}
+
 /**
  * The store for one realm played on one world, opened on first use at
  * `memory/<kind>-<playedKey>.json` and stamped `world@played`, which is what
@@ -630,7 +673,7 @@ function keptPerPlayed<T>(
   world: string,
   played: string,
   create: (file: string, stamp: string) => T,
-  kind: 'finds' | 'shops'
+  kind: 'finds' | 'shops' | 'descriptions'
 ): T {
   const key = playedKey(world, played);
   const existing = open.get(key);
@@ -1319,6 +1362,8 @@ function profileSummaries(): ProfileSummary[] {
     remotes: profile.config.automation.remotes,
     switches: automationSwitches(profile.config.automation),
     restTo: profile.config.automation.health.restTo,
+    restBelow: profile.config.automation.health.restBelow,
+    runBelow: profile.config.automation.safety.retreat.belowHealth,
     supplies: profile.config.automation.supplies
   }));
 }
@@ -1542,6 +1587,7 @@ function createHost(): SessionHost {
     speedAt: (realm) => worldBook?.keptSpeed(realmName(realm)) ?? NOT_KEPT,
     findsFor,
     shopsFor,
+    descriptionsFor,
     // What the realm called itself, by the realm played, so the next session
     // built for it starts on the right world.
     realmTold: (_id, realm, word) => worldBook?.learn(realmName(realm), word),
@@ -2654,6 +2700,12 @@ function registerIpc(): void {
       return localMap(world, roomId(map, room), asked, lairLevelOf(session));
     }
   );
+  handle(Invoke.gameMap, (_caller, session: SessionId, ask: unknown) => {
+    const world = worldFor(session);
+    const parsed = asGameMapAsk(ask);
+    if (!world || world.size === 0 || parsed === null) return EMPTY_GAME_MAP;
+    return gameMapsFor(world).window(parsed, lairLevelOf(session));
+  });
   handle(Invoke.huntingGrounds, async (_caller, session: SessionId, measure: unknown) => {
     const manager = host?.get(session)?.manager;
     if (!manager) {
@@ -3314,6 +3366,17 @@ function registerIpc(): void {
     if (result.ok) publishRosters();
     return result.ok ? null : result.error;
   });
+  // A HUD threshold, from the game view's Run and Rest steppers, the same way.
+  handle(Invoke.setThreshold, (_caller, session: unknown, which: unknown, value: unknown) => {
+    if (typeof session !== 'string') return t('app.profiles.noSuchCharacter');
+    const parsed = asHudThreshold(which);
+    if (parsed === null || typeof value !== 'number' || !Number.isFinite(value))
+      return t('app.automation.unknownThreshold');
+    const share = Math.round(Math.max(0, Math.min(1, value)) * 100) / 100;
+    const result = editor().setAutomationValues(session, [[[...HUD_THRESHOLDS[parsed]], share]]);
+    if (result.ok) publishRosters();
+    return result.ok ? null : result.error;
+  });
 
   /*
    * One loop into one scope, from the Loops modal.
@@ -3742,6 +3805,9 @@ function teardown(): void {
   realmFinds.clear();
   for (const [realm, shops] of realmShops) settle(`shops ${realm}`, () => shops.close());
   realmShops.clear();
+  for (const [realm, rooms] of realmDescriptions)
+    settle(`descriptions ${realm}`, () => rooms.close());
+  realmDescriptions.clear();
   // Same reason again: a fight that ended in the last two seconds is held on a
   // timer, and quitting is when that timer has not fired.
   for (const [id, log] of fightLogs) settle(`fights ${id}`, () => log.dispose());

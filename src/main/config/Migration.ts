@@ -297,6 +297,7 @@ function migrateAll(options: MigrationOptions): void {
   theSheetAnswersPickAndMeditate(home, note, options.template);
   aFoundPlayerIsNoEffect(home, note);
   theRealmIsTheMenusChoice(home, note, options.worlds);
+  theSightingNamesItsMap(home, note);
   theDebugTraceGrew(home, note);
   theShelfStrikesLearned(home, note);
 }
@@ -571,6 +572,38 @@ function archiveWorldOrUnread(
     if (error instanceof Error && 'code' in error) return 'unread';
     throw error;
   }
+}
+
+/**
+ * A player's last room is a `map/room` (todo 140), so the game view can draw
+ * where each was seen. The number kept before named no map, so it names no
+ * room: each is set to null, and the room's name and time stay. A file that
+ * will not parse is left for `PlayerBook` to report.
+ */
+function theSightingNamesItsMap(home: Home, note: (message: string) => void): void {
+  const file = home.state('players.json');
+  if (!fs.existsSync(file)) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return;
+  }
+  const realms = isRecord(parsed) ? parsed['realms'] : undefined;
+  if (!isRecord(realms)) return;
+  let cleared = 0;
+  for (const table of Object.values(realms)) {
+    if (!isRecord(table)) continue;
+    for (const record of Object.values(table)) {
+      if (!isRecord(record) || typeof record['lastRoom'] !== 'number') continue;
+      record['lastRoom'] = null;
+      cleared += 1;
+    }
+  }
+  if (cleared === 0) return;
+  if (!fs.existsSync(`${file}.before-maps`)) fs.copyFileSync(file, `${file}.before-maps`);
+  writeJsonAtomically(file, parsed);
+  note(t('notices.migration.sightingNamesItsMap', { count: cleared, file }));
 }
 
 /**

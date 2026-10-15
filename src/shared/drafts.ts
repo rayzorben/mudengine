@@ -52,6 +52,7 @@ import {
 
 /** The words an `AlertRule.on` may be — the closed union's runtime half. */
 import { asLoops, type Loop } from './loops';
+import { normalizeGameView, type GameViewConfig } from './gameViewConfig';
 import { asCoinNames, type CoinNames } from './coins';
 import { asGearWeights, type GearWeights } from './gearWeighing';
 import { asLowLives } from './lives';
@@ -241,6 +242,8 @@ export interface GlobalDraft {
     playerDays: number;
     maxBytes: number;
   };
+  /** The game view's console (todo 140): where it docks open, and how opaque it is. */
+  gameView: GameViewConfig;
   automation: {
     enabled: boolean;
     onEnterRealm: string[];
@@ -1354,6 +1357,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       playerDays: clamp(logging['playerDays'], 0, LOG_DAYS_MAX, DEFAULT_LOGGING.playerDays),
       maxBytes: clamp(logging['maxBytes'], 0, 1_000_000_000, 50_000_000)
     },
+    gameView: normalizeGameView(value['gameView']),
     automation: {
       enabled: automation['enabled'] === true,
       onEnterRealm: words(automation['onEnterRealm'], 16),

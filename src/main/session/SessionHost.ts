@@ -43,6 +43,7 @@ import type { HarmSink } from '../../shared/harm';
 import type { RealmMemory } from '../../shared/memory';
 import type { RealmFinds } from '../../shared/finds';
 import type { RealmShops } from '../../shared/shops';
+import type { RealmDescriptions } from '../../shared/descriptions';
 import {
   Push,
   type Addressed,
@@ -265,6 +266,8 @@ export interface SessionHostOptions {
   findsFor?(id: SessionId): RealmFinds | undefined;
   /** Where each counter's `list` is written down, keyed like `findsFor`. */
   shopsFor?(id: SessionId): RealmShops | undefined;
+  /** Where each room's description is written down as it is read, keyed like `findsFor`. */
+  descriptionsFor?(id: SessionId): RealmDescriptions | undefined;
   /**
    * Where this character's record last placed it, read from the record for the
    * realm its file says it plays, so the tab draws that room before any dial.
@@ -450,6 +453,8 @@ export class SessionHost {
       this.options.toDebugging(Push.debug, { session: id, payload: record })
     );
 
+    // Where what each room says is written down, opened once for the session.
+    const descriptions = this.options.descriptionsFor?.(id);
     const manager = new SessionManager(
       {
         /*
@@ -501,6 +506,8 @@ export class SessionHost {
         character: (state) => {
           debug.characterState(state);
           this.options.toAll(Push.character, { session: id, payload: state });
+          // What the room said, for the next pass over the world's look (todo 140).
+          descriptions?.saw(state.room, Date.now());
           /*
            * A tab is named after the character, and the realm does not say who
            * that is until the stat sheet arrives. Without this the rail keeps

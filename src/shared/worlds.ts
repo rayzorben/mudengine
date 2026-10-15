@@ -44,6 +44,14 @@ export function shippedWorldFile(world: ShippedWorld): string {
 }
 
 /**
+ * The world map's theme pack (todo 140), beside the world. Paradigm's serves
+ * every world: an area claims a room only by map, number and name together.
+ */
+export function themePackFile(world: ShippedWorld): string {
+  return `${world}.theme.json`;
+}
+
+/**
  * The bundled world a realm's own word names.
  *
  * `majormud` and `paradigm` are the menu prompt's words for the two data sets.

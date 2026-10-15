@@ -10,6 +10,7 @@
  */
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
+import type { RoomId } from '../../shared/world';
 import {
   absorbFacts,
   allOffline,
@@ -243,11 +244,9 @@ export class Company {
    *
    * A **sighting**, and stamped as one: `lastRoomAt` is what the Player card
    * ages, and a peer's own word about where it is is exactly as good as seeing
-   * them there. The map is not kept, because the registry has never had a
-   * field for one — see `PlayerRecord.lastRoom`; the address is reported whole
-   * by whoever asked.
+   * them there, and the address is kept whole (`PlayerRecord.lastRoom`).
    */
-  noteRemoteRoom(from: string, room: number, name: string | null, at: number): boolean {
+  noteRemoteRoom(from: string, room: RoomId, name: string | null, at: number): boolean {
     const named = name === null ? {} : { lastRoomName: name };
     const where = { lastRoom: room, ...named, lastRoomAt: at, online: true };
     return this.keep(observe(this.registry, from, at, where));

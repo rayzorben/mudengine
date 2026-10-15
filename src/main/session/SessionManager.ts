@@ -1311,16 +1311,16 @@ export class SessionManager {
         if (this.tracker.noteRemoteClient(from, Date.now(), facts)) this.publisher.players();
       },
       handAnswered: (from, answer) => this.walker.handAnswered(from, answer),
-      // `@where-room`'s answer, kept as a sighting: the registry holds the room number, no map.
       placed: (from, map, room, name) => {
+        const address = roomId(map, room);
         this.sink.notice(
           t('session.remotes.peerPlaced', {
             who: from,
-            address: `${map}/${room}`,
+            address,
             room: name ?? t('session.remotes.peerPlacedUnnamed')
           })
         );
-        if (this.tracker.noteRemoteRoom(from, room, name, Date.now())) this.publisher.players();
+        if (this.tracker.noteRemoteRoom(from, address, name, Date.now())) this.publisher.players();
       }
     });
     // One realm lookup for every caster, handing over the realm's whole row, read at the point of use.

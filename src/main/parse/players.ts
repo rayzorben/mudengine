@@ -52,6 +52,7 @@
 
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
+import { roomAddress } from '../../shared/world';
 import {
   markOffline,
   observe,
@@ -206,7 +207,7 @@ export function trackPlayers(
       if (occupant.kind !== 'player' || !other(occupant.name)) continue;
       const held = next[occupant.name.toLowerCase()];
       next = observe(next, occupant.name, at, {
-        lastRoom: state.room.number,
+        lastRoom: roomAddress(state.room),
         lastRoomName: state.room.name,
         lastRoomAt: relisted || held?.lastRoomAt == null ? at : undefined,
         online: true
@@ -305,7 +306,7 @@ export function trackPlayers(
        * blow, which is a block that republishes the state anyway.
        */
       next = observe(next, attacker, at, {
-        lastRoom: state.room.number,
+        lastRoom: roomAddress(state.room),
         lastRoomName: state.room.name,
         lastRoomAt: state.combat.lastBlowAt ?? at,
         online: true

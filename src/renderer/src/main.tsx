@@ -9,6 +9,7 @@ import { fromWire } from './lib/wire';
 import './styles/tokens.css';
 import './styles/fonts.css';
 import './styles/index.css';
+import './styles/game.css';
 import '@xterm/xterm/css/xterm.css';
 
 /*

@@ -2941,6 +2941,19 @@ const TUNING_DEFAULTS = {
     mapRadiusMin: 2,
     mapRadiusMax: 12,
     /**
+     * How far the game view's map window reaches each way from where it looks,
+     * in cells (todo 140): main sends the square, and the renderer asks again
+     * when the camera nears its edge. 40 covers a full-screen window zoomed
+     * out to 0.4 (about 52 by 29 cells) with half a window to spare.
+     */
+    gameMapHalf: 40,
+    /**
+     * How long the game view waits after `n` or `s` for an `e` or `w` that
+     * makes a diagonal, in rooms that have one (todo 140). Anywhere else the
+     * key moves at once. The prototype's 200, agreed with the user.
+     */
+    gameDiagonalMs: 200,
+    /**
      * How many pixels one room's cell wants, at each end of the Map card's
      * density slider — sparse first, dense second.
      *

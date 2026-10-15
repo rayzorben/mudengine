@@ -84,13 +84,14 @@ describe('what a sighting records', () => {
   it('records where somebody was seen, from the room and only from the room', () => {
     const room = {
       ...EMPTY_CHARACTER.room,
+      map: 1,
       number: 187,
       name: 'A Dusty Track',
       occupants: [{ name: 'Yang', kind: 'player' as const }] as never
     };
     const players = fold(NO_PLAYERS, block('room-exits'), state({ room }));
     expect(players['yang']).toMatchObject({
-      lastRoom: 187,
+      lastRoom: '1/187',
       lastRoomName: 'A Dusty Track',
       lastRoomAt: 1_000
     });
@@ -106,6 +107,7 @@ describe('what a sighting records', () => {
   it('leaves the room and its time alone when somebody merely speaks', () => {
     const room = {
       ...EMPTY_CHARACTER.room,
+      map: 1,
       number: 187,
       name: 'A Dusty Track',
       occupants: [{ name: 'Yang', kind: 'player' as const }] as never
@@ -118,7 +120,7 @@ describe('what a sighting records', () => {
     );
     expect(players['yang']).toMatchObject({
       online: true,
-      lastRoom: 187,
+      lastRoom: '1/187',
       lastRoomName: 'A Dusty Track',
       lastRoomAt: 1_000
     });
@@ -135,6 +137,7 @@ describe('what a sighting records', () => {
   it('does not re-stamp the room on a block that did not change who is in it', () => {
     const room = {
       ...EMPTY_CHARACTER.room,
+      map: 1,
       number: 187,
       name: 'A Dusty Track',
       occupants: [{ name: 'Yang', kind: 'player' as const }] as never
@@ -150,6 +153,7 @@ describe('what a sighting records', () => {
   it('stamps the room again when the occupant list is replaced', () => {
     const room = {
       ...EMPTY_CHARACTER.room,
+      map: 1,
       number: 187,
       name: 'A Dusty Track',
       occupants: [{ name: 'Yang', kind: 'player' as const }] as never
@@ -221,11 +225,12 @@ describe('a later sighting never erases an earlier fact', () => {
   it('keeps an alignment through a room sighting that does not mention one', () => {
     const room = {
       ...EMPTY_CHARACTER.room,
+      map: 1,
       number: 12,
       occupants: [{ name: 'Soul', kind: 'player' as const }] as never
     };
     const players = fold(withAlignment(), block('room-exits'), state({ room }));
-    expect(players['soul']).toMatchObject({ alignment: 'Criminal', lastRoom: 12 });
+    expect(players['soul']).toMatchObject({ alignment: 'Criminal', lastRoom: '1/12' });
   });
 
   it('keeps an alignment through an arrival broadcast, which carries none', () => {
@@ -335,6 +340,7 @@ describe('leaving is remembered, not forgotten', () => {
   it('leaves somebody standing in this room online', () => {
     const room = {
       ...EMPTY_CHARACTER.room,
+      map: 1,
       number: 187,
       name: 'A Dusty Track',
       occupants: [{ name: 'Soul', kind: 'player' as const }] as never

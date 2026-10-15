@@ -121,6 +121,9 @@ export const NO_AFFLICTIONS: Afflictions = {
   afraid: 'unknown'
 };
 
+/** Every condition by name, the runtime half of `Afflictions`. */
+export const AFFLICTION_NAMES = Object.keys(NO_AFFLICTIONS) as ReadonlyArray<keyof Afflictions>;
+
 /** What a death leaves: `Player.Killed` ends every spell effect (`RemoveSpellAbilities`, `Player.cs:1503`), so each condition is `no`. */
 export const AFFLICTIONS_ENDED: Afflictions = {
   blind: 'no',

@@ -127,16 +127,16 @@ describe('what reaches the realm’s book', () => {
 
   it('files where another client said it stands as a sighting, and tells the book', () => {
     const { told, company } = rig();
-    expect(company.noteRemoteRoom('Soul', 1234, 'Town Square', T)).toBe(true);
+    expect(company.noteRemoteRoom('Soul', '1/1234', 'Town Square', T)).toBe(true);
     expect(company.players['soul']).toMatchObject({
-      lastRoom: 1234,
+      lastRoom: '1/1234',
       lastRoomName: 'Town Square',
       lastRoomAt: T,
       online: true
     });
     expect(told).toEqual(['Soul']);
     // An answer that named no room keeps the name the last one gave.
-    company.noteRemoteRoom('Soul', 1235, null, T + 1);
+    company.noteRemoteRoom('Soul', '1/1235', null, T + 1);
     expect(company.players['soul']?.lastRoomName).toBe('Town Square');
   });
 
