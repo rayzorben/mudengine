@@ -1,6 +1,12 @@
 import { PLAIN_SPEED, type BlessingEffect } from './blessingeffects';
 import { weaponHeavy } from './gear';
-import { hitSpellPerBlow, type HitSpell, type HitSpellTarget } from './hitSpells';
+import {
+  hitSpellCasts,
+  hitSpellMean,
+  type HitSpell,
+  type HitSpellCast,
+  type HitSpellTarget
+} from './hitSpells';
 import { dodgedFraction, hitChance, ROUND_ENERGY } from './menace';
 import type { RealmFamily } from './realm';
 import type { StatedProwess } from './stated';
@@ -735,10 +741,12 @@ export interface Swing {
   spread: BlowSpread | null;
   /**
    * What the weapon's hit spells add to a landed blow, the share of blows
-   * that do damage counted (`hitSpellPerBlow`). Zero for a weapon that casts
+   * that do damage counted (`hitSpellMean`). Zero for a weapon that casts
    * none and for a martial attack, which casts none.
    */
   hitSpell: number;
+  /** The hit spells a damaging blow rolls, as the fight run rolls them; empty where `hitSpell` is zero by rule. */
+  hitSpells: readonly HitSpellCast[];
   /**
    * Rounds to take the target's health down, or `null` when the target's
    * health is not known or nothing gets through its resistance.
@@ -862,10 +870,11 @@ export function swing(
    * `PlayerAttackType`), so it rides on the share of landed blows the
    * target's resistance leaves something of.
    */
-  const hitSpell =
+  const hitSpells =
     mean === null || isMartial(attack.kind)
-      ? 0
-      : damaging * hitSpellPerBlow(weapon?.hits, target, sheet.spellcasting);
+      ? []
+      : hitSpellCasts(weapon?.hits, target, sheet.spellcasting);
+  const hitSpell = damaging * hitSpellMean(hitSpells);
 
   let rounds: Reckoning<number> | null = null;
   if (mean !== null && mean + hitSpell > 0 && target.health !== null && target.health > 0) {
@@ -884,6 +893,7 @@ export function swing(
     range: low !== null && high !== null && high >= low ? { low, high } : null,
     spread,
     hitSpell,
+    hitSpells,
     rounds
   };
 }
