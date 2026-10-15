@@ -13,6 +13,7 @@ import { magicResistance, roundsOf, scaledDuration } from './menace';
 import {
   bookCost,
   castChance,
+  damagesByPower,
   levelNeeded,
   levelReaches,
   weighCast,
@@ -30,10 +31,10 @@ import type { WorldSpell } from './world';
  * not priced off the power columns, so it is not weighed at all.
  */
 export function weighsAsRoomAttack(realm: WorldSpell): boolean {
-  if (spellTargeting(realm.targets) !== 'enemies' || (realm.power?.[1] ?? 0) <= 0) return false;
-  return (realm.abilities ?? []).some(
-    ([id, value]) =>
-      (id === HAZARD_ABILITY.damage || id === HAZARD_ABILITY.damageWithMr) && value === 0
+  return (
+    spellTargeting(realm.targets) === 'enemies' &&
+    (realm.power?.[1] ?? 0) > 0 &&
+    damagesByPower(realm)
   );
 }
 

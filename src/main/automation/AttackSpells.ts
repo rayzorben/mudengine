@@ -215,6 +215,20 @@ export class AttackSpells {
     this.room.fightEnded();
   }
 
+  /**
+   * The fight before the attack or cast still unanswered ended: its book goes,
+   * and what was sent after it stays. A kill's `*Combat Off*` lands between
+   * the next monster's cast and its echo; forgotten there, the cast was sent
+   * again and the server's own repeat read as its answer, which marked
+   * `turn undead` instant (rayzor, paramud, 2026-10-14).
+   */
+  earlierFightEnded(): void {
+    const { repeating, awaiting } = this;
+    this.fightEnded();
+    this.repeating = repeating;
+    this.awaiting = awaiting;
+  }
+
   /** The fight's target, as each state has it. A new monster opens the book again. */
   onTarget(target: string | null): void {
     if (target === null || mobKey(target) === this.bookFor) return;

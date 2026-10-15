@@ -213,6 +213,54 @@ describe('choosing the round spell', () => {
     expect(only.refusal).toBe('no-effect');
   });
 
+  /* `turn undead` is aimed at any creature (`Targets` 4), as `enslave` and
+     `godheal` are; only its damage row makes it an attack (rayzor, paramud,
+     2026-10-14: it landed 26–52 while Auto Choose cast spiritual hammer). */
+  it('weighs a creature-aimed spell that does damage, and never a charm aimed the same way', () => {
+    const turn: WorldSpell = {
+      id: 18,
+      name: 'turn undead',
+      short: 'turn',
+      level: 3,
+      mana: 2,
+      targets: 4,
+      power: [70, 90],
+      abilities: [
+        [1, 0],
+        [23, 0]
+      ]
+    };
+    const charm: WorldSpell = {
+      id: 49,
+      name: 'song of charming',
+      short: 'char',
+      level: 1,
+      mana: 1,
+      targets: 4,
+      power: [100, 100],
+      abilities: [
+        [6, 0],
+        [108, 0]
+      ]
+    };
+    const realm = (name: string): WorldSpell | null =>
+      name === 'turn undead' ? turn : name === 'song of charming' ? charm : (REALM[name] ?? null);
+    const book = [
+      ...BOOK,
+      { name: 'turn undead', short: 'turn', level: 3, cost: 2 },
+      { name: 'song of charming', short: 'char', level: 1, cost: 1 }
+    ];
+    const undead = {
+      remaining: 200,
+      magicRes: null,
+      abilities: [[66, 100]] as Array<[number, number]>,
+      nature: { nonLiving: true, animal: false, undead: true, spellImmunity: [0, 0] as const }
+    };
+    const choice = chooseAttackSpell(input({ book, realm, target: undead }));
+    expect(choice.chosen?.spell.name).toBe('turn undead');
+    expect(choice.considered.map((c) => c.spell.name)).not.toContain('song of charming');
+  });
+
   /* The server's own answer, this fight or kept for the realm, counts as the
      world database's does, so the refusal says no effect rather than that
      nothing in the book attacks. */
