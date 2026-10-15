@@ -409,6 +409,47 @@ describe('what the server stated', () => {
     expect(kick.crit).toEqual({ value: 0.2, from: 'stated' });
   });
 
+  /*
+   * Todo 122 (2026-10-14): the sheet's bash row is the base's low at 2.5× and
+   * its high at 3×, so the blow is the product of two rolls and its mean is
+   * not the row's middle. Festus, paramud: `19 112` against DR 6 landed 54.5
+   * a blow over 55,653 blows, where the middle would say 59.5; `19 118` 57.1.
+   */
+  it('reads a bash row as a base range times its multiplier', () => {
+    const target = { armourClass: 40, damageResist: 6, dodge: null, health: 1000 };
+    const bashOf = (max: number) =>
+      swing(
+        {
+          ...STATED,
+          stated: {
+            attacks: { bash: { accuracy: 139, swings: 3.402, damage: { min: 19, max } } }
+          }
+        },
+        SWORD,
+        target,
+        'greatermud',
+        { kind: 'bash', bonus: 0 }
+      )!;
+    const bash = bashOf(112);
+    expect(bash.spread).toEqual({ low: 7, high: 37, factor: { low: 2.5, high: 3 } });
+    expect(bash.range).toEqual({ low: 19, high: 112 });
+    expect(bash.damage.value).toBeCloseTo(54.5, 0);
+    expect(bashOf(118).damage.value).toBeCloseTo(57.25, 0);
+  });
+
+  it('keeps a flat row flat', () => {
+    const target = { armourClass: 40, damageResist: 6, dodge: null, health: 1000 };
+    const sheet: ProwessSheet = {
+      ...STATED,
+      stated: {
+        attacks: { attack: { accuracy: 139, swings: 3, damage: { min: 19, max: 112 }, crits: 0 } }
+      }
+    };
+    const plain = swing(sheet, SWORD, target, 'greatermud')!;
+    expect(plain.spread).toBeNull();
+    expect(plain.damage.value).toBeCloseTo(59.5, 0);
+  });
+
   it('is the server’s figure on any family, and for a bare hand', () => {
     expect(accuracy(STATED, null, 'majormud')).toEqual({ value: 105, from: 'stated' });
     expect(swingsPerRound(STATED, null, null)).toEqual({ value: 3.584, from: 'stated' });

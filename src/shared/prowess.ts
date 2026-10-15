@@ -386,30 +386,50 @@ export const SWING_METHODS = ['attack', 'bash', 'smash'] as const;
 export type SwingMethod = (typeof SWING_METHODS)[number];
 
 /**
+ * The damage multiplier's two ends (`DamageMultiplierMin`/`Max`), rolled in
+ * hundredths between them on every blow, after the base roll
+ * (`PlayerAttackType`: `round(rand(min, max) × rand(lo, hi)) − DR / 10`).
+ */
+export interface Factor {
+  low: number;
+  high: number;
+}
+
+/**
  * What each method does to the round (`AttackTypes/*CombatRound.cs`,
  * `GreaterMUD.Module`): the pre-roll multiplier on the weapon's range, the
- * damage multiplier rolled between its two ends, the blows a round from the
- * plain round's, and the accuracy from the plain round's, before
- * `ACCURACY_MOD`. A bash is half the plain round's blows (`Swings / 2`) at
- * 2.5–3× a 1.1× range, on strength and agility; a smash is one blow at 5× a
- * 1.2× range, at half as much again as a bash's accuracy.
+ * damage multiplier's ends, the blows a round from the plain round's, and the
+ * accuracy from the plain round's, before `ACCURACY_MOD`. A bash is half the
+ * plain round's blows (`Swings / 2`) at 2.5–3× a 1.1× range, on strength and
+ * agility; a smash is one blow at 5× a 1.2× range, at half as much again as a
+ * bash's accuracy.
  */
 const METHOD: Readonly<
   Record<
     SwingMethod,
     {
       preRoll: number;
-      multiplier: number;
+      factor: Factor;
       swings(plain: number): number;
       aim(plain: number, sheet: ProwessSheet): number;
     }
   >
 > = {
-  attack: { preRoll: 1, multiplier: 1, swings: (plain) => plain, aim: (plain) => plain },
-  bash: { preRoll: 1.1, multiplier: 2.75, swings: (plain) => thousandths(plain / 2), aim: bashAim },
+  attack: {
+    preRoll: 1,
+    factor: { low: 1, high: 1 },
+    swings: (plain) => plain,
+    aim: (plain) => plain
+  },
+  bash: {
+    preRoll: 1.1,
+    factor: { low: 2.5, high: 3 },
+    swings: (plain) => thousandths(plain / 2),
+    aim: bashAim
+  },
   smash: {
     preRoll: 1.2,
-    multiplier: 5,
+    factor: { low: 5, high: 5 },
     swings: () => 1,
     aim: (plain, sheet) => Math.trunc((bashAim(plain, sheet) * 3) / 2)
   }
@@ -521,11 +541,18 @@ export function isMartial(kind: AttackKind): kind is MartialAttack {
   return (MARTIAL_ATTACKS as readonly string[]).includes(kind);
 }
 
+/** The multiplier an attack rolls its damage with: a weapon method's ends, or a martial attack's one figure. */
+function factorOf(kind: AttackKind): Factor {
+  if (!isMartial(kind)) return METHOD[kind].factor;
+  const { multiplier } = MARTIAL[kind];
+  return { low: multiplier, high: multiplier };
+}
+
 /** One blow of an attack: its range after the pre-roll, its multiplier, and the blows a round buys. */
 interface Blow {
   low: number;
   high: number;
-  multiplier: number;
+  factor: Factor;
   blows: number;
   from: Provenance;
 }
@@ -551,7 +578,7 @@ function blowOf(
     const perSwing = energyPerSwing(sheet, { min: low, max: high, speed: how.speed }, family);
     if (perSwing === null || high < low) return null;
     const blows = Math.min(MAX_SWINGS, swingsFor(perSwing.value));
-    return { low, high, multiplier: how.multiplier, blows, from: perSwing.from };
+    return { low, high, factor: factorOf(attack.kind), blows, from: perSwing.from };
   }
   const held = weapon ?? BARE_HAND;
   const perSwing = energyPerSwing(sheet, held, family);
@@ -560,7 +587,7 @@ function blowOf(
   return {
     low: Math.floor((held.min + strong.low) * how.preRoll),
     high: Math.floor((held.max + strong.high) * how.preRoll),
-    multiplier: how.multiplier,
+    factor: how.factor,
     blows: Math.min(MAX_SWINGS, how.swings(swingsFor(perSwing.value))),
     from: perSwing.from
   };
@@ -683,7 +710,8 @@ function quickAndDeadly(
  */
 function roundOf(blow: Blow | null): Reckoning<number> | null {
   if (blow === null) return null;
-  return { value: (blow.blows * (blow.low + blow.high) * blow.multiplier) / 2, from: 'bound' };
+  const factor = (blow.factor.low + blow.factor.high) / 2;
+  return { value: (blow.blows * (blow.low + blow.high) * factor) / 2, from: 'bound' };
 }
 
 /** What a swing is expected to do to one target, and how long the target lasts. */
@@ -699,6 +727,13 @@ export interface Swing {
   /** A blow's range before the target's resistance, the multiplier applied; null where unknown. */
   range: { low: number; high: number } | null;
   /**
+   * Where the multiplier is rolled between two ends (a bash), the base range
+   * it multiplies and those ends; null where the range is flat. The product
+   * of two rolls is not flat between `range`'s ends, so its mean is not their
+   * middle (2026-10-14, todo 122).
+   */
+  spread: BlowSpread | null;
+  /**
    * What the weapon's hit spells add to a landed blow, the share of blows
    * that do damage counted (`hitSpellPerBlow`). Zero for a weapon that casts
    * none and for a martial attack, which casts none.
@@ -713,6 +748,13 @@ export interface Swing {
    * counted at its floor. So the true figure is *at most* this.
    */
   rounds: Reckoning<number> | null;
+}
+
+/** A blow rolled as a base range times a multiplier rolled between two ends. */
+export interface BlowSpread {
+  low: number;
+  high: number;
+  factor: Factor;
 }
 
 /** What of a target the swing reads. `menace.ts` reads the mirror of it. */
@@ -765,8 +807,10 @@ export function swing(
    */
   const stated = said?.damage;
   const blow = stated === undefined ? blowOf(sheet, weapon, attack, family) : null;
-  const low = stated?.min ?? (blow === null ? null : Math.floor(blow.low * blow.multiplier));
-  const high = stated?.max ?? (blow === null ? null : Math.floor(blow.high * blow.multiplier));
+  const factor = factorOf(attack.kind);
+  const low = stated?.min ?? (blow === null ? null : Math.floor(blow.low * factor.low));
+  const high = stated?.max ?? (blow === null ? null : Math.floor(blow.high * factor.high));
+  const spread = spreadOf(stated ?? null, blow, factor);
   // A weapon's blows are the plain round's, the sheet's where it printed them, as the method takes them.
   let swings: Reckoning<number> | null;
   if (said?.swings !== undefined) {
@@ -788,7 +832,9 @@ export function swing(
   let mean: number | null = null;
   // The share of plain blows the resistance leaves something of; a hit spell rides on it too.
   let damaging = 0;
-  if (low !== null && high !== null && high >= low) {
+  if (spread !== null) {
+    ({ mean, damaging } = productAbove(spread, resist));
+  } else if (low !== null && high !== null && high >= low) {
     const first = Math.max(low, resist + 1);
     if (first <= high) {
       const count = high - first + 1;
@@ -836,9 +882,55 @@ export function swing(
     swings,
     crit,
     range: low !== null && high !== null && high >= low ? { low, high } : null,
+    spread,
     hitSpell,
     rounds
   };
+}
+
+/**
+ * The base range a blow rolled between two multipliers is made from. The
+ * sheet prints a bash's row as the base's low at the low end and its high at
+ * the high end (`19 112` for 7–37 at 2.5–3×: Festus, paramud, 2026-10-12,
+ * 55,653 blows, mean 54.5 after DR 6), so the base is the row over each end.
+ * The high end reads back exactly; a printed low end can come from two bases
+ * (17 from 6.8 to 7.2), and the lower is kept, so the mean errs low.
+ */
+function spreadOf(
+  stated: { min: number; max: number } | null,
+  blow: Blow | null,
+  factor: Factor
+): BlowSpread | null {
+  if (factor.low === factor.high) return null;
+  const low = stated === null ? blow?.low : Math.floor(stated.min / factor.low);
+  const high = stated === null ? blow?.high : Math.floor(stated.max / factor.high);
+  if (low === undefined || high === undefined || high < low) return null;
+  return { low, high, factor };
+}
+
+/**
+ * The mean of `b × m − resist` over a whole-number base `b` and a multiplier
+ * `m` between its two ends, floored at zero, and the share of blows above
+ * zero. The server rolls `m` in hundredths, read here as a continuous roll.
+ */
+function productAbove(spread: BlowSpread, resist: number): { mean: number; damaging: number } {
+  const { low: lo, high: hi } = spread.factor;
+  let total = 0;
+  let damaging = 0;
+  for (let b = spread.low; b <= spread.high; b += 1) {
+    const least = b * lo;
+    const most = b * hi;
+    if (most <= resist) continue;
+    if (least > resist) {
+      total += (least + most) / 2 - resist;
+      damaging += 1;
+    } else {
+      total += (most - resist) ** 2 / 2 / (most - least);
+      damaging += (most - resist) / (most - least);
+    }
+  }
+  const count = spread.high - spread.low + 1;
+  return { mean: total / count, damaging: damaging / count };
 }
 
 /** The share of critical blows, `rand(2 × max, 4 × max)`, that get past the target's resistance. */
