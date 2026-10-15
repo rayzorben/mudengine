@@ -85,6 +85,17 @@ describe.skipIf(!available)('a weapon that blesses, on the shipped realm', () =>
   });
 
   /*
+   * A lasting spell aimed at a monster is offered by nothing: the nightblack
+   * scythe casts `disease` (`Targets` 8) for ever, and `use` would aim it at
+   * the room. The longsword above is the positive control.
+   */
+  it('does not list a weapon whose lasting spell is a curse', () => {
+    const pack = [{ ...wireItem('nightblack scythe'), equipped: true }];
+    expect(graph!.itemsNamed(['nightblack scythe'])['nightblack scythe']).toBeDefined();
+    expect(invokeChoices(pack, graph!, () => null)).toEqual([]);
+  });
+
+  /*
    * `UseCount: -1` reaching the client at all is format 25. Before it the
    * column was dropped as "unlimited is not a count", which made *unlimited*
    * and *the realm says nothing* the same absence — and this whole feature

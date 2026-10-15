@@ -18,6 +18,7 @@ const BLESS: WorldSpell = {
   duration: 60,
   targets: 13
 };
+const DISEASE: WorldSpell = { id: 952, name: 'disease', duration: 30, targets: 8 };
 const ITEMS: Record<string, WorldItem> = {
   'shimmering longsword': {
     id: 1,
@@ -40,11 +41,18 @@ const ITEMS: Record<string, WorldItem> = {
       [121, 3],
       [43, 114]
     ]
+  },
+  'nightblack scythe': {
+    id: 6,
+    name: 'nightblack scythe',
+    kind: 'weapon',
+    uses: -1,
+    abilities: [[43, 952]]
   }
 };
 const realm: BlessingRealm = {
   itemsNamed: (names) => Object.fromEntries(names.map((name) => [name, ITEMS[name]])),
-  spellById: (id) => (id === 114 ? BLESS : null)
+  spellById: (id) => [BLESS, DISEASE].find((spell) => spell.id === id) ?? null
 };
 const carried = (name: string, equipped: boolean) => ({ ...wireItem(name), equipped });
 
@@ -57,6 +65,11 @@ describe('the blessing a carried item casts', () => {
 
   it('refuses an item with charges', () => {
     expect(carriedBlessing('charged wand', realm)).toBeNull();
+  });
+
+  it('refuses a lasting spell aimed at a monster', () => {
+    expect(carriedBlessing('shimmering longsword', realm)).not.toBeNull();
+    expect(itemBlessing('nightblack scythe', realm)).toBeNull();
   });
 
   it('reads a charged item through itemBlessing, with what a copy holds', () => {

@@ -8,7 +8,7 @@
 import type { CarriedItem } from './character';
 import { chargeCapacity, renews, type ChargeCapacity } from './charges';
 import { bareName, itemInvocation, sameItem } from './items';
-import { spellTargeting } from './spellcraft';
+import { castsOnSelf, spellTargeting } from './spellcraft';
 import { nameAnswersTo, type WorldItem, type WorldSpell } from './world';
 
 /** The realm lookups a blessing needs. `WorldGraph` answers both. */
@@ -65,8 +65,8 @@ export function renewingBlessing(name: string, realm: BlessingRealm): ItemBlessi
 
 /**
  * The blessing the item a listing spelled `name` casts, charged or not, or
- * null. Only a spell with a duration, since anything else is not a blessing,
- * and only an item whose `UseCount` the realm states.
+ * null. Only a spell with a duration that lands on the user, since anything
+ * else is not a blessing, and only an item whose `UseCount` the realm states.
  */
 export function itemBlessing(name: string, realm: BlessingRealm): ItemBlessing | null {
   const item = realm.itemsNamed([name])[name];
@@ -87,6 +87,11 @@ export function blessingOf(
   if (invocation === null || capacity === null) return null;
   const spell = realm.spellById(invocation.spell);
   if (spell === null || spell.duration === undefined || spell.duration <= 0) return null;
+  // A lasting spell aimed at a monster (`disease` on a nightblack scythe,
+  // `bites` on a serrated dwarven axe, `Targets` 8) is a curse. `unknown`
+  // passes, as for `castsOnSelf`'s other callers: a derivative realm may not
+  // state the column.
+  if (!castsOnSelf(spellTargeting(spell.targets))) return null;
   return {
     spell,
     mustBeEquipped: item.kind !== undefined ? isWorn(item.kind) : true,
