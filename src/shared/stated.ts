@@ -38,7 +38,9 @@ export interface StatedRound {
   /**
    * The blow's range, the attack's multipliers applied. Before any defence on
    * the character's own sheet; on one run against a monster, after its damage
-   * resistance and floored at zero.
+   * resistance and floored at zero. A bash rolls its multiplier between two
+   * ends, so its row is the base's low at 2.5× and its high at 3×
+   * (`prowess.spreadOf`), and its mean is under the row's middle.
    */
   min: number;
   max: number;

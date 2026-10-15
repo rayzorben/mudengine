@@ -428,6 +428,32 @@ describe('the blow the sheet states', () => {
     )!;
     expect(stated.rounds.value).toBeLessThan(armed.rounds.value / 3);
   });
+
+  /*
+   * Todo 122 (2026-10-14): a bash is the base roll times 2.5–3×, so the run
+   * rolls the product, whose mean is under the middle of the printed row.
+   * Festus's `19 112` landed 54.5 a blow after DR 6 over 55,653 blows.
+   */
+  it('rolls a bash as the base times its multiplier', () => {
+    const tough = { name: 'ogre', subject: { hp: 4000, profiles: [biter(1, 1, 1)] } };
+    const row = { accuracy: 300, swings: 1, damage: { min: 19, max: 112 }, crits: 0 };
+    const run = (kind: 'attack' | 'bash') =>
+      simulateFight(
+        fight({
+          foes: [tough],
+          hp: 100000,
+          hpMax: 100000,
+          trials: 50,
+          roundCap: 1000,
+          attack: { kind, bonus: 0 },
+          sheet: { ...SHEET, stated: { attacks: { [kind]: row } } }
+        })
+      )!;
+    const flat = run('attack').rounds.value;
+    const bash = run('bash').rounds.value;
+    // Flat 19–112 is 65.5 a blow; the product of 7–37 and 2.5–3× is 60.5.
+    expect(bash / flat).toBeCloseTo(65.5 / 60.5, 1);
+  });
 });
 
 /*

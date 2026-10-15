@@ -596,8 +596,14 @@ export function startFight(input: SurvivalInput): FightTrials | null {
           if (random() >= side.attack.lands.value) continue;
           // The blow's own range, as `prowess.swing` reads it, and a critical `rand(2 × max, 4 × max)`.
           const range = side.attack.range;
+          const spread = side.attack.spread;
           if (range === null) {
             left -= side.attack.damage.value;
+          } else if (spread !== null) {
+            // A bash: the base roll times a multiplier rolled between its ends.
+            const factor = spread.factor.low + random() * (spread.factor.high - spread.factor.low);
+            const rolled = Math.round(between(random, spread.low, spread.high) * factor);
+            left -= Math.max(0, rolled - side.resist);
           } else {
             const critical = random() < (side.attack.crit?.value ?? 0);
             const rolled = critical
