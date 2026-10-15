@@ -457,6 +457,39 @@ describe('the blow the sheet states', () => {
 });
 
 /*
+ * Todo 125 (2026-10-15): Festus's `frost hits` (2–8) followed 85.9% of his
+ * landed blows on paramud, 8.6% of his damage, and the run never rolled it.
+ */
+describe('a weapon that casts on the blow', () => {
+  const FROST: WorldSpell = {
+    id: 400,
+    name: 'frost hits',
+    power: [2, 8],
+    element: 'cold',
+    abilities: [[1, 0]]
+  };
+  const LIVING = { nonLiving: false, animal: false, undead: false, spellImmunity: [0, 0] as const };
+  const ogre = { name: 'ogre', subject: { hp: 100, nature: LIVING, profiles: [biter(1, 1, 1)] } };
+
+  it('kills sooner with the hit spell rolled after each damaging blow', () => {
+    const plain = simulateFight(fight({ foes: [ogre] }))!;
+    const frosted = simulateFight(
+      fight({ foes: [ogre], weapon: { ...SWORD, hits: [{ chance: 100, spell: FROST }] } })
+    )!;
+    expect(frosted.rounds.value).toBeLessThan(plain.rounds.value);
+  });
+
+  it('rolls nothing where the target is not known to let the spell through', () => {
+    const unread = { name: 'ogre', subject: { hp: 100, profiles: [biter(1, 1, 1)] } };
+    const plain = simulateFight(fight({ foes: [unread] }))!;
+    const frosted = simulateFight(
+      fight({ foes: [unread], weapon: { ...SWORD, hits: [{ chance: 100, spell: FROST }] } })
+    )!;
+    expect(frosted.rounds.value).toBe(plain.rounds.value);
+  });
+});
+
+/*
  * Todo 03 (2026-09-27): Festus (Paladin 24, 306 hp, AC 63, DR 13, MR 47) was
  * told a room of skeletal acolytes was 100% survivable, and the acolyte's
  * spear of dark energy (spell 5103, cast at level 28: 36 to 89) took 84, 78

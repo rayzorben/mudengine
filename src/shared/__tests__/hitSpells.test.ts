@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { hitSpellPerBlow, hitSpellsOf, type HitSpell } from '../hitSpells';
+import { mulberry32 } from '../dice';
+import {
+  hitSpellCasts,
+  hitSpellMean,
+  hitSpellsOf,
+  rollHitSpells,
+  type HitSpell,
+  type HitSpellTarget
+} from '../hitSpells';
 import { swing, swingRound, type ProwessSheet } from '../prowess';
 import type { MonsterNature } from '../spellReach';
 import type { WorldSpell } from '../world';
@@ -26,6 +34,10 @@ const LIVING: MonsterNature = {
   spellImmunity: [0, 0]
 };
 const FROSTBITE: HitSpell[] = [{ chance: 100, spell: FROST }];
+
+/** What the hit spells add to one damaging blow, the way `swing` reads them. */
+const hitSpellPerBlow = (hits: HitSpell[], target: HitSpellTarget, spellcasting: number): number =>
+  hitSpellMean(hitSpellCasts(hits, target, spellcasting));
 
 describe('the hit spells an item names', () => {
   it('pairs a %Spell row with the CastsSp row right after it (blizzardfang)', () => {
@@ -128,6 +140,23 @@ describe('what a hit spell adds to a damaging blow', () => {
     expect(
       hitSpellPerBlow(FROSTBITE, { nature: { ...LIVING, spellImmunity: [50, 50] } }, 40)
     ).toBeCloseTo(5, 6);
+  });
+});
+
+describe('a hit spell rolled on a blow', () => {
+  it('averages what the mean says, at the chance it is cast', () => {
+    const casts = hitSpellCasts([{ chance: 86, spell: FROST }], { nature: LIVING }, 40);
+    const random = mulberry32(125);
+    let total = 0;
+    for (let n = 0; n < 20000; n++) total += rollHitSpells(random, casts);
+    expect(hitSpellMean(casts)).toBeCloseTo(5 * 0.86, 6);
+    expect(Math.abs(total / 20000 - hitSpellMean(casts))).toBeLessThan(0.2);
+  });
+
+  it('rolls nothing for a spell that does no damage', () => {
+    const casts = hitSpellCasts([{ chance: 100, spell: KNOCKDOWN }], { nature: LIVING }, 40);
+    expect(casts).toEqual([]);
+    expect(rollHitSpells(mulberry32(1), casts)).toBe(0);
   });
 });
 

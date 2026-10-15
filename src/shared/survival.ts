@@ -14,6 +14,7 @@ import { blessedPlayer, negated, sumEffects, type BlessingEffect } from './bless
 import { rollShields, shieldsOf } from './damageShield';
 import { between, mulberry32, sampledCount } from './dice';
 import { guardsFirst, type GuardSubject } from './guards';
+import { rollHitSpells } from './hitSpells';
 import { weighRoom, type MenacePlayer, type MenaceSubject, type MenaceWeights } from './menace';
 import {
   freshMobState,
@@ -597,26 +598,30 @@ export function startFight(input: SurvivalInput): FightTrials | null {
           // The blow's own range, as `prowess.swing` reads it, and a critical `rand(2 × max, 4 × max)`.
           const range = side.attack.range;
           const spread = side.attack.spread;
+          let dealt: number;
           if (range === null) {
-            left -= side.attack.damage.value;
+            dealt = side.attack.damage.value;
           } else if (spread !== null) {
             // A bash: the base roll times a multiplier rolled between its ends.
             const factor = spread.factor.low + random() * (spread.factor.high - spread.factor.low);
             const rolled = Math.round(between(random, spread.low, spread.high) * factor);
-            left -= Math.max(0, rolled - side.resist);
+            dealt = Math.max(0, rolled - side.resist);
           } else {
             const critical = random() < (side.attack.crit?.value ?? 0);
             const rolled = critical
               ? between(random, 2 * range.high, 4 * range.high)
               : between(random, range.low, range.high);
-            left -= Math.max(0, rolled - side.resist);
+            dealt = Math.max(0, rolled - side.resist);
           }
+          left -= dealt;
           if (left > 0 && side.shields.length > 0) {
             const back = rollShields(random, side.shields);
             hp -= back;
             lost += back;
             struckBack += back;
           }
+          // The weapon's hit spells, cast from a blow that did damage and left the target standing (`PlayerAttackType`).
+          if (dealt > 0 && left > 0) left -= rollHitSpells(random, side.attack.hitSpells);
         }
         return left;
       }
