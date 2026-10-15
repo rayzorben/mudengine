@@ -40,7 +40,7 @@ import {
 import { coinsPickedUp, Ledger, takenByAnother, trained, wealthStated } from './ledger';
 import { resolveFromCoordinates } from '../world/resolve';
 import type { WorldGraph } from '../world/WorldGraph';
-import type { Direction, RoomId, TrailStep } from '../../shared/world';
+import type { Direction, RoomId, TrailStep, WorldRoom } from '../../shared/world';
 import { mobKey, nameAnswersTo, roomId } from '../../shared/world';
 import { deathNamed, type Block } from '../../shared/blocks';
 import { figure } from '../../shared/values';
@@ -60,6 +60,7 @@ import { placeOf, withHidden, withTaken } from '../../shared/stash';
 import { isWoundBand } from '../../shared/wounds';
 import { FightTracker, playerDies } from './combat';
 import { Expectations, MOVE_COMMANDS, type LapsedClaim } from './expectations';
+import { roomsNameCanBe } from './nameLine';
 import {
   coinsDropped,
   doorChanged,
@@ -489,22 +490,21 @@ export class CharacterTracker {
   }
 
   /**
-   * Whether the next room block answers a **peek** rather than a step.
-   *
-   * `l n` prints the neighbouring room in full and nothing in it says it is
-   * not where you are standing — the settled decision the expectation queue
-   * exists for. The tracker has always honoured it; `Marks.markFor`
-   * needs the same answer, because it decorates a room's name line *before*
-   * `act()` runs and a button beside a room the character is not in sends its
-   * command into the room the character *is* in. A glyph mislabelling a peeked
-   * room was cosmetic; a control is not.
-   *
-   * Read at the head and never shifted: the block that consumes this
-   * expectation has not been applied yet, and consuming it here would take the
-   * answer away from the room resolution that needs it.
+   * Whether the next room block answers a **peek** (`l n`), which prints the
+   * neighbour in full. `Marks.markFor` asks on the name line, before `act()`:
+   * a button beside a peeked room sends its command into the room stood in.
+   * Read at the head and never shifted, or room resolution loses its claim.
    */
   get nextRoomIsPeek(): boolean {
     return this.expect.head()?.kind === 'peek';
+  }
+
+  /** The rooms a room's name line can be, asked before its block is applied. */
+  roomsNameCanBe(name: string): readonly WorldRoom[] {
+    if (!this.world) return [];
+    const { map, number } = this.state.room;
+    const here = map !== null && number !== null ? roomId(map, number) : null;
+    return roomsNameCanBe(this.world, name, here, this.expect);
   }
 
   /**

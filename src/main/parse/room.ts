@@ -45,6 +45,7 @@ import { RoomDraft } from './draft';
 import { isPortalClaim, MOVE_COMMANDS, type Expectations } from './expectations';
 import { itemList, list, parseCoinEntry } from './inventory';
 import { leavesRoom } from './departs';
+import { ladderInput, promisedRoom, spendsPromise } from './nameLine';
 import { confirmedBy } from './lastRoom';
 
 /** What the wire observed about one thing, beside its name (`WorldGraph.buildItemEntity`). */
@@ -713,18 +714,16 @@ export class RoomTracker {
       return { ...s, room, stealth };
     }
 
-    // Only a landing spends the promise: a block that answered a portal's claim, or one with
-    // no portal owed. A retried portal's first landing is the first (todo 763).
+    // Only a landing spends the promise (`spendsPromise`, todo 763).
     const teleported =
-      this.world && room.name && (isPortalClaim(answered) || !this.expect.portalOwed)
+      this.world && room.name && spendsPromise(answered, this.expect)
         ? this.expect.takeTeleport()
         : null;
     if (this.world && room.name && teleported !== null) {
-      const there = this.world.byId(roomId(teleported.map, teleported.number));
-      const said = teleported;
-      if (there && there.name.trim().toLowerCase() === room.name.trim().toLowerCase()) {
-        room.map = said.map;
-        room.number = said.number;
+      const there = promisedRoom(this.world, room.name, teleported);
+      if (there) {
+        room.map = there.map;
+        room.number = there.room;
         room.resolvedBy = 'coordinates';
         room.confidence = 1;
         room.ambiguous = 0;
@@ -850,11 +849,8 @@ export class RoomTracker {
        * was the room the table names.
        */
       const located = resolveRoom(this.world, {
-        name: room.name,
-        exits: exits.map((exit) => exit.direction as Direction),
-        ...(answered?.kind === 'move' && answered.landing !== undefined
-          ? { among: answered.landing }
-          : { previous, moved })
+        ...ladderInput(room.name, previous, answered),
+        exits: exits.map((exit) => exit.direction as Direction)
       });
 
       // What it considered, and which one it took. Bounded: a name shared

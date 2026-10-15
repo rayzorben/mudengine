@@ -72,9 +72,9 @@ import { tuning } from '../app/tuning';
  * sinkhole`) is walked by typing a direction, so the button is the only way
  * to use one without knowing the realm data by heart.
  *
- * The list is `WorldGraph.roomCommandsNamed`'s, which is already one command
- * per way (the first phrase the realm lists) and already refuses a name
- * several rooms disagree on.
+ * The list is `WorldGraph.roomCommandsAmong`'s, which is already one command
+ * per way (the first phrase the realm lists) and already refuses when the
+ * rooms the name line can be disagree.
  *
  * **The label is the command, uncased.** These are the realm's words, not
  * ours, and the label doubles as the thing a player can retype; `Go Manhole`

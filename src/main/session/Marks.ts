@@ -1,8 +1,8 @@
 /**
  * A glyph for a line that names a place: a bank's name gets a bank. Only a
- * room's name line, and only when every room bearing that name is the same
- * kind of place — `placeNamed` refuses otherwise, because a glyph is a claim
- * and the name line arrives before the room resolves. Off entirely when the
+ * room's name line, and only when every room the line can be is the same kind
+ * of place — `placeAmong` refuses otherwise, because a glyph is a claim and
+ * the name line arrives before the room resolves. Off entirely when the
  * internal file says the console is not to be decorated. A decoration over
  * the cells, never the grid: see `mudengine-session` › `parts/terminal.md`,
  * *Enrichment never touches the grid*.
@@ -14,10 +14,10 @@ import type { Block } from '../../shared/blocks';
 import { bankKey } from '../../shared/character';
 import type { TerminalMark } from '../../shared/types';
 
-/** The purse, the vaults and whether the next room is a peek; the realm's places and room commands. */
+/** The purse, the vaults, the rooms the name line can be and whether it is a peek; the realm's places and room commands. */
 export interface MarksParts {
-  readonly tracker: Pick<CharacterTracker, 'current' | 'nextRoomIsPeek'>;
-  readonly world: Pick<WorldGraph, 'placeNamed' | 'roomCommandsNamed'> | undefined;
+  readonly tracker: Pick<CharacterTracker, 'current' | 'nextRoomIsPeek' | 'roomsNameCanBe'>;
+  readonly world: Pick<WorldGraph, 'placeAmong' | 'roomCommandsAmong'> | undefined;
 }
 
 /** What the session that built this answers for it. */
@@ -43,12 +43,13 @@ export class Marks {
    * place it is, and the buttons for what can be done there.
    *
    * Asked on the *name* line, which is before `Obvious exits:` has completed
-   * the room and resolved which of the thirteen Town Gates this is — so both
-   * halves are answered from the name and both refuse a name whose rooms
-   * disagree (`placeNamed`, `roomCommandsNamed`). Guessing here would put a
-   * button on screen that sends a command the room does not take, and an
-   * unrecognised command on this server is *said out loud* to everybody
-   * standing in it.
+   * the room, so both halves are answered from the rooms the tracker says the
+   * line can be (`roomsNameCanBe`: the room a step leads to, the room stood in
+   * and its namesakes next door, or every room of the name), and both refuse
+   * when those disagree (`placeAmong`, `roomCommandsAmong`). Guessing here
+   * would put a button on screen that sends a command the room does not take,
+   * and an unrecognised command on this server is *said out loud* to
+   * everybody standing in it.
    *
    * A room with actions and no shop is still worth marking: `go manhole` is a
    * plain room whose only way onward is a command nobody can see. The glyph
@@ -66,7 +67,8 @@ export class Marks {
   markFor(block: Block): TerminalMark | undefined {
     if (!this.session.enrich() || block.type !== 'room-name') return undefined;
     const name = block.text.trim();
-    const place = this.world?.placeNamed(name);
+    const rooms = this.tracker.roomsNameCanBe(name);
+    const place = this.world?.placeAmong(rooms);
     const kind = place && place.kind !== 'tavern' ? place.kind : undefined;
     /*
      * The vault standing in front of the character, by the name the realm data
@@ -85,7 +87,7 @@ export class Marks {
       ? []
       : actionsFor(
           kind,
-          this.world?.roomCommandsNamed(name) ?? [],
+          this.world?.roomCommandsAmong(rooms) ?? [],
           this.tracker.current.inventory.wealth,
           vault?.copper ?? null
         );
