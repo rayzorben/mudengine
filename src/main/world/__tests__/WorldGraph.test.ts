@@ -2563,16 +2563,22 @@ describe('what kind of place a room name is', () => {
   })();
 
   it('names the kind when every room bearing the name agrees', () => {
-    expect(graph.placeNamed('Bank')).toEqual({ kind: 'bank', shop: 'Bank of Godfrey' });
-    expect(graph.placeNamed('Chapel')).toEqual({ kind: 'temple', shop: 'Temple' });
+    expect(graph.placeAmong(graph.findByName('Bank'))).toEqual({
+      kind: 'bank',
+      shop: 'Bank of Godfrey'
+    });
+    expect(graph.placeAmong(graph.findByName('Chapel'))).toEqual({
+      kind: 'temple',
+      shop: 'Temple'
+    });
     expect(graph.shop(1)?.kind).toBe('bank');
     // Kept for its kind alone: it stocks nothing.
     expect(graph.shop(1)?.items).toEqual([]);
   });
 
   it('claims nothing when they disagree, or when there is no such room', () => {
-    expect(graph.placeNamed('Square')).toBeUndefined();
-    expect(graph.placeNamed('Nowhere')).toBeUndefined();
+    expect(graph.placeAmong(graph.findByName('Square'))).toBeUndefined();
+    expect(graph.placeAmong(graph.findByName('Nowhere'))).toBeUndefined();
   });
 
   it('lists every name it knows, lower-cased, for the console to recognise', () => {
@@ -2943,7 +2949,7 @@ describe('the commands a room named this takes', () => {
     const graph = withRooms([
       { m: 1, r: 1, n: 'Sewer Grate', x: { d: { m: 1, r: 2, i: 'Text: go manhole, go man' } } }
     ]);
-    expect(graph.roomCommandsNamed('Sewer Grate')).toEqual(['go manhole']);
+    expect(graph.roomCommandsAmong(graph.findByName('Sewer Grate'))).toEqual(['go manhole']);
   });
 
   /*
@@ -2964,7 +2970,7 @@ describe('the commands a room named this takes', () => {
         ]
       }
     ]);
-    expect(graph.roomCommandsNamed('Scorching Desert, Sinkhole')).toEqual([
+    expect(graph.roomCommandsAmong(graph.findByName('Scorching Desert, Sinkhole'))).toEqual([
       'go crack',
       'dive sinkhole',
       'pull lever'
@@ -2976,12 +2982,12 @@ describe('the commands a room named this takes', () => {
       { m: 1, r: 1, n: 'Oasis', cmd: [{ say: ['dive pool'] }] },
       { m: 1, r: 2, n: 'Oasis' }
     ]);
-    expect(graph.roomCommandsNamed('Oasis')).toBeUndefined();
+    expect(graph.roomCommandsAmong(graph.findByName('Oasis'))).toBeUndefined();
   });
 
   it('says nothing for a room whose exits carry no command', () => {
     const graph = withRooms([{ m: 1, r: 1, n: 'Town Square', x: { n: { m: 1, r: 2 } } }]);
-    expect(graph.roomCommandsNamed('Town Square')).toBeUndefined();
+    expect(graph.roomCommandsAmong(graph.findByName('Town Square'))).toBeUndefined();
   });
 
   it('refuses a name whose rooms disagree', () => {
@@ -2989,7 +2995,7 @@ describe('the commands a room named this takes', () => {
       { m: 1, r: 1, n: 'Town Gates', x: { d: { m: 1, r: 3, i: 'Text: go manhole' } } },
       { m: 1, r: 2, n: 'Town Gates', x: { d: { m: 1, r: 4, i: 'Text: go hatch' } } }
     ]);
-    expect(graph.roomCommandsNamed('Town Gates')).toBeUndefined();
+    expect(graph.roomCommandsAmong(graph.findByName('Town Gates'))).toBeUndefined();
   });
 
   /*
@@ -3001,11 +3007,11 @@ describe('the commands a room named this takes', () => {
       { m: 1, r: 1, n: 'Sewer Grate', x: { d: { m: 1, r: 3, i: 'Text: go manhole' } } },
       { m: 1, r: 2, n: 'Sewer Grate', x: { d: { m: 1, r: 4, i: 'Text: go manhole' } } }
     ]);
-    expect(graph.roomCommandsNamed('Sewer Grate')).toEqual(['go manhole']);
+    expect(graph.roomCommandsAmong(graph.findByName('Sewer Grate'))).toEqual(['go manhole']);
   });
 
   it('says nothing about a room the realm does not have', () => {
-    expect(withRooms([]).roomCommandsNamed('Nowhere')).toBeUndefined();
+    expect(withRooms([]).roomCommandsAmong([])).toBeUndefined();
   });
 });
 

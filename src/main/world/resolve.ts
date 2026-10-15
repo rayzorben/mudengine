@@ -59,6 +59,15 @@ export interface ResolveInput {
   among?: readonly RoomId[];
 }
 
+/** What the name line knows: everything but the printed exits. */
+export type NameInput = Omit<ResolveInput, 'exits'>;
+
+/** The rooms a block can still be, and the rung that left them. */
+export interface Narrowed {
+  method: 'scattered' | 'movement' | 'neighbour' | 'name';
+  rooms: WorldRoom[];
+}
+
 export type ResolveMethod =
   | 'coordinates'
   | 'movement'
@@ -121,8 +130,15 @@ function sameExits(a: readonly Direction[], b: readonly string[]): boolean {
   return left.every((value, index) => value === right[index]);
 }
 
-export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolution {
-  const named = graph.findByName(input.name);
+/**
+ * The rooms a room block can be, from what is known before `Obvious exits:`:
+ * the name, where the character was, and the claim the block answers. The
+ * front of {@link resolveRoom}, and the whole answer the name line gets, so
+ * the console's buttons and the room the tracker places read one ladder.
+ */
+export function narrowByName(graph: ResolveGraph, input: NameInput): Narrowed {
+  const wanted = input.name.trim().toLowerCase();
+  const named = (): Narrowed => ({ method: 'name', rooms: graph.findByName(input.name) });
 
   /*
    * A draw, so the answer is inside the draw and nowhere else.
@@ -135,54 +151,19 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
    * `rm` is for: after a draw there is nothing else that can say.
    */
   if (input.among !== undefined) {
-    const wanted = input.name.trim().toLowerCase();
     const drawn = input.among
       .map((id) => graph.byId(id))
       .filter(
         (room): room is WorldRoom => room !== undefined && room.name.trim().toLowerCase() === wanted
       );
-    if (drawn.length === 1) {
-      /*
-       * A landing that names **one** room is an address, not an inference: the
-       * realm's own spell table says where the character was put, and the name
-       * agreeing is a check rather than the evidence. That is the standing a
-       * `sys go`'s coordinates have, and it matters because certainty stops
-       * the ladder re-deriving the room on the next look. Several rooms
-       * narrowed to one by name is inference, and says so.
-       */
-      const exact = input.among.length === 1;
-      return {
-        room: drawn[0]!,
-        method: 'scattered',
-        candidates: drawn,
-        confidence: exact ? 1 : 0.95
-      };
-    }
-    if (drawn.length > 1) {
-      const bySignature = drawn.filter((room) =>
-        sameExits(
-          input.exits,
-          room.exits.map((exit) => exit.direction)
-        )
-      );
-      if (bySignature.length === 1) {
-        return {
-          room: bySignature[0]!,
-          method: 'scattered',
-          candidates: bySignature,
-          confidence: 0.9
-        };
-      }
-      const left = bySignature.length > 1 ? bySignature : drawn;
-      return { room: null, method: 'scattered', candidates: left, confidence: 1 / left.length };
-    }
+    if (drawn.length > 0) return { method: 'scattered', rooms: drawn };
     /*
      * The server put the character somewhere the spell's own range does not
      * cover. That is the realm data and the realm disagreeing, and neither the
      * draw nor the room walked out of is evidence any more — so the global
      * ladder below answers it from the name alone, with `previous` dropped.
      */
-    return resolveRoom(graph, { name: input.name, exits: input.exits });
+    return named();
   }
 
   /*
@@ -196,25 +177,18 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
   if (input.previous && input.moved) {
     const from = graph.byId(input.previous);
     const exit = from?.exits.find((candidate) => candidate.direction === input.moved);
-    if (exit) {
-      /*
-       * **The exit table's own room, including for an exit whose cast moves
-       * you.** Such an exit answers with two room blocks and this rung reads
-       * the *first*, which is the room the table names — the character really
-       * does pass through it (`CastExit.TryMoveThroughExit` describes it
-       * before it casts). Where the spell then puts them is the second block,
-       * and it is resolved against the landing the claim carries
-       * (`ResolveInput.among`), never against an exit.
-       */
-      const destination = graph.get(exit.map, exit.room);
-      if (destination && destination.name.toLowerCase() === input.name.trim().toLowerCase()) {
-        return {
-          room: destination,
-          method: 'movement',
-          candidates: [destination],
-          confidence: 0.98
-        };
-      }
+    /*
+     * **The exit table's own room, including for an exit whose cast moves
+     * you.** Such an exit answers with two room blocks and this rung reads
+     * the *first*, which is the room the table names — the character really
+     * does pass through it (`CastExit.TryMoveThroughExit` describes it
+     * before it casts). Where the spell then puts them is the second block,
+     * and it is resolved against the landing the claim carries
+     * (`ResolveInput.among`), never against an exit.
+     */
+    const destination = exit ? graph.get(exit.map, exit.room) : undefined;
+    if (destination && destination.name.trim().toLowerCase() === wanted) {
+      return { method: 'movement', rooms: [destination] };
     }
   }
 
@@ -241,33 +215,64 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
    */
   if (input.previous && !input.moved) {
     const near = neighbours(graph, input.previous, input.name);
-    if (near.length === 1) {
-      return { room: near[0]!, method: 'neighbour', candidates: near, confidence: 0.9 };
-    }
-    if (near.length > 1) {
-      const bySignature = near.filter((room) =>
-        sameExits(
-          input.exits,
-          room.exits.map((exit) => exit.direction)
-        )
-      );
-      if (bySignature.length === 1) {
-        return {
-          room: bySignature[0]!,
-          method: 'neighbour',
-          candidates: bySignature,
-          confidence: 0.85
-        };
+    if (near.length > 0) return { method: 'neighbour', rooms: near };
+  }
+
+  return named();
+}
+
+export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolution {
+  const { method, rooms } = narrowByName(graph, input);
+  const printed = (room: WorldRoom): boolean =>
+    sameExits(
+      input.exits,
+      room.exits.map((exit) => exit.direction)
+    );
+
+  switch (method) {
+    case 'scattered': {
+      if (rooms.length === 1) {
+        /*
+         * A landing that names **one** room is an address, not an inference: the
+         * realm's own spell table says where the character was put, and the name
+         * agreeing is a check rather than the evidence. That is the standing a
+         * `sys go`'s coordinates have, and it matters because certainty stops
+         * the ladder re-deriving the room on the next look. Several rooms
+         * narrowed to one by name is inference, and says so.
+         */
+        const exact = input.among?.length === 1;
+        return { room: rooms[0]!, method, candidates: rooms, confidence: exact ? 1 : 0.95 };
       }
-      const left = bySignature.length > 1 ? bySignature : near;
-      return { room: null, method: 'neighbour', candidates: left, confidence: 1 / left.length };
+      const bySignature = rooms.filter(printed);
+      if (bySignature.length === 1) {
+        return { room: bySignature[0]!, method, candidates: bySignature, confidence: 0.9 };
+      }
+      const left = bySignature.length > 1 ? bySignature : rooms;
+      return { room: null, method, candidates: left, confidence: 1 / left.length };
+    }
+    case 'movement':
+      return { room: rooms[0]!, method, candidates: rooms, confidence: 0.98 };
+    case 'neighbour': {
+      if (rooms.length === 1)
+        return { room: rooms[0]!, method, candidates: rooms, confidence: 0.9 };
+      const bySignature = rooms.filter(printed);
+      if (bySignature.length === 1) {
+        return { room: bySignature[0]!, method, candidates: bySignature, confidence: 0.85 };
+      }
+      const left = bySignature.length > 1 ? bySignature : rooms;
+      return { room: null, method, candidates: left, confidence: 1 / left.length };
+    }
+    case 'name':
+      break;
+    default: {
+      const unreachable: never = method;
+      return unreachable;
     }
   }
 
-  if (named.length === 0) return { ...NONE, candidates: [] };
-
-  if (named.length === 1) {
-    return { room: named[0]!, method: 'unique-name', candidates: named, confidence: 0.9 };
+  if (rooms.length === 0) return { ...NONE, candidates: [] };
+  if (rooms.length === 1) {
+    return { room: rooms[0]!, method: 'unique-name', candidates: rooms, confidence: 0.9 };
   }
 
   /*
@@ -276,13 +281,7 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
    * does not list as obvious — hidden ones — so an exact match is evidence but
    * its absence is not proof.
    */
-  const bySignature = named.filter((room) =>
-    sameExits(
-      input.exits,
-      room.exits.map((exit) => exit.direction)
-    )
-  );
-
+  const bySignature = rooms.filter(printed);
   if (bySignature.length === 1) {
     return {
       room: bySignature[0]!,
@@ -291,7 +290,6 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
       confidence: 0.85
     };
   }
-
   if (bySignature.length > 1) {
     // Still ambiguous. Report the narrowed set rather than picking one: a
     // confidently wrong location sends the pathfinder somewhere else entirely.
@@ -302,8 +300,7 @@ export function resolveRoom(graph: ResolveGraph, input: ResolveInput): Resolutio
       confidence: 1 / bySignature.length
     };
   }
-
-  return { room: null, method: 'none', candidates: named, confidence: 0 };
+  return { room: null, method: 'none', candidates: rooms, confidence: 0 };
 }
 
 /**

@@ -1283,16 +1283,14 @@ export class WorldGraph {
   }
 
   /**
-   * What kind of place every room bearing a name is, when they agree.
+   * What kind of place every room the character can be in is, when they agree.
    *
-   * For decorating a room's name the moment it is printed — before the room
-   * has resolved, because the name line arrives first. Thirteen Town Gates
-   * with no shop agree on nothing worth drawing; two Banks that are both
-   * banks agree on a bank. Disagreement, or no such room, is undefined: a
-   * glyph beside a name is a claim, and this does not guess.
+   * Asked on the name line with the rooms `narrowByName` leaves. Thirteen Town
+   * Gates with no shop agree on nothing worth drawing; two Banks that are both
+   * banks agree on a bank. Disagreement, or no room, is undefined: a glyph
+   * beside a name is a claim, and this does not guess.
    */
-  placeNamed(name: string): { kind: ShopKind; shop: string } | undefined {
-    const rooms = this.findByName(name);
+  placeAmong(rooms: readonly WorldRoom[]): { kind: ShopKind; shop: string } | undefined {
     if (rooms.length === 0) return undefined;
     let found: { kind: ShopKind; shop: string } | undefined;
     for (const room of rooms) {
@@ -1305,15 +1303,14 @@ export class WorldGraph {
   }
 
   /**
-   * The commands a room *named* this takes: its `Text:` exits (`go manhole`),
-   * then the words its text block answers (`dive sinkhole`, `pull lever`).
-   * The first phrase of each, which is the realm's canonical one. Asked on the
-   * name line, before `Obvious exits:` resolves which Town Gates this is, and a
-   * command the room does not take is said out loud to the room, so undefined
-   * unless every room of the name agrees (the discipline of `placeNamed`).
+   * The commands the room takes: its `Text:` exits (`go manhole`), then the
+   * words its text block answers (`dive sinkhole`, `pull lever`), the first
+   * phrase of each. Asked on the name line with the rooms `narrowByName`
+   * leaves, and a command the room does not take is said out loud to the room,
+   * so undefined unless every one of them agrees (the discipline of
+   * `placeAmong`).
    */
-  roomCommandsNamed(name: string): string[] | undefined {
-    const rooms = this.findByName(name);
+  roomCommandsAmong(rooms: readonly WorldRoom[]): string[] | undefined {
     if (rooms.length === 0) return undefined;
     let agreed: string[] | undefined;
     for (const room of rooms) {

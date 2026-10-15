@@ -67,7 +67,7 @@ import { answeringAfter, EchoSince } from './echo';
  * shape and the same measurement — 1,234 rooms, 14 dark lines, none unanswered
  * in the realm.
  */
-type Expectation = (
+export type Expectation = (
   | {
       kind: 'move';
       direction: Direction | null;
