@@ -2720,6 +2720,50 @@ describe('an attack spell opens the fight', () => {
   });
 
   /*
+   * The kill's `*Combat Off*` answers the bare prompt, and lands after the
+   * next monster's cast went but before its echo (rayzor, paramud,
+   * 2026-10-14). That cast is the next fight's: forgotten, it was sent again
+   * and the server's own repeat read as its answer, marking it instant.
+   */
+  it('keeps a cast sent ahead of the last fight’s Off, and never sends it twice', () => {
+    const book = [{ name: 'harm', short: 'harm', level: 1, cost: 1 }];
+    const auto = make(fights(), true, caster());
+    auto.onCharacter({ ...standing(), spellbook: book });
+    drain();
+    auto.onBlock(block('combat-status', { status: 'Engaged' }), 'harm tall kobold thief');
+    repeat(auto);
+    const rat = {
+      ...EMPTY_CHARACTER.room,
+      name: 'A Lane',
+      occupants: [mob('small rat', 'hostile')]
+    };
+    auto.onCharacter(state({ room: rat, vitals: vitals(40), spellbook: book }));
+    drain();
+    expect(sent).toEqual(['harm tall kobold thief', 'harm small rat']);
+    // A bare prompt answers nothing (`tailAfterPrompt`).
+    auto.onBlock(block('combat-status', { status: 'Off' }), null);
+    auto.onBlock(block('status-line'), null);
+    auto.onBlock(block('combat-status', { status: 'Engaged' }), 'harm small rat');
+    auto.onCharacter(
+      state({
+        room: rat,
+        vitals: vitals(40),
+        spellbook: book,
+        inCombat: true,
+        combat: { ...EMPTY_CHARACTER.combat, engaged: true, target: 'small rat' }
+      })
+    );
+    auto.onBlock(block('user-hits', { attacker: 'You', line: 'cast harm at small rat' }));
+    round();
+    auto.onBlock(block('user-hits', { attacker: 'You', line: 'cast harm at small rat' }));
+    round();
+    expect(sent).toEqual(['harm tall kobold thief', 'harm small rat']);
+    expect(
+      notesOf(notices, 'automation.combat.spellInstant', 'automation.combat.spellInstantUnkept')
+    ).toEqual([]);
+  });
+
+  /*
    * Todo 820: what the wire taught is the realm's, kept in `RealmLore` beside
    * the death sentences, so the one misjudged opening is paid once per realm
    * rather than once per connection. Each `launch` is a fresh store over the

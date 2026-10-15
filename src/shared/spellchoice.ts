@@ -605,8 +605,23 @@ export type KillCasting = Omit<SpellChoiceInput, 'target' | 'excluded'> & {
 /**
  * Whether `chooseAttackSpell` weighs this realm row at all: aimed at a single
  * monster, with power. `DrainWhenHurt` asks it before announcing a drain the
- * choice could pick (todo 841).
+ * choice could pick (todo 841). A spell aimed at any creature (`Targets` 4)
+ * can be a charm or a heal (`enslave`, `godheal`), so it counts only with a
+ * damage row priced off its power: `turn undead`, `disrupt`.
  */
 export function weighsAsAttack(realm: WorldSpell): boolean {
-  return spellTargeting(realm.targets) === 'enemy' && (realm.power?.[1] ?? 0) > 0;
+  if ((realm.power?.[1] ?? 0) <= 0) return false;
+  const aim = spellTargeting(realm.targets);
+  return aim === 'enemy' || (aim === 'creature' && damagesByPower(realm));
+}
+
+/**
+ * Whether the row carries damage (`DamageNoMR`, `DamageWithMR`) whose figure
+ * is the spell's power (`AbilVal` 0), which is what `scaledPower` prices.
+ */
+export function damagesByPower(realm: WorldSpell): boolean {
+  return (realm.abilities ?? []).some(
+    ([id, value]) =>
+      (id === HAZARD_ABILITY.damage || id === HAZARD_ABILITY.damageWithMr) && value === 0
+  );
 }

@@ -474,6 +474,8 @@ export class AutoCombat implements SessionModule {
    * the book and the realm say of the word (`offAnswering`).
    */
   private sentAttack: Proposal | null = null;
+  /** Whether the server has echoed `sentAttack` yet: a line before the echo answers an earlier command. */
+  private sentEchoed = true;
   /** The attack word last sent, typed or chosen (`fightWord`), so its refusal is said as the attack's. */
   private lastChosen: string | null = null;
   /**
@@ -693,6 +695,7 @@ export class AutoCombat implements SessionModule {
     this.noEffect.reset();
     this.spell.reset();
     this.sentAttack = null;
+    this.sentEchoed = true;
     this.lastChosen = null;
     this.refusedLast = null;
     this.lastAttackBy = 'module';
@@ -944,6 +947,8 @@ export class AutoCombat implements SessionModule {
    */
   onBlock(block: Block, answering: string | null = null): void {
     this.settleOff(block, answering);
+    // After `settleOff`: the echo of a later attack breaks an earlier cast's Off and keeps that attack.
+    if (answering !== null && answering === this.sentAttack?.command) this.sentEchoed = true;
     switch (block.type) {
       /*
        * An Off answering an attack is the first half of its own re-engagement
@@ -2173,7 +2178,12 @@ export class AutoCombat implements SessionModule {
 
   /** The fight broke for `command`: the spell's book goes, and the monster is owed its attack. */
   private fightBroken(command: string | null): void {
-    this.spell.fightEnded();
+    // An attack sent after `command` and not yet echoed is the next fight's, and stays, through one Off.
+    const later = this.sentAttack !== null && command !== this.sentAttack.command;
+    if (later && !this.sentEchoed) {
+      this.spell.earlierFightEnded();
+      this.sentEchoed = true;
+    } else this.spell.fightEnded();
     this.fightBrokenBy(command);
   }
 
@@ -2295,6 +2305,7 @@ export class AutoCombat implements SessionModule {
 
   private attackSent(proposal: Proposal): void {
     this.sentAttack = proposal;
+    this.sentEchoed = false;
     this.lastAttackBy = 'module';
     this.spell.sent(proposal.action);
   }
