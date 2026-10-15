@@ -1,20 +1,17 @@
 /**
  * Every room of one map on one plane, for the game view (todo 140).
  *
- * Breadth-first over `planeSteps`, the Map card's placing rule, but nothing
- * is dropped: a room whose cell is taken starts an island of its own, laid
- * out the same way and then pushed out along the exit that reached it until
- * it overlaps nothing, with a cell of air around it. Only exits within the
- * map are followed; a way onto another map is a way off this plane. A room no
- * island reaches starts one to the east of everything placed.
- *
- * Laid out on first ask and kept (Paradigm's 57,511 rooms took 0.2 s in all,
- * measured with the prototype), so nothing ships coordinates and a converted
- * realm gets a plane too.
+ * Breadth-first over `planeSteps` from either end of an exit, nothing
+ * dropped: a room whose cell is taken starts an island pushed out along the
+ * exit that reached it. Up, down and a room's teleport (`leapSteps`) start an
+ * island beside the room they leave; a room nothing on the map reaches starts
+ * one `UNJOINED_GAP` east of everything. Laid out on first ask and kept
+ * (Paradigm's 57,511 rooms in 0.2 s). The reasons are in `mudengine-world`
+ * › `parts/realm.md` › *The game view's map*.
  */
 import { cellKey } from '../../shared/gameMap';
 import { roomId, type RoomId, type WorldRoom } from '../../shared/world';
-import { planeSteps, type PlaneGraph } from './planeSteps';
+import { leapSteps, planeSteps, type LeapGraph, type PlaneLink } from './planeSteps';
 
 export interface PlaneLayout {
   readonly map: number;
@@ -26,19 +23,50 @@ export interface PlaneLayout {
   readonly island: ReadonlyMap<RoomId, number>;
 }
 
+/**
+ * Cells of air between islands no way on the map joins, so one never reads as
+ * part of the area beside it (three cells did: a ganghouse's Rubbish Disposal
+ * Chamber stood at the Crimson Fortress's door).
+ */
+export const UNJOINED_GAP = 10;
+
 interface Spill {
   room: WorldRoom;
-  /** The placed room whose exit could not take its cell. */
+  /** The placed room whose exit could not take its cell, or whose way leaves the plane. */
   from: RoomId;
   dx: number;
   dy: number;
 }
 
-export function layOutMap(
-  graph: PlaneGraph,
+/** Each room's ways to other rooms of the map, its own first, then the ones that lead in. */
+function linksOf(
+  graph: LeapGraph,
   map: number,
-  rooms: readonly WorldRoom[]
-): PlaneLayout {
+  rooms: readonly WorldRoom[],
+  ways: (graph: LeapGraph, room: WorldRoom) => Iterable<PlaneLink>
+): Map<RoomId, PlaneLink[]> {
+  const links = new Map<RoomId, PlaneLink[]>();
+  const add = (id: RoomId, link: PlaneLink) => {
+    const held = links.get(id);
+    if (held) held.push(link);
+    else links.set(id, [link]);
+  };
+  const inward: Array<[RoomId, PlaneLink]> = [];
+  for (const room of rooms) {
+    const id = roomId(room.map, room.room);
+    for (const { dx, dy, to, destination } of ways(graph, room)) {
+      if (destination.map !== map) continue;
+      add(id, { dx, dy, to, destination });
+      inward.push([to, { dx: -dx, dy: -dy, to: id, destination: room }]);
+    }
+  }
+  for (const [id, link] of inward) add(id, link);
+  return links;
+}
+
+export function layOutMap(graph: LeapGraph, map: number, rooms: readonly WorldRoom[]): PlaneLayout {
+  const steps = linksOf(graph, map, rooms, planeSteps);
+  const leaps = linksOf(graph, map, rooms, leapSteps);
   const at = new Map<RoomId, { gx: number; gy: number }>();
   const cells = new Map<string, RoomId>();
   const island = new Map<RoomId, number>();
@@ -56,18 +84,25 @@ export function layOutMap(
     const queue: WorldRoom[] = [seed];
     for (let head = 0; head < queue.length; head += 1) {
       const room = queue[head]!;
-      const here = local.get(roomId(room.map, room.room))!;
-      for (const { dx, dy, to, destination } of planeSteps(graph, room)) {
-        if (destination.map !== map || local.has(to) || at.has(to)) continue;
+      const id = roomId(room.map, room.room);
+      const here = local.get(id)!;
+      for (const { dx, dy, to, destination } of steps.get(id) ?? []) {
+        if (local.has(to) || at.has(to)) continue;
         const key = cellKey(here.gx + dx, here.gy + dy);
         if (taken.has(key)) {
-          spill.push({ room: destination, from: roomId(room.map, room.room), dx, dy });
+          spill.push({ room: destination, from: id, dx, dy });
           continue;
         }
         local.set(to, { gx: here.gx + dx, gy: here.gy + dy });
         taken.add(key);
         queue.push(destination);
       }
+    }
+    // The ways off the plane, once the island's own rooms are all placed.
+    for (const room of queue) {
+      const id = roomId(room.map, room.room);
+      for (const { dx, dy, to, destination } of leaps.get(id) ?? [])
+        if (!local.has(to) && !at.has(to)) spill.push({ room: destination, from: id, dx, dy });
     }
     return { local, spill };
   };
@@ -102,7 +137,10 @@ export function layOutMap(
       let ox: number;
       let oy: number;
       if (next.from === null) {
-        ox = at.size === 0 ? 0 : east + 3 - Math.min(...[...local.values()].map((cell) => cell.gx));
+        ox =
+          at.size === 0
+            ? 0
+            : east + UNJOINED_GAP - Math.min(...[...local.values()].map((cell) => cell.gx));
         oy = 0;
       } else {
         const parent = at.get(next.from)!;
@@ -125,7 +163,7 @@ export class RealmLayouts {
   private readonly planes = new Map<number, PlaneLayout>();
   private byMap: Map<number, WorldRoom[]> | null = null;
 
-  constructor(private readonly graph: PlaneGraph & { everyRoom(): Iterable<WorldRoom> }) {}
+  constructor(private readonly graph: LeapGraph & { everyRoom(): Iterable<WorldRoom> }) {}
 
   /** Every room of a map, read from the graph once. */
   roomsOf(map: number): readonly WorldRoom[] {
