@@ -778,6 +778,18 @@ export function experienceRate(scope: CombatTally, now: number, floorMs: number)
   return ratePerHour(scope.experience, onlineFor(scope, now), floorMs);
 }
 
+/**
+ * How long the experience still owed will take at the rate being made, in ms.
+ *
+ * MegaMUD's `Will level in`. Null the moment either is missing or the rate is
+ * not positive: a character making no experience never levels, and `∞` is not
+ * a time. The Stats card and the game view's player bar both read it.
+ */
+export function levelIn(needed: number | null, perHour: number | null): number | null {
+  if (needed === null || perHour === null || perHour <= 0) return null;
+  return (needed / perHour) * 3_600_000;
+}
+
 /** Every swing this character made, landed or not — the denominator MegaMUD used. */
 export function swings(tally: CombatTally): number {
   return (

@@ -48,6 +48,7 @@ import type {
   MobRowChoice,
   Requirement,
   RoomCommand,
+  RoomId,
   WorldClass,
   WorldItem,
   WorldLair,
@@ -395,7 +396,7 @@ export interface PlayerEntity {
   } | null;
   online: boolean;
   lastSeen: number;
-  lastRoom?: number | null;
+  lastRoom?: RoomId | null;
   lastRoomName?: string | null;
 }
 

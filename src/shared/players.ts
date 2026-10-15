@@ -75,6 +75,7 @@
 // left `EMPTY_CHARACTER.players` undefined. See `./alignment`.
 import { ALIGNMENTS, type Alignment } from './alignment';
 import type { ItemEntity, PlayerEntity } from './entities';
+import { asRoomReference, roomId, type RoomId } from './world';
 
 /**
  * Everything known about one other player.
@@ -141,10 +142,10 @@ export interface PlayerRecord {
   equipment: readonly WornItem[] | null;
   equipmentAt: number | null;
   /**
-   * The room they were last seen in, by number, and null when they have been
-   * seen only somewhere this client could not resolve.
+   * The room they were last seen in, as `map/room`, and null when they have
+   * been seen only somewhere this client could not resolve.
    */
-  lastRoom: number | null;
+  lastRoom: RoomId | null;
   /** The room's name as it read at the time — kept because a number names nothing. */
   lastRoomName: string | null;
   /**
@@ -288,6 +289,12 @@ export const NO_REALM_PLAYERS: RealmPlayers = {
 export type PlayerRegistry = Readonly<Record<string, PlayerRecord>>;
 
 export const NO_PLAYERS: PlayerRegistry = {};
+
+/** A stored `map/room`, or null for anything else. */
+function storedRoom(value: unknown): RoomId | null {
+  const reference = typeof value === 'string' ? asRoomReference(value) : null;
+  return reference === null ? null : roomId(reference.map, reference.room);
+}
 
 /** The key a name is filed under. One function, so nothing files under another. */
 export function playerKey(name: string): string {
@@ -766,7 +773,7 @@ export function readFacts(value: unknown): PlayerFacts | null {
     equipmentAt: equipment === null ? null : equipmentAt,
     vitals,
     vitalsAt: vitals === null ? null : vitalsAt,
-    lastRoom: whole(record['lastRoom']),
+    lastRoom: storedRoom(record['lastRoom']),
     lastRoomName: text(record['lastRoomName']),
     lastRoomAt: stamp(record['lastRoomAt']),
     lastSeen: stamp(record['lastSeen']) ?? 0

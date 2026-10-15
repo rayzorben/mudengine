@@ -44,7 +44,9 @@ export interface KeyTarget {
 
 /**
  * Whether chrome outside the console takes a plain Enter as its own: a text
- * field, a surface marked `data-owns-keys`, or anything inside a dialog.
+ * field, a surface marked `data-owns-keys`, or anything inside a dialog. The
+ * game view's command layer is `data-owns-enter`: Enter opens its console, and
+ * every other key it leaves to the bindings (todo 140).
  * Anything else holding the caret is somewhere an Enter for the game went
  * astray (todo 00).
  */
@@ -55,7 +57,7 @@ export function ownsItsEnter(target: KeyTarget): boolean {
     tag === 'TEXTAREA' ||
     tag === 'SELECT' ||
     target.isContentEditable ||
-    target.closest('[data-owns-keys], [role="dialog"]') !== null
+    target.closest('[data-owns-keys], [data-owns-enter], [role="dialog"]') !== null
   );
 }
 

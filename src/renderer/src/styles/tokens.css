@@ -195,6 +195,43 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
 
+  /* ------------------------------------------------------- game view
+   * The game view's own colours (todo 140), the prototype's, agreed with the
+   * user on 2026-10-14. Its map takes each area's colours from the world's
+   * theme pack; these are the HUD's and the arena's. The canvas reads them
+   * back with getComputedStyle, so no literal colour lives in its code. */
+  --game-ground: #06080b;
+  --game-glass: rgb(14 17 22 / 72%);
+  --game-glass-strong: rgb(22 26 33 / 86%);
+  --game-line: rgb(255 255 255 / 8%);
+  --game-line-strong: rgb(255 255 255 / 14%);
+  --game-text: #eef0f3;
+  --game-muted: #9aa1ab;
+  --game-faint: #5f6670;
+  --game-accent: #f5a524;
+  --game-hp: #f2555a;
+  --game-kai: #a78bfa;
+  --game-mana: #60a5fa;
+  --game-heal: #34d399;
+  --game-poison: #a3e635;
+  --game-door: #f59e0b;
+  --game-player: #7dd3fc;
+  --game-ink: #0b0d10;
+  --game-shade: #000000;
+  --game-white: #ffffff;
+  --game-bank: #facc15;
+  --game-shop: #2dd4bf;
+  --game-temple: #d8b4fe;
+  --game-tavern: #fb923c;
+  --game-trainer: #818cf8;
+  --game-blur: blur(14px) saturate(1.2);
+  --dur-game-dock: 320ms;
+  --dur-game-fill: 250ms;
+  --dur-game-drain: 500ms;
+  /* How long a line said stays in the game view's talk feed before it fades, and the fade. */
+  --dur-game-talk-linger: 30s;
+  --dur-game-talk-fade: 2s;
+
   /* ------------------------------------------------------------- type
    *
    * The client is monospace throughout. The console has to be — the game lays

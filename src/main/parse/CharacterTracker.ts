@@ -996,7 +996,7 @@ export class CharacterTracker {
   }
 
   /** Where another client said it was standing — `Company.noteRemoteRoom`. */
-  noteRemoteRoom(from: string, room: number, name: string | null, at: number): boolean {
+  noteRemoteRoom(from: string, room: RoomId, name: string | null, at: number): boolean {
     return this.company.noteRemoteRoom(from, room, name, at);
   }
 

@@ -196,6 +196,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     setRemoteGangpath: (session, on) => invoke(Invoke.setRemoteGangpath, session, on),
     setAutomationSwitch: (session, name, on) =>
       invoke(Invoke.setAutomationSwitch, session, name, on),
+    setThreshold: (session, which, value) => invoke(Invoke.setThreshold, session, which, value),
     setSupplies: (session, items) => invoke(Invoke.setSupplies, session, items),
     addLoop: (scope, owner, loop) => invoke(Invoke.addLoop, scope, owner, loop),
     runLoop: (session, loop) => invoke(Invoke.runLoop, session, loop),
@@ -281,6 +282,7 @@ export function createWebBridge(onRenewed: () => void, signal: AbortSignal): Ipc
     gearStop: (session) => invoke(Invoke.gearStop, session),
     questStop: (session) => invoke(Invoke.questStop, session),
     localMap: (session, map, room, radius) => invoke(Invoke.localMap, session, map, room, radius),
+    gameMap: (session, ask) => invoke(Invoke.gameMap, session, ask),
     roomBrief: (session, map, room) => invoke(Invoke.roomBrief, session, map, room),
     slotGear: (session, slot) => invoke(Invoke.slotGear, session, slot),
     chosenWords: (session) => invoke(Invoke.chosenWords, session),

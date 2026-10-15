@@ -2606,3 +2606,11 @@ keys:
   Numpad0: u
   NumpadDecimal: d
   NumpadAdd: rest
+
+# The game view (Game view in the command palette, Ctrl+K): the console's place
+# when you open it, `bottom`, `float`, `left` or `right`, and how opaque its
+# ground is over the map, 0.2 to 1. The console's title bar changes both for
+# this window. For everyone at this keyboard, so a character's file has no say.
+gameView:
+  dock: bottom
+  opacity: 0.55

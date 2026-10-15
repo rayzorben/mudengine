@@ -12,6 +12,7 @@ import {
   damageDealt,
   critShare,
   experienceRate,
+  levelIn,
   historySeries,
   hitsDealt,
   mean,
@@ -61,18 +62,6 @@ function span(blows: BlowTally): string {
 function average(damage: number, hits: number): string | null {
   const value = mean(damage, hits);
   return value === null ? null : t('cards.stats.avg', { mean: figure(value, 1) });
-}
-
-/**
- * How long the experience still owed will take at the rate being made.
- *
- * MegaMUD's `Will level in`, and the two halves it needs are the two this card
- * already draws. Null the moment either is missing or the rate is not positive:
- * a character making no experience never levels, and `∞` is not a time.
- */
-function levelIn(needed: number | null, perHour: number | null): number | null {
-  if (needed === null || perHour === null || perHour <= 0) return null;
-  return (needed / perHour) * 3_600_000;
 }
 
 /** One row of the accuracy table: a kind of blow, or the summary under them. */

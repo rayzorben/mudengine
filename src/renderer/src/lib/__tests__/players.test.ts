@@ -96,12 +96,12 @@ describe('how long ago somebody was seen', () => {
 
 describe('where somebody was', () => {
   it('prefers the name the room had at the time, because a number names nothing', () => {
-    expect(place(seen({ lastRoom: 1124, lastRoomName: 'Town Square' }))).toBe('Town Square');
+    expect(place(seen({ lastRoom: '1/1124', lastRoomName: 'Town Square' }))).toBe('Town Square');
   });
 
   it('says a number as a number when there is no name for it', () => {
-    expect(place(seen({ lastRoom: 1124 }))).toBe(
-      t('players.sighting.roomNumber', { roomNumber: 1124 })
+    expect(place(seen({ lastRoom: '1/1124' }))).toBe(
+      t('players.sighting.roomNumber', { roomNumber: '1/1124' })
     );
   });
 

@@ -17,6 +17,7 @@ app:
     invalidList: The supplies list could not be read, so nothing was saved.
   automation:
     unknownSwitch: Unrecognized automation switch.
+    unknownThreshold: Unrecognized threshold, or not a number.
   config:
     reloadFailed: 'Options not reloaded: {error}'
     internalTemplateAdded: 'Added to internal.yaml, from the template: {added}.'
@@ -631,6 +632,8 @@ notices:
     attackChosen:
       'The attack command was the old default "a", so it is now blank and the client uses
       the attack that hits hardest for this class. Type "attack" to keep the plain one. {file}'
+    sightingNamesItsMap: '{count} last rooms of other players in {file} named no map, so each was
+      cleared; the room name and the time stay. The game view places a player from the next sighting.'
     foundPlayerNoEffect:
       'Removed {count} "You see ... hiding in the shadows." lines from the learned
       spell messages in {file}: they are a search finding a player, not a spell. A copy is in
@@ -847,6 +850,9 @@ notices:
       empty: the message table {file} is empty; only the built-in patterns are read
     protectedRooms:
       readError: 'could not read the protected room table {file}: {message}; no room is marked safe'
+    themePack:
+      readError: 'could not read the world map theme {file}: {message}; each room takes the look its
+        name suggests'
     players:
       # Todo 80: logging.playerDays, MegaMUD's DelPlayers.
       forgotten: 'Players nobody has seen in {days} days were forgotten (Forget Players After):
@@ -872,6 +878,11 @@ notices:
     shops:
       invalidFile: '{fileName} is not a shop record, so shops start empty. The old file is kept as
         {fileName}.bak.'
+      readError: 'Could not read {fileName}: {message}'
+      saveError: 'Could not save {fileName}: {message}'
+    descriptions:
+      invalidFile: '{fileName} is not a room description record, so it starts empty. The first such
+        file is kept as {fileName}.bak.'
       readError: 'Could not read {fileName}: {message}'
       saveError: 'Could not save {fileName}: {message}'
     belongings:
@@ -925,6 +936,171 @@ loops:
   joinUnshown: 'No route to show for this loop ({reason}). Starting it anyway.'
   paletteLabel: 'Loops: find one to walk'
 # Command palette: entries, groups, hints and chrome.
+# The game view (todo 140): the world map, the arena and the HUD, from the palette.
+game:
+  aria: Game view. Letters act at once; i or Enter opens the console.
+  arena:
+    you: You
+    lair: lair
+    lost: lost
+    unknownRoom: Room not known
+    detached: Map moved off you · Esc goes back
+    exitDoor: '{name} · door'
+    hostile: attacks on sight
+    healthKnown: health from what the server said
+    healthUnknown: health unknown
+  auto:
+    label: Auto
+    all: 'On'
+    combat: Combat
+    cash: Cash
+    sneak: Sneak
+    search: Search
+    heal: Heal
+    run: Run
+    rest: Rest
+    lower: Lower {name}
+    raise: Raise {name}
+    runOff: Running is off; press to turn it on
+    runOn: Running is on; press to turn it off
+  bar:
+    unknownName: Name unknown
+    hp: HP
+    mana: MA
+    kai: KAI
+    expShare: '% exp'
+    expOwed: '{owed} to level'
+    expOwedTo: '{owed} to {level}'
+    expOwedUnknown: exp needed unknown
+    expRate: Exp rate
+    perHour: '{value}/hr'
+    coins: Coins
+    noCoins: none
+    restMark: Rest below {percent}%
+    runMark: Run below {percent}%
+  commands:
+    aria: What you can do here
+    attack: Attack {name}
+    next: Next target
+    backstab: Backstab
+    run: Run
+    getCoins: Get coins
+    get: Get {item}
+    sneak: Sneak
+    hide: Hide
+    rest: Rest
+    search: Search
+    look: Look
+    lookAt: Look at {name}
+    deposit: Deposit
+    train: Train
+    list: List
+    party: Party
+    character: Character
+    talk: Talk
+    type: Type
+    move: Move
+    diagonal: '{first} then {second}'
+    bound: key {key}
+  console:
+    title: Console
+    badge: Command
+    badgeHint: click or i to type
+    dockAria: Where the open console sits
+    float: Float
+    bottom: Bottom
+    left: Left
+    right: Right
+    opacity: Opacity
+    back: back to the map
+  legend:
+    shops: Shops
+    lair: Lair
+    player: Player
+  map:
+    aria: Map of the realm around you, with the room you are in as the arena
+    clickToWalk: click to walk there
+    clickToGo: click to go
+    clickToTarget: click to target
+    clickToAttack: click to attack
+    zoomIn: Zoom in
+    zoomOut: Zoom out
+    home: Back to you
+  party:
+    away: not in the room
+  places:
+    bank: Bank
+    temple: Temple
+    tavern: Tavern
+    inn: Inn
+    trainer: Trainer
+    weapons: Weapons
+    bows: Bows
+    armour: Armour
+    shields: Shields
+    clothing: Clothing
+    magic: Spells
+    songs: Songs
+    jewels: Jewellery
+    goods: General store
+    potions: Potions
+    food: Food and drink
+    boats: Boats
+    keys: Keys
+    deeds: Deeds
+    recycler: Recycler
+    oddities: Oddities
+    furniture: Furniture
+    guild: Guild
+  sheet:
+    aria: Character
+    close: Close the character sheet
+    level: level {level}
+    strength: Strength
+    intellect: Intellect
+    willpower: Willpower
+    agility: Agility
+    health: Health
+    charm: Charm
+    armourClass: Armour class
+    damageResist: Damage resist
+    magicRes: Magic res
+    spellcasting: Spellcasting
+    perception: Perception
+    stealth: Stealth
+    thievery: Thievery
+    traps: Traps
+    picklocks: Picklocks
+    tracking: Tracking
+    martialArts: Martial arts
+    lives: Lives
+  status:
+    combat: '*Combat Engaged*'
+    sneaking: Sneaking
+    resting: Resting
+    meditating: Meditating
+    buffBy: '{spell}, cast by {by}'
+    seconds: '{seconds}s'
+    blind: Blind
+    poisoned: Poisoned
+    diseased: Diseased
+    held: Held
+    confused: Confused
+    afraid: Afraid
+    unknown: 'Not said since login: {names}'
+  talk:
+    feedAria: What was said lately
+    unread:
+      one: 1 line for you
+      many: '{count} lines for you'
+  target:
+    unknown: health unknown
+    hp: '{hp} HP'
+    exp: '{exp} exp'
+    notInData: not in the world database
+    onYou: attacking you
+    hostile: attacks on sight
+    notOnYou: not attacking you
 palette:
   character:
     closeDisconnectFirstHint: disconnect it first
@@ -1006,7 +1182,9 @@ palette:
   view:
     configLabel: Show the options file
     densityAutoHint: auto · {density}
+    classicViewLabel: Classic view
     densityLabel: Change how tightly things are packed
+    gameViewLabel: Game view
     focusLabel: Put the cursor back in the console
     hideCardsLabel: Hide the cards
     hideDiagnosticsLabel: Hide diagnostics
@@ -3857,6 +4035,10 @@ settings:
       densityCompact: Compact
       densityLabel: Density
       fontSizeLabel: Size, px
+      gameDockLabel: Game View Console
+      gameDockHint: Where the game view's console sits when you open it with i.
+      gameOpacityLabel: Console Opacity, %
+      gameOpacityHint: How much of the map shows through the game view's console, {floor} to 100.
       scrollbackLabel: Scrollback, Lines
       showHud: Show Cards Beside Console
       showLogo: Show The MudEngine Logo
