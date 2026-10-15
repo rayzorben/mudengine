@@ -15,6 +15,7 @@ import { classifyOccupant, type MobDisposition } from '../../../shared/mobs';
 import type { Block } from '../../../shared/blocks';
 import type { Rule } from '../../../shared/rules';
 import type { MobEntity } from '../../../shared/entities';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 function stateWith(patch: Partial<CharacterState>): CharacterState {
   return { ...structuredClone(EMPTY_CHARACTER), phase: 'in-game', ...patch };
@@ -38,18 +39,26 @@ function block(type: string, groups: Record<string, string> = {}): Block {
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 let engine: RuleEngine;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   queue = new CommandQueue(
     {
       ...DEFAULT_CONFIG.automation,
       pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
     },
-    { send: (command) => sent.push(command) }
+    {
+      send: (command, intent) => {
+        sent.push(command);
+        kinds.push(intent.decision);
+      }
+    }
   );
   engine = new RuleEngine(queue, { onTheGround: () => false });
 });
@@ -273,6 +282,7 @@ describe('firing', () => {
     engine.load([restRule], []);
     engine.onState(vitals({ hp: 20, hpMax: 100 }));
     expect(sent).toEqual(['rest']);
+    expect(kinds).toEqual(['rules']);
   });
 
   /*

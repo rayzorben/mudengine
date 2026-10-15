@@ -24,6 +24,8 @@ export type UnitText =
       text: string;
       /** Each field's own words, in document order. */
       fields: readonly string[];
+      /** The setting each field edits (`data-setting`), beside its words; empty where none. */
+      settings: readonly string[];
     }
   | { kind: 'nest'; units: readonly UnitText[] };
 
@@ -100,13 +102,60 @@ const MARK = 'data-search';
  * what it names. Returns the ids of the sections shown, in document order.
  */
 export function applySettingsSearch(form: Element, query: string): string[] {
+  return applyJudged(form, (label, children) => judgeSection(label, children.map(readUnit), query));
+}
+
+/**
+ * The same, for the settings named rather than for words: the settings behind
+ * a decision a console's gear opened (todo 119). A fieldset holding a field
+ * for one is shown whole with that field marked, as a fieldset a query names
+ * in its fields is; a field outside a fieldset is shown only when named.
+ */
+export function applyFieldSet(form: Element, settings: readonly string[]): string[] {
+  return applyJudged(form, (_label, children) => judgeNamed(children.map(readUnit), settings));
+}
+
+/** What of one section holds a field for a setting in `settings`. */
+export function judgeNamed(
+  units: readonly UnitText[],
+  settings: readonly string[]
+): SectionVerdict {
+  const judged = units.map((unit) => judgeNamedUnit(unit, settings));
+  return { shown: judged.some((unit) => unit.shown), units: judged };
+}
+
+function judgeNamedUnit(unit: UnitText, settings: readonly string[]): UnitVerdict {
+  if (unit.kind === 'nest') {
+    const inner = unit.units.map((child) => judgeNamedUnit(child, settings));
+    const shown = inner.some((child) => child.shown);
+    // What is not a field in a nest (the Advanced toggle) shows with what it holds.
+    return {
+      shown,
+      fields: [],
+      units: inner.map((child, index) =>
+        shown && unit.units[index]!.kind === 'other' ? { ...child, shown: true } : child
+      )
+    };
+  }
+  const hits = unit.settings.map((setting) => setting !== '' && settings.includes(setting));
+  const rest: FieldVerdict = unit.kind === 'group' ? 'shown' : 'hidden';
+  return {
+    shown: hits.some(Boolean),
+    fields: hits.map((hit): FieldVerdict => (hit ? 'hit' : rest)),
+    units: []
+  };
+}
+
+function applyJudged(
+  form: Element,
+  judge: (label: string, children: readonly Element[]) => SectionVerdict
+): string[] {
   const found: string[] = [];
   for (const section of form.querySelectorAll<HTMLElement>(':scope > .settings-section')) {
     const children = Array.from(section.children).filter(
       (child) => !child.classList.contains('settings-section-heading')
     );
-    const read = children.map(readUnit);
-    const verdict = judgeSection(section.dataset.label ?? '', read, query);
+    const verdict = judge(section.dataset.label ?? '', children);
     mark(section, verdict.shown ? null : 'miss');
     children.forEach((child, index) => writeUnit(child, verdict.units[index]!));
     if (verdict.shown) found.push(section.dataset.section ?? '');
@@ -119,10 +168,15 @@ export function clearSettingsSearch(root: Element): void {
   for (const marked of root.querySelectorAll(`[${MARK}]`)) marked.removeAttribute(MARK);
 }
 
+/** A row, or a list that edits one setting whole (the supplies, the gear sets, a remotes grid). */
+const FIELD = '.settings-field, [data-setting]';
+
 function fieldsOf(unit: Element): Element[] {
-  return unit.matches('.settings-field')
-    ? [unit]
-    : Array.from(unit.querySelectorAll('.settings-field'));
+  if (unit.matches(FIELD)) return [unit];
+  // A field inside a list that is one field itself is that list's, not another.
+  return Array.from(unit.querySelectorAll(FIELD)).filter(
+    (field) => !unit.contains(field.parentElement?.closest(FIELD) ?? null)
+  );
 }
 
 function readUnit(unit: Element): UnitText {
@@ -131,7 +185,12 @@ function readUnit(unit: Element): UnitText {
   }
   const fields = fieldsOf(unit);
   const kind = unit.tagName === 'FIELDSET' ? 'group' : fields.length > 0 ? 'row' : 'other';
-  return { kind, text: wordsOf(unit), fields: fields.map(wordsOf) };
+  return {
+    kind,
+    text: wordsOf(unit),
+    fields: fields.map(wordsOf),
+    settings: fields.map((field) => field.getAttribute('data-setting') ?? '')
+  };
 }
 
 function writeUnit(unit: Element, verdict: UnitVerdict): void {
@@ -141,7 +200,7 @@ function writeUnit(unit: Element, verdict: UnitVerdict): void {
     return;
   }
   const fields = fieldsOf(unit);
-  if (!unit.matches('.settings-field')) mark(unit, verdict.shown ? null : 'miss');
+  if (!unit.matches(FIELD)) mark(unit, verdict.shown ? null : 'miss');
   fields.forEach((field, index) => {
     const seen = verdict.fields[index];
     mark(field, seen === 'hit' ? 'hit' : seen === 'hidden' ? 'miss' : null);

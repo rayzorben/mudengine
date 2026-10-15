@@ -21,6 +21,7 @@ import { playersHere } from './HangUp';
 import type { Guard, Rule, RuleFiring } from '../../shared/rules';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 /** Block types that mean a combat round is in progress. */
 const COMBAT_BLOCKS = new Set(['user-hits', 'mob-hits', 'mob-misses', 'combat-status']);
@@ -254,7 +255,7 @@ export function interpolate(
 }
 
 export interface RuleEngineEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /**
    * Whether the character is on the ground (`Grounded.down`): a rule fires
    * from the last state it was handed, on a block, the mid-round clock or its
@@ -424,7 +425,8 @@ export class RuleEngine implements SessionModule {
         priority: action.priority,
         ...(action.coalesce === undefined ? {} : { coalesceKey: action.coalesce }),
         ...(action.expiresMs === undefined ? {} : { expiresAt: now + action.expiresMs }),
-        reason: `rule: ${rule.name}`
+        reason: `rule: ${rule.name}`,
+        decision: 'rules'
       });
       commands.push(command);
     }
@@ -447,7 +449,8 @@ export class RuleEngine implements SessionModule {
         this.unresolvedSaid.add(rule.name);
         this.events.notice?.(
           `Rule "${rule.name}" matched, but "${unresolved}" has nothing to fill it in with yet, ` +
-            `so nothing was sent.`
+            `so nothing was sent.`,
+          'rules'
         );
       }
       return;

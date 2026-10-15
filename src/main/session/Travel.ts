@@ -27,6 +27,7 @@ import type { AreaSearch } from '../automation/AreaSearch';
 import type { TrainErrand } from '../automation/TrainErrand';
 import { fightIsRunning, placedByServer, type CharacterState } from '../../shared/character';
 import type { WalkKind } from '../../shared/walk';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { Walker } from '../automation/Walker';
 import type { CharacterTracker } from '../parse/CharacterTracker';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -35,7 +36,7 @@ import { anotherLoop, refusesToPlay, type PlayReading } from './Play';
 import { healthFraction, percentText, type SafetyDecision } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
 import type { AutomationConfig, AutomationSwitch } from '../../shared/config';
-import { withFled, type FledEntry } from '../../shared/fled';
+import { fledForgetMs, withFled, type FledEntry } from '../../shared/fled';
 import { stanceHere } from '../../shared/mobRules';
 import { splitStop, type Loop, type LoopProgress } from '../../shared/loops';
 import { PartyWait } from './PartyWait';
@@ -61,6 +62,9 @@ import {
 const STAYING = '\0staying';
 /** `escapeRefusalSaid` for a character following a party leader. */
 const FOLLOWING = '\0following';
+const RUN: DecisionKind = 'run-away';
+const DOOR: DecisionKind = 'run-open-door';
+const HOME: DecisionKind = 'run-to-room';
 
 /**
  * How well the client knows the exit it is running through. See
@@ -198,7 +202,7 @@ export interface TravelSession {
   loopNamed(name: string): Loop | undefined;
   /** What is still waiting of the talk box's lines. See `SessionManager.dropTyped`. */
   dropTyped(died: boolean): void;
-  notice(message: string): void;
+  notice: NoticeSink;
   /** A safety decision, for the trace. */
   decided(decision: SafetyDecision): void;
   /**
@@ -452,7 +456,7 @@ export class Travel implements SessionModule {
       pauseLap: (why) => this.pauseLap(why),
       lapStopped: () => this.loops.progress.status === 'stopped',
       resumeLap: (who) => this.resumeLap(who),
-      notice: (message) => this.session.notice(message),
+      notice: (message, decision) => this.session.notice(message, decision),
       waitMinutes: () => this.automationConfig.party.waitMinutes
     });
   }
@@ -701,7 +705,7 @@ export class Travel implements SessionModule {
     const now = Date.now();
     if (now - this.lastAskedToEscape < this.automationConfig.safety.retreat.cooldownMs) return;
     const why = t('session.safety.whyPvp', { attacker });
-    if (this.staysToFight(state, why, true, now)) return;
+    if (this.staysToFight(state, why, true, now, 'pvp-run')) return;
     this.lastAskedToEscape = now;
     // The shared escape, so the exit ladder and the configured strategy are
     // honoured here exactly as at the health floor. The lap stays held until
@@ -818,7 +822,7 @@ export class Travel implements SessionModule {
      * nothing went wrong with. Stopped first, the runner reads the
      * ending as what it is: a leg the stop ended.
      */
-    this.loops.stop(why);
+    this.loops.stop(why, 'party-wait');
     this.walker.stop(why);
     return true;
   }
@@ -843,7 +847,8 @@ export class Travel implements SessionModule {
           who,
           name: answer.confirm.name,
           stepCount: answer.confirm.steps
-        })
+        }),
+        'hunt-resume-ask'
       );
     }
   }
@@ -1061,7 +1066,7 @@ export class Travel implements SessionModule {
         : outnumbered || dread === null
           ? t('session.safety.whyAttackers', { count: state.combat.attackers.length })
           : t('session.safety.whyDreaded', { mob: dread });
-    if (this.staysToFight(state, why, fighting, now)) return;
+    if (this.staysToFight(state, why, fighting, now, RUN)) return;
     // The run went first and got out; caught again, the hang-up is next (todo 21).
     if (this.session.hangUpTakesOver(state)) return;
 
@@ -1079,7 +1084,8 @@ export class Travel implements SessionModule {
     state: CharacterState,
     why: string,
     fighting: boolean,
-    now: number
+    now: number,
+    decision: DecisionKind
   ): boolean {
     const held = this.inPlace(state);
     if (held === null) return false;
@@ -1087,10 +1093,10 @@ export class Travel implements SessionModule {
     if (held.kind === 'following') {
       const { leader } = held;
       const notice = (then: string) => t('session.safety.escapeFollowing', { why, leader, then });
-      this.stayPut(FOLLOWING, why, fighting, now, notice, reason);
+      this.stayPut(FOLLOWING, why, fighting, now, notice, reason, decision);
     } else {
       const notice = (then: string) => t('session.safety.escapeStaying', { why, then });
-      this.stayPut(STAYING, why, fighting, now, notice, reason);
+      this.stayPut(STAYING, why, fighting, now, notice, reason, decision);
     }
     return true;
   }
@@ -1127,7 +1133,7 @@ export class Travel implements SessionModule {
     );
     if (fled.length === 0) return;
     const { level } = state.progress;
-    const forgetMs = tuning().combat.fledForgetMs;
+    const forgetMs = fledForgetMs(this.automationConfig.combat.fledForgetMinutes);
     this.session.keepFled(withFled(this.session.fled(), fled, level, Date.now(), forgetMs));
     const { map, number } = state.room;
     // And the room itself, kept out of for a while by routes and the survey (todo 73).
@@ -1144,7 +1150,8 @@ export class Travel implements SessionModule {
     fighting: boolean,
     now: number,
     notice: (then: string) => string,
-    refused: string
+    refused: string,
+    decision: DecisionKind
   ): void {
     if (this.escapeRefusalSaid === marker) return;
     this.escapeRefusalSaid = marker;
@@ -1161,7 +1168,8 @@ export class Travel implements SessionModule {
           : standing
             ? t('session.safety.escapeStanding')
             : t('session.safety.escapeNotFighting')
-      )
+      ),
+      decision
     );
     this.session.decided({ at: now, action: 'retreat', because: why, acted: false, refused });
   }
@@ -1177,7 +1185,7 @@ export class Travel implements SessionModule {
     if (dreaded === null) return;
     const why = t('session.safety.whyDreaded', { mob: dreaded });
     const reason = t('session.safety.retreatOffReason');
-    this.session.notice(t('session.safety.escapeSwitchedOff', { why, reason }));
+    this.session.notice(t('session.safety.escapeSwitchedOff', { why, reason }), RUN);
     this.session.decided({
       at: Date.now(),
       action: 'retreat',
@@ -1413,6 +1421,7 @@ export class Travel implements SessionModule {
     holdUntil = 0
   ): void {
     const safety = this.automationConfig.safety.retreat;
+    const decision: DecisionKind = holdUntil > 0 ? 'pvp-run' : RUN;
     const here =
       state.room.map !== null && state.room.number !== null
         ? roomId(state.room.map, state.room.number)
@@ -1451,7 +1460,8 @@ export class Travel implements SessionModule {
           ? t('session.safety.escapeNoExit', { why, then })
           : blocked.length === 1
             ? t('session.safety.escapeOnlyBack.one', { why, directions, then })
-            : t('session.safety.escapeOnlyBack.many', { why, directions, then })
+            : t('session.safety.escapeOnlyBack.many', { why, directions, then }),
+        decision
       );
       this.session.decided({
         at: now,
@@ -1473,7 +1483,7 @@ export class Travel implements SessionModule {
       this.retreat = { room: safety.safeHavenRoom, armedAt: now, from: here };
     }
 
-    this.session.notice(escapeNotice(out, why));
+    this.session.notice(escapeNotice(out, why), decision);
     /*
      * **Recorded on the outcome, not the send.** `acted: true` used to be
      * written here, at the moment the byte left — so `The door is closed!`
@@ -1494,7 +1504,8 @@ export class Travel implements SessionModule {
       command: out.direction,
       priority: 'emergency',
       coalesceKey: 'escape',
-      reason: t('session.safety.escapeReason', { why })
+      reason: t('session.safety.escapeReason', { why }),
+      decision
     });
   }
 
@@ -1641,19 +1652,22 @@ export class Travel implements SessionModule {
         waiting.deadline = now + tuning().session.retreatPatienceMs;
         this.lastEscapeSent = now;
         this.session.notice(
-          t('session.safety.escapeOpening', { barrier, direction: waiting.direction })
+          t('session.safety.escapeOpening', { barrier, direction: waiting.direction }),
+          DOOR
         );
         this.queue.enqueue({
           command: `open ${waiting.direction}`,
           priority: 'emergency',
           coalesceKey: 'escape:open',
-          reason: t('session.safety.escapeReason', { why: waiting.why })
+          reason: t('session.safety.escapeReason', { why: waiting.why }),
+          decision: DOOR
         });
         this.queue.enqueue({
           command: waiting.direction,
           priority: 'emergency',
           coalesceKey: 'escape',
-          reason: t('session.safety.escapeReason', { why: waiting.why })
+          reason: t('session.safety.escapeReason', { why: waiting.why }),
+          decision: DOOR
         });
         return;
       }
@@ -1695,14 +1709,14 @@ export class Travel implements SessionModule {
     if (state.inCombat) {
       if (now - retreat.armedAt > tuning().session.retreatPatienceMs) {
         this.retreat = null;
-        this.session.notice(t('session.safety.retreatGaveUp', { room: retreat.room }));
+        this.session.notice(t('session.safety.retreatGaveUp', { room: retreat.room }), HOME);
       }
       return;
     }
     if (state.room.map === null || state.room.number === null) {
       if (now - retreat.armedAt > tuning().session.retreatPatienceMs) {
         this.retreat = null;
-        this.session.notice(t('session.safety.retreatUnplaced', { room: retreat.room }));
+        this.session.notice(t('session.safety.retreatUnplaced', { room: retreat.room }), HOME);
       }
       return;
     }
@@ -1737,7 +1751,7 @@ export class Travel implements SessionModule {
     if (this.tracker.pendingMoves > 0) {
       if (now - retreat.armedAt > tuning().session.retreatPatienceMs) {
         this.retreat = null;
-        this.session.notice(t('session.safety.retreatUnplaced', { room: retreat.room }));
+        this.session.notice(t('session.safety.retreatUnplaced', { room: retreat.room }), HOME);
       }
       return;
     }
@@ -1745,7 +1759,8 @@ export class Travel implements SessionModule {
     const found = this.errands.findStop(splitStop({ room: retreat.room }));
     if (typeof found === 'string') {
       this.session.notice(
-        t('session.safety.retreatRefused', { room: retreat.room, reason: found })
+        t('session.safety.retreatRefused', { room: retreat.room, reason: found }),
+        HOME
       );
       return;
     }
@@ -1754,7 +1769,8 @@ export class Travel implements SessionModule {
     const route = this.errands.routeBetween(here, roomId(found.map, found.room), 'walk');
     if (typeof route === 'string') {
       this.session.notice(
-        t('session.safety.retreatRefused', { room: retreat.room, reason: route })
+        t('session.safety.retreatRefused', { room: retreat.room, reason: route }),
+        HOME
       );
       return;
     }
@@ -1786,13 +1802,15 @@ export class Travel implements SessionModule {
     });
     if (refused !== null) {
       this.session.notice(
-        t('session.safety.retreatRefused', { room: retreat.room, reason: refused })
+        t('session.safety.retreatRefused', { room: retreat.room, reason: refused }),
+        HOME
       );
       return;
     }
     this.homeward = retreat.room;
     this.session.notice(
-      t('session.safety.retreatPlanned', { room: retreat.room, stepCount: route.steps.length })
+      t('session.safety.retreatPlanned', { room: retreat.room, stepCount: route.steps.length }),
+      HOME
     );
     this.session.decided({
       at: now,
@@ -2250,7 +2268,7 @@ export class Travel implements SessionModule {
    * — or killed and reborn in a temple on another map — a long way from
    * whatever it was walking, and picking it back up would send it on a journey
    * across the realm that nobody asked for. Past
-   * `tuning.walk.resumeAskSteps` the window asks first and presses play again
+   * `walk.resumeAskSteps` the window asks first and presses play again
    * with `confirmed`.
    *
    * **Both kinds measure the same thing**: how much further away the character
@@ -2396,7 +2414,7 @@ export class Travel implements SessionModule {
    * *that* journey, so anything longer is asked again.
    */
   private tooFar(steps: number, confirmed: number | null): boolean {
-    if (steps <= tuning().walk.resumeAskSteps) return false;
+    if (steps <= this.automationConfig.walk.resumeAskSteps) return false;
     return confirmed === null || steps > confirmed;
   }
 

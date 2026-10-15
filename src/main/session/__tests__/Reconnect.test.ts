@@ -5,6 +5,7 @@ import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { t } from '../../app/i18n';
 import { setTuning } from '../../app/tuning';
 import type { ConnectionState, ConnectionTarget } from '../../../shared/types';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 /**
  * The ladder is asserted against the **shipped** numbers rather than short
@@ -33,7 +34,11 @@ const state = (over: Partial<ConnectionState> = {}): ConnectionState => ({
 
 let dials: ConnectionTarget[] = [];
 let notices: string[] = [];
+/** The decision each notice was said about, in order. */
+let kinds: Array<DecisionKind | undefined> = [];
 let enabled = true;
+/** The character's `reconnectTries`: 0 never stops. */
+let maxTries = 0;
 /** Whether the low-lives hold answers yes; how many times it was asked. */
 let held = false;
 let heldAsks = 0;
@@ -45,6 +50,7 @@ let answer: ConnectionState = state({ phase: 'error' });
 function build(): Reconnect {
   return new Reconnect({
     enabled: () => enabled,
+    maxTries: () => maxTries,
     held: () => {
       heldAsks += 1;
       return held;
@@ -56,7 +62,10 @@ function build(): Reconnect {
     changed: () => {
       changes += 1;
     },
-    notice: (message) => notices.push(message)
+    notice: (message, decision) => {
+      notices.push(message);
+      kinds.push(decision);
+    }
   });
 }
 
@@ -78,7 +87,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   dials = [];
   notices = [];
+  kinds = [];
   enabled = true;
+  maxTries = 0;
   held = false;
   heldAsks = 0;
   changes = 0;
@@ -157,10 +168,7 @@ describe('a lost connection', () => {
   });
 
   it('stops at the attempt cap and says how to dial again', async () => {
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      reconnect: { ...DEFAULT_INTERNAL.tuning.reconnect, maxAttempts: 2 }
-    });
+    maxTries = 2;
     const reconnect = build();
     drop(reconnect, 60_000);
 
@@ -171,6 +179,16 @@ describe('a lost connection', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(dials).toHaveLength(2);
     expect(notices.at(-1)).toBe(t('session.reconnect.gaveUp'));
+  });
+
+  it('never stops at 0 tries, where 2 stopped after two', async () => {
+    const reconnect = build();
+    drop(reconnect, 60_000);
+
+    await vi.advanceTimersByTimeAsync(0);
+    for (let rung = 0; rung < 4; rung += 1) await vi.advanceTimersByTimeAsync(15_000);
+    expect(dials.length).toBeGreaterThan(2);
+    expect(notices).not.toContain(t('session.reconnect.gaveUp'));
   });
 
   it('leaves a connection alone once it is up again', async () => {
@@ -275,6 +293,7 @@ describe('something else taking the connection over', () => {
     const settle: Array<(state: ConnectionState) => void> = [];
     const reconnect = new Reconnect({
       enabled: () => enabled,
+      maxTries: () => maxTries,
       held: () => held,
       dial: (target) => {
         dials.push(target);
@@ -316,7 +335,7 @@ describe('something else taking the connection over', () => {
    *
    * `enabled()` is a callback for exactly this, and it was consulted only when
    * the socket dropped — so the answer was fixed at the moment of the drop and
-   * the ladder then ran to `maxAttempts`, 999,999, whatever the profile said
+   * the ladder then ran to `reconnectTries` (none, as shipped) whatever the profile said
    * afterwards. With nothing on screen offering to stop it, that is a client
    * dialling a realm all night with credentials somebody has untick-ed.
    */
@@ -330,6 +349,7 @@ describe('something else taking the connection over', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(dials).toHaveLength(1);
     expect(notices).toContain(t('session.reconnect.switchedOff'));
+    expect(kinds.at(-1)).toBe('reconnect');
     expect(reconnect.pending).toBe(false);
   });
 

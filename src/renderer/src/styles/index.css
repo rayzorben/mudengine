@@ -4925,6 +4925,19 @@ button.quest-tile-name:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/* The seconds to wait at a waypoint, its loop stop's linger. */
+.builder-linger {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: var(--font-micro);
+  gap: 4px;
+}
+
+.builder-linger input {
+  width: 5ch;
+}
+
 /* What a leg needs, indented under the waypoint it leads to. */
 .builder-leg {
   display: flex;
@@ -7902,6 +7915,11 @@ button.quest-tile-name:hover:not(:disabled) {
   list-style: none;
 }
 
+/* Drawn empty so a console's gear can still find the list it edits. */
+.settings-steps:empty {
+  margin: 0;
+}
+
 .settings-steps li {
   display: flex;
   align-items: center;
@@ -9310,13 +9328,15 @@ button.quest-tile-name:hover:not(:disabled) {
 }
 
 /*
- * The one action, separated from the reading above it by a seam rather than by
- * space alone — everything above is what the room *is*, and this is what to do
- * about it.
+ * The action, separated from the reading above it by a seam rather than by
+ * space alone: everything above is what the room *is*, and this is what to do
+ * about it. A route list's *run here* sits unfilled beside the one filled
+ * *walk here*, as *Run it* does beside *Walk it*.
  */
 .room-peek .peek-actions {
   border-top: 1px solid var(--ink-line);
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
   margin-top: 12px;
   padding-top: 10px;
@@ -12022,8 +12042,9 @@ tr:hover .row-action.worn,
   display: none !important;
 }
 
-/* A field the query named, inside a fieldset shown whole. */
-.settings-form .settings-field[data-search='hit'] {
+/* A field the query named, inside a fieldset shown whole; or a list a console's gear named. */
+.settings-form .settings-field[data-search='hit'],
+.settings-form [data-setting][data-search='hit'] {
   background: color-mix(in srgb, var(--accent) var(--tone), transparent);
   border-radius: calc(var(--r-card) - 8px);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) var(--tone), transparent);
@@ -13242,6 +13263,20 @@ tr:hover .row-action.worn,
 }
 
 .terminal-stamp[data-covered] {
+  visibility: hidden;
+}
+
+/*
+ * The gear on a line about a decision the client made (todo 119): the two
+ * rightmost cells, the time beside it moved two cells left by xterm's own
+ * `right`. `right: 0` for the reason `.terminal-stamp` states. A row whose
+ * text reaches it hides it, as it hides the time.
+ */
+.terminal-decision {
+  right: 0;
+}
+
+.terminal-decision[data-covered] {
   visibility: hidden;
 }
 

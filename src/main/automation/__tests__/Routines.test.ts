@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { SET_STATLINE } from '../../../shared/statline';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 /** Nothing sends: what matters here is what was *queued* and in which band. */
 function make(
@@ -16,6 +17,8 @@ function make(
   routines: Routines;
   queue: CommandQueue;
   notices: string[];
+  /** Each notice's decision, in step with `notices`. */
+  kinds: Array<DecisionKind | undefined>;
 } {
   const config: AutomationConfig = {
     ...DEFAULT_CONFIG.automation,
@@ -24,6 +27,7 @@ function make(
     ...overrides
   };
   const notices: string[] = [];
+  const kinds: Array<DecisionKind | undefined> = [];
   // A window of zero holds everything: the queue is being inspected, not drained.
   const queue = new CommandQueue(
     { ...config, pacing: { ...config.pacing, window: 0 } },
@@ -31,11 +35,15 @@ function make(
   );
   return {
     routines: new Routines(config, queue, {
-      notice: (m) => notices.push(m),
+      notice: (m, decision) => {
+        notices.push(m);
+        kinds.push(decision);
+      },
       onTheGround: () => ground.down
     }),
     queue,
-    notices
+    notices,
+    kinds
   };
 }
 
@@ -1013,12 +1021,13 @@ describe('asking again for what entering the realm never read', () => {
 describe('asking i, st and exp again once they are old', () => {
   const block = (type: string) =>
     ({ type, seq: 1, at: Date.now(), domain: 'items', groups: {} }) as never;
-  const sending = () => {
+  const sending = (asks = DEFAULT_CONFIG.automation.asks) => {
     const config: AutomationConfig = {
       ...DEFAULT_CONFIG.automation,
       enabled: true,
       idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
-      onEnterRealm: []
+      onEnterRealm: [],
+      asks
     };
     const sent: string[] = [];
     const queue = new CommandQueue(
@@ -1028,7 +1037,7 @@ describe('asking i, st and exp again once they are old', () => {
     const routines = new Routines(config, queue, { onTheGround: () => false });
     return { routines, sent };
   };
-  const PACK = DEFAULT_INTERNAL.tuning.queue.packRefreshMs;
+  const PACK = DEFAULT_CONFIG.automation.asks.inventoryMinutes * 60_000;
   const fighting: CharacterState = { ...inRealm, inCombat: true };
 
   it('asks i again once the pack is old, and not before', () => {
@@ -1088,6 +1097,86 @@ describe('asking i, st and exp again once they are old', () => {
     // Positive control: the pack was asked; the sheet nobody read was not.
     expect(sent).toEqual(['i']);
   });
+
+  it('never asks i again while its period is 0', () => {
+    const never = sending({ ...DEFAULT_CONFIG.automation.asks, inventoryMinutes: 0 });
+    const shipped = sending();
+    for (const { routines } of [never, shipped]) {
+      routines.onCharacter(inRealm);
+      routines.onBlock(block('user-inventory'));
+    }
+    vi.advanceTimersByTime(PACK * 10);
+    for (const { routines } of [never, shipped]) routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(500);
+    // The positive control: the same old pack, asked at the shipped period.
+    expect(shipped.sent).toEqual(['i']);
+    expect(never.sent).toEqual([]);
+  });
+});
+
+/* Todo 118: each ask the client makes on its own has a setting, and off asks nothing. */
+describe('what the client asks on its own, by setting', () => {
+  const commandsIn = (queue: CommandQueue): string[] =>
+    queue.snapshot.pending.map((intent) => intent.command);
+  const asks = (over: Partial<AutomationConfig['asks']>): Partial<AutomationConfig> => ({
+    onEnterRealm: [],
+    asks: { ...DEFAULT_CONFIG.automation.asks, ...over }
+  });
+
+  it('asks who for an unlisted arrival only while its period is above 0', () => {
+    const on = make(asks({}));
+    const off = make(asks({ whoMinutes: 0 }));
+    for (const { routines } of [on, off]) {
+      routines.onCharacter(inRealm);
+      routines.onRosterUnknown();
+    }
+    expect(commandsIn(on.queue)).toContain('who');
+    expect(commandsIn(off.queue)).not.toContain('who');
+  });
+
+  it('asks abil only with Ask abil When Needed on', () => {
+    const on = make(asks({}));
+    const off = make(asks({ abilities: false }));
+    for (const { routines } of [on, off]) routines.askAbilities(inRealm);
+    expect(commandsIn(on.queue)).toContain('abil');
+    expect(commandsIn(off.queue)).not.toContain('abil');
+  });
+
+  it('asks the spell list only with Ask the Spell List on', () => {
+    const caster: CharacterState = {
+      ...inRealm,
+      vitals: { ...EMPTY_CHARACTER.vitals, manaType: 'MA' }
+    };
+    const on = make(asks({}));
+    const off = make(asks({ spellbook: false }));
+    for (const { routines } of [on, off]) routines.onCharacter(caster);
+    expect(commandsIn(on.queue)).toContain('spells');
+    expect(commandsIn(off.queue)).not.toContain('spells');
+  });
+
+  it('asks st for a buff ending only with st When Buffs End on', () => {
+    const on = make(asks({}));
+    const off = make(asks({ statsOnBuffEnding: false }));
+    for (const { routines } of [on, off]) routines.askSheet(1_000);
+    expect(commandsIn(on.queue)).toEqual(['st']);
+    expect(commandsIn(off.queue)).toEqual([]);
+  });
+
+  it('asks stat a only with Ask stat a on', () => {
+    // `st` and `i` read, so what the character is and wears is known.
+    const read: CharacterState = {
+      ...inRealm,
+      progress: { ...EMPTY_CHARACTER.progress, level: 12 },
+      inventory: { ...EMPTY_CHARACTER.inventory, listedAt: 1 }
+    };
+    const on = make(asks({}));
+    const off = make(asks({ statAll: false }));
+    for (const { routines } of [on, off]) routines.onCharacter(read);
+    vi.advanceTimersByTime(DEFAULT_INTERNAL.tuning.statAll.settleMs);
+    for (const { routines } of [on, off]) routines.onCharacter(read);
+    expect(commandsIn(on.queue)).toContain('stat a');
+    expect(commandsIn(off.queue)).not.toContain('stat a');
+  });
 });
 
 describe('asking again, bounded', () => {
@@ -1117,5 +1206,48 @@ describe('asking again, bounded', () => {
     }
     expect(sent).toEqual(Array.from({ length: unreadRetries + 1 }, () => 'st'));
     expect(notices).toContain(t('automation.routines.unreadGaveUp', { commands: 'st' }));
+  });
+});
+
+describe('the decision behind each ask (todo 119)', () => {
+  /** Every proposal, `enqueue`'s included, with the decision it names. */
+  const decided = (queue: CommandQueue): (() => Array<[string, DecisionKind | undefined]>) => {
+    const spy = vi.spyOn(queue, 'offer');
+    return () => spy.mock.calls.map(([intent]) => [intent.command, intent.decision]);
+  };
+
+  it('names the way in, the status line and the keep-alive by their settings', () => {
+    const { routines, queue, notices, kinds } = make({
+      idle: { enabled: true, afterSeconds: 5, command: 'l' },
+      onEnterRealm: ['st'],
+      statline: { control: true }
+    });
+    const asked = decided(queue);
+    routines.onCharacter(inRealm);
+    vi.advanceTimersByTime(10_000);
+    expect(asked()).toEqual(
+      expect.arrayContaining([
+        ['st', 'enter-realm-batch'],
+        [SET_STATLINE, 'set-statline'],
+        ['pro', 'set-statline'],
+        ['l', 'keep-alive']
+      ])
+    );
+    const entering = notices.indexOf(t('automation.routines.enteringRealm', { commands: 'st' }));
+    expect(kinds[entering]).toBe('enter-realm-batch');
+  });
+
+  it('names the roster and the party listing asks by theirs', () => {
+    const { routines, queue } = make({ onEnterRealm: [] });
+    const asked = decided(queue);
+    routines.onCharacter(inRealm);
+    routines.onRosterUnknown();
+    routines.onPartyChanged();
+    expect(asked()).toEqual(
+      expect.arrayContaining([
+        ['who', 'ask-who'],
+        ['party', 'party-change']
+      ])
+    );
   });
 });

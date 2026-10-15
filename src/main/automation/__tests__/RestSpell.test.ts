@@ -8,6 +8,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { MAGERY } from '../../../shared/prowess';
 import type { WorldSpell } from '../../../shared/world';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation = (restSpell: string): AutomationConfig => ({
   ...DEFAULT_CONFIG.automation,
@@ -58,11 +59,14 @@ function hurt(over: Partial<CharacterState> = {}): CharacterState {
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let notices: string[];
 let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   notices = [];
 });
 afterEach(() => {
@@ -72,7 +76,12 @@ afterEach(() => {
 
 function build(spell: string): Recovery {
   const config = automation(spell);
-  queue = new CommandQueue(config, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(config, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
   const restSpell = new RestSpell(config, queue, sources(notices));
   return new Recovery(config, queue, {
     beforeRest: (state, restTo) => restSpell.beforeRest(state, restTo)
@@ -83,6 +92,7 @@ describe('the regeneration spell before a rest', () => {
   it('goes out ahead of the rest it shortens, in the same band', () => {
     build('rhel').onCharacter(hurt());
     expect(sent).toEqual(['rhel', 'rest']);
+    expect(kinds).toEqual(['rest-spell', 'rest-health']);
   });
 
   it('is not cast again while it is up', () => {

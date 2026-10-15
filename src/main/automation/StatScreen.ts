@@ -19,6 +19,7 @@ import { isPrompt, type Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import { opensStatScreen } from '../../shared/commands';
 import type { TrainConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import {
   planTraining,
   raiseCost,
@@ -49,7 +50,7 @@ export interface StatScreenPlanner {
 }
 
 export interface StatScreenEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -339,7 +340,7 @@ export class StatScreen implements SessionModule {
     if (byExp) {
       // The race's spans price every stat; without them nothing can be weighed.
       if (sheet === null) {
-        this.events.notice?.(t('automation.train.byExpUnread', { cp }));
+        this.events.notice?.(t('automation.train.byExpUnread', { cp }), 'train-stats');
         this.decide(false, t('automation.train.whyByExpUnread'), cp);
         return;
       }
@@ -352,7 +353,8 @@ export class StatScreen implements SessionModule {
        */
       if (weighed === null) {
         this.handled = null;
-        if (!this.oddsSaid) this.events.notice?.(t('automation.train.byExpWaiting', { cp }));
+        if (!this.oddsSaid)
+          this.events.notice?.(t('automation.train.byExpWaiting', { cp }), 'train-stats');
         this.oddsSaid = true;
         return;
       }
@@ -360,7 +362,7 @@ export class StatScreen implements SessionModule {
       const { wanted, chose } = weighed;
       this.aimed = wanted;
       if (chose === null) {
-        this.events.notice?.(t('automation.train.byExpNothing', { cp }));
+        this.events.notice?.(t('automation.train.byExpNothing', { cp }), 'train-stats');
         this.decide(false, t('automation.train.whyByExpNothing'), cp);
         return;
       }
@@ -370,13 +372,15 @@ export class StatScreen implements SessionModule {
           points: chose.points,
           cost: chose.cost,
           gain: Math.round(chose.gain ?? 0).toLocaleString()
-        })
+        }),
+        'train-stats'
       );
     } else {
       this.aimed = this.config.wanted;
       if (!wantsMore(this.config.wanted, current)) {
         this.events.notice?.(
-          t('automation.train.nothingWanted', { cp, figures: this.figures(current) })
+          t('automation.train.nothingWanted', { cp, figures: this.figures(current) }),
+          'train-stats'
         );
         this.decide(false, t('automation.train.whyNothingWanted'), cp);
         return;
@@ -396,7 +400,8 @@ export class StatScreen implements SessionModule {
             cp,
             attribute: attributeWord(dearest.attribute),
             cost: dearest.nextCost
-          })
+          }),
+          'train-stats'
         );
         this.decide(
           false,
@@ -420,6 +425,7 @@ export class StatScreen implements SessionModule {
      */
     this.proposed = true;
     const accepted = this.queue.enqueue({
+      decision: 'train-stats',
       command: ACTION,
       priority: 'probe',
       coalesceKey: COALESCE,
@@ -488,7 +494,7 @@ export class StatScreen implements SessionModule {
      */
     const nameUp = reading.firstName.length > 0 && reading.focused === reading.firstName;
     if (nameUp || reading.focused !== reading.lastName) {
-      this.events.notice?.(t('automation.train.notName'));
+      this.events.notice?.(t('automation.train.notName'), 'train-stats');
       this.decide(false, t('automation.train.whyNotName'), reading.cp);
       this.phase = { kind: 'idle' };
       return;
@@ -501,7 +507,8 @@ export class StatScreen implements SessionModule {
     });
     if (plan.capped.length > 0) {
       this.events.notice?.(
-        t('automation.train.capped', { attributes: plan.capped.map(attributeWord).join(', ') })
+        t('automation.train.capped', { attributes: plan.capped.map(attributeWord).join(', ') }),
+        'train-stats'
       );
     }
     if (plan.purchases.length === 0) {
@@ -511,7 +518,8 @@ export class StatScreen implements SessionModule {
           why: dearest
             ? t('automation.train.whyUnaffordable', { cost: dearest.nextCost, left: plan.left })
             : t('automation.train.whyNothingWanted')
-        })
+        }),
+        'train-stats'
       );
     } else {
       this.events.notice?.(
@@ -519,7 +527,8 @@ export class StatScreen implements SessionModule {
           spent: plan.spent,
           cp: reading.cp,
           purchases: this.purchases(plan.purchases)
-        })
+        }),
+        'train-stats'
       );
     }
     this.phase = {
@@ -649,11 +658,12 @@ export class StatScreen implements SessionModule {
     this.disarm();
     const left = phase.cpLeft;
     if (phase.bought.length === 0) {
-      this.events.notice?.(t('automation.train.savedNothing', { left }));
+      this.events.notice?.(t('automation.train.savedNothing', { left }), 'train-stats');
       this.decide(false, phase.stopped ?? t('automation.train.whyNothingWanted'), left);
     } else {
       this.events.notice?.(
-        t('automation.train.saved', { purchases: this.purchases(phase.bought), left })
+        t('automation.train.saved', { purchases: this.purchases(phase.bought), left }),
+        'train-stats'
       );
       this.decide(
         true,
@@ -668,7 +678,7 @@ export class StatScreen implements SessionModule {
   private stop(why: string): void {
     if (this.phase.kind !== 'driving' || this.phase.stopped !== null) return;
     this.phase.stopped = why;
-    this.events.notice?.(why);
+    this.events.notice?.(why, 'train-stats');
   }
 
   /** The screen did not answer, or answered with something unreadable: the keyboard is the player's. */
@@ -680,14 +690,16 @@ export class StatScreen implements SessionModule {
       this.phase = { kind: 'idle' };
       this.handled = null;
       this.events.notice?.(
-        t('automation.train.askUnanswered', { seconds: Math.round(tuning().train.echoMs / 1000) })
+        t('automation.train.askUnanswered', { seconds: Math.round(tuning().train.echoMs / 1000) }),
+        'train-stats'
       );
       this.decide(false, t('automation.train.whyAskUnanswered'), null);
       return;
     }
     const cp = this.phase.kind === 'driving' ? this.phase.cpLeft : null;
     this.events.notice?.(
-      t('automation.train.lapsed', { seconds: Math.round(tuning().train.echoMs / 1000) })
+      t('automation.train.lapsed', { seconds: Math.round(tuning().train.echoMs / 1000) }),
+      'train-stats'
     );
     this.decide(false, t('automation.train.whyLapsed'), cp);
     this.phase = { kind: 'idle' };

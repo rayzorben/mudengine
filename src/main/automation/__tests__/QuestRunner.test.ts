@@ -18,6 +18,8 @@ import type {
   QuestWatched
 } from '../../../shared/quests';
 import type { Route } from '../../../shared/world';
+import { noticeLog, type NoticeLog } from './noticeLog';
+import { recordOffers, type Offered } from './offered';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -161,6 +163,8 @@ function listed(state: CharacterState, rank: number, at: number): CharacterState
 
 let sent: string[];
 let notices: string[];
+let log: NoticeLog;
+let offers: Offered;
 let decisions: SafetyDecision[];
 let published: QuestRunProgress[];
 let queue: CommandQueue;
@@ -213,7 +217,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   restock = null;
   sent = [];
-  notices = [];
+  log = noticeLog();
+  notices = log.notices;
   decisions = [];
   published = [];
   walked = [];
@@ -228,6 +233,7 @@ beforeEach(() => {
   // intent the runner stamps with an expiry is dropped as already stale.
   clock = Date.now();
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  offers = recordOffers(queue);
 });
 
 afterEach(() => {
@@ -235,14 +241,19 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const make = (over: Partial<QuestRunPlanner> = {}, enabled = true, on = true): QuestRunner =>
+const make = (
+  over: Partial<QuestRunPlanner> = {},
+  enabled = true,
+  on = true,
+  rollTries = DEFAULT_CONFIG.automation.quests.rollTries
+): QuestRunner =>
   new QuestRunner(
-    { enabled: on },
+    { ...DEFAULT_CONFIG.automation.quests, enabled: on, rollTries },
     enabled,
     queue,
     planner(over),
     {
-      notice: (message) => notices.push(message),
+      notice: log.notice,
       decided: (decision) => decisions.push(decision),
       progress: (progress) => published.push(progress)
     },
@@ -283,6 +294,9 @@ describe('running a quest plan', () => {
     drain();
     // The ask goes out with the room's own spelling, and the book is told.
     expect(sent).toContain('ask Sage hello');
+    expect(offers.decisionOf('ask Sage hello')).toBe('quest-run');
+    expect(log.kinds.length).toBeGreaterThan(0);
+    expect(log.kinds.every((kind) => kind === 'quest-run')).toBe(true);
     expect(said).toEqual(['ask Sage hello']);
     expect(runner.progress.phase).toBe('confirming');
     // Then the counter is asked for, once.
@@ -641,48 +655,51 @@ describe('running a quest plan', () => {
     expect(runner.progress.steps.map((step) => step.state)).toEqual(['now']);
   });
 
-  it('buys what the step wants first, then asks again while the roll fails, bounded', () => {
-    const runner = make();
-    here = '1/3';
-    const atSmith = withHere(
-      inRealm([], { abilities: { sums: { 134: 1 }, complete: true, at: 1 } }),
-      '1/3',
-      ['Smith']
-    );
-    runner.start(plan(STEP_TWO), QUEST, atSmith);
-    // The torch is bought through the shopping errand before anything is said.
-    expect(bought).toEqual(['torch']);
-    expect(runner.progress.phase).toBe('fetching');
-    expect(sent).not.toContain('ask Smith forge');
+  // At the shipped count and at the setting's own: `quests.rollTries` is the bound.
+  it.each([DEFAULT_CONFIG.automation.quests.rollTries, 2])(
+    'buys what the step wants first, then asks again while the roll fails, %i tries at most',
+    (tries) => {
+      const runner = make({}, true, true, tries);
+      here = '1/3';
+      const atSmith = withHere(
+        inRealm([], { abilities: { sums: { 134: 1 }, complete: true, at: 1 } }),
+        '1/3',
+        ['Smith']
+      );
+      runner.start(plan(STEP_TWO), QUEST, atSmith);
+      // The torch is bought through the shopping errand before anything is said.
+      expect(bought).toEqual(['torch']);
+      expect(runner.progress.phase).toBe('fetching');
+      expect(sent).not.toContain('ask Smith forge');
 
-    // The pack holds it: the act goes out.
-    buying = false;
-    const holding = withHere(
-      inRealm(['torch'], { abilities: { sums: { 134: 1 }, complete: true, at: 1 } }),
-      '1/3',
-      ['Smith']
-    );
-    runner.onCharacter(holding);
-    drain();
-    expect(sent.filter((command) => command === 'ask Smith forge')).toHaveLength(1);
+      // The pack holds it: the act goes out.
+      buying = false;
+      const holding = withHere(
+        inRealm(['torch'], { abilities: { sums: { 134: 1 }, complete: true, at: 1 } }),
+        '1/3',
+        ['Smith']
+      );
+      runner.onCharacter(holding);
+      drain();
+      expect(sent.filter((command) => command === 'ask Smith forge')).toHaveLength(1);
 
-    // The roll fails: each newer listing at the old rank asks again, up to the bound.
-    const tries = tuning().quests.rollTries;
-    for (let attempt = 1; attempt < tries; attempt += 1) {
+      // The roll fails: each newer listing at the old rank asks again, up to the bound.
+      for (let attempt = 1; attempt < tries; attempt += 1) {
+        clock += 100;
+        runner.onCharacter(listed(holding, 1, clock));
+        drain();
+        expect(runner.running).toBe(true);
+        expect(sent.filter((command) => command === 'ask Smith forge')).toHaveLength(attempt + 1);
+        expect(runner.progress.tries).toBe(attempt);
+      }
       clock += 100;
       runner.onCharacter(listed(holding, 1, clock));
-      drain();
-      expect(runner.running).toBe(true);
-      expect(sent.filter((command) => command === 'ask Smith forge')).toHaveLength(attempt + 1);
-      expect(runner.progress.tries).toBe(attempt);
+      expect(runner.running).toBe(false);
+      expect(runner.progress.reason).toBe(
+        refusedWith(t('automation.quests.refusalRollFailed', { nth: 1, tries }))
+      );
     }
-    clock += 100;
-    runner.onCharacter(listed(holding, 1, clock));
-    expect(runner.running).toBe(false);
-    expect(runner.progress.reason).toBe(
-      refusedWith(t('automation.quests.refusalRollFailed', { nth: 1, tries }))
-    );
-  });
+  );
 
   it('asks a script for an item the plan says is handed over, and reads the pack for it', () => {
     const step: PlanStep = {

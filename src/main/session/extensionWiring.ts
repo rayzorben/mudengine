@@ -24,6 +24,7 @@ import { learnerIn, learning } from '../world/learning';
 import { spellScrolls } from '../world/spellScrolls';
 import type { SafetyDecision } from '../../shared/automation';
 import type { AutomationConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import type { LayerWrite } from '../../shared/extensions';
 import type { FledEntry } from '../../shared/fled';
 import type { HarmSink } from '../../shared/harm';
@@ -83,7 +84,7 @@ export interface ExtensionWiring {
   safety(): readonly SafetyDecision[];
   /** Configures the session again, so a layer lands. */
   relayer(): void;
-  notice(message: string): void;
+  notice: NoticeSink;
   /** The automation snapshot changed: the window is sent it. */
   changed(): void;
   deps: ExtensionDeps | undefined;
@@ -214,7 +215,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
           const parsed = asStashFetchAsk(ask);
           if (parsed !== null) return wiring.hostTrips.stash.fetch(parsed, tracker.current);
           const why = t('automation.hostTrip.refusalUnreadable');
-          wiring.notice(t('automation.stashFetch.refused', { why }));
+          wiring.notice(t('automation.stashFetch.refused', { why }), 'extension-trip');
           return why;
         },
         get current() {
@@ -226,7 +227,7 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
           const parsed = asSellAsk(ask);
           if (parsed !== null) return wiring.hostTrips.sell.sell(parsed, tracker.current);
           const why = t('automation.hostTrip.refusalUnreadable');
-          wiring.notice(t('automation.sellTrip.refused', { why }));
+          wiring.notice(t('automation.sellTrip.refused', { why }), 'extension-trip');
           return why;
         },
         get current() {
@@ -234,7 +235,8 @@ export function sessionExtensions(wiring: ExtensionWiring): SessionExtensions {
         }
       },
       walk: () => wiring.walker.progress,
-      offer: (intent) => wiring.queue.offer(intent),
+      // Whatever kind it names, the setting behind an extension's command is its switch.
+      offer: (intent) => wiring.queue.offer({ ...intent, decision: 'extension-offer' }),
       layer: kit.layer,
       drive: kit.drive,
       keep: (writes) => deps?.keep(writes) ?? null,

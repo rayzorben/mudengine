@@ -45,6 +45,7 @@ const SECTION_FIELDSETS: Record<CharacterSection, readonly NavFieldset[]> = {
     { id: 'combat-attack', label: t('settings.combat.attackLegend') },
     { id: 'combat-attacks', label: t('settings.combat.attacksLegend') },
     { id: 'combat-monsters', label: t('settings.combat.monstersLegend') },
+    { id: 'combat-odds', label: t('settings.combat.oddsLegend') },
     { id: 'combat-mob-rules', label: t('settings.combat.mobRuleLegend') }
   ],
   health: [
@@ -72,6 +73,7 @@ const SECTION_FIELDSETS: Record<CharacterSection, readonly NavFieldset[]> = {
     { id: 'movement-light', label: t('settings.movement.lightLegend') },
     { id: 'movement-afflictions', label: t('settings.movement.afflictionsLegend') },
     { id: 'movement-keep-out', label: t('settings.movement.keepOutLegend') },
+    { id: 'movement-routing', label: t('settings.movement.routingLegend') },
     { id: 'movement-carry', label: t('settings.movement.carryLegend') },
     { id: 'hunting', label: t('settings.hunting.legend') }
   ],
@@ -92,7 +94,10 @@ const SECTION_FIELDSETS: Record<CharacterSection, readonly NavFieldset[]> = {
     { id: 'alerts-rules', label: t('settings.alerts.ruleLegend') },
     { id: 'alerts-afk', label: t('settings.afk.legend') }
   ],
-  rewrites: [{ id: 'rewrites-statline', label: t('settings.statline.legend') }]
+  rewrites: [
+    { id: 'rewrites-statline', label: t('settings.statline.legend') },
+    { id: 'rewrites-asks', label: t('settings.asks.legend') }
+  ]
 };
 
 /** The rail's rows for the character page, in the order the form draws them. */

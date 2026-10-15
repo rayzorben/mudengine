@@ -5,8 +5,11 @@ import { t } from '../lib/i18n';
 export interface DialSwitches {
   autoConnect: boolean;
   autoReconnect: boolean;
+  autoLogin: boolean;
   /** As typed; the model reads a blank as the default, never as 0, which never asks. */
   lowLives: string;
+  /** As typed; blank is the default, 0, which never stops dialling. */
+  reconnectTries: string;
 }
 
 export interface DialFieldsProps {
@@ -15,7 +18,7 @@ export interface DialFieldsProps {
 }
 
 /**
- * Connect on Start, Reconnect, and the lives at which the client asks before
+ * Connect on Start, Reconnect and its tries, Log In, and the lives at which the client asks before
  * any login (todo 07), Connect included. Together because the third holds back
  * the other two. A fragment, so each stays a cell of the form's grid.
  */
@@ -33,12 +36,32 @@ export default function DialFields({ value, onChange }: DialFieldsProps): React.
         hint={t('settings.profile.autoReconnectHint')}
         label={t('settings.profile.autoReconnectLabel')}
         name="auto-reconnect"
+        setting="profile.autoReconnect"
         onChange={(checked) => onChange({ autoReconnect: checked })}
+      />
+      {value.autoReconnect && (
+        <NumberField
+          hint={t('settings.profile.reconnectTriesHint')}
+          label={t('settings.profile.reconnectTriesLabel')}
+          name="reconnect-tries"
+          setting="profile.reconnectTries"
+          onChange={(typed) => onChange({ reconnectTries: typed })}
+          value={value.reconnectTries}
+        />
+      )}
+      <CheckField
+        checked={value.autoLogin}
+        hint={t('settings.profile.autoLoginHint')}
+        label={t('settings.profile.autoLoginLabel')}
+        name="auto-login"
+        setting="profile.login.enabled"
+        onChange={(checked) => onChange({ autoLogin: checked })}
       />
       <NumberField
         hint={t('settings.profile.lowLivesHint')}
         label={t('settings.profile.lowLivesLabel')}
         name="low-lives"
+        setting="profile.lowLives"
         onChange={(typed) => onChange({ lowLives: typed })}
         value={value.lowLives}
       />

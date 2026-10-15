@@ -11,6 +11,7 @@ import type { RealmLight } from '../../../shared/lightPlan';
 import type { Loop } from '../../../shared/loops';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { BuyingPlace, Route, RouteStep } from '../../../shared/world';
+import { noticeLog, type NoticeLog } from './noticeLog';
 
 const TORCH: RealmLight = { id: 175, name: 'torch', reach: 100, uses: 800 };
 const LANTERN: RealmLight = { id: 176, name: 'lantern', reach: 175, uses: 2400 };
@@ -76,6 +77,7 @@ let sold: RealmLight[];
 let counters: Array<BuyingPlace & { item: number }>;
 let lap: RouteStep[];
 let notices: string[];
+let log: NoticeLog;
 let decisions: SafetyDecision[];
 
 const planner: LightPlanner = {
@@ -91,7 +93,7 @@ const planner: LightPlanner = {
 
 const ahead = (): LightAhead =>
   new LightAhead(() => settings, planner, {
-    notice: (message) => notices.push(message),
+    notice: log.notice,
     decided: (decision) => decisions.push(decision)
   });
 
@@ -103,7 +105,8 @@ beforeEach(() => {
   sold = [TORCH, LANTERN];
   counters = [shop(176), shop(175)];
   lap = [];
-  notices = [];
+  log = noticeLog();
+  notices = log.notices;
   decisions = [];
 });
 
@@ -116,6 +119,7 @@ describe('a route through the dark', () => {
     expect(notices).toEqual([
       t('automation.lightAhead.buying', { dark: 1, item: 'lantern', count: 1 })
     ]);
+    expect(log.kinds).toEqual(['light-buy']);
     expect(decisions.at(-1)?.acted).toBe(true);
   });
 

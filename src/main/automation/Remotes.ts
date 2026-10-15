@@ -77,9 +77,9 @@ import {
   formatWhat,
   formatWhere,
   formatWho,
-  isActionable,
   isExtended,
   judgeRemote,
+  judgedByGrant,
   parseRemoteCall,
   parseOnOff,
   parseRemoteReply,
@@ -101,6 +101,7 @@ import { CLIENT_NAME, CLIENT_VERSION } from '../app/version';
 import { bareName, countedLabel } from '../../shared/items';
 import { playerKey, type PlayerRecord } from '../../shared/players';
 import type { CommandQueue } from './CommandQueue';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { RemoteAnswers } from './RemoteAnswers';
 import { tuning } from '../app/tuning';
 import { experienceOf } from '../../shared/experience';
@@ -114,12 +115,13 @@ import type { SessionModule } from './Module';
 import { AutoJoin, joinIntent } from './AutoJoin';
 import { restoreKit } from './restoreKit';
 import { takeFloor } from './takeFloor';
-import { InviteFollowUp } from './InviteFollowUp';
+import { FOLLOW_UP, InviteFollowUp } from './InviteFollowUp';
 import { PartyRegroup, inviteIntent } from './PartyRegroup';
 import { LeaderDoors } from './LeaderDoors';
 import { BarrierRemotes } from './BarrierRemotes';
 import { jobCommand, type BarrierJob, type HandAnswer } from '../../shared/barrierHands';
 import { SheetReports } from './SheetReports';
+import { STANDING, StandingRemotes, type StandingRemoteEvents } from './StandingRemotes';
 import { FollowerPacing } from './FollowerPacing';
 import type { Direction, Landing, RoomId } from '../../shared/world';
 import { evidenceAbout, unresolvedClauseOf } from './RemoteEvidence';
@@ -235,8 +237,9 @@ function addressedToUs(block: Block, state: CharacterState): boolean {
   return state.name !== null && target.toLowerCase() === state.name.toLowerCase();
 }
 
-export interface RemoteEvents {
-  notice?(message: string): void;
+/** `hangUp` and `relog` are `@hangup`, `@relog` and `@panic!` let through (`StandingRemotes`). */
+export interface RemoteEvents extends StandingRemoteEvents {
+  notice?: NoticeSink;
   /** Somebody asked this character to stop and wait, or said they are ready. */
   pace?(who: string, ready: boolean): void;
   /**
@@ -343,6 +346,16 @@ export const SWITCH_REMOTES = {
 
 export type SwitchRemote = keyof typeof SWITCH_REMOTES;
 
+/** The decisions an `@` command's line is about (`DECISION_SETTINGS`). */
+const GRANT: DecisionKind = 'remote-grant';
+const ANSWER: DecisionKind = 'remote-answer';
+const PARTY_CMD: DecisionKind = 'remote-party-cmd';
+const ITEMS: DecisionKind = 'remote-item-commands';
+const MOVE: DecisionKind = 'remote-move';
+const SWITCH: DecisionKind = 'remote-switch';
+const WAIT: DecisionKind = 'remote-wait';
+const ASK_HEAL: DecisionKind = 'party-ask-heal';
+
 /**
  * The switch's name as the toolbar labels it, for the notice. One literal
  * `t()` per key, as `i18n-coverage` reads them (see `switchLabel` in the
@@ -410,6 +423,8 @@ export class Remotes implements SessionModule {
   private readonly hands: BarrierRemotes;
   /** `@stats` sent on to a member when the sheet changes. See `SheetReports`. */
   private readonly sheets: SheetReports;
+  /** `@kill`, `@hangup`, `@relog` and `@panic!`, let through. See `StandingRemotes`. */
+  private readonly standing: StandingRemotes;
   /** Members sent at a trap or a lock by `askHand`, by key, until their answer: whether through `@do`. */
   private readonly handsAsked = new Map<string, { viaDo: boolean }>();
   private readonly pacing: FollowerPacing;
@@ -428,25 +443,25 @@ export class Remotes implements SessionModule {
      */
     private readonly client: string = CLIENT_NAME
   ) {
-    this.autoJoin = new AutoJoin(config, queue, { notice: (message) => events.notice?.(message) });
-    this.regroup = new PartyRegroup(config, queue, {
-      notice: (message) => events.notice?.(message)
-    });
+    const notice = (message: string, decision?: DecisionKind): void =>
+      events.notice?.(message, decision);
+    this.autoJoin = new AutoJoin(config, queue, { notice });
+    this.regroup = new PartyRegroup(config, queue, { notice });
     this.invites = new InviteFollowUp(config, queue, {
-      notice: (message) => events.notice?.(message),
-      askJoin: (member, state) => this.ask(member, 'join', state)
+      notice,
+      askJoin: (member, state) => this.ask(member, 'join', state, undefined, FOLLOW_UP)
     });
     this.leaderDoors = new LeaderDoors(config, queue, {
-      notice: (message) => events.notice?.(message),
+      notice,
       // A leader on this client sends `@pick` and `@bash` itself (todo 86).
       leaderSendsHands: (leader) => this.runsThisClient(leader)
     });
-    this.hands = new BarrierRemotes(config, queue, {
-      notice: (message) => events.notice?.(message)
-    });
+    this.hands = new BarrierRemotes(config, queue, { notice });
     this.sheets = new SheetReports(queue);
+    this.standing = new StandingRemotes(queue, events);
     this.pacing = new FollowerPacing(config, {
-      tell: (leader, name, state, argument) => void this.ask(leader, name, state, argument)
+      tell: (leader, name, state, argument) =>
+        void this.ask(leader, name, state, argument, 'follower-wait')
     });
   }
 
@@ -594,8 +609,11 @@ export class Remotes implements SessionModule {
      * character is in a conversation with* — because a refusal is owed to
      * somebody who asked, and a stranger is owed silence for the reasons
      * `refuse()` records.
+     *
+     * Except the four standing refusals while `allowKillAndHangup` is on
+     * (todo 118): then a grant decides them like any other.
      */
-    if (!isActionable(command.name)) {
+    if (!judgedByGrant(command.name, this.config.remotes.allowKillAndHangup)) {
       if (reachable) this.answer(from, command, state, prefix, block.type);
       return;
     }
@@ -622,7 +640,13 @@ export class Remotes implements SessionModule {
     this.answers.noteTyped(command, Date.now());
   }
 
-  ask(who: string, name: RemoteName, state: CharacterState, argument?: string): boolean {
+  ask(
+    who: string,
+    name: RemoteName,
+    state: CharacterState,
+    argument?: string,
+    decision?: DecisionKind
+  ): boolean {
     /*
      * The better wording, for somebody who has said they can read it.
      *
@@ -652,7 +676,7 @@ export class Remotes implements SessionModule {
       carried = `${map}/${number}`;
     }
 
-    return this.send(who, wanted, carried);
+    return this.send(who, wanted, carried, decision);
   }
 
   /**
@@ -687,13 +711,14 @@ export class Remotes implements SessionModule {
    * by whoever holds it (`peer`). Re-entering `ask` there would upgrade the
    * question again for ever on a holder that had not yet written it.
    */
-  private send(who: string, name: RemoteName, argument?: string): boolean {
+  private send(who: string, name: RemoteName, argument?: string, decision?: DecisionKind): boolean {
     const body = argument === undefined ? `@${name}` : `@${name} ${argument}`;
     const taken = this.queue.enqueue({
       command: `/${who} ${body}`,
       priority: 'user',
       coalesceKey: argument === undefined ? `remote:${name}:${playerKey(who)}` : undefined,
-      reason: t('automation.remotes.reasonAsking', { who, body })
+      reason: t('automation.remotes.reasonAsking', { who, body }),
+      decision
     });
     // Only what has an answer this module reads, and only once it is really on
     // its way: a question coalesced into one already queued is the same
@@ -721,7 +746,7 @@ export class Remotes implements SessionModule {
   private askJoined(who: string | undefined, state: CharacterState): void {
     if (who === undefined) return;
     // MegaMUD's *Request Party Health* (`party.askHealth`, todo 831).
-    if (this.config.party.askHealth) this.ask(who, 'health', state);
+    if (this.config.party.askHealth) this.ask(who, 'health', state, undefined, 'party-ask-health');
     /*
      * And which client they run, once ever, because it decides the wording of
      * every question after this one. Any answer or lapse is kept realm-wide on
@@ -740,11 +765,14 @@ export class Remotes implements SessionModule {
   onCharacter(state: CharacterState): void {
     this.regroup.onCharacter(state);
     this.invites.onCharacter(state);
-    if (this.config.enabled && this.config.remotes.enabled) this.sweep(Date.now());
+    // A changed sheet goes out under the gate its first answer did (todo 118).
+    if (this.config.enabled && this.config.remotes.enabled) {
+      this.sweep(Date.now());
+      this.sheets.onCharacter(state);
+    }
     this.askForHeal(state);
     this.pacing.onCharacter(state);
     this.hands.onCharacter(state);
-    this.sheets.onCharacter(state);
   }
 
   /**
@@ -793,7 +821,8 @@ export class Remotes implements SessionModule {
         coalesceKey: 'remote:ask-heal',
         stillWanted: () => this.wantsHeal && this.seen,
         onSent,
-        reason
+        reason,
+        decision: ASK_HEAL
       });
       return;
     }
@@ -804,7 +833,8 @@ export class Remotes implements SessionModule {
         coalesceKey: `remote:ask-heal:${playerKey(member)}`,
         stillWanted: () => this.wantsHeal,
         onSent,
-        reason
+        reason,
+        decision: ASK_HEAL
       });
     }
   }
@@ -958,12 +988,16 @@ export class Remotes implements SessionModule {
   private refuse(from: string, command: RemoteCall, verdict: RemoteVerdict): void {
     if (verdict.allowed) return;
     if (verdict.because === 'denied') {
-      this.events.notice?.(t('automation.remotes.refusedDenied', { from, raw: command.raw }));
+      this.events.notice?.(
+        t('automation.remotes.refusedDenied', { from, raw: command.raw }),
+        GRANT
+      );
       return;
     }
     const unresolvedClause = unresolvedClauseOf(verdict);
     this.events.notice?.(
-      t('automation.remotes.refusedNotGranted', { from, raw: command.raw, unresolvedClause })
+      t('automation.remotes.refusedNotGranted', { from, raw: command.raw, unresolvedClause }),
+      GRANT
     );
   }
 
@@ -1005,22 +1039,27 @@ export class Remotes implements SessionModule {
      * switch rather than about a channel that can never be answered on.
      */
     if (prefix === null) {
-      this.events.notice?.(
-        channelType === 'conversation-gangpath'
-          ? t('automation.remotes.refusedGangpathOff', { from, raw: command.raw })
-          : t('automation.remotes.refusedRealmWide', { from, raw: command.raw })
-      );
+      if (channelType === 'conversation-gangpath') {
+        this.events.notice?.(
+          t('automation.remotes.refusedGangpathOff', { from, raw: command.raw }),
+          'remote-gangpath'
+        );
+      } else
+        this.events.notice?.(t('automation.remotes.refusedRealmWide', { from, raw: command.raw }));
       return;
     }
 
-    if (spec.support === 'refused') {
+    // Past the gate only with the switch on and a grant (todo 118); acted on below.
+    if (spec.support === 'refused' && !this.config.remotes.allowKillAndHangup) {
       // Said to the sender, not merely dropped: somebody who sent this and
       // heard nothing would reasonably conclude it had worked. The wire gets
-      // the first clause only; the notice carries the whole reason.
+      // the first clause only; the notice carries the whole reason and the
+      // setting that lets it through.
       const because = REFUSAL_TEXT[spec.refusal];
-      this.reply(from, `{no: ${because.split(';')[0]!.trim()}}`, prefix);
+      this.reply(from, `{no: ${because.split(';')[0]!.trim()}}`, prefix, STANDING);
       this.events.notice?.(
-        t('automation.remotes.refusedUnsupported', { from, raw: command.raw, reason: because })
+        t('automation.remotes.refusedUnsupported', { from, raw: command.raw, reason: because }),
+        STANDING
       );
       return;
     }
@@ -1043,7 +1082,7 @@ export class Remotes implements SessionModule {
         if (body === null) {
           // No maximum has arrived, so there is no pair to state. Saying so
           // beats sending a number that reads as full health.
-          this.events.notice?.(t('automation.remotes.healthUnknown', { from }));
+          this.events.notice?.(t('automation.remotes.healthUnknown', { from }), ANSWER);
           return;
         }
         this.reply(from, body, prefix);
@@ -1154,7 +1193,8 @@ export class Remotes implements SessionModule {
         const body = formatHave(count);
         if (body === null) {
           this.events.notice?.(
-            t('automation.remotes.haveUncaptured', { from, item: command.argument, count })
+            t('automation.remotes.haveUncaptured', { from, item: command.argument, count }),
+            ANSWER
           );
           return;
         }
@@ -1264,10 +1304,14 @@ export class Remotes implements SessionModule {
         this.queue.enqueue({
           command: command.argument,
           priority: 'user',
-          reason: t('automation.remotes.reasonDo', { from })
+          reason: t('automation.remotes.reasonDo', { from }),
+          decision: 'remote-do'
         });
-        this.reply(from, '{ok}', prefix);
-        this.events.notice?.(t('automation.remotes.ranDo', { from, command: command.argument }));
+        this.reply(from, '{ok}', prefix, 'remote-do');
+        this.events.notice?.(
+          t('automation.remotes.ranDo', { from, command: command.argument }),
+          'remote-do'
+        );
         return;
       }
 
@@ -1277,22 +1321,26 @@ export class Remotes implements SessionModule {
         if (command.argument === null) return;
         // MegaMUD's *Ignore @party If Following* (todo 831).
         if (this.config.party.ignoreParty) {
-          this.events.notice?.(t('automation.remotes.ignoredParty', { from }));
+          this.events.notice?.(t('automation.remotes.ignoredParty', { from }), PARTY_CMD);
           return;
         }
         this.queue.enqueue({
           command: command.argument,
           priority: 'movement',
-          reason: t('automation.remotes.reasonParty', { from })
+          reason: t('automation.remotes.reasonParty', { from }),
+          decision: PARTY_CMD
         });
-        this.events.notice?.(t('automation.remotes.ranParty', { from, command: command.argument }));
+        this.events.notice?.(
+          t('automation.remotes.ranParty', { from, command: command.argument }),
+          PARTY_CMD
+        );
         return;
       }
 
       case 'join': {
         // The invitation's own `join` is queued or still unanswered.
         if (this.autoJoin.joining(from)) return;
-        this.queue.enqueue(joinIntent(from, t('automation.remotes.reasonJoin', { from })));
+        this.queue.enqueue(joinIntent(from, t('automation.remotes.reasonJoin', { from }), ITEMS));
         return;
       }
 
@@ -1303,7 +1351,8 @@ export class Remotes implements SessionModule {
           command: `uninvite ${from}`,
           priority: 'user',
           coalesceKey: `remote:forget:${from.toLowerCase()}`,
-          reason: t('automation.remotes.reasonForget', { from })
+          reason: t('automation.remotes.reasonForget', { from }),
+          decision: ITEMS
         });
         return;
       }
@@ -1313,18 +1362,22 @@ export class Remotes implements SessionModule {
          * What is on the floor is what the room listing says is on the floor —
          * the maintained list this client already keeps (`takeFloor`).
          */
-        const { sent, listed, max } = takeFloor(state, (command) =>
+        const { sent, listed, max } = takeFloor(state, this.config.remotes.maxGets, (command) =>
           this.queue.enqueue({
             command,
             priority: 'probe',
             coalesceKey: `remote:${command.toLowerCase()}`,
-            reason: t('automation.remotes.reasonGetAll', { from })
+            reason: t('automation.remotes.reasonGetAll', { from }),
+            decision: ITEMS
           })
         );
         if (sent === 0) {
-          this.events.notice?.(t('automation.remotes.getAllEmpty', { from }));
+          this.events.notice?.(t('automation.remotes.getAllEmpty', { from }), ITEMS);
         } else if (listed > max) {
-          this.events.notice?.(t('automation.remotes.getAllCapped', { from, max, total: listed }));
+          this.events.notice?.(
+            t('automation.remotes.getAllCapped', { from, max, total: listed }),
+            'take-floor'
+          );
         }
         return;
       }
@@ -1341,7 +1394,9 @@ export class Remotes implements SessionModule {
          * capture shows a reply to either, and the party listing that follows
          * is the acknowledgement both clients can already see.
          */
-        this.queue.enqueue(inviteIntent(from, t('automation.remotes.reasonInvite', { from })));
+        this.queue.enqueue(
+          inviteIntent(from, t('automation.remotes.reasonInvite', { from }), ITEMS)
+        );
         return;
       }
 
@@ -1356,9 +1411,10 @@ export class Remotes implements SessionModule {
          * most: this empties somebody's character onto a floor they are
          * standing on, so it is granted by name, to one person, on purpose.
          */
-        const items = state.inventory.items.slice(0, tuning().spending.maxGets);
+        const { maxGets } = this.config.remotes;
+        const items = state.inventory.items.slice(0, maxGets);
         if (items.length === 0) {
-          this.events.notice?.(t('automation.remotes.dropAllEmpty', { from }));
+          this.events.notice?.(t('automation.remotes.dropAllEmpty', { from }), ITEMS);
           return;
         }
         for (const item of items) {
@@ -1366,16 +1422,18 @@ export class Remotes implements SessionModule {
             command: `drop ${item.name}`,
             priority: 'probe',
             coalesceKey: `remote:drop:${item.name.toLowerCase()}`,
-            reason: t('automation.remotes.reasonDropAll', { from })
+            reason: t('automation.remotes.reasonDropAll', { from }),
+            decision: ITEMS
           });
         }
-        if (state.inventory.items.length > tuning().spending.maxGets) {
+        if (state.inventory.items.length > maxGets) {
           this.events.notice?.(
             t('automation.remotes.dropAllCapped', {
               from,
-              max: tuning().spending.maxGets,
+              max: maxGets,
               total: state.inventory.items.length
-            })
+            }),
+            ITEMS
           );
         }
         return;
@@ -1393,12 +1451,13 @@ export class Remotes implements SessionModule {
             command,
             priority: 'probe',
             coalesceKey: `remote:wear:${command.toLowerCase()}`,
-            reason: t('automation.remotes.reasonEquipAll', { from })
+            reason: t('automation.remotes.reasonEquipAll', { from }),
+            decision: ITEMS
           })
         );
-        this.events.notice?.(t('automation.remotes.ranEquipAll', { from }));
-        for (const message of notices) this.events.notice?.(message);
-        this.reply(from, '{ok}', prefix);
+        this.events.notice?.(t('automation.remotes.ranEquipAll', { from }), ITEMS);
+        for (const message of notices) this.events.notice?.(message, ITEMS);
+        this.reply(from, '{ok}', prefix, ITEMS);
         return;
       }
 
@@ -1414,14 +1473,14 @@ export class Remotes implements SessionModule {
          */
         const where = parseRoomAddress(command.argument);
         if (where === null) {
-          this.events.notice?.(t('automation.remotes.comebackUnreadable', { from }));
+          this.events.notice?.(t('automation.remotes.comebackUnreadable', { from }), MOVE);
           return;
         }
         const walking = this.events.comeBack?.(from, where.map, where.room) === true;
         // `{ok}` only for a walk that actually started. The sender is waiting
         // on this character arriving, and an acknowledgement for a route the
         // realm data could not plan is a wait that never ends.
-        if (walking) this.reply(from, '{ok}', prefix);
+        if (walking) this.reply(from, '{ok}', prefix, MOVE);
         return;
       }
 
@@ -1437,7 +1496,7 @@ export class Remotes implements SessionModule {
           command.name === 'stop'
             ? this.events.stopMoving?.(from)
             : this.events.resumeMoving?.(from);
-        if (done === true) this.reply(from, '{ok}', prefix);
+        if (done === true) this.reply(from, '{ok}', prefix, MOVE);
         return;
       }
 
@@ -1457,7 +1516,8 @@ export class Remotes implements SessionModule {
           this.events.notice?.(
             command.name === 'loop'
               ? t('automation.remotes.loopUnnamed', { from })
-              : t('automation.remotes.gotoUnnamed', { from })
+              : t('automation.remotes.gotoUnnamed', { from }),
+            MOVE
           );
         }
         const answer: MoveAnswer | undefined =
@@ -1468,7 +1528,7 @@ export class Remotes implements SessionModule {
               : this.events.goTo?.(from, request);
         if (answer === undefined) return;
         const room = tuning().remotes.telepathMax - prefix.length;
-        this.reply(from, formatMoveAnswer(answer, room), prefix);
+        this.reply(from, formatMoveAnswer(answer, room), prefix, MOVE);
         return;
       }
 
@@ -1514,19 +1574,20 @@ export class Remotes implements SessionModule {
          */
         // MegaMUD's *Ignore @wait If Leading* (todo 831); a hurt member still stops the lap.
         if (command.name === 'wait' && this.config.party.ignoreWait) {
-          this.events.notice?.(t('automation.remotes.ignoredWait', { from }));
+          this.events.notice?.(t('automation.remotes.ignoredWait', { from }), WAIT);
           return;
         }
         // Leading under `manageParty`, health and mana are held to this character's own settings.
         if (command.name === 'wait' && this.managesWait(from, command, state)) {
-          this.events.notice?.(t('automation.remotes.managedWait', { from }));
+          this.events.notice?.(t('automation.remotes.managedWait', { from }), WAIT);
           return;
         }
         this.events.pace?.(from, command.name === 'ok');
         this.events.notice?.(
           command.name === 'ok'
             ? t('automation.remotes.followerReady', { from })
-            : t('automation.remotes.followerWait', { from })
+            : t('automation.remotes.followerWait', { from }),
+          WAIT
         );
         return;
       }
@@ -1535,11 +1596,11 @@ export class Remotes implements SessionModule {
       case 'pick':
       case 'bash':
         this.hands.start(command.name, from, command.argument, state, (body) =>
-          this.reply(from, body, prefix)
+          this.reply(from, body, prefix, 'remote-barrier')
         );
         return;
 
-      // `unread` and `refused`, each answered above before the switch.
+      // `unread`, and `refused` with the switch off, each answered above.
       case 'seen':
       case 'home':
       case 'deposit-all':
@@ -1562,10 +1623,14 @@ export class Remotes implements SessionModule {
       case 'diseased':
       case 'held':
       case 'share':
+        return;
+
+      // Refused above unless the switch lets them through to a grant.
       case 'kill':
       case 'hangup':
       case 'relog':
       case 'panic!':
+        this.standing.act(command.name, from, command.argument, state.room.occupants);
         return;
 
       default: {
@@ -1588,7 +1653,7 @@ export class Remotes implements SessionModule {
     const words = { from, remote, setting: switchRemoteLabel(remote) };
     const on = parseOnOff(argument);
     if (on === null) {
-      this.events.notice?.(t('automation.remotes.switchUnread', words));
+      this.events.notice?.(t('automation.remotes.switchUnread', words), SWITCH);
       return;
     }
     const name = SWITCH_REMOTES[remote];
@@ -1597,11 +1662,11 @@ export class Remotes implements SessionModule {
       readAutomationSwitch(this.config, name) !== on &&
       this.events.switchAutomation?.(name, on) !== true
     ) {
-      this.events.notice?.(t('automation.remotes.switchNotWritten', asked));
+      this.events.notice?.(t('automation.remotes.switchNotWritten', asked), SWITCH);
       return;
     }
-    this.events.notice?.(t('automation.remotes.switchSet', asked));
-    this.reply(from, '{ok}', prefix);
+    this.events.notice?.(t('automation.remotes.switchSet', asked), SWITCH);
+    this.reply(from, '{ok}', prefix, SWITCH);
   }
 
   /** Whether this leader walks on through `from`'s `@wait` (`walksOnThroughWait`). */
@@ -1626,12 +1691,13 @@ export class Remotes implements SessionModule {
    * `@health` says in a second were ten `>Soul {HP=…}` lines queued at `user`
    * priority, ahead of a probe and a fight.
    */
-  private reply(to: string, body: string, prefix: string): void {
+  private reply(to: string, body: string, prefix: string, decision: DecisionKind = ANSWER): void {
     this.queue.enqueue({
       command: `${prefix}${body}`,
       priority: 'user',
       coalesceKey: `remote:reply:${to.toLowerCase()}`,
-      reason: t('automation.remotes.reasonAnswering', { name: to })
+      reason: t('automation.remotes.reasonAnswering', { name: to }),
+      decision
     });
   }
 
@@ -1655,7 +1721,10 @@ export class Remotes implements SessionModule {
   /** Replies with a formatted answer, or says locally why there is none yet. */
   private say(from: string, command: RemoteCall, body: string | null, prefix: string): void {
     if (body === null) {
-      this.events.notice?.(t('automation.remotes.answerUnknown', { from, raw: command.raw }));
+      this.events.notice?.(
+        t('automation.remotes.answerUnknown', { from, raw: command.raw }),
+        ANSWER
+      );
       return;
     }
     this.reply(from, body, prefix);

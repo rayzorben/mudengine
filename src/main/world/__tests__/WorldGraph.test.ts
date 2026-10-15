@@ -36,6 +36,9 @@ import {
   landingRooms
 } from '../../../shared/world';
 import { NO_LOOKUP, roomId } from '../../../shared/world';
+import { routePrices } from '../../../shared/walkChoices';
+import { DEFAULT_HUNT_CHOICES } from '../../../shared/huntChoices';
+import { DEFAULT_SUPPLIES } from '../../../shared/packConfig';
 import { tuning } from '../../app/tuning';
 import { t } from '../../app/i18n';
 import { questLevel } from '../../../shared/quests';
@@ -1492,11 +1495,14 @@ describe('where to buy a thing, on the way to somewhere', () => {
    * report asked for: 4.01 two minutes off the road beats 3.99 twenty-five.
    */
   it('trades a dearer counter against a shorter walk, one doubling at a time', () => {
-    const worth = tuning().supplies.dearerSteps;
+    const worth = DEFAULT_SUPPLIES.dearerSteps;
     const prices = { onRoute: 100, spur: 100, far: 0 };
     // The spur is walked out and back, so its rooms cost twice over.
     const nearer = market(Math.floor((worth - 6) / 2), prices);
     expect(nearer.buyingPlaces(12, ends.from, ends.to, walker)[0]?.shop).toBe('Far Bazaar');
+    // The traveller's own figure: at 0 the price counts for nothing and the shorter walk wins.
+    const priceless = { ...walker, dearerSteps: 0 };
+    expect(nearer.buyingPlaces(12, ends.from, ends.to, priceless)[0]?.shop).toBe('Corner Shop');
     const further = market(Math.ceil((worth + 6) / 2), prices);
     expect(further.buyingPlaces(12, ends.from, ends.to, walker)[0]?.shop).toBe('Corner Shop');
   });
@@ -1694,7 +1700,7 @@ describe('the shipped realm data', () => {
     for (const lair of found.lairs) {
       expect(lair).toMatchObject({ mob: 'saracen raider' });
       expect(lair.id.startsWith('12/')).toBe(true);
-      expect(lair.steps).toBeGreaterThan(tuning().hunting.betterSpotRadius);
+      expect(lair.steps).toBeGreaterThan(DEFAULT_HUNT_CHOICES.betterSpotRadius);
     }
     // The cheapest to reach first: the Entrance Hall before the quarters behind it.
     expect(found.lairs[0]).toMatchObject({ id: roomId(12, 2099), name: 'Entrance Hall' });
@@ -4079,8 +4085,8 @@ describe('what a door costs to force', () => {
    * route planned on it walks up to the lock and stops. Absent is both.
    */
   it('credits only the skills the walker is allowed to use', () => {
-    const bashOnly = { pick: false, bash: true };
-    const pickOnlyForcing = { pick: true, bash: false };
+    const bashOnly = { pick: false, bash: true, search: true, levers: true, disarm: true };
+    const pickOnlyForcing = { pick: true, bash: false, search: true, levers: true, disarm: true };
     expect(edgePenalty(door(30), { strength: 150, forcing: pickOnlyForcing })!).toBeGreaterThan(
       100_000
     );
@@ -4099,6 +4105,37 @@ describe('what a door costs to force', () => {
     expect(edgePenalty(keyed, { pickSkill: 150, keys: [7], forcing: bashOnly })).toBe(4);
   });
 
+  // Search Hidden Exits and Pull Levers off (todo 118): the walk stops there, so a wall.
+  it('walls a hidden way whose search or levers are switched off', () => {
+    const all = { pick: true, bash: true, search: true, levers: true, disarm: true };
+    const searched: Requirement = { kind: 'hidden', raw: 'Hidden/Searchable', searchable: true };
+    const levered: Requirement = {
+      kind: 'hidden',
+      raw: 'Hidden/Needs 1 Actions',
+      actions: [{ say: ['pull lever'] }]
+    };
+    const wall = tuning().world.wallCost;
+    expect(edgePenalty(searched, { perception: 50, forcing: all })!).toBeLessThan(wall);
+    expect(edgePenalty(searched, { perception: 50, forcing: { ...all, search: false } })).toBe(
+      wall
+    );
+    expect(edgePenalty(levered, { forcing: all })!).toBeLessThan(wall);
+    expect(edgePenalty(levered, { forcing: { ...all, levers: false } })).toBe(wall);
+  });
+
+  it('names the switch that walls a hidden exit on the route', () => {
+    const graph = makeWorld([
+      { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Hidden/Searchable' } } },
+      { m: 1, r: 2, n: 'Vault', x: { w: { m: 1, r: 1 } } }
+    ]);
+    const all = { pick: true, bash: true, search: true, levers: true, disarm: true };
+    // Positive control: on, the search is a price and nothing is named.
+    const on = graph.route('1/1', '1/2', { perception: 50, forcing: all });
+    expect(on.walls ?? []).toEqual([]);
+    const off = graph.route('1/1', '1/2', { perception: 50, forcing: { ...all, search: false } });
+    expect(off.walls?.[0]).toMatchObject({ kind: 'switchedOff', barrier: 'search' });
+  });
+
   it('says which skill is switched off rather than that it is lacking', () => {
     const graph = makeWorld([
       { m: 1, r: 1, n: 'Start', x: { e: { m: 1, r: 2, i: 'Door [30 picklocks/strength]' } } },
@@ -4107,7 +4144,7 @@ describe('what a door costs to force', () => {
     const route = graph.route('1/1', '1/2', {
       strength: 150,
       pickSkill: 0,
-      forcing: { pick: true, bash: false }
+      forcing: { pick: true, bash: false, search: true, levers: true, disarm: true }
     });
     expect(route.walls?.[0]).toMatchObject({ kind: 'door', switchedOff: ['strength'] });
     expect(describeBlock(route.walls![0]!)).toContain('bashing doors is switched off');
@@ -4487,6 +4524,13 @@ describe('describeBlock', () => {
       to: '8/978',
       name: 'Negative Power Plane',
       word: 'Negative Power Plane'
+    },
+    switchedOff: {
+      kind: 'switchedOff',
+      at: '1/1368',
+      to: '1/1369',
+      name: 'Hall',
+      barrier: 'search'
     },
     unreachable: { kind: 'unreachable' }
   };
@@ -6699,6 +6743,19 @@ describe('a lair is priced as a run past it', () => {
       runDeath: runs(null)
     });
     expect(route.steps.map((step) => step.name)).toEqual(['Long Way', 'Longer Way', 'Keep']);
+  });
+
+  // The character's own Lair Costs (todo 118), handed in with the request: the
+  // same lair at a price of 0 is walked through rather than round.
+  it('prices a lair at the asker’s own figure', () => {
+    const prices = { ...routePrices(undefined), dangerCost: 0 };
+    const through = makeWorld(twoWays()).route(roomId(1, 1), roomId(1, 4), {
+      danger: runs(0.5),
+      runDeath: runs(null),
+      prices
+    });
+    expect(through.steps.map((step) => step.name)).not.toContain('Long Way');
+    expect(through.cost).toBe(2);
   });
 
   /*

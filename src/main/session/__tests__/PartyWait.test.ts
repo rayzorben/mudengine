@@ -31,7 +31,7 @@ describe('a leader waiting for its party', () => {
         running = true;
         moves.push(`resume:${who}`);
       },
-      notice: (message) => moves.push(message),
+      notice: (message, decision) => moves.push(`${decision}:${message}`),
       waitMinutes: () => minutes
     });
   });
@@ -61,7 +61,7 @@ describe('a leader waiting for its party', () => {
     vi.advanceTimersByTime(1);
     expect(moves).toEqual([
       ASKED('Soul'),
-      t('session.loop.partyWaitGaveUp', { minutes: 2, who: 'Soul' }),
+      `party-wait:${t('session.loop.partyWaitGaveUp', { minutes: 2, who: 'Soul' })}`,
       'resume:Soul'
     ]);
     expect(wait.holding).toBe(false);

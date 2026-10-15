@@ -63,8 +63,9 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import type { SafetyDecision } from '../../shared/automation';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { chargedInCopper, quotedInCopper } from '../../shared/coins';
-import type { SuppliesConfig, SupplyItem } from '../../shared/config';
+import { type SuppliesConfig, type SupplyItem } from '../../shared/packConfig';
 import { countThatFits } from '../../shared/carrying';
 import { bareName } from '../../shared/items';
 import {
@@ -113,7 +114,7 @@ export interface SupplyPlanner {
 }
 
 export interface SupplyEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -156,6 +157,28 @@ function legOf(errand: Errand): { room: RoomId; name: string } {
   return errand.bank === null
     ? { room: errand.room, name: errand.shopName }
     : { room: errand.bank.room, name: errand.bank.place.name };
+}
+
+const BUY: DecisionKind = 'supplies-buy';
+const SURPLUS: DecisionKind = 'supplies-surplus';
+
+/** The row behind how an errand ended: by where it had got to, the vault, the counter or the way there. */
+function kindOf(errand: Errand): DecisionKind {
+  switch (errand.stage) {
+    case 'balance':
+    case 'withdrawing':
+      return 'withdraw';
+    case 'listing':
+    case 'buying':
+      return BUY;
+    case 'walking':
+    case 'waiting':
+      return errand.bank === null ? 'supplies-short' : 'supplies-bank';
+    default: {
+      const never: never = errand.stage;
+      return never;
+    }
+  }
 }
 
 /** What a refused row says, and why the errand was considered at all. */
@@ -534,7 +557,7 @@ export class Supplies implements SessionModule {
       if (counter.kind === 'found') continue;
       if (counter.kind === 'nowhere') {
         const { because, message } = refusalOf(item, counter.why);
-        this.report(`supplies:nowhere:${bareName(item.name)}`, because, message);
+        this.report(`supplies:nowhere:${bareName(item.name)}`, because, message, 'supply-counter');
         continue;
       }
       this.begin(item, have, state, counter);
@@ -595,7 +618,8 @@ export class Supplies implements SessionModule {
         this.report(
           `supplies:surplus-worn:${bareName(row.name)}`,
           t('automation.supplies.becauseOver', { item: row.name, have, max: ceiling }),
-          t('automation.supplies.surplusAllWorn', { item: row.name, have, max: ceiling })
+          t('automation.supplies.surplusAllWorn', { item: row.name, have, max: ceiling }),
+          SURPLUS
         );
         continue;
       }
@@ -610,7 +634,8 @@ export class Supplies implements SessionModule {
         priority: 'probe',
         coalesceKey: `supplies:surplus:${bareName(row.name)}`,
         expiresAt: now + tuning().supplies.expiresMs,
-        reason
+        reason,
+        decision: SURPLUS
       });
       this.events.decided?.({
         at: this.now(),
@@ -622,7 +647,7 @@ export class Supplies implements SessionModule {
         }),
         acted: true
       });
-      this.events.notice?.(reason);
+      this.events.notice?.(reason, SURPLUS);
       return;
     }
   }
@@ -651,10 +676,10 @@ export class Supplies implements SessionModule {
   }
 
   /** One sentence per subject, so a standing condition is not said per line. */
-  private report(key: string, because: string, message: string): void {
+  private report(key: string, because: string, message: string, decision: DecisionKind): void {
     if (this.reported.has(key)) return;
     this.reported.add(key);
-    this.events.notice?.(message);
+    this.events.notice?.(message, decision);
     this.events.decided?.({
       at: this.now(),
       action: 'supplies',
@@ -693,7 +718,11 @@ export class Supplies implements SessionModule {
           counter.kind === 'found'
             ? t('session.supplies.notSold', { item: item.name })
             : counter.why;
-        this.refuse(item, t('automation.supplies.refusalNoShop', { item: item.name, why }));
+        this.refuse(
+          item,
+          t('automation.supplies.refusalNoShop', { item: item.name, why }),
+          'supply-counter'
+        );
         return;
       }
       default: {
@@ -781,7 +810,8 @@ export class Supplies implements SessionModule {
         wealth: wealth.toLocaleString(),
         bank: place.name,
         held: place.copper.toLocaleString()
-      })
+      }),
+      'supplies-bank'
     );
     this.events.decided?.({
       at: this.now(),
@@ -837,7 +867,7 @@ export class Supplies implements SessionModule {
   private nextVault(errand: Errand, why: string): void {
     const leg = errand.bank;
     if (leg === null) return;
-    this.events.notice?.(why);
+    this.events.notice?.(why, 'supplies-bank');
     if (this.toBank(errand, leg.shortfall, leg.owed, leg.wealth)) this.leg(errand);
   }
 
@@ -849,7 +879,8 @@ export class Supplies implements SessionModule {
     errand.stage = 'walking';
     this.armErrandTimer(errand);
     this.events.notice?.(
-      t('automation.supplies.withdrew', { amount: String(amount), bank, shop: errand.shopName })
+      t('automation.supplies.withdrew', { amount: String(amount), bank, shop: errand.shopName }),
+      'withdraw'
     );
     if (this.planner.here() === errand.room) {
       this.arrive(errand);
@@ -900,7 +931,8 @@ export class Supplies implements SessionModule {
           min: errand.item.min,
           shop: errand.shopName,
           steps: route.steps.length
-        })
+        }),
+        'supplies-short'
       );
       this.events.decided?.({
         at: this.now(),
@@ -948,7 +980,8 @@ export class Supplies implements SessionModule {
     const fits = countThatFits(encumbrance, encumbranceMax, weight);
     if (fits === null || fits >= short || fits === 0) return Math.min(short, fits ?? short);
     this.events.notice?.(
-      t('automation.supplies.cutByWeight', { item: errand.item.name, count: fits, short })
+      t('automation.supplies.cutByWeight', { item: errand.item.name, count: fits, short }),
+      BUY
     );
     return fits;
   }
@@ -960,7 +993,8 @@ export class Supplies implements SessionModule {
       // At the vault: the balance first, since the record may be stale.
       errand.stage = 'balance';
       const { place, shortfall } = errand.bank;
-      const { cashBuffer, buyTimeoutMs, expiresMs } = tuning().supplies;
+      const { buyTimeoutMs, expiresMs } = tuning().supplies;
+      const { cashBuffer } = this.config;
       const item = errand.item.name;
       this.withdrawal.start({
         vault: { shop: place.shop, name: place.name },
@@ -973,7 +1007,8 @@ export class Supplies implements SessionModule {
             t('automation.supplies.reasonWithdraw', { amount: amount.toLocaleString(), item })
         },
         answerMs: buyTimeoutMs,
-        expiresMs
+        expiresMs,
+        decision: 'withdraw'
       });
       return;
     }
@@ -983,7 +1018,8 @@ export class Supplies implements SessionModule {
       priority: 'probe',
       coalesceKey: 'supplies:list',
       expiresAt: this.now() + tuning().supplies.expiresMs,
-      reason: t('automation.supplies.reasonList', { item: errand.item.name })
+      reason: t('automation.supplies.reasonList', { item: errand.item.name }),
+      decision: BUY
     });
     this.armTimer(errand, t('automation.supplies.refusalNoListing', { shop: errand.shopName }));
   }
@@ -998,7 +1034,8 @@ export class Supplies implements SessionModule {
         item: errand.item.name,
         bought: errand.bought + 1,
         wanted: errand.wanted
-      })
+      }),
+      decision: BUY
     });
     this.armTimer(errand, t('automation.supplies.refusalUnconfirmed', { item: errand.item.name }));
   }
@@ -1072,6 +1109,7 @@ export class Supplies implements SessionModule {
     this.clearErrandTimer();
     this.withdrawal.cancel();
     this.errand = null;
+    const decision = kindOf(errand);
     if (ok) {
       const have =
         state === undefined ? errand.have + errand.bought : carriedCount(state, errand.item.name);
@@ -1081,7 +1119,8 @@ export class Supplies implements SessionModule {
           item: errand.item.name,
           shop: errand.shopName,
           have
-        })
+        }),
+        decision
       );
       this.events.decided?.({
         at: this.now(),
@@ -1102,19 +1141,20 @@ export class Supplies implements SessionModule {
           wanted: errand.wanted,
           item: errand.item.name,
           why: refusal ?? ''
-        })
+        }),
+        decision
       );
       this.retryAt.set(bareName(errand.item.name), this.now() + tuning().supplies.retryMs);
     } else {
-      this.refuse(errand.item, refusal ?? '');
+      this.refuse(errand.item, refusal ?? '', decision);
     }
     this.planner.release();
   }
 
-  private refuse(item: SupplyItem, why: string): void {
+  private refuse(item: SupplyItem, why: string, decision: DecisionKind): void {
     this.retryAt.set(bareName(item.name), this.now() + tuning().supplies.retryMs);
     const { because, message } = refusalOf(item, why);
-    this.events.notice?.(message);
+    this.events.notice?.(message, decision);
     this.events.decided?.({
       at: this.now(),
       action: 'supplies',

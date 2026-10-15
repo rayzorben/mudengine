@@ -28,15 +28,15 @@ import {
   normalizeConfig,
   type AppConfig,
   type LoginStep,
-  type SafetyConfig,
   type Server
 } from './config';
+import { type SafetyConfig } from './safety';
 import { mergeMobRules, normalizeMobRules, type MobRule } from './mobRules';
 import { asCoinNames, type CoinNames } from './coins';
 import { asLowLives } from './lives';
 import { asLocateWord, DEFAULT_LOCATE, type LocateWord } from './locate';
 import type { ConnectionTarget } from './types';
-import { isRecord, str } from './values';
+import { int, isRecord, str } from './values';
 
 /**
  * Identity colours a character may claim.
@@ -117,6 +117,8 @@ export interface Profile {
    * has left the realm on purpose — see `Reconnect`.
    */
   autoReconnect: boolean;
+  /** Failed dials in a row before reconnecting stops and says so; 0 never stops (todo 118). */
+  reconnectTries: number;
   /**
    * At this many lives left or fewer, with automation on, the client asks
    * before it logs this character in, whether the dial is a reconnect, a
@@ -129,6 +131,14 @@ export interface Profile {
    * profile's overlay applied. Never a partial.
    */
   config: AppConfig;
+}
+
+/** A character file's `reconnectTries` when it says nothing: never stop dialling. */
+export const DEFAULT_RECONNECT_TRIES = 0;
+
+/** A file's or a field's `reconnectTries`, a whole number up to a million; blank is the default. */
+export function asReconnectTries(value: unknown): number {
+  return int(value, DEFAULT_RECONNECT_TRIES, 0, 1_000_000);
 }
 
 /** Either a character, or why there is not one. */
@@ -482,6 +492,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
       // `!== false`, not `=== true`: this one is on unless the file says
       // otherwise. See the field.
       autoReconnect: raw['autoReconnect'] !== false,
+      reconnectTries: asReconnectTries(raw['reconnectTries']),
       lowLives: asLowLives(raw['lowLives']),
       accent: isProfileAccent(accent) ? accent : accentFor(id),
       // Merged onto the file as written, then coerced by the same function the
@@ -514,7 +525,7 @@ export function resolveProfile(id: string, raw: unknown, baseSource: unknown): P
  *
  * `server`, `account` and `login` are resolved into `connection:` above, and
  * `locate` into the profile beside it; `name`, `accent`, `autoConnect`,
- * `autoReconnect` and `lowLives` are properties of the profile rather than of the client.
+ * `autoReconnect`, `reconnectTries` and `lowLives` are properties of the profile rather than of the client.
  * Leaving them in would put keys into the merged config that `normalizeConfig`
  * does not know, which is harmless but misleading to read.
  */
@@ -529,6 +540,7 @@ function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknow
     accent,
     autoConnect,
     autoReconnect,
+    reconnectTries,
     lowLives,
     ...rest
   } = raw;
@@ -541,6 +553,7 @@ function withoutProfileKeys(raw: Record<string, unknown>): Record<string, unknow
   void accent;
   void autoConnect;
   void autoReconnect;
+  void reconnectTries;
   void lowLives;
   return rest;
 }

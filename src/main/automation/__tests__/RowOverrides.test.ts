@@ -37,11 +37,18 @@ describe('a row overruling the realm', () => {
 
   it('is said once for each monster, and again after a reset', () => {
     const notices: string[] = [];
-    const overrides = new RowOverrides(settings(rows), { notice: (line) => notices.push(line) });
+    const kinds: unknown[] = [];
+    const overrides = new RowOverrides(settings(rows), {
+      notice: (line, kind) => {
+        notices.push(line);
+        kinds.push(kind);
+      }
+    });
     const state = here(mob('giant rat', 'hostile'), mob('thug', 'hostile'));
     overrides.onCharacter(state);
     overrides.onCharacter(state);
     expect(notices).toHaveLength(2);
+    expect(kinds).toEqual(['row-stance', 'row-not-hostile']);
     expect(notices[0]).toBe(t('automation.combat.overrideFriend', { target: 'giant rat' }));
     expect(notices[1]).toBe(t('automation.combat.overrideNotHostile', { target: 'thug' }));
     overrides.reset();

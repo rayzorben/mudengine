@@ -7,12 +7,15 @@ import { DEFAULT_CONFIG, type AfkConfig } from '../../../shared/config';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation = DEFAULT_CONFIG.automation;
 const MINUTE = 60_000;
 
 let sent: string[];
 let notices: string[];
+/** Each notice's decision, in step with `notices`. */
+let kinds: Array<DecisionKind | undefined>;
 let queue: CommandQueue;
 let clock: number;
 let attendance: Attendance;
@@ -21,6 +24,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
   notices = [];
+  kinds = [];
   clock = 1_700_000_000_000;
   attendance = new Attendance(5, undefined, () => clock);
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
@@ -39,7 +43,12 @@ function make(config: AfkConfig = on, enabled = true): Afk {
     enabled,
     queue,
     attendance,
-    { notice: (m) => notices.push(m) },
+    {
+      notice: (m, decision) => {
+        notices.push(m);
+        kinds.push(decision);
+      }
+    },
     () => clock
   );
 }
@@ -83,6 +92,7 @@ describe('answering for an absent player', () => {
     drain();
     expect(sent).toEqual(['/Rend {AFK}']);
     expect(notices).toContain(t('automation.afk.replied', { player: 'Rend' }));
+    expect(kinds).toEqual(['afk-reply']);
   });
 
   /* A person who telepaths twice in a minute has been answered once. */

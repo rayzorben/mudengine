@@ -32,6 +32,7 @@ import {
   type Route
 } from '../../../shared/world';
 import type { RouteOptions, Traveller } from '../Router';
+import { routePrices } from '../../../shared/walkChoices';
 import type { ItemSource } from './sources';
 import { standingRequirement } from './exitFamily';
 
@@ -139,14 +140,15 @@ function keysUsed(
 }
 
 /**
- * What a fight adds to a plan, in steps: `fightCost`, and on top of it the
+ * What a fight adds to a plan, in steps: the traveller's `fightCost`, and on top of it the
  * odds (the user, 2026-10-03): nothing where the fight is survived at least
  * `openAbove` of the time, rising to `survivalCost` where it never is or is
  * not worked out yet. Capped, so a fight and a rest after it is walked into
  * rather than walked round the long way. The one place the odds count.
  */
-function fightPrice(count: number, odds: FightOdds): number {
-  const { fightCost, survivalCost } = tuning().world;
+function fightPrice(count: number, odds: FightOdds, traveller: Traveller): number {
+  const { fightCost } = routePrices(traveller.prices);
+  const { survivalCost } = tuning().world;
   const { openAbove } = tuning().combat;
   const short =
     odds.kind === 'win' ? 0 : odds.kind === 'unread' ? 1 : (openAbove - odds.survives) / openAbove;
@@ -201,7 +203,7 @@ function walk(
     const odds = oddsOf(oracle, monsters, room);
     if (index > start) steps.push(part(start, index));
     steps.push({ kind: 'clear', room, name: realm.roomName(room), monsters, odds });
-    cost += fightPrice(1, odds);
+    cost += fightPrice(1, odds, traveller);
     start = index;
   }
   // Unsplit, the walk is the route whole, with its hazards and its alternatives.
@@ -210,8 +212,8 @@ function walk(
 }
 
 /** What getting the item at a source adds for its fights (`fightPrice`). */
-function sourceFights(source: ItemSource, step: PlanStep): number {
-  return step.kind === 'kill' ? fightPrice(fightsOf(source).length, step.odds) : 0;
+function sourceFights(source: ItemSource, step: PlanStep, traveller: Traveller): number {
+  return step.kind === 'kill' ? fightPrice(fightsOf(source).length, step.odds, traveller) : 0;
 }
 
 /** The worst of these fights where they stand. */
@@ -482,7 +484,12 @@ function acquire(
           continue;
         }
         const step = actionAt(realm, oracle, source, item);
-        candidates.push({ item, source, price: priced.cost + sourceFights(source, step), step });
+        candidates.push({
+          item,
+          source,
+          price: priced.cost + sourceFights(source, step, holding),
+          step
+        });
       }
     }
     candidates.sort((a, b) => a.price - b.price);
@@ -499,7 +506,7 @@ function acquire(
         best = {
           ...candidate,
           leg,
-          price: leg.cost + sourceFights(candidate.source, candidate.step)
+          price: leg.cost + sourceFights(candidate.source, candidate.step, holding)
         };
         break;
       }

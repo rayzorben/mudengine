@@ -61,13 +61,14 @@ export interface ItemRarity {
 }
 
 /**
- * Whether gear may be got rid of: only a common or uncommon item. A rare one,
- * a limited one (never below rare) and one whose rarity is unknown are kept
+ * Whether gear may be got rid of: only a common or uncommon item while
+ * `keepRare` (`automation.outgrown.keepRare`, on as shipped). A rare one, a
+ * limited one (never below rare) and one whose rarity is unknown are kept
  * whatever the ranking says (todo 14, the user: "as long as they are not
- * 'rare'").
+ * 'rare'"); off, any of them may go.
  */
-export function sheddable(rarity: Rarity): boolean {
-  return rarity === 'common' || rarity === 'uncommon';
+export function sheddable(rarity: Rarity, keepRare: boolean): boolean {
+  return !keepRare || rarity === 'common' || rarity === 'uncommon';
 }
 
 /** The band an hours figure falls in. */

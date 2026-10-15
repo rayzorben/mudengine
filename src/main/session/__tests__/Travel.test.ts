@@ -4,6 +4,7 @@ import { t } from '../../app/i18n';
 import { personStop } from '../../automation/personStop';
 import { Travel, type TravelParts, type TravelSession } from '../Travel';
 import type { SafetyDecision } from '../../../shared/automation';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { NO_LOOP } from '../../../shared/loops';
@@ -64,6 +65,7 @@ function travel(
   overrides: Partial<TravelSession> & { settings?: AutomationConfig } = {}
 ) {
   const sent: string[] = [];
+  const kinds: Array<DecisionKind | undefined> = [];
   const switched: boolean[] = [];
   const notices: string[] = [];
   const decisions: SafetyDecision[] = [];
@@ -89,6 +91,7 @@ function travel(
     queue: {
       enqueue: (intent) => {
         sent.push(intent.command);
+        kinds.push(intent.decision);
         return true;
       }
     },
@@ -159,7 +162,16 @@ function travel(
       return master.writes;
     }
   };
-  return { travel: new Travel(parts, session), parts, sent, notices, decisions, switched, combat };
+  return {
+    travel: new Travel(parts, session),
+    parts,
+    sent,
+    kinds,
+    notices,
+    decisions,
+    switched,
+    combat
+  };
 }
 
 /*
@@ -247,6 +259,7 @@ describe('running from a fight', () => {
     const {
       travel: moving,
       sent,
+      kinds,
       parts
     } = travel(healthy, 'none', true, undefined, {
       settings: plain,
@@ -258,6 +271,7 @@ describe('running from a fight', () => {
     (parts.tracker as { current: CharacterState }).current = hurt;
     moving.considerEscape(hurt);
     expect(sent).toEqual(['n']);
+    expect(kinds).toEqual(['run-away']);
     expect(kept.map((list) => list.map((entry) => entry.name))).toEqual([['black ooze']]);
   });
 

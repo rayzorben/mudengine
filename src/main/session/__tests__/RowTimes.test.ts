@@ -24,3 +24,17 @@ describe('RowTimes', () => {
     expect(rows.before('A rat\r\n', 'other')).toBeNull();
   });
 });
+
+/* The echo of a command a setting made times its row, so the gear its time carries is drawn (todo 119). */
+describe('a row about a decision', () => {
+  it('is timed wherever it lands, and a line written over it takes the time off', () => {
+    const rows = new RowTimes();
+    expect(rows.before('get shield', 'echo', true)).toBe('time');
+    expect(rows.before(PROMPT_REPAINT, 'other')).toBeNull();
+    expect(rows.before('*Combat Engaged*', 'other')).toBe('clear');
+  });
+
+  it('is not timed when nothing was decided', () => {
+    expect(new RowTimes().before('get shield', 'echo')).toBeNull();
+  });
+});

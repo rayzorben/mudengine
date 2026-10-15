@@ -659,6 +659,14 @@ automation:
   # where that belongs -- there is a worked example below. Empty never asks.
   onPartyChange: party
 
+  # What this character learns about the other people in the room.
+  talk:
+    # Look at a player the first time this character sees them, to learn what
+    # they are wearing (the Player card). Off by default: a look costs a
+    # command, and the server tells the person they were looked at. Once per
+    # person, not per sighting.
+    lookAtPlayers: false
+
   # The prompt is the one line the realm prints on every turn, and what it
   # carries is yours to choose: `set statline full custom <template>` renders
   # a template of wildcards there from then on, on GreaterMUD and MajorMUD
@@ -679,6 +687,34 @@ automation:
   # when the client sends them.
   statline:
     control: false
+
+  # What the client asks the realm on its own to keep the cards current. A
+  # fact never asked stays unknown on the cards until you type the command.
+  asks:
+    # Minutes the last i, st and exp may get before each is asked again, never
+    # during a fight. A sentence the client misreads (a torch burnt out) stays
+    # wrong until the next listing replaces it. 0 never asks.
+    inventoryMinutes: 2
+    statsMinutes: 5
+    expMinutes: 5
+    # A player arriving who is not on the who list is a fact only a who
+    # settles. At most one who in this many minutes; the arrivals inside it
+    # are answered by the same listing. 0 never asks.
+    whoMinutes: 1
+    # abil once a session, when a route crosses a way the realm opens only past
+    # a quest count. Off, such a way is planned on a guess.
+    abilities: true
+    # spells or powers once the prompt shows which, and again when a spell is
+    # learned. Off, Auto Choose Best Spell has no book to choose from.
+    spellbook: true
+    # st when a line may have ended a buff: the sheet lists each effect up.
+    statsOnBuffEnding: true
+    # stat a once for each mix of level, worn gear and buffs, out of a fight:
+    # the regeneration figures resting is planned on.
+    statAll: true
+    # A look at a charged item whose uses are unknown, once a session, before
+    # it is used to bless.
+    itemUses: true
 
   idle:
     # After a quiet spell, send something. Empty is a bare Enter, which re-reads
@@ -738,11 +774,28 @@ automation:
     # shut, a monster that no longer dies -- looks exactly like one that is
     # working for as long as nobody is watching, which unattended is all night.
     # Measured over the lap since it started (or resumed, or came back online)
-    # and judged only after `tuning.loop.expRateGraceMs` in internal.yaml, so
-    # the walk out of town is not the measurement. Stopped out loud with both
+    # and judged only after `expRateGraceMinutes`, so the walk out of town is
+    # not the measurement. Stopped out loud with both
     # figures; the tab reads `stopped`. MegaMUD logs off instead, which this
     # client does not do on its own.
     minExpPerHour: 0
+
+    # How many minutes a lap runs before its exp rate is held against
+    # `minExpPerHour`. The first minutes of any lap are the walk to the first
+    # lair, at no experience at all.
+    expRateGraceMinutes: 15
+
+    # How many legs in a row may fail, none of them a fight, before the loop
+    # stops and says which stop it could not reach. A door nobody can open does
+    # not get better on the tenth try.
+    failedLegs: 3
+
+    # How much further away than when it stopped play may find the character
+    # before it asks first. A stopped route or loop is still there hours later,
+    # and the character may have been walked across the realm or killed and
+    # reborn on another map since; walking it back is then a journey nobody
+    # asked for. 0 asks every time the character has moved further off.
+    resumeAskSteps: 30
 
   # Away from keyboard -- MegaMUD's AutoAfk, AfkTimeout and AfkReply.
   #
@@ -816,6 +869,33 @@ automation:
     bashDoors: true
     bashTries: 3
 
+    # How far under a barrier's number your own skill may sit and still be
+    # tried. Nobody has measured what a roll against the number looks like; the
+    # pick reaches further because a failed pick costs a command and a failed
+    # bash costs a command and health.
+    pickMargin: 20
+    bashMargin: 10
+
+    # The other ways a route gets past what stands in it, each on by default.
+    #
+    # `disarmTraps` sends `disarm trap <direction>` before a trapped way where
+    # the stat sheet's Traps makes it cost less than walking in; a failure fires
+    # the trap, the same as walking in. Failed tries in a row whose chance falls
+    # under `disarmDoubt` (a share) mean the figure is likelier wrong, and the
+    # walk goes through on the trap rest's terms. Off, the walk rests for the
+    # trap and steps in, and routes price it that way.
+    #
+    # `searchHidden` searches for a hidden exit the world database says a search
+    # finds, and keeps searching until it is found. `pullLevers` pulls the levers
+    # that open a way, walking to one in another room when that is where it is,
+    # for `leverTries` rounds. Off, routes go round such a way where they can,
+    # and a route that cannot stops there and says which switch.
+    disarmTraps: true
+    disarmDoubt: 0.01
+    searchHidden: true
+    pullLevers: true
+    leverTries: 2
+
     # Sneak before starting a route.
     #
     # What decides whether the things in the next room notice you arrive, which
@@ -824,6 +904,10 @@ automation:
     # is hidden and is not walks in in plain sight, which is why the client
     # tracks three states -- sneaking, seen, and nobody has said.
     sneak: false
+
+    # Refused sneaks in a row (`You don't think you're sneaking.`) before the
+    # walk stops asking, until the next level or connection.
+    sneakGiveUp: 4
 
     # Time a run to the combat rounds: Run it, and the walk back after running.
     #
@@ -861,8 +945,10 @@ automation:
     # the darkest room, as many as burn for the dark stretch (a torch lasts 40
     # minutes), then walks on. When nothing can be bought it says why and walks
     # without one. Needs `provideLight` to light it and `supplies.enabled` to
-    # buy it.
+    # buy it. `carryLights` is how many it buys where the world database states
+    # no uses, and the fewest it buys anywhere.
     buyLight: true
+    carryLights: 1
 
     # Go back for the kit after a death.
     #
@@ -936,6 +1022,24 @@ automation:
       - vortex
       - Negative Power Plane
 
+    # What a route pays, in ordinary steps, for what it walks through.
+    #
+    # `fightCost` is one fight on a planned way, so a key off a monster is
+    # weighed against a longer walk to a shop that sells it; poor odds add more
+    # on top. `dangerCost` is a lair expected to take half the health you have
+    # now in one pass: a tenth of the bar costs a tenth of it, and the price
+    # climbs as a pass nears the whole bar. Another way, on the route panel, is
+    # looked for by pricing the plan's own steps `anotherWayPenalty` times over,
+    # and offered when it is at most `anotherWayLonger` (a share) longer than
+    # the plan. `avoidRanFromMinutes` is how long a trip's route goes round a
+    # room this character ran out of for its health, where a way round is
+    # survivable; loops never do. 0 never goes round.
+    fightCost: 30
+    dangerCost: 200
+    anotherWayPenalty: 3
+    anotherWayLonger: 0.5
+    avoidRanFromMinutes: 15
+
     # The key to the door in front of you.
     #
     # A keyed exit with no key and nothing a picklock can do about it is a wall
@@ -973,6 +1077,15 @@ automation:
   supplies:
     enabled: true
     items: []
+    # Copper withdrawn over a purchase's price when the purse is short and a
+    # bank holds it: a counter's markup is the realm's to change, and a purse
+    # drawn to the copper is refused the moment anything moves. 1000 is ten gold
+    # crowns. 0 withdraws exactly the shortfall.
+    cashBuffer: 1000
+    # For a row naming no shop: the detour decides which counter, and the price
+    # breaks the tie. This is what one doubling of the price is worth in steps
+    # out of the way. 0 lets the detour decide alone.
+    dearerSteps: 20
 
   # Picking things up, unasked -- MegaMUD's auto-get.
   #
@@ -1107,12 +1220,16 @@ automation:
     # Nothing marked Not Droppable is ever dropped by it, nothing equipped, and
     # nothing a quest you can still do needs.
     worthless: false
+    # Keep an item a quest you can still do needs, whatever the list says. On;
+    # off drops it like any other junk.
+    keepQuestItems: true
 
   # Getting rid of gear the character has outgrown, MegaMUD's "Auto-sell (or
   # stash)". An unworn item for a slot that is full and holds something at
   # least as good goes, one at a time, when nothing else is going on: worth
-  # enough (tuning.outgrown in internal.yaml), it is hidden in the ganghouse
-  # with `hide`; else sold at the nearest counter that buys it; else dropped.
+  # enough (`stashFromCopper`), it is hidden in the ganghouse with `hide`;
+  # else sold at the nearest counter that buys it (`sellFromCopper` or more);
+  # else dropped.
   # Never anything worn, a key, an item on the supply list or in a gear set, a
   # loyal item, the ganghouse deed, emblem and keys, or an item a quest you can
   # still do needs, and nothing while a quest run or a trip to fetch an item is
@@ -1128,6 +1245,18 @@ automation:
   outgrown:
     enabled: false
     ganghouseRoom: ''
+    # Keep gear the world data rates rare or limited, or does not rate at all,
+    # whatever the ranking says. Off gets rid of it like common gear.
+    keepRare: true
+    # Worth this many copper or more (the realm's price), outgrown gear goes to
+    # the ganghouse.
+    stashFromCopper: 10000
+    # Worth this many or more, it is walked to a counter that buys it; under
+    # it, dropped.
+    sellFromCopper: 1000
+    # How many steps a cash run goes out of its way to the bank to sell
+    # outgrown gear and loot at a counter.
+    sellDetour: 10
 
   # Searching every room you arrive in, unasked. The realm hides exits -- 249
   # of the shipped realm's are Hidden/Searchable -- and the router already
@@ -1145,6 +1274,11 @@ automation:
   search:
     enabled: false
     tries: 1
+
+    # The most steps out, and searches a room, the Search the area dialog
+    # offers.
+    areaMaxSteps: 15
+    areaMaxSearches: 10
 
   # Banking the purse, unasked -- MegaMUD's StashCoin. Standing at a bank
   # counter with more than `depositThresholdCopper` in the purse, the client
@@ -1268,6 +1402,16 @@ automation:
     gang: []
     party: [health, bless-expired, heal]
     players: {}
+    # The most items one @get-all, @drop-all or typed `get all` takes, one
+    # command each: a full floor would otherwise spend the commands a fight
+    # needs. Said when it cuts a list short.
+    maxGets: 10
+    # Let @kill, @hangup, @relog and @panic! through to whoever is granted them
+    # above, by name, gang or party. Off, all four are refused to everyone
+    # however granted. On, another player can start a fight with a person or
+    # hang this character up; a hang-up is still refused where the realm
+    # charges for one, as the client's own is. Allow all never grants them.
+    allowKillAndHangup: false
 
   # Commands on a clock -- MegaMUD's Events tab.
   #
@@ -1405,6 +1549,10 @@ automation:
     # when resting was going to act.
     restNextDoor: true
 
+    # A lair whose monsters come back within this many minutes is rested next
+    # door to; a rest takes minutes and outlasts it.
+    restNextDoorMinutes: 10
+
     # Rest before stepping through a trap, until health covers what the trap
     # does and still leaves this share of maximum after it. 0 walks into any
     # trap at any health.
@@ -1537,6 +1685,10 @@ automation:
     upTo: 0
     stats: false
     pick: exp
+    # With `pick: exp`, how many points of each stat are weighed ahead. Most of
+    # what a stat does moves in steps of three to ten points, so one point alone
+    # mostly shows nothing; ten cross every step but crits' charm (thirty).
+    statHorizon: 10
     wanted:
       strength: 0
       intellect: 0
@@ -1560,6 +1712,9 @@ automation:
   # long as the chain takes, and that is a night to sign up for on purpose.
   quests:
     enabled: false
+    # How many times a step that rolls (`testskill`) is asked before the run
+    # gives up on it. Each try is one ask and one listing.
+    rollTries: 12
 
   # Which kit to be in, and when -- the equipment manager.
   #
@@ -1626,10 +1781,15 @@ automation:
       everyRounds: 0
     # Wear carried armour that resists the cold, fire, lightning, stone or
     # water the room you stand in deals, from its own spell or its monsters'
-    # spells, when it saves at least `placeGear.minSaved` hit points a round,
+    # spells, when it saves at least `resistMinSaved` hit points a round,
     # and put back what it replaced once you are out of it. Weapons are not
     # swapped, and a set above that names the slot wins. Apart from `enabled`.
     resists: true
+    # Below this many hit points a round saved, the swap is not worth its two
+    # `wear` commands: one going in, one coming back out.
+    resistMinSaved: 2
+    # How many better items the Gear card lists for each slot, best first.
+    offersPerSlot: 20
 
   # Going hunting on its own: where this character should be at all.
   #
@@ -1666,6 +1826,27 @@ automation:
     enabled: false
     radius: 0
     cashPerHour: 0
+    # How much more exp an hour another spot must promise than this one before
+    # the hunt walks there: every move costs the walk and the first cycle, and
+    # two spots within a few percent of each other are the same spot. 0.25 is
+    # a quarter more.
+    moveMargin: 0.25
+    # Under `cashPerHour`, a spot's copper counts only while its exp an hour is
+    # at least this share of the best spot's.
+    cashExpShare: 0.5
+    # What a spot is worth while another player is working it. Exp divides
+    # among everybody who hit the kill, so a second player halves it.
+    contestedShare: 0.5
+    # How far a loop that stopped for earning too little looks for a better
+    # spot to name, in steps.
+    betterSpotRadius: 80
+    # A room whose one visit takes more than this share of the health bar is
+    # left out: its rate is mostly resting.
+    maxDamageShare: 0.5
+    # A room that could not take a tenth of the bar off an unarmoured character
+    # is beneath this level and left out; the bar is read this much lower for
+    # that test.
+    trivialLevelMargin: 0.05
 
   # Casting -- MegaMUD's Spells tab, at its smallest useful size.
   #
@@ -1695,6 +1876,10 @@ automation:
     # `attack` and `attackFallback` are what is cast with this off. Off:
     # it spends mana on a reading you did not type.
     autoChoose: false
+    # How sure one cast has to be of finishing the monster before the cheapest
+    # spell that would is cast instead of the hardest hitter. 0.9 is nine
+    # casts in ten; lower spends less mana and kills in more rounds.
+    killConfidence: 0.9
 
     # The spell to attack with. Blank casts nothing. It opens the fight in
     # place of `combat.attack` (after a `bs` or `ju` opener, which still goes
@@ -1803,6 +1988,10 @@ automation:
     # read) the spell in the box is cast. Off by default because it casts
     # spells you did not type.
     autoChooseHeal: false
+    # How much more a hit point mended low on the bar counts than one near the
+    # top: a point is worth (1 - share) ^ healUrgency. At 2, a point mended at
+    # 35% is worth about ten mended at 80%. 0 counts them all the same.
+    healUrgency: 2
 
     # Ask a carried item for the blessing it casts, when that blessing is not
     # up -- the half of MegaMUD's AutoBless this client had no answer to: a
@@ -1921,6 +2110,15 @@ automation:
     # kai, the rise watched while you stand out of combat. Until then the list
     # above is cast as written, and the client says so.
     autoChooseBlessings: false
+    # The least a chosen blessing must add to be kept up: fights survived, the
+    # health a fight costs as a share of the bar, or the exp rate, each as a
+    # share (0.02 is 2%).
+    blessMinGain: 0.02
+    # Heal casts its mana floor keeps affordable after the blessing's own cast.
+    blessHealReserve: 2
+    # The most commands an hour a blessing cast by a weapon from your pack may
+    # spend wielding it and putting your fighting weapon back.
+    blessSwapCommandsPerHour: 120
 
   # Fighting for you, rather than keeping you alive.
   #
@@ -2097,6 +2295,29 @@ automation:
     minMobs: 0
     maxMonsterExperience: 0
 
+    # Attack a monster the realm says always costs alignment to kill (-10 a
+    # kill, for as long as you play). Off leaves it alone and says so.
+    attackCostly: false
+
+    # Wield a weapon from your pack when the realm says the one in hand cannot
+    # hurt the monster and that one can (MegaMUD's "immune"). Off, a monster
+    # the hand cannot hurt is left alone unless an attack spell can open on it.
+    swapWeapons: true
+
+    # A monster you ran from that waits to be attacked is left alone until you
+    # are `fledLevels` past the level you ran at, or `fledForgetMinutes` have
+    # passed, so a loop whose one monster you ran from goes on earning. One
+    # that attacks on sight is fought when it is in the room.
+    fledLevels: 2
+    fledForgetMinutes: 30
+
+    # Where a fight's odds, the share of fights survived, read as safe (green)
+    # and as risky (yellow); the rest is deadly (red). The Combat card, the
+    # map's lairs, the hunting grounds, routes and Auto Choose Blessings read
+    # them. Over 60% is safe; 25% or less is almost certainly not survivable.
+    safeOddsAbove: 0.6
+    riskyOddsAbove: 0.25
+
   # Following somebody: what this character does about the party it travels in.
   #
   # All off, and with one more reason than usual. Whether the server's command
@@ -2167,6 +2388,9 @@ automation:
     # sooner the more health the party has lost since the last one. 0 sends
     # none by the round.
     parEveryRounds: 5
+    # The share of a member's health lost since the last par that sends the
+    # next one on this round. Half of it sends par half as many rounds sooner.
+    parAtLoss: 0.25
 
     # Leading, say @party <command> before a room's own command that moves only
     # the one who types it (go vortex), so the party runs it too. A text exit
@@ -2320,6 +2544,19 @@ automation:
       # the setting most likely to fire inside the five-minute window, which is
       # where a realm's penalty bites.
       onPlayerInRoom: false
+
+      # Hang up naked after a death while you are away from the keyboard
+      # (MegaMUD's HangupNaked), whether `enabled` above is on or off: a naked
+      # character has no items to lose, and logging out is safer than standing
+      # there. Where the realm menu states a hangup penalty, it hangs up only
+      # while health stays `nakedMargin` of maximum above it.
+      whenNaked: true
+      nakedMargin: 0.1
+
+      # After a run, how many seconds a hang-up waits for the move to land, so
+      # you log back in away from what you ran from. A step answers in about a
+      # second and a quarter.
+      afterRunSeconds: 3
 
     # What to do the moment a player opens on you -- `<Name> moves to attack
     # you!` arrives a full round before the first blow, and a player's blow
@@ -2606,6 +2843,14 @@ keys:
   Numpad0: u
   NumpadDecimal: d
   NumpadAdd: rest
+
+# The extensions installed in the client's extensions folder, each on or off by
+# its folder's name (`<name>: false` turns one off). One this block does not
+# name is on. An extension can send commands through the client and lay its own
+# settings over a character's while it runs, so turn off one you do not trust.
+# Read when the client starts: a change takes effect the next time it starts.
+# For every character, so a character's file has no say.
+extensions: {}
 
 # The game view (Game view in the command palette, Ctrl+K): the console's place
 # when you open it, `bottom`, `float`, `left` or `right`, and how opaque its

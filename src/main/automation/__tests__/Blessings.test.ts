@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, type AutomationConfig, type SpellsConfig } from '../../
 import type { BlessingConfig } from '../../../shared/blessings';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { Block } from '../../../shared/blocks';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -66,11 +67,19 @@ function block(type: Block['type'], groups: Record<string, string>): Block {
 }
 
 let sent: string[];
+/** The setting each sent command's decision files under, in send order. */
+let kinds: (DecisionKind | undefined)[];
 let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 afterEach(() => {
   queue.dispose();
@@ -82,6 +91,7 @@ describe('keeping a blessing up on this character', () => {
     const blessings = new Blessings(spells([armour]), true, queue, standing);
     blessings.onCharacter(state());
     expect(sent).toEqual(['protection']);
+    expect(kinds).toEqual(['bless']);
 
     // Confirmed on the wire: the buff is up, so nothing more goes out even
     // long past the proposal cooldown.
@@ -520,6 +530,7 @@ describe('telling the caster a blessing wore off', () => {
     const telling = new Blessings(spells([], true), true, queue, standing);
     telling.onBlock(block('user-buff-expired', { spell: 'bless' }), withBuff('Soul'));
     expect(sent).toEqual(['/Soul @bless-expired bless']);
+    expect(kinds.at(-1)).toBe('bless-expired-notify');
     telling.dispose();
   });
 

@@ -14,9 +14,12 @@ import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import { isOwnName } from '../../shared/players';
 import type { AutomationConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
+
+const REEQUIP: DecisionKind = 'reequip-on-recover';
 
 export interface RecoveredCorpseEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
 
 export class RecoveredCorpse implements SessionModule {
@@ -55,10 +58,11 @@ export class RecoveredCorpse implements SessionModule {
         command,
         priority: 'probe',
         coalesceKey: `recovered:${command.toLowerCase()}`,
-        reason: t('automation.recoveredCorpse.reason')
+        reason: t('automation.recoveredCorpse.reason'),
+        decision: REEQUIP
       })
     );
-    if (sent > 0) this.events.notice?.(t('automation.recoveredCorpse.dressing'));
-    for (const message of notices) this.events.notice?.(message);
+    if (sent > 0) this.events.notice?.(t('automation.recoveredCorpse.dressing'), REEQUIP);
+    for (const message of notices) this.events.notice?.(message, REEQUIP);
   }
 }

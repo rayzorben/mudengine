@@ -13,6 +13,7 @@
 import { useMemo } from 'react';
 import type { VitalsUiConfig } from '@shared/config';
 import type { SpellOption } from '@shared/ipc';
+import type { SettingPath } from '@shared/decisionSettings';
 import { castsOnOthers, castsOnSelf } from '@shared/spellcraft';
 import { CheckField, NumberField } from './FormField';
 import SpellField, { castableOn, refusesTarget } from './SpellPicker';
@@ -23,12 +24,14 @@ export type HealText = 'heal' | 'healPartyWith';
 export type HealThreshold = 'healBelow' | 'healBelowInCombat' | 'healTo';
 export type HealSwitch = 'autoChooseHeal' | 'healParty';
 export type HealFloor = 'healMinMana';
-export type HealField = HealText | HealThreshold | HealFloor;
+/** How steeply a low bar outweighs a high one under Auto Choose Best Heal (todo 118). */
+export type HealCount = 'healUrgency';
+export type HealField = HealText | HealThreshold | HealFloor | HealCount;
 
 export interface HealFieldsProps {
   values: Readonly<
     Record<HealText, string> &
-      Record<HealThreshold | HealFloor, number | string> &
+      Record<HealThreshold | HealFloor | HealCount, number | string> &
       Record<HealSwitch, boolean>
   >;
   onChange(field: HealField, value: string): void;
@@ -54,12 +57,19 @@ export default function HealFields({
 }: HealFieldsProps): React.JSX.Element {
   const selfHeals = useMemo(() => castableOn(spells, castsOnSelf), [spells]);
   const partyHeals = useMemo(() => castableOn(spells, castsOnOthers), [spells]);
-  const threshold = (
-    field: HealThreshold | HealFloor,
-    name: string,
-    label: string,
-    hint?: string
-  ) => {
+  const threshold = ({
+    field,
+    name,
+    label,
+    hint,
+    setting
+  }: {
+    field: HealThreshold | HealFloor;
+    name: string;
+    label: string;
+    hint?: string;
+    setting: SettingPath;
+  }) => {
     const typed = Number.parseInt(String(values[field]), 10) || 0;
     // The floor is a share of mana; every other threshold is a share of health.
     const vital = field === 'healMinMana' ? 'mana' : 'hp';
@@ -69,6 +79,7 @@ export default function HealFields({
         {...(hint === undefined ? {} : { hint })}
         label={label}
         name={`${namePrefix}${name}`}
+        setting={setting}
         bar={barOf(typed, bands[vital])}
         {...(max === undefined ? {} : { figure: figureOf(typed, max) })}
         onChange={(value) => onChange(field, value)}
@@ -78,18 +89,32 @@ export default function HealFields({
   };
   return (
     <>
-      <CheckField
-        checked={values.autoChooseHeal}
-        hint={t('settings.spells.autoChooseHealHint')}
-        label={t('settings.spells.autoChooseHeal')}
-        name={`${namePrefix}heal-auto-choose`}
-        onChange={(value) => onToggle('autoChooseHeal', value)}
-      />
+      <div className="settings-inline">
+        <CheckField
+          checked={values.autoChooseHeal}
+          hint={t('settings.spells.autoChooseHealHint')}
+          label={t('settings.spells.autoChooseHeal')}
+          name={`${namePrefix}heal-auto-choose`}
+          setting="automation.spells.autoChooseHeal"
+          onChange={(value) => onToggle('autoChooseHeal', value)}
+        />
+        {values.autoChooseHeal && (
+          <NumberField
+            hint={t('settings.spells.healUrgencyHint')}
+            label={t('settings.spells.healUrgencyLabel')}
+            name={`${namePrefix}heal-urgency`}
+            setting="automation.spells.healUrgency"
+            onChange={(value) => onChange('healUrgency', value)}
+            value={String(values.healUrgency)}
+          />
+        )}
+      </div>
       <div className="settings-inline">
         <SpellField
           hint={t('settings.spells.healHint')}
           label={t('settings.spells.healLabel')}
           name={`${namePrefix}heal`}
+          setting="automation.spells.heal"
           onChange={(value) => onChange('heal', value)}
           spells={selfHeals}
           value={values.heal}
@@ -99,37 +124,47 @@ export default function HealFields({
               : undefined
           }
         />
-        {threshold('healBelow', 'heal-below', t('settings.spells.healBelowLabel'))}
-        {threshold(
-          'healBelowInCombat',
-          'heal-below-combat',
-          t('settings.spells.healBelowInCombatLabel'),
-          t('settings.spells.healBelowInCombatHint')
-        )}
-        {threshold(
-          'healTo',
-          'heal-to',
-          t('settings.spells.healToLabel'),
-          t('settings.spells.healToHint')
-        )}
-        {threshold(
-          'healMinMana',
-          'heal-min-mana',
-          t('settings.spells.healMinManaLabel'),
-          t('settings.spells.healMinManaHint')
-        )}
+        {threshold({
+          field: 'healBelow',
+          name: 'heal-below',
+          label: t('settings.spells.healBelowLabel'),
+          setting: 'automation.spells.healBelow'
+        })}
+        {threshold({
+          field: 'healBelowInCombat',
+          name: 'heal-below-combat',
+          label: t('settings.spells.healBelowInCombatLabel'),
+          hint: t('settings.spells.healBelowInCombatHint'),
+          setting: 'automation.spells.healBelowInCombat'
+        })}
+        {threshold({
+          field: 'healTo',
+          name: 'heal-to',
+          label: t('settings.spells.healToLabel'),
+          hint: t('settings.spells.healToHint'),
+          setting: 'automation.spells.healTo'
+        })}
+        {threshold({
+          field: 'healMinMana',
+          name: 'heal-min-mana',
+          label: t('settings.spells.healMinManaLabel'),
+          hint: t('settings.spells.healMinManaHint'),
+          setting: 'automation.spells.healMinMana'
+        })}
       </div>
       <CheckField
         checked={values.healParty}
         hint={t('settings.spells.healPartyHint')}
         label={t('settings.spells.healParty')}
         name={`${namePrefix}heal-party`}
+        setting="automation.spells.healParty"
         onChange={(value) => onToggle('healParty', value)}
       />
       <SpellField
         hint={t('settings.spells.healPartyWithHint')}
         label={t('settings.spells.healPartyWithLabel')}
         name={`${namePrefix}heal-party-with`}
+        setting="automation.spells.healPartyWith"
         onChange={(value) => onChange('healPartyWith', value)}
         spells={partyHeals}
         value={values.healPartyWith}

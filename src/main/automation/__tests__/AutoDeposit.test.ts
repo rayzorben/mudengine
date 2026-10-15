@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 import { AutoDeposit } from '../AutoDeposit';
 import { CommandQueue } from '../CommandQueue';
@@ -31,14 +32,22 @@ function carrying(wealth: number | null): CharacterState {
 }
 
 let sent: string[];
+/** The decision each sent command was offered as, in send order. */
+let kinds: Array<DecisionKind | undefined>;
 let said: string[];
 let queue: CommandQueue;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   said = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -80,6 +89,7 @@ describe('banking the purse', () => {
     // number in copper — `dep all` has never been seen on this wire — then
     // `bank`.
     expect(sent).toEqual(['i', 'deposit 595000', 'bank']);
+    expect(kinds).toEqual(['auto-deposit', 'auto-deposit', 'auto-deposit']);
   });
 
   /*
@@ -281,6 +291,8 @@ describe('the console’s Deposit All', () => {
     auto.onListing(carrying(190_400));
     drain();
     expect(sent).toEqual(['i', 'deposit 190400', 'bank']);
+    // A press is the player's, so no line of it is a decision of the client's.
+    expect(kinds).toEqual([undefined, undefined, undefined]);
   });
 
   /*

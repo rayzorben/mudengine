@@ -9,6 +9,7 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import { DEFAULT_CONFIG } from '../../../shared/config';
 import { DEFAULT_INTERNAL } from '../../../shared/internal';
 import type { Loop } from '../../../shared/loops';
+import { noticeLog } from './noticeLog';
 import type { Route } from '../../../shared/world';
 
 const loop: Loop = { name: 'Arena', stops: [{ room: 'Arena' }, { room: 'Road' }] };
@@ -57,12 +58,13 @@ function reachNext(runner: LoopRunner): void {
 describe('starting a loop', () => {
   it('walks to the first stop and says what it is doing', () => {
     const { planner: p, walked } = planner();
-    const notices: string[] = [];
-    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    const { notices, kinds, notice } = noticeLog();
+    const runner = new LoopRunner(p, { notice });
     expect(runner.start(loop, state())).toBeNull();
     expect(walked).toEqual(['Arena']);
     expect(runner.progress).toMatchObject({ status: 'running', name: 'Arena', stop: 1, stops: 2 });
     expect(notices[0]).toBe(t('automation.loops.started', { loopName: 'Arena', stopCount: 2 }));
+    expect(kinds[0]).toBe('loop-advance');
   });
 
   /* 2026-10-06: an order for the same spot priced again at the realm's speed. */
@@ -507,9 +509,9 @@ describe('going round', () => {
 
 describe('when it cannot get there', () => {
   it('skips a stop whose walk the game refused, and keeps the loop', () => {
-    const notices: string[] = [];
+    const { notices, kinds, notice } = noticeLog();
     const { planner: p, walked } = planner();
-    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    const runner = new LoopRunner(p, { notice });
     runner.start(loop, state());
     expect(walked).toEqual(['Arena']);
     // The walk to Arena failed outright — a refused exit, not a fight.
@@ -517,9 +519,12 @@ describe('when it cannot get there', () => {
     // The loop moves on to Road rather than replanning the same failure.
     expect(walked).toEqual(['Arena', 'Road']);
     expect(runner.progress.status).toBe('running');
-    expect(notices).toContain(
-      t('automation.loops.skippingStop', { stopName: 'Arena', why: 'the game refused s' })
-    );
+    const skipping = t('automation.loops.skippingStop', {
+      stopName: 'Arena',
+      why: 'the game refused s'
+    });
+    expect(notices).toContain(skipping);
+    expect(kinds[notices.indexOf(skipping)]).toBe('loop-fail');
   });
 
   it('tries the next stop, and gives up after three failures in a row', () => {
@@ -970,12 +975,13 @@ describe('holding while hurt', () => {
 
   it('says it is resting in a room with nothing else in it (the control)', () => {
     const { planner: p } = planner();
-    const notices: string[] = [];
-    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) });
+    const { notices, kinds, notice } = noticeLog();
+    const runner = new LoopRunner(p, { notice });
     runner.start(loop, hurt(100));
     runner.onWalkEnded(true, null, hurt(30));
     runner.onCharacter(hurt(30));
     expect(notices.at(-1)).toBe(t('automation.loops.tooHurt'));
+    expect(kinds.at(-1)).toBe('loop-vitals-hold');
   });
 
   /*
@@ -1786,13 +1792,13 @@ describe('the experience floor', () => {
     minExpPerHour
   });
   const earned = (exp: number) => state({ progress: { ...EMPTY_CHARACTER.progress, exp } });
-  const GRACE = DEFAULT_INTERNAL.tuning.loop.expRateGraceMs;
+  const GRACE = DEFAULT_CONFIG.automation.walk.expRateGraceMinutes * 60_000;
 
   it('stops the lap out loud once the rate has fallen under the floor, after the grace', () => {
     let clock = 1_000_000;
     const { planner: p } = planner();
-    const notices: string[] = [];
-    const runner = new LoopRunner(p, { notice: (m) => notices.push(m) }, () => clock);
+    const { notices, kinds, notice } = noticeLog();
+    const runner = new LoopRunner(p, { notice }, () => clock);
     runner.configure(
       DEFAULT_CONFIG.automation.health,
       DEFAULT_CONFIG.automation.movement,
@@ -1809,6 +1815,7 @@ describe('the experience floor', () => {
     expect(runner.progress.status).toBe('stopped');
     expect(runner.progress.reason).toContain('1000');
     expect(notices.some((line) => line.includes('1000'))).toBe(true);
+    expect(kinds.at(-1)).toBe('loop-rate-floor');
   });
 
   it('leaves a lap alone with no floor, or while the rate holds', () => {

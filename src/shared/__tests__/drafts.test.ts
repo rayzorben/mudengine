@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { asProfileDraft, asProfileId, asServerDraft } from '../drafts';
 import { UNCATEGORISED } from '../loops';
+import { DEFAULT_MOVEMENT_CHOICES } from '../walkChoices';
+import { DEFAULT_CONFIG } from '../config';
+import { DEFAULT_HUNT_CHOICES } from '../huntChoices';
+import { DEFAULT_OUTGROWN, DEFAULT_SUPPLIES } from '../packConfig';
 
 /*
  * These are the payloads that become files on disk holding credentials, and a
@@ -288,6 +292,7 @@ describe('a character', () => {
         restBeforeTraps: 0.45,
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
+        restNextDoorMinutes: 10,
         restBelowMana: 0.25,
         restToMana: 0.6,
         // Absent above, and on: `med` when the character has Meditate (todo 50).
@@ -335,7 +340,9 @@ describe('a character', () => {
         // Except the one that is on by default and whose absence would switch
         // it off, which is the health block's rule two assertions down: a
         // payload that failed to send the field must not mean `false`.
-        collectKeys: true
+        collectKeys: true,
+        // Todo 118's figures, absent above, and each the shipped one.
+        ...DEFAULT_MOVEMENT_CHOICES
       });
       // The whole spell name: the realm matches a spell on a prefix, so `ice`
       // would cast whatever begins with it.
@@ -367,7 +374,12 @@ describe('a character', () => {
         autoBless: true,
         autoChooseBlessings: false,
         invokeItems: false,
-        invokeWith: []
+        invokeWith: [],
+        killConfidence: 0.9,
+        healUrgency: 2,
+        blessMinGain: 0.02,
+        blessHealReserve: 2,
+        blessSwapCommandsPerHour: 120
       });
     });
 
@@ -413,6 +425,7 @@ describe('a character', () => {
         restBeforeTraps: 0.45,
         // Absent above, and on: a blank field must not sit a character down in a lair.
         restNextDoor: true,
+        restNextDoorMinutes: 10,
         restBelowMana: 0,
         restToMana: 0,
         useMeditate: true,
@@ -451,7 +464,9 @@ describe('a character', () => {
         // The shipped default, for the same reason `restBelow` keeps 0.35
         // here: a nonsense block must not silently switch off something that
         // ships on.
-        collectKeys: true
+        collectKeys: true,
+        // Todo 118's figures, absent above, and each the shipped one.
+        ...DEFAULT_MOVEMENT_CHOICES
       });
       expect(draft?.spells).toEqual({
         attack: '',
@@ -481,7 +496,12 @@ describe('a character', () => {
         autoBless: true,
         autoChooseBlessings: false,
         invokeItems: false,
-        invokeWith: []
+        invokeWith: [],
+        killConfidence: 0.9,
+        healUrgency: 2,
+        blessMinGain: 0.02,
+        blessHealReserve: 2,
+        blessSwapCommandsPerHour: 120
       });
     });
 
@@ -607,8 +627,73 @@ describe('a character', () => {
         politeAttacks: true,
         // Absent above: the shipped figure, since 0 would mean never defend.
         maxMobs: 3,
-        refreshRounds: 3
+        refreshRounds: 3,
+        // Absent above: what the client did before each was a setting (todo 118).
+        attackCostly: false,
+        swapWeapons: true,
+        fledLevels: 2,
+        fledForgetMinutes: 30,
+        safeOddsAbove: 0.6,
+        riskyOddsAbove: 0.25
       });
+    });
+
+    /* Todo 118: a missing or cleared figure is the shipped one, never 0. */
+    it('reads the choices that were fixed figures, at the shipped ones when missing', () => {
+      const draft = asProfileDraft({
+        ...good,
+        combat: { attackCostly: true, fledForgetMinutes: 0, safeOddsAbove: 0.2 },
+        spells: { killConfidence: 0.75 },
+        hangUp: { afterRunSeconds: 9 },
+        reconnectTries: '12'
+      });
+      expect(draft?.combat).toMatchObject({
+        attackCostly: true,
+        swapWeapons: true,
+        fledLevels: 2,
+        // Floored at a minute: 0 would forget at once.
+        fledForgetMinutes: 1,
+        safeOddsAbove: 0.2,
+        // Never above the safe line.
+        riskyOddsAbove: 0.2
+      });
+      expect(draft?.spells).toMatchObject({
+        killConfidence: 0.75,
+        healUrgency: 2,
+        blessMinGain: 0.02,
+        blessHealReserve: 2,
+        blessSwapCommandsPerHour: 120
+      });
+      expect(draft?.hangUp.afterRunSeconds).toBe(9);
+      expect(draft?.reconnectTries).toBe(12);
+      expect(asProfileDraft({ ...good })?.reconnectTries).toBe(0);
+    });
+
+    /* Todo 118, batch C: the same rule for the hunt, the pack, quests, gear, party and remotes. */
+    it('reads the hunting and pack figures and switches, at the shipped ones when missing', () => {
+      const draft = asProfileDraft({
+        ...good,
+        hunting: { moveMargin: 0.1 },
+        outgrown: { sellFromCopper: 200 },
+        drop: { enabled: true },
+        remotes: { maxGets: 3 },
+        party: { parEveryRounds: 5 }
+      });
+      expect(draft?.hunting).toMatchObject({ ...DEFAULT_HUNT_CHOICES, moveMargin: 0.1 });
+      expect(draft?.outgrown).toMatchObject({ ...DEFAULT_OUTGROWN, sellFromCopper: 200 });
+      expect(draft?.drop.keepQuestItems).toBe(true);
+      expect(draft?.supplies).toMatchObject({
+        cashBuffer: DEFAULT_SUPPLIES.cashBuffer,
+        dearerSteps: DEFAULT_SUPPLIES.dearerSteps
+      });
+      expect(draft?.remotes.maxGets).toBe(3);
+      expect(draft?.party.parAtLoss).toBe(DEFAULT_CONFIG.automation.party.parAtLoss);
+      expect(draft?.quests.rollTries).toBe(DEFAULT_CONFIG.automation.quests.rollTries);
+      expect(draft?.train.statHorizon).toBe(DEFAULT_CONFIG.automation.train.statHorizon);
+      expect(draft?.gear.offersPerSlot).toBe(DEFAULT_CONFIG.automation.gear.offersPerSlot);
+      expect(
+        asProfileDraft({ ...good, drop: { keepQuestItems: false } })?.drop.keepQuestItems
+      ).toBe(false);
     });
 
     /* Off, with the one switch that cannot start a fight left on. */

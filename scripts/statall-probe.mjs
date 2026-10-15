@@ -107,6 +107,8 @@ const session = new SessionManager(
     // one run in it, and `Reconnect` is the app's, not the harness's.
     dropped: (why) =>
       console.log(`   [client] the server closed the connection${why ? ` (${why})` : ''}.`),
+    // Nor is an `@relog`: the probe's one run ends with its socket.
+    redial: () => {},
     telnet: () => {},
     notice: (message) => console.log(`   [client] ${message}`)
   },

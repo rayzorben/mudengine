@@ -44,6 +44,7 @@ import {
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import type { PartyCures } from './PartyCures';
 
 /** How long a cure that changed nothing is trusted before it is tried again. */
@@ -70,7 +71,7 @@ export class Cures implements SessionModule {
      */
     private readonly realmSpell: (name: string) => WorldSpell | null = () => null,
     /** Where a derived cure is said, once (todo 09). */
-    private readonly events: { notice?(message: string): void } = {},
+    private readonly events: { notice?: NoticeSink } = {},
     /** The one heal, blessing or cure a round, asked at the send (`CastRound`). */
     private readonly gate: CastGate = OPEN_CAST_GATE,
     /** The party's poison, after this character's own cures. */
@@ -103,7 +104,7 @@ export class Cures implements SessionModule {
     if (best === null) return '';
     if (this.saidDerived.get(cure) !== best) {
       this.saidDerived.set(cure, best);
-      this.events.notice?.(t('automation.cure.derived', { cure, spell: best }));
+      this.events.notice?.(t('automation.cure.derived', { cure, spell: best }), 'cure-self');
     }
     return best;
   }
@@ -144,6 +145,7 @@ export class Cures implements SessionModule {
         command: found.word,
         priority: 'combat',
         coalesceKey: `cure:${cure}`,
+        decision: 'cure-self',
         expiresAt: at + tuning().spells.cureExpiresMs,
         reason: t('automation.cure.reason', { cure }),
         ...gatedCast(this.gate, found.configured, () => {

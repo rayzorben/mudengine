@@ -792,3 +792,30 @@ describe('a time on the status line and on no other row', () => {
     expect(h.timed.chunk(PROMPT_REPAINT + STATUS)).toBe(PROMPT_REPAINT + STATUS);
   });
 });
+
+describe("an automated command's echo names the decision it carried out (todo 119)", () => {
+  const STATUS = '[HP=34/MA=12]:';
+  const GEAR = stampOf(7, 'found-gear-wear');
+
+  it('on the row of a prompt and echo that arrive as one line', () => {
+    const h = harness(['rm']);
+    h.feed.sent('dance', 'automation', 'found-gear-wear');
+    expect(h.timed.chunk(`${STATUS}dance\r\n`)).toBe(`${GEAR}${STATUS}dance\r\n`);
+  });
+
+  it('on the standing prompt row its echo is painted on, and not on the next prompt', () => {
+    const h = harness(['rm']);
+    h.timed.chunk(STATUS);
+    h.timed.flush();
+    h.feed.sent('dance', 'automation', 'found-gear-wear');
+    expect(h.timed.chunk(`dance\r\nNorth Road\r\n${STATUS}`)).toBe(
+      `${GEAR}dance\r\nNorth Road\r\n${TIME}${STATUS}`
+    );
+  });
+
+  it('never on a command that carried no decision', () => {
+    const h = harness(['rm']);
+    h.feed.sent('dance', 'automation');
+    expect(h.timed.chunk(`${STATUS}dance\r\n`)).toBe(`${TIME}${STATUS}dance\r\n`);
+  });
+});

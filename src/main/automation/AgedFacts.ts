@@ -1,5 +1,5 @@
 /**
- * What `i`, `st` and `exp` last said, asked again once it is old (`tuning.queue.*RefreshMs`).
+ * What `i`, `st` and `exp` last said, asked again once it is old (`automation.asks`, todo 118).
  *
  * The broadcasts keep a listing current only as far as the client reads them
  * right: rayzor's pack held a destroyed torch as lit for 18 minutes
@@ -9,7 +9,7 @@
  */
 import { readBy, type StaleFact } from '../../shared/staleness';
 import type { BlockType } from '../../shared/blocks';
-import { tuning } from '../app/tuning';
+import { askEveryMs, type AsksConfig } from '../../shared/asks';
 
 export class AgedFacts {
   /** When each fact was last read, or last found due. */
@@ -20,11 +20,11 @@ export class AgedFacts {
     for (const fact of readBy(type)) this.readAt.set(fact, now);
   }
 
-  /** The facts past their age; each is due once a period until an answer reads it. */
-  due(now: number): StaleFact[] {
+  /** The facts past their age; each is due once a period until an answer reads it. 0 minutes never is. */
+  due(now: number, asks: AsksConfig): StaleFact[] {
     const due: StaleFact[] = [];
     for (const [fact, at] of this.readAt) {
-      const every = refreshEvery(fact);
+      const every = refreshEvery(fact, asks);
       if (now - at < every) continue;
       this.readAt.set(fact, now);
       due.push(fact);
@@ -38,14 +38,14 @@ export class AgedFacts {
 }
 
 /** How old a fact may get; the `? exp` table changes only on a level, which `STALE_AFTER` owes. */
-function refreshEvery(fact: StaleFact): number {
+function refreshEvery(fact: StaleFact, asks: AsksConfig): number {
   switch (fact) {
     case 'pack':
-      return tuning().queue.packRefreshMs;
+      return askEveryMs(asks.inventoryMinutes);
     case 'sheet':
-      return tuning().queue.sheetRefreshMs;
+      return askEveryMs(asks.statsMinutes);
     case 'experience':
-      return tuning().queue.experienceRefreshMs;
+      return askEveryMs(asks.expMinutes);
     case 'chart':
       return Infinity;
     default: {

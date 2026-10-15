@@ -131,9 +131,9 @@ describe('a run timed to the rounds', () => {
   it('holds the step until the round goes off', () => {
     const rig = walkToRoomFour(true);
     heldUntilTheRound(rig);
-    expect(rig.notices).toContain(
-      t('automation.walk.offRoundsTimed', { round: '5.00', step: '1.24' })
-    );
+    const timed = t('automation.walk.offRoundsTimed', { round: '5.00', step: '1.24' });
+    expect(rig.notices).toContain(timed);
+    expect(rig.kindOf(timed)).toBe('walk-off-round');
   });
 
   it('steps again at once where two steps fit before the next round', () => {

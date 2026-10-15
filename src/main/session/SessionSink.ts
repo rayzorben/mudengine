@@ -8,6 +8,7 @@ import type { GearTripProgress } from '../../shared/gearTrip';
 import type { StandDown } from '../automation/LoginAutomator';
 import type { AutomationSnapshot } from '../../shared/automation';
 import type { Block } from '../../shared/blocks';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import type { CharacterState, RealmFamily as RealmWord } from '../../shared/character';
 import type { AutomationSwitch } from '../../shared/config';
 import type { Find } from '../../shared/finds';
@@ -73,9 +74,18 @@ export interface SessionSink {
    * test needs it") was answered by the test file, which implements it.
    */
   dropped(why: StandDown | null): void;
+  /**
+   * `@relog` hung this character up (todo 118): dial the realm it left again
+   * once the socket has closed, as Connect does. Required for `dropped`'s
+   * reason: a host without it would hang up and never come back.
+   */
+  redial(): void;
   telnet(event: TelnetEvent): void;
-  /** An engine message to surface inline in the terminal. */
-  notice(message: string): void;
+  /**
+   * An engine message to surface inline in the terminal, naming the decision
+   * it reports where the client made one on its own (todo 119).
+   */
+  notice: NoticeSink;
   /**
    * The decoded stream, whole — every byte the server sent, escape sequences
    * intact, before the feed decided what the terminal is shown. For the

@@ -3,8 +3,11 @@ import { SpellCombo } from './SpellPicker';
 import { t } from '../lib/i18n';
 import type { BlessingDraft } from '@shared/drafts';
 import type { SpellOption } from '@shared/ipc';
+import type { SettingPath } from '@shared/decisionSettings';
 
 export interface BlessingListProps {
+  /** The setting the list edits whole, for a console line's gear (todo 119). */
+  setting?: SettingPath;
   blessings: readonly BlessingDraft[];
   /** What the spell picker offers — the character's book, or the realm's list on the Global page. */
   spells: readonly SpellOption[];
@@ -38,6 +41,7 @@ export interface BlessingListProps {
  * to use would be a control that does nothing.
  */
 export default function BlessingList({
+  setting,
   blessings,
   spells,
   namePrefix,
@@ -73,7 +77,7 @@ export default function BlessingList({
   };
 
   return (
-    <>
+    <div className="settings-list" data-setting={setting}>
       {blessings.length > 0 && (
         <ul className="settings-steps settings-blessings">
           {blessings.map((blessing, index) => (
@@ -227,6 +231,6 @@ export default function BlessingList({
         <Icon name="plus" />
         <span>{t('settings.spells.addBlessing')}</span>
       </button>
-    </>
+    </div>
   );
 }

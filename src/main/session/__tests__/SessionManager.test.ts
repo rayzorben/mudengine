@@ -9,7 +9,8 @@ import iconv from 'iconv-lite';
 import { editorInput } from '../editorInput';
 import { IDLE_FLUSH_MS, SessionManager, type SessionDeps } from '../SessionManager';
 import type { SessionSink } from '../SessionSink';
-import { DEFAULT_CONFIG, type AutomationConfig, type RetreatConfig } from '../../../shared/config';
+import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
+import { type RetreatConfig } from '../../../shared/safety';
 import { WorldGraph } from '../../world/WorldGraph';
 import { worldOf } from '../../world/__tests__/realmFile';
 import { t } from '../../app/i18n';
@@ -131,6 +132,7 @@ function collect(): {
       command: () => {},
       state: () => {},
       dropped: (why) => drops.push(why),
+      redial: () => {},
       telnet: () => {},
       notice: (message) => notices.push(message),
       automation: (snapshot) => traces.push(snapshot)
@@ -1482,6 +1484,7 @@ describe('hanging up to escape', () => {
     safety: {
       ...DEFAULT_CONFIG.automation.safety,
       hangUp: {
+        ...DEFAULT_CONFIG.automation.safety.hangUp,
         enabled: true,
         belowHealth: 0.3,
         // The charged realm, which is where the refusals below live.
@@ -3061,7 +3064,7 @@ describe('the plan to a step', () => {
    * steps done that this character never did; and the card kept the old map.
    */
   describe('and the character that watched a rank gone', () => {
-    const questing: AutomationConfig = { ...still, quests: { enabled: true } };
+    const questing: AutomationConfig = { ...still, quests: { ...still.quests, enabled: true } };
     const beside = 'Location:            1,2\r\nMiddle Road\r\nObvious exits: west\r\n';
 
     /** In the realm beside the Sage, every map the window is sent kept in `pushed`. */
@@ -4957,6 +4960,7 @@ describe('a follower pacing the loop', () => {
         ...DEFAULT_CONFIG.automation,
         enabled: true,
         remotes: {
+          ...DEFAULT_CONFIG.automation.remotes,
           enabled: true,
           gangpath: false,
           autoJoin: false,
@@ -6593,8 +6597,9 @@ describe('what this character costs to move', () => {
         movement: { ...DEFAULT_CONFIG.automation.movement, pickLocks: false, bashDoors: true }
       }
     });
-    expect(manager.travellerNow(manager.character).forcing).toEqual({ pick: false, bash: true });
-    expect(manager.lapTraveller(manager.character).forcing).toEqual({ pick: false, bash: true });
+    const forcing = { pick: false, bash: true, search: true, levers: true, disarm: true };
+    expect(manager.travellerNow(manager.character).forcing).toEqual(forcing);
+    expect(manager.lapTraveller(manager.character).forcing).toEqual(forcing);
   });
 
   /*
@@ -6808,7 +6813,8 @@ describe('a lap walks the shortest way', () => {
 
   /** In the realm, placed by `rm`'s answer, with a reader for what reached the wire. */
   async function standingIn(
-    location: string
+    location: string,
+    walk: Partial<AutomationConfig['walk']> = {}
   ): Promise<{ world: WorldGraph; socket: net.Socket; wire: () => string }> {
     const world = den();
     const { sink } = collect();
@@ -6818,6 +6824,7 @@ describe('a lap walks the shortest way', () => {
         ...DEFAULT_CONFIG.automation,
         enabled: true,
         idle: { ...DEFAULT_CONFIG.automation.idle, enabled: false },
+        walk: { ...DEFAULT_CONFIG.automation.walk, ...walk },
         onEnterRealm: [],
         rules: []
       }
@@ -6859,12 +6866,9 @@ describe('a lap walks the shortest way', () => {
    * steps, one fewer than from the room it stopped in; priced, it is four.
    */
   it('measures a stopped lap’s wander by the way it will walk', async () => {
-    setTuning({
-      ...DEFAULT_INTERNAL.tuning,
-      walk: { ...DEFAULT_INTERNAL.tuning.walk, resumeAskSteps: 0 }
-    });
     const { socket, wire } = await standingIn(
-      'Location:            1,6\r\nUpper Tunnel\r\nObvious exits: south, west\r\n'
+      'Location:            1,6\r\nUpper Tunnel\r\nObvious exits: south, west\r\n',
+      { resumeAskSteps: 0 }
     );
     // Started mid-fight, so the lap waits and sends nothing: stopped in Upper
     // Tunnel, heading for Cave Mouth.

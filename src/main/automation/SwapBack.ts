@@ -10,9 +10,10 @@ import { heldWeapon } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 export interface SwapBackEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
 
 interface Armed {
@@ -99,7 +100,8 @@ export class SwapBack {
         weapon: armed.back,
         held: held?.name ?? t('automation.invoke.emptyHand'),
         item: armed.bless
-      })
+      }),
+      'swap-back-check'
     );
   }
 }

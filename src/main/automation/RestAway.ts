@@ -23,6 +23,7 @@ import type { AutomationConfig, CombatConfig, HealthConfig } from '../../shared/
 import type { MobRule } from '../../shared/mobRules';
 import { OPPOSITE, type Direction, type RoomId } from '../../shared/world';
 import type { SessionModule } from './Module';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 
 export interface RestAwayPlanner {
   here(): RoomId | null;
@@ -45,7 +46,7 @@ export interface RestAwayPlanner {
 }
 
 export interface RestAwayEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -59,6 +60,7 @@ type Phase =
   | { kind: 'resting'; from: RoomId; back: Direction };
 
 const ACTION = 'rest away';
+const AWAY: DecisionKind = 'rest-away';
 
 /** What a reload hands `RestAway`: its block, the master switch, and the monster rows. */
 export type RestAwaySettings = Pick<AutomationConfig, 'health' | 'enabled'> & {
@@ -139,7 +141,7 @@ export class RestAway implements SessionModule {
 
     if (!wantsRest || here === null) return 'not-mine';
     const clock = this.planner.lairClock(here);
-    if (clock === null || clock > tuning().rest.lairClockMaxSeconds) return 'not-mine';
+    if (clock === null || clock > this.config.restNextDoorMinutes * 60) return 'not-mine';
     if (this.allowedIn === here) return 'rest-here';
     // `Recovery` refuses these itself; nothing steps out of a fight either.
     if (fightIsHere(state) || countThreats(state, this.mobRules) > 0) return 'took-over';
@@ -167,7 +169,10 @@ export class RestAway implements SessionModule {
     const next = ways.find((way) => way.to === this.cameFrom) ?? ways[0];
     if (next === undefined) {
       this.allowedIn = here;
-      this.events.notice?.(t('automation.restAway.noSafeRoom', { seconds: Math.round(clock) }));
+      this.events.notice?.(
+        t('automation.restAway.noSafeRoom', { seconds: Math.round(clock) }),
+        AWAY
+      );
       this.events.decided?.({
         at: this.now(),
         action: ACTION,
@@ -180,13 +185,15 @@ export class RestAway implements SessionModule {
     if (this.saidIn !== here) {
       this.saidIn = here;
       this.events.notice?.(
-        t('automation.restAway.refusingHere', { seconds: Math.round(clock), name: next.name })
+        t('automation.restAway.refusingHere', { seconds: Math.round(clock), name: next.name }),
+        AWAY
       );
     }
     this.queue.enqueue({
       command: `l ${next.direction}`,
       priority: 'probe',
       coalesceKey: 'rest:peek',
+      decision: AWAY,
       expiresAt: this.now() + tuning().rest.peekMs,
       reason: t('automation.restAway.reasonPeek', { name: next.name })
     });
@@ -227,11 +234,12 @@ export class RestAway implements SessionModule {
           this.phase = { kind: 'idle' };
           return 'took-over';
         }
-        this.events.notice?.(t('automation.restAway.stepping', { direction, name }));
+        this.events.notice?.(t('automation.restAway.stepping', { direction, name }), AWAY);
         this.queue.enqueue({
           command: direction,
           priority: 'movement',
           coalesceKey: 'rest:step',
+          decision: AWAY,
           expiresAt: this.now() + tuning().rest.peekMs,
           reason: t('automation.restAway.reasonStep', { name })
         });
@@ -239,14 +247,17 @@ export class RestAway implements SessionModule {
         return 'took-over';
       }
       this.markTried(from, direction);
-      this.events.notice?.(t('automation.restAway.notSafe', { name, who: present.join(', ') }));
+      this.events.notice?.(
+        t('automation.restAway.notSafe', { name, who: present.join(', ') }),
+        AWAY
+      );
       this.phase = { kind: 'idle' };
       return 'took-over';
     }
     if (this.now() - since > tuning().rest.peekMs) {
       // Nothing answered the look: not proven safe, so not entered.
       this.markTried(from, direction);
-      this.events.notice?.(t('automation.restAway.peekUnanswered', { name }));
+      this.events.notice?.(t('automation.restAway.peekUnanswered', { name }), AWAY);
       this.phase = { kind: 'idle' };
       return 'took-over';
     }
@@ -274,7 +285,7 @@ export class RestAway implements SessionModule {
     }
     if (this.now() - since > tuning().session.retreatPatienceMs) {
       this.markTried(from, direction);
-      this.events.notice?.(t('automation.restAway.stepUnanswered', { direction }));
+      this.events.notice?.(t('automation.restAway.stepUnanswered', { direction }), AWAY);
       this.phase = { kind: 'idle' };
       return 'took-over';
     }
@@ -296,11 +307,15 @@ export class RestAway implements SessionModule {
     }
     if (this.planner.stayingReason() !== null) return 'not-mine';
     if (here === null || fightIsHere(state)) return 'not-mine';
-    this.events.notice?.(t('automation.restAway.steppingBack', { direction: back }));
+    this.events.notice?.(
+      t('automation.restAway.steppingBack', { direction: back }),
+      'rest-away-back'
+    );
     this.queue.enqueue({
       command: back,
       priority: 'movement',
       coalesceKey: 'rest:step',
+      decision: 'rest-away-back',
       expiresAt: this.now() + tuning().rest.peekMs,
       reason: t('automation.restAway.reasonBack')
     });
@@ -324,7 +339,7 @@ export class RestAway implements SessionModule {
     if (this.stayingSaid === key) return;
     this.stayingSaid = key;
     const seconds = Math.round(clock);
-    this.events.notice?.(t('automation.restAway.staying', { seconds, why }));
+    this.events.notice?.(t('automation.restAway.staying', { seconds, why }), AWAY);
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

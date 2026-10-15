@@ -66,13 +66,17 @@ export interface BetterGearFieldsProps {
   namePrefix: string;
   onUpgrades(upgrades: boolean): void;
   onWeights(weights: GearWeights): void;
+  /** `automation.gear.offersPerSlot`: how many better items the Gear card lists a slot. */
+  perSlot: string | number;
+  onPerSlot(typed: string): void;
 }
 
 /**
  * Auto-Get Better Gear and the gear weights (`automation.loot.upgrades`,
  * `automation.loot.gearWeights`, todo 117): whether floor gear is taken and
  * worn, and how many of an item's AC points one point of each ability is
- * worth wherever gear is ranked. In the Gear section of both pages (the
+ * worth wherever gear is ranked, and how many better items the Gear card
+ * offers a slot (`automation.gear.offersPerSlot`). In the Gear section of both pages (the
  * user, 2026-10-12), though the keys stay in the loot block they always had.
  */
 export default function BetterGearFields({
@@ -80,7 +84,9 @@ export default function BetterGearFields({
   weights,
   namePrefix,
   onUpgrades,
-  onWeights
+  onWeights,
+  perSlot,
+  onPerSlot
 }: BetterGearFieldsProps): React.JSX.Element {
   const words = wordsOf();
   return (
@@ -91,6 +97,7 @@ export default function BetterGearFields({
         hint={t('settings.gear.upgradesHint')}
         label={t('settings.gear.upgradesLabel')}
         name={`${namePrefix}-upgrades`}
+        setting="automation.loot.upgrades"
         onChange={onUpgrades}
       />
       <p className="settings-note">{t('settings.gear.betterNote')}</p>
@@ -101,6 +108,7 @@ export default function BetterGearFields({
             key={field}
             label={words[field].label}
             name={`${namePrefix}-weight-${field}`}
+            setting="automation.loot.gearWeights"
             onChange={(value) =>
               onWeights(
                 asGearWeights({ ...weights, [field]: Number.parseInt(value, 10) || 0 }, weights)
@@ -110,6 +118,14 @@ export default function BetterGearFields({
           />
         ))}
       </div>
+      <NumberField
+        hint={t('settings.gear.perSlotHint')}
+        label={t('settings.gear.perSlot')}
+        name={`${namePrefix}-per-slot`}
+        setting="automation.gear.offersPerSlot"
+        onChange={onPerSlot}
+        value={perSlot}
+      />
     </fieldset>
   );
 }

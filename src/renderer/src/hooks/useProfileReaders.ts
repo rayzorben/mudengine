@@ -13,9 +13,9 @@ import {
   automationSwitches,
   DEFAULT_CONFIG,
   type AutomationSwitches,
-  type RemotesConfig,
-  type SupplyItem
+  type RemotesConfig
 } from '@shared/config';
+import { type SupplyItem } from '@shared/packConfig';
 import type { ProfileSummary, SessionId } from '@shared/ipc';
 
 /** A character whose file names no supplies. One list, so a card's props hold still. */

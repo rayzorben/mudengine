@@ -24,10 +24,11 @@ import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import { commandOf } from '../../shared/commands';
 import type { CombatConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { SessionModule } from './Module';
 
 export interface StealthEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** Whether an escape is in flight; nothing hides on the way out of a room. */
   escaping?(): boolean;
   /**
@@ -60,6 +61,8 @@ export interface StealthEvents {
 
 /** Past this the move roll gains nothing (`Exits.cs:149` clamps at 100). */
 const WALKING_STEALTH_CEILING = 100;
+
+const HIDE_SNEAK: DecisionKind = 'hide-sneak';
 
 export class AutoStealth implements SessionModule {
   /** When the shadows were last asked for, so a failed roll retries at a stated rate. */
@@ -111,7 +114,7 @@ export class AutoStealth implements SessionModule {
     if (state.progress.stealthSkill === 0) {
       if (!this.saidNoSkill) {
         this.saidNoSkill = true;
-        this.events.notice?.(t('automation.stealth.noSkill'));
+        this.events.notice?.(t('automation.stealth.noSkill'), HIDE_SNEAK);
       }
       return;
     }
@@ -146,7 +149,8 @@ export class AutoStealth implements SessionModule {
         priority: 'movement',
         coalesceKey: SNEAK_KEY,
         expiresAt: now + expiresMs,
-        reason: t('automation.stealth.reasonSneak', { verb: opener })
+        reason: t('automation.stealth.reasonSneak', { verb: opener }),
+        decision: HIDE_SNEAK
       });
       return;
     }
@@ -155,7 +159,8 @@ export class AutoStealth implements SessionModule {
       priority: 'probe',
       coalesceKey: 'hide',
       expiresAt: now + expiresMs,
-      reason: t('automation.stealth.reasonHide', { verb: opener })
+      reason: t('automation.stealth.reasonHide', { verb: opener }),
+      decision: HIDE_SNEAK
     });
   }
 
@@ -172,7 +177,8 @@ export class AutoStealth implements SessionModule {
     if (skill === null || skill <= WALKING_STEALTH_CEILING) return;
     this.saidCeiling = true;
     this.events.notice?.(
-      t('automation.stealth.ceiling', { skill, ceiling: WALKING_STEALTH_CEILING })
+      t('automation.stealth.ceiling', { skill, ceiling: WALKING_STEALTH_CEILING }),
+      HIDE_SNEAK
     );
   }
 }

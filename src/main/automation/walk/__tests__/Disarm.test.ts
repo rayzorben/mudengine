@@ -2,13 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { t } from '../../../app/i18n';
 import { DEFAULT_INTERNAL } from '../../../../shared/internal';
+import { DEFAULT_CONFIG } from '../../../../shared/config';
 import { disarmOdds, disarmTries, disarmWorth, trapHurt } from '../../../../shared/walk';
 import type { CharacterState, PartyMember } from '../../../../shared/character';
 import { DisarmBeforeStep } from '../Disarm';
 import { PartyHands } from '../PartyHands';
-import { at, moves, routeOf, settle, stepOf, useRigs, wire } from './walking';
+import { at, configWith, moves, routeOf, settle, stepOf, useRigs, wire } from './walking';
 
 const TUNING = DEFAULT_INTERNAL.tuning;
+const MOVE = DEFAULT_CONFIG.automation.movement;
 
 /*
  * Todo 53, from `TrapExit.TryDisarm` (source): success when
@@ -62,15 +64,28 @@ const member = (name: string): PartyMember => ({ name }) as PartyMember;
 describe('disarming before a trapped step', () => {
   it('sends disarm trap, then the step once the trap is disarmed', async () => {
     const now = thief(75);
-    const { walker, sent, notices } = rigOn({ stateNow: () => now });
+    const { walker, sent, notices, kindOf, decisionOf } = rigOn({ stateNow: () => now });
     walker.start(TRAPPED, now);
     await vi.advanceTimersByTimeAsync(50);
     expect(moves(sent)).toEqual(['disarm trap e']);
+    expect(decisionOf('disarm trap e')).toBe('trap-disarm');
     walker.onBlock(wire('trap-disarmed', { direction: 'east' }));
     settle();
     await vi.advanceTimersByTimeAsync(50);
     expect(moves(sent)).toEqual(['disarm trap e', 'e']);
-    expect(notices).toContain(t('automation.walk.trapDisarmed', { stepName: 'Second Room' }));
+    const disarmed = t('automation.walk.trapDisarmed', { stepName: 'Second Room' });
+    expect(notices).toContain(disarmed);
+    expect(kindOf(disarmed)).toBe('trap-disarm');
+  });
+
+  // Disarm Traps off (todo 118): the same trap, and the step goes without one.
+  it('walks in without a disarm when Disarm Traps is off', async () => {
+    const now = thief(75);
+    const off = configWith({ movement: { disarmTraps: false } });
+    const { walker, sent } = rigOn({ stateNow: () => now }, off);
+    walker.start(TRAPPED, now);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(moves(sent)).toEqual(['e']);
   });
 
   it('tries again after a failure, through the trap hold', async () => {
@@ -117,7 +132,7 @@ describe('disarming before a trapped step', () => {
     const now = thief(99);
     const { walker, sent, notices } = rigOn({ stateNow: () => now });
     walker.start(TRAPPED, now);
-    const limit = disarmTries(0.99, TUNING.walk.disarmDoubt);
+    const limit = disarmTries(0.99, MOVE.disarmDoubt);
     for (let i = 0; i < limit + 1; i += 1) {
       settle();
       await vi.advanceTimersByTimeAsync(TUNING.walk.disarmAnswerMs + TUNING.walk.holdMs);
@@ -195,7 +210,7 @@ const leadingRand = (own: number | null, traps: number | null): CharacterState =
 describe('sending a party member at a trap', () => {
   it('sends @disarm to the member with the better odds, and holds the way on their {ok}', () => {
     const { disarm, hands, asked, offers, stepped, step } = unit();
-    expect(disarm.ask(leadingRand(40, 90))).toBe(true);
+    expect(disarm.ask(leadingRand(40, 90), MOVE)).toBe(true);
     expect(asked).toEqual(['Rand disarm e']);
     expect(offers).toEqual([]);
     hands.answered('Rand', 'held');
@@ -205,16 +220,16 @@ describe('sending a party member at a trap', () => {
 
   it('disarms itself once the member answers {failed}', () => {
     const { disarm, hands, asked, offers } = unit();
-    expect(disarm.ask(leadingRand(40, 90))).toBe(true);
+    expect(disarm.ask(leadingRand(40, 90), MOVE)).toBe(true);
     hands.answered('Rand', 'failed');
-    expect(disarm.ask(leadingRand(40, 90))).toBe(true);
+    expect(disarm.ask(leadingRand(40, 90), MOVE)).toBe(true);
     expect(asked).toEqual(['Rand disarm e']);
     expect(offers).toEqual(['disarm trap e']);
   });
 
   it('counts silence past the deadline as a failure, and says so', () => {
     const { disarm, notices, timers, stepped } = unit();
-    disarm.ask(leadingRand(40, 90));
+    disarm.ask(leadingRand(40, 90), MOVE);
     timers.shift()!();
     expect(stepped).toHaveBeenCalledTimes(1);
     expect(notices.some((line) => line.includes('Rand'))).toBe(true);
@@ -223,14 +238,14 @@ describe('sending a party member at a trap', () => {
   /* The positive control is the first test: the same member with a sheet is asked. */
   it('never sends a member with no sheet at a trap', () => {
     const { disarm, asked, offers } = unit();
-    expect(disarm.ask(leadingRand(40, null))).toBe(true);
+    expect(disarm.ask(leadingRand(40, null), MOVE)).toBe(true);
     expect(asked).toEqual([]);
     expect(offers).toEqual(['disarm trap e']);
   });
 
   it('reads a member’s answer only from the one asked', () => {
     const { disarm, hands, stepped } = unit();
-    disarm.ask(leadingRand(40, 90));
+    disarm.ask(leadingRand(40, 90), MOVE);
     hands.answered('Soul', 'held');
     expect(stepped).not.toHaveBeenCalled();
   });
@@ -249,7 +264,7 @@ describe('a disarm the walk did not send, and one held by a fight', () => {
   /* `The trap is already disarmed.` says nothing of when; the server re-arms on its own clock. */
   it('takes already disarmed as safe for this send only', () => {
     const { disarm, step, stepped, clock } = unit();
-    expect(disarm.ask(thief(75))).toBe(true);
+    expect(disarm.ask(thief(75), MOVE)).toBe(true);
     disarm.answered(undefined);
     expect(stepped).toHaveBeenCalledTimes(1);
     expect(disarm.disarmed(step)).toBe(true);
@@ -260,10 +275,10 @@ describe('a disarm the walk did not send, and one held by a fight', () => {
   /* A fight hold clears the walk's clock; asked again, the disarm out waits again. */
   it('arms the deadline again when asked while one is out, and sends nothing more', () => {
     const { disarm, offers, timers, stepped } = unit();
-    expect(disarm.ask(thief(75))).toBe(true);
+    expect(disarm.ask(thief(75), MOVE)).toBe(true);
     expect(offers).toEqual(['disarm trap e']);
     timers.splice(0);
-    expect(disarm.ask(thief(75))).toBe(true);
+    expect(disarm.ask(thief(75), MOVE)).toBe(true);
     expect(offers).toEqual(['disarm trap e']);
     expect(timers).toHaveLength(1);
     timers[0]!();
@@ -273,7 +288,7 @@ describe('a disarm the walk did not send, and one held by a fight', () => {
   it('waits while the disarm is queued, and says so when the queue dropped it', () => {
     const { disarm, timers, stepped, notices, clock } = unit();
     clock.queued = true;
-    disarm.ask(thief(75));
+    disarm.ask(thief(75), MOVE);
     timers.shift()!();
     expect(stepped).not.toHaveBeenCalled();
     clock.queued = false;

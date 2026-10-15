@@ -130,6 +130,7 @@ export class Potions implements SessionModule {
       command: `${verb} ${name.trim()}`,
       priority: 'combat',
       coalesceKey: `potion:${kind}`,
+      decision: 'potion',
       expiresAt: at + tuning().potions.expiresMs,
       reason
     });

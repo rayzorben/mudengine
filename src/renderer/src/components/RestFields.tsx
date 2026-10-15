@@ -15,15 +15,21 @@ import { t } from '../lib/i18n';
 import { meditateSays } from '../lib/liveSheet';
 import type { VitalThresholds } from '@shared/character';
 import type { SpellOption } from '@shared/ipc';
+import type { SettingPath } from '@shared/decisionSettings';
 
 export type RestField = 'restBelow' | 'restTo' | 'restBeforeTraps' | 'restBelowMana' | 'restToMana';
 
 export type RestCheck = 'restNextDoor' | 'useMeditate' | 'meditateFirst';
 
 export interface RestFieldsProps {
-  /** The figures, and the spell cast before a rest (`restSpell`). */
-  values: Readonly<Record<RestField, number | string> & { restSpell: string }>;
-  onChange(field: RestField | 'restSpell', value: string): void;
+  /**
+   * The figures, the spell cast before a rest (`restSpell`) and how soon a
+   * lair refills for Rest Next Door (`restNextDoorMinutes`).
+   */
+  values: Readonly<
+    Record<RestField | 'restNextDoorMinutes', number | string> & { restSpell: string }
+  >;
+  onChange(field: RestField | 'restSpell' | 'restNextDoorMinutes', value: string): void;
   checks: Readonly<Record<RestCheck, boolean>>;
   onCheck(field: RestCheck, value: boolean): void;
   /** The meter bands the bars are drawn against. */
@@ -47,6 +53,7 @@ interface Row {
   name: string;
   label: string;
   hint: string;
+  setting: SettingPath;
 }
 
 function rows(): readonly Row[] {
@@ -55,6 +62,7 @@ function rows(): readonly Row[] {
       field: 'restBelow',
       mana: false,
       name: 'rest-below',
+      setting: 'automation.health.restBelow',
       label: t('settings.health.restBelowLabel'),
       hint: t('settings.health.restBelowHint')
     },
@@ -62,6 +70,7 @@ function rows(): readonly Row[] {
       field: 'restTo',
       mana: false,
       name: 'rest-to',
+      setting: 'automation.health.restTo',
       label: t('settings.health.restToLabel'),
       hint: t('settings.health.restToHint')
     },
@@ -69,6 +78,7 @@ function rows(): readonly Row[] {
       field: 'restBeforeTraps',
       mana: false,
       name: 'rest-before-traps',
+      setting: 'automation.health.restBeforeTraps',
       label: t('settings.health.restBeforeTrapsLabel'),
       hint: t('settings.health.restBeforeTrapsHint')
     },
@@ -76,6 +86,7 @@ function rows(): readonly Row[] {
       field: 'restBelowMana',
       mana: true,
       name: 'rest-mana-below',
+      setting: 'automation.health.restBelowMana',
       label: t('settings.health.restBelowManaLabel'),
       hint: t('settings.health.restBelowManaHint')
     },
@@ -83,29 +94,39 @@ function rows(): readonly Row[] {
       field: 'restToMana',
       mana: true,
       name: 'rest-mana-to',
+      setting: 'automation.health.restToMana',
       label: t('settings.health.restToManaLabel'),
       hint: t('settings.health.restToManaHint')
     }
   ];
 }
 
-function checks(): ReadonlyArray<{ field: RestCheck; name: string; label: string; hint: string }> {
+function checks(): ReadonlyArray<{
+  field: RestCheck;
+  name: string;
+  label: string;
+  hint: string;
+  setting: SettingPath;
+}> {
   return [
     {
       field: 'restNextDoor',
       name: 'rest-next-door',
+      setting: 'automation.health.restNextDoor',
       label: t('settings.health.restNextDoor'),
       hint: t('settings.health.restNextDoorHint')
     },
     {
       field: 'useMeditate',
       name: 'use-meditate',
+      setting: 'automation.health.useMeditate',
       label: t('settings.health.useMeditate'),
       hint: t('settings.health.useMeditateHint')
     },
     {
       field: 'meditateFirst',
       name: 'meditate-first',
+      setting: 'automation.health.meditateFirst',
       label: t('settings.health.meditateFirst'),
       hint: t('settings.health.meditateFirstHint')
     }
@@ -135,6 +156,7 @@ export default function RestFields({
               hint={row.hint}
               label={row.label}
               name={`${namePrefix}${row.name}`}
+              setting={row.setting}
               bar={barOf(typed, row.mana ? bands.mana : bands.hp)}
               {...(maxima === undefined ? {} : { figure: figureOf(typed, max ?? null) })}
               onChange={(value) => onChange(row.field, value)}
@@ -143,16 +165,34 @@ export default function RestFields({
           );
         })}
       </div>
-      {checks().map((row) => (
-        <CheckField
-          key={row.field}
-          checked={checked[row.field]}
-          hint={row.hint}
-          label={row.label}
-          name={`${namePrefix}${row.name}`}
-          onChange={(value) => onCheck(row.field, value)}
-        />
-      ))}
+      {checks().map((row) => {
+        const check = (
+          <CheckField
+            key={row.field}
+            checked={checked[row.field]}
+            hint={row.hint}
+            label={row.label}
+            name={`${namePrefix}${row.name}`}
+            setting={row.setting}
+            onChange={(value) => onCheck(row.field, value)}
+          />
+        );
+        // Rest Next Door discloses the refill time it is judged on (todo 118).
+        if (row.field !== 'restNextDoor' || !checked.restNextDoor) return check;
+        return (
+          <div className="settings-inline" key={row.field}>
+            {check}
+            <NumberField
+              hint={t('settings.health.restNextDoorMinutesHint')}
+              label={t('settings.health.restNextDoorMinutes')}
+              name={`${namePrefix}rest-next-door-minutes`}
+              setting="automation.health.restNextDoorMinutes"
+              onChange={(value) => onChange('restNextDoorMinutes', value)}
+              value={values.restNextDoorMinutes}
+            />
+          </div>
+        );
+      })}
       {meditate !== undefined && checked.useMeditate && (
         <p className="settings-note">{meditateSays(meditate)}</p>
       )}
@@ -161,6 +201,7 @@ export default function RestFields({
           hint={t('settings.health.restSpellHint')}
           label={t('settings.health.restSpell')}
           name={`${namePrefix}rest-spell`}
+          setting="automation.health.restSpell"
           onChange={(value) => onChange('restSpell', value)}
           spells={spells}
           value={values.restSpell}

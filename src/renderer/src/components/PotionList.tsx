@@ -3,8 +3,11 @@ import NameCombo from './NameCombo';
 import { t } from '../lib/i18n';
 import { POTION_VERBS, POTION_WHENS, type PotionRule } from '@shared/config';
 import type { WardRule } from '@shared/world';
+import type { SettingPath } from '@shared/decisionSettings';
 
 export interface PotionListProps {
+  /** The setting the list edits whole, for a console line's gear (todo 119). */
+  setting?: SettingPath;
   potions: readonly PotionRule[];
   /**
    * What the name field offers per condition: the items the **realm** says
@@ -45,7 +48,13 @@ const MEASURED = new Set<PotionRule['when']>(['hp', 'mana']);
  * not a percentage, so the field is absent on a condition row rather than
  * greyed: a number nothing reads is a control that does nothing.
  */
-export default function PotionList({ potions, serving, namePrefix, onChange }: PotionListProps) {
+export default function PotionList({
+  potions,
+  serving,
+  namePrefix,
+  setting,
+  onChange
+}: PotionListProps) {
   const update = (index: number, change: Partial<PotionRule>) =>
     onChange(potions.map((entry, at) => (at === index ? { ...entry, ...change } : entry)));
 
@@ -67,7 +76,7 @@ export default function PotionList({ potions, serving, namePrefix, onChange }: P
   };
 
   return (
-    <>
+    <div className="settings-list" data-setting={setting}>
       {potions.length > 0 && (
         <ul className="settings-steps settings-potions">
           {potions.map((rule, index) => (
@@ -171,7 +180,7 @@ export default function PotionList({ potions, serving, namePrefix, onChange }: P
         <Icon name="plus" />
         {t('settings.health.potionRuleAdd')}
       </button>
-    </>
+    </div>
   );
 }
 

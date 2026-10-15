@@ -13,6 +13,7 @@ import { t } from '../app/i18n';
 import { partyMembers, standingHere, type CharacterState } from '../../shared/character';
 import type { Block } from '../../shared/blocks';
 import type { AutomationConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import {
   roomAddress,
   scatters,
@@ -23,17 +24,20 @@ import {
 import type { CommandQueue, Intent } from './CommandQueue';
 import { partyListingIntent } from './PartyListing';
 
+const REGROUP: DecisionKind = 'party-regroup';
+
 export interface PartyRegroupEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
 }
 
 /** `invite <name>`, one per name however it was asked for: an `@invite` and a regroup are one invitation. */
-export function inviteIntent(who: string, reason: string): Intent {
+export function inviteIntent(who: string, reason: string, decision: DecisionKind): Intent {
   return {
     command: `invite ${who}`,
     priority: 'user',
     coalesceKey: `remote:invite:${who.toLowerCase()}`,
-    reason
+    reason,
+    decision
   };
 }
 
@@ -153,6 +157,7 @@ export class PartyRegroup {
         command: `.@party ${command}`,
         priority: 'movement',
         reason: t('automation.party.reasonRelay', { command }),
+        decision: 'party-relay-portal',
         onSent: () => {
           held.said = true;
         }
@@ -161,13 +166,15 @@ export class PartyRegroup {
     const minutes = party.regroupMinutes;
     if (minutes <= 0) return;
     this.events.notice?.(
-      t('automation.party.regrouping', { minutes, members: members.join(', ') })
+      t('automation.party.regrouping', { minutes, members: members.join(', ') }),
+      REGROUP
     );
     this.timer = setTimeout(() => {
       this.timer = null;
       this.end();
       this.events.notice?.(
-        t('automation.party.regroupGaveUp', { minutes, members: members.join(', ') })
+        t('automation.party.regroupGaveUp', { minutes, members: members.join(', ') }),
+        REGROUP
       );
     }, minutes * 60_000);
   }
@@ -208,20 +215,20 @@ export class PartyRegroup {
     if (this.apartAt !== null && this.apartAt.from === from && this.apartAt.to === to) return;
     this.end();
     this.apartAt = { from, to };
-    this.events.notice?.(t('automation.party.apart', { members: members.join(', ') }));
+    this.events.notice?.(t('automation.party.apart', { members: members.join(', ') }), REGROUP);
   }
 
   private land(at: RoomId, members: string[]): void {
     this.crossing = null;
     this.gathering = { at, members, invited: new Set(), listed: false };
-    this.queue.enqueue(partyListingIntent(this.config));
+    this.queue.enqueue(partyListingIntent(this.config, REGROUP));
   }
 
   /** Somewhere the portal does not lead: a scatter, or the player walking on by hand. */
   private leave(): void {
     const held = this.timer !== null;
     this.end();
-    if (held) this.events.notice?.(t('automation.party.regroupLeft'));
+    if (held) this.events.notice?.(t('automation.party.regroupLeft'), REGROUP);
   }
 
   private gather(gathering: Gathering, state: CharacterState): void {
@@ -235,16 +242,18 @@ export class PartyRegroup {
     if (missing.length === 0) {
       const held = this.timer !== null;
       this.end();
-      if (held) this.events.notice?.(t('automation.party.regrouped'));
+      if (held) this.events.notice?.(t('automation.party.regrouped'), REGROUP);
       return;
     }
     for (const member of missing) {
       const key = member.toLowerCase();
       if (joined.has(key) || !here.has(key) || gathering.invited.has(key)) continue;
       gathering.invited.add(key);
-      this.events.notice?.(t('automation.party.reinvited', { member }));
+      this.events.notice?.(t('automation.party.reinvited', { member }), REGROUP);
       // The `@join` behind it is `InviteFollowUp`'s, off the `[Invited]` row this puts up.
-      this.queue.enqueue(inviteIntent(member, t('automation.party.reasonReinvite', { member })));
+      this.queue.enqueue(
+        inviteIntent(member, t('automation.party.reasonReinvite', { member }), REGROUP)
+      );
     }
   }
 

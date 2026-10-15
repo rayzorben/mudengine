@@ -34,9 +34,12 @@
  * anyway, because the step was queued behind the `sn` unanswered. A refusal
  * asks again; the bare `Attempting to sneak...` lets the step go.
  */
-import type { CommandQueue } from '../CommandQueue';
+import type { CommandQueue, Intent } from '../CommandQueue';
 import type { BlockType } from '../../../shared/blocks';
 import type { CharacterState } from '../../../shared/character';
+import { PRIORITY } from '../../../shared/automation';
+import { breaksStealth } from '../../../shared/commands';
+import type { MovementConfig } from '../../../shared/config';
 import type { RouteStep } from '../../../shared/world';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -46,6 +49,10 @@ import type { WalkInFlight, WalkerEvents } from './ports';
 /** `AutoStealth`'s key too, so its `sn` and the walk's are one command. */
 export const SNEAK_KEY = 'sneak';
 
+/** A queued command the server runs before the step and that ends a sneak. */
+const breaksAhead = (intent: Intent): boolean =>
+  PRIORITY[intent.priority] >= PRIORITY.movement && breaksStealth(intent.command);
+
 export class SneakBeforeStep {
   /** Whether *Stealth 0, not sneaking* has been said this session. */
   private saidNoStealth = false;
@@ -53,12 +60,14 @@ export class SneakBeforeStep {
   private wantedBefore = false;
   /**
    * Sneaks refused in a row (`You don't think you're sneaking.`), and the
-   * level they were counted at: at `tuning.walk.sneakGiveUp` the walk stops
+   * level they were counted at: at `movement.sneakGiveUp` the walk stops
    * asking until a new connection or a new level, said once. A low figure is
    * a refusal the sheet cannot show (`SneakCommand.cs` rolls against Stealth
    * less what is in the room), so it is read off the answers.
    */
   private sneakRefusals = { count: 0, level: null as number | null };
+  /** `movement.sneakGiveUp` at the last ask, which the refusal it answers counts against. */
+  private giveUp = 0;
   /**
    * The step held behind an `sn`, and whether the server has answered it:
    * `heard` lets the next ask send the step. A step that is no longer the one
@@ -85,7 +94,9 @@ export class SneakBeforeStep {
    * Asks for an `sn` ahead of the step when one is wanted. True while the
    * step waits for the answer (`answered`); false when the step can go.
    */
-  ask(state: CharacterState, wanted: boolean): boolean {
+  ask(state: CharacterState, movement: Pick<MovementConfig, 'sneak' | 'sneakGiveUp'>): boolean {
+    const wanted = movement.sneak;
+    this.giveUp = movement.sneakGiveUp;
     // Heard: the step goes. An `sn` still unanswered when the step is sent
     // again (a hold let go, the clock and its deadline cleared) is asked again.
     const heard = this.held()?.heard === true;
@@ -93,9 +104,10 @@ export class SneakBeforeStep {
     if (wanted && !this.wantedBefore) this.switchedOn();
     this.wantedBefore = wanted;
     if (heard || !wanted) return false;
-    // Sneaking, by the tracker's own reading: the refusals in a row are over.
-    if (state.stealth === 'sneaking') {
-      if (this.sneakRefusals.count < tuning().walk.sneakGiveUp) this.sneakRefusals.count = 0;
+    // Sneaking, by the tracker's own reading, and nothing queued ahead of the
+    // step that breaks it (the room's search, todo 120): the refusals in a row are over.
+    if (state.stealth === 'sneaking' && !this.queue.queued(breaksAhead)) {
+      this.sneaked();
       return false;
     }
     /*
@@ -109,7 +121,7 @@ export class SneakBeforeStep {
     if (state.progress.stealthSkill === 0) {
       if (!this.saidNoStealth) {
         this.saidNoStealth = true;
-        this.events.notice?.(t('automation.walk.sneakNoSkill'));
+        this.events.notice?.(t('automation.walk.sneakNoSkill'), 'walk-sneak');
       }
       return false;
     }
@@ -118,7 +130,7 @@ export class SneakBeforeStep {
     if (this.sneakRefusals.level !== state.progress.level) {
       this.sneakRefusals = { count: 0, level: state.progress.level };
     }
-    if (this.sneakRefusals.count >= tuning().walk.sneakGiveUp) return false;
+    if (this.sneakRefusals.count >= this.giveUp) return false;
     const step = this.inFlight.step();
     if (step === undefined) return false;
     // Ahead of the offer: an idle queue sends inside it, and `onSent` reads this.
@@ -128,6 +140,7 @@ export class SneakBeforeStep {
       priority: 'movement',
       coalesceKey: SNEAK_KEY,
       reason: t('automation.walk.reasonSneak'),
+      decision: 'walk-sneak',
       onSent: () => this.waitForAnswer(step)
     });
     // `joined`: `AutoStealth`'s `sn` under the same key, whose answer is as good.
@@ -164,7 +177,7 @@ export class SneakBeforeStep {
     this.clock.afterStep(tuning().walk.sneakAnswerMs, () => {
       if (this.held()?.step !== step) return;
       if (this.stillQueued()) return this.waitForSend(step);
-      this.events.notice?.(t('automation.walk.sneakUnanswered'));
+      this.events.notice?.(t('automation.walk.sneakUnanswered'), 'walk-sneak');
       this.goOn(true);
     });
   }
@@ -178,7 +191,7 @@ export class SneakBeforeStep {
     this.clock.clear();
     this.clock.afterStep(tuning().walk.sneakAnswerMs, () => {
       if (this.held() === null) return;
-      this.events.notice?.(t('automation.walk.sneakUnanswered'));
+      this.events.notice?.(t('automation.walk.sneakUnanswered'), 'walk-sneak');
       this.goOn(true);
     });
   }
@@ -191,6 +204,15 @@ export class SneakBeforeStep {
     if (type === 'user-sneak-failed') this.refused();
     if (this.held() === null) return;
     this.goOn(type !== 'user-sneak-failed');
+  }
+
+  /**
+   * A move printed `Sneaking...`: that `sn` worked, so the refusals are no
+   * longer in a row. Counted from the receipt rather than from the next ask,
+   * where a `You make a sound` or a search has already broken it (todo 120).
+   */
+  sneaked(): void {
+    if (this.sneakRefusals.count < this.giveUp) this.sneakRefusals.count = 0;
   }
 
   /** The step held on an `sn`, or null. */
@@ -215,8 +237,11 @@ export class SneakBeforeStep {
   /** One more sneak refused; at the limit, said once. See `sneakRefusals`. */
   private refused(): void {
     this.sneakRefusals.count += 1;
-    if (this.sneakRefusals.count !== tuning().walk.sneakGiveUp) return;
-    this.events.notice?.(t('automation.walk.sneakGaveUp', { count: this.sneakRefusals.count }));
+    if (this.sneakRefusals.count !== this.giveUp) return;
+    this.events.notice?.(
+      t('automation.walk.sneakGaveUp', { count: this.sneakRefusals.count }),
+      'walk-sneak'
+    );
   }
 }
 

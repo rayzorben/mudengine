@@ -124,6 +124,13 @@ describe('the party listing on a clock', () => {
     expect(rounds(par, hurt(0.6))).toEqual([1]);
   });
 
+  // The case above asks on round 3 at the shipped share: the positive control.
+  it('waits the whole count where the share set is far over what a member lost', () => {
+    const par = listing({ parEveryRounds: 5, parAtLoss: 1 });
+    expect(rounds(par, ...Array.from({ length: 5 }, () => state(true)))).toEqual([5]);
+    expect(rounds(par, hurt(0.95), hurt(0.9), hurt(0.9), hurt(0.9), hurt(0.9))).toEqual([5]);
+  });
+
   it('spaces the asks by the share lost', () => {
     expect(roundsUntilPar(5, 0, 0.25)).toBe(5);
     expect(roundsUntilPar(5, 0.05, 0.25)).toBe(4);

@@ -1538,7 +1538,7 @@ check(focus === 'terminal', 'focus returns to the terminal after connecting', fo
        * resizable. The place glyph's own decoration is exactly MARK_INDENT
        * (two cells) wide, so it is the ruler that is always on screen.
        */
-      const glyph = document.querySelector('.terminal-mark');
+      const glyph = document.querySelector('.terminal-mark[data-mark]');
       const cell = glyph ? glyph.getBoundingClientRect().width / 2 : 0;
       if (!cell) return null;
       const r = row.getBoundingClientRect();
@@ -2339,6 +2339,53 @@ check(
 );
 
 /*
+ * The same probe is a decision the client made on its own, so its echo carries
+ * a gear that opens the setting behind it (todo 119). On Enter Realm is drawn
+ * only on the Global page, so the press also proves the screen moves on to
+ * the page that holds it when the character's draws none.
+ */
+await shown('.terminal-decision[data-decision="enter-realm-batch"]');
+check(
+  await evaluate(
+    `!!document.querySelector('.terminal-decision[data-decision="enter-realm-batch"]')`
+  ),
+  "the realm-entry probe's echo carries a gear",
+  await evaluate(
+    `JSON.stringify([...document.querySelectorAll('.terminal-decision')].map((g) => g.dataset.decision))`
+  )
+);
+await evaluate(
+  `document.querySelector('.terminal-decision[data-decision="enter-realm-batch"]')?.click()`
+);
+await waitFor(async () =>
+  evaluate(
+    `!!document.querySelector('.settings-form [data-setting="automation.onEnterRealm"][data-search="hit"]')`
+  )
+);
+check(
+  await evaluate(
+    `!!document.querySelector('.settings-form [data-setting="automation.onEnterRealm"][data-search="hit"]')`
+  ),
+  'and pressing it opens the settings on that setting, marked',
+  await evaluate(
+    `JSON.stringify([...document.querySelectorAll('.settings-form [data-search="hit"]')].map((f) => f.dataset.setting))`
+  )
+);
+check(
+  /^(INPUT|SELECT|TEXTAREA)/.test(await focusPath()),
+  'and the caret is in that setting, not left in the console',
+  await focusPath()
+);
+// Back on Characters, which is where the shortcut opens the screen next, then closed.
+await evaluate(
+  `[...document.querySelectorAll('.settings .crumb')].find((b) => ${copyWhole('settings.crumbs.characters')}.test(b.innerText.trim()))?.click()`
+);
+await evaluate(
+  `document.querySelector('.settings button[aria-label=${JSON.stringify(copy('settings.dialog.closeAria'))}]')?.click()`
+);
+check(await gone('.settings'), 'and it closes');
+
+/*
  * The map is drawn from the realm data, so it only appears once the client has
  * resolved where it is standing -- which the fixture's room name does, because
  * `Newhaven, Village Entrance` is a real room in the shipped data.
@@ -2671,7 +2718,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
         badge: panel.querySelector('.popover-head .chip')?.innerText ?? '',
         heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
         exits: (panel.innerText.match(${copyRx('cards.roomPeek.exitsLabel')}) || []).length,
-        walk: panel.querySelector('.peek-actions button')?.innerText ?? '',
+        walk: panel.querySelector('.peek-actions button.primary')?.innerText ?? '',
         // Beside the room rather than anywhere: it hangs off the room, and
         // placePopover is what decides which side. Checked as an overlap in
         // both axes with the picture's own box, which is what "beside" means
@@ -2707,7 +2754,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
     'and carries the way there, which the bare click used to be',
     JSON.stringify(peek)
   );
-  await evaluate(`document.querySelector('.room-peek .peek-actions button')?.click()`);
+  await evaluate(`document.querySelector('.room-peek .peek-actions button.primary')?.click()`);
   await waitFor(async () => await evaluate(`!!document.querySelector('.route-panel')`));
   check(
     await evaluate(`!!document.querySelector('.route-panel')`),
@@ -3229,7 +3276,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
       return {
         heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
         step: step.innerText.trim(),
-        walk: panel.querySelector('.peek-actions button')?.innerText ?? ''
+        walk: panel.querySelector('.peek-actions button.primary')?.innerText ?? ''
       };
     })()
   `);
@@ -3294,7 +3341,7 @@ const wheelOver = (fractionX, fractionY, deltaY) =>
           badge: panel.querySelector('.popover-head .chip')?.innerText ?? '',
           heading,
           onPlan: steps.includes(heading.trim().toLowerCase()),
-          walk: panel.querySelector('.peek-actions button')?.innerText ?? ''
+          walk: panel.querySelector('.peek-actions button.primary')?.innerText ?? ''
         };
       })()
     `);
@@ -11781,15 +11828,16 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
     'the gang grid lists the whole @ vocabulary, not only the answerable part'
   );
   // Read off the rows rather than the warning's words: `@kill` and `@hangup`
-  // are listed, and are never a control, whatever the switch says.
+  // can be granted, and each row says it waits on Allow @kill and @hangup
+  // (todo 118).
   check(
     await evaluate(`
       [...document.querySelectorAll('.remote-list[data-mode="gang"] .remote-rows > li')]
         .filter((li) => ['@kill', '@hangup'].includes(li.querySelector('.remote-name')?.innerText))
-        .map((li) => li.dataset.settable)
-        .join(',') === 'false,false'
+        .map((li) => li.dataset.settable + ':' + (li.querySelector('.quiet-note') !== null))
+        .join(',') === 'true:true,true:true'
     `),
-    'and names what it will never do whatever the switch says'
+    'and grants what waits on its own switch only with that said on the row'
   );
   check(
     await evaluate(`
@@ -14005,7 +14053,7 @@ const agree = (rows, pick) => Math.max(...rows.map(pick)) - Math.min(...rows.map
           heading: panel.querySelector('.popover-head h2')?.innerText ?? '',
           exits: (panel.innerText.match(${copyRx('cards.roomPeek.exitsLabel')}) || []).length,
           actions: panel.querySelectorAll('.peek-actions button').length,
-          walk: panel.querySelector('.peek-actions button')?.innerText ?? ''
+          walk: panel.querySelector('.peek-actions button.primary')?.innerText ?? ''
         };
       })())
     `)

@@ -48,6 +48,7 @@ export default function FightWordFields({
         hint={t('settings.combat.attackVerbHint')}
         label={t('settings.combat.attackVerbLabel')}
         name={`${prefix}attack`}
+        setting="automation.combat.attack"
         onChange={onAttack}
         placeholder={attackPlaceholder(chosen)}
         spellCheck={false}
@@ -57,6 +58,7 @@ export default function FightWordFields({
         hint={t('settings.combat.openerHint')}
         label={t('settings.combat.openerLabel')}
         name={`${prefix}opener`}
+        setting="automation.combat.opener"
         onChange={onOpener}
         placeholder={openerPlaceholder(chosen)}
         spellCheck={false}

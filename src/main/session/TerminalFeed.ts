@@ -52,7 +52,8 @@ import type { Block, BlockType } from '../../shared/blocks';
 import { tailAfterPrompt, type BatchBlock } from '../parse/Classifier';
 import type { LineTerminator, TerminalMark } from '../../shared/types';
 import { SGR_RESET } from '../../shared/template';
-import type { RowTime } from '../../shared/stamps';
+import { hasSettingField, type DecisionKind } from '../../shared/decisionSettings';
+import type { TimedChunk } from '../../shared/stamps';
 import { RowTimes, type RowText } from './RowTimes';
 
 /**
@@ -302,6 +303,8 @@ interface Sent {
   after: number;
   /** The realm has echoed it, so a later echo of the same text is another send's. */
   echoed: boolean;
+  /** The decision it carries out, written on the row its echo is painted on (todo 119). */
+  decision?: DecisionKind;
 }
 
 /** One thing to paint, with the marks that decorate the lines in it. */
@@ -312,7 +315,7 @@ export interface Emitted {
 
 /** What the feed paints: the text, its marks, and where a row's time goes (`RowTimes`). */
 export interface Painted extends Emitted {
-  times: Array<{ offset: number; put: RowTime }>;
+  times: Array<NonNullable<TimedChunk['times']>[number]>;
 }
 
 function blank(): Painted {
@@ -375,14 +378,25 @@ export class TerminalFeed {
     this.received += 1;
   }
 
-  /** A command went out. `user` commands are never quiet. */
-  sent(command: string, from: 'user' | 'automation'): void {
+  /**
+   * A command went out. `user` commands are never quiet, and carry no
+   * decision; one whose settings have no field is painted as undecided, since
+   * its gear would open nothing.
+   */
+  sent(command: string, from: 'user' | 'automation', decision?: DecisionKind): void {
     const typed = command.trim();
     // A bare Enter has no first word to key on, and it is the client's own
     // room read — so it answers to `BARE_ENTER` rather than to nothing.
     const word = typed.length === 0 ? BARE_ENTER : (typed.split(SPACES)[0]?.toLowerCase() ?? '');
     const quiet = from === 'automation' && this.source.isQuiet(word);
-    this.queue.push({ command, quiet, at: this.source.now(), after: this.received, echoed: false });
+    this.queue.push({
+      command,
+      quiet,
+      at: this.source.now(),
+      after: this.received,
+      echoed: false,
+      ...(decision === undefined || !hasSettingField(decision) ? {} : { decision })
+    });
     this.expire();
   }
 
@@ -414,10 +428,11 @@ export class TerminalFeed {
     return true;
   }
 
-  /** The head was acknowledged by a prompt. */
-  private acknowledge(): void {
+  /** The head was acknowledged by a prompt, which is the command it answers. */
+  private acknowledge(): Sent | undefined {
     const head = this.queue.shift();
     if (head !== undefined && head.quiet && !head.echoed) this.popped.push(head);
+    return head;
   }
 
   /**
@@ -523,10 +538,18 @@ export class TerminalFeed {
        * that window open for its answer: two `rm` in flight are told apart.
        * The echo of a quiet command is withheld; the prompt is still shown.
        */
-      if (!this.acknowledged && this.answersHead(began)) this.acknowledge();
+      const answered =
+        !this.acknowledged && this.answersHead(began) ? this.acknowledge() : undefined;
       this.acknowledged = false;
       const echo = tailAfterPrompt(plain);
       const echoed = echo !== null && this.moveUpTo(echo);
+      // The command whose echo is on this row: the one the echo moved up to,
+      // or the one this prompt answered when the echo repeats it.
+      const by = echoed
+        ? this.queue[0]
+        : echo?.trim() === answered?.command.trim()
+          ? answered
+          : undefined;
       // Where the prompt ends in `plain`, when the echo after it is withheld.
       const end = echoed && this.answeringQuiet ? plain.length - echo.length : null;
       const shown = end === null ? text : text.slice(0, afterStyling(text, rawIndexOf(text, end)));
@@ -535,8 +558,9 @@ export class TerminalFeed {
       // The echo shown moves the row to the send; a prompt already painted
       // untimed (its head did not read as one yet) is timed now.
       const kind: RowText = echoed && end === null && rest.length > 0 ? 'status-echo' : 'status';
-      if (rest.length === 0) this.time(kind);
-      this.emit(rest, terminator, mark, kind);
+      const decision = end === null ? by?.decision : undefined;
+      if (rest.length === 0) this.time(kind, decision);
+      this.emit(rest, terminator, mark, kind, decision);
       if (drawn !== null) this.owesReset = true;
       if (end !== null) this.swallowed = true;
       return;
@@ -577,7 +601,8 @@ export class TerminalFeed {
         terminator,
         already === 0 && plain.length > 0,
         mark,
-        kind
+        kind,
+        typedEcho ? this.queue[0]?.decision : undefined
       );
       return;
     }
@@ -602,13 +627,14 @@ export class TerminalFeed {
     terminator: LineTerminator,
     fresh: boolean,
     mark?: TerminalMark,
-    kind: RowText = 'other'
+    kind: RowText = 'other',
+    decision?: DecisionKind
   ): void {
     if (this.swallowed && !this.atLineStart && fresh && terminator !== 'repaint') {
       this.append('\r\n', 'other');
       this.atLineStart = true;
     }
-    this.emit(text, terminator, mark, kind);
+    this.emit(text, terminator, mark, kind, decision);
   }
 
   /**
@@ -875,13 +901,14 @@ export class TerminalFeed {
     text: string,
     terminator: LineTerminator,
     mark?: TerminalMark,
-    kind: RowText = 'other'
+    kind: RowText = 'other',
+    decision?: DecisionKind
   ): void {
     if (text.length === 0) return;
     this.swallowed = false;
     this.settle();
     if (mark) this.out.marks.push({ offset: this.out.text.length, mark });
-    this.append(text, kind);
+    this.append(text, kind, decision);
     this.atLineStart = terminator !== 'flush' || text.endsWith('\n');
   }
 
@@ -896,16 +923,27 @@ export class TerminalFeed {
     this.owesReset = false;
   }
 
-  /** Appends painted text, with the row time `RowTimes` puts in front of it. */
-  private append(text: string, kind: RowText): void {
-    const put = this.rows.before(text, kind);
-    if (put !== null) this.out.times.push({ offset: this.out.text.length, put });
+  /**
+   * Appends painted text, with the row time `RowTimes` puts in front of it.
+   * The echo of a command that carried out a decision names it in the row's
+   * time, so the console's gear rides the time: a repaint, an overwrite and
+   * the backscroll keep or drop both together (todo 119).
+   */
+  private append(text: string, kind: RowText, decision?: DecisionKind): void {
+    const put = this.rows.before(text, kind, decision !== undefined);
+    if (put !== null) {
+      this.out.times.push({
+        offset: this.out.text.length,
+        put,
+        ...(put === 'time' && decision !== undefined ? { decision } : {})
+      });
+    }
     this.out.text += text;
   }
 
   /** A row time with no text behind it: the row the cursor is on, now. */
-  private time(kind: RowText): void {
-    this.append('', kind);
+  private time(kind: RowText, decision?: DecisionKind): void {
+    this.append('', kind, decision);
   }
 
   private expire(): void {

@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import Icon from './Icon';
-import type { SupplyItem } from '@shared/config';
+import { type SupplyItem } from '@shared/packConfig';
 import { supplyFor, type SupplyCounters } from '@shared/supplies';
 import type { ShopPlace } from '@shared/world';
 import { keepFocus } from '../lib/focus';

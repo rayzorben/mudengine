@@ -3,7 +3,7 @@
  * bounded diagnostic log. Everything it publishes goes through a sink supplied
  * by the caller, so it has no direct dependency on Electron's IPC.
  */
-import { CommandQueue } from '../automation/CommandQueue';
+import { CommandQueue, type Intent } from '../automation/CommandQueue';
 import { Routines } from '../automation/Routines';
 import { Walker } from '../automation/Walker';
 import { splitOntoChannel } from '../../shared/talk';
@@ -114,6 +114,7 @@ import { Records } from './Records';
 import { StatlineReport } from './StatlineReport';
 import { ERRAND_LEG, Travel } from './Travel';
 import { RemoteMoves } from './RemoteMoves';
+import { remoteHangUps } from './remoteHangUps';
 import { trainTrip } from './trainPlanner';
 import { huntPlanner } from './huntPlanner';
 import { lightPlanner } from './lightPlanner';
@@ -511,7 +512,7 @@ export class SessionManager {
       sentences = NO_SHIPPED_SENTENCES,
       words = UNSTATED_WORDS
     } = deps;
-    const notice = (message: string): void => sink.notice(message);
+    const notice: SessionSink['notice'] = (message, decision) => sink.notice(message, decision);
     this.tracker = new CharacterTracker(
       world,
       lore,
@@ -693,7 +694,7 @@ export class SessionManager {
         // apart. See `Intent.secret`.
         const reported = this.publisher.reportable(command, intent.secret === true);
         this.sink.command?.(reported, 'automation');
-        this.noteSent(command, 'automation');
+        this.noteSent(command, 'automation', intent.decision);
         this.publisher.recordSent({
           at: Date.now(),
           command: reported,
@@ -827,8 +828,8 @@ export class SessionManager {
       // question is answered here where the world graph is and not in the
       // walker, which holds a route and a queue and nothing else.
       lightSource: (state) => this.errands.lightSource(state),
-      // The backstab gear set (a `wear` breaks stealth), then the light, ahead of the step.
       beforeStep: (ahead, state) => {
+        this.search.beforeStep(state);
         this.gear.beforeStep(state);
         this.light.beforeStep(ahead, state);
       },
@@ -1076,8 +1077,8 @@ export class SessionManager {
       ...{ vocabulary: this.vocabulary, combat: this.combat, loot: this.loot },
       ...{ deposit: this.deposit, questWatch: this.questWatch }
     });
-    const charges = (this.charges = new ItemCharges(this.queue, () => this.world));
     const config = () => this.automationConfig;
+    const charges = (this.charges = new ItemCharges(this.queue, () => this.world, config));
     const trip = { modules: legs, release: releaseErrand, charges, kept: questKeep(legs), config };
     // The gear after a death, a fetch from a stash and the area: walks and searches (`Collect`).
     const escaping = () => this.travel.escaping;
@@ -1241,10 +1242,10 @@ export class SessionManager {
     // And its opposite number: what the loot hoarded, the drop list sheds.
     this.drop = new AutoDrop(automation.drop, automation.enabled, this.queue, trip.kept, reports);
     this.search = new AutoSearch(automation.search, automation.enabled, this.queue, {
-      // The state as it is at the send, not as it was at the proposal.
       stateNow: () => this.tracker.current,
       quarry: (state) => this.combat.quarry(state),
-      moveInFlight
+      moveInFlight,
+      standsDown: (state) => moveOnly(state) || this.travel.isRetreating()
     });
     // And the purse over the threshold, banked at the resolved room's own counter, never by
     // its name: thirteen rooms can share one, and a `deposit` outside a bank is said out loud.
@@ -1265,10 +1266,8 @@ export class SessionManager {
     );
     this.chest = new ChestOpening(this.queue, { notice });
     /*
-     * The other half of running several characters at once: `@health` answered
-     * over a telepath costs no command, where the party roster costs one and
-     * gives a percentage. Off unless the options file says otherwise — it is a
-     * channel by which somebody else's typing moves this character.
+     * The other half of running several characters at once: `@health` over a
+     * telepath costs no command, where the party roster costs one and gives a percentage.
      */
     // Whether anybody is at the keyboard: the telepath reply, the hang-up and the trace (todo 79).
     this.attendance = new Attendance(automation.afk.afterMinutes, () =>
@@ -1284,6 +1283,7 @@ export class SessionManager {
         own: () => this.automationConfig.loops,
         shelf: () => sink.loopShelf?.() ?? []
       }).events,
+      ...remoteHangUps(() => this.safety, sink),
       peer: (who) => recordOf(this.tracker.players, who),
       pace: (who, ready) => this.travel.pace(who, ready),
       switchAutomation: switchNow,
@@ -1594,7 +1594,7 @@ export class SessionManager {
         queue: this.queue,
         ...{ rules: this.rules, client: this.client, attendance: this.attendance }
       },
-      { config: () => this.automationConfig, extensions: () => this.extensions.views() },
+      { config: () => this.automationConfig, extensions: () => this.extensions },
       sink
     );
     this.grounded = new Grounded(this.publisher, sink);
@@ -1691,7 +1691,7 @@ export class SessionManager {
       { module: this.trainLevel, configure: (a) => this.trainLevel.configure(a.train, a.enabled) },
       { module: this.outgrown, configure: (a) => this.outgrown.configure(a.outgrown, a.enabled) },
       { module: this.hostTrips, configure: (a) => this.hostTrips.configure(a.enabled) },
-      { module: this.areaSearch, configure: (a) => this.areaSearch.configure(a.enabled) },
+      { module: this.areaSearch, configure: (a) => this.areaSearch.configure(a) },
       {
         module: this.hunt,
         configure: (a) => this.hunt.configure(a.hunting, a.walk, a.health, a.enabled)
@@ -2211,12 +2211,12 @@ export class SessionManager {
       send: (data) => this.send(data),
       queue: this.queue,
       connected: () => this.client.connected,
-      notice: (message) => this.sink.notice(message),
+      notice: (message, decision) => this.sink.notice(message, decision),
       published: () => this.publisher.publishAutomation(),
       batch: () => (this.macros += 1),
       state: () => this.tracker.current,
       mob: (state) => this.combat.pick(state),
-      aliases: () => this.automationConfig.aliases
+      automation: () => this.automationConfig
     });
   }
 
@@ -2390,9 +2390,9 @@ export class SessionManager {
    * FIFO the first quiet command never reached its head — captured by the
    * smoke run, whose fake host answered `rm` and watched the console show it.
    */
-  private noteSent(command: string, from: 'user' | 'automation'): void {
+  private noteSent(command: string, from: 'user' | 'automation', kind?: Intent['decision']): void {
     if (this.tracker.current.phase !== 'in-game') return;
-    this.feed.sent(command, from);
+    this.feed.sent(command, from, kind);
     this.chest.sent(command, this.tracker.current);
   }
 

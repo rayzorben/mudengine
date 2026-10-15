@@ -13,6 +13,7 @@ import type { SpellTarget } from './AttackSpells';
 import { killCasting } from './killCasting';
 import { t } from '../app/i18n';
 import { standingOf, type CharacterState } from '../../shared/character';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { killPrice, saveTheMana, type KillPrice, type ManaHeld } from '../../shared/manaWorth';
 import { meleeFinishes, type MeleeFinish } from '../../shared/meleeFinishes';
 import { attacksFirst, type MobRule } from '../../shared/mobRules';
@@ -29,10 +30,12 @@ export class SpellHold {
   private readonly said = new Set<string>();
 
   constructor(
-    private readonly notice: (message: string) => void,
+    private readonly notice: NoticeSink,
     private readonly realmSpell: (name: string) => WorldSpell | null,
     private readonly realmClass: () => FightingClass,
-    private readonly noEffectOn: NoEffectOn
+    private readonly noEffectOn: NoEffectOn,
+    /** `automation.spells.killConfidence`, read at each hold. */
+    private readonly killConfidence: () => number
   ) {}
 
   fightEnded(): void {
@@ -94,7 +97,8 @@ export class SpellHold {
             nextExp: held.held.next.experience,
             nextMana: Math.round(held.held.next.mana),
             pool: Math.round(held.held.pool)
-          })
+          }),
+      'spell-held-melee'
     );
   }
 
@@ -114,7 +118,15 @@ export class SpellHold {
     const { mana, manaMax } = state.vitals;
     if (book === null || mana === null) return null;
     const kept = floor > 0 && manaMax !== null ? Math.ceil(floor * manaMax) : 0;
-    const casting = killCasting(state, book, this.realmSpell, sheet, cls.family, this.noEffectOn);
+    const casting = killCasting(
+      state,
+      book,
+      this.realmSpell,
+      sheet,
+      cls.family,
+      this.noEffectOn,
+      this.killConfidence()
+    );
     const here = killPrice(
       casting,
       target.name,

@@ -3,7 +3,8 @@
  * options page (todo 831): following (assist, defend, rest with the leader,
  * the leader's `@party`), leading (MegaMUD's *Wait For Party Members*, its
  * time limit and `@wait`, the portal relay and its rejoin wait, todo 839), the
- * party listing's pace, and healing. Each figure
+ * party listing's pace and how much lost health brings it sooner, and
+ * healing. Each figure
  * is held as typed (`PartyForm`); the page turns a change back into its draft.
  */
 import { CheckField, NumberField } from './FormField';
@@ -11,6 +12,7 @@ import { barOf, figureOf } from '../lib/form';
 import { t } from '../lib/i18n';
 import type { PartyForm } from '../lib/characterForm';
 import type { VitalThresholds } from '@shared/character';
+import type { SettingPath } from '@shared/decisionSettings';
 
 export interface PartyFieldsProps {
   party: PartyForm;
@@ -39,7 +41,13 @@ export default function PartyFields({
       ...(hpMax === undefined ? {} : { figure: figureOf(percent, hpMax) })
     };
   };
-  const check = (
+  const check = ({
+    key,
+    label,
+    hint,
+    name,
+    setting
+  }: {
     key:
       | 'assistLeader'
       | 'defendParty'
@@ -51,16 +59,18 @@ export default function PartyFields({
       | 'parAfterRound'
       | 'relayPortals'
       | 'helpWithDoors'
-      | 'askHealth',
-    label: string,
-    hint: string,
-    name: string
-  ) => (
+      | 'askHealth';
+    label: string;
+    hint: string;
+    name: string;
+    setting: SettingPath;
+  }) => (
     <CheckField
       checked={party[key]}
       hint={hint}
       label={label}
       name={`${namePrefix}party-${name}`}
+      setting={setting}
       onChange={(value) => set(key, value)}
     />
   );
@@ -69,41 +79,47 @@ export default function PartyFields({
       <fieldset className="settings-menus" data-fieldset="party-follow">
         <legend>{t('settings.party.legend')}</legend>
         <p className="settings-warn">{t('settings.party.warning')}</p>
-        {check(
-          'assistLeader',
-          t('settings.party.assistLabel'),
-          t('settings.party.assistHint'),
-          'assist'
-        )}
-        {check(
-          'defendParty',
-          t('settings.party.defendLabel'),
-          t('settings.party.defendHint'),
-          'defend'
-        )}
-        {check(
-          'restWithLeader',
-          t('settings.party.restLabel'),
-          t('settings.party.restHint'),
-          'rest'
-        )}
-        {check(
-          'ignoreParty',
-          t('settings.party.ignorePartyLabel'),
-          t('settings.party.ignorePartyHint'),
-          'ignore-party'
-        )}
-        {check(
-          'sayPanic',
-          t('settings.party.sayPanicLabel'),
-          t('settings.party.sayPanicHint'),
-          'say-panic'
-        )}
+        {check({
+          key: 'assistLeader',
+          label: t('settings.party.assistLabel'),
+          hint: t('settings.party.assistHint'),
+          name: 'assist',
+          setting: 'automation.party.assistLeader'
+        })}
+        {check({
+          key: 'defendParty',
+          label: t('settings.party.defendLabel'),
+          hint: t('settings.party.defendHint'),
+          name: 'defend',
+          setting: 'automation.party.defendParty'
+        })}
+        {check({
+          key: 'restWithLeader',
+          label: t('settings.party.restLabel'),
+          hint: t('settings.party.restHint'),
+          name: 'rest',
+          setting: 'automation.party.restWithLeader'
+        })}
+        {check({
+          key: 'ignoreParty',
+          label: t('settings.party.ignorePartyLabel'),
+          hint: t('settings.party.ignorePartyHint'),
+          name: 'ignore-party',
+          setting: 'automation.party.ignoreParty'
+        })}
+        {check({
+          key: 'sayPanic',
+          label: t('settings.party.sayPanicLabel'),
+          hint: t('settings.party.sayPanicHint'),
+          name: 'say-panic',
+          setting: 'automation.party.sayPanic'
+        })}
         <div className="settings-inline">
           <NumberField
             hint={t('settings.party.waitBelowHint')}
             label={t('settings.party.waitBelowLabel')}
             name={`${namePrefix}party-wait-below`}
+            setting="automation.party.waitBelow"
             onChange={(value) => set('waitBelow', value)}
             {...share(party.waitBelow)}
             value={party.waitBelow}
@@ -112,6 +128,7 @@ export default function PartyFields({
             hint={t('settings.party.waitMinutesHint')}
             label={t('settings.party.waitMinutesLabel')}
             name={`${namePrefix}party-wait-minutes`}
+            setting="automation.party.waitMinutes"
             onChange={(value) => set('waitMinutes', value)}
             value={party.waitMinutes}
           />
@@ -119,6 +136,7 @@ export default function PartyFields({
             hint={t('settings.party.parSecondsHint')}
             label={t('settings.party.parSecondsLabel')}
             name={`${namePrefix}party-par-seconds`}
+            setting="automation.party.parSeconds"
             onChange={(value) => set('parSeconds', value)}
             value={party.parSeconds}
           />
@@ -126,45 +144,60 @@ export default function PartyFields({
             hint={t('settings.party.parEveryRoundsHint')}
             label={t('settings.party.parEveryRoundsLabel')}
             name={`${namePrefix}party-par-every-rounds`}
+            setting="automation.party.parEveryRounds"
             onChange={(value) => set('parEveryRounds', value)}
             value={party.parEveryRounds}
           />
+          <NumberField
+            hint={t('settings.party.parAtLossHint')}
+            label={t('settings.party.parAtLossLabel')}
+            name={`${namePrefix}party-par-at-loss`}
+            setting="automation.party.parAtLoss"
+            onChange={(value) => set('parAtLoss', value)}
+            value={party.parAtLoss}
+          />
         </div>
-        {check(
-          'manageParty',
-          t('settings.party.managePartyLabel'),
-          t('settings.party.managePartyHint'),
-          'manage-party'
-        )}
-        {check(
-          'ignoreWait',
-          t('settings.party.ignoreWaitLabel'),
-          t('settings.party.ignoreWaitHint'),
-          'ignore-wait'
-        )}
-        {check(
-          'parAfterRound',
-          t('settings.party.parAfterRoundLabel'),
-          t('settings.party.parAfterRoundHint'),
-          'par-after-round'
-        )}
-        {check(
-          'relayPortals',
-          t('settings.party.relayPortalsLabel'),
-          t('settings.party.relayPortalsHint'),
-          'relay-portals'
-        )}
-        {check(
-          'helpWithDoors',
-          t('settings.party.helpWithDoorsLabel'),
-          t('settings.party.helpWithDoorsHint'),
-          'help-with-doors'
-        )}
+        {check({
+          key: 'manageParty',
+          label: t('settings.party.managePartyLabel'),
+          hint: t('settings.party.managePartyHint'),
+          name: 'manage-party',
+          setting: 'automation.party.manageParty'
+        })}
+        {check({
+          key: 'ignoreWait',
+          label: t('settings.party.ignoreWaitLabel'),
+          hint: t('settings.party.ignoreWaitHint'),
+          name: 'ignore-wait',
+          setting: 'automation.party.ignoreWait'
+        })}
+        {check({
+          key: 'parAfterRound',
+          label: t('settings.party.parAfterRoundLabel'),
+          hint: t('settings.party.parAfterRoundHint'),
+          name: 'par-after-round',
+          setting: 'automation.party.parAfterRound'
+        })}
+        {check({
+          key: 'relayPortals',
+          label: t('settings.party.relayPortalsLabel'),
+          hint: t('settings.party.relayPortalsHint'),
+          name: 'relay-portals',
+          setting: 'automation.party.relayPortals'
+        })}
+        {check({
+          key: 'helpWithDoors',
+          label: t('settings.party.helpWithDoorsLabel'),
+          hint: t('settings.party.helpWithDoorsHint'),
+          name: 'help-with-doors',
+          setting: 'automation.party.helpWithDoors'
+        })}
         <div className="settings-inline">
           <NumberField
             hint={t('settings.party.regroupMinutesHint')}
             label={t('settings.party.regroupMinutesLabel')}
             name={`${namePrefix}party-regroup-minutes`}
+            setting="automation.party.regroupMinutes"
             onChange={(value) => set('regroupMinutes', value)}
             value={party.regroupMinutes}
           />
@@ -178,17 +211,19 @@ export default function PartyFields({
             hint={t('settings.party.askHealHint')}
             label={t('settings.party.askHealLabel')}
             name={`${namePrefix}party-ask-heal`}
+            setting="automation.party.askForHealBelow"
             onChange={(value) => set('askForHealBelow', value)}
             {...share(party.askForHealBelow)}
             value={party.askForHealBelow}
           />
         </div>
-        {check(
-          'askHealth',
-          t('settings.party.askHealthLabel'),
-          t('settings.party.askHealthHint'),
-          'ask-health'
-        )}
+        {check({
+          key: 'askHealth',
+          label: t('settings.party.askHealthLabel'),
+          hint: t('settings.party.askHealthHint'),
+          name: 'ask-health',
+          setting: 'automation.party.askHealth'
+        })}
       </fieldset>
     </>
   );

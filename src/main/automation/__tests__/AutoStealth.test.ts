@@ -3,6 +3,7 @@ import { notesOf } from '../../app/copyMatch';
 
 import { AutoStealth, type StealthEvents } from '../AutoStealth';
 import { CommandQueue } from '../CommandQueue';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 import { DEFAULT_CONFIG, type AutomationConfig, type CombatConfig } from '../../../shared/config';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { classifyOccupant } from '../../../shared/mobs';
@@ -40,6 +41,8 @@ function seen(over: Partial<CharacterState> = {}): CharacterState {
 }
 
 let sent: string[];
+/** The decision each sent command carries (todo 119). */
+let kinds: Array<DecisionKind | undefined>;
 let notices: string[];
 let queue: CommandQueue;
 
@@ -47,7 +50,13 @@ beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
   notices = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  kinds = [];
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -64,6 +73,7 @@ describe('standing still in an empty room', () => {
     make().onCharacter(seen());
     drain();
     expect(sent).toEqual(['hide']);
+    expect(kinds).toEqual(['hide-sneak']);
   });
 
   /* The server's own precondition: `Room.Mobs.Count == 0`. */

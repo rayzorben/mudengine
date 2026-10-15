@@ -27,7 +27,9 @@ import { listedSum, fightIsRunning, packRows, type CharacterState } from '../../
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
-import type { QuestsConfig, SupplyItem } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
+import { type QuestsConfig } from '../../shared/config';
+import { type SupplyItem } from '../../shared/packConfig';
 import {
   IDLE_QUEST_RUN,
   stepRoll,
@@ -104,7 +106,7 @@ export interface QuestRunPlanner {
 }
 
 export interface QuestRunEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
   progress?(progress: QuestRunProgress): void;
 }
@@ -273,7 +275,8 @@ export class QuestRunner implements SessionModule {
         quest: quest.name,
         to: to ?? '?',
         count: plan.steps.length
-      })
+      }),
+      'quest-run'
     );
     this.events.decided?.({
       at: this.now(),
@@ -501,6 +504,7 @@ export class QuestRunner implements SessionModule {
     if (packRows(state.inventory) === null) {
       run.phase = { kind: 'listing', since: this.now() };
       this.queue.enqueue({
+        decision: 'quest-run',
         command: 'i',
         priority: 'probe',
         coalesceKey: 'quests:pack',
@@ -523,7 +527,8 @@ export class QuestRunner implements SessionModule {
       if (row !== null) {
         run.stock = row;
         this.events.notice?.(
-          t('automation.quests.stockingUp', { item: row.name ?? `#${row.id}`, nth: run.at + 1 })
+          t('automation.quests.stockingUp', { item: row.name ?? `#${row.id}`, nth: run.at + 1 }),
+          'quest-run'
         );
       }
     }
@@ -633,7 +638,8 @@ export class QuestRunner implements SessionModule {
             count,
             shop: row.shop,
             room: source.at?.place ?? source.at?.room ?? ''
-          })
+          }),
+          'quest-run'
         );
         this.publish();
         return;
@@ -649,7 +655,10 @@ export class QuestRunner implements SessionModule {
           return;
         }
         run.phase = { kind: 'fetching', item, how: 'hunt', since: this.now(), before: 0 };
-        this.events.notice?.(t('automation.quests.hunting', { nth, item: name, mob: source.mob }));
+        this.events.notice?.(
+          t('automation.quests.hunting', { nth, item: name, mob: source.mob }),
+          'quest-run'
+        );
         this.publish();
         return;
       }
@@ -689,7 +698,10 @@ export class QuestRunner implements SessionModule {
           () => void (pack.sentAt = this.now())
         );
         if (!asked) return;
-        this.events.notice?.(t('automation.quests.handover', { nth, item: name, command }));
+        this.events.notice?.(
+          t('automation.quests.handover', { nth, item: name, command }),
+          'quest-run'
+        );
         this.publish();
         return;
       }
@@ -732,7 +744,7 @@ export class QuestRunner implements SessionModule {
          */
         if (item.stock !== undefined) {
           if (carriedCount(state, name) < item.stock) {
-            this.events.notice?.(t('automation.quests.stockUnfilled', { item: name }));
+            this.events.notice?.(t('automation.quests.stockUnfilled', { item: name }), 'quest-run');
           }
           gathered();
           return;
@@ -840,7 +852,8 @@ export class QuestRunner implements SessionModule {
           nth: run.at + 1,
           room: this.placeName(to),
           steps: route.steps.length
-        })
+        }),
+        'quest-run'
       );
     }
     this.publish();
@@ -958,9 +971,10 @@ export class QuestRunner implements SessionModule {
             nth,
             command,
             tries: run.tries + 1,
-            max: tuning().quests.rollTries
+            max: this.config.rollTries
           })
-        : t('automation.quests.asking', { nth, command })
+        : t('automation.quests.asking', { nth, command }),
+      'quest-run'
     );
     this.publish();
   }
@@ -981,6 +995,7 @@ export class QuestRunner implements SessionModule {
 
   private send(command: string, reason: string, sent: () => void): boolean {
     const queued = this.queue.enqueue({
+      decision: 'quest-run',
       command,
       priority: 'probe',
       coalesceKey: ACT_KEY,
@@ -1047,6 +1062,7 @@ export class QuestRunner implements SessionModule {
         // took would otherwise read as three the server ignored.
         if (
           !this.queue.enqueue({
+            decision: 'quest-run',
             command: 'abil',
             priority: 'probe',
             coalesceKey: 'quests:abil',
@@ -1065,7 +1081,7 @@ export class QuestRunner implements SessionModule {
         this.stepDone(run, state, rank);
         return;
       }
-      if (stepRoll(realm) !== null && run.tries + 1 < tuning().quests.rollTries) {
+      if (stepRoll(realm) !== null && run.tries + 1 < this.config.rollTries) {
         run.tries += 1;
         run.phase = { kind: 'acting', since: now };
         this.publish();
@@ -1121,7 +1137,7 @@ export class QuestRunner implements SessionModule {
     }
     const watched = this.planner.watched()[run.quest.id]?.to;
     if (watched !== undefined && watched >= realm.to) {
-      this.events.notice?.(t('automation.quests.stepAssumed', { nth }));
+      this.events.notice?.(t('automation.quests.stepAssumed', { nth }), 'quest-run');
       this.stepDone(run, state, realm.to);
       return;
     }
@@ -1135,6 +1151,7 @@ export class QuestRunner implements SessionModule {
     const now = this.now();
     return packAfter(pack, now, (onSent) =>
       this.queue.enqueue({
+        decision: 'quest-run',
         command: AFTER_WORD,
         priority: 'probe',
         coalesceKey: AFTER_KEY,
@@ -1169,7 +1186,8 @@ export class QuestRunner implements SessionModule {
     const step = run.plan.steps[run.at];
     if (step?.act?.verb === 'kill') this.planner.stopFighting(step.act.mob);
     this.events.notice?.(
-      t('automation.quests.stepDone', { nth: run.at + 1, quest: run.quest.name, rank })
+      t('automation.quests.stepDone', { nth: run.at + 1, quest: run.quest.name, rank }),
+      'quest-run'
     );
     this.events.decided?.({
       at: this.now(),
@@ -1235,7 +1253,8 @@ export class QuestRunner implements SessionModule {
         tries: run.setbacks,
         max,
         seconds: Math.round(tuning().quests.retryMs / 1000)
-      })
+      }),
+      'quest-run'
     );
     this.events.decided?.({
       at: this.now(),
@@ -1259,7 +1278,7 @@ export class QuestRunner implements SessionModule {
   }
 
   private refuseStart(why: string): string {
-    this.events.notice?.(why);
+    this.events.notice?.(why, 'quest-run');
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
@@ -1295,7 +1314,7 @@ export class QuestRunner implements SessionModule {
     this.planner.warding(false);
     if (this.heldLap) this.planner.release();
     this.heldLap = false;
-    this.events.notice?.(reason);
+    this.events.notice?.(reason, 'quest-run');
     this.idle = { ...this.progressOf(run), status, phase: null, detail: null, reason };
     this.lastPublished = null;
     this.events.progress?.(this.idle);

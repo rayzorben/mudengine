@@ -11,6 +11,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
 import { chargedInCopper } from '../../shared/coins';
+import type { SuppliesConfig } from '../../shared/packConfig';
 import type { GearBuy, GearLeg, GearPick, GearStop, GearTripPlan } from '../../shared/gearTrip';
 import { roomAddress, roomId, type CashPlace, type RoomId, type Route } from '../../shared/world';
 import { tour } from '../world/navigation/tour';
@@ -18,6 +19,8 @@ import type { WorldGraph } from '../world/WorldGraph';
 import type { Errands } from './Errands';
 
 export interface GearPlanParts {
+  /** The copper drawn over a shortfall (`automation.supplies.cashBuffer`). */
+  config(): { supplies: Pick<SuppliesConfig, 'cashBuffer'> };
   world(): Pick<WorldGraph, 'stockingPlaces' | 'cashPlaces' | 'byId' | 'sweepTo'> | undefined;
   errands: Pick<Errands, 'priceAt' | 'routeBetween' | 'travellerNow'>;
   state(): CharacterState;
@@ -90,7 +93,11 @@ export async function planGearTrip(
   const shortfall = purse === null ? 0 : Math.max(0, floor - purse);
   let short = 0;
   if (shortfall > 0) {
-    const drawn = vaultThings(world.cashPlaces(state.banks, 1, here, null, traveller), shortfall);
+    const drawn = vaultThings(
+      world.cashPlaces(state.banks, 1, here, null, traveller),
+      shortfall,
+      parts.config().supplies.cashBuffer
+    );
     things.unshift(...drawn.things);
     short = drawn.short;
   }
@@ -184,9 +191,9 @@ export async function planGearTrip(
  */
 function vaultThings(
   vaults: readonly CashPlace[],
-  shortfall: number
+  shortfall: number,
+  buffer: number
 ): { things: Thing[]; short: number } {
-  const buffer = tuning().supplies.cashBuffer;
   const alone = vaults.filter((vault) => vault.copper >= shortfall);
   if (alone.length > 0) {
     return {

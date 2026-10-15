@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { isMap, isSeq, parse, Scalar } from 'yaml';
+import { isMap, isSeq, parse, Scalar, type Document } from 'yaml';
 
 import { editYaml, removeYaml, type EditResult } from './YamlFile';
 import type { RemoteGrant, RemoteName } from '../../shared/remotes';
@@ -15,10 +15,10 @@ import {
   mergeServers,
   normalizeConfig,
   type AutomationSwitch,
-  type LoginStep,
-  type RetreatConfig,
-  type SupplyItem
+  type LoginStep
 } from '../../shared/config';
+import { type SuppliesConfig, type SupplyItem } from '../../shared/packConfig';
+import { type RetreatConfig } from '../../shared/safety';
 import { fileSlug, isLoopFileName } from '../../shared/files';
 import { loopFileName, type Loop, type LoopScope, type ScopedLoop } from '../../shared/loops';
 import type { Home } from '../app/home';
@@ -26,6 +26,8 @@ import { t } from '../app/i18n';
 import { asLowLives, DEFAULT_LOW_LIVES } from '../../shared/lives';
 import { asLocateWord, DEFAULT_LOCATE } from '../../shared/locate';
 import {
+  asReconnectTries,
+  DEFAULT_RECONNECT_TRIES,
   ownFleeGotoCommand,
   ownHangPenalties,
   ownLocate,
@@ -214,6 +216,7 @@ export class SettingsEditor {
         document.setIn(['autoConnect'], draft.autoConnect);
         document.setIn(['autoReconnect'], draft.autoReconnect);
         document.setIn(['lowLives'], draft.lowLives);
+        document.setIn(['reconnectTries'], draft.reconnectTries);
         // A theme is `ui.theme`, the overlay every other setting uses; blank
         // means "follow the options file", so the key is removed rather than
         // written empty, and an emptied `ui` map goes with it.
@@ -291,9 +294,14 @@ export class SettingsEditor {
          */
         if (draft.login.length > 0) {
           document.setIn(['login', 'steps'], draft.login.map(loginRow));
-        } else if (document.hasIn(['login'])) {
-          document.deleteIn(['login']);
+        } else if (document.hasIn(['login', 'steps'])) {
+          document.deleteIn(['login', 'steps']);
         }
+        // Off is written; on is the default and removes the key.
+        if (!draft.autoLogin) document.setIn(['login', 'enabled'], false);
+        else if (document.hasIn(['login', 'enabled'])) document.deleteIn(['login', 'enabled']);
+        const loginBlock = document.get('login');
+        if (isMap(loginBlock) && loginBlock.items.length === 0) document.deleteIn(['login']);
 
         // Its own locate word, or null to follow the realm: cleared only when
         // the form could have shown it, as the theme above is.
@@ -351,7 +359,10 @@ export class SettingsEditor {
             // Absent leaves it to the realm and then the options file, so null
             // writes no key rather than a copy of what is inherited.
             ...(draft.hangUp.penalties === null ? {} : { penalties: draft.hangUp.penalties }),
-            onPlayerInRoom: draft.hangUp.onPlayerInRoom
+            onPlayerInRoom: draft.hangUp.onPlayerInRoom,
+            whenNaked: draft.hangUp.whenNaked,
+            nakedMargin: draft.hangUp.nakedMargin,
+            afterRunSeconds: draft.hangUp.afterRunSeconds
           });
         }
 
@@ -407,6 +418,7 @@ export class SettingsEditor {
           [['automation', 'remotes'], draft.remotes, DEFAULT_CONFIG.automation.remotes],
           [['automation', 'afk'], draft.afk, DEFAULT_CONFIG.automation.afk],
           [['automation', 'statline'], draft.statline, DEFAULT_CONFIG.automation.statline],
+          [['automation', 'asks'], draft.asks, DEFAULT_CONFIG.automation.asks],
           // Not under `automation:`, because it is not something the client
           // *does* — it is what this player wants to hear about this character.
           [['ui', 'alerts'], draft.alerts, DEFAULT_CONFIG.ui.alerts],
@@ -419,6 +431,14 @@ export class SettingsEditor {
           ) {
             document.setIn(at, { ...block });
           }
+        }
+        // Judged as the blocks above are, and its rows written as the Self card writes them.
+        if (
+          creating ||
+          document.hasIn(['automation', 'supplies']) ||
+          statesSomething({ ...draft.supplies }, { ...DEFAULT_CONFIG.automation.supplies })
+        ) {
+          writeSupplies(document, draft.supplies);
         }
         // Its own aliases, added to Global's by the overlay, so never a copy of them.
         const aliases = pairsRecord(draft.aliases);
@@ -593,23 +613,7 @@ export class SettingsEditor {
     if (!fs.existsSync(file)) {
       return { ok: false, error: t('errors.settings.characterNotFound', { id }) };
     }
-    const rows = items.map((item) => ({
-      name: item.name,
-      min: item.min,
-      max: item.max,
-      shop: item.shop,
-      ...(item.at === null ? {} : { at: { map: item.at.map, room: item.at.room } })
-    }));
-    return editYaml(file, {
-      mutate: (document) => {
-        document.setIn(['automation', 'supplies', 'items'], rows);
-        const list = document.getIn(['automation', 'supplies', 'items'], true);
-        if (isSeq(list)) {
-          list.flow = false;
-          for (const row of list.items) if (isMap(row)) row.flow = true;
-        }
-      }
-    });
+    return editYaml(file, { mutate: (document) => writeSupplyItems(document, items) });
   }
 
   /**
@@ -1013,12 +1017,7 @@ export class SettingsEditor {
         pacing: { ...config.automation.pacing },
         walk: { ...config.automation.walk },
         hunting: { ...config.automation.hunting },
-        hangUp: {
-          enabled: config.automation.safety.hangUp.enabled,
-          belowHealth: config.automation.safety.hangUp.belowHealth,
-          penalties: config.automation.safety.hangUp.penalties,
-          onPlayerInRoom: config.automation.safety.hangUp.onPlayerInRoom
-        },
+        hangUp: { ...config.automation.safety.hangUp },
         retreat: retreatOf(config.automation.safety.retreat),
         fleeGoto: { ...config.automation.safety.fleeGoto },
         pvp: { ...config.automation.safety.pvp },
@@ -1041,16 +1040,19 @@ export class SettingsEditor {
         outgrown: { ...config.automation.outgrown },
         search: { ...config.automation.search },
         banking: { ...config.automation.banking },
+        supplies: structuredClone(config.automation.supplies),
         remotes: { ...config.automation.remotes },
         afk: { ...config.automation.afk },
         talk: { ...config.automation.talk },
         statline: { ...config.automation.statline },
+        asks: { ...config.automation.asks },
         aliases: statedPairs(
           isRecord(stated['automation']) ? stated['automation']['aliases'] : null
         )
       },
       loops,
-      keys: statedKeys(stated['keys'])
+      keys: statedKeys(stated['keys']),
+      extensions: { ...config.extensions }
     };
   }
 
@@ -1155,12 +1157,17 @@ export class SettingsEditor {
         set(['automation', 'spells'], { ...draft.automation.spells });
         set(['automation', 'loot'], { ...draft.automation.loot });
         set(['automation', 'drop'], { ...draft.automation.drop });
+        set(['automation', 'outgrown'], { ...draft.automation.outgrown });
         set(['automation', 'banking'], { ...draft.automation.banking });
+        writeSupplies(document, draft.automation.supplies);
         set(['automation', 'remotes'], { ...draft.automation.remotes });
         set(['automation', 'afk'], { ...draft.automation.afk });
         set(['automation', 'statline'], { ...draft.automation.statline });
+        set(['automation', 'asks'], { ...draft.automation.asks });
         set(['automation', 'aliases'], pairsRecord(draft.automation.aliases));
         set(['keys'], pairsRecord(draft.keys));
+        // Name by name, so the block's own lines and comments stay where they are.
+        for (const [name, on] of Object.entries(draft.extensions)) set(['extensions', name], on);
       },
       verify: (value) => {
         /*
@@ -1248,7 +1255,9 @@ export class SettingsEditor {
         // On unless the file says otherwise, so a character written before the
         // setting existed shows the tick it is actually running with.
         autoReconnect: record['autoReconnect'] !== false,
+        autoLogin: login['enabled'] !== false,
         lowLives: asLowLives(record['lowLives']),
+        reconnectTries: asReconnectTries(record['reconnectTries']),
         theme: themeOf(record['ui']),
         serverName: typeof record['server'] === 'string' ? record['server'] : null,
         target,
@@ -1324,10 +1333,12 @@ export class SettingsEditor {
         outgrown: effective?.automation.outgrown ?? DEFAULT_CONFIG.automation.outgrown,
         search: effective?.automation.search ?? DEFAULT_CONFIG.automation.search,
         banking: effective?.automation.banking ?? DEFAULT_CONFIG.automation.banking,
+        supplies: effective?.automation.supplies ?? DEFAULT_CONFIG.automation.supplies,
         remotes: effective?.automation.remotes ?? DEFAULT_CONFIG.automation.remotes,
         afk: effective?.automation.afk ?? DEFAULT_CONFIG.automation.afk,
         talk: effective?.automation.talk ?? DEFAULT_CONFIG.automation.talk,
         statline: effective?.automation.statline ?? DEFAULT_CONFIG.automation.statline,
+        asks: effective?.automation.asks ?? DEFAULT_CONFIG.automation.asks,
         // Its own, read raw: the resolved list holds Global's too.
         aliases: statedPairs(
           isRecord(record['automation']) ? record['automation']['aliases'] : null
@@ -1424,6 +1435,37 @@ function inheritedLoops(
   ];
 }
 
+/** The supplies block's switch and figures, then its list (`writeSupplyItems`). */
+function writeSupplies(document: Document, supplies: SuppliesConfig): void {
+  const { enabled, cashBuffer, dearerSteps, items } = supplies;
+  document.setIn(['automation', 'supplies', 'enabled'], enabled);
+  document.setIn(['automation', 'supplies', 'cashBuffer'], cashBuffer);
+  document.setIn(['automation', 'supplies', 'dearerSteps'], dearerSteps);
+  writeSupplyItems(document, items);
+}
+
+/**
+ * A supplies list as every writer puts it on disk: a block sequence of flow
+ * rows, so a file somebody reads by hand says one item per line, and no `at`
+ * where no room was chosen.
+ */
+function writeSupplyItems(document: Document, items: readonly SupplyItem[]): void {
+  const rows = items.map((item) => ({
+    name: item.name,
+    min: item.min,
+    max: item.max,
+    shop: item.shop,
+    ...(item.at === null ? {} : { at: { map: item.at.map, room: item.at.room } })
+  }));
+  // A node made here, so the rows are styled whether or not a list was there.
+  const list = document.createNode(rows);
+  if (isSeq(list)) {
+    list.flow = false;
+    for (const row of list.items) if (isMap(row)) row.flow = true;
+  }
+  document.setIn(['automation', 'supplies', 'items'], list);
+}
+
 /**
  * One login row as it is written to disk.
  *
@@ -1479,7 +1521,9 @@ function blank(id: string): ProfileEditable {
     theme: '',
     autoConnect: false,
     autoReconnect: true,
+    autoLogin: true,
     lowLives: DEFAULT_LOW_LIVES,
+    reconnectTries: DEFAULT_RECONNECT_TRIES,
     serverName: null,
     target: { host: '', port: 23, encoding: 'cp437' },
     username: '',
@@ -1503,10 +1547,12 @@ function blank(id: string): ProfileEditable {
     outgrown: DEFAULT_CONFIG.automation.outgrown,
     search: DEFAULT_CONFIG.automation.search,
     banking: DEFAULT_CONFIG.automation.banking,
+    supplies: DEFAULT_CONFIG.automation.supplies,
     remotes: DEFAULT_CONFIG.automation.remotes,
     afk: DEFAULT_CONFIG.automation.afk,
     talk: DEFAULT_CONFIG.automation.talk,
     statline: DEFAULT_CONFIG.automation.statline,
+    asks: DEFAULT_CONFIG.automation.asks,
     aliases: [],
     rewrites: DEFAULT_CONFIG.ui.rewrites,
     loops: [],

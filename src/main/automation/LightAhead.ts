@@ -13,6 +13,7 @@
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
 import { carriedLights } from '../../shared/light';
@@ -46,7 +47,7 @@ export interface LightPlanner {
 }
 
 export interface LightAheadEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -156,7 +157,7 @@ export class LightAhead {
       way.span,
       tuning().hunting.stepMs,
       light.uses,
-      tuning().light.carryAtLeast
+      this.config().movement.carryLights
     );
     const item: Wanted = {
       id: light.id,
@@ -225,7 +226,7 @@ export class LightAhead {
   }
 
   private say(sentence: string, acted: boolean): void {
-    this.events.notice?.(sentence);
+    this.events.notice?.(sentence, 'light-buy');
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

@@ -54,12 +54,14 @@ server: Paradigm Game 1 PVE
 # slot, and it replaces the realm's list rather than adding to it.
 #
 # `enabled` defaults to true as soon as an account resolves -- a character
-# exists to say "this is me, log me in". It is ignored without a username and
-# password, and the safety rules are unchanged: a rejected password is never
-# retried, a prompt that comes back a second time stops the sequence, and a
-# missing answer leaves the prompt for you.
+# exists to say "this is me, log me in". `enabled: false` leaves every prompt
+# for you (Log In Automatically on the character page). It is ignored without
+# a username and password, and the safety rules are unchanged: a rejected
+# password is never retried, a prompt that comes back a second time stops the
+# sequence, and a missing answer leaves the prompt for you.
 #
 # login:
+#   enabled: true
 #   steps:
 #     # The account prompts, filled in from `account:` above. A realm that words
 #     # them differently is described here the same way any other menu is.
@@ -105,9 +107,14 @@ autoConnect: false
 # up on low health, dialling a second realm, quitting -- and never once you have
 # typed your way out to the menu, because dialling back would put you in the
 # realm you just left, with your password. The waits are 0s, 5s, 10s and then
-# 15s for as long as it takes; `tuning.reconnect` in internal.yaml is where
-# those live.
+# 15s, for as many tries as `reconnectTries` below allows; `tuning.reconnect`
+# in internal.yaml is where the waits live.
 autoReconnect: true
+
+# Failed dials in a row before reconnecting stops and says so (MegaMUD's Max.
+# re-dials). 0 never stops: a router that comes back at 4am finds the client
+# still dialling.
+reconnectTries: 0
 
 # Ask before logging this character in once it is down to this many lives left,
 # while automation is on. A reconnect, Connect on Start and pressing Connect all

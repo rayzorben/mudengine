@@ -10,6 +10,7 @@
  */
 import { t } from '../app/i18n';
 import type { KeptLives } from '../../shared/belongings';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import type { LowLivesAsk } from '../../shared/ipc';
 import { atLivesFloor, type LowLivesAnswer } from '../../shared/lives';
 import type { ConnectionTarget } from '../../shared/types';
@@ -29,7 +30,7 @@ export interface LowLivesEvents {
   automationOn(): boolean;
   /** Puts the question to the windows. */
   ask(ask: LowLivesAsk): void;
-  notice(message: string): void;
+  notice: NoticeSink;
 }
 
 export class LowLivesHold {
@@ -51,7 +52,7 @@ export class LowLivesHold {
     const floor = this.events.floor();
     if (kept === null || !atLivesFloor(kept.count, floor)) return false;
     this.held = target;
-    this.events.notice(t('session.lowLives.held', { lives: kept.count, floor }));
+    this.events.notice(t('session.lowLives.held', { lives: kept.count, floor }), 'low-lives');
     this.events.ask({ lives: kept.count, floor, at: kept.at });
     return true;
   }
@@ -70,7 +71,7 @@ export class LowLivesHold {
       case 'log-in':
         return { target, switchOff: false };
       case 'stay':
-        this.events.notice(t('session.lowLives.stayed'));
+        this.events.notice(t('session.lowLives.stayed'), 'low-lives');
         return null;
       default: {
         const never: never = answer;

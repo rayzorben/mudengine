@@ -8,6 +8,7 @@ import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem, type ItemEntity } from '../../../shared/entities';
 import type { SafetyDecision } from '../../../shared/automation';
 import { carriedLights, sightOf, wornVision } from '../../../shared/light';
+import { recordOffers, type Offered } from './offered';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -65,12 +66,14 @@ function block(type: BlockType, groups: Record<string, string> = {}): Block {
 let sent: string[];
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
+let offers: Offered;
 
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
   decisions = [];
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  offers = recordOffers(queue);
 });
 
 afterEach(() => {
@@ -88,6 +91,7 @@ describe('before a step into the dark', () => {
     auto.beforeStep({ name: 'Sewer Tunnel', light: -175 }, character([torch()]));
     drain();
     expect(sent).toEqual(['light torch']);
+    expect(offers.decisionOf('light torch')).toBe('light-lit');
     expect(decisions).toEqual([expect.objectContaining({ action: 'light', acted: true })]);
   });
 
@@ -245,6 +249,7 @@ describe('putting the light out', () => {
     auto.onCharacter(lit, false);
     drain();
     expect(sent).toEqual(['remove torch']);
+    expect(offers.decisionOf('remove torch')).toBe('light-out');
   });
 
   it('never mid-route, never in the dark, never in a room it cannot place, and never when told not to', () => {

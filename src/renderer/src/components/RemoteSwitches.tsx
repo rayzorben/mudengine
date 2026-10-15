@@ -1,4 +1,4 @@
-import { CheckField } from './FormField';
+import { CheckField, NumberField } from './FormField';
 import RemoteList from './RemoteList';
 
 import { t } from '../lib/i18n';
@@ -6,7 +6,8 @@ import { ACTIONABLE_REMOTES, type RemoteName } from '@shared/remotes';
 
 /**
  * What `automation.remotes` asks once the switch is on: the gangpath, joining
- * when invited, and the gang's list. The character page and the Global page
+ * when invited, how many items one `@get-all` or `@drop-all` takes, whether
+ * `@kill`, `@hangup`, `@relog` and `@panic!` reach a grant, and the gang's list. The character page and the Global page
  * draw the same controls, so they are drawn here once; each page maps them
  * onto its own draft.
  */
@@ -19,6 +20,12 @@ export interface RemoteSwitchesProps {
   onGangpath(value: boolean): void;
   onAutoJoin(value: boolean): void;
   onGang(value: RemoteName[]): void;
+  /** `maxGets`, as the page holds it. */
+  maxGets: string | number;
+  onMaxGets(typed: string): void;
+  /** `allowKillAndHangup` (todo 118). */
+  killAndHangup: boolean;
+  onKillAndHangup(value: boolean): void;
 }
 
 export default function RemoteSwitches(props: RemoteSwitchesProps) {
@@ -30,6 +37,7 @@ export default function RemoteSwitches(props: RemoteSwitchesProps) {
         hint={t('settings.remotes.gangpathHint')}
         label={t('settings.remotes.gangpathLabel')}
         name={`${props.name}-gangpath`}
+        setting="automation.remotes.gangpath"
         onChange={props.onGangpath}
       />
       <CheckField
@@ -37,7 +45,26 @@ export default function RemoteSwitches(props: RemoteSwitchesProps) {
         hint={t('settings.remotes.autoJoinHint')}
         label={t('settings.remotes.autoJoinLabel')}
         name={`${props.name}-auto-join`}
+        setting="automation.remotes.autoJoin"
         onChange={props.onAutoJoin}
+      />
+      <NumberField
+        hint={t('settings.remotes.maxGetsHint')}
+        label={t('settings.remotes.maxGets')}
+        name={`${props.name}-max-gets`}
+        setting="automation.remotes.maxGets"
+        onChange={props.onMaxGets}
+        value={props.maxGets}
+      />
+      {/* In the open: on, another player's line can end this session or start a fight. */}
+      <p className="settings-warn">{t('settings.remotes.killAndHangupWarning')}</p>
+      <CheckField
+        checked={props.killAndHangup}
+        hint={t('settings.remotes.killAndHangupHint')}
+        label={t('settings.remotes.killAndHangupLabel')}
+        name={`${props.name}-kill-and-hangup`}
+        setting="automation.remotes.allowKillAndHangup"
+        onChange={props.onKillAndHangup}
       />
       {/*
         Nothing on the wire establishes who shares a gang on its own: a
@@ -59,6 +86,7 @@ export default function RemoteSwitches(props: RemoteSwitchesProps) {
           onGang(stance === 'allow' ? [...gang, remote] : gang.filter((entry) => entry !== remote))
         }
         onSetAll={(stance) => onGang(stance === 'allow' ? [...ACTIONABLE_REMOTES] : [])}
+        setting="automation.remotes.gang"
         subject={t('settings.remotes.gangLegend')}
       />
     </>

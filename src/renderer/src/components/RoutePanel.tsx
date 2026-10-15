@@ -37,6 +37,7 @@ import { keepFocus } from '../lib/focus';
 import { tuning } from '../lib/tuning';
 import type { Replanned, WalkStart } from '@shared/movement';
 import type { LoopJoining } from '../lib/loops';
+import type { PlannedHere } from '../hooks/useSlideOuts';
 import type { FoundRoom } from '@shared/destinations';
 
 /** Which of the plan's routes is on screen — see `chosen`. */
@@ -110,6 +111,11 @@ function roundWay(route: Route): Route | null {
 }
 
 /** Every item's name, for the one sentence that names what is fetched. */
+/** The plan walked only as far as its step at `index`: *walk here* and *run here*. */
+function prefixTo(plan: Route, index: number): Route {
+  return { ...plan, steps: plan.steps.slice(0, index + 1) };
+}
+
 function named(items: ReadonlyArray<{ name: string }>): string {
   return items.map((item) => item.name).join(', ');
 }
@@ -190,8 +196,8 @@ export interface RoutePanelProps {
    *
    * *Four lairs on the way, one is expected to kill you* is a summary, and
    * what the reader needs before walking it is what is actually in each — the
-   * same panel the map opens, from the same query. `walkHere` is *walk here*
-   * where the room is a step of the plan: the plan is on screen and stopping
+   * same panel the map opens, from the same query. `here` is *walk here* and
+   * *run here* where the room is a step of the plan: the plan is on screen and stopping
    * short at a room is already what picking a step means. Null for a room on
    * the map the plan does not pass through, where the caller offers the map's
    * own action instead. `settled` is a click rather than a hover, the map's
@@ -199,8 +205,7 @@ export interface RoutePanelProps {
    *
    * Null where there is nothing to open, like `chooseOnMap` beside it.
    */
-  onPeek:
-    ((room: RoomId, at: Element, settled: boolean, walkHere: (() => void) | null) => void) | null;
+  onPeek: ((room: RoomId, at: Element, settled: boolean, here: PlannedHere | null) => void) | null;
   onPeekEnd: (() => void) | null;
   /**
    * A loop picked in the Loops modal, opened on the stop it joins. While its
@@ -761,14 +766,18 @@ export default function RoutePanel({
     (room: RoomId, at: Element, settled: boolean): void => {
       if (onPeek === null || shown === null) return;
       const index = shown.steps.findIndex((step) => step.to === room);
-      onPeek(
-        room,
-        at,
-        settled,
-        index >= 0 ? () => walk({ ...shown, steps: shown.steps.slice(0, index + 1) }) : null
-      );
+      if (index < 0) {
+        onPeek(room, at, settled, null);
+        return;
+      }
+      const prefix = prefixTo(shown, index);
+      onPeek(room, at, settled, {
+        walk: () => walk(prefix),
+        // A loop's leg has no *Run it* in the head, so no *run here* either.
+        run: forLoop === null ? () => walk(prefix, true) : null
+      });
     },
-    [onPeek, shown, walk]
+    [forLoop, onPeek, shown, walk]
   );
 
   /** Whether a kept-out choice is still waiting on the reader. See `crossing`. */
@@ -1765,14 +1774,28 @@ export default function RoutePanel({
                               already submits as `Walk it`, and the whole point of
                               this one is that it walks somewhere else.
                             */
-                            <button
-                              className="step-walk"
-                              onClick={() => walk({ ...shown, steps: steps.slice(0, index + 1) })}
-                              title={t('cards.route.walkHereTooltip', { roomName: step.name })}
-                              type="button"
-                            >
-                              {t('cards.route.walkHereButton')}
-                            </button>
+                            <>
+                              {forLoop === null && (
+                                <button
+                                  className="step-walk"
+                                  disabled={choosing}
+                                  onClick={() => walk(prefixTo(shown, index), true)}
+                                  title={t('cards.route.runHereTooltip', { roomName: step.name })}
+                                  type="button"
+                                >
+                                  {t('cards.route.runHereButton')}
+                                </button>
+                              )}
+                              <button
+                                className="step-walk"
+                                disabled={choosing}
+                                onClick={() => walk(prefixTo(shown, index))}
+                                title={t('cards.route.walkHereTooltip', { roomName: step.name })}
+                                type="button"
+                              >
+                                {t('cards.route.walkHereButton')}
+                              </button>
+                            </>
                           )}
                           {index === skipped && (
                             <span className="chip quiet">{t('cards.route.stepSkipped')}</span>

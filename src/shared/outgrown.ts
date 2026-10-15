@@ -147,9 +147,9 @@ export function ganghouseHeld(carried: readonly KitPiece[]): Ganghouse {
 /** What decides the way: the item's worth in copper and which ways are open. */
 export interface WayChoice {
   value: number;
-  /** `tuning.outgrown.stashFromCopper`: worth keeping in the ganghouse from here. */
+  /** `automation.outgrown.stashFromCopper`: worth keeping in the ganghouse from here. */
   stashFrom: number;
-  /** `tuning.outgrown.sellFromCopper`: worth walking to a counter from here. */
+  /** `automation.outgrown.sellFromCopper`: worth walking to a counter from here. */
   sellFrom: number;
   stash: boolean;
   sell: boolean;

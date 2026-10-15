@@ -9,6 +9,8 @@ import { DEFAULT_CONFIG, type AutomationConfig, type HealthConfig } from '../../
 import { wireItem } from '../../../shared/entities';
 import type { Block } from '../../../shared/blocks';
 import type { SpellHazard, WorldItem, WorldSpell } from '../../../shared/world';
+import { noticeLog, type NoticeLog } from './noticeLog';
+import { recordOffers, type Offered } from './offered';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -61,7 +63,9 @@ function standing(items: CarriedItem[], rows: number[] = [], over: Partial<Chara
 
 let sent: string[];
 let notices: string[];
+let log: NoticeLog;
 let queue: CommandQueue;
+let offers: Offered;
 let stated: number[];
 let clock: number;
 /** The realm's speed: the effect tick is the server's over it. */
@@ -80,11 +84,13 @@ const sources = (over: Partial<WardSources> = {}): WardSources => ({
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  notices = [];
+  log = noticeLog();
+  notices = log.notices;
   stated = [];
   clock = Date.now();
   speed = 1;
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  offers = recordOffers(queue);
 });
 
 afterEach(() => {
@@ -93,15 +99,20 @@ afterEach(() => {
 });
 
 const make = (config = health(), over: Partial<WardSources> = {}): Wards =>
-  new Wards(config, true, queue, sources(over), { notice: (m) => notices.push(m) }, () => clock);
+  new Wards(config, true, queue, sources(over), { notice: log.notice }, () => clock);
 
 describe('keeping a room’s ward up', () => {
   it('uses the carried item before the step into a room its spell would stop', () => {
     make().beforeStep('12/300', standing([carried('waterskin')]));
     expect(sent).toEqual(['use waterskin']);
-    expect(notices).toContain(
-      t('automation.wards.using', { item: 'waterskin', spell: 'waterskin', hazard: 'desert spell' })
-    );
+    const using = t('automation.wards.using', {
+      item: 'waterskin',
+      spell: 'waterskin',
+      hazard: 'desert spell'
+    });
+    expect(notices).toContain(using);
+    expect(log.kindOf(using)).toBe('ward-use');
+    expect(offers.decisionOf('use waterskin')).toBe('ward-use');
   });
 
   it('does nothing for a room that casts nothing it would stop, or with the switch off', () => {

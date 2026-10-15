@@ -8,6 +8,7 @@ import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../.
 import { classifyOccupant } from '../../../shared/mobs';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { Direction } from '../../../shared/world';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -59,6 +60,9 @@ function peeked(
 }
 
 let sent: string[];
+/** The setting each sent command and each notice files under, in order. */
+let kinds: (DecisionKind | undefined)[];
+let noticeKinds: (DecisionKind | undefined)[];
 let notices: string[];
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
@@ -87,11 +91,18 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(1_700_000_000_000);
   sent = [];
+  kinds = [];
+  noticeKinds = [];
   notices = [];
   decisions = [];
   here = '8/915';
   looping = false;
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -101,7 +112,10 @@ afterEach(() => {
 
 const make = (config = health(), over: Partial<RestAwayPlanner> = {}, enabled = true): RestAway =>
   new RestAway({ health: config, enabled, combat: { mobRules: [] } }, queue, planner(over), {
-    notice: (m) => notices.push(m),
+    notice: (m, kind) => {
+      notices.push(m);
+      noticeKinds.push(kind);
+    },
     decided: (d) => decisions.push(d)
   });
 const drain = (): void => void vi.advanceTimersByTime(500);
@@ -115,6 +129,8 @@ describe('resting in a lair with a short clock', () => {
     expect(notices[0]).toBe(
       t('automation.restAway.refusingHere', { seconds: 30, name: 'Ancient Stronghold, Yard' })
     );
+    expect(noticeKinds[0]).toBe('rest-away');
+    expect(kinds).toEqual(['rest-away']);
   });
 
   it('steps into the peeked room only when nobody is standing in it, and rests there', () => {
@@ -227,6 +243,8 @@ describe('resting in a lair with a short clock', () => {
     drain();
     expect(sent).toEqual(['l n', 'n', 's']);
     expect(notices.at(-1)).toBe(t('automation.restAway.steppingBack', { direction: 's' }));
+    expect(noticeKinds.at(-1)).toBe('rest-away-back');
+    expect(kinds).toEqual(['rest-away', 'rest-away', 'rest-away-back']);
   });
 
   it('leaves the walk to a lap that is running', () => {
@@ -290,6 +308,12 @@ describe('everywhere else', () => {
     expect(make(health({ restNextDoor: false })).consider(hurtInTheLair(), true)).toBe('not-mine');
     expect(make().consider(hurtInTheLair(), false)).toBe('not-mine');
     expect(sent).toEqual([]);
+  });
+
+  // Lair Refills Within (todo 118): the hour-long clock above, under an hour's setting.
+  it('steps out of a lair whose clock is within the setting', () => {
+    const hourly = make(health({ restNextDoorMinutes: 60 }), { lairClock: () => 3600 });
+    expect(hourly.consider(hurtInTheLair(), true)).not.toBe('not-mine');
   });
 
   it('waits out a move in flight, a marching walk and an escape rather than stepping', () => {

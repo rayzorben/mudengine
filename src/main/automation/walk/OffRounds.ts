@@ -148,6 +148,6 @@ export class OffRounds {
   private say(said: Said, quiet: boolean, message: () => string): void {
     if (said === this.said) return;
     this.said = said;
-    if (!quiet) this.events.notice?.(message());
+    if (!quiet) this.events.notice?.(message(), 'walk-off-round');
   }
 }

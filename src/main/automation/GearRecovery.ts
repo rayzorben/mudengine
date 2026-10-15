@@ -18,6 +18,7 @@ import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
 import type { MovementConfig } from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import { restorePlan } from '../../shared/gear';
 import { sameItem } from '../../shared/items';
 import { atLivesFloor } from '../../shared/lives';
@@ -32,12 +33,14 @@ export interface RecoveryPlanner extends CollectPlanner {
 }
 
 export interface RecoveryEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** The trace: what was recovered, and what was refused and why. */
   decided?(decision: SafetyDecision): void;
 }
 
 const ACTION = 'recover gear';
+const STRIP: DecisionKind = 'gear-recovery-strip';
+const TAKE: DecisionKind = 'gear-recovery-take';
 
 export class GearRecovery implements SessionModule {
   /** The death last acted on, so one death is one attempt. */
@@ -194,7 +197,7 @@ export class GearRecovery implements SessionModule {
       this.handled = death.at;
       if (!this.saidSpent) {
         this.saidSpent = true;
-        this.refuse(bound);
+        this.refuse(bound, 'gear-recovery-bounds');
       }
       return;
     }
@@ -208,6 +211,7 @@ export class GearRecovery implements SessionModule {
         items: missing,
         search: null,
         key: 'recover',
+        decision: TAKE,
         reason: (item) => t('automation.gearRecovery.reasonTaking', { item }),
         coinReason: (coin) => t('automation.gearRecovery.reasonCoins', { coin }),
         collectMs: tuning().gearRecovery.collectMs,
@@ -219,7 +223,8 @@ export class GearRecovery implements SessionModule {
       this.refuse(t('automation.gearRecovery.refusalNoRoute', { room, why: started.why }));
     } else if (started.kind === 'walking') {
       this.events.notice?.(
-        t('automation.gearRecovery.going', { count: missing.length, room, steps: started.steps })
+        t('automation.gearRecovery.going', { count: missing.length, room, steps: started.steps }),
+        STRIP
       );
     }
   }
@@ -237,7 +242,8 @@ export class GearRecovery implements SessionModule {
         capped > 0 ? t('automation.gearRecovery.takingCapped', { capped }) : ''
       ]
         .filter((part) => part.length > 0)
-        .join(' ')
+        .join(' '),
+      TAKE
     );
   }
 
@@ -283,7 +289,8 @@ export class GearRecovery implements SessionModule {
         priority: 'probe',
         coalesceKey: `recover:${command}`,
         expiresAt: this.now() + tuning().gearRecovery.expiresMs,
-        reason: t('automation.gearRecovery.reasonDressing')
+        reason: t('automation.gearRecovery.reasonDressing'),
+        decision: TAKE
       });
     }
     this.events.notice?.(
@@ -291,7 +298,8 @@ export class GearRecovery implements SessionModule {
         worn: plan.commands.length,
         notTaken: asked.length - arrived.length,
         missing: plan.missing.length
-      })
+      }),
+      TAKE
     );
     this.events.decided?.({
       at: this.now(),
@@ -340,8 +348,8 @@ export class GearRecovery implements SessionModule {
     this.refuse(refused);
   }
 
-  private refuse(refused: string): void {
-    this.events.notice?.(t('automation.gearRecovery.refused', { refused }));
+  private refuse(refused: string, decision: DecisionKind = STRIP): void {
+    this.events.notice?.(t('automation.gearRecovery.refused', { refused }), decision);
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

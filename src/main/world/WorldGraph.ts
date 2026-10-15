@@ -98,7 +98,7 @@ import {
   type ArchiveIdentity,
   type ShippedWorld
 } from '../../shared/worlds';
-import { Router, type RouteOptions, type Traveller } from './Router';
+import { dearerStepsOf, Router, type RouteOptions, type Traveller } from './Router';
 import type { Passage, PortalExit, RoomIndex } from './RoomIndex';
 import { Catalogue, mobAsRow } from './Catalogue';
 import { Joiners } from './joiners';
@@ -858,7 +858,7 @@ export class WorldGraph {
    * nobody is going to take. `Router.holding` is that traveller.
    *
    * **Price breaks the tie and never more than that** — see
-   * `tuning.supplies.dearerSteps`. A counter the realm places nowhere reachable
+   * `Traveller.dearerSteps`. A counter the realm places nowhere reachable
    * is left out rather than ranked last: there is no walk to it to price.
    *
    * `to` is null for the supply list's own errand, which has no destination —
@@ -961,7 +961,7 @@ export class WorldGraph {
         item
       });
     }
-    const dearer = tuning().supplies.dearerSteps;
+    const dearer = dearerStepsOf(traveller);
     return places.sort(
       (a, b) =>
         buyingRank(a, dearer) - buyingRank(b, dearer) ||

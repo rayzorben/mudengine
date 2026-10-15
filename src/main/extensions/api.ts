@@ -22,7 +22,8 @@ import type { Capabilities } from '../../shared/abilities';
 import type { BlessingConfig } from '../../shared/blessings';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
-import type { AutomationConfig, SupplyItem } from '../../shared/config';
+import { type AutomationConfig } from '../../shared/config';
+import { type SupplyItem } from '../../shared/packConfig';
 import type { LayerWrite } from '../../shared/extensions';
 import type { Learning, SpellScroll } from '../../shared/learning';
 import type { FledEntry } from '../../shared/fled';
@@ -38,6 +39,7 @@ import type { SlotBest, SlotUpgrade, Wearing } from '../../shared/upgrades';
 import type { RoomId, Route, WorldRoom } from '../../shared/world';
 import type { WalkProgress } from '../../shared/walk';
 import type { Intent, Offered } from '../automation/CommandQueue';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import type { SellAsk } from '../automation/SellTrip';
 import type { StashFetchAsk, StashTrip } from '../automation/StashFetch';
 import type { TrainerAhead } from '../automation/TrainErrand';
@@ -277,7 +279,8 @@ export interface ExtensionSessionHost {
   drive(on: boolean): void;
   /** Writes settings into the character's file; the error, or null. */
   keep(writes: readonly LayerWrite[]): string | null;
-  notice(message: string): void;
+  /** A line on the console; `decision` names the settings behind it, for its gear. */
+  notice: NoticeSink;
   /** The view changed: the card is sent it again. */
   changed(): void;
 }

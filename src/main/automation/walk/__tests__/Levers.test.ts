@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Levers, type LeversWalk } from '../Levers';
 import { DEFAULT_INTERNAL } from '../../../../shared/internal';
+import { DEFAULT_CONFIG } from '../../../../shared/config';
 import type { RemoteLever, Requirement } from '../../../../shared/world';
 import { ROUTE, at, moves, settle, routeOf, stepOf, wire, useRigs } from './walking';
 
@@ -14,6 +15,7 @@ import { ROUTE, at, moves, settle, routeOf, stepOf, wire, useRigs } from './walk
  */
 
 const TUNING = DEFAULT_INTERNAL.tuning;
+const MOVE = DEFAULT_CONFIG.automation.movement;
 
 const walkerOn = useRigs();
 
@@ -54,7 +56,7 @@ describe('the order the ladder asks the lever rungs in', () => {
       actionsOrdered: true,
       actions: [{ say: ['push button'] }, { say: ['slide open panel'] }]
     };
-    const { walker, sent } = walkerOn({
+    const { walker, sent, decisionOf } = walkerOn({
       leversFor: () => [
         { at: '1/1', roomName: 'Room 1', say: 'slide open panel' },
         { at: '1/1', roomName: 'Room 1', say: 'push button' }
@@ -65,6 +67,7 @@ describe('the order the ladder asks the lever rungs in', () => {
     walker.onBlock(wire('direction-failed'));
     settle();
     expect(moves(sent)).toEqual(['s', 'push button', 'slide open panel', 's']);
+    expect(decisionOf('push button')).toBe('lever-pull');
   });
 });
 
@@ -126,7 +129,7 @@ describe('what the errand remembers, let go', () => {
       at(1, 1)
     );
     // Refused until the first step's pulls are spent, and then it lands.
-    for (let pull = 0; pull < TUNING.walk.leverTries; pull += 1) {
+    for (let pull = 0; pull < MOVE.leverTries; pull += 1) {
       walker.onBlock(wire('direction-failed'));
       settle();
     }
@@ -136,13 +139,15 @@ describe('what the errand remembers, let go', () => {
     settle();
 
     expect(moves(sent).filter((command) => command === 'pull lever')).toHaveLength(
-      TUNING.walk.leverTries + 1
+      MOVE.leverTries + 1
     );
     expect(walker.progress.status).toBe('walking');
   });
 });
 
 describe('Levers, put down', () => {
+  /** *Pull Levers* as the walk reads it, switched per test. */
+  let moving = MOVE;
   /** A walk that records what the errand asked of it. */
   const walkOf = (): LeversWalk & { detours: number } => {
     const walk = {
@@ -152,6 +157,7 @@ describe('Levers, put down', () => {
       stepAgain: () => {},
       kind: () => 'walk' as const,
       destination: () => ROUTE.steps.at(-1),
+      movement: () => moving,
       detour: (_route: unknown, _state: unknown, ahead?: () => void) => {
         ahead?.();
         walk.detours += 1;
@@ -189,12 +195,30 @@ describe('Levers, put down', () => {
   it('gives the pulls back once put down', () => {
     const levers = new Levers({ enqueue: () => true }, {}, walkOf());
     const step = stepOf(1, 2, 'e', { requirement: LEVERED });
-    for (let pull = 0; pull < TUNING.walk.leverTries; pull += 1) {
+    for (let pull = 0; pull < MOVE.leverTries; pull += 1) {
       expect(levers.pullLevers(step)).toBe(true);
     }
     expect(levers.pullLevers(step)).toBe(false);
     levers.reset();
     expect(levers.pullLevers(step)).toBe(true);
+  });
+
+  // Pull Levers off (todo 118): the same lever the test above pulls, and none goes.
+  it('pulls nothing with Pull Levers off, and says so once', () => {
+    const notices: string[] = [];
+    const walk = { ...walkOf(), quiet: () => false };
+    const levers = new Levers({ enqueue: () => true }, { notice: (m) => notices.push(m) }, walk);
+    const step = stepOf(1, 2, 'e', { requirement: LEVERED });
+    moving = { ...MOVE, pullLevers: false };
+    try {
+      expect(levers.pullLevers(step)).toBe(false);
+      expect(levers.pullLevers(step)).toBe(false);
+      expect(notices).toHaveLength(1);
+      moving = MOVE;
+      expect(levers.pullLevers(step)).toBe(true);
+    } finally {
+      moving = MOVE;
+    }
   });
 
   // Mutant: drop keeps the errand.

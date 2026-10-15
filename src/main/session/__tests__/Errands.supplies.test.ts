@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Errands, type ErrandsParts, type ErrandsSession } from '../Errands';
-import { DEFAULT_CONFIG, type SupplyItem } from '../../../shared/config';
+import { DEFAULT_CONFIG } from '../../../shared/config';
+import { type SupplyItem } from '../../../shared/packConfig';
 import { EMPTY_CHARACTER } from '../../../shared/character';
 
 /* The counter a supply row is bought at (todo 49): a row's own room wins over the nearest. */

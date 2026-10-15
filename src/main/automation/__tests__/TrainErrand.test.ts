@@ -14,6 +14,8 @@ import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character'
 import type { SafetyDecision } from '../../../shared/automation';
 import { roomId, type Route, type TrainerChoice } from '../../../shared/world';
 import { t } from '../../app/i18n';
+import { noticeLog, type NoticeLog } from './noticeLog';
+import { recordOffers, type Offered } from './offered';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -72,6 +74,8 @@ const ROUTE: Route = {
 
 let sent: string[];
 let notices: string[];
+let log: NoticeLog;
+let offers: Offered;
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
 let here: string | null;
@@ -138,7 +142,8 @@ const planner = ({ routeTo, ...over }: PlannerOver = {}): TrainPlanner => ({
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  notices = [];
+  log = noticeLog();
+  notices = log.notices;
   decisions = [];
   walked = [];
   held = 0;
@@ -147,6 +152,7 @@ beforeEach(() => {
   fetchingNow = false;
   here = '8/915';
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  offers = recordOffers(queue);
 });
 
 afterEach(() => {
@@ -156,7 +162,7 @@ afterEach(() => {
 
 const make = (config = train(), over: PlannerOver = {}, enabled = true): TrainErrand =>
   new TrainErrand(config, enabled, queue, planner(over), {
-    notice: (message) => notices.push(message),
+    notice: log.notice,
     decided: (decision) => decisions.push(decision)
   });
 
@@ -188,6 +194,7 @@ describe('going to collect the level', () => {
     make().onCharacter(owed());
     expect(walked).toHaveLength(1);
     expect(notices).toContain(going(TITAN));
+    expect(log.kindOf(going(TITAN))).toBe('train-level');
   });
 
   /*
@@ -228,6 +235,7 @@ describe('going to collect the level', () => {
     drain();
     expect(walked).toHaveLength(0);
     expect(sent).toEqual(['exp']);
+    expect(offers.decisionOf('exp')).toBe('train-level');
   });
 
   it('asks again on the next line when the queue would not take the ask', () => {
@@ -553,7 +561,7 @@ describe('going to collect the level', () => {
         }
       } as unknown as CommandQueue,
       planner(),
-      { notice: (message) => notices.push(message) }
+      { notice: log.notice }
     );
     here = '3/542';
     errand.onCharacter(owed());
@@ -602,7 +610,7 @@ describe('going to collect the level', () => {
         }
       } as unknown as CommandQueue,
       planner(),
-      { notice: (message) => notices.push(message) }
+      { notice: log.notice }
     );
     here = '3/542';
     errand.onCharacter(owed());

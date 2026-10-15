@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 import { GearRecovery, type RecoveryPlanner } from '../GearRecovery';
 import { CommandQueue } from '../CommandQueue';
@@ -71,6 +72,8 @@ const ROUTE: Route = {
 } as Route;
 
 let sent: string[];
+/** The decision each sent command was offered as, in send order. */
+let kinds: Array<DecisionKind | undefined>;
 let notices: string[];
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
@@ -94,11 +97,17 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(DIED_AT + 1000);
   sent = [];
+  kinds = [];
   notices = [];
   decisions = [];
   walked = [];
   here = '1/100';
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -268,6 +277,7 @@ describe('standing where it died', () => {
       'get silver',
       'get copper'
     ]);
+    expect(new Set(kinds)).toEqual(new Set(['gear-recovery-take']));
     // The ring was worn all along, so nothing of the kit is missing from the floor.
     expect(notices.at(-1)).toBe(
       t('automation.gearRecovery.taking', {

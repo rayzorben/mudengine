@@ -70,12 +70,9 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
-import {
-  encumbranceAtLeast,
-  type EncumbranceGate,
-  type LootConfig,
-  type SuppliesConfig
-} from '../../shared/config';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
+import { encumbranceAtLeast, type EncumbranceGate, type LootConfig } from '../../shared/config';
+import { type SuppliesConfig } from '../../shared/packConfig';
 import { carriedCount, stockCeiling } from '../../shared/supplies';
 import { coinNamed, type Denomination } from '../../shared/character';
 import { bareName, countedName } from '../../shared/items';
@@ -169,7 +166,7 @@ export interface AutoLootDeps {
    * drop a piece of kit instead. A safety feature that silently declines is
    * worse than one never offered.
    */
-  readonly notice?: (message: string) => void;
+  readonly notice?: NoticeSink;
   /**
    * Whether the character is on the ground (`Grounded.down`). The session
    * hands every block to `onBlock` ahead of its own gate. Required: a
@@ -227,7 +224,7 @@ export class AutoLoot implements SessionModule {
   private saidClash = new Set<Denomination>();
 
   private readonly realmItem: (name: string) => ItemEntity;
-  private readonly notice: (message: string) => void;
+  private readonly notice: NoticeSink;
   private readonly onTheGround: () => boolean;
   private readonly moveOnly: (state: CharacterState) => boolean;
   private readonly coinWord: (coin: Denomination) => string;
@@ -374,7 +371,10 @@ export class AutoLoot implements SessionModule {
     if (clash !== undefined) {
       if (!this.saidClash.has(coin)) {
         this.saidClash.add(coin);
-        this.notice(t('automation.loot.discardBlocked', { coin, count, item: clash }));
+        this.notice(
+          t('automation.loot.discardBlocked', { coin, count, item: clash }),
+          'coin-discard'
+        );
       }
       return false;
     }
@@ -384,7 +384,8 @@ export class AutoLoot implements SessionModule {
       priority: 'probe',
       coalesceKey: `loot:shed:${coin}`,
       expiresAt: Date.now() + tuning().loot.expiresMs,
-      reason: t('automation.loot.reasonDiscard', { count, coin })
+      reason: t('automation.loot.reasonDiscard', { count, coin }),
+      decision: 'coin-discard'
     });
     return true;
   }
@@ -428,7 +429,8 @@ export class AutoLoot implements SessionModule {
       if (coin && this.wantsCoin(coin, state))
         this.take(
           this.wordFor(coin),
-          t('automation.loot.reasonCoinsDropped', { count: block.groups['count'] ?? '', coin })
+          t('automation.loot.reasonCoinsDropped', { count: block.groups['count'] ?? '', coin }),
+          'loot-coins'
         );
       return;
     }
@@ -441,7 +443,9 @@ export class AutoLoot implements SessionModule {
      * since coins announce themselves (todo 814).
      */
     if (block.type === 'user-gain-experience') {
-      if (this.looksForItems(state)) this.floor.ask();
+      if (this.looksForItems(state)) {
+        this.floor.ask(t('automation.loot.reasonFloorAfterKill'), 'floor-after-kill');
+      }
       return;
     }
 
@@ -477,6 +481,7 @@ export class AutoLoot implements SessionModule {
             this.take(
               hidden && count !== undefined ? `${count} ${word}` : word,
               t('automation.loot.reasonListed', { item }),
+              hidden ? 'loot-hidden-coins' : 'loot-coins',
               // Keyed on the denomination whichever form goes out, so one
               // room asks for its copper once however many times a repeated
               // search lists it.
@@ -508,7 +513,9 @@ export class AutoLoot implements SessionModule {
           // A name on the list is an instruction, and the only thing that
           // overrides it is the weight ceiling — which exists precisely to
           // stop an unattended character looting itself to a standstill.
-          if (worth !== 'too heavy') this.take(named, t('automation.loot.reasonListed', { item }));
+          if (worth !== 'too heavy') {
+            this.take(named, t('automation.loot.reasonListed', { item }), 'loot-listed');
+          }
           continue;
         }
         /*
@@ -529,7 +536,8 @@ export class AutoLoot implements SessionModule {
                 item,
                 have: stocking.have,
                 max: stocking.max
-              })
+              }),
+              'loot-stocking'
             );
           }
           continue;
@@ -538,11 +546,11 @@ export class AutoLoot implements SessionModule {
           ? this.found.consider(entity, item, state, worth === 'too heavy')
           : null;
         if (better !== null) {
-          this.take(bare, better);
+          this.take(bare, better, 'loot-upgrade');
           continue;
         }
         if (worth === 'worth it') {
-          this.take(bare, t('automation.loot.reasonWorth', { item }));
+          this.take(bare, t('automation.loot.reasonWorth', { item }), 'loot-worth');
         }
       }
     }
@@ -673,7 +681,8 @@ export class AutoLoot implements SessionModule {
       priority: 'probe',
       coalesceKey: 'loot:convert',
       expiresAt: Date.now() + tuning().loot.expiresMs,
-      reason: t('automation.loot.reasonConvert', { item: held.name })
+      reason: t('automation.loot.reasonConvert', { item: held.name }),
+      decision: 'loot-convert'
     });
   }
 
@@ -683,7 +692,7 @@ export class AutoLoot implements SessionModule {
     return named === undefined ? coin.toLowerCase() : this.coinWord(named);
   }
 
-  private take(name: string, reason: string, asked = name): void {
+  private take(name: string, reason: string, decision: DecisionKind, asked = name): void {
     const key = asked.toLowerCase();
     if (this.attempted.has(key)) return;
     this.attempted.add(key);
@@ -694,7 +703,8 @@ export class AutoLoot implements SessionModule {
       // and gold and silver are two.
       coalesceKey: `${TAKE_KEY}${key}`,
       expiresAt: Date.now() + tuning().loot.expiresMs,
-      reason
+      reason,
+      decision
     });
   }
 }

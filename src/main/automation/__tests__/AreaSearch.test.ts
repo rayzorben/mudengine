@@ -9,6 +9,8 @@ import type { AreaPlan } from '../../../shared/areaSearch';
 import { wireItem } from '../../../shared/entities';
 import type { SafetyDecision } from '../../../shared/automation';
 import type { RoomId, Route } from '../../../shared/world';
+import { noticeLog, type NoticeLog } from './noticeLog';
+import { recordOffers, type Offered } from './offered';
 
 const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
@@ -58,8 +60,10 @@ function routeTo(from: RoomId, to: RoomId): Route {
 
 let sent: string[];
 let notices: string[];
+let log: NoticeLog;
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
+let offers: Offered;
 let here: RoomId;
 let walks: RoomId[];
 let fighting: boolean;
@@ -88,13 +92,15 @@ const planner = (over: Partial<AreaSearchPlanner> = {}): AreaSearchPlanner => ({
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
-  notices = [];
+  log = noticeLog();
+  notices = log.notices;
   decisions = [];
   here = '1/1';
   walks = [];
   fighting = false;
   taking = false;
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  offers = recordOffers(queue);
 });
 
 afterEach(() => {
@@ -103,8 +109,8 @@ afterEach(() => {
 });
 
 const make = (over: Partial<AreaSearchPlanner> = {}): AreaSearch =>
-  new AreaSearch(true, queue, planner(over), {
-    notice: (m) => notices.push(m),
+  new AreaSearch(DEFAULT_CONFIG.automation, queue, planner(over), {
+    notice: log.notice,
     decided: (d) => decisions.push(d)
   });
 const drain = (): void => void vi.advanceTimersByTime(500);
@@ -114,12 +120,28 @@ const nothing = (area: AreaSearch): void => {
   area.onCharacter(state());
 };
 
+describe('the dialog’s bounds (todo 118)', () => {
+  it('offers what the settings allow, opening inside them', () => {
+    const shipped = make().limits();
+    expect(shipped.maxRadius).toBe(DEFAULT_CONFIG.automation.search.areaMaxSteps);
+    const narrow = new AreaSearch(
+      { enabled: true, search: { areaMaxSteps: 2, areaMaxSearches: 1 } },
+      queue,
+      planner()
+    );
+    expect(narrow.limits()).toMatchObject({ maxRadius: 2, maxSearches: 1, firstSearches: 1 });
+    expect(narrow.limits().firstRadius).toBeLessThanOrEqual(2);
+  });
+});
+
 describe('searching the area', () => {
   it('searches each room as many times as asked, walking between them', () => {
     const area = make();
     expect(area.start(2, 2, state())).toBeNull();
     drain();
     expect(sent).toEqual(['search']);
+    expect(offers.decisionOf('search')).toBe('area-search');
+    expect(log.kinds).toEqual(['area-search']);
     nothing(area);
     drain();
     expect(sent).toEqual(['search', 'search']);

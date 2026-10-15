@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { consoleWriter, noticeSequence, type ConsoleTarget } from '../console';
+import { consoleWriter, decidedSequence, noticeSequence, type ConsoleTarget } from '../console';
+import { stampOf } from '@shared/stamps';
 
 /*
  * A notice used to open with an unconditional `\r\n`. That is right after a
@@ -178,5 +179,27 @@ describe('the one queue everything on the console goes through', () => {
 
     expect(term.written).toHaveLength(50_000);
     expect(term.written[49_999]).toBe('chunk 49999');
+  });
+});
+
+/* A notice about a decision carries the row's stamp, which takes no cell (todo 119). */
+describe('a notice about a decision', () => {
+  const decision = { kind: 'found-gear-wear', at: 9 } as const;
+
+  it('opens with the stamp naming the decision, its text as any notice', () => {
+    const message = 'Took the shield: it beats your buckler.';
+    expect(decidedSequence(message, true, decision, 80)).toBe(
+      stampOf(9, 'found-gear-wear') + noticeSequence(message, true)
+    );
+  });
+
+  it('is cut short of the gear, so no word of it is under the gear', () => {
+    const rows = decidedSequence('x'.repeat(100), true, decision, 40)
+      .slice(stampOf(9, 'found-gear-wear').length)
+      .split('\r\n')
+      .filter((row) => row.length > 0)
+      .map((row) => row.replace(/\x1b\[[0-9;]*m/g, ''));
+    expect(rows.every((row) => row.length <= 38)).toBe(true);
+    expect(rows.join('').replace('│ ', '')).toBe('x'.repeat(100));
   });
 });

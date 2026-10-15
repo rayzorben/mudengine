@@ -107,10 +107,18 @@ const CEILINGS: Readonly<Record<string, number>> = {
   // Lowered by the gear recovery's switches, out whole (`RecoverFields`, todo 39).
   // Lowered by the attack and opener fields, out whole with their chosen words (`FightWordFields`, todo 47).
   // Lowered by the PvP reaction's options, one line as its third member came (todo 78).
-  // Lowered by the pick-locks row, out with its sentence (`PickLockFields`, todo 50).
+  // Lowered by the pick-locks row, out with its sentence (todo 50).
   // Lowered by the train comments, condensed as the level ceiling came (todo 80).
   // Lowered by the off-round fields, shared with the Global page (`OffRoundFields`, todo 117).
-  'src/renderer/src/components/CharacterForm.tsx': 1452
+  // Lowered by the Auto-Hangup fieldset, out whole (`HangUpFieldset`, todo 118).
+  // Lowered by the Attacks fieldset and the Monsters one, out whole (todo 118).
+  // Lowered by the Doors fieldset, shared with the Global page (`DoorsFieldset`, todo 118).
+  // Lowered by the Hunting and Quests fieldsets, shared with the Global page (todo 118).
+  // Lowered by the AFK fieldset, shared with the Global page (`AfkFieldset`, todo 118).
+  // Lowered by the copy-from comment, condensed as the laid settings' mark came (todo 118).
+  // Lowered by the figure rows drawn through `ChoiceFields`, held whole on the form (todo 118).
+  // Lowered by the Retreat fieldset, out whole, and Avoiding, shared with the Global page (todo 119).
+  'src/renderer/src/components/CharacterForm.tsx': 1273
 };
 
 /**

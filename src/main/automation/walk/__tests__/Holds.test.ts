@@ -34,7 +34,7 @@ describe('the order Walker asks the holds in', () => {
   // Mutant: health asked before the rest.
   it('stands still for a rest on the wire before the health that asked for it', () => {
     const tired = hurt(at(1, 1), 10);
-    const { walker, sent, notices } = walkerOn(
+    const { walker, sent, notices, kindOf } = walkerOn(
       { restInFlight: () => true, stateNow: () => tired },
       configWith({ health: { restBelow: 0.5 } })
     );
@@ -43,6 +43,7 @@ describe('the order Walker asks the holds in', () => {
     expect(sent).toEqual([]);
     expect(walker.progress.hold).toBe('resting');
     expect(notices).toContain(t('automation.walk.restHolding'));
+    expect(kindOf(t('automation.walk.restHolding'))).toBe('walk-rest-hold');
   });
 
   // Mutant: the affliction asked before the health.
@@ -65,7 +66,7 @@ describe('the order Walker asks the holds in', () => {
       stepOf(1, 2, 'e', { requirement: { kind: 'trap', raw: 'Trap, 36 damage', damage: 36 } })
     );
     const blind = hurt(at(1, 1, { afflictions: { ...NO_AFFLICTIONS, blind: 'yes' } }), 40, 165);
-    const { walker, sent, notices } = walkerOn(
+    const { walker, sent, notices, kindOf } = walkerOn(
       { stateNow: () => blind },
       configWith({
         health: { restBelow: 0, restBeforeTraps: 0.45 },
@@ -77,6 +78,7 @@ describe('the order Walker asks the holds in', () => {
     expect(sent).toEqual([]);
     expect(walker.progress.hold).toBe('blind');
     expect(notices).toContain(t('automation.walk.holdingBlind'));
+    expect(kindOf(t('automation.walk.holdingBlind'))).toBe('walk-affliction-hold');
   });
 
   // Mutant: the draw's `rm` asked after the fight hold.
@@ -106,7 +108,7 @@ describe('the order Walker asks the holds in', () => {
 
   // Mutant: the dark hold released only once off the room the step left.
   it('lets the dark hold go the moment the room can be read, even the one it left', () => {
-    const { walker, notices } = walkerOn({ lightComing: () => true });
+    const { walker, notices, kindOf } = walkerOn({ lightComing: () => true });
     walker.start(ROUTE, at(1, 1));
     const dark = at(null, null);
     dark.room.light = 'pitch black';
@@ -117,6 +119,8 @@ describe('the order Walker asks the holds in', () => {
     walker.onCharacter(at(1, 1));
     expect(walker.progress.hold).toBeNull();
     expect(notices).toContain(t('automation.walk.lightResumed'));
+    expect(kindOf(t('automation.walk.holdingDark'))).toBe('walk-dark-hold');
+    expect(kindOf(t('automation.walk.lightResumed'))).toBe('walk-dark-hold');
   });
 
   // Mutant: the exemption that expired on landing asked after the holds.

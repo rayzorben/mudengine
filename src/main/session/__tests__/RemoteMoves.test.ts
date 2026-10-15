@@ -7,6 +7,7 @@ import { formatPath, parseRemoteReply } from '../../../shared/remotes';
 import type { CarriedLap } from '../../../shared/underway';
 import { IDLE_WALK, type WalkProgress } from '../../../shared/walk';
 import type { RoomId } from '../../../shared/world';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 /* Todo 32: `@path` says what `@loop` and `@goto` read back. */
 const [caveworm, mine] = asLoops([
@@ -37,6 +38,8 @@ interface Fake {
   place: CarriedLap | null;
   started: string[];
   through: RoomId[][];
+  /** The decision each notice reported. */
+  kinds: Array<DecisionKind | undefined>;
 }
 
 function moves(fake: Fake, own: Loop[] = [], shelf: Loop[] = []): RemoteMoves {
@@ -70,7 +73,9 @@ function moves(fake: Fake, own: Loop[] = [], shelf: Loop[] = []): RemoteMoves {
     planFromHere: () => 'unplaced',
     stepsThrough: (list) => (fake.through.push([...list]), 3 * list.length)
   };
-  return new RemoteMoves(session, rooms, () => undefined, { own: () => own, shelf: () => shelf });
+  const notice = (_message: string, decision?: DecisionKind): void =>
+    void fake.kinds.push(decision);
+  return new RemoteMoves(session, rooms, notice, { own: () => own, shelf: () => shelf });
 }
 
 const fake = (over: Partial<Fake> = {}): Fake => ({
@@ -80,6 +85,7 @@ const fake = (over: Partial<Fake> = {}): Fake => ({
   place: null,
   started: [],
   through: [],
+  kinds: [],
   ...over
 });
 
@@ -168,6 +174,14 @@ describe('@path', () => {
     expect(formatPath(moves(state).events.path())).toBe(
       '{DCCWLOOP.mp (Sewers: CaveWorm) -> General Store 1/23 (detour) - 7 steps to go}'
     );
+  });
+});
+
+describe('@stop', () => {
+  it('says, as a remote move, that nothing was moving', () => {
+    const state = fake();
+    expect(moves(state).events.stopMoving('Rayzor')).toBe(false);
+    expect(state.kinds).toEqual(['remote-moves']);
   });
 });
 

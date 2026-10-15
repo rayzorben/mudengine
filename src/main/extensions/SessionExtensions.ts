@@ -12,7 +12,13 @@ import { t } from '../app/i18n';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
 import type { AutomationConfig } from '../../shared/config';
-import { withLayer, type LayerWrite } from '../../shared/extensions';
+import type { NoticeSink } from '../../shared/decisionSettings';
+import {
+  unknownWrites,
+  withLayer,
+  type LaidSetting,
+  type LayerWrite
+} from '../../shared/extensions';
 import { errorMessage } from '../../shared/values';
 import type { SessionModule } from '../automation/Module';
 import type { ExtensionSession, ExtensionSessionHost } from './api';
@@ -25,7 +31,7 @@ export interface ExtensionHostKit {
   /** Whether this extension is taking the character somewhere (`driving`). */
   drive(on: boolean): void;
   /** Sent to the console, as every module's notices are. */
-  notice(message: string): void;
+  notice: NoticeSink;
   /** The view moved: the window is sent it, once the sessions are all made. */
   changed(): void;
 }
@@ -34,7 +40,7 @@ export interface ExtensionHostKit {
 export interface ExtensionSessionParts {
   /** Configures the session again, so a layer lands. */
   relayer(): void;
-  notice(message: string): void;
+  notice: NoticeSink;
   /** The automation snapshot changed: the window is sent it. */
   changed(): void;
 }
@@ -55,6 +61,8 @@ export class SessionExtensions implements SessionModule {
    * the session's first configure and publish.
    */
   private ready = false;
+  /** What the last `over` laid, for the settings page. */
+  private laidNow: readonly LaidSetting[] = [];
 
   constructor(
     extensions: readonly LoadedExtension[],
@@ -72,12 +80,15 @@ export class SessionExtensions implements SessionModule {
       const kit: ExtensionHostKit = {
         layer: (writes) => {
           entry.writes = writes ?? [];
-          if (this.ready) this.parts.relayer();
+          if (!this.ready) return;
+          this.parts.relayer();
+          // The settings page marks what is laid, so the window is told.
+          this.parts.changed();
         },
         drive: (on) => {
           entry.driving = on;
         },
-        notice: (message) => this.parts.notice(message),
+        notice: (message, decision) => this.parts.notice(message, decision),
         changed: () => {
           if (this.ready) this.parts.changed();
         }
@@ -103,10 +114,25 @@ export class SessionExtensions implements SessionModule {
 
   /** The character's own settings with every extension's laid over them, in folder order. */
   over(own: AutomationConfig): AutomationConfig {
+    this.laidNow = this.running.flatMap((entry) => {
+      const unknown = new Set(unknownWrites(own, entry.writes));
+      return entry.writes
+        .filter((write) => !unknown.has(write))
+        .map(([path, value]) => ({
+          by: entry.extension.manifest.title,
+          path: path.join('.'),
+          value
+        }));
+    });
     return withLayer(
       own,
       this.running.flatMap((entry) => entry.writes)
     );
+  }
+
+  /** The settings the last configure laid over the character's own, in folder order. */
+  get laid(): readonly LaidSetting[] {
+    return this.laidNow;
   }
 
   configure(config: AutomationConfig): void {
@@ -180,7 +206,8 @@ export class SessionExtensions implements SessionModule {
             name: entry.extension.manifest.name,
             hook,
             error: errorMessage(error)
-          })
+          }),
+          'extension-load'
         );
       }
       return undefined;

@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Hint } from './Hint';
+import type { SettingPath } from '@shared/decisionSettings';
 
 /**
  * One settings row: a label, a control, and the one sentence behind a mark.
@@ -40,6 +41,11 @@ export interface FormFieldProps {
    * name costs nothing to state.
    */
   name: string;
+  /**
+   * The setting the field edits, where a decision the client makes on its own
+   * reads it: a console line's gear finds the field by it (todo 119).
+   */
+  setting?: SettingPath;
   /** The one sentence behind the mark. See `docs/terminology.md` §1. */
   hint?: ReactNode;
   /**
@@ -81,6 +87,7 @@ function hintIdFor(name: string, hint: ReactNode): string | undefined {
 export default function FormField({
   label,
   name,
+  setting,
   hint,
   wide,
   children
@@ -90,6 +97,7 @@ export default function FormField({
     <label
       className={wide === true ? 'settings-field settings-field-wide' : 'settings-field'}
       data-field={name}
+      data-setting={setting}
     >
       <span>
         {label}
@@ -103,6 +111,8 @@ export default function FormField({
 interface FaceProps {
   label: ReactNode;
   name: string;
+  /** See `FormFieldProps.setting`. */
+  setting?: SettingPath;
   hint?: ReactNode;
   /** See `FormFieldProps.wide`. */
   wide?: boolean;
@@ -140,6 +150,7 @@ export interface TextFieldProps extends FaceProps {
 export function TextField({
   label,
   name,
+  setting,
   hint,
   wide,
   value,
@@ -151,7 +162,7 @@ export function TextField({
   inputRef
 }: TextFieldProps): React.JSX.Element {
   return (
-    <FormField hint={hint} label={label} name={name} wide={wide}>
+    <FormField hint={hint} label={label} name={name} setting={setting} wide={wide}>
       {({ describedBy }) => (
         <input
           aria-describedby={describedBy}
@@ -230,6 +241,7 @@ export interface NumberFieldProps extends FaceProps {
 export function NumberField({
   label,
   name,
+  setting,
   hint,
   wide,
   value,
@@ -238,8 +250,15 @@ export function NumberField({
   figure,
   bar
 }: NumberFieldProps): React.JSX.Element {
+  /*
+   * What is typed, while the field has focus. A caller that reads the figure
+   * back through its block's reader turns a cleared field into the shipped
+   * figure at once, which made a field impossible to clear and retype (todo
+   * 118); the figure the caller holds shows again when the field is left.
+   */
+  const [typing, setTyping] = useState<string | null>(null);
   return (
-    <FormField hint={hint} label={label} name={name} wide={wide}>
+    <FormField hint={hint} label={label} name={name} setting={setting} wide={wide}>
       {({ describedBy }) => (
         <>
           <input
@@ -247,13 +266,17 @@ export function NumberField({
             className={bar ? 'has-bar' : undefined}
             {...(bar ? { 'data-level': bar.level } : {})}
             inputMode="numeric"
-            onChange={(event) => onChange(event.target.value)}
+            onBlur={() => setTyping(null)}
+            onChange={(event) => {
+              setTyping(event.target.value);
+              onChange(event.target.value);
+            }}
             placeholder={placeholder}
             // The fill as a custom property rather than a class per five
             // percent: it is a continuous value, and the stylesheet reads it
             // straight into the gradient stop.
             style={bar ? ({ '--bar-fill': `${bar.fill}%` } as React.CSSProperties) : undefined}
-            value={value}
+            value={typing ?? value}
           />
           {/*
             After the input, and drawn at its right-hand end -- see
@@ -295,6 +318,7 @@ export interface PasswordFieldProps extends FaceProps {
 export function PasswordField({
   label,
   name,
+  setting,
   hint,
   wide,
   value,
@@ -302,7 +326,7 @@ export function PasswordField({
   placeholder
 }: PasswordFieldProps): React.JSX.Element {
   return (
-    <FormField hint={hint} label={label} name={name} wide={wide}>
+    <FormField hint={hint} label={label} name={name} setting={setting} wide={wide}>
       {({ describedBy }) => (
         <input
           aria-describedby={describedBy}
@@ -331,6 +355,7 @@ export interface SelectFieldProps extends FaceProps {
 export function SelectField({
   label,
   name,
+  setting,
   hint,
   wide,
   value,
@@ -338,7 +363,7 @@ export function SelectField({
   options
 }: SelectFieldProps): React.JSX.Element {
   return (
-    <FormField hint={hint} label={label} name={name} wide={wide}>
+    <FormField hint={hint} label={label} name={name} setting={setting} wide={wide}>
       {({ describedBy }) => (
         <select
           aria-describedby={describedBy}
@@ -394,6 +419,7 @@ export interface CheckFieldProps extends Omit<FaceProps, 'wide'> {
 export function CheckField({
   label,
   name,
+  setting,
   hint,
   checked,
   onChange,
@@ -402,7 +428,7 @@ export function CheckField({
   const id = hintIdFor(name, hint);
   const description = [id, describedBy].filter(Boolean).join(' ') || undefined;
   return (
-    <label className="settings-field settings-check" data-field={name}>
+    <label className="settings-field settings-check" data-field={name} data-setting={setting}>
       <input
         aria-describedby={description}
         checked={checked}

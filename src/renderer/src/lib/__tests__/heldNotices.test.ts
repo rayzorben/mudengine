@@ -90,3 +90,18 @@ describe('the held notices', () => {
     expect(later.printed.rayzor).toEqual(['again']);
   });
 });
+
+/* The gear needs the decision on the line however long the line waited (todo 119). */
+describe('a held notice about a decision', () => {
+  it('reaches its console with the decision it reports', () => {
+    const held = heldNotices();
+    const decision = { kind: 'found-gear-wear', at: 9 } as const;
+    held.deliver({ session: 'festus', message: 'took', decision }, new Map(), 'rayzor');
+    const said: unknown[] = [];
+    const map = new Map<string, NoticeConsole>([
+      ['festus', { notice: (message, about) => said.push([message, about]) }]
+    ]);
+    held.release(map, 'rayzor', ['festus']);
+    expect(said).toEqual([['took', decision]]);
+  });
+});

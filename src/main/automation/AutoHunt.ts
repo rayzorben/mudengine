@@ -24,7 +24,9 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { HealthConfig, HuntingAutomationConfig, WalkConfig } from '../../shared/config';
+import { expRateGraceMs } from '../../shared/walkChoices';
 import {
   cashTier,
   floorFor,
@@ -83,7 +85,7 @@ export interface HuntPlanner {
 }
 
 export interface HuntEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   decided?(decision: SafetyDecision): void;
 }
 
@@ -180,7 +182,7 @@ export class AutoHunt implements SessionModule {
    *
    * A price on a *candidate*, never on the lair being walked: experience
    * divides among everybody who hit the kill (`Mob.cs:2270`), so a lair with a
-   * stranger in it is worth `tuning.hunting.contestedShare` of its estimate
+   * stranger in it is worth `hunting.contestedShare` of its estimate
    * when it is being considered — and once a rate has been measured there, the
    * measurement is the figure and no guess at the sharing is wanted.
    *
@@ -430,7 +432,8 @@ export class AutoHunt implements SessionModule {
     this.events.notice?.(
       t('automation.hunt.stoodDown', {
         loopName: was.kind === 'hunting' ? was.name : was.target.loop.name
-      })
+      }),
+      'hunt-move'
     );
   }
 
@@ -647,11 +650,10 @@ export class AutoHunt implements SessionModule {
     // Both short: the one paying more copper, as the survey ranks them; the same copper, by exp.
     const copper = (best.estimate.copperPerHour ?? 0) - (walking.copper ?? 0);
     if (hereShort && thereShort && copper < 0) return false;
-    const against = floorFor(cash, here ?? 0, tuning().hunting.cashExpShare);
+    const against = floorFor(cash, here ?? 0, this.config.cashExpShare);
     const affords = cashTier(worth, best.estimate.copperPerHour, against) !== 2;
     const forCash = hereShort && (!thereShort || copper > 0) && affords;
-    if (!forCash && here !== null && worth <= here * (1 + tuning().hunting.moveMargin))
-      return false;
+    if (!forCash && here !== null && worth <= here * (1 + this.config.moveMargin)) return false;
 
     const figures = {
       here: here === null ? '?' : Math.round(here).toLocaleString(),
@@ -659,7 +661,8 @@ export class AutoHunt implements SessionModule {
     };
     const mob = best.mobs[0]?.name ?? '';
     this.events.notice?.(
-      t('automation.hunt.movingOn', { loopName: walking.name, mob, ...figures })
+      t('automation.hunt.movingOn', { loopName: walking.name, mob, ...figures }),
+      'hunt-move'
     );
     this.relocate(
       state,
@@ -686,7 +689,8 @@ export class AutoHunt implements SessionModule {
     this.events.notice?.(
       same.filler.length === 1
         ? t('automation.hunt.filled.one', { loopName: walking.name })
-        : t('automation.hunt.filled.many', { loopName: walking.name, count: same.filler.length })
+        : t('automation.hunt.filled.many', { loopName: walking.name, count: same.filler.length }),
+      'hunt-move'
     );
     this.relocate(
       state,
@@ -730,7 +734,8 @@ export class AutoHunt implements SessionModule {
     if (this.phase.saidCompany) return;
     this.phase = { ...this.phase, saidCompany: true, from: anchor(state, this.now()) };
     this.events.notice?.(
-      t('automation.hunt.company', { who: stranger, loopName: this.phase.name })
+      t('automation.hunt.company', { who: stranger, loopName: this.phase.name }),
+      'hunt-move'
     );
   }
 
@@ -750,7 +755,7 @@ export class AutoHunt implements SessionModule {
     const elapsed = this.now() - from.at;
     // The low-experience stop's own grace: the first minutes of any lap are
     // the walk to the first lair.
-    if (elapsed < tuning().loop.expRateGraceMs) return null;
+    if (elapsed < expRateGraceMs(this.walkConfig)) return null;
     return { perHour: ((exp - from.exp) * 3_600_000) / elapsed, minutes: elapsed / 60_000 };
   }
 
@@ -786,7 +791,7 @@ export class AutoHunt implements SessionModule {
     const seen = this.contested.get(key);
     const contested =
       seen !== undefined && seen > after && this.now() - seen < tuning().hunting.contestedForgetMs;
-    return contested ? rate * tuning().hunting.contestedShare : rate;
+    return contested ? rate * this.config.contestedShare : rate;
   }
 
   private pricedRate(key: string, rate: number | null): number | null {
@@ -820,7 +825,7 @@ export class AutoHunt implements SessionModule {
       priced.push({ spot, worth });
     }
     const most = priced.reduce((top, each) => Math.max(top, each.worth), 0);
-    const cash = floorFor(this.config.cashPerHour, most, tuning().hunting.cashExpShare);
+    const cash = floorFor(this.config.cashPerHour, most, this.config.cashExpShare);
     let best: { spot: HuntingSpot; worth: number; tier: number; copper: number } | null = null;
     for (const { spot, worth } of priced) {
       const copper = spot.estimate.copperPerHour ?? 0;
@@ -840,7 +845,7 @@ export class AutoHunt implements SessionModule {
     const advice = this.planner.survey(this.config.radius > 0 ? this.config.radius : null);
     if (advice.refusal !== null) {
       this.simulating = false;
-      this.refuse(advice.refusal);
+      this.refuse(advice.refusal, 'hunt-resurvey');
       return null;
     }
     const floor = this.walkConfig.minExpPerHour;
@@ -865,7 +870,8 @@ export class AutoHunt implements SessionModule {
           ? t('automation.hunt.refusalSteeredGone')
           : advice.spots.length === 0
             ? t('automation.hunt.refusalNothingReachable')
-            : t('automation.hunt.refusalNoRate', { floor: Math.round(floor).toLocaleString() })
+            : t('automation.hunt.refusalNoRate', { floor: Math.round(floor).toLocaleString() }),
+        'hunt-resurvey'
       );
       return null;
     }
@@ -908,7 +914,7 @@ export class AutoHunt implements SessionModule {
     }
     /*
      * **A journey is said as one.** The Navigation card asks the player past
-     * `tuning.walk.resumeAskSteps` before walking a stopped movement back
+     * `walk.resumeAskSteps` before walking a stopped movement back
      * across the realm; automation cannot hold a dialog open, and the switch
      * being on is the consent — so what is owed is the same figure, said,
      * before the character sets off. See `decisions.md`.
@@ -921,7 +927,7 @@ export class AutoHunt implements SessionModule {
     this.phase = { kind: 'walking', to: first.id, target, combatOff: walk.combatOff };
     // Said once the walk is actually going: a refusal used to arrive under
     // *Walking 40 steps to …*, which is the client narrating what it did not do.
-    const far = route.steps.length > tuning().walk.resumeAskSteps;
+    const far = route.steps.length > this.walkConfig.resumeAskSteps;
     this.events.notice?.(
       far
         ? t('automation.hunt.goingFar', {
@@ -933,7 +939,8 @@ export class AutoHunt implements SessionModule {
             room: first.name,
             steps: route.steps.length,
             rate: rateOf(target.expected)
-          })
+          }),
+      far ? 'hunt-resume-ask' : 'hunt-move'
     );
   }
 
@@ -976,7 +983,7 @@ export class AutoHunt implements SessionModule {
       filler: spot.filler.length
     };
     const rate = rateOf(target.expected);
-    this.events.notice?.(t('automation.hunt.started', { loopName: loop.name, rate }));
+    this.events.notice?.(t('automation.hunt.started', { loopName: loop.name, rate }), 'hunt-move');
     this.events.decided?.({
       at: this.now(),
       action: ACTION,
@@ -999,10 +1006,10 @@ export class AutoHunt implements SessionModule {
     this.phase = { kind: 'idle' };
   }
 
-  private refuse(why: string): void {
+  private refuse(why: string, decision: DecisionKind = 'hunt-move'): void {
     if (this.said === why) return;
     this.said = why;
-    this.events.notice?.(why);
+    this.events.notice?.(why, decision);
     this.events.decided?.({
       at: this.now(),
       action: ACTION,

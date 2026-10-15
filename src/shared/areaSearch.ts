@@ -4,6 +4,7 @@
  * (`Navigation.within`); this only orders them. See `mudengine-automation` ›
  * *Searching the area walks each room once*.
  */
+import type { SearchConfig } from './config';
 import type { RoomId } from './world';
 
 /** The rooms an area search walks, in order, and what it left out. */
@@ -106,13 +107,31 @@ export function orderTour(
   return { tour, steps, stranded: [...left] };
 }
 
-/** What the dialog shows before the search starts: the bounds, and the plan or why there is none. */
-export interface AreaSearchPreview {
+/** The dialog's bounds, and what it offers before anybody moves a slider. */
+export interface AreaLimits {
   maxRadius: number;
   maxSearches: number;
-  /** What the dialog offers before anybody moves a slider. */
   firstRadius: number;
   firstSearches: number;
+}
+
+/** The settings' bounds (`automation.search`), the dialog opening inside them. */
+export function areaLimits(
+  search: Pick<SearchConfig, 'areaMaxSteps' | 'areaMaxSearches'>,
+  first: Pick<AreaLimits, 'firstRadius' | 'firstSearches'>
+): AreaLimits {
+  const maxRadius = search.areaMaxSteps;
+  const maxSearches = search.areaMaxSearches;
+  return {
+    maxRadius,
+    maxSearches,
+    firstRadius: Math.min(first.firstRadius, maxRadius),
+    firstSearches: Math.min(first.firstSearches, maxSearches)
+  };
+}
+
+/** What the dialog shows before the search starts: the bounds, and the plan or why there is none. */
+export interface AreaSearchPreview extends AreaLimits {
   /** Auto-combat is off, so a monster that attacks on the way is not fought; null, not known. */
   combatOff: boolean | null;
   plan:

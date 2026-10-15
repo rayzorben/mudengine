@@ -62,6 +62,8 @@ export function shapeOf(picks: readonly RoomId[]): DraftShape {
  * a loop that reduced to one place is a place to stand, which `asLoops`
  * refuses.
  *
+ * A stop is written with the seconds typed beside it as its `linger`.
+ *
  * Every stop is written with its coordinates behind the name
  * (`Town Gates 1/2150`), because thirteen rooms are called Town Gates and a
  * stop named by name alone would be refused as ambiguous the night it was
@@ -72,7 +74,8 @@ export function loopFor(
   draft: LoopDraft,
   picks: readonly RoomId[],
   name: string,
-  prefer: boolean
+  prefer: boolean,
+  lingers: Readonly<Record<RoomId, number>> = {}
 ): Loop | null {
   const shape = shapeOf(picks);
   if (shape === 'empty' || shape === 'start') return null;
@@ -81,7 +84,11 @@ export function loopFor(
   const trimmed = name.trim();
   if (trimmed.length === 0) return null;
 
-  const stops: LoopStop[] = draft.waypoints.map((stop) => ({ room: `${stop.name} ${stop.id}` }));
+  // A wait typed beside a waypoint, in seconds; none walks straight on.
+  const stops: LoopStop[] = draft.waypoints.map((stop) => {
+    const linger = lingers[stop.id] ?? 0;
+    return { room: `${stop.name} ${stop.id}`, ...(linger > 0 ? { linger } : {}) };
+  });
   if (shape === 'loop' && stops.length > 1) stops.pop();
   if (stops.length < 2) return null;
   return {

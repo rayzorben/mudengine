@@ -10,6 +10,7 @@ import type { WalkKind, WalkProgress } from '../../../shared/walk';
 import type { CharacterState } from '../../../shared/character';
 import type { BarrierJob } from '../../../shared/barrierHands';
 import type { Intent } from '../CommandQueue';
+import type { DecisionKind, NoticeSink } from '../../../shared/decisionSettings';
 import type {
   Direction,
   Landing,
@@ -32,7 +33,7 @@ export type OpenedKind = 'door' | 'hidden';
 export interface WalkerEvents {
   /** The session's figure for the realm's speed (`RealmSpeed`), which sets the rounds a run steps between. */
   realmSpeed?(): number;
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** Progress changed, so the renderer can redraw. */
   progress?(progress: WalkProgress): void;
   /**
@@ -322,7 +323,7 @@ export interface WalkInFlight {
   /** The step in flight, or undefined. */
   step(): RouteStep | undefined;
   publish(): void;
-  stop(reason: string): void;
+  stop(reason: string, decision?: DecisionKind): void;
   /** The step again, behind what was just answered or queued ahead of it. */
   stepAgain(): void;
   /** The step again unless a hold (a fight, health, a rest) takes the walk first. */

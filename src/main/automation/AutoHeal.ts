@@ -115,11 +115,14 @@ import type { RealmFamily } from '../../shared/realm';
 import type { WorldSpell } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 
 /** The key a target's cooldown and its in-progress heal are filed under. */
 const SELF = '@self';
 /** The key a party-wide heal's cooldown is filed under: it has no one target. */
 const AREA = '@party';
+/** Whose heal a choice or a cast is, as the settings behind it file it. */
+const HEAL_KIND: Record<HealAim, DecisionKind> = { self: 'heal-self', party: 'heal-party' };
 
 /** A joined member a heal is wanted for, with the listing's share and whether they asked. */
 interface WantedMember {
@@ -165,7 +168,7 @@ export class AutoHeal implements SessionModule {
      */
     private readonly realmSpell: (name: string) => WorldSpell | null = () => null,
     /** Where a derived choice is said (todo 01). */
-    private readonly events: { notice?(message: string): void } = {},
+    private readonly events: { notice?: NoticeSink } = {},
     /**
      * The character's own side of the casting arithmetic, read at the point of
      * use like `AutoCombat`'s: the world arrives with `useRealm` and the class
@@ -226,12 +229,13 @@ export class AutoHeal implements SessionModule {
     this.asked.set(key, { from, at: this.now() });
     // Kept rather than refused: the pool refills, and the request stands until
     // it lapses. But a heal that is not coming yet is said.
-    if (!this.hasMana(state)) this.sayRefusal(key, t('automation.heal.requestLowMana', { from }));
+    if (!this.hasMana(state))
+      this.sayRefusal(key, t('automation.heal.requestLowMana', { from }), 'mana-floor');
     else this.saidRefusal.delete(key);
   }
 
-  private sayRefusal(key: string, refusal: string): void {
-    if (this.saidRefusal.get(key) !== refusal) this.events.notice?.(refusal);
+  private sayRefusal(key: string, refusal: string, decision: DecisionKind = 'heal-request'): void {
+    if (this.saidRefusal.get(key) !== refusal) this.events.notice?.(refusal, decision);
     this.saidRefusal.set(key, refusal);
   }
 
@@ -251,7 +255,8 @@ export class AutoHeal implements SessionModule {
         t('automation.heal.requestLapsed', {
           from,
           seconds: Math.round(tuning().spells.healRequestMs / 1000)
-        })
+        }),
+        'heal-request'
       );
     }
   }
@@ -312,7 +317,7 @@ export class AutoHeal implements SessionModule {
     const { hp, hpMax } = state.vitals;
     const spell = this.spellFor(state, 'self', this.deficit(hp, hpMax), this.config.heal.trim());
     if (spell.length === 0) return false;
-    this.cast(spell, null, state, t('automation.heal.reasonSelf'));
+    this.cast(spell, null, state, t('automation.heal.reasonSelf'), 'heal-self');
     return true;
   }
 
@@ -392,7 +397,7 @@ export class AutoHeal implements SessionModule {
             family,
             targets: figured,
             ceiling: healCeiling(healTo),
-            urgency: tuning().spells.healUrgency,
+            urgency: this.config.healUrgency,
             nearEnough: tuning().spells.healNearEnough,
             // Nobody joined, or no listing read yet, is no party: a rain cast
             // alone reaches only the caster, and a single heal is the cast for
@@ -423,6 +428,7 @@ export class AutoHeal implements SessionModule {
         null,
         state,
         t('automation.heal.reasonArea', { count: reaches }),
+        'heal-party',
         () => askers.forEach((key) => this.asked.delete(key)),
         [AREA, ...reached]
       );
@@ -433,7 +439,13 @@ export class AutoHeal implements SessionModule {
     const deficit = this.deficit(target.hp, target.hpMax) ?? 0;
     if (target.name === null) {
       this.sayChoice('self', choice, deficit);
-      this.cast(choice.chosen.spell.name, null, state, t('automation.heal.reasonSelf'));
+      this.cast(
+        choice.chosen.spell.name,
+        null,
+        state,
+        t('automation.heal.reasonSelf'),
+        'heal-self'
+      );
       return true;
     }
     this.sayChoice('party', choice, deficit);
@@ -459,7 +471,15 @@ export class AutoHeal implements SessionModule {
       asked || share === null
         ? t('automation.heal.reasonRequested', { memberName: name })
         : t('automation.heal.reasonParty', { memberName: name, percent: Math.round(share * 100) });
-    this.cast(spell, name, state, reason, asked ? () => this.asked.delete(key) : undefined);
+    const decision: DecisionKind = asked ? 'heal-request' : 'heal-party';
+    this.cast(
+      spell,
+      name,
+      state,
+      reason,
+      decision,
+      asked ? () => this.asked.delete(key) : undefined
+    );
   }
 
   /** Hit points wanted back (`healDeficit`); null while either figure is unread. */
@@ -548,7 +568,7 @@ export class AutoHeal implements SessionModule {
   private sayOnce(aim: HealAim, key: string, message: () => string): void {
     if (this.saidChoice.get(aim) === key) return;
     this.saidChoice.set(aim, key);
-    this.events.notice?.(message());
+    this.events.notice?.(message(), HEAL_KIND[aim]);
   }
 
   /** This character's health as a fraction of maximum, or null while unknown. */
@@ -601,6 +621,7 @@ export class AutoHeal implements SessionModule {
     target: string | null,
     state: CharacterState,
     reason: string,
+    decision: DecisionKind,
     onSent?: () => void,
     keys: readonly string[] = [target === null ? SELF : target.toLowerCase()]
   ): void {
@@ -632,6 +653,7 @@ export class AutoHeal implements SessionModule {
       command: bare ? word : `${word} ${target}`,
       priority: 'combat',
       coalesceKey: `heal:${keys[0]}`,
+      decision,
       expiresAt: at + tuning().spells.healExpiresMs,
       reason,
       ...gatedCast(this.gate, found.configured, () => {

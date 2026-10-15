@@ -10,6 +10,7 @@
 import { t } from '../app/i18n';
 import { standingOf, type CharacterState } from '../../shared/character';
 import type { SpellsConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { attacksFirst, type MobRule } from '../../shared/mobRules';
 import type { ProwessClass } from '../../shared/prowess';
 import type { RealmFamily } from '../../shared/realm';
@@ -35,7 +36,7 @@ export class RoomSpells {
 
   constructor(
     private spells: Pick<SpellsConfig, 'autoChoose'>,
-    private readonly notice: (message: string) => void,
+    private readonly notice: NoticeSink,
     private readonly realmSpell: (name: string) => WorldSpell | null,
     private readonly realmClass: () => ProwessClass & { family: RealmFamily | null }
   ) {}
@@ -92,7 +93,7 @@ export class RoomSpells {
     }
     if (this.saidTakeover === key) return;
     this.saidTakeover = key;
-    this.notice(t('automation.spells.roomTakeover', { first, spell }));
+    this.notice(t('automation.spells.roomTakeover', { first, spell }), 'room-spell');
   }
 
   /**
@@ -130,7 +131,8 @@ export class RoomSpells {
     this.notice(
       choice.area
         ? t('automation.spells.debuffFirst', said)
-        : t('automation.spells.debuffFirstAt', { ...said, target: target.name })
+        : t('automation.spells.debuffFirstAt', { ...said, target: target.name }),
+      'room-debuff-first'
     );
     return choice;
   }

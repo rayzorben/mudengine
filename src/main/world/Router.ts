@@ -22,6 +22,8 @@ import type { RealmFamily } from '../../shared/realm';
 import { equipBlock, UNKNOWN_WEARER, type Wearer } from '../../shared/gear';
 import { judge, type Gate, type GateKind, type Verdict } from '../../shared/gates';
 import { disarmOdds, trapHurt } from '../../shared/walk';
+import { routePrices, type RoutePrices } from '../../shared/walkChoices';
+import { DEFAULT_SUPPLIES } from '../../shared/packConfig';
 import {
   describeBlock,
   unrouted,
@@ -141,13 +143,28 @@ export interface Traveller {
   trapWalkers?: number;
   /**
    * Which of those two the walker may spend: *Auto-Pick Locks* and *Auto-Bash
-   * Doors* (`movement.pickLocks`, `movement.bashDoors`). A skill the walker
-   * will not use is no way through, however high: planned on it, the walk
-   * stops at the lock. Absent is both, which is every caller that is not a
+   * Doors* (`movement.pickLocks`, `movement.bashDoors`), and the other
+   * barrier switches, *Auto-Search Hidden Exits*, *Auto-Pull Levers* and
+   * *Auto-Disarm Traps* (`movement.searchHidden`, `pullLevers`, `disarmTraps`).
+   * A skill the walker will not use is no way through, however high: planned
+   * on it, the walk stops at the lock; a trap it will not disarm is priced as
+   * walked into. Absent is all of them, which is every caller that is not a
    * session — the builder's drafts, the tests, a realm read without a
    * character.
    */
-  forcing?: { pick: boolean; bash: boolean };
+  forcing?: { pick: boolean; bash: boolean; search: boolean; levers: boolean; disarm: boolean };
+  /**
+   * What this traveller's settings price a fight, a lair and another way at
+   * (`movement.fightCost` and the rest), handed in per request because the
+   * router is the realm's and its characters each have their own. Absent is
+   * the shipped figures.
+   */
+  prices?: RoutePrices;
+  /**
+   * What one doubling of a counter's price is worth in steps when the client
+   * chooses where to buy (`automation.supplies.dearerSteps`). Absent is the shipped figure.
+   */
+  dearerSteps?: number;
   /** Perception off the sheet, for a hidden exit found by searching (todo 62). Absent is unread. */
   perception?: number | null;
   /**
@@ -176,7 +193,7 @@ export interface Traveller {
   /**
    * Rooms this character ran out of for its health a short while ago (todo 73),
    * set on a trip's traveller alone (todo 19): the route goes round one until
-   * `tuning.combat.shunRoomMs` has passed, where a way round is survivable, and
+   * `movement.avoidRanFromMinutes` has passed, where a way round is survivable, and
    * through it where none is (`roundRanFrom`). Soul ran from a mad wizard,
    * rested to full in the next room and walked back in twice, and died. A
    * route's own ends are let through.
@@ -298,7 +315,7 @@ export interface Traveller {
   avoidEdges?: ReadonlySet<string>;
   /**
    * Edges of the plan a *different* way is being asked for, as `from|to`
-   * room ids — priced `tuning.world.anotherWayPenalty` times over rather than
+   * room ids — priced `prices.anotherWayPenalty` times over rather than
    * pruned (`Route.another`). Pruning them would refuse every way that shares
    * a bridge with the plan; pricing them lets the search reuse the plan
    * exactly where leaving it costs more than it saves. Never set by a caller
@@ -446,7 +463,7 @@ function forcedDoorCost(requirement: Requirement, traveller: Traveller, base: nu
   // A channel the walker is not allowed to use is graded as no skill at all:
   // the wall, still walkable when nothing else leads there, never a price the
   // plan pays on the strength of a command nobody will send.
-  const { pick, bash } = traveller.forcing ?? FORCING_BOTH;
+  const { pick, bash } = traveller.forcing ?? FORCING_ALL;
   if (pickDifficulty !== undefined)
     costs.push(gradedCost(pick ? traveller.pickSkill : null, pickDifficulty, base));
   if (bashDifficulty !== undefined)
@@ -478,8 +495,14 @@ interface KeepOutWords {
   pruning: ReadonlyArray<{ word: string; plain: string }>;
 }
 
-/** `Traveller.forcing` absent: both skills are the walker's to spend. */
-const FORCING_BOTH = { pick: true, bash: true } as const;
+/** `Traveller.forcing` absent: every barrier switch is the walker's to spend. */
+const FORCING_ALL = {
+  pick: true,
+  bash: true,
+  search: true,
+  levers: true,
+  disarm: true
+} as const;
 
 /**
  * The skills a door names that the walker is switched off from using, for the
@@ -491,11 +514,31 @@ function switchedOff(
   requirement: Requirement,
   traveller: Traveller
 ): Array<'picklocks' | 'strength'> {
-  const { pick, bash } = traveller.forcing ?? FORCING_BOTH;
+  const { pick, bash } = traveller.forcing ?? FORCING_ALL;
   const off: Array<'picklocks' | 'strength'> = [];
   if (!pick && requirement.pickDifficulty !== undefined) off.push('picklocks');
   if (!bash && requirement.bashDifficulty !== undefined) off.push('strength');
   return off;
+}
+
+/**
+ * The barrier switch a hidden exit waits on that this traveller has off, for
+ * the block that says so: the same two readings `statedPenalty` walls it by.
+ */
+function barrierSwitchedOff(
+  requirement: Requirement | null,
+  traveller: Traveller
+): 'search' | 'levers' | null {
+  if (requirement?.kind !== 'hidden') return null;
+  const may = traveller.forcing ?? FORCING_ALL;
+  if (requirement.searchable === true) return may.search ? null : 'search';
+  if (openableHere(requirement)) return may.levers ? null : 'levers';
+  return null;
+}
+
+/** `Traveller.dearerSteps`, or the shipped figure where the asker states none. */
+export function dearerStepsOf(traveller: Traveller): number {
+  return traveller.dearerSteps ?? DEFAULT_SUPPLIES.dearerSteps;
 }
 
 /**
@@ -605,7 +648,9 @@ export function edgeBlock(
  * less than walking in (`trapHurt`, todo 53).
  */
 function trapPrice(requirement: Requirement, traveller: Traveller): number {
-  const odds = disarmOdds(traveller.trapSkill ?? null);
+  // Auto-Disarm Traps off: nobody disarms, so the trap is walked into.
+  const disarms = (traveller.forcing ?? FORCING_ALL).disarm;
+  const odds = disarms ? disarmOdds(traveller.trapSkill ?? null) : null;
   return 20 + (trapHurt(requirement.damage ?? null, odds, traveller.trapWalkers ?? 1) ?? 0);
 }
 
@@ -739,7 +784,7 @@ function gatedShut(
  * What a lair costs to route through, from what one pass is expected to take.
  *
  * A share of the health the character has now (`Traveller.danger`), priced
- * `dangerCost × share / (1 − share)`: `tuning.world.dangerCost` for a pass
+ * `dangerCost × share / (1 − share)`: the traveller's `dangerCost` for a pass
  * that takes half the bar, a tenth of that for a tenth, and a price that
  * climbs without bound as a pass approaches the whole bar — so the step from
  * *dangerous* to *deadly* is a slope and not a cliff, and a room just short
@@ -759,10 +804,11 @@ function gatedShut(
  */
 export function dangerPenalty(
   share: number | null,
-  ceiling: number = tuning().world.wallCost
+  ceiling: number = tuning().world.wallCost,
+  dangerCost: number = routePrices(undefined).dangerCost
 ): number {
   if (share === null || !Number.isFinite(share) || share <= 0) return 0;
-  const { deadlyShare, dangerCost } = tuning().world;
+  const { deadlyShare } = tuning().world;
   if (share >= deadlyShare) return ceiling;
   // Capped at the ceiling, so a share just under `deadlyShare` never prices
   // above the room that reached it.
@@ -799,9 +845,14 @@ function stepIsDeadly(
 }
 
 /** What a room's run and pass cost a step (`runPenalty`), taken together as `runBesidePass` says. */
-function roomRisk(room: WorldRoom, death: number | null, share: () => number | null): number {
-  if (!runBesidePass(room)) return runPenalty(death, death === null ? share() : null);
-  return (death === null ? 0 : runPenalty(death, null)) + runPenalty(null, share());
+function roomRisk(
+  room: WorldRoom,
+  death: number | null,
+  share: () => number | null,
+  dangerCost: number
+): number {
+  if (!runBesidePass(room)) return runPenalty(death, death === null ? share() : null, dangerCost);
+  return (death === null ? 0 : runPenalty(death, null)) + runPenalty(null, share(), dangerCost);
 }
 
 /**
@@ -812,9 +863,13 @@ function roomRisk(room: WorldRoom, death: number | null, share: () => number | n
  * planned with its chance on the button. Where the fight has not run, the
  * pass's share prices it on `dangerPenalty`'s slope under the same ceiling.
  */
-export function runPenalty(death: number | null, share: number | null): number {
+export function runPenalty(
+  death: number | null,
+  share: number | null,
+  dangerCost: number = routePrices(undefined).dangerCost
+): number {
   const { nearWallCost, runDeathCost } = tuning().world;
-  if (death === null) return dangerPenalty(share, nearWallCost);
+  if (death === null) return dangerPenalty(share, nearWallCost, dangerCost);
   if (!Number.isFinite(death) || death <= 0) return 0;
   const remaining = Math.max(1 - death, 1e-6);
   return Math.min(nearWallCost, Math.round((runDeathCost * death) / remaining));
@@ -931,12 +986,17 @@ function statedPenalty(requirement: Requirement | null, traveller: Traveller): n
        * price is what the edge costs when it is already open, plus a
        * discouragement, which is what this is.
        */
+      const may = traveller.forcing ?? FORCING_ALL;
       if (requirement.searchable) {
+        // Auto-Search Hidden Exits off: the walk stops there, so it is a wall.
+        if (!may.search) return tuning().world.wallCost;
         // `100 / Perception` searches and the reprints between them (todo 62).
         const found = searchCost(traveller.perception, tuning().walk.searchRecheckEvery);
         return found === 'unknown' ? 25 : (found ?? tuning().world.wallCost);
       }
-      if (openableHere(requirement)) return 25 + 5 * requirement.actions!.length;
+      if (openableHere(requirement)) {
+        return may.levers ? 25 + 5 * requirement.actions!.length : tuning().world.wallCost;
+      }
       // `Hidden/Passable` is walked through unsearched (`HiddenExit.TryMoveThroughExit`);
       // priced free on the user's standing answer to todo 62 (2026-10-11).
       if (requirement.passable === true) return 0;
@@ -1897,7 +1957,8 @@ export class Router {
     traveller: Traveller,
     draws: boolean
   ): Route | null {
-    const { alternativeMinSteps, anotherWayLonger, wallCost } = tuning().world;
+    const { alternativeMinSteps, wallCost } = tuning().world;
+    const { anotherWayLonger } = routePrices(traveller.prices);
     if (draws) return null;
     if (route.steps.length < alternativeMinSteps) return null;
     if (route.cost >= wallCost) return null;
@@ -2630,7 +2691,9 @@ export class Router {
     // against this character, or nothing where nothing can be weighed.
     const death = into === null ? null : (traveller.runDeath?.(into, from) ?? null);
     // A lair's pass share only where no run was read: it is the dearer call.
-    const risk = into === null ? 0 : roomRisk(into, death, () => traveller.danger?.(into) ?? null);
+    const { dangerCost, anotherWayPenalty } = routePrices(traveller.prices);
+    const risk =
+      into === null ? 0 : roomRisk(into, death, () => traveller.danger?.(into) ?? null, dangerCost);
     /*
      * And what the room itself does to whoever stands in it. Priced on the
      * same slope as a lair and for the same reason — the step from
@@ -2639,14 +2702,16 @@ export class Router {
      * than taken as the worse of the two: a poisoned lair is both.
      */
     const room =
-      into === null || traveller.hazard === undefined ? 0 : dangerPenalty(traveller.hazard(into));
+      into === null || traveller.hazard === undefined
+        ? 0
+        : dangerPenalty(traveller.hazard(into), tuning().world.wallCost, dangerCost);
     // And a step along the plan a different way is being asked for, priced
     // over rather than pruned (`another`). Never for a walk.
     const dearer =
       into !== null &&
       (traveller.penalised?.size ?? 0) > 0 &&
       traveller.penalised!.has(`${from}|${roomId(into.map, into.room)}`)
-        ? tuning().world.anotherWayPenalty
+        ? anotherWayPenalty
         : 1;
     return (1 + penalty + surcharge + risk + room) * along * dearer + wall;
   }
@@ -3022,6 +3087,12 @@ export class Router {
             ...this.leverSaying(prev, exit.direction, exit.requirement?.actionsNeeded)
           });
         }
+        // And a hidden exit walled by a barrier switch the player turned off.
+        const barrier = barrierSwitchedOff(standing, traveller);
+        if (barrier !== null) {
+          const name = this.rooms.get(cursor)?.name ?? cursor;
+          blocks.unshift({ kind: 'switchedOff', at: prev, to: cursor, name, barrier });
+        }
       }
       cursor = prev;
     }
@@ -3373,6 +3444,8 @@ export class Router {
     actionsNeeded: number | undefined,
     traveller: Traveller
   ): number | null {
+    // Auto-Pull Levers off: no lever opens it for this traveller.
+    if (!(traveller.forcing ?? FORCING_ALL).levers) return null;
     const walk = this.leverDetour(from, direction, actionsNeeded, traveller);
     if (walk === null) return null;
     /*

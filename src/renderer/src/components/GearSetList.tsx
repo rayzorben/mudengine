@@ -64,7 +64,7 @@ export default function GearSetList({ sets, mobs, namePrefix, onChange }: GearSe
   return (
     <>
       {sets.length > 0 && (
-        <ul className="settings-steps gear-sets">
+        <ul className="settings-steps gear-sets" data-setting="automation.gear.sets">
           {sets.map((set, index) => (
             <li key={index}>
               <div className="blessing-line">

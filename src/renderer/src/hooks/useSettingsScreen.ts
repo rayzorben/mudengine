@@ -14,7 +14,9 @@ import {
   SETTINGS_MANAGE_SERVERS,
   SETTINGS_NEW_CHARACTER
 } from '../components/SettingsScreen';
+import type { DecisionKind } from '@shared/decisionSettings';
 import type { SessionId } from '@shared/ipc';
+import type { SettingsDoor } from '../lib/settingPlaces';
 
 export interface SettingsScreenState {
   open: boolean;
@@ -23,14 +25,17 @@ export interface SettingsScreenState {
    * which is what `Ctrl/Cmd ,` and the palette want — reopening the screen on
    * the character you were last editing. A tab's own menu names one, because
    * "edit *this* character" is the whole point of reaching it from the tab
-   * rather than from the palette.
+   * rather than from the palette. A gear in the console names a character and
+   * the decision whose settings it opens on (todo 119).
    */
-  openAt: string | null;
+  openAt: SettingsDoor;
   close(): void;
   /** Wherever it was — the palette and the shortcut. */
   openSettings(): void;
   /** On one named character — a tab's own menu. */
   editCharacter(id: SessionId): void;
+  /** The settings behind the decision a line's gear names, for that character. */
+  openSetting(id: SessionId, decision: DecisionKind): void;
   /** On an empty character — the `+` at the head of the rail. */
   newCharacter(): void;
   /** Straight to the servers list — the palette's own way in. */
@@ -55,9 +60,9 @@ export interface SettingsScreenState {
  */
 export function useSettingsScreen(required: boolean, returnFocus: () => void): SettingsScreenState {
   const [open, setOpen] = useState(false);
-  const [openAt, setOpenAt] = useState<string | null>(null);
+  const [openAt, setOpenAt] = useState<SettingsDoor>(null);
 
-  const show = useCallback((at: string | null) => {
+  const show = useCallback((at: SettingsDoor) => {
     setOpenAt(at);
     setOpen(true);
   }, []);
@@ -100,6 +105,11 @@ export function useSettingsScreen(required: boolean, returnFocus: () => void): S
 
   const openSettings = useCallback(() => show(null), [show]);
   const editCharacter = useCallback((id: SessionId) => show(id), [show]);
+  // A new door each press, so the same gear pressed twice opens it again.
+  const openSetting = useCallback(
+    (id: SessionId, decision: DecisionKind) => show({ character: id, decision }),
+    [show]
+  );
   const newCharacter = useCallback(() => show(SETTINGS_NEW_CHARACTER), [show]);
   const manageServers = useCallback(() => show(SETTINGS_MANAGE_SERVERS), [show]);
   const editGlobal = useCallback(() => show(SETTINGS_GLOBAL), [show]);
@@ -111,6 +121,7 @@ export function useSettingsScreen(required: boolean, returnFocus: () => void): S
     close,
     openSettings,
     editCharacter,
+    openSetting,
     newCharacter,
     manageServers,
     editGlobal,

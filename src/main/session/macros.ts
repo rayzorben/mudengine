@@ -11,6 +11,7 @@
  */
 import type { CharacterState } from '../../shared/character';
 import { asTyped, clientCommandOf, stepsOf } from '../../shared/clientCommands';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { fillMob, macroLength, placeholdersIn, unknownPlaceholder } from '../../shared/macro';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
@@ -24,7 +25,7 @@ export interface MacroParts {
   send(data: string): void;
   queue: Pick<CommandQueue, 'holding' | 'enqueue' | 'cancel'>;
   connected(): boolean;
-  notice(message: string): void;
+  notice: NoticeSink;
   /** The queue moved: the window is told. */
   published(): void;
   /** A number no earlier line of this session used, for the line's coalesce keys. */
@@ -33,12 +34,12 @@ export interface MacroParts {
   state(): CharacterState;
   /** The monster auto-combat would open on (`AutoCombat.pick`), for `{mob}`. */
   mob(state: CharacterState): string | null;
-  /** The character's aliases as the file states them now. */
-  aliases(): Aliases;
+  /** The character's aliases, and the most a `get all` takes, as the file states them now. */
+  automation(): { aliases: Aliases; remotes: { maxGets: number } };
 }
 
 export function queueMacro(typed: string, parts: MacroParts): void {
-  const line = expandAlias(typed, parts.aliases()) ?? typed;
+  const line = expandAlias(typed, parts.automation().aliases) ?? typed;
   const steps = stepsOf(line);
   if (steps === null) {
     parts.send(`${asTyped(line) ?? line}\r`);
@@ -112,7 +113,10 @@ export function queueMacro(typed: string, parts: MacroParts): void {
 function lateWords(command: string, parts: MacroParts, stop: () => void): Pick<Intent, 'resolve'> {
   const client = clientCommandOf(command);
   if (client !== null) {
-    return { resolve: () => clientCommandWords(client, parts.state(), parts.notice) };
+    return {
+      resolve: () =>
+        clientCommandWords(client, parts.state(), parts.automation().remotes.maxGets, parts.notice)
+    };
   }
   const names = placeholdersIn(command);
   if (names.length === 0) return {};

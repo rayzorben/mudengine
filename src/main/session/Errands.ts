@@ -17,9 +17,11 @@ import { Navigation } from './navigation';
 import { exitGates, itemsAsked } from '../world/navigation/exitGates';
 import { rollPercent, type TbStat } from '../../shared/gates';
 import { median } from '../../shared/median';
+import { minutesMs } from '../../shared/values';
 import { partyTraps, walkersThrough } from '../../shared/barrierHands';
 import { killShare } from '../../shared/company';
 import type { WalkKind } from '../../shared/walk';
+import { routePricesOf } from '../../shared/walkChoices';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { SessionModule } from '../automation/Module';
@@ -57,7 +59,8 @@ import {
 } from '../../shared/character';
 import { chargedInCopper, expectedCopper } from '../../shared/coins';
 import { commandOf } from '../../shared/commands';
-import type { AutomationConfig, SupplyItem } from '../../shared/config';
+import { type AutomationConfig } from '../../shared/config';
+import { type SupplyItem } from '../../shared/packConfig';
 import type { FightSink } from '../../shared/fights';
 import type { KillExpLore, NoEffectLore } from '../../shared/lore';
 import type { SpawnLore } from '../../shared/spawns';
@@ -111,6 +114,7 @@ import { EFFECT_ABILITY } from '../../shared/abilities';
 import { abilitySum } from '../../shared/light';
 import { chooseByExp } from '../../shared/statGains';
 import type { RealmFamily } from '../../shared/realm';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import {
   countersNow,
   planSpan,
@@ -314,7 +318,7 @@ export interface ErrandsSession {
   askAbilities(state: CharacterState): void;
   /** The carried weapon the gear sets wear for a backstab, or null (`EquipmentManager.backstabWeapon`). */
   backstabWeapon(): CarriedItem | null;
-  notice(message: string): void;
+  notice: NoticeSink;
 }
 
 export class Errands implements SessionModule {
@@ -745,7 +749,8 @@ export class Errands implements SessionModule {
     this.session.notice(
       met.round
         ? t('session.walk.roundRanFrom', { rooms })
-        : t('session.walk.throughRanFrom', { rooms })
+        : t('session.walk.throughRanFrom', { rooms }),
+      'route-shun'
     );
   }
 
@@ -830,8 +835,15 @@ export class Errands implements SessionModule {
       // whose switch is off is a door the walk stops at.
       forcing: {
         pick: this.automationConfig.movement.pickLocks,
-        bash: this.automationConfig.movement.bashDoors
+        bash: this.automationConfig.movement.bashDoors,
+        search: this.automationConfig.movement.searchHidden,
+        levers: this.automationConfig.movement.pullLevers,
+        disarm: this.automationConfig.movement.disarmTraps
       },
+      // And what this character's settings price a fight, a lair and another way at.
+      prices: routePricesOf(this.automationConfig.movement),
+      // And what a doubling of a counter's price is worth in steps, choosing where to buy.
+      dearerSteps: this.automationConfig.supplies.dearerSteps,
       // And the ways and places routes keep out of (todo 806): pruned for a
       // walk nobody watches, offered beside the way round on the panel.
       keepOut: { words: this.automationConfig.movement.keepOutOf, allowed: allowing },
@@ -1264,7 +1276,10 @@ export class Errands implements SessionModule {
    * player's own walk never do.
    */
   shun(room: RoomId): void {
-    this.shunned.set(room, Date.now() + tuning().combat.shunRoomMs);
+    this.shunned.set(
+      room,
+      Date.now() + minutesMs(this.automationConfig.movement.avoidRanFromMinutes)
+    );
     this.ranFromSaid.delete(room);
   }
 
@@ -1820,21 +1835,18 @@ export class Errands implements SessionModule {
       backstabMultiplier,
       maxLoopRooms,
       maxSpots,
-      betterSpotRadius,
-      maxDamageShare,
       trivialShare,
-      trivialLevelMargin,
       clusterRadius,
       fillerRadius,
       sizeTolerance,
       measuredFightsMin,
-      cashExpShare,
       measuredForgetMs,
       measuredMinutesLeast,
       paceLeast,
       paceMost,
       measuredLevels
     } = tuning().hunting;
+    const { maxDamageShare, trivialLevelMargin, cashExpShare } = this.automationConfig.hunting;
     // The server's clocks at this realm's speed (`RealmSpeed`): orohost runs every one five times as fast.
     const speed = this.speed.multiplier;
     const c: HuntingConstants = atSpeed(
@@ -1849,7 +1861,6 @@ export class Errands implements SessionModule {
         backstabMultiplier,
         maxLoopRooms,
         maxSpots,
-        betterSpotRadius,
         maxDamageShare,
         trivialShare,
         trivialLevelMargin,
@@ -2336,7 +2347,7 @@ export class Errands implements SessionModule {
       state,
       current,
       limits,
-      { horizon: tuning().train.statHorizon, places: tuning().train.statPlaces },
+      { horizon: this.automationConfig.train.statHorizon, places: tuning().train.statPlaces },
       (as) => this.huntingGrounds(null, null, { as }).spots
     );
   }
@@ -2517,12 +2528,11 @@ export class Errands implements SessionModule {
 
   /**
    * The better lair, in a sentence, for the lap that stopped for earning too
-   * little — or null when nothing within `tuning.hunting.betterSpotRadius`
+   * little — or null when nothing within `hunting.betterSpotRadius`
    * has a known rate. The stop was already loud; this makes it useful.
    */
   betterHuntingWords(): string | null {
-    const { betterSpotRadius } = tuning().hunting;
-    const advice = this.huntingGrounds(betterSpotRadius);
+    const advice = this.huntingGrounds(this.automationConfig.hunting.betterSpotRadius);
     const best = advice.spots.find((spot) => spot.estimate.expPerHour !== null);
     const first = best?.rooms[0];
     if (!best || !first || best.estimate.expPerHour === null) return null;
@@ -2887,7 +2897,7 @@ export class Errands implements SessionModule {
     sheet: ProwessSheet,
     family: RealmFamily | null
   ): CastingInput | null {
-    const { autoChoose, attack } = this.automationConfig.spells;
+    const { autoChoose, attack, killConfidence } = this.automationConfig.spells;
     if (state.spellbook === null || this.world === undefined) return null;
     const world = this.world;
     const realm = (name: string): WorldSpell | null => world.spellNamed(name) ?? null;
@@ -2903,7 +2913,7 @@ export class Errands implements SessionModule {
       family,
       // The class row says kai before a statline has: a Mystic never casts an attack from it.
       pool: poolOf(state.vitals.manaType, world.classNamed(state.className ?? '')?.mageryType),
-      killConfidence: tuning().spells.killConfidence,
+      killConfidence,
       noEffectOn: (spell, monster) => this.noEffects.hasNoEffect(spell, monster)
     };
   }

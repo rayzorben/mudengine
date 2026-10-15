@@ -6,10 +6,10 @@
  * walking the plan the card was shown, and turns automation on as a route the
  * player asked for does (`Travel.switchedOnFor`).
  */
-import { tuning } from '../app/tuning';
 import type { GearTrip } from '../automation/GearTrip';
 import type { GearPick, GearTripPlan, GearTripProgress } from '../../shared/gearTrip';
 import type { BlessItem } from '../../shared/blessItems';
+import type { GearConfig } from '../../shared/config';
 import type { GearChoices } from '../../shared/upgrades';
 import { blessItems } from '../world/blessItems';
 import { dropsIn, gearRealmOf, gearReads, type GearReadParts, type GearReads } from './gearReads';
@@ -17,6 +17,9 @@ import { planGearTrip, type GearPlanParts } from './gearTripPlan';
 import type { Travel } from './Travel';
 
 export interface GearDeskParts extends GearReadParts {
+  /** The weighing settings, what the card offers a slot and the trip's cash buffer. */
+  config(): ReturnType<GearReadParts['config']> &
+    ReturnType<GearPlanParts['config']> & { gear: Pick<GearConfig, 'offersPerSlot'> };
   errands: GearReadParts['errands'] & GearPlanParts['errands'];
   world(): ReturnType<GearReadParts['world']> & ReturnType<GearPlanParts['world']>;
   trip(): Pick<GearTrip, 'start' | 'stop' | 'progress'>;
@@ -41,7 +44,7 @@ export function gearDesk(parts: GearDeskParts): GearDesk {
   const planning: GearPlanParts = { ...parts, state: () => parts.tracker.current };
   return {
     reads,
-    choices: () => reads.choices(tuning().gear.perSlot),
+    choices: () => reads.choices(parts.config().gear.offersPerSlot),
     blessItems: () => {
       const state = parts.tracker.current;
       const world = parts.world();

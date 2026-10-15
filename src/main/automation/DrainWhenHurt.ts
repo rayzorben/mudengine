@@ -9,6 +9,7 @@
  */
 import { t } from '../app/i18n';
 import type { CharacterState } from '../../shared/character';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { holdsForVital, type SpellsConfig } from '../../shared/config';
 import { weighsAsAttack } from '../../shared/spellchoice';
 import { servesOf } from '../../shared/spellcraft';
@@ -30,7 +31,7 @@ export class DrainWhenHurt {
 
   constructor(
     private spells: SpellsConfig,
-    private readonly notice: (message: string) => void,
+    private readonly notice: NoticeSink,
     private readonly realmSpell: (name: string) => WorldSpell | null,
     private readonly realmSpellById: (id: number) => WorldSpell | null
   ) {}
@@ -110,7 +111,8 @@ export class DrainWhenHurt {
           })
         : castable
           ? t('automation.spells.drainEnds')
-          : t('automation.spells.drainNone')
+          : t('automation.spells.drainNone'),
+      'drain-standin'
     );
   }
 }

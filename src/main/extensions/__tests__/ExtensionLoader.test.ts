@@ -19,6 +19,8 @@ function folder(name: string, files: Record<string, string>): void {
 const manifest = (name: string, extra: Record<string, unknown> = {}): string =>
   JSON.stringify({ name, title: `The ${name}`, main: 'main.mjs', ui: 'ui', ...extra });
 
+const allOn = (): boolean => true;
+
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'extensions-'));
 });
@@ -35,7 +37,7 @@ describe('the extensions installed', () => {
       'ui/index.html': '<p>card</p>'
     });
     folder('notes', { 'readme.txt': 'not an extension' });
-    const { loaded, problems } = await loadExtensions(root);
+    const { loaded, problems } = await loadExtensions(root, allOn);
     expect(loaded.map((each) => each.manifest.title)).toEqual(['The planner']);
     expect(problems).toEqual([]);
   });
@@ -45,13 +47,33 @@ describe('the extensions installed', () => {
     folder('misnamed', { 'manifest.json': manifest('other') });
     folder('escaping', { 'manifest.json': manifest('escaping', { main: '../x.mjs' }) });
     folder('silent', { 'manifest.json': manifest('silent'), 'main.mjs': 'export const x = 1;' });
-    const { loaded, problems } = await loadExtensions(root);
+    const { loaded, problems } = await loadExtensions(root, allOn);
     expect(loaded).toEqual([]);
     expect(problems).toHaveLength(4);
   });
 
+  it('never imports one the options file switches off, and names it', async () => {
+    // Importing the module writes a file, so whether it was imported is seen on disk.
+    const imported = path.join(root, 'imported');
+    const main = `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(imported)}, '');
+      export function session() { return { view: () => null }; }`;
+    folder('planner', { 'manifest.json': manifest('planner'), 'main.mjs': main });
+    const off = await loadExtensions(root, (name) => name !== 'planner');
+    expect(off.loaded).toEqual([]);
+    expect(off.off.map((each) => each.name)).toEqual(['planner']);
+    expect(fs.existsSync(imported)).toBe(false);
+    // The same folder switched on is imported: the absence above is the switch's.
+    const on = await loadExtensions(root, allOn);
+    expect(on.loaded.map((each) => each.manifest.name)).toEqual(['planner']);
+    expect(fs.existsSync(imported)).toBe(true);
+  });
+
   it('is none where the folder does not exist', async () => {
-    expect(await loadExtensions(path.join(root, 'absent'))).toEqual({ loaded: [], problems: [] });
+    expect(await loadExtensions(path.join(root, 'absent'), allOn)).toEqual({
+      loaded: [],
+      off: [],
+      problems: []
+    });
   });
 });
 
@@ -64,7 +86,7 @@ describe('a card page’s files', () => {
       'ui/assets/app.js': '1',
       'secret.txt': 'no'
     });
-    const { loaded } = await loadExtensions(root);
+    const { loaded } = await loadExtensions(root, allOn);
     expect(pageFile(loaded, 'planner', '')).toMatch(/index\.html$/);
     expect(pageFile(loaded, 'planner', 'assets/app.js')).toMatch(/app\.js$/);
     expect(pageFile(loaded, 'planner', '../secret.txt')).toBeNull();

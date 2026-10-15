@@ -8,9 +8,17 @@
  * answers with `search <direction>` and the step again. That covers the exits
  * the router already knew about.
  *
- * This is the other half, and it is the half that finds the exit nothing
- * planned a route through in the first place: a bare `search`, once per room
- * arrived in.
+ * This is the other half: a bare `search`, once per room arrived in. A bare
+ * search finds hidden items, coins and hiding players, never an exit; only
+ * `search <direction>` reaches `HiddenExit.SearchExit` (GreaterMUD
+ * `SearchCommand.cs`, `Player.TrySearch`; every `You found an exit` in the
+ * 2026-10-12 Rayzor log follows a directional search). Each hidden item is
+ * rolled against Perception, so a second search can find what the first missed.
+ *
+ * On a walk it goes ahead of the step (`beforeStep`, todo 120): the walker
+ * sends the next step from the arrival itself, so a search offered from the
+ * status line always found a move in flight and was dropped. It also goes
+ * ahead of the walk's `sn`, because `TrySearch` ends in `BreakStealth`.
  *
  * ## What it will not do
  *
@@ -78,6 +86,8 @@ export interface SearchEvents {
    * while one waits lands in the room the moves end in (todo 88).
    */
   moveInFlight(): boolean;
+  /** A timed spell's walk or a run: nothing but the move goes out. */
+  standsDown(state: CharacterState): boolean;
 }
 
 /**
@@ -159,9 +169,31 @@ export class AutoSearch implements SessionModule {
   }
 
   onCharacter(state: CharacterState): void {
-    if (state.phase !== 'in-game') return;
-    const here = whereIsThis(state);
+    const here = this.wanted(state);
     if (here === null) return;
+    // A search sent now would run in the room the typed moves end in.
+    if (this.events.moveInFlight()) return;
+    this.offer(here, 'probe');
+  }
+
+  /**
+   * A walk is about to step out of this room: the search goes first, in the
+   * step's band, so the server runs it here and before the walk's `sn` (todo
+   * 120). Same intent and key as the status line's, so the two are one search.
+   */
+  beforeStep(state: CharacterState): void {
+    const here = this.wanted(state);
+    if (here !== null) this.offer(here, 'movement');
+  }
+
+  /**
+   * This room's address when a search is wanted in it now, else null. Moves
+   * the budget to a new room as it asks.
+   */
+  private wanted(state: CharacterState): string | null {
+    if (state.phase !== 'in-game') return null;
+    const here = whereIsThis(state);
+    if (here === null) return null;
 
     // A different room is a fresh budget, whether or not the switch is on —
     // otherwise turning it on mid-corridor would find a spent counter.
@@ -171,9 +203,9 @@ export class AutoSearch implements SessionModule {
     }
 
     // Both gates: the master switch, and this feature's own.
-    if (!this.enabled || !this.config.enabled) return;
+    if (!this.enabled || !this.config.enabled) return null;
     // Unmeasured rather than settled, like `AutoLoot`: waiting costs the wait.
-    if (state.vitals.resting || state.vitals.meditating) return;
+    if (state.vitals.resting || state.vitals.meditating) return null;
     /*
      * **One reading of *fighting*, used here and at the send.** This asked
      * `state.inCombat`, which is the server's flag alone; `fightIsRunning` is
@@ -183,11 +215,12 @@ export class AutoSearch implements SessionModule {
      * the send-time ask below has to be the same question as this one or the
      * pair would disagree about the round between a kill and the next swing.
      */
-    if (this.fightHere(state)) return;
-    // A search sent now would run in the room the typed moves end in.
-    if (this.events.moveInFlight()) return;
-    if (this.tries >= this.config.tries) return;
+    if (this.fightHere(state)) return null;
+    if (this.events.standsDown(state)) return null;
+    return this.tries < this.config.tries ? here : null;
+  }
 
+  private offer(here: string, priority: 'probe' | 'movement'): void {
     this.queue.enqueue({
       /*
        * Bare, and deliberately not `search <direction>`.
@@ -199,7 +232,7 @@ export class AutoSearch implements SessionModule {
        * commands a room.
        */
       command: 'search',
-      priority: 'probe',
+      priority,
       /*
        * Per room, so the several status lines one arrival produces cannot
        * queue several searches. By intent and never by command text: two
@@ -224,7 +257,8 @@ export class AutoSearch implements SessionModule {
       onSent: () => {
         this.tries += 1;
       },
-      reason: t('automation.search.reason')
+      reason: t('automation.search.reason'),
+      decision: 'search'
     });
   }
 }

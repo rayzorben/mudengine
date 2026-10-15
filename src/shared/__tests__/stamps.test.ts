@@ -40,9 +40,30 @@ describe('a status line carries the time it reached the console', () => {
   });
 
   it('reads back the time, and nothing else', () => {
-    expect(stampAt('1791418218773')).toBe(1791418218773);
+    expect(stampAt('1791418218773')).toEqual({ at: 1791418218773, decision: null });
     expect(stampAt('-')).toBe('clear');
     expect(stampAt('')).toBeNull();
     expect(stampAt('12;x')).toBeNull();
+  });
+});
+
+describe('a row about a decision names it after the time (todo 119)', () => {
+  it('writes the kind into the stamp, reads it back, and takes it out with the time', () => {
+    const chunk = stampChunk({
+      seq: 1,
+      at: 9,
+      text: '[HP=1]:wear shield',
+      marks: [{ offset: 7, mark }],
+      times: [{ offset: 0, put: 'time', decision: 'found-gear-wear' }]
+    });
+    expect(chunk.text).toBe(`${stampOf(9, 'found-gear-wear')}[HP=1]:wear shield`);
+    expect(chunk.marks?.[0]?.offset).toBe(stampOf(9, 'found-gear-wear').length + 7);
+    expect(stampAt('9;found-gear-wear')).toEqual({ at: 9, decision: 'found-gear-wear' });
+    expect(unstamped(chunk.text)).toBe('[HP=1]:wear shield');
+    expect(afterStamp(chunk.text)).toBe(stampOf(9, 'found-gear-wear').length);
+  });
+
+  it('refuses a kind this build does not know', () => {
+    expect(stampAt('9;no-such-thing')).toBeNull();
   });
 });

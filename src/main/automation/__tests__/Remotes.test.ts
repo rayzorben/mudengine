@@ -4,7 +4,7 @@ import { CommandQueue } from '../CommandQueue';
 import { Remotes, SWITCH_REMOTES } from '../Remotes';
 import { t } from '../../app/i18n';
 import { DEFAULT_CONFIG } from '../../../shared/config';
-import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
+import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { NO_TALLY, type CombatTally } from '../../../shared/tally';
 import { wireExit, wireItem } from '../../../shared/entities';
 import type { AutomationConfig, AutomationSwitch } from '../../../shared/config';
@@ -16,9 +16,11 @@ import {
   REMOTES,
   parseRemoteReply,
   type MoveAnswer,
+  type RemoteName,
   type PathReport
 } from '../../../shared/remotes';
 import { NO_PLAYERS, recordOf, type PlayerRegistry } from '../../../shared/players';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 /**
  * Every name these tests speak as.
@@ -57,6 +59,7 @@ const config: AutomationConfig = {
    * `src/shared/__tests__/remotes-access.test.ts`.
    */
   remotes: {
+    ...DEFAULT_CONFIG.automation.remotes,
     enabled: true,
     gangpath: true,
     autoJoin: false,
@@ -586,6 +589,22 @@ describe('answering the imperative ones', () => {
     expect(sent).toEqual(['get torch', 'get padded helm']);
   });
 
+  // The case above takes both at the shipped count: the positive control.
+  it('takes no more than the remotes block allows on @get-all, and says so', () => {
+    peers.configure({ ...config, remotes: { ...config.remotes, maxGets: 1 } });
+    peers.onBlock(
+      said('conversation-local', 'Rend', '@get-all'),
+      who({
+        room: { ...EMPTY_CHARACTER.room, items: [wireItem('torch'), wireItem('padded helm')] }
+      })
+    );
+    drain();
+    expect(sent).toEqual(['get torch']);
+    expect(notices).toContain(
+      t('automation.remotes.getAllCapped', { from: 'Rend', max: 1, total: 2 })
+    );
+  });
+
   it('says so rather than sending anything when the floor is empty', () => {
     peers.onBlock(said('conversation-local', 'Rend', '@get-all'), who());
     drain();
@@ -769,6 +788,165 @@ describe('the two it refuses', () => {
     peers.onBlock(said('conversation-telepath', 'Rend', '@hangup'), who());
     drain();
     expect(sent[0]).toMatch(/^\/Rend \{no: /);
+  });
+});
+
+/* Todo 118: Allow @kill and @hangup lets the four through to a grant, and only then. */
+describe('letting @kill, @hangup, @relog and @panic! through', () => {
+  let hangUps: string[];
+  let relogs: string[];
+  /** Sirkilla granted all four by name; Rend granted nothing past the answerable ones. */
+  const standing = (allowKillAndHangup: boolean): Remotes => {
+    hangUps = [];
+    relogs = [];
+    const standingFour: RemoteName[] = ['kill', 'hangup', 'relog', 'panic!'];
+    const remotes: AutomationConfig['remotes'] = {
+      ...config.remotes,
+      allowKillAndHangup,
+      players: {
+        ...config.remotes.players,
+        sirkilla: { allow: [...ACTIONABLE_REMOTES, ...standingFour], deny: [] }
+      }
+    };
+    return new Remotes({ ...config, remotes }, queue, {
+      notice: (m) => notices.push(m),
+      hangUp: (why) => {
+        hangUps.push(why);
+        return true;
+      },
+      relog: (why) => {
+        relogs.push(why);
+        return true;
+      }
+    });
+  };
+
+  const occupant = (name: string, kind: 'player' | 'mob'): RoomOccupant => ({
+    name,
+    kind,
+    disposition: null,
+    uncertain: false,
+    costly: 'never',
+    charmed: false,
+    hidden: false,
+    free: false
+  });
+  const room = (...occupants: RoomOccupant[]): CharacterState =>
+    who({ room: { ...EMPTY_CHARACTER.room, occupants } });
+
+  it('attacks the named player for a sender granted @kill, with the switch on', () => {
+    const here = room(occupant('Gambit', 'player'), occupant('goblin', 'mob'));
+    standing(true).onBlock(said('conversation-telepath', 'Sirkilla', '@kill gam'), here);
+    drain();
+    expect(sent).toEqual(['a Gambit']);
+  });
+
+  it('attacks nobody the room does not name as exactly one player, and says who matched', () => {
+    const here = room(
+      occupant('Gambit', 'player'),
+      occupant('Gamble', 'player'),
+      occupant('gambling orc', 'mob')
+    );
+    const peers = standing(true);
+    peers.onBlock(said('conversation-telepath', 'Sirkilla', '@kill gam'), here);
+    peers.onBlock(said('conversation-telepath', 'Sirkilla', '@kill Rend'), here);
+    drain();
+    expect(sent).toEqual([]);
+    expect(notices).toContain(
+      t('automation.remotes.killAmbiguous', {
+        from: 'Sirkilla',
+        player: 'gam',
+        candidates: 'Gambit, Gamble'
+      })
+    );
+    expect(notices).toContain(
+      t('automation.remotes.killNotHere', { from: 'Sirkilla', player: 'Rend' })
+    );
+  });
+
+  it('still refuses a sender granted @kill while the switch is off, and names the setting', () => {
+    standing(false).onBlock(said('conversation-telepath', 'Sirkilla', '@kill Gambit'), who());
+    drain();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatch(/^\/Sirkilla \{no: /);
+    expect(notices).toContain(
+      t('automation.remotes.refusedUnsupported', {
+        from: 'Sirkilla',
+        raw: 'kill',
+        reason: t('automation.remotes.refusal.kill')
+      })
+    );
+  });
+
+  it('refuses a sender not granted it, with the switch on', () => {
+    standing(true).onBlock(said('conversation-telepath', 'Rend', '@hangup'), who());
+    drain();
+    expect(sent).toEqual([]);
+    expect(hangUps).toEqual([]);
+    expect(notices).toContain(
+      t('automation.remotes.refusedNotGranted', {
+        from: 'Rend',
+        raw: 'hangup',
+        unresolvedClause: ''
+      })
+    );
+  });
+
+  it('hangs up for @hangup and @panic!, and relogs for @relog', () => {
+    const peers = standing(true);
+    for (const raw of ['@hangup', '@panic!', '@relog']) {
+      peers.onBlock(said('conversation-telepath', 'Sirkilla', raw), who());
+    }
+    expect(hangUps).toEqual([
+      t('automation.remotes.whyRemote', { from: 'Sirkilla', raw: 'hangup' }),
+      t('automation.remotes.whyRemote', { from: 'Sirkilla', raw: 'panic!' })
+    ]);
+    expect(relogs).toEqual([t('automation.remotes.whyRemote', { from: 'Sirkilla', raw: 'relog' })]);
+  });
+});
+
+/* Todo 118: a changed @stats sheet goes out under the gate its first answer did. */
+describe('sending a changed @stats sheet on', () => {
+  const member = {
+    name: 'Rand',
+    className: null,
+    health: 1,
+    mana: null,
+    rank: null,
+    activity: null,
+    invited: false,
+    vitals: null,
+    sheet: null
+  };
+  const atLevel = (level: number): CharacterState =>
+    who({
+      progress: {
+        ...EMPTY_CHARACTER.progress,
+        strength: 60,
+        intellect: 45,
+        willpower: 50,
+        agility: 55,
+        health: 45,
+        charm: 40,
+        level
+      },
+      party: { ...EMPTY_CHARACTER.party, following: null, members: [member] }
+    });
+
+  it('sends the new sheet with automation on, and nothing with it off', () => {
+    peers.onBlock(said('conversation-telepath', 'Rand', '@stats'), atLevel(10));
+    drain();
+    sent.length = 0;
+    peers.configure({ ...config, enabled: false });
+    peers.onCharacter(atLevel(11));
+    drain();
+    expect(sent).toEqual([]);
+    // The positive control: the same change, automation back on.
+    peers.configure(config);
+    peers.onCharacter(atLevel(11));
+    drain();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatch(/^\/Rand \{STR=60/);
   });
 });
 
@@ -1087,6 +1265,7 @@ describe('the gate: who may ask, and for what', () => {
   ): AutomationConfig => ({
     ...config,
     remotes: {
+      ...DEFAULT_CONFIG.automation.remotes,
       enabled: true,
       gangpath: true,
       autoJoin: false,
@@ -1413,7 +1592,10 @@ describe('the gangpath is answered on only when it is switched on', () => {
    */
   const inGang = (gangpath: boolean): AutomationConfig => ({
     ...config,
-    remotes: { enabled: true, gangpath, autoJoin: false, gang: ['health'], party: [], players: {} }
+    remotes: {
+      ...DEFAULT_CONFIG.automation.remotes,
+      ...{ enabled: true, gangpath, autoJoin: false, gang: ['health'], party: [], players: {} }
+    }
   });
 
   const together = (): CharacterState =>
@@ -1464,6 +1646,7 @@ describe('the gangpath is answered on only when it is switched on', () => {
     peers.configure({
       ...inGang(false),
       remotes: {
+        ...DEFAULT_CONFIG.automation.remotes,
         enabled: true,
         gangpath: false,
         autoJoin: false,
@@ -1487,7 +1670,10 @@ describe('a channel this client never answers on, from somebody with no grant', 
    */
   const ungranted = (): AutomationConfig => ({
     ...config,
-    remotes: { enabled: true, gangpath: true, autoJoin: false, gang: [], party: [], players: {} }
+    remotes: {
+      ...DEFAULT_CONFIG.automation.remotes,
+      ...{ enabled: true, gangpath: true, autoJoin: false, gang: [], party: [], players: {} }
+    }
   });
 
   const live = (): CharacterState =>
@@ -2380,5 +2566,75 @@ describe('party pacing', () => {
       "/Soul @wait (can't move)",
       '/Soul @ok'
     ]);
+  });
+});
+
+describe('the decision behind each line and command (todo 119)', () => {
+  let lines: Array<[string, DecisionKind | undefined]>;
+  let decided: Array<[string, DecisionKind | undefined]>;
+  const remotesUnder = (settings: AutomationConfig): Remotes =>
+    new Remotes(
+      settings,
+      new CommandQueue(settings, {
+        send: (command, intent) => decided.push([command, intent.decision])
+      }),
+      { notice: (message, decision) => lines.push([message, decision]) }
+    );
+
+  beforeEach(() => {
+    lines = [];
+    decided = [];
+  });
+
+  it('names @do on the command, its {ok} and its line', () => {
+    remotesUnder(config).onBlock(said('conversation-telepath', 'Sesub', '@do a ooze'), who());
+    drain();
+    expect(decided).toEqual([
+      ['a ooze', 'remote-do'],
+      ['/Sesub {ok}', 'remote-do']
+    ]);
+    expect(lines).toEqual([
+      [t('automation.remotes.ranDo', { from: 'Sesub', command: 'a ooze' }), 'remote-do']
+    ]);
+  });
+
+  it('names an answer, a @party command and a refusal by their settings', () => {
+    const remotes = remotesUnder({
+      ...config,
+      remotes: {
+        ...config.remotes,
+        players: { ...config.remotes.players, yang: { allow: ['health'], deny: [] } }
+      }
+    });
+    const up = who({ vitals: { ...EMPTY_CHARACTER.vitals, hp: 600, hpMax: 600 } });
+    remotes.onBlock(said('conversation-telepath', 'Sackhunter', '@health'), up);
+    remotes.onBlock(said('conversation-local', 'Swampfox', '@party go rift'), up);
+    remotes.onBlock(said('conversation-telepath', 'Yang', '@do who'), up);
+    drain();
+    expect(decided).toEqual([
+      ['/Sackhunter {HP=600/600}', 'remote-answer'],
+      ['go rift', 'remote-party-cmd']
+    ]);
+    expect(lines).toContainEqual([
+      t('automation.remotes.refusedNotGranted', { from: 'Yang', raw: 'do', unresolvedClause: '' }),
+      'remote-grant'
+    ]);
+  });
+
+  it("names a join's @health and a follower's @wait by the party settings", () => {
+    const remotes = remotesUnder(config);
+    remotes.onBlock(joins('player', 'Soul'), who());
+    drain();
+    expect(decided[0]).toEqual(['/Soul @health', 'party-ask-health']);
+    decided.length = 0;
+    const floor = DEFAULT_CONFIG.automation.health.restBelow * 100;
+    remotes.onCharacter(
+      who({
+        party: { engaged: {}, threatened: {}, following: 'Soul', members: [] },
+        vitals: { ...EMPTY_CHARACTER.vitals, hp: floor - 1, hpMax: 100 }
+      })
+    );
+    drain();
+    expect(decided).toEqual([["/Soul @wait (HP's too low)", 'follower-wait']]);
   });
 });

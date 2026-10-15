@@ -20,6 +20,16 @@ import { tuning } from '../lib/tuning';
 import type { SessionId } from '@shared/ipc';
 import { asRoomReference, type RoomId } from '@shared/world';
 
+/**
+ * A step of a plan on screen, as the route list offers it: walk the plan only
+ * as far as this room, or run it there (null where the plan cannot be run, as
+ * when it is a loop's leg).
+ */
+export interface PlannedHere {
+  walk(): void;
+  run: (() => void) | null;
+}
+
 export interface SlideOutSlot {
   /** The name last clicked, and where, so the answer can open beside it. */
   asked: Asked | null;
@@ -45,7 +55,7 @@ export interface SlideOutSlot {
   /** A room on a map pointed at or clicked. */
   peekRoom(room: RoomId, at: SVGGElement, settled: boolean): void;
   /** A room on a plan pointed at or clicked, with the plan's own *walk here*. */
-  peekPlanned(room: RoomId, at: Element, settled: boolean, walkHere: (() => void) | null): void;
+  peekPlanned(room: RoomId, at: Element, settled: boolean, here: PlannedHere | null): void;
   /** The pointer reached the panel: it is being read, so it stays. */
   holdPeek(): void;
   /** The pointer left the room, or the panel. */
@@ -273,7 +283,7 @@ export function useSlideOuts(
    */
   const peekRoom = useCallback(
     (room: RoomId, at: SVGGElement, settled: boolean) => {
-      openPeek({ room, anchor: roomAnchor(at), settled, act: walkTo(room) });
+      openPeek({ room, anchor: roomAnchor(at), settled, act: walkTo(room), also: null });
     },
     [openPeek, walkTo]
   );
@@ -308,7 +318,8 @@ export function useSlideOuts(
    * map's does. A room on the map settles on a click, as it does on the card.
    */
   const peekPlanned = useCallback(
-    (room: RoomId, at: Element, settled: boolean, walkHere: (() => void) | null) => {
+    (room: RoomId, at: Element, settled: boolean, here: PlannedHere | null) => {
+      const run = here?.run ?? null;
       openPeek({
         room,
         anchor: roomAnchor(at),
@@ -317,14 +328,25 @@ export function useSlideOuts(
         // that panel's scrim rather than behind it. See `RoomAsked.overDialog`.
         overDialog: true,
         act:
-          walkHere === null
+          here === null
             ? walkTo(room)
             : {
                 label: t('cards.roomPeek.walkHereButton'),
                 hint: t('cards.roomPeek.walkHereTooltip'),
                 run: () => {
                   setPeek(null);
-                  walkHere();
+                  here.walk();
+                }
+              },
+        also:
+          run === null
+            ? null
+            : {
+                label: t('cards.roomPeek.runHereButton'),
+                hint: t('cards.roomPeek.runHereTooltip'),
+                run: () => {
+                  setPeek(null);
+                  run();
                 }
               }
       });

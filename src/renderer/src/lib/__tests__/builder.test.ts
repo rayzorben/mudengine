@@ -104,6 +104,11 @@ describe('the loop a draft saves as', () => {
     });
     // And preferred when the player leaves the toggle on.
     expect(loopFor(draft, ['1/1', '1/5', '1/1'], 'Round', true)).toMatchObject({ prefer: true });
+    // A wait typed beside a stop is its linger; none is written for zero.
+    expect(loopFor(draft, ['1/1', '1/5', '1/1'], 'Round', false, { '1/5': 20, '1/1': 0 })).toEqual({
+      name: 'Round',
+      stops: [{ room: 'A 1/1' }, { room: 'B 1/5', linger: 20 }]
+    });
   });
 
   it('refuses a draft with a blocked leg', () => {

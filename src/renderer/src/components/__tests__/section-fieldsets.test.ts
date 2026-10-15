@@ -31,14 +31,17 @@ function drawn(source: string): string[] {
 }
 
 /**
- * A form's own source and the shared `…Fields` sections it imports, since one
- * of those (`PartyFields`, todo 831) draws its fieldsets for both forms.
+ * A form's own source and the shared sections it imports (`…Fields`,
+ * `…Fieldset`, `…Sections`, `…Switches`), since those draw fieldsets for both
+ * forms (`PartyFields`, todo 831; `HangUpFieldset`, todo 118).
  */
 function composed(file: string): string {
   const source = read(file);
-  const local = [...source.matchAll(/^import \w+(?:, \{[^}]*\})? from '\.\/(\w+Fields)';$/gm)].map(
-    (hit) => `${hit[1]!}.tsx`
-  );
+  const local = [
+    ...source.matchAll(
+      /^import \w+(?:, \{[^}]*\})? from '\.\/(\w+(?:Fields|Fieldset|Sections|Switches))';$/gm
+    )
+  ].map((hit) => `${hit[1]!}.tsx`);
   return [source, ...local.map(read)].join('\n');
 }
 

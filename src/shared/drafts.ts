@@ -13,9 +13,9 @@
  */
 import {
   DEFAULT_CONFIG,
+  REMOTES_RANGES,
   ENGAGE_POLICIES,
   firstWord,
-  RETREAT_STRATEGIES,
   normalizeRewrites,
   normalizeHuntingAutomation,
   normalizeGear,
@@ -28,17 +28,44 @@ import {
   type Cure,
   type DensityPreference,
   type EngagePolicy,
-  type RetreatStrategy,
   POTION_WHENS,
   type PotionRule,
   type PotionWhen,
-  PVP_ACTIONS,
-  type PvpAction,
   type PartyConfig,
   PARTY_RANGES,
   type EncumbranceGate,
-  type TabsPreference
+  type TabsPreference,
+  combatChoices,
+  type CombatChoices,
+  spellWeights,
+  type SpellWeights,
+  areaBounds,
+  restNextDoorMinutesOf,
+  type QuestsConfig,
+  type SearchConfig
 } from './config';
+import {
+  DEFAULT_DROP,
+  normalizeSupplies,
+  outgrownChoices,
+  type DropConfig,
+  type OutgrownConfig,
+  type SuppliesConfig
+} from './packConfig';
+import {
+  loopChoices,
+  movementChoices,
+  type LoopChoices,
+  type MovementChoices
+} from './walkChoices';
+import {
+  DEFAULT_SAFETY,
+  HANG_UP_RANGES,
+  RETREAT_STRATEGIES,
+  type RetreatStrategy,
+  PVP_ACTIONS,
+  type PvpAction
+} from './safety';
 import type { BlessingTarget } from './blessings';
 import { normalizeMobRules, type MobRule } from './mobRules';
 import { DENOMINATIONS, type Denomination } from './character';
@@ -73,7 +100,7 @@ const asGate = (value: unknown): EncumbranceGate =>
         .trim()
         .toLowerCase()
   ) ?? 'never';
-import { PROFILE_ACCENTS, type ProfileAccent } from './profiles';
+import { asReconnectTries, PROFILE_ACCENTS, type ProfileAccent } from './profiles';
 import {
   DEFAULT_CONSOLE_PALETTE,
   DEFAULT_THEME,
@@ -85,8 +112,10 @@ import {
   type ThemePreference
 } from './themes';
 import type { StreamEncoding } from './types';
-import { isRecord } from './values';
+import { fraction, int, isRecord, oneOf } from './values';
 import { asStatedPairs, type StatedPair } from './pairs';
+import { normalizeAsks, type AsksConfig } from './asks';
+import { normalizeExtensionSwitches, type ExtensionSwitches } from './extensionSwitches';
 import { isRemoteName, type RemoteGrant, type RemoteName } from './remotes';
 
 const ENCODINGS: readonly StreamEncoding[] = ['cp437', 'utf8', 'latin1'];
@@ -250,7 +279,7 @@ export interface GlobalDraft {
     onPartyChange: string;
     idle: { enabled: boolean; afterSeconds: number; command: string };
     pacing: { window: number; minGapMs: number; ackTimeoutMs: number };
-    walk: { stepTimeoutMs: number; clearAfterSeconds: number; minExpPerHour: number };
+    walk: { stepTimeoutMs: number; clearAfterSeconds: number } & LoopChoices;
     /** The options file's answer is a plain yes or no: there is nothing above it. */
     hangUp: Omit<ProfileDraft['hangUp'], 'penalties'> & { penalties: boolean };
     retreat: ProfileDraft['retreat'];
@@ -296,22 +325,26 @@ export interface GlobalDraft {
       autoChooseBlessings: boolean;
       invokeItems: boolean;
       invokeWith: string[];
-    };
+    } & SpellWeights;
     loot: ProfileDraft['loot'];
     drop: ProfileDraft['drop'];
     outgrown: ProfileDraft['outgrown'];
     search: ProfileDraft['search'];
     banking: ProfileDraft['banking'];
+    supplies: ProfileDraft['supplies'];
     remotes: ProfileDraft['remotes'];
     afk: ProfileDraft['afk'];
     talk: ProfileDraft['talk'];
     statline: ProfileDraft['statline'];
+    asks: ProfileDraft['asks'];
     aliases: ProfileDraft['aliases'];
   };
   /** The loops every character may walk: `global/loops/`. */
   loops: Loop[];
   /** `keys:`, MegaMUD's macros, as the file writes them. See `shared/keys.ts`. */
   keys: StatedPair[];
+  /** `extensions:`, each installed extension on or off by name; absent is on. */
+  extensions: ExtensionSwitches;
 }
 
 /** One vital's two thresholds, as fractions of maximum. */
@@ -380,8 +413,12 @@ export interface ProfileDraft {
    * for, this one puts back the one somebody had. See `Profile.autoReconnect`.
    */
   autoReconnect: boolean;
+  /** Answer the login menus; on unless the file's `login.enabled` says no. */
+  autoLogin: boolean;
   /** Ask before logging in at this many lives left or fewer. See `Profile.lowLives`. */
   lowLives: number;
+  /** Failed dials in a row before reconnecting stops; 0 never. See `Profile.reconnectTries`. */
+  reconnectTries: number;
   accent: ProfileAccent;
   /**
    * This character's own theme, or '' to follow the options file.
@@ -412,6 +449,9 @@ export interface ProfileDraft {
     /** This character's own answer; null leaves it to the realm, then the options file. */
     penalties: boolean | null;
     onPlayerInRoom: boolean;
+    whenNaked: boolean;
+    nakedMargin: number;
+    afterRunSeconds: number;
   };
   /** Running away — the escape that works, and the one to offer first. */
   retreat: {
@@ -456,7 +496,7 @@ export interface ProfileDraft {
     maxTargetHealth: number;
     minMobs: number;
     maxMonsterExperience: number;
-  };
+  } & CombatChoices;
   /**
    * The three blocks a rule cannot hold, in MegaMUD's own tabs.
    *
@@ -472,6 +512,7 @@ export interface ProfileDraft {
     restTo: number;
     /** Rest next door to a lair rather than in it. See `HealthConfig`. */
     restNextDoor: boolean;
+    restNextDoorMinutes: number;
     restBeforeTraps: number;
     restBelowMana: number;
     restToMana: number;
@@ -516,7 +557,7 @@ export interface ProfileDraft {
     keepOutOf: string[];
     /** Bend down for a key an exit here needs. See `MovementConfig`. */
     collectKeys: boolean;
-  };
+  } & MovementChoices;
   /**
    * Going hunting on its own — `automation.hunting`. See
    * `HuntingAutomationConfig`.
@@ -525,7 +566,7 @@ export interface ProfileDraft {
   /** Spending character points on the stat screen — `automation.train`. See `TrainConfig`. */
   train: TrainConfig;
   /** Running a quest's plan — `automation.quests`. See `QuestsConfig`. */
-  quests: { enabled: boolean };
+  quests: QuestsConfig;
   /** Which kit to be in, and when — `automation.gear`. See `GearConfig`. */
   gear: GearConfig;
   /*
@@ -552,11 +593,13 @@ export interface ProfileDraft {
     convertAt: EncumbranceGate;
   };
   /** What to put back down — `automation.drop`. See `DropConfig`. */
-  drop: { enabled: boolean; items: string[]; whenEncumbered: boolean; worthless: boolean };
+  drop: DropConfig;
   /** Getting rid of outgrown gear — `automation.outgrown`. See `OutgrownConfig`. */
-  outgrown: { enabled: boolean; ganghouseRoom: string };
+  outgrown: OutgrownConfig;
   /** Looking for what a room did not print — `automation.search`. See `SearchConfig`. */
-  search: { enabled: boolean; tries: number };
+  search: SearchConfig;
+  /** Keeping the pack stocked — `automation.supplies`. See `SuppliesConfig`. */
+  supplies: SuppliesConfig;
   /** Banking the purse — `automation.banking`. See `BankingConfig`. */
   banking: {
     autoDeposit: boolean;
@@ -625,7 +668,7 @@ export interface ProfileDraft {
     invokeItems: boolean;
     /** The items the switch above may use. See `SpellsConfig`. */
     invokeWith: string[];
-  };
+  } & SpellWeights;
   /**
    * Which alerts this character raises — `ui.alerts`, not `automation.*`.
    *
@@ -657,6 +700,8 @@ export interface ProfileDraft {
   talk: TalkDraft;
   /** `automation.statline` — whether the client sets the prompt's shape. */
   statline: StatlineDraft;
+  /** What the client asks the realm on its own (`automation.asks`). See `AsksConfig`. */
+  asks: AsksConfig;
   /**
    * `automation.aliases` as the file writes them, refused entries included so
    * a save keeps them. A character's are its own, added to Global's.
@@ -703,6 +748,10 @@ export interface RemotesDraft {
   party: RemoteName[];
   /** Per-player grants, carried through untouched. See above. */
   players: Record<string, RemoteGrant>;
+  /** The most items one `@get-all` or `@drop-all` takes. See `RemotesConfig`. */
+  maxGets: number;
+  /** Let `@kill`, `@hangup`, `@relog` and `@panic!` through to a grant. See `RemotesConfig`. */
+  allowKillAndHangup: boolean;
 }
 
 /** The `automation.remotes` block as the forms draft it, from whatever the window sent. */
@@ -713,7 +762,14 @@ function remotesDraft(remotes: Record<string, unknown>): RemotesDraft {
     autoJoin: remotes['autoJoin'] === true,
     gang: remoteNames(remotes['gang']),
     party: remoteNames(remotes['party']),
-    players: playerGrants(remotes['players'])
+    players: playerGrants(remotes['players']),
+    maxGets: clamp(
+      remotes['maxGets'],
+      ...REMOTES_RANGES.maxGets,
+      DEFAULT_CONFIG.automation.remotes.maxGets
+    ),
+    // Off unless the window says on: missing is the shipped answer, off.
+    allowKillAndHangup: remotes['allowKillAndHangup'] === true
   };
 }
 
@@ -869,7 +925,9 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     autoConnect: value['autoConnect'] === true,
     // `!== false`: on unless it was turned off. See the field.
     autoReconnect: value['autoReconnect'] !== false,
+    autoLogin: value['autoLogin'] !== false,
     lowLives: asLowLives(value['lowLives']),
+    reconnectTries: asReconnectTries(value['reconnectTries']),
     accent: PROFILE_ACCENTS.includes(accent as ProfileAccent)
       ? (accent as ProfileAccent)
       : PROFILE_ACCENTS[0],
@@ -883,7 +941,15 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       // would lose everything else on the form.
       belowHealth: Math.min(1, Math.max(0, Number(hangUp['belowHealth']) || 0)),
       penalties: typeof hangUp['penalties'] === 'boolean' ? hangUp['penalties'] : null,
-      onPlayerInRoom: hangUp['onPlayerInRoom'] === true
+      onPlayerInRoom: hangUp['onPlayerInRoom'] === true,
+      // On unless turned off, as shipped: it always ran.
+      whenNaked: hangUp['whenNaked'] !== false,
+      nakedMargin: fraction(hangUp['nakedMargin'], DEFAULT_SAFETY.hangUp.nakedMargin),
+      afterRunSeconds: int(
+        hangUp['afterRunSeconds'],
+        DEFAULT_SAFETY.hangUp.afterRunSeconds,
+        ...HANG_UP_RANGES.afterRunSeconds
+      )
     },
     retreat: {
       enabled: retreat['enabled'] === true,
@@ -928,7 +994,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       mobRules: normalizeMobRules(combat['mobRules']),
       maxTargetHealth: Math.max(0, Math.round(Number(combat['maxTargetHealth']) || 0)),
       minMobs: Math.max(0, Math.min(99, Math.round(Number(combat['minMobs']) || 0))),
-      maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0))
+      maxMonsterExperience: Math.max(0, Math.round(Number(combat['maxMonsterExperience']) || 0)),
+      ...combatChoices(combat)
     },
     /*
      * Every threshold is a fraction and every one is clamped here as well as in
@@ -975,7 +1042,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
         ...PARTY_RANGES.regroupMinutes,
         DEFAULT_CONFIG.automation.party.regroupMinutes
       ),
-      helpWithDoors: party['helpWithDoors'] === true
+      helpWithDoors: party['helpWithDoors'] === true,
+      parAtLoss: unit(party['parAtLoss'], DEFAULT_CONFIG.automation.party.parAtLoss)
     },
     health: {
       /*
@@ -991,6 +1059,7 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       restTo: unit(health['restTo'], DEFAULT_CONFIG.automation.health.restTo),
       // On unless said off: a blank field must not sit a character down in a lair.
       restNextDoor: health['restNextDoor'] !== false,
+      restNextDoorMinutes: restNextDoorMinutesOf(health['restNextDoorMinutes']),
       restBeforeTraps: unit(
         health['restBeforeTraps'],
         DEFAULT_CONFIG.automation.health.restBeforeTraps
@@ -1091,7 +1160,9 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       collectKeys:
         movement['collectKeys'] === undefined
           ? DEFAULT_CONFIG.automation.movement.collectKeys
-          : movement['collectKeys'] === true
+          : movement['collectKeys'] === true,
+      // Todo 118's figures, read as the file reads them: a missing one is the shipped figure.
+      ...movementChoices(movement)
     },
     hunting: normalizeHuntingAutomation(value['hunting']),
     // The options file's own reading: a figure is a whole number, 0 to 999.
@@ -1133,18 +1204,25 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       enabled: drop['enabled'] === true,
       items: words(drop['items'], 32),
       whenEncumbered: drop['whenEncumbered'] === true,
-      worthless: drop['worthless'] === true
+      worthless: drop['worthless'] === true,
+      // On unless said off, as shipped: a form that dropped it must not throw a quest item away.
+      keepQuestItems:
+        typeof drop['keepQuestItems'] === 'boolean'
+          ? drop['keepQuestItems']
+          : DEFAULT_DROP.keepQuestItems
     },
     outgrown: {
       enabled: outgrown['enabled'] === true,
-      ganghouseRoom: text(outgrown['ganghouseRoom']).slice(0, 80)
+      ganghouseRoom: text(outgrown['ganghouseRoom']).slice(0, 80),
+      ...outgrownChoices(outgrown)
     },
     search: {
       enabled: search['enabled'] === true,
       // Floored at one for the reason `normalizeSearch` states: `enabled` is
       // what turns it off, and "on, zero searches" is a switch somebody flips
       // and then waits to see work.
-      tries: clamp(search['tries'], 1, 5, 1)
+      tries: clamp(search['tries'], 1, 5, 1),
+      ...areaBounds(search)
     },
     banking: {
       autoDeposit: banking['autoDeposit'] === true,
@@ -1158,6 +1236,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       ),
       bank: Math.max(0, Math.min(1_000_000, Math.round(Number(banking['bank']) || 0)))
     },
+    // The options file's own reading, nameless rows dropped as a potion's are.
+    supplies: normalizeSupplies(value['supplies']),
     /*
      * Parsed by the same function the options file goes through, so a loop
      * chosen on the screen and a loop typed into YAML cannot mean different
@@ -1206,7 +1286,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
       autoBless: spells['autoBless'] !== false,
       autoChooseBlessings: spells['autoChooseBlessings'] === true,
       invokeItems: spells['invokeItems'] === true,
-      invokeWith: words(spells['invokeWith'], 32)
+      invokeWith: words(spells['invokeWith'], 32),
+      ...spellWeights(spells)
     },
     alerts: {
       /*
@@ -1255,6 +1336,8 @@ export function asProfileDraft(value: unknown): ProfileDraft | null {
     remotes: remotesDraft(remotes),
     talk: { lookAtPlayers: isRecord(value['talk']) && value['talk']['lookAtPlayers'] === true },
     statline: { control: isRecord(value['statline']) && value['statline']['control'] === true },
+    // Read as the file reads it: a missing figure is the shipped one, never 0.
+    asks: normalizeAsks(value['asks']),
     aliases: asStatedPairs(value['aliases']),
     rewrites: normalizeRewrites(value['rewrites'])
   };
@@ -1377,8 +1460,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       walk: {
         stepTimeoutMs: clamp(walk['stepTimeoutMs'], 200, 60_000, 4000),
         clearAfterSeconds: clamp(walk['clearAfterSeconds'], 0, 3600, 20),
-        // Zero is off, so a missing or unreadable figure is the off one.
-        minExpPerHour: clamp(walk['minExpPerHour'], 0, 100_000_000, 0)
+        ...loopChoices(walk)
       },
       hangUp: { ...asIf.hangUp, penalties: asIf.hangUp.penalties === true },
       retreat: asIf.retreat,
@@ -1421,7 +1503,8 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
         autoBless: spells['autoBless'] !== false,
         autoChooseBlessings: spells['autoChooseBlessings'] === true,
         invokeItems: spells['invokeItems'] === true,
-        invokeWith: words(spells['invokeWith'], 32)
+        invokeWith: words(spells['invokeWith'], 32),
+        ...spellWeights(spells)
       },
       // Read by the function that already knows how, like the blocks above.
       loot: asIf.loot,
@@ -1429,6 +1512,7 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       outgrown: asIf.outgrown,
       search: asIf.search,
       banking: asIf.banking,
+      supplies: asIf.supplies,
       remotes: remotesDraft(remotes),
       talk: {
         lookAtPlayers: isRecord(automation['talk']) && automation['talk']['lookAtPlayers'] === true
@@ -1436,10 +1520,12 @@ export function asGlobalDraft(value: unknown): GlobalDraft | null {
       statline: {
         control: isRecord(automation['statline']) && automation['statline']['control'] === true
       },
+      asks: normalizeAsks(automation['asks']),
       aliases: asStatedPairs(automation['aliases'])
     },
     loops: asLoops(value['loops'], LOOP_LIMITS),
-    keys: asStatedPairs(value['keys'])
+    keys: asStatedPairs(value['keys']),
+    extensions: normalizeExtensionSwitches(value['extensions'])
   };
 }
 
@@ -1453,11 +1539,6 @@ function clamp(value: unknown, low: number, high: number, fallback: number): num
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(high, Math.max(low, Math.trunc(number)));
-}
-
-/** One of a closed set, or the default. A guess is never passed through. */
-function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
-  return allowed.includes(value as T) ? (value as T) : fallback;
 }
 
 /** One command word. A field somebody typed a sentence into is not one. */

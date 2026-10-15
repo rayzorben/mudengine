@@ -14,7 +14,9 @@
  * needs a canvas to observe is a decision nothing can test.
  */
 
-import { SGR_RESET } from '@shared/template';
+import type { NoticeDecision } from '@shared/ipc';
+import { stampOf } from '@shared/stamps';
+import { GLYPH_CELLS, SGR_RESET } from '@shared/template';
 
 /** The gutter bar and the ink, in one place so a notice cannot be drawn twice. */
 const CYAN = '\x1b[36m';
@@ -43,6 +45,24 @@ const BAR = '│';
 export function noticeSequence(message: string, atLineStart: boolean): string {
   const lead = atLineStart ? '' : '\r\n';
   return `${lead}${noticeRows(message, Infinity).join('')}\r\n`;
+}
+
+/**
+ * A notice about a decision the client made (todo 119): the row's stamp
+ * naming it first, which takes no cell and from which the console hangs the
+ * gear and the time, and the text cut short of the gear's two cells so no
+ * word of it is under the gear. Written only into the text, never into a
+ * screen the server is drawing, so no gear is left on a row a lift erases.
+ */
+export function decidedSequence(
+  message: string,
+  atLineStart: boolean,
+  decision: NoticeDecision,
+  columns: number
+): string {
+  const lead = atLineStart ? '' : '\r\n';
+  const rows = noticeRows(message, columns - GLYPH_CELLS).join('\r\n');
+  return `${lead}${stampOf(decision.at, decision.kind)}${rows}\r\n`;
 }
 
 /**

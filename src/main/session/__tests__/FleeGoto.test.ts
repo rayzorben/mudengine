@@ -101,14 +101,19 @@ describe('FleeGoto', () => {
     const { flee, tracker, sent, travel, notice } = rig();
     flee.consider(tracker.current);
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ command: 'sys go 1 297', priority: 'emergency' });
+    expect(sent[0]).toMatchObject({
+      command: 'sys go 1 297',
+      priority: 'emergency',
+      decision: 'teleport'
+    });
     // Broken off as the walked escape breaks it off.
     expect(travel.teleportSent).toHaveBeenCalledWith(Date.now());
     expect(notice).toHaveBeenCalledWith(
       t('session.safety.teleporting', {
         command: 'sys go 1 297',
         why: t('session.safety.whyHealth', { percent: '15%' })
-      })
+      }),
+      'teleport'
     );
     // Once: the next status line does not send it again while it is unanswered.
     flee.consider(tracker.current);
@@ -172,7 +177,8 @@ describe('FleeGoto', () => {
       t('session.safety.teleportNot', {
         why: t('session.safety.whyHealth', { percent: '15%' }),
         refused: travel.staying
-      })
+      }),
+      'teleport'
     );
   });
 
@@ -250,7 +256,8 @@ describe('FleeGoto', () => {
       t('session.safety.teleportRefused', {
         command: 'sys go 1 297',
         answer: 'Your command had no effect.'
-      })
+      }),
+      'teleport'
     );
     expect(noteSafety).toHaveBeenLastCalledWith(
       expect.objectContaining({ acted: false, refused: 'Your command had no effect.' })
@@ -264,7 +271,8 @@ describe('FleeGoto', () => {
       t('session.safety.teleportNot', {
         why: t('session.safety.whyHealth', { percent: '15%' }),
         refused: t('session.safety.teleportRefusedBefore', { command: 'sys go 1 297' })
-      })
+      }),
+      'teleport'
     );
     // Positive control: a reconnect forgets it, and it is tried again.
     flee.reset();
@@ -278,7 +286,8 @@ describe('FleeGoto', () => {
     killed.leave();
     killed.answer('user-dies', 'You die.');
     expect(killed.notice).toHaveBeenLastCalledWith(
-      t('session.safety.teleportDropped', { command: 'sys go 1 297' })
+      t('session.safety.teleportDropped', { command: 'sys go 1 297' }),
+      'teleport'
     );
 
     const silent = rig();
@@ -294,7 +303,8 @@ describe('FleeGoto', () => {
       t('session.safety.teleportGaveUp', {
         command: 'sys go 1 297',
         seconds: Math.round(tuning().session.retreatPatienceMs / 1000)
-      })
+      }),
+      'teleport'
     );
   });
 
@@ -325,7 +335,8 @@ describe('FleeGoto', () => {
       t('session.safety.teleportRefused', {
         command: 'sys go 1 297',
         answer: 'Map and/or Room not found'
-      })
+      }),
+      'teleport'
     );
     expect(noteSafety).toHaveBeenLastCalledWith(
       expect.objectContaining({ acted: false, refused: 'Map and/or Room not found' })
@@ -337,7 +348,8 @@ describe('FleeGoto', () => {
       t('session.safety.teleportNot', {
         why: t('session.safety.whyHealth', { percent: '15%' }),
         refused: t('session.safety.teleportRefusedBefore', { command: 'sys go 1 297' })
-      })
+      }),
+      'teleport'
     );
     // Positive control: a reconnect forgets it.
     flee.reset();
@@ -388,7 +400,8 @@ describe('FleeGoto', () => {
     flee.consider(tracker.current);
     flee.reset();
     expect(notice).toHaveBeenLastCalledWith(
-      t('session.safety.teleportDropped', { command: 'sys go 1 297' })
+      t('session.safety.teleportDropped', { command: 'sys go 1 297' }),
+      'teleport'
     );
   });
 
@@ -403,7 +416,8 @@ describe('FleeGoto', () => {
       t('session.safety.teleportNot', {
         why: t('session.safety.whyHealth', { percent: '15%' }),
         refused: t('session.safety.teleportUnstated')
-      })
+      }),
+      'teleport'
     );
     // Positive control: a command stated, it goes.
     reconfigure(settings());

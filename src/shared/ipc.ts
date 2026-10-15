@@ -25,6 +25,7 @@ import type { Find } from './finds';
 import type { Shelf } from './shops';
 import type { CharacterIdentity, ResetSignal } from './reset';
 import type { CharacterState } from './character';
+import type { DecisionKind } from './decisionSettings';
 import type { PlayerRegistry } from './players';
 import type { DebugRecord } from './debug';
 import type { UnreadLine } from './unread';
@@ -47,37 +48,38 @@ import type { NearPlace, PlaceKind } from './places';
 import type { CashRunAsk, CashRunToken } from './cashRun';
 import type { SupplyCounters } from './supplies';
 import type { HuntingAdvice } from './hunting';
-import type {
-  AlertsUiConfig,
-  AutomationSwitch,
-  AutomationSwitches,
-  CombatConfig,
-  ConfigSnapshot,
-  HealthConfig,
-  MovementConfig,
-  LootConfig,
-  DropConfig,
-  OutgrownConfig,
-  SearchConfig,
-  BankingConfig,
-  HuntingAutomationConfig,
-  GearConfig,
-  QuestsConfig,
-  TrainConfig,
-  RemotesConfig,
-  StatlineConfig,
-  RewritesUiConfig,
-  TalkConfig,
-  AfkConfig,
-  Server,
-  SpellsConfig,
-  RetreatStrategy,
-  PartyConfig,
-  PotionWhen,
-  PvpAction,
-  SuppliesConfig,
-  SupplyItem
+import {
+  type AlertsUiConfig,
+  type AutomationSwitch,
+  type AutomationSwitches,
+  type CombatConfig,
+  type ConfigSnapshot,
+  type HealthConfig,
+  type MovementConfig,
+  type LootConfig,
+  type SearchConfig,
+  type BankingConfig,
+  type HuntingAutomationConfig,
+  type GearConfig,
+  type QuestsConfig,
+  type TrainConfig,
+  type RemotesConfig,
+  type StatlineConfig,
+  type RewritesUiConfig,
+  type TalkConfig,
+  type AfkConfig,
+  type Server,
+  type SpellsConfig,
+  type PartyConfig,
+  type PotionWhen
 } from './config';
+import {
+  type DropConfig,
+  type OutgrownConfig,
+  type SuppliesConfig,
+  type SupplyItem
+} from './packConfig';
+import type { RetreatStrategy, PvpAction } from './safety';
 import type { GlobalDraft, LoginStepDraft, ProfileDraft, ServerDraft } from './drafts';
 import type { RemoteGrant, RemoteName } from './remotes';
 import type { CureGates, SpellServes, SpellTargeting } from './spellcraft';
@@ -242,6 +244,17 @@ export interface HomeListing {
 export interface Notice {
   session: SessionId | null;
   message: string;
+  /**
+   * The decision the line is about, where the client made one on its own, and
+   * when: the console hangs a gear off the line that opens the settings behind
+   * it (todo 119). Absent on every other notice.
+   */
+  decision?: NoticeDecision;
+}
+
+export interface NoticeDecision {
+  kind: DecisionKind;
+  at: number;
 }
 
 /**
@@ -451,8 +464,12 @@ export interface ProfileEditable {
   autoConnect: boolean;
   /** Dial it again when a connection is *lost*. On unless the file says no. */
   autoReconnect: boolean;
+  /** Answer the login menus. On unless the file's `login.enabled` says no. */
+  autoLogin: boolean;
   /** Ask before logging in at this many lives left or fewer. See `Profile.lowLives`. */
   lowLives: number;
+  /** Failed dials in a row before reconnecting stops; 0 never. See `Profile.reconnectTries`. */
+  reconnectTries: number;
   /** The name it refers to, or null when it spells the address out inline. */
   serverName: string | null;
   target: ConnectionTarget;
@@ -477,12 +494,7 @@ export interface ProfileEditable {
   /** This character's own locate word, from the file as written; null where it follows its realm. */
   locate: LocateWord | null;
   /** Resolved, so inherited values show; `penalties` alone is this character's own, null where it inherits. */
-  hangUp: {
-    enabled: boolean;
-    belowHealth: number;
-    penalties: boolean | null;
-    onPlayerInRoom: boolean;
-  };
+  hangUp: ProfileDraft['hangUp'];
   retreat: {
     enabled: boolean;
     belowHealth: number;
@@ -528,6 +540,7 @@ export interface ProfileEditable {
   outgrown: OutgrownConfig;
   search: SearchConfig;
   banking: BankingConfig;
+  supplies: SuppliesConfig;
   /**
    * Whether this character answers another player's `@` commands. Resolved.
    *
@@ -542,6 +555,8 @@ export interface ProfileEditable {
   talk: TalkConfig;
   /** Whether the client sets the prompt's shape on the way in. Resolved, like the rest. */
   statline: StatlineConfig;
+  /** What the client asks the realm on its own. Resolved, like the rest. */
+  asks: ProfileDraft['asks'];
   /** Its own `automation.aliases`, as written; Global's are added to them, not shown here. */
   aliases: StatedPair[];
   /** The status line and listings this player designed for this character. Resolved, like the rest. */

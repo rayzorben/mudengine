@@ -76,7 +76,19 @@ export interface RoomAsked {
    * pinned float cannot plan on somebody else's realm, and a control bound to
    * nowhere is worse than none.
    */
-  act: { label: string; hint: string; run(): void } | null;
+  act: RoomAct | null;
+  /**
+   * A second, unfilled action beside `act`: a route list's *run here*, the
+   * same prefix walked with auto-combat off. Null everywhere else.
+   */
+  also: RoomAct | null;
+}
+
+/** One action on the panel, and what it is called. */
+export interface RoomAct {
+  label: string;
+  hint: string;
+  run(): void;
 }
 
 export interface RoomQuickViewProps {
@@ -188,6 +200,16 @@ export default function RoomQuickView({
          */}
         {asked.act !== null && (
           <div className="peek-actions">
+            {asked.also !== null && (
+              <button
+                onClick={asked.also.run}
+                onMouseDown={keepFocus}
+                title={asked.also.hint}
+                type="button"
+              >
+                {asked.also.label}
+              </button>
+            )}
             <button
               className="primary"
               onClick={asked.act.run}

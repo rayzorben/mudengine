@@ -13,8 +13,9 @@
 
 import type { Terminal } from '@xterm/xterm';
 
+import type { Notice, NoticeDecision } from '@shared/ipc';
 import { SGR_RESET } from '@shared/template';
-import { noticeRows, noticeSequence } from './console';
+import { decidedSequence, noticeRows, noticeSequence } from './console';
 
 /** The part of a terminal this reads and writes: the screen as parsed. */
 export interface NoticeSurface {
@@ -34,7 +35,7 @@ export interface ScreenNotices {
   /** Say that a notice is on its way through the writer. */
   expect(): void;
   /** Write a notice now: at the cursor, or under a drawn screen. */
-  notice(message: string): void;
+  notice(message: string, decision?: NoticeDecision): void;
   /** Whether server bytes must be bracketed by `lift` and `settle`. */
   readonly active: boolean;
   /** Before server bytes: take the notices off a drawn screen. */
@@ -76,9 +77,11 @@ export function drawnBelow(surface: NoticeSurface): number | null {
   return null;
 }
 
+type Held = Pick<Notice, 'message' | 'decision'>;
+
 export function screenNotices(surface: () => NoticeSurface): ScreenNotices {
   /** Raised while a screen was up and not yet in the text. */
-  let held: string[] = [];
+  let held: Held[] = [];
   /** Buffer lines the held notices are written on now, the first `shown` of them. */
   let placed: number[] = [];
   let shown = 0;
@@ -87,8 +90,12 @@ export function screenNotices(surface: () => NoticeSurface): ScreenNotices {
   /** Write the held notices into the text, in order: the screen is gone. */
   const intoText = (screen: NoticeSurface): void => {
     let atLineStart = screen.cursorX === 0;
-    for (const message of held) {
-      screen.write(noticeSequence(message, atLineStart));
+    for (const { message, decision } of held) {
+      screen.write(
+        decision === undefined
+          ? noticeSequence(message, atLineStart)
+          : decidedSequence(message, atLineStart, decision, screen.columns)
+      );
       atLineStart = true;
     }
     held = [];
@@ -102,7 +109,8 @@ export function screenNotices(surface: () => NoticeSurface): ScreenNotices {
   const place = (screen: NoticeSurface, from: number): void => {
     let y = from;
     let bytes = '';
-    for (const message of held.slice(shown)) {
+    // No gear while laid over a drawn screen: a lift erases the rows it is on.
+    for (const { message } of held.slice(shown)) {
       const rows = noticeRows(message, screen.columns);
       if (y + rows.length > screen.rows) break;
       for (const row of rows) {
@@ -140,8 +148,8 @@ export function screenNotices(surface: () => NoticeSurface): ScreenNotices {
    * They are not lifted and laid out again: the erase would not be parsed yet,
    * so the screen read for the layout would still show them.
    */
-  const add = (message: string): void => {
-    held.push(message);
+  const add = (notice: Held): void => {
+    held.push(notice);
     const last = placed.at(-1);
     if (last === undefined) {
       settle();
@@ -155,9 +163,9 @@ export function screenNotices(surface: () => NoticeSurface): ScreenNotices {
     expect: () => {
       coming += 1;
     },
-    notice: (message) => {
+    notice: (message, decision) => {
       coming = Math.max(0, coming - 1);
-      add(message);
+      add(decision === undefined ? { message } : { message, decision });
     },
     get active() {
       return coming > 0 || held.length > 0;

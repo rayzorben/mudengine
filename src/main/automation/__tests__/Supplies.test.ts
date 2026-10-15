@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
 import { personStop } from '../personStop';
 import { Supplies, type SupplyPlanner } from '../Supplies';
-import { DEFAULT_CONFIG, type AutomationConfig, type SuppliesConfig } from '../../../shared/config';
+import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
+import { DEFAULT_SUPPLIES, type SuppliesConfig } from '../../../shared/packConfig';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { wireItem } from '../../../shared/entities';
@@ -20,6 +22,7 @@ const automation: AutomationConfig = {
 };
 
 const TORCHES: SuppliesConfig = {
+  ...DEFAULT_SUPPLIES,
   enabled: true,
   items: [{ name: 'torch', min: 3, max: 5, shop: 'General Store', at: { map: 1, room: 2147 } }]
 };
@@ -82,6 +85,8 @@ function character(torches: number, over: Partial<CharacterState> = {}): Charact
 }
 
 let sent: string[];
+/** The decision each sent command was offered as, in send order. */
+let kinds: Array<DecisionKind | undefined>;
 let notices: string[];
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
@@ -89,9 +94,15 @@ let queue: CommandQueue;
 beforeEach(() => {
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   notices = [];
   decisions = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -271,6 +282,7 @@ describe('at the counter', () => {
     auto.onCharacter(listed(character(2)));
     drain();
     expect(sent).toEqual(['list', 'buy torch']);
+    expect(kinds).toEqual(['supplies-buy', 'supplies-buy']);
 
     auto.onBlock(block('user-buys', { item: 'torch', price: '400' }), character(3));
     drain();
@@ -705,10 +717,12 @@ describe('what the pack holds over the maximum', () => {
 
 describe('a row that names no shop', () => {
   const TORCH_ANYWHERE: SuppliesConfig = {
+    ...DEFAULT_SUPPLIES,
     enabled: true,
     items: [{ name: 'torch', min: 3, max: 5, shop: '', at: null }]
   };
   const KEYS: SuppliesConfig = {
+    ...DEFAULT_SUPPLIES,
     enabled: true,
     items: [{ name: 'black star key', min: 2, max: 2, shop: '', at: null }]
   };
@@ -830,7 +844,7 @@ describe('a row that names no shop', () => {
           ? { kind: 'counter', room: '1/2147', name: 'General Store', moves: passOver.size + 4 }
           : { kind: 'found' }
     });
-    const auto = make(p, { enabled: true, items: [...TORCH_ANYWHERE.items, ...KEYS.items] });
+    const auto = make(p, { ...TORCH_ANYWHERE, items: [...TORCH_ANYWHERE.items, ...KEYS.items] });
     expect(auto.counters()).toEqual({
       torch: { kind: 'counter', room: '1/2147', name: 'General Store', moves: 4 },
       'black star key': { kind: 'found' }
@@ -929,6 +943,19 @@ describe('a purse short of the price', () => {
     ]
   });
 
+  // The case below withdraws the shipped buffer over the same shortfall: the positive control.
+  it('withdraws exactly the shortfall with the supplies buffer at 0', () => {
+    const { planner: p, goTo } = planner({ priceAt: () => 500, cashFrom: () => [GODFREY] });
+    const auto = make(p, { ...TORCHES, cashBuffer: 0 });
+    auto.onCharacter(broke());
+    goTo('1/2170');
+    auto.onWalkEnded(true, null, broke());
+    drain();
+    auto.onCharacter(stated(broke(), 9_000_000));
+    drain();
+    expect(sent).toEqual(['bank', 'withdraw 1650']);
+  });
+
   it('goes to the bank the record says holds it, withdraws, and walks on to the counter', () => {
     const asked: number[] = [];
     const {
@@ -967,7 +994,7 @@ describe('a purse short of the price', () => {
 
     auto.onCharacter(stated(broke(), 9_000_000));
     drain();
-    expect(sent).toEqual(['bank', `withdraw ${1650 + TUNING.supplies.cashBuffer}`]);
+    expect(sent).toEqual(['bank', `withdraw ${1650 + TORCHES.cashBuffer}`]);
 
     auto.onBlock(block('user-withdraws', { amount: '2650' }), broke());
     expect(log.slice(-2)).toEqual(['route:1/2147', 'walk']);

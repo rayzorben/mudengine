@@ -85,7 +85,9 @@ describe('@disarm from the leader', () => {
   it('sends `disarm trap <dir>` and answers {ok} on the success line', () => {
     const here = state({ traps: 90 });
     hands.start('disarm', 'Vaelor', 'ne', here, answer);
-    expect(queued.map((intent) => intent.command)).toEqual(['disarm trap ne']);
+    expect(queued.map((intent) => [intent.command, intent.decision])).toEqual([
+      ['disarm trap ne', 'remote-barrier']
+    ]);
     sendLast();
     hands.onBlock(block('trap-disarmed', { direction: 'northeast' }), here);
     expect(answers).toEqual(['{ok}']);

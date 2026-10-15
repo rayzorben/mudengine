@@ -4,7 +4,6 @@
  * resistances, slot and armour. Out of `Errands` so the session wires one
  * call; the choice is `shared/placeGear.ts`.
  */
-import { tuning } from '../app/tuning';
 import type { PlaceGearSources } from '../automation/PlaceGear';
 import { exposureAt } from '../../shared/placeGear';
 import type { WorldGraph } from '../world/WorldGraph';
@@ -38,7 +37,6 @@ export function placeReads(
         abilities: row.abilities,
         armour: row.armour === undefined ? null : { ac: row.armour.ac ?? 0, dr: row.armour.dr ?? 0 }
       };
-    },
-    minSaved: () => tuning().placeGear.minSaved
+    }
   };
 }

@@ -35,6 +35,7 @@ import {
 } from '../../shared/spellcraft';
 import type { WorldSpell } from '../../shared/world';
 import type { SessionModule } from './Module';
+import type { NoticeSink } from '../../shared/decisionSettings';
 
 /** The listing's letter for a poisoned member, on GreaterMUD. */
 const POISONED_FLAG = 'P';
@@ -45,7 +46,7 @@ export interface PartyCureParts {
   /** The family the server's own lines told; null until they have. */
   family: () => RealmFamily | null;
   gate?: CastGate;
-  notice?(message: string): void;
+  notice?: NoticeSink;
   now?: () => number;
 }
 
@@ -109,6 +110,7 @@ export class PartyCures implements SessionModule {
         command: bare ? found.word : `${found.word} ${member.name}`,
         priority: 'combat',
         coalesceKey: `party-cure:${key}`,
+        decision: 'cure-party',
         expiresAt: at + tuning().spells.cureExpiresMs,
         reason: t('automation.cure.partyReason', { member: member.name }),
         ...gatedCast(this.gate, found.configured, () => {
@@ -132,7 +134,7 @@ export class PartyCures implements SessionModule {
     const best = cheapestCure(book, this.parts.realmSpell, 'poison', castsOnOthers);
     if (best === null && !this.saidNone) {
       this.saidNone = true;
-      this.parts.notice?.(t('automation.cure.partyNone'));
+      this.parts.notice?.(t('automation.cure.partyNone'), 'cure-party');
     }
     return best;
   }

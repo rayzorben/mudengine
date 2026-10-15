@@ -8,6 +8,7 @@ import type { WeaponReach } from '../../../shared/reach';
 import type { FledEntry } from '../../../shared/fled';
 import type { Survival } from '../../../shared/survival';
 import type { EngageDecision } from '../../../shared/automation';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 import { CommandQueue } from '../CommandQueue';
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -136,7 +137,11 @@ function block(type: string, groups: Record<string, string> = {}): Block {
 }
 
 let sent: string[];
+/** The decision each sent command carries, for the gear on its echo (todo 119). */
+let kinds: Array<DecisionKind | undefined>;
 let notices: string[];
+/** The decision each notice carries, by its sentence. */
+let noticeKinds: Map<string, DecisionKind | undefined>;
 let decisions: EngageDecision[];
 let queue: CommandQueue;
 /** On the ground, as `Grounded.down` answers it (todo 760). */
@@ -149,9 +154,16 @@ beforeEach(() => {
   down = false;
   speed = 1;
   sent = [];
+  kinds = [];
   notices = [];
+  noticeKinds = new Map();
   decisions = [];
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -178,7 +190,10 @@ function make(
     enabled,
     queue,
     {
-      notice: (m) => notices.push(m),
+      notice: (m, kind) => {
+        notices.push(m);
+        noticeKinds.set(m, kind);
+      },
       decided: (decision) => decisions.push(decision),
       ...(canHide === undefined ? {} : { canHide }),
       onTheGround: () => down,
@@ -382,10 +397,9 @@ describe('opening a fight', () => {
     expect(sent).toEqual(['a giant rat']);
   });
 
-  /* And there is no longer any way to ask for it: `prefer` was the one door
-     through this refusal and it went with the list (todo 00). Spending a
-     character's standing stays a decision the client never makes. */
-  it('refuses a certainly costly one at every setting', () => {
+  /* `prefer` was the one door through this refusal and it went with the list
+     (todo 00); `attackCostly` is the player's own switch for it (todo 118). */
+  it('refuses a certainly costly one at every engage setting', () => {
     const auto = make(combat({ engage: 'all' }));
     auto.onCharacter(
       state({
@@ -397,6 +411,27 @@ describe('opening a fight', () => {
     );
     drain();
     expect(sent).toEqual([]);
+  });
+
+  it('attacks a certainly costly one when the player says to spend the alignment', () => {
+    const room = state({
+      room: {
+        ...EMPTY_CHARACTER.room,
+        occupants: [mob('village dog', 'passive', { costly: 'always' })]
+      }
+    });
+    const refusing = make(combat({ engage: 'all' }));
+    refusing.onCharacter(room);
+    drain();
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      `village dog — ${t('automation.combat.refusedCostly', { target: 'village dog' })}`
+    ]);
+
+    const spending = make(combat({ engage: 'all', attackCostly: true }));
+    spending.onCharacter(room);
+    drain();
+    expect(sent).toEqual(['a village dog']);
   });
 
   it('attacks everything when asked to', () => {
@@ -857,6 +892,7 @@ describe('hitting back', () => {
     );
     drain();
     expect(sent).toEqual(['a wererat shaman']);
+    expect(kinds).toEqual(['hit-back-pick']);
   });
 
   it('says nothing back once this character has a target of its own', () => {
@@ -997,6 +1033,7 @@ describe('what to swing with', () => {
     auto.onCharacter(state({ room }));
     drain();
     expect(sent).toEqual(['bs giant rat']);
+    expect(kinds).toEqual(['opener']);
 
     // The fight ends, and another starts with something else in the room.
     auto.onCharacter(state({ room, inCombat: true }));
@@ -1019,9 +1056,13 @@ describe('what to swing with', () => {
     auto.onCharacter(state({ room, stealth: 'seen' }));
     drain();
     expect(sent).toEqual(['a giant rat']);
+    expect(kinds).toEqual(['attack-target']);
     expect(
       notices.filter((n) => n === t('automation.combat.openerNeedsStealth', { verb: 'bs' }))
     ).toHaveLength(1);
+    expect(noticeKinds.get(t('automation.combat.openerNeedsStealth', { verb: 'bs' }))).toBe(
+      'opener'
+    );
   });
 
   /*
@@ -1120,6 +1161,7 @@ describe('what to swing with', () => {
     // A bare Enter, not `l`: the same block, without telling everybody in the
     // room that this character is looking around. See `REREAD_ROOM`.
     expect(sent).toEqual(['', '']);
+    expect(kinds).toEqual(['room-refresh', 'room-refresh']);
   });
 
   /*
@@ -1344,6 +1386,9 @@ describe('a verb the realm refuses', () => {
     expect(
       notices.filter((n) => n === t('automation.combat.verbRefused', { verb: 'bash' }))
     ).toHaveLength(1);
+    expect(noticeKinds.get(t('automation.combat.verbRefused', { verb: 'bash' }))).toBe(
+      'attack-verb'
+    );
   });
 
   /* orohost, logs/2026-10-05_14-39-59_main:722: a Mage set to `kic` was beaten from 38 to 7 health by a thug, refused each time. */
@@ -1397,6 +1442,7 @@ describe('a verb the realm refuses', () => {
     auto.onBlock(block('attack-refused', { skill: 'punching' }));
     drain();
     expect(sent).toEqual(['ju giant rat', 'pu giant rat', 'a giant rat']);
+    expect(kinds).toEqual(['opener-chosen', 'attack-target', 'attack-target']);
     expect(notices).toEqual([t('automation.combat.attackStandsIn', { verb: 'punch', plain: 'a' })]);
   });
 
@@ -1749,6 +1795,7 @@ describe('casting in a fight', () => {
     vi.advanceTimersByTime(200);
     drain();
     expect(sent).toEqual(['fjet mutant']);
+    expect(kinds).toEqual(['auto-choose-spell']);
     expect(notices.filter((n) => choseFireJet.test(n))).toHaveLength(1);
     // Said once: the next round repeats the choice and not the sentence.
     auto.onBlock(block('user-hits'));
@@ -1887,6 +1934,11 @@ describe('casting in a fight', () => {
       notifyPartyOnWearOff: false,
       autoBless: true,
       autoChooseBlessings: false,
+      killConfidence: 0.9,
+      healUrgency: 2,
+      blessMinGain: 0.02,
+      blessHealReserve: 2,
+      blessSwapCommandsPerHour: 120,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -1946,6 +1998,11 @@ describe('casting in a fight', () => {
       notifyPartyOnWearOff: false,
       autoBless: true,
       autoChooseBlessings: false,
+      killConfidence: 0.9,
+      healUrgency: 2,
+      blessMinGain: 0.02,
+      blessHealReserve: 2,
+      blessSwapCommandsPerHour: 120,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -1986,6 +2043,11 @@ describe('casting in a fight', () => {
       notifyPartyOnWearOff: false,
       autoBless: true,
       autoChooseBlessings: false,
+      killConfidence: 0.9,
+      healUrgency: 2,
+      blessMinGain: 0.02,
+      blessHealReserve: 2,
+      blessSwapCommandsPerHour: 120,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -2025,6 +2087,11 @@ describe('casting in a fight', () => {
       notifyPartyOnWearOff: false,
       autoBless: true,
       autoChooseBlessings: false,
+      killConfidence: 0.9,
+      healUrgency: 2,
+      blessMinGain: 0.02,
+      blessHealReserve: 2,
+      blessSwapCommandsPerHour: 120,
       autoChoose: false
     });
     auto.onCharacter(
@@ -2072,6 +2139,11 @@ describe('casting in a fight', () => {
       notifyPartyOnWearOff: false,
       autoBless: true,
       autoChooseBlessings: false,
+      killConfidence: 0.9,
+      healUrgency: 2,
+      blessMinGain: 0.02,
+      blessHealReserve: 2,
+      blessSwapCommandsPerHour: 120,
       autoChoose: false
     });
     auto.onCharacter(fighting());
@@ -2125,6 +2197,11 @@ describe('casting in a fight', () => {
       notifyPartyOnWearOff: false,
       autoBless: true,
       autoChooseBlessings: false,
+      killConfidence: 0.9,
+      healUrgency: 2,
+      blessMinGain: 0.02,
+      blessHealReserve: 2,
+      blessSwapCommandsPerHour: 120,
       autoChoose: false,
       ...over
     });
@@ -2508,6 +2585,7 @@ describe('an attack spell opens the fight', () => {
     repeat(auto);
     round();
     expect(sent).toEqual(['harm tall kobold thief', 'a tall kobold thief']);
+    expect(kinds).toEqual(['spell-opener', 'round-change']);
   });
 
   it('opens with the class opener, and the round changes to the spell', () => {
@@ -2518,6 +2596,7 @@ describe('an attack spell opens the fight', () => {
     auto.onBlock(block('user-hits'));
     round();
     expect(sent).toEqual(['bs tall kobold thief', 'harm tall kobold thief']);
+    expect(kinds).toEqual(['opener', 'attack-spell']);
   });
 
   it('does not backstab a monster its row says not to', () => {
@@ -3436,6 +3515,7 @@ describe('fighting what the leader fights', () => {
     );
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['a giant rat']);
+    expect(kinds).toEqual(['assist-leader']);
   });
 
   it('does nothing when the leader’s target has left the room, or the sighting is stale', () => {
@@ -3579,6 +3659,7 @@ describe('defending the party', () => {
     );
     vi.advanceTimersByTime(500);
     expect(sent).toEqual(['a giant rat']);
+    expect(kinds).toEqual(['defend-party']);
   });
 
   it('does nothing when the attacker has left the room, or the sighting is stale', () => {
@@ -4414,6 +4495,37 @@ describe('opening a fight whatever the odds', () => {
     drain();
     expect(sent).toEqual(['aa stone golem']);
   });
+
+  it('reads the levels and the minutes from the combat settings', () => {
+    const golem: RoomOccupant = {
+      ...fighter('stone golem', 300, [bite(40, 110)], { disposition: 'passive' }),
+      disposition: 'passive'
+    };
+    const here = (level: number): CharacterState => ({
+      ...at(319),
+      progress: { ...EMPTY_CHARACTER.progress, level },
+      room: { ...at(319).room, occupants: [golem] }
+    });
+    const ranAt = Date.now() - 5 * 60_000;
+    const build = (over: Partial<CombatConfig>) =>
+      make(
+        combat({ attack: 'aa', engage: 'all', ...over }),
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        guard([{ name: 'stone golem', level: 27, at: ranAt }])
+      );
+    // Five levels wanted: two past is still left alone.
+    build({ fledLevels: 5 }).onCharacter(here(29));
+    drain();
+    expect(sent).toEqual([]);
+    // Forgotten after four minutes, and it was five minutes ago.
+    build({ fledLevels: 5, fledForgetMinutes: 4 }).onCharacter(here(29));
+    drain();
+    expect(sent).toEqual(['aa stone golem']);
+  });
 });
 
 /*
@@ -4556,7 +4668,9 @@ describe('draining when hurt', () => {
     expect(notices).not.toContain(starts);
     round(auto, fight(40));
     expect(sent).toEqual(['ma giant rat', 'aslt giant rat']);
+    expect(kinds).toEqual(['attack-spell', 'drain-standin']);
     expect(notices).toContain(starts);
+    expect(noticeKinds.get(starts)).toBe('drain-standin');
   });
 
   // Every change of spell restarts the round, so a drain lifting health just
@@ -4896,6 +5010,30 @@ describe('a weapon that cannot hurt the monster', () => {
     drain();
     expect(wielded).toEqual(['golden pike']);
     expect(sent).toEqual(['a stone golem']);
+  });
+
+  it('takes nothing from the pack with Swap Weapon When Immune off, and says why', () => {
+    const wielded: string[] = [];
+    const auto = make(
+      combat({ swapWeapons: false }),
+      true,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        reach: () => ({ kind: 'swap', weapon: 'golden pike' }),
+        wield: (_state, weapon) => wielded.push(weapon)
+      }
+    );
+    auto.onCharacter(holding('club'));
+    drain();
+    expect(wielded).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(refusals()).toEqual([
+      `stone golem — ${t('automation.combat.refusedCannotHurt', { target: 'stone golem' })}`
+    ]);
   });
 
   it('lets a set-up attack spell open on a monster the hand cannot hurt', () => {

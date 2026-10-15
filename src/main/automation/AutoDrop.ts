@@ -54,7 +54,8 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import type { SafetyDecision } from '../../shared/automation';
 import type { CharacterState } from '../../shared/character';
-import type { DropConfig } from '../../shared/config';
+import type { NoticeSink } from '../../shared/decisionSettings';
+import { type DropConfig } from '../../shared/packConfig';
 import { bareName } from '../../shared/items';
 import type { QuestKeep } from '../../shared/questKeep';
 import { nameAnswersTo } from '../../shared/world';
@@ -62,7 +63,7 @@ import { tuning } from '../app/tuning';
 import type { SessionModule } from './Module';
 
 export interface AutoDropEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** The trace: an item kept for a quest is a drop refused, and why. */
   decided?(decision: SafetyDecision): void;
 }
@@ -144,7 +145,7 @@ export class AutoDrop implements SessionModule {
         ? t('automation.drop.reasonJunk', { item: item.name })
         : t('automation.drop.reasonWorthless', { item: item.name });
       // Asked on every listing, so a quest finished while it is carried lets it go.
-      const quest = this.quests.wantedBy(item);
+      const quest = this.config.keepQuestItems ? this.quests.wantedBy(item) : null;
       if (quest !== null) {
         this.keep(carried, reason, t('automation.quests.stillNeeds', { quest, item: item.name }));
         continue;
@@ -156,7 +157,8 @@ export class AutoDrop implements SessionModule {
         // One key per item name: a listing repeating is one decision, not two.
         coalesceKey: `drop:${carried}`,
         expiresAt: Date.now() + tuning().drop.expiresMs,
-        reason
+        reason,
+        decision: named ? 'drop-junk' : 'drop-worthless'
       });
     }
   }
@@ -166,7 +168,7 @@ export class AutoDrop implements SessionModule {
     if (this.kept.has(carried)) return;
     this.kept.add(carried);
     const sentence = t('automation.drop.kept', { why });
-    this.events.notice?.(sentence);
+    this.events.notice?.(sentence, 'drop-quest-keep');
     this.events.decided?.({
       at: this.now(),
       action: 'drop',

@@ -13,6 +13,8 @@ import { domainOf, type Block, type BlockType } from '../../../shared/blocks';
 import { EMPTY_CHARACTER, type CharacterState } from '../../../shared/character';
 import type { SafetyDecision } from '../../../shared/automation';
 import { t } from '../../app/i18n';
+import { noticeLog, type NoticeLog } from './noticeLog';
+import { recordOffers, type Offered } from './offered';
 import { tuning } from '../../app/tuning';
 
 const automation: AutomationConfig = {
@@ -32,6 +34,7 @@ const echoSeconds = (): number => Math.round(tuning().train.echoMs / 1000);
 
 const NOTHING = { strength: 0, intellect: 0, willpower: 0, agility: 0, health: 0, charm: 0 };
 const train = (wanted: Partial<TrainConfig['wanted']> = {}, stats = true): TrainConfig => ({
+  ...DEFAULT_CONFIG.automation.train,
   stats,
   pick: 'wanted',
   wanted: { ...NOTHING, ...wanted },
@@ -120,6 +123,8 @@ function atTheTrainer(over: Partial<CharacterState['progress']> = {}): Character
 let sent: string[];
 let wrote: string[];
 let notices: string[];
+let log: NoticeLog;
+let offers: Offered;
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
 let trainer: boolean;
@@ -133,13 +138,15 @@ beforeEach(() => {
   vi.setSystemTime(1_700_000_000_000);
   sent = [];
   wrote = [];
-  notices = [];
+  log = noticeLog();
+  notices = log.notices;
   decisions = [];
   trainer = true;
   settled = true;
   byExp = { wanted: { ...NOTHING }, chose: null };
   weighed = 0;
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  offers = recordOffers(queue);
 });
 
 afterEach(() => {
@@ -161,7 +168,7 @@ const make = (config = train({ health: 71 }), enabled = true): StatScreen =>
       },
       write: (bytes) => wrote.push(bytes)
     },
-    { notice: (m) => notices.push(m), decided: (d) => decisions.push(d) }
+    { notice: log.notice, decided: (d) => decisions.push(d) }
   );
 const drain = (): void => void vi.advanceTimersByTime(50);
 
@@ -192,14 +199,17 @@ describe('reading the screen', () => {
         auto?.noteSent(command, 'automation');
       }
     });
+    offers = recordOffers(queue);
     queue.notePrompt();
     auto = make();
     auto.onCharacter(atTheTrainer());
     expect(sent).toEqual(['train stats']);
+    expect(offers.decisionOf('train stats')).toBe('train-stats');
     auto.onBlock(block('user-stats-screen', DUMP));
     // Driving: the first Enter past the family name went out.
     expect(wrote.length).toBeGreaterThan(0);
     expect(notices).toContain(SPENDING);
+    expect(log.kindOf(SPENDING)).toBe('train-stats');
   });
 
   it('reads the six limits, the figures, the CP left and which field took focus off the dump', () => {

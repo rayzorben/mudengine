@@ -144,7 +144,11 @@ beforeEach(() => {
   looping = false;
   current = character(50_000, { platinum: 5 });
   queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
-  charges = new ItemCharges(queue, () => undefined);
+  charges = new ItemCharges(
+    queue,
+    () => undefined,
+    () => DEFAULT_CONFIG.automation
+  );
 });
 
 afterEach(() => {

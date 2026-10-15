@@ -85,6 +85,7 @@ export default function CureFields({
             key={cure}
             label={labelOf(cure)}
             name={`${namePrefix}-cure-${cure}`}
+            setting="automation.spells.cures"
             onChange={(value) => onChange({ ...cures, [cure]: value })}
             spells={serving(spells, cure)}
             value={cures[cure]}

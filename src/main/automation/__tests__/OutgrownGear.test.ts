@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 
 import { t } from '../../app/i18n';
 import { tuning } from '../../app/tuning';
@@ -17,7 +18,11 @@ const automation: AutomationConfig = {
   ...DEFAULT_CONFIG.automation,
   pacing: { window: 8, minGapMs: 0, ackTimeoutMs: 1000 }
 };
-const ON = { enabled: true, ganghouseRoom: 'Silver House Vault 15/921' };
+const ON = {
+  ...DEFAULT_CONFIG.automation.outgrown,
+  enabled: true,
+  ganghouseRoom: 'Silver House Vault 15/921'
+};
 
 const entity = (name: string, over: Partial<ItemEntity> = {}): ItemEntity =>
   ({ name, source: 'wire', slot: null, equipped: false, charges: null, ...over }) as ItemEntity;
@@ -61,6 +66,8 @@ const COUNTER: SalePlace = {
 };
 
 let sent: string[];
+/** The decision each sent command was offered as, in send order. */
+let kinds: Array<DecisionKind | undefined>;
 let notices: string[];
 let decisions: SafetyDecision[];
 let queue: CommandQueue;
@@ -103,6 +110,7 @@ beforeEach(() => {
   questFor = null;
   vi.useFakeTimers();
   sent = [];
+  kinds = [];
   notices = [];
   decisions = [];
   walked = [];
@@ -113,7 +121,12 @@ beforeEach(() => {
   house = { room: '15/921', name: 'Silver House Vault 15/921' };
   counter = COUNTER;
   busy = false;
-  queue = new CommandQueue(automation, { send: (command) => sent.push(command) });
+  queue = new CommandQueue(automation, {
+    send: (command, intent) => {
+      sent.push(command);
+      kinds.push(intent.decision);
+    }
+  });
 });
 
 afterEach(() => {
@@ -127,6 +140,7 @@ describe('getting rid of outgrown gear', () => {
     found = [outgrown('sandals', 200)];
     errand.onCharacter(packed(entity('sandals')));
     expect(sent).toEqual(['drop sandals']);
+    expect(kinds).toEqual(['outgrown-way']);
     expect(walked).toEqual([]);
     expect(errand.busy).toBe(true);
     errand.onCharacter(packed());
@@ -184,6 +198,22 @@ describe('getting rid of outgrown gear', () => {
       t('automation.outgrown.keptRare', { item: 'sandals' }),
       t('automation.outgrown.keptRarityUnknown', { item: 'slippers' })
     ]);
+  });
+
+  it('sheds a rare item with Keep Rare Gear off, as it sheds a common one', () => {
+    const errand = new OutgrownGear({ ...ON, keepRare: false }, true, queue, planner());
+    found = [outgrown('sandals', 200, {}, 'rare')];
+    errand.onCharacter(packed(entity('sandals')));
+    expect(sent).toEqual(['drop sandals']);
+  });
+
+  // The case above drops the same shoes at the shipped band: the positive control.
+  it('walks to a counter with what the sell band set lower now reaches', () => {
+    const errand = new OutgrownGear({ ...ON, sellFromCopper: 100 }, true, queue, planner());
+    found = [outgrown('cloth shoes', 200)];
+    errand.onCharacter(packed(entity('cloth shoes')));
+    expect(sent).toEqual([]);
+    expect(walked).toHaveLength(1);
   });
 
   it('keeps an item an unfinished quest still needs, saying so once (todo 52)', () => {

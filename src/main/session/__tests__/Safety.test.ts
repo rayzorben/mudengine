@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { t } from '../../app/i18n';
-import { tuning } from '../../app/tuning';
 import { Safety, type SafetyParts } from '../Safety';
 import { HangUpWatch, PVP_WINDOW_MS, type HangUpAssessment } from '../../automation/HangUp';
 import type { SafetyDecision } from '../../../shared/automation';
+import type { DecisionKind } from '../../../shared/decisionSettings';
 import { EMPTY_CHARACTER, type CharacterState, type RoomOccupant } from '../../../shared/character';
 import { DEFAULT_CONFIG, type AutomationConfig } from '../../../shared/config';
 import { classifyOccupant } from '../../../shared/mobs';
@@ -73,6 +73,7 @@ function build(
   recoverGear: SafetyParts['recoverGear'] = { busy: false, deciding: () => false }
 ) {
   const notices: string[] = [];
+  const kinds: Array<DecisionKind | undefined> = [];
   const decisions: SafetyDecision[] = [];
   const hungUp: ConnectionEnd[] = [];
   const ran: { attacker: string; windowEnds: number }[] = [];
@@ -110,9 +111,12 @@ function build(
   const safety = new Safety(parts, {
     config: () => config,
     disconnect: (by) => void hungUp.push(by),
-    notice: (message) => void notices.push(message)
+    notice: (message, decision) => {
+      notices.push(message);
+      kinds.push(decision);
+    }
   });
-  return { safety, notices, decisions, hungUp, ran };
+  return { safety, notices, kinds, decisions, hungUp, ran };
 }
 
 /*
@@ -125,7 +129,7 @@ describe('hanging up on a monster its row names', () => {
 
   it('does nothing with the switch off, and says so once', () => {
     const state = standing([stalker]);
-    const { safety, notices, decisions, hungUp } = build(
+    const { safety, notices, kinds, decisions, hungUp } = build(
       automation({ enabled: false }, rows),
       state
     );
@@ -135,6 +139,7 @@ describe('hanging up on a monster its row names', () => {
     const why = t('session.safety.whyStalker', { mob: 'stalker' });
     const reason = t('session.safety.hangUpOffReason');
     expect(notices).toEqual([t('session.safety.hangUpSwitchedOff', { why, reason })]);
+    expect(kinds).toEqual(['hang-up']);
     expect(decisions).toEqual([
       expect.objectContaining({ action: 'hang up', acted: false, refused: reason })
     ]);
@@ -272,7 +277,7 @@ describe('hanging up with a run on the wire', () => {
     safety.considerHangingUp(low);
     run.unanswered = false;
     safety.considerHangingUp(standing([orc]));
-    vi.advanceTimersByTime(10 * tuning().session.hangUpAfterRunMs);
+    vi.advanceTimersByTime(10 * config.safety.hangUp.afterRunSeconds * 1000);
     run.unanswered = true;
     safety.considerHangingUp(low);
     expect(hungUp).toEqual([]);
@@ -285,7 +290,7 @@ describe('hanging up with a run on the wire', () => {
     const { safety, hungUp } = build(config, state, undefined, {}, { unanswered: true });
     safety.considerHangingUp(state);
     expect(hungUp).toEqual([]);
-    vi.advanceTimersByTime(tuning().session.hangUpAfterRunMs);
+    vi.advanceTimersByTime(config.safety.hangUp.afterRunSeconds * 1000);
     safety.considerHangingUp(state);
     expect(hungUp).toEqual(['client']);
   });
@@ -449,7 +454,7 @@ describe('hanging up for health only where something could hit you', () => {
 /*
  * Todo 79: MegaMUD's HangupNotAfk off and HangupIfNaked. Low health waits
  * while somebody is at the keyboard; naked after a death with nobody there,
- * somewhere a hang-up would be charged for, hangs up with no setting.
+ * somewhere a hang-up would be charged for, hangs up under its own switch.
  */
 describe('hanging up by whether anybody is at the keyboard', () => {
   const hurtBy = (occupants: RoomOccupant[]): CharacterState => {
@@ -491,13 +496,34 @@ describe('hanging up by whether anybody is at the keyboard', () => {
 
   it('hangs up naked after a death with nobody here, beside a danger, Auto-Hangup off', () => {
     const state = naked(2000);
-    const { safety, decisions, hungUp } = build(off, state, unclean);
+    const { safety, decisions, hungUp, kinds } = build(off, state, unclean);
     safety.considerHangingUp(state);
     expect(hungUp).toEqual(['client']);
+    expect(kinds.at(-1)).toBe('hang-up-naked');
     expect(decisions.at(-1)).toMatchObject({
       acted: true,
       because: t('session.safety.whyNaked')
     });
+  });
+
+  // Its own switch (todo 118): on above, off here, with the same state and room.
+  it('does not hang up naked with Hang Up Naked off', () => {
+    const state = naked(2000);
+    const { safety, hungUp } = build(
+      automation({ enabled: false, penalties: false, whenNaked: false }, []),
+      state,
+      unclean
+    );
+    safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+  });
+
+  it('keeps the margin the setting asks above a stated charge', () => {
+    const whole = naked(2000);
+    const wide = automation({ enabled: false, penalties: false, nakedMargin: 0.9 }, []);
+    const { safety, hungUp } = build(wide, whole, unclean, { percent: 20 });
+    safety.considerHangingUp(whole);
+    expect(hungUp).toEqual([]);
   });
 
   it('does not hang up naked while the player is at the keyboard', () => {
@@ -647,6 +673,30 @@ describe('reacting to a player', () => {
     safety.onPvpBlow('Rayzor', 10_000);
     vi.setSystemTime(10_000 + PVP_WINDOW_MS);
     safety.considerHangingUp(state);
+    expect(hungUp).toEqual([]);
+    expect(decisions.at(-1)).toMatchObject({ acted: false, refused: 'orc attacks on sight' });
+  });
+});
+
+/* Todo 118: another player's @hangup, granted and let through, is the same hang-up. */
+describe('hanging up on a remote', () => {
+  const why = t('automation.remotes.whyRemote', { from: 'Sirkilla', raw: 'hangup' });
+
+  it('hangs up where the realm charges nothing', () => {
+    const state = standing([]);
+    const { safety, hungUp } = build(automation({ penalties: false }, []), state);
+    expect(safety.hangUpAsked(why)).toBe(true);
+    expect(hungUp).toEqual(['client']);
+  });
+
+  it('is refused while the hang-up would be charged, as the client’s own is', () => {
+    const state = standing([orc]);
+    const { safety, hungUp, decisions } = build(automation({ penalties: true }, []), state, {
+      clean: false,
+      reasons: ['orc attacks on sight'],
+      clearInMs: null
+    });
+    expect(safety.hangUpAsked(why)).toBe(false);
     expect(hungUp).toEqual([]);
     expect(decisions.at(-1)).toMatchObject({ acted: false, refused: 'orc attacks on sight' });
   });

@@ -41,12 +41,22 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   afk: { enabled: false, afterMinutes: 5, reply: '{AFK}' },
   autoConnect: false,
   autoReconnect: true,
+  autoLogin: true,
   lowLives: 2,
+  reconnectTries: 0,
   accent: 'cyan',
   theme: '',
   login: [],
   locate: null,
-  hangUp: { enabled: false, belowHealth: 0.15, penalties: null, onPlayerInRoom: false },
+  hangUp: {
+    enabled: false,
+    belowHealth: 0.15,
+    penalties: null,
+    onPlayerInRoom: false,
+    whenNaked: true,
+    nakedMargin: 0.1,
+    afterRunSeconds: 3
+  },
   retreat: {
     enabled: false,
     belowHealth: 0.3,
@@ -75,6 +85,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   outgrown: { ...DEFAULT_CONFIG.automation.outgrown },
   search: { ...DEFAULT_CONFIG.automation.search },
   banking: { ...DEFAULT_CONFIG.automation.banking },
+  supplies: structuredClone(DEFAULT_CONFIG.automation.supplies),
   // Empty is what OPTIONS below gives a character: the options file states no
   // loops, so a draft matching it writes no `loops:` key.
   loops: [],
@@ -83,6 +94,7 @@ const draft = (over: Partial<ProfileDraft> = {}): ProfileDraft => ({
   remotes: { ...DEFAULT_CONFIG.automation.remotes },
   talk: { ...DEFAULT_CONFIG.automation.talk },
   statline: { ...DEFAULT_CONFIG.automation.statline },
+  asks: { ...DEFAULT_CONFIG.automation.asks },
   aliases: [],
   rewrites: structuredClone(DEFAULT_CONFIG.ui.rewrites),
   ...over
@@ -183,6 +195,19 @@ describe('creating a character', () => {
     editor.saveProfile('vaelor', draft());
     expect(read('vaelor')['login']).toBeUndefined();
   });
+
+  // Off is written beside the script and read back; on is the default and removes it.
+  it('writes Log In Automatically off, keeps the script beside it, and removes it when on', () => {
+    const steps = [{ when: 'Please select a character', send: '2' }];
+    editor.saveProfile('vaelor', { ...draft(), login: steps, autoLogin: false });
+    expect(read('vaelor')['login']).toEqual({ steps, enabled: false });
+    const found = editor.snapshot().characters.find((entry) => entry.id === 'vaelor');
+    expect(found?.autoLogin).toBe(false);
+    editor.saveProfile('vaelor', { ...draft(), autoLogin: false });
+    expect(read('vaelor')['login']).toEqual({ enabled: false });
+    editor.saveProfile('vaelor', draft());
+    expect(read('vaelor')['login']).toBeUndefined();
+  });
 });
 
 /*
@@ -278,6 +303,14 @@ ui:
     expect(read('vaelor')['lowLives']).toBe(4);
     const found = editor.snapshot().characters.find((entry) => entry.id === 'vaelor');
     expect(found?.lowLives).toBe(4);
+  });
+
+  /* Todo 118: the re-dials, written and read back as the form shows them. */
+  it('writes the re-dials it makes, and reads them back', () => {
+    expect(editor.saveProfile('vaelor', draft({ reconnectTries: 12 }))).toEqual({ ok: true });
+    expect(read('vaelor')['reconnectTries']).toBe(12);
+    const found = editor.snapshot().characters.find((entry) => entry.id === 'vaelor');
+    expect(found?.reconnectTries).toBe(12);
   });
 
   /* The file is theirs, and the template is the documentation. */
@@ -655,7 +688,9 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+          allowKillAndHangup: false
         }
       })
     );
@@ -666,7 +701,9 @@ describe('what a character plays against, and what keeps it alive', () => {
       autoJoin: false,
       gang: [],
       party: [],
-      players: {}
+      players: {},
+      maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+      allowKillAndHangup: false
     });
   });
 
@@ -725,7 +762,9 @@ describe('what a character plays against, and what keeps it alive', () => {
       gang: [],
       // Copied from Global, which is where the shipped party list lives.
       party: [...DEFAULT_CONFIG.automation.remotes.party],
-      players: {}
+      players: {},
+      maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+      allowKillAndHangup: false
     });
   });
 
@@ -745,7 +784,9 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+          allowKillAndHangup: false
         }
       })
     );
@@ -758,7 +799,9 @@ describe('what a character plays against, and what keeps it alive', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+          allowKillAndHangup: false
         }
       })
     );
@@ -769,7 +812,9 @@ describe('what a character plays against, and what keeps it alive', () => {
       autoJoin: false,
       gang: [],
       party: [],
-      players: {}
+      players: {},
+      maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+      allowKillAndHangup: false
     });
   });
 
@@ -803,7 +848,15 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: true, onPlayerInRoom: false }
+        hangUp: {
+          enabled: true,
+          belowHealth: 0.2,
+          penalties: true,
+          onPlayerInRoom: false,
+          whenNaked: true,
+          nakedMargin: 0.1,
+          afterRunSeconds: 3
+        }
       })
     );
     const safety = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
@@ -813,20 +866,38 @@ describe('what a character plays against, and what keeps it alive', () => {
       enabled: true,
       belowHealth: 0.2,
       penalties: true,
-      onPlayerInRoom: false
+      onPlayerInRoom: false,
+      whenNaked: true,
+      nakedMargin: 0.1,
+      afterRunSeconds: 3
     });
 
     // Left to the realm: no key, so the realm's own answer reaches it (todo 01).
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
+        hangUp: {
+          enabled: true,
+          belowHealth: 0.2,
+          penalties: null,
+          onPlayerInRoom: false,
+          whenNaked: true,
+          nakedMargin: 0.1,
+          afterRunSeconds: 3
+        }
       })
     );
     const again = (read('vaelor')['automation'] as Record<string, Record<string, unknown>>)[
       'safety'
     ];
-    expect(again?.['hangUp']).toEqual({ enabled: true, belowHealth: 0.2, onPlayerInRoom: false });
+    expect(again?.['hangUp']).toEqual({
+      enabled: true,
+      belowHealth: 0.2,
+      onPlayerInRoom: false,
+      whenNaked: true,
+      nakedMargin: 0.1,
+      afterRunSeconds: 3
+    });
   });
 
   /*
@@ -882,7 +953,15 @@ describe('what a character plays against, and what keeps it alive', () => {
     editor.saveProfile(
       'vaelor',
       draft({
-        hangUp: { enabled: true, belowHealth: 0.2, penalties: null, onPlayerInRoom: false }
+        hangUp: {
+          enabled: true,
+          belowHealth: 0.2,
+          penalties: null,
+          onPlayerInRoom: false,
+          whenNaked: true,
+          nakedMargin: 0.1,
+          afterRunSeconds: 3
+        }
       })
     );
     const automation = read('vaelor')['automation'] as Record<string, unknown>;
@@ -1291,6 +1370,29 @@ connection:
     expect(fs.readFileSync(configPath, 'utf8')).toContain("# The user's own notes");
   });
 
+  // The outgrown block was read and never written back from this page before todo 118.
+  it('writes the outgrown block and the supplies figures', () => {
+    const draft = global();
+    draft.automation.outgrown = { ...draft.automation.outgrown, keepRare: false, sellDetour: 25 };
+    draft.automation.supplies = { ...draft.automation.supplies, cashBuffer: 0 };
+    expect(editor.saveGlobal(draft)).toEqual({ ok: true });
+
+    const written = parse(fs.readFileSync(configPath, 'utf8'));
+    expect(written['automation']['outgrown']).toMatchObject({ keepRare: false, sellDetour: 25 });
+    expect(written['automation']['supplies']).toMatchObject({ cashBuffer: 0, dearerSteps: 20 });
+  });
+
+  it('writes an extension switched off, and reads it back (todo 118)', () => {
+    const draft = global();
+    expect(draft.extensions).toEqual({});
+    draft.extensions = { planner: false };
+    expect(editor.saveGlobal(draft)).toEqual({ ok: true });
+
+    const written = parse(fs.readFileSync(configPath, 'utf8'));
+    expect(written['extensions']).toEqual({ planner: false });
+    expect(global().extensions).toEqual({ planner: false });
+  });
+
   /*
    * The options file holds no account and no autoconnect of its own: both
    * belong to a character, and the anonymous session that once spent them from
@@ -1424,7 +1526,9 @@ describe('one player’s @ command permissions', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+          allowKillAndHangup: false
         }
       })
     );
@@ -1563,7 +1667,9 @@ describe('the gang list and the gangpath switch', () => {
           autoJoin: false,
           gang: [],
           party: [],
-          players: {}
+          players: {},
+          maxGets: DEFAULT_CONFIG.automation.remotes.maxGets,
+          allowKillAndHangup: false
         }
       })
     );
@@ -1670,6 +1776,8 @@ describe('the supplies list', () => {
       ]).ok
     ).toBe(true);
     expect(suppliesOf('vaelor')).toEqual({
+      ...DEFAULT_CONFIG.automation.supplies,
+      enabled: true,
       items: [
         { name: 'torch', min: 3, max: 7, shop: 'General Store', at: { map: 1, room: 2147 } },
         { name: 'lantern', min: 1, max: 1, shop: 'Slum Store' }
@@ -1687,7 +1795,7 @@ describe('the supplies list', () => {
     editor.saveProfile('vaelor', draft());
     editor.setSupplies('vaelor', [{ name: 'torch', min: 3, max: 7, shop: '', at: null }]);
     editor.setSupplies('vaelor', []);
-    expect(suppliesOf('vaelor')).toEqual({ items: [] });
+    expect(suppliesOf('vaelor')).toEqual({ ...DEFAULT_CONFIG.automation.supplies, items: [] });
   });
 
   it('refuses a character that does not exist', () => {

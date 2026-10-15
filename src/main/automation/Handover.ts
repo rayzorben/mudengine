@@ -12,6 +12,7 @@ import type { CommandQueue } from './CommandQueue';
 import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { CharacterState } from '../../shared/character';
+import type { DecisionKind } from '../../shared/decisionSettings';
 import { carriedCount } from '../../shared/supplies';
 import type { RoomId, Route } from '../../shared/world';
 
@@ -36,6 +37,8 @@ export interface HandoverAsk {
   reason(item: string): string;
   /** The verb puts the item in the pack (`buy`) rather than taking it out. */
   receives?: boolean;
+  /** The decision each verb is, for its echo's gear icon; omitted where the player started it. */
+  decision?: DecisionKind;
   confirmMs?: number;
 }
 
@@ -177,6 +180,7 @@ export class Handover {
       priority: 'probe',
       coalesceKey: `${ask.key}:act`,
       reason: ask.reason(item),
+      ...(ask.decision === undefined ? {} : { decision: ask.decision }),
       onSent: () => {
         if (this.phase === phase) phase.sentAt = this.now();
       }

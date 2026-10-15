@@ -13,6 +13,7 @@ import { t } from '../app/i18n';
 import { tuning } from '../app/tuning';
 import type { Block } from '../../shared/blocks';
 import { DENOMINATIONS, type CharacterState, type Denomination } from '../../shared/character';
+import type { DecisionKind } from '../../shared/decisionSettings';
 import { sameItem } from '../../shared/items';
 import { carriedCount } from '../../shared/supplies';
 import type { RoomId, Route } from '../../shared/world';
@@ -53,9 +54,16 @@ export interface CollectAsk {
   /** How long the pack has to show a `get`, and how long a queued one stays wanted. */
   collectMs: number;
   expiresMs: number;
+  /** The decision each search and `get` is, for its echo's gear icon; omitted where the player started it. */
+  decision?: DecisionKind;
 }
 
 type SearchPlan = NonNullable<CollectAsk['search']>;
+
+/** The ask's decision as an intent field, or nothing. */
+function decided(ask: CollectAsk): { decision?: DecisionKind } {
+  return ask.decision === undefined ? {} : { decision: ask.decision };
+}
 
 export type CollectStart =
   { kind: 'here' } | { kind: 'walking'; steps: number } | { kind: 'refused'; why: string };
@@ -234,6 +242,7 @@ export class Collect {
       coalesceKey: `${ask.key}:search`,
       expiresAt: this.now() + tuning().search.expiresMs,
       reason: plan.reason,
+      ...decided(ask),
       stillWanted: () => this.planner.fighting?.() !== true,
       onSent: () => {
         if (this.phase !== phase) return;
@@ -290,7 +299,8 @@ export class Collect {
         priority: 'probe',
         coalesceKey: `${ask.key}:${item.toLowerCase()}`,
         expiresAt,
-        reason: ask.reason(item)
+        reason: ask.reason(item),
+        ...decided(ask)
       });
     }
     const { coinReason } = ask;
@@ -302,7 +312,8 @@ export class Collect {
         priority: 'probe',
         coalesceKey: `${ask.key}:${coin}`,
         expiresAt,
-        reason: coinReason?.(coin) ?? coin
+        reason: coinReason?.(coin) ?? coin,
+        ...decided(ask)
       });
     }
     this.phase = { kind: 'taking', ask, before, askedAt: this.now() };

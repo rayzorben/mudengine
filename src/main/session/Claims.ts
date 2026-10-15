@@ -88,7 +88,8 @@ export class Claims {
       priority: 'probe',
       coalesceKey: 'loop-locate',
       expiresAt: Date.now() + tuning().session.locateExpiresMs,
-      reason
+      reason,
+      decision: 'locate-ask'
     });
     return offered === 'queued' || offered === 'joined' ? { asked: word } : { refused: offered };
   }

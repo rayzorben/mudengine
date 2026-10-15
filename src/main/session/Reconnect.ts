@@ -46,6 +46,7 @@ import {
   type ConnectionState,
   type ConnectionTarget
 } from '../../shared/types';
+import type { NoticeSink } from '../../shared/decisionSettings';
 import { errorMessage } from '../../shared/values';
 
 export interface ReconnectEvents {
@@ -69,6 +70,11 @@ export interface ReconnectEvents {
    */
   enabled(): boolean;
   /**
+   * The character's `reconnectTries`: failed dials in a row before the ladder
+   * stops and says so, 0 never. Read before each rung, like `enabled`.
+   */
+  maxTries(): number;
+  /**
    * Whether a dial to `target` waits for the player instead (`LowLivesHold`),
    * which says why itself. Asked when the socket goes and again before each
    * rung, so a floor raised during an outage reaches the ladder.
@@ -84,7 +90,7 @@ export interface ReconnectEvents {
    * from.
    */
   dial(target: ConnectionTarget): Promise<ConnectionState>;
-  notice(message: string): void;
+  notice: NoticeSink;
 }
 
 /** One sentence per reason, so the console says which one answered. */
@@ -178,7 +184,7 @@ export class Reconnect {
     if (why !== null) {
       // Said out loud: somebody who turned this on is relying on it, and a
       // feature that declines silently is worse than one never offered.
-      this.events.notice(standDownNotice(why));
+      this.events.notice(standDownNotice(why), 'reconnect');
       this.attempts = 0;
       return;
     }
@@ -198,7 +204,7 @@ export class Reconnect {
     } else if (established) {
       /*
        * **A socket that opened and was then dropped is the shape that has to be
-       * bounded, and it is not the one `maxAttempts` bounds.**
+       * bounded, and it is not the one `reconnectTries` bounds.**
        *
        * An outage — the router, the host — refuses or never answers, and
        * dialling that for as long as it takes is exactly what was asked for.
@@ -216,7 +222,7 @@ export class Reconnect {
        */
       this.flaps += 1;
       if (this.flaps >= tuning().reconnect.maxFlaps) {
-        this.events.notice(t('session.reconnect.keptDropping', { count: this.flaps }));
+        this.events.notice(t('session.reconnect.keptDropping', { count: this.flaps }), 'reconnect');
         this.attempts = 0;
         this.flaps = 0;
         this.connectedAt = null;
@@ -271,12 +277,13 @@ export class Reconnect {
   }
 
   private schedule(): void {
-    const { stepMs, maxDelayMs, maxAttempts } = tuning().reconnect;
-    if (this.attempts >= maxAttempts) {
+    const { stepMs, maxDelayMs } = tuning().reconnect;
+    const maxTries = this.events.maxTries();
+    if (maxTries > 0 && this.attempts >= maxTries) {
       // Named the way out rather than only the giving up: the dial is a button
       // and a palette command, and a message that stops without saying so
       // leaves somebody watching a console that has gone quiet.
-      this.events.notice(t('session.reconnect.gaveUp'));
+      this.events.notice(t('session.reconnect.gaveUp'), 'reconnect');
       this.attempts = 0;
       this.publish();
       return;
@@ -285,7 +292,7 @@ export class Reconnect {
       // Nothing has ever been dialled through this session, so there is no
       // address to go back to. Unreachable from a `close`, which only follows a
       // connection; guarded because the alternative is a silent no-op.
-      this.events.notice(t('session.reconnect.noTarget'));
+      this.events.notice(t('session.reconnect.noTarget'), 'reconnect');
       return;
     }
 
@@ -297,7 +304,8 @@ export class Reconnect {
         : t('session.reconnect.waiting', {
             seconds: Math.round(delay / 1000),
             attempt: this.attempts
-          })
+          }),
+      'reconnect'
     );
     /*
      * A timer even for the immediate attempt. `lost` is called from inside the
@@ -321,11 +329,11 @@ export class Reconnect {
      * shape exists so switching the setting off reaches a session that is
      * already counting down; consulting it only when the socket dropped meant
      * the answer was fixed at the moment of the drop and the ladder then ran to
-     * `maxAttempts` — 999,999 — whatever the profile said afterwards.
+     * `reconnectTries` (none, as shipped) whatever the profile said afterwards.
      */
     if (!this.events.enabled()) {
       this.attempts = 0;
-      this.events.notice(t('session.reconnect.switchedOff'));
+      this.events.notice(t('session.reconnect.switchedOff'), 'reconnect');
       this.publish();
       return;
     }
@@ -375,7 +383,10 @@ export class Reconnect {
         // Never swallowed: a dial that threw rather than reporting a refusal is
         // a fault in the client, and the retry that follows would otherwise
         // hide it for as long as the outage lasts.
-        this.events.notice(t('session.reconnect.dialFailed', { detail: errorMessage(error) }));
+        this.events.notice(
+          t('session.reconnect.dialFailed', { detail: errorMessage(error) }),
+          'reconnect'
+        );
         this.schedule();
       }
     );

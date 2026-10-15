@@ -22,6 +22,7 @@ import { t } from '../app/i18n';
 import { castAimedAt } from '../../shared/aim';
 import type { Block } from '../../shared/blocks';
 import type { CharacterState } from '../../shared/character';
+import type { DecisionKind, NoticeSink } from '../../shared/decisionSettings';
 import type { SpellsConfig } from '../../shared/config';
 import { NO_ATTACK_SPELL_LORE, type AttackSpellLore } from '../../shared/lore';
 import { isBanded, mobRuleFor, type MobCast, type MobRule } from '../../shared/mobRules';
@@ -53,6 +54,8 @@ export interface Proposal {
   command: string;
   action: Action;
   reason: string;
+  /** The decision the command carries out, for the gear on its echo (todo 119). */
+  decision: DecisionKind;
 }
 
 /** The monster a spell is chosen for: the fight's target, or the one about to be opened on. */
@@ -68,7 +71,7 @@ export interface SpellTarget {
 
 /** What this unit says and asks for; `AutoCombatEvents` carries both. */
 export interface AttackSpellEvents {
-  notice?(message: string): void;
+  notice?: NoticeSink;
   /** The spellbook has never been read and *Auto Choose Best Spell* needs it. */
   needBook?(): void;
 }
@@ -88,6 +91,9 @@ export function isCastResult(block: Block): boolean {
   );
 }
 
+/** What *Auto Choose Best Spell* says about its pick or its refusal is under its own settings. */
+const AUTO_CHOOSE: DecisionKind = 'auto-choose-spell';
+
 /** The command that stops the spell the server repeats: MegaMUD's own. */
 const BREAK = 'break';
 
@@ -96,6 +102,8 @@ interface Wanted {
   spell: string;
   area: boolean;
   word: string;
+  /** Which path in `wanted` chose it. */
+  decision: DecisionKind;
 }
 
 export class AttackSpells {
@@ -166,19 +174,20 @@ export class AttackSpells {
   ) {
     this.drain = new DrainWhenHurt(
       spells,
-      (message) => events.notice?.(message),
+      (message, decision) => events.notice?.(message, decision),
       realmSpell,
       realmSpellById
     );
     this.hold = new SpellHold(
-      (message) => events.notice?.(message),
+      (message, decision) => events.notice?.(message, decision),
       realmSpell,
       realmClass,
-      (spell, monster) => realmLore.hasNoEffect(spell, monster)
+      (spell, monster) => realmLore.hasNoEffect(spell, monster),
+      () => this.spells.killConfidence
     );
     this.room = new RoomSpells(
       spells,
-      (message) => events.notice?.(message),
+      (message, decision) => events.notice?.(message, decision),
       realmSpell,
       realmClass
     );
@@ -290,7 +299,8 @@ export class AttackSpells {
     return {
       command: `${wanted.word} ${target.name}`,
       action: { kind: 'spell', spell: wanted.spell, area: false, by: 'module' },
-      reason: t('automation.combat.reason', { why })
+      reason: t('automation.combat.reason', { why }),
+      decision: 'spell-opener'
     };
   }
 
@@ -326,14 +336,16 @@ export class AttackSpells {
         action: { kind: 'spell', spell: wanted.spell, area: wanted.area, by: 'module' },
         reason: wanted.area
           ? t('automation.combat.reasonRoundAreaSpell')
-          : t('automation.combat.reasonRoundSpell')
+          : t('automation.combat.reasonRoundSpell'),
+        decision: wanted.decision
       };
     }
     if (repeating?.kind !== 'spell' || melee.length === 0) return null;
     return {
       command: `${melee} ${target.name}`,
       action: { kind: 'melee' },
-      reason: t('automation.combat.reasonRoundMelee', { spell: repeating.spell, verb: melee })
+      reason: t('automation.combat.reasonRoundMelee', { spell: repeating.spell, verb: melee }),
+      decision: 'round-change'
     };
   }
 
@@ -527,7 +539,15 @@ export class AttackSpells {
      */
     const drain = this.drain.standIn(state);
     if (drain !== null) {
-      const room = this.roomSpell(state, target, drain.area, opening, above, false);
+      const room = this.roomSpell(
+        state,
+        target,
+        drain.area,
+        opening,
+        above,
+        false,
+        'drain-standin'
+      );
       if (room !== null) return room;
       if (above(this.spells.minMana)) {
         const single = drain.choose
@@ -544,7 +564,7 @@ export class AttackSpells {
           this.usable(single, this.spells.attackCasts) &&
           !this.ruledOut(single, target)
         ) {
-          const cast = this.payable(state, single, false, opening);
+          const cast = this.payable(state, single, false, opening, 'drain-standin');
           if (cast !== null) return cast;
         }
       }
@@ -561,7 +581,7 @@ export class AttackSpells {
       above(this.spells.minMana) &&
       !this.ruledOut(own.spell, target)
     ) {
-      const cast = this.payable(state, own.spell, false, opening);
+      const cast = this.payable(state, own.spell, false, opening, 'attack-spell');
       if (cast !== null) return cast;
     }
     const passedOver = (spell: string): boolean =>
@@ -575,7 +595,15 @@ export class AttackSpells {
      * crowd is threats (what is in this fight or would join it), never
      * `countMobs`, which counts a shopkeeper and a guard dog alike.
      */
-    const room = this.roomSpell(state, target, this.spells.areaAttack.trim(), opening, above, true);
+    const room = this.roomSpell(
+      state,
+      target,
+      this.spells.areaAttack.trim(),
+      opening,
+      above,
+      true,
+      'room-spell'
+    );
     if (room !== null) return room;
 
     if (!above(this.spells.minMana)) return null;
@@ -591,7 +619,9 @@ export class AttackSpells {
     // *Auto Choose Best Spell*: the round spell is derived, not typed (todo 09).
     if (this.spells.autoChoose) {
       const chosen = this.chosenSpell(state, target, passedOver);
-      return chosen === null ? null : this.payable(state, chosen, false, opening);
+      return chosen === null
+        ? null
+        : this.payable(state, chosen, false, opening, 'auto-choose-spell');
     }
     const attack = this.spells.attack.trim();
     if (attack.length === 0) return null;
@@ -604,7 +634,7 @@ export class AttackSpells {
     const spell = this.ruledOut(attack, target) ? this.spells.attackFallback.trim() : attack;
     if (spell.length === 0 || !this.usable(spell, this.spells.attackCasts)) return null;
     if (passedOver(spell) || this.ruledOut(spell, target)) return null;
-    return this.payable(state, spell, false, opening);
+    return this.payable(state, spell, false, opening, 'attack-spell');
   }
 
   /**
@@ -620,7 +650,8 @@ export class AttackSpells {
     area: string,
     opening: boolean,
     above: (floor: number) => boolean,
-    ranked: boolean
+    ranked: boolean,
+    decision: DecisionKind
   ): Wanted | null {
     // With `areaAttack` blank, Auto Choose Best Spell still picks the book's best room spell.
     if (opening || (area.length === 0 && !(ranked && this.spells.autoChoose))) return null;
@@ -637,7 +668,7 @@ export class AttackSpells {
         : [];
     for (const spell of candidates) {
       if (!this.usable(spell, this.spells.areaCasts)) continue;
-      const cast = this.payable(state, spell, true, opening);
+      const cast = this.payable(state, spell, true, opening, decision);
       if (cast === null) continue;
       if (!ranked) return cast;
       this.room.tookOver(state, candidates[0]!, spell);
@@ -647,10 +678,14 @@ export class AttackSpells {
         this.rules,
         target,
         // `usable` holds this fight's refusals; the realm's are `chooseDebuff`'s (`spellReaches`).
-        (name) => this.usable(name, 0) && this.payable(state, name, false, opening) !== null
+        (name) =>
+          this.usable(name, 0) &&
+          this.payable(state, name, false, opening, 'room-debuff-first') !== null
       );
       const first =
-        debuff === null ? null : this.payable(state, debuff.spell.name, debuff.area, opening);
+        debuff === null
+          ? null
+          : this.payable(state, debuff.spell.name, debuff.area, opening, 'room-debuff-first');
       return first ?? cast;
     }
     return null;
@@ -674,7 +709,8 @@ export class AttackSpells {
     this.events.notice?.(
       known === 'world'
         ? t('automation.combat.spellNoEffectKnown', { spell, target: target.name })
-        : t('automation.combat.spellNoEffectHeard', { spell, target: target.name })
+        : t('automation.combat.spellNoEffectHeard', { spell, target: target.name }),
+      'attack-spell'
     );
     return true;
   }
@@ -703,13 +739,14 @@ export class AttackSpells {
     state: CharacterState,
     spell: string,
     area: boolean,
-    opening: boolean
+    opening: boolean,
+    decision: DecisionKind
   ): Wanted | null {
     // An instant spell engages nothing, so it opens no fight (`noteInstant`).
     if (opening && this.isInstant(spell, state.spellbook)) return null;
     const found = resolveSpell(spell, state.spellbook, this.realmSpell);
     if (!canPayFor(state, spellCost(found))) return null;
-    return { spell, area, word: found.word };
+    return { spell, area, word: found.word, decision };
   }
 
   /**
@@ -757,7 +794,8 @@ export class AttackSpells {
               this.realmSpell,
               prowessSheetOf(state, { combat, magery, crits }),
               family,
-              noEffectOn
+              noEffectOn,
+              this.spells.killConfidence
             ),
             target: spellTargetOf(target.entity, target.remaining),
             excluded,
@@ -792,7 +830,8 @@ export class AttackSpells {
     this.events.notice?.(
       choice.why === 'kills'
         ? t('automation.spells.choseKills', params)
-        : t('automation.spells.choseHardest', params)
+        : t('automation.spells.choseHardest', params),
+      AUTO_CHOOSE
     );
   }
 
@@ -803,23 +842,23 @@ export class AttackSpells {
     this.saidChoice = null;
     switch (refusal) {
       case 'no-book':
-        this.events.notice?.(t('automation.spells.noBookYet'));
+        this.events.notice?.(t('automation.spells.noBookYet'), AUTO_CHOOSE);
         this.events.needBook?.();
         return;
       case 'empty-book':
-        this.events.notice?.(t('automation.spells.emptyBook'));
+        this.events.notice?.(t('automation.spells.emptyBook'), AUTO_CHOOSE);
         return;
       case 'kai':
-        this.events.notice?.(t('automation.spells.kai'));
+        this.events.notice?.(t('automation.spells.kai'), AUTO_CHOOSE);
         return;
       case 'no-attack-spells':
-        this.events.notice?.(t('automation.spells.noAttackSpells'));
+        this.events.notice?.(t('automation.spells.noAttackSpells'), AUTO_CHOOSE);
         return;
       case 'all-resisted':
-        this.events.notice?.(t('automation.spells.allResisted'));
+        this.events.notice?.(t('automation.spells.allResisted'), AUTO_CHOOSE);
         return;
       case 'no-effect':
-        this.events.notice?.(t('automation.spells.noEffect'));
+        this.events.notice?.(t('automation.spells.noEffect'), AUTO_CHOOSE);
         return;
       default: {
         const never: never = refusal;
@@ -850,23 +889,31 @@ export class AttackSpells {
     if (!cast.area && monster !== null) this.keep(cast.spell, monster);
     const fallback = this.spells.attackFallback.trim();
     if (cast.area) {
-      this.events.notice?.(t('automation.combat.spellIneffectiveArea', { spell: cast.spell }));
+      this.events.notice?.(
+        t('automation.combat.spellIneffectiveArea', { spell: cast.spell }),
+        'room-spell'
+      );
     } else if (
       this.drain.draining &&
       (this.drain.isDrain(cast.spell) || this.keyOf(this.spells.drain) === this.keyOf(cast.spell))
     ) {
-      this.events.notice?.(t('automation.combat.drainIneffective', { spell: cast.spell }));
+      this.events.notice?.(
+        t('automation.combat.drainIneffective', { spell: cast.spell }),
+        'drain-standin'
+      );
     } else if (
       fallback.length > 0 &&
       fallback !== cast.spell &&
       !this.ineffective.has(this.keyOf(fallback))
     ) {
       this.events.notice?.(
-        t('automation.combat.spellIneffective', { spell: cast.spell, fallback })
+        t('automation.combat.spellIneffective', { spell: cast.spell, fallback }),
+        'attack-spell'
       );
     } else {
       this.events.notice?.(
-        t('automation.combat.spellIneffectiveNoFallback', { spell: cast.spell })
+        t('automation.combat.spellIneffectiveNoFallback', { spell: cast.spell }),
+        'attack-spell'
       );
     }
   }
