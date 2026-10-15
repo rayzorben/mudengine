@@ -26,7 +26,7 @@ import {
 import type { SurvivalLevel } from '../../shared/survival';
 import { roomId, type Direction, type RoomId, type WorldRoom } from '../../shared/world';
 import { describeObstacle, leverOpening } from './obstacle';
-import { planeSteps } from './planeSteps';
+import { offPlaneWays, planeSteps } from './planeSteps';
 import type { WorldGraph } from './WorldGraph';
 import { tuning } from '../app/tuning';
 
@@ -109,42 +109,31 @@ export function mapCellOf(
    * on a `Text:` exit.
    */
   const away: MapAway[] = [];
-  for (const exit of room.exits) {
-    if (exit.direction !== 'u' && exit.direction !== 'd') continue;
-    // Where it goes, which for an exit whose cast teleports is the spell's
-    // room and not the table's — see `WorldGraph.beyond`.
-    const to = graph.beyond(exit);
-    const destination = graph.byId(to);
-    if (!destination) continue;
+  for (const way of offPlaneWays(graph, room)) {
+    const { kind, to, destination } = way;
+    if (way.kind === 'teleport') {
+      const { requirement } = way.exit;
+      away.push({
+        kind,
+        to,
+        name: destination.name,
+        command: requirement.commands?.[0] ?? requirement.raw,
+        // An unguarded portal's requirement is only its phrase — the command
+        // above says that — so it is an obstacle only when it wants something.
+        ...(requirement.kind !== 'text' ? { obstacle: describeObstacle(requirement, graph) } : {})
+      });
+      continue;
+    }
+    const { direction, requirement } = way.exit;
     away.push({
-      kind: exit.direction === 'u' ? 'up' : 'down',
+      kind,
       to,
       name: destination.name,
-      command: exit.requirement?.commands?.[0] ?? exit.direction,
-      ...(exit.requirement
+      command: requirement?.commands?.[0] ?? direction,
+      ...(requirement
         ? {
-            obstacle: describeObstacle(
-              exit.requirement,
-              graph,
-              leverOpening(graph, cell.id, exit.direction)
-            )
+            obstacle: describeObstacle(requirement, graph, leverOpening(graph, cell.id, direction))
           }
-        : {})
-    });
-  }
-  for (const portal of graph.portalsFrom(cell.id)) {
-    const to = roomId(portal.map, portal.room);
-    const destination = graph.byId(to);
-    if (!destination) continue;
-    away.push({
-      kind: 'teleport',
-      to,
-      name: destination.name,
-      command: portal.requirement.commands?.[0] ?? portal.requirement.raw,
-      // An unguarded portal's requirement is only its phrase — the command
-      // above says that — so it is an obstacle only when it wants something.
-      ...(portal.requirement.kind !== 'text'
-        ? { obstacle: describeObstacle(portal.requirement, graph) }
         : {})
     });
   }

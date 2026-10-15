@@ -119,7 +119,10 @@ export interface GameCell extends MapCell {
   icon?: ShopIcon;
   /** The realm records the room as dark. */
   dark?: true;
-  /** Where each exit leads, for the exits the grid cannot join to a neighbour. */
+  /**
+   * Where each exit leads, for the exits the grid cannot join to a neighbour.
+   * An exit whose cast scatters is absent: it reaches no particular room.
+   */
   to: Partial<Record<Direction, RoomId>>;
   /** The room's name is labelled on its own: no other room of its stretch shares it. */
   named?: true;

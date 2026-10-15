@@ -24,7 +24,7 @@ import {
 import { roomId, type RoomId, type WorldRoom } from '../../shared/world';
 import { tuning } from '../app/tuning';
 import { mapCellOf, type LairLevel, type MapCellGraph } from './localMap';
-import { planeSteps } from './planeSteps';
+import { leapSteps, planeSteps } from './planeSteps';
 import { RealmLayouts, type PlaneLayout } from './realmLayout';
 import type { ThemePack } from './themePack';
 import type { WorldGraph } from './WorldGraph';
@@ -175,7 +175,10 @@ export class GameMaps {
         if (id === undefined) continue;
         const room = this.graph.byId(id)!;
         const to: GameCell['to'] = {};
-        for (const exit of room.exits) to[exit.direction] = this.graph.beyond(exit);
+        // The ways the plane follows, so a cast that scatters draws no line.
+        for (const { exit, to: there } of planeSteps(this.graph, room)) to[exit.direction] = there;
+        for (const { way } of leapSteps(this.graph, room))
+          if (way.kind !== 'teleport') to[way.exit.direction] = way.to;
         const icon = room.shop === undefined ? null : this.pack.iconOf(room.shop);
         cells.push({
           ...mapCellOf(this.graph, room, gx, gy, lairLevel),

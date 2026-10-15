@@ -3,7 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { roomId, type Direction, type WorldRoom } from '../../../shared/world';
-import { layOutMap, RealmLayouts } from '../realmLayout';
+import { layOutMap, RealmLayouts, UNJOINED_GAP } from '../realmLayout';
 import { WorldGraph } from '../WorldGraph';
 
 function graphOf(rooms: Array<[number, string, Array<[Direction, number, number?]>]>) {
@@ -23,6 +23,7 @@ function graphOf(rooms: Array<[number, string, Array<[Direction, number, number?
   return {
     byId: (id: string) => byId.get(id),
     beyond: (exit: { map: number; room: number }) => roomId(exit.map, exit.room),
+    portalsFrom: () => [],
     everyRoom: () => byId.values(),
     rooms: [...byId.values()]
   };
@@ -105,6 +106,57 @@ describe("a map's plane", () => {
     // Pushed out east of 6, past the cell of air around the first island.
     expect(plane.at.get('1/8')).toEqual({ gx: 3, gy: -1 });
     expect(plane.cells.size).toBe(5);
+  });
+
+  it('sets the floor above down beside its stairs, not in room order', () => {
+    // 5 is the floor above 2; 3 and 4 are an unjoined pair numbered between.
+    const g = graphOf([
+      [1, 'a', [['e', 2]]],
+      [
+        2,
+        'stairs',
+        [
+          ['w', 1],
+          ['u', 5]
+        ]
+      ],
+      [3, 'c', [['e', 4]]],
+      [4, 'd', [['w', 3]]],
+      [5, 'landing', [['d', 2]]]
+    ]);
+    const plane = layOutMap(g, 1, g.rooms);
+    // North-east of the stairs, two cells out.
+    expect(plane.at.get('1/5')).toEqual({ gx: 3, gy: -2 });
+    expect(plane.island.get('1/5')).not.toBe(plane.island.get('1/2'));
+    // The unjoined pair stands well apart from both.
+    expect(plane.at.get('1/3')!.gx).toBeGreaterThanOrEqual(3 + UNJOINED_GAP);
+  });
+
+  it("joins a room's teleport and an exit only one end lists", () => {
+    const g = {
+      ...graphOf([
+        [1, 'a', []],
+        // 2 leads west into 1; 1 lists no way back.
+        [2, 'b', [['w', 1]]],
+        [3, 'landing', []]
+      ]),
+      portalsFrom: (id: string) =>
+        id === '1/1'
+          ? [
+              {
+                direction: 'portal' as const,
+                map: 1,
+                room: 3,
+                requirement: { kind: 'text' as const, raw: 'go path' }
+              }
+            ]
+          : []
+    };
+    const plane = layOutMap(g, 1, g.rooms);
+    expect(plane.at.get('1/2')).toEqual({ gx: 1, gy: 0 });
+    expect(plane.island.get('1/2')).toBe(plane.island.get('1/1'));
+    // East of 1, past 2.
+    expect(plane.at.get('1/3')).toEqual({ gx: 3, gy: 0 });
   });
 
   it('follows no exit onto another map', () => {

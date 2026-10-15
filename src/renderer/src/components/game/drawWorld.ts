@@ -15,7 +15,7 @@ import {
   type MapArea,
   type MapLabel
 } from '@shared/gameMap';
-import type { Direction, RoomId } from '@shared/world';
+import { OPPOSITE, type Direction, type RoomId } from '@shared/world';
 import {
   DROP_PATH,
   LAIR_PATH,
@@ -165,7 +165,11 @@ function area(scene: Scene, cell: GameCell): MapArea {
   return scene.win.areas[cell.area]!;
 }
 
-/** The corridors: joined neighbours, stubs to rooms the grid cannot place next door, and doors. */
+/**
+ * The corridors: joined neighbours, doors, and a dashed line to a room the
+ * grid set down elsewhere in the window (an island pushed out, the floor up
+ * or down, a teleport's landing). A way to a room outside the window is a stub.
+ */
 function drawLinks(
   ctx: CanvasRenderingContext2D,
   view: View,
@@ -174,59 +178,57 @@ function drawLinks(
   alpha: number
 ): void {
   const k = cellPx(view.cam);
+  // A long line has two ends, either of which may be the one on screen.
+  const drawn = new Set<string>();
+  const link = (cell: GameCell, direction: Direction | null, to: RoomId): void => {
+    const a = toScreen(view, cell.gx, cell.gy);
+    const step = direction === null ? null : STEP[direction];
+    const neighbour = step
+      ? scene.at.get(cellKey(cell.gx + step.dx, cell.gy + step.dy))
+      : undefined;
+    const joined = neighbour?.id === to;
+    const far = joined || to === cell.id ? undefined : scene.byId.get(to);
+    if (far) {
+      if (!onScreen(view, a, k * 2) && !onScreen(view, toScreen(view, far.gx, far.gy), k * 2))
+        return;
+      const pair = to < cell.id ? `${to}|${cell.id}` : `${cell.id}|${to}`;
+      if (drawn.has(pair)) return;
+      drawn.add(pair);
+    } else {
+      // A way the plane cannot draw, to a room not in the window: the glyph says it.
+      if (!step || !onScreen(view, a, k * 2)) return;
+      // Each joined pair once: from the end with the smaller id, or the only end.
+      if (joined && neighbour!.id < cell.id && neighbour!.to[OPPOSITE[direction!]] === cell.id)
+        return;
+    }
+    const other = joined ? neighbour : far;
+    const mine = scene.here === cell.id || (other !== undefined && scene.here === other.id);
+    const door = direction !== null && cell.blocked?.[direction] !== undefined;
+    ctx.globalAlpha = alpha * (mine ? 1 : fadeOf(scene, cell)) * (far ? 0.6 : 1);
+    ctx.strokeStyle = door
+      ? pal.door
+      : mine
+        ? hexA(pal.text, 0.75)
+        : area(scene, cell).palette.path;
+    ctx.lineWidth = (mine ? 3 : far ? 1.5 : 2.5) * Math.min(1.2, view.cam.z);
+    ctx.setLineDash(door ? [5, 5] : joined ? [] : far ? [6, 6] : [2, 5]);
+    const end = other
+      ? toScreen(view, other.gx, other.gy)
+      : { x: a.x + step!.dx * k * 0.42, y: a.y + step!.dy * k * 0.42 };
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+  };
   ctx.lineCap = 'round';
   for (const cell of scene.win.cells) {
-    const a = toScreen(view, cell.gx, cell.gy);
-    if (!onScreen(view, a, k * 2)) continue;
-    for (const [direction, to] of Object.entries(cell.to) as Array<[Direction, RoomId]>) {
-      const step = STEP[direction];
-      if (!step) continue;
-      const neighbour = scene.at.get(cellKey(cell.gx + step.dx, cell.gy + step.dy));
-      const joined = neighbour?.id === to;
-      // Each pair once: from the end with the smaller id, or the only end.
-      if (
-        joined &&
-        neighbour &&
-        neighbour.id < cell.id &&
-        neighbour.to[oppositeOf(direction)] === cell.id
-      )
-        continue;
-      const mine = scene.here === cell.id || (joined && scene.here === neighbour!.id);
-      const door = cell.blocked?.[direction] !== undefined;
-      ctx.globalAlpha = alpha * (mine ? 1 : fadeOf(scene, cell));
-      ctx.strokeStyle = door
-        ? pal.door
-        : mine
-          ? hexA(pal.text, 0.75)
-          : area(scene, cell).palette.path;
-      ctx.lineWidth = (mine ? 3 : 2.5) * Math.min(1.2, view.cam.z);
-      ctx.setLineDash(door ? [5, 5] : joined ? [] : [2, 5]);
-      const end = joined
-        ? toScreen(view, neighbour!.gx, neighbour!.gy)
-        : { x: a.x + step.dx * k * 0.42, y: a.y + step.dy * k * 0.42 };
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.stroke();
-    }
+    for (const [direction, to] of Object.entries(cell.to) as Array<[Direction, RoomId]>)
+      link(cell, direction, to);
+    for (const way of cell.away ?? []) if (way.kind === 'teleport') link(cell, null, way.to);
   }
   ctx.setLineDash([]);
   ctx.globalAlpha = 1;
 }
-
-const OPPOSITES: Record<Direction, Direction> = {
-  n: 's',
-  s: 'n',
-  e: 'w',
-  w: 'e',
-  ne: 'sw',
-  sw: 'ne',
-  nw: 'se',
-  se: 'nw',
-  u: 'd',
-  d: 'u'
-};
-const oppositeOf = (direction: Direction): Direction => OPPOSITES[direction];
 
 /** A line through rooms on the plane, joining only those that are placed. */
 function strokeThrough(
