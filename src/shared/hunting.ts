@@ -9,7 +9,7 @@
  * `mudengine-world` § *Where to hunt is derived from the realm's own clock*.
  */
 import { median } from './median';
-import type { MeasuredOutput } from './fights';
+import type { MeasuredOutput, MeasuredTiming } from './fights';
 import type { UiLookup } from './i18n';
 import type { Loop, LoopStop } from './loops';
 import type { MobAffliction } from './menace';
@@ -33,6 +33,8 @@ export interface HuntingConstants {
   /** The pass that refills a room a player stands in (`RegenTickTime`). */
   roomRegenSeconds: number;
   killOverheadMs: number;
+  /** From `*Combat Engaged*` to a kill's first round, which comes before the room's next round. */
+  engageMs: number;
   /** One step where the pack's weight is unknown — the measured movement round. */
   stepMs: number;
   greatermudRespawnOffsetSeconds: number;
@@ -60,6 +62,7 @@ export interface HuntingConstants {
 /** The server clocks `atSpeed` divides; the rest are the client's own or no clock at all. */
 type ServerClock =
   | 'roundSeconds'
+  | 'engageMs'
   | 'restTickSeconds'
   | 'passiveTickSeconds'
   | 'roomRegenSeconds'
@@ -78,6 +81,7 @@ export function atSpeed<T extends Pick<HuntingConstants, ServerClock>>(
   const clocks = {} as Pick<HuntingConstants, ServerClock>;
   for (const key of [
     'roundSeconds',
+    'engageMs',
     'restTickSeconds',
     'passiveTickSeconds',
     'roomRegenSeconds',
@@ -87,6 +91,22 @@ export function atSpeed<T extends Pick<HuntingConstants, ServerClock>>(
     clocks[key] = server[key] / speed;
   }
   return { ...server, ...clocks, speed };
+}
+
+/**
+ * The survey's clocks with what the character's own fights timed in place of
+ * the tuning's figures (todo 124). A measured figure is realm time already,
+ * so it replaces the scaled one as it stands.
+ */
+export function timedBy<T extends Pick<HuntingConstants, 'engageMs' | 'killOverheadMs'>>(
+  c: T,
+  timing: MeasuredTiming | null
+): T {
+  return {
+    ...c,
+    engageMs: timing?.engageMs ?? c.engageMs,
+    killOverheadMs: timing?.afterKillMs ?? c.killOverheadMs
+  };
 }
 
 /**
@@ -613,10 +633,14 @@ function roomCycle(
   }
   if (!roundsComplete) worstDamage = null;
   if (!nakedComplete) nakedDamage = null;
+  // Each kill's first round comes at the engagement's wait; the rest a round apart (todo 124).
+  const kills = spawns + joinedCount;
   const seconds =
     roomRounds === null
       ? null
-      : roomRounds * c.roundSeconds + ((spawns + joinedCount) * c.killOverheadMs) / 1000;
+      : (kills * c.engageMs) / 1000 +
+        Math.max(0, roomRounds - kills) * c.roundSeconds +
+        (kills * c.killOverheadMs) / 1000;
 
   let poisons = false;
   let poisonSeconds: number | null = 0;

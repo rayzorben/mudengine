@@ -16,16 +16,19 @@ import {
   foldFight,
   foldOutput,
   measuredPerRound,
+  measuredTiming,
   mergeFolds,
   mergeOutputs,
   summarizeFolds,
   type FightFolds,
+  type FightOutput,
   type FightOutputs,
   type FightRecord,
   type FightSink,
   type FightSummary,
   type MeasureAsk,
   type MeasuredOutput,
+  type MeasuredTiming,
   type MobResolver
 } from '../../shared/fights';
 import { t } from '../app/i18n';
@@ -214,12 +217,22 @@ export class FightLog implements FightSink {
    * `ready()` is what a caller that can wait awaits first.
    */
   measured(level: number, ask: MeasureAsk): MeasuredOutput | null {
+    return measuredPerRound(this.outputTables(), level, ask);
+  }
+
+  /**
+   * The engagement's wait and the gap between kills, from the whole record
+   * (`measuredTiming`); this session's alone until the fold is done, as
+   * `measured` answers.
+   */
+  timing(least: number): MeasuredTiming {
+    return measuredTiming(this.outputTables(), least);
+  }
+
+  /** The per-level outputs that answer: the folded record and this session's; the first ask starts the fold. */
+  private outputTables(): ReadonlyArray<ReadonlyMap<number, FightOutput>> {
     if (this.past === null) void this.pastRecord();
-    return measuredPerRound(
-      [this.past?.outputs ?? emptyFold().outputs, this.recordedOutput],
-      level,
-      ask
-    );
+    return [this.past?.outputs ?? emptyFold().outputs, this.recordedOutput];
   }
 
   /** Resolves once the record as it stood has been folded. */

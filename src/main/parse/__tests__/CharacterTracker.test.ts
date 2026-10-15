@@ -2768,6 +2768,31 @@ describe('the fight this character is in', () => {
       ]);
     });
 
+    /* Todo 124: the engagement's wait to the first swing, a miss included, goes on the fight it opened. */
+    it('times the engagement to the first swing', () => {
+      const records: FightRecord[] = [];
+      const sink: FightSink = { record: (record) => void records.push(record) };
+      play(
+        [
+          '[HP=98/MA=50]:',
+          'Also here: orc rogue.',
+          'Obvious exits: north',
+          '*Combat Engaged*',
+          { wait: 1999 },
+          'You swing at the orc rogue!',
+          { wait: 5000 },
+          'You slash the orc rogue for 40 damage!',
+          'The orc rogue utters a low growl, and dies.',
+          'You gain 25 experience.',
+          '*Combat Off*'
+        ],
+        combatWorld(),
+        remembered(),
+        sink
+      );
+      expect(records.map((record) => [record.mob, record.engageMs])).toEqual([['orc rogue', 2000]]);
+    });
+
     /*
      * And both readings put the name where `QuestWatch.noteKilled`
      * can take it: a quest step can be owned by a monster's death (realm

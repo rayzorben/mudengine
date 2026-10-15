@@ -240,6 +240,7 @@ function isFoldable(value: unknown): boolean {
   const number = (key: string): boolean =>
     typeof value[key] === 'number' && Number.isFinite(value[key]);
   const orNull = (key: string): boolean => value[key] === null || number(key);
+  const optional = (key: string): boolean => value[key] === undefined || number(key);
   return (
     typeof value['mob'] === 'string' &&
     typeof value['killed'] === 'boolean' &&
@@ -249,7 +250,9 @@ function isFoldable(value: unknown): boolean {
     number('others') &&
     number('blows') &&
     orNull('ms') &&
-    orNull('level')
+    orNull('level') &&
+    optional('engageMs') &&
+    optional('afterKillMs')
   );
 }
 
