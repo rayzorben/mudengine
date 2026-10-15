@@ -67,6 +67,7 @@ import type { SpawnLore } from '../../shared/spawns';
 import {
   addFiller,
   atSpeed,
+  timedBy,
   cashFloor,
   compareSpots,
   withMeasured,
@@ -294,7 +295,7 @@ export interface ErrandsParts {
   readonly world: ErrandsWorld | undefined;
   readonly tracker: Pick<CharacterTracker, 'current' | 'pendingMoves'>;
   /** What this character has measured dealing a round, for the survey. */
-  readonly fightRecord: Pick<FightSink, 'measured'>;
+  readonly fightRecord: Pick<FightSink, 'measured' | 'timing'>;
   /**
    * The rooms' refills the wire timed, what its kills paid solo, and which
    * spells had no effect on which monsters, on this realm (`RealmLore`).
@@ -1826,6 +1827,7 @@ export class Errands implements SessionModule {
     // Every figure the model runs on, named here so each has a reader.
     const {
       roundSeconds,
+      engageMs,
       restTickSeconds,
       passiveTickSeconds,
       roomRegenSeconds,
@@ -1849,26 +1851,30 @@ export class Errands implements SessionModule {
     const { maxDamageShare, trivialLevelMargin, cashExpShare } = this.automationConfig.hunting;
     // The server's clocks at this realm's speed (`RealmSpeed`): orohost runs every one five times as fast.
     const speed = this.speed.multiplier;
-    const c: HuntingConstants = atSpeed(
-      {
-        roundSeconds,
-        restTickSeconds,
-        passiveTickSeconds,
-        roomRegenSeconds,
-        killOverheadMs,
-        stepMs,
-        greatermudRespawnOffsetSeconds,
-        backstabMultiplier,
-        maxLoopRooms,
-        maxSpots,
-        maxDamageShare,
-        trivialShare,
-        trivialLevelMargin,
-        clusterRadius,
-        fillerRadius,
-        sizeTolerance
-      },
-      speed
+    const c: HuntingConstants = timedBy(
+      atSpeed(
+        {
+          roundSeconds,
+          engageMs,
+          restTickSeconds,
+          passiveTickSeconds,
+          roomRegenSeconds,
+          killOverheadMs,
+          stepMs,
+          greatermudRespawnOffsetSeconds,
+          backstabMultiplier,
+          maxLoopRooms,
+          maxSpots,
+          maxDamageShare,
+          trivialShare,
+          trivialLevelMargin,
+          clusterRadius,
+          fillerRadius,
+          sizeTolerance
+        },
+        speed
+      ),
+      this.fightRecord.timing?.(measuredFightsMin) ?? null
     );
     const { combat, magery, crits, mageryType, family, attack } = this.realmClass();
     const sheet = prowessSheetOf(state, { combat, magery, crits });

@@ -98,6 +98,19 @@ export interface FightRecord {
    * measurement of anything.
    */
   opened: boolean;
+  /**
+   * Ms from `*Combat Engaged*` to this character's first blow, on a fight it
+   * opened. The engagement starts with a full round's energy
+   * (`combatEngageStartEnergy`), so the first blow comes before the room's
+   * next round. Absent where no engagement was seen before the blow.
+   */
+  engageMs?: number;
+  /**
+   * Ms from the end of the last kill in the same room to this fight's
+   * `*Combat Engaged*`: looting and the next attack. Absent where there was
+   * no such kill, or the gap was past `tuning.hunting.killGapMostMs`.
+   */
+  afterKillMs?: number;
 
   /* ------------------------------------------------- the character, then */
   name: string | null;
@@ -149,6 +162,8 @@ export interface FightSink {
    * record (`measuredPerRound`). Absent on a sink that keeps nothing.
    */
   measured?(level: number, ask: MeasureAsk): MeasuredOutput | null;
+  /** The engagement's wait and the gap between kills (`measuredTiming`). Absent on a sink that keeps nothing. */
+  timing?(least: number): MeasuredTiming;
 }
 
 /** The one that writes nothing, for a session with nowhere to write. */
@@ -235,7 +250,7 @@ export type FightFolds = Map<string, FightFold>;
  * A record field either function starts reading also goes into `isFoldable`
  * (`session/fightSegments.ts`).
  */
-export const FOLD_VERSION = 1;
+export const FOLD_VERSION = 2;
 
 /** Adds every name's sums in `from` into `into`. */
 export function mergeFolds(into: FightFolds, from: ReadonlyMap<string, FightFold>): void {
@@ -364,6 +379,12 @@ export interface FightOutput {
   mine: number;
   /** Their lengths, first blow to last; a fight of one blow adds nothing. */
   ms: number;
+  /** Fights that timed `engageMs`, and its sum. */
+  engaged: number;
+  engageMs: number;
+  /** Fights that timed `afterKillMs`, and its sum. */
+  afterKills: number;
+  afterKillMs: number;
 }
 
 export type FightOutputs = Map<number, FightOutput>;
@@ -371,10 +392,26 @@ export type FightOutputs = Map<number, FightOutput>;
 /** Adds one fight into the per-level output, when it is one that measures anything. */
 export function foldOutput(into: FightOutputs, record: FightRecord): void {
   if (!record.opened || record.others > 0 || record.level === null) return;
-  const output = into.get(record.level) ?? { fights: 0, mine: 0, ms: 0 };
+  const output = into.get(record.level) ?? {
+    fights: 0,
+    mine: 0,
+    ms: 0,
+    engaged: 0,
+    engageMs: 0,
+    afterKills: 0,
+    afterKillMs: 0
+  };
   output.fights += 1;
   output.mine += record.mine;
   output.ms += record.ms ?? 0;
+  if (record.engageMs !== undefined) {
+    output.engaged += 1;
+    output.engageMs += record.engageMs;
+  }
+  if (record.afterKillMs !== undefined) {
+    output.afterKills += 1;
+    output.afterKillMs += record.afterKillMs;
+  }
   into.set(record.level, output);
 }
 
@@ -387,7 +424,11 @@ export function mergeOutputs(into: FightOutputs, from: ReadonlyMap<number, Fight
 export const OUTPUT_FIELDS: Readonly<Record<keyof FightOutput, Combine>> = {
   fights: 'sum',
   mine: 'sum',
-  ms: 'sum'
+  ms: 'sum',
+  engaged: 'sum',
+  engageMs: 'sum',
+  afterKills: 'sum',
+  afterKillMs: 'sum'
 };
 
 /** What a measured figure is asked with: the numbers are the caller's tuning. */
@@ -448,6 +489,41 @@ export function measuredPerRound(
   const rounds = ms / ask.roundMs + fights * Math.max(1, ask.openerRounds);
   if (rounds <= 0 || mine <= 0) return null;
   return { perRound: mine / rounds, fights, fromLevel };
+}
+
+/** How long a kill takes outside its rounds, measured off this character's own opened fights. */
+export interface MeasuredTiming {
+  /** Mean ms from `*Combat Engaged*` to the first blow; null under `least` fights. */
+  engageMs: number | null;
+  /** Mean ms from a kill to the next engagement in the same room; null under `least` gaps. */
+  afterKillMs: number | null;
+}
+
+/**
+ * The engagement's wait and the gap between kills, over every level: both
+ * are the realm's clocks and do not change with the character's level. Each figure needs
+ * `least` timings of its own.
+ */
+export function measuredTiming(
+  tables: ReadonlyArray<ReadonlyMap<number, FightOutput>>,
+  least: number
+): MeasuredTiming {
+  let engaged = 0;
+  let engageMs = 0;
+  let afterKills = 0;
+  let afterKillMs = 0;
+  for (const table of tables) {
+    for (const output of table.values()) {
+      engaged += output.engaged;
+      engageMs += output.engageMs;
+      afterKills += output.afterKills;
+      afterKillMs += output.afterKillMs;
+    }
+  }
+  return {
+    engageMs: engaged > 0 && engaged >= least ? engageMs / engaged : null,
+    afterKillMs: afterKills > 0 && afterKills >= least ? afterKillMs / afterKills : null
+  };
 }
 
 /** The same answer read straight off the records, for a caller holding them. */

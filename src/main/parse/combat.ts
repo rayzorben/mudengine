@@ -34,10 +34,11 @@ import type { Block } from '../../shared/blocks';
 import { wornGear, type FightRecord, type FightSink } from '../../shared/fights';
 import type { HarmSink } from '../../shared/harm';
 import type { MobLore } from '../../shared/lore';
-import { mobKey, nameAnswersTo, roomAddress, roomId, type RoomId } from '../../shared/world';
+import { mobKey, nameAnswersTo, roomAddress, type RoomId } from '../../shared/world';
 import { anchorToBand, type WoundBand } from '../../shared/wounds';
 import { tuning } from '../app/tuning';
 import { leavesRoom } from './departs';
+import { FightClock } from './fightClock';
 import { harmOf, HarmLedger } from './harm';
 import { LeftOff } from './leftOff';
 import { OwedAttacks } from './owed';
@@ -226,6 +227,9 @@ export class FightTracker {
   /** Who was attacking when the last `*Combat Off*` came, for a `*Combat Engaged*` right behind it (`leftOff.ts`). */
   private readonly leftOff = new LeftOff();
 
+  /** The engagement's wait and the gap after a kill, for the record (`fightClock.ts`). */
+  private readonly clock = new FightClock();
+
   /**
    * The monster a death sentence has just taken out of the room, by key.
    *
@@ -382,6 +386,7 @@ export class FightTracker {
     this.harm.forget();
     this.owed.forget();
     this.leftOff.forget();
+    this.clock.forget();
     this.landed = null;
     this.fell = null;
   }
@@ -431,6 +436,7 @@ export class FightTracker {
      * of a fight already in progress says nothing new, though it still
      * answers its attack.
      */
+    if (!s.inCombat) this.clock.engage(at, roomAddress(s.room));
     const aimed = this.owed.answer(at);
     const resumed = this.leftOff.resume(s, at);
     const attackers =
@@ -539,6 +545,7 @@ export class FightTracker {
    */
   missed(s: CharacterState, at: number, target: string | undefined): CharacterState | null {
     this.fell = null;
+    this.clock.swung(at);
     if (!target || mobKey(target) === mobKey(s.combat.target ?? '')) return null;
     const combat = struck(s.combat, at, { at: target });
     return {
@@ -577,9 +584,9 @@ export class FightTracker {
      * fragment the old rule wrote into `{target}`.
      */
     if (!target) {
-      return attacker !== undefined && /^you$/i.test(attacker)
-        ? { ...s, combat: struck(s.combat, at, {}) }
-        : null;
+      if (attacker === undefined || !/^you$/i.test(attacker)) return null;
+      this.clock.swung(at);
+      return { ...s, combat: struck(s.combat, at, {}) };
     }
 
     // This character swung at something. `You` and its own name both mean
@@ -588,6 +595,7 @@ export class FightTracker {
       attacker !== undefined &&
       (/^you$/i.test(attacker) ||
         (s.name !== null && attacker.toLowerCase() === s.name.toLowerCase()));
+    if (named) this.clock.swung(at);
     /*
      * A weapon's proc is this character's damage even though the sentence
      * names nobody, and it is *not* a swing this character made — which is
@@ -793,6 +801,9 @@ export class FightTracker {
    * a floor too high.
    */
   private settleFight(s: CharacterState, at: number): void {
+    // The engagement's timings go to the first fight it opened, once.
+    let timing = this.clock.take(tuning().hunting.killGapMostMs);
+    let anyKilled = false;
     for (const ledger of this.ledgers.values()) {
       const total = ledgerTotal(ledger);
       if (total <= 0) continue;
@@ -806,10 +817,18 @@ export class FightTracker {
        * reads it later can decide, and a fight thrown away here is a fight
        * nobody can ever ask about.
        */
-      this.sources.fights.record(this.fightRecord(s, ledger, total, killed, at));
+      const record = this.fightRecord(s, ledger, total, killed, at);
+      anyKilled ||= killed;
+      if (ledger.opened) {
+        this.sources.fights.record({ ...record, ...timing });
+        timing = {};
+      } else {
+        this.sources.fights.record(record);
+      }
       if (killed && !ledger.opened) continue;
       this.sources.lore.observe(ledger.key, { damage: total, killed, at });
     }
+    if (anyKilled) this.clock.killed(at, roomAddress(s.room));
     this.ledgers.clear();
     this.harm.settle(at, 'off');
     // The fight is over, so nothing after it is one of its procs. See
@@ -869,8 +888,7 @@ export class FightTracker {
       encumbrance: s.inventory.encumbrance,
       encumbranceMax: s.inventory.encumbranceMax,
       gear: wornGear(s.inventory.items),
-      room:
-        s.room.map !== null && s.room.number !== null ? roomId(s.room.map, s.room.number) : null,
+      room: roomAddress(s.room),
       roomName: s.room.name,
       // A fight of one is not a fight of three, and the room list is now kept
       // true between looks — so this is a number worth recording rather than a

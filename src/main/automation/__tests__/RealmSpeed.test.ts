@@ -85,6 +85,24 @@ describe('the realm’s speed', () => {
     expect(slow.multiplier).toBe(1);
   });
 
+  /*
+   * Todo 124: an engagement's first round comes at once, so the gap to the
+   * second is not a whole round (paramud: 2 to 4 s on a third of its rounds).
+   * Counted, a 5 s realm read as 5, the speed whose 1 s rounds explain it.
+   */
+  it('times nothing from the engagement’s round', () => {
+    const { speedRounds } = tuning().hunting;
+    const slow = new RealmSpeed();
+    let at = 0;
+    for (let each = 0; each < speedRounds; each += 1) {
+      slow.onBlock({ type: 'combat-status', at: at + 30_000 });
+      slow.onBlock({ type: 'user-hits', at: at + 30_000 });
+      at = fight(slow, at + 33_000, 3, 5000);
+      slow.onBlock({ type: 'combat-status', at });
+    }
+    expect(slow.multiplier).toBe(1);
+  });
+
   /* 2026-10-06: a caster's fights of a round or two took eleven minutes to read 5 on orohost. */
   it('starts from the figure kept from the last connection, and keeps each new one', () => {
     let kept: number | null = 5;

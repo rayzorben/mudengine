@@ -683,7 +683,13 @@ tuning:
     speedSlack: 0.15
     speedShare: 0.8
     speedTickParts: 3
+    # killOverheadMs is a guess until the character's own fights time the gap
+    # from a kill to the next engagement in the room (up to killGapMostMs).
+    # engageMs is the wait from *Combat Engaged* to the first swing,
+    # measured 2.1 s on paramud; the character's own fights replace it too.
     killOverheadMs: 1500
+    engageMs: 2100
+    killGapMostMs: 10000
     stepMs: 1250
     greatermudRespawnOffsetSeconds: 30
     backstabMultiplier: 4

@@ -4,7 +4,9 @@
  * fight's blows and off health rising out of a fight on the realm's tick
  * (`healthRose`). A blow after `speedQuietMs` of quiet opens a round at any
  * speed; a gap between openings up to `speedGapMostMs` in one room is counted
- * (a room shown starts again: the next room's rounds keep their own time), and
+ * (a room shown starts again: the next room's rounds keep their own time, and
+ * so does `*Combat Engaged*` or `*Combat Off*`, whose first round comes at
+ * once and is not a whole round before the next: todo 124), and
  * once `speedRounds` are seen the figure is the slowest whole speed whose round
  * the gaps are whole numbers of (`speedOf`); before then, the figure last
  * read on this server (`KeptSpeed`, `WorldBook`), else the server's own
@@ -72,6 +74,8 @@ export function speedOf(
 export class RealmSpeed {
   private lastBlowAt = Number.NEGATIVE_INFINITY;
   private opened: number | null = null;
+  /** Whether `opened` is the engagement's own round, which comes before the room's next round. */
+  private engagedRound = false;
   private gaps: number[] = [];
   /** The figure, worked out when a gap is counted rather than on every read. */
   private figure: number | null = null;
@@ -87,10 +91,17 @@ export class RealmSpeed {
     this.kept = kept;
   }
 
-  /** Every block: a blow counts, and a room shown starts the rounds again. */
+  /** Every block: a blow counts, and a room shown or a fight engaged or ended starts the rounds again. */
   onBlock(block: Pick<Block, 'type' | 'at'>): void {
     if (isBlow(block.type)) this.blow(block.at);
     else if (block.type === 'room-name') this.opened = null;
+    else if (block.type === 'combat-status') this.engaged();
+  }
+
+  /** `*Combat Engaged*` or `*Combat Off*`: the next round opened is an engagement's, timed from nothing. */
+  private engaged(): void {
+    this.opened = null;
+    this.engagedRound = true;
   }
 
   /** A blow at `at`: one that opens a round times the gap from the last opening. */
@@ -99,7 +110,11 @@ export class RealmSpeed {
     const opens = at - this.lastBlowAt > speedQuietMs;
     this.lastBlowAt = at;
     if (!opens) return;
-    if (this.opened !== null && at - this.opened <= speedGapMostMs) this.count(at - this.opened);
+    const fromEngagement = this.engagedRound && this.opened !== null;
+    if (this.opened !== null && !fromEngagement && at - this.opened <= speedGapMostMs) {
+      this.count(at - this.opened);
+    }
+    if (fromEngagement) this.engagedRound = false;
     this.opened = at;
   }
 

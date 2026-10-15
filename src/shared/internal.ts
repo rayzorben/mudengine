@@ -808,8 +808,27 @@ const TUNING_DEFAULTS = {
      * numbers of the parts, so orohost reads 5 either way (todo 81).
      */
     speedTickParts: 3,
-    /** Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`, 1.5s). */
+    /**
+     * Per kill: looting, retargeting, latency (MME's `cephD_KILL_OVERHEAD_SEC`,
+     * 1.5s). A guess, used until the character's own record times
+     * `afterKillMs` over `measuredFightsMin` kills (Festus on paramud: 2.2 s).
+     */
     killOverheadMs: 1500,
+    /**
+     * From `*Combat Engaged*` to the first swing. An engagement starts
+     * with a full round's energy (`combatEngageStartEnergy`), so the first
+     * round comes before the room's next one: Festus on paramud waited 2.1 s
+     * on average over 10,355 fights (2026-10-12), 42% of them in the same
+     * second. Used until the character's own record times it (`engageMs`).
+     */
+    engageMs: 2100,
+    /**
+     * The longest gap from a kill to the next engagement in the same room
+     * that is still looting and retargeting; past it, the character rested
+     * or did something else, and the gap is not timed. Picked by hand
+     * (2026-10-14) at two 5 s rounds, well past the 2.2 s Festus averaged on paramud.
+     */
+    killGapMostMs: 10000,
     /** One step of a walk — the movement round measured at 1,239ms. */
     stepMs: 1250,
     /**

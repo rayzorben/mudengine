@@ -17,6 +17,7 @@ import {
   orderRing,
   respawnSeconds,
   sizeLoop,
+  timedBy,
   type FillerInput,
   type HuntingConstants,
   type HuntingRoom,
@@ -32,6 +33,12 @@ const C: HuntingConstants = {
   ...atSpeed(DEFAULT_INTERNAL.tuning.hunting, 1),
   ...DEFAULT_HUNT_CHOICES
 };
+
+/*
+ * One kill of six rounds: the first at the engagement's wait, the other five
+ * a round apart, and the kill's overhead (todo 124).
+ */
+const SIX_ROUND_KILL = C.engageMs / 1000 + 5 * C.roundSeconds + C.killOverheadMs / 1000;
 
 /*
  * `Room.GetDelayInSeconds`: minutes, except an Arena room and a negative
@@ -163,18 +170,27 @@ const singles = (over: Partial<SpotInput> = {}): SpotInput => ({
 });
 
 describe('what a spot pays', () => {
+  /* Todo 124: the character's own fights time the engagement and the gap after a kill. */
+  it('prices each kill from the timing its own fights measured', () => {
+    const timed = timedBy(C, { engageMs: 2000, afterKillMs: 2500 });
+    const e = estimateSpot(singles({ mobs: [mutant({ rounds: 3 })] }), timed);
+    expect(e.combatSeconds).toBeCloseTo(2 + 2 * 5 + 2.5, 5);
+    // A figure not yet measured keeps the tuning's.
+    expect(timedBy(C, { engageMs: null, afterKillMs: null })).toEqual(C);
+  });
+
   it('folds a kill, its rest and the wait for the respawn into one cycle', () => {
     const e = estimateSpot(singles(), C);
-    // Six rounds of five seconds and the kill's overhead.
-    expect(e.combatSeconds).toBeCloseTo(6 * 5 + 1.5, 5);
+    // The engagement's wait, five rounds of five seconds and the kill's overhead.
+    expect(e.combatSeconds).toBeCloseTo(SIX_ROUND_KILL, 5);
     // Sixty hit points taken, 8.4 regained standing, and two resting ticks of
     // 24 each with half a standing tick's 8 beside it (`sittingPerSecond`).
     expect(e.damagePerRoom).toBe(60);
     expect(e.restSeconds).toBe(30);
     // Slower than the clock, so no waiting; the rate is the cycle's.
     expect(e.waitSeconds).toBe(0);
-    expect(e.cycleSeconds).toBeCloseTo(31.5 + 30, 5);
-    expect(e.expPerHour).toBeCloseTo((225 * 3600) / 61.5, 3);
+    expect(e.cycleSeconds).toBeCloseTo(SIX_ROUND_KILL + 30, 5);
+    expect(e.expPerHour).toBeCloseTo((225 * 3600) / (SIX_ROUND_KILL + 30), 3);
     expect(e.ceilingPerHour).toBeCloseTo((225 * 3600) / 30, 3);
     expect(e.deadly).toBe(false);
     expect(e.costly).toBe(false);
@@ -242,7 +258,7 @@ describe('what a spot pays', () => {
 
   it('waits for the clock when the cycle is faster than the respawn', () => {
     const e = estimateSpot(singles({ respawnSeconds: 300 }), C);
-    expect(e.waitSeconds).toBeCloseTo(300 - 61.5, 5);
+    expect(e.waitSeconds).toBeCloseTo(300 - (SIX_ROUND_KILL + 30), 5);
     expect(e.expPerHour).toBeCloseTo((225 * 3600) / 300, 3);
   });
 
@@ -258,7 +274,7 @@ describe('what a spot pays', () => {
     expect(e.ceilingPerHour).toBeNull();
     expect(e.unknown).toEqual(['respawn', 'health', 'rest']);
     // What it could work out, it did.
-    expect(e.combatSeconds).toBeCloseTo(31.5, 5);
+    expect(e.combatSeconds).toBeCloseTo(SIX_ROUND_KILL, 5);
     expect(e.damagePerRoom).toBe(60);
   });
 
@@ -293,7 +309,7 @@ describe('what a spot pays', () => {
     const e = estimateSpot(singles({ rooms: 4, loopSteps: 12 }), C);
     expect(e.walkSeconds).toBeCloseTo(12 * 1.25, 5);
     expect(e.expPerCycle).toBe(225 * 4);
-    expect(e.combatSeconds).toBeCloseTo(4 * 31.5, 5);
+    expect(e.combatSeconds).toBeCloseTo(4 * SIX_ROUND_KILL, 5);
   });
 
   /* The pack's weight slows the whole loop, and the estimate says so (todo 00). */
@@ -500,12 +516,13 @@ describe('a lair that poisons', () => {
   const unlifted: SpotCharacter = { ...melee, poisonHoldsRest: true };
 
   it('stands the character for the poison before the rest, and says how long', () => {
-    const e = estimateSpot(singles({ mobs: [poisoner], character: unlifted }), C);
-    expect(e.poisonSeconds).toBe(90);
-    // The ninety seconds are in the cycle, and the three standing ticks in them
-    // (every 30s, `DoHPTick`) take a rest tick off the 30s rest after.
+    const slow = mutant({ afflictions: [{ kind: 'poison', seconds: 95 }] });
+    const e = estimateSpot(singles({ mobs: [slow], character: unlifted }), C);
+    expect(e.poisonSeconds).toBe(95);
+    // The 95 seconds are in the cycle, and the four standing ticks in them and
+    // the fight (every 30s, `DoHPTick`) take a rest tick off the 30s rest after.
     expect(e.restSeconds).toBe(15);
-    expect(e.cycleSeconds).toBeCloseTo(31.5 + 90 + 15, 5);
+    expect(e.cycleSeconds).toBeCloseTo(SIX_ROUND_KILL + 95 + 15, 5);
     // Stood long enough, standing regains all that was owed and there is no rest.
     const long = mutant({ afflictions: [{ kind: 'poison', seconds: 600 }] });
     expect(estimateSpot(singles({ mobs: [long], character: unlifted }), C).restSeconds).toBe(0);
@@ -673,8 +690,8 @@ describe('filling the wait', () => {
     // Two steps of detour, walked one lap in ten.
     const step = (bare.stepMs * 2) / 1000;
     expect(e.walkSeconds - bare.walkSeconds).toBeCloseTo(step / 10, 5);
-    // One round and one kill's overhead, fought one lap in ten.
-    const fight = 1 * C.roundSeconds + C.killOverheadMs / 1000;
+    // One round at the engagement's wait and one kill's overhead, fought one lap in ten.
+    const fight = C.engageMs / 1000 + C.killOverheadMs / 1000;
     expect(e.combatSeconds! - bare.combatSeconds!).toBeCloseTo(fight / 10, 5);
   });
 
@@ -1142,7 +1159,11 @@ describe('a spot whose spawns draw monsters in', () => {
     // Six rounds standing call 0.6 warriors; each swings 18/6 = 3 rounds of the
     // pack on average after it comes (1.8 for 0.6), then its own four.
     expect(e.damagePerRoom).toBeCloseTo(60 + 20 * 1.8 + 0.6 * 4 * 20, 5);
-    expect(e.combatSeconds).toBeCloseTo((6 + 0.6 * 4) * 5 + 1.6 * 1.5, 5);
+    // 1.6 kills, each first round at the engagement's wait.
+    expect(e.combatSeconds).toBeCloseTo(
+      (1.6 * C.engageMs) / 1000 + (6 + 0.6 * 4 - 1.6) * 5 + 1.6 * 1.5,
+      5
+    );
     expect(e.expPerCycle).toBeCloseTo(225 + 0.6 * 300, 5);
   });
 
